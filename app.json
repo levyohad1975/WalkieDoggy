@@ -1,0 +1,67 @@
+{
+  "expo": {
+    "name": "Walkie Doggy Link",
+    "slug": "dog-walk-family",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.family.dogwalk",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
+        "NSPhotoLibraryUsageDescription": "כדי לבחור תמונה של טופי או של בן משפחה מהגלריה שלך."
+      }
+    },
+    "android": {
+      "package": "com.family.dogwalk",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FBF8F3"
+      },
+      "permissions": [
+        "RECEIVE_BOOT_COMPLETED",
+        "SCHEDULE_EXACT_ALARM"
+      ],
+      "softwareKeyboardLayoutMode": "resize"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#20A7B5"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "כדי לבחור תמונה של טופי או של בן משפחה מהגלריה שלך."
+        }
+      ],
+      "@react-native-community/datetimepicker",
+      "expo-status-bar",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "backgroundColor": "#FBF8F3",
+          "resizeMode": "contain",
+          "imageWidth": 320
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {}
+    }
+  }
+}

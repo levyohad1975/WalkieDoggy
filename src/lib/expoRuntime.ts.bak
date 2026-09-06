@@ -1,0 +1,27 @@
+/**
+ * Shared, pure helper for telling Expo Go apart from a dev/standalone build
+ * using SDK 54's `Constants.executionEnvironment` API. Extracted out of
+ * src/lib/pushTokens.ts (which introduced this detection for remote push
+ * registration) so src/notifications/notificationService.ts's LOCAL
+ * walk-reminder scheduling can use the exact same rule — see that file's
+ * P0 Android Expo Go 57 startup-crash fix — without duplicating the mapping
+ * logic in two places that could quietly drift apart.
+ *
+ * Takes the already-imported `expo-constants` module object (or its
+ * `.default`) rather than importing it itself, so callers keep full control
+ * of the lazy-import + try/catch story around a native module that may not
+ * exist at all in some environments (this test sandbox included).
+ */
+export type ExpoExecutionEnvironment = 'storeClient' | 'bareOrStandalone' | 'unknown';
+
+export function mapExecutionEnvironment(constantsModule: any): ExpoExecutionEnvironment {
+  const value = constantsModule?.executionEnvironment;
+  const storeClient = constantsModule?.ExecutionEnvironment?.StoreClient ?? 'storeClient';
+  if (value === storeClient) return 'storeClient';
+  if (value === 'bare' || value === 'standalone') return 'bareOrStandalone';
+  // Unknown value (module shape changed, or executionEnvironment missing
+  // entirely) — deliberately NOT treated as Expo Go, so a genuinely
+  // misconfigured/unusual build still gets treated as capable rather than
+  // going silently inert forever.
+  return 'unknown';
+}

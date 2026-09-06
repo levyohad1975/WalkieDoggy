@@ -1,0 +1,1518 @@
+====================================================================
+qa-ux-identity-round-final5.zip — MANIFEST
+Narrow MIGRATION/SECURITY fix on top of qa-ux-identity-round-final4.zip
+(the "lost-claim admin-restoration" bootstrap-fallback bug in
+current_family_role()/is_real_family_admin() — migration 0016 ONLY;
+no UI/design/client-switching code touched this pass)
+====================================================================
+
+This is a CONSOLIDATED, FULL-STATE delivery — every file here is the
+complete current version of that file after every pass in this engagement,
+not a diff/delta. You should never need to combine this with an earlier
+zip. Section -2 below covers THIS pass (the lost-claim migration/security
+fix); section -1 covers the PRIOR pass (the client-flow fix); sections
+0.A-0.F cover the pass before that (the database/RPC/RLS correction pass);
+and everything from section 1 onward is preserved from final2.zip's own
+MANIFEST as historical record of the earlier persona-vs-authorization fix,
+PIN reclaim, and QA sandbox reversibility work this pass builds on and does
+not revert.
+
+====================================================================
+-2. NARROW MIGRATION/SECURITY FIX (THIS DELIVERY) — "lost-claim
+admin-restoration" bootstrap-fallback bug
+====================================================================
+
+-2.A WHY "NO CLAIMED PERSONA" IS NOT SYNONYMOUS WITH "BOOTSTRAP"
+--------------------------------------------------------------------
+current_family_role()/is_real_family_admin() (migration 0016, Part 0) each
+resolve a device's role in two branches: (1) if the device currently holds
+a claimed persona (real_current_profile_id() is not null), read THAT
+persona's users.role; (2) otherwise, fall back to
+family_auth_members.role — the device's own permanent membership row,
+independent of any persona claim.
+
+The PREVIOUS version of both functions gated branch (2) on nothing more
+than "branch (1) didn't apply" — i.e. literally just `persona_id is null`.
+That condition was intended to mean "this device has never claimed a
+persona in this family yet — genuine pre-first-member bootstrap." But it is
+ALSO true the instant a device that USED TO hold a claim LOSES it — e.g.
+Device A holds Dad/Admin, Device B calls
+claim_family_profile_with_pin('dad', pin) and legitimately transfers Dad's
+claim to itself (the atomic swap fixed in the prior "narrow
+security/database correction pass", itself correct and completely
+UNCHANGED by this fix). The instant that transfer commits,
+real_current_profile_id() on A is null again too — not because A never
+claimed anything, but because A just lost what it had. The OLD fallback
+could not tell these two situations apart, and re-granted A admin
+authority straight from its stale family_auth_members.role row.
+
+-2.B THE EXACT VULNERABILITY, AND HOW IT'S CLOSED
+--------------------------------------------------------------------
+Confirmed by direct SQL trace (not assumed) — the OLD is_real_family_admin():
+    persona_id := real_current_profile_id();
+    if persona_id is not null then
+      return exists (select 1 from users where id = persona_id and family_id = target_family_id and role = 'admin' and removed_at is null);
+    end if;
+    return exists (select 1 from family_auth_members where auth_user_id = auth.uid() and family_id = target_family_id and role = 'admin');
+Device A above: persona_id is null (A holds no claim) -> falls to the
+SECOND exists() -> A's family_auth_members.role is still 'admin' (never
+touched by the claim transfer, which only ever writes to `users`, never to
+family_auth_members) -> returns TRUE. A direct RPC call from A (any
+admin-only RPC — set_member_role(), admin_delete_family_member(),
+enter_qa_sandbox(), regenerate_invite_code(), ...) would have been WRONGLY
+authorized. This is a server-side hole, fully independent of whether A's
+own client-side checkClaimStillValid() has run yet.
+
+THE FIX: the fallback is now gated on a REAL, server-verifiable bootstrap
+predicate instead of "persona_id is null" — reusing the EXACT SAME
+predicate this migration's own bootstrap_first_member_role() trigger
+already uses to decide "is this genuinely the first active member ever for
+this family" (chosen specifically for consistency, per the coordinator's
+instruction to reuse the real predicate used elsewhere in this schema):
+
+    not exists (select 1 from users where family_id = <fam> and removed_at is null)
+
+i.e. "this family currently has LITERALLY ZERO active (non-removed)
+personas in existence." Both functions now check this explicitly before
+ever consulting family_auth_members.role, and fail closed (return
+null / false) the moment it's false — regardless of WHY the calling
+device holds no claim (never claimed one, or lost one). See the exact
+corrected SQL in current_family_role()/is_real_family_admin()'s own
+extensively-updated doc comments in the migration file itself.
+
+-2.C FUNCTIONS RE-AUDITED (each read directly from the actual current SQL
+before deciding whether it needed a change — not assumed)
+--------------------------------------------------------------------
+  - current_family_role() — CHANGED (the fix itself; see -2.B).
+  - is_real_family_admin() — CHANGED (the fix itself; identical bug,
+    identical fix).
+  - is_family_admin() (migration 0006) — read, NOT changed. It is a thin
+    wrapper: `case when active_impersonation_target() is not null then
+    false else is_real_family_admin(target_family_id) end`. Since Postgres
+    resolves `is_real_family_admin` by name at call time to whichever
+    definition is CURRENTLY installed (this migration's own
+    create-or-replace), this wrapper automatically inherits the fix with
+    zero code change of its own — confirmed by reading its body directly,
+    not assumed.
+  - current_profile_id() (migration 0006) — read, NOT changed:
+    `coalesce(active_impersonation_target(), real_current_profile_id())`.
+    Unrelated to the fallback bug (it never reads family_auth_members at
+    all) — impersonation-aware by design, correctly untouched.
+  - real_current_profile_id() (migration 0006) — read, NOT changed:
+    `select id from users where auth_user_id = auth.uid() and family_id =
+    current_family_id() and removed_at is null limit 1`. This ALREADY
+    correctly returns null the instant a device's claim is gone — it was
+    never the buggy part; the bug was entirely in how the two Part-0
+    functions ABOVE responded to that null.
+  - create_family() (migration 0002) — read, NOT changed. Inserts the
+    family_auth_members row (role='admin') for the creator and nothing
+    into `users` yet — the exact state case 1's bootstrap predicate is
+    designed for. No change needed; the corrected predicate already
+    resolves this correctly (see -2.D case 1).
+  - join_family() (migration 0002) — read, NOT changed. Already sets
+    family_auth_members.role = 'member' for a genuinely NEW join to an
+    existing family (only preserves 'admin' when re-joining the SAME
+    family where this exact device was already admin) — this was never
+    itself an admin-grant vector, and the corrected predicate closes the
+    fallback entirely for this case regardless (see -2.D case 10).
+  - First-persona-creation path — traced to LoginScreen.tsx's
+    "wasFirstUser" branch (client, read-only, NOT touched — out of scope
+    per explicit instruction) calling authStore.signIn() ->
+    claim_family_profile() (migration 0004, unmodified) immediately after
+    the insert. bootstrap_first_member_role() (0016, Part 0, UNCHANGED —
+    it already used the correct "zero active personas" predicate; THIS is
+    the trigger the fix's new bootstrap check was modeled on for
+    consistency) forces that row's role to 'admin'. No change needed here;
+    behavior is identical before and after this fix (see -2.D case 2).
+  - enter_qa_sandbox() (migration 0016, Part 2) — read, NOT changed. Its
+    own admin check (`is_family_admin(cur_family)`, added in the prior
+    "narrow security/database correction pass") calls into the now-fixed
+    is_real_family_admin() automatically — no code change needed in Part 2
+    itself. Verified this doesn't break its own legitimate bootstrap case
+    (a device that just ran create_family() and has no claimed persona yet
+    entering QA immediately) — that family also has zero active personas
+    at that moment, so the corrected predicate still resolves the fallback
+    correctly there.
+  - exit_qa_sandbox() (migration 0016, Part 2) — read, NOT changed. Same
+    reasoning: its admin check on the CURRENT (QA) family automatically
+    benefits from the fix; a freshly-entered, still-empty QA family (zero
+    personas) still correctly satisfies the bootstrap predicate for the
+    admin who just entered it.
+  - qa_reset_full() (migration 0016, Part 2) — read, NOT changed. Its
+    OWN admin check (on ENTRY, before deleting anything) is unaffected —
+    at that point the QA family still has its existing personas and the
+    caller's own persona is normally claimed, resolving via the persona
+    branch as always. AFTER it deletes every users row for that family,
+    the bootstrap predicate re-evaluates TRUE for that family on the very
+    next call (it's evaluated fresh every time, never cached) — so the
+    SAME fresh-onboarding bootstrap that works for a brand-new real family
+    (case 1) works identically for a freshly-wiped QA family, with ZERO
+    special-casing required in qa_reset_full() itself. This is the
+    coordinator's explicitly flagged "special case," and it falls out of
+    the general fix automatically rather than needing separate code — see
+    -2.D case 9.
+
+-2.D THE 10 REQUIRED ADVERSARIAL CASES AND THEIR VERIFIED OUTCOMES
+--------------------------------------------------------------------
+All 10 are captured as explicit SQL-level reasoning directly in the
+migration file, in a new "LOST-CLAIM ADVERSARIAL WALKTHROUGH" comment block
+immediately after is_real_family_admin()'s own definition (before
+set_member_role()) — summarized here, with case 4 (the core fix) also
+reproduced as a literal, executable Jest test against a hand-written pure-
+logic mirror of the corrected decision table (there is no live Postgres
+database available in this sandbox — see -2.F — so this mirror is a
+specification check on the decision logic itself, not proof the deployed
+SQL matches it line-for-line; that correspondence is what the inline SQL
+comments establish directly against the real statements):
+
+  1. Brand-new family, zero active users: bootstrap predicate TRUE ->
+     creator's family_auth_members.role='admin' resolves -> can perform
+     the minimum legitimate bootstrap action (insert the first member).
+     VERIFIED (SQL reasoning + spec test).
+  2. First persona created and claimed: resolves via the persona branch
+     from that moment on; the bootstrap window is closed for every OTHER
+     unclaimed device in that family too. VERIFIED (SQL reasoning + spec
+     test, including the "closed for a stranger device" sub-case).
+  3. Dad/Admin -> Idan/Member real switch, same device: resolves 'member'
+     while claimed, via the persona branch, never touching the fallback.
+     VERIFIED.
+  4. THE CORE FIX — Device B claims Idan away from Device A: on A,
+     current_family_role() returns null, is_family_admin() returns false —
+     even though A's family_auth_members.role is still 'admin'. VERIFIED
+     by SQL reasoning AND a literal Jest test
+     (lostClaimAuthorization.spec.test.ts) that also reproduces the OLD
+     buggy logic side-by-side and shows it WOULD have returned true —
+     making the fix (and what it fixes) an executable, falsifiable
+     assertion, not just prose.
+  5. Enforcement is server-side, independent of client revalidation
+     timing: every admin-only RPC calls is_family_admin()/
+     is_real_family_admin() itself, on every invocation — there is no
+     cached/session-level admin flag anywhere in this schema for a client
+     to race. Stated explicitly in the migration's own walkthrough and
+     demonstrated in the spec test (the resolver is a pure function of
+     server-shaped state with no "already revalidated" parameter at all).
+  6. A reclaims Dad with the correct PIN: admin restored via the ordinary
+     persona-branch resolution — no special-casing, same mechanism as any
+     other claim. VERIFIED.
+  7. A reclaims Idan instead: resolves 'member', same mechanism. VERIFIED.
+  8. Local stale currentUserId cannot restore server privilege: neither
+     resolver function (nor their pure-logic mirror) takes any
+     client-supplied identity parameter at all — only the device's real
+     authenticated auth.uid() plus server state. VERIFIED by construction
+     (and asserted directly in the spec test via the mirror function's own
+     parameter list).
+  9. QA full reset leaves a QA family with zero personas: the fresh-
+     onboarding bootstrap works there identically to a brand-new real
+     family, with no special-casing in qa_reset_full() itself (see -2.C).
+     VERIFIED (SQL reasoning + spec test).
+  10. Joining an existing family with active personas, no claimed profile
+      yet: NOT granted admin via the fallback — the bootstrap predicate is
+      false the moment the target family has any active persona, entirely
+      independent of what family_auth_members.role happens to hold (which,
+      per join_family()'s own existing logic, is 'member' for a genuine
+      new join anyway — the fix is airtight even if it weren't). VERIFIED
+      (SQL reasoning + spec test using a hypothetical 'admin'
+      family_auth_members row specifically to prove the predicate alone is
+      what closes this, not incidentally relying on join_family()'s
+      already-correct role choice).
+
+-2.E FILES CHANGED THIS PASS (migration + one test file, exactly as scoped)
+--------------------------------------------------------------------
+  - supabase/migrations/0016_profile_pin_reclaim_and_qa_sandbox.sql —
+    current_family_role() and is_real_family_admin() rewritten with the
+    corrected bootstrap predicate (see -2.B); a new "LOST-CLAIM ADVERSARIAL
+    WALKTHROUGH" comment block added covering all 10 cases; top-of-file
+    header/REVISION NOTE updated to document this as the file's FOURTH
+    rework, restating explicitly that it remains UNAPPLIED to any live
+    database (see -2.F). NO other function's logic changed — the atomic
+    claim_family_profile_with_pin() transaction, the protected
+    role/pin_hash/auth_user_id column locks (Part 0.5), and
+    enter_qa_sandbox()/exit_qa_sandbox()'s own admin-check statements are
+    all BYTE-FOR-BYTE UNCHANGED (they benefit from this fix only because
+    they already call into the now-corrected is_family_admin(), not
+    because their own code was touched).
+  - src/store/__tests__/lostClaimAuthorization.spec.test.ts — NEW. Pure-
+    logic spec mirror covering all 10 adversarial cases (see -2.D), dry-run
+    verified against a plain-Node reimplementation of the same assertions
+    before being written into the actual Jest file (Jest itself is not
+    runnable in this sandbox — see -2.F).
+No UI, screen, component, theme, or client-switching file was touched this
+pass — confirmed by diffing this zip's src/ tree against
+qa-ux-identity-round-final4.zip's: identical except for the one new test
+file above. Final4's Settings "החלף משתמש" PIN flow, the atomic claim
+transaction, the protected-column locks, QA sandbox authorization, and all
+UI/design work are preserved exactly as delivered.
+
+-2.F MIGRATION STATUS AND SANDBOX VALIDATION
+--------------------------------------------------------------------
+supabase/migrations/0016_profile_pin_reclaim_and_qa_sandbox.sql remains
+UNAPPLIED to any live database through this entire engagement, across all
+five passes that have now touched or built on this migration file (this is
+its FOURTH rework). It will be reviewed again before deployment — this
+delivery does NOT instruct applying it.
+
+`ls node_modules` -> does not exist. `npm run typecheck` -> `tsc --noEmit`
+-> `tsconfig.json(2,14): error TS6053: File 'expo/tsconfig.base' not
+found.` `npm test -- --runInBand` -> `jest --runInBand` -> `sh: 1: jest:
+not found`. Identical failure mode to every prior pass in this engagement —
+no dependencies have ever been installed in this sandbox. The new spec
+test's assertions were independently dry-run as plain Node script (not
+through Jest) against the real corrected logic before being committed to
+the actual .test.ts file, and all 10 cases passed in that dry run — never
+asserted as "passing under Jest," since nothing has actually run under
+Jest.
+
+====================================================================
+-1. NARROW CLIENT-FLOW FIX (PRIOR PASS) — "החלף משתמש" (Switch User)
+====================================================================
+
+-1.A THE DATABASE MIGRATION WAS NOT TOUCHED THIS PASS
+--------------------------------------------------------------------
+supabase/migrations/0016_profile_pin_reclaim_and_qa_sandbox.sql is
+BYTE-FOR-BYTE IDENTICAL to the version delivered in
+qa-ux-identity-round-final3.zip — confirmed directly with `diff` before
+building this zip, not merely asserted. Nothing about this fix required a
+database change: claim_family_profile_with_pin() already performs the
+correct atomic release-old/claim-target transaction (fixed in the prior
+pass) — the bug this pass fixes was entirely that the CLIENT was not
+calling it at the right moment. It remains UNAPPLIED to any live database,
+across all four passes that have now touched or built on this migration
+file — this delivery does not instruct applying it; it will be reviewed
+again before deployment.
+
+-1.B THE BUG, CONFIRMED BY READING THE ACTUAL CALL SEQUENCE
+--------------------------------------------------------------------
+Read (before changing anything, per the coordinator's instruction):
+authStore.ts, LoginScreen.tsx, and SettingsScreen.tsx (where "החלף משתמש"
+actually lives — confirmed by grep, not MemberDetailsModal.tsx, which has
+no signOut/switch-user code at all).
+
+OLD sequence, confirmed exactly as described in the bug report by reading
+SettingsScreen.tsx's (pre-fix) handleSwitchUser and LoginScreen.tsx's
+handleSignIn side by side:
+  1. Settings -> "החלף משתמש" tap -> SettingsScreen.tsx's handleSwitchUser
+     called ONLY `await signOut()` (authStore.ts) — which clears local
+     currentUserId ONLY, never releases the server-side claim
+     (users.auth_user_id for whichever profile this device currently
+     holds is completely untouched by signOut() — confirmed by reading its
+     implementation, which touches only AsyncStorage + in-memory state +
+     best-effort end_impersonation()).
+  2. currentUserId becoming null flips App.tsx's
+     `currentUserId ? <RootNavigator/> : <LoginScreen/>` branch to
+     LoginScreen.
+  3. Tapping a name on LoginScreen calls handleSignIn(userId) ->
+     authStore.signIn(userId) -> claim_family_profile() (the PLAIN,
+     non-PIN claim path — migration 0004).
+  4. For a SAME-DEVICE switch (e.g. Dad's device, whose OLD claim on Dad's
+     row was never released by signOut() in step 1, picking Idan): plain
+     claim_family_profile()'s guarded UPDATE tries to set Idan's row's
+     auth_user_id to this device's auth.uid() while Dad's row STILL holds
+     that same auth.uid() — colliding with the UNIQUE index on
+     users.auth_user_id.
+  5. LoginScreen.tsx's handleSignIn only routes to PinEntryModal
+     (setPinReclaimUserId(userId)) when the caught error's message
+     `.includes('profile already claimed by another device')` — the EXACT
+     string claim_family_profile() raises for a DIFFERENT-device conflict.
+     A same-device unique-constraint failure raises Postgres's own
+     constraint-violation message instead, which does not contain that
+     substring — so the condition is false, no PIN flow is offered, and
+     the person is left looking at a raw/generic claim-error banner with
+     no path forward, HAVING ALREADY been dropped into a signed-out
+     LoginScreen state by step 1 regardless of whether the switch was
+     ever going to succeed.
+
+-1.C THE FIX — THE PRODUCT FLOW, NOT ERROR-STRING MAPPING
+--------------------------------------------------------------------
+Per the coordinator's explicit framing, this was fixed as a CONTROL-FLOW
+change (which function gets called when, and under what condition the PIN
+modal opens) — no new error-string pattern-matching was added anywhere.
+
+NEW sequence (SettingsScreen.tsx):
+  1. "החלף משתמש" tap -> handleSwitchUser() now ONLY opens a target picker
+     (`setSwitchUserPickerVisible(true)`) — signOut() is no longer called
+     at all, anywhere in this file (confirmed structurally — see -1.E).
+     currentUserId is therefore NEVER cleared before a switch is verified;
+     App.tsx's branch never flips away from RootNavigator, so there is NO
+     intermediate signed-out LoginScreen state for this flow at all.
+  2. The picker (reusing the existing UserPickerModal component, the same
+     one already used for the admin real-impersonation picker) lists every
+     OTHER active family member (excludeUserId = currentUserId). Choosing
+     ANY of them — whether that target happens to be currently unclaimed
+     or currently claimed by another device, both cases, per requirement 2
+     — routes directly to PIN entry (`setSwitchTargetUserId(userId)`).
+     There is no attempt at a plain claim first, and no error-driven
+     fallback logic of any kind — the routing decision is made the instant
+     a target is chosen, not after a failed attempt.
+  3. PIN entry (reusing the existing PinEntryModal component) collects the
+     PIN and calls `signInWithPin(switchTargetUserId, pin)` ->
+     claim_family_profile_with_pin() — the exact same atomic RPC the prior
+     pass already fixed, reused completely as-is, with no changes to its
+     signature or behavior.
+  4. On success: signInWithPin() (authStore.ts, UNCHANGED this pass) has
+     already, server-side, atomically released this device's OLD claim and
+     claimed the new one, verified the result via whoami(), refreshed
+     familyRole, and only THEN set currentUserId + persisted it to
+     AsyncStorage. "Done" — the user sees their new identity's data appear
+     under RootNavigator directly; nothing about this flow ever routes
+     through LoginScreen.
+  5. On a WRONG PIN: claim_family_profile_with_pin() raises 'incorrect
+     PIN' BEFORE either of its two writes runs (see its own doc comment in
+     migrations/0016_*.sql — PIN is verified before any mutation) — so the
+     server-side claim on whatever profile this device currently holds is
+     provably untouched. Client-side, signInWithPin() re-throws without
+     ever calling AsyncStorage.setItem or `set({ currentUserId: ... })` —
+     confirmed by reading __signInCore()'s control flow: those two lines
+     run only AFTER the claim RPC call has already succeeded. currentUserId
+     therefore stays exactly what it was.
+  6. On CANCEL: PinEntryModal's onCancel prop is wired to nothing but
+     `setSwitchTargetUserId(null)` — no store action of any kind is called
+     (confirmed structurally, see -1.E) — so this is trivially a pure
+     local-UI no-op with zero interaction with authStore or the server.
+  7. Plain signIn()/claim_family_profile() (LoginScreen.tsx) is completely
+     UNTOUCHED and continues to be used exactly as before for legitimate
+     unclaimed/bootstrap flows — initial onboarding (the very first family
+     member, "wasFirstUser" in LoginScreen.tsx) and any ordinary "pick your
+     profile" tap on a device that has no current claim to protect (i.e.
+     LoginScreen is only ever reached today by a device with no
+     currentUserId at all — a genuinely fresh device, or one recovering
+     from a detected stale claim — never by an active "switch away from my
+     current identity" action, since that action no longer routes through
+     LoginScreen at all). Nothing in this fix routes onboarding through
+     PIN.
+
+-1.D A NEW OPTIONAL PROP, NOT A DESIGN CHANGE
+--------------------------------------------------------------------
+PinEntryModal.tsx gained one optional `subtitle` prop (defaults to its
+existing exact wording if omitted, so LoginScreen's own two existing
+call sites — the 7D "profile active on another device" reclaim flow — are
+completely unaffected). This was necessary, not cosmetic: the modal's
+hard-coded subtitle text ("this profile is currently active on another
+device") is factually WRONG for the "switch user" flow's UNCLAIMED-target
+case (requirement 2 explicitly requires routing an unclaimed target
+through PIN too) — SettingsScreen's call site passes accurate copy instead
+("הזינו את קוד ה-PIN של הפרופיל הזה כדי לעבור אליו במכשיר הזה" — "enter
+this profile's PIN to switch to it on this device"). No layout, styling,
+or visual-design change of any kind — one string prop with a safe default.
+
+-1.E FILES CHANGED THIS PASS (small, as expected — this was a control-flow
+fix, not a database or design pass)
+--------------------------------------------------------------------
+  - src/screens/SettingsScreen.tsx — handleSwitchUser rewritten (no more
+    signOut()); new handleSwitchUserPinSubmit; new switch-target picker
+    (UserPickerModal, reused) and PIN modal (PinEntryModal, reused) wired
+    up; the now-unused `signOut` destructure and `switchingUser` loading
+    flag removed.
+  - src/components/PinEntryModal.tsx — one new optional `subtitle` prop
+    (see -1.D). No other change.
+  - src/store/authStore.ts — NOT CHANGED. signInWithPin()/__signInCore()
+    already had every guarantee this fix depends on (atomic RPC call,
+    whoami verification, familyRole refresh, currentUserId set only on
+    confirmed success) from the prior pass — read in full to CONFIRM this
+    before touching anything else, exactly as instructed.
+  - src/screens/LoginScreen.tsx — NOT CHANGED. Its plain signIn()/
+    claim_family_profile() bootstrap/onboarding path is untouched and
+    still fully intact (see -1.C point 7).
+  - src/screens/__tests__/SettingsScreen.switchUserFlow.test.ts — NEW.
+    Structural (source-text-scan) tests — this repo has no React Native
+    component-rendering test infrastructure (confirmed by reading
+    FamilyOnboardingScreen.tokenSafety.test.ts's own doc comment;
+    @testing-library/react-native is an installed-but-unused
+    devDependency, same convention followed here) — covering: handleSwitchUser
+    never calls signOut(); signOut() is called nowhere in the file at all
+    (comments stripped first, since the fix's own doc comment legitimately
+    names it while explaining the OLD bug); the switch-target picker's
+    onSelect routes straight to setSwitchTargetUserId, never attempting a
+    plain claim; handleSwitchUserPinSubmit calls signInWithPin, not plain
+    signIn; the PIN modal's onCancel touches only local picker state.
+  - src/store/__tests__/authStore.test.ts — two additions to the existing
+    "familyRole refresh after a claim" describe block: a new symmetric
+    Dad->Idan (member) signInWithPin() test (the existing suite already had
+    the Idan->Dad/admin direction from the prior pass), and the existing
+    wrong-PIN test strengthened to explicitly assert the claim RPC WAS
+    called with the expected args (proving the PIN check genuinely runs
+    server-side) while currentUserId, familyRole, and AsyncStorage all stay
+    completely untouched — the "old claim remains intact" guarantee, now
+    asserted at three independent levels instead of one.
+Every other file in this zip is BYTE-FOR-BYTE IDENTICAL to
+qa-ux-identity-round-final3.zip, including the migration file (see -1.A).
+
+-1.F ADVERSARIAL TEST CASES AND WHERE EACH IS COVERED
+--------------------------------------------------------------------
+  - Dad->Idan, Idan currently UNCLAIMED -> uses the PIN path directly (not
+    plain-claim-then-fallback): covered structurally (the picker's onSelect
+    unconditionally routes to PIN for ANY selected target — there is no
+    code path left that could route an unclaimed target differently) in
+    SettingsScreen.switchUserFlow.test.ts, and behaviorally at the RPC
+    level (claim_family_profile_with_pin() does not care whether the
+    target was previously claimed) in the existing/extended authStore.test.ts
+    familyRole-refresh suite.
+  - Dad->Idan, Idan currently claimed by ANOTHER device -> same PIN path:
+    same structural guarantee applies identically — the client-side
+    routing decision does not and cannot distinguish these two cases
+    (by design — it never even reads target claim status), so one
+    structural proof covers both.
+  - Wrong PIN -> Dad remains signed in, locally AND server-side: the
+    strengthened authStore.test.ts test asserts currentUserId, familyRole,
+    and AsyncStorage's persisted value all remain 'dad'/'admin' after a
+    rejected signInWithPin('idan', wrongPin) call, and that the claim RPC
+    genuinely WAS invoked (so this is a real PIN rejection, not a call that
+    silently never happened) — server-side untouched-ness follows directly
+    from claim_family_profile_with_pin()'s own PIN-before-any-write
+    ordering (proven in the prior pass's migration comments).
+  - Cancel -> Dad remains signed in: covered structurally — onCancel is
+    wired to nothing but local state (SettingsScreen.switchUserFlow.test.ts)
+    — and, trivially, since nothing is called, authStore.ts's own existing
+    guarantee that currentUserId only ever changes inside __signInCore()
+    on a confirmed successful claim means an uninvoked flow cannot have
+    changed it.
+  - Successful switch -> currentUserId becomes Idan and role refreshes to
+    member: the NEW authStore.test.ts test
+    ("signInWithPin() ... as a MEMBER persona resolves familyRole to
+    member — symmetric Dad->Idan scenario") asserts both directly.
+  - Idan->Dad successful PIN switch restores admin: already covered by the
+    existing (prior-pass) authStore.test.ts test
+    ("signInWithPin() ... as an ADMIN persona resolves familyRole to
+    admin — the core Dad<->Idan scenario") — unchanged, still passing
+    logically, re-verified as part of this pass's review.
+  - Initial first-user onboarding still uses plain claim_family_profile()/
+    signIn() and continues working unchanged: LoginScreen.tsx is untouched
+    (see -1.E); the existing authStore.test.ts assertions
+    (`expect(rpc).toHaveBeenCalledWith('claim_family_profile', { target_user_id: ... })`,
+    two call sites) are unaffected by any change in this pass and continue
+    to describe the exact same, unmodified code path.
+
+-1.G SANDBOX VALIDATION, RUN AGAIN THIS PASS
+--------------------------------------------------------------------
+`ls node_modules` -> does not exist. `npm run typecheck` -> `tsc --noEmit`
+-> `tsconfig.json(2,14): error TS6053: File 'expo/tsconfig.base' not
+found.` `npm test -- --runInBand` -> `jest --runInBand` -> `sh: 1: jest:
+not found`. Identical failure mode to every prior pass in this engagement
+— no dependencies have ever been installed in this sandbox. All source
+edits above were verified by direct reads of the actual resulting files
+(SettingsScreen.tsx, PinEntryModal.tsx) and by a plain-Node dry run of
+every new structural test's exact extraction/regex logic against the real
+SettingsScreen.tsx source (confirming each assertion actually holds against
+the real file, not just against my own mental model of it) — never
+asserted as "passing under Jest," since nothing has actually run under
+Jest.
+
+====================================================================
+0.A SCOPE OF THIS PASS (PRIOR PASS — database/RPC/RLS correction)
+====================================================================
+Database/RPC/RLS correction only, per explicit instruction. NOT touched
+this pass: any screen, component, or theme file. The ONLY files changed in
+this pass are:
+  - supabase/migrations/0016_profile_pin_reclaim_and_qa_sandbox.sql (the
+    actual fixes — still UNAPPLIED to any live database, see section 0.F)
+  - src/lib/errorMessages.ts (two new server error strings mapped to
+    Hebrew — required because Requirement 3 makes enter_qa_sandbox()/
+    exit_qa_sandbox() raise two NEW distinct exceptions that didn't exist
+    before; this is a data-only addition to an existing lookup table, not
+    a UI change)
+  - src/lib/__tests__/errorMessages.test.ts (tests for the two new strings)
+  - src/store/__tests__/authStore.test.ts (one new test: idempotent
+    re-claim of an already-held profile)
+No screen/component/navigation/theme file needed any change: verified
+directly by grep that every client call site (src/lib/supabase.ts's
+claimFamilyProfile()/claimFamilyProfileWithPin()/enterQaSandbox()/
+exitQaSandbox(), and authStore.ts's usage of them) uses RPC names and
+parameter shapes that are COMPLETELY UNCHANGED by this pass —
+claim_family_profile_with_pin(p_target_user_id, p_pin),
+claim_family_profile(target_user_id), enter_qa_sandbox(p_family_name),
+exit_qa_sandbox() (no args) all keep their exact prior signatures. Every
+behavioral change this pass makes is either (a) invisible to a correctly-
+behaving client (the atomic-swap fix — a correct client was already only
+ever attempting one claim at a time), or (b) surfaces as a NEW error string
+through the SAME existing error-message-mapping pipe already wired
+end-to-end from every calling screen, requiring only the two-line addition
+to errorMessages.ts's lookup table above.
+
+====================================================================
+0.B REQUIREMENT 1 — THE NON-ATOMIC CLAIM-SWAP BUG: ROOT CAUSE AND FIX
+====================================================================
+EXACT ROOT CAUSE: claim_family_profile_with_pin() (migration 0016)
+previously ran exactly one statement to perform a claim:
+  update users set auth_user_id = auth.uid() where id = p_target_user_id ...
+This NEVER first cleared auth.uid() from whatever OTHER users row it might
+already occupy. users.auth_user_id carries a UNIQUE index
+(users_auth_user_id_idx) — so a same-device persona switch (e.g. Dad's
+device, still holding Dad's own claim, verifying Idan's PIN to switch to
+Idan) could hit that unique constraint outright on the single UPDATE
+(Postgres evaluates the constraint per-row as each row is written, and the
+OLD row claiming that auth.uid() was never touched, so the NEW row's write
+collides with it), or, in a version that split "release" and "claim" into
+two separately-failable statements/RPC calls, could leave the device
+claimed on NEITHER profile if the second step failed after the first
+succeeded.
+
+THE FIX (rewritten claim_family_profile_with_pin(), migrations/0016_*.sql —
+see that function's own extensive doc comment for the full walkthrough):
+one atomic transaction, in this exact order:
+  1. `select ... for update` on the target row — validates existence,
+     family membership, and active/claimable status against a LOCKED row,
+     and serializes any concurrent claim attempt against the SAME target.
+  2. Idempotency check: if the locked row's auth_user_id already equals
+     auth.uid(), return immediately as a safe no-op — no PIN check needed,
+     nothing written, nothing audit-logged twice (Requirement 1, step 8).
+  3. PIN verified against the LOCKED row's pin_hash BEFORE any mutation —
+     a mismatch raises here, before either UPDATE runs, so the caller's
+     existing claim (whatever it is) is provably untouched (Requirement 1,
+     the "wrong PIN leaves original claim unchanged" adversarial case).
+  4. `perform set_config('app.trusted_write', 'on', true);` — required
+     because auth_user_id is now a protected column (see 0.C below).
+  5. RELEASE: `update users set auth_user_id = null where auth_user_id =
+     auth.uid();` — clears whichever OTHER profile this device currently
+     holds, if any. THIS is the actual fix: it happens first, inside the
+     same transaction as the claim below.
+  6. CLAIM: `update users set auth_user_id = auth.uid() where id =
+     p_target_user_id and family_id = target_family and removed_at is
+     null;` — the WHERE guard re-validates against write-time state
+     (defense-in-depth alongside the row lock from step 1).
+  7. `get diagnostics updated_count = row_count;` then `set_config(...,
+     'off', ...)`; if updated_count = 0, `raise exception` — and because
+     NOTHING in this function catches exceptions internally, this raise
+     unwinds the WHOLE transaction, including step 5's release. The
+     device's prior claim, if the operation fails at this final check, is
+     restored exactly as it was — it is never left "claimed nowhere."
+  8. On success: audit log, done. All of steps 4-7 run inside the ONE
+     implicit transaction PostgREST wraps around this single RPC call — no
+     internal BEGIN/EXCEPTION block, so Postgres's own transaction
+     semantics (any raised exception rolls back everything since the
+     transaction began) are the actual atomicity guarantee, exactly
+     mirroring how the ORIGINAL (pre-this-pass) claim_family_profile()
+     already relied on the same "raise = full rollback, no partial writes"
+     property for its own TOCTOU-safe design.
+
+A transfer FROM another device (B claiming a profile A currently holds):
+covered automatically by the above — B's own step-5 release only ever
+touches B's OWN row (WHERE auth_user_id = auth.uid(), i.e. B's auth.uid());
+A's row is untouched by that statement. Step 6's claim UPDATE is what
+actually revokes A: it overwrites the TARGET row's auth_user_id from A's
+value to B's, and the instant that commits A no longer satisfies
+`auth_user_id = auth.uid()` for that row — no separate revoke statement is
+needed, matching the existing model's own established comment ("the UPDATE
+that moves the column IS the revocation"), now proven atomic alongside the
+release-of-B's-own-prior-claim in the very same transaction.
+
+claim_family_profile() (the NON-PIN claim path, originally migration 0004)
+was NOT touched functionally — its own existing TOCTOU-safe design (a
+guarded UPDATE + row-count check) already correctly refuses to steal an
+actively-claimed profile, so it never faced this specific bug (it can only
+ever claim an UNCLAIMED profile or re-affirm your own). It WAS redefined in
+this migration (`create or replace function`, this repo's own established
+convention for correcting an earlier already-shipped migration from a later
+one — see 0.C below) purely to add the same app.trusted_write wrap around
+its existing auth_user_id UPDATE, made structurally necessary by the new
+protected-column trigger — its logic is byte-for-byte identical to the
+original, re-verified directly against schema.sql before writing (not
+reconstructed from memory) specifically to avoid a mistake caught and
+corrected during an earlier pass of this same engagement.
+
+ADVERSARIAL TEST/SQL CASES AND OUTCOMES (full reasoning is captured as
+comments directly in the migration, next to claim_family_profile_with_pin()
+— summarized here):
+  - Dad -> Idan, same device: Dad's row cleared first (step 5), then Idan's
+    row claimed (step 6), in one transaction. No unique-constraint
+    collision. PASS.
+  - Idan -> Dad, same device: symmetric, same mechanism. PASS.
+  - A (device 1) -> B (device 2) transfer: A's claim on the transferred
+    profile is gone the instant B's claim commits (overwritten row);
+    whatever ELSE A might separately hold is completely untouched (B's
+    release only ever touches B's own row). PASS.
+  - Wrong PIN: raises before step 4 is ever reached — zero writes attempted
+    this call; caller's prior claim (if any) is bit-for-bit unchanged.
+    PASS.
+  - Concurrent claims on the SAME target: the `select ... for update` lock
+    fully serializes them. If both present the CORRECT PIN (a legitimate
+    scenario under this function's own PIN-based-transfer design — not
+    "first come first served"), both succeed IN TURN, deterministically,
+    last-committer-wins — this is intentional PIN-transfer semantics, not
+    corruption: the resulting database state is fully consistent (exactly
+    one device holds the target, exactly per each device's own prior claim
+    correctly resolved elsewhere). If the target instead becomes
+    ineligible between the first commit and the second's now-unblocked
+    re-check (e.g. concurrently removed), the second's step-6 WHERE guard
+    matches 0 rows and it raises a clean, specific error, rolling back that
+    second call's own step-5 release too — no corrupted state, no
+    "claimed nowhere." PASS.
+  - Re-claiming a profile you already hold (idempotent same-profile
+    switch): the step-2 check returns immediately, no error, no writes.
+    Client-observable in a new authStore.test.ts test
+    ("re-claiming the profile this device already holds succeeds as a
+    no-op"). PASS.
+  - Failure at any step rolls back fully: guaranteed by ordinary Postgres
+    transaction semantics as described in point 7 above — no internal
+    exception handler anywhere in this function catches and continues past
+    a raise. PASS.
+
+====================================================================
+0.C REQUIREMENT 2 — users.role / users.pin_hash COLUMN-LEVEL LOCKDOWN
+(THE CRITICAL FINDING OF THIS PASS)
+====================================================================
+THE GAP, proven not assumed: schema.sql's "update users (self or admin,
+active profiles only)" RLS policy controls which ROWS an authenticated
+client may UPDATE — self, or any row if admin — but says NOTHING about
+which COLUMNS a permitted UPDATE's SET list may touch. Before this pass, an
+ORDINARY MEMBER, editing their OWN row (which the policy freely allows —
+it genuinely is their own profile), could issue a direct PostgREST call
+like `update users set name = 'x', role = 'admin' where id = <self>` and it
+would pass RLS cleanly. This has NOTHING to do with any RPC — it is a raw
+client REST call straight at the table, and nothing previously stopped
+role/pin_hash/auth_user_id from riding along in that SAME statement's SET
+list alongside a legitimate field like name/avatar.
+
+AUDIT PERFORMED (every grant/policy/trigger on public.users, before
+choosing a fix): confirmed via direct read of schema.sql that this repo
+defines NO blanket `grant ... to authenticated` statements anywhere — it
+relies entirely on Supabase's default privilege model (the `authenticated`
+role gets full table DML by default; RLS row policies are the only gate
+that existed). Confirmed the ONLY existing RLS policy governing UPDATE on
+users is the self-or-admin one quoted above, and it is a ROW policy with no
+column awareness (Postgres RLS itself has no column-level concept — that is
+exactly why this needed a SEPARATE mechanism).
+
+THE FIX CHOSEN, AND WHY — TWO independent layers, chosen over either alone
+for defense-in-depth:
+
+  LAYER A (primary): Postgres column-level privileges.
+    revoke update on public.users from authenticated;
+    grant update (name, avatar, photo_url, color, reminders_enabled,
+      removed_at) on public.users to authenticated;
+    revoke insert on public.users from authenticated;
+    grant insert (id, family_id, name, avatar, photo_url, color,
+      reminders_enabled, removed_at) on public.users to authenticated;
+  Chosen as primary because it is the correct, purpose-built Postgres
+  mechanism for exactly this gap (row policy vs. column policy), enforced
+  BEFORE RLS or any trigger even runs, and rejects the WHOLE statement (not
+  a silent partial-apply) the moment ANY column in the SET list lacks
+  privilege — even an unchanged value in a protected column fails the
+  whole statement, which is the strict behavior wanted here.
+
+  Column list verified against the ACTUAL client code (NOT guessed) before
+  choosing it: src/data/supabaseRepository.ts's fromUser() — used by BOTH
+  upsertUser()'s UPDATE and createUser()'s INSERT/upsert-fallback — builds
+  exactly {id, family_id, name, avatar, photo_url, color,
+  reminders_enabled, removed_at}, NEVER role/pin_hash/auth_user_id.
+  updateUserReminderSetting() touches only {reminders_enabled}, already a
+  subset. This is therefore a PRECISE, verified-safe match for existing
+  client behavior — zero breakage, no call needed splitting, because the
+  client never sent a protected column in the first place.
+
+  LAYER B (defense-in-depth): enforce_users_protected_columns(), a NEW
+  `before update` trigger on `users` using the SAME app.trusted_write GUC
+  pattern already established by migration 0005's
+  enforce_walk_write_authorization() for the `walks` table:
+    if app.trusted_write = 'on' for this transaction -> allow.
+    else: raise if NEW.role/pin_hash/auth_user_id is distinct from OLD.
+  Rationale for keeping this SECOND layer even though Layer A alone would
+  already close the gap: if a FUTURE change ever needs to grant broader
+  column privileges for some other legitimate field, Layer A's protection
+  could silently erode unless someone remembers to keep
+  role/pin_hash/auth_user_id carved out by hand every time — Layer B is an
+  independent backstop that does not depend on anyone remembering that.
+  set_config(..., true) is transaction-local, so an exception mid-write
+  rolls back the GUC flag together with everything else — no try/finally
+  needed, matching 0005's own idiom exactly.
+
+  EVERY RPC that legitimately writes one of these three columns was
+  updated to wrap its protected UPDATE with app.trusted_write on/off:
+  set_member_role() (role), set_profile_pin() (pin_hash, both branches),
+  claim_family_profile_with_pin() (auth_user_id, rewritten this pass
+  anyway — see 0.B), claim_family_profile() (auth_user_id, newly redefined
+  this pass specifically because of this trigger), enter_qa_sandbox() and
+  exit_qa_sandbox() (auth_user_id, both release AND re-claim writes).
+  admin_delete_family_member() needed NO change — it only ever writes
+  removed_at, outside this trigger's protected-column scope.
+
+  SECURITY DEFINER FUNCTIONS UNAFFECTED BY LAYER A: every privileged RPC in
+  this schema is SECURITY DEFINER — its internal statements run as the
+  function's OWNER role, which always has full table privileges regardless
+  of what `authenticated` is granted. Layer A's REVOKE/GRANT therefore only
+  ever gates a DIRECT client REST call issued as `authenticated` — exactly
+  the vector this closes, and it changes nothing about how any existing RPC
+  behaves internally.
+
+ADVERSARIAL PROOF, REQUIRED AND STATED EXPLICITLY (full reasoning captured
+as comments in the migration directly under the new trigger definition):
+  A. Member's direct UPDATE setting role='admin' on their OWN row -> DENIED
+     at the privilege-check stage (Layer A: `authenticated` has no UPDATE
+     privilege on `role` at all — rejected before RLS or any trigger runs)
+     AND, redundantly, by Layer B (NEW.role <> OLD.role with
+     app.trusted_write unset -> raises). PROVEN, not assumed.
+  B. Member's direct UPDATE of ordinary editable fields (name, avatar,
+     photo_url, color, reminders_enabled) on their own row -> STILL WORKS:
+     Layer A explicitly grants these; RLS's existing self-branch still
+     applies underneath; Layer B only inspects the three protected columns
+     and returns NEW unchanged for everything else.
+  C. Member's direct UPDATE of pin_hash on their own row -> DENIED, same
+     two-layer reasoning as A.
+  D. set_member_role() called by an authorized admin -> WORKS: SECURITY
+     DEFINER bypasses Layer A entirely; app.trusted_write bypasses Layer B;
+     the function's own PRE-EXISTING is_family_admin() check (unchanged by
+     this pass) is what actually gates who may call it successfully.
+  E. set_member_role() called by a non-admin member -> DENIED, exactly as
+     before this pass (is_family_admin() raises before the UPDATE is ever
+     reached) — Part 0.5 adds a SECOND layer of protection for the case
+     where a caller bypasses the RPC and goes straight at the table; it
+     does not change this existing authorization check at all.
+  F. set_profile_pin() through its authorized path (self, or admin
+     resetting a non-admin member's PIN) -> WORKS, same reasoning as D.
+
+====================================================================
+0.D REQUIREMENT 3 — QA SANDBOX RPC AUTHORIZATION (now server-enforced)
+====================================================================
+THE GAP: enter_qa_sandbox() was SECURITY DEFINER but only checked
+`auth.uid() is not null` — ANY authenticated device could call it directly
+via PostgREST, completely bypassing the Settings screen's admin-only
+gating (a UI-only restriction is not a security boundary the moment the
+underlying RPC is reachable directly, which a SECURITY DEFINER function
+always is).
+
+THE EXACT RULE, stated and enforced: entering an existing QA sandbox,
+creating a fresh QA family, and exiting a QA sandbox are all allowed ONLY
+for the CURRENT REAL FAMILY ADMIN (or, symmetrically inside QA, the current
+QA family's admin) — i.e. the device must be admin of whichever family it
+is presently in (real or QA) at the moment it calls enter_qa_sandbox() or
+exit_qa_sandbox(), checked via is_family_admin(cur_family), the
+now-persona-corrected (section 1 below / Part 0) admin derivation. This is
+the natural rule, consistent with how every other QA tool in this schema
+(qa_reset_data(), qa_reset_full()) is already scoped ("current admin of
+THIS specific family, real or QA").
+
+enter_qa_sandbox(): `if cur_family is null or not is_family_admin(cur_family)
+then raise exception 'only a family admin may enter or create a QA sandbox';
+end if;` — inserted immediately after resolving the caller's current
+family_auth_members row, BEFORE any snapshot or mutation logic runs. This
+single check correctly covers BOTH cases this function handles: (a)
+entering QA from a real family — must be that real family's admin; (b)
+starting "another fresh QA family" while ALREADY inside QA — must be admin
+of the CURRENT QA family, which is guaranteed true by construction (a QA
+family's only-ever member is its own creator) so this branch never actually
+rejects in any reachable state, but is checked explicitly anyway per this
+requirement's "state exactly who may" instruction rather than left
+implicit. Also correctly leverages the existing bootstrap-fallback in
+current_family_role()/is_family_admin() (Part 0): a device that just ran
+create_family() but has not yet claimed any persona still resolves as admin
+via the family_auth_members fallback for that brief window, so a brand-new
+family's creator can still reach QA immediately without first claiming a
+persona.
+
+exit_qa_sandbox(): `if not is_family_admin(cur_family) then raise exception
+'only a family admin may exit a QA sandbox'; end if;` — inserted after
+confirming the device is actually inside a QA family, before touching
+anything. Stated explicitly even though currently unreachable to violate
+(no path exists today for a QA family to have a second, non-admin member),
+per this requirement's instruction to state exactly who may do each QA
+action, and as defense-in-depth against any future change that lets a QA
+family gain a second member.
+
+qa_reset_data() / qa_reset_full(): already correctly gated with
+`is_family_admin(p_family_id)` from the prior pass — verified directly,
+NO CHANGE was needed; they already satisfy the stated rule.
+
+WHO EXACTLY CAN DO WHAT (summary table):
+  - enter_qa_sandbox(): current real (or current QA) family's admin only.
+  - exit_qa_sandbox(): current QA family's admin only.
+  - qa_reset_data() / qa_reset_full(): admin of the SPECIFIC target QA
+    family (p_family_id) only — unchanged, already correct.
+A non-admin member calling any of these now receives a clean, specific
+server-raised error (not a silent no-op, not a generic RLS denial) —
+mapped to Hebrew in errorMessages.ts and covered by two new tests in
+errorMessages.test.ts.
+
+====================================================================
+0.E REQUIREMENT 4 — END-TO-END PERSONA/AUTHORIZATION CONSISTENCY,
+RE-VERIFIED AFTER THE ABOVE FIXES
+====================================================================
+Dad/Admin -> Idan/Member (claim_family_profile_with_pin('idan-id', pin)):
+  - Step 5 of the rewritten function clears Dad's row's auth_user_id FIRST,
+    in the SAME transaction as step 6's claim of Idan's row — no
+    unique-constraint race, no partial state (0.B).
+  - current profile = Idan: current_profile_id() resolves via
+    users.auth_user_id = auth.uid(), now Idan's row. CONFIRMED.
+  - current_family_role() = 'member': derives from Idan's users.role
+    (Part 0's persona-anchored fix, untouched in mechanism by this pass,
+    now fed a correctly-atomic auth_user_id write). CONFIRMED.
+  - is_family_admin() = false: same derivation. CONFIRMED.
+
+Idan/Member -> Dad/Admin with valid PIN (symmetric):
+  - Idan's row cleared first, Dad's row claimed, same transaction.
+  - current profile = Dad, current_family_role() = 'admin',
+    is_family_admin() = true — but ONLY because claim_family_profile_with_pin()
+    independently verified Dad's actual bcrypt pin_hash (0.B step 3,
+    hoisted before any mutation) — there is no path to Dad's admin
+    authority that bypasses that verification. CONFIRMED.
+
+Local currentUserId manipulation still cannot elevate: unchanged reasoning
+from Part 0's own walkthrough, re-confirmed against the atomic rewrite —
+the client's in-memory/AsyncStorage currentUserId is never read by any RLS
+policy or RPC; every one of them derives identity entirely from
+`users.auth_user_id = auth.uid()`, a value only the server ever sets
+(claim_family_profile()/claim_family_profile_with_pin(), both now provably
+atomic and both writable ONLY via app.trusted_write-gated statements inside
+these specific SECURITY DEFINER functions — section 0.C closes the ONE gap
+that could previously have let a client-side write reach that column
+directly). A client mutating its own cached currentUserId changes only what
+the SCREEN displays; the next server call re-resolves identity from
+scratch, ignoring it entirely. CONFIRMED, now with an additional proven
+guarantee (0.C) that this holds even against a client attempting the write
+directly via REST rather than only through the intended screens.
+
+Admin impersonation remains architecturally separate: UNCHANGED by this
+pass, and untouched by any edit here — begin_impersonation()/
+active_impersonation_target()/is_family_admin()'s impersonation wrapper
+(migration 0006) never touch users.auth_user_id or users.role at all (and
+this pass adds no new interaction between impersonation_sessions and the
+protected-column trigger — impersonation never writes to the `users` table
+in the first place). The real actor (impersonated_by_admin_user_id,
+resolved via real_current_profile_id()/is_real_family_admin()) stays
+distinct from the effective persona (actor_user_id) exactly as before; the
+impersonated member is never granted actual admin RPC access —
+is_family_admin() short-circuits to false while impersonating, which every
+admin-only RPC (including the newly-authorization-checked
+enter_qa_sandbox()/exit_qa_sandbox()) still correctly relies on.
+
+====================================================================
+0.F MIGRATION STATUS AND DELIVERY
+====================================================================
+supabase/migrations/0016_profile_pin_reclaim_and_qa_sandbox.sql remains
+UNAPPLIED to any live database through this entire engagement, across all
+three passes that have touched it (the original consolidated round, the
+"final correction pass," and this "narrow security/database correction
+pass"). It will be reviewed again before deployment — this delivery does
+NOT instruct applying it. The file is safe to re-apply in full from
+scratch (every statement is create-or-replace / add-column-if-not-exists /
+create-table-if-not-exists / explicit revoke-then-grant) — see the file's
+own "IF YOU ALREADY APPLIED AN EARLIER VERSION OF 0016" section at its very
+end for the three specific recovery notes (backfill edge case, old
+create_qa_family() irreversibility for any device that already used it
+under a pre-Deliverable-2 version, and — NEW this pass — how to perform a
+manual superuser SQL fix against a protected column post-migration, since
+even a superuser/table-owner UPDATE is subject to Layer B's trigger unless
+wrapped in app.trusted_write).
+
+Sandbox validation, run again this pass, honestly reported: `ls
+node_modules` -> does not exist. `npm run typecheck` -> `tsc --noEmit` ->
+`tsconfig.json(2,14): error TS6053: File 'expo/tsconfig.base' not found.`
+`npm test -- --runInBand` -> `jest --runInBand` -> `sh: 1: jest: not
+found`. Identical failure mode to every prior pass in this engagement — no
+dependencies have ever been installed in this sandbox. All SQL correctness
+above is reasoned through directly against the actual statements (verified
+by direct reads of the resulting migration file and of schema.sql/
+supabaseRepository.ts for the client-compatibility claims), and all
+client-observable behavior is covered by real Jest test files (not
+executable here, but present and correct in the delivered source) —
+never asserted as "passing" since nothing has actually run.
+
+====================================================================
+0.G COMPLETE LIST OF FILES CHANGED THIS PASS
+====================================================================
+  - supabase/migrations/0016_profile_pin_reclaim_and_qa_sandbox.sql
+    (the substantive fix — Part 0.5 added; claim_family_profile_with_pin()
+    rewritten; claim_family_profile() newly redefined; set_member_role(),
+    set_profile_pin(), enter_qa_sandbox(), exit_qa_sandbox() each given
+    app.trusted_write wraps around their protected-column writes;
+    enter_qa_sandbox()/exit_qa_sandbox() given real admin authorization
+    checks; header/revision notes and the "already applied an earlier
+    version" recovery section updated)
+  - src/lib/errorMessages.ts (two new server error strings mapped)
+  - src/lib/__tests__/errorMessages.test.ts (two new tests)
+  - src/store/__tests__/authStore.test.ts (one new test — idempotent
+    re-claim no-op)
+Every other file in this zip (every screen, component, the theme tokens,
+RootNavigator, statistics.ts, syncQueue.ts, supabase.ts, authStore.ts
+itself, WalkRow.tsx, ...) is BYTE-FOR-BYTE IDENTICAL to
+qa-ux-identity-round-final2.zip — carried forward unchanged, per this
+pass's explicit scope restriction, and included here only because this is
+a complete standalone consolidated delivery, not a delta.
+
+--------------------------------------------------------------------
+1. THE PERSONA-VS-AUTHORIZATION BUG FOUND
+--------------------------------------------------------------------
+Before this pass: admin/member ROLE was stored SOLELY in
+`family_auth_members.role`, keyed by `auth_user_id` — i.e. by which DEVICE
+you are, set once at create_family()/join_family() time and never touched
+again. Meanwhile `users.auth_user_id` (which PERSONA a device currently
+displays/is attributed as) is a completely separate, freely-reclaimable
+pointer (claim_family_profile()/claim_family_profile_with_pin()).
+is_family_admin()/current_family_role() read ONLY family_auth_members,
+never consulting which persona is claimed.
+
+Consequence, confirmed by direct SQL trace (not assumed): Dad's device
+(family_auth_members.role='admin') calls
+claim_family_profile_with_pin('idan', pin). That updates
+users.auth_user_id for Idan's row to Dad's own auth.uid() — the UI now
+shows "Idan" — but family_auth_members.role for that SAME auth.uid() is
+completely untouched, still 'admin'. is_family_admin() still returns true.
+A "Switch User" to a member left the session with full admin authority
+server-side. Confirmed via direct read of schema.sql's `users` table
+definition (line ~34, no role column existed before this pass),
+`family_auth_members` (line ~198), `current_family_id()` (line ~237),
+`current_family_role()`/`is_family_admin()` (line ~262-279),
+`current_profile_id()`/`real_current_profile_id()` (line ~836, ~1822),
+`is_real_family_admin()` (line ~1831), `set_member_role()` (line ~2572),
+`admin_delete_family_member()` (line ~2679), `admin_list_family_activity()`
+(line ~1481), and `claim_family_profile()` (migration 0004).
+
+--------------------------------------------------------------------
+2. THE FINAL AUTHORIZATION MODEL
+--------------------------------------------------------------------
+Answers to the coordinator's explicit questions:
+- Real authenticated identity = `auth.uid()` (this device's Supabase
+  session) — unchanged, always was, never client-supplied.
+- Persona = whichever `users` row has `auth_user_id = auth.uid()`
+  (`real_current_profile_id()`), OR the impersonation target if one is
+  active (`current_profile_id()`) — unchanged.
+- Admin role = NOW `users.role` OF THE CURRENTLY CLAIMED PERSONA (new
+  column, this pass) — falling back to `family_auth_members.role` for that
+  device ONLY in the brief bootstrap window before ANY persona has ever
+  been claimed on it (right after create_family()/join_family(), before
+  "add your first family member" has run).
+- `current_family_role()`, `is_real_family_admin()` (both persona-first /
+  family_auth_members-fallback), `set_member_role()`, `admin_delete_
+  family_member()`'s last-admin guard, and `admin_list_family_activity()`'s
+  role column were all rewritten to read from `users.role` on the claimed
+  persona. `is_family_admin()`'s impersonation-aware wrapper (0006) is
+  UNCHANGED — it already correctly short-circuits to false during
+  impersonation regardless of this rework.
+- `claim_family_profile()`/`claim_family_profile_with_pin()` needed NO code
+  change at all — they already only ever touch `users.auth_user_id`; the
+  fix lives entirely in what `is_real_family_admin()`/`current_family_role()`
+  now READ, which those claim functions' existing UPDATE now correctly
+  feeds into.
+
+WHY THIS SHAPE (not moving family_auth_members itself on a claim
+transfer): (a) `users` already IS the row that travels with the persona
+everywhere else (name, avatar, pin_hash, auth_user_id) — role belongs
+alongside them; (b) family_auth_members.auth_user_id's UNIQUE-per-device
+constraint is relied on by unrelated things (bootstrap, join_family()'s
+re-join-keeps-admin logic, the QA sandbox mechanism) that are cleaner kept
+independent of persona-level authorization; (c) it fixes a second,
+independently pre-existing quirk for free — a role change used to be able
+to become "orphaned" from a persona if it was later reclaimed by a
+different device; anchoring role on `users.id` (which never changes
+identity even as its claim moves) makes that impossible by construction.
+
+--------------------------------------------------------------------
+3. DAD→IDAN LOSES ADMIN, IDAN→DAD GAINS IT ONLY AFTER VERIFICATION
+--------------------------------------------------------------------
+Dad→Idan: claim_family_profile_with_pin('idan', pin) succeeds ->
+users.auth_user_id for Idan's row = Dad's auth.uid() ->
+current_profile_id() resolves to Idan's users.id ->
+is_real_family_admin() reads real_current_profile_id() -> Idan's users.id
+-> users.role for that row = 'member' -> false. Every admin-only RPC
+(set_member_role, admin_delete_family_member, admin_list_family_activity,
+create_family_invite, begin_impersonation, qa_reset_data/qa_reset_full,
+current_family_is_qa-gated actions) now rejects this session.
+Idan→Dad (the SAME device or a different one, reclaiming with Dad's own
+PIN): symmetric, and only possible because claim_family_profile_with_pin()
+independently verified Dad's actual bcrypt pin_hash BEFORE moving
+auth_user_id — there is no path to admin authority that bypasses that
+verification. A wrong PIN raises 'incorrect PIN' BEFORE the UPDATE runs —
+zero rows touched, zero role change.
+Client-side: authStore's `__signInCore()` (shared by signIn()/
+signInWithPin()) now calls `refreshFamilyRole()` after every successful
+claim — without this, the CLIENT's cached familyRole would keep showing
+the stale pre-claim value even though the server-side authorization had
+already correctly changed. This was a real, separate gap this pass closed
+(see authStore.ts's own doc comment on `__signInCore`).
+
+--------------------------------------------------------------------
+4. HOW IMPERSONATION DIFFERS (preserved, re-verified)
+--------------------------------------------------------------------
+UNCHANGED by this migration, deliberately: begin_impersonation()/
+active_impersonation_target()/is_family_admin()'s impersonation wrapper
+(0006) never touch users.auth_user_id or users.role — impersonation is a
+SEPARATE session table (impersonation_sessions) layered on top, re-
+validated per call. is_family_admin() short-circuits to false while
+impersonating; is_real_family_admin() (used by log_audit_event() via
+real_current_profile_id() for impersonated_by_admin_user_id) still
+correctly resolves the REAL admin underneath. actor stays distinct from
+persona by construction — exactly as before this pass. A REAL switch-user
+(PIN transfer), by contrast, changes which persona auth_user_id itself
+points at — there is no "underneath" to preserve, because it is a REAL
+identity change, not a UI simulation. Re-confirmed by direct SQL read this
+pass; ImpersonationBanner's app-wide (RootNavigator-level) rendering and
+Settings' nested-modal lifecycle fix for the impersonation picker are both
+untouched and still correct.
+
+--------------------------------------------------------------------
+5. PIN SECURITY
+--------------------------------------------------------------------
+- Storage: bcrypt hash only (pgcrypto crypt()/gen_salt('bf')), never
+  plaintext, anywhere — verified this pass with a fresh grep across the
+  whole client tree for any AsyncStorage/log write of a PIN value: none
+  found. PinEntryModal.tsx/PinSetupModal.tsx hold the entered PIN only in
+  local component state for as long as the modal is open.
+- Verification: claim_family_profile_with_pin() compares via
+  extensions.crypt(p_pin, target_pin_hash) server-side; a wrong PIN raises
+  'incorrect PIN' before any row is touched.
+- Change/reset authorization: set_profile_pin() — self always allowed; a
+  family admin may reset a NON-admin member's PIN (locked-out recovery);
+  an admin's own PIN can ONLY be set by that admin themselves — EXPLICIT
+  PRODUCT CHOICE, stated per the coordinator's instruction: one admin
+  resetting another admin's PIN is blocked outright, with no exception
+  found anywhere in this codebase's existing product docs that would
+  justify allowing it. The risk (silently reset -> reclaim -> act under
+  the victim admin's name in the audit log) outweighs the convenience; the
+  safe fallback is that admin resetting their own PIN, or a direct
+  database/dashboard action by whoever holds the Supabase project's own
+  credentials.
+- Rate-limiting / brute-force exposure — DOCUMENTED, NOT IMPLEMENTED (per
+  the coordinator's explicit instruction to state the constraint rather
+  than silently skip it): claim_family_profile_with_pin() has no attempt
+  counter, cooldown, or lockout. A 4-digit PIN has only 10,000
+  possibilities; an already-authenticated member of the SAME family could
+  script repeated attempts. A real deployment should add a per-target-
+  profile attempt counter with an escalating cooldown/lockout (a new small
+  table, checked before the bcrypt comparison) and/or Supabase-level rate
+  limiting on this RPC specifically. Not implemented in this sandbox — no
+  live database to tune thresholds against — but written up as a specific,
+  concrete gap in the migration's own comment, not hand-waved.
+
+--------------------------------------------------------------------
+6. DEVICE HANDOFF / RECLAIM (7D, re-verified against the corrected model)
+--------------------------------------------------------------------
+Unchanged mechanism from the prior pass, re-verified: authStore's existing
+checkClaimStillValid()/restoreSession()/revalidateClaim() (AppState
+'active', already wired in App.tsx — confirmed again this pass, so there is
+genuinely no infinite retry loop, one check per foreground transition) —
+staleClaimUserId now names the specific lost profile, LoginScreen offers
+"התחבר מחדש כ-X" opening PinEntryModal -> signInWithPin(). This flow now
+ALSO correctly flips authorization (see #3) since it shares the same
+__signInCore() as signIn(). No change was needed to the detection mechanism
+itself for the corrected model — it was already persona-id-based, which is
+exactly what still matters.
+
+--------------------------------------------------------------------
+7. QUEUE BEHAVIOR (7E/7F, re-verified against the corrected model)
+--------------------------------------------------------------------
+SyncQueue's `hasPendingForOtherUser()` guard (checked in `__signInCore()`
+BEFORE either claim RPC, for both signIn() and signInWithPin()) is
+unaffected by the persona-role rework — it keys purely on persona id
+(claimedByUserId), never on role, so it continues to correctly block a
+claim TRANSFER exactly like an ordinary claim when a different profile's
+writes are still queued. Re-verified by tracing the call order again this
+pass (doc comment added to syncQueue.ts) and covered by a new dedicated
+test ("also blocks a PIN-based claim TRANSFER while a different profile
+still has writes stuck in the offline queue").
+
+--------------------------------------------------------------------
+8. QA ENTER/EXIT ARCHITECTURE (Deliverable 2, THE reversibility fix)
+--------------------------------------------------------------------
+THE BUG: the prior pass's create_qa_family() repointed the device's ONE
+family_auth_members row (auth_user_id is its primary key — one family per
+device, by design) at the new QA family with NO way back except rejoining
+via invite code.
+THE FIX: a new `family_membership_snapshots` table (RLS enabled, ZERO
+policies — default-deny, same pattern as audit_log/impersonation_sessions
+— touched only by the two RPCs below, only for auth.uid()'s own row).
+`enter_qa_sandbox(p_family_name)`: if this device currently has a REAL
+(non-QA) family_auth_members row, SNAPSHOTS its family_id/role/claimed-
+persona into that table BEFORE switching (skips the snapshot if already
+inside a QA context, so entering ANOTHER fresh QA family from within QA
+never overwrites the true original). Releases the device's current persona
+claim, then creates+switches into the new is_qa=true family, exactly like
+create_family() does for a real one.
+`exit_qa_sandbox()`: requires the device to currently be in a QA family;
+restores family_auth_members.family_id/role from the snapshot, best-effort
+re-claims the original persona (skips gracefully if it was since removed),
+deletes the snapshot (one-shot restore), and returns the restored family.
+Client: `authStore.setFamilyId()` (already the reused "store-reload
+pattern" from real onboarding) now ALSO resyncs `currentUserId` from a
+fresh `whoami()` call after every family switch — a new, necessary fix
+this pass found: without it, the client's cached persona id from the
+family just left would linger and could route into RootNavigator under a
+stale identity. Result: enter/exit is fully automatic — no invite code, no
+manual DB edit, no reinstall, no storage clear.
+`create_qa_family()`/`qa_reset_family()` are KEPT as thin backward-compat
+shims (delegating to enter_qa_sandbox()/qa_reset_data() respectively) so
+any external caller of the old names is not broken and gets the FIXED
+behavior automatically.
+
+--------------------------------------------------------------------
+9. QA RESET-DATA BEHAVIOR
+--------------------------------------------------------------------
+Split into two distinct operations, per the coordinator's explicit
+requirement:
+- `qa_reset_data(p_family_id, p_confirm)` ("איפוס נתוני QA"): wipes ONLY
+  operational data (walks, schedule_entries, schedule_rules,
+  walk_swap_requests, time_change_requests, request_push_events,
+  push_tokens, audit_log, notifications) — the dog and every member/persona
+  (with their roles/PINs) are DELIBERATELY kept intact, for retesting
+  normal operation without redoing onboarding.
+- Both reset RPCs keep the SAME guards as the prior pass's single
+  qa_reset_family(): must be authenticated; caller must be
+  is_family_admin() of THIS specific family (impersonation-aware — an
+  admin impersonating a member correctly cannot reset while impersonating);
+  target family must have is_qa=true, full stop, regardless of who calls
+  it or what p_confirm is; p_confirm must be the literal string 'RESET'.
+
+--------------------------------------------------------------------
+10. FRESH-QA-FAMILY BEHAVIOR
+--------------------------------------------------------------------
+`qa_reset_full(p_family_id, p_confirm)` ("התחל סביבת QA חדשה"): everything
+qa_reset_data() wipes, PLUS the dog and every member/persona (users) — a
+true blank slate identical to the state right after enter_qa_sandbox()
+itself. Operational data is deleted FIRST (same order), then dogs, then
+users — safe against every `on delete restrict` FK since nothing
+references users by the time they're deleted. family_auth_members (this
+device's own admin membership of the QA family) is untouched — only the
+DATA is wiped. The bootstrap trigger (Part 0) means the next member added
+via the app's existing onboarding flow automatically becomes admin again,
+exactly like right after create_family().
+
+--------------------------------------------------------------------
+11. RLS CHANGES
+--------------------------------------------------------------------
+- `family_membership_snapshots`: new table, RLS enabled, ZERO policies for
+  any role (default-deny — same pattern as audit_log/impersonation_sessions)
+  — accessible only via the two SECURITY DEFINER RPCs, only for auth.uid()'s
+  own row.
+- No policy was added, removed, or weakened on `families`, `users`, or any
+  existing table. `is_qa` remains reachable only via direct DB access or
+  enter_qa_sandbox() (on a row it itself inserts) — re-confirmed, not
+  re-asserted blindly, by re-reading the RLS policy list on `families`.
+- No RLS policy anywhere reads `is_qa` — it is a marker for the *_reset*
+  RPCs' own guard checks only, never itself the security boundary;
+  `family_id` scoping (unchanged) remains the actual boundary throughout.
+
+--------------------------------------------------------------------
+12. RPC CHANGES
+--------------------------------------------------------------------
+Rewritten (Part 0, persona-role fix): current_family_role(),
+is_real_family_admin(), set_member_role(), admin_delete_family_member(),
+admin_list_family_activity(). Rewritten (Part 1, doc/comment only — no
+logic change): set_profile_pin()'s admin-target check now reads users.role
+directly instead of joining family_auth_members (simpler, and correctly
+covers an UNCLAIMED admin persona too, which the old family_auth_members-
+keyed check could not). claim_family_profile_with_pin()'s SECURITY
+WALKTHROUGH comment rewritten to reflect the corrected model (its own code
+is unchanged). New (Part 2): family_membership_snapshots table,
+enter_qa_sandbox(), exit_qa_sandbox(), current_family_is_qa(). Renamed
+with compat shims: create_qa_family() and qa_reset_family() now delegate
+to enter_qa_sandbox()/qa_reset_data(). New: qa_reset_data(), qa_reset_full().
+New trigger: bootstrap_first_member_role() on `users` (before insert).
+
+--------------------------------------------------------------------
+13. MIGRATIONS
+--------------------------------------------------------------------
+supabase/migrations/0016_profile_pin_reclaim_and_qa_sandbox.sql — REWORKED
+IN PLACE AGAIN this pass. EXPLICITLY STATED: this is a rework of a
+migration that has NOT been applied to a live database — not an edit to
+something already live. Every statement remains `create or replace` /
+`add column if not exists` / `create table if not exists`, so it is safe
+to (re-)apply even if an EARLIER version of this exact file was already
+applied somewhere — but READ the file's own "IF YOU ALREADY APPLIED AN
+EARLIER VERSION OF 0016" section at the very bottom before doing so: it
+documents two real, specific edge cases (an unclaimed-admin-persona
+backfill gap, and a QA family entered under the OLD irreversible
+create_qa_family() having no snapshot to restore from) with concrete SQL
+to check for and recover from each. No other migration file was touched.
+
+--------------------------------------------------------------------
+14. DESIGN-SYSTEM CHANGES (Deliverable 3A)
+--------------------------------------------------------------------
+New src/theme/tokens.ts, built ON TOP of the existing theme/colors.ts (not
+a second competing system) — audited first: every existing screen/modal
+had already independently converged on very similar spacing/radius/
+typography numbers; this file names them once. Exports: `spacing` (xs-xxl),
+`radii` (sm-xl, round), `typography` (screenTitle/sectionTitle/cardTitle/
+body/meta/statValue/caption), `layout` (rowHeight, buttonHeight, iconSize,
+avatar sizes, screenPadding), `elevation` (soft card shadow, deliberately
+subtle to keep the app's friendly/paper-like feel rather than a heavier
+corporate-dashboard look). Applied this pass to: StatisticsScreen (full
+redesign), SettingsScreen (full hybrid redesign), the new PinEntryModal/
+PinSetupModal/QA-sandbox-section components. NOT yet swept across every
+existing screen — see #16-19 below for the precise honest breakdown of
+what is and isn't covered.
+
+--------------------------------------------------------------------
+15. STATISTICS REDESIGN (Deliverable 3B)
+--------------------------------------------------------------------
+REAL, SUBSTANTIALLY COMPLETE this time (previously deferred twice). Found
+that logic/statistics.ts ALREADY had exactly the right pure functions from
+an earlier round (filterWalksByPeriod, computeCompletionStats,
+computeMemberDistribution, computePlannedVsSpontaneous) — no duplication
+needed, only the UI was rebuilt on top of them:
+- Header + 7/30/all segmented period control — RETAINED unchanged (already
+  correct from a prior pass).
+- 4 KPI tiles in a 2x2 flex-wrap grid (סה״כ טיולים / בוצעו + אחוז ביצוע
+  as a sub-value / לא בוצעו / ספונטניים) — NEW this pass, replacing the
+  previous single dense "completion" card + separate chips row.
+- "התפלגות בין בני המשפחה" card (avatar + name + count + proportional
+  bar per member) — RETAINED, already matched the requirement.
+- מתוכנן-vs-ספונטני comparison card with its own bar — RETAINED, already
+  matched the requirement.
+- pee/poop: confirmed absent from every import/useMemo/JSX/style in this
+  screen (fresh grep this pass, zero matches) — still available elsewhere
+  as walk-detail data via computePeePoopStats() (untouched, still has its
+  own tests), never re-added to Statistics.
+Every numeric run stays pinned writingDirection="ltr", every Hebrew label
+"rtl" (the established bidi-fix pattern from an earlier round, preserved
+and extended to the new KPI tiles).
+
+--------------------------------------------------------------------
+16. SETTINGS REDESIGN (Deliverable 3C)
+--------------------------------------------------------------------
+REAL, SUBSTANTIALLY COMPLETE this time. Implemented:
+- Dog card at the top (photo/avatar via the existing DogPhoto component,
+  name, "לחצו לעריכת פרטי הכלב" affordance) — opens the existing
+  DogDetailsModal, reused unchanged.
+- "המשפחה שלי" summary card — compact avatar row (up to 6) + active-member
+  count. Deliberately does NOT duplicate FamilyScreen's member-management
+  UI inside Settings (that would be new, unreviewed navigation/duplicated
+  logic) — instead points to the existing "משפחה" tab in its own subtitle
+  text. This is the one sub-part of 3C delivered at reduced depth relative
+  to "family area with compact avatars + management entry" as literally
+  specified — stated precisely per the coordinator's own allowance for
+  exactly this kind of explicit partial-depth disclosure.
+- Grouped ordinary settings rows below (תזכורות / שיתוף המשפחה / החלף
+  משתמש), consistent row height (56px, tokens.layout.rowHeight), icon +
+  title (+ subtitle where useful) + chevron, RTL-correct.
+- Admin/QA kept as its own CLEARLY SEPARATE "🛠️ מתקדם" section with a
+  single "⚙️ ניהול" entry point into the existing Management sheet — never
+  mixed into the ordinary rows above. Inside that sheet: "החלף משתמש" lives
+  in the ordinary rows (available to every member, not admin-gated —
+  correctly NOT an admin/QA-only action), "בדיקה אמיתית" (impersonation)
+  and the QA sandbox area remain visually and functionally distinct
+  sections from each other, exactly as required — never merged into one
+  row/flow.
+- The nested-modal lifecycle fix (pendingChildModal/
+  openChildAfterManagementCloses) is completely UNTOUCHED — re-verified by
+  grep this pass, still present, still the only path any child modal opens
+  through.
+
+--------------------------------------------------------------------
+17. NAVIGATION REDESIGN (Deliverable 3F)
+--------------------------------------------------------------------
+ONE real, concrete bug found and fixed (not a full visual redesign): the
+bottom tab bar specified a FIXED `height: 64` with `paddingBottom: 8` —
+specifying an explicit height opts OUT of react-navigation's automatic
+safe-area-bottom-inset handling, so on any notched/home-indicator iPhone
+the tab bar's tap targets/labels would sit uncomfortably close to (or
+under) the home indicator. Fixed: height/paddingBottom now computed from
+`useSafeAreaInsets()` (`56 + insets.bottom` / `max(8, insets.bottom)`).
+Destinations, labels, icon set, active/inactive tint colors were all
+reviewed and found already correct/consistent — NOT changed (no bug
+found there).
+
+--------------------------------------------------------------------
+18. WALKROW STATUS (Deliverable 3D)
+--------------------------------------------------------------------
+Re-confirmed only, no changes — the redesign from an earlier round already
+uses colors.ts (not a competing style system) with values that already
+line up closely with this pass's new tokens.ts (48px min row height ~=
+tokens.layout.rowHeight-ish, 1-1.5px borders, similar radii) — deliberately
+left as-is rather than mechanically swapped to import tokens.ts for zero
+visible change/risk. Confirmed (fresh grep): zero live adjustsFontSizeToFit,
+no "תוכנן ל־" line, pee/poop toggles present, equal-weight ✓/✕ chips.
+
+--------------------------------------------------------------------
+19. HOME REQUEST STATUS (Deliverable 3E, Part 4 preserved)
+--------------------------------------------------------------------
+Re-confirmed only: canRequestChangeForWalk() (logic/walkActions.ts) is
+still the SOLE eligibility predicate for both HomeScreen and
+ScheduleScreen (grep-confirmed, no duplicate inline predicate exists
+anywhere). HomeScreen/ScheduleScreen/HistoryScreen/FamilyScreen were NOT
+otherwise re-skinned to the new design tokens this pass, beyond
+ScheduleScreen's one concrete clipped-text fix below (3H) — STATED
+PLAINLY, not silently: these four screens' existing spacing/typography
+choices were reviewed and found already reasonably consistent with each
+other (all built on colors.ts, similar card/row shapes), so a purely
+cosmetic token-renaming sweep with no reported bug and real regression
+risk was judged lower priority than finishing Statistics/Settings, which
+had never been genuinely completed before. This is an area intentionally
+left at reduced depth — not claimed as done.
+
+--------------------------------------------------------------------
+20. MODALS (Deliverable 3G)
+--------------------------------------------------------------------
+NOT swept modal-by-modal this pass (ConfirmModal, UserFormModal,
+DogDetailsModal, RemindersModal, FamilySharingModal, AdminActivityModal,
+AdminAuditLogModal, InviteShareModal, SwapWalkPickerModal,
+RequestTimeChangeModal, RequestsInboxModal, RuleFormModal,
+AddUnplannedWalkModal, CompleteWalkModal, EditWalkModal,
+EditDoneDetailsModal, DeleteUserModal, UserPickerModal — 18 existing
+modals). The two NEW modals this pass (PinEntryModal, PinSetupModal) were
+built matching ConfirmModal's exact established header/spacing/button
+pattern (backdrop, centered card, radius 24, paired flex:1 compact
+buttons) rather than inventing a new modal shape. STATED PLAINLY: a full
+pass normalizing every existing modal's header/close-action/spacing/
+destructive-styling against tokens.ts was NOT done this pass — genuinely
+untouched, not partially done and overstated.
+
+--------------------------------------------------------------------
+21. CLIPPED-TEXT / RTL AUDIT (Deliverable 3H)
+--------------------------------------------------------------------
+Grepped the whole src tree for adjustsFontSizeToFit this pass. Found and
+fixed ONE real, unjustified instance: ScheduleScreen.tsx's "שעות קבועות
+(N)" section title had adjustsFontSizeToFit/minimumFontScale with no
+doc-comment rationale (an unreviewed leftover) — removed, kept
+numberOfLines={1} only, matching WalkRow's own established "never
+auto-shrink" principle. Found TWO remaining, pre-existing, EXPLICITLY
+documented/deliberate uses: Button.tsx's `compact`/`shrinkToFit` props (an
+intentional per-button opt-in API, not a hidden default) and
+NextWalkCard.tsx (has its own doc comment explaining the choice) — NOT
+touched, since removing a previously-reasoned, explicitly-justified design
+decision without a concrete reported problem there risks a regression for
+no stated gain. No remaining "תוכנן ל־" text anywhere (grep-confirmed). No
+new mojibake/encoding issues introduced (spot-checked every new/edited
+file's Hebrew strings).
+
+--------------------------------------------------------------------
+22. TESTS
+--------------------------------------------------------------------
+Added this pass:
+- authStore.test.ts: a new "familyRole refresh after a claim" describe
+  block (3 tests: member persona resolves familyRole to member even after
+  a prior admin session; ADMIN persona via signInWithPin resolves
+  familyRole to admin — the core Dad<->Idan scenario; a wrong PIN never
+  reaches the claim RPC and never touches familyRole). A new "setFamilyId
+  resyncs currentUserId" describe block (2 tests: entering QA clears a
+  stale real-family currentUserId; exiting QA re-adopts the server-
+  restored real persona automatically). A new 7E test in the existing
+  offline-queue-guard block (PIN-based transfer also blocked by pending
+  writes for a different profile). rpcRouter() extended to also track
+  claim_family_profile_with_pin() calls (needed for the new tests' default
+  whoami() confirmation to work, mirroring its existing claim_family_profile
+  tracking).
+- errorMessages.test.ts: a new "QA sandbox (0016)" describe block (3 tests
+  covering the new reset/exit error strings).
+- statistics.ts's own existing tests are UNTOUCHED (the module itself was
+  not modified — only the screen consuming it was rebuilt).
+- settingsModalTransitions.test.ts is UNTOUCHED, confirmed preserved.
+NOT ADDED (component-render tests for PinEntryModal/PinSetupModal/the new
+Settings QA section/StatisticsScreen's new KPI grid) — this project's
+existing suite does not render-test any Modal/screen component anywhere
+else either; the underlying LOGIC each of them calls is what's unit-tested,
+consistent with the rest of this codebase's testing approach.
+
+--------------------------------------------------------------------
+23. VALIDATION RESULTS
+--------------------------------------------------------------------
+`ls node_modules` -> "No such file or directory" (still absent, as in
+every prior pass this whole engagement). `npm run typecheck` -> fails
+immediately with `TS6053: File 'expo/tsconfig.base' not found` (Expo's own
+base tsconfig isn't installed in this sandbox). `npm test -- --runInBand`
+-> `sh: 1: jest: not found`. Every new/edited file was manually brace-
+balance-checked ({ count == } count) as a basic sanity pass, and every new
+SQL function's revoke/grant pairs were counted (9 pairs for 9 grant-
+requiring functions, matching). This is NOT a substitute for a real
+compiler or test run — no real-device or real-Postgres validation was
+performed or is being claimed.
+
+--------------------------------------------------------------------
+24. KNOWN LIMITATIONS (full honest list)
+--------------------------------------------------------------------
+- Deliverable 3: Home/Schedule/History/Family screens and all 18 existing
+  modals were NOT re-skinned to tokens.ts this pass (see #19-20) — real,
+  substantive work landed on Statistics and Settings specifically (the two
+  areas explicitly named as previously-deferred), plus one real navigation
+  bug fix and one real clipped-text fix, rather than a shallow sweep across
+  everything.
+- QA sandbox: true SIMULTANEOUS dual-family sessions (real + QA both
+  "active" at once) was considered and deliberately rejected in favor of
+  the snapshot/restore mechanism — see the migration's own Part 2 header
+  comment for the full reasoning (it would require reworking
+  current_family_id()'s definition and users.auth_user_id's global-
+  uniqueness constraint, for a benefit this app doesn't actually need: a
+  device is never simultaneously in both contexts from the user's point of
+  view, only sequentially).
+- PIN brute-force rate-limiting is documented, not implemented (see #5).
+- A device that already called the OLD (prior-pass) irreversible
+  create_qa_family() before this migration is applied has no snapshot to
+  restore from — see the migration's own bottom section for the one-time
+  manual recovery for that specific case.
+- No real-device or real-Postgres validation — source-level reasoning only.
+
+--------------------------------------------------------------------
+25. MANUAL SUPABASE / DEPLOYMENT STEPS
+--------------------------------------------------------------------
+1. Apply supabase/migrations/0016_profile_pin_reclaim_and_qa_sandbox.sql
+   against your Supabase project. This is a REWORK of a migration that has
+   NEVER been applied live — not an edit to something already deployed.
+2. If (and only if) an EARLIER version of this exact file was already
+   applied to a live project: read the file's own "IF YOU ALREADY APPLIED
+   AN EARLIER VERSION OF 0016" section at the bottom BEFORE re-applying —
+   it gives exact SQL to check for the one documented backfill edge case
+   (an unclaimed persona that was always meant to be an admin) and explains
+   the one-time recovery needed for any device that already used the OLD
+   irreversible create_qa_family().
+3. No other migration file needs review or (re-)application as a result of
+   this pass.
+4. After applying: verify
+   `select proname from pg_proc where proname in
+   ('current_family_role','is_real_family_admin','set_member_role',
+   'admin_delete_family_member','admin_list_family_activity',
+   'set_profile_pin','claim_family_profile_with_pin','enter_qa_sandbox',
+   'exit_qa_sandbox','current_family_is_qa','qa_reset_data','qa_reset_full',
+   'create_qa_family','qa_reset_family','bootstrap_first_member_role');`
+   returns all fifteen.
+5. Run the backfill-gap check query from the migration's own bottom section
+   once, on your real data, before relying on role-based authorization.
+6. No environment variables, Expo config, or package.json dependencies
+   changed this pass.
+
+--------------------------------------------------------------------
+REAL-IPHONE QA CHECKLIST
+--------------------------------------------------------------------
+Identity / authorization (the core fix):
+  [ ] As Dad (admin), reclaim Idan's (member) profile via correct PIN on
+      this same device -> EVERY admin-only control disappears immediately
+      (family role management, "ניהול" advanced area, invite creation,
+      impersonation start) — confirm by checking Settings/Family screens
+      right after the switch, no app restart.
+  [ ] From Idan's persona, reclaim Dad's profile via Dad's correct PIN ->
+      admin controls REAPPEAR — confirm the same screens.
+  [ ] Attempt the reclaim with a WRONG PIN -> rejected, persona and role
+      both stay exactly as they were (no partial change).
+  [ ] Home: an upcoming walk assigned to Idan, viewed while signed in as
+      Idan -> request-swap/request-time-change controls show correctly per
+      the eligibility matrix.
+  [ ] WalkRow across every status: done / not-done / swapped ("הוחלף") /
+      spontaneous ("טיול ספונטני") — no truncation, no shrinking text,
+      consistent row height.
+  [ ] Long Hebrew member/dog names in Settings' new dog card and family
+      avatar row, and in Statistics' family-distribution card — no
+      clipping, "הו..." truncation, or overlap.
+Device transfer / lost claim:
+  [ ] Device A claims Idan. Device B reclaims Idan via correct PIN.
+      Reopen/foreground Device A -> shows "הפרופיל עידן הופעל במכשיר אחר"
+      with a working "התחבר מחדש כעידן" -> re-enters correctly on A.
+  [ ] While Device A has an unsynced offline write queued, attempt the
+      transfer from B before A reconnects -> blocked with the pending-sync
+      message until A flushes.
+Admin impersonation (distinct from switch-user):
+  [ ] Admin starts "בדיקה אמיתית" as Idan -> banner shows app-wide (every
+      tab, not just Home); actions attributed to Idan with the real admin
+      recorded separately in the audit trail.
+  [ ] End impersonation -> admin's own view/permissions return immediately.
+  [ ] Settings' "מי משתמש במערכת"/"יומן פעילות"/impersonation-picker child
+      modals still open/close correctly with no frozen/nested-Modal state,
+      iOS and Android both.
+QA sandbox (reversibility, the Deliverable 2 fix):
+  [ ] From the real family, tap "🧪 כניסה לסביבת QA" -> lands in a genuinely
+      empty QA family; complete the FULL onboarding flow (create first
+      member -> becomes admin automatically -> add a dog -> add members ->
+      set up rotation) using the app's ordinary screens, unmodified.
+  [ ] "🔄 איפוס נתוני QA" -> walks/schedule/requests wiped, dog and members
+      remain.
+  [ ] "🆕 התחל סביבת QA חדשה" -> dog and members ALSO wiped, back to true
+      onboarding zero.
+  [ ] "🚪 יציאה מסביבת QA" -> the ORIGINAL real family reappears
+      IMMEDIATELY, with no invite code entry, no manual steps — confirm
+      the real family's dog/members/walks/schedule are all UNCHANGED from
+      before entering QA.
+  [ ] Attempt to reset/access QA-family data from a device NOT currently
+      the admin of that specific QA family -> rejected.
+Statistics / Settings / navigation:
+  [ ] Statistics: 4 KPI tiles show correct real numbers for 7/30/all
+      periods; family-distribution bars proportional and correctly
+      labeled; planned-vs-spontaneous comparison correct; no pee/poop
+      anywhere on this screen.
+  [ ] Settings: dog card opens DogDetailsModal correctly; family summary
+      card shows correct avatar count; grouped rows (תזכורות/שיתוף/החלף
+      משתמש) all function; "🛠️ מתקדם" section only visible to admins.
+  [ ] Bottom tab bar: confirm comfortable spacing above the home indicator
+      on a notched iPhone (no controls crowded against the bottom edge).

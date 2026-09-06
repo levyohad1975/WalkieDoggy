@@ -1,0 +1,13 @@
+Walkie Doggy Link — Mutual exact-walk swap fix
+
+Changes:
+- Swap requests now identify source_walk + target_walk, not only a target person.
+- Member chooses a person, then one exact pending future walk belonging to that person.
+- Approval locks/revalidates both walks and atomically exchanges responsible users.
+- Both backing schedule_entries are updated when present.
+- Request inbox displays both exact walks.
+- Lifecycle/status logic considers both walks.
+- Migration: supabase/migrations/0018_mutual_walk_swap_requests.sql
+
+IMPORTANT: Apply files first, run typecheck/tests, then apply migration 0018 in Supabase SQL Editor.
+Existing legacy pending one-sided swap requests are marked rejected by 0018 because no reciprocal target walk can be inferred safely.

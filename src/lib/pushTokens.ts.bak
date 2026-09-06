@@ -1,0 +1,185 @@
+import { Platform } from 'react-native';
+import { supabase, isSupabaseConfigured } from './supabase';
+import { mapExecutionEnvironment } from './expoRuntime';
+
+/**
+ * Section 10: client-side registration for the REMOTE request-lifecycle
+ * push (a completely separate system from src/notifications/
+ * notificationService.ts's LOCAL scheduled-walk reminders — that module,
+ * its "walk-reminders" Android channel, and its own permission flow are
+ * untouched by this file).
+ *
+ * Every step here is guarded: permission denial, no physical device (an
+ * Expo push token requires one), and a missing/misconfigured Supabase
+ * project must all degrade to "silently don't register a token" rather
+ * than crash or block any other part of the app. Best-effort only.
+ */
+/**
+ * RUNTIME COMPLETION CORRECTION: the projectId fix (security-correction
+ * pass) only fixed WHERE the value is read from
+ * (`Constants.expoConfig?.extra?.eas?.projectId`) — it never addressed
+ * what to do when that value is genuinely absent, which is the NORMAL
+ * case in Expo Go and in a dev build before `eas init`. Previously that
+ * fell straight through into `getExpoPushTokenAsync()` throwing, caught
+ * by the generic catch-all below and logged with `console.error` —
+ * indistinguishable from a real bug. Real-device Expo Go QA hit exactly
+ * that: `No "projectId" found.` logged as an error every launch.
+ *
+ * Three distinct runtime states, using SDK 54's actual
+ * `Constants.executionEnvironment` API (`ExecutionEnvironment.StoreClient`
+ * for Expo Go; `Bare`/`Standalone` for a dev/standalone build) — the real
+ * SDK-provided way to tell these apart, not a guess:
+ *   1. Expo Go (`storeClient`): remote push is categorically unsupported
+ *      there — this is expected and permanent, not a failure. Silent
+ *      no-op, no console output at any level, regardless of projectId.
+ *   2. Dev/standalone build, no projectId configured yet (pre-`eas init`):
+ *      a real gap, but a known/expected one during development — a single
+ *      `console.warn` (never `console.error`, never thrown, never a red
+ *      LogBox screen), then a silent no-op.
+ *   3. Dev/standalone build WITH a valid projectId: registration proceeds
+ *      exactly as before this correction — unchanged behavior.
+ * A genuinely unexpected failure inside that normal registration path
+ * (network error, malformed token response, the permissions API itself
+ * throwing) still falls through to the existing catch-all below and is
+ * still logged the same way as before — only the "projectId legitimately
+ * isn't there yet" case was pulled out of that bucket.
+ */
+export type PushRegistrationExecutionEnv = 'storeClient' | 'bareOrStandalone' | 'unknown';
+
+export type PushRegistrationDecision = 'register' | 'skip-silent' | 'skip-warn';
+
+/** Pure decision rule — kept separate from the native-module plumbing so it's unit-testable in this sandbox without a real Expo runtime. */
+export function decidePushRegistration(params: {
+  executionEnvironment: PushRegistrationExecutionEnv;
+  projectId: string | undefined | null;
+}): PushRegistrationDecision {
+  if (params.executionEnvironment === 'storeClient') {
+    // Expo Go can never receive a real remote push token, with or without
+    // a projectId — this is an expected, permanent limitation of that
+    // client, not something to warn about on every launch.
+    return 'skip-silent';
+  }
+  if (!params.projectId) {
+    // Bare/dev/standalone build, no EAS projectId configured yet — a real
+    // but expected-during-development gap. Worth a quiet warn, not an error.
+    return 'skip-warn';
+  }
+  return 'register';
+}
+
+// mapExecutionEnvironment() now lives in src/lib/expoRuntime.ts, shared with
+// notificationService.ts's local-reminder Expo Go guard — re-exported here
+// under its original name so nothing importing it from this file breaks.
+export { mapExecutionEnvironment };
+
+export async function registerPushToken(): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) return;
+
+  // Lazy import: expo-notifications'/expo-device's/expo-constants' native
+  // modules can be unavailable in some environments (e.g. this sandbox has
+  // no native runtime at all) — importing them at module scope would break
+  // every screen that transitively imports this file.
+  let Notifications: any;
+  let Device: any;
+  let Constants: any;
+  try {
+    Notifications = await import('expo-notifications');
+    Device = await import('expo-device').catch(() => null);
+    Constants = await import('expo-constants').catch(() => null);
+  } catch {
+    // expo-notifications itself unavailable (e.g. this sandbox, or a bare
+    // RN environment with no native modules at all) — nothing further to
+    // decide or warn about, there's no push subsystem to register with.
+    return;
+  }
+
+  const constantsModule = Constants?.default ?? Constants;
+  // SDK 54-correct source for the EAS project id: app.json's
+  // expo.extra.eas.projectId, surfaced at runtime via
+  // Constants.expoConfig?.extra?.eas?.projectId (there is no such thing as
+  // `Notifications.EXPO_PROJECT_ID` — an earlier version of this file
+  // referenced that nonexistent field). This repo's app.json currently has
+  // `extra.eas: {}` with no projectId populated yet (set by `eas init`/
+  // `eas build:configure`, a one-time project-setup step this sandbox
+  // can't perform and this file must never fabricate) — so `projectId`
+  // legitimately resolves to undefined today, which `decidePushRegistration`
+  // now treats as an expected state rather than routing it into a thrown
+  // exception.
+  const projectId: string | undefined = constantsModule?.expoConfig?.extra?.eas?.projectId;
+  const executionEnvironment = mapExecutionEnvironment(constantsModule);
+  const decision = decidePushRegistration({ executionEnvironment, projectId });
+
+  if (decision === 'skip-silent') return; // Expo Go — expected, no logging at any level.
+  if (decision === 'skip-warn') {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        'registerPushToken: no EAS projectId configured yet (run `eas init` / `eas build:configure`) — skipping remote push registration for now.'
+      );
+    }
+    return;
+  }
+
+  try {
+    if (Device && Device.isDevice === false) {
+      // Simulators/emulators can't receive real remote push — Expo's own
+      // getExpoPushTokenAsync would just throw; skip quietly.
+      return;
+    }
+
+    const existing = await Notifications.getPermissionsAsync();
+    let status = existing.status;
+    if (status !== 'granted') {
+      const requested = await Notifications.requestPermissionsAsync();
+      status = requested.status;
+    }
+    if (status !== 'granted') return; // permission denial must never block normal app use
+
+    const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId: projectId as string });
+    const token = tokenResponse?.data;
+    if (!token) return;
+
+    const platform = Platform.OS === 'ios' ? 'ios' : Platform.OS === 'android' ? 'android' : 'unknown';
+
+    const { error } = await supabase.rpc('upsert_push_token', { p_token: token, p_platform: platform });
+    if (error && process.env.NODE_ENV !== 'production') {
+      console.error('registerPushToken: upsert_push_token failed', error);
+    }
+  } catch (err) {
+    // A genuinely unexpected failure (permissions API throwing, network
+    // error, malformed token response) — distinct from the expected
+    // Expo-Go / no-projectId-yet cases above, which return before ever
+    // reaching this catch block.
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('registerPushToken failed (non-fatal):', err);
+    }
+  }
+}
+
+/**
+ * SECURITY CORRECTION: fire-and-forget call to the send-request-push Edge
+ * Function — used by requestsStore right after a create/approve/reject RPC
+ * succeeds. This payload is now ONLY a minimal trigger (which request, and
+ * which lifecycle event) — no recipient list and no message content are
+ * sent from the client. The Edge Function authenticates the caller from
+ * this client's own Supabase session (supabase-js automatically attaches
+ * the current session's Authorization bearer token to a `functions.invoke`
+ * call), loads the actual request row itself, and derives who to notify
+ * and what to say entirely server-side — see
+ * supabase/functions/send-request-push/index.ts's doc comment. Never
+ * throws: a failed push must not surface as a failure of the request
+ * action itself, which already succeeded server-side by the time this runs.
+ */
+export async function sendRequestPush(payload: {
+  requestId: string;
+  kind: 'swap' | 'timeChange';
+  event: 'created' | 'approved' | 'rejected';
+}): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) return;
+  try {
+    await supabase.functions.invoke('send-request-push', { body: payload });
+  } catch (err) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('sendRequestPush failed (non-fatal):', err);
+    }
+  }
+}
