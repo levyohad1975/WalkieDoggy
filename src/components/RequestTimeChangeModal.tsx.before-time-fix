@@ -27,12 +27,6 @@ function dateToTimeString(d: Date): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-function suggestedTimeFrom(currentTime: string): string {
-  const d = timeStringToDate(currentTime);
-  d.setMinutes(d.getMinutes() + 30);
-  return dateToTimeString(d);
-}
-
 /**
  * "בקש שינוי שעה" — a Member proposes a new time for a walk they're
  * responsible for; the change only takes effect once an Admin approves it
@@ -91,24 +85,6 @@ export function RequestTimeChangeModal({ visible, currentTime, onSubmit, onClose
                 <RtlText style={styles.previewArrow}>←</RtlText>
                 <RtlText style={styles.previewCurrent}>{currentTime}</RtlText>
               </View>
-
-              {Platform.OS === 'web' ? React.createElement('input', {
-                type: 'time',
-                value: time,
-                onChange: (event: any) => setTime(event.target.value),
-                'aria-label': 'בחר שעה חדשה',
-                style: {
-                  width: '100%',
-                  boxSizing: 'border-box',
-                  marginTop: 12,
-                  padding: 12,
-                  fontSize: 20,
-                  borderRadius: 12,
-                  border: '1px solid #d0d0d0',
-                  backgroundColor: '#ffffff',
-                  textAlign: 'center',
-                },
-              }) : null}
 
               {Platform.OS === 'android' ? (
                 <Button

@@ -1,4 +1,4 @@
-﻿// supabase/functions/send-request-push/index.ts
+// supabase/functions/send-request-push/index.ts
 //
 // MEGA ROUND Section 10 + SECURITY CORRECTION.
 //
@@ -161,27 +161,21 @@ function validateAndRoutePushEvent(
 
 function templateFor(kind: PushRequestKind, event: PushRequestEvent, row: RequestRowForPush): { title: string; body: string } {
   if (kind === 'swap') {
-    if (event === 'created') return { title: '\u05d1\u05e7\u05e9\u05ea \u05d4\u05d7\u05dc\u05e4\u05ea \u05ea\u05d5\u05e8', body: '\u05de\u05d9\u05e9\u05d4\u05d5 \u05d1\u05d9\u05e7\u05e9 \u05dc\u05d4\u05d7\u05dc\u05d9\u05e3 \u05d0\u05d9\u05ea\u05da \u05ea\u05d5\u05e8 \u05d8\u05d9\u05d5\u05dc \u2014 \u05d9\u05e9 \u05dc\u05d0\u05e9\u05e8 \u05d0\u05d5 \u05dc\u05d3\u05d7\u05d5\u05ea' };
-    if (event === 'approved') return { title: '\u05d1\u05e7\u05e9\u05ea \u05d4\u05d4\u05d7\u05dc\u05e4\u05d4 \u05e9\u05dc\u05da \u05d0\u05d5\u05e9\u05e8\u05d4', body: '\u05d1\u05e7\u05e9\u05ea \u05d4\u05d4\u05d7\u05dc\u05e4\u05d4 \u05e9\u05d1\u05d9\u05e7\u05e9\u05ea \u05d0\u05d5\u05e9\u05e8\u05d4' };
-    return { title: '\u05d1\u05e7\u05e9\u05ea \u05d4\u05d4\u05d7\u05dc\u05e4\u05d4 \u05e9\u05dc\u05da \u05e0\u05d3\u05d7\u05ea\u05d4', body: '\u05d1\u05e7\u05e9\u05ea \u05d4\u05d4\u05d7\u05dc\u05e4\u05d4 \u05e9\u05d1\u05d9\u05e7\u05e9\u05ea \u05e0\u05d3\u05d7\u05ea\u05d4' };
+    if (event === 'created') return { title: '×‘×§×©×ª ×”×—×œ×¤×ª ×ª×•×¨', body: '×ž×™×©×”×• ×‘×™×§×© ×œ×”×—×œ×™×£ ××™×ª×š ×ª×•×¨ ×˜×™×•×œ â€” ×™×© ×œ××©×¨ ××• ×œ×“×—×•×ª' };
+    if (event === 'approved') return { title: '×‘×§×©×ª ×”×”×—×œ×¤×” ×©×œ×š ××•×©×¨×”', body: '×‘×§×©×ª ×”×”×—×œ×¤×” ×©×‘×™×§×©×ª ××•×©×¨×”' };
+    return { title: '×‘×§×©×ª ×”×”×—×œ×¤×” ×©×œ×š × ×“×—×ª×”', body: '×‘×§×©×ª ×”×”×—×œ×¤×” ×©×‘×™×§×©×ª × ×“×—×ª×”' };
   }
-
-  if (event === 'created') return { title: '\u05d1\u05e7\u05e9\u05ea \u05e9\u05d9\u05e0\u05d5\u05d9 \u05e9\u05e2\u05d4', body: '\u05d4\u05ea\u05e7\u05d1\u05dc\u05d4 \u05d1\u05e7\u05e9\u05ea \u05e9\u05d9\u05e0\u05d5\u05d9 \u05e9\u05e2\u05d4 \u05dc\u05d8\u05d9\u05d5\u05dc \u2014 \u05d9\u05e9 \u05dc\u05d0\u05e9\u05e8 \u05d0\u05d5 \u05dc\u05d3\u05d7\u05d5\u05ea' };
-
+  // timeChange
+  if (event === 'created') return { title: '×‘×§×©×ª ×©×™× ×•×™ ×©×¢×”', body: '×”×ª×§×‘×œ×” ×‘×§×©×ª ×©×™× ×•×™ ×©×¢×” ×œ×˜×™×•×œ â€” ×™×© ×œ××©×¨ ××• ×œ×“×—×•×ª' };
   if (event === 'approved') {
     return {
-      title: '\u05d1\u05e7\u05e9\u05ea \u05e9\u05d9\u05e0\u05d5\u05d9 \u05d4\u05e9\u05e2\u05d4 \u05e9\u05dc\u05da \u05d0\u05d5\u05e9\u05e8\u05d4',
-      body: row.proposedTime
-        ? `\u05e9\u05e2\u05ea \u05d4\u05d8\u05d9\u05d5\u05dc \u05e9\u05d5\u05e0\u05ea\u05d4 \u05dc-${row.proposedTime}`
-        : '\u05e9\u05e2\u05ea \u05d4\u05d8\u05d9\u05d5\u05dc \u05e9\u05d5\u05e0\u05ea\u05d4 \u05db\u05de\u05d1\u05d5\u05e7\u05e9',
+      title: '×‘×§×©×ª ×©×™× ×•×™ ×”×©×¢×” ×©×œ×š ××•×©×¨×”',
+      body: row.proposedTime ? `×©×¢×ª ×”×˜×™×•×œ ×©×•× ×ª×” ×œ-${row.proposedTime}` : '×©×¢×ª ×”×˜×™×•×œ ×©×•× ×ª×” ×›×ž×‘×•×§×©',
     };
   }
-
-  return {
-    title: '\u05d1\u05e7\u05e9\u05ea \u05e9\u05d9\u05e0\u05d5\u05d9 \u05d4\u05e9\u05e2\u05d4 \u05e9\u05dc\u05da \u05e0\u05d3\u05d7\u05ea\u05d4',
-    body: '\u05d1\u05e7\u05e9\u05ea \u05e9\u05d9\u05e0\u05d5\u05d9 \u05d4\u05e9\u05e2\u05d4 \u05e9\u05d1\u05d9\u05e7\u05e9\u05ea \u05e0\u05d3\u05d7\u05ea\u05d4',
-  };
+  return { title: '×‘×§×©×ª ×©×™× ×•×™ ×”×©×¢×” ×©×œ×š × ×“×—×ª×”', body: '×‘×§×©×ª ×©×™× ×•×™ ×”×©×¢×” ×©×‘×™×§×©×ª × ×“×—×ª×”' };
 }
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -584,7 +578,6 @@ Deno.serve(async (req: Request) => {
       }
 
       // Nothing succeeded, so allow a later legitimate retry.
-      console.error('Push delivery failed', { dedupeKey, expoSent, webSent, deliveryErrors });
       await serviceClient.rpc('mark_request_push_event', {
         p_dedupe_key: dedupeKey,
         p_status: 'failed',
@@ -601,7 +594,6 @@ Deno.serve(async (req: Request) => {
         { status: 200 }
       );
     } catch (sendErr) {
-      console.error('Push send block failed', sendErr);
       await serviceClient.rpc('mark_request_push_event', {
         p_dedupe_key: dedupeKey,
         p_status: 'failed',
@@ -619,6 +611,3 @@ Deno.serve(async (req: Request) => {
     return new Response(JSON.stringify({ ok: false, error: String(err) }), { status: 200 });
   }
 });
-
-
-

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -26,7 +26,7 @@ import { Button } from '../components/Button';
 import { DEMO_FAMILY } from '../data/demoData';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { useRequestsStore } from '../store/requestsStore';
-import { countActionableRequests } from '../logic/requestLifecycle';
+import { countActionableRequests, countUnreadRequestResults } from '../logic/requestLifecycle';
 import { computeWalkRequestStatusLine } from '../logic/walkRequestStatusLine';
 
 export function HomeScreen() {
@@ -72,6 +72,7 @@ export function HomeScreen() {
     createTimeChange: createTimeChangeRequest,
     approveTimeChange,
     rejectTimeChange,
+    markResultsSeen,
     clearError: clearRequestsError,
   } = useRequestsStore();
 
@@ -206,6 +207,21 @@ export function HomeScreen() {
       ? countActionableRequests(timeChangeRequests, walksById, () => true)
       : countActionableRequests(swapRequests, walksById, (r) => r.target_user_id === effectiveUserId);
 
+  const unreadResultsForMe =
+    countUnreadRequestResults(swapRequests, walksById, effectiveUserId) +
+    countUnreadRequestResults(timeChangeRequests, walksById, effectiveUserId);
+  const bellBadgeCount = pendingForMe + unreadResultsForMe;
+
+  const openRequestsInbox = () => {
+    setRequestsInboxVisible(true);
+    // Only the real profile may persist read-state. During Admin
+    // impersonation/test display, effectiveUserId differs from currentUserId;
+    // opening the simulated inbox must not mutate anybody's read receipts.
+    if (effectiveUserId === currentUserId && unreadResultsForMe > 0) {
+      void markResultsSeen();
+    }
+  };
+
   const requestSwapWalk = requestSwapWalkId ? walksById[requestSwapWalkId] : undefined;
   const requestTimeChangeWalk = requestTimeChangeWalkId ? walksById[requestTimeChangeWalkId] : undefined;
 
@@ -261,7 +277,7 @@ export function HomeScreen() {
           visible on every tab while impersonating, not just this one. See
           components/ImpersonationBanner.tsx's doc comment. */}
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <View style={styles.topRow}>
@@ -272,23 +288,20 @@ export function HomeScreen() {
             accessibilityLabel="Walkie Doggy Link"
           />
           {isSupabaseConfigured ? (
-            <Pressable onPress={() => setRequestsInboxVisible(true)} style={styles.requestsBadgeRow}>
-              <RtlText style={styles.requestsBadgeText}>בקשות</RtlText>
-              {pendingForMe > 0 ? (
+            <Pressable
+              onPress={openRequestsInbox}
+              style={[styles.notificationButton, Platform.OS === 'web' && styles.webNotificationButton]}
+              accessibilityRole="button"
+              accessibilityLabel={bellBadgeCount > 0 ? `התראות בקשות: ${bellBadgeCount}` : 'בקשות'}
+            >
+              <RtlText style={styles.notificationIcon}>🔔</RtlText>
+              {bellBadgeCount > 0 ? (
                 <View style={styles.requestsCountBadge}>
-                  <RtlText style={styles.requestsCountText}>{pendingForMe}</RtlText>
+                  <RtlText style={styles.requestsCountText}>{bellBadgeCount}</RtlText>
                 </View>
               ) : null}
             </Pressable>
-          ) : (
-            <View />
-          )}
-
-          {/* Dog identity (Section 6.1) — layout leaves room for a future
-              dog-selector affordance, but no multi-dog logic/DB exists. */}
-          <View style={styles.dogIdentity}>
-            <RtlText style={styles.dogIdentityText}>🐶 {dog?.name ?? 'הכלב/ה'}</RtlText>
-          </View>
+          ) : null}
         </View>
 
         {nextWalk ? (
@@ -330,165 +343,132 @@ export function HomeScreen() {
         />
 
         {lastWalk ? (
-  <View style={styles.section}>
-    <RtlText style={styles.sectionTitle}>הטיול האחרון</RtlText>
+          <View style={styles.section}>
+            <View style={styles.sectionTitlePhysicalRight}>
+              <RtlText style={styles.sectionTitle}>הטיול האחרון</RtlText>
+            </View>
 
-    <View style={styles.lastWalkCard}>
-      <View style={styles.lastWalkTopRow}>
-        <View style={styles.lastWalkTimeBlock}>
-          <RtlText style={styles.lastWalkTime}>{lastWalk.scheduledTime}</RtlText>
-          {/* P1 — Home today/tomorrow date ambiguity: without this, "הטיול
-              הבא"/"הטיול האחרון" could both show the exact same "07:00" for
-              two genuinely different days and read as duplicates. Same
-              shared helper NextWalkCard uses. */}
-          <RtlText style={styles.lastWalkDateContext} numberOfLines={1}>
-            {walkDateContextLabel(lastWalk.date)}
-          </RtlText>
-          {lastWalk.status === 'skipped' ? (
-            <RtlText style={styles.lastWalkSkippedBadge}>✕ לא בוצע</RtlText>
-          ) : (
-            <RtlText style={styles.lastWalkDoneBadge}>✓ בוצע</RtlText>
-          )}
-        </View>
+            {(() => {
+              const canEditLastWalk =
+                effectiveRole === 'admin' ||
+                lastWalk.responsibleUserId === effectiveUserId ||
+                (lastWalk.isUnplanned && lastWalk.completedByUserId === effectiveUserId);
 
-        <View style={styles.lastWalkPerson}>
-          <RtlText style={styles.lastWalkPersonName}>
-            {lastWalk.completedByUserId
-              ? usersById[lastWalk.completedByUserId]?.name ?? 'לא ידוע'
-              : usersById[lastWalk.responsibleUserId]?.name ?? 'לא ידוע'}
-          </RtlText>
+              return (
+                <View style={styles.lastWalkCard}>
+                  <View style={styles.lastWalkTopRow}>
+                    <View style={styles.lastWalkTimeBlock}>
+                      <RtlText style={styles.lastWalkTime} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} maxFontSizeMultiplier={1.35}>
+                        {lastWalk.scheduledTime}
+                      </RtlText>
+                      <RtlText style={styles.lastWalkDateContext} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} maxFontSizeMultiplier={1.35}>
+                        {walkDateContextLabel(lastWalk.date)}
+                      </RtlText>
+                      {lastWalk.status === 'skipped' ? (
+                        <RtlText style={styles.lastWalkSkippedBadge} numberOfLines={1} maxFontSizeMultiplier={1.35}>✕ לא בוצע</RtlText>
+                      ) : (
+                        <RtlText style={styles.lastWalkDoneBadge} numberOfLines={1} maxFontSizeMultiplier={1.35}>✓ בוצע</RtlText>
+                      )}
+                    </View>
 
-          <RtlText style={styles.lastWalkMeta}>
-            {lastWalk.isUnplanned ? 'טיול ספונטני' : 'טיול מתוכנן'}
-          </RtlText>
+                    <View style={styles.lastWalkActions}>
+                      <View style={styles.lastWalkEditGroup}>
+                        {canEditLastWalk ? (
+                          <Pressable
+                            onPress={() =>
+                              lastWalk.isUnplanned
+                                ? setEditingLastUnplannedWalkId(lastWalk.id)
+                                : setEditingLastDoneDetailsId(lastWalk.id)
+                            }
+                            hitSlop={8}
+                            style={styles.lastWalkEditAction}
+                            accessibilityRole="button"
+                            accessibilityLabel="עריכת הטיול האחרון"
+                          >
+                            <RtlText style={styles.lastWalkEditLink} numberOfLines={1} maxFontSizeMultiplier={1.25}>עריכה ✏️</RtlText>
+                          </Pressable>
+                        ) : null}
+                      </View>
 
-        </View>
-      </View>
-
-      {(() => {
-        // AUTHORIZATION: matches migration 0012's non-status-change edit
-        // check (old.responsible_user_id = actor) — admin, the walk's own
-        // responsible member, or (for a self-logged spontaneous walk) its
-        // own logger. Shared by the pee/poop quick toggles below AND the
-        // edit/delete row (item D) so both use the exact same rule.
-        const canEditLastWalk =
-          effectiveRole === 'admin' ||
-          lastWalk.responsibleUserId === effectiveUserId ||
-          (lastWalk.isUnplanned && lastWalk.completedByUserId === effectiveUserId);
-        return (
-          <>
-            {lastWalk.status === 'done' ? (
-              // Icon-only quick toggles (Section 6.4) — no text labels, no
-              // counters; wired directly to editDoneDetails, no modal needed.
-              canEditLastWalk ? (
-                <View style={styles.lastWalkDetails}>
-                  <Pressable
-                    onPress={() => editDoneDetails(lastWalk.id, { hadPoop: !lastWalk.hadPoop })}
-                    hitSlop={8}
-                    style={[styles.lastWalkToggle, lastWalk.hadPoop && styles.lastWalkToggleActive]}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: !!lastWalk.hadPoop }}
-                    accessibilityLabel="סימון קקי בטיול האחרון"
-                  >
-                    <RtlText style={[styles.lastWalkToggleEmoji, !lastWalk.hadPoop && styles.lastWalkToggleEmojiMuted]}>💩</RtlText>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => editDoneDetails(lastWalk.id, { hadPee: !lastWalk.hadPee })}
-                    hitSlop={8}
-                    style={[styles.lastWalkToggle, lastWalk.hadPee && styles.lastWalkToggleActive]}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: !!lastWalk.hadPee }}
-                    accessibilityLabel="סימון פיפי בטיול האחרון"
-                  >
-                    <RtlText style={[styles.lastWalkToggleEmoji, !lastWalk.hadPee && styles.lastWalkToggleEmojiMuted]}>💧</RtlText>
-                  </Pressable>
+                      <View style={styles.lastWalkNeedsGroup}>
+                        {lastWalk.status === 'done' ? (
+                          canEditLastWalk ? (
+                            <>
+                              <Pressable
+                                onPress={() => editDoneDetails(lastWalk.id, { hadPoop: !lastWalk.hadPoop })}
+                                hitSlop={8}
+                                style={styles.lastWalkNeedAction}
+                                accessibilityRole="checkbox"
+                                accessibilityState={{ checked: !!lastWalk.hadPoop }}
+                                accessibilityLabel="סימון קקי בטיול האחרון"
+                              >
+                                <RtlText style={[styles.lastWalkActionEmoji, !lastWalk.hadPoop && styles.lastWalkToggleEmojiMuted]} maxFontSizeMultiplier={1.15}>💩</RtlText>
+                              </Pressable>
+                              <Pressable
+                                onPress={() => editDoneDetails(lastWalk.id, { hadPee: !lastWalk.hadPee })}
+                                hitSlop={8}
+                                style={styles.lastWalkNeedAction}
+                                accessibilityRole="checkbox"
+                                accessibilityState={{ checked: !!lastWalk.hadPee }}
+                                accessibilityLabel="סימון פיפי בטיול האחרון"
+                              >
+                                <RtlText style={[styles.lastWalkActionEmoji, !lastWalk.hadPee && styles.lastWalkToggleEmojiMuted]} maxFontSizeMultiplier={1.15}>💧</RtlText>
+                              </Pressable>
+                            </>
+                          ) : (
+                            <>
+                              {lastWalk.hadPoop ? <View style={styles.lastWalkNeedAction}><RtlText style={styles.lastWalkActionEmoji}>💩</RtlText></View> : null}
+                              {lastWalk.hadPee ? <View style={styles.lastWalkNeedAction}><RtlText style={styles.lastWalkActionEmoji}>💧</RtlText></View> : null}
+                            </>
+                          )
+                        ) : null}
+                      </View>
+                    </View>
+                    <View style={styles.lastWalkPerson}>
+                      <RtlText style={styles.lastWalkPersonName} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.35}>
+                        {lastWalk.completedByUserId
+                          ? usersById[lastWalk.completedByUserId]?.name ?? 'לא ידוע'
+                          : usersById[lastWalk.responsibleUserId]?.name ?? 'לא ידוע'}
+                      </RtlText>
+                      <RtlText style={styles.lastWalkMeta} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} maxFontSizeMultiplier={1.35}>
+                        {lastWalk.isUnplanned ? 'ספונטני' : 'מתוכנן'}
+                      </RtlText>
+                    </View>
+                  </View>
                 </View>
-              ) : (
-                <View style={styles.lastWalkDetails}>
-                  {lastWalk.hadPee ? <RtlText style={styles.lastWalkDetail}>💧</RtlText> : null}
-                  {lastWalk.hadPoop ? <RtlText style={styles.lastWalkDetail}>💩</RtlText> : null}
-                </View>
-              )
-            ) : null}
-
-            {/*
-              Item D (final QA round v2 — completed): edit/delete for
-              "הטיול האחרון".
-              - Unplanned: routes to AddUnplannedWalkModal in edit mode —
-                the SAME already-tested edit+delete path HistoryScreen.tsx
-                uses for an unplanned walk (responsible/time/pee/poop/note,
-                plus delete, backed by migration 0011).
-              - Scheduled: routes to EditDoneDetailsModal — pee/poop/note
-                (same fields the quick toggles above already edit) PLUS
-                who-actually-walked-the-dog (completedByUserId) and
-                delete, both added in the v2 completion pass, backed by
-                migration 0015 + canDeleteScheduledWalk() (see
-                src/logic/walkActions.ts). responsibleUserId itself stays
-                request-only (unchanged) — see EditDoneDetailsModal's own
-                doc comment for why.
-              Available whenever the last walk is resolved (done OR
-              skipped) and the viewer passes canEditLastWalk — not only
-              'done', since a skipped scheduled walk's note is still worth
-              being able to fix, and a delete is exactly as relevant for a
-              mis-logged unplanned walk regardless of done/skipped.
-            */}
-            {canEditLastWalk ? (
-              <View style={styles.lastWalkEditRow}>
-                <Pressable
-                  onPress={() =>
-                    lastWalk.isUnplanned
-                      ? setEditingLastUnplannedWalkId(lastWalk.id)
-                      : setEditingLastDoneDetailsId(lastWalk.id)
-                  }
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="עריכת הטיול האחרון"
-                >
-                  <RtlText style={styles.lastWalkEditLink}>✏️ עריכה</RtlText>
-                </Pressable>
-              </View>
-            ) : null}
-          </>
-        );
-      })()}
-    </View>
-  </View>
-) : null}
+              );
+            })()}
+          </View>
+        ) : null}
 
         {overduePending.length > 0 ? (
           <View style={styles.section}>
             <RtlText style={styles.sectionTitle}>ממתינים לעדכון</RtlText>
             <View style={styles.list}>
-              {overduePending.map((w) => {
-                const canResolve =
-                  effectiveRole === 'admin' ||
-                  w.responsibleUserId === effectiveUserId;
-
-                return (
-                  <WalkRow
-                    key={w.id}
-                    walk={w}
-                    responsible={usersById[w.responsibleUserId]}
-                    onMarkDone={
-                      canResolve ? () => setCompleteWalkId(w.id) : undefined
-                    }
-                    onMarkNotDone={
-                      canResolve ? () => skip(w.id) : undefined
-                    }
-                  />
-                );
-              })}
+              {overduePending.map((w) => (
+                <WalkRow
+                  key={w.id}
+                  walk={w}
+                  responsible={usersById[w.responsibleUserId]}
+                  onMarkDone={() => setCompleteWalkId(w.id)}
+                  onMarkNotDone={() => skip(w.id)}
+                />
+              ))}
             </View>
           </View>
         ) : null}
+
         {upcoming.length > 0 ? (
           <View style={styles.section}>
-            <RtlText style={styles.sectionTitle}>טיולים קרובים</RtlText>
+            <View style={styles.sectionTitlePhysicalRight}>
+              <RtlText style={styles.sectionTitle}>טיולים קרובים</RtlText>
+            </View>
             <View style={styles.list}>
               {upcoming.map((w) => (
                 <WalkRow
                   key={w.id}
                   walk={w}
+                  hidePendingStatus
                   responsible={usersById[w.responsibleUserId]}
                   // Reaching EditWalkModal (the administrative edit flow) is
                   // Admin-only — see requirement 6. A Member still sees this
@@ -782,7 +762,8 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
-  content: { padding: 20, gap: 20, paddingBottom: 48 },
+  content: { padding: 20, gap: 20, paddingBottom: 48, width: '100%' },
+  webContent: { maxWidth: 1000, alignSelf: 'center', paddingTop: 14, gap: 16 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: 28, borderWidth: 1, borderColor: colors.border },
   unplannedButton: { marginTop: -4 },
   testModeBanner: {
@@ -797,16 +778,27 @@ const styles = StyleSheet.create({
   testModeBannerText: { flex: 1, color: '#fff', fontWeight: '700', fontSize: 13, textAlign: 'right' },
   testModeBannerButton: { backgroundColor: '#ffffff33', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 },
   testModeBannerButtonText: { color: '#fff', fontWeight: '700', fontSize: 12 },
-  topRow: { position: 'relative', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 54 },
-  brandWordmark: { position: 'absolute', left: '50%', marginLeft: -82, width: 164, height: 54 },
-  dogIdentity: { flexDirection: 'row', alignItems: 'center' },
-  dogIdentityText: { fontSize: 18, fontWeight: '800', color: colors.textPrimary },
-  requestsBadgeRow: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: colors.surfaceMuted, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6 },
-  requestsBadgeText: { fontSize: 12, fontWeight: '700', color: colors.textPrimary },
+  topRow: { position: 'relative', minHeight: 58, alignItems: 'center', justifyContent: 'center' },
+  brandWordmark: { width: 184, height: 58 },
+  notificationButton: { position: 'absolute', right: 0, top: 11, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
+  webNotificationButton: { left: 0, right: undefined },
+  notificationIcon: { fontSize: 18 },
   requestsCountBadge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryDark },
   requestsCountText: { fontSize: 11, fontWeight: '800', color: '#fff' },
   section: { gap: 10 },
-  sectionTitle: { width: '100%', fontSize: 16, fontWeight: '700', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  sectionTitlePhysicalRight: {
+    width: '100%',
+    direction: 'ltr',
+    alignItems: 'flex-end',
+  },
+  sectionTitle: {
+    alignSelf: 'flex-end',
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
   list: { gap: 10 },
 
 lastWalkCard: {
@@ -814,24 +806,27 @@ lastWalkCard: {
   borderRadius: 18,
   borderWidth: 1,
   borderColor: colors.border,
-  padding: 16,
-  gap: 14,
+  paddingHorizontal: 12,
+  paddingVertical: 10,
 },
 
 lastWalkTopRow: {
   flexDirection: 'row',
-  justifyContent: 'space-between',
+  direction: 'ltr',
   alignItems: 'center',
-  gap: 16,
+  justifyContent: 'space-between',
+  gap: 8,
+  minHeight: 74,
 },
 
 lastWalkTimeBlock: {
+  width: 104,
   alignItems: 'center',
   flexShrink: 0,
 },
 
 lastWalkTime: {
-  fontSize: 24,
+  fontSize: 20,
   fontWeight: '800',
   color: colors.textPrimary,
 },
@@ -844,24 +839,76 @@ lastWalkDateContext: {
 },
 
 lastWalkDoneBadge: {
-  marginTop: 6,
-  fontSize: 14,
+  marginTop: 2,
+  fontSize: 12,
   fontWeight: '700',
   color: '#2F9B72',
-  backgroundColor: '#E8F7F1',
-  paddingHorizontal: 12,
-  paddingVertical: 5,
-  borderRadius: 10,
+},
+
+lastWalkSkippedBadge: {
+  marginTop: 2,
+  fontSize: 12,
+  fontWeight: '700',
+  color: colors.statusSkipped,
+},
+
+lastWalkActions: {
+  width: 154,
+  flexDirection: 'row',
+  direction: 'ltr',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 18,
+  flexShrink: 1,
+},
+
+lastWalkEditGroup: {
+  flexShrink: 0,
+},
+
+lastWalkEditAction: {
+  minHeight: 36,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+lastWalkNeedsGroup: {
+  flexDirection: 'row',
+  direction: 'ltr',
+  alignItems: 'center',
+  gap: 4,
+  flexShrink: 0,
+},
+
+lastWalkNeedAction: {
+  width: 30,
+  minHeight: 36,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+lastWalkActionEmoji: {
+  fontSize: 15,
+},
+
+lastWalkToggleEmojiMuted: {
+  opacity: 0.35,
+},
+
+lastWalkEditLink: {
+  fontSize: 12,
+  fontWeight: '700',
+  color: colors.primaryDark,
 },
 
 lastWalkPerson: {
   flex: 1,
   alignItems: 'flex-end',
-  minWidth: 0,
+  minWidth: 76,
 },
 
 lastWalkPersonName: {
-  fontSize: 18,
+  fontSize: 17,
   fontWeight: '800',
   color: colors.textPrimary,
   textAlign: 'right',
@@ -871,69 +918,6 @@ lastWalkMeta: {
   fontSize: 13,
   color: colors.textSecondary,
   textAlign: 'right',
-  marginTop: 3,
-},
-
-lastWalkDetails: {
-  flexDirection: 'row',
-  justifyContent: 'flex-end',
-  gap: 10,
-  flexWrap: 'wrap',
-},
-
-lastWalkDetail: {
-  fontSize: 14,
-  fontWeight: '600',
-  color: colors.textPrimary,
-  backgroundColor: colors.background,
-  paddingHorizontal: 12,
-  paddingVertical: 7,
-  borderRadius: 12,
-},
-
-lastWalkSkippedBadge: {
-  marginTop: 6,
-  fontSize: 14,
-  fontWeight: '700',
-  color: colors.statusSkipped,
-  backgroundColor: colors.statusSkippedBg,
-  paddingHorizontal: 12,
-  paddingVertical: 5,
-  borderRadius: 10,
-},
-
-lastWalkToggle: {
-  width: 36,
-  height: 36,
-  borderRadius: 18,
-  alignItems: 'center',
-  justifyContent: 'center',
-  backgroundColor: colors.background,
-  borderWidth: 1,
-  borderColor: colors.border,
-},
-
-lastWalkToggleActive: {
-  backgroundColor: colors.statusCurrentBg,
-  borderColor: colors.primary,
-},
-
-lastWalkToggleEmoji: {
-  fontSize: 18,
-},
-
-lastWalkToggleEmojiMuted: {
-  opacity: 0.35,
-},
-
-lastWalkEditRow: {
-  flexDirection: 'row',
-  justifyContent: 'flex-end',
-  marginTop: 10,
-},
-lastWalkEditLink: {
-  fontSize: 13,
-  fontWeight: '700',
-  color: colors.primaryDark,
+  marginTop: 2,
 },
 });

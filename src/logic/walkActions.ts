@@ -248,10 +248,7 @@ export function isCurrentlySwapped(walk: Walk): boolean {
  * show (WalkRow renders nothing for that case, rather than an empty line).
  */
 export function walkMetadataLine(walk: Walk): string | null {
-  const parts = [walk.isUnplanned ? 'טיול ספונטני' : null, isCurrentlySwapped(walk) ? 'הוחלף' : null].filter(
-    (p): p is string => !!p
-  );
-  return parts.length > 0 ? parts.join(' · ') : null;
+  return walk.isUnplanned ? 'טיול ספונטני' : null;
 }
 
 /**

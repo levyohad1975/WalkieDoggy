@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Pressable, View } from 'react-native';
+import { Platform, Pressable, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -67,9 +67,7 @@ function FixedPhysicalTabBar({ state, descriptors, navigation }: BottomTabBarPro
   const insets = useSafeAreaInsets();
   const routeByName = Object.fromEntries(state.routes.map((route) => [route.name, route]));
 
-  return (
-    <View style={{ flexDirection: 'row', direction: 'ltr', height: 56 + insets.bottom, paddingBottom: Math.max(8, insets.bottom), paddingTop: 6, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }}>
-      {PHYSICAL_TAB_ORDER.map((name) => {
+  const buttons = PHYSICAL_TAB_ORDER.map((name) => {
         const route = routeByName[name];
         if (!route) return null;
         const routeIndex = state.routes.findIndex((r) => r.key === route.key);
@@ -93,7 +91,22 @@ function FixedPhysicalTabBar({ state, descriptors, navigation }: BottomTabBarPro
             <RtlText allowFontScaling={false} numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: tint, textAlign: 'center', writingDirection: 'rtl' }}>{TAB_LABEL[name]}</RtlText>
           </Pressable>
         );
-      })}
+      });
+
+  return (
+    <View style={{ height: 56 + insets.bottom, paddingBottom: Math.max(8, insets.bottom), paddingTop: 6, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }}>
+      <View
+        style={{
+          flex: 1,
+          width: '100%',
+          maxWidth: Platform.OS === 'web' ? 1000 : undefined,
+          alignSelf: 'center',
+          flexDirection: 'row',
+          direction: 'ltr',
+        }}
+      >
+        {buttons}
+      </View>
     </View>
   );
 }

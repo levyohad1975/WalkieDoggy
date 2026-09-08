@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Settings nested-modal lifecycle — pure decision logic.
  *
  * Background (final QA round, extended in a later patch to cover the
@@ -27,7 +27,7 @@
  *     there.
  */
 
-export type SettingsChildModal = 'activity' | 'auditLog';
+export type SettingsChildModal = 'activity' | 'auditLog' | 'impersonation';
 
 export interface PendingChildModalState {
   managementVisible: boolean;
@@ -56,4 +56,3 @@ export function decideChildModalToOpen(
   // 'visibility-effect': only fire once Management has actually closed.
   return state.managementVisible ? null : state.pendingChildModal;
 }
-

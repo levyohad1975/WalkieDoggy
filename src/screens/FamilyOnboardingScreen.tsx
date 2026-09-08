@@ -94,7 +94,7 @@ export function FamilyOnboardingScreen() {
       const family = await joinFamily(code.trim());
       await setFamilyId(family.id);
     } catch (e) {
-      setJoinError(e instanceof Error ? e.message : 'לא הצלחנו להצטרף למשפחה');
+      setJoinError(e instanceof Error ? e.message : (e && typeof e === 'object' && 'message' in e && typeof (e as { message?: unknown }).message === 'string' ? (e as { message: string }).message : 'לא הצלחנו להצטרף למשפחה'));
       setFound(null);
     } finally {
       setJoining(false);

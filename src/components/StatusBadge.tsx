@@ -23,11 +23,12 @@ const STYLES: Record<WalkStatus, { bg: string; fg: string }> = {
   skipped: { bg: colors.statusSkippedBg, fg: colors.statusSkipped },
 };
 
-export function StatusBadge({ status, overdue }: { status: WalkStatus; overdue?: boolean }) {
+export function StatusBadge({ status, overdue, glyphOnly = false }: { status: WalkStatus; overdue?: boolean; glyphOnly?: boolean }) {
   const isUnresolvedOverdue = overdue && status === 'pending';
   const palette = isUnresolvedOverdue ? { bg: colors.statusOverdueBg, fg: colors.statusOverdue } : STYLES[status];
   const label = isUnresolvedOverdue ? 'ממתין' : LABELS[status];
   const glyph = isUnresolvedOverdue ? '⏳' : GLYPHS[status];
+  const visibleText = glyphOnly && glyph ? glyph : `${glyph ? `${glyph} ` : ''}${label}`;
 
   return (
     <View
@@ -37,8 +38,7 @@ export function StatusBadge({ status, overdue }: { status: WalkStatus; overdue?:
       accessibilityLabel={label}
     >
       <RtlText style={[styles.text, { color: palette.fg }]} numberOfLines={1}>
-        {glyph ? `${glyph} ` : ''}
-        {label}
+        {visibleText}
       </RtlText>
     </View>
   );

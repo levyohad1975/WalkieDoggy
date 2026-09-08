@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import type { FamilyUser, Walk } from '../types';
 import { isOverdue, relativeTimeLabel, walkDateTime } from '../logic/nextWalk';
@@ -64,17 +64,18 @@ export function NextWalkCard({
 }: NextWalkCardProps) {
   const overdue = isOverdue(walk);
   const isMine = walk.responsibleUserId === currentUserId;
+  const isWeb = Platform.OS === 'web';
 
   return (
-    <View style={[styles.card, overdue && styles.cardOverdue]}>
-      <View style={styles.eyebrowRow}>
-        <DogPhoto photoUrl={dogPhotoUrl} size={72} />
-        <RtlText style={styles.eyebrow} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
+    <View style={[styles.card, isWeb && styles.webCard, overdue && styles.cardOverdue]}>
+      <View style={[styles.eyebrowRow, isWeb && styles.webEyebrowRow]}>
+        <DogPhoto photoUrl={dogPhotoUrl} size={isWeb ? 60 : 72} />
+        <RtlText style={styles.eyebrow} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
           הטיול הבא של {dogName}
         </RtlText>
       </View>
 
-      <View style={styles.mainRow}>
+      <View style={[styles.mainRow, isWeb && styles.webMainRow]}>
         <View style={styles.timeBlock}>
           <RtlText
             style={styles.time}
@@ -90,11 +91,11 @@ export function NextWalkCard({
               (e.g. tomorrow morning shown tonight) it doesn't say WHICH day
               — this one compact label removes that ambiguity, using the
               same shared helper the last-walk card below uses. */}
-          <RtlText style={styles.dateContext} numberOfLines={1}>
+          <RtlText style={styles.dateContext} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
             {walkDateContextLabel(walk.date)}
           </RtlText>
           {overdue ? (
-            <RtlText style={[styles.relative, styles.relativeOverdue]}>ממתין לעדכון · {relativeTimeLabel(walk)}</RtlText>
+            <RtlText style={[styles.relative, styles.relativeOverdue]} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>ממתין לעדכון · {relativeTimeLabel(walk)}</RtlText>
           ) : (
             <Countdown target={walkDateTime(walk)} />
           )}
@@ -102,21 +103,21 @@ export function NextWalkCard({
 
         <View style={styles.personBlock}>
           {responsible ? (
-            <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={56} />
+            <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={isWeb ? 50 : 56} />
           ) : null}
-          <RtlText style={styles.personName} numberOfLines={1}>
+          <RtlText style={styles.personName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
             {responsible?.name ?? '—'}
           </RtlText>
           {!isMine ? (
-            <RtlText style={styles.responsibleLabel}>
+            <RtlText style={styles.responsibleLabel} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
               באחריות {responsible?.name}
             </RtlText>
           ) : null}
         </View>
       </View>
 
-      {requestStatusLine ? (
-        <RtlText style={[styles.requestStatusLine, requestStatusLine.startsWith('✓') && styles.requestStatusApproved]} numberOfLines={1} ellipsizeMode="tail">
+      {requestStatusLine && !requestStatusLine.startsWith('✓') && !requestStatusLine.startsWith('✕') ? (
+        <RtlText style={styles.requestStatusLine} numberOfLines={1} ellipsizeMode="tail" adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
           {requestStatusLine}
         </RtlText>
       ) : null}
@@ -126,33 +127,35 @@ export function NextWalkCard({
         // theirs to resolve. Shown as plain informational text, never a
         // disabled-but-visible button (would look like a bug), matching
         // the "request system, not direct action" story for members.
-        <RtlText style={styles.notMineNote}>
+        <RtlText style={styles.notMineNote} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
           {overdue ? 'ממתין לעדכון ע״י ' : 'רק '}
           {responsible?.name ?? 'האחראי/ת'} יכול/ה לסמן את הטיול הזה
         </RtlText>
       ) : overdue && onMarkNotDone ? (
         <View style={styles.resolveRow}>
-          <Button label="✓ בוצע" onPress={onMarkDone} style={styles.resolveButton} />
+          <Button label="✓ בוצע" onPress={onMarkDone} style={styles.resolveButton} compact shrinkToFit />
           <Button
             label="✕ לא בוצע"
             variant="secondary"
             onPress={onMarkNotDone}
             style={styles.resolveButton}
+            compact
+            shrinkToFit
           />
         </View>
       ) : (
-        <Button label="סמן כבוצע" icon="✓" onPress={onMarkDone} style={styles.doneButton} />
+        <Button label="סמן כבוצע" icon="✓" onPress={onMarkDone} style={styles.doneButton} shrinkToFit />
       )}
       {onEdit || onSwap ? (
         <View style={styles.linkRow}>
           {onEdit ? (
-            <RtlText style={styles.linkText} onPress={onEdit}>
+            <RtlText style={styles.linkText} onPress={onEdit} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
               לערוך
             </RtlText>
           ) : null}
-          {onEdit && onSwap ? <RtlText style={styles.linkDivider}>·</RtlText> : null}
+          {onEdit && onSwap ? <RtlText style={styles.linkDivider} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>·</RtlText> : null}
           {onSwap ? (
-            <RtlText style={styles.linkText} onPress={onSwap}>
+            <RtlText style={styles.linkText} onPress={onSwap} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
               להחליף תור
             </RtlText>
           ) : null}
@@ -161,13 +164,13 @@ export function NextWalkCard({
       {onRequestSwap || onRequestTimeChange ? (
         <View style={styles.linkRow}>
           {onRequestSwap ? (
-            <RtlText style={styles.linkText} onPress={onRequestSwap}>
+            <RtlText style={styles.linkText} onPress={onRequestSwap} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
               בקש החלפה
             </RtlText>
           ) : null}
-          {onRequestSwap && onRequestTimeChange ? <RtlText style={styles.linkDivider}>·</RtlText> : null}
+          {onRequestSwap && onRequestTimeChange ? <RtlText style={styles.linkDivider} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>·</RtlText> : null}
           {onRequestTimeChange ? (
-            <RtlText style={styles.linkText} onPress={onRequestTimeChange}>
+            <RtlText style={styles.linkText} onPress={onRequestTimeChange} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
               בקש שינוי שעה
             </RtlText>
           ) : null}
@@ -191,17 +194,21 @@ export function NextWalkCard({
  * off its 100% baseline.
  */
 const TIME_MAX_FONT_SCALE = 1.35;
+const CARD_MAX_FONT_SCALE = 1.35;
 
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.statusCurrentBg,
     borderRadius: 28,
-    padding: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 24,
     borderWidth: 1.5,
     borderColor: colors.primary + '33',
   },
+  webCard: { borderRadius: 22, paddingHorizontal: 28, paddingVertical: 18 },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
   eyebrowRow: { flexDirection: 'row-reverse', direction: 'ltr', alignItems: 'center', gap: 8, marginBottom: 12 },
+  webEyebrowRow: { marginBottom: 4 },
   eyebrow: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
   // Round 6F correction: timeBlock/personBlock each get an explicit, equal
   // `flex` share of the row instead of sizing themselves to their own text's
@@ -210,6 +217,7 @@ const styles = StyleSheet.create({
   // on-screen position drifts as text metrics change; only the content
   // centered inside each fixed-width box can shift by a few px.
   mainRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 12 },
+  webMainRow: { marginBottom: 10, minHeight: 74 },
   timeBlock: { flex: 1, alignItems: 'flex-start', minWidth: 0 },
   // Reduced from 44 (BUG report: too large, wrapped to two lines on a
   // narrow iPhone and dwarfed the rest of the card). Still the single
@@ -223,8 +231,8 @@ const styles = StyleSheet.create({
   personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
   responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'right' },
   doneButton: { marginTop: 4 },
-  resolveRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
-  resolveButton: { flex: 1 },
+  resolveRow: { flexDirection: 'row', gap: 8, marginTop: 4, width: '100%' },
+  resolveButton: { flex: 1, minWidth: 0 },
   notMineNote: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: 6 },
   requestStatusLine: {
     width: '100%',

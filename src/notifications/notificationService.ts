@@ -80,6 +80,13 @@ let handlerRegistered = false;
 
 async function detectCapability(): Promise<NotificationCapability> {
   if (cachedCapability) return cachedCapability;
+
+  // expo-notifications local scheduling APIs are not supported on Web.
+  // Web Push is handled separately; never load the native notification path here.
+  if (Platform.OS === 'web') {
+    cachedCapability = 'unavailable';
+    return cachedCapability;
+  }
   try {
     const constantsImport: any = require('expo-constants');
     const constantsModule = constantsImport?.default ?? constantsImport;

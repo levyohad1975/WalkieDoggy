@@ -8,6 +8,8 @@ export interface RequestLike {
   status: 'pending' | 'approved' | 'rejected';
   created_at: string;
   resolved_at: string | null;
+  requester_seen_at?: string | null;
+  requested_by_user_id?: string;
 }
 
 export type RequestLifecycleState =
@@ -78,5 +80,26 @@ export function countActionableRequests<T extends RequestLike>(
 ): number {
   return requests.filter(
     (r) => isAddressedToViewer(r) && isRequestActive(computeRequestLifecycle(r, walksById, now))
+  ).length;
+}
+
+
+/**
+ * Counts recent terminal outcomes created by this viewer that have not yet
+ * been acknowledged in the Requests inbox. The same 24-hour lifecycle window
+ * used by the inbox applies, so an archived result can never resurrect the
+ * bell badge.
+ */
+export function countUnreadRequestResults<T extends RequestLike>(
+  requests: T[],
+  walksById: Record<string, Pick<Walk, 'status'> | undefined>,
+  viewerUserId: string,
+  now: Date = new Date()
+): number {
+  return requests.filter(
+    (r) =>
+      r.requested_by_user_id === viewerUserId &&
+      r.requester_seen_at == null &&
+      computeRequestLifecycle(r, walksById, now) === 'recentlyResolved'
   ).length;
 }

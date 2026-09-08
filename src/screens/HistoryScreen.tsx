@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
@@ -8,9 +8,9 @@ import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { summarizeWalksByUser } from '../logic/walkActions';
 import { toDateOnly } from '../logic/rotation';
+import { isOverdue } from '../logic/nextWalk';
 import { formatHistoryDate } from '../logic/dateFormat';
 import { isWalkEligibleForHistory } from '../logic/history';
-import { isOverdue } from '../logic/nextWalk';
 import { colors } from '../theme/colors';
 import { WalkRow } from '../components/WalkRow';
 import { EmptyState, ErrorState } from '../components/EmptyState';
@@ -42,13 +42,14 @@ export function HistoryScreen() {
   const effectiveUserId = useEffectiveUserId();
 
   const [editWalkId, setEditWalkId] = useState<string | null>(null);
-  const [resolveWalkId, setResolveWalkId] = useState<string | null>(null);
   const [editUnplannedWalkId, setEditUnplannedWalkId] = useState<string | null>(null);
   const [userFilter, setUserFilter] = useState<string | null>(null);
   const [planFilter, setPlanFilter] = useState<PlanFilter>('all');
   const [rangeFilter, setRangeFilter] = useState<RangeFilter>('all');
   const [customDate, setCustomDate] = useState<string | null>(null);
   const [customPickerOpen, setCustomPickerOpen] = useState(false);
+  const [draftCustomDate, setDraftCustomDate] = useState<string | null>(null);
+  const [resolveWalkId, setResolveWalkId] = useState<string | null>(null);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
 
   useEffect(() => {
@@ -58,13 +59,8 @@ export function HistoryScreen() {
 
   const usersById = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u])), [users]);
   const activeUsers = useMemo(() => users.filter((u) => !u.removedAt), [users]);
-
-  const canResolveWalk = (w: Walk): boolean =>
-    w.status === 'pending' &&
-    isOverdue(w) &&
-    (effectiveRole === 'admin' || w.responsibleUserId === effectiveUserId);
-
   const resolveWalk = resolveWalkId ? walks.find((w) => w.id === resolveWalkId) : undefined;
+  const canResolveWalk = (w: Walk) => w.status === 'pending' && isOverdue(w) && (effectiveRole === 'admin' || w.responsibleUserId === effectiveUserId);
 
   const weekAgo = useMemo(() => toDateOnly(new Date(Date.now() - 7 * 86400000)), []);
   const weeklyWalks = useMemo(
@@ -172,6 +168,7 @@ export function HistoryScreen() {
                 key={key}
                 onPress={() => {
                   if (key === 'custom') {
+                    setDraftCustomDate(customDate ?? toDateOnly(new Date()));
                     setCustomPickerOpen(true);
                   } else {
                     setRangeFilter(key);
@@ -188,20 +185,50 @@ export function HistoryScreen() {
             ))}
           </View>
 
-          {customPickerOpen || (Platform.OS === 'ios' && rangeFilter === 'custom') ? (
+          {Platform.OS === 'android' && customPickerOpen ? (
             <DateTimePicker
-              value={customDate ? new Date(`${customDate}T00:00:00`) : new Date()}
+              value={draftCustomDate ? new Date(`${draftCustomDate}T00:00:00`) : new Date()}
               mode="date"
-              display={Platform.OS === 'ios' ? 'inline' : 'default'}
+              display="default"
               onChange={(_event: DateTimePickerEvent, selected?: Date) => {
-                if (Platform.OS === 'android') setCustomPickerOpen(false);
+                setCustomPickerOpen(false);
                 if (selected) {
-                  setCustomDate(toDateOnly(selected));
+                  const value = toDateOnly(selected);
+                  setCustomDate(value);
                   setRangeFilter('custom');
                 }
               }}
             />
           ) : null}
+
+          <Modal visible={Platform.OS === 'ios' && customPickerOpen} transparent animationType="fade" onRequestClose={() => setCustomPickerOpen(false)}>
+            <View style={styles.dateModalBackdrop}>
+              <View style={styles.dateModalCard}>
+                <RtlText style={styles.dateModalTitle}>בחר תאריך</RtlText>
+                <DateTimePicker
+                  value={draftCustomDate ? new Date(`${draftCustomDate}T00:00:00`) : new Date()}
+                  mode="date"
+                  display="inline"
+                  onChange={(_event: DateTimePickerEvent, selected?: Date) => {
+                    if (selected) setDraftCustomDate(toDateOnly(selected));
+                  }}
+                />
+                <View style={styles.dateModalActions}>
+                  <Pressable style={[styles.dateModalButton, styles.dateModalCancel]} onPress={() => setCustomPickerOpen(false)}>
+                    <RtlText style={styles.dateModalCancelText}>ביטול</RtlText>
+                  </Pressable>
+                  <Pressable style={[styles.dateModalButton, styles.dateModalConfirm]} onPress={() => {
+                    const value = draftCustomDate ?? toDateOnly(new Date());
+                    setCustomDate(value);
+                    setRangeFilter('custom');
+                    setCustomPickerOpen(false);
+                  }}>
+                    <RtlText style={styles.dateModalConfirmText}>אישור</RtlText>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </Modal>
 
           {/*
             RTL/visual polish (final QA round): "עוד ⌄"/"הסתר ⌃" used to sit
@@ -276,6 +303,8 @@ export function HistoryScreen() {
                         historyCompact
                         responsible={usersById[w.responsibleUserId]}
                         completedBy={w.completedByUserId ? usersById[w.completedByUserId] : undefined}
+                        onMarkDone={canResolveWalk(w) ? () => setResolveWalkId(w.id) : undefined}
+                        onMarkNotDone={canResolveWalk(w) ? () => skip(w.id) : undefined}
                         onPress={
                           // Section 2: an unplanned walk owned by the viewer
                           // (or any walk, for an admin) opens the dedicated
@@ -312,14 +341,11 @@ export function HistoryScreen() {
           const walkId = resolveWalkId;
           setResolveWalkId(null);
           if (!walkId) return;
-          await markDone(walkId, completedByUserId, {
-            hadPee,
-            hadPoop,
-            note: note || undefined,
-          });
+          await markDone(walkId, completedByUserId, { hadPee, hadPoop, note: note || undefined });
         }}
         onCancel={() => setResolveWalkId(null)}
       />
+
       <EditDoneDetailsModal
         visible={!!editWalkId}
         walk={editWalkId ? walks.find((w) => w.id === editWalkId) ?? null : null}
@@ -395,4 +421,13 @@ const styles = StyleSheet.create({
   dayLabel: { width: '100%', fontSize: 12, color: colors.textSecondary, fontWeight: '500', textAlign: 'right' },
   historyItem: { gap: 4 },
   note: { fontSize: 12, fontWeight: '400', color: colors.textSecondary, textAlign: 'right', paddingHorizontal: 8 },
+  dateModalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.38)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  dateModalCard: { width: '100%', maxWidth: 380, backgroundColor: colors.surface, borderRadius: 24, padding: 18, gap: 12 },
+  dateModalTitle: { fontSize: 22, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
+  dateModalActions: { flexDirection: 'row', gap: 10 },
+  dateModalButton: { flex: 1, minHeight: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  dateModalCancel: { backgroundColor: colors.surfaceMuted },
+  dateModalConfirm: { backgroundColor: colors.primary },
+  dateModalCancelText: { fontSize: 16, fontWeight: '700', color: colors.primaryDark },
+  dateModalConfirmText: { fontSize: 16, fontWeight: '800', color: '#fff' },
 });

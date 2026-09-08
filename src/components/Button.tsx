@@ -77,6 +77,7 @@ export function Button({ label, onPress, variant = 'primary', loading, disabled,
           numberOfLines={wrap ? undefined : 1}
           adjustsFontSizeToFit={!wrap && (compact || shrinkToFit)}
           minimumFontScale={0.85}
+          maxFontSizeMultiplier={(compact || shrinkToFit) ? 1.35 : undefined}
         >
           {icon ? `${icon}  ${label}` : label}
         </RtlText>

@@ -1,4 +1,4 @@
-import { decideChildModalToOpen } from '../settingsModalTransitions';
+﻿import { decideChildModalToOpen } from '../settingsModalTransitions';
 
 describe('decideChildModalToOpen', () => {
   it('does nothing when no child modal was requested', () => {
@@ -17,13 +17,6 @@ describe('decideChildModalToOpen', () => {
     expect(
       decideChildModalToOpen({ managementVisible: false, pendingChildModal: 'auditLog' }, 'ios-native-dismiss')
     ).toBe('auditLog');
-    // Patch: real-impersonation picker now goes through the exact same
-    // safe lifecycle as 'activity'/'auditLog' — this is the regression
-    // test for that fix (it used to bypass this decision function
-    // entirely, opening directly while Management stayed visible).
-    expect(
-      decideChildModalToOpen({ managementVisible: false, pendingChildModal: 'impersonation' }, 'ios-native-dismiss')
-    ).toBe('impersonation');
   });
 
   it('non-iOS: does NOT open the child while Management is still reported visible', () => {
@@ -31,7 +24,7 @@ describe('decideChildModalToOpen', () => {
       decideChildModalToOpen({ managementVisible: true, pendingChildModal: 'activity' }, 'visibility-effect')
     ).toBeNull();
     expect(
-      decideChildModalToOpen({ managementVisible: true, pendingChildModal: 'impersonation' }, 'visibility-effect')
+      decideChildModalToOpen({ managementVisible: true, pendingChildModal: 'auditLog' }, 'visibility-effect')
     ).toBeNull();
   });
 
@@ -43,7 +36,8 @@ describe('decideChildModalToOpen', () => {
       decideChildModalToOpen({ managementVisible: false, pendingChildModal: 'auditLog' }, 'visibility-effect')
     ).toBe('auditLog');
     expect(
-      decideChildModalToOpen({ managementVisible: false, pendingChildModal: 'impersonation' }, 'visibility-effect')
-    ).toBe('impersonation');
+      decideChildModalToOpen({ managementVisible: false, pendingChildModal: 'auditLog' }, 'visibility-effect')
+    ).toBe('auditLog');
   });
 });
+

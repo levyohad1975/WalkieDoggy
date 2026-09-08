@@ -12,6 +12,7 @@ function swap(overrides: Partial<SwapRequestRow> = {}): SwapRequestRow {
     status: 'pending',
     created_at: '2026-09-04T08:00:00.000Z',
     resolved_at: null,
+    requester_seen_at: null,
     ...overrides,
   };
 }
@@ -27,6 +28,7 @@ function timeChange(overrides: Partial<TimeChangeRequestRow> = {}): TimeChangeRe
     status: 'pending',
     created_at: '2026-09-04T08:00:00.000Z',
     resolved_at: null,
+    requester_seen_at: null,
     ...overrides,
   };
 }

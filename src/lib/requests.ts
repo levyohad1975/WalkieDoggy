@@ -25,6 +25,7 @@ export interface SwapRequestRow {
   status: 'pending' | 'approved' | 'rejected';
   created_at: string;
   resolved_at: string | null;
+  requester_seen_at: string | null;
 }
 
 export interface TimeChangeRequestRow {
@@ -37,6 +38,7 @@ export interface TimeChangeRequestRow {
   status: 'pending' | 'approved' | 'rejected';
   created_at: string;
   resolved_at: string | null;
+  requester_seen_at: string | null;
 }
 
 export interface FamilyActivityRow {
@@ -120,6 +122,18 @@ export async function listTimeChangeRequests(): Promise<TimeChangeRequestRow[]> 
   const { data, error } = await client.from('time_change_requests').select('*').order('created_at', { ascending: false });
   if (error) throw error;
   return (data ?? []) as TimeChangeRequestRow[];
+}
+
+
+/**
+ * Marks every recent approved/rejected request CREATED BY the current real
+ * profile as seen. Authorization and requester identity are derived entirely
+ * server-side; the client cannot mark another member's results as read.
+ */
+export async function markMyRequestResultsSeen(): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.rpc('mark_my_request_results_seen');
+  if (error) throw error;
 }
 
 // ---- Presence ----

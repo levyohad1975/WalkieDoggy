@@ -10,6 +10,11 @@ import { toDateOnly } from '../logic/rotation';
 export const DEMO_FAMILY: Family = {
   id: 'family-main',
   name: 'המשפחה שלנו',
+  // Matches the default every Supabase-mode family gets from
+  // supabase/migrations/0022_family_timezone_and_dog_sex.sql — kept
+  // consistent here so local/demo mode and Supabase mode behave the same
+  // way for scheduling/reminder-time calculations.
+  timezone: 'Asia/Jerusalem',
   createdAt: new Date().toISOString(),
 };
 

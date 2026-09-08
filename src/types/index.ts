@@ -10,6 +10,20 @@ export interface Family {
   id: string;
   name: string;
   inviteCode?: string; // short join code (Supabase mode only — absent/unused in local/demo mode)
+  /**
+   * Authoritative IANA timezone (e.g. "Asia/Jerusalem") this family's walk
+   * scheduling and reminder-time calculations run on. Optional at the type
+   * level — not every code path (notably local/demo-mode data cached before
+   * this field existed) is guaranteed to have it — but Supabase mode's
+   * `families.timezone` column is NOT NULL with a safe default, so any
+   * family read from Supabase will always have a real value here. Business
+   * logic that depends on this must have an explicit fallback for the
+   * `undefined` case rather than assuming it's always present. A future
+   * per-user *display* layer may show a different local time without ever
+   * changing this authoritative value. See
+   * supabase/migrations/0022_family_timezone_and_dog_sex.sql.
+   */
+  timezone?: string;
   createdAt: string;
 }
 
@@ -50,6 +64,15 @@ export interface Dog {
   photoUrl?: string;
   walksPerDay: number;
   notes?: string;
+  /**
+   * Used by the (future) Message Template Engine to produce grammatically
+   * correct Hebrew reminder wording (זכר/נקבה) instead of hard-coded text.
+   * Undefined for a dog whose sex hasn't been recorded yet (e.g. every
+   * existing dog as of this field's introduction) — business logic must
+   * fall back to neutral phrasing rather than assuming a value. See
+   * supabase/migrations/0022_family_timezone_and_dog_sex.sql.
+   */
+  sex?: 'male' | 'female';
 }
 
 /**

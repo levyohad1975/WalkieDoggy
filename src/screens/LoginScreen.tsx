@@ -113,7 +113,7 @@ export function LoginScreen() {
       // (just discovered a different way — by tapping the name, rather than
       // this device's own stale-session check) — offer the same PIN-reclaim
       // path rather than a dead end.
-      const rawMessage = err instanceof Error ? err.message : String(err ?? '');
+      const rawMessage = err instanceof Error ? err.message : (err && typeof err === 'object' && 'message' in err ? String((err as { message?: unknown }).message ?? '') : String(err ?? ''));
       if (rawMessage.includes('profile already claimed by another device')) {
         setPinReclaimUserId(userId);
       }

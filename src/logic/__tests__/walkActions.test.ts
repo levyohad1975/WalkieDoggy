@@ -275,7 +275,7 @@ describe('walkMetadataLine', () => {
       responsibleUserId: 'b',
       swap: { originalUserId: 'a', swappedAt: new Date().toISOString(), newUserId: 'b', swappedByUserId: 'a' } as never,
     });
-    expect(walkMetadataLine(swapped)).toBe('הוחלף');
+    expect(walkMetadataLine(swapped)).toBeNull();
   });
 
   it('joins both when a walk is both unplanned and swapped', () => {
@@ -284,7 +284,7 @@ describe('walkMetadataLine', () => {
       responsibleUserId: 'b',
       swap: { originalUserId: 'a', swappedAt: new Date().toISOString(), newUserId: 'b', swappedByUserId: 'a' } as never,
     });
-    expect(walkMetadataLine(both)).toBe('טיול ספונטני · הוחלף');
+    expect(walkMetadataLine(both)).toBe('טיול ספונטני');
   });
 
   it('null once a swap returns to its original assignee (A -> B -> A)', () => {

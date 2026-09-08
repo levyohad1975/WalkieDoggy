@@ -1,10 +1,11 @@
-import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 import type { FamilyUser } from '../types';
+import { enableWebPush, getWebPushStatus, type WebPushStatus } from '../lib/webPush';
 
 interface RemindersModalProps {
   visible: boolean;
@@ -24,12 +25,78 @@ export function RemindersModal({
   onSetReminderEnabled,
   onClose,
 }: RemindersModalProps) {
+  const [webPushStatus, setWebPushStatus] = useState<WebPushStatus>('default');
+  const [webPushBusy, setWebPushBusy] = useState(false);
+
+  useEffect(() => {
+    if (!visible || Platform.OS !== 'web') {
+      return;
+    }
+
+    void getWebPushStatus().then(setWebPushStatus);
+  }, [visible]);
+
+  const handleEnableWebPush = async () => {
+    try {
+      setWebPushBusy(true);
+      const status = await enableWebPush();
+      setWebPushStatus(status);
+
+      if (status === 'subscribed') {
+        Alert.alert('התראות הופעלו', 'המכשיר הזה רשום לקבלת התראות.');
+      } else if (status === 'denied') {
+        Alert.alert(
+          'ההתראות חסומות',
+          'יש לאפשר התראות בהגדרות הדפדפן או המכשיר.'
+        );
+      } else if (status === 'unsupported') {
+        Alert.alert(
+          'לא נתמך',
+          'Web Push אינו נתמך בסביבה הנוכחית.'
+        );
+      }
+    } catch (error) {
+      console.error('Failed to enable Web Push', error);
+      Alert.alert(
+        'לא ניתן להפעיל התראות',
+        'אירעה שגיאה בעת רישום המכשיר להתראות.'
+      );
+    } finally {
+      setWebPushBusy(false);
+    }
+  };
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <RtlText style={styles.title}>🔔 תזכורות</RtlText>
           <ScrollView style={styles.scroll}>
+{Platform.OS === 'web' && (
+  <View style={styles.webPushSection}>
+    <RtlText style={styles.webPushTitle}>התראות במכשיר הזה</RtlText>
+
+    <RtlText style={styles.webPushText}>
+      {webPushStatus === 'subscribed'
+        ? 'ההתראות פעילות במכשיר הזה.'
+        : webPushStatus === 'denied'
+          ? 'ההתראות חסומות בהגדרות הדפדפן או המכשיר.'
+          : webPushStatus === 'unsupported'
+            ? 'המכשיר או הדפדפן הזה אינם תומכים ב-Web Push.'
+            : 'אפשר לקבל התראות גם כשהאפליקציה אינה פתוחה.'}
+    </RtlText>
+
+    {webPushStatus !== 'subscribed' &&
+      webPushStatus !== 'denied' &&
+      webPushStatus !== 'unsupported' && (
+        <Button
+          label={webPushBusy ? 'מפעיל התראות...' : 'אפשר התראות'}
+          onPress={handleEnableWebPush}
+          disabled={webPushBusy}
+          style={styles.webPushButton}
+        />
+      )}
+  </View>
+)}
             {users
               .filter((u) => !u.removedAt)
               .map((u) => (
@@ -68,5 +135,31 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 8 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 4 },
   name: { flex: 1, fontSize: 16, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
-  closeButton: { marginTop: 14 },
+webPushSection: {
+  paddingVertical: 14,
+  paddingHorizontal: 4,
+  borderBottomWidth: StyleSheet.hairlineWidth,
+  borderBottomColor: colors.border,
+  marginBottom: 8,
+},
+
+webPushTitle: {
+  fontSize: 16,
+  fontWeight: '700',
+  color: colors.textPrimary,
+  textAlign: 'right',
+  marginBottom: 6,
+},
+
+webPushText: {
+  fontSize: 14,
+  color: colors.textSecondary,
+  textAlign: 'right',
+  lineHeight: 20,
+},
+
+webPushButton: {
+  marginTop: 10,
+},  
+closeButton: { marginTop: 14 },
 });

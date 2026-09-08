@@ -679,7 +679,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   // clearing impersonatingUserId) — the ONLY difference is which RPC
   // performs the actual claim (claim_family_profile() — self-or-unclaimed
   // only — vs claim_family_profile_with_pin() — family-membership + PIN
-  // verified, used to take over a claim already held by another device).
+  // verified; since migration 0020 it adds this device without displacing another device).
   // Kept as one function (rather than two independent copies) specifically
   // so this finalize sequence can never drift between the two entry points.
   __signInCore: async (userId: string, mode: 'plain' | 'pin', pin?: string) => {

@@ -50,7 +50,8 @@ export async function ensureAnonymousSession(): Promise<void> {
  * the RLS policies resolve `current_family_id()` for this device going
  * forward. Called from authStore.signIn() right after "pick your profile".
  * Safe to call again later (e.g. someone re-picks a profile on a new phone);
- * the previous device simply stops matching that row's auth_user_id.
+ * under migration 0020, the server records a per-device profile session;
+ * another device already signed into the same profile is never displaced.
  *
  * This is a SECURITY DEFINER RPC (claim_family_profile, see
  * migrations/0004_*.sql), not a plain `.update()` on `users`. Claiming isn't
@@ -70,8 +71,8 @@ export async function claimFamilyProfile(userId: string): Promise<void> {
 
 /**
  * QA/UX round, Part F1 (migrations/0016_*.sql): sets/changes/clears a
- * profile's PIN (used by claimFamilyProfileWithPin below to let a second
- * device reclaim a profile already claimed elsewhere). Pass `pin: null` to
+ * profile's PIN (used by claimFamilyProfileWithPin below to let another
+ * device sign into the same profile without displacing existing devices). Pass `pin: null` to
  * clear an existing PIN. See the RPC's own doc comment for exactly who may
  * call this (the profile's own current device, or a family admin).
  *
@@ -88,8 +89,8 @@ export async function setProfilePin(userId: string, pin: string | null): Promise
  * QA/UX round, Part F1 (migrations/0016_*.sql): reclaims a profile ALREADY
  * claimed by a different device, verified by PIN — see
  * claim_family_profile_with_pin()'s own doc comment for the exact
- * semantics (a claim TRANSFER, not a simultaneous second claim — the
- * previous device's claim is superseded). Distinct from claimFamilyProfile
+ * original 0016 semantics were a transfer; migration 0020 changes this to
+ * a simultaneous multi-device session while preserving the RPC signature. Distinct from claimFamilyProfile
  * above, which is unchanged and still refuses outright when the profile is
  * claimed by someone else.
  *

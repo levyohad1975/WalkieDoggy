@@ -1,57 +1,57 @@
-﻿// supabase/functions/send-request-push/index.ts
+// supabase/functions/send-request-push/index.ts
 //
 // MEGA ROUND Section 10 + SECURITY CORRECTION.
 //
 // SECURITY MODEL (this is the whole point of this rewrite): this function
 // runs with the project's SERVICE ROLE key, which bypasses RLS entirely.
 // An earlier version of this function trusted client-supplied
-// recipientUserIds/title/body/kind/event â€” a modified client could have
+// recipientUserIds/title/body/kind/event — a modified client could have
 // used that to make this function push arbitrary content to arbitrary
 // people. It now trusts NOTHING from the request body for authorization or
 // content. The only thing the client sends that matters is `requestId`
-// (plus an optional `kind` HINT purely to save one lookup â€” never trusted
-// for authorization) â€” everything else is derived here, server-side, from:
+// (plus an optional `kind` HINT purely to save one lookup — never trusted
+// for authorization) — everything else is derived here, server-side, from:
 //   1. The caller's identity, verified from their Authorization bearer
 //      token against Supabase Auth (mirrors current_profile_id()'s
-//      auth.uid()-based trust model already used throughout this schema â€”
+//      auth.uid()-based trust model already used throughout this schema —
 //      see migrations/0005_requests_audit_presence.sql).
 //   2. The actual persisted request row, loaded with the service-role
 //      client AFTER that identity is verified.
 //   3. src/logic/pushRouting.ts's validateAndRoutePushEvent() rule,
 //      inlined below (Deno can't import that RN-project file at deploy
-//      time â€” the canonical, unit-tested copy lives there; keep both in
+//      time — the canonical, unit-tested copy lives there; keep both in
 //      sync if the rule ever changes).
 //
 // FLOW:
 //   a. Extract the Authorization header from the incoming request and use
 //      it to build a USER-SCOPED Supabase client (anon key + that header)
-//      â€” queries through this client run AS the caller, under RLS, so
+//      — queries through this client run AS the caller, under RLS, so
 //      auth.uid()-based server functions (current_profile_id(),
 //      is_family_admin()) resolve the REAL caller, never a client claim.
 //   b. userClient.auth.getUser() verifies the token itself; reject with
 //      401 if it's missing/invalid.
 //   c. Resolve callerUserId (current_profile_id() RPC), callerFamilyId,
-//      and callerIsAdmin (is_family_admin() RPC) â€” all via that
+//      and callerIsAdmin (is_family_admin() RPC) — all via that
 //      user-scoped, RLS-respecting client. NONE of this comes from the
 //      request body.
 //   d. ONLY NOW build the service-role client and load the actual request
-//      row by requestId (checked against both request tables â€” `kind` from
+//      row by requestId (checked against both request tables — `kind` from
 //      the client, if sent, only picks which table to try FIRST, it is
 //      never trusted as authorization).
-//   e. Run validateAndRoutePushEvent(row, event, ctx) â€” rejects outright if
+//   e. Run validateAndRoutePushEvent(row, event, ctx) — rejects outright if
 //      the caller isn't the party entitled to report this event, or if the
 //      row's PERSISTED status doesn't actually match the claimed event
 //      (e.g. can't fake an "approved" push for a still-pending request).
 //   f. Re-confirm every resolved recipient's family_id via a service-role
 //      `users` lookup (defense in depth, Requirement 7) before sending.
 //   g. Build title/body from a small Hebrew template keyed by kind+event,
-//      filled in with server-loaded names/times â€” never client text. Any
+//      filled in with server-loaded names/times — never client text. Any
 //      client-supplied `titleHint`/`bodyHint` is accepted but used ONLY as
 //      a non-authoritative fallback if the template can't resolve a name
 //      (e.g. a since-removed member), never verbatim beyond that.
 //   h. IDEMPOTENCY (migration 0014_request_push_events.sql): only once
 //      authorized, atomically claims a durable dedupe key
-//      (kind:requestId:event) via claim_request_push_event() â€” a repeat
+//      (kind:requestId:event) via claim_request_push_event() — a repeat
 //      call for the same already-sent (or currently in-flight and fresh)
 //      event returns { ok:true, sent:0, reason:"already sent" } without
 //      touching the Expo API again. On success the claim is marked 'sent'
@@ -64,7 +64,7 @@
 //      recipients only; deactivate tokens that report DeviceNotRegistered.
 //
 // Best-effort semantics preserved: nothing here can affect the
-// already-committed request DB action that triggered this call â€” by
+// already-committed request DB action that triggered this call — by
 // construction this only ever runs AFTER that action already succeeded,
 // and any failure in this function is caught and returned as a 200 with
 // ok:false rather than surfaced as if the request action itself failed.
@@ -112,7 +112,7 @@ const STATUS_FOR_EVENT: Record<PushRequestEvent, PushRequestStatus> = {
   rejected: 'rejected',
 };
 
-// Inlined copy of src/logic/pushRouting.ts's validateAndRoutePushEvent() â€”
+// Inlined copy of src/logic/pushRouting.ts's validateAndRoutePushEvent() —
 // see that file for the canonical, unit-tested version and the reasoning
 // behind every check. Kept deliberately identical in behavior.
 function validateAndRoutePushEvent(
@@ -161,37 +161,22 @@ function validateAndRoutePushEvent(
 
 function templateFor(kind: PushRequestKind, event: PushRequestEvent, row: RequestRowForPush): { title: string; body: string } {
   if (kind === 'swap') {
-    if (event === 'created') return { title: '\u05d1\u05e7\u05e9\u05ea \u05d4\u05d7\u05dc\u05e4\u05ea \u05ea\u05d5\u05e8', body: '\u05de\u05d9\u05e9\u05d4\u05d5 \u05d1\u05d9\u05e7\u05e9 \u05dc\u05d4\u05d7\u05dc\u05d9\u05e3 \u05d0\u05d9\u05ea\u05da \u05ea\u05d5\u05e8 \u05d8\u05d9\u05d5\u05dc \u2014 \u05d9\u05e9 \u05dc\u05d0\u05e9\u05e8 \u05d0\u05d5 \u05dc\u05d3\u05d7\u05d5\u05ea' };
-    if (event === 'approved') return { title: '\u05d1\u05e7\u05e9\u05ea \u05d4\u05d4\u05d7\u05dc\u05e4\u05d4 \u05e9\u05dc\u05da \u05d0\u05d5\u05e9\u05e8\u05d4', body: '\u05d1\u05e7\u05e9\u05ea \u05d4\u05d4\u05d7\u05dc\u05e4\u05d4 \u05e9\u05d1\u05d9\u05e7\u05e9\u05ea \u05d0\u05d5\u05e9\u05e8\u05d4' };
-    return { title: '\u05d1\u05e7\u05e9\u05ea \u05d4\u05d4\u05d7\u05dc\u05e4\u05d4 \u05e9\u05dc\u05da \u05e0\u05d3\u05d7\u05ea\u05d4', body: '\u05d1\u05e7\u05e9\u05ea \u05d4\u05d4\u05d7\u05dc\u05e4\u05d4 \u05e9\u05d1\u05d9\u05e7\u05e9\u05ea \u05e0\u05d3\u05d7\u05ea\u05d4' };
+    if (event === 'created') return { title: 'בקשת החלפת תור', body: 'מישהו ביקש להחליף איתך תור טיול — יש לאשר או לדחות' };
+    if (event === 'approved') return { title: 'בקשת ההחלפה שלך אושרה', body: 'בקשת ההחלפה שביקשת אושרה' };
+    return { title: 'בקשת ההחלפה שלך נדחתה', body: 'בקשת ההחלפה שביקשת נדחתה' };
   }
-
-  if (event === 'created') return { title: '\u05d1\u05e7\u05e9\u05ea \u05e9\u05d9\u05e0\u05d5\u05d9 \u05e9\u05e2\u05d4', body: '\u05d4\u05ea\u05e7\u05d1\u05dc\u05d4 \u05d1\u05e7\u05e9\u05ea \u05e9\u05d9\u05e0\u05d5\u05d9 \u05e9\u05e2\u05d4 \u05dc\u05d8\u05d9\u05d5\u05dc \u2014 \u05d9\u05e9 \u05dc\u05d0\u05e9\u05e8 \u05d0\u05d5 \u05dc\u05d3\u05d7\u05d5\u05ea' };
-
+  // timeChange
+  if (event === 'created') return { title: 'בקשת שינוי שעה', body: 'התקבלה בקשת שינוי שעה לטיול — יש לאשר או לדחות' };
   if (event === 'approved') {
     return {
-      title: '\u05d1\u05e7\u05e9\u05ea \u05e9\u05d9\u05e0\u05d5\u05d9 \u05d4\u05e9\u05e2\u05d4 \u05e9\u05dc\u05da \u05d0\u05d5\u05e9\u05e8\u05d4',
-      body: row.proposedTime
-        ? `\u05e9\u05e2\u05ea \u05d4\u05d8\u05d9\u05d5\u05dc \u05e9\u05d5\u05e0\u05ea\u05d4 \u05dc-${row.proposedTime}`
-        : '\u05e9\u05e2\u05ea \u05d4\u05d8\u05d9\u05d5\u05dc \u05e9\u05d5\u05e0\u05ea\u05d4 \u05db\u05de\u05d1\u05d5\u05e7\u05e9',
+      title: 'בקשת שינוי השעה שלך אושרה',
+      body: row.proposedTime ? `שעת הטיול שונתה ל-${row.proposedTime}` : 'שעת הטיול שונתה כמבוקש',
     };
   }
-
-  return {
-    title: '\u05d1\u05e7\u05e9\u05ea \u05e9\u05d9\u05e0\u05d5\u05d9 \u05d4\u05e9\u05e2\u05d4 \u05e9\u05dc\u05da \u05e0\u05d3\u05d7\u05ea\u05d4',
-    body: '\u05d1\u05e7\u05e9\u05ea \u05e9\u05d9\u05e0\u05d5\u05d9 \u05d4\u05e9\u05e2\u05d4 \u05e9\u05d1\u05d9\u05e7\u05e9\u05ea \u05e0\u05d3\u05d7\u05ea\u05d4',
-  };
+  return { title: 'בקשת שינוי השעה שלך נדחתה', body: 'בקשת שינוי השעה שביקשת נדחתה' };
 }
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
 
 Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
   try {
     // ---- Step 1: authenticate the caller from their own bearer token ----
     const authHeader = req.headers.get('Authorization') ?? req.headers.get('authorization');
@@ -203,7 +188,7 @@ Deno.serve(async (req: Request) => {
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-    // User-scoped client: runs AS the caller under RLS â€” auth.uid()-based
+    // User-scoped client: runs AS the caller under RLS — auth.uid()-based
     // server functions below resolve the REAL, verified caller. This is
     // the equivalent of current_profile_id()'s trust model, applied here
     // via an actual authenticated PostgREST/RPC call rather than a raw JWT
@@ -236,7 +221,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: callerIsAdmin } = await userClient.rpc('is_family_admin', { target_family_id: callerFamilyId });
 
-    // ---- Step 3: parse the request body â€” ONLY a trigger hint, never authorization ----
+    // ---- Step 3: parse the request body — ONLY a trigger hint, never authorization ----
     const body = await req.json();
     const requestId: string | undefined = body?.requestId;
     const event: PushRequestEvent | undefined = body?.event;
@@ -292,7 +277,7 @@ Deno.serve(async (req: Request) => {
     let familyAdminUserIds: string[] | undefined;
     if (row.kind === 'timeChange' && event === 'created') {
       // family_auth_members is keyed by auth_user_id (a DEVICE's auth
-      // identity), not by users.id (a family-member PROFILE) â€” users.
+      // identity), not by users.id (a family-member PROFILE) — users.
       // auth_user_id is the join. See schema.sql's own comment on this
       // distinction.
       const { data: adminAuthRows } = await serviceClient
@@ -341,19 +326,19 @@ Deno.serve(async (req: Request) => {
     if (!routing.authorized) {
       // Not an error the client did anything observably wrong with (from
       // its own point of view it just asked "tell people about my
-      // request") â€” respond 200/ok:false so this never surfaces as if the
+      // request") — respond 200/ok:false so this never surfaces as if the
       // already-committed request action failed.
       return new Response(JSON.stringify({ ok: false, sent: 0, reason: routing.reason }), { status: 200 });
     }
 
-    // ---- Step 8: IDEMPOTENCY CLAIM â€” strictly AFTER authorization, never before ----
+    // ---- Step 8: IDEMPOTENCY CLAIM — strictly AFTER authorization, never before ----
     // Only an already-`routing.authorized` call reaches this point, so an
     // unauthorized caller can never create/touch a request_push_events row
-    // at all (verified by this ordering â€” see the final report for how
+    // at all (verified by this ordering — see the final report for how
     // this was checked, since the Deno handler itself isn't unit-testable
     // in this environment). buildDedupeKey() mirrors
     // src/logic/pushRouting.ts's version exactly (same "kind:id:event"
-    // shape â€” see that file's doc comment on keeping both in sync).
+    // shape — see that file's doc comment on keeping both in sync).
     const dedupeKey = `${row.kind}:${row.id}:${event}`;
     const { data: claimed, error: claimError } = await serviceClient.rpc('claim_request_push_event', {
       p_dedupe_key: dedupeKey,
@@ -364,261 +349,76 @@ Deno.serve(async (req: Request) => {
     if (claimError) throw claimError;
     if (!claimed) {
       // Someone else already sent this exact (kind, requestId, event), or
-      // is currently sending it and that attempt isn't stale yet â€” the
+      // is currently sending it and that attempt isn't stale yet — the
       // atomic DB claim (not this check) is what actually prevents a race;
       // this is just reporting its outcome.
       return new Response(JSON.stringify({ ok: true, sent: 0, reason: 'already sent' }), { status: 200 });
     }
 
-    // ---- Step 9: template the content server-side â€” never forward client text ----
+    // ---- Step 9: template the content server-side — never forward client text ----
     const { title, body: pushBody } = templateFor(row.kind, event, row);
 
     try {
-      // ---- Step 10: load all active delivery targets BEFORE sending ----
+      // ---- Step 10: send ----
       const { data: tokenRows, error: tokenError } = await serviceClient
         .from('push_tokens')
         .select('id, user_id, token')
         .in('user_id', routing.recipientUserIds)
         .eq('is_active', true);
       if (tokenError) throw tokenError;
-
-      const { data: webPushRows, error: webPushError } = await serviceClient
-        .from('web_push_subscriptions')
-        .select('id, user_id, endpoint, p256dh, auth')
-        .in('user_id', routing.recipientUserIds)
-        .eq('is_active', true);
-      if (webPushError) throw webPushError;
-
-      const expoTokens = tokenRows ?? [];
-      const webSubscriptions = webPushRows ?? [];
-
-      if (expoTokens.length === 0 && webSubscriptions.length === 0) {
-        await serviceClient.rpc('mark_request_push_event', {
-          p_dedupe_key: dedupeKey,
-          p_status: 'sent',
-        });
-
-        return new Response(
-          JSON.stringify({
-            ok: true,
-            sent: 0,
-            expoSent: 0,
-            webSent: 0,
-            reason: 'no active push destinations',
-          }),
-          { status: 200 }
-        );
+      if (!tokenRows || tokenRows.length === 0) {
+        await serviceClient.rpc('mark_request_push_event', { p_dedupe_key: dedupeKey, p_status: 'sent' });
+        return new Response(JSON.stringify({ ok: true, sent: 0, reason: 'no active tokens' }), { status: 200 });
       }
 
-      let expoSent = 0;
-      let webSent = 0;
-      const deliveryErrors: string[] = [];
+      const messages = tokenRows.map((r: any) => ({
+        to: r.token,
+        title,
+        body: pushBody,
+        data: { type: 'request', requestId: row.id, kind: row.kind, event },
+        sound: 'default',
+        priority: 'high',
+      }));
 
-      // ---- Expo Push ----
-      if (expoTokens.length > 0) {
-        try {
-          const messages = expoTokens.map((r: any) => ({
-            to: r.token,
-            title,
-            body: pushBody,
-            data: {
-              type: 'request',
-              requestId: row.id,
-              kind: row.kind,
-              event,
-            },
-            sound: 'default',
-            priority: 'high',
-          }));
+      const expoResponse = await fetch(EXPO_PUSH_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify(messages),
+      });
+      const expoResult = await expoResponse.json();
 
-          const expoResponse = await fetch(EXPO_PUSH_URL, {
-            method: 'POST',
-            headers: {
-              'content-type': 'application/json',
-              accept: 'application/json',
-            },
-            body: JSON.stringify(messages),
-          });
-
-          if (!expoResponse.ok) {
-            throw new Error(`Expo Push HTTP ${expoResponse.status}`);
-          }
-
-          const expoResult = await expoResponse.json();
-
-          const tickets = Array.isArray(expoResult?.data)
-            ? expoResult.data
-            : [];
-
-          const deactivations: Promise<any>[] = [];
-
-          tickets.forEach((ticket: any, i: number) => {
-            const tokenRow = expoTokens[i];
-            if (!tokenRow) return;
-
-            if (ticket?.status === 'ok') {
-              expoSent += 1;
-              return;
-            }
-
-            if (ticket?.status === 'error') {
-              const isPermanent =
-                ticket?.details?.error === 'DeviceNotRegistered';
-
-              deactivations.push(
-                serviceClient
-                  .from('push_tokens')
-                  .update({
-                    is_active: !isPermanent,
-                    last_error: String(
-                      ticket.message ??
-                        ticket.details?.error ??
-                        'unknown error'
-                    ),
-                  })
-                  .eq('id', tokenRow.id)
-              );
-            }
-          });
-
-          if (deactivations.length > 0) {
-            await Promise.allSettled(deactivations);
-          }
-        } catch (expoErr) {
-          console.error('Expo Push failed', expoErr);
-          deliveryErrors.push(`expo: ${String(expoErr)}`);
-        }
-      }
-
-      // ---- Web Push ----
-      if (webSubscriptions.length > 0) {
-        if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
-          deliveryErrors.push('web: VAPID keys are not configured');
-        } else {
-          const payload = JSON.stringify({
-            title,
-            body: pushBody,
-            data: {
-              type: 'request',
-              requestId: row.id,
-              kind: row.kind,
-              event,
-            },
-          });
-
-          const webResults = await Promise.allSettled(
-            webSubscriptions.map(async (subscriptionRow: any) => {
-              try {
-                await webpush.sendNotification(
-                  {
-                    endpoint: subscriptionRow.endpoint,
-                    keys: {
-                      p256dh: subscriptionRow.p256dh,
-                      auth: subscriptionRow.auth,
-                    },
-                  },
-                  payload
-                );
-
-                webSent += 1;
-
-                await serviceClient
-                  .from('web_push_subscriptions')
-                  .update({
-                    is_active: true,
-                    last_error: null,
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq('id', subscriptionRow.id);
-              } catch (pushErr: any) {
-                const statusCode =
-                  pushErr?.statusCode ?? pushErr?.status ?? null;
-
-                const isPermanent =
-                  statusCode === 404 || statusCode === 410;
-
-                await serviceClient
-                  .from('web_push_subscriptions')
-                  .update({
-                    is_active: !isPermanent,
-                    last_error: String(
-                      pushErr?.message ?? pushErr ?? 'unknown Web Push error'
-                    ),
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq('id', subscriptionRow.id);
-
-                throw pushErr;
-              }
-            })
+      // Stale/invalid token handling (unchanged from before — a separate
+      // concern from send-level idempotency, per Requirement 4): deactivate
+      // a token Expo reports as permanently DeviceNotRegistered rather
+      // than retrying it forever.
+      const tickets = Array.isArray(expoResult?.data) ? expoResult.data : [];
+      const deactivations: Promise<any>[] = [];
+      tickets.forEach((ticket: any, i: number) => {
+        if (ticket?.status === 'error') {
+          const tokenRow = tokenRows[i];
+          if (!tokenRow) return;
+          const isPermanent = ticket?.details?.error === 'DeviceNotRegistered';
+          deactivations.push(
+            serviceClient
+              .from('push_tokens')
+              .update({ is_active: !isPermanent, last_error: String(ticket.message ?? ticket.details?.error ?? 'unknown error') })
+              .eq('id', tokenRow.id)
           );
-
-          for (const result of webResults) {
-            if (result.status === 'rejected') {
-              deliveryErrors.push(`web: ${String(result.reason)}`);
-            }
-          }
         }
-      }
-
-      const totalSent = expoSent + webSent;
-
-      // If at least one destination succeeded, do not retry the whole event:
-      // that could duplicate a notification on a channel that already succeeded.
-      if (totalSent > 0) {
-        await serviceClient.rpc('mark_request_push_event', {
-          p_dedupe_key: dedupeKey,
-          p_status: 'sent',
-        });
-
-        return new Response(
-          JSON.stringify({
-            ok: true,
-            sent: totalSent,
-            expoSent,
-            webSent,
-            deliveryErrors,
-          }),
-          { status: 200 }
-        );
-      }
-
-      // Nothing succeeded, so allow a later legitimate retry.
-      console.error('Push delivery failed', { dedupeKey, expoSent, webSent, deliveryErrors });
-      await serviceClient.rpc('mark_request_push_event', {
-        p_dedupe_key: dedupeKey,
-        p_status: 'failed',
       });
+      if (deactivations.length > 0) await Promise.allSettled(deactivations);
 
-      return new Response(
-        JSON.stringify({
-          ok: false,
-          sent: 0,
-          expoSent: 0,
-          webSent: 0,
-          deliveryErrors,
-        }),
-        { status: 200 }
-      );
+      await serviceClient.rpc('mark_request_push_event', { p_dedupe_key: dedupeKey, p_status: 'sent' });
+      return new Response(JSON.stringify({ ok: true, sent: messages.length }), { status: 200 });
     } catch (sendErr) {
-      console.error('Push send block failed', sendErr);
-      await serviceClient.rpc('mark_request_push_event', {
-        p_dedupe_key: dedupeKey,
-        p_status: 'failed',
-      });
-
-      return new Response(
-        JSON.stringify({
-          ok: false,
-          error: String(sendErr),
-        }),
-        { status: 200 }
-      );
+      // The Expo call (or the token lookup) failed AFTER the key was
+      // claimed — mark it 'failed' rather than leaving it stuck 'sending',
+      // so a later legitimate retry doesn't have to wait out the full
+      // staleness window for no reason.
+      await serviceClient.rpc('mark_request_push_event', { p_dedupe_key: dedupeKey, p_status: 'failed' });
+      return new Response(JSON.stringify({ ok: false, error: String(sendErr) }), { status: 200 });
     }
   } catch (err) {
     return new Response(JSON.stringify({ ok: false, error: String(err) }), { status: 200 });
   }
 });
-
-
-

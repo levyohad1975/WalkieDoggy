@@ -1,4 +1,4 @@
-/**
+﻿/**
  * NARROW CLIENT-FLOW FIX — structural guard for SettingsScreen.tsx's
  * "החלף משתמש" control flow. This repo has no React Native
  * component-rendering test infrastructure (see
@@ -72,11 +72,8 @@ describe('SettingsScreen — "החלף משתמש" control flow (structural)', (
 
   it('the switch-target picker\'s onSelect routes straight to the PIN step, never attempting a plain claim first', () => {
     const startIdx = source.indexOf('<UserPickerModal');
-    // The impersonation picker appears earlier in the file — find the
-    // SECOND UserPickerModal (the switch-user one) specifically.
-    const secondIdx = source.indexOf('<UserPickerModal', startIdx + 1);
-    expect(secondIdx).toBeGreaterThan(-1);
-    const block = source.slice(secondIdx, secondIdx + 800);
+    expect(startIdx).toBeGreaterThan(-1);
+    const block = source.slice(startIdx, startIdx + 800);
     expect(block).toMatch(/onSelect=\{[\s\S]*?setSwitchTargetUserId\(userId\)/);
     // Must NOT call signIn (the plain, non-PIN claim path) anywhere in this
     // picker's onSelect handler — every chosen target goes through PIN.
@@ -103,3 +100,4 @@ describe('SettingsScreen — "החלף משתמש" control flow (structural)', (
     expect(block).toMatch(/onCancel=\{\(\) => setSwitchTargetUserId\(null\)\}/);
   });
 });
+

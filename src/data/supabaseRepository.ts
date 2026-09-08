@@ -53,6 +53,7 @@ function toDog(row: any): Dog {
     photoUrl: row.photo_url ?? undefined,
     walksPerDay: row.walks_per_day,
     notes: row.notes ?? undefined,
+    sex: row.sex ?? undefined,
   };
 }
 
@@ -181,6 +182,7 @@ function fromDog(dog: Dog) {
     photo_url: dog.photoUrl ?? null,
     walks_per_day: dog.walksPerDay,
     notes: dog.notes ?? null,
+    sex: dog.sex ?? null,
   };
 }
 
@@ -196,7 +198,15 @@ export class SupabaseRepository implements Repository {
   async getFamily(familyId: string): Promise<Family | undefined> {
     const { data, error } = await this.client.from('families').select('*').eq('id', familyId).maybeSingle();
     if (error) throw error;
-    return data ? { id: data.id, name: data.name, inviteCode: data.invite_code ?? undefined, createdAt: data.created_at } : undefined;
+    return data
+      ? {
+          id: data.id,
+          name: data.name,
+          inviteCode: data.invite_code ?? undefined,
+          timezone: data.timezone ?? undefined,
+          createdAt: data.created_at,
+        }
+      : undefined;
   }
 
   async getUsers(familyId: string): Promise<FamilyUser[]> {

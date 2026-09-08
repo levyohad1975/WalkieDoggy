@@ -10,6 +10,7 @@ import {
   createTimeChangeRequest,
   listSwapRequests,
   listTimeChangeRequests,
+  markMyRequestResultsSeen,
   rejectSwapRequest,
   rejectTimeChangeRequest,
   type SwapRequestRow,
@@ -59,6 +60,7 @@ interface RequestsState {
   createTimeChange: (walkId: string, proposedTime: string) => Promise<void>;
   approveTimeChange: (requestId: string) => Promise<void>;
   rejectTimeChange: (requestId: string) => Promise<void>;
+  markResultsSeen: () => Promise<void>;
   clearError: () => void;
 }
 
@@ -198,6 +200,17 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
       await rejectTimeChangeRequest(requestId);
       await get().load();
       notifyPushBestEffort(requestId, 'timeChange', 'rejected');
+    } catch (error) {
+      set({ error: messageFor(error) });
+    }
+  },
+
+  markResultsSeen: async () => {
+    if (!guardTestModeMutation()) return;
+    if (!isSupabaseConfigured) return;
+    try {
+      await markMyRequestResultsSeen();
+      await get().load();
     } catch (error) {
       set({ error: messageFor(error) });
     }
