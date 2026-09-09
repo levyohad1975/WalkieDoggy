@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
-import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import type { FamilyUser, Walk } from '../types';
 import { colors } from '../theme/colors';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 import { SwapWalkPickerModal } from './SwapWalkPickerModal';
+import { TimePickerField } from './TimePickerField';
+import { is24HourTime } from '../logic/timeInput';
 
 export interface SwappableWalkOption {
   walk: Walk;
@@ -23,24 +24,6 @@ interface EditWalkModalProps {
   onSwapWithWalk?: (otherWalkId: string) => void;
   onCancelWalk: () => void;
   onClose: () => void;
-}
-
-function timeIsValid(t: string): boolean {
-  return /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
-}
-
-// Round 6C-time: same local HH:mm <-> Date conversion already proven in
-// RequestTimeChangeModal.tsx, copied (not imported/shared) per this round's
-// explicit "no shared helper" scope rule.
-/** "HH:mm" -> a Date on an arbitrary fixed day, for feeding the native picker. */
-function timeStringToDate(t: string): Date {
-  const [h, m] = timeIsValid(t) ? t.split(':').map(Number) : [12, 0];
-  const d = new Date(2000, 0, 1, h, m, 0, 0);
-  return d;
-}
-
-function dateToTimeString(d: Date): string {
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 /**
@@ -60,37 +43,22 @@ export function EditWalkModal({
   onClose,
 }: EditWalkModalProps) {
   const [time, setTime] = useState(walk?.scheduledTime ?? '');
-  // Round 6C-time: same pickerOpen convention as RequestTimeChangeModal.tsx —
-  // always open (inline spinner) on iOS, closed until the "שנה שעה" button is
-  // tapped on Android.
-  const [pickerOpen, setPickerOpen] = useState(Platform.OS === 'ios');
   const [swapMode, setSwapMode] = useState(false);
 
   useEffect(() => {
     if (visible) {
       setTime(walk?.scheduledTime ?? '');
-      setPickerOpen(Platform.OS === 'ios');
       setSwapMode(false);
     }
   }, [visible, walk?.scheduledTime]);
 
   if (!walk) return null;
 
-  // Round 6C-time: replaces the old onSubmitEditing handler — fires
-  // onChangeTime(newTime) as soon as a valid, changed time is picked,
-  // preserving the modal's existing "applies immediately" contract (there is
-  // no separate "save time" button in this sheet). Android dismissal
-  // (event.type === 'dismissed') leaves `time`/the walk's time unchanged.
-  const handleTimeChange = (event: DateTimePickerEvent, selected?: Date) => {
-    if (Platform.OS === 'android') setPickerOpen(false);
-    if (event.type === 'dismissed') return;
-    if (selected) {
-      const newTime = dateToTimeString(selected);
-      setTime(newTime);
-      if (timeIsValid(newTime) && newTime !== walk.scheduledTime) {
-        onChangeTime(newTime);
-      }
-    }
+  // This sheet applies a valid selected time immediately, preserving its
+  // existing one-off edit contract.
+  const handleTimeChange = (newTime: string) => {
+    setTime(newTime);
+    if (is24HourTime(newTime) && newTime !== walk.scheduledTime) onChangeTime(newTime);
   };
 
   return (
@@ -116,32 +84,7 @@ export function EditWalkModal({
             <RtlText style={styles.subtitle}>שינוי חד-פעמי, לא משפיע על שאר הסבב</RtlText>
 
             <RtlText style={styles.label}>שעה</RtlText>
-            <View style={styles.timeRow}>
-              <RtlText style={styles.timeValue}>{time}</RtlText>
-              {/* Round 6C-time: this button now opens the native time picker
-                  (Android) instead of focusing a TextInput — on iOS the
-                  picker is always shown inline below, matching
-                  RequestTimeChangeModal.tsx's platform split. */}
-              {Platform.OS === 'android' ? (
-                <Button
-                  label="שנה שעה"
-                  variant="secondary"
-                  onPress={() => setPickerOpen(true)}
-                  disabled={false}
-                  style={styles.timeButton}
-                />
-              ) : null}
-            </View>
-
-            {pickerOpen ? (
-              <DateTimePicker
-                value={timeStringToDate(time)}
-                mode="time"
-                is24Hour
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={handleTimeChange}
-              />
-            ) : null}
+            <TimePickerField value={time} onChange={handleTimeChange} webLabel="בחירת שעת הטיול" />
 
             <RtlText style={styles.label}>אחראי לטיול הזה</RtlText>
             <View style={styles.userRow}>
@@ -241,24 +184,6 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
   subtitle: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: 4, marginBottom: 8 },
   label: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: 16, marginBottom: 8, textAlign: 'right' },
-  timeRow: {
-  flexDirection: 'row',
-  gap: 10,
-  alignItems: 'center',
-},
-  timeValue: {
-    flex: 1,
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: 14,
-    padding: 14,
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    textAlign: 'center',
-  },
-  timeButton: {
-  flex: 1.25,
-},
   userRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   userChip: { alignItems: 'center', minWidth: 68, gap: 4, opacity: 0.55 },
   userChipActive: { opacity: 1 },

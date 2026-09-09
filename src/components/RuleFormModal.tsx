@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from './RtlText';
-import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import type { FamilyUser, ScheduleRule } from '../types';
 import { colors } from '../theme/colors';
 import { Avatar } from '../components/Avatar';
 import { Button } from './Button';
+import { TimePickerField } from './TimePickerField';
+import { is24HourTime } from '../logic/timeInput';
 
 const DAY_LABELS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
 // Round 6F: full spoken day names for the day chips' accessibilityLabel —
@@ -28,31 +29,9 @@ interface RuleFormModalProps {
   onClose: () => void;
 }
 
-function timeIsValid(t: string): boolean {
-  return /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
-}
-
-// Round 6C-time: same local HH:mm <-> Date conversion already proven in
-// RequestTimeChangeModal.tsx, copied (not imported/shared) per this round's
-// explicit "no shared helper" scope rule.
-/** "HH:mm" -> a Date on an arbitrary fixed day, for feeding the native picker. */
-function timeStringToDate(t: string): Date {
-  const [h, m] = timeIsValid(t) ? t.split(':').map(Number) : [12, 0];
-  const d = new Date(2000, 0, 1, h, m, 0, 0);
-  return d;
-}
-
-function dateToTimeString(d: Date): string {
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-}
-
 /** Add or edit one of the family's daily walk time slots: time, optional label, active days, and who rotates through it. */
 export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: RuleFormModalProps) {
   const [time, setTime] = useState('08:00');
-  // Round 6C-time: same pickerOpen convention as RequestTimeChangeModal.tsx —
-  // always open (inline spinner) on iOS, closed until the "שנה שעה" button is
-  // tapped on Android.
-  const [pickerOpen, setPickerOpen] = useState(Platform.OS === 'ios');
   const [label, setLabel] = useState('');
   const [days, setDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
   const [rotation, setRotation] = useState<string[]>([]);
@@ -61,24 +40,12 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
   useEffect(() => {
     if (visible) {
       setTime(editingRule?.time ?? '08:00');
-      setPickerOpen(Platform.OS === 'ios');
       setLabel(editingRule?.label ?? '');
       setDays(editingRule?.daysOfWeek ?? [0, 1, 2, 3, 4, 5, 6]);
       setRotation(editingRule?.rotationUserIds ?? []);
       setError(null);
     }
   }, [visible, editingRule]);
-
-  // Round 6C-time: native picker selection can't produce an invalid value
-  // (e.g. "25:99"), so this just converts and stores it — the existing
-  // timeIsValid() gate in submit() below is left in place unchanged (no
-  // unrelated validation refactor), it simply always passes now for time.
-  // Android dismissal (event.type === 'dismissed') leaves `time` unchanged.
-  const handleTimeChange = (event: DateTimePickerEvent, selected?: Date) => {
-    if (Platform.OS === 'android') setPickerOpen(false);
-    if (event.type === 'dismissed') return;
-    if (selected) setTime(dateToTimeString(selected));
-  };
 
   const toggleDay = (d: number) => setDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()));
   const toggleRotationUser = (id: string) =>
@@ -87,7 +54,7 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
   const usersById = Object.fromEntries(users.map((u) => [u.id, u]));
 
   const submit = () => {
-    if (!timeIsValid(time)) return setError('שעה לא תקינה — פורמט HH:mm, למשל 08:00');
+    if (!is24HourTime(time)) return setError('שעה לא תקינה — פורמט HH:mm, למשל 08:00');
     if (days.length === 0) return setError('יש לבחור לפחות יום אחד');
     if (rotation.length === 0) return setError('יש לבחור לפחות בן משפחה אחד לתורנות');
     onSave({ time, label: label.trim(), daysOfWeek: days, rotationUserIds: rotation });
@@ -105,30 +72,7 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
               <RtlText style={styles.title}>{editingRule ? 'עריכת שעת טיול' : 'הוספת שעת טיול'}</RtlText>
 
             <RtlText style={styles.label}>שעה</RtlText>
-            <View style={styles.timeRow}>
-              <RtlText style={styles.timeValue}>{time}</RtlText>
-              {/* Round 6C-time: opens the native time picker on Android —
-                  mirrors RequestTimeChangeModal.tsx's platform split. On iOS
-                  the picker is always shown inline below. */}
-              {Platform.OS === 'android' ? (
-                <Button
-                  label="שנה שעה"
-                  variant="secondary"
-                  onPress={() => setPickerOpen(true)}
-                  style={styles.timeButton}
-                />
-              ) : null}
-            </View>
-
-            {pickerOpen ? (
-              <DateTimePicker
-                value={timeStringToDate(time)}
-                mode="time"
-                is24Hour
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={handleTimeChange}
-              />
-            ) : null}
+            <TimePickerField value={time} onChange={setTime} webLabel="בחירת שעת טיול" />
 
             <RtlText style={styles.label}>שם (אופציונלי)</RtlText>
             <TextInput value={label} onChangeText={setLabel} placeholder="למשל: טיול בוקר" style={styles.input} textAlign="right" />
@@ -219,18 +163,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textPrimary,
   },
-  timeRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
-  timeValue: {
-    flex: 1,
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: 14,
-    padding: 14,
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    textAlign: 'center',
-  },
-  timeButton: { flex: 1.25 },
   dayRow: { flexDirection: 'row', gap: 6 },
   dayChip: { flex: 1, paddingVertical: 10, borderRadius: 12, backgroundColor: colors.surfaceMuted, alignItems: 'center' },
   dayChipActive: { backgroundColor: colors.primary },
