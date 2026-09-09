@@ -18,11 +18,12 @@ describe('bottom tab RTL contract', () => {
     expect(source).toContain("const PHYSICAL_TAB_ORDER: (keyof RootTabParamList)[] = [");
     expect(source).toMatch(/'Settings',[\s\S]*'Statistics',[\s\S]*'History',[\s\S]*'Family',[\s\S]*'Schedule',[\s\S]*'Home'/);
     expect(source).toMatch(/flexDirection:\s*'row',[\s\S]*direction:\s*'ltr'/);
-    expect(source).toContain('tabBar={(props) => <FixedPhysicalTabBar {...props} />}');
+    expect(source).toContain('tabBar={(props) => <FixedPhysicalTabBar {...props} canSeeHistoryTab={canSeeHistoryTab} canSeeStatisticsTab={canSeeStatisticsTab} />}');
   });
 
   it('starts on Home', () => {
     expect(source).toContain('initialRouteName="Home"');
   });
 });
+
 

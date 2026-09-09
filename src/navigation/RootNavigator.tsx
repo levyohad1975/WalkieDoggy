@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+﻿import React, { useEffect } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { NavigationContainer } from '@react-navigation/native';
@@ -64,13 +64,15 @@ const PHYSICAL_TAB_ORDER: (keyof RootTabParamList)[] = [
  * ourselves in an explicitly-LTR row prevents that transient flip while the
  * Hebrew labels themselves remain RTL text.
  */
-function FixedPhysicalTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab, canSeeStatisticsTab }: BottomTabBarProps & { canSeeHistoryTab: boolean; canSeeStatisticsTab: boolean }) {
   const insets = useSafeAreaInsets();
   const routeByName = Object.fromEntries(state.routes.map((route) => [route.name, route]));
 
   const buttons = PHYSICAL_TAB_ORDER.map((name) => {
         const route = routeByName[name];
         if (!route) return null;
+        if (name === 'History' && !canSeeHistoryTab) return null;
+        if (name === 'Statistics' && !canSeeStatisticsTab) return null;
         const routeIndex = state.routes.findIndex((r) => r.key === route.key);
         const focused = state.index === routeIndex;
         const options = descriptors[route.key]?.options;
@@ -213,7 +215,7 @@ export function RootNavigator() {
       <NavigationContainer direction="rtl">
       <Tab.Navigator
         initialRouteName="Home"
-        tabBar={(props) => <FixedPhysicalTabBar {...props} />}
+        tabBar={(props) => <FixedPhysicalTabBar {...props} canSeeHistoryTab={canSeeHistoryTab} canSeeStatisticsTab={canSeeStatisticsTab} />}
         screenOptions={({ route }) => ({
           headerShown: false,
           tabBarActiveTintColor: colors.primary,
@@ -244,11 +246,14 @@ export function RootNavigator() {
             be reached via navigation.navigate('History'/...) from stale
             code, and FixedPhysicalTabBar's own `if (!route) return null`
             above already handles a route that doesn't exist this render. */}
-        {canSeeHistoryTab ? <Tab.Screen name="History" component={HistoryScreen} /> : null}
-        {canSeeStatisticsTab ? <Tab.Screen name="Statistics" component={StatisticsScreen} /> : null}
+        <Tab.Screen name="History" component={HistoryScreen} />
+        <Tab.Screen name="Statistics" component={StatisticsScreen} />
         <Tab.Screen name="Settings" component={SettingsScreen} />
       </Tab.Navigator>
       </NavigationContainer>
     </View>
   );
 }
+
+
+

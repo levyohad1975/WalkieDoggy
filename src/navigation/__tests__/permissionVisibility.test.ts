@@ -1,4 +1,4 @@
-import fs from 'fs';
+﻿import fs from 'fs';
 import path from 'path';
 
 /**
@@ -35,13 +35,15 @@ describe('RootNavigator — History/Statistics tab visibility (permission-gated,
     expect(source).toMatch(/const permissionOverridesStatus = useFamilyStore\(\(s\) => s\.permissionOverridesStatus\);/);
   });
 
-  it('the History tab is only rendered when canAccessHistoryScreen() allows it (fails closed unless status === \'loaded\')', () => {
-    expect(source).toMatch(/canSeeHistoryTab \? <Tab\.Screen name="History"[^/]*\/> : null/);
+  it('keeps the History route mounted while the custom tab bar hides its button when access is not verified', () => {
+    expect(source).toMatch(/<Tab\.Screen name="History" component=\{HistoryScreen\} \/>/);
+    expect(source).toMatch(/name === 'History' && !canSeeHistoryTab/);
     expect(source).toMatch(/canSeeHistoryTab = canAccessHistoryScreen\(effectiveUserId, permissionOverrides, permissionOverridesStatus\)/);
   });
 
-  it('the Statistics tab is only rendered when canAccessStatisticsScreen() allows it (fails closed unless status === \'loaded\')', () => {
-    expect(source).toMatch(/canSeeStatisticsTab \? <Tab\.Screen name="Statistics"[^/]*\/> : null/);
+  it('keeps the Statistics route mounted while the custom tab bar hides its button when access is not verified', () => {
+    expect(source).toMatch(/<Tab\.Screen name="Statistics" component=\{StatisticsScreen\} \/>/);
+    expect(source).toMatch(/name === 'Statistics' && !canSeeStatisticsTab/);
     expect(source).toMatch(/canSeeStatisticsTab = canAccessStatisticsScreen\(effectiveUserId, permissionOverrides, permissionOverridesStatus\)/);
   });
 
@@ -58,3 +60,5 @@ describe('RootNavigator — History/Statistics tab visibility (permission-gated,
     expect(source).not.toMatch(/canSeeSettingsTab/);
   });
 });
+
+
