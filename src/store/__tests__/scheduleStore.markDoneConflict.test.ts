@@ -56,7 +56,8 @@ describe('scheduleStore.markDone — reflects only the CURRENT conflict/pending 
       fakeWalk({ status: 'done', completedByUserId: 'user-a', completedAt: new Date().toISOString() }),
     ]);
 
-    await useScheduleStore.getState().markDone('walk-x', 'user-a');
+    const completed = await useScheduleStore.getState().markDone('walk-x', 'user-a');
+    expect(completed).toBe(true);
 
     const state = useScheduleStore.getState();
     expect(state.actionError).toBeNull();
@@ -74,7 +75,8 @@ describe('scheduleStore.markDone — reflects only the CURRENT conflict/pending 
       failedAt: new Date().toISOString(),
     });
 
-    await useScheduleStore.getState().markDone('walk-x', 'user-a');
+    const completed = await useScheduleStore.getState().markDone('walk-x', 'user-a');
+    expect(completed).toBe(false);
 
     const state = useScheduleStore.getState();
     expect(state.actionError).toBeTruthy();
@@ -87,7 +89,8 @@ describe('scheduleStore.markDone — reflects only the CURRENT conflict/pending 
     mockedRepository.saveWalk.mockResolvedValue(undefined);
     mockedRepository.hasPendingSaveWalk.mockResolvedValue(true);
 
-    await useScheduleStore.getState().markDone('walk-x', 'user-a');
+    const completed = await useScheduleStore.getState().markDone('walk-x', 'user-a');
+    expect(completed).toBe(true);
 
     const state = useScheduleStore.getState();
     expect(state.actionError).toBeNull();

@@ -165,7 +165,7 @@ describe('scheduleStore', () => {
     await useScheduleStore.getState().load(FAMILY_ID);
     const before = useScheduleStore.getState().walks.length;
 
-    await useScheduleStore.getState().addUnplannedWalk({
+    const saved = await useScheduleStore.getState().addUnplannedWalk({
       familyId: FAMILY_ID,
       dogId: 'dog-topi',
       performedByUserId: 'user-eidan',
@@ -176,6 +176,7 @@ describe('scheduleStore', () => {
       note: 'טיול קצר',
       durationMinutes: 15,
     });
+    expect(saved).toBe(true);
 
     // 1) Appears in state immediately, no reload needed.
     const afterAdd = useScheduleStore.getState();
@@ -214,7 +215,7 @@ describe('scheduleStore', () => {
     const spy = jest.spyOn(repository, 'saveWalk').mockRejectedValueOnce(new Error('boom'));
 
     const before = useScheduleStore.getState().walks.length;
-    await useScheduleStore.getState().addUnplannedWalk({
+    const saved = await useScheduleStore.getState().addUnplannedWalk({
       familyId: FAMILY_ID,
       dogId: 'dog-topi',
       performedByUserId: 'user-maor',
@@ -223,6 +224,7 @@ describe('scheduleStore', () => {
       hadPee: false,
       hadPoop: false,
     });
+    expect(saved).toBe(false);
 
     const state = useScheduleStore.getState();
     expect(state.walks).toHaveLength(before); // optimistic add was rolled back

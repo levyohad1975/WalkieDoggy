@@ -53,12 +53,12 @@ interface ScheduleState {
   rescheduleWalk: (walkId: string, newTime: string) => Promise<void>;
   deleteEntry: (entryId: string) => Promise<void>;
 
-  markDone: (walkId: string, completedByUserId: string, details?: WalkCompletionDetails) => Promise<void>;
+  markDone: (walkId: string, completedByUserId: string, details?: WalkCompletionDetails) => Promise<boolean>;
   editDoneDetails: (walkId: string, details: WalkCompletionDetails) => Promise<void>;
   skip: (walkId: string) => Promise<void>;
   swap: (walkId: string, newUserId: string, swappedByUserId: string) => Promise<void>;
   swapTwoWalks: (walkAId: string, walkBId: string, swappedByUserId: string) => Promise<void>;
-  addUnplannedWalk: (input: UnplannedWalkInput) => Promise<void>;
+  addUnplannedWalk: (input: UnplannedWalkInput) => Promise<boolean>;
   /**
    * Section 2: edits an existing unplanned/spontaneous walk IN PLACE — same
    * record, never a duplicate. `patch` may include any subset of the fields
@@ -447,9 +447,9 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   },
 
   markDone: async (walkId: string, completedByUserId: string, details: WalkCompletionDetails = {}) => {
-    if (!guardTestModeMutation()) return;
+    if (!guardTestModeMutation()) return false;
     const walk = get().walks.find((w) => w.id === walkId);
-    if (!walk) return;
+    if (!walk) return false;
     try {
       const updated = markWalkDone(walk, completedByUserId, details);
       // Optimistic update so the Home screen reflects it within the "few seconds" UX goal.
@@ -479,7 +479,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // instead of silently presenting the reverted state as success.
       const stillPending = await repository.hasPendingSaveWalk?.(walkId);
       if (stillPending) {
-        return; // write is genuinely still in flight — don't touch state, don't refetch stale data
+        return true; // locally saved and queued; keep the optimistic completion intact
       }
 
       const conflict = await repository.getConflictForWalk?.(walkId);
@@ -490,7 +490,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
           walks: s.walks.map((w) => (w.id === walkId ? walk : w)),
           actionError: 'לא הצלחנו לשמור את הסימון בשרת. נסו לרענן ולסמן שוב.',
         }));
-        return;
+        return false;
       }
 
       // Write is confirmed resolved (synced, or there was never a remote to
@@ -499,8 +499,10 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // repository.saveWalk docs).
       const fresh = await repository.getWalks(walk.familyId);
       set({ walks: fresh });
+      return true;
     } catch (e) {
       set({ actionError: e instanceof WalkActionError ? e.message : 'לא הצלחנו לסמן את הטיול כבוצע' });
+      return false;
     }
   },
 
@@ -607,7 +609,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
 
   /** Logs a walk that already happened with no prior plan — never touches the rotation. */
   addUnplannedWalk: async (input: UnplannedWalkInput) => {
-    if (!guardTestModeMutation()) return;
+    if (!guardTestModeMutation()) return false;
     const now = new Date().toISOString();
     const completedAt = new Date(`${input.date}T${input.time}:00`).toISOString();
     const walk: Walk = {
@@ -631,8 +633,10 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     set((s) => ({ walks: [...s.walks, walk], actionError: null }));
     try {
       await repository.saveWalk(walk);
+      return true;
     } catch (e) {
       set((s) => ({ walks: s.walks.filter((w) => w.id !== walk.id), actionError: 'לא הצלחנו לשמור את הטיול' }));
+      return false;
     }
   },
 

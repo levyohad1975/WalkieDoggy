@@ -22,6 +22,15 @@ describe('selectWalkCompletionCelebration', () => {
     expect(selectWalkCompletionCelebration({ completedAt: new Date(2026, 8, 9, 13), durationMinutes: 50, random: () => 0 }).id).toBe('long-walk');
   });
 
+  it('keeps a spontaneous walk without duration out of the long-walk pool', () => {
+    expect(selectWalkCompletionCelebration({ completedAt: new Date(2026, 8, 9, 13), random: () => 0 }).id).not.toBe('long-walk');
+  });
+
+  it('allows the rare surprise through its deliberate low-probability branch', () => {
+    const random = jest.fn().mockReturnValueOnce(0.01).mockReturnValueOnce(0.99);
+    expect(selectWalkCompletionCelebration({ completedAt: new Date(2026, 8, 9, 13), random }).id).toBe('special-surprise');
+  });
+
   it('keeps metadata-only asset references and reduced-motion fallbacks for every entry', () => {
     expect(CELEBRATION_LIBRARY).toHaveLength(9);
     expect(CELEBRATION_LIBRARY.every((item) => item.asset.provider === 'local' && !!item.asset.path && !!item.asset.reducedMotionPath)).toBe(true);

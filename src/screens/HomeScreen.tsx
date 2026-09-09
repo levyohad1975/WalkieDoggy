@@ -88,6 +88,19 @@ export function HomeScreen() {
   // by the time this is set), auto-dismisses on its own.
   const [celebration, setCelebration] = useState<CompletionCelebration | null>(null);
   const [recentCelebrationIds, setRecentCelebrationIds] = useState<string[]>([]);
+  const showWalkCompletionCelebration = useCallback((durationMinutes?: number) => {
+    try {
+      const picked = selectWalkCompletionCelebration({
+        completedAt: new Date(),
+        durationMinutes,
+        recentIds: recentCelebrationIds,
+      });
+      setCelebration(picked);
+      setRecentCelebrationIds((previous) => [picked.id, ...previous.filter((id) => id !== picked.id)].slice(0, 3));
+    } catch {
+      // Purely cosmetic — never block or interrupt a successfully saved walk.
+    }
+  }, [recentCelebrationIds]);
   const [swapWalkId, setSwapWalkId] = useState<string | null>(null);
   const [editWalkId, setEditWalkId] = useState<string | null>(null);
   const [addUnplannedVisible, setAddUnplannedVisible] = useState(false);
@@ -665,24 +678,14 @@ export function HomeScreen() {
           if (!walkId) return;
           // markDone() itself refuses while Test Mode is active (see
           // scheduleStore.ts) — no separate guard needed here.
-          await markDone(walkId, completedByUserId, { hadPee, hadPoop, note: note || undefined });
+          const completed = await markDone(walkId, completedByUserId, { hadPee, hadPoop, note: note || undefined });
           // BATCH 4 (C2/C3/C8) — success mascot + message, best-effort only:
           // if anything about the walk/dog/user lookups above is somehow
           // unavailable, selectMessage()'s own safe fallbacks (see
           // messageEngine.ts) still produce a grammatical message, and this
           // is purely cosmetic — never re-thrown, never blocks markDone's
           // own error handling.
-          try {
-            const picked = selectWalkCompletionCelebration({
-              completedAt: new Date(),
-              durationMinutes: walkBeingCompleted?.durationMinutes,
-              recentIds: recentCelebrationIds,
-            });
-            setCelebration(picked);
-            setRecentCelebrationIds((previous) => [picked.id, ...previous.filter((id) => id !== picked.id)].slice(0, 3));
-          } catch {
-            // purely cosmetic — never block/interrupt completion.
-          }
+          if (completed) showWalkCompletionCelebration(walkBeingCompleted?.durationMinutes);
         }}
         onCancel={() => setCompleteWalkId(null)}
       />
@@ -756,7 +759,7 @@ export function HomeScreen() {
           setAddUnplannedVisible(false);
           // addUnplannedWalk() itself refuses while Test Mode is active.
           if (dog) {
-            await addUnplannedWalk({
+            const saved = await addUnplannedWalk({
               familyId: familyId,
               dogId: dog.id,
               performedByUserId: result.performedByUserId,
@@ -767,6 +770,7 @@ export function HomeScreen() {
               note: result.note || undefined,
               durationMinutes: result.durationMinutes,
             });
+            if (saved) showWalkCompletionCelebration(result.durationMinutes);
           } else {
             // Must never fail silently: without a loaded dog we have no
             // dogId to attach the walk to, but the person already tapped
