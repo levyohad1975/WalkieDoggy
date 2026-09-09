@@ -6,7 +6,7 @@ describe('Home completion celebration integration', () => {
 
   it('opens the UI-only celebration only after the completion mutation resolves', () => {
     const completion = source.indexOf('await markDone(walkId, completedByUserId');
-    const celebration = source.indexOf('setCelebration(selectWalkCompletionCelebration())');
+    const celebration = source.indexOf('const picked = selectWalkCompletionCelebration({');
     expect(completion).toBeGreaterThan(-1);
     expect(celebration).toBeGreaterThan(completion);
   });

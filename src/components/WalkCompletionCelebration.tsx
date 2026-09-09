@@ -52,12 +52,13 @@ export function WalkCompletionCelebration({ celebration, dogName, onDismiss }: W
             <RtlText style={styles.closeText}>×</RtlText>
           </Pressable>
           <View style={styles.mascotWrap}>
-            <WalkieMascot state="success" size={132} accessibilityLabel="טופי חוגג/ת את סיום הטיול" />
+            <WalkieMascot state={celebration.mascotState} size={132} accessibilityLabel="טופי חוגג/ת את סיום הטיול" />
             <View style={styles.accent}><RtlText style={styles.accentText}>{celebration.accent}</RtlText></View>
           </View>
           <RtlText style={styles.eyebrow}>{celebration.eyebrow}</RtlText>
           <RtlText style={styles.title}>{celebration.title}</RtlText>
           <RtlText style={styles.message}>{dogName ? celebration.message.replace('טופי', dogName) : celebration.message}</RtlText>
+          {celebration.rewardTeaser ? <RtlText style={styles.teaser}>{celebration.rewardTeaser}</RtlText> : null}
           <Pressable onPress={onDismiss} style={styles.dismissButton} accessibilityRole="button" accessibilityLabel="המשך לאפליקציה">
             <RtlText style={styles.dismissText}>המשך</RtlText>
           </Pressable>
@@ -79,6 +80,7 @@ const styles = StyleSheet.create({
   eyebrow: { ...typography.caption, color: colors.primaryDark, textAlign: 'center', letterSpacing: 0.5 },
   title: { ...typography.screenTitle, color: colors.textPrimary, textAlign: 'center', marginTop: spacing.xs },
   message: { ...typography.body, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.sm, lineHeight: 24 },
+  teaser: { ...typography.caption, color: colors.primaryDark, textAlign: 'center', marginTop: spacing.sm },
   dismissButton: { width: '100%', minHeight: 48, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary, borderRadius: radii.lg, marginTop: spacing.xl },
   dismissText: { ...typography.sectionTitle, color: colors.textInverse },
 });

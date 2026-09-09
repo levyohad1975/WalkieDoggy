@@ -87,6 +87,7 @@ export function HomeScreen() {
   // navigation or the completion action itself (markDone already resolved
   // by the time this is set), auto-dismisses on its own.
   const [celebration, setCelebration] = useState<CompletionCelebration | null>(null);
+  const [recentCelebrationIds, setRecentCelebrationIds] = useState<string[]>([]);
   const [swapWalkId, setSwapWalkId] = useState<string | null>(null);
   const [editWalkId, setEditWalkId] = useState<string | null>(null);
   const [addUnplannedVisible, setAddUnplannedVisible] = useState(false);
@@ -659,6 +660,7 @@ export function HomeScreen() {
         defaultUserId={effectiveUserId}
         onConfirm={async ({ completedByUserId, hadPee, hadPoop, note }) => {
           const walkId = completeWalkId;
+          const walkBeingCompleted = walkId ? walksById[walkId] : undefined;
           setCompleteWalkId(null);
           if (!walkId) return;
           // markDone() itself refuses while Test Mode is active (see
@@ -671,7 +673,13 @@ export function HomeScreen() {
           // is purely cosmetic — never re-thrown, never blocks markDone's
           // own error handling.
           try {
-            setCelebration(selectWalkCompletionCelebration());
+            const picked = selectWalkCompletionCelebration({
+              completedAt: new Date(),
+              durationMinutes: walkBeingCompleted?.durationMinutes,
+              recentIds: recentCelebrationIds,
+            });
+            setCelebration(picked);
+            setRecentCelebrationIds((previous) => [picked.id, ...previous.filter((id) => id !== picked.id)].slice(0, 3));
           } catch {
             // purely cosmetic — never block/interrupt completion.
           }
