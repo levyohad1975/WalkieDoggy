@@ -93,6 +93,14 @@ export const SHARED_ERROR_RULES: ErrorRule[] = [
   { includes: 'no active profile claimed on this family', message: 'לא ניתן לזהות את הפרופיל הפעיל שלכם במשפחה הזו. נסו להתחבר מחדש.' },
   { includes: 'you are no longer an active member of this family', message: 'לא ניתן לזהות את הפרופיל הפעיל שלכם במשפחה הזו. נסו להתחבר מחדש.' },
 
+  // ---- History/Statistics server-side permission gate — migrations/0027_*.sql
+  // (Batch 3 correction #1). Same Hebrew copy as HistoryScreen.tsx/
+  // StatisticsScreen.tsx's own client-side blocked EmptyState, so a denial
+  // reads the same whether the client guard caught it locally or this RPC
+  // rejection is what actually caught it.
+  { includes: 'view_history permission required', message: 'אין לך גישה להיסטוריה. פנו למנהל/ת המשפחה אם לדעתכם זו טעות.' },
+  { includes: 'view_statistics permission required', message: 'אין לך גישה לסטטיסטיקה. פנו למנהל/ת המשפחה אם לדעתכם זו טעות.' },
+
   // ---- Impersonation / device claim — migrations/0004_admin_permissions_and_member_deletion.sql,
   // 0006_qa_impersonation.sql ----
   // ROUND-2 FIX: these two rules used to match on the loose substrings

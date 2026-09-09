@@ -1,0 +1,174 @@
+const ORIGINAL_ENV = process.env;
+
+function mockSupabaseClient(rpc: jest.Mock) {
+  jest.doMock('@supabase/supabase-js', () => ({
+    createClient: jest.fn(() => ({
+      auth: {
+        getSession: jest.fn().mockResolvedValue({ data: { session: null } }),
+        signInAnonymously: jest.fn().mockResolvedValue({ error: null }),
+      },
+      rpc,
+      from: jest.fn(),
+      storage: { from: jest.fn() },
+    })),
+  }));
+}
+
+/**
+ * BATCH 4 (item A — System Admin V1). Client-side (call-shape/error-
+ * propagation/row-mapping) tests for lib/systemAdmin.ts, mirroring
+ * lib/__tests__/permissionedWalks.test.ts's approach exactly. The actual
+ * server-side is_system_admin() enforcement lives in the RPCs themselves
+ * (migration 0029) and can only be verified against a real Supabase
+ * project — this file only proves the client calls the right RPC with the
+ * right arguments and maps the result faithfully.
+ */
+describe('lib/systemAdmin — Supabase mode', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    process.env = {
+      ...ORIGINAL_ENV,
+      EXPO_PUBLIC_SUPABASE_URL: 'https://example.supabase.co',
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'anon-key',
+    };
+  });
+
+  afterEach(() => {
+    process.env = ORIGINAL_ENV;
+  });
+
+  it('checkIsSystemAdmin calls am_i_system_admin with no arguments and returns the boolean verbatim', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: true, error: null });
+    mockSupabaseClient(rpc);
+    const { checkIsSystemAdmin } = require('../systemAdmin');
+
+    await expect(checkIsSystemAdmin()).resolves.toBe(true);
+    expect(rpc).toHaveBeenCalledWith('am_i_system_admin');
+  });
+
+  it('checkIsSystemAdmin returns false (not merely falsy-passthrough) for a non-admin caller', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: false, error: null });
+    mockSupabaseClient(rpc);
+    const { checkIsSystemAdmin } = require('../systemAdmin');
+
+    await expect(checkIsSystemAdmin()).resolves.toBe(false);
+  });
+
+  it('checkIsSystemAdmin surfaces a genuine RPC error rather than swallowing it as false', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'JWT expired' } });
+    mockSupabaseClient(rpc);
+    const { checkIsSystemAdmin } = require('../systemAdmin');
+
+    await expect(checkIsSystemAdmin()).rejects.toBeTruthy();
+  });
+
+  it('listSystemAdminFamilies calls system_admin_list_families with p_search and maps every field, including the distinguishing inviteCode', async () => {
+    const rpc = jest.fn().mockResolvedValue({
+      data: [
+        {
+          family_id: 'fam-1',
+          family_name: 'משפחת לוי',
+          invite_code: 'ABC123',
+          created_at: '2026-01-01T00:00:00Z',
+          member_count: 3,
+          admin_names: ['דנה'],
+          dog_name: 'רקסי',
+          status: 'active',
+        },
+      ],
+      error: null,
+    });
+    mockSupabaseClient(rpc);
+    const { listSystemAdminFamilies } = require('../systemAdmin');
+
+    const result = await listSystemAdminFamilies('לוי');
+
+    expect(rpc).toHaveBeenCalledWith('system_admin_list_families', { p_search: 'לוי' });
+    expect(result).toEqual([
+      {
+        familyId: 'fam-1',
+        familyName: 'משפחת לוי',
+        inviteCode: 'ABC123',
+        createdAt: '2026-01-01T00:00:00Z',
+        memberCount: 3,
+        adminNames: ['דנה'],
+        dogName: 'רקסי',
+        status: 'active',
+      },
+    ]);
+  });
+
+  it('listSystemAdminFamilies with no/blank search sends p_search: null (server treats it as "no filter")', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: [], error: null });
+    mockSupabaseClient(rpc);
+    const { listSystemAdminFamilies } = require('../systemAdmin');
+
+    await listSystemAdminFamilies();
+    expect(rpc).toHaveBeenCalledWith('system_admin_list_families', { p_search: null });
+
+    await listSystemAdminFamilies('   ');
+    expect(rpc).toHaveBeenLastCalledWith('system_admin_list_families', { p_search: null });
+  });
+
+  it('two families with the SAME name are both returned as distinct rows, distinguished by inviteCode — duplicate family names must work', async () => {
+    const rpc = jest.fn().mockResolvedValue({
+      data: [
+        { family_id: 'fam-1', family_name: 'המשפחה שלנו', invite_code: 'AAA111', created_at: '2026-01-01T00:00:00Z', member_count: 2, admin_names: [], dog_name: null, status: 'active' },
+        { family_id: 'fam-2', family_name: 'המשפחה שלנו', invite_code: 'BBB222', created_at: '2026-01-02T00:00:00Z', member_count: 4, admin_names: [], dog_name: null, status: 'active' },
+      ],
+      error: null,
+    });
+    mockSupabaseClient(rpc);
+    const { listSystemAdminFamilies } = require('../systemAdmin');
+
+    const result = await listSystemAdminFamilies();
+    expect(result).toHaveLength(2);
+    expect(result[0].familyName).toBe(result[1].familyName);
+    expect(result[0].familyId).not.toBe(result[1].familyId);
+    expect(result[0].inviteCode).not.toBe(result[1].inviteCode);
+  });
+
+  it('listSystemAdminFamilies surfaces "system admin permission required" rather than swallowing a denial', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'system admin permission required' } });
+    mockSupabaseClient(rpc);
+    const { listSystemAdminFamilies } = require('../systemAdmin');
+
+    await expect(listSystemAdminFamilies()).rejects.toBeTruthy();
+  });
+
+  it('getSystemAdminFamilyDetail calls system_admin_get_family_detail with p_family_id and returns the jsonb bundle with safe array defaults', async () => {
+    const rpc = jest.fn().mockResolvedValue({
+      data: {
+        family: { id: 'fam-1', name: 'משפחת לוי', inviteCode: 'ABC123', createdAt: '2026-01-01T00:00:00Z' },
+        dog: null,
+        members: [{ id: 'u1', name: 'דנה', avatar: '🐶', photoUrl: null, role: 'admin', removedAt: null, claimed: true }],
+        // activeRequests/recentAudit intentionally omitted — mapping must default to [], never throw.
+      },
+      error: null,
+    });
+    mockSupabaseClient(rpc);
+    const { getSystemAdminFamilyDetail } = require('../systemAdmin');
+
+    const result = await getSystemAdminFamilyDetail('fam-1');
+
+    expect(rpc).toHaveBeenCalledWith('system_admin_get_family_detail', { p_family_id: 'fam-1' });
+    expect(result.family?.name).toBe('משפחת לוי');
+    expect(result.dog).toBeNull();
+    expect(result.members).toHaveLength(1);
+    expect(result.activeRequests).toEqual([]);
+    expect(result.recentAudit).toEqual([]);
+  });
+
+  it('local/demo mode: every function throws SupabaseNotConfiguredError rather than pretending to succeed', async () => {
+    jest.resetModules();
+    process.env = { ...ORIGINAL_ENV };
+    delete process.env.EXPO_PUBLIC_SUPABASE_URL;
+    delete process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+    const { checkIsSystemAdmin, listSystemAdminFamilies, getSystemAdminFamilyDetail } = require('../systemAdmin');
+    const { SupabaseNotConfiguredError } = require('../supabase');
+
+    await expect(checkIsSystemAdmin()).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
+    await expect(listSystemAdminFamilies()).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
+    await expect(getSystemAdminFamilyDetail('fam-1')).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
+  });
+});

@@ -47,6 +47,66 @@ export function canRequestChangeForWalk(
   );
 }
 
+/**
+ * BATCH 3 (Task 5 — walk card action authority) bundles the four action
+ * flags for the top/current Action Card (HomeScreen's NextWalkCard — see
+ * that component's own doc comment on the onSwap/onEdit vs
+ * onRequestSwap/onRequestTimeChange distinction) into one small,
+ * independently-testable pure function.
+ *
+ * Extracted specifically because HomeScreen previously computed
+ * onRequestSwap/onRequestTimeChange visibility inline as
+ * `effectiveRole !== 'admin'` — which is wrong (it showed the request
+ * actions to ANY non-admin member, not only the walk's own responsible,
+ * non-admin member) and, being inline JSX, was never covered by a unit
+ * test. ScheduleScreen's lower list already called canRequestChangeForWalk
+ * directly and was already correct; this gives the top card the exact same
+ * rule via the exact same underlying predicate, with its own named test
+ * cases (see logic/__tests__/walkActions.test.ts) tied directly to that
+ * regression.
+ *
+ * Master Spec rules (§ WALK CARD ACTION AUTHORITY):
+ *   - RESPONSIBLE MEMBER (non-admin, own future pending walk): request
+ *     actions only — canSwapDirect/canEditDirect stay false for a member,
+ *     admin status is required for those.
+ *   - NON-RESPONSIBLE MEMBER: none of the four.
+ *   - FAMILY ADMIN who is NOT responsible: admin status alone must not
+ *     grant the responsible-member REQUEST actions — canRequestSwap/
+ *     canRequestTimeChange are always false for role === 'admin'
+ *     (canRequestChangeForWalk's own rule), regardless of responsibility.
+ *     An admin gets the direct edit path instead (canSwapDirect/
+ *     canEditDirect), unconditional on responsibility, since a Family
+ *     Admin's direct-edit authority does not depend on being the walk's
+ *     own responsible member.
+ */
+export interface NextWalkCardActionFlags {
+  /** Direct reassignment — Family Admin only, never a request. */
+  canSwapDirect: boolean;
+  /** Direct time edit — Family Admin only, never a request. */
+  canEditDirect: boolean;
+  /** "בקש החלפה" — the walk's own responsible, non-admin member only. */
+  canRequestSwap: boolean;
+  /** "בקש שינוי שעה" — the walk's own responsible, non-admin member only. */
+  canRequestTimeChange: boolean;
+}
+
+export function computeNextWalkCardActions(
+  walk: Walk,
+  userId: string | null | undefined,
+  role: 'admin' | 'member' | null | undefined,
+  isSupabaseConfigured: boolean,
+  now: Date = new Date()
+): NextWalkCardActionFlags {
+  const isAdmin = role === 'admin';
+  const canRequest = canRequestChangeForWalk(walk, userId, role, isSupabaseConfigured, now);
+  return {
+    canSwapDirect: isAdmin,
+    canEditDirect: isAdmin,
+    canRequestSwap: canRequest,
+    canRequestTimeChange: canRequest,
+  };
+}
+
 export interface WalkCompletionDetails {
   hadPee?: boolean;
   hadPoop?: boolean;
@@ -266,7 +326,12 @@ export function walkCompletionLine(
 ): string | null {
   if (walk.status !== 'done' || !completedBy || hasToggles) return null;
   return [
-    `בוצע ע״י ${completedBy.name}${completedBy.removedAt ? ' (הוסר)' : ''}`,
+    // BATCH 4 (item F — completedAt UX): leading "✓" per the Master
+    // Specification's exact display example ("✓ בוצע · 07:18") — the rest
+    // of this line (who + pee/poop emoji) is existing, already-correct
+    // richer detail this app already shows and the spec doesn't ask to
+    // remove, so it's kept rather than replaced.
+    `✓ בוצע ע״י ${completedBy.name}${completedBy.removedAt ? ' (הוסר)' : ''}`,
     walk.completedAt
       ? new Date(walk.completedAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
       : null,
@@ -275,6 +340,37 @@ export function walkCompletionLine(
   ]
     .filter(Boolean)
     .join(' · ');
+}
+
+/**
+ * BATCH 4 (item F): "✓ בוצע · HH:MM" — the simple completedAt badge used
+ * where there's room for only a short status label (HomeScreen's "last
+ * walk" card), separately from the richer walkCompletionLine above.
+ * `completedAt` is the actual click-time of the completion action (see
+ * scheduleStore.markDone), never the scheduled time — this function does
+ * not fall back to `scheduledTime` when completedAt is missing (legacy/
+ * skipped data): it simply omits the time rather than showing the wrong
+ * timestamp under a "✓ בוצע" label.
+ */
+export function formatCompletedAtBadge(walk: Walk): string {
+  if (walk.status !== 'done') return '';
+  if (!walk.completedAt) return '✓ בוצע';
+  const time = new Date(walk.completedAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+  return `✓ בוצע · ${time}`;
+}
+
+/**
+ * BATCH 4 (item F): History's planned-vs-actual line — "תוכנן HH:MM · בוצע
+ * HH:MM", exactly the Master Specification's example. Only meaningful for a
+ * resolved (`done`) walk with a known completedAt; returns null otherwise
+ * (a pending/skipped walk, or a done walk with no completedAt on record —
+ * legacy data — falls back to WalkRow's ordinary scheduled-time headline
+ * with nothing extra, rather than showing a broken/partial line).
+ */
+export function walkHistoryTimingLine(walk: Walk): string | null {
+  if (walk.status !== 'done' || !walk.completedAt) return null;
+  const actual = new Date(walk.completedAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+  return `תוכנן ${walk.scheduledTime} · בוצע ${actual}`;
 }
 
 /** Weekly per-user completed-walk counts for the History summary. */

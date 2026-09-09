@@ -250,3 +250,25 @@ describe('friendlyErrorMessage — QA sandbox (0016)', () => {
     ).toBe('למכשיר הזה אין משפחה אמיתית שמורה לחזור אליה — הוא נכנס לסביבת QA בלי משפחה קודמת.');
   });
 });
+
+/**
+ * BATCH 3 CORRECTION #1 (post-review) — the two new server-side denial
+ * messages migration 0027's list_history_walks()/list_statistics_walks()
+ * raise, mapped to the same Hebrew copy HistoryScreen.tsx/
+ * StatisticsScreen.tsx's own client-side blocked EmptyState already shows,
+ * so a denial reads identically whether the client guard or this RPC
+ * rejection actually caught it.
+ */
+describe('friendlyErrorMessage — History/Statistics server-side permission gate (0027)', () => {
+  it('maps a view_history denial', () => {
+    expect(friendlyErrorMessage(new Error('view_history permission required'))).toBe(
+      'אין לך גישה להיסטוריה. פנו למנהל/ת המשפחה אם לדעתכם זו טעות.'
+    );
+  });
+
+  it('maps a view_statistics denial (distinct from the history one)', () => {
+    const message = friendlyErrorMessage(new Error('view_statistics permission required'));
+    expect(message).toBe('אין לך גישה לסטטיסטיקה. פנו למנהל/ת המשפחה אם לדעתכם זו טעות.');
+    expect(message).not.toBe(friendlyErrorMessage(new Error('view_history permission required')));
+  });
+});

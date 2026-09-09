@@ -1,4 +1,4 @@
-import type { Walk } from '../types';
+﻿import type { Walk } from '../types';
 
 /**
  * Combines a walk's date + "HH:mm" scheduled time into a Date object (local time).
@@ -61,7 +61,7 @@ export function isOverdue(walk: Walk, now: Date = new Date()): boolean {
   return walk.status === 'pending' && walkDateTime(walk).getTime() < now.getTime();
 }
 
-export function minutesUntil(walk: Walk, now: Date = new Date()): number {
+export function minutesUntil(walk: Pick<Walk, 'date' | 'scheduledTime'>, now: Date = new Date()): number {
   return Math.round((walkDateTime(walk).getTime() - now.getTime()) / 60000);
 }
 
@@ -113,3 +113,4 @@ export function upcomingWalks(walks: Walk[], now: Date = new Date(), limit = 10)
     .sort((a, b) => walkDateTime(a).getTime() - walkDateTime(b).getTime())
     .slice(0, limit);
 }
+

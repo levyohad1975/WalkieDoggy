@@ -80,6 +80,28 @@ export interface FamilyInvitePreview {
   expiresAt: string;
 }
 
+/** One member of the family shown in a still-pending invite's detailed preview — see FamilyInvitePreviewDetail. */
+export interface FamilyInvitePreviewMember {
+  name: string;
+  avatar: string;
+  photoUrl: string | null;
+}
+
+/**
+ * BATCH 4 (item D) — result of inspect_family_invite_detail(p_token), the
+ * enriched sibling of FamilyInvitePreview: adds the family dog's real
+ * name/photo and the family's member list (real photos where available) —
+ * ONLY populated while the invite is still genuinely pending/unexpired (see
+ * migration 0028's security reasoning); a revoked/redeemed/expired invite
+ * gets `dogName`/`dogPhotoUrl` null and `members` null, same minimal shape
+ * inspect_family_invite() always had.
+ */
+export interface FamilyInvitePreviewDetail extends FamilyInvitePreview {
+  dogName: string | null;
+  dogPhotoUrl: string | null;
+  members: FamilyInvitePreviewMember[] | null;
+}
+
 /** Result of redeem_family_invite(p_token) — the family the caller's device just joined and the profile it just claimed. */
 export interface RedeemedFamilyInvite {
   familyId: string;
@@ -175,6 +197,41 @@ export async function inspectFamilyInvite(token: string): Promise<FamilyInvitePr
     targetAvatar: row.target_avatar ?? null,
     status: row.status,
     expiresAt: row.expires_at,
+  };
+}
+
+/**
+ * BATCH 4 (item D) — the enriched sibling of inspectFamilyInvite() above:
+ * same no-membership-required, safe-to-call-repeatedly, never-consumes-the-
+ * invite contract, plus the family dog's real photo and member list (real
+ * photos where available) for a still-pending/unexpired invite. See
+ * migration 0028's header comment for the full security reasoning on why
+ * this is a safe, additive enrichment of an already-narrow, single-use,
+ * server-verified disclosure boundary — and why it does NOT touch
+ * findFamilyByInviteCode()'s deliberately minimal short-code lookup.
+ */
+export async function inspectFamilyInviteDetail(token: string): Promise<FamilyInvitePreviewDetail> {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc('inspect_family_invite_detail', { p_token: token });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) throw new Error('ההזמנה לא נמצאה');
+  const members = Array.isArray(row.members)
+    ? (row.members as Array<{ name: string; avatar: string; photoUrl: string | null }>).map((m) => ({
+        name: m.name,
+        avatar: m.avatar,
+        photoUrl: m.photoUrl ?? null,
+      }))
+    : null;
+  return {
+    familyName: row.family_name,
+    targetName: row.target_name,
+    targetAvatar: row.target_avatar ?? null,
+    status: row.status,
+    expiresAt: row.expires_at,
+    dogName: row.dog_name ?? null,
+    dogPhotoUrl: row.dog_photo_url ?? null,
+    members,
   };
 }
 

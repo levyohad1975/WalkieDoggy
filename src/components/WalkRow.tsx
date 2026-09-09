@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import type { FamilyUser, Walk } from '../types';
 import { isOverdue } from '../logic/nextWalk';
-import { walkCompletionLine, walkMetadataLine } from '../logic/walkActions';
+import { walkCompletionLine, walkHistoryTimingLine, walkMetadataLine } from '../logic/walkActions';
 import { colors } from '../theme/colors';
 import { Avatar } from './Avatar';
 import { StatusBadge } from './StatusBadge';
@@ -132,6 +132,13 @@ export function WalkRow({
   const metadataLine = historyCompact ? (walk.isUnplanned ? 'ספונטני' : 'מתוכנן') : walkMetadataLine(walk);
   const showToggles = !!(onTogglePee || onTogglePoop);
   const completionLine = walkCompletionLine(walk, completedBy, showToggles);
+  // BATCH 4 (item F — completedAt UX): History previously showed ONLY the
+  // scheduled-time headline (historyCompact suppresses `completionLine`
+  // above entirely) — the Master Specification explicitly wants History to
+  // distinguish planned vs. actual completion time ("תוכנן 07:00 · בוצע
+  // 07:18"). Computed only in historyCompact mode; every other caller of
+  // this component is unaffected.
+  const historyTimingLine = historyCompact ? walkHistoryTimingLine(walk) : null;
 
   return (
     <Pressable
@@ -184,6 +191,12 @@ export function WalkRow({
           </View>
         )}
       </View>
+
+      {historyTimingLine ? (
+        <RtlText style={styles.historyTimingLine} numberOfLines={1} ellipsizeMode="tail">
+          {historyTimingLine}
+        </RtlText>
+      ) : null}
 
       {requestStatusLine ? (
         <RtlText style={[styles.requestStatusLine, requestStatusLine.startsWith('✓') && styles.requestStatusApproved]} numberOfLines={1} ellipsizeMode="tail">
@@ -351,6 +364,14 @@ const styles = StyleSheet.create({
     maxWidth: 118,
   },
 
+  historyTimingLine: {
+    width: '100%',
+    textAlign: 'right',
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
   requestStatusLine: {
     width: '100%',
     textAlign: 'right',

@@ -1,14 +1,18 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
-import type { FamilyUser, Walk } from '../types';
+import type { Dog, FamilyUser, Walk } from '../types';
 import { isOverdue, relativeTimeLabel, walkDateTime } from '../logic/nextWalk';
+import { isWalkRequiringAttention } from '../logic/walkAttention';
 import { walkDateContextLabel } from '../logic/walkDateContext';
 import { colors } from '../theme/colors';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 import { DogPhoto } from './DogPhoto';
 import { Countdown } from './Countdown';
+import { WalkieMascot } from './WalkieMascot';
+import { deriveMascotMoment } from '../mascot/mascotStage';
+import { selectMessage } from '../mascot/messageEngine';
 
 interface NextWalkCardProps {
   walk: Walk;
@@ -16,6 +20,8 @@ interface NextWalkCardProps {
   currentUserId: string;
   dogName: string;
   dogPhotoUrl?: string;
+  /** BATCH 4 (item B/C8) — feeds the mascot message engine's dogNoun/wentOut Hebrew gendering. Omit/undefined uses the same neutral fallback as everywhere else in the app. */
+  dogSex?: Dog['sex'] | null;
   onMarkDone: () => void;
   /**
    * ✕ "לא בוצע" for an overdue-unresolved walk (Section 3). Only rendered
@@ -53,6 +59,7 @@ export function NextWalkCard({
   currentUserId,
   dogName,
   dogPhotoUrl,
+  dogSex,
   onMarkDone,
   onMarkNotDone,
   canResolve = true,
@@ -63,8 +70,33 @@ export function NextWalkCard({
   requestStatusLine,
 }: NextWalkCardProps) {
   const overdue = isOverdue(walk);
+  // Batch 2, requirement 7 ("walk requires attention" in-app state) — see
+  // src/logic/walkAttention.ts for why this is a pure, derived read rather
+  // than any new persisted flag.
+  const requiresAttention = isWalkRequiringAttention(walk);
   const isMine = walk.responsibleUserId === currentUserId;
   const isWeb = Platform.OS === 'web';
+
+  // BATCH 4 (C2/C3/C8) — the Walkie Doggy mascot + a matching personality
+  // message, centrally derived (mascotStage.ts) from how far `walk` is from
+  // its scheduled time. Memoized on the walk's identity/stage/context so a
+  // re-render doesn't reroll a new random message every frame — only a
+  // genuine stage change (or a different walk) picks a new one. Recomputing
+  // `now` only at render time (not on an interval) is a deliberate, small
+  // scope choice: the stage advances whenever this card next re-renders
+  // (focus/pull-to-refresh, same cadence the rest of Home already uses),
+  // not via a dedicated per-second timer — see the Batch 4 report.
+  const { mascotState, message } = useMemo(() => {
+    const moment = deriveMascotMoment(walk, new Date());
+    const picked = selectMessage(moment.messageCategory, {
+      dogName,
+      dogSex,
+      responsibleName: responsible?.name,
+      scheduledTime: walk.scheduledTime,
+    });
+    return { mascotState: moment.mascotState, message: picked.text };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walk.id, walk.scheduledTime, walk.date, walk.status, dogName, dogSex, responsible?.name]);
 
   return (
     <View style={[styles.card, isWeb && styles.webCard, overdue && styles.cardOverdue]}>
@@ -73,7 +105,15 @@ export function NextWalkCard({
         <RtlText style={styles.eyebrow} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
           הטיול הבא של {dogName}
         </RtlText>
+        {/* The Walkie Doggy MASCOT (brand character) — deliberately separate
+            from DogPhoto above (the family's REAL dog), never interchanged,
+            per the Batch 4 brief's explicit distinction. */}
+        <WalkieMascot state={mascotState} size={isWeb ? 40 : 46} testID="next-walk-mascot" />
       </View>
+
+      <RtlText style={styles.mascotMessage} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+        {message}
+      </RtlText>
 
       <View style={[styles.mainRow, isWeb && styles.webMainRow]}>
         <View style={styles.timeBlock}>
@@ -95,7 +135,10 @@ export function NextWalkCard({
             {walkDateContextLabel(walk.date)}
           </RtlText>
           {overdue ? (
-            <RtlText style={[styles.relative, styles.relativeOverdue]} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>ממתין לעדכון · {relativeTimeLabel(walk)}</RtlText>
+            <RtlText style={[styles.relative, styles.relativeOverdue]} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+              {requiresAttention ? '🚨 דורש תשומת לב · ' : 'ממתין לעדכון · '}
+              {relativeTimeLabel(walk)}
+            </RtlText>
           ) : (
             <Countdown target={walkDateTime(walk)} />
           )}
@@ -210,6 +253,13 @@ const styles = StyleSheet.create({
   eyebrowRow: { flexDirection: 'row-reverse', direction: 'ltr', alignItems: 'center', gap: 8, marginBottom: 12 },
   webEyebrowRow: { marginBottom: 4 },
   eyebrow: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
+  mascotMessage: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primaryDark,
+    textAlign: 'right',
+    marginBottom: 14,
+  },
   // Round 6F correction: timeBlock/personBlock each get an explicit, equal
   // `flex` share of the row instead of sizing themselves to their own text's
   // rendered width. Box widths are now a fixed proportion of the row —

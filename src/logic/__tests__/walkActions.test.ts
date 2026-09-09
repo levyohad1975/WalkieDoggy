@@ -1,7 +1,9 @@
 import {
   canDeleteScheduledWalk,
   canRequestChangeForWalk,
+  computeNextWalkCardActions,
   editWalkDetails,
+  formatCompletedAtBadge,
   isCurrentlySwapped,
   markWalkDone,
   markWalkSkipped,
@@ -9,6 +11,7 @@ import {
   swapWalk,
   undoMarkDone,
   walkCompletionLine,
+  walkHistoryTimingLine,
   walkMetadataLine,
   WalkActionError,
 } from '../walkActions';
@@ -261,6 +264,71 @@ describe('canRequestChangeForWalk', () => {
   });
 });
 
+/**
+ * BATCH 3 (Task 5 — walk card action authority / Task 11's test list).
+ * computeNextWalkCardActions() is what HomeScreen's top Action Card now
+ * uses to decide onSwap/onEdit/onRequestSwap/onRequestTimeChange — this
+ * directly guards against the regression that motivated Task 5: the top
+ * card previously showed "בקש שינוי שעה"/"בקש החלפה" to ANY non-admin
+ * member (`effectiveRole !== 'admin'`), not only the walk's own
+ * responsible member.
+ */
+describe('computeNextWalkCardActions', () => {
+  const future = new Date('2026-09-10T12:00:00');
+  const futureWalk = makeWalk({
+    date: '2026-09-11',
+    scheduledTime: '09:00',
+    status: 'pending',
+    responsibleUserId: 'noam',
+  });
+
+  it('responsible member sees the request-time-change action', () => {
+    const actions = computeNextWalkCardActions(futureWalk, 'noam', 'member', true, future);
+    expect(actions.canRequestTimeChange).toBe(true);
+  });
+
+  it('responsible member sees the request-swap action', () => {
+    const actions = computeNextWalkCardActions(futureWalk, 'noam', 'member', true, future);
+    expect(actions.canRequestSwap).toBe(true);
+  });
+
+  it('responsible member does NOT get the direct-edit actions (those are Admin-only)', () => {
+    const actions = computeNextWalkCardActions(futureWalk, 'noam', 'member', true, future);
+    expect(actions.canSwapDirect).toBe(false);
+    expect(actions.canEditDirect).toBe(false);
+  });
+
+  it('a DIFFERENT (non-responsible) member sees none of the four actions', () => {
+    const actions = computeNextWalkCardActions(futureWalk, 'someone-else', 'member', true, future);
+    expect(actions).toEqual({
+      canSwapDirect: false,
+      canEditDirect: false,
+      canRequestSwap: false,
+      canRequestTimeChange: false,
+    });
+  });
+
+  it('a non-responsible Family Admin does NOT get the responsible-member request actions merely for being admin', () => {
+    const actions = computeNextWalkCardActions(futureWalk, 'admin-user', 'admin', true, future);
+    expect(actions.canRequestSwap).toBe(false);
+    expect(actions.canRequestTimeChange).toBe(false);
+  });
+
+  it('a non-responsible Family Admin DOES get the direct edit/swap authority instead', () => {
+    const actions = computeNextWalkCardActions(futureWalk, 'admin-user', 'admin', true, future);
+    expect(actions.canSwapDirect).toBe(true);
+    expect(actions.canEditDirect).toBe(true);
+  });
+
+  it('even the walk\'s OWN responsible user gets only the direct-edit path once they are admin (never the request path)', () => {
+    const actions = computeNextWalkCardActions(futureWalk, 'noam', 'admin', true, future);
+    expect(actions.canRequestSwap).toBe(false);
+    expect(actions.canRequestTimeChange).toBe(false);
+    expect(actions.canSwapDirect).toBe(true);
+    expect(actions.canEditDirect).toBe(true);
+  });
+});
+
 describe('walkMetadataLine', () => {
   it('null for a plain scheduled walk with no swap/unplanned flag', () => {
     expect(walkMetadataLine(makeWalk())).toBeNull();
@@ -329,5 +397,53 @@ describe('walkCompletionLine', () => {
     const line = walkCompletionLine(walk, completedBy, false);
     expect(line).not.toContain('💧');
     expect(line).not.toContain('💩');
+  });
+});
+
+/**
+ * BATCH 4 (item F — completedAt UX). Direct tests of the two new pure
+ * formatting helpers. Time values are computed via the SAME
+ * toLocaleTimeString('he-IL', ...) call used by the implementation rather
+ * than hardcoded, so these tests stay correct under any test-runner
+ * timezone.
+ */
+describe('formatCompletedAtBadge', () => {
+  it('empty string for a pending walk', () => {
+    expect(formatCompletedAtBadge(makeWalk({ status: 'pending' }))).toBe('');
+  });
+
+  it('empty string for a skipped walk', () => {
+    expect(formatCompletedAtBadge(makeWalk({ status: 'skipped' }))).toBe('');
+  });
+
+  it('"✓ בוצע" with no time when done but completedAt is missing (legacy data)', () => {
+    expect(formatCompletedAtBadge(makeWalk({ status: 'done', completedAt: undefined }))).toBe('✓ בוצע');
+  });
+
+  it('"✓ בוצע · HH:MM" per the Master Specification\'s exact display example', () => {
+    const completedAt = '2026-08-26T18:30:00.000Z';
+    const expectedTime = new Date(completedAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+    expect(formatCompletedAtBadge(makeWalk({ status: 'done', completedAt }))).toBe(`✓ בוצע · ${expectedTime}`);
+  });
+});
+
+describe('walkHistoryTimingLine', () => {
+  it('null for a pending walk', () => {
+    expect(walkHistoryTimingLine(makeWalk({ status: 'pending' }))).toBeNull();
+  });
+
+  it('null for a skipped walk', () => {
+    expect(walkHistoryTimingLine(makeWalk({ status: 'skipped' }))).toBeNull();
+  });
+
+  it('null for a done walk with no completedAt on record (legacy data) — no broken/partial line', () => {
+    expect(walkHistoryTimingLine(makeWalk({ status: 'done', completedAt: undefined }))).toBeNull();
+  });
+
+  it('"תוכנן HH:MM · בוצע HH:MM" — planned scheduledTime vs. actual completedAt, per the Master Specification\'s exact example', () => {
+    const completedAt = '2026-08-26T18:18:00.000Z';
+    const expectedActual = new Date(completedAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+    const walk = makeWalk({ status: 'done', scheduledTime: '20:00', completedAt });
+    expect(walkHistoryTimingLine(walk)).toBe(`תוכנן 20:00 · בוצע ${expectedActual}`);
   });
 });

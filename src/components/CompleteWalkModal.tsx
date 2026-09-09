@@ -72,20 +72,33 @@ export function CompleteWalkModal({
               ))}
             </View>
 
+            {/*
+              BATCH 4 (item F — Complete Walk UI): emoji-only, no visible
+              "פיפי"/"קקי" words — the Master Specification's explicit
+              requirement — while keeping a proper accessibilityLabel for
+              screen readers, mirroring WalkRow.tsx's own already-correct
+              quick-toggle pattern (accessibilityRole="checkbox" +
+              accessibilityState + a real Hebrew label) exactly, rather than
+              inventing a new convention.
+            */}
             <View style={styles.toggleRow}>
               <Pressable
                 onPress={() => setHadPee((v) => !v)}
                 style={[styles.toggle, hadPee && styles.toggleActivePee]}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: hadPee }}
+                accessibilityLabel="סימון פיפי בטיול"
               >
                 <RtlText style={styles.toggleEmoji}>💧</RtlText>
-                <RtlText style={[styles.toggleLabel, hadPee && styles.toggleLabelActive]}>פיפי</RtlText>
               </Pressable>
               <Pressable
                 onPress={() => setHadPoop((v) => !v)}
                 style={[styles.toggle, hadPoop && styles.toggleActivePoop]}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: hadPoop }}
+                accessibilityLabel="סימון קקי בטיול"
               >
                 <RtlText style={styles.toggleEmoji}>💩</RtlText>
-                <RtlText style={[styles.toggleLabel, hadPoop && styles.toggleLabelActive]}>קקי</RtlText>
               </Pressable>
             </View>
 

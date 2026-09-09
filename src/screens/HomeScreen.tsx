@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,7 +8,9 @@ import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { computeLastWalk, computeNextWalk, isOverdue, upcomingWalks } from '../logic/nextWalk';
 import { walkDateContextLabel } from '../logic/walkDateContext';
-import { canDeleteScheduledWalk, canRequestChangeForWalk } from '../logic/walkActions';
+import { canDeleteScheduledWalk, canRequestChangeForWalk, computeNextWalkCardActions, formatCompletedAtBadge } from '../logic/walkActions';
+import { WalkieMascot } from '../components/WalkieMascot';
+import { selectMessage } from '../mascot/messageEngine';
 import { colors } from '../theme/colors';
 import { NextWalkCard } from '../components/NextWalkCard';
 import { WalkRow } from '../components/WalkRow';
@@ -25,9 +27,11 @@ import { RequestsInboxModal } from '../components/RequestsInboxModal';
 import { Button } from '../components/Button';
 import { DEMO_FAMILY } from '../data/demoData';
 import { isSupabaseConfigured } from '../lib/supabase';
+import { fetchLastResolvedWalk } from '../lib/permissionedWalks';
 import { useRequestsStore } from '../store/requestsStore';
 import { countActionableRequests, countUnreadRequestResults } from '../logic/requestLifecycle';
 import { computeWalkRequestStatusLine } from '../logic/walkRequestStatusLine';
+import type { Walk } from '../types';
 
 export function HomeScreen() {
   const currentUserId = useAuthStore((s) => s.currentUserId)!;
@@ -77,6 +81,16 @@ export function HomeScreen() {
   } = useRequestsStore();
 
   const [completeWalkId, setCompleteWalkId] = useState<string | null>(null);
+  // BATCH 4 (C2/C3/C8) — brief "success" mascot + message shown right after
+  // a walk is marked done. Purely presentational local state: never blocks
+  // navigation or the completion action itself (markDone already resolved
+  // by the time this is set), auto-dismisses on its own.
+  const [celebrationMessage, setCelebrationMessage] = useState<string | null>(null);
+  useEffect(() => {
+    if (!celebrationMessage) return;
+    const timer = setTimeout(() => setCelebrationMessage(null), 2600);
+    return () => clearTimeout(timer);
+  }, [celebrationMessage]);
   const [swapWalkId, setSwapWalkId] = useState<string | null>(null);
   const [editWalkId, setEditWalkId] = useState<string | null>(null);
   const [addUnplannedVisible, setAddUnplannedVisible] = useState(false);
@@ -166,7 +180,121 @@ export function HomeScreen() {
   }, []);
 
   const nextWalk = useMemo(() => computeNextWalk(walks), [walks, minuteTick]);
-  const lastWalk = useMemo(() => computeLastWalk(walks), [walks]);
+  // BATCH 3 (Task 5): the single source of truth for the top Action Card's
+  // four action flags — see computeNextWalkCardActions's own doc comment
+  // in logic/walkActions.ts for the exact rule and the regression this
+  // replaces (an inline `effectiveRole !== 'admin'` check that showed
+  // request actions to any non-admin member, not only the walk's own
+  // responsible member).
+  const nextWalkCardActions = useMemo(
+    () =>
+      nextWalk ? computeNextWalkCardActions(nextWalk, effectiveUserId, effectiveRole, isSupabaseConfigured, new Date()) : null,
+    [nextWalk, effectiveUserId, effectiveRole, minuteTick]
+  );
+  // BATCH 3 FINAL REVIEW CORRECTION — restores this card's pre-0027
+  // fidelity (the single most recently resolved walk, regardless of how
+  // many days ago) in Supabase mode, without reopening any bulk raw
+  // historical access. Migration 0027's operational-window `walks` RLS
+  // policy only exposes today's resolved walks (plus pending, any date)
+  // through scheduleStore — computeLastWalk(walks) alone can therefore
+  // only ever find a walk resolved TODAY. get_last_resolved_walk() (a
+  // narrow, single-row, unrestricted-by-view_history/view_statistics RPC —
+  // see 0027's own comment) is the fallback for "nothing resolved yet
+  // today", covering an older walk.
+  //
+  // Priority order is deliberately "today first, server second" rather
+  // than the other way around: computeLastWalk(walks), whenever it finds
+  // something, is BY CONSTRUCTION always at least as recent as whatever the
+  // server RPC would return (nothing can be more recent than "today"), so
+  // it is always safe to trust instantly and reflects this screen's own
+  // just-completed optimistic updates immediately (no round-trip needed for
+  // the common case). serverLastResolvedWalk is consulted only when
+  // nothing was resolved today at all.
+  // BATCH 4 REVIEW CORRECTION #2 — restores the FINAL approved Batch 3
+  // architecture, which this screen had regressed away from. The fetched
+  // row is stored TOGETHER WITH the familyId it was fetched for, and is
+  // only ever read back out when that stored familyId still matches the
+  // CURRENT familyId (see the lastWalk memo below) — never a bare
+  // `Walk | null`. This is a stronger guarantee than "clear it and hope a
+  // pending fetch doesn't land before the clear runs": with the familyId
+  // carried on the value itself, there is no render — before, during, or
+  // after any family-change effect — where a family-B screen can ever read
+  // a family-A row, because the read path itself refuses a mismatched
+  // familyId, not just the write path.
+  const [serverLastResolvedWalk, setServerLastResolvedWalk] = useState<{
+    familyId: string;
+    walk: Walk | null;
+  } | null>(null);
+  // lastResolvedWalkRequestIdRef is a COMPLEMENTARY protection, not a
+  // substitute for the familyId-scoped shape above: it guards against
+  // out-of-order responses for the *same* family (e.g. A → B → A in quick
+  // succession issues two requests for family A; without this, the older
+  // of the two could resolve last and overwrite the newer one, and the
+  // familyId check alone wouldn't catch that, since both rows do carry
+  // familyId "A"). Bumped on every familyId change; a response is only
+  // ever applied if the generation is still current when it resolves.
+  const lastResolvedWalkRequestIdRef = useRef(0);
+  useEffect(() => {
+    lastResolvedWalkRequestIdRef.current += 1;
+  }, [familyId]);
+  const refreshServerLastResolvedWalk = useCallback(async () => {
+    if (!isSupabaseConfigured) return;
+    const requestId = lastResolvedWalkRequestIdRef.current;
+    // Captured at call time, not read again after the await: this is the
+    // family the request was actually issued for, regardless of whatever
+    // familyId the screen has moved on to by the time it resolves.
+    const requestedFamilyId = familyId;
+    try {
+      const walk = await fetchLastResolvedWalk();
+      // Stale response — a family change (or another refresh for the same
+      // family) has already moved past this request's generation. Never
+      // apply it, success or not.
+      if (lastResolvedWalkRequestIdRef.current !== requestId) return;
+      setServerLastResolvedWalk({ familyId: requestedFamilyId, walk });
+    } catch (e) {
+      if (lastResolvedWalkRequestIdRef.current !== requestId) return;
+      // Best-effort, same convention as loadPermissionOverrides() — leaves
+      // serverLastResolvedWalk as whatever it was. That can never be a
+      // WRONG family's row being newly exposed: a stored row is only ever
+      // read back out when its own familyId matches the current familyId
+      // (see the lastWalk memo below), so an untouched previous value is
+      // either null, or a row already correctly scoped to a family — never
+      // silently reinterpreted as belonging to whichever family is current
+      // now.
+    }
+  }, [familyId]);
+  useFocusEffect(
+    useCallback(() => {
+      void refreshServerLastResolvedWalk();
+    }, [refreshServerLastResolvedWalk, familyId])
+  );
+  const lastWalk = useMemo(() => {
+    const resolvedToday = computeLastWalk(walks);
+    if (resolvedToday) return resolvedToday;
+    if (!isSupabaseConfigured) return undefined;
+    // The family-scoped gate: a fetched row is only ever usable when it was
+    // fetched for the family currently being viewed. This is what makes
+    // this fix a true fix rather than a narrower "block the fetch" patch —
+    // even a row that legitimately made it into state can never be
+    // displayed for the wrong family.
+    if (!serverLastResolvedWalk || serverLastResolvedWalk.familyId !== familyId) return undefined;
+    return serverLastResolvedWalk.walk ?? undefined;
+  }, [walks, serverLastResolvedWalk, familyId]);
+  // Whether `lastWalk` is present in the local, operational-window-limited
+  // `walks` state — true for anything resolved today (or always, in
+  // local/demo mode, where `walks` is unrestricted). Every mutation this
+  // card can trigger (skip/markDone/editDoneDetails/editUnplannedWalk/
+  // deleteUnplannedWalk/deleteScheduledWalkOccurrence, all in
+  // scheduleStore.ts) looks the walk up via `get().walks.find(id)` first
+  // and silently no-ops if it isn't found — an older lastWalk surfaced only
+  // via get_last_resolved_walk() above would otherwise let a member tap
+  // "edit"/toggle 💩💧, appear to work, and silently do nothing. Rather than
+  // widen every scheduleStore mutation to accept an out-of-window walk
+  // (unverified, out of this correction's scope), this card stays
+  // read-only for that specific case — the display-fidelity requirement
+  // ("show the most recent resolved walk even when older than today") is
+  // met; edit/delete remain exactly where they can safely work.
+  const lastWalkIsEditable = !isSupabaseConfigured || (!!lastWalk && walks.some((w) => w.id === lastWalk.id));
   const upcoming = useMemo(
     () => upcomingWalks(walks).filter((w) => w.id !== nextWalk?.id),
     [walks, nextWalk, minuteTick]
@@ -282,7 +410,14 @@ export function HomeScreen() {
       >
         <View style={styles.topRow}>
           <Image
-            source={require('../../assets/walkie-doggy-link-wordmark.png')}
+            // BATCH 4 (item C — branding/onboarding): the previous asset had
+            // an opaque near-white background baked into its pixels (see
+            // the Batch 4 report) — against this screen's cream background
+            // it rendered as a visible white rectangle. This is a
+            // transparency-processed copy of the SAME wordmark artwork (no
+            // new/invented asset), produced from the official source — see
+            // the report for exactly how.
+            source={require('../../assets/walkie-doggy-link-wordmark-transparent.png')}
             style={styles.brandWordmark}
             resizeMode="contain"
             accessibilityLabel="Walkie Doggy Link"
@@ -304,6 +439,15 @@ export function HomeScreen() {
           ) : null}
         </View>
 
+        {celebrationMessage ? (
+          <View style={styles.celebrationBanner} accessibilityRole="text">
+            <WalkieMascot state="success" size={40} />
+            <RtlText style={styles.celebrationText} numberOfLines={2}>
+              {celebrationMessage}
+            </RtlText>
+          </View>
+        ) : null}
+
         {nextWalk ? (
           <NextWalkCard
             walk={nextWalk}
@@ -311,6 +455,7 @@ export function HomeScreen() {
             currentUserId={effectiveUserId}
             dogName={dog?.name ?? 'הכלב/ה'}
             dogPhotoUrl={dog?.photoUrl}
+            dogSex={dog?.sex}
             requestStatusLine={
               computeWalkRequestStatusLine(nextWalk, swapRequests, timeChangeRequests, walksById, new Date(), effectiveUserId)?.text
             }
@@ -323,10 +468,23 @@ export function HomeScreen() {
             // Direct reassignment/edit is Admin-only (requirement 6) — a
             // Member (real or simulated via test mode) gets the contextual
             // approval-based actions instead (requirement 4).
-            onSwap={effectiveRole === 'admin' ? () => setSwapWalkId(nextWalk.id) : undefined}
-            onEdit={effectiveRole === 'admin' ? () => setEditWalkId(nextWalk.id) : undefined}
-            onRequestSwap={effectiveRole !== 'admin' ? () => setRequestSwapWalkId(nextWalk.id) : undefined}
-            onRequestTimeChange={effectiveRole !== 'admin' ? () => setRequestTimeChangeWalkId(nextWalk.id) : undefined}
+            //
+            // BATCH 3 FIX (Task 5 — walk-card action authority): this used
+            // to compute `effectiveRole === 'admin'`/`effectiveRole !==
+            // 'admin'` inline, which meant ANY non-admin member saw "בקש
+            // שינוי שעה"/"בקש החלפה" for the top Action Card, even for a
+            // walk they are not responsible for. Now driven by
+            // nextWalkCardActions (computeNextWalkCardActions in
+            // logic/walkActions.ts), the same rule ScheduleScreen's lower
+            // list already used — see that function's doc comment for the
+            // full "responsible member / non-responsible member /
+            // non-responsible admin" rule and its own unit tests.
+            onSwap={nextWalkCardActions?.canSwapDirect ? () => setSwapWalkId(nextWalk.id) : undefined}
+            onEdit={nextWalkCardActions?.canEditDirect ? () => setEditWalkId(nextWalk.id) : undefined}
+            onRequestSwap={nextWalkCardActions?.canRequestSwap ? () => setRequestSwapWalkId(nextWalk.id) : undefined}
+            onRequestTimeChange={
+              nextWalkCardActions?.canRequestTimeChange ? () => setRequestTimeChangeWalkId(nextWalk.id) : undefined
+            }
           />
         ) : (
           <View style={styles.emptyCard}>
@@ -350,9 +508,10 @@ export function HomeScreen() {
 
             {(() => {
               const canEditLastWalk =
-                effectiveRole === 'admin' ||
-                lastWalk.responsibleUserId === effectiveUserId ||
-                (lastWalk.isUnplanned && lastWalk.completedByUserId === effectiveUserId);
+                lastWalkIsEditable &&
+                (effectiveRole === 'admin' ||
+                  lastWalk.responsibleUserId === effectiveUserId ||
+                  (lastWalk.isUnplanned && lastWalk.completedByUserId === effectiveUserId));
 
               return (
                 <View style={styles.lastWalkCard}>
@@ -367,7 +526,15 @@ export function HomeScreen() {
                       {lastWalk.status === 'skipped' ? (
                         <RtlText style={styles.lastWalkSkippedBadge} numberOfLines={1} maxFontSizeMultiplier={1.35}>✕ לא בוצע</RtlText>
                       ) : (
-                        <RtlText style={styles.lastWalkDoneBadge} numberOfLines={1} maxFontSizeMultiplier={1.35}>✓ בוצע</RtlText>
+                        // BATCH 4 (item F — completedAt UX): show the actual
+                        // completion-click time, not just the label — the
+                        // Master Specification's exact example is
+                        // "✓ בוצע · 07:18". formatCompletedAtBadge() falls
+                        // back to the plain label alone for legacy data with
+                        // no recorded completedAt.
+                        <RtlText style={styles.lastWalkDoneBadge} numberOfLines={1} maxFontSizeMultiplier={1.35}>
+                          {formatCompletedAtBadge(lastWalk)}
+                        </RtlText>
                       )}
                     </View>
 
@@ -505,11 +672,30 @@ export function HomeScreen() {
         defaultUserId={effectiveUserId}
         onConfirm={async ({ completedByUserId, hadPee, hadPoop, note }) => {
           const walkId = completeWalkId;
+          const walkBeingCompleted = walkId ? walksById[walkId] : undefined;
           setCompleteWalkId(null);
           if (!walkId) return;
           // markDone() itself refuses while Test Mode is active (see
           // scheduleStore.ts) — no separate guard needed here.
           await markDone(walkId, completedByUserId, { hadPee, hadPoop, note: note || undefined });
+          // BATCH 4 (C2/C3/C8) — success mascot + message, best-effort only:
+          // if anything about the walk/dog/user lookups above is somehow
+          // unavailable, selectMessage()'s own safe fallbacks (see
+          // messageEngine.ts) still produce a grammatical message, and this
+          // is purely cosmetic — never re-thrown, never blocks markDone's
+          // own error handling.
+          try {
+            const picked = selectMessage('success', {
+              dogName: dog?.name,
+              dogSex: dog?.sex,
+              responsibleName: usersById[completedByUserId]?.name,
+              completionTime: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }),
+              scheduledTime: walkBeingCompleted?.scheduledTime,
+            });
+            setCelebrationMessage(picked.text);
+          } catch {
+            // purely cosmetic — never block/interrupt completion.
+          }
         }}
         onCancel={() => setCompleteWalkId(null)}
       />
@@ -765,6 +951,18 @@ const styles = StyleSheet.create({
   content: { padding: 20, gap: 20, paddingBottom: 48, width: '100%' },
   webContent: { maxWidth: 1000, alignSelf: 'center', paddingTop: 14, gap: 16 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: 28, borderWidth: 1, borderColor: colors.border },
+  celebrationBanner: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.statusDoneBg,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.statusDone + '55',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  celebrationText: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
   unplannedButton: { marginTop: -4 },
   testModeBanner: {
     flexDirection: 'row',

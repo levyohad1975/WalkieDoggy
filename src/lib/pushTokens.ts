@@ -48,6 +48,33 @@ export type PushRegistrationExecutionEnv = 'storeClient' | 'bareOrStandalone' | 
 
 export type PushRegistrationDecision = 'register' | 'skip-silent' | 'skip-warn';
 
+/**
+ * Batch 2 review correction (device-specific channel selection): the
+ * server-side has_active_remote_push_channel() RPC (migration 0025) now
+ * answers "does THIS SPECIFIC token/endpoint have an active row", not "does
+ * this profile have any active row anywhere" — because a profile can be
+ * signed in on more than one device, and a device with no channel of its
+ * own must not suppress its own local fallback just because a *different*
+ * device of the same profile happens to have one (see
+ * src/lib/remoteReminderChannel.ts for the full policy).
+ *
+ * That means the caller now has to supply ITS OWN Expo push token to that
+ * RPC. This module is the only place that token is obtained (via
+ * getExpoPushTokenAsync() inside registerPushToken()), so it caches the
+ * most recently observed value in memory for remoteReminderChannel.ts to
+ * read synchronously. This is intentionally NOT persisted or re-fetched —
+ * it only needs to reflect what THIS running app instance last registered;
+ * a fresh app launch that hasn't registered yet simply has no known token,
+ * which correctly falls through to "no remote channel known" until
+ * registration completes.
+ */
+let lastKnownExpoPushToken: string | null = null;
+
+/** Synchronous — this device's most recently registered Expo push token, if registerPushToken() has ever obtained one this app session. Null if none yet (or never eligible for remote push, e.g. Expo Go). */
+export function getExpoPushTokenIfKnown(): string | null {
+  return lastKnownExpoPushToken;
+}
+
 /** Pure decision rule — kept separate from the native-module plumbing so it's unit-testable in this sandbox without a real Expo runtime. */
 export function decidePushRegistration(params: {
   executionEnvironment: PushRegistrationExecutionEnv;
@@ -138,6 +165,12 @@ export async function registerPushToken(): Promise<void> {
     });
     const token = tokenResponse?.data;
     if (!token) return;
+
+    // Record this device's own token synchronously for
+    // getExpoPushTokenIfKnown() (see its doc comment above) — set as soon as
+    // it's obtained, independent of whether the upsert below succeeds, since
+    // it's a fact about this device/runtime regardless of network state.
+    lastKnownExpoPushToken = token;
 
     const platform =
       Platform.OS === 'ios'

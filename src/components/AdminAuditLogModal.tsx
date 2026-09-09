@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
@@ -26,6 +26,20 @@ const ACTION_LABEL: Record<string, string> = {
   schedule_rule_created: 'שעה קבועה נוספה',
   schedule_rule_edited: 'שעה קבועה נערכה',
   schedule_rule_deleted: 'שעה קבועה נמחקה',
+  member_promoted_to_admin: 'בן משפחה קודם למנהל',
+  admin_demoted_to_member: 'מנהל שונה לבן משפחה',
+  invite_created: 'הזמנה נוצרה',
+  invite_revoked: 'הזמנה בוטלה',
+  invite_redeemed: 'הזמנה מומשה',
+  profile_pin_set: 'קוד PIN הוגדר',
+  profile_pin_cleared: 'קוד PIN הוסר',
+  profile_claim_transferred: 'הפרופיל הועבר למכשיר אחר',
+  member_permission_override_set: 'הרשאת בן משפחה שונתה',
+  member_permission_override_cleared: 'הרשאת בן משפחה הוחזרה לברירת המחדל',
+  walk_admin_rescheduled: 'שעת הטיול שונתה על ידי מנהל',
+  walk_admin_swapped: 'שני טיולים הוחלפו על ידי מנהל',
+  impersonation_started: 'בדיקה כבן משפחה התחילה',
+  impersonation_ended: 'בדיקה כבן משפחה הסתיימה',
 };
 
 const PAGE_SIZE = 50;
@@ -112,3 +126,5 @@ const styles = StyleSheet.create({
   moreButton: { marginTop: 10 },
   closeButton: { marginTop: 10 },
 });
+
+

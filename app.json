@@ -16,7 +16,7 @@
         "UIBackgroundModes": [
           "remote-notification"
         ],
-        "NSPhotoLibraryUsageDescription": "כדי לבחור תמונה של טופי או של בן משפחה מהגלריה שלך."
+        "NSPhotoLibraryUsageDescription": "כדי לבחור תמונה של הכלב/ה שלכם או של בן משפחה מהגלריה שלכם."
       }
     },
     "android": {
@@ -47,7 +47,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "כדי לבחור תמונה של טופי או של בן משפחה מהגלריה שלך."
+          "photosPermission": "כדי לבחור תמונה של הכלב/ה שלכם או של בן משפחה מהגלריה שלכם."
         }
       ],
       "@react-native-community/datetimepicker",

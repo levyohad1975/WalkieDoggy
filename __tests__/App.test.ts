@@ -40,6 +40,11 @@ jest.mock('../src/notifications/notificationService', () => ({
   requestNotificationPermissions: jest.fn().mockResolvedValue(true),
 }));
 
+const mockRegisterPushToken = jest.fn().mockResolvedValue(undefined);
+jest.mock('../src/lib/pushTokens', () => ({
+  registerPushToken: (...args: unknown[]) => mockRegisterPushToken(...args),
+}));
+
 jest.mock('../src/navigation/RootNavigator', () => ({ RootNavigator: () => null }));
 jest.mock('../src/screens/LoginScreen', () => ({ LoginScreen: () => null }));
 jest.mock('../src/screens/FamilyOnboardingScreen', () => ({ FamilyOnboardingScreen: () => null }));
@@ -52,7 +57,7 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 jest.mock('expo-status-bar', () => ({ StatusBar: () => null }));
 
-import { performColdStart, runForegroundSync } from '../App';
+import { performColdStart, runForegroundSync, registerPushTokenAndReconcile } from '../App';
 
 function orderOf(calls: { name: string; mock: jest.Mock }[]): string[] {
   const events: { name: string; order: number }[] = [];
@@ -80,6 +85,7 @@ beforeEach(() => {
   // implementation here, every test, is what keeps each test's mockTrySync
   // behavior independent of what earlier tests configured on it.
   mockTrySync.mockResolvedValue(undefined);
+  mockRegisterPushToken.mockResolvedValue(undefined);
   mockAuthState = { familyId: 'family-1', currentUserId: 'user-a' };
   mockScheduleWalks = [];
   mockScheduleLoad.mockImplementation(async () => {
@@ -254,6 +260,92 @@ describe('Round-6 fix #2 — schedule-load success/failure signal gates notifica
     expect(mockRequestsLoad).toHaveBeenCalledTimes(1);
     expect(mockTouchLastSeen).toHaveBeenCalledTimes(1);
     expect(mockRevalidateClaim).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Batch 2 review correction — native cold-start registration race', () => {
+  it('reconciles notifications AFTER registerPushToken() resolves, not before — the ordering that closes the race', async () => {
+    // Simulates: the schedule store already has walks loaded (e.g. from an
+    // earlier cold-start pass) by the time registration finishes — exactly
+    // the state a local reminder could have been scheduled under, before
+    // this device's remote channel was known.
+    mockScheduleWalks = [{ id: 'walk-1', status: 'pending' }];
+    let resolveRegister!: () => void;
+    mockRegisterPushToken.mockImplementation(
+      () => new Promise<void>((resolve) => (resolveRegister = resolve))
+    );
+    const { reconcileScheduleNotifications } = require('../src/store/scheduleStore');
+
+    const pending = registerPushTokenAndReconcile();
+
+    // registerPushToken() is in flight — reconciliation must not have run yet.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(reconcileScheduleNotifications).not.toHaveBeenCalled();
+
+    resolveRegister();
+    await pending;
+
+    expect(mockRegisterPushToken).toHaveBeenCalledTimes(1);
+    expect(reconcileScheduleNotifications).toHaveBeenCalledTimes(1);
+    expect(reconcileScheduleNotifications).toHaveBeenCalledWith('family-1', [{ id: 'walk-1', status: 'pending' }]);
+    expect(mockRegisterPushToken.mock.invocationCallOrder[0]).toBeLessThan(
+      reconcileScheduleNotifications.mock.invocationCallOrder[0]
+    );
+  });
+
+  it('reconciles against whatever walks are loaded at the moment registration resolves — covers the late-resolving-registration race directly', async () => {
+    // Cold start: nothing loaded yet when registration starts...
+    mockScheduleWalks = [];
+    let resolveRegister!: () => void;
+    mockRegisterPushToken.mockImplementation(
+      () => new Promise<void>((resolve) => (resolveRegister = resolve))
+    );
+    const { reconcileScheduleNotifications } = require('../src/store/scheduleStore');
+
+    const pending = registerPushTokenAndReconcile();
+
+    // ...then runForegroundSync()'s own step 2 loads walks and reconciles
+    // once while registration is STILL in flight (the exact race from the
+    // review: a local reminder is scheduled here, under "no channel known
+    // yet").
+    mockScheduleWalks = [{ id: 'walk-1', status: 'pending' }];
+    reconcileScheduleNotifications.mockClear();
+
+    // Registration finally resolves — this device now has a known token.
+    resolveRegister();
+    await pending;
+
+    // The post-registration reconciliation pass must have re-run against
+    // the (now current) walks, giving reconcileScheduleNotifications /
+    // hasActiveRemoteReminderChannel() a chance to cancel the local
+    // reminder scheduled moments earlier under the stale "no channel"
+    // assumption — this is what "cannot silently return later" means here.
+    expect(reconcileScheduleNotifications).toHaveBeenCalledTimes(1);
+    expect(reconcileScheduleNotifications).toHaveBeenCalledWith('family-1', [{ id: 'walk-1', status: 'pending' }]);
+  });
+
+  it('is a no-op reconciliation (but still registers) when nothing is loaded into the schedule store yet', async () => {
+    mockScheduleWalks = [];
+    const { reconcileScheduleNotifications } = require('../src/store/scheduleStore');
+
+    await registerPushTokenAndReconcile();
+
+    expect(mockRegisterPushToken).toHaveBeenCalledTimes(1);
+    expect(reconcileScheduleNotifications).not.toHaveBeenCalled();
+  });
+
+  it('never weakens the local fallback: if registration never yields a usable channel, reconciliation still runs and leaves the existing (local-fallback) gate decision to hasActiveRemoteReminderChannel() itself', async () => {
+    // registerPushToken() resolving successfully does not, on its own,
+    // guarantee a channel now exists (e.g. permission denied, no device) —
+    // this function must not assume success; it only re-triggers the same
+    // reconciliation gate that already handles "no channel" correctly.
+    mockScheduleWalks = [{ id: 'walk-1', status: 'pending' }];
+    const { reconcileScheduleNotifications } = require('../src/store/scheduleStore');
+
+    await registerPushTokenAndReconcile();
+
+    expect(reconcileScheduleNotifications).toHaveBeenCalledWith('family-1', [{ id: 'walk-1', status: 'pending' }]);
   });
 });
 

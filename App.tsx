@@ -1,11 +1,14 @@
-import React, { useEffect } from 'react';
-import { ActivityIndicator, AppState, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, AppState, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from './src/store/authStore';
+import { useSystemAdminStore } from './src/store/systemAdminStore';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { FamilyOnboardingScreen } from './src/screens/FamilyOnboardingScreen';
+import { SystemAdminScreen } from './src/screens/SystemAdminScreen';
+import { RtlText } from './src/components/RtlText';
 import { colors } from './src/theme/colors';
 import { requestNotificationPermissions } from './src/notifications/notificationService';
 import { registerPushToken } from './src/lib/pushTokens';
@@ -151,6 +154,64 @@ export async function performColdStart(restoreSession: () => Promise<void>): Pro
   await runForegroundSync();
 }
 
+/**
+ * BATCH 2 REVIEW CORRECTION (native cold-start registration race):
+ *
+ * PROBLEM: registerPushToken() runs fire-and-forget from its own effect
+ * below, fully independent of performColdStart()/runForegroundSync(). On a
+ * fresh native launch there is no ordering guarantee between the two: the
+ * cold-start reconciliation pass (runForegroundSync() step 4, via
+ * reconcileNotificationsNow()) can run and schedule local walk reminders
+ * BEFORE registerPushToken() resolves — at that moment
+ * getExpoPushTokenIfKnown() (src/lib/pushTokens.ts) is still null, so
+ * hasActiveRemoteReminderChannel() correctly (and necessarily) falls back to
+ * local scheduling, since this device's remote reachability genuinely isn't
+ * known yet. Once registerPushToken() later succeeds, this device DOES have
+ * an active server-reachable channel — but nothing re-ran reconciliation to
+ * cancel the local reminders scheduled moments earlier, so both a server
+ * push and a stale local notification can fire for the same walk.
+ *
+ * FIX: registerPushToken()'s own effect now awaits it and then re-runs the
+ * exact same reconciliation pass used everywhere else
+ * (reconcileNotificationsNow() — already defined above, already the single
+ * place that re-derives the channel gate fresh via
+ * hasActiveRemoteReminderChannel() and cancels/reschedules local reminders
+ * accordingly). This is intentionally the SMALLEST fix: no new plumbing, no
+ * boolean success/failure signal threaded out of registerPushToken() (a
+ * reconciliation pass that finds nothing changed, or finds the schedule
+ * store not loaded yet, is already a correct, cheap no-op — see
+ * reconcileNotificationsNow()'s own doc comment above), and no change to
+ * pushTokens.ts/remoteReminderChannel.ts/scheduleStore.ts at all. Extracted
+ * to a standalone, exported function for the same testability reason as
+ * performColdStart() above — see App.test.ts's "native registration race"
+ * tests.
+ *
+ * Ordering after this fix, for every interleaving:
+ *   - registerPushToken() resolves BEFORE the schedule store has any walks
+ *     loaded yet (fires very early in a cold start): this call's
+ *     reconcileNotificationsNow() is a no-op (nothing loaded), but the
+ *     token is already known by the time runForegroundSync()'s own
+ *     reconciliation (step 4) runs later in the same cold start — so THAT
+ *     pass sees the up-to-date channel and never schedules a
+ *     now-redundant local reminder in the first place.
+ *   - registerPushToken() resolves AFTER runForegroundSync() has already
+ *     reconciled once (the exact race described above): this call's
+ *     reconcileNotificationsNow() runs again, now with the token known,
+ *     and cancels whichever local reminders the earlier pass scheduled
+ *     under "no channel known yet".
+ *   - registerPushToken() fails, no-ops (Expo Go), or this device never
+ *     gets a token at all: getExpoPushTokenIfKnown() stays null,
+ *     hasActiveRemoteReminderChannel() keeps returning false, and this
+ *     extra reconciliation pass is a correct no-op — the local fallback
+ *     is never weakened.
+ * In every case, the LAST reconciliation pass to actually run always sees
+ * this device's current, real channel state — never a stale one.
+ */
+export async function registerPushTokenAndReconcile(): Promise<void> {
+  await registerPushToken();
+  reconcileNotificationsNow();
+}
+
 // Wires the offline SyncQueue to "whose profile is currently claimed on this
 // device" — module scope, once, so every enqueue() from here on is tagged
 // with the right owner (see syncQueue.ts's setSyncQueueActorGetter doc
@@ -170,6 +231,25 @@ export default function App() {
   // never reaches this branch.
   const needsFamilyOnboarding = isSupabaseConfigured && !familyId;
 
+  // BATCH 4 (item A — System Admin V1): "System Admin is a platform
+  // identity, NOT automatically a Family Admin/member" (the brief's own
+  // words) — so this check, and the entry point it gates, is deliberately
+  // rendered OUTSIDE the needsFamilyOnboarding/currentUserId/LoginScreen
+  // branching above: a system admin with no family yet (or no claimed
+  // family persona on this device) must still be able to reach
+  // "🛡️ ניהול מערכת". am_i_system_admin() only needs an authenticated
+  // Supabase session (restoreSession() above already guarantees the
+  // anonymous session exists once `hydrated` is true — see
+  // ensureAnonymousSession()'s call site in authStore.ts) — never a
+  // familyId or currentUserId. This never sets/reads familyId itself, so it
+  // cannot affect which family this device is a member of.
+  const isSystemAdmin = useSystemAdminStore((s) => s.isSystemAdmin);
+  const refreshSystemAdmin = useSystemAdminStore((s) => s.refresh);
+  const [systemAdminOpen, setSystemAdminOpen] = useState(false);
+  useEffect(() => {
+    if (hydrated) void refreshSystemAdmin();
+  }, [hydrated, refreshSystemAdmin]);
+
   // Section 10: remote request-push token registration — completely
   // separate from requestNotificationPermissions() below (that's the
   // LOCAL scheduled-walk-reminder permission flow / Android
@@ -178,9 +258,16 @@ export default function App() {
   // per-user. registerPushToken() is fully self-guarded (try/catch,
   // feature-detects device/permission availability) so this can never
   // crash or block sign-in/navigation.
+  //
+  // Batch 2 review correction (native cold-start registration race): calls
+  // registerPushTokenAndReconcile() rather than registerPushToken()
+  // directly — see that function's doc comment above for the race this
+  // closes (a local reminder scheduled before this device's remote channel
+  // was known could otherwise survive, undeleted, once registration
+  // completed).
   useEffect(() => {
     if (currentUserId) {
-      void registerPushToken();
+      void registerPushTokenAndReconcile();
     }
   }, [currentUserId]);
 
@@ -242,6 +329,25 @@ export default function App() {
           ) : (
             <LoginScreen />
           )}
+
+          {/* BATCH 4 (item A) — see the isSystemAdmin comment above for why
+              this sits outside every other branch. A small, unobtrusive
+              corner entry point; NEVER shown unless
+              useSystemAdminStore().isSystemAdmin resolved true, and that in
+              turn only ever came from am_i_system_admin() — a fresh,
+              server-side check of the real auth identity, not a locally
+              cached/guessed value. */}
+          {isSystemAdmin ? (
+            <Pressable
+              onPress={() => setSystemAdminOpen(true)}
+              style={styles.systemAdminEntry}
+              accessibilityRole="button"
+              accessibilityLabel="ניהול מערכת"
+            >
+              <RtlText style={styles.systemAdminEntryText}>🛡️</RtlText>
+            </Pressable>
+          ) : null}
+          <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} />
         </>
       )}
     </SafeAreaProvider>
@@ -250,4 +356,23 @@ export default function App() {
 
 const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
+  systemAdminEntry: {
+    position: 'absolute',
+    bottom: 18,
+    left: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.shadow,
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  systemAdminEntryText: { fontSize: 20 },
 });

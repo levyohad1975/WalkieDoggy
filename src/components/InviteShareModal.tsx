@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Alert, Modal, Pressable, Share, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
-import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
+import { copyToClipboard } from '../lib/clipboard';
 import { colors } from '../theme/colors';
 import { Button } from './Button';
 import { ConfirmModal } from './ConfirmModal';
@@ -76,8 +76,15 @@ export function InviteShareModal({ visible, targetName, invite, onRevoked, onClo
   const expiryText = formatInviteExpiry(invite.expiresAt);
 
   const copyLink = async () => {
-    await Clipboard.setStringAsync(link);
-    Alert.alert('הקישור הועתק', 'קישור ההזמנה הועתק ללוח.');
+    // BATCH 4 (item E): try/catch-guarded (via the shared helper) with real
+    // failure feedback — the link itself stays visible/selectable in
+    // `linkText` below either way (manual-copy fallback).
+    const ok = await copyToClipboard(link);
+    if (ok) {
+      Alert.alert('הקישור הועתק', 'קישור ההזמנה הועתק ללוח.');
+    } else {
+      Alert.alert('לא הצלחנו להעתיק', 'אפשר להעתיק ידנית — לחצו לחיצה ארוכה על הקישור למעלה כדי לבחור ולהעתיק אותו.');
+    }
   };
 
   const shareLink = async () => {

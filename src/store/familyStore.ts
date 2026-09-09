@@ -10,6 +10,8 @@ import { useScheduleStore } from './scheduleStore';
 import { DEMO_DOG, DEMO_FAMILY } from '../data/demoData';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { guardTestModeMutation, TEST_MODE_READ_ONLY_MESSAGE } from '../lib/testModeGuard';
+import type { MemberPermissionOverride, PermissionKey, PermissionLoadStatus } from '../logic/permissions';
+import { clearMemberPermissionOverride, listMemberPermissionOverrides, setMemberPermissionOverride } from '../lib/permissions';
 
 interface FamilyState {
   family: Family | null;
@@ -18,8 +20,40 @@ interface FamilyState {
   loading: boolean;
   error: string | null;
   actionError: string | null;
+  /**
+   * BATCH 3 (Task 3): every member-permission-override row this device can
+   * see per RLS (0023) — its own rows, or, for a Family Admin, every row in
+   * the family. Empty in local/demo mode (no Supabase, no concept of a
+   * per-member override there — every local/demo member simply gets the
+   * role default). Never read directly by screens; go through
+   * logic/permissions.ts's resolveEffectivePermission()/canViewHistory()/
+   * canViewStatistics() instead, so the "override, else role default" rule
+   * only lives in one place.
+   */
+  permissionOverrides: MemberPermissionOverride[];
+  /**
+   * BATCH 3 CORRECTION #2 (post-review): whether `permissionOverrides`
+   * above is currently a verified snapshot of the server's rows. Starts
+   * 'idle', becomes 'loading' the instant loadPermissionOverrides() is
+   * called, then 'loaded' or 'error'. This is what
+   * logic/permissions.ts's canAccessHistoryScreen()/canAccessStatisticsScreen()
+   * check to fail closed — previously nothing distinguished "override data
+   * hasn't loaded yet" from "loaded, and there is no override", so a member
+   * with an explicit denied override could transiently be treated as
+   * allowed for as long as this hadn't resolved (or if it silently failed).
+   * In local/demo mode this goes straight to 'loaded' (see
+   * loadPermissionOverrides() below) — there is no server round-trip to
+   * wait on and no per-member override concept there at all.
+   */
+  permissionOverridesStatus: PermissionLoadStatus;
 
   load: (familyId: string) => Promise<void>;
+  /** Reload of permissionOverrides alone — called after load() and after every set/clear below. Never throws (a failure here must not block family/schedule data — every screen already falls back to the role default when override data hasn't loaded), but DOES record the outcome in permissionOverridesStatus ('loaded' or 'error') so a caller that needs to fail closed (History/Statistics — see logic/permissions.ts's canAccessHistoryScreen()/canAccessStatisticsScreen()) can tell "verified" apart from "unknown". */
+  loadPermissionOverrides: () => Promise<void>;
+  /** Family-Admin-only server-side (set_member_permission_override, 0023) — never trust a client-side admin check alone; the RPC re-verifies it. */
+  setPermissionOverride: (userId: string, permissionKey: PermissionKey, allowed: boolean) => Promise<void>;
+  /** Reverts one member/permission back to the role default. Family-Admin-only server-side (clear_member_permission_override, 0023). */
+  clearPermissionOverride: (userId: string, permissionKey: PermissionKey) => Promise<void>;
   setReminderEnabled: (userId: string, enabled: boolean) => Promise<void>;
   saveDog: (dog: Dog) => Promise<void>;
 
@@ -38,6 +72,8 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
   loading: false,
   error: null,
   actionError: null,
+  permissionOverrides: [],
+  permissionOverridesStatus: 'idle',
 
   load: async (familyId: string) => {
     set({ loading: true, error: null });
@@ -63,8 +99,60 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
       const auth = useAuthStore.getState();
       const signedInAsRemoved = auth.currentUserId && users.find((u) => u.id === auth.currentUserId)?.removedAt;
       if (signedInAsRemoved) void auth.signOut();
+
+      // Best-effort — see loadPermissionOverrides's own doc comment for why
+      // this never blocks or fails the family load itself.
+      void get().loadPermissionOverrides();
     } catch (e) {
       set({ error: e instanceof Error ? e.message : 'שגיאה בטעינת נתוני המשפחה', loading: false });
+    }
+  },
+
+  loadPermissionOverrides: async () => {
+    if (!isSupabaseConfigured) {
+      // No per-member permission concept in local/demo mode at all — every
+      // member simply gets the role default, and there is no server
+      // round-trip to wait on, so this is immediately a VERIFIED 'loaded'
+      // state (not 'idle'/'loading') rather than something a fail-closed
+      // caller would ever need to block on.
+      set({ permissionOverrides: [], permissionOverridesStatus: 'loaded' });
+      return;
+    }
+    set({ permissionOverridesStatus: 'loading' });
+    try {
+      const permissionOverrides = await listMemberPermissionOverrides();
+      set({ permissionOverrides, permissionOverridesStatus: 'loaded' });
+    } catch (e) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('loadPermissionOverrides failed (non-fatal):', e);
+      }
+      // permissionOverrides itself is deliberately left as whatever it was
+      // (stale data, or still []) — permissionOverridesStatus alone is
+      // what a fail-closed caller (canAccessHistoryScreen()/
+      // canAccessStatisticsScreen()) must check before ever trusting it.
+      set({ permissionOverridesStatus: 'error' });
+    }
+  },
+
+  setPermissionOverride: async (userId: string, permissionKey: PermissionKey, allowed: boolean) => {
+    if (!guardTestModeMutation()) return;
+    try {
+      await setMemberPermissionOverride(userId, permissionKey, allowed);
+      await get().loadPermissionOverrides();
+    } catch (e) {
+      set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו לעדכן את ההרשאה') });
+      throw e;
+    }
+  },
+
+  clearPermissionOverride: async (userId: string, permissionKey: PermissionKey) => {
+    if (!guardTestModeMutation()) return;
+    try {
+      await clearMemberPermissionOverride(userId, permissionKey);
+      await get().loadPermissionOverrides();
+    } catch (e) {
+      set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו לאפס את ההרשאה') });
+      throw e;
     }
   },
 

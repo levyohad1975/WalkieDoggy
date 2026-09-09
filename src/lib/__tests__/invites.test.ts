@@ -364,6 +364,114 @@ describe('lib/invites — Supabase mode', () => {
     });
   });
 
+  /**
+   * BATCH 4 (item D) — inspectFamilyInviteDetail(), the enriched sibling
+   * (migration 0028's inspect_family_invite_detail RPC). Same client-side
+   * contract as inspectFamilyInvite above: verifies the exact RPC
+   * name/param and the result mapping, including the "only populated for a
+   * pending invite" shape the server enforces.
+   */
+  describe('inspectFamilyInviteDetail', () => {
+    it('calls inspect_family_invite_detail with exact param name p_token and maps a pending preview including dog + members', async () => {
+      const rpc = jest.fn().mockResolvedValue({
+        data: [
+          {
+            family_name: 'משפחת לוי',
+            target_name: 'דנה',
+            target_avatar: '🐶',
+            status: 'pending',
+            expires_at: '2026-09-03T00:00:00Z',
+            dog_name: 'רקסי',
+            dog_photo_url: 'https://example.com/rexy.jpg',
+            members: [
+              { name: 'אמא', avatar: '👩', photoUrl: null },
+              { name: 'אבא', avatar: '👨', photoUrl: 'https://example.com/dad.jpg' },
+            ],
+          },
+        ],
+        error: null,
+      });
+      mockSupabaseClient(rpc);
+      const { inspectFamilyInviteDetail } = require('../invites');
+
+      const result = await inspectFamilyInviteDetail('some-raw-token');
+
+      expect(rpc).toHaveBeenCalledWith('inspect_family_invite_detail', { p_token: 'some-raw-token' });
+      expect(result).toEqual({
+        familyName: 'משפחת לוי',
+        targetName: 'דנה',
+        targetAvatar: '🐶',
+        status: 'pending',
+        expiresAt: '2026-09-03T00:00:00Z',
+        dogName: 'רקסי',
+        dogPhotoUrl: 'https://example.com/rexy.jpg',
+        members: [
+          { name: 'אמא', avatar: '👩', photoUrl: null },
+          { name: 'אבא', avatar: '👨', photoUrl: 'https://example.com/dad.jpg' },
+        ],
+      });
+    });
+
+    it('a non-pending (e.g. expired) invite maps dogName/dogPhotoUrl/members to null — never a stale/partial richer disclosure', async () => {
+      const rpc = jest.fn().mockResolvedValue({
+        data: [
+          {
+            family_name: 'משפחת לוי',
+            target_name: 'דנה',
+            target_avatar: null,
+            status: 'expired',
+            expires_at: '2026-01-01T00:00:00Z',
+            dog_name: null,
+            dog_photo_url: null,
+            members: null,
+          },
+        ],
+        error: null,
+      });
+      mockSupabaseClient(rpc);
+      const { inspectFamilyInviteDetail } = require('../invites');
+
+      const result = await inspectFamilyInviteDetail('tok');
+      expect(result.dogName).toBeNull();
+      expect(result.dogPhotoUrl).toBeNull();
+      expect(result.members).toBeNull();
+    });
+
+    it('surfaces "invite not found" for an invalid/unknown token, same as inspectFamilyInvite', async () => {
+      const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'invite not found' } });
+      mockSupabaseClient(rpc);
+      const { inspectFamilyInviteDetail } = require('../invites');
+
+      await expectRejectsWithMessage(inspectFamilyInviteDetail('bogus-token'), 'invite not found');
+    });
+
+    it('the exposed detail never contains a token_hash or raw_token key', async () => {
+      const rpc = jest.fn().mockResolvedValue({
+        data: [
+          {
+            family_name: 'משפחת לוי',
+            target_name: 'דנה',
+            target_avatar: null,
+            status: 'pending',
+            expires_at: '2026-09-03T00:00:00Z',
+            dog_name: null,
+            dog_photo_url: null,
+            members: [],
+            token_hash: 'should-never-appear',
+          },
+        ],
+        error: null,
+      });
+      mockSupabaseClient(rpc);
+      const { inspectFamilyInviteDetail } = require('../invites');
+
+      const result = await inspectFamilyInviteDetail('tok');
+      expect(result).not.toHaveProperty('token_hash');
+      expect(result).not.toHaveProperty('tokenHash');
+      expect(JSON.stringify(result)).not.toContain('should-never-appear');
+    });
+  });
+
   // ---- REDEEM ----
   describe('redeemFamilyInvite', () => {
     it('calls redeem_family_invite with exact param name p_token and maps a successful result', async () => {

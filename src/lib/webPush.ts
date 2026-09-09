@@ -35,6 +35,35 @@ function isWebPushSupported(): boolean {
   );
 }
 
+/**
+ * Batch 2 review correction (device-specific channel selection): mirrors
+ * getWebPushStatus()'s own lookup of the current service-worker push
+ * subscription, but returns just the endpoint string (this browser/device's
+ * natural per-device identifier in web_push_subscriptions — see migration
+ * 0021) rather than a status enum. Used by src/lib/remoteReminderChannel.ts
+ * to ask has_active_remote_push_channel() about THIS device's own
+ * subscription specifically, not "does this profile have any subscription
+ * anywhere". Returns null on any failure or when unsupported/unsubscribed —
+ * never throws.
+ */
+export async function getCurrentWebPushEndpoint(): Promise<string | null> {
+  if (!isWebPushSupported()) {
+    return null;
+  }
+
+  try {
+    const registration = await navigator.serviceWorker.getRegistration('/');
+    if (!registration) {
+      return null;
+    }
+
+    const subscription = await registration.pushManager.getSubscription();
+    return subscription?.endpoint ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getWebPushStatus(): Promise<WebPushStatus> {
   if (!isWebPushSupported()) {
     return 'unsupported';

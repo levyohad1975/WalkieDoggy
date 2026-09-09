@@ -6,6 +6,13 @@ import { DogPhoto } from './DogPhoto';
 import { Button } from './Button';
 import type { Dog } from '../types';
 
+/** BATCH 4 (item B) — the three real, explicit choices: male, female, or genuinely unset (nullable fallback, never guessed). */
+const SEX_OPTIONS: { value: Dog['sex'] | undefined; label: string }[] = [
+  { value: 'male', label: 'זכר' },
+  { value: 'female', label: 'נקבה' },
+  { value: undefined, label: 'לא מוגדר' },
+];
+
 interface DogDetailsModalProps {
   visible: boolean;
   dog: Dog | null;
@@ -63,6 +70,32 @@ export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, o
               textAlign="right"
             />
 
+            {/*
+              BATCH 4 (item B — dog profile completion): the dogs.sex column
+              (migration 0022) had no client UI anywhere in the app — this
+              is the missing piece. Three explicit choices including a real
+              "not set" option (nullable fallback, per the brief) rather
+              than forcing male/female on a family that doesn't want to say.
+            */}
+            <RtlText style={styles.label}>מין הכלב/ה</RtlText>
+            <View style={styles.sexRow}>
+              {SEX_OPTIONS.map((opt) => {
+                const selected = (dog.sex ?? undefined) === opt.value;
+                return (
+                  <Pressable
+                    key={opt.value ?? 'unset'}
+                    onPress={() => onSave({ sex: opt.value })}
+                    style={[styles.sexChip, selected && styles.sexChipActive]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={opt.label}
+                  >
+                    <RtlText style={[styles.sexChipText, selected && styles.sexChipTextActive]}>{opt.label}</RtlText>
+                  </Pressable>
+                );
+              })}
+            </View>
+
             <RtlText style={styles.label}>הערות</RtlText>
             <TextInput
               value={notes}
@@ -105,6 +138,19 @@ const styles = StyleSheet.create({
   photoButton: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 12, backgroundColor: colors.surfaceMuted },
   photoLink: { color: colors.primaryDark, fontWeight: '600', fontSize: 14 },
   label: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: 12, textAlign: 'right' },
+  sexRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
+  sexChip: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+    backgroundColor: colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  sexChipActive: { backgroundColor: colors.statusCurrentBg, borderColor: colors.primary },
+  sexChipText: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },
+  sexChipTextActive: { color: colors.primaryDark, fontWeight: '700' },
   input: {
     backgroundColor: colors.surfaceMuted,
     borderRadius: 14,

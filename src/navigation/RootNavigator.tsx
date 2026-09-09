@@ -12,12 +12,13 @@ import { StatisticsScreen } from '../screens/StatisticsScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { ImpersonationBanner } from '../components/ImpersonationBanner';
 import { colors } from '../theme/colors';
-import { useAuthStore } from '../store/authStore';
+import { useAuthStore, useEffectiveUserId } from '../store/authStore';
 import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useRequestsStore } from '../store/requestsStore';
 import { subscribeToFamilyChanges } from '../lib/realtime';
 import { DEMO_FAMILY } from '../data/demoData';
+import { canAccessHistoryScreen, canAccessStatisticsScreen } from '../logic/permissions';
 
 export type RootTabParamList = {
   Home: undefined;
@@ -114,6 +115,44 @@ function FixedPhysicalTabBar({ state, descriptors, navigation }: BottomTabBarPro
 
 export function RootNavigator() {
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
+  // BATCH 3 (Task 4 — navigation visibility): hide the History/Statistics
+  // tabs when the current EFFECTIVE member (respects impersonation/Test
+  // Mode, same as every other effective-identity read in this app) lacks
+  // that effective permission — role default, overridden per-member by a
+  // Family Admin (migration 0023 + logic/permissions.ts's resolver).
+  // Hiding the tab is a convenience, NOT the security boundary: both
+  // screens also enforce this themselves at render time (see
+  // HistoryScreen.tsx / StatisticsScreen.tsx) so stale navigation state, a
+  // deep link, or state restoration can never bypass it just because the
+  // tab happened to be hidden when the app launched.
+  //
+  // CORRECTED (Batch 3 final review correction, item 4): this used to call
+  // the plain canViewHistory()/canViewStatistics() resolvers directly
+  // against permissionOverrides, which default to the role default (true)
+  // whenever no override row is found — including while permissionOverrides
+  // is still `[]` simply because loadPermissionOverrides() hasn't resolved
+  // yet (cold start, or any focus-triggered family reload elsewhere in the
+  // app). That let the tab transiently SHOW as allowed for a member whose
+  // actual override denies them, before the real override data ever
+  // arrived. canAccessHistoryScreen()/canAccessStatisticsScreen() (the same
+  // fail-closed gate HistoryScreen.tsx/StatisticsScreen.tsx already use at
+  // the screen boundary) fail closed unless permissionOverridesStatus is
+  // exactly 'loaded' — reusing the SAME PermissionLoadStatus signal
+  // familyStore already tracks, not a new one invented for navigation.
+  // Disclosed trade-off: because loadPermissionOverrides() re-enters
+  // 'loading' on every family reload (e.g. HomeScreen's own
+  // useFocusEffect), a permitted member's tab can briefly disappear and
+  // reappear during a background refresh rather than staying visible
+  // throughout — this is the same fail-closed cadence the destination
+  // screens themselves already have (a screen the member is ON also blocks
+  // its content while its own permissionOverridesStatus is mid-reload), so
+  // navigation is now consistent with the screens rather than able to
+  // disagree with them, and no protected content is ever exposed either way.
+  const effectiveUserId = useEffectiveUserId();
+  const permissionOverrides = useFamilyStore((s) => s.permissionOverrides);
+  const permissionOverridesStatus = useFamilyStore((s) => s.permissionOverridesStatus);
+  const canSeeHistoryTab = canAccessHistoryScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus);
+  const canSeeStatisticsTab = canAccessStatisticsScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus);
   // Gates the wrapping SafeAreaView itself (not just the banner's own
   // internal null-check) — otherwise an empty top-inset-padded View would
   // sit above every screen at all times, silently pushing everything down
@@ -200,8 +239,13 @@ export function RootNavigator() {
         <Tab.Screen name="Home" component={HomeScreen} />
         <Tab.Screen name="Schedule" component={ScheduleScreen} />
         <Tab.Screen name="Family" component={FamilyScreen} />
-        <Tab.Screen name="History" component={HistoryScreen} />
-        <Tab.Screen name="Statistics" component={StatisticsScreen} />
+        {/* BATCH 3 (Task 4): conditionally-rendered Tab.Screen — omitting it
+            entirely (not just hiding a tab bar button) means it also can't
+            be reached via navigation.navigate('History'/...) from stale
+            code, and FixedPhysicalTabBar's own `if (!route) return null`
+            above already handles a route that doesn't exist this render. */}
+        {canSeeHistoryTab ? <Tab.Screen name="History" component={HistoryScreen} /> : null}
+        {canSeeStatisticsTab ? <Tab.Screen name="Statistics" component={StatisticsScreen} /> : null}
         <Tab.Screen name="Settings" component={SettingsScreen} />
       </Tab.Navigator>
       </NavigationContainer>

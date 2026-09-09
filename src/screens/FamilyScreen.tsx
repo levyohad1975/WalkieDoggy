@@ -24,8 +24,20 @@ import { isMemberInviteEligible, latestInviteByTarget } from '../logic/familyInv
 import type { FamilyUser, UserDeletionImpact } from '../types';
 
 export function FamilyScreen() {
-  const { users, load, addUser, updateUser, getUserDeletionImpact, deleteUser, actionError, clearActionError } =
-  useFamilyStore();
+  const {
+    users,
+    dog,
+    load,
+    addUser,
+    updateUser,
+    getUserDeletionImpact,
+    deleteUser,
+    actionError,
+    clearActionError,
+    permissionOverrides,
+    setPermissionOverride,
+    clearPermissionOverride,
+  } = useFamilyStore();
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   // Single source of truth for admin/member permissions — see authStore.
   // Effective, not raw: 'member' while Admin Test Mode is simulating one, so
@@ -276,7 +288,11 @@ export function FamilyScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
         <RtlText style={styles.header}>בני המשפחה</RtlText>
-        <RtlText style={styles.subheader}>ניהול מי משתתף בסבב הטיולים של טופי</RtlText>
+        {/* BATCH 4 (item B — dog profile completion): was hard-coded
+            "טופי" regardless of the family's actual dog — now interpolates
+            the real, authoritative dog.name, with a neutral fallback while
+            family data is still loading. */}
+        <RtlText style={styles.subheader}>ניהול מי משתתף בסבב הטיולים של {dog?.name ?? 'הכלב/ה'}</RtlText>
 
         <View style={styles.list}>
           {users.filter((u) => !u.removedAt).map((u) => {
@@ -418,6 +434,9 @@ export function FamilyScreen() {
         onClose={() => setDetailsTarget(null)}
         onRoleChanged={handleRoleChanged}
         isOwnProfile={!!detailsTarget && detailsTarget.id === realCurrentUserId}
+        permissionOverrides={permissionOverrides}
+        onSetPermissionOverride={setPermissionOverride}
+        onClearPermissionOverride={clearPermissionOverride}
       />
 
       <DeleteUserModal

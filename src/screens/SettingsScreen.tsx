@@ -1,7 +1,6 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
-import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFamilyStore } from '../store/familyStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
@@ -15,11 +14,11 @@ import {
   regenerateInviteCode,
 } from '../lib/supabase';
 import { friendlyErrorMessage } from '../lib/errorMessages';
+import { copyToClipboard } from '../lib/clipboard';
 import { DEMO_FAMILY } from '../data/demoData';
 import type { Dog } from '../types';
 import { UserPickerModal } from '../components/UserPickerModal';
 import { PinEntryModal } from '../components/PinEntryModal';
-import { AdminActivityModal } from '../components/AdminActivityModal';
 import { AdminAuditLogModal } from '../components/AdminAuditLogModal';
 import { DogDetailsModal } from '../components/DogDetailsModal';
 import { RemindersModal } from '../components/RemindersModal';
@@ -51,7 +50,6 @@ export function SettingsScreen() {
   const effectiveUserId = useEffectiveUserId();
   // Legacy Test Mode state remains in authStore for compatibility; no Settings UI exposes it.
   const testModeUserId = useAuthStore((s) => s.testModeUserId);
-  const [activityModalVisible, setActivityModalVisible] = useState(false);
   const [auditLogModalVisible, setAuditLogModalVisible] = useState(false);
   // Section 12: Settings is now a concise hub — each focused area opens as
   // its own sub-screen (modal, matching this app's existing navigation
@@ -62,11 +60,21 @@ export function SettingsScreen() {
   const [managementVisible, setManagementVisible] = useState(false);
   // NESTED-MODAL LIFECYCLE FIX (final QA round) — see
   // logic/settingsModalTransitions.ts's doc comment for the full mechanism.
-  // "מי משתמש במערכת"/"יומן פעילות" used to open their own Modal directly
-  // while the Management Modal stayed visible=true; now they instead set
-  // this pending flag and close Management first — the child only actually
-  // opens once Management's dismissal has genuinely completed (see the
-  // onDismiss/useEffect wiring below).
+  // "יומן פעילות" used to open its own Modal directly while the Management
+  // Modal stayed visible=true; it instead sets this pending flag and closes
+  // Management first — the child only actually opens once Management's
+  // dismissal has genuinely completed (see the onDismiss/useEffect wiring
+  // below).
+  //
+  // BATCH 3 (Task 1): "👥 מי משתמש במערכת" (which used the SAME
+  // pending-child mechanism, target 'activity') was removed from this
+  // screen — member/presence management is now centralized in FamilyScreen
+  // (its member list already shows role + presence, sourced from the same
+  // adminListFamilyActivity() RPC AdminActivityModal used). This mechanism
+  // itself, and settingsModalTransitions.ts's SettingsChildModal type
+  // (still `'activity' | 'auditLog'`), are left exactly as they were —
+  // only this screen's own producers of 'activity' are removed below, so a
+  // future re-add doesn't require touching that shared logic file again.
   const [pendingChildModal, setPendingChildModal] = useState<SettingsChildModal | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [inviteCode, setInviteCode] = useState<string | undefined>(undefined);
@@ -106,10 +114,11 @@ export function SettingsScreen() {
     );
     if (!toOpen) return;
     setPendingChildModal(null);
-    // Explicit per-value branches — no generic else/default that could
-    // silently misroute a future fourth child modal.
-    if (toOpen === 'activity') setActivityModalVisible(true);
-    else if (toOpen === 'auditLog') setAuditLogModalVisible(true);
+    // Explicit per-value branch — this screen no longer ever produces
+    // 'activity' (Task 1), but the check stays explicit rather than a
+    // generic else/default so a future real 'activity' re-add can't be
+    // silently misrouted.
+    if (toOpen === 'auditLog') setAuditLogModalVisible(true);
 }, [managementVisible, pendingChildModal]);
 
   /** Request Management to close and, once it genuinely has, open `child`. */
@@ -126,10 +135,8 @@ export function SettingsScreen() {
     );
     if (!toOpen) return;
     setPendingChildModal(null);
-    // Explicit per-value branches — no generic else/default that could
-    // silently misroute a future fourth child modal.
-    if (toOpen === 'activity') setActivityModalVisible(true);
-    else if (toOpen === 'auditLog') setAuditLogModalVisible(true);
+    // See the visibility-effect above's identical comment.
+    if (toOpen === 'auditLog') setAuditLogModalVisible(true);
 };
 
   // CRASH BUG FIX (final QA round): this file used to also have
@@ -167,16 +174,30 @@ export function SettingsScreen() {
     }
   };
 
+  // BATCH 4 (item E — Copy Family Code). `copyFeedback` drives the inline
+  // "✓ הועתק" success state FamilySharingModal renders next to the button
+  // (in addition to, not instead of, the existing Alert — belt and
+  // suspenders for something people rely on to actually work). On genuine
+  // clipboard failure, shows clear failure feedback rather than silently
+  // doing nothing, AND still leaves the code plainly visible/selectable in
+  // the modal's code card as a manual-copy fallback (FamilySharingModal
+  // renders the code inside a selectable Text/TextInput — see that file).
+  const [copyFeedback, setCopyFeedback] = useState<'idle' | 'success' | 'error'>('idle');
   const copyInviteCode = async () => {
-  if (!inviteCode) return;
-
-  await Clipboard.setStringAsync(inviteCode);
-
-  Alert.alert(
-    'הקוד הועתק',
-    `קוד המשפחה ${inviteCode} הועתק ללוח.`
-  );
-};
+    if (!inviteCode) return;
+    const ok = await copyToClipboard(inviteCode);
+    if (ok) {
+      setCopyFeedback('success');
+      Alert.alert('הקוד הועתק', `קוד המשפחה ${inviteCode} הועתק ללוח.`);
+    } else {
+      setCopyFeedback('error');
+      Alert.alert(
+        'לא הצלחנו להעתיק',
+        `אפשר להעתיק ידנית — לחצו לחיצה ארוכה על הקוד (${inviteCode}) כדי לבחור ולהעתיק אותו.`
+      );
+    }
+    setTimeout(() => setCopyFeedback('idle'), 2200);
+  };
 
   const shareInviteCode = async () => {
     if (!inviteCode) return;
@@ -337,7 +358,7 @@ export function SettingsScreen() {
               <RtlText style={styles.hubChevron}>‹</RtlText>
               <View style={styles.hubLabelWithMeta}>
                 <RtlText style={styles.hubLabel}>⚙️ ניהול</RtlText>
-                <RtlText style={styles.hubRowMeta}>מי משתמש, יומן פעילות</RtlText>
+                <RtlText style={styles.hubRowMeta}>יומן פעילות</RtlText>
               </View>
             </Pressable>
           </View>
@@ -369,7 +390,6 @@ export function SettingsScreen() {
         onCancel={() => setSwitchTargetUserId(null)}
       />
 
-      <AdminActivityModal visible={activityModalVisible} onClose={() => setActivityModalVisible(false)} />
       <AdminAuditLogModal visible={auditLogModalVisible} onClose={() => setAuditLogModalVisible(false)} />
 
       <DogDetailsModal
@@ -396,6 +416,7 @@ export function SettingsScreen() {
         inviteCode={inviteCode}
         isAdmin={effectiveFamilyRole === 'admin'}
         regenerating={regenerating}
+        copyFeedback={copyFeedback}
         onCopy={copyInviteCode}
         onShare={shareInviteCode}
         onRegenerate={confirmRegenerateInviteCode}
@@ -417,13 +438,18 @@ export function SettingsScreen() {
             <ScrollView style={styles.sheetScroll} keyboardShouldPersistTaps="handled">
               <RtlText style={styles.title}>⚙️ ניהול</RtlText>
 
+              {/*
+                BATCH 3 (Task 1): "👥 מי משתמש במערכת" removed from here —
+                member list + role + presence management is now centralized
+                in the Family tab (FamilyScreen.tsx), which already shows
+                exactly this information per-member (see that screen's
+                activity loading, sourced from the same
+                adminListFamilyActivity() RPC AdminActivityModal used).
+              */}
               {isSupabaseConfigured ? (
-                <>
-                  <Button label="👥 מי משתמש במערכת" variant="secondary" onPress={() => openChildAfterManagementCloses('activity')} style={styles.addButton} />
-                  <Button label="📋 יומן פעילות" variant="secondary" onPress={() => openChildAfterManagementCloses('auditLog')} style={styles.addButton} />
-                </>
+                <Button label="📋 יומן פעילות" variant="secondary" onPress={() => openChildAfterManagementCloses('auditLog')} style={styles.addButton} />
               ) : (
-                <RtlText style={styles.dogMeta}>מי-בשימוש ויומן פעילות זמינים רק כשהאפליקציה מחוברת ל-Supabase.</RtlText>
+                <RtlText style={styles.dogMeta}>יומן פעילות זמין רק כשהאפליקציה מחוברת ל-Supabase.</RtlText>
               )}
 
               <Button label="סגור" variant="secondary" onPress={() => setManagementVisible(false)} style={styles.addButton} />

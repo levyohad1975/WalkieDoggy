@@ -6,9 +6,12 @@ import { useAuthStore } from '../store/authStore';
 import { colors } from '../theme/colors';
 import { Button } from '../components/Button';
 import { createFamily, ensureAnonymousSession, findFamilyByInviteCode, joinFamily } from '../lib/supabase';
-import { inspectFamilyInvite, redeemFamilyInvite, type FamilyInvitePreview } from '../lib/invites';
+import { inspectFamilyInviteDetail, redeemFamilyInvite, type FamilyInvitePreviewDetail } from '../lib/invites';
 import { formatInviteExpiry, inviteStatusLabel, parseInviteInput } from '../logic/familyInvites';
 import { friendlyErrorMessage } from '../lib/errorMessages';
+import { Avatar } from '../components/Avatar';
+import { DogPhoto } from '../components/DogPhoto';
+import { WalkieMascot } from '../components/WalkieMascot';
 import type { FamilyLookupResult } from '../types';
 
 type Mode = 'choose' | 'create' | 'join' | 'redeem';
@@ -116,7 +119,7 @@ export function FamilyOnboardingScreen() {
   const [redeemInput, setRedeemInput] = useState('');
   const [inspecting, setInspecting] = useState(false);
   const [inspectError, setInspectError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<FamilyInvitePreview | null>(null);
+  const [preview, setPreview] = useState<FamilyInvitePreviewDetail | null>(null);
   const [redeemToken, setRedeemToken] = useState<string | null>(null);
   const [redeeming, setRedeeming] = useState(false);
   const [redeemError, setRedeemError] = useState<string | null>(null);
@@ -139,7 +142,7 @@ export function FamilyOnboardingScreen() {
     setInspectError(null);
     setPreview(null);
     try {
-      const result = await inspectFamilyInvite(parsed);
+      const result = await inspectFamilyInviteDetail(parsed);
       setPreview(result);
       setRedeemToken(parsed);
     } catch (e) {
@@ -219,7 +222,13 @@ export function FamilyOnboardingScreen() {
   if (mode === 'choose') {
     return (
       <SafeAreaView style={styles.container}>
-        <RtlText style={styles.emoji}>🐶</RtlText>
+        {/* BATCH 4 (item C — branding/onboarding): before a family exists,
+            Walkie Doggy IS the brand — the official mascot (see the Batch 4
+            report for the source asset) replaces the generic 🐶 emoji that
+            was here before. Given an explicit accessibilityLabel since this
+            IS the meaningful content on this screen, not a decorative
+            corner badge. */}
+        <WalkieMascot state="idle" size={128} accessibilityLabel="Walkie Doggy" testID="onboarding-mascot" />
         <RtlText style={styles.title}>ברוכים הבאים</RtlText>
         <RtlText style={styles.subtitle}>יצירת משפחה חדשה, או הצטרפות למשפחה קיימת עם קוד הזמנה</RtlText>
 
@@ -316,11 +325,39 @@ export function FamilyOnboardingScreen() {
 
               {preview ? (
                 <View style={styles.foundCard}>
+                  {/* BATCH 4 (item D — existing family join UX): after a
+                      VALID, server-verified invite token, show the real dog
+                      photo and real member list/photos — not just plain
+                      text. `preview.dogPhotoUrl`/`preview.members` are only
+                      populated for a still-pending, unexpired token (see
+                      migration 0028) — for any other status these render
+                      nothing extra, identical to the pre-Batch-4 preview. */}
+                  {preview.dogName || preview.dogPhotoUrl ? (
+                    <View style={styles.previewDogRow}>
+                      <DogPhoto photoUrl={preview.dogPhotoUrl ?? undefined} size={56} />
+                      {preview.dogName ? <RtlText style={styles.previewDogName}>{preview.dogName}</RtlText> : null}
+                    </View>
+                  ) : null}
+
                   <RtlText style={styles.foundTitle}>{preview.familyName}</RtlText>
                   <RtlText style={styles.foundSubtitle}>ההזמנה עבור: {preview.targetName}</RtlText>
                   <RtlText style={styles.foundSubtitle}>סטטוס: {inviteStatusLabel(preview.status)}</RtlText>
                   {formatInviteExpiry(preview.expiresAt) ? (
                     <RtlText style={styles.foundSubtitle}>בתוקף עד {formatInviteExpiry(preview.expiresAt)}</RtlText>
+                  ) : null}
+
+                  {preview.members && preview.members.length > 0 ? (
+                    <View style={styles.previewMembersRow}>
+                      {preview.members.map((m, idx) => (
+                        <View key={`${m.name}-${idx}`} style={styles.previewMember}>
+                          {/* Avatar/emoji fallback only when a real photo is missing — Avatar's own contract. */}
+                          <Avatar emoji={m.avatar} color={colors.primary} photoUrl={m.photoUrl ?? undefined} size={40} />
+                          <RtlText style={styles.previewMemberName} numberOfLines={1}>
+                            {m.name}
+                          </RtlText>
+                        </View>
+                      ))}
+                    </View>
                   ) : null}
 
                   {redeemError ? <RtlText style={styles.error}>{redeemError}</RtlText> : null}
@@ -450,4 +487,9 @@ const styles = StyleSheet.create({
   },
   foundTitle: { fontSize: 18, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
   foundSubtitle: { fontSize: 14, color: colors.textSecondary, marginTop: 4, textAlign: 'right' },
+  previewDogRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, marginBottom: 10 },
+  previewDogName: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
+  previewMembersRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 12, justifyContent: 'flex-end' },
+  previewMember: { alignItems: 'center', width: 56, gap: 4 },
+  previewMemberName: { fontSize: 11, color: colors.textSecondary, fontWeight: '600' },
 });

@@ -86,7 +86,13 @@ function toEntry(row: any): ScheduleEntry {
   };
 }
 
-function toWalk(row: any): Walk {
+/**
+ * Exported (BATCH 3 CORRECTION #1): reused as-is by lib/permissionedWalks.ts
+ * so the new list_history_walks()/list_statistics_walks() RPC wrappers map
+ * rows through the exact same snake_case -> camelCase logic as every other
+ * walks read in this app, rather than duplicating it.
+ */
+export function toWalk(row: any): Walk {
   return {
     id: row.id,
     familyId: row.family_id,

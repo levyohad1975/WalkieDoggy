@@ -10,6 +10,8 @@ interface FamilySharingModalProps {
   inviteCode: string | undefined;
   isAdmin: boolean;
   regenerating: boolean;
+  /** BATCH 4 (item E) — drives the inline "✓ הועתק" / failure feedback next to the code, in addition to the caller's own Alert. */
+  copyFeedback?: 'idle' | 'success' | 'error';
   onCopy: () => void;
   onShare: () => void;
   onRegenerate: () => void;
@@ -23,6 +25,7 @@ export function FamilySharingModal({
   inviteCode,
   isAdmin,
   regenerating,
+  copyFeedback = 'idle',
   onCopy,
   onShare,
   onRegenerate,
@@ -45,8 +48,20 @@ export function FamilySharingModal({
               <>
                 <RtlText style={styles.meta}>שתפו את הקוד עם בני המשפחה כדי שיוכלו להצטרף, בלי חשבון או סיסמה.</RtlText>
                 <View style={styles.codeCard}>
-                  <RtlText style={styles.codeText}>{inviteCode}</RtlText>
+                  {/* BATCH 4 (item E): `selectable` — a real, working
+                      manual-copy fallback (long-press to select/copy via
+                      the OS's own text-selection menu) independent of the
+                      Clipboard API succeeding, same pattern already proven
+                      by InviteShareModal's `linkText`. */}
+                  <RtlText style={styles.codeText} selectable>
+                    {inviteCode}
+                  </RtlText>
                 </View>
+                {copyFeedback !== 'idle' ? (
+                  <RtlText style={[styles.copyFeedback, copyFeedback === 'error' && styles.copyFeedbackError]}>
+                    {copyFeedback === 'success' ? '✓ הועתק' : '⚠ ההעתקה נכשלה — ניתן להעתיק ידנית מהקוד למעלה'}
+                  </RtlText>
+                ) : null}
                 <View style={styles.actionsRow}>
                   <Button label="העתק קוד" variant="secondary" onPress={onCopy} style={styles.flex} />
                   <Button label="שתף קוד" variant="secondary" onPress={onShare} style={styles.flex} />
@@ -86,6 +101,8 @@ const styles = StyleSheet.create({
   meta: { fontSize: 14, color: colors.textSecondary, textAlign: 'right', marginTop: 8 },
   codeCard: { backgroundColor: colors.surfaceMuted, borderRadius: 16, paddingVertical: 18, alignItems: 'center', marginTop: 12 },
   codeText: { fontSize: 32, fontWeight: '800', color: colors.textPrimary, letterSpacing: 6 },
+  copyFeedback: { fontSize: 13, fontWeight: '700', color: colors.statusDone, textAlign: 'center', marginTop: 8 },
+  copyFeedbackError: { color: colors.statusOverdue },
   actionsRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
   flex: { flex: 1 },
   regenButton: { marginTop: 10 },

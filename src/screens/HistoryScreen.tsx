@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
@@ -11,6 +12,9 @@ import { toDateOnly } from '../logic/rotation';
 import { isOverdue } from '../logic/nextWalk';
 import { formatHistoryDate } from '../logic/dateFormat';
 import { isWalkEligibleForHistory } from '../logic/history';
+import { canAccessHistoryScreen } from '../logic/permissions';
+import { isSupabaseConfigured } from '../lib/supabase';
+import { fetchHistoryWalks } from '../lib/permissionedWalks';
 import { colors } from '../theme/colors';
 import { WalkRow } from '../components/WalkRow';
 import { EmptyState, ErrorState } from '../components/EmptyState';
@@ -35,7 +39,7 @@ const RANGE_LABELS: [RangeFilter, string][] = [
 ];
 
 export function HistoryScreen() {
-  const { users, dog, loading: familyLoading, load: loadFamily } = useFamilyStore();
+  const { users, dog, loading: familyLoading, load: loadFamily, permissionOverrides, permissionOverridesStatus } = useFamilyStore();
   const { walks, loading: scheduleLoading, error, load: loadSchedule, editDoneDetails, editUnplannedWalk, deleteUnplannedWalk, skip, markDone } = useScheduleStore();
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const effectiveRole = useEffectiveFamilyRole();
@@ -52,20 +56,76 @@ export function HistoryScreen() {
   const [resolveWalkId, setResolveWalkId] = useState<string | null>(null);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
 
+  // BATCH 3 CORRECTION #2 (review #2, post-review): HistoryScreen's actual
+  // display/calculation dataset. list_history_walks() (migration 0027) is
+  // now the real DATA SOURCE, not just an allow/deny probe — the raw
+  // `walks` RLS path (used by Home/Schedule via scheduleStore) is
+  // deliberately restricted to an operational window and no longer exposes
+  // bulk history at all (see migration 0027's own comment), so this screen
+  // can no longer treat scheduleStore.walks as a valid history dataset in
+  // Supabase mode even for a fully-permitted member. `historyAccessStatus`
+  // doubles as both the fetch-in-flight/denied signal AND the actual
+  // server-authoritative access check (list_history_walks() itself raises
+  // unless has_member_permission('view_history') is true for the caller) —
+  // independent of whatever the client-loaded permissionOverrides below
+  // currently believes.
+  const [historyDataset, setHistoryDataset] = useState<Walk[]>([]);
+  const [historyAccessStatus, setHistoryAccessStatus] = useState<'checking' | 'granted' | 'denied'>(
+    isSupabaseConfigured ? 'checking' : 'granted'
+  );
+
+  const refreshHistoryDataset = useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      // Local/demo mode: no per-member permission concept and no RPC to
+      // call — scheduleStore.walks (unrestricted there) remains the
+      // dataset, exactly as before this correction.
+      setHistoryAccessStatus('granted');
+      return;
+    }
+    setHistoryAccessStatus('checking');
+    try {
+      const rows = await fetchHistoryWalks();
+      setHistoryDataset(rows);
+      setHistoryAccessStatus('granted');
+    } catch (e) {
+      setHistoryDataset([]);
+      setHistoryAccessStatus('denied');
+    }
+  }, []);
+
   useEffect(() => {
     loadFamily(familyId);
     loadSchedule(familyId);
   }, [loadFamily, loadSchedule, familyId]);
 
+  // Refetch on every return to this tab (not just on mount) — the same
+  // established pattern HomeScreen already uses via useFocusEffect, so a
+  // walk resolved/edited from another screen (or another device) while
+  // this tab wasn't focused is reflected on return, without needing
+  // unrestricted raw historical access just to stay reactive. Each of this
+  // screen's own mutation handlers below also calls this directly right
+  // after the mutation succeeds, so the dataset updates immediately rather
+  // than waiting for a future focus event.
+  useFocusEffect(
+    useCallback(() => {
+      void refreshHistoryDataset();
+    }, [refreshHistoryDataset, familyId, effectiveUserId])
+  );
+
+  // The actual dataset this screen computes everything from: the
+  // permission-gated fetch in Supabase mode, the ordinary reactive store in
+  // local/demo mode (see refreshHistoryDataset()'s own comment).
+  const sourceWalks = isSupabaseConfigured ? historyDataset : walks;
+
   const usersById = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u])), [users]);
   const activeUsers = useMemo(() => users.filter((u) => !u.removedAt), [users]);
-  const resolveWalk = resolveWalkId ? walks.find((w) => w.id === resolveWalkId) : undefined;
+  const resolveWalk = resolveWalkId ? sourceWalks.find((w) => w.id === resolveWalkId) : undefined;
   const canResolveWalk = (w: Walk) => w.status === 'pending' && isOverdue(w) && (effectiveRole === 'admin' || w.responsibleUserId === effectiveUserId);
 
   const weekAgo = useMemo(() => toDateOnly(new Date(Date.now() - 7 * 86400000)), []);
   const weeklyWalks = useMemo(
-    () => walks.filter((w) => w.date >= weekAgo && isWalkEligibleForHistory(w)),
-    [walks, weekAgo]
+    () => sourceWalks.filter((w) => w.date >= weekAgo && isWalkEligibleForHistory(w)),
+    [sourceWalks, weekAgo]
   );
   const summary = useMemo(() => summarizeWalksByUser(weeklyWalks), [weeklyWalks]);
   const summaryRanked = useMemo(
@@ -78,10 +138,10 @@ export function HistoryScreen() {
 
   const allHistory = useMemo(
     () =>
-      [...walks]
+      [...sourceWalks]
         .filter((w) => isWalkEligibleForHistory(w))
         .sort((a, b) => (a.date + a.scheduledTime < b.date + b.scheduledTime ? 1 : -1)),
-    [walks]
+    [sourceWalks]
   );
 
   const todayString = useMemo(() => toDateOnly(new Date()), []);
@@ -118,7 +178,7 @@ export function HistoryScreen() {
 
   const loading = familyLoading || scheduleLoading;
 
-  if (loading && walks.length === 0) {
+  if (loading && sourceWalks.length === 0) {
     return (
       <SafeAreaView style={styles.center}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -130,6 +190,33 @@ export function HistoryScreen() {
     return (
       <SafeAreaView style={styles.center}>
         <ErrorState message={error} onRetry={() => loadSchedule(familyId)} />
+      </SafeAreaView>
+    );
+  }
+
+  // BATCH 3 (Task 4 — navigation visibility, requirement: "If a user
+  // reaches a protected screen through stale navigation/deep-link/state
+  // restoration, the screen/action must still enforce the permission"):
+  // RootNavigator already omits this screen's tab when the effective
+  // member lacks view_history, but that's a convenience, not the
+  // boundary. CORRECTED (Batch 3 correction #1/#2, post-review): this is
+  // now a REAL boundary, not just hidden UI — two independent checks, both
+  // must pass:
+  //   1. canAccessHistoryScreen() fails closed while permissionOverrides
+  //      hasn't finished loading (or failed to load) rather than treating
+  //      "not loaded yet" as "no override -> allowed".
+  //   2. historyAccessStatus reflects the actual server-side
+  //      list_history_walks() (migration 0027) response — 'checking'
+  //      blocks exactly like 'denied' (fail closed while unverified), and
+  //      a bypassed/stale/tampered client-side permission state still
+  //      cannot grant access here, because the RPC re-verifies it fresh.
+  // CORRECTED FURTHER (review #2): historyAccessStatus is no longer just a
+  // probe result — it also gates whether historyDataset (this screen's
+  // actual data source below) is trustworthy to render from at all.
+  if (!canAccessHistoryScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus) || historyAccessStatus !== 'granted') {
+    return (
+      <SafeAreaView style={styles.center}>
+        <EmptyState emoji="🔒" title="אין לך גישה להיסטוריה" subtitle="פנו למנהל/ת המשפחה אם לדעתכם זו טעות" />
       </SafeAreaView>
     );
   }
@@ -304,7 +391,18 @@ export function HistoryScreen() {
                         responsible={usersById[w.responsibleUserId]}
                         completedBy={w.completedByUserId ? usersById[w.completedByUserId] : undefined}
                         onMarkDone={canResolveWalk(w) ? () => setResolveWalkId(w.id) : undefined}
-                        onMarkNotDone={canResolveWalk(w) ? () => skip(w.id) : undefined}
+                        onMarkNotDone={
+                          canResolveWalk(w)
+                            ? async () => {
+                                await skip(w.id);
+                                // BATCH 3 CORRECTION #2 (review #2): refresh
+                                // the permissioned dataset immediately after
+                                // a mutation this screen owns, rather than
+                                // waiting for a future focus event.
+                                await refreshHistoryDataset();
+                              }
+                            : undefined
+                        }
                         onPress={
                           // Section 2: an unplanned walk owned by the viewer
                           // (or any walk, for an admin) opens the dedicated
@@ -342,15 +440,19 @@ export function HistoryScreen() {
           setResolveWalkId(null);
           if (!walkId) return;
           await markDone(walkId, completedByUserId, { hadPee, hadPoop, note: note || undefined });
+          await refreshHistoryDataset();
         }}
         onCancel={() => setResolveWalkId(null)}
       />
 
       <EditDoneDetailsModal
         visible={!!editWalkId}
-        walk={editWalkId ? walks.find((w) => w.id === editWalkId) ?? null : null}
+        walk={editWalkId ? sourceWalks.find((w) => w.id === editWalkId) ?? null : null}
         onSave={async (details) => {
-          if (editWalkId) await editDoneDetails(editWalkId, details);
+          if (editWalkId) {
+            await editDoneDetails(editWalkId, details);
+            await refreshHistoryDataset();
+          }
           setEditWalkId(null);
         }}
         onClose={() => setEditWalkId(null)}
@@ -362,7 +464,7 @@ export function HistoryScreen() {
         users={users}
         defaultUserId={effectiveUserId ?? ''}
         canChooseUser={effectiveRole === 'admin'}
-        editingWalk={editUnplannedWalkId ? walks.find((w) => w.id === editUnplannedWalkId) ?? null : null}
+        editingWalk={editUnplannedWalkId ? sourceWalks.find((w) => w.id === editUnplannedWalkId) ?? null : null}
         onConfirm={async (result: UnplannedWalkResult) => {
           const walkId = editUnplannedWalkId;
           setEditUnplannedWalkId(null);
@@ -376,11 +478,13 @@ export function HistoryScreen() {
               note: result.note || undefined,
               durationMinutes: result.durationMinutes,
             });
+            await refreshHistoryDataset();
           }
         }}
         onDelete={async (walkId) => {
           setEditUnplannedWalkId(null);
           await deleteUnplannedWalk(walkId);
+          await refreshHistoryDataset();
         }}
         onClose={() => setEditUnplannedWalkId(null)}
       />

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Round 5A — structural token-safety guard for InviteShareModal.tsx's QR
  * rendering addition. Same convention as
  * src/screens/__tests__/FamilyOnboardingScreen.tokenSafety.test.ts and
@@ -62,7 +62,7 @@ describe('InviteShareModal — QR token safety (structural)', () => {
     // QR, Copy, and Share all consume that same `link` variable — no
     // QR-specific or otherwise second token/link builder exists.
     expect(code).toMatch(/<QRCode[^>]*\bvalue=\{link\}/);
-    expect(code).toMatch(/Clipboard\.setStringAsync\(link\)/);
+    expect(code).toMatch(/copyToClipboard\(link\)/);
     expect(code).toMatch(/\$\{link\}/); // Share.share's message template literal
   });
 
@@ -111,3 +111,4 @@ describe('InviteShareModal — QR token safety (structural)', () => {
     expect(source).not.toMatch(/<QRCode[^>]*\bvalue=\{[^}]*(tokenHash|token_hash|familyId|targetUserId|role|authUserId|expiresAt)[^}]*\}/);
   });
 });
+

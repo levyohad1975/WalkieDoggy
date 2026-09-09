@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, View, Pressable } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
-import { useAuthStore } from '../store/authStore';
+import { useAuthStore, useEffectiveUserId } from '../store/authStore';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { Avatar } from '../components/Avatar';
@@ -17,6 +18,10 @@ import {
   filterWalksByPeriod,
   type StatsPeriod,
 } from '../logic/statistics';
+import { canAccessStatisticsScreen } from '../logic/permissions';
+import { isSupabaseConfigured } from '../lib/supabase';
+import { fetchStatisticsWalks } from '../lib/permissionedWalks';
+import type { Walk } from '../types';
 
 const PERIOD_LABELS: [StatsPeriod, string][] = [
   ['7d', '7 ימים'],
@@ -34,24 +39,73 @@ function Bar({ percent, color }: { percent: number; color: string }) {
 }
 
 /**
- * Section 13: real-data-only graphs/statistics screen. Reads directly from
- * scheduleStore/familyStore on every render (useMemo over the live `walks`
- * array, not a snapshot fetched once) so it always reflects later edits to
- * completed-walk data, per the spec's explicit requirement.
+ * Section 13: real-data-only graphs/statistics screen.
+ *
+ * CORRECTED (Batch 3 correction #2, review #2): this screen used to read
+ * directly from scheduleStore's live `walks` array (a useMemo over it, not
+ * a snapshot). It now computes from statisticsDataset — the authorized
+ * result of list_statistics_walks() (migration 0027) — because the raw
+ * `walks` RLS path (what scheduleStore reads) is deliberately restricted to
+ * an operational window and no longer a valid source of bulk historical
+ * data for anyone, permitted or not (see 0027's own comment). Reactivity is
+ * preserved via useFocusEffect (the same established pattern HomeScreen.tsx
+ * already uses for its own refetch-on-return-to-tab): this screen has no
+ * mutations of its own, so a refetch on every focus is what keeps it
+ * reflecting edits made elsewhere (History, Home) while this tab wasn't
+ * active, without falling back to unrestricted raw historical access just
+ * to stay live.
  */
 export function StatisticsScreen() {
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
-  const { users, loading: familyLoading, error: familyError, load: loadFamily } = useFamilyStore();
+  const effectiveUserId = useEffectiveUserId();
+  const { users, loading: familyLoading, error: familyError, load: loadFamily, permissionOverrides, permissionOverridesStatus } = useFamilyStore();
   const { walks, loading: scheduleLoading, error: scheduleError, load: loadSchedule } = useScheduleStore();
   const [period, setPeriod] = useState<StatsPeriod>('7d');
+
+  // BATCH 3 CORRECTION #2 (review #2): the actual display/calculation
+  // dataset — see this file's own doc comment above. statisticsAccessStatus
+  // doubles as the fetch-in-flight/denied signal AND the real
+  // server-authoritative gate (list_statistics_walks() itself raises unless
+  // has_member_permission('view_statistics') is true for the caller).
+  const [statisticsDataset, setStatisticsDataset] = useState<Walk[]>([]);
+  const [statisticsAccessStatus, setStatisticsAccessStatus] = useState<'checking' | 'granted' | 'denied'>(
+    isSupabaseConfigured ? 'checking' : 'granted'
+  );
+
+  const refreshStatisticsDataset = useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      // Local/demo mode: no per-member permission concept and no RPC to
+      // call — scheduleStore.walks (unrestricted there) remains the
+      // dataset, exactly as before this correction.
+      setStatisticsAccessStatus('granted');
+      return;
+    }
+    setStatisticsAccessStatus('checking');
+    try {
+      const rows = await fetchStatisticsWalks();
+      setStatisticsDataset(rows);
+      setStatisticsAccessStatus('granted');
+    } catch (e) {
+      setStatisticsDataset([]);
+      setStatisticsAccessStatus('denied');
+    }
+  }, []);
 
   useEffect(() => {
     loadFamily(familyId);
     loadSchedule(familyId);
   }, [loadFamily, loadSchedule, familyId]);
 
+  useFocusEffect(
+    useCallback(() => {
+      void refreshStatisticsDataset();
+    }, [refreshStatisticsDataset, familyId, effectiveUserId])
+  );
+
+  const sourceWalks = isSupabaseConfigured ? statisticsDataset : walks;
+
   const usersById = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u])), [users]);
-  const periodWalks = useMemo(() => filterWalksByPeriod(walks, period), [walks, period]);
+  const periodWalks = useMemo(() => filterWalksByPeriod(sourceWalks, period), [sourceWalks, period]);
 
   const completion = useMemo(() => computeCompletionStats(periodWalks), [periodWalks]);
   const memberDistribution = useMemo(() => computeMemberDistribution(periodWalks), [periodWalks]);
@@ -61,7 +115,7 @@ export function StatisticsScreen() {
   const error = familyError || scheduleError;
   const maxMemberCount = Math.max(1, ...memberDistribution.map((m) => m.count));
 
-  if (loading && walks.length === 0) {
+  if (loading && sourceWalks.length === 0) {
     return (
       <SafeAreaView style={styles.center}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -73,6 +127,26 @@ export function StatisticsScreen() {
     return (
       <SafeAreaView style={styles.center}>
         <ErrorState message={error} onRetry={() => {}} />
+      </SafeAreaView>
+    );
+  }
+
+  // BATCH 3 (Task 4) — see HistoryScreen.tsx's identical guard for the full
+  // reasoning: the hidden nav tab is a convenience, this is the boundary.
+  // CORRECTED (Batch 3 correction #1/#2, post-review): two independent
+  // checks, both must pass — canAccessStatisticsScreen() fails closed while
+  // permissionOverrides hasn't finished loading/failed, and
+  // statisticsAccessStatus reflects the actual server-side
+  // list_statistics_walks() (migration 0027) response. CORRECTED FURTHER
+  // (review #2): statisticsAccessStatus also gates whether statisticsDataset
+  // (this screen's actual data source above) is trustworthy to render from.
+  if (
+    !canAccessStatisticsScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus) ||
+    statisticsAccessStatus !== 'granted'
+  ) {
+    return (
+      <SafeAreaView style={styles.center}>
+        <EmptyState emoji="🔒" title="אין לך גישה לסטטיסטיקה" subtitle="פנו למנהל/ת המשפחה אם לדעתכם זו טעות" />
       </SafeAreaView>
     );
   }

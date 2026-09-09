@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Switch, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
 import { Avatar } from './Avatar';
@@ -13,7 +13,14 @@ import { isSupabaseConfigured, setProfilePin } from '../lib/supabase';
 import { friendlyErrorMessage } from '../lib/errorMessages';
 import { describePresence } from '../logic/presence';
 import { createInviteButtonLabel, inviteStatusLabel } from '../logic/familyInvites';
+import { resolveEffectivePermission, type MemberPermissionOverride, type PermissionKey } from '../logic/permissions';
 import type { FamilyUser } from '../types';
+
+/** BATCH 3 (Task 3) — the two currently customizable permissions, in display order, with their Hebrew labels. Must match migration 0023's CHECK constraint / logic/permissions.ts's PERMISSION_KEYS. */
+const PERMISSION_ROWS: { key: PermissionKey; label: string }[] = [
+  { key: 'view_history', label: 'היסטוריה' },
+  { key: 'view_statistics', label: 'סטטיסטיקה' },
+];
 
 // Matches requestsStore.ts's own DEMO_MODE_MESSAGE convention (a dedicated,
 // clear Hebrew message set BEFORE attempting the call) rather than relying
@@ -93,6 +100,19 @@ interface MemberDetailsModalProps {
    * by itself.
    */
   isOwnProfile: boolean;
+  /**
+   * BATCH 3 (Task 3): every override row the current viewer can see
+   * (familyStore.permissionOverrides — 0023's RLS already scopes this to a
+   * real admin's whole-family view). Used only to compute THIS member's own
+   * effective view_history/view_statistics state and whether an explicit
+   * override already exists for them (vs. "using the role default") — see
+   * logic/permissions.ts's resolveEffectivePermission().
+   */
+  permissionOverrides: MemberPermissionOverride[];
+  /** Family-Admin-only, enforced server-side (set_member_permission_override, 0023) — never trust canManageRoles alone as the security boundary. */
+  onSetPermissionOverride: (userId: string, permissionKey: PermissionKey, allowed: boolean) => Promise<void>;
+  /** Family-Admin-only, enforced server-side (clear_member_permission_override, 0023) — reverts to the role default. */
+  onClearPermissionOverride: (userId: string, permissionKey: PermissionKey) => Promise<void>;
 }
 
 /**
@@ -113,10 +133,20 @@ export function MemberDetailsModal({
   onClose,
   onRoleChanged,
   isOwnProfile,
+  permissionOverrides,
+  onSetPermissionOverride,
+  onClearPermissionOverride,
 }: MemberDetailsModalProps) {
   const [pendingRole, setPendingRole] = useState<FamilyRole | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // BATCH 3 (Task 3): which permission row is mid-save/clear right now, if
+  // any — disables just that row's Switch/reset link rather than the whole
+  // sheet, and its own inline error line (separate from the role section's
+  // `error` above, so a permission-save failure never gets hidden behind an
+  // unrelated role-change error or vice versa).
+  const [permissionSavingKey, setPermissionSavingKey] = useState<PermissionKey | null>(null);
+  const [permissionError, setPermissionError] = useState<string | null>(null);
   // COMPLETION PASS — 7C: first-time PIN setup / change. Whether an admin
   // targeting an admin's own profile would even reach this button is
   // already impossible — canManageRoles/isOwnProfile below never both cover
@@ -147,6 +177,8 @@ export function MemberDetailsModal({
     setCreatingInvite(false);
     setInviteError(null);
     setPinModalVisible(false);
+    setPermissionSavingKey(null);
+    setPermissionError(null);
   }, [visible, user?.id]);
 
   if (!user) return null;
@@ -237,6 +269,32 @@ export function MemberDetailsModal({
     onInviteListChanged();
   }
 
+  async function handleTogglePermission(permissionKey: PermissionKey, allowed: boolean) {
+    if (!user) return;
+    setPermissionSavingKey(permissionKey);
+    setPermissionError(null);
+    try {
+      await onSetPermissionOverride(user.id, permissionKey, allowed);
+    } catch (e) {
+      setPermissionError(friendlyErrorMessage(e));
+    } finally {
+      setPermissionSavingKey(null);
+    }
+  }
+
+  async function handleResetPermission(permissionKey: PermissionKey) {
+    if (!user) return;
+    setPermissionSavingKey(permissionKey);
+    setPermissionError(null);
+    try {
+      await onClearPermissionOverride(user.id, permissionKey);
+    } catch (e) {
+      setPermissionError(friendlyErrorMessage(e));
+    } finally {
+      setPermissionSavingKey(null);
+    }
+  }
+
   const presence = describePresence(lastSeenAt ?? null);
 
   return (
@@ -293,6 +351,51 @@ export function MemberDetailsModal({
                 <RtlText style={styles.hint}>לא ניתן להסיר הרשאת מנהל מהמנהל האחרון במשפחה.</RtlText>
               ) : null}
               {error ? <RtlText style={styles.error}>{error}</RtlText> : null}
+            </View>
+          ) : null}
+
+          {/*
+            BATCH 3 (Task 3) — per-member permission overrides. Same
+            visibility gate as the role section above (real admin, active
+            member): "Family Admin can set/clear the supported override
+            values ... Regular members cannot change family permissions."
+            The RPCs (0023) are the actual security boundary — this gate
+            only decides whether the controls are worth rendering at all.
+          */}
+          {canManageRoles && !user.removedAt ? (
+            <View style={styles.roleSection}>
+              <RtlText style={styles.sectionTitle}>הרשאות</RtlText>
+              {PERMISSION_ROWS.map(({ key, label }) => {
+                const override = permissionOverrides.find((o) => o.userId === user.id && o.permissionKey === key);
+                const effective = resolveEffectivePermission(key, user.id, permissionOverrides);
+                const rowBusy = permissionSavingKey === key;
+                return (
+                  <View key={key} style={styles.permissionRow}>
+                    <View style={styles.permissionLabelWrap}>
+                      <RtlText style={styles.permissionLabel}>{label}</RtlText>
+                      <RtlText style={styles.hint}>
+                        {override
+                          ? override.allowed
+                            ? 'הותאם אישית: מותר'
+                            : 'הותאם אישית: חסום'
+                          : 'לפי ברירת המחדל של התפקיד (מותר)'}
+                      </RtlText>
+                    </View>
+                    <Switch
+                      value={effective}
+                      disabled={rowBusy}
+                      onValueChange={(v) => handleTogglePermission(key, v)}
+                      accessibilityLabel={`הרשאת ${label} עבור ${user.name}`}
+                    />
+                    {override ? (
+                      <Pressable disabled={rowBusy} onPress={() => handleResetPermission(key)} hitSlop={8}>
+                        <RtlText style={[styles.resetLink, rowBusy && styles.resetLinkDisabled]}>איפוס</RtlText>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                );
+              })}
+              {permissionError ? <RtlText style={styles.error}>{permissionError}</RtlText> : null}
             </View>
           ) : null}
 
@@ -411,4 +514,14 @@ const styles = StyleSheet.create({
   hint: { fontSize: 12, color: colors.textSecondary, textAlign: 'right' },
   error: { fontSize: 13, color: colors.statusOverdue, textAlign: 'right' },
   closeButton: { marginTop: 4 },
+  permissionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 6,
+  },
+  permissionLabelWrap: { flex: 1, gap: 2 },
+  permissionLabel: { fontSize: 15, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
+  resetLink: { fontSize: 12, fontWeight: '700', color: colors.primaryDark },
+  resetLinkDisabled: { opacity: 0.5 },
 });

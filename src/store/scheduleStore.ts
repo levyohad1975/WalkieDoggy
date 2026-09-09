@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+﻿import { create } from 'zustand';
 import type { ScheduleEntry, ScheduleRule, UnplannedWalkInput, Walk } from '../types';
 import { repository } from '../data';
 import { generateRotationSchedule, resolveResponsibleForDate, ruleNeedsEntryBackfill, toDateOnly } from '../logic/rotation';
@@ -14,6 +14,10 @@ import {
 import { generateId } from '../lib/id';
 import { cancelWalkNotifications, reconcileWalkNotifications, scheduleWalkNotifications } from '../notifications/notificationService';
 import { guardTestModeMutation } from '../lib/testModeGuard';
+import { hasActiveRemoteReminderChannel } from '../lib/remoteReminderChannel';
+import { isSupabaseConfigured } from '../lib/supabase';
+import { adminRescheduleWalk, adminSwapWalks } from '../lib/walkAdmin';
+import { friendlyErrorMessage } from '../lib/errorMessages';
 
 const GENERATE_DAYS_AHEAD = 14;
 
@@ -108,6 +112,16 @@ function walkFromEntry(entry: ScheduleEntry, familyId: string): Walk {
 }
 
 async function scheduleNotificationsForWalk(walk: Walk) {
+  // Batch 2 / Decision 4 (channel-selection/dedup policy — see
+  // src/lib/remoteReminderChannel.ts): once this device has an active
+  // remote push channel, the server-side scheduler is authoritative for
+  // this profile's reminders — local scheduling is skipped (and any
+  // already-scheduled local reminder for this exact walk is cancelled)
+  // rather than risk a duplicate buzz from both systems.
+  if (await hasActiveRemoteReminderChannel()) {
+    await cancelWalkNotifications(walk.id);
+    return;
+  }
   const { useFamilyStore } = require('./familyStore') as typeof import('./familyStore');
   const { users, dog } = useFamilyStore.getState();
   const user = users.find((u) => u.id === walk.responsibleUserId);
@@ -126,6 +140,14 @@ async function scheduleNotificationsForWalk(walk: Walk) {
  * on startup/foreground, independent of a full schedule reload.
  */
 export async function reconcileScheduleNotifications(familyId: string, walks: Walk[]): Promise<void> {
+  // Batch 2 / Decision 4 — see scheduleNotificationsForWalk()'s identical
+  // gate just above for the full reasoning. Cancel rather than reconcile:
+  // any local reminder left over from before this profile had a remote
+  // channel must not survive alongside the now-authoritative server sends.
+  if (await hasActiveRemoteReminderChannel()) {
+    await Promise.all(walks.map((w) => cancelWalkNotifications(w.id)));
+    return;
+  }
   const { useFamilyStore } = require('./familyStore') as typeof import('./familyStore');
   const { users, dog } = useFamilyStore.getState();
   if (!dog) return;
@@ -320,19 +342,85 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     }
   },
 
-  /** Moves a single occurrence to a different time, without touching the rule or any other day. */
+  /**
+   * Moves a single occurrence to a different time, without touching the
+   * rule or any other day.
+   *
+   * BATCH 3 (Task 6 — direct admin time edit): this action is only ever
+   * reached from the admin-only EditWalkModal (HomeScreen.tsx gates
+   * `onEdit`/`onChangeTime` on `effectiveRole === 'admin'`; a member gets
+   * `onRequestTimeChange` — the request/approval flow — instead, see
+   * logic/walkActions.ts's canRequestChangeForWalk). So in Supabase mode
+   * this is always a Family Admin DIRECT edit, never a request. It is now
+   * routed through the server-authoritative admin_reschedule_walk RPC
+   * (migration 0026) FIRST, before any local write: that RPC is where
+   * authorization is actually enforced (is_family_admin() — never a
+   * client-supplied flag, and already false while impersonating), where
+   * the schedule_entries time-collision check happens, and where the
+   * walk_admin_rescheduled audit event is written. A rejection there (not
+   * an admin, walk no longer pending, time collision, ...) throws and is
+   * caught below exactly like any other action error in this store — no
+   * local state is touched on failure.
+   *
+   * CORRECTED (Batch 3 correction #3, post-review): admin_reschedule_walk
+   * (migration 0026) already updates BOTH walks.scheduled_time and the
+   * linked schedule_entries.time server-side, collision-checked and
+   * audited, in one transaction. The original Batch 3 version of this
+   * action then ALSO ran repository.saveWalk()/repository.updateScheduleEntry()
+   * unconditionally afterward — in Supabase mode that was a second, raw
+   * client mutation of the exact same rows through
+   * enforce_walk_write_authorization() again: redundant when it also
+   * succeeded, and a real risk of a split outcome when it didn't (the RPC's
+   * server-side change had already happened, but the UI would still report
+   * failure because this second write failed). So the RPC is now the SOLE
+   * authoritative server mutation in Supabase mode: once it resolves, this
+   * action only synchronizes local Zustand state (`set()` below) — no
+   * second network write of data the RPC already wrote.
+   *
+   * Local/demo mode (no Supabase configured, adminRescheduleWalk() never
+   * called) is UNCHANGED from before this correction: repository.saveWalk()
+   * + repository.updateScheduleEntry() remain the one and only mutation
+   * there, exactly as they always were — there is no server RPC to defer to
+   * in that mode, so the local repository write is still the authoritative
+   * one, keeping this action fully usable offline/in demo mode and keeping
+   * scheduleNotificationsForWalk / reconcileScheduleNotifications working
+   * unchanged (they read from this store's own `walks`, not from the
+   * server).
+   *
+   * Either branch: a rejection (not an admin, walk no longer pending, time
+   * collision, a local repository failure, ...) throws and is caught below
+   * exactly like any other action error in this store, BEFORE the `set()`
+   * call — so local state is never optimistically left at the new time on
+   * failure.
+   */
   rescheduleWalk: async (walkId: string, newTime: string) => {
     if (!guardTestModeMutation()) return;
     const walk = get().walks.find((w) => w.id === walkId);
     if (!walk) return;
     try {
       if (walk.status !== 'pending') throw new WalkActionError('אפשר לשנות שעה רק לטיול שממתין');
+
       const updatedWalk: Walk = { ...walk, scheduledTime: newTime, updatedAt: new Date().toISOString() };
-      await repository.saveWalk(updatedWalk);
-      if (walk.scheduleEntryId) {
-        const entry = get().entries.find((e) => e.id === walk.scheduleEntryId);
-        if (entry) await repository.updateScheduleEntry({ ...entry, time: newTime });
+
+      if (isSupabaseConfigured) {
+        // admin_reschedule_walk (0026) is the SOLE authoritative write here
+        // — it already updates walks.scheduled_time AND the linked
+        // schedule_entries.time server-side. No second raw
+        // repository.saveWalk()/updateScheduleEntry() call follows it; only
+        // local state is synchronized once it succeeds.
+        await adminRescheduleWalk(walkId, newTime);
+      } else {
+        // Local/demo mode: no RPC exists to defer to (adminRescheduleWalk
+        // would throw SupabaseNotConfiguredError) — the repository mutation
+        // IS the authoritative write here, unchanged from before this
+        // correction.
+        await repository.saveWalk(updatedWalk);
+        if (walk.scheduleEntryId) {
+          const entry = get().entries.find((e) => e.id === walk.scheduleEntryId);
+          if (entry) await repository.updateScheduleEntry({ ...entry, time: newTime });
+        }
       }
+
       set((s) => ({
         walks: s.walks.map((w) => (w.id === walkId ? updatedWalk : w)),
         entries: s.entries.map((e) => (e.id === walk.scheduleEntryId ? { ...e, time: newTime } : e)),
@@ -340,7 +428,10 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       }));
       await scheduleNotificationsForWalk(updatedWalk);
     } catch (e) {
-      set({ actionError: e instanceof WalkActionError ? e.message : 'לא הצלחנו לשנות את השעה' });
+      set({
+        actionError:
+          e instanceof WalkActionError ? e.message : e instanceof Error ? friendlyErrorMessage(e) : 'לא הצלחנו לשנות את השעה',
+      });
     }
   },
 
@@ -477,6 +568,19 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       const updatedEntryA = entryA ? { ...entryA, responsibleUserId: updatedA.responsibleUserId } : undefined;
       const updatedEntryB = entryB ? { ...entryB, responsibleUserId: updatedB.responsibleUserId } : undefined;
 
+      if (isSupabaseConfigured) {
+        // admin_swap_walks (0031) is the sole authoritative Supabase write.
+        // It exchanges both walk owners and both linked schedule entries in
+        // one server transaction. Do not follow it with raw repository writes.
+        await adminSwapWalks(walkAId, walkBId);
+      } else {
+        // Local/demo mode has no RPC, so preserve the repository behavior.
+        if (updatedEntryA) await repository.updateScheduleEntry(updatedEntryA);
+        if (updatedEntryB) await repository.updateScheduleEntry(updatedEntryB);
+        await repository.saveWalk(updatedA);
+        await repository.saveWalk(updatedB);
+      }
+
       set((s) => ({
         walks: s.walks.map((w) => (w.id === walkAId ? updatedA : w.id === walkBId ? updatedB : w)),
         entries: s.entries.map((e) =>
@@ -485,17 +589,19 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         actionError: null,
       }));
 
-      if (updatedEntryA) await repository.updateScheduleEntry(updatedEntryA);
-      if (updatedEntryB) await repository.updateScheduleEntry(updatedEntryB);
-      await repository.saveWalk(updatedA);
-      await repository.saveWalk(updatedB);
       await scheduleNotificationsForWalk(updatedA);
       await scheduleNotificationsForWalk(updatedB);
     } catch (e) {
-      // Restore the exact pre-swap local state. Remote/offline-queue writes
-      // that already succeeded are still reconciled by the normal sync/load
-      // path; this avoids leaving the current screen showing a half swap.
-      set({ walks: before.walks, entries: before.entries, actionError: e instanceof WalkActionError ? e.message : 'לא הצלחנו להחליף בין הטיולים' });
+      set({
+        walks: before.walks,
+        entries: before.entries,
+        actionError:
+          e instanceof WalkActionError
+            ? e.message
+            : e instanceof Error
+              ? friendlyErrorMessage(e)
+              : 'לא הצלחנו להחליף בין הטיולים',
+      });
     }
   },
 
@@ -599,3 +705,5 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
 
   clearActionError: () => set({ actionError: null }),
 }));
+
+
