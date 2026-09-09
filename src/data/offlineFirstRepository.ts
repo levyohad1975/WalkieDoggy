@@ -93,6 +93,18 @@ export class OfflineFirstRepository implements Repository {
    * `remote.upsertUser()` (UPDATE-only as of this fix).
    */
   async createUser(user: FamilyUser): Promise<void> {
+    // Before the first profile is claimed, a queued create has no owner and
+    // must be quarantined. Confirm the INSERT before LoginScreen can claim
+    // this profile. Server RLS still decides whether bootstrap is authorized.
+    if (this.remote && !this.queue.hasClaimedActor()) {
+      if (!(await this.isOnline())) {
+        throw new Error('Network request failed: creating an unclaimed profile requires an internet connection');
+      }
+      await this.remote.createUser(user);
+      await this.local.upsertUser(user);
+      return;
+    }
+
     await this.local.upsertUser(user);
     if (this.remote) {
       await this.queue.enqueue({ type: 'createUser', payload: user });

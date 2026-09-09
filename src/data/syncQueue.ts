@@ -348,6 +348,11 @@ export class SyncQueue {
     return (await this.load()).length;
   }
 
+  /** Live routing hint only; never grants server authority or an owner to queued items. */
+  hasClaimedActor(): boolean {
+    return getClaimedUserId() !== null;
+  }
+
   /**
    * True if a `saveWalk` write for this exact walk id is still sitting in
    * the queue (not yet flushed to the server). Used by scheduleStore.markDone
