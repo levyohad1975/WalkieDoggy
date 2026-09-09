@@ -24,15 +24,26 @@ export function TimePickerField({ value, onChange, webLabel, androidLabel = '×©×
     if (event.type !== 'dismissed' && selected) onChange(pickerDateToTime(selected));
   };
 
+  // Do not pair the browser control with a second, static time label. In the
+  // previous Web layout the static label and the HTML input were siblings in
+  // the same React Native Web flex row, so the visible "08:00" looked like a
+  // non-editable field while the actual control was easy to miss. The native
+  // time input is now the one and only representation of the selected value.
+  if (Platform.OS === 'web') {
+    return React.createElement('input', {
+      type: 'time',
+      value,
+      step: 60,
+      'aria-label': webLabel,
+      onChange: (event: { target: { value: string } }) => onChange(event.target.value),
+      style: webInputStyle,
+    });
+  }
+
   return (
     <>
       <View style={styles.row}>
         <RtlText style={styles.value}>{value}</RtlText>
-        {Platform.OS === 'web' ? React.createElement('input', {
-          type: 'time', value, step: 60, 'aria-label': webLabel,
-          onChange: (event: { target: { value: string } }) => onChange(event.target.value),
-          style: webInputStyle,
-        }) : null}
         {Platform.OS === 'android' ? <Button label={androidLabel} variant="secondary" onPress={() => setPickerOpen(true)} style={styles.button} /> : null}
       </View>
       {pickerOpen ? (
@@ -49,7 +60,7 @@ const styles = StyleSheet.create({
 });
 
 const webInputStyle = {
-  flex: 1.25, minHeight: 52, boxSizing: 'border-box', padding: 12, fontSize: 18, fontWeight: '700',
+  display: 'block', width: '100%', minHeight: 52, boxSizing: 'border-box', padding: 12, fontSize: 18, fontWeight: '700',
   borderRadius: 14, border: `1px solid ${colors.border}`, backgroundColor: colors.surface,
-  color: colors.textPrimary, textAlign: 'center', direction: 'ltr',
+  color: colors.textPrimary, textAlign: 'center', direction: 'ltr', cursor: 'pointer',
 };
