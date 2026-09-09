@@ -4,6 +4,7 @@ import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
 import { colors } from '../theme/colors';
+import { breakpoints } from '../theme/tokens';
 import { Button } from '../components/Button';
 import { createFamily, ensureAnonymousSession, findFamilyByInviteCode, joinFamily } from '../lib/supabase';
 import { inspectFamilyInviteDetail, redeemFamilyInvite, type FamilyInvitePreviewDetail } from '../lib/invites';
@@ -464,7 +465,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
   subtitle: { fontSize: 15, color: colors.textSecondary, marginTop: 8, marginBottom: 28, textAlign: 'center' },
   wideButton: { width: '100%', marginTop: 12 },
-  form: { width: '100%' },
+  form: { width: '100%', maxWidth: breakpoints.readingColumn, alignSelf: 'center' },
   label: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: 14, marginBottom: 8, textAlign: 'right' },
   input: {
     backgroundColor: colors.surface,

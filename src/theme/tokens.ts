@@ -40,6 +40,8 @@ export const spacing = {
   xl: 20,
   /** Generous separation between major screen sections. */
   xxl: 28,
+  /** Extra separation for screen heroes and major visual moments. */
+  xxxl: 36,
 } as const;
 
 export const radii = {
@@ -55,20 +57,22 @@ export const radii = {
 } as const;
 
 export const typography = {
+  /** Brand/hero heading. Use sparingly, primarily for onboarding. */
+  display: { fontSize: 30, lineHeight: 38, fontWeight: '800' as const },
   /** Screen title ("⚙️ הגדרות", "📈 סטטיסטיקה"). */
-  screenTitle: { fontSize: 22, fontWeight: '800' as const },
+  screenTitle: { fontSize: 22, lineHeight: 30, fontWeight: '800' as const },
   /** Section/card heading within a screen. */
-  sectionTitle: { fontSize: 16, fontWeight: '700' as const },
+  sectionTitle: { fontSize: 16, lineHeight: 23, fontWeight: '700' as const },
   /** A card's own smaller heading (e.g. a KPI tile's label). */
-  cardTitle: { fontSize: 14, fontWeight: '700' as const },
+  cardTitle: { fontSize: 14, lineHeight: 20, fontWeight: '700' as const },
   /** Primary row/list text (a member's name, a settings row's title). */
-  body: { fontSize: 15, fontWeight: '600' as const },
+  body: { fontSize: 16, lineHeight: 23, fontWeight: '600' as const },
   /** Secondary/meta text (subtitle under a row, helper copy). */
-  meta: { fontSize: 13, fontWeight: '500' as const },
+  meta: { fontSize: 13, lineHeight: 19, fontWeight: '500' as const },
   /** Large numeric readout (a KPI tile's big number, a percent). */
-  statValue: { fontSize: 26, fontWeight: '800' as const },
+  statValue: { fontSize: 26, lineHeight: 32, fontWeight: '800' as const },
   /** Small caption (badge text, tiny label). */
-  caption: { fontSize: 11, fontWeight: '700' as const },
+  caption: { fontSize: 11, lineHeight: 16, fontWeight: '700' as const },
 } as const;
 
 export const layout = {
@@ -86,6 +90,8 @@ export const layout = {
   avatarLg: 72,
   /** Standard screen content horizontal padding. */
   screenPadding: 20,
+  /** Minimum target for a tappable control, per iOS/Android accessibility guidance. */
+  minTouchTarget: 44,
 } as const;
 
 export const elevation = {
@@ -97,4 +103,23 @@ export const elevation = {
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
+} as const;
+
+/** Responsive measurements. Keep layouts mobile-first; wide web viewports
+ * should constrain readable content rather than stretch form controls. */
+export const breakpoints = {
+  phone: 599,
+  tablet: 899,
+  desktop: 1200,
+  readingColumn: 640,
+  desktopContent: 1120,
+} as const;
+
+/** Motion timings are optional: non-essential motion must honor the OS
+ * reduced-motion setting before it is played. */
+export const motion = {
+  feedback: 160,
+  transition: 240,
+  emphasis: 360,
+  celebrationMax: 2400,
 } as const;

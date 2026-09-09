@@ -3,6 +3,8 @@
  * (no harsh saturated red) per the "gentle, clear colors" design requirement.
  */
 export const colors = {
+  // Layered surfaces keep hierarchy clear without introducing a cold,
+  // dashboard-like gray palette.
   background: '#FBF8F3',
   surface: '#FFFFFF',
   surfaceMuted: '#F3EEE4',
@@ -14,7 +16,19 @@ export const colors = {
 
   primary: '#20A7B5',
   primaryDark: '#0B5C75',
+  primarySoft: '#E4F7F8',
   accent: '#F2994A',
+
+  // Semantic aliases are the public design-system vocabulary. Existing
+  // status names remain intact so screen migrations can be incremental.
+  info: '#5B8DEF',
+  infoSoft: '#E9F0FF',
+  success: '#2F9E5B',
+  successSoft: '#E6F5EC',
+  warning: '#B76A1F',
+  warningSoft: '#FFF1DF',
+  danger: '#C74A3C',
+  dangerSoft: '#FBE7E4',
 
   statusPending: '#B8AF9C',
   statusPendingBg: '#F3EEE4',

@@ -2,6 +2,7 @@ import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, ViewStyle } from 'react-native';
 import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
+import { layout, radii, spacing, typography } from '../theme/tokens';
 
 interface ButtonProps {
   label: string;
@@ -88,11 +89,11 @@ export function Button({ label, onPress, variant = 'primary', loading, disabled,
 
 const styles = StyleSheet.create({
   base: {
-    minHeight: 56,
-    borderRadius: 18,
+    minHeight: Math.max(52, layout.minTouchTarget),
+    borderRadius: radii.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: spacing.xl,
     flexDirection: 'row',
   },
   primary: { backgroundColor: colors.primary },
@@ -100,10 +101,10 @@ const styles = StyleSheet.create({
   danger: { backgroundColor: colors.statusOverdue },
   disabled: { opacity: 0.5 },
   pressed: { opacity: 0.85, transform: [{ scale: 0.99 }] },
-  label: { fontSize: 18, fontWeight: '700', color: colors.textPrimary },
+  label: { ...typography.sectionTitle, fontSize: 17, color: colors.textPrimary, textAlign: 'center' },
   labelInverse: { color: colors.textInverse },
   labelWrap: { textAlign: 'center' },
   // Round 8, Fix 3 (see `compact` prop doc comment above).
-  baseCompact: { paddingHorizontal: 10, minHeight: 52 },
+  baseCompact: { paddingHorizontal: spacing.md, minHeight: layout.minTouchTarget },
   labelCompact: { fontSize: 16 },
 });
