@@ -5,6 +5,7 @@ import { motion, radii, spacing, typography } from '../theme/tokens';
 import type { CompletionCelebration } from '../logic/walkCompletionCelebration';
 import { RtlText } from './RtlText';
 import { WalkieMascot } from './WalkieMascot';
+import { resolveCelebrationAsset } from './celebrationAssets';
 
 interface WalkCompletionCelebrationProps {
   celebration: CompletionCelebration | null;
@@ -43,16 +44,24 @@ export function WalkCompletionCelebration({ celebration, dogName, onDismiss }: W
   }, [celebration, onDismiss, opacity, reducedMotion, scale, translateY]);
 
   if (!celebration) return null;
+  const asset = resolveCelebrationAsset(celebration.asset);
+  const visualSymbols: Record<string, string> = {
+    'thank-you-heart': '♥  ♥', 'happy-jump': '✦  ✦', 'high-five': '✋  ✦', confetti: '✦  •  ✦',
+    'paw-party': '🐾  ✦  🐾', 'trophy-teaser': '🏆  ✦', 'sleepy-good-night': '☾  ✧',
+    'long-walk': '★  ✦  ★', 'special-surprise': '✧  ✦  ✧',
+  };
   return (
     <Modal visible transparent animationType="none" onRequestClose={onDismiss} statusBarTranslucent>
       <View style={styles.backdrop} accessibilityViewIsModal>
         <Animated.View style={[styles.card, { opacity, transform: [{ translateY }, { scale }] }]} accessibilityRole="alert">
-          {celebration.confetti ? <RtlText style={styles.confetti} accessible={false}>✦  •  ✦  •  ✦</RtlText> : null}
+          <RtlText style={[styles.confetti, celebration.confetti && styles.confettiActive]} accessible={false}>
+            {visualSymbols[celebration.id] ?? '✦'}
+          </RtlText>
           <Pressable onPress={onDismiss} style={styles.close} accessibilityRole="button" accessibilityLabel="סגירת חגיגת סיום הטיול" hitSlop={10}>
             <RtlText style={styles.closeText}>×</RtlText>
           </Pressable>
           <View style={styles.mascotWrap}>
-            <WalkieMascot state={celebration.mascotState} size={132} accessibilityLabel="טופי חוגג/ת את סיום הטיול" />
+            <WalkieMascot state={celebration.mascotState} source={asset.source} reducedMotionSource={asset.fallbackSource} size={132} accessibilityLabel="טופי חוגג/ת את סיום הטיול" />
             <View style={styles.accent}><RtlText style={styles.accentText}>{celebration.accent}</RtlText></View>
           </View>
           <RtlText style={styles.eyebrow}>{celebration.eyebrow}</RtlText>
@@ -71,7 +80,8 @@ export function WalkCompletionCelebration({ celebration, dogName, onDismiss }: W
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(11, 39, 48, 0.48)', alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
   card: { width: '100%', maxWidth: 420, alignItems: 'center', backgroundColor: colors.surface, borderRadius: radii.xl, paddingHorizontal: spacing.xl, paddingTop: spacing.xxl, paddingBottom: spacing.lg, overflow: 'hidden', shadowColor: '#0B5C75', shadowOpacity: 0.22, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 10 },
-  confetti: { position: 'absolute', top: spacing.md, color: colors.primary, fontSize: 20, letterSpacing: 5 },
+  confetti: { position: 'absolute', top: spacing.md, color: colors.primarySoft, fontSize: 20, letterSpacing: 5 },
+  confettiActive: { color: colors.primary },
   close: { position: 'absolute', top: spacing.md, right: spacing.md, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted, zIndex: 1 },
   closeText: { fontSize: 26, lineHeight: 30, color: colors.textSecondary },
   mascotWrap: { width: 144, height: 144, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },

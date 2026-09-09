@@ -19,7 +19,7 @@ describe('selectWalkCompletionCelebration', () => {
   });
 
   it('prefers a long-walk celebration when duration is available', () => {
-    expect(selectWalkCompletionCelebration({ durationMinutes: 50, random: () => 0 }).id).toBe('long-walk');
+    expect(selectWalkCompletionCelebration({ completedAt: new Date(2026, 8, 9, 13), durationMinutes: 50, random: () => 0 }).id).toBe('long-walk');
   });
 
   it('keeps metadata-only asset references and reduced-motion fallbacks for every entry', () => {

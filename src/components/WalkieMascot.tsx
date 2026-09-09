@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Image, StyleSheet } from 'react-native';
+import { AccessibilityInfo, Animated, Image, ImageSourcePropType, StyleSheet } from 'react-native';
 
 /**
  * Walkie Doggy mascot — reusable animation/state system (Batch 4, C2).
@@ -185,6 +185,10 @@ export interface WalkieMascotProps {
    */
   accessibilityLabel?: string;
   testID?: string;
+  /** Optional curated celebration asset; defaults to the bundled mascot. */
+  source?: ImageSourcePropType;
+  /** Static fallback used whenever the OS requests reduced motion. */
+  reducedMotionSource?: ImageSourcePropType;
 }
 
 /**
@@ -193,7 +197,7 @@ export interface WalkieMascotProps {
  * no animation started at all — when the OS reduce-motion accessibility
  * setting is on, or before that check resolves on mount.
  */
-export function WalkieMascot({ state, size = 72, accessibilityLabel, testID }: WalkieMascotProps) {
+export function WalkieMascot({ state, size = 72, accessibilityLabel, testID, source = MASCOT_SOURCE, reducedMotionSource }: WalkieMascotProps) {
   const [reducedMotion, setReducedMotion] = useState(true); // fail-safe default: static until proven otherwise
   const translateY = useRef(new Animated.Value(0)).current;
   const rotateRaw = useRef(new Animated.Value(0)).current;
@@ -245,7 +249,7 @@ export function WalkieMascot({ state, size = 72, accessibilityLabel, testID }: W
       accessibilityLabel={accessibilityLabel}
       style={[styles.container, { width: size, height: size, transform: [{ translateY }, { rotate }, { scale }] }]}
     >
-      <Image source={MASCOT_SOURCE} style={styles.image} resizeMode="contain" />
+      <Image source={reducedMotion && reducedMotionSource ? reducedMotionSource : source} style={styles.image} resizeMode="contain" />
     </Animated.View>
   );
 }
