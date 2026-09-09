@@ -9,9 +9,8 @@ import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../sto
 import { computeLastWalk, computeNextWalk, isOverdue, upcomingWalks } from '../logic/nextWalk';
 import { walkDateContextLabel } from '../logic/walkDateContext';
 import { canDeleteScheduledWalk, canRequestChangeForWalk, computeNextWalkCardActions, formatCompletedAtBadge } from '../logic/walkActions';
-import { WalkieMascot } from '../components/WalkieMascot';
-import { selectMessage } from '../mascot/messageEngine';
 import { colors } from '../theme/colors';
+import { breakpoints, radii, spacing, typography } from '../theme/tokens';
 import { NextWalkCard } from '../components/NextWalkCard';
 import { WalkRow } from '../components/WalkRow';
 import { EmptyState, ErrorState } from '../components/EmptyState';
@@ -25,6 +24,8 @@ import { EditDoneDetailsModal } from '../components/EditDoneDetailsModal';
 import { RequestTimeChangeModal } from '../components/RequestTimeChangeModal';
 import { RequestsInboxModal } from '../components/RequestsInboxModal';
 import { Button } from '../components/Button';
+import { WalkCompletionCelebration } from '../components/WalkCompletionCelebration';
+import { selectWalkCompletionCelebration, type CompletionCelebration } from '../logic/walkCompletionCelebration';
 import { DEMO_FAMILY } from '../data/demoData';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { fetchLastResolvedWalk } from '../lib/permissionedWalks';
@@ -85,12 +86,7 @@ export function HomeScreen() {
   // a walk is marked done. Purely presentational local state: never blocks
   // navigation or the completion action itself (markDone already resolved
   // by the time this is set), auto-dismisses on its own.
-  const [celebrationMessage, setCelebrationMessage] = useState<string | null>(null);
-  useEffect(() => {
-    if (!celebrationMessage) return;
-    const timer = setTimeout(() => setCelebrationMessage(null), 2600);
-    return () => clearTimeout(timer);
-  }, [celebrationMessage]);
+  const [celebration, setCelebration] = useState<CompletionCelebration | null>(null);
   const [swapWalkId, setSwapWalkId] = useState<string | null>(null);
   const [editWalkId, setEditWalkId] = useState<string | null>(null);
   const [addUnplannedVisible, setAddUnplannedVisible] = useState(false);
@@ -439,15 +435,6 @@ export function HomeScreen() {
           ) : null}
         </View>
 
-        {celebrationMessage ? (
-          <View style={styles.celebrationBanner} accessibilityRole="text">
-            <WalkieMascot state="success" size={40} />
-            <RtlText style={styles.celebrationText} numberOfLines={2}>
-              {celebrationMessage}
-            </RtlText>
-          </View>
-        ) : null}
-
         {nextWalk ? (
           <NextWalkCard
             walk={nextWalk}
@@ -672,7 +659,6 @@ export function HomeScreen() {
         defaultUserId={effectiveUserId}
         onConfirm={async ({ completedByUserId, hadPee, hadPoop, note }) => {
           const walkId = completeWalkId;
-          const walkBeingCompleted = walkId ? walksById[walkId] : undefined;
           setCompleteWalkId(null);
           if (!walkId) return;
           // markDone() itself refuses while Test Mode is active (see
@@ -685,19 +671,18 @@ export function HomeScreen() {
           // is purely cosmetic — never re-thrown, never blocks markDone's
           // own error handling.
           try {
-            const picked = selectMessage('success', {
-              dogName: dog?.name,
-              dogSex: dog?.sex,
-              responsibleName: usersById[completedByUserId]?.name,
-              completionTime: new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }),
-              scheduledTime: walkBeingCompleted?.scheduledTime,
-            });
-            setCelebrationMessage(picked.text);
+            setCelebration(selectWalkCompletionCelebration());
           } catch {
             // purely cosmetic — never block/interrupt completion.
           }
         }}
         onCancel={() => setCompleteWalkId(null)}
+      />
+
+      <WalkCompletionCelebration
+        celebration={celebration}
+        dogName={dog?.name}
+        onDismiss={() => setCelebration(null)}
       />
 
       <SwapWalkPickerModal
@@ -948,21 +933,9 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
-  content: { padding: 20, gap: 20, paddingBottom: 48, width: '100%' },
-  webContent: { maxWidth: 1000, alignSelf: 'center', paddingTop: 14, gap: 16 },
-  emptyCard: { backgroundColor: colors.surface, borderRadius: 28, borderWidth: 1, borderColor: colors.border },
-  celebrationBanner: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: colors.statusDoneBg,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: colors.statusDone + '55',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-  },
-  celebrationText: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
+  content: { padding: spacing.xl, gap: spacing.xl, paddingBottom: 48, width: '100%' },
+  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: spacing.lg },
+  emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
   unplannedButton: { marginTop: -4 },
   testModeBanner: {
     flexDirection: 'row',
@@ -983,7 +956,7 @@ const styles = StyleSheet.create({
   notificationIcon: { fontSize: 18 },
   requestsCountBadge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryDark },
   requestsCountText: { fontSize: 11, fontWeight: '800', color: '#fff' },
-  section: { gap: 10 },
+  section: { gap: spacing.sm },
   sectionTitlePhysicalRight: {
     width: '100%',
     direction: 'ltr',
@@ -991,8 +964,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     alignSelf: 'flex-end',
-    fontSize: 16,
-    fontWeight: '700',
+    ...typography.sectionTitle,
     color: colors.textPrimary,
     textAlign: 'right',
     writingDirection: 'rtl',
