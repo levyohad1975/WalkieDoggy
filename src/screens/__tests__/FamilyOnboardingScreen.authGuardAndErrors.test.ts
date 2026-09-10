@@ -1,0 +1,72 @@
+/**
+ * Structural regression guard for FamilyOnboardingScreen.tsx's create/join
+ * flows. This repo has no React Native component-rendering test
+ * infrastructure (see FamilyOnboardingScreen.tokenSafety.test.ts's own doc
+ * comment), so — like that file — this is a plain source-text scan.
+ *
+ * What this guards against (both were real bugs found in a repo audit):
+ *
+ * 1. submitCreate() called ensureAnonymousSession() defensively right before
+ *    createFamily(), but confirmJoin() called joinFamily() with no such
+ *    guard. restoreSession() (authStore.ts) already establishes an
+ *    anonymous session at app start, but swallows failure
+ *    (`.catch(() => undefined)`) — a transient network hiccup, or "Anonymous
+ *    Sign-Ins" not enabled on the Supabase project, silently leaves the
+ *    device unauthenticated. create_family()/join_family() (see
+ *    supabase/migrations/0002_*.sql, 0003_*.sql) both raise "must be
+ *    authenticated to ..." in that case. Without its own guard, joining a
+ *    family failed with no retry in exactly the situation creating one
+ *    self-healed — an asymmetric, confusing "create works, join doesn't"
+ *    symptom. Both flows must call ensureAnonymousSession() immediately
+ *    before their RPC call.
+ *
+ * 2. Both catch blocks reimplemented raw error-message extraction inline
+ *    instead of calling the shared friendlyErrorMessage() helper (used by
+ *    this same screen's inspectInvite()/confirmRedeem()) — showing raw
+ *    English/Postgres error text (e.g. "must be authenticated to join a
+ *    family") directly in the Hebrew UI instead of the mapped friendly
+ *    string. See errorMessages.ts's own doc comment: this is exactly the
+ *    class of bug that file exists to prevent ("A5 repro bug").
+ */
+describe('FamilyOnboardingScreen — create/join auth guard and error mapping (structural)', () => {
+  const source = require('fs').readFileSync(require.resolve('../FamilyOnboardingScreen'), 'utf8');
+
+  function bodyOf(fnName: string): string {
+    const start = source.indexOf(`const ${fnName} = async () => {`);
+    expect(start).toBeGreaterThan(-1);
+    const end = source.indexOf('\n  };', start);
+    expect(end).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  it('submitCreate() ensures an anonymous session before calling createFamily()', () => {
+    const body = bodyOf('submitCreate');
+    const sessionIdx = body.indexOf('ensureAnonymousSession()');
+    const createIdx = body.indexOf('createFamily(');
+    expect(sessionIdx).toBeGreaterThan(-1);
+    expect(createIdx).toBeGreaterThan(-1);
+    expect(sessionIdx).toBeLessThan(createIdx);
+  });
+
+  it('confirmJoin() ensures an anonymous session before calling joinFamily()', () => {
+    const body = bodyOf('confirmJoin');
+    const sessionIdx = body.indexOf('ensureAnonymousSession()');
+    const joinIdx = body.indexOf('joinFamily(');
+    expect(sessionIdx).toBeGreaterThan(-1);
+    expect(joinIdx).toBeGreaterThan(-1);
+    expect(sessionIdx).toBeLessThan(joinIdx);
+  });
+
+  it('submitCreate() and confirmJoin() map errors through friendlyErrorMessage(), not raw extraction', () => {
+    const createBody = bodyOf('submitCreate');
+    const joinBody = bodyOf('confirmJoin');
+
+    expect(createBody).toMatch(/setCreateError\(friendlyErrorMessage\(e\)\)/);
+    expect(joinBody).toMatch(/setJoinError\(friendlyErrorMessage\(e\)\)/);
+
+    // Guards against reintroducing the old ad-hoc "e instanceof Error ?
+    // e.message : ..." style extraction in either catch block.
+    expect(createBody).not.toMatch(/e instanceof Error \? e\.message/);
+    expect(joinBody).not.toMatch(/e instanceof Error \? e\.message/);
+  });
+});
