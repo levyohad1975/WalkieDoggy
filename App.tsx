@@ -10,7 +10,7 @@ import { FamilyOnboardingScreen } from './src/screens/FamilyOnboardingScreen';
 import { SystemAdminScreen } from './src/screens/SystemAdminScreen';
 import { RtlText } from './src/components/RtlText';
 import { colors } from './src/theme/colors';
-import { requestNotificationPermissions } from './src/notifications/notificationService';
+import { requestNotificationPermissions, subscribeToWalkReminderResponses } from './src/notifications/notificationService';
 import { registerPushToken } from './src/lib/pushTokens';
 import { repository, setSyncQueueActorGetter } from './src/data';
 import { isSupabaseConfigured } from './src/lib/supabase';
@@ -291,6 +291,8 @@ export default function App() {
 
     // Independent of session restore — never blocks/blocked by it.
     requestNotificationPermissions().catch(() => undefined);
+    let removeReminderResponse: () => void = () => undefined;
+    void subscribeToWalkReminderResponses().then((remove) => { removeReminderResponse = remove; });
 
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
@@ -306,7 +308,7 @@ export default function App() {
         void runForegroundSync();
       }
     });
-    return () => sub.remove();
+    return () => { sub.remove(); removeReminderResponse(); };
   }, [restoreSession]);
 
   // SafeAreaProvider must wrap every branch — SafeAreaView (and any screen

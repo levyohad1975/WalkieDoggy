@@ -30,7 +30,7 @@ describe('computeNextWalk', () => {
     expect(computeNextWalk(walks, NOW)?.id).toBe('w2');
   });
 
-  it('keeps a just-due pending walk as the main walk during the 30-minute grace window', () => {
+  it('keeps a just-due pending walk as the main actionable walk', () => {
     const walks = [
       makeWalk({ id: 'current', scheduledTime: '17:30' }),
       makeWalk({ id: 'future', scheduledTime: '20:00' }),
@@ -39,7 +39,7 @@ describe('computeNextWalk', () => {
     expect(computeNextWalk(walks, new Date('2026-08-26T17:59:00'))?.id).toBe('current');
   });
 
-  it('keeps the pending walk at exactly 30 minutes after its scheduled time', () => {
+  it('keeps an overdue pending walk ahead of a future walk', () => {
     const walks = [
       makeWalk({ id: 'current', scheduledTime: '17:30' }),
       makeWalk({ id: 'future', scheduledTime: '20:00' }),
@@ -48,28 +48,28 @@ describe('computeNextWalk', () => {
     expect(computeNextWalk(walks, new Date('2026-08-26T18:00:00'))?.id).toBe('current');
   });
 
-  it('advances to the next future walk after the 30-minute grace window', () => {
+  it('does not advance to a future walk while an overdue walk is unresolved', () => {
     const walks = [
       makeWalk({ id: 'overdue', scheduledTime: '17:30' }),
       makeWalk({ id: 'future', scheduledTime: '20:00' }),
     ];
 
-    expect(computeNextWalk(walks, new Date('2026-08-26T18:01:00'))?.id).toBe('future');
+    expect(computeNextWalk(walks, new Date('2026-08-26T18:01:00'))?.id).toBe('overdue');
   });
 
-  it('does not let an old unresolved pending walk block a future walk', () => {
+  it('prioritizes even an older unresolved pending walk over a future walk', () => {
     const walks = [
       makeWalk({ id: 'old-pending', scheduledTime: '07:00' }),
       makeWalk({ id: 'future', scheduledTime: '20:00' }),
     ];
 
-    expect(computeNextWalk(walks, NOW)?.id).toBe('future');
+    expect(computeNextWalk(walks, NOW)?.id).toBe('old-pending');
   });
 
-  it('returns undefined when the only pending walk is older than the grace window', () => {
+  it('keeps the only unresolved overdue walk actionable', () => {
     const walk = makeWalk({ id: 'old-pending', scheduledTime: '07:00' });
 
-    expect(computeNextWalk([walk], NOW)).toBeUndefined();
+    expect(computeNextWalk([walk], NOW)?.id).toBe('old-pending');
     expect(walk.status).toBe('pending');
   });
 

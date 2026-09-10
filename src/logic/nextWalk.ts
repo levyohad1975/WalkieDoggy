@@ -11,25 +11,16 @@ export function walkDateTime(walk: Pick<Walk, 'date' | 'scheduledTime'>): Date {
 
 /**
  * Finds the "next walk" to surface on the Home screen:
- * the earliest pending walk whose time is in the future, or — if none is
- * strictly in the future — the earliest still-pending walk overall (i.e. an
- * overdue walk that hasn't been marked done/skipped yet), so nothing pending
- * silently disappears from the home screen.
+ * an unresolved overdue walk first, otherwise the earliest future pending
+ * walk. An overdue status decision is the most urgent action on Home; it
+ * must never be hidden behind a later upcoming walk.
  */
-export const NEXT_WALK_GRACE_MINUTES = 30;
-
 export function computeNextWalk(walks: Walk[], now: Date = new Date()): Walk | undefined {
-  const graceStartTime = now.getTime() - NEXT_WALK_GRACE_MINUTES * 60 * 1000;
-
-  const eligiblePending = walks.filter(
-    (w) =>
-      w.status === 'pending' &&
-      walkDateTime(w).getTime() >= graceStartTime
-  );
-
-  if (eligiblePending.length === 0) return undefined;
-
-  return [...eligiblePending].sort(
+  const pending = walks.filter((w) => w.status === 'pending');
+  const overdue = pending.filter((w) => walkDateTime(w).getTime() < now.getTime());
+  const candidates = overdue.length ? overdue : pending.filter((w) => walkDateTime(w).getTime() >= now.getTime());
+  if (candidates.length === 0) return undefined;
+  return [...candidates].sort(
     (a, b) => walkDateTime(a).getTime() - walkDateTime(b).getTime()
   )[0];
 }

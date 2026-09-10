@@ -46,6 +46,8 @@ interface NextWalkCardProps {
   onRequestTimeChange?: () => void;
   /** One compact request status line for the current walk. */
   requestStatusLine?: string | null;
+  /** Overdue primary cards are status decisions, not "next" walks. */
+  primaryLabel?: string;
 }
 
 /**
@@ -68,6 +70,7 @@ export function NextWalkCard({
   onRequestSwap,
   onRequestTimeChange,
   requestStatusLine,
+  primaryLabel,
 }: NextWalkCardProps) {
   const overdue = isOverdue(walk);
   // Batch 2, requirement 7 ("walk requires attention" in-app state) — see
@@ -103,7 +106,7 @@ export function NextWalkCard({
       <View style={[styles.eyebrowRow, isWeb && styles.webEyebrowRow]}>
         <DogPhoto photoUrl={dogPhotoUrl} size={isWeb ? 60 : 72} />
         <RtlText style={styles.eyebrow} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-          הטיול הבא של {dogName}
+          {primaryLabel ?? `הטיול הבא של ${dogName}`}
         </RtlText>
         {/* The Walkie Doggy MASCOT (brand character) — deliberately separate
             from DogPhoto above (the family's REAL dog), never interchanged,

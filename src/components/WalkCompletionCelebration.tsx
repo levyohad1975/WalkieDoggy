@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { colors } from '../theme/colors';
-import { motion, radii, spacing, typography } from '../theme/tokens';
+import { motion, spacing } from '../theme/tokens';
 import type { CompletionCelebration } from '../logic/walkCompletionCelebration';
 import { RtlText } from './RtlText';
-import { WalkieMascot } from './WalkieMascot';
 import { resolveCelebrationAsset } from './celebrationAssets';
+import { MascotFrameAnimation } from './MascotFrameAnimation';
+import { animationManifestFor } from '../mascot/celebrationAnimationManifest';
 
 interface WalkCompletionCelebrationProps {
   celebration: CompletionCelebration | null;
@@ -18,7 +19,6 @@ export function WalkCompletionCelebration({ celebration, dogName, onDismiss }: W
   const [reducedMotion, setReducedMotion] = useState(true);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(18)).current;
-  const scale = useRef(new Animated.Value(0.96)).current;
 
   useEffect(() => {
     let mounted = true;
@@ -31,66 +31,42 @@ export function WalkCompletionCelebration({ celebration, dogName, onDismiss }: W
     if (!celebration) return;
     opacity.setValue(reducedMotion ? 1 : 0);
     translateY.setValue(reducedMotion ? 0 : 18);
-    scale.setValue(reducedMotion ? 1 : 0.96);
     if (!reducedMotion) {
       Animated.parallel([
         Animated.timing(opacity, { toValue: 1, duration: motion.feedback, useNativeDriver: true }),
         Animated.spring(translateY, { toValue: 0, damping: 16, stiffness: 180, mass: 0.8, useNativeDriver: true }),
-        Animated.spring(scale, { toValue: 1, damping: 14, stiffness: 200, mass: 0.8, useNativeDriver: true }),
       ]).start();
     }
     const timer = setTimeout(onDismiss, 3600);
     return () => clearTimeout(timer);
-  }, [celebration, onDismiss, opacity, reducedMotion, scale, translateY]);
+  }, [celebration, onDismiss, opacity, reducedMotion, translateY]);
 
   if (!celebration) return null;
   const asset = resolveCelebrationAsset(celebration.asset);
-  const visualSymbols: Record<string, string> = {
-    'thank-you-heart': '♥  ♥', 'happy-jump': '✦  ✦', 'high-five': '✋  ✦', confetti: '✦  •  ✦',
-    'paw-party': '🐾  ✦  🐾', 'trophy-teaser': '🏆  ✦', 'sleepy-good-night': '☾  ✧',
-    'long-walk': '★  ✦  ★', 'special-surprise': '✧  ✦  ✧',
-  };
+  const manifest = animationManifestFor(celebration);
+  const message = dogName ? celebration.title.replace('טופי', dogName) : celebration.title;
   return (
     <Modal visible transparent animationType="none" onRequestClose={onDismiss} statusBarTranslucent>
-      <View style={styles.backdrop} accessibilityViewIsModal>
-        <Animated.View style={[styles.card, { opacity, transform: [{ translateY }, { scale }] }]} accessibilityRole="alert">
-          <RtlText style={[styles.confetti, celebration.confetti && styles.confettiActive]} accessible={false}>
-            {visualSymbols[celebration.id] ?? '✦'}
-          </RtlText>
-          <Pressable onPress={onDismiss} style={styles.close} accessibilityRole="button" accessibilityLabel="סגירת חגיגת סיום הטיול" hitSlop={10}>
-            <RtlText style={styles.closeText}>×</RtlText>
-          </Pressable>
-          <View style={styles.mascotWrap}>
-            <WalkieMascot state={celebration.mascotState} source={asset.source} reducedMotionSource={asset.fallbackSource} size={132} accessibilityLabel="טופי חוגג/ת את סיום הטיול" />
-            <View style={styles.accent}><RtlText style={styles.accentText}>{celebration.accent}</RtlText></View>
-          </View>
-          <RtlText style={styles.eyebrow}>{celebration.eyebrow}</RtlText>
-          <RtlText style={styles.title}>{celebration.title}</RtlText>
-          <RtlText style={styles.message}>{dogName ? celebration.message.replace('טופי', dogName) : celebration.message}</RtlText>
-          {celebration.rewardTeaser ? <RtlText style={styles.teaser}>{celebration.rewardTeaser}</RtlText> : null}
-          <Pressable onPress={onDismiss} style={styles.dismissButton} accessibilityRole="button" accessibilityLabel="המשך לאפליקציה">
-            <RtlText style={styles.dismissText}>המשך</RtlText>
-          </Pressable>
+      <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תגובת טופי">
+        <Animated.View style={[styles.moment, { opacity, transform: [{ translateY }] }]} accessibilityRole="alert">
+          <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
+          <View style={styles.tail} />
+          <MascotFrameAnimation frames={asset.frames} fallback={asset.fallbackSource} fps={manifest?.fps ?? 12} size={220} accessibilityLabel="טופי מגיב/ה לסיום הטיול" testID="completion-mascot-animation" />
+          {celebration.confetti ? <RtlText style={styles.confetti} accessible={false}>✦  ✦  ✦</RtlText> : null}
+          <Pressable onPress={onDismiss} style={styles.dismissButton} accessibilityRole="button" accessibilityLabel="המשך לאפליקציה"><RtlText style={styles.dismissText}>המשך</RtlText></Pressable>
         </Animated.View>
-      </View>
+      </Pressable>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(11, 39, 48, 0.48)', alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
-  card: { width: '100%', maxWidth: 420, alignItems: 'center', backgroundColor: colors.surface, borderRadius: radii.xl, paddingHorizontal: spacing.xl, paddingTop: spacing.xxl, paddingBottom: spacing.lg, overflow: 'hidden', shadowColor: '#0B5C75', shadowOpacity: 0.22, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 10 },
-  confetti: { position: 'absolute', top: spacing.md, color: colors.primarySoft, fontSize: 20, letterSpacing: 5 },
-  confettiActive: { color: colors.primary },
-  close: { position: 'absolute', top: spacing.md, right: spacing.md, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted, zIndex: 1 },
-  closeText: { fontSize: 26, lineHeight: 30, color: colors.textSecondary },
-  mascotWrap: { width: 144, height: 144, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
-  accent: { position: 'absolute', bottom: 0, right: 0, minWidth: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primary + '44' },
-  accentText: { fontSize: 20 },
-  eyebrow: { ...typography.caption, color: colors.primaryDark, textAlign: 'center', letterSpacing: 0.5 },
-  title: { ...typography.screenTitle, color: colors.textPrimary, textAlign: 'center', marginTop: spacing.xs },
-  message: { ...typography.body, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.sm, lineHeight: 24 },
-  teaser: { ...typography.caption, color: colors.primaryDark, textAlign: 'center', marginTop: spacing.sm },
-  dismissButton: { width: '100%', minHeight: 48, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary, borderRadius: radii.lg, marginTop: spacing.xl },
-  dismissText: { ...typography.sectionTitle, color: colors.textInverse },
+  backdrop: { flex: 1, backgroundColor: 'rgba(11, 39, 48, 0.34)', alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
+  moment: { width: '100%', maxWidth: 420, alignItems: 'center' },
+  bubble: { maxWidth: 285, backgroundColor: colors.surface, borderRadius: 24, paddingHorizontal: 20, paddingVertical: 13, shadowColor: '#0B5C75', shadowOpacity: 0.16, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 6 },
+  message: { color: colors.textPrimary, fontSize: 20, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
+  tail: { width: 20, height: 20, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }, { translateY: -10 }], marginBottom: -12 },
+  confetti: { position: 'absolute', top: 85, color: colors.primary, fontSize: 24, letterSpacing: 10 },
+  dismissButton: { minHeight: 44, paddingHorizontal: 18, justifyContent: 'center', marginTop: -6 },
+  dismissText: { color: colors.textInverse, fontWeight: '700', fontSize: 14 },
 });

@@ -25,6 +25,7 @@ import { RequestTimeChangeModal } from '../components/RequestTimeChangeModal';
 import { RequestsInboxModal } from '../components/RequestsInboxModal';
 import { Button } from '../components/Button';
 import { WalkCompletionCelebration } from '../components/WalkCompletionCelebration';
+import { ReminderMascotPrompt } from '../components/ReminderMascotPrompt';
 import { selectWalkCompletionCelebration, type CompletionCelebration } from '../logic/walkCompletionCelebration';
 import { DEMO_FAMILY } from '../data/demoData';
 import { isSupabaseConfigured } from '../lib/supabase';
@@ -33,6 +34,7 @@ import { useRequestsStore } from '../store/requestsStore';
 import { countActionableRequests, countUnreadRequestResults } from '../logic/requestLifecycle';
 import { computeWalkRequestStatusLine } from '../logic/walkRequestStatusLine';
 import type { Walk } from '../types';
+import { subscribeToReminderOpens } from '../notifications/reminderEntry';
 
 export function HomeScreen() {
   const currentUserId = useAuthStore((s) => s.currentUserId)!;
@@ -88,6 +90,7 @@ export function HomeScreen() {
   // by the time this is set), auto-dismisses on its own.
   const [celebration, setCelebration] = useState<CompletionCelebration | null>(null);
   const [recentCelebrationIds, setRecentCelebrationIds] = useState<string[]>([]);
+  const [reminderPrompt, setReminderPrompt] = useState<string | null>(null);
   const showWalkCompletionCelebration = useCallback((durationMinutes?: number) => {
     try {
       const picked = selectWalkCompletionCelebration({
@@ -190,6 +193,12 @@ export function HomeScreen() {
   }, []);
 
   const nextWalk = useMemo(() => computeNextWalk(walks), [walks, minuteTick]);
+  useEffect(() => subscribeToReminderOpens(({ walkId }) => {
+    const walk = useScheduleStore.getState().walks.find((item) => item.id === walkId);
+    if (!walk || walk.status !== 'pending') return;
+    const responsibleName = usersById[walk.responsibleUserId]?.name;
+    setReminderPrompt(responsibleName ? `${responsibleName}, יוצאים לטייל? 🐾` : 'הגיע הזמן שלי! 🐾');
+  }), [usersById]);
   // BATCH 3 (Task 5): the single source of truth for the top Action Card's
   // four action flags — see computeNextWalkCardActions's own doc comment
   // in logic/walkActions.ts for the exact rule and the regression this
@@ -460,6 +469,7 @@ export function HomeScreen() {
             requestStatusLine={
               computeWalkRequestStatusLine(nextWalk, swapRequests, timeChangeRequests, walksById, new Date(), effectiveUserId)?.text
             }
+            primaryLabel={isOverdue(nextWalk) ? 'ממתין לעדכון' : undefined}
             onMarkDone={() => setCompleteWalkId(nextWalk.id)}
             // AUTHORIZATION CORRECTION: ✓/✕ resolution is admin-or-
             // currently-responsible-user only (migration 0012) — not "any
@@ -695,6 +705,8 @@ export function HomeScreen() {
         dogName={dog?.name}
         onDismiss={() => setCelebration(null)}
       />
+
+      <ReminderMascotPrompt visible={!!reminderPrompt} message={reminderPrompt ?? ''} onDismiss={() => setReminderPrompt(null)} />
 
       <SwapWalkPickerModal
         visible={!!swapWalkId}

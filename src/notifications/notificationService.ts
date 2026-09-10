@@ -8,6 +8,7 @@ import { mapExecutionEnvironment } from '../lib/expoRuntime';
 // to type getNotifications()'s return value; every actual runtime access
 // goes through the lazy guarded `require('expo-notifications')` below.
 import type * as ExpoNotifications from 'expo-notifications';
+import { publishReminderOpen, reminderOpenFromNotificationData } from './reminderEntry';
 
 /**
  * P0 FIX — Android Expo Go 57 startup crash.
@@ -144,6 +145,32 @@ async function getNotifications(): Promise<typeof ExpoNotifications | null> {
     }
   }
   return Notifications;
+}
+
+/**
+ * Observes genuine OS notification taps only. The payload is validated before
+ * reaching UI, and this never affects delivery, scheduling, or Web Push.
+ */
+export async function subscribeToWalkReminderResponses(): Promise<() => void> {
+  const Notifications = await getNotifications();
+  if (!Notifications?.addNotificationResponseReceivedListener) return () => undefined;
+  const dispatch = (response: any) => {
+    const event = reminderOpenFromNotificationData(response?.notification?.request?.content?.data);
+    if (event) publishReminderOpen(event);
+  };
+  // Cold launch has no live listener event. Consume the OS's response once so
+  // opening Home normally later cannot replay an old reminder.
+  try {
+    const lastResponse = await Notifications.getLastNotificationResponseAsync?.();
+    dispatch(lastResponse);
+    await Notifications.clearLastNotificationResponseAsync?.();
+  } catch {
+    // A notification response is strictly optional presentation context.
+  }
+  const subscription = Notifications.addNotificationResponseReceivedListener((response: any) => {
+    dispatch(response);
+  });
+  return () => subscription.remove();
 }
 
 /**
