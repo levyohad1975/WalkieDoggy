@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
@@ -34,9 +35,12 @@ import { useRequestsStore } from '../store/requestsStore';
 import { countActionableRequests, countUnreadRequestResults } from '../logic/requestLifecycle';
 import { computeWalkRequestStatusLine } from '../logic/walkRequestStatusLine';
 import type { Walk } from '../types';
-import { subscribeToReminderOpens } from '../notifications/reminderEntry';
+import { renderMessageTemplate } from '../mascot/messageEngine';
+import { subscribeToReminderOpens, type ReminderOpenEvent } from '../notifications/reminderEntry';
+import type { RootTabParamList } from '../navigation/RootNavigator';
 
 export function HomeScreen() {
+  const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
   const currentUserId = useAuthStore((s) => s.currentUserId)!;
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const effectiveRole = useEffectiveFamilyRole();
@@ -90,7 +94,11 @@ export function HomeScreen() {
   // by the time this is set), auto-dismisses on its own.
   const [celebration, setCelebration] = useState<CompletionCelebration | null>(null);
   const [recentCelebrationIds, setRecentCelebrationIds] = useState<string[]>([]);
-  const [reminderPrompt, setReminderPrompt] = useState<string | null>(null);
+  // A notification response can arrive before Home's family/schedule data is
+  // ready on a cold start. Keep the validated event, not a prematurely built
+  // string, so the prompt is only shown after its current pending walk and
+  // dynamic dog data can be confirmed below.
+  const [reminderPrompt, setReminderPrompt] = useState<ReminderOpenEvent | null>(null);
   const showWalkCompletionCelebration = useCallback((durationMinutes?: number) => {
     try {
       const picked = selectWalkCompletionCelebration({
@@ -193,12 +201,17 @@ export function HomeScreen() {
   }, []);
 
   const nextWalk = useMemo(() => computeNextWalk(walks), [walks, minuteTick]);
-  useEffect(() => subscribeToReminderOpens(({ walkId }) => {
-    const walk = useScheduleStore.getState().walks.find((item) => item.id === walkId);
-    if (!walk || walk.status !== 'pending') return;
-    const responsibleName = usersById[walk.responsibleUserId]?.name;
-    setReminderPrompt(responsibleName ? `${responsibleName}, יוצאים לטייל? 🐾` : 'הגיע הזמן שלי! 🐾');
-  }), [usersById]);
+  useEffect(
+    () =>
+      subscribeToReminderOpens((event) => {
+        // A genuine reminder tap should always return the person to the
+        // primary actionable walk. Ordinary Home visits never publish an
+        // event, so they cannot trigger this mascot moment.
+        navigation.navigate('Home');
+        setReminderPrompt(event);
+      }),
+    [navigation]
+  );
   // BATCH 3 (Task 5): the single source of truth for the top Action Card's
   // four action flags — see computeNextWalkCardActions's own doc comment
   // in logic/walkActions.ts for the exact rule and the regression this
@@ -342,6 +355,17 @@ export function HomeScreen() {
   // testModeUserId is set, regardless of which button or screen triggers it.
 
   const walksById = useMemo(() => Object.fromEntries(walks.map((w) => [w.id, w])), [walks]);
+  const reminderPromptMessage = useMemo(() => {
+    if (!reminderPrompt || !dog) return null;
+    const walk = walksById[reminderPrompt.walkId];
+    if (!walk || walk.status !== 'pending') return null;
+
+    return renderMessageTemplate('{responsibleName}, הגיע הזמן לטייל עם {dogNoun} 🐾', {
+      dogName: dog.name,
+      dogSex: dog.sex,
+      responsibleName: usersById[walk.responsibleUserId]?.name,
+    });
+  }, [dog, reminderPrompt, usersById, walksById]);
 
   // Badge counts: for a Member, swap requests addressed to them awaiting
   // their approval; for an Admin, time-change requests awaiting theirs
@@ -705,7 +729,7 @@ export function HomeScreen() {
         onDismiss={() => setCelebration(null)}
       />
 
-      <ReminderMascotPrompt visible={!!reminderPrompt} message={reminderPrompt ?? ''} onDismiss={() => setReminderPrompt(null)} />
+      <ReminderMascotPrompt visible={!!reminderPromptMessage} message={reminderPromptMessage ?? ''} onDismiss={() => setReminderPrompt(null)} />
 
       <SwapWalkPickerModal
         visible={!!swapWalkId}
