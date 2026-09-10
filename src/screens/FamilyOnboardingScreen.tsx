@@ -56,11 +56,11 @@ export function FamilyOnboardingScreen() {
     setCreating(true);
     setCreateError(null);
     try {
-  await ensureAnonymousSession();
-  const family = await createFamily(familyName.trim(), dogName.trim() || undefined);
+      await ensureAnonymousSession();
+      const family = await createFamily(familyName.trim(), dogName.trim() || undefined);
       await setFamilyId(family.id);
     } catch (e) {
-      setCreateError(e instanceof Error ? e.message : 'לא הצלחנו ליצור את המשפחה');
+      setCreateError(friendlyErrorMessage(e));
     } finally {
       setCreating(false);
     }
@@ -95,10 +95,11 @@ export function FamilyOnboardingScreen() {
     setJoining(true);
     setJoinError(null);
     try {
+      await ensureAnonymousSession();
       const family = await joinFamily(code.trim());
       await setFamilyId(family.id);
     } catch (e) {
-      setJoinError(e instanceof Error ? e.message : (e && typeof e === 'object' && 'message' in e && typeof (e as { message?: unknown }).message === 'string' ? (e as { message: string }).message : 'לא הצלחנו להצטרף למשפחה'));
+      setJoinError(friendlyErrorMessage(e));
       setFound(null);
     } finally {
       setJoining(false);
