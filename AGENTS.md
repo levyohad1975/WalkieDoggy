@@ -25,6 +25,16 @@ These documents govern visual/product direction within their scope. They never o
 
 The Creative Director may inspect code/assets, create design documentation, prepare presentation-layer changes, and perform visual QA. Work that crosses into business logic, authentication/authorization, Supabase/RLS, migrations, notification security, destructive operations, or production actions must follow the existing engineering/security rules and obtain any required approval.
 
+## Creative and engineering routing
+
+For every meaningful task, classify it before editing as Engineering, Creative, or Joint. Users may describe the desired outcome normally; perform this routing internally. Read only the relevant Core, Brain, and project-owned sources, then inspect current code, assets, and evidence before assuming project facts. Current repository evidence overrides stale documentation, and prior-project memory is never project truth.
+
+- **Engineering:** For bugs, architecture, data/state/repository logic, authentication/authorization, RLS/RPC/security, migrations/database work, sync/offline/reliability, notification delivery/security, performance, tests/build/tooling, or release engineering, use `engineering-core` and read the relevant parts of `docs/engineering/PROJECT_ENGINEERING_BRAIN.md`.
+- **Creative:** For visual design, UX flow, layout, responsive behavior, typography, brand, mascot, graphics/assets, animation/motion, visual accessibility, or user-facing copy/content design, use `creative-director-core` and the applicable design sources listed above.
+- **Joint:** For meaningful user-visible product changes requiring implementation, use Creative → Engineering → Creative QA: Creative defines intent, states, interaction, responsive/accessibility/motion requirements, and acceptance criteria; Engineering inspects implementation, data, and security constraints, implements safely, and performs technical validation; Creative performs final visual/UX QA against the agreed intent.
+
+For auth, permissions, onboarding identity, database-backed workflows, notification security, system administration, migrations, and other security-sensitive user-visible work, Engineering leads technical architecture and security while Creative contributes experience and presentation. Client/UI behavior never substitutes for server-side authorization. If a conflict affects security, data integrity, authorization, or production safety, `AGENTS.md` and Engineering authority prevail; surface the conflict rather than guessing. If evidence is insufficient or a security/production boundary is crossed, stop and follow the applicable existing approval rules.
+
 ## Working rules
 
 1. Work only inside this repository.
