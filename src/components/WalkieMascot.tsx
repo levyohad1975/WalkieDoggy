@@ -10,8 +10,8 @@ import { AccessibilityInfo, Animated, Image, ImageSourcePropType, StyleSheet } f
  * This component's animation is a TEMPORARY FALLBACK, not the completed
  * product requirement. It animates whole-image translate/rotate/scale
  * transforms on the ONE static mascot bitmap in this project
- * (assets/branding/walkie-doggy-mascot-clean.png, the approved Clean
- * Master). Rotating/bouncing/scaling the whole flattened PNG is NOT
+ * (assets/branding/walkie-doggy-mascot-transparent.png, the approved
+ * transparent in-app derivative). Rotating/bouncing/scaling the whole flattened PNG is NOT
  * equivalent to a real eye blink, a wagging tail, an ear/head expression
  * change, or a genuinely different pose (leash-ready, lying-down-concerned,
  * paws-up-celebrating) — those all require independently-moving PARTS (eyes,
@@ -98,7 +98,7 @@ export const MASCOT_ASSET_PRODUCTION_LIST: Record<MascotState, string> = {
     'Success/completed (~1.5-2s, 2-3 plays). NEEDS A NEW BASE POSE (or a clear variant of "ready"\'s new pose): paws-up / mid-hop with a big open-mouth happy expression, PLUS the fast tail-wag frame set from "excited". 2-3 celebratory bounces ending in a happy, settled still frame.',
 };
 
-const MASCOT_SOURCE = require('../../assets/branding/walkie-doggy-mascot-clean.png');
+const MASCOT_SOURCE = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
 
 interface AnimatedValues {
   translateY: Animated.Value;

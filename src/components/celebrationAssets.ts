@@ -1,7 +1,7 @@
 import type { ImageSourcePropType } from 'react-native';
 import type { CelebrationAssetReference } from '../logic/walkCompletionCelebration';
 
-const MASCOT_FALLBACK = require('../../assets/branding/walkie-doggy-mascot-clean.png');
+const MASCOT_FALLBACK = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
 
 export interface ResolvedCelebrationAsset {
   source: ImageSourcePropType;
@@ -16,11 +16,11 @@ export interface ResolvedCelebrationAsset {
  * at one point.
  */
 export function resolveCelebrationAsset(reference: CelebrationAssetReference | undefined): ResolvedCelebrationAsset {
-  if (!reference || reference.reducedMotionPath !== 'assets/branding/walkie-doggy-mascot-clean.png') {
+  if (!reference || reference.reducedMotionPath !== 'assets/branding/walkie-doggy-mascot-transparent.png') {
     return { source: MASCOT_FALLBACK, fallbackSource: MASCOT_FALLBACK, frames: [], isPlaceholder: true };
   }
 
-  if (reference.provider === 'local' && reference.path === 'assets/branding/walkie-doggy-mascot-clean.png') {
+  if (reference.provider === 'local' && reference.path === 'assets/branding/walkie-doggy-mascot-transparent.png') {
     return { source: MASCOT_FALLBACK, fallbackSource: MASCOT_FALLBACK, frames: [], isPlaceholder: true };
   }
 

@@ -33,11 +33,11 @@ Lifecycle: `APPROVED` Clean Master. It is a 1254 × 1254 opaque RGB PNG, 1,284,9
 
 Provenance: this is the original pre-wordmark PNG recovered from the original ChatGPT Library branding asset. It is not a reconstructed edit of the later 1024 × 1024 branded-wordmark reference and supersedes the previously approved WhatsApp-derived copy.
 
-Current in-app mascot consumers reference this same approved path. This restored source does not change runtime code, icons, or animation assets.
+The opaque Clean Master remains the approved source asset; in-app mascot consumers use the approved transparent derivative below. Icons and animation assets remain unchanged.
 
 ### Transparent in-app derivative
 
-`assets/branding/walkie-doggy-mascot-transparent.png` is an `APPROVED` 1254 × 1254 RGBA PNG character cutout derived deterministically from the Clean Master. It has genuine alpha, no wordmark, no decorative rays, and no rounded-square panel. SHA-256: `8AB9B6320261234D45062FF16B2DBDE8B11857902C7BB1343E707C4A3D51F6D6`. Runtime integration remains a separate change.
+`assets/branding/walkie-doggy-mascot-transparent.png` is an `APPROVED` 1254 × 1254 RGBA PNG character cutout derived deterministically from the Clean Master. It has genuine alpha, no wordmark, no decorative rays, and no rounded-square panel. SHA-256: `8AB9B6320261234D45062FF16B2DBDE8B11857902C7BB1343E707C4A3D51F6D6`. It is the in-app character source for the shared mascot, reminder, and celebration static/Reduced Motion fallbacks.
 
 The embedded words “Walkie Doggy Link” are not mascot identity. They are a wordmark rendered in the Reference Master’s current composition.
 
@@ -94,9 +94,9 @@ Reject, unless explicitly approved, a result that:
 
 The approved Clean Master preserves the character without the embedded “Walkie Doggy Link” text: facial identity, proportions, markings, collar, and double-link emblem remain unchanged. Its original pre-wordmark provenance is approved above; future clean-up is deterministic image editing, not permission to redraw or regenerate the mascot.
 
-Current code metadata records the approved opaque clean master for mascot, celebration-resolver, and reminder fallbacks; animation-frame metadata separately expects 512 × 512 transparent frame assets. App icons remain separate assets.
+Current code metadata records the approved transparent derivative for mascot, celebration-resolver, and reminder fallbacks; animation-frame metadata separately expects 512 × 512 transparent frame assets. App icons remain separate assets.
 
-This approved Clean Master is intentionally opaque and preserves the turquoise rounded-square treatment. A transparent-character derivative remains a separate future deliverable and requires explicit approval; do not imply that this asset has transparency.
+The approved Clean Master is intentionally opaque and preserves the turquoise rounded-square treatment. The separate approved transparent derivative is the in-app character source; do not imply that the Clean Master itself has transparency.
 
 If available tools cannot remove text without identity drift, stop and request a deterministic editing/restoration workflow. Do not substitute a generated dog.
 
@@ -117,7 +117,7 @@ The approved Clean Master is the preferred source for future in-app mascot momen
 
 ### Intended or not yet verified as complete
 
-- Any future replacement icon outputs and a separately approved transparent-character derivative.
+- Any future replacement icon outputs and transparent animation-frame packs.
 - True character-frame animation packs for celebrations and stateful mascot behavior.
 - Email/welcome graphics and future marketing artwork; no repository evidence establishes a completed email design system.
 - New mascot poses/states produced against this specification.
@@ -196,9 +196,9 @@ If generation produces identity drift, reject the result. Do not adapt the brand
 
 - **Historical branded-wordmark reference:** `assets/branding/walkie-doggy-mascot.png`; embedded text is present.
 - **Approved Clean Master:** `assets/branding/walkie-doggy-mascot-clean.png`; opaque 1254 × 1254 RGB PNG with no embedded wordmark.
-- **Runtime integration:** current in-app mascot consumers reference the approved Clean Master path.
+- **Runtime integration:** current in-app mascot consumers reference the approved transparent derivative.
 - **Final animation frame artwork exists:** no; no celebration frame directory/files are currently present.
 - **Current placeholders/fallbacks:** celebration and reminder presentation resolve to the approved Clean Master; the stateful mascot uses temporary whole-image transforms with a static Reduced Motion fallback.
-- **Key risks/inconsistencies:** the approved Clean Master is intentionally opaque and preserves the turquoise background treatment; a transparent derivative would require separate approval.
+- **Key risks/inconsistencies:** the approved Clean Master remains intentionally opaque; transparent animation-frame packs still require separate production and approval.
 
 No repository asset is changed by this specification.

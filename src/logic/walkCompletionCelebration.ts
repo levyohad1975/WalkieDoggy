@@ -17,9 +17,9 @@ const asset = (variant: string): CelebrationAssetReference => ({
   provider: 'local',
   // The shipped clean mascot fallback is the approved raster today. Future
   // curated variants can swap this path (or provider) independently of data logic.
-  path: 'assets/branding/walkie-doggy-mascot-clean.png',
+  path: 'assets/branding/walkie-doggy-mascot-transparent.png',
   variant,
-  reducedMotionPath: 'assets/branding/walkie-doggy-mascot-clean.png',
+  reducedMotionPath: 'assets/branding/walkie-doggy-mascot-transparent.png',
 });
 
 /** Pre-generated-library metadata. Local slots can later be replaced with curated files or Supabase Storage references. */

@@ -3,9 +3,9 @@
  * turquoise rounded-square composition and is intentionally opaque.
  */
 export const CLEAN_MASCOT_MASTER_ASSET = {
-  expectedPath: 'assets/branding/walkie-doggy-mascot-clean.png',
+  expectedPath: 'assets/branding/walkie-doggy-mascot-transparent.png',
   status: 'approved-clean-mascot-master' as const,
-  fallbackPath: 'assets/branding/walkie-doggy-mascot-clean.png',
+  fallbackPath: 'assets/branding/walkie-doggy-mascot-transparent.png',
   requirements: 'PNG, opaque turquoise rounded-square composition, no embedded wordmark or text, same approved Walkie Doggy Link character.',
 };
 

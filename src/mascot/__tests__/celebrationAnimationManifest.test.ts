@@ -18,9 +18,9 @@ describe('celebration animation manifest', () => {
 
   it('records the approved clean, no-text mascot master as the runtime fallback', () => {
     expect(CLEAN_MASCOT_MASTER_ASSET).toEqual(expect.objectContaining({
-      expectedPath: 'assets/branding/walkie-doggy-mascot-clean.png',
+      expectedPath: 'assets/branding/walkie-doggy-mascot-transparent.png',
       status: 'approved-clean-mascot-master',
-      fallbackPath: 'assets/branding/walkie-doggy-mascot-clean.png',
+      fallbackPath: 'assets/branding/walkie-doggy-mascot-transparent.png',
     }));
     expect(CLEAN_MASCOT_REPLACEMENT_TARGETS).toEqual(expect.arrayContaining([
       'src/components/WalkieMascot.tsx',
