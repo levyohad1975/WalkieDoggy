@@ -35,6 +35,10 @@ Provenance: this is the original pre-wordmark PNG recovered from the original Ch
 
 Current in-app mascot consumers reference this same approved path. This restored source does not change runtime code, icons, or animation assets.
 
+### Transparent in-app derivative
+
+`assets/branding/walkie-doggy-mascot-transparent.png` is an `APPROVED` 1254 × 1254 RGBA PNG character cutout derived deterministically from the Clean Master. It has genuine alpha, no wordmark, no decorative rays, and no rounded-square panel. SHA-256: `8AB9B6320261234D45062FF16B2DBDE8B11857902C7BB1343E707C4A3D51F6D6`. Runtime integration remains a separate change.
+
 The embedded words “Walkie Doggy Link” are not mascot identity. They are a wordmark rendered in the Reference Master’s current composition.
 
 ## Immutable identity traits

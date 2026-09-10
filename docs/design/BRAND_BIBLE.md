@@ -190,6 +190,7 @@ Accessibility is part of visual quality: sufficient contrast, readable text, 44 
 | --- | --- | --- | --- |
 | `assets/branding/walkie-doggy-mascot.png` | Historical branded-wordmark reference | Approved historical/reference asset | 1024 × 1024 ARGB; embeds wordmark; not the preferred clean in-app master. |
 | `assets/branding/walkie-doggy-mascot-clean.png` | Clean Master | `APPROVED` | Original pre-wordmark ChatGPT Library PNG; 1254 × 1254 opaque RGB PNG, 1,284,984 bytes, SHA-256 `9C702A7ABC909618B5A968BBA3CD9A43AFEF08ED650F39517F7EAE1887A78256`; supersedes the prior WhatsApp-derived copy. |
+| `assets/branding/walkie-doggy-mascot-transparent.png` | Transparent in-app mascot derivative | `APPROVED` | 1254 × 1254 RGBA PNG; deterministic character cutout with no icon panel or decorative rays; SHA-256 `8AB9B6320261234D45062FF16B2DBDE8B11857902C7BB1343E707C4A3D51F6D6`; not yet integrated at runtime. |
 | `assets/branding/walkie-doggy-link-icon-source.jpg` | Related source icon art | No explicit lifecycle state found | 1254 × 1254 JPEG. |
 | `assets/branding/walkie-doggy-link-logo-source.jpg` | Related source logo art | No explicit lifecycle state found | 816 × 941 JPEG. |
 | `assets/walkie-doggy-link-wordmark*.png` | Separate textual wordmark variants | No explicit lifecycle state found | Both remain active repository assets. |
