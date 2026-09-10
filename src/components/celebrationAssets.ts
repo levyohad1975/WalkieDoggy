@@ -11,9 +11,9 @@ export interface ResolvedCelebrationAsset {
 }
 
 /**
- * The only shipped celebration visual for now is the approved mascot bitmap.
- * This registry is intentionally explicit: unknown metadata can never crash a
- * celebration, and future local/Storage artwork has one replacement point.
+ * The only shipped celebration visual is a temporary branded fallback; it
+ * contains the wordmark and must be replaced once the approved clean mascot
+ * master is supplied. This registry keeps that replacement to one point.
  */
 export function resolveCelebrationAsset(reference: CelebrationAssetReference | undefined): ResolvedCelebrationAsset {
   if (!reference || reference.reducedMotionPath !== 'assets/branding/walkie-doggy-mascot.png') {

@@ -229,7 +229,7 @@ export function FamilyOnboardingScreen() {
             was here before. Given an explicit accessibilityLabel since this
             IS the meaningful content on this screen, not a decorative
             corner badge. */}
-        <WalkieMascot state="idle" size={128} accessibilityLabel="Walkie Doggy" testID="onboarding-mascot" />
+        <WalkieMascot state="idle" size={128} accessibilityLabel="הקמע של Walkie Doggy Link" testID="onboarding-mascot" />
         <RtlText style={styles.title}>ברוכים הבאים</RtlText>
         <RtlText style={styles.subtitle}>יצירת משפחה חדשה, או הצטרפות למשפחה קיימת עם קוד הזמנה</RtlText>
 

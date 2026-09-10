@@ -20,11 +20,11 @@ export function ReminderMascotPrompt({ visible, message, onDismiss }: ReminderMa
   const fallback = require('../../assets/branding/walkie-doggy-mascot.png');
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss} statusBarTranslucent>
-      <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תזכורת טופי">
+      <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תזכורת הקמע של Walkie Doggy Link">
         <View style={styles.moment} accessibilityRole="alert">
           <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
           <View style={styles.tail} />
-          <MascotFrameAnimation frames={[]} fallback={fallback} fps={10} size={190} accessibilityLabel="טופי מזכיר/ה שהגיע זמן הטיול" />
+          <MascotFrameAnimation frames={[]} fallback={fallback} fps={10} size={190} accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול" />
         </View>
       </Pressable>
     </Modal>

@@ -10,12 +10,11 @@ import { animationManifestFor } from '../mascot/celebrationAnimationManifest';
 
 interface WalkCompletionCelebrationProps {
   celebration: CompletionCelebration | null;
-  dogName?: string;
   onDismiss: () => void;
 }
 
 /** A local, non-blocking post-completion moment. It has no persistence or sync role. */
-export function WalkCompletionCelebration({ celebration, dogName, onDismiss }: WalkCompletionCelebrationProps) {
+export function WalkCompletionCelebration({ celebration, onDismiss }: WalkCompletionCelebrationProps) {
   const [reducedMotion, setReducedMotion] = useState(true);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(18)).current;
@@ -44,14 +43,14 @@ export function WalkCompletionCelebration({ celebration, dogName, onDismiss }: W
   if (!celebration) return null;
   const asset = resolveCelebrationAsset(celebration.asset);
   const manifest = animationManifestFor(celebration);
-  const message = dogName ? celebration.title.replace('טופי', dogName) : celebration.title;
+  const message = celebration.title;
   return (
     <Modal visible transparent animationType="none" onRequestClose={onDismiss} statusBarTranslucent>
-      <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תגובת טופי">
+      <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תגובת הקמע של Walkie Doggy Link">
         <Animated.View style={[styles.moment, { opacity, transform: [{ translateY }] }]} accessibilityRole="alert">
           <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
           <View style={styles.tail} />
-          <MascotFrameAnimation frames={asset.frames} fallback={asset.fallbackSource} fps={manifest?.fps ?? 12} size={220} accessibilityLabel="טופי מגיב/ה לסיום הטיול" testID="completion-mascot-animation" />
+          <MascotFrameAnimation frames={asset.frames} fallback={asset.fallbackSource} fps={manifest?.fps ?? 12} size={220} accessibilityLabel="הקמע של Walkie Doggy Link מגיב לסיום הטיול" testID="completion-mascot-animation" />
           {celebration.confetti ? <RtlText style={styles.confetti} accessible={false}>✦  ✦  ✦</RtlText> : null}
           <Pressable onPress={onDismiss} style={styles.dismissButton} accessibilityRole="button" accessibilityLabel="המשך לאפליקציה"><RtlText style={styles.dismissText}>המשך</RtlText></Pressable>
         </Animated.View>

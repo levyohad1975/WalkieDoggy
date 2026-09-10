@@ -1,4 +1,5 @@
 import type { CelebrationDefinition } from '../logic/walkCompletionCelebration';
+import { CLEAN_MASCOT_MASTER_ASSET } from './mascotAssetManifest';
 
 export interface CelebrationAnimationManifestEntry {
   id: string;
@@ -13,6 +14,8 @@ export interface CelebrationAnimationManifestEntry {
   fps: 10 | 12;
   approximateDurationMs: number;
   futureStoragePrefix: string;
+  sourceMasterPath: string;
+  sourceMasterStatus: 'pending-approved-clean-mascot-artwork';
 }
 
 const concept: Record<string, string> = {
@@ -43,6 +46,8 @@ export const CELEBRATION_ANIMATION_MANIFEST: CelebrationAnimationManifestEntry[]
   fps: id === 'sleepy-good-night' ? 10 : 12,
   approximateDurationMs: id === 'sleepy-good-night' ? 2200 : 1800,
   futureStoragePrefix: `celebrations/${id}/v1/`,
+  sourceMasterPath: CLEAN_MASCOT_MASTER_ASSET.expectedPath,
+  sourceMasterStatus: CLEAN_MASCOT_MASTER_ASSET.status,
 }));
 
 export function animationManifestFor(definition: Pick<CelebrationDefinition, 'id'>) {

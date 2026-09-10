@@ -23,7 +23,7 @@ interface DogDetailsModalProps {
 }
 
 /**
- * Section 12: "🐶 פרטי טופי" — dog name/photo/notes editing, moved out of
+ * Section 12: dog name/photo/notes editing, moved out of
  * the main Settings list into its own focused sub-screen (a modal, matching
  * this app's existing navigation pattern — every other focused editing flow
  * in this repo is a modal sheet, not a pushed stack screen).

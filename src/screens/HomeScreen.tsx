@@ -702,7 +702,6 @@ export function HomeScreen() {
 
       <WalkCompletionCelebration
         celebration={celebration}
-        dogName={dog?.name}
         onDismiss={() => setCelebration(null)}
       />
 

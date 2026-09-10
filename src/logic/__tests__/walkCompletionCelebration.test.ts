@@ -35,4 +35,8 @@ describe('selectWalkCompletionCelebration', () => {
     expect(CELEBRATION_LIBRARY).toHaveLength(9);
     expect(CELEBRATION_LIBRARY.every((item) => item.asset.provider === 'local' && !!item.asset.path && !!item.asset.reducedMotionPath)).toBe(true);
   });
+
+  it('does not use a family dog name as the brand mascot in celebration copy', () => {
+    expect(CELEBRATION_LIBRARY.some((item) => item.eyebrow.includes('טופי') || item.title.includes('טופי') || item.message.includes('טופי'))).toBe(false);
+  });
 });
