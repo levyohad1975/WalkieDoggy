@@ -147,10 +147,10 @@ function dogNoun(dogName: string, dogSex: string | null | undefined): string {
   return dogName;
 }
 
-function wentOutForm(dogSex: string | null | undefined): string {
+function wentOutForm(dogSex: string | null | undefined): 'יצא' | 'יצאה' | null {
   if (dogSex === 'male') return 'יצא';
   if (dogSex === 'female') return 'יצאה';
-  return 'יצא/ה';
+  return null;
 }
 
 interface ReminderMessageInput {
@@ -194,9 +194,15 @@ function buildWalkReminderMessage(input: ReminderMessageInput): { title: string;
       seed
     );
   }
+  const wentOut = wentOutForm(dogSex);
   return pick(
     [
-      { title: '🚨 הטיול דורש תשומת לב', body: `${noun} עדיין לא ${wentOutForm(dogSex)} לטיול משעה ${scheduledTime} — ${responsibleName} אחראי/ת` },
+      {
+        title: '🚨 הטיול דורש תשומת לב',
+        body: wentOut
+          ? `${noun} עדיין לא ${wentOut} לטיול משעה ${scheduledTime} — ${responsibleName} אחראי/ת`
+          : `הטיול של ${dogName} משעה ${scheduledTime} עדיין ממתין — ${responsibleName} אחראי/ת`,
+      },
       { title: '🚨 טיול באיחור משמעותי', body: `הטיול של ${dogName} משעה ${scheduledTime} עדיין לא סומן כבוצע — ${responsibleName} אחראי/ת` },
     ],
     seed
@@ -204,12 +210,19 @@ function buildWalkReminderMessage(input: ReminderMessageInput): { title: string;
 }
 
 function buildWalkAttentionEscalationMessage(input: Omit<ReminderMessageInput, 'stage'>): { title: string; body: string } {
-  const { dogName, responsibleName, scheduledTime, varietySeed } = input;
+  const { dogName, dogSex, responsibleName, scheduledTime, varietySeed } = input;
+  const wentOut = wentOutForm(dogSex);
+  const noun = dogNoun(dogName, dogSex);
   const seed = `${varietySeed}:T+30:escalation`;
   return pick(
     [
       { title: '🚨 טיול דורש תשומת לב', body: `הטיול של ${dogName} משעה ${scheduledTime}, באחריות ${responsibleName}, עדיין לא בוצע` },
-      { title: '🚨 עדכון למשפחה', body: `${dogName} עדיין לא יצא/ה לטיול (${scheduledTime}) — ${responsibleName} היה/תה אחראי/ת` },
+      {
+        title: '🚨 עדכון למשפחה',
+        body: wentOut
+          ? `${noun} עדיין לא ${wentOut} לטיול (${scheduledTime}) — ${responsibleName} היה/תה אחראי/ת`
+          : `הטיול של ${dogName} משעה ${scheduledTime} עדיין ממתין — ${responsibleName} היה/תה אחראי/ת`,
+      },
     ],
     seed
   );

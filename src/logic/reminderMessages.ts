@@ -15,12 +15,9 @@
  * gender-unknown HUMAN is a literal "אחראי/ת" slash form (see
  * supabase/functions/send-request-push/index.ts's Hebrew templates) — reused
  * here unchanged for the responsible member. For the DOG's sex (new in this
- * batch — see migrations/0022_family_timezone_and_dog_sex.sql), the same
- * slash-form idiom is used for the one verb whose spelling actually differs
- * by gender without niqqud (יצא/יצאה — "went out"); when sex is known, the
- * single correct form is used instead. When sex is unknown, phrasing
- * deliberately prefers the dog's bare name (ungendered) over "הכלב"/"הכלבה"
- * so as never to guess.
+ * batch — see migrations/0022_family_timezone_and_dog_sex.sql), use the
+ * single correct verb when sex is known. When sex is unknown, use a separate
+ * neutral sentence rather than a slash-form or a guessed gender.
  */
 
 import type { Dog } from '../types';
@@ -104,11 +101,11 @@ export function dogNoun(dogName: string, dogSex: Dog['sex'] | null | undefined):
   return dogName;
 }
 
-/** "יצא" (m) / "יצאה" (f) / "יצא/ה" (unknown) — see this file's header note. Exported for reuse by the mascot message engine (Batch 4). */
-export function wentOutForm(dogSex: Dog['sex'] | null | undefined): string {
+/** "יצא" (m) / "יצאה" (f) / no gendered verb when unknown. */
+export function wentOutForm(dogSex: Dog['sex'] | null | undefined): 'יצא' | 'יצאה' | null {
   if (dogSex === 'male') return 'יצא';
   if (dogSex === 'female') return 'יצאה';
-  return 'יצא/ה';
+  return null;
 }
 
 export function buildWalkReminderMessage(input: ReminderMessageInput): ReminderMessage {
@@ -160,10 +157,13 @@ export function buildWalkReminderMessage(input: ReminderMessageInput): ReminderM
 
   // T+30 — the responsible member's own copy of the reminder (the separate
   // admin-escalation message is buildWalkAttentionEscalationMessage below).
+  const wentOut = wentOutForm(dogSex);
   const variants: ReminderMessage[] = [
     {
       title: '🚨 הטיול דורש תשומת לב',
-      body: `${noun} עדיין לא ${wentOutForm(dogSex)} לטיול משעה ${scheduledTime} — ${responsibleName} אחראי/ת`,
+      body: wentOut
+        ? `${noun} עדיין לא ${wentOut} לטיול משעה ${scheduledTime} — ${responsibleName} אחראי/ת`
+        : `הטיול של ${dogName} משעה ${scheduledTime} עדיין ממתין — ${responsibleName} אחראי/ת`,
     },
     {
       title: '🚨 טיול באיחור משמעותי',
@@ -183,7 +183,9 @@ export function buildWalkReminderMessage(input: ReminderMessageInput): ReminderM
 export function buildWalkAttentionEscalationMessage(
   input: Omit<ReminderMessageInput, 'stage'>
 ): ReminderMessage {
-  const { dogName, responsibleName, scheduledTime, varietySeed } = input;
+  const { dogName, dogSex, responsibleName, scheduledTime, varietySeed } = input;
+  const wentOut = wentOutForm(dogSex);
+  const noun = dogNoun(dogName, dogSex);
   const seed = `${varietySeed}:T+30:escalation`;
   const variants: ReminderMessage[] = [
     {
@@ -192,7 +194,9 @@ export function buildWalkAttentionEscalationMessage(
     },
     {
       title: '🚨 עדכון למשפחה',
-      body: `${dogName} עדיין לא יצא/ה לטיול (${scheduledTime}) — ${responsibleName} היה/תה אחראי/ת`,
+      body: wentOut
+        ? `${noun} עדיין לא ${wentOut} לטיול (${scheduledTime}) — ${responsibleName} היה/תה אחראי/ת`
+        : `הטיול של ${dogName} משעה ${scheduledTime} עדיין ממתין — ${responsibleName} היה/תה אחראי/ת`,
     },
   ];
   return pick(variants, seed);

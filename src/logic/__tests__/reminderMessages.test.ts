@@ -4,6 +4,8 @@ import {
   reminderUrgencyLevel,
   buildWalkReminderMessage,
   buildWalkAttentionEscalationMessage,
+  dogNoun,
+  wentOutForm,
   type ReminderStage,
 } from '../reminderMessages';
 
@@ -69,25 +71,23 @@ describe('buildWalkReminderMessage', () => {
     expect(bodies.size).toBeGreaterThan(1);
   });
 
-  it('never guesses the dog gender when sex is unknown — no "הכלב"/"הכלבה", uses "יצא/ה" not a single guessed form', () => {
+  it('uses neutral, slash-free wording when dog sex is unknown', () => {
     for (const stage of REMINDER_STAGES) {
       const msg = buildWalkReminderMessage({ ...BASE_INPUT, stage, dogSex: undefined });
       const text = `${msg.title} ${msg.body}`;
       expect(text).not.toContain('הכלב ');
       expect(text).not.toContain('הכלבה ');
+      expect(text).not.toContain('יצא/ה');
     }
   });
 
-  it('uses the correct single gendered form once sex is known (male)', () => {
-    const msg = buildWalkReminderMessage({ ...BASE_INPUT, stage: 'T+30', dogSex: 'male' });
-    const text = `${msg.title} ${msg.body}`;
-    expect(text).not.toContain('יצא/ה');
-  });
-
-  it('uses the correct single gendered form once sex is known (female)', () => {
-    const msg = buildWalkReminderMessage({ ...BASE_INPUT, stage: 'T+30', dogSex: 'female' });
-    const text = `${msg.title} ${msg.body}`;
-    expect(text).not.toContain('יצא/ה');
+  it('uses male, female, and neutral dog forms without guessing', () => {
+    expect(dogNoun('רקסי', 'male')).toBe('הכלב רקסי');
+    expect(wentOutForm('male')).toBe('יצא');
+    expect(dogNoun('לונה', 'female')).toBe('הכלבה לונה');
+    expect(wentOutForm('female')).toBe('יצאה');
+    expect(dogNoun('מקס', undefined)).toBe('מקס');
+    expect(wentOutForm(undefined)).toBeNull();
   });
 
   it('escalates in urgency: T-15 is purely informational, T+30 carries an urgent marker', () => {
@@ -111,6 +111,13 @@ describe('buildWalkAttentionEscalationMessage', () => {
     const a = buildWalkAttentionEscalationMessage(BASE_INPUT);
     const b = buildWalkAttentionEscalationMessage(BASE_INPUT);
     expect(a).toEqual(b);
+  });
+
+  it('uses neutral, slash-free wording when dog sex is unset', () => {
+    for (const varietySeed of Array.from({ length: 16 }, (_, index) => `walk-${index}`)) {
+      const msg = buildWalkAttentionEscalationMessage({ ...BASE_INPUT, dogSex: undefined, varietySeed });
+      expect(`${msg.title} ${msg.body}`).not.toContain('יצא/ה');
+    }
   });
 
   it('produces a different message identity from the responsible member own T+30 reminder for the same walk', () => {
