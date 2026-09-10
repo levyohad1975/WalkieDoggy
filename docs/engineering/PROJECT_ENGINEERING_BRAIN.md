@@ -45,7 +45,7 @@ The client uses public Supabase configuration through `EXPO_PUBLIC_SUPABASE_URL`
 
 Verified package scripts: `npm run typecheck` (or `npx tsc --noEmit`), `npm test -- --runInBand`, `npm start`, `npm run android`, `npm run ios`, and `npm run web`. The repository has no package scripts for export/build deployment, EAS deployment, migration application, or Edge Function deployment. Historical/manual commands in older documents are not current package-script authority.
 
-Claude Code cloud has been verified against the GitHub repository to install dependencies and run the full local validation suite without requiring production secrets.
+A Claude Code cloud session successfully installed the repository dependencies and reported passing the standard local validation commands (`npx tsc --noEmit` and `npm test -- --runInBand`) without requiring production secrets.
 
 ## 11. Security-sensitive and production-change rules
 
