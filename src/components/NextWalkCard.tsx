@@ -110,8 +110,14 @@ export function NextWalkCard({
         </RtlText>
         {/* The Walkie Doggy MASCOT (brand character) — deliberately separate
             from DogPhoto above (the family's REAL dog), never interchanged,
-            per the Batch 4 brief's explicit distinction. */}
-        <WalkieMascot state={mascotState} size={isWeb ? 40 : 46} testID="next-walk-mascot" />
+            per the Batch 4 brief's explicit distinction.
+            Home-card-only size bump (+50%, from 40/46): the mascot read as a
+            small decorative icon at the old size. 60 (web) / 69 (native) is
+            capped at DogPhoto's own size in this row (60/72) so the taller
+            side of the row never grows and nothing here collides with the
+            eyebrow title or card edge. Other WalkieMascot call sites
+            (onboarding, reminder, celebration) are untouched. */}
+        <WalkieMascot state={mascotState} size={isWeb ? 60 : 69} testID="next-walk-mascot" />
       </View>
 
       <RtlText style={styles.mascotMessage} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
