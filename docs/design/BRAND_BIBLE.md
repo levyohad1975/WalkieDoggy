@@ -96,13 +96,13 @@ Current wordmark assets are:
 | `assets/walkie-doggy-link-wordmark.png` | PNG, 608 × 220 px, 32-bit ARGB | Textual brand asset. |
 | `assets/walkie-doggy-link-wordmark-transparent.png` | PNG, 608 × 220 px, 32-bit ARGB | Textual brand asset; the repository does not establish either variant as obsolete. |
 
-Use a separately managed wordmark where textual brand recognition is needed. Do not bake it into new mascot moments merely to identify the product. The current Reference Master contains embedded text, but the planned Clean Master is intended to remove it.
+Use a separately managed wordmark where textual brand recognition is needed. Do not bake it into new mascot moments merely to identify the product. The historical branded-wordmark reference contains embedded text; the approved Clean Master does not.
 
 ## Mascot in the brand system
 
 The mascot is a signature emotional element: it adds warmth, encouragement, and brief delight to a relevant user task. It must not dominate every screen, compete with the primary walk action, or be confused with the family dog.
 
-Follow [MASCOT_SPEC.md](C:\Users\ohadl\Downloads\dogwalkfamilyround5a\docs\design\MASCOT_SPEC.md) for the authoritative identity, collar/link emblem, lifecycle, and production rules. Prefer the approved Clean Master for in-app moments once it exists; do not permit identity drift.
+Follow [MASCOT_SPEC.md](C:\Users\ohadl\Downloads\dogwalkfamilyround5a\docs\design\MASCOT_SPEC.md) for the authoritative identity, collar/link emblem, lifecycle, and production rules. The approved Clean Master is the preferred future source for in-app mascot moments; this approval does not change current runtime consumers. Do not permit identity drift.
 
 ## Iconography
 
@@ -188,8 +188,8 @@ Accessibility is part of visual quality: sufficient contrast, readable text, 44 
 
 | Asset | Role | Lifecycle/status established by repository | Caveat |
 | --- | --- | --- | --- |
-| `assets/branding/walkie-doggy-mascot.png` | Mascot Reference Master | Current authoritative visual reference | 1024 × 1024 ARGB; embeds wordmark; not the pending Clean Master. |
-| `assets/branding/walkie-doggy-mascot-clean.png` | Intended Clean Master | Pending; file absent | Do not treat as existing or approved. |
+| `assets/branding/walkie-doggy-mascot.png` | Historical branded-wordmark reference | Approved historical/reference asset | 1024 × 1024 ARGB; embeds wordmark; not the preferred clean in-app master. |
+| `assets/branding/walkie-doggy-mascot-clean.png` | Clean Master | `APPROVED` | 1254 × 1254 opaque RGB PNG; no embedded wordmark; JPEG-origin source quality is accepted. |
 | `assets/branding/walkie-doggy-link-icon-source.jpg` | Related source icon art | No explicit lifecycle state found | 1254 × 1254 JPEG. |
 | `assets/branding/walkie-doggy-link-logo-source.jpg` | Related source logo art | No explicit lifecycle state found | 816 × 941 JPEG. |
 | `assets/walkie-doggy-link-wordmark*.png` | Separate textual wordmark variants | No explicit lifecycle state found | Both remain active repository assets. |
@@ -198,9 +198,9 @@ Accessibility is part of visual quality: sufficient contrast, readable text, 44 
 
 ## Known gaps and inconsistencies
 
-- The Clean Master is missing; current fallback mascot artwork contains embedded wordmark text.
+- The approved Clean Master is not yet integrated; current fallback mascot artwork contains embedded wordmark text.
 - Final celebration frame packs are missing; the celebration resolver uses an explicit placeholder/fallback.
-- Mascot manifest metadata asks for a transparent Clean Master, while the visible Reference Master includes a turquoise rounded-square treatment. This requires explicit production-art direction, not an unapproved interpretation.
+- Mascot manifest metadata asks for a transparent Clean Master, while the approved Clean Master is intentionally opaque and includes the turquoise rounded-square treatment. A transparent derivative remains a separately approved future deliverable.
 - `src/theme/tokens.ts` provides a substantial foundation, but code comments state that not every existing screen was migrated from legacy/ad hoc sizing.
 - `ContentContainer` and breakpoint tokens exist, but responsive adoption is incomplete; representative components include some web-specific adjustments rather than a complete desktop system.
 - The repository does not provide a custom-font, icon-library, reusable chart, email-design, or comprehensive visual-QA standard to formalize yet.
