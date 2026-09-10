@@ -45,6 +45,8 @@ The client uses public Supabase configuration through `EXPO_PUBLIC_SUPABASE_URL`
 
 Verified package scripts: `npm run typecheck` (or `npx tsc --noEmit`), `npm test -- --runInBand`, `npm start`, `npm run android`, `npm run ios`, and `npm run web`. The repository has no package scripts for export/build deployment, EAS deployment, migration application, or Edge Function deployment. Historical/manual commands in older documents are not current package-script authority.
 
+Claude Code cloud has been verified against the GitHub repository to install dependencies and run the full local validation suite without requiring production secrets.
+
 ## 11. Security-sensitive and production-change rules
 
 Never edit an already-applied migration; create a new migration for database changes. Production Supabase migrations, EAS/Expo or store deployment, Git push, destructive work, and production-data actions require explicit user approval. Preserve Hebrew RTL behavior, offline-first architecture, SyncQueue audit protections, and native notifications when changing Web Push. Inspect the diff before local commits and never include unrelated user work.
