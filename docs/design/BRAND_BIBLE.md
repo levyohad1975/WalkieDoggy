@@ -102,7 +102,7 @@ Use a separately managed wordmark where textual brand recognition is needed. Do 
 
 The mascot is a signature emotional element: it adds warmth, encouragement, and brief delight to a relevant user task. It must not dominate every screen, compete with the primary walk action, or be confused with the family dog.
 
-Follow [MASCOT_SPEC.md](C:\Users\ohadl\Downloads\dogwalkfamilyround5a\docs\design\MASCOT_SPEC.md) for the authoritative identity, collar/link emblem, lifecycle, and production rules. The approved Clean Master is the preferred future source for in-app mascot moments; this approval does not change current runtime consumers. Do not permit identity drift.
+Follow [MASCOT_SPEC.md](C:\Users\ohadl\Downloads\dogwalkfamilyround5a\docs\design\MASCOT_SPEC.md) for the authoritative identity, collar/link emblem, lifecycle, and production rules. Current in-app mascot consumers reference the approved Clean Master path. Do not permit identity drift.
 
 ## Iconography
 
@@ -189,7 +189,7 @@ Accessibility is part of visual quality: sufficient contrast, readable text, 44 
 | Asset | Role | Lifecycle/status established by repository | Caveat |
 | --- | --- | --- | --- |
 | `assets/branding/walkie-doggy-mascot.png` | Historical branded-wordmark reference | Approved historical/reference asset | 1024 × 1024 ARGB; embeds wordmark; not the preferred clean in-app master. |
-| `assets/branding/walkie-doggy-mascot-clean.png` | Clean Master | `APPROVED` | 1254 × 1254 opaque RGB PNG; no embedded wordmark; JPEG-origin source quality is accepted. |
+| `assets/branding/walkie-doggy-mascot-clean.png` | Clean Master | `APPROVED` | Original pre-wordmark ChatGPT Library PNG; 1254 × 1254 opaque RGB PNG, 1,284,984 bytes, SHA-256 `9C702A7ABC909618B5A968BBA3CD9A43AFEF08ED650F39517F7EAE1887A78256`; supersedes the prior WhatsApp-derived copy. |
 | `assets/branding/walkie-doggy-link-icon-source.jpg` | Related source icon art | No explicit lifecycle state found | 1254 × 1254 JPEG. |
 | `assets/branding/walkie-doggy-link-logo-source.jpg` | Related source logo art | No explicit lifecycle state found | 816 × 941 JPEG. |
 | `assets/walkie-doggy-link-wordmark*.png` | Separate textual wordmark variants | No explicit lifecycle state found | Both remain active repository assets. |
@@ -198,9 +198,9 @@ Accessibility is part of visual quality: sufficient contrast, readable text, 44 
 
 ## Known gaps and inconsistencies
 
-- The approved Clean Master is not yet integrated; current fallback mascot artwork contains embedded wordmark text.
+- A separately approved transparent-character derivative remains pending.
 - Final celebration frame packs are missing; the celebration resolver uses an explicit placeholder/fallback.
-- Mascot manifest metadata asks for a transparent Clean Master, while the approved Clean Master is intentionally opaque and includes the turquoise rounded-square treatment. A transparent derivative remains a separately approved future deliverable.
+- The approved Clean Master is intentionally opaque and includes the turquoise rounded-square treatment. A transparent derivative remains a separately approved future deliverable.
 - `src/theme/tokens.ts` provides a substantial foundation, but code comments state that not every existing screen was migrated from legacy/ad hoc sizing.
 - `ContentContainer` and breakpoint tokens exist, but responsive adoption is incomplete; representative components include some web-specific adjustments rather than a complete desktop system.
 - The repository does not provide a custom-font, icon-library, reusable chart, email-design, or comprehensive visual-QA standard to formalize yet.
