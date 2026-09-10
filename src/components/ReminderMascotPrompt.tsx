@@ -17,7 +17,7 @@ export function ReminderMascotPrompt({ visible, message, onDismiss }: ReminderMa
     const timer = setTimeout(onDismiss, 3200);
     return () => clearTimeout(timer);
   }, [visible, onDismiss]);
-  const fallback = require('../../assets/branding/walkie-doggy-mascot.png');
+  const fallback = require('../../assets/branding/walkie-doggy-mascot-clean.png');
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תזכורת הקמע של Walkie Doggy Link">

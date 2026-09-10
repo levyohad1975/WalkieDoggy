@@ -1,7 +1,7 @@
 import type { ImageSourcePropType } from 'react-native';
 import type { CelebrationAssetReference } from '../logic/walkCompletionCelebration';
 
-const MASCOT_FALLBACK = require('../../assets/branding/walkie-doggy-mascot.png');
+const MASCOT_FALLBACK = require('../../assets/branding/walkie-doggy-mascot-clean.png');
 
 export interface ResolvedCelebrationAsset {
   source: ImageSourcePropType;
@@ -11,16 +11,16 @@ export interface ResolvedCelebrationAsset {
 }
 
 /**
- * The only shipped celebration visual is a temporary branded fallback; it
- * contains the wordmark and must be replaced once the approved clean mascot
- * master is supplied. This registry keeps that replacement to one point.
+ * The only shipped celebration visual is the approved clean mascot fallback.
+ * Frame packs remain pending, so this registry keeps their future replacement
+ * at one point.
  */
 export function resolveCelebrationAsset(reference: CelebrationAssetReference | undefined): ResolvedCelebrationAsset {
-  if (!reference || reference.reducedMotionPath !== 'assets/branding/walkie-doggy-mascot.png') {
+  if (!reference || reference.reducedMotionPath !== 'assets/branding/walkie-doggy-mascot-clean.png') {
     return { source: MASCOT_FALLBACK, fallbackSource: MASCOT_FALLBACK, frames: [], isPlaceholder: true };
   }
 
-  if (reference.provider === 'local' && reference.path === 'assets/branding/walkie-doggy-mascot.png') {
+  if (reference.provider === 'local' && reference.path === 'assets/branding/walkie-doggy-mascot-clean.png') {
     return { source: MASCOT_FALLBACK, fallbackSource: MASCOT_FALLBACK, frames: [], isPlaceholder: true };
   }
 

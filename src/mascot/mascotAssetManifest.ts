@@ -1,13 +1,12 @@
 /**
- * The approved clean mascot master is not yet present in this repository.
- * These references are deliberately metadata only: until approved artwork is
- * supplied, every runtime consumer keeps the existing branded fallback.
+ * Approved clean mascot master for in-app mascot surfaces. It preserves the
+ * turquoise rounded-square composition and is intentionally opaque.
  */
 export const CLEAN_MASCOT_MASTER_ASSET = {
   expectedPath: 'assets/branding/walkie-doggy-mascot-clean.png',
-  status: 'pending-approved-clean-mascot-artwork' as const,
-  fallbackPath: 'assets/branding/walkie-doggy-mascot.png',
-  requirements: 'PNG, transparent background, no embedded wordmark or text, same approved Walkie Doggy Link character.',
+  status: 'approved-clean-mascot-master' as const,
+  fallbackPath: 'assets/branding/walkie-doggy-mascot-clean.png',
+  requirements: 'PNG, opaque turquoise rounded-square composition, no embedded wordmark or text, same approved Walkie Doggy Link character.',
 };
 
 /** Exact assets/entry points to replace only after the approved clean master arrives. */

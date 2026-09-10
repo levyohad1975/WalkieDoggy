@@ -15,7 +15,7 @@ export interface CelebrationAnimationManifestEntry {
   approximateDurationMs: number;
   futureStoragePrefix: string;
   sourceMasterPath: string;
-  sourceMasterStatus: 'pending-approved-clean-mascot-artwork';
+  sourceMasterStatus: 'approved-clean-mascot-master';
 }
 
 const concept: Record<string, string> = {
@@ -39,8 +39,8 @@ export const CELEBRATION_ANIMATION_MANIFEST: CelebrationAnimationManifestEntry[]
   animationType: 'frame-sequence',
   localFrameDirectory: `assets/celebrations/${id}`,
   expectedFrameFiles: Array.from({ length: id === 'sleepy-good-night' ? 18 : 14 }, (_, index) => `frame-${String(index + 1).padStart(2, '0')}.png`),
-  fallbackPath: 'assets/branding/walkie-doggy-mascot.png',
-  reducedMotionPath: 'assets/branding/walkie-doggy-mascot.png',
+  fallbackPath: 'assets/branding/walkie-doggy-mascot-clean.png',
+  reducedMotionPath: 'assets/branding/walkie-doggy-mascot-clean.png',
   dimensions: '512x512',
   transparency: true,
   fps: id === 'sleepy-good-night' ? 10 : 12,

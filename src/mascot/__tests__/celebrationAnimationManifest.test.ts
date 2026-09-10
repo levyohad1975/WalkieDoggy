@@ -12,15 +12,15 @@ describe('celebration animation manifest', () => {
       expect(entry.expectedFrameFiles.length).toBeGreaterThanOrEqual(10);
       expect(entry.expectedFrameFiles[0]).toBe('frame-01.png');
       expect(entry.sourceMasterPath).toBe(CLEAN_MASCOT_MASTER_ASSET.expectedPath);
-      expect(entry.sourceMasterStatus).toBe('pending-approved-clean-mascot-artwork');
+      expect(entry.sourceMasterStatus).toBe('approved-clean-mascot-master');
     }
   });
 
-  it('keeps the approved clean, no-text mascot master explicitly pending', () => {
+  it('records the approved clean, no-text mascot master as the runtime fallback', () => {
     expect(CLEAN_MASCOT_MASTER_ASSET).toEqual(expect.objectContaining({
       expectedPath: 'assets/branding/walkie-doggy-mascot-clean.png',
-      status: 'pending-approved-clean-mascot-artwork',
-      fallbackPath: 'assets/branding/walkie-doggy-mascot.png',
+      status: 'approved-clean-mascot-master',
+      fallbackPath: 'assets/branding/walkie-doggy-mascot-clean.png',
     }));
     expect(CLEAN_MASCOT_REPLACEMENT_TARGETS).toEqual(expect.arrayContaining([
       'src/components/WalkieMascot.tsx',
