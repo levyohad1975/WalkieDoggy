@@ -133,3 +133,50 @@ export async function getVerifiedAdminIdentityWithAuth(
 export function getVerifiedAdminIdentity(): Promise<VerifiedAdminIdentity> {
   return getVerifiedAdminIdentityWithAuth(requireAuthClient());
 }
+
+
+export type VerifiedFamilyCreationResult = {
+  id: string;
+  name: string;
+  inviteCode: string;
+  approvalStatus: 'pending' | 'active';
+  warnings: string[];
+};
+
+/**
+ * Creates a family only through the server-authoritative Edge Function.
+ * The function derives the caller from the bearer token and reads
+ * AUTO_APPROVE_NEW_FAMILIES from its own environment; neither value is
+ * accepted from the client.
+ */
+export async function createVerifiedFamily(
+  familyName: string,
+  dogName?: string
+): Promise<VerifiedFamilyCreationResult> {
+  if (!supabase) throw new SupabaseNotConfiguredError();
+  const { data, error } = await supabase.functions.invoke('create-verified-family', {
+    body: {
+      familyName: familyName.trim(),
+      dogName: dogName?.trim() || null,
+    },
+  });
+  if (error) throw error;
+
+  const family = data?.family;
+  if (
+    !family?.id ||
+    !family?.name ||
+    !family?.inviteCode ||
+    (family.approvalStatus !== 'active' && family.approvalStatus !== 'pending')
+  ) {
+    throw new Error('יצירת המשפחה נכשלה');
+  }
+
+  return {
+    id: family.id,
+    name: family.name,
+    inviteCode: family.inviteCode,
+    approvalStatus: family.approvalStatus,
+    warnings: Array.isArray(data?.warnings) ? data.warnings : [],
+  };
+}
