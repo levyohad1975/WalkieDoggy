@@ -1,10 +1,11 @@
 -- 0032_verified_family_onboarding.sql
 --
--- Issue #3 / Batch 2: server-authoritative verified family creation.
+-- Issue #3 / Batch 2: expand phase for server-authoritative verified family creation.
 -- REPOSITORY ONLY: applying this migration is a separate production action.
--- It must be rolled out together with the create-verified-family Edge
--- Function and the compatible client because direct create_family execution
--- is deliberately revoked below.
+-- This phase is backward-compatible: it adds schema and new RPCs but does
+-- not revoke the legacy path or change existing authorization helpers.
+-- Migration 0033 performs that cutover only after the Edge Function and
+-- compatible client are live and verified.
 
 alter table families
   add column if not exists approval_status text not null default 'active',
@@ -33,54 +34,6 @@ create table if not exists family_onboarding_requests (
 alter table family_onboarding_requests enable row level security;
 -- No direct client policies. The Edge Function's service-role-only RPC and
 -- the status RPC below are the only supported surfaces.
-
-create or replace function current_family_id()
-returns uuid
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select m.family_id
-  from family_auth_members m
-  join families f on f.id = m.family_id
-  where m.auth_user_id = auth.uid()
-    and f.approval_status = 'active'
-  limit 1;
-$$;
-
-create or replace function current_family_role()
-returns text
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select m.role
-  from family_auth_members m
-  join families f on f.id = m.family_id
-  where m.auth_user_id = auth.uid()
-    and f.approval_status = 'active'
-  limit 1;
-$$;
-
-create or replace function is_family_admin(target_family_id uuid)
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select exists (
-    select 1
-    from family_auth_members m
-    join families f on f.id = m.family_id
-    where m.auth_user_id = auth.uid()
-      and m.family_id = target_family_id
-      and m.role = 'admin'
-      and f.approval_status = 'active'
-  );
-$$;
 
 create or replace function create_verified_family(
   p_auth_user_id uuid,
@@ -195,14 +148,6 @@ revoke all on function create_verified_family(uuid, text, text, boolean) from an
 revoke all on function create_verified_family(uuid, text, text, boolean) from authenticated;
 grant execute on function create_verified_family(uuid, text, text, boolean) to service_role;
 
--- The legacy RPC accepted anonymous sessions and could bypass manual approval.
--- PostgreSQL grants function EXECUTE to PUBLIC by default, so revoking only
--- anon/authenticated would leave an inherited bypass open.
--- The compatible client now uses the Edge Function instead.
-revoke all on function create_family(text, text) from public;
-revoke execute on function create_family(text, text) from anon;
-revoke execute on function create_family(text, text) from authenticated;
-
 create or replace function get_my_family_onboarding_status()
 returns table (
   family_id uuid,
@@ -265,54 +210,3 @@ $$;
 revoke all on function system_admin_set_family_approval(uuid, text) from public;
 grant execute on function system_admin_set_family_approval(uuid, text) to authenticated;
 
-create or replace function find_family_by_invite_code(code text)
-returns table (id uuid, name text, dog_name text)
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select f.id, f.name, d.name
-  from families f
-  left join dogs d on d.family_id = f.id
-  where upper(f.invite_code) = upper(code)
-    and f.approval_status = 'active'
-  limit 1;
-$$;
-
-create or replace function join_family(code text)
-returns table (id uuid, name text)
-language plpgsql
-volatile
-security definer
-set search_path = public
-as $$
-declare
-  v_family_id uuid;
-begin
-  if auth.uid() is null then
-    raise exception 'must be authenticated to join a family';
-  end if;
-
-  select f.id into v_family_id
-  from families f
-  where upper(f.invite_code) = upper(code)
-    and f.approval_status = 'active'
-  limit 1;
-
-  if v_family_id is null then
-    raise exception 'invalid invite code';
-  end if;
-
-  insert into family_auth_members (auth_user_id, family_id, role)
-  values (auth.uid(), v_family_id, 'member')
-  on conflict (auth_user_id) do update set
-    family_id = excluded.family_id,
-    role = case
-      when family_auth_members.family_id = excluded.family_id
-       and family_auth_members.role = 'admin'
-      then 'admin' else 'member' end;
-
-  return query select f.id, f.name from families f where f.id = v_family_id;
-end;
-$$;
