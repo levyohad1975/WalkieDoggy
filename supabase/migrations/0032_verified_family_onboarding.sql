@@ -196,7 +196,10 @@ revoke all on function create_verified_family(uuid, text, text, boolean) from au
 grant execute on function create_verified_family(uuid, text, text, boolean) to service_role;
 
 -- The legacy RPC accepted anonymous sessions and could bypass manual approval.
+-- PostgreSQL grants function EXECUTE to PUBLIC by default, so revoking only
+-- anon/authenticated would leave an inherited bypass open.
 -- The compatible client now uses the Edge Function instead.
+revoke all on function create_family(text, text) from public;
 revoke execute on function create_family(text, text) from anon;
 revoke execute on function create_family(text, text) from authenticated;
 
