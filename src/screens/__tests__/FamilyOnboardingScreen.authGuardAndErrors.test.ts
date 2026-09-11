@@ -6,19 +6,10 @@
  *
  * What this guards against (both were real bugs found in a repo audit):
  *
- * 1. submitCreate() called ensureAnonymousSession() defensively right before
- *    createFamily(), but confirmJoin() called joinFamily() with no such
- *    guard. restoreSession() (authStore.ts) already establishes an
- *    anonymous session at app start, but swallows failure
- *    (`.catch(() => undefined)`) — a transient network hiccup, or "Anonymous
- *    Sign-Ins" not enabled on the Supabase project, silently leaves the
- *    device unauthenticated. create_family()/join_family() (see
- *    supabase/migrations/0002_*.sql, 0003_*.sql) both raise "must be
- *    authenticated to ..." in that case. Without its own guard, joining a
- *    family failed with no retry in exactly the situation creating one
- *    self-healed — an asymmetric, confusing "create works, join doesn't"
- *    symptom. Both flows must call ensureAnonymousSession() immediately
- *    before their RPC call.
+ * 1. Creating a family now requires a verified, non-anonymous admin
+ *    identity, revalidated immediately before createFamily(). Joining an
+ *    existing family keeps the anonymous-session retry guard because that
+ *    flow intentionally remains device/membership based.
  *
  * 2. Both catch blocks reimplemented raw error-message extraction inline
  *    instead of calling the shared friendlyErrorMessage() helper (used by
@@ -39,13 +30,14 @@ describe('FamilyOnboardingScreen — create/join auth guard and error mapping (s
     return source.slice(start, end);
   }
 
-  it('submitCreate() ensures an anonymous session before calling createFamily()', () => {
+  it('submitCreate() revalidates a verified admin identity before calling createFamily()', () => {
     const body = bodyOf('submitCreate');
-    const sessionIdx = body.indexOf('ensureAnonymousSession()');
+    const identityIdx = body.indexOf('getVerifiedAdminIdentity()');
     const createIdx = body.indexOf('createFamily(');
-    expect(sessionIdx).toBeGreaterThan(-1);
+    expect(identityIdx).toBeGreaterThan(-1);
     expect(createIdx).toBeGreaterThan(-1);
-    expect(sessionIdx).toBeLessThan(createIdx);
+    expect(identityIdx).toBeLessThan(createIdx);
+    expect(body).not.toContain('ensureAnonymousSession()');
   });
 
   it('confirmJoin() ensures an anonymous session before calling joinFamily()', () => {
