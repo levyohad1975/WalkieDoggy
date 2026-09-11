@@ -1,0 +1,103 @@
+name: Batch 2 Supabase Rehearsal
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "supabase/**"
+      - "src/lib/verifiedAdminOnboarding.ts"
+      - "src/screens/FamilyOnboardingScreen.tsx"
+      - ".github/workflows/batch2-supabase-rehearsal.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  local-supabase-rehearsal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify known duplicate 0019 state
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f supabase/migrations/0019_request_result_read_state.sql
+          test -f supabase/migrations/0019_request_result_seen_state.sql
+          test ! -s supabase/migrations/0019_request_result_read_state.sql
+          test -s supabase/migrations/0019_request_result_seen_state.sql
+
+      - name: Prepare ephemeral migration history
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Local rehearsal only. The repository file is never changed or
+          # committed. Production applied-state verification is still required.
+          rm supabase/migrations/0019_request_result_read_state.sql
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.116.0
+
+      - name: Start isolated Supabase stack
+        run: supabase start -x studio,imgproxy,storage-api,realtime,edge-runtime,logflare,vector,supavisor
+
+      - name: Reapply all migrations from a clean database
+        run: supabase db reset --local
+
+      - name: Verify Batch 2 schema and authorization cutover
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql "postgresql://postgres@127.0.0.1:54322/postgres"             -v ON_ERROR_STOP=1 <<'SQL'
+          select 1 / (
+            (select count(*) from information_schema.columns
+             where table_schema = 'public'
+               and table_name = 'families'
+               and column_name in ('approval_status', 'created_by_auth_user_id')) = 2
+          )::int;
+
+          select 1 / (to_regprocedure(
+            'public.create_verified_family(uuid,text,text,boolean)'
+          ) is not null)::int;
+
+          select 1 / (to_regprocedure(
+            'public.system_admin_set_family_approval(uuid,text)'
+          ) is not null)::int;
+
+          select 1 / (
+            not has_function_privilege(
+              'anon', 'public.create_family(text,text)', 'EXECUTE'
+            )
+          )::int;
+
+          select 1 / (
+            not has_function_privilege(
+              'authenticated', 'public.create_family(text,text)', 'EXECUTE'
+            )
+          )::int;
+
+          select 1 / (
+            has_function_privilege(
+              'service_role',
+              'public.create_verified_family(uuid,text,text,boolean)',
+              'EXECUTE'
+            )
+          )::int;
+
+          select 1 / (
+            position(
+              'approval_status' in pg_get_functiondef(
+                'public.current_family_id()'::regprocedure
+              )
+            ) > 0
+          )::int;
+          SQL
+
+      - name: Stop isolated stack
+        if: always()
+        run: supabase stop --no-backup
