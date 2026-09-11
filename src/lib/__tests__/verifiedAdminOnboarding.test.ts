@@ -1,50 +1,44 @@
-const mockSignInWithOtp = jest.fn();
-const mockVerifyOtp = jest.fn();
-const mockGetUser = jest.fn();
-
-jest.mock('../supabase', () => ({
-  supabase: {
-    auth: {
-      signInWithOtp: mockSignInWithOtp,
-      verifyOtp: mockVerifyOtp,
-      getUser: mockGetUser,
-    },
-  },
-  SupabaseNotConfiguredError: class SupabaseNotConfiguredError extends Error {},
-}));
-
 import {
-  getVerifiedAdminIdentity,
-  requestAdminEmailVerification,
-  verifyAdminEmailOtp,
+  getVerifiedAdminIdentityWithAuth,
+  requestAdminEmailVerificationWithAuth,
+  verifyAdminEmailOtpWithAuth,
+  type VerifiedAdminAuthClient,
 } from '../verifiedAdminOnboarding';
 
+function authClient(): jest.Mocked<VerifiedAdminAuthClient> {
+  return {
+    signInWithOtp: jest.fn(),
+    verifyOtp: jest.fn(),
+    getUser: jest.fn(),
+  };
+}
+
 describe('verified admin onboarding', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
   it('normalizes the email and requests a passwordless verification code', async () => {
-    mockSignInWithOtp.mockResolvedValue({ error: null });
+    const auth = authClient();
+    auth.signInWithOtp.mockResolvedValue({ error: null });
 
-    await expect(requestAdminEmailVerification('  Admin@Example.COM ')).resolves.toBe(
-      'admin@example.com'
-    );
-    expect(mockSignInWithOtp).toHaveBeenCalledWith({
+    await expect(
+      requestAdminEmailVerificationWithAuth(auth, '  Admin@Example.COM ')
+    ).resolves.toBe('admin@example.com');
+    expect(auth.signInWithOtp).toHaveBeenCalledWith({
       email: 'admin@example.com',
       options: { shouldCreateUser: true },
     });
   });
 
   it('rejects an invalid email before calling Supabase', async () => {
-    await expect(requestAdminEmailVerification('not-an-email')).rejects.toThrow(
-      'כתובת דוא״ל תקינה'
-    );
-    expect(mockSignInWithOtp).not.toHaveBeenCalled();
+    const auth = authClient();
+
+    await expect(
+      requestAdminEmailVerificationWithAuth(auth, 'not-an-email')
+    ).rejects.toThrow('כתובת דוא״ל תקינה');
+    expect(auth.signInWithOtp).not.toHaveBeenCalled();
   });
 
   it('returns only an identity established by a confirmed email OTP', async () => {
-    mockVerifyOtp.mockResolvedValue({
+    const auth = authClient();
+    auth.verifyOtp.mockResolvedValue({
       data: {
         user: {
           id: 'auth-user-1',
@@ -56,11 +50,13 @@ describe('verified admin onboarding', () => {
       error: null,
     });
 
-    await expect(verifyAdminEmailOtp('admin@example.com', ' 123456 ')).resolves.toEqual({
+    await expect(
+      verifyAdminEmailOtpWithAuth(auth, 'admin@example.com', ' 123456 ')
+    ).resolves.toEqual({
       userId: 'auth-user-1',
       email: 'admin@example.com',
     });
-    expect(mockVerifyOtp).toHaveBeenCalledWith({
+    expect(auth.verifyOtp).toHaveBeenCalledWith({
       email: 'admin@example.com',
       token: '123456',
       type: 'email',
@@ -68,7 +64,8 @@ describe('verified admin onboarding', () => {
   });
 
   it('fails closed when Supabase does not report a confirmed email', async () => {
-    mockVerifyOtp.mockResolvedValue({
+    const auth = authClient();
+    auth.verifyOtp.mockResolvedValue({
       data: {
         user: { id: 'auth-user-1', email: 'admin@example.com', email_confirmed_at: null },
         session: null,
@@ -76,13 +73,14 @@ describe('verified admin onboarding', () => {
       error: null,
     });
 
-    await expect(verifyAdminEmailOtp('admin@example.com', '123456')).rejects.toThrow(
-      'אימות הדוא״ל לא הושלם'
-    );
+    await expect(
+      verifyAdminEmailOtpWithAuth(auth, 'admin@example.com', '123456')
+    ).rejects.toThrow('אימות הדוא״ל לא הושלם');
   });
 
   it('revalidates the current verified identity before family creation', async () => {
-    mockGetUser.mockResolvedValue({
+    const auth = authClient();
+    auth.getUser.mockResolvedValue({
       data: {
         user: {
           id: 'auth-user-1',
@@ -93,7 +91,7 @@ describe('verified admin onboarding', () => {
       error: null,
     });
 
-    await expect(getVerifiedAdminIdentity()).resolves.toEqual({
+    await expect(getVerifiedAdminIdentityWithAuth(auth)).resolves.toEqual({
       userId: 'auth-user-1',
       email: 'admin@example.com',
     });
