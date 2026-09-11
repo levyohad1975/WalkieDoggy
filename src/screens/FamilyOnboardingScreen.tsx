@@ -6,8 +6,9 @@ import { useAuthStore } from '../store/authStore';
 import { colors } from '../theme/colors';
 import { breakpoints } from '../theme/tokens';
 import { Button } from '../components/Button';
-import { createFamily, ensureAnonymousSession, findFamilyByInviteCode, joinFamily } from '../lib/supabase';
+import { ensureAnonymousSession, findFamilyByInviteCode, joinFamily } from '../lib/supabase';
 import {
+  createVerifiedFamily,
   getVerifiedAdminIdentity,
   requestAdminEmailVerification,
   verifyAdminEmailOtp,
@@ -60,6 +61,7 @@ export function FamilyOnboardingScreen() {
   const [verificationSent, setVerificationSent] = useState(false);
   const [verifiedAdminEmail, setVerifiedAdminEmail] = useState<string | null>(null);
   const [verifyingEmail, setVerifyingEmail] = useState(false);
+  const [pendingApprovalFamilyName, setPendingApprovalFamilyName] = useState<string | null>(null);
 
   const sendAdminVerification = async () => {
     setVerifyingEmail(true);
@@ -98,7 +100,11 @@ export function FamilyOnboardingScreen() {
       if (identity.email !== verifiedAdminEmail) {
         throw new Error('יש לאמת מחדש את כתובת הדוא״ל לפני יצירת המשפחה');
       }
-      const family = await createFamily(familyName.trim(), dogName.trim() || undefined);
+      const family = await createVerifiedFamily(familyName.trim(), dogName.trim() || undefined);
+      if (family.approvalStatus === 'pending') {
+        setPendingApprovalFamilyName(family.name);
+        return;
+      }
       await setFamilyId(family.id);
     } catch (e) {
       setCreateError(friendlyErrorMessage(e));
@@ -291,6 +297,19 @@ export function FamilyOnboardingScreen() {
   }
 
   if (mode === 'create') {
+    if (pendingApprovalFamilyName) {
+      return (
+        <SafeAreaView style={styles.container}>
+          <RtlText style={styles.emoji}>⏳</RtlText>
+          <RtlText style={styles.title}>המשפחה ממתינה לאישור</RtlText>
+          <RtlText style={styles.subtitle}>
+            הבקשה ליצירת {pendingApprovalFamilyName} התקבלה. נשלח עדכון לאחר אישור מנהל המערכת.
+          </RtlText>
+          <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
+        </SafeAreaView>
+      );
+    }
+
     return (
       <SafeAreaView style={styles.formSafeArea}>
         <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
