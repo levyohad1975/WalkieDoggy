@@ -15,6 +15,9 @@ describe('verified family onboarding server boundary', () => {
     expect(migration).toContain('v_auth_user.email_confirmed_at is null');
     expect(migration).toContain('coalesce(v_auth_user.is_anonymous, true)');
     expect(migration).toContain(
+      'revoke all on function create_family(text, text) from public'
+    );
+    expect(migration).toContain(
       'revoke execute on function create_family(text, text) from anon'
     );
     expect(migration).toContain(
