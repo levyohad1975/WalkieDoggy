@@ -17,6 +17,14 @@ not evidence that any production change has been applied.
   the family idempotently, sends a best-effort welcome email, and sends a
   best-effort system-owner email. Email failure never rolls back an already
   committed family.
+- Migration `0034_email_delivery_log.sql` adds `email_delivery_log` (no
+  client policies; service-role and a system-admin read RPC only) so every
+  welcome/system-owner send attempt is durably recorded with its outcome,
+  and the new `email-provider-webhook` Edge Function updates that record as
+  the provider reports delivered/bounced/complained/opened events. This
+  closes the "email delivery/observability and failure handling" QA theme
+  in `docs/qa/QA_RELEASE_GUARDIAN.md` — previously a failed or bounced send
+  left no trace beyond the caller-facing `warnings` array.
 
 ## Required Supabase Auth configuration
 
@@ -43,6 +51,7 @@ Values are intentionally not stored in this repository.
 | `RESEND_API_KEY` | yes for email | Email delivery provider credential |
 | `WELCOME_EMAIL_FROM` | yes for email | Verified sender identity |
 | `SYSTEM_OWNER_EMAIL` | yes for owner alert | Internal new-family recipient |
+| `RESEND_WEBHOOK_SECRET` | yes for delivery observability | Verifies `email-provider-webhook`'s Svix-style signature; configure a Resend webhook endpoint pointing at that function's URL with this same signing secret |
 
 ## Production safety gate
 
@@ -55,14 +64,21 @@ these prechecks:
    filenames.
 2. Confirm Email OTP works in the target Supabase project.
 3. Configure and test the Edge Function secrets in a non-production project.
-4. Apply additive migration 0032 in a non-production environment.
-5. Deploy the Edge Function and verify its health.
+4. Apply additive migrations 0032 and 0034 in a non-production environment
+   (0034 is additive/independent of the 0033 cutover and only adds the
+   delivery log, so it can go out with 0032).
+5. Deploy the `create-verified-family` and `email-provider-webhook` Edge
+   Functions and verify their health.
 6. Deploy the compatible client and verify it uses the new function.
 7. Apply cutover migration 0033 only after steps 4–6 are healthy.
 8. Test active creation with `AUTO_APPROVE_NEW_FAMILIES=true`.
 9. Test pending creation and System Admin approval with it set to `false`.
 10. Verify welcome/owner delivery, retry behavior, invite blocking while
    pending, and audit entries.
+11. Configure a Resend webhook endpoint pointed at `email-provider-webhook`
+    with `RESEND_WEBHOOK_SECRET` set, and confirm a real send transitions
+    `email_delivery_log` from `sent` to `delivered` (or `bounced`/
+    `complained`) via `system_admin_list_email_delivery_log`.
 
 No step above was performed as part of the repository change.
 

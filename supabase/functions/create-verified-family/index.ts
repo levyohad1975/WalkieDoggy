@@ -37,7 +37,7 @@ async function sendEmail(args: {
   to: string;
   subject: string;
   html: string;
-}): Promise<void> {
+}): Promise<string> {
   const apiKey = Deno.env.get('RESEND_API_KEY') ?? '';
   const from = Deno.env.get('WELCOME_EMAIL_FROM') ?? '';
   if (!apiKey || !from) throw new Error('email provider is not configured');
@@ -50,7 +50,64 @@ async function sendEmail(args: {
     },
     body: JSON.stringify({ from, to: [args.to], subject: args.subject, html: args.html }),
   });
+  const payload = await result.json().catch(() => ({}) as Record<string, unknown>);
   if (!result.ok) throw new Error(`email provider returned ${result.status}`);
+  return typeof payload.id === 'string' ? payload.id : '';
+}
+
+// Records every send attempt in email_delivery_log (0034) so delivery
+// failures are observable and so the provider webhook (email-provider-
+// webhook) can later correlate bounce/complaint/open events back to this
+// attempt by provider_message_id. Logging failures are swallowed -- they
+// must never turn a best-effort email failure into a harder failure, and
+// must never affect the `warnings` returned to the caller beyond the
+// existing per-message warning below.
+async function sendAndLogEmail(
+  admin: ReturnType<typeof createClient>,
+  args: {
+    familyId: string;
+    authUserId: string | null;
+    messageType: 'family_welcome' | 'system_owner_new_family';
+    to: string;
+    subject: string;
+    html: string;
+  }
+): Promise<boolean> {
+  try {
+    const providerMessageId = await sendEmail({ to: args.to, subject: args.subject, html: args.html });
+    await admin
+      .rpc('record_email_delivery_attempt', {
+        p_family_id: args.familyId,
+        p_auth_user_id: args.authUserId,
+        p_message_type: args.messageType,
+        p_recipient_email: args.to,
+        p_status: 'sent',
+        p_provider: 'resend',
+        p_provider_message_id: providerMessageId || null,
+        p_error: null,
+      })
+      .then(({ error }) => {
+        if (error) console.error('record_email_delivery_attempt (sent) failed', error.message);
+      });
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await admin
+      .rpc('record_email_delivery_attempt', {
+        p_family_id: args.familyId,
+        p_auth_user_id: args.authUserId,
+        p_message_type: args.messageType,
+        p_recipient_email: args.to,
+        p_status: 'failed',
+        p_provider: 'resend',
+        p_provider_message_id: null,
+        p_error: message,
+      })
+      .then(({ error: logError }) => {
+        if (logError) console.error('record_email_delivery_attempt (failed) failed', logError.message);
+      });
+    return false;
+  }
 }
 
 Deno.serve(async (request) => {
@@ -115,30 +172,30 @@ Deno.serve(async (request) => {
         const safeCode = escapeHtml(row.invite_code);
         const safeJoin = escapeHtml(joinLink);
         const safeQr = escapeHtml(qrLink);
-        try {
-          await sendEmail({
-            to: user.email,
-            subject: `ברוכים הבאים ל-Walkie Doggy Link — ${row.name}`,
-            html: `<div dir="rtl"><h1>ברוכים הבאים ל-Walkie Doggy Link</h1><p>המשפחה <strong>${safeName}</strong> נוצרה.</p><p>קוד ההצטרפות: <strong>${safeCode}</strong></p><p><a href="${safeJoin}">קישור להצטרפות למשפחה</a></p><p><a href="${safeQr}">פתיחת קוד QR להצטרפות</a></p><p><a href="${escapeHtml(appUrl)}">פתיחת האפליקציה</a></p></div>`,
-          });
-        } catch {
-          warnings.push('welcome_email_not_sent');
-        }
+        const welcomeSent = await sendAndLogEmail(admin, {
+          familyId: row.id,
+          authUserId: user.id,
+          messageType: 'family_welcome',
+          to: user.email,
+          subject: `ברוכים הבאים ל-Walkie Doggy Link — ${row.name}`,
+          html: `<div dir="rtl"><h1>ברוכים הבאים ל-Walkie Doggy Link</h1><p>המשפחה <strong>${safeName}</strong> נוצרה.</p><p>קוד ההצטרפות: <strong>${safeCode}</strong></p><p><a href="${safeJoin}">קישור להצטרפות למשפחה</a></p><p><a href="${safeQr}">פתיחת קוד QR להצטרפות</a></p><p><a href="${escapeHtml(appUrl)}">פתיחת האפליקציה</a></p></div>`,
+        });
+        if (!welcomeSent) warnings.push('welcome_email_not_sent');
       } else {
         warnings.push('app_public_url_not_configured');
       }
 
       const ownerEmail = (Deno.env.get('SYSTEM_OWNER_EMAIL') ?? '').trim();
       if (ownerEmail) {
-        try {
-          await sendEmail({
-            to: ownerEmail,
-            subject: `Walkie Doggy Link — משפחה חדשה: ${row.name}`,
-            html: `<div dir="rtl"><p>נוצרה משפחה חדשה: <strong>${escapeHtml(row.name)}</strong></p><p>סטטוס: ${escapeHtml(row.approval_status)}</p><p>מזהה: ${escapeHtml(row.id)}</p></div>`,
-          });
-        } catch {
-          warnings.push('system_owner_notification_not_sent');
-        }
+        const ownerSent = await sendAndLogEmail(admin, {
+          familyId: row.id,
+          authUserId: null,
+          messageType: 'system_owner_new_family',
+          to: ownerEmail,
+          subject: `Walkie Doggy Link — משפחה חדשה: ${row.name}`,
+          html: `<div dir="rtl"><p>נוצרה משפחה חדשה: <strong>${escapeHtml(row.name)}</strong></p><p>סטטוס: ${escapeHtml(row.approval_status)}</p><p>מזהה: ${escapeHtml(row.id)}</p></div>`,
+        });
+        if (!ownerSent) warnings.push('system_owner_notification_not_sent');
       } else {
         warnings.push('system_owner_email_not_configured');
       }

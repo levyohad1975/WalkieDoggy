@@ -31,3 +31,9 @@ enable_anonymous_sign_ins = true
 enable_signup = true
 double_confirm_changes = true
 enable_confirmations = true
+
+[functions.email-provider-webhook]
+# Resend's delivery-event webhook never carries a Supabase-issued JWT; this
+# function verifies Resend's own Svix-style signature itself (see its
+# source). verify_jwt stays the default (true) for every other function.
+verify_jwt = false
