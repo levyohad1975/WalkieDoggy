@@ -38,6 +38,9 @@ jobs:
           # Local rehearsal only. The repository file is never changed or
           # committed. Production applied-state verification is still required.
           rm supabase/migrations/0019_request_result_read_state.sql
+          # Migration 0001 is explicitly incremental and requires the base
+          # schema. Add that baseline only to this disposable runner checkout.
+          cp supabase/schema.sql supabase/migrations/0000_base_schema.sql
 
       - uses: supabase/setup-cli@v3
         with:
