@@ -5,6 +5,29 @@ export type VerifiedAdminIdentity = {
   email: string;
 };
 
+type AuthUser = {
+  id: string;
+  email?: string | null;
+  email_confirmed_at?: string | null;
+  confirmed_at?: string | null;
+};
+
+export type VerifiedAdminAuthClient = {
+  signInWithOtp(args: {
+    email: string;
+    options: { shouldCreateUser: boolean };
+  }): Promise<{ error: unknown | null }>;
+  verifyOtp(args: {
+    email: string;
+    token: string;
+    type: 'email';
+  }): Promise<{
+    data: { user?: AuthUser | null; session?: { user?: AuthUser | null } | null };
+    error: unknown | null;
+  }>;
+  getUser(): Promise<{ data: { user?: AuthUser | null }; error: unknown | null }>;
+};
+
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
@@ -24,6 +47,11 @@ function isEmailConfirmed(user: {
   return Boolean(user.email_confirmed_at ?? user.confirmed_at);
 }
 
+function requireAuthClient(): VerifiedAdminAuthClient {
+  if (!supabase) throw new SupabaseNotConfiguredError();
+  return supabase.auth as VerifiedAdminAuthClient;
+}
+
 /**
  * Starts passwordless email verification for a prospective family admin.
  *
@@ -31,15 +59,21 @@ function isEmailConfirmed(user: {
  * the OTP token. No family is created, and no membership/profile state is
  * written, until verifyAdminEmailOtp() establishes a confirmed session.
  */
-export async function requestAdminEmailVerification(email: string): Promise<string> {
-  if (!supabase) throw new SupabaseNotConfiguredError();
+export async function requestAdminEmailVerificationWithAuth(
+  auth: VerifiedAdminAuthClient,
+  email: string
+): Promise<string> {
   const normalized = assertEmail(email);
-  const { error } = await supabase.auth.signInWithOtp({
+  const { error } = await auth.signInWithOtp({
     email: normalized,
     options: { shouldCreateUser: true },
   });
   if (error) throw error;
   return normalized;
+}
+
+export function requestAdminEmailVerification(email: string): Promise<string> {
+  return requestAdminEmailVerificationWithAuth(requireAuthClient(), email);
 }
 
 /**
@@ -48,16 +82,16 @@ export async function requestAdminEmailVerification(email: string): Promise<stri
  * profile semantics remain unchanged: create_family establishes
  * family_auth_members membership; profile claiming still happens separately.
  */
-export async function verifyAdminEmailOtp(
+export async function verifyAdminEmailOtpWithAuth(
+  auth: VerifiedAdminAuthClient,
   email: string,
   token: string
 ): Promise<VerifiedAdminIdentity> {
-  if (!supabase) throw new SupabaseNotConfiguredError();
   const normalized = assertEmail(email);
   const normalizedToken = token.trim();
   if (!normalizedToken) throw new Error('יש להזין את קוד האימות');
 
-  const { data, error } = await supabase.auth.verifyOtp({
+  const { data, error } = await auth.verifyOtp({
     email: normalized,
     token: normalizedToken,
     type: 'email',
@@ -72,18 +106,30 @@ export async function verifyAdminEmailOtp(
   return { userId: user.id, email: normalizeEmail(user.email) };
 }
 
+export function verifyAdminEmailOtp(
+  email: string,
+  token: string
+): Promise<VerifiedAdminIdentity> {
+  return verifyAdminEmailOtpWithAuth(requireAuthClient(), email, token);
+}
+
 /**
  * Revalidates the current identity immediately before family creation.
  * Client state is presentation only; create-family authorization remains
  * server-side and must be tightened by the Batch 2 migration/Edge Function.
  */
-export async function getVerifiedAdminIdentity(): Promise<VerifiedAdminIdentity> {
-  if (!supabase) throw new SupabaseNotConfiguredError();
-  const { data, error } = await supabase.auth.getUser();
+export async function getVerifiedAdminIdentityWithAuth(
+  auth: VerifiedAdminAuthClient
+): Promise<VerifiedAdminIdentity> {
+  const { data, error } = await auth.getUser();
   if (error) throw error;
   const user = data.user;
   if (!user?.id || !user.email || !isEmailConfirmed(user)) {
     throw new Error('יש לאמת את כתובת הדוא״ל לפני יצירת המשפחה');
   }
   return { userId: user.id, email: normalizeEmail(user.email) };
+}
+
+export function getVerifiedAdminIdentity(): Promise<VerifiedAdminIdentity> {
+  return getVerifiedAdminIdentityWithAuth(requireAuthClient());
 }
