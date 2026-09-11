@@ -2,11 +2,11 @@ describe('verified family onboarding server boundary', () => {
   const fs = require('fs');
 
   const migration = fs.readFileSync(
-    require.resolve('../../../../supabase/migrations/0032_verified_family_onboarding.sql'),
+    require.resolve('../../../supabase/migrations/0032_verified_family_onboarding.sql'),
     'utf8'
   );
   const edge = fs.readFileSync(
-    require.resolve('../../../../supabase/functions/create-verified-family/index.ts'),
+    require.resolve('../../../supabase/functions/create-verified-family/index.ts'),
     'utf8'
   );
 
