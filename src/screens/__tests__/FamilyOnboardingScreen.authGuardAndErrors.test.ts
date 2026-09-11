@@ -7,7 +7,7 @@
  * What this guards against (both were real bugs found in a repo audit):
  *
  * 1. Creating a family now requires a verified, non-anonymous admin
- *    identity, revalidated immediately before createFamily(). Joining an
+ *    identity, revalidated immediately before createVerifiedFamily(). Joining an
  *    existing family keeps the anonymous-session retry guard because that
  *    flow intentionally remains device/membership based.
  *
@@ -30,10 +30,10 @@ describe('FamilyOnboardingScreen — create/join auth guard and error mapping (s
     return source.slice(start, end);
   }
 
-  it('submitCreate() revalidates a verified admin identity before calling createFamily()', () => {
+  it('submitCreate() revalidates a verified admin identity before calling createVerifiedFamily()', () => {
     const body = bodyOf('submitCreate');
     const identityIdx = body.indexOf('getVerifiedAdminIdentity()');
-    const createIdx = body.indexOf('createFamily(');
+    const createIdx = body.indexOf('createVerifiedFamily(');
     expect(identityIdx).toBeGreaterThan(-1);
     expect(createIdx).toBeGreaterThan(-1);
     expect(identityIdx).toBeLessThan(createIdx);
