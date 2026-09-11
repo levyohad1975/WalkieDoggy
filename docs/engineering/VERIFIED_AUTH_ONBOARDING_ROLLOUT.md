@@ -7,10 +7,12 @@ not evidence that any production change has been applied.
 
 - The app verifies a prospective family admin by email OTP.
 - Family creation calls the `create-verified-family` Edge Function.
-- Migration `0032_verified_family_onboarding.sql` makes verified creation
-  service-role-only, adds active/pending/rejected approval state, makes
-  authorization and invite joining fail closed for non-active families, and
-  adds a System Admin approval RPC.
+- Migration `0032_verified_family_onboarding.sql` is the backward-compatible
+  expand phase: it adds approval state and the service-role-only creation and
+  System Admin approval RPCs.
+- Migration `0033_verified_family_onboarding_cutover.sql` is the contract
+  phase: it revokes anonymous creation and makes authorization/invites fail
+  closed for non-active families.
 - The Edge Function reads `AUTO_APPROVE_NEW_FAMILIES` server-side, creates
   the family idempotently, sends a best-effort welcome email, and sends a
   best-effort system-owner email. Email failure never rolls back an already
@@ -44,21 +46,22 @@ Values are intentionally not stored in this repository.
 
 ## Production safety gate
 
-Migration 0032 revokes the legacy anonymous `create_family` path. Applying
-it without the compatible Edge Function and client would stop new-family
-creation. Production rollout therefore requires an explicit maintenance
-decision and these prechecks:
+Migration 0033 revokes the legacy anonymous `create_family` path. Migration
+0032 is intentionally backward-compatible so the Edge Function and client can
+be introduced and verified before cutover. Production rollout therefore uses
+these prechecks:
 
 1. Confirm the live applied migration history, including both `0019`
    filenames.
 2. Confirm Email OTP works in the target Supabase project.
 3. Configure and test the Edge Function secrets in a non-production project.
-4. Deploy the Edge Function and verify its health.
-5. Apply migration 0032 and deploy the compatible app as one coordinated
-   release.
-6. Test active creation with `AUTO_APPROVE_NEW_FAMILIES=true`.
-7. Test pending creation and System Admin approval with it set to `false`.
-8. Verify welcome/owner delivery, retry behavior, invite blocking while
+4. Apply additive migration 0032 in a non-production environment.
+5. Deploy the Edge Function and verify its health.
+6. Deploy the compatible client and verify it uses the new function.
+7. Apply cutover migration 0033 only after steps 4–6 are healthy.
+8. Test active creation with `AUTO_APPROVE_NEW_FAMILIES=true`.
+9. Test pending creation and System Admin approval with it set to `false`.
+10. Verify welcome/owner delivery, retry behavior, invite blocking while
    pending, and audit entries.
 
 No step above was performed as part of the repository change.
