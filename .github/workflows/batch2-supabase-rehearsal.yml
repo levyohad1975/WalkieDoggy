@@ -37,10 +37,16 @@ jobs:
           set -euo pipefail
           # Local rehearsal only. The repository file is never changed or
           # committed. Production applied-state verification is still required.
-          rm supabase/migrations/0019_request_result_read_state.sql
-          # Migration 0001 is explicitly incremental and requires the base
-          # schema. Add that baseline only to this disposable runner checkout.
+          # schema.sql is the repository's documented current baseline.
+          # The historical migrations are incremental and are not a clean-room
+          # bootstrap chain, so rehearse only this Batch against that baseline.
+          rehearsal_dir="$(mktemp -d)"
+          cp supabase/migrations/0032_verified_family_onboarding.sql "$rehearsal_dir/"
+          cp supabase/migrations/0033_verified_family_onboarding_cutover.sql "$rehearsal_dir/"
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -delete
           cp supabase/schema.sql supabase/migrations/0000_base_schema.sql
+          cp "$rehearsal_dir/"0032_verified_family_onboarding.sql supabase/migrations/
+          cp "$rehearsal_dir/"0033_verified_family_onboarding_cutover.sql supabase/migrations/
 
       - uses: supabase/setup-cli@v3
         with:
