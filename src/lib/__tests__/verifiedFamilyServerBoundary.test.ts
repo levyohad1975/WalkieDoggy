@@ -1,16 +1,18 @@
 describe('verified family onboarding server boundary', () => {
   const fs = require('fs');
 
-  const migration = fs.readFileSync(
-    require.resolve('../../../supabase/migrations/0032_verified_family_onboarding.sql'),
-    'utf8'
-  );
+  const migration = [
+    '../../../supabase/migrations/0032_verified_family_onboarding.sql',
+    '../../../supabase/migrations/0033_verified_family_onboarding_cutover.sql',
+  ]
+    .map((path) => fs.readFileSync(require.resolve(path), 'utf8'))
+    .join('\n');
   const edge = fs.readFileSync(
     require.resolve('../../../supabase/functions/create-verified-family/index.ts'),
     'utf8'
   );
 
-  it('keeps verified creation service-role-only and disables the anonymous legacy bypass', () => {
+  it('keeps verified creation service-role-only and disables the anonymous legacy bypass at cutover', () => {
     expect(migration).toContain("auth.role() <> 'service_role'");
     expect(migration).toContain('v_auth_user.email_confirmed_at is null');
     expect(migration).toContain('coalesce(v_auth_user.is_anonymous, true)');
@@ -25,7 +27,7 @@ describe('verified family onboarding server boundary', () => {
     );
   });
 
-  it('gates normal family authorization and invite joining on active approval', () => {
+  it('gates normal family authorization and invite joining on active approval at cutover', () => {
     expect(migration).toContain("f.approval_status = 'active'");
     expect(migration).toContain("p_approval_status not in ('active', 'rejected')");
     expect(migration).toContain('if not is_system_admin()');
