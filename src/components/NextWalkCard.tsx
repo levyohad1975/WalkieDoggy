@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
   },
   webCard: { borderRadius: 22, paddingHorizontal: 28, paddingVertical: 18 },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
-  eyebrowRow: { flexDirection: 'row-reverse', direction: 'ltr', alignItems: 'center', gap: 8, marginBottom: 12 },
+  eyebrowRow: { flexDirection: 'row-reverse', ...(Platform.OS !== 'web' && { direction: 'ltr' as const }), alignItems: 'center', gap: 8, marginBottom: 12 },
   webEyebrowRow: { marginBottom: 4 },
   eyebrow: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
   mascotMessage: {

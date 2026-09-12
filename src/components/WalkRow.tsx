@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import type { FamilyUser, Walk } from '../types';
 import { isOverdue } from '../logic/nextWalk';
@@ -293,7 +293,7 @@ const styles = StyleSheet.create({
     width: '100%',
     minHeight: 48,
     flexDirection: 'row-reverse',
-    direction: 'ltr',
+    ...(Platform.OS !== 'web' && { direction: 'ltr' as const }),
     alignItems: 'center',
     gap: 7,
   },

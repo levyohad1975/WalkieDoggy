@@ -502,7 +502,7 @@ const styles = StyleSheet.create({
   sectionTitle: { width: '100%', fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   sectionSubtitle: { width: '100%', fontSize: 13, color: colors.textSecondary, marginTop: 2, marginBottom: 12, textAlign: 'right', writingDirection: 'rtl' },
   summaryCard: { backgroundColor: colors.surface, borderRadius: 20, borderWidth: 1, borderColor: colors.border, padding: 8 },
-  summaryRow: { flexDirection: 'row', direction: 'ltr', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 8 },
+  summaryRow: { flexDirection: 'row', ...(Platform.OS !== 'web' && { direction: 'ltr' as const }), alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 8 },
   // RTL fix (final QA round, item F): member names had no explicit
   // textAlign at all.
   summaryName: { flex: 1, fontSize: 15, fontWeight: '600', color: colors.textPrimary, textAlign: 'right' },
@@ -515,7 +515,7 @@ const styles = StyleSheet.create({
   // instead of pinned to the opposite end of a header row far from it.
   filterToggleRow: { width: '100%', marginTop: 4 },
   filterToggle: { width: '100%', fontSize: 13, fontWeight: '700', color: colors.primaryDark, textAlign: 'right', writingDirection: 'rtl' },
-  chipRow: { flexDirection: 'row-reverse', direction: 'ltr', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  chipRow: { flexDirection: 'row-reverse', ...(Platform.OS !== 'web' && { direction: 'ltr' as const }), flexWrap: 'wrap', gap: 8, marginTop: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14, backgroundColor: colors.surfaceMuted },
   chipActive: { backgroundColor: colors.primary },
   chipText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },

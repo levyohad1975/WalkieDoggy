@@ -1006,7 +1006,7 @@ const styles = StyleSheet.create({
   section: { gap: spacing.sm },
   sectionTitlePhysicalRight: {
     width: '100%',
-    direction: 'ltr',
+    ...(Platform.OS !== 'web' && { direction: 'ltr' as const }),
     alignItems: 'flex-end',
   },
   sectionTitle: {
@@ -1029,7 +1029,7 @@ lastWalkCard: {
 
 lastWalkTopRow: {
   flexDirection: 'row',
-  direction: 'ltr',
+  ...(Platform.OS !== 'web' && { direction: 'ltr' as const }),
   alignItems: 'center',
   justifyContent: 'space-between',
   gap: 8,
@@ -1072,7 +1072,7 @@ lastWalkSkippedBadge: {
 lastWalkActions: {
   width: 154,
   flexDirection: 'row',
-  direction: 'ltr',
+  ...(Platform.OS !== 'web' && { direction: 'ltr' as const }),
   alignItems: 'center',
   justifyContent: 'center',
   gap: 18,
@@ -1091,7 +1091,7 @@ lastWalkEditAction: {
 
 lastWalkNeedsGroup: {
   flexDirection: 'row',
-  direction: 'ltr',
+  ...(Platform.OS !== 'web' && { direction: 'ltr' as const }),
   alignItems: 'center',
   gap: 4,
   flexShrink: 0,

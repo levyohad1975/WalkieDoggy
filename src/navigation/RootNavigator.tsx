@@ -105,7 +105,7 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
           maxWidth: Platform.OS === 'web' ? 1000 : undefined,
           alignSelf: 'center',
           flexDirection: 'row',
-          direction: 'ltr',
+          ...(Platform.OS !== 'web' && { direction: 'ltr' as const }),
         }}
       >
         {buttons}
