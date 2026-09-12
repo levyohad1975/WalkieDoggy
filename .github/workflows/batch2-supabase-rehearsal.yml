@@ -44,11 +44,13 @@ jobs:
           cp supabase/migrations/0032_verified_family_onboarding.sql "$rehearsal_dir/"
           cp supabase/migrations/0033_verified_family_onboarding_cutover.sql "$rehearsal_dir/"
           cp supabase/migrations/0034_email_delivery_log.sql "$rehearsal_dir/"
+          cp supabase/migrations/0035_system_admin_family_approval_status.sql "$rehearsal_dir/"
           find supabase/migrations -maxdepth 1 -type f -name '*.sql' -delete
           cp supabase/schema.sql supabase/migrations/0000_base_schema.sql
           cp "$rehearsal_dir/"0032_verified_family_onboarding.sql supabase/migrations/
           cp "$rehearsal_dir/"0033_verified_family_onboarding_cutover.sql supabase/migrations/
           cp "$rehearsal_dir/"0034_email_delivery_log.sql supabase/migrations/
+          cp "$rehearsal_dir/"0035_system_admin_family_approval_status.sql supabase/migrations/
 
       - uses: supabase/setup-cli@v3
         with:
@@ -79,6 +81,22 @@ jobs:
           select 1 / (to_regprocedure(
             'public.system_admin_set_family_approval(uuid,text)'
           ) is not null)::int;
+
+          select 1 / (
+            position(
+              'f.approval_status' in pg_get_functiondef(
+                'public.system_admin_list_families(text)'::regprocedure
+              )
+            ) > 0
+          )::int;
+
+          select 1 / (
+            position(
+              $'active'::text$ in pg_get_functiondef(
+                'public.system_admin_list_families(text)'::regprocedure
+              )
+            ) = 0
+          )::int;
 
           select 1 / (
             not has_function_privilege(
