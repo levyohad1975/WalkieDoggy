@@ -8,6 +8,8 @@ import { friendlyErrorMessage } from '../lib/errorMessages';
 import {
   getSystemAdminFamilyDetail,
   listSystemAdminFamilies,
+  setSystemAdminFamilyApproval,
+  type SystemAdminFamilyApprovalStatus,
   type SystemAdminFamilyDetail,
   type SystemAdminFamilyListItem,
 } from '../lib/systemAdmin';
@@ -17,8 +19,15 @@ interface SystemAdminScreenProps {
   onClose: () => void;
 }
 
+const APPROVAL_STATUS_LABEL: Record<SystemAdminFamilyApprovalStatus, string> = {
+  pending: 'ממתינה לאישור',
+  active: 'פעילה',
+  rejected: 'נדחתה',
+};
+
 /**
- * BATCH 4 (item A) — "🛡️ ניהול מערכת", System Admin V1 (read-only).
+ * Release-candidate System Admin: read-only family inspection plus the
+ * narrowly scoped approve/reject decision for pending onboarding requests.
  *
  * Deliberately a plain Modal with local component state (list <-> detail),
  * not a new navigation stack — this repo has no @react-navigation/
@@ -29,7 +38,7 @@ interface SystemAdminScreenProps {
  * SECURITY NOTE this component leans on: rendering here at all already
  * required useSystemAdminStore().isSystemAdmin to be true (App.tsx only
  * mounts this when that's the case), but that is UI convenience only —
- * every RPC this screen calls (lib/systemAdmin.ts -> migration 0029)
+ * every RPC this screen calls (lib/systemAdmin.ts -> migrations 0029/0032)
  * re-checks is_system_admin() server-side on every call. This screen never
  * reads or writes authStore's familyId/currentUserId — opening a family
  * here cannot change the device's own active family or create membership,
@@ -45,6 +54,9 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
   const [detail, setDetail] = useState<SystemAdminFamilyDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [pendingApprovalAction, setPendingApprovalAction] = useState<'active' | 'rejected' | null>(null);
+  const [approvalSaving, setApprovalSaving] = useState(false);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
 
   const loadFamilies = useCallback(async (query?: string) => {
     setListLoading(true);
@@ -63,6 +75,8 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
     if (visible) {
       setSelectedFamilyId(null);
       setDetail(null);
+      setPendingApprovalAction(null);
+      setApprovalError(null);
       void loadFamilies();
     }
   }, [visible, loadFamilies]);
@@ -70,6 +84,8 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
   const openFamily = async (familyId: string) => {
     setSelectedFamilyId(familyId);
     setDetail(null);
+    setPendingApprovalAction(null);
+    setApprovalError(null);
     setDetailLoading(true);
     setDetailError(null);
     try {
@@ -86,6 +102,29 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
     setSelectedFamilyId(null);
     setDetail(null);
     setDetailError(null);
+    setPendingApprovalAction(null);
+    setApprovalError(null);
+  };
+
+  const selectedFamily = selectedFamilyId
+    ? families.find((family) => family.familyId === selectedFamilyId) ?? null
+    : null;
+
+  const confirmFamilyApproval = async () => {
+    if (!selectedFamilyId || !pendingApprovalAction || selectedFamily?.status !== 'pending') return;
+
+    setApprovalSaving(true);
+    setApprovalError(null);
+    try {
+      await setSystemAdminFamilyApproval(selectedFamilyId, pendingApprovalAction);
+      setPendingApprovalAction(null);
+      await Promise.all([loadFamilies(search), openFamily(selectedFamilyId)]);
+    } catch (e) {
+      setApprovalError(friendlyErrorMessage(e));
+      setPendingApprovalAction(null);
+    } finally {
+      setApprovalSaving(false);
+    }
   };
 
   return (
@@ -113,10 +152,67 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                 <View style={styles.card}>
                   <RtlText style={styles.cardLine}>שם: {detail.family?.name ?? '—'}</RtlText>
                   <RtlText style={styles.cardLine}>קוד הצטרפות: {detail.family?.inviteCode ?? '—'}</RtlText>
+                  {selectedFamily ? (
+                    <RtlText style={styles.cardLine}>סטטוס: {APPROVAL_STATUS_LABEL[selectedFamily.status]}</RtlText>
+                  ) : null}
                   <RtlText style={styles.cardLine}>
                     נוצרה: {detail.family?.createdAt ? new Date(detail.family.createdAt).toLocaleDateString('he-IL') : '—'}
                   </RtlText>
                 </View>
+
+                {selectedFamily?.status === 'pending' ? (
+                  <View style={styles.approvalSection}>
+                    {approvalError ? <RtlText style={styles.approvalError}>{approvalError}</RtlText> : null}
+                    {pendingApprovalAction ? (
+                      <View style={styles.confirmCard}>
+                        <RtlText style={styles.confirmTitle}>
+                          {pendingApprovalAction === 'active' ? 'לאשר את המשפחה?' : 'לדחות את בקשת המשפחה?'}
+                        </RtlText>
+                        <RtlText style={styles.confirmMessage}>
+                          {pendingApprovalAction === 'active'
+                            ? 'המשפחה תהפוך לפעילה ותוכל להשתמש במערכת.'
+                            : 'הבקשה תסומן כנדחתה. פעולה זו לא מוחקת נתונים.'}
+                        </RtlText>
+                        <View style={styles.actionRow}>
+                          <Button
+                            label={pendingApprovalAction === 'active' ? 'אישור המשפחה' : 'דחיית הבקשה'}
+                            onPress={confirmFamilyApproval}
+                            variant={pendingApprovalAction === 'rejected' ? 'danger' : 'primary'}
+                            loading={approvalSaving}
+                            style={styles.actionButton}
+                            compact
+                          />
+                          <Button
+                            label="ביטול"
+                            onPress={() => setPendingApprovalAction(null)}
+                            variant="secondary"
+                            disabled={approvalSaving}
+                            style={styles.actionButton}
+                            compact
+                          />
+                        </View>
+                      </View>
+                    ) : (
+                      <View style={styles.actionRow}>
+                        <Button
+                          label="אישור המשפחה"
+                          onPress={() => setPendingApprovalAction('active')}
+                          style={styles.actionButton}
+                          compact
+                        />
+                        <Button
+                          label="דחיית הבקשה"
+                          onPress={() => setPendingApprovalAction('rejected')}
+                          variant="danger"
+                          style={styles.actionButton}
+                          compact
+                        />
+                      </View>
+                    )}
+                  </View>
+                ) : approvalError ? (
+                  <RtlText style={styles.approvalError}>{approvalError}</RtlText>
+                ) : null}
 
                 <RtlText style={styles.sectionTitle}>כלב/ה</RtlText>
                 <View style={styles.card}>
@@ -214,7 +310,21 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                   accessibilityRole="button"
                   accessibilityLabel={`פתיחת פרטי משפחת ${f.familyName}, קוד ${f.inviteCode}`}
                 >
-                  <RtlText style={styles.familyName}>{f.familyName}</RtlText>
+                  <View style={styles.familyTitleRow}>
+                    <RtlText style={styles.familyName}>{f.familyName}</RtlText>
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        f.status === 'active'
+                          ? styles.statusActive
+                          : f.status === 'rejected'
+                            ? styles.statusRejected
+                            : styles.statusPending,
+                      ]}
+                    >
+                      <RtlText style={styles.statusText}>{APPROVAL_STATUS_LABEL[f.status]}</RtlText>
+                    </View>
+                  </View>
                   <RtlText style={styles.familyMeta}>
                     קוד: {f.inviteCode} · {f.memberCount} בני משפחה
                     {f.dogName ? ` · ${f.dogName}` : ''}
@@ -270,8 +380,21 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 4,
   },
-  familyName: { fontSize: 16, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
+  familyTitleRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  familyName: { flex: 1, fontSize: 16, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
   familyMeta: { fontSize: 12, color: colors.textSecondary, textAlign: 'right' },
+  statusBadge: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
+  statusPending: { backgroundColor: colors.warningSoft },
+  statusActive: { backgroundColor: colors.successSoft },
+  statusRejected: { backgroundColor: colors.dangerSoft },
+  statusText: { fontSize: 11, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
+  approvalSection: { marginTop: 12 },
+  approvalError: { fontSize: 13, color: colors.danger, fontWeight: '600', textAlign: 'right', marginTop: 10 },
+  confirmCard: { backgroundColor: colors.surfaceMuted, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 12 },
+  confirmTitle: { fontSize: 15, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
+  confirmMessage: { fontSize: 13, color: colors.textSecondary, textAlign: 'right', marginTop: 6 },
+  actionRow: { flexDirection: 'row-reverse', gap: 8, marginTop: 12 },
+  actionButton: { flex: 1 },
   sectionTitle: { fontSize: 14, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', marginTop: 14, marginBottom: 6 },
   card: { backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 12, gap: 4 },
   cardLine: { fontSize: 13, color: colors.textPrimary, textAlign: 'right' },
