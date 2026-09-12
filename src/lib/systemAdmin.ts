@@ -1,8 +1,9 @@
 import { supabase, SupabaseNotConfiguredError } from './supabase';
 
 /**
- * BATCH 4 (item A — System Admin V1, read-only). Thin client wrappers over
- * migration 0029's two RPCs, mirroring every other Supabase-only module in
+ * System Admin client wrappers. Read operations come from migration 0029;
+ * the narrowly scoped family-approval mutation comes from migration 0032.
+ * This mirrors every other Supabase-only module in
  * this repo (lib/invites.ts, lib/requests.ts, ...): all real authorization
  * (is_system_admin(), never trusting client-side UI hiding) lives
  * server-side inside the RPCs, never here. Supabase-only by construction —
@@ -14,6 +15,8 @@ function requireSupabase() {
   return supabase;
 }
 
+export type SystemAdminFamilyApprovalStatus = 'pending' | 'active' | 'rejected';
+
 export interface SystemAdminFamilyListItem {
   familyId: string;
   familyName: string;
@@ -23,7 +26,7 @@ export interface SystemAdminFamilyListItem {
   memberCount: number;
   adminNames: string[];
   dogName: string | null;
-  status: string;
+  status: SystemAdminFamilyApprovalStatus;
 }
 
 export interface SystemAdminFamilyMember {
@@ -93,7 +96,7 @@ export async function listSystemAdminFamilies(search?: string): Promise<SystemAd
     member_count: number;
     admin_names: string[] | null;
     dog_name: string | null;
-    status: string;
+    status: SystemAdminFamilyApprovalStatus;
   }>;
   return rows.map((r) => ({
     familyId: r.family_id,
@@ -120,4 +123,22 @@ export async function getSystemAdminFamilyDetail(familyId: string): Promise<Syst
     activeRequests: detail.activeRequests ?? [],
     recentAudit: detail.recentAudit ?? [],
   };
+}
+
+
+/**
+ * Approves or rejects a pending family request. System-Admin-only — the
+ * server derives the caller from auth.uid() and re-checks is_system_admin().
+ * This is intentionally live/server-authoritative and is never queued.
+ */
+export async function setSystemAdminFamilyApproval(
+  familyId: string,
+  approvalStatus: Exclude<SystemAdminFamilyApprovalStatus, 'pending'>
+): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.rpc('system_admin_set_family_approval', {
+    p_family_id: familyId,
+    p_approval_status: approvalStatus,
+  });
+  if (error) throw error;
 }
