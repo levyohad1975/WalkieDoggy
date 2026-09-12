@@ -3,6 +3,7 @@ import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleShe
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
+import { useSystemAdminStore } from '../store/systemAdminStore';
 import { colors } from '../theme/colors';
 import { breakpoints } from '../theme/tokens';
 import { Button } from '../components/Button';
@@ -84,6 +85,11 @@ export function FamilyOnboardingScreen() {
     try {
       const identity = await verifyAdminEmailOtp(adminEmail, verificationCode);
       setVerifiedAdminEmail(identity.email);
+      // OTP verification replaces the anonymous bootstrap session with the
+      // verified identity. Refresh the separate platform-admin gate now,
+      // rather than requiring an app restart before a verified System Admin
+      // can see the shield entry point. refresh() fails closed internally.
+      await useSystemAdminStore.getState().refresh();
     } catch (e) {
       setCreateError(friendlyErrorMessage(e));
     } finally {
