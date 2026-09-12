@@ -37,3 +37,10 @@ enable_confirmations = true
 # function verifies Resend's own Svix-style signature itself (see its
 # source). verify_jwt stays the default (true) for every other function.
 verify_jwt = false
+
+[functions.send-email]
+# Supabase Auth calls this Send Email Hook server-to-server with a Standard
+# Webhooks signature (SEND_EMAIL_HOOK_SECRET), never a Supabase-issued JWT --
+# there is no end-user session at hook-call time. This function verifies
+# that signature itself (see its source).
+verify_jwt = false
