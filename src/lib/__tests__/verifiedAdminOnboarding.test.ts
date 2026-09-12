@@ -1,4 +1,5 @@
 import {
+  getMyFamilyOnboardingStatusWithClient,
   getVerifiedAdminIdentityWithAuth,
   requestAdminEmailVerificationWithAuth,
   verifyAdminEmailOtpWithAuth,
@@ -95,5 +96,44 @@ describe('verified admin onboarding', () => {
       userId: 'auth-user-1',
       email: 'admin@example.com',
     });
+  });
+  it('maps the persisted applicant approval status', async () => {
+    const client = {
+      rpc: jest.fn().mockResolvedValue({
+        data: [{
+          family_id: 'family-1',
+          family_name: 'משפחת לוי',
+          approval_status: 'rejected',
+        }],
+        error: null,
+      }),
+    };
+
+    await expect(getMyFamilyOnboardingStatusWithClient(client)).resolves.toEqual({
+      familyId: 'family-1',
+      familyName: 'משפחת לוי',
+      approvalStatus: 'rejected',
+    });
+    expect(client.rpc).toHaveBeenCalledWith('get_my_family_onboarding_status');
+  });
+
+  it('returns null when the verified identity has no onboarding request', async () => {
+    const client = { rpc: jest.fn().mockResolvedValue({ data: [], error: null }) };
+    await expect(getMyFamilyOnboardingStatusWithClient(client)).resolves.toBeNull();
+  });
+
+  it('rejects malformed or failed onboarding status responses', async () => {
+    const malformed = {
+      rpc: jest.fn().mockResolvedValue({
+        data: [{ family_id: 'family-1', family_name: 'Name', approval_status: 'unknown' }],
+        error: null,
+      }),
+    };
+    await expect(getMyFamilyOnboardingStatusWithClient(malformed)).rejects.toThrow(
+      'סטטוס בקשת המשפחה אינו תקין'
+    );
+
+    const failed = { rpc: jest.fn().mockResolvedValue({ data: null, error: new Error('offline') }) };
+    await expect(getMyFamilyOnboardingStatusWithClient(failed)).rejects.toThrow('offline');
   });
 });
