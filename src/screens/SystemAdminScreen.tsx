@@ -6,6 +6,10 @@ import { Button } from '../components/Button';
 import { colors } from '../theme/colors';
 import { friendlyErrorMessage } from '../lib/errorMessages';
 import {
+  commitFamilyApprovalAndRefresh,
+  SystemAdminApprovalRefreshError,
+} from '../lib/systemAdminApprovalFlow';
+import {
   getSystemAdminFamilyDetail,
   listSystemAdminFamilies,
   setSystemAdminFamilyApproval,
@@ -116,12 +120,46 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
     setApprovalSaving(true);
     setApprovalError(null);
     try {
-      await setSystemAdminFamilyApproval(selectedFamilyId, pendingApprovalAction);
-      setPendingApprovalAction(null);
-      await Promise.all([loadFamilies(search), openFamily(selectedFamilyId)]);
+      const decision = pendingApprovalAction;
+      const [freshFamilies, freshDetail] = await commitFamilyApprovalAndRefresh({
+        commit: () => setSystemAdminFamilyApproval(selectedFamilyId, decision),
+        onCommitted: () => {
+          // The write is already committed. Remove stale action controls before
+          // the fallible follow-up read so a network error cannot repeat it.
+          setFamilies((current) =>
+            current.map((family) =>
+              family.familyId === selectedFamilyId ? { ...family, status: decision } : family
+            )
+          );
+          setPendingApprovalAction(null);
+        },
+        refresh: () =>
+          Promise.all([
+            listSystemAdminFamilies(search.trim() || undefined),
+            getSystemAdminFamilyDetail(selectedFamilyId),
+          ]),
+      });
+      setFamilies(freshFamilies);
+      setDetail(freshDetail);
+      setListError(null);
+      setDetailError(null);
     } catch (e) {
-      setApprovalError(friendlyErrorMessage(e));
-      setPendingApprovalAction(null);
+      if (e instanceof SystemAdminApprovalRefreshError) {
+        setApprovalError('ההחלטה נשמרה, אך רענון הנתונים נכשל. יש לסגור ולפתוח מחדש את ניהול המערכת.');
+      } else {
+        setApprovalError(friendlyErrorMessage(e));
+        setPendingApprovalAction(null);
+        void Promise.all([
+          listSystemAdminFamilies(search.trim() || undefined),
+          getSystemAdminFamilyDetail(selectedFamilyId),
+        ]).then(([freshFamilies, freshDetail]) => {
+          setFamilies(freshFamilies);
+          setDetail(freshDetail);
+        }).catch(() => {
+          // Keep the original mutation error visible; a later manual reopen
+          // will retry the authoritative reads.
+        });
+      }
     } finally {
       setApprovalSaving(false);
     }
