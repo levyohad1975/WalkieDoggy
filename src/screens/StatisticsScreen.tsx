@@ -7,7 +7,7 @@ import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveUserId } from '../store/authStore';
 import { colors } from '../theme/colors';
-import { radii, spacing, typography } from '../theme/tokens';
+import { breakpoints, radii, spacing, typography } from '../theme/tokens';
 import { Avatar } from '../components/Avatar';
 import { EmptyState, ErrorState } from '../components/EmptyState';
 import { DEMO_FAMILY } from '../data/demoData';
@@ -153,7 +153,7 @@ export function StatisticsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
         <RtlText style={styles.header}>📈 סטטיסטיקה</RtlText>
 
         <View style={styles.periodRow}>
@@ -301,6 +301,7 @@ const styles = StyleSheet.create({
   // Bottom padding increased (final QA round, item H: adequate bottom
   // safe-area padding) so the last card clears the tab bar comfortably.
   content: { padding: 20, gap: 16, paddingBottom: 64 },
+  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
   header: { width: '100%', fontSize: 22, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   periodRow: { flexDirection: 'row', ...(Platform.OS !== 'web' && { direction: 'rtl' as const }), gap: 8 },
   periodChip: { flex: 1, backgroundColor: colors.surfaceMuted, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },

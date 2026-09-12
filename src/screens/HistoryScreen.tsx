@@ -16,6 +16,7 @@ import { canAccessHistoryScreen } from '../logic/permissions';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { fetchHistoryWalks } from '../lib/permissionedWalks';
 import { colors } from '../theme/colors';
+import { breakpoints } from '../theme/tokens';
 import { WalkRow } from '../components/WalkRow';
 import { EmptyState, ErrorState } from '../components/EmptyState';
 import { Avatar } from '../components/Avatar';
@@ -223,7 +224,7 @@ export function HistoryScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
         <RtlText style={styles.header} maxFontSizeMultiplier={1.35}>היסטוריה</RtlText>
 
         <View>
@@ -498,6 +499,7 @@ const styles = StyleSheet.create({
   // Bottom padding increased (final QA round, item F: bottom safe-area/
   // list padding so the last history item isn't hidden behind the tab bar).
   content: { padding: 20, gap: 28, paddingBottom: 64 },
+  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
   header: { width: '100%', fontSize: 22, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   sectionTitle: { width: '100%', fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   sectionSubtitle: { width: '100%', fontSize: 13, color: colors.textSecondary, marginTop: 2, marginBottom: 12, textAlign: 'right', writingDirection: 'rtl' },
