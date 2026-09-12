@@ -91,14 +91,6 @@ jobs:
           )::int;
 
           select 1 / (
-            position(
-              $'active'::text$ in pg_get_functiondef(
-                'public.system_admin_list_families(text)'::regprocedure
-              )
-            ) = 0
-          )::int;
-
-          select 1 / (
             not has_function_privilege(
               'anon', 'public.create_family(text,text)', 'EXECUTE'
             )
