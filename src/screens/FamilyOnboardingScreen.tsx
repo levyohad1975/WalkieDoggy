@@ -350,7 +350,7 @@ export function FamilyOnboardingScreen() {
           </RtlText>
           <RtlText style={styles.subtitle}>
             {rejected
-              ? `הבקשה ליצירת ${pendingApprovalFamilyName} נדחתה. אפשר לבדוק שוב אם התקבלה החלטה חדשה.`
+              ? `הבקשה ליצירת ${pendingApprovalFamilyName} נדחתה. אפשר לבדוק שוב את הסטטוס כאן.`
               : `הבקשה ליצירת ${pendingApprovalFamilyName} התקבלה. אפשר לבדוק כאן לאחר החלטת מנהל המערכת.`}
           </RtlText>
           {approvalStatusError ? <RtlText style={styles.error}>{approvalStatusError}</RtlText> : null}
