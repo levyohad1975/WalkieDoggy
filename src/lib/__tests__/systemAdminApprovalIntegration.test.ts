@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+/** Release-candidate guardrails across UI, session refresh, and database contract. */
 describe('System Admin approval integration source', () => {
   const screenSource = fs.readFileSync(
     path.resolve(__dirname, '../../screens/SystemAdminScreen.tsx'),
