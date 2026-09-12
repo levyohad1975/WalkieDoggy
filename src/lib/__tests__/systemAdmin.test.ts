@@ -73,7 +73,7 @@ describe('lib/systemAdmin — Supabase mode', () => {
           member_count: 3,
           admin_names: ['דנה'],
           dog_name: 'רקסי',
-          status: 'active',
+          status: 'pending',
         },
       ],
       error: null,
@@ -93,7 +93,7 @@ describe('lib/systemAdmin — Supabase mode', () => {
         memberCount: 3,
         adminNames: ['דנה'],
         dogName: 'רקסי',
-        status: 'active',
+        status: 'pending',
       },
     ]);
   });
@@ -136,6 +136,32 @@ describe('lib/systemAdmin — Supabase mode', () => {
     await expect(listSystemAdminFamilies()).rejects.toBeTruthy();
   });
 
+  it('setSystemAdminFamilyApproval calls the server-authoritative RPC with the exact family and decision', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    mockSupabaseClient(rpc);
+    const { setSystemAdminFamilyApproval } = require('../systemAdmin');
+
+    await setSystemAdminFamilyApproval('fam-1', 'active');
+    expect(rpc).toHaveBeenCalledWith('system_admin_set_family_approval', {
+      p_family_id: 'fam-1',
+      p_approval_status: 'active',
+    });
+
+    await setSystemAdminFamilyApproval('fam-2', 'rejected');
+    expect(rpc).toHaveBeenLastCalledWith('system_admin_set_family_approval', {
+      p_family_id: 'fam-2',
+      p_approval_status: 'rejected',
+    });
+  });
+
+  it('setSystemAdminFamilyApproval surfaces a server denial', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'system admin permission required' } });
+    mockSupabaseClient(rpc);
+    const { setSystemAdminFamilyApproval } = require('../systemAdmin');
+
+    await expect(setSystemAdminFamilyApproval('fam-1', 'active')).rejects.toBeTruthy();
+  });
+
   it('getSystemAdminFamilyDetail calls system_admin_get_family_detail with p_family_id and returns the jsonb bundle with safe array defaults', async () => {
     const rpc = jest.fn().mockResolvedValue({
       data: {
@@ -164,11 +190,12 @@ describe('lib/systemAdmin — Supabase mode', () => {
     process.env = { ...ORIGINAL_ENV };
     delete process.env.EXPO_PUBLIC_SUPABASE_URL;
     delete process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-    const { checkIsSystemAdmin, listSystemAdminFamilies, getSystemAdminFamilyDetail } = require('../systemAdmin');
+    const { checkIsSystemAdmin, listSystemAdminFamilies, getSystemAdminFamilyDetail, setSystemAdminFamilyApproval } = require('../systemAdmin');
     const { SupabaseNotConfiguredError } = require('../supabase');
 
     await expect(checkIsSystemAdmin()).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
     await expect(listSystemAdminFamilies()).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
     await expect(getSystemAdminFamilyDetail('fam-1')).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
+    await expect(setSystemAdminFamilyApproval('fam-1', 'active')).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
   });
 });
