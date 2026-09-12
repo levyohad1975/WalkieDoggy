@@ -3,6 +3,7 @@ import {
   SystemAdminApprovalRefreshError,
 } from '../systemAdminApprovalFlow';
 
+/** Behavior-level coverage for the mutation/read boundary. */
 describe('system admin approval flow', () => {
   it('marks the decision committed before refreshing server state', async () => {
     const order: string[] = [];
