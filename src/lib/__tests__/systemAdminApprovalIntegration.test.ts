@@ -43,7 +43,7 @@ describe('System Admin approval integration source', () => {
     const refreshIndex = onboardingSource.indexOf(
       'await useSystemAdminStore.getState().refresh();'
     );
-    const createIndex = onboardingSource.indexOf('const result = await createVerifiedFamily');
+    const createIndex = onboardingSource.indexOf('const family = await createVerifiedFamily');
 
     expect(verifyIndex).toBeGreaterThan(-1);
     expect(refreshIndex).toBeGreaterThan(verifyIndex);
