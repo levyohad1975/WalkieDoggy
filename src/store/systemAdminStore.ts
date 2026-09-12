@@ -22,32 +22,47 @@ interface SystemAdminState {
   isSystemAdmin: boolean;
   checked: boolean;
   checking: boolean;
-  refresh: () => Promise<void>;
+  refresh: (options?: { retryOnce?: boolean }) => Promise<void>;
   reset: () => void;
 }
 
-export const useSystemAdminStore = create<SystemAdminState>((set, get) => ({
+let refreshVersion = 0;
+
+export const useSystemAdminStore = create<SystemAdminState>((set) => ({
   isSystemAdmin: false,
   checked: false,
   checking: false,
 
-  refresh: async () => {
+  refresh: async (options) => {
+    const version = ++refreshVersion;
     if (!isSupabaseConfigured) {
-      // System Admin has no meaning in local/demo mode — never shown there.
       set({ isSystemAdmin: false, checked: true, checking: false });
       return;
     }
-    if (get().checking) return;
+
     set({ checking: true });
-    try {
-      const result = await checkIsSystemAdmin();
-      set({ isSystemAdmin: result, checked: true, checking: false });
-    } catch {
-      // Best-effort — a failed check must never crash app startup; simply
-      // don't show the entry point for this session (fails closed).
-      set({ isSystemAdmin: false, checked: true, checking: false });
+    const attempts = options?.retryOnce ? 2 : 1;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        const result = await checkIsSystemAdmin();
+        // A session-changing refresh supersedes any older anonymous-session
+        // request that may still be in flight.
+        if (version === refreshVersion) {
+          set({ isSystemAdmin: result, checked: true, checking: false });
+        }
+        return;
+      } catch {
+        if (attempt + 1 < attempts) continue;
+        if (version === refreshVersion) {
+          // Fail closed after the bounded retry.
+          set({ isSystemAdmin: false, checked: true, checking: false });
+        }
+      }
     }
   },
 
-  reset: () => set({ isSystemAdmin: false, checked: false, checking: false }),
+  reset: () => {
+    refreshVersion += 1;
+    set({ isSystemAdmin: false, checked: false, checking: false });
+  },
 }));
