@@ -11,7 +11,7 @@ import { computeLastWalk, computeNextWalk, isOverdue, upcomingWalks } from '../l
 import { walkDateContextLabel } from '../logic/walkDateContext';
 import { canDeleteScheduledWalk, canRequestChangeForWalk, computeNextWalkCardActions, formatCompletedAtBadge } from '../logic/walkActions';
 import { colors } from '../theme/colors';
-import { breakpoints, radii, spacing, typography } from '../theme/tokens';
+import { breakpoints, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { NextWalkCard } from '../components/NextWalkCard';
 import { WalkRow } from '../components/WalkRow';
 import { EmptyState, ErrorState } from '../components/EmptyState';
@@ -1006,7 +1006,7 @@ const styles = StyleSheet.create({
   section: { gap: spacing.sm },
   sectionTitlePhysicalRight: {
     width: '100%',
-    ...(Platform.OS !== 'web' && { direction: 'ltr' as const }),
+    ...nativeDirection('ltr'),
     alignItems: 'flex-end',
   },
   sectionTitle: {
@@ -1029,7 +1029,7 @@ lastWalkCard: {
 
 lastWalkTopRow: {
   flexDirection: 'row',
-  ...(Platform.OS !== 'web' && { direction: 'ltr' as const }),
+  ...nativeDirection('ltr'),
   alignItems: 'center',
   justifyContent: 'space-between',
   gap: 8,
@@ -1072,7 +1072,7 @@ lastWalkSkippedBadge: {
 lastWalkActions: {
   width: 154,
   flexDirection: 'row',
-  ...(Platform.OS !== 'web' && { direction: 'ltr' as const }),
+  ...nativeDirection('ltr'),
   alignItems: 'center',
   justifyContent: 'center',
   gap: 18,
@@ -1091,7 +1091,7 @@ lastWalkEditAction: {
 
 lastWalkNeedsGroup: {
   flexDirection: 'row',
-  ...(Platform.OS !== 'web' && { direction: 'ltr' as const }),
+  ...nativeDirection('ltr'),
   alignItems: 'center',
   gap: 4,
   flexShrink: 0,

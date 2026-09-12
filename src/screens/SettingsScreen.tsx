@@ -7,7 +7,7 @@ import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../sto
 import { colors } from '../theme/colors';
 import { Button } from '../components/Button';
 import { DogPhoto } from '../components/DogPhoto';
-import { breakpoints, radii, spacing, typography } from '../theme/tokens';
+import { breakpoints, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { pickAndUploadImage } from '../lib/uploadImage';
 import {
   isSupabaseConfigured,
@@ -482,7 +482,7 @@ const styles = StyleSheet.create({
   // across every row, whether it has a subtitle (hubLabelWithMeta) or not.
   hubRow: {
     flexDirection: 'row',
-    ...(Platform.OS !== 'web' && { direction: 'ltr' as const }),
+    ...nativeDirection('ltr'),
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: colors.surface,
@@ -501,7 +501,7 @@ const styles = StyleSheet.create({
   // compact "המשפחה שלי" summary card right below it.
   dogCard: {
     flexDirection: 'row',
-    ...(Platform.OS !== 'web' && { direction: 'ltr' as const }),
+    ...nativeDirection('ltr'),
     alignItems: 'center',
     gap: spacing.md,
     backgroundColor: colors.surface,
@@ -513,7 +513,7 @@ const styles = StyleSheet.create({
   dogCardBody: { flex: 1, gap: 2 },
   dogCardName: { ...typography.sectionTitle, fontSize: 18, color: colors.textPrimary, textAlign: 'right' },
   dogCardMeta: { ...typography.meta, color: colors.textSecondary, textAlign: 'right' },
-  familyCardHeader: { flexDirection: 'row', ...(Platform.OS !== 'web' && { direction: 'ltr' as const }), alignItems: 'center', justifyContent: 'space-between' },
+  familyCardHeader: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', justifyContent: 'space-between' },
   familyCardTitle: { ...typography.sectionTitle, fontSize: 17, color: colors.textPrimary, textAlign: 'right' },
   familyCard: {
     backgroundColor: colors.surface,
@@ -524,7 +524,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     gap: spacing.sm,
   },
-  familyAvatarRow: { flexDirection: 'row-reverse', ...(Platform.OS !== 'web' && { direction: 'ltr' as const }), alignItems: 'center', gap: spacing.xs },
+  familyAvatarRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), alignItems: 'center', gap: spacing.xs },
   familyCount: { ...typography.meta, color: colors.textSecondary, marginRight: spacing.sm },
   // "ניהול" management sheet.
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },

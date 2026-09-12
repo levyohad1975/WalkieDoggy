@@ -1,10 +1,11 @@
 import React from 'react';
-import { Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import type { FamilyUser, Walk } from '../types';
 import { isOverdue } from '../logic/nextWalk';
 import { walkCompletionLine, walkHistoryTimingLine, walkMetadataLine } from '../logic/walkActions';
 import { colors } from '../theme/colors';
+import { nativeDirection } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { StatusBadge } from './StatusBadge';
 
@@ -293,7 +294,7 @@ const styles = StyleSheet.create({
     width: '100%',
     minHeight: 48,
     flexDirection: 'row-reverse',
-    ...(Platform.OS !== 'web' && { direction: 'ltr' as const }),
+    ...nativeDirection('ltr'),
     alignItems: 'center',
     gap: 7,
   },

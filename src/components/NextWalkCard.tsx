@@ -6,6 +6,7 @@ import { isOverdue, relativeTimeLabel, walkDateTime } from '../logic/nextWalk';
 import { isWalkRequiringAttention } from '../logic/walkAttention';
 import { walkDateContextLabel } from '../logic/walkDateContext';
 import { colors } from '../theme/colors';
+import { nativeDirection } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 import { DogPhoto } from './DogPhoto';
@@ -259,7 +260,7 @@ const styles = StyleSheet.create({
   },
   webCard: { borderRadius: 22, paddingHorizontal: 28, paddingVertical: 18 },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
-  eyebrowRow: { flexDirection: 'row-reverse', ...(Platform.OS !== 'web' && { direction: 'ltr' as const }), alignItems: 'center', gap: 8, marginBottom: 12 },
+  eyebrowRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), alignItems: 'center', gap: 8, marginBottom: 12 },
   webEyebrowRow: { marginBottom: 4 },
   eyebrow: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
   mascotMessage: {
