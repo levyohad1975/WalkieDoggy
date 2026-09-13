@@ -81,6 +81,15 @@ describe('email delivery log and provider webhook', () => {
     expect(webhookEdge).toContain("p_provider_message_id: emailId");
   });
 
+  it('compares the webhook signature in constant time instead of a short-circuiting ===', () => {
+    expect(webhookEdge).toContain('function timingSafeBase64Equal(');
+    expect(webhookEdge).not.toMatch(/\.some\(\(candidate\) => candidate === expected\)/);
+    expect(webhookEdge).toContain('.some((candidate) => timingSafeBase64Equal(candidate, expected))');
+    // Must decode both sides and XOR-accumulate over every byte, not return
+    // early on the first mismatching one.
+    expect(webhookEdge).toContain('diff |= candidateBytes[i] ^ expectedBytes[i]');
+  });
+
   it('never trusts the webhook body before signature verification', () => {
     const verifyCallIndex = webhookEdge.indexOf('verifySvixSignature({');
     const jsonParseIndex = webhookEdge.indexOf('JSON.parse(body');

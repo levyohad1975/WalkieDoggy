@@ -44,6 +44,30 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+// Constant-time comparison of two base64-encoded byte strings. A plain `===`
+// on the decoded signature would short-circuit on the first differing byte,
+// letting an attacker recover the expected HMAC one byte at a time from
+// response-timing differences; this compares every byte regardless of where
+// (or whether) a mismatch occurs. `candidate` is attacker-controlled (from
+// the request's svix-signature header) and may not even be valid base64, so
+// a decode failure is treated as a non-match rather than thrown.
+function timingSafeBase64Equal(candidate: string, expected: string): boolean {
+  let candidateBytes: Uint8Array;
+  try {
+    candidateBytes = base64ToBytes(candidate);
+  } catch {
+    return false;
+  }
+  const expectedBytes = base64ToBytes(expected);
+  if (candidateBytes.length !== expectedBytes.length) return false;
+
+  let diff = 0;
+  for (let i = 0; i < expectedBytes.length; i++) {
+    diff |= candidateBytes[i] ^ expectedBytes[i];
+  }
+  return diff === 0;
+}
+
 // Svix signature scheme: HMAC-SHA256("{id}.{timestamp}.{body}") using the
 // base64-decoded secret (after its "whsec_" prefix), base64-encoded, then
 // compared against every "v1,<signature>" entry in the space-separated
@@ -70,7 +94,7 @@ async function verifySvixSignature(args: {
   return args.svixSignature
     .split(' ')
     .map((entry) => entry.split(',')[1] ?? '')
-    .some((candidate) => candidate === expected);
+    .some((candidate) => timingSafeBase64Equal(candidate, expected));
 }
 
 const STATUS_BY_EVENT_TYPE: Record<string, string> = {
