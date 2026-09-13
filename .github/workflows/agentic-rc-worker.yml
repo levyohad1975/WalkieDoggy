@@ -110,6 +110,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           additional_permissions: |
             actions: read
+          allowed_bots: "github-actions[bot]"
           prompt: |
             Act as the Walkie Doggy Release Candidate autonomous execution worker.
 
@@ -167,6 +168,7 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           additional_permissions: |
             actions: read
+          allowed_bots: "github-actions[bot]"
           prompt: |
             Act as the Walkie Doggy Release Candidate autonomous execution worker.
             Read AGENTS.md, EXECUTION_STATE.md, and docs/engineering/AGENTIC_EXECUTION_V1.md first.
