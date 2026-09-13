@@ -178,7 +178,6 @@ jobs:
             --max-turns 60
             --allowedTools "${{ steps.guard.outputs.mode == 'write' && 'Read,Edit,Write,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git branch:*),Bash(git rev-parse:*),Bash(git show:*),Bash(git ls-files:*),Bash(ls:*),Bash(pwd),Bash(npm test:*),Bash(npx jest:*)' || 'Read,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git branch:*),Bash(git rev-parse:*),Bash(git show:*),Bash(git ls-files:*),Bash(ls:*),Bash(pwd),Bash(npm test:*),Bash(npx jest:*)' }}"
 
-
       - name: Record validated Claude result
         id: claude_result
         if: always() && steps.auth.outputs.mode != 'none'
@@ -202,7 +201,6 @@ jobs:
           else
             echo "success=false" >> "$GITHUB_OUTPUT"
           fi
-
 
       - name: Commit and push validated feature-branch changes
         if: always() && steps.guard.outputs.mode == 'write' && steps.auth.outputs.mode != 'none' && steps.claude_result.outputs.success == 'true'
@@ -234,6 +232,7 @@ jobs:
             exit 0
           fi
 
+          npm ci
           npm run typecheck
           npm test -- --runInBand
           git diff --check
