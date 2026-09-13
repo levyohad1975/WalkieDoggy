@@ -46,4 +46,16 @@ describe('verified family onboarding server boundary', () => {
     expect(edge).toContain("warnings.push('system_owner_notification_not_sent')");
     expect(edge).toContain('approvalStatus: row.approval_status');
   });
+
+  it('never hands out a working-looking join link/QR in the welcome email while a family is still pending approval', () => {
+    // find_family_by_invite_code()/join_family() (0033) only resolve
+    // approval_status = 'active' families, so a pending family's invite
+    // code/link/QR do not work yet -- the welcome email must say so instead
+    // of handing out the same "join now" link/QR the active email sends.
+    expect(edge).toContain("row.approval_status === 'pending'");
+    const pendingMarkerIndex = edge.indexOf('ממתינה לאישור מנהל המערכת');
+    const joinLinkIndex = edge.indexOf('${safeJoin}');
+    expect(pendingMarkerIndex).toBeGreaterThan(-1);
+    expect(joinLinkIndex).toBeGreaterThan(pendingMarkerIndex);
+  });
 });

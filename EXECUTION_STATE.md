@@ -27,16 +27,30 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 
 ## Current Task
 
-Queue item 7 (partial) — Full CI regression: reproduce `npx tsc --noEmit`
-and `npm test -- --runInBand` fresh, locally, against the current RC branch
-HEAD, following the upstream `CI` workflow run (id `34754710582`,
-conclusion `success`) on `feat/verified-auth-onboarding-batch-2` @
+Queue item 4 — Settings/Roles/System Admin QA: repository-level,
+credential-free read of `src/screens/SystemAdminScreen.tsx`,
+`src/store/systemAdminStore.ts`, `src/lib/systemAdmin.ts`, and the
+`0024`/`0029`/`0030` System Admin migrations against
+`docs/qa/QA_RELEASE_GUARDIAN.md`'s "Settings/Roles backend authorization"
+theme, following the upstream `Batch 2 Supabase Rehearsal` workflow run
+(id `34754710595`, conclusion `success`) on
+`feat/verified-auth-onboarding-batch-2` @
 `63c00fb7e84f1f2b371e6739d5d3d05dda6754f7`.
 
 ## Current Task Status
 
-DONE (this sub-task). Queue item 7's Supabase-regression half remains
-BLOCKED — see Blocker.
+DONE. The four named files/migrations were read in full: System Admin v1
+(0024/0029/0030) is read-only, fail-closed, and correctly re-authorizes
+every RPC server-side via `is_system_admin()` (verified-identity-only since
+0030) — no gap found there, and the missing approve/reject UI in
+`SystemAdminScreen.tsx` is expected (that capability is scoped to the
+separate stacked branch/PR, `feat/system-admin-approval-controls` /
+PR #11, confirmed present as `remotes/origin/feat/system-admin-approval-controls`).
+
+While cross-referencing `system_admin_set_family_approval` (0032) for that
+QA pass, found and fixed one real release-relevant gap in adjacent Queue
+item 3 territory (welcome email correctness) — see Last Evidence. Queue
+item 7's Supabase-regression half remains BLOCKED — see Blocker.
 
 ## Current Branch / PR
 
@@ -49,34 +63,77 @@ BLOCKED — see Blocker.
 
 ## Last Evidence
 
-- Repo state verified: on `feat/verified-auth-onboarding-batch-2`, clean
-  working tree, HEAD `63c00fb7e84f1f2b371e6739d5d3d05dda6754f7`, matching
-  the trigger's target branch/sha. This is the same commit the upstream
-  `CI` run 34754710582 (conclusion `success`) ran against.
-- `npm ci` — succeeded, 907 packages installed fresh in this sandbox (this
-  session had npm-registry access, unlike prior archaeology-pass sessions
-  that explicitly could not reproduce the suite locally — see
-  `PROJECT_STATUS.md` §1/§10).
+- Repo state reconciled at cycle start: on `feat/verified-auth-onboarding-batch-2`,
+  clean tree, HEAD `da6deea` (one commit ahead of the trigger's target sha
+  `63c00fb`, the trigger's own prior state-tracking commit from the
+  previous cycle — expected and consistent, not a drift).
+- Trigger evidence recorded: upstream `Batch 2 Supabase Rehearsal` workflow
+  run `34754710595` concluded `success` against `63c00fb` — this run
+  provisions an ephemeral GitHub-hosted Supabase stack (supabase/setup-cli,
+  `supabase start`/`db reset --local`) and asserts, at the SQL level, the
+  Batch 2 authorization contract: `families.approval_status`/
+  `created_by_auth_user_id` columns exist, `create_verified_family()` /
+  `system_admin_set_family_approval()` exist, `create_family` EXECUTE is
+  revoked from anon/authenticated, `create_verified_family` is service-role
+  only, `current_family_id()` is approval-status-aware, `email_delivery_log`
+  exists with RLS enabled and zero client policies, and
+  `record_email_delivery_attempt`/`update_email_delivery_status` are
+  service-role-only while `system_admin_list_email_delivery_log` is
+  authenticated-gated. This is real automated evidence for the schema/
+  authorization layer of Queue items 2/3, independent of the Staging-E2E
+  blocker below (it does not exercise the real UI/OTP/Resend path).
+- `gh auth status` and `docker info` both returned "This command requires
+  approval" in this sandbox's permission mode with no owner present to
+  answer it — consistent with the prior cycle's finding. Did not retry
+  repeatedly; this is the same secondary GitHub/Supabase-tooling blocker
+  already on file, not new information.
+- QA read performed (Queue item 4): `src/screens/SystemAdminScreen.tsx`,
+  `src/store/systemAdminStore.ts`, `src/lib/systemAdmin.ts`, and migrations
+  `0024`/`0029`/`0030` in full. Finding: sound. `is_system_admin()` is
+  fail-closed and verified-identity-only (0030 fixes an anonymous-session
+  bypass in 0024), every RPC re-checks it server-side regardless of
+  client-side UI hiding, and `SystemAdminScreen.tsx`'s read-only v1 scope
+  (no approve/reject UI) is intentional — that capability belongs to the
+  separate stacked branch, confirmed present as
+  `remotes/origin/feat/system-admin-approval-controls` (PR #11), not to
+  this branch's `create_verified_family`/`system_admin_set_family_approval`
+  foundation (0032).
+- **Fix applied** while cross-referencing 0032's `system_admin_set_family_approval`
+  against the Edge Function that calls the plain `create_verified_family`
+  path (`supabase/functions/create-verified-family/index.ts`): the welcome
+  email sent immediately on family creation was unconditional — it always
+  said "the family was created" and handed out the invite code/join
+  link/QR, even when `AUTO_APPROVE_NEW_FAMILIES=false` produced a `pending`
+  family. `find_family_by_invite_code()`/`join_family()` (0033) only
+  resolve `approval_status = 'active'` families, so that link/QR silently
+  fail to work until a system admin approves — directly contradicting the
+  in-app pending screen's own promise
+  (`FamilyOnboardingScreen.tsx`: "נשלח עדכון לאחר אישור מנהל המערכת").
+  Fixed by branching the welcome email's subject/body on
+  `row.approval_status === 'pending'`: the pending branch now states the
+  request is awaiting system-admin approval and withholds the join
+  link/QR, while the active branch is unchanged. Added a regression test
+  in `verifiedFamilyServerBoundary.test.ts` asserting the pending-approval
+  wording appears before the active-only join-link interpolation in the
+  Edge Function source (matching this repo's existing text-based Edge
+  Function test convention, since these Deno functions aren't executed
+  under Jest). No migration change needed — `record_email_delivery_attempt`'s
+  `message_type` check already allows `family_welcome` for both branches.
+  Files changed: `supabase/functions/create-verified-family/index.ts`,
+  `src/lib/__tests__/verifiedFamilyServerBoundary.test.ts`.
+- `npm ci` — succeeded, 907 packages installed fresh in this sandbox.
 - `npx tsc --noEmit` — **PASS**, zero errors, zero output.
 - `npm test -- --runInBand` — **PASS**: Test Suites: 89 passed, 89 total;
-  Tests: 909 passed, 909 total; Snapshots: 0 total; Time ~20s. Covers
-  `systemAdminStore`, `systemAdmin`, `verifiedAdminOnboarding`,
-  `verifiedFamilyServerBoundary`, `emailDeliveryLog`, `App.systemAdminGate`,
-  and all other suites relevant to Queue items 2-4 at the unit/integration
-  level.
-- `gh` CLI (auth status, `gh run view 34754710582`, `gh pr view 7`/`11`)
-  was blocked by this session's permission mode requiring interactive
-  approval that was not available in this autonomous run — GitHub-side PR/
-  CI metadata could not be independently re-confirmed this cycle beyond
-  the trigger context already provided. This did not block the local
-  regression above, which is independent evidence.
-- `supabase` CLI is not installed in this sandbox (`which supabase` → exit
-  1); no Docker check attempted beyond that. Local/ephemeral Supabase
-  rehearsal remains unavailable here, consistent with the Blocker below.
+  Tests: 910 passed, 910 total (one new test vs. the prior cycle's 909);
+  Snapshots: 0 total; Time ~15s.
+- This cycle's changes (the Edge Function fix, the new test, and this file)
+  are committed and pushed to `feat/verified-auth-onboarding-batch-2` as
+  part of closing out this cycle — see `git log` on that branch for the
+  exact SHA immediately following `da6deea`.
 
 ## Last Evidence Timestamp
 
-2026-09-13T11:35:56Z
+2026-09-13T12:05:00Z
 
 ## Blocker
 
@@ -103,14 +160,17 @@ safe tasks that do not depend on it.
 
 ## Next Safe Task
 
-Queue item 4 — Settings/Roles/System Admin QA: a repository-level,
-credential-free read of `src/screens/SystemAdminScreen.tsx`,
-`src/store/systemAdminStore.ts`, `src/lib/systemAdmin.ts`, and the
-`0024`/`0029`/`0030` System Admin migrations against
-`docs/qa/QA_RELEASE_GUARDIAN.md`'s "Settings/Roles backend authorization"
-theme, to find any release-blocking gap fixable without live credentials.
-Falls back to Queue item 5 (Batch 4 regression, same credential-free
-constraint) if item 4 turns up nothing actionable.
+Queue item 5 — Batch 4 regression: a repository-level, credential-free
+sweep of the Batch 4 System Admin / mutual-swap / reschedule surface
+(migrations `0026`/`0027`/`0028`/`0031` and their client call sites) for
+any release-blocking authorization or correctness gap fixable without live
+credentials, following the same read-then-fix pattern used this cycle for
+Queue item 4. If nothing actionable turns up, fall back to Queue item 7's
+still-open Supabase-regression half by re-attempting `gh`/`docker` access
+(only if the sandbox's permission mode allows it that cycle), or otherwise
+to a fresh line-by-line QA pass over `docs/qa/QA_RELEASE_GUARDIAN.md`'s
+remaining untouched themes (Hebrew RTL/responsive, dog-sex/grammatical
+copy, mascot/Reduced Motion) for the files already touched by this Batch.
 
 ## Approval Required
 
@@ -155,11 +215,20 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Queue item 7 (CI-regression half only) — full local reproduction of
-  `npx tsc --noEmit` (PASS) and `npm test -- --runInBand` (89/89 suites,
-  909/909 tests PASS) against HEAD `63c00fb`, matching upstream CI run
-  34754710582's target. No code changes were needed or made. Evidence:
-  this file's Last Evidence entry above (2026-09-13T11:35:56Z).
+- Queue item 4 — Settings/Roles/System Admin QA: full read of
+  `SystemAdminScreen.tsx`/`systemAdminStore.ts`/`systemAdmin.ts` and
+  migrations 0024/0029/0030. No release-blocking gap found in the named
+  scope; confirmed the approve/reject UI gap is intentionally deferred to
+  PR #11 (`feat/system-admin-approval-controls`), not a defect on this
+  branch.
+- Adjacent fix (Queue item 3 territory, found during the above QA) —
+  `create-verified-family`'s welcome email no longer claims a `pending`
+  family is ready to share/join; it now sends approval-status-aware
+  content and withholds the (currently non-functional) invite link/QR
+  until a system admin approves. New regression test added. Evidence:
+  `npx tsc --noEmit` PASS, `npm test -- --runInBand` 89/89 suites, 910/910
+  tests PASS (this file's Last Evidence entry, 2026-09-13T12:05:00Z),
+  committed and pushed to `feat/verified-auth-onboarding-batch-2`.
 
 ## Explicitly Out of Scope
 

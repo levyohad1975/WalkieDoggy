@@ -172,13 +172,26 @@ Deno.serve(async (request) => {
         const safeCode = escapeHtml(row.invite_code);
         const safeJoin = escapeHtml(joinLink);
         const safeQr = escapeHtml(qrLink);
+        // A 'pending' family's invite code/link/QR do not resolve yet --
+        // find_family_by_invite_code() and join_family() (0033) both require
+        // approval_status = 'active'. Handing out a "join now" link/QR before
+        // that would contradict the in-app pending screen (which tells the
+        // admin an update is coming) and would only produce a confusing
+        // "invalid invite code" for anyone who tries it early.
+        const isPending = row.approval_status === 'pending';
+        const welcomeSubject = isPending
+          ? `הבקשה ליצירת ${row.name} התקבלה — ממתינה לאישור`
+          : `ברוכים הבאים ל-Walkie Doggy Link — ${row.name}`;
+        const welcomeHtml = isPending
+          ? `<div dir="rtl"><h1>הבקשה ליצירת ${safeName} התקבלה</h1><p>הבקשה ליצירת המשפחה <strong>${safeName}</strong> ממתינה לאישור מנהל המערכת.</p><p>קוד ההצטרפות שנשמר עבורכם: <strong>${safeCode}</strong> — ניתן יהיה להשתמש בו, ובקישור/קוד ה-QR להצטרפות, רק לאחר האישור.</p><p>נשלח עדכון לכתובת זו לאחר קבלת ההחלטה.</p></div>`
+          : `<div dir="rtl"><h1>ברוכים הבאים ל-Walkie Doggy Link</h1><p>המשפחה <strong>${safeName}</strong> נוצרה.</p><p>קוד ההצטרפות: <strong>${safeCode}</strong></p><p><a href="${safeJoin}">קישור להצטרפות למשפחה</a></p><p><a href="${safeQr}">פתיחת קוד QR להצטרפות</a></p><p><a href="${escapeHtml(appUrl)}">פתיחת האפליקציה</a></p></div>`;
         const welcomeSent = await sendAndLogEmail(admin, {
           familyId: row.id,
           authUserId: user.id,
           messageType: 'family_welcome',
           to: user.email,
-          subject: `ברוכים הבאים ל-Walkie Doggy Link — ${row.name}`,
-          html: `<div dir="rtl"><h1>ברוכים הבאים ל-Walkie Doggy Link</h1><p>המשפחה <strong>${safeName}</strong> נוצרה.</p><p>קוד ההצטרפות: <strong>${safeCode}</strong></p><p><a href="${safeJoin}">קישור להצטרפות למשפחה</a></p><p><a href="${safeQr}">פתיחת קוד QR להצטרפות</a></p><p><a href="${escapeHtml(appUrl)}">פתיחת האפליקציה</a></p></div>`,
+          subject: welcomeSubject,
+          html: welcomeHtml,
         });
         if (!welcomeSent) warnings.push('welcome_email_not_sent');
       } else {
