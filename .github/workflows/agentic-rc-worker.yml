@@ -136,7 +136,9 @@ jobs:
             8. QA Guardian.
             Then stop at the Release Candidate approval gate.
 
-            Execute the highest-priority safe task possible from this environment.
+            Execute exactly one bounded, coherent unit of work from the highest-priority safe task possible in this environment.
+            Prefer a unit that can be fully implemented and locally validated within this run. Do not start a second substantial unit after the first coherent unit is ready for validation.
+            Reserve enough turns to leave the repository in a coherent checkpoint state. Before the turn budget is exhausted, update EXECUTION_STATE.md with fresh evidence, blocker/remaining work, and the next safe continuation step whenever repository governance permits edits.
             If an upstream run failed, inspect the failure and attempt the smallest safe repository-side fix permitted by AGENTS.md.
             If it passed, advance to the next executable safe RC task instead of only reporting.
 
@@ -168,7 +170,9 @@ jobs:
           prompt: |
             Act as the Walkie Doggy Release Candidate autonomous execution worker.
             Read AGENTS.md, EXECUTION_STATE.md, and docs/engineering/AGENTIC_EXECUTION_V1.md first.
-            Reconstruct state from fresh repository/GitHub evidence and execute the highest-priority safe RC task permitted by those rules.
+            Reconstruct state from fresh repository/GitHub evidence and execute exactly one bounded, coherent unit of work from the highest-priority safe RC task permitted by those rules.
+            Prefer a unit that can be fully implemented and locally validated within this run. Do not start a second substantial unit after the first coherent unit is ready for validation.
+            Reserve enough turns to leave the repository in a coherent checkpoint state. Before the turn budget is exhausted, update EXECUTION_STATE.md with fresh evidence, blocker/remaining work, and the next safe continuation step whenever repository governance permits edits.
             Target branch is ${{ env.TARGET_BRANCH }}.
             On a non-main target you may edit, test, commit, and push only to that same target branch. On main you are inspection/test-only.
             Never merge, direct-push main, deploy to Production, run Production migrations, modify Production data/RLS/secrets/credentials, expose secrets, perform destructive actions, purchases/charges, or public publishing.
@@ -178,7 +182,7 @@ jobs:
             --max-turns 60
             --allowedTools "${{ steps.guard.outputs.mode == 'write' && 'Read,Edit,Write,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git branch:*),Bash(git rev-parse:*),Bash(git show:*),Bash(git ls-files:*),Bash(ls:*),Bash(pwd),Bash(npm test:*),Bash(npx jest:*)' || 'Read,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git branch:*),Bash(git rev-parse:*),Bash(git show:*),Bash(git ls-files:*),Bash(ls:*),Bash(pwd),Bash(npm test:*),Bash(npx jest:*)' }}"
 
-      - name: Record validated Claude result
+      - name: Classify Claude result
         id: claude_result
         if: always() && steps.auth.outputs.mode != 'none'
         shell: bash
@@ -187,6 +191,9 @@ jobs:
           API_OUTCOME: ${{ steps.claude_api.outcome }}
         run: |
           set -euo pipefail
+          echo "success=false" >> "$GITHUB_OUTPUT"
+          echo "checkpoint_eligible=false" >> "$GITHUB_OUTPUT"
+
           if [ "$OAUTH_OUTCOME" = "success" ] || [ "$API_OUTCOME" = "success" ]; then
             echo "success=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -198,18 +205,31 @@ jobs:
              grep -Eq '"is_error"[[:space:]]*:[[:space:]]*false' "$result_file"; then
             echo "success=true" >> "$GITHUB_OUTPUT"
             echo "Claude returned a successful result despite the action wrapper outcome." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "success=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
-      - name: Commit and push validated feature-branch changes
-        if: always() && steps.guard.outputs.mode == 'write' && steps.auth.outputs.mode != 'none' && steps.claude_result.outputs.success == 'true'
+          if [ -f "$result_file" ] &&
+             grep -Eq '"subtype"[[:space:]]*:[[:space:]]*"error_max_turns"' "$result_file"; then
+            echo "checkpoint_eligible=true" >> "$GITHUB_OUTPUT"
+            echo "Claude reached the turn limit; coherent changes may be preserved only after the full validation gate passes." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Validate and publish feature-branch progress
+        id: publish
+        if: >-
+          always() &&
+          steps.guard.outputs.mode == 'write' &&
+          steps.auth.outputs.mode != 'none' &&
+          (steps.claude_result.outputs.success == 'true' || steps.claude_result.outputs.checkpoint_eligible == 'true')
         shell: bash
         env:
           SAFE_TARGET_BRANCH: ${{ github.event.workflow_run.head_branch || inputs.target_branch || github.ref_name }}
           PUSH_TOKEN: ${{ github.token }}
+          CLAUDE_SUCCESS: ${{ steps.claude_result.outputs.success }}
+          CHECKPOINT_ELIGIBLE: ${{ steps.claude_result.outputs.checkpoint_eligible }}
         run: |
           set -euo pipefail
+          echo "published=false" >> "$GITHUB_OUTPUT"
 
           case "$SAFE_TARGET_BRANCH" in
             feat/*|fix/*|chore/*|test/*|docs/*|rc/*)
@@ -228,8 +248,12 @@ jobs:
 
           git diff --check
           if [ -z "$(git status --porcelain)" ]; then
-            echo "Worker completed without repository changes." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+            if [ "$CLAUDE_SUCCESS" = "true" ]; then
+              echo "Worker completed without repository changes." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "::error::Claude reached the turn limit without repository changes to checkpoint."
+            exit 1
           fi
 
           npm ci
@@ -241,15 +265,32 @@ jobs:
           git config user.email "walkie-agentic-worker[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --check
-          git commit -m "chore(agentic): continue RC execution"
+
+          if [ "$CHECKPOINT_ELIGIBLE" = "true" ] && [ "$CLAUDE_SUCCESS" != "true" ]; then
+            commit_message="chore(agentic): checkpoint RC execution"
+          else
+            commit_message="chore(agentic): continue RC execution"
+          fi
+
+          git commit -m "$commit_message"
           push_auth="$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 -w0)"
           git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $push_auth" \
             push origin "HEAD:refs/heads/$SAFE_TARGET_BRANCH"
-          echo "Published a validated commit to $SAFE_TARGET_BRANCH." >> "$GITHUB_STEP_SUMMARY"
+          echo "published=true" >> "$GITHUB_OUTPUT"
 
-      - name: Enforce validated Claude completion
-        if: always() && steps.auth.outputs.mode != 'none' && steps.claude_result.outputs.success != 'true'
+          if [ "$CHECKPOINT_ELIGIBLE" = "true" ] && [ "$CLAUDE_SUCCESS" != "true" ]; then
+            echo "Published a fully validated max-turn checkpoint to $SAFE_TARGET_BRANCH. CI can now drive the next continuation run." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Published a validated commit to $SAFE_TARGET_BRANCH." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Enforce validated Claude completion or checkpoint
+        if: >-
+          always() &&
+          steps.auth.outputs.mode != 'none' &&
+          steps.claude_result.outputs.success != 'true' &&
+          steps.publish.outputs.published != 'true'
         shell: bash
         run: |
-          echo "::error::Claude did not produce a validated successful result."
+          echo "::error::Claude did not complete successfully and no fully validated checkpoint was published."
           exit 1
