@@ -6,7 +6,13 @@ import { useAuthStore } from '../store/authStore';
 import { colors } from '../theme/colors';
 import { breakpoints } from '../theme/tokens';
 import { Button } from '../components/Button';
-import { createFamily, ensureAnonymousSession, findFamilyByInviteCode, joinFamily } from '../lib/supabase';
+import { ensureAnonymousSession, findFamilyByInviteCode, joinFamily } from '../lib/supabase';
+import {
+  createVerifiedFamily,
+  getVerifiedAdminIdentity,
+  requestAdminEmailVerification,
+  verifyAdminEmailOtp,
+} from '../lib/verifiedAdminOnboarding';
 import { inspectFamilyInviteDetail, redeemFamilyInvite, type FamilyInvitePreviewDetail } from '../lib/invites';
 import { formatInviteExpiry, inviteStatusLabel, parseInviteInput } from '../logic/familyInvites';
 import { friendlyErrorMessage } from '../lib/errorMessages';
@@ -50,14 +56,55 @@ export function FamilyOnboardingScreen() {
   const [dogName, setDogName] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [adminEmail, setAdminEmail] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [verificationSent, setVerificationSent] = useState(false);
+  const [verifiedAdminEmail, setVerifiedAdminEmail] = useState<string | null>(null);
+  const [verifyingEmail, setVerifyingEmail] = useState(false);
+  const [pendingApprovalFamilyName, setPendingApprovalFamilyName] = useState<string | null>(null);
+
+  const sendAdminVerification = async () => {
+    setVerifyingEmail(true);
+    setCreateError(null);
+    try {
+      const normalizedEmail = await requestAdminEmailVerification(adminEmail);
+      setAdminEmail(normalizedEmail);
+      setVerificationSent(true);
+      setVerificationCode('');
+    } catch (e) {
+      setCreateError(friendlyErrorMessage(e));
+    } finally {
+      setVerifyingEmail(false);
+    }
+  };
+
+  const confirmAdminVerification = async () => {
+    setVerifyingEmail(true);
+    setCreateError(null);
+    try {
+      const identity = await verifyAdminEmailOtp(adminEmail, verificationCode);
+      setVerifiedAdminEmail(identity.email);
+    } catch (e) {
+      setCreateError(friendlyErrorMessage(e));
+    } finally {
+      setVerifyingEmail(false);
+    }
+  };
 
   const submitCreate = async () => {
-    if (!familyName.trim()) return;
+    if (!familyName.trim() || !verifiedAdminEmail) return;
     setCreating(true);
     setCreateError(null);
     try {
-      await ensureAnonymousSession();
-      const family = await createFamily(familyName.trim(), dogName.trim() || undefined);
+      const identity = await getVerifiedAdminIdentity();
+      if (identity.email !== verifiedAdminEmail) {
+        throw new Error('יש לאמת מחדש את כתובת הדוא״ל לפני יצירת המשפחה');
+      }
+      const family = await createVerifiedFamily(familyName.trim(), dogName.trim() || undefined);
+      if (family.approvalStatus === 'pending') {
+        setPendingApprovalFamilyName(family.name);
+        return;
+      }
       await setFamilyId(family.id);
     } catch (e) {
       setCreateError(friendlyErrorMessage(e));
@@ -250,6 +297,19 @@ export function FamilyOnboardingScreen() {
   }
 
   if (mode === 'create') {
+    if (pendingApprovalFamilyName) {
+      return (
+        <SafeAreaView style={styles.container}>
+          <RtlText style={styles.emoji}>⏳</RtlText>
+          <RtlText style={styles.title}>המשפחה ממתינה לאישור</RtlText>
+          <RtlText style={styles.subtitle}>
+            הבקשה ליצירת {pendingApprovalFamilyName} התקבלה. נשלח עדכון לאחר אישור מנהל המערכת.
+          </RtlText>
+          <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
+        </SafeAreaView>
+      );
+    }
+
     return (
       <SafeAreaView style={styles.formSafeArea}>
         <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -258,6 +318,71 @@ export function FamilyOnboardingScreen() {
             <RtlText style={styles.subtitle}>אחרי היצירה תוכלו להוסיף את בני המשפחה</RtlText>
 
             <View style={styles.form}>
+              <RtlText style={styles.label}>דוא״ל של מנהל/ת המשפחה</RtlText>
+              <TextInput
+                value={adminEmail}
+                onChangeText={(value) => {
+                  setAdminEmail(value);
+                  setVerificationSent(false);
+                  setVerifiedAdminEmail(null);
+                  setVerificationCode('');
+                  setCreateError(null);
+                }}
+                placeholder="name@example.com"
+                placeholderTextColor={colors.textSecondary}
+                style={styles.input}
+                textAlign="left"
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                editable={!verifyingEmail && !verifiedAdminEmail}
+              />
+
+              {!verificationSent && !verifiedAdminEmail ? (
+                <Button
+                  label={verifyingEmail ? 'שולח קוד...' : 'שליחת קוד אימות'}
+                  onPress={sendAdminVerification}
+                  disabled={!adminEmail.trim() || verifyingEmail}
+                  loading={verifyingEmail}
+                  style={styles.wideButton}
+                />
+              ) : null}
+
+              {verificationSent && !verifiedAdminEmail ? (
+                <>
+                  <RtlText style={styles.label}>קוד האימות שקיבלת בדוא״ל</RtlText>
+                  <TextInput
+                    value={verificationCode}
+                    onChangeText={setVerificationCode}
+                    placeholder="123456"
+                    placeholderTextColor={colors.textSecondary}
+                    style={[styles.input, styles.codeInput]}
+                    textAlign="center"
+                    keyboardType="number-pad"
+                    autoCorrect={false}
+                    maxLength={8}
+                  />
+                  <Button
+                    label={verifyingEmail ? 'מאמת...' : 'אימות הדוא״ל'}
+                    onPress={confirmAdminVerification}
+                    disabled={!verificationCode.trim() || verifyingEmail}
+                    loading={verifyingEmail}
+                    style={styles.wideButton}
+                  />
+                  <Button
+                    label="שליחת קוד חדש"
+                    variant="secondary"
+                    onPress={sendAdminVerification}
+                    disabled={verifyingEmail}
+                    style={styles.wideButton}
+                  />
+                </>
+              ) : null}
+
+              {verifiedAdminEmail ? (
+                <RtlText style={styles.foundSubtitle}>✓ הדוא״ל אומת: {verifiedAdminEmail}</RtlText>
+              ) : null}
+
               <RtlText style={styles.label}>שם המשפחה</RtlText>
               <TextInput
                 value={familyName}
@@ -266,6 +391,7 @@ export function FamilyOnboardingScreen() {
                 placeholderTextColor={colors.textSecondary}
                 style={styles.input}
                 textAlign="right"
+                editable={Boolean(verifiedAdminEmail)}
               />
 
               <RtlText style={styles.label}>שם הכלב/ה (אופציונלי)</RtlText>
@@ -276,6 +402,7 @@ export function FamilyOnboardingScreen() {
                 placeholderTextColor={colors.textSecondary}
                 style={styles.input}
                 textAlign="right"
+                editable={Boolean(verifiedAdminEmail)}
               />
 
               {createError ? <RtlText style={styles.error}>{createError}</RtlText> : null}
@@ -283,7 +410,7 @@ export function FamilyOnboardingScreen() {
               <Button
                 label={creating ? 'יוצר משפחה...' : 'יצירת המשפחה'}
                 onPress={submitCreate}
-                disabled={!familyName.trim() || creating}
+                disabled={!familyName.trim() || !verifiedAdminEmail || creating}
                 loading={creating}
                 style={styles.wideButton}
               />

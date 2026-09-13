@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFamilyStore } from '../store/familyStore';
 import { useAuthStore } from '../store/authStore';
 import { colors } from '../theme/colors';
+import { breakpoints } from '../theme/tokens';
 import { Button } from '../components/Button';
 import { EmptyState, ErrorState } from '../components/EmptyState';
 import { UserFormModal } from '../components/UserFormModal';
@@ -160,6 +161,7 @@ export function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <View style={[styles.contentWrap, Platform.OS === 'web' && styles.webContent]}>
       <RtlText style={styles.emoji}>🐶</RtlText>
       <RtlText style={styles.title}>{family?.name ?? 'המשפחה שלנו'}</RtlText>
       <RtlText style={styles.subtitle}>מי אתה?</RtlText>
@@ -266,6 +268,7 @@ export function LoginScreen() {
         onSubmit={handlePinReclaim}
         onCancel={() => setPinReclaimUserId(null)}
       />
+      </View>
     </SafeAreaView>
   );
 }
@@ -273,6 +276,13 @@ export function LoginScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, alignItems: 'center', paddingTop: 80, paddingHorizontal: 24 },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
+  // width: '100%' preserves today's behavior on every platform (this box
+  // previously WAS the container's only child, implicitly filling it); the
+  // web-only maxWidth+alignSelf below layers HomeScreen's same desktop-
+  // containment pattern on top, without touching `container`'s own
+  // full-bleed background.
+  contentWrap: { width: '100%', alignItems: 'center' },
+  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center' },
   emoji: { fontSize: 64, marginBottom: 8 },
   title: { fontSize: 26, fontWeight: '800', color: colors.textPrimary },
   subtitle: { fontSize: 16, color: colors.textSecondary, marginTop: 4, marginBottom: 32 },

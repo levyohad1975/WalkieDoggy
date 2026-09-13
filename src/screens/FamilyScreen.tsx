@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { AppState, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { AppState, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFamilyStore } from '../store/familyStore';
 import { isRealFamilyAdmin, useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { colors } from '../theme/colors';
+import { breakpoints } from '../theme/tokens';
 import { Avatar } from '../components/Avatar';
 import { Button } from '../components/Button';
 import { UserFormModal } from '../components/UserFormModal';
@@ -286,7 +287,7 @@ export function FamilyScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
         <RtlText style={styles.header}>בני המשפחה</RtlText>
         {/* BATCH 4 (item B — dog profile completion): was hard-coded
             "טופי" regardless of the family's actual dog — now interpolates
@@ -482,6 +483,7 @@ export function FamilyScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 20, gap: 16, paddingBottom: 48 },
+  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
   header: { width: '100%', fontSize: 22, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   subheader: { width: '100%', fontSize: 14, color: colors.textSecondary, textAlign: 'right', writingDirection: 'rtl', marginTop: -8 },
   list: { gap: 10 },

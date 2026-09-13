@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
+import { nativeDirection } from '../theme/tokens';
 
 function two(n: number): string {
   return n.toString().padStart(2, '0');
@@ -44,6 +45,16 @@ function two(n: number): string {
  * mechanism (same `direction: 'ltr'` + `flexDirection: 'row'` pairing),
  * so they can only ever move together, never drift relative to each
  * other at any font scale.
+ *
+ * WEB NOTE: `direction` is a real, correctly-typed RN `ViewStyle` property
+ * (see react-native/Libraries/StyleSheet/StyleSheetTypes.d.ts) and is
+ * required exactly as above on iOS/Android. react-native-web's own style
+ * validator (exports/StyleSheet/validate.js) unconditionally rejects and
+ * strips this specific property before it reaches the DOM — on web it has
+ * always been a no-op, just a console.error on every render. `nativeDirection`
+ * (theme/tokens.ts) scopes it to native-only, removing that warning with
+ * zero behavior change on either platform (web already dropped the key;
+ * native still gets it).
  */
 export function Countdown({ target, now }: { target: Date; now?: Date }) {
   const [tick, setTick] = useState(0);
@@ -134,8 +145,8 @@ const styles = StyleSheet.create({
   // `row`/`labelRow` themselves, since neither this wrapper's direction
   // nor a row's own direction alone should be trusted to be the single
   // place this can never regress from.
-  wrapper: { direction: 'ltr' },
-  row: { flexDirection: 'row', direction: 'ltr', alignItems: 'baseline', flexWrap: 'nowrap' },
+  wrapper: { ...nativeDirection('ltr') },
+  row: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'baseline', flexWrap: 'nowrap' },
   segment: {
     fontSize: 22,
     fontWeight: '800',
@@ -151,7 +162,7 @@ const styles = StyleSheet.create({
   // Same deterministic-LTR mechanism as `row` above, applied identically
   // so the labels row can never end up reversed relative to the digits
   // row it must stay aligned under.
-  labelRow: { flexDirection: 'row', direction: 'ltr', justifyContent: 'space-between', marginTop: 2 },
+  labelRow: { flexDirection: 'row', ...nativeDirection('ltr'), justifyContent: 'space-between', marginTop: 2 },
   label: {
     fontSize: 10,
     color: colors.textSecondary,
