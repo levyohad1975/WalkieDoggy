@@ -27,11 +27,16 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 
 ## Current Task
 
-_(set by the worker at the start of each cycle)_
+Queue item 7 (partial) — Full CI regression: reproduce `npx tsc --noEmit`
+and `npm test -- --runInBand` fresh, locally, against the current RC branch
+HEAD, following the upstream `CI` workflow run (id `34754710582`,
+conclusion `success`) on `feat/verified-auth-onboarding-batch-2` @
+`63c00fb7e84f1f2b371e6739d5d3d05dda6754f7`.
 
 ## Current Task Status
 
-READY
+DONE (this sub-task). Queue item 7's Supabase-regression half remains
+BLOCKED — see Blocker.
 
 ## Current Branch / PR
 
@@ -44,12 +49,34 @@ READY
 
 ## Last Evidence
 
-_(most recent commit / CI run / test output / rehearsal result / blocker
-log — filled in by the worker)_
+- Repo state verified: on `feat/verified-auth-onboarding-batch-2`, clean
+  working tree, HEAD `63c00fb7e84f1f2b371e6739d5d3d05dda6754f7`, matching
+  the trigger's target branch/sha. This is the same commit the upstream
+  `CI` run 34754710582 (conclusion `success`) ran against.
+- `npm ci` — succeeded, 907 packages installed fresh in this sandbox (this
+  session had npm-registry access, unlike prior archaeology-pass sessions
+  that explicitly could not reproduce the suite locally — see
+  `PROJECT_STATUS.md` §1/§10).
+- `npx tsc --noEmit` — **PASS**, zero errors, zero output.
+- `npm test -- --runInBand` — **PASS**: Test Suites: 89 passed, 89 total;
+  Tests: 909 passed, 909 total; Snapshots: 0 total; Time ~20s. Covers
+  `systemAdminStore`, `systemAdmin`, `verifiedAdminOnboarding`,
+  `verifiedFamilyServerBoundary`, `emailDeliveryLog`, `App.systemAdminGate`,
+  and all other suites relevant to Queue items 2-4 at the unit/integration
+  level.
+- `gh` CLI (auth status, `gh run view 34754710582`, `gh pr view 7`/`11`)
+  was blocked by this session's permission mode requiring interactive
+  approval that was not available in this autonomous run — GitHub-side PR/
+  CI metadata could not be independently re-confirmed this cycle beyond
+  the trigger context already provided. This did not block the local
+  regression above, which is independent evidence.
+- `supabase` CLI is not installed in this sandbox (`which supabase` → exit
+  1); no Docker check attempted beyond that. Local/ephemeral Supabase
+  rehearsal remains unavailable here, consistent with the Blocker below.
 
 ## Last Evidence Timestamp
 
-_(UTC timestamp of the entry above)_
+2026-09-13T11:35:56Z
 
 ## Blocker
 
@@ -58,19 +85,32 @@ second-member join, real OTP/email delivery, System Admin live approve/
 reject) requires a real non-Production Supabase project and a Resend
 account with a verified sending domain. Neither is available in this
 sandbox: no `.env`, no linked Supabase project, no Resend/Supabase
-account-level tool, no privileged Docker for a local stack. Two unblock
-options were posted on PR #7: (A) the owner runs the non-Production
-deployment/config steps and shares evidence to verify, or (B) the owner
-grants this session the credentials directly. Unanswered as of the last
-check.
+account-level tool, no `supabase` CLI, no privileged Docker confirmed for a
+local stack. Two unblock options were posted on PR #7: (A) the owner runs
+the non-Production deployment/config steps and shares evidence to verify,
+or (B) the owner grants this session the credentials directly. Unanswered
+as of the last check.
+
+Separately, this cycle found `gh` CLI access itself gated behind an
+interactive approval prompt with no owner present to answer it, so
+GitHub-side PR/CI state (PR #7, PR #11, workflow run metadata) could not
+be pulled directly this cycle. This is a secondary, independent blocker
+from the Staging-credentials one above; it affects only GitHub-metadata
+inspection, not local repository work, which proceeded normally.
 
 This blocker does not stop execution — see Queue below for independent
 safe tasks that do not depend on it.
 
 ## Next Safe Task
 
-_(selected by the worker from the Queue below, honoring priority order and
-independence from any current blocker)_
+Queue item 4 — Settings/Roles/System Admin QA: a repository-level,
+credential-free read of `src/screens/SystemAdminScreen.tsx`,
+`src/store/systemAdminStore.ts`, `src/lib/systemAdmin.ts`, and the
+`0024`/`0029`/`0030` System Admin migrations against
+`docs/qa/QA_RELEASE_GUARDIAN.md`'s "Settings/Roles backend authorization"
+theme, to find any release-blocking gap fixable without live credentials.
+Falls back to Queue item 5 (Batch 4 regression, same credential-free
+constraint) if item 4 turns up nothing actionable.
 
 ## Approval Required
 
@@ -115,8 +155,11 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-_(worker appends each DONE task with its evidence reference — commit SHA,
-CI run URL, or equivalent — cleared at the start of a new cycle)_
+- Queue item 7 (CI-regression half only) — full local reproduction of
+  `npx tsc --noEmit` (PASS) and `npm test -- --runInBand` (89/89 suites,
+  909/909 tests PASS) against HEAD `63c00fb`, matching upstream CI run
+  34754710582's target. No code changes were needed or made. Evidence:
+  this file's Last Evidence entry above (2026-09-13T11:35:56Z).
 
 ## Explicitly Out of Scope
 
