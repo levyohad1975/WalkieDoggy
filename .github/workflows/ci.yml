@@ -24,6 +24,45 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate Agentic worker OIDC contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          workflow=".github/workflows/agentic-rc-worker.yml"
+          grep -Eq '^[[:space:]]+id-token:[[:space:]]+write[[:space:]]*$' "$workflow"
+          if grep -Eq '^[[:space:]]+(pull-requests|issues):[[:space:]]+write[[:space:]]*$' "$workflow"; then
+            echo "::error::Agentic worker permissions are broader than the approved contract."
+            exit 1
+          fi
+          [ "$(grep -c -- '--max-turns 60' "$workflow")" -eq 2 ]
+          [ "$(grep -c 'continue-on-error: true' "$workflow")" -eq 2 ]
+          grep -q 'name: Classify Claude result' "$workflow"
+          grep -q 'name: Enforce validated Claude completion or checkpoint' "$workflow"
+          grep -q 'checkpoint_eligible=true' "$workflow"
+          grep -q 'chore(agentic): checkpoint RC execution' "$workflow"
+          grep -q "steps.publish.outputs.published != 'true'" "$workflow"
+          grep -q 'npm run typecheck' "$workflow"
+          grep -q 'npm test -- --runInBand' "$workflow"
+          grep -q 'AGENTIC_RC_TARGET_BRANCH' "$workflow"
+          grep -Eq '^[[:space:]]+PUSH_TOKEN:[[:space:]]+' "$workflow"
+          grep -q 'x-access-token:%s' "$workflow"
+
+      - name: Validate isolated Staging readiness contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          workflow=".github/workflows/agentic-staging-readiness.yml"
+          grep -Eq '^[[:space:]]+environment:[[:space:]]+staging[[:space:]]*$' "$workflow"
+          grep -Eq '^[[:space:]]+EXPECTED_STAGING_PROJECT_REF:[[:space:]]+czbxhsoxyawprqehkfit[[:space:]]*$' "$workflow"
+          grep -q 'secrets.SUPABASE_STAGING_URL' "$workflow"
+          grep -q 'secrets.SUPABASE_STAGING_ANON_KEY' "$workflow"
+          grep -q '/auth/v1/health' "$workflow"
+          grep -q -- '--output /dev/null' "$workflow"
+          if grep -Eq 'SERVICE_ROLE|DB_PASSWORD|ACCESS_TOKEN|RESEND_API_KEY|contents:[[:space:]]+write' "$workflow"; then
+            echo "::error::Staging readiness workflow requests a credential or permission outside the approved read-only contract."
+            exit 1
+          fi
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
