@@ -36,8 +36,11 @@ jobs:
           fi
           [ "$(grep -c -- '--max-turns 60' "$workflow")" -eq 2 ]
           [ "$(grep -c 'continue-on-error: true' "$workflow")" -eq 2 ]
-          grep -q 'name: Record validated Claude result' "$workflow"
-          grep -q 'name: Enforce validated Claude completion' "$workflow"
+          grep -q 'name: Classify Claude result' "$workflow"
+          grep -q 'name: Enforce validated Claude completion or checkpoint' "$workflow"
+          grep -q 'checkpoint_eligible=true' "$workflow"
+          grep -q 'chore(agentic): checkpoint RC execution' "$workflow"
+          grep -q "steps.publish.outputs.published != 'true'" "$workflow"
           grep -q 'npm run typecheck' "$workflow"
           grep -q 'npm test -- --runInBand' "$workflow"
           grep -q 'AGENTIC_RC_TARGET_BRANCH' "$workflow"
