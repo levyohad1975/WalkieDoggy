@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, View, Pressable } from 'react-native';
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, View, Pressable } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -7,7 +7,7 @@ import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveUserId } from '../store/authStore';
 import { colors } from '../theme/colors';
-import { radii, spacing, typography } from '../theme/tokens';
+import { breakpoints, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { Avatar } from '../components/Avatar';
 import { EmptyState, ErrorState } from '../components/EmptyState';
 import { DEMO_FAMILY } from '../data/demoData';
@@ -153,7 +153,7 @@ export function StatisticsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
         <RtlText style={styles.header}>📈 סטטיסטיקה</RtlText>
 
         <View style={styles.periodRow}>
@@ -301,8 +301,9 @@ const styles = StyleSheet.create({
   // Bottom padding increased (final QA round, item H: adequate bottom
   // safe-area padding) so the last card clears the tab bar comfortably.
   content: { padding: 20, gap: 16, paddingBottom: 64 },
+  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
   header: { width: '100%', fontSize: 22, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
-  periodRow: { flexDirection: 'row', direction: 'rtl', gap: 8 },
+  periodRow: { flexDirection: 'row', ...nativeDirection('rtl'), gap: 8 },
   periodChip: { flex: 1, backgroundColor: colors.surfaceMuted, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
   periodChipActive: { backgroundColor: colors.primary },
   periodChipText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
@@ -316,11 +317,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   cardTitle: { width: '100%', fontSize: 15, fontWeight: '700', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
-  rowBetween: { flexDirection: 'row', direction: 'rtl', justifyContent: 'space-between' },
+  rowBetween: { flexDirection: 'row', ...nativeDirection('rtl'), justifyContent: 'space-between' },
   metaText: { fontSize: 13, color: colors.textSecondary, fontWeight: '600', textAlign: 'right' },
   // Deliverable 3B — the 4-tile KPI grid (2x2, equal width, wraps via flexWrap
   // so it reads correctly at any phone width without a fixed column count).
-  kpiGrid: { flexDirection: 'row', direction: 'rtl', flexWrap: 'wrap', gap: spacing.sm },
+  kpiGrid: { flexDirection: 'row', ...nativeDirection('rtl'), flexWrap: 'wrap', gap: spacing.sm },
   kpiTile: {
     flexBasis: '47%',
     flexGrow: 1,
@@ -338,11 +339,11 @@ const styles = StyleSheet.create({
   kpiValueSkipped: { color: colors.statusSkipped },
   kpiLabel: { ...typography.meta, color: colors.textSecondary },
   kpiSubValue: { fontSize: 13, fontWeight: '700', color: colors.statusDone, marginTop: 2 },
-  inlineStat: { flexDirection: 'row', direction: 'rtl', alignItems: 'baseline', gap: 4 },
+  inlineStat: { flexDirection: 'row', ...nativeDirection('rtl'), alignItems: 'baseline', gap: 4 },
   metaTextStrong: { fontSize: 13, color: colors.textPrimary, fontWeight: '800' },
   barTrack: { height: 10, borderRadius: 5, backgroundColor: colors.surfaceMuted, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 5 },
-  memberRow: { flexDirection: 'row', direction: 'rtl', alignItems: 'center', gap: 8 },
+  memberRow: { flexDirection: 'row', ...nativeDirection('rtl'), alignItems: 'center', gap: 8 },
   memberName: { fontSize: 13, fontWeight: '700', color: colors.textPrimary, width: 64, textAlign: 'right' },
   memberBarWrap: { flex: 1 },
   memberCount: { fontSize: 12, fontWeight: '700', color: colors.textSecondary, minWidth: 20, textAlign: 'center' },

@@ -7,7 +7,7 @@ import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../sto
 import { colors } from '../theme/colors';
 import { Button } from '../components/Button';
 import { DogPhoto } from '../components/DogPhoto';
-import { radii, spacing, typography } from '../theme/tokens';
+import { breakpoints, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { pickAndUploadImage } from '../lib/uploadImage';
 import {
   isSupabaseConfigured,
@@ -298,7 +298,10 @@ export function SettingsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}
+        keyboardShouldPersistTaps="handled"
+      >
         <RtlText style={styles.header} maxFontSizeMultiplier={1.35}>הגדרות</RtlText>
 
         {/*
@@ -465,6 +468,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
   content: { padding: 20, gap: 28, paddingBottom: 64 },
+  // Same desktop-containment pattern as HomeScreen's webContent: cap and
+  // center the scroll content on web only — native is unaffected (RN's
+  // ScrollView contentContainerStyle already renders full-width there, and
+  // this repo's design intent is a bounded desktop column, not native).
+  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center' },
   header: { width: '100%', fontSize: 22, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   section: { gap: 10 },
   sectionTitle: { width: '100%', fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
@@ -474,7 +482,7 @@ const styles = StyleSheet.create({
   // across every row, whether it has a subtitle (hubLabelWithMeta) or not.
   hubRow: {
     flexDirection: 'row',
-    direction: 'ltr',
+    ...nativeDirection('ltr'),
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: colors.surface,
@@ -493,7 +501,7 @@ const styles = StyleSheet.create({
   // compact "המשפחה שלי" summary card right below it.
   dogCard: {
     flexDirection: 'row',
-    direction: 'ltr',
+    ...nativeDirection('ltr'),
     alignItems: 'center',
     gap: spacing.md,
     backgroundColor: colors.surface,
@@ -505,7 +513,7 @@ const styles = StyleSheet.create({
   dogCardBody: { flex: 1, gap: 2 },
   dogCardName: { ...typography.sectionTitle, fontSize: 18, color: colors.textPrimary, textAlign: 'right' },
   dogCardMeta: { ...typography.meta, color: colors.textSecondary, textAlign: 'right' },
-  familyCardHeader: { flexDirection: 'row', direction: 'ltr', alignItems: 'center', justifyContent: 'space-between' },
+  familyCardHeader: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', justifyContent: 'space-between' },
   familyCardTitle: { ...typography.sectionTitle, fontSize: 17, color: colors.textPrimary, textAlign: 'right' },
   familyCard: {
     backgroundColor: colors.surface,
@@ -516,7 +524,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     gap: spacing.sm,
   },
-  familyAvatarRow: { flexDirection: 'row-reverse', direction: 'ltr', alignItems: 'center', gap: spacing.xs },
+  familyAvatarRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), alignItems: 'center', gap: spacing.xs },
   familyCount: { ...typography.meta, color: colors.textSecondary, marginRight: spacing.sm },
   // "ניהול" management sheet.
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },

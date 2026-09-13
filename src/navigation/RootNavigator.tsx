@@ -12,6 +12,7 @@ import { StatisticsScreen } from '../screens/StatisticsScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { ImpersonationBanner } from '../components/ImpersonationBanner';
 import { colors } from '../theme/colors';
+import { nativeDirection } from '../theme/tokens';
 import { useAuthStore, useEffectiveUserId } from '../store/authStore';
 import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
@@ -105,7 +106,7 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
           maxWidth: Platform.OS === 'web' ? 1000 : undefined,
           alignSelf: 'center',
           flexDirection: 'row',
-          direction: 'ltr',
+          ...nativeDirection('ltr'),
         }}
       >
         {buttons}

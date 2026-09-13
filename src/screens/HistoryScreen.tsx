@@ -16,6 +16,7 @@ import { canAccessHistoryScreen } from '../logic/permissions';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { fetchHistoryWalks } from '../lib/permissionedWalks';
 import { colors } from '../theme/colors';
+import { breakpoints, nativeDirection } from '../theme/tokens';
 import { WalkRow } from '../components/WalkRow';
 import { EmptyState, ErrorState } from '../components/EmptyState';
 import { Avatar } from '../components/Avatar';
@@ -223,7 +224,7 @@ export function HistoryScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
         <RtlText style={styles.header} maxFontSizeMultiplier={1.35}>היסטוריה</RtlText>
 
         <View>
@@ -498,11 +499,12 @@ const styles = StyleSheet.create({
   // Bottom padding increased (final QA round, item F: bottom safe-area/
   // list padding so the last history item isn't hidden behind the tab bar).
   content: { padding: 20, gap: 28, paddingBottom: 64 },
+  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
   header: { width: '100%', fontSize: 22, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   sectionTitle: { width: '100%', fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   sectionSubtitle: { width: '100%', fontSize: 13, color: colors.textSecondary, marginTop: 2, marginBottom: 12, textAlign: 'right', writingDirection: 'rtl' },
   summaryCard: { backgroundColor: colors.surface, borderRadius: 20, borderWidth: 1, borderColor: colors.border, padding: 8 },
-  summaryRow: { flexDirection: 'row', direction: 'ltr', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 8 },
+  summaryRow: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 8 },
   // RTL fix (final QA round, item F): member names had no explicit
   // textAlign at all.
   summaryName: { flex: 1, fontSize: 15, fontWeight: '600', color: colors.textPrimary, textAlign: 'right' },
@@ -515,7 +517,7 @@ const styles = StyleSheet.create({
   // instead of pinned to the opposite end of a header row far from it.
   filterToggleRow: { width: '100%', marginTop: 4 },
   filterToggle: { width: '100%', fontSize: 13, fontWeight: '700', color: colors.primaryDark, textAlign: 'right', writingDirection: 'rtl' },
-  chipRow: { flexDirection: 'row-reverse', direction: 'ltr', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  chipRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), flexWrap: 'wrap', gap: 8, marginTop: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14, backgroundColor: colors.surfaceMuted },
   chipActive: { backgroundColor: colors.primary },
   chipText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
