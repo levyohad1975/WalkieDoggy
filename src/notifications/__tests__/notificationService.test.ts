@@ -7,13 +7,19 @@ import {
   reconcileWalkNotifications,
   requestNotificationPermissions,
   scheduleWalkNotifications,
+  subscribeToWalkReminderResponses,
+  __resetNotificationCapabilityCacheForTests,
 } from '../notificationService';
+import { subscribeToReminderOpens, __resetReminderEntryForTests } from '../reminderEntry';
 
 const scheduleMock = Notifications.scheduleNotificationAsync as jest.Mock;
 const cancelMock = Notifications.cancelScheduledNotificationAsync as jest.Mock;
 const getAllScheduledMock = Notifications.getAllScheduledNotificationsAsync as jest.Mock;
 const getPermissionsMock = Notifications.getPermissionsAsync as jest.Mock;
 const requestPermissionsMock = Notifications.requestPermissionsAsync as jest.Mock;
+const getLastResponseMock = Notifications.getLastNotificationResponseAsync as jest.Mock;
+const clearLastResponseMock = Notifications.clearLastNotificationResponseAsync as jest.Mock;
+const addResponseListenerMock = Notifications.addNotificationResponseReceivedListener as jest.Mock;
 
 // jest.setup.js owns the shared expo-notifications mock. Use the exact
 // CommonJS mock object that notificationService.ts receives via require()
@@ -87,6 +93,10 @@ beforeEach(() => {
   getPermissionsMock.mockResolvedValue({ granted: true });
   requestPermissionsMock.mockResolvedValue({ granted: true });
   setChannelMock.mockResolvedValue(undefined);
+  getLastResponseMock.mockResolvedValue(null);
+  clearLastResponseMock.mockResolvedValue(undefined);
+  addResponseListenerMock.mockReturnValue({ remove: jest.fn() });
+  __resetReminderEntryForTests();
 });
 
 afterEach(() => {
@@ -313,5 +323,107 @@ describe('notificationService — Android notification channel (Round 6D)', () =
     expect(new Set(iosIdentifiers)).toEqual(
       new Set(['notif:walk-ids-ios:pre_walk_reminder', 'notif:walk-ids-ios:overdue_reminder'])
     );
+  });
+});
+
+/**
+ * subscribeToWalkReminderResponses() is the sole entry point that turns a
+ * real OS notification tap (cold-launch or live) into a reminderEntry
+ * publishReminderOpen() event — this is what HomeScreen's mascot prompt
+ * (see HomeScreen.tsx's subscribeToReminderOpens usage) reacts to. It had no
+ * coverage at all before this: the shared expo-notifications jest mock
+ * didn't even expose getLastNotificationResponseAsync/
+ * clearLastNotificationResponseAsync/addNotificationResponseReceivedListener,
+ * so the function's own `if (!Notifications?.addNotificationResponseReceivedListener)
+ * return () => undefined;` guard silently made it a no-op under any test
+ * that happened to call it — see jest.setup.js for the mock additions this
+ * coverage required.
+ */
+describe('notificationService — subscribeToWalkReminderResponses (notification-open entry point)', () => {
+  afterEach(() => {
+    __resetNotificationCapabilityCacheForTests();
+  });
+
+  it('cold launch: consumes a genuine pending response exactly once and publishes the matching reminder-open event', async () => {
+    getLastResponseMock.mockResolvedValueOnce({
+      notification: { request: { content: { data: { walkId: 'walk-cold', kind: 'pre_walk_reminder' } } } },
+    });
+
+    const unsubscribeResponses = await subscribeToWalkReminderResponses();
+
+    // publishReminderOpen() already fired above, before any listener existed —
+    // subscribeToReminderOpens()'s "replay the last event to a late
+    // subscriber" behavior (reminderEntry.ts) is what a real cold launch
+    // relies on, since HomeScreen only subscribes after it mounts.
+    const received: unknown[] = [];
+    const unsubscribeReminder = subscribeToReminderOpens((event) => received.push(event));
+
+    expect(received).toEqual([{ walkId: 'walk-cold', kind: 'pre_walk_reminder' }]);
+    expect(clearLastResponseMock).toHaveBeenCalledTimes(1);
+
+    unsubscribeReminder();
+    unsubscribeResponses();
+  });
+
+  it('cold launch: no pending response publishes nothing', async () => {
+    getLastResponseMock.mockResolvedValueOnce(null);
+
+    const unsubscribeResponses = await subscribeToWalkReminderResponses();
+    const received: unknown[] = [];
+    subscribeToReminderOpens((event) => received.push(event));
+
+    expect(received).toEqual([]);
+    unsubscribeResponses();
+  });
+
+  it('cold launch: a foreign/malformed payload is rejected, not published', async () => {
+    getLastResponseMock.mockResolvedValueOnce({
+      notification: { request: { content: { data: { someUnrelatedKey: true } } } },
+    });
+
+    const unsubscribeResponses = await subscribeToWalkReminderResponses();
+    const received: unknown[] = [];
+    subscribeToReminderOpens((event) => received.push(event));
+
+    expect(received).toEqual([]);
+    unsubscribeResponses();
+  });
+
+  it('live tap: the registered OS listener publishes a reminder-open event when invoked', async () => {
+    const unsubscribeResponses = await subscribeToWalkReminderResponses();
+    expect(addResponseListenerMock).toHaveBeenCalledTimes(1);
+    const liveHandler = addResponseListenerMock.mock.calls[0][0];
+
+    const received: unknown[] = [];
+    const unsubscribeReminder = subscribeToReminderOpens((event) => received.push(event));
+
+    liveHandler({ notification: { request: { content: { data: { walkId: 'walk-live', kind: 'overdue_reminder' } } } } });
+
+    expect(received).toEqual([{ walkId: 'walk-live', kind: 'overdue_reminder' }]);
+
+    unsubscribeReminder();
+    unsubscribeResponses();
+  });
+
+  it('the returned unsubscribe function removes the underlying OS subscription', async () => {
+    const removeMock = jest.fn();
+    addResponseListenerMock.mockReturnValueOnce({ remove: removeMock });
+
+    const unsubscribeResponses = await subscribeToWalkReminderResponses();
+    unsubscribeResponses();
+
+    expect(removeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('is a safe no-op that touches no notification API when notifications are unavailable (e.g. Web)', async () => {
+    __resetNotificationCapabilityCacheForTests();
+    setPlatformOS('web');
+
+    const unsubscribeResponses = await subscribeToWalkReminderResponses();
+    expect(() => unsubscribeResponses()).not.toThrow();
+
+    expect(getLastResponseMock).not.toHaveBeenCalled();
+    expect(clearLastResponseMock).not.toHaveBeenCalled();
+    expect(addResponseListenerMock).not.toHaveBeenCalled();
   });
 });

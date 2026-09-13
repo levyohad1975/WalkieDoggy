@@ -27,25 +27,75 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 
 ## Current Task
 
-Queue item 3 sub-task — credential-free QA_RELEASE_GUARDIAN.md sweep
-("email delivery/observability and failure handling" theme) over the
-release-critical email surface: migration
-`0034_email_delivery_log.sql`, `supabase/functions/create-verified-family`
-(send + log), `supabase/functions/email-provider-webhook` (Resend webhook
-consumer), and `supabase/functions/send-email` (Auth Send Email Hook).
-Selected per the prior cycle's own "Next Safe Task" note, since Queue item
-7's Supabase-regression half was re-confirmed still blocked this cycle
-(see Last Evidence/Blocker) and this sub-task does not depend on it.
+Queue item 6 sub-task — credential-free QA_RELEASE_GUARDIAN.md sweep
+("real device notification-open behavior" theme) over the native
+notification-open / deep-link entry point:
+`src/notifications/notificationService.ts`'s
+`subscribeToWalkReminderResponses()`, `src/notifications/reminderEntry.ts`,
+its `HomeScreen.tsx` consumer, and `App.tsx`'s wiring of it at cold start.
+Selected per the prior cycle's own "Next Safe Task" note, as the one named
+QA_RELEASE_GUARDIAN.md theme not yet covered by a dedicated sweep.
 
 ## Current Task Status
 
-DONE for the sweep; the one real finding it turned up has a fix
-implemented, type-checked, and test-covered in the working tree this
-cycle, but **NOT YET COMMITTED** — see Blocker (`git add` is gated behind
-the same recurring interactive-approval prompt as prior cycles). The next
-cycle must commit this fix first, before selecting a new task, so the
-queue history stays continuous (identical recovery instruction to the
-pattern already on file from prior cycles' `git add` blocks).
+DONE for the sweep; the fix it produced is implemented, type-checked, and
+test-covered in the working tree this cycle, but **NOT YET COMMITTED** —
+see Blocker (`git add` is gated behind the same recurring
+interactive-approval prompt as several prior cycles). The next cycle must
+commit this fix first, before selecting a new task, so the queue history
+stays continuous.
+
+**Housekeeping first:** this cycle found that the *previous* cycle's
+"NOT YET COMMITTED" fix (the webhook timing-safe signature comparison) had
+actually already been committed and pushed as `e52c7ae` — that commit
+included both the fix and that cycle's own `EXECUTION_STATE.md` update, but
+the narrative text in this file (written before the commit succeeded) was
+never revised afterward to say so. Confirmed via `git show --stat e52c7ae`
+(touches exactly `supabase/functions/email-provider-webhook/index.ts`,
+`src/lib/__tests__/emailDeliveryLog.test.ts`, and this file) and `git log
+origin/feat/verified-auth-onboarding-batch-2` (this branch's HEAD matches).
+No action was needed beyond correcting this file's record — nothing was
+lost. **New finding, fixed this cycle:** `subscribeToWalkReminderResponses()`
+— the sole function that turns a real OS notification tap (cold-launch or
+live) into the `reminderEntry.publishReminderOpen()` event `HomeScreen.tsx`
+reacts to (its mascot reminder prompt) — had **zero test coverage**, and
+not by omission alone: the shared `jest.setup.js` mock for
+`expo-notifications` never exposed
+`getLastNotificationResponseAsync`/`clearLastNotificationResponseAsync`/
+`addNotificationResponseReceivedListener`, so the function's own
+`if (!Notifications?.addNotificationResponseReceivedListener) return () =>
+undefined;` guard silently made it a no-op under any test that happened to
+call it — the exact cold-launch "consume the last response once so a later
+normal Home visit can't replay it" logic (the part most likely to silently
+regress) was entirely untested. Fixed by extending the shared mock
+(`jest.setup.js`) with those three APIs, adding a test-only
+`__resetReminderEntryForTests()` hook to `reminderEntry.ts` (mirrors
+`notificationService.ts`'s existing `__resetNotificationCapabilityCacheForTests()`
+pattern, needed so one test's `publishReminderOpen()` can't leak into
+another's `subscribeToReminderOpens()` call via its "replay last event to a
+late subscriber" behavior), and adding 6 new tests to
+`notificationService.test.ts` covering: cold-launch dispatch of a genuine
+payload + exactly-once `clearLastNotificationResponseAsync`, cold-launch
+with no pending response, cold-launch with a foreign/malformed payload
+(rejected), the live OS listener dispatching correctly, the returned
+unsubscribe function removing the OS subscription, and a Web/unavailable
+environment being a safe no-op that touches no notification API. This is
+code-review-plus-test-coverage evidence only — a real device still cannot
+be exercised in this sandbox (see Blocker), so live tap-to-open UX itself
+remains unverified on hardware; the finding does not block RC readiness on
+its own, but closes the coverage gap this exact sweep exists to catch.
+Also confirmed no other release-blocking gap in the code read for this
+sweep: `App.tsx` subscribes once at cold start and unsubscribes on
+unmount, cleanly independent of `restoreSession()`; `HomeScreen.tsx`'s
+`reminderPromptMessage` guards against a stale/foreign walk id and a
+resolved (`!== 'pending'`) walk before ever rendering the prompt, and its
+copy goes through `renderMessageTemplate`'s existing gender-neutral
+`dogSex` convention; `navigation.navigate('Home')` targets a real,
+flat (non-nested) bottom-tab route (`RootNavigator.tsx`), so there is no
+nested-stack pop-to-top gap; `MascotFrameAnimation` (used by
+`ReminderMascotPrompt`) correctly defaults to `reducedMotion = true` before
+the OS setting resolves and honors `reduceMotionChanged` thereafter — no
+RTL or Reduced-Motion gap found.
 
 Fresh (this-cycle) independent read against the QA_RELEASE_GUARDIAN.md
 themes:
@@ -183,57 +233,61 @@ Supabase-regression half remains BLOCKED — see Blocker.
 ## Last Evidence
 
 - Repo state reconciled at cycle start: on `feat/verified-auth-onboarding-batch-2`,
-  clean tree, HEAD `d03e6da` (the prior cycle's own successful commit of
-  its Queue-item-8 QA sweep close-out and this file's update — confirmed
-  via `git show --stat d03e6da`: `EXECUTION_STATE.md` only, no source
-  changes — so the prior cycle's own `git add`-approval blocker resolved
-  itself before that cycle ended too, same pattern as every cycle before
-  it; nothing was lost or needs redoing). Trigger's target sha
+  clean tree, HEAD `e52c7ae`. `git show --stat e52c7ae` confirmed this
+  commit already contains BOTH the prior cycle's webhook timing-safe-comparison
+  fix (`supabase/functions/email-provider-webhook/index.ts`,
+  `src/lib/__tests__/emailDeliveryLog.test.ts`) AND that cycle's own
+  `EXECUTION_STATE.md` update, and `git log origin/...` confirmed it is
+  pushed — so, despite this file's own prior text saying "NOT YET
+  COMMITTED", the fix was in fact already committed and pushed before that
+  cycle ended; only this file's narrative was stale. Nothing was lost, no
+  recovery action was needed. Trigger's target sha
   `7f0bd8465801f257a3bf00b6e7a3beacb70f1529` is not a known object in this
-  repository (`git cat-file -t` on it returns nothing) — same situation as
-  a prior cycle's stale `eff4228` target: the branch has legitimately
-  advanced past whatever dispatch produced that sha, not a drift to
-  reconcile.
-- `gh auth status` and `git add <files>` (retried once, not repeatedly)
-  both again required interactive approval with no owner present in this
-  sandbox's permission mode this cycle — same recurring blockers already
-  on file. `docker ps` succeeded (daemon reachable, zero containers
-  running) but the `supabase` CLI is still not installed, and this cycle
-  additionally confirmed `npm view <pkg> version` (network registry
-  access) is gated behind the same interactive-approval prompt, so
-  installing the CLI is not a viable workaround in this sandbox either —
-  Queue item 7's Supabase-regression half remains blocked on tooling
-  access, not just on the CLI's absence.
-- QA sweep performed (Queue item 3 sub-task, this cycle): full read of
-  `supabase/migrations/0034_email_delivery_log.sql`,
-  `supabase/functions/create-verified-family/index.ts`,
-  `supabase/functions/email-provider-webhook/index.ts`,
-  `supabase/functions/send-email/index.ts`, and
-  `src/lib/__tests__/emailDeliveryLog.test.ts` (all present directly in
-  this checkout, no cross-branch `git show` needed this time). Cross-branch
-  `git grep system_admin_list_email_delivery_log` run against
-  `origin/feat/system-admin-approval-controls`,
-  `origin/feat/settings-roles-batch-3`, and `origin/main` to confirm the
-  admin read-RPC has no client caller anywhere. Finding and fix: see
-  Current Task Status above.
+  repository (`git cat-file -t` returns nothing) — same recurring "branch
+  has legitimately advanced past a stale dispatch sha" situation as prior
+  cycles, not a drift to reconcile.
+- Reconfirmed this cycle: `gh auth status` and `npm view <pkg> version`
+  (registry access) both still require interactive approval with no owner
+  present in this sandbox's permission mode; `which supabase` confirms the
+  CLI is still not installed; `docker ps` succeeds (daemon reachable, zero
+  containers running) but no local Supabase stack is running. Queue item 7's
+  Supabase-regression half remains blocked on tooling/access, unchanged
+  from prior cycles.
+- QA sweep performed (Queue item 6 sub-task, this cycle): full read of
+  `src/notifications/notificationService.ts` (`subscribeToWalkReminderResponses()`
+  and its cold-launch/live-listener logic), `src/notifications/reminderEntry.ts`,
+  `src/screens/HomeScreen.tsx`'s `subscribeToReminderOpens`/`reminderPromptMessage`
+  consumer, `src/components/ReminderMascotPrompt.tsx`,
+  `src/components/MascotFrameAnimation.tsx` (Reduced Motion), `App.tsx`'s
+  cold-start wiring, and `src/navigation/RootNavigator.tsx` (confirmed
+  `navigation.navigate('Home')` targets a real flat bottom-tab route, no
+  nested-stack pop-to-top gap). Finding and fix: see Current Task Status
+  above.
 - Fix implemented this cycle (uncommitted, working tree only — see
-  Blocker): `supabase/functions/email-provider-webhook/index.ts` (added
-  `timingSafeBase64Equal()`, switched `verifySvixSignature()`'s comparison
-  to use it) and `src/lib/__tests__/emailDeliveryLog.test.ts` (new test
-  `'compares the webhook signature in constant time instead of a
-  short-circuiting ==='`). `git diff` for both files inspected directly —
-  scoped to exactly this fix, no unrelated changes.
+  Blocker): `jest.setup.js` (extended the
+  shared `expo-notifications` mock with `getLastNotificationResponseAsync`,
+  `clearLastNotificationResponseAsync`, `addNotificationResponseReceivedListener`),
+  `src/notifications/reminderEntry.ts` (added test-only
+  `__resetReminderEntryForTests()`), and
+  `src/notifications/__tests__/notificationService.test.ts` (6 new tests
+  under a new `subscribeToWalkReminderResponses` describe block). `git diff`
+  inspected directly — scoped to exactly this fix, no unrelated changes.
 - `npm ci` — succeeded, 907 packages installed fresh in this sandbox (fresh
   checkout, no `node_modules` present at cycle start).
-- `npx tsc --noEmit` — **PASS**, zero errors, zero output (re-run after the
-  fix).
+- `npx tsc --noEmit` — **PASS**, zero errors, zero output.
 - `npm test -- --runInBand` — **PASS**: Test Suites: 89 passed, 89 total;
-  Tests: **911** passed, 911 total (910 baseline + 1 new test this cycle);
-  Snapshots: 0 total; Time ~19s.
+  Tests: **917** passed, 917 total (911 baseline + 6 new tests this cycle);
+  Snapshots: 0 total; Time ~20.5s.
+- `git add` (retried once, not repeatedly) required interactive approval
+  with no owner present in this sandbox's permission mode — same recurring
+  blocker prior cycles hit intermittently. **NOT YET COMMITTED** — see
+  Blocker for the required next-cycle recovery step. The fix itself is
+  fully evidenced above (tsc/test PASS against the exact working-tree diff),
+  it is only the commit/push step that is blocked this cycle.
 
 ## Last Evidence Timestamp
 
-2026-09-13T19:44:00Z
+2026-09-13T20:10:00Z
 
 ## Blocker
 
@@ -250,73 +304,68 @@ as of the last check.
 
 Separately, `gh` CLI access itself remains gated behind an interactive
 approval prompt with no owner present to answer it in this sandbox's
-permission mode (reconfirmed this cycle, `gh auth status` → "This command
-requires approval"), so GitHub-side PR/CI state (PR #7, PR #11, workflow
-run metadata) still cannot be pulled directly. This is a secondary,
-independent blocker from the Staging-credentials one above; it affects
-only GitHub-metadata inspection, not local repository work, which
-proceeded normally. `docker` itself is reachable this cycle, but no local
-Supabase stack is running and the `supabase` CLI is not installed, so
-Queue item 7's Supabase-regression half stays blocked on tooling, not on
-the `docker`-approval issue specifically.
+permission mode (reconfirmed this cycle, `gh auth status` → requires
+approval), so GitHub-side PR/CI state (PR #7, PR #11, workflow run
+metadata) still cannot be pulled directly. This is a secondary, independent
+blocker from the Staging-credentials one above; it affects only
+GitHub-metadata inspection, not local repository work, which proceeded
+normally. `docker` itself is reachable this cycle, but no local Supabase
+stack is running and the `supabase` CLI is not installed, so Queue item 7's
+Supabase-regression half stays blocked on tooling, not on the
+`docker`-approval issue specifically.
 
 THIS CYCLE ONLY — the same intermittent blocker recurred again: `git add`
 was gated behind an interactive approval prompt with no owner present in
 this cycle's sandbox permission mode, retried once and still blocked
 (read-only commands — `git status`/`git log`/`git diff`/`git show`/
 `git branch`/`git cat-file` — were unaffected and ran normally throughout).
-This cycle it blocks something more than just this file's own update:
-**two source files (`supabase/functions/email-provider-webhook/index.ts`
-and `src/lib/__tests__/emailDeliveryLog.test.ts`) have a real, validated
-fix sitting uncommitted in the working tree** (timing-safe webhook
-signature comparison — see Current Task Status/Last Evidence). `npx tsc
---noEmit` and `npm test -- --runInBand` (911/911) both PASS against the
-current working tree including this fix, so the fix itself is
-fully evidenced even though it has not yet been committed or pushed.
-**The next cycle's very first action must be `git add
-supabase/functions/email-provider-webhook/index.ts
-src/lib/__tests__/emailDeliveryLog.test.ts && git commit` (only those two
-files — check `git status`/`git diff` first to confirm nothing else
-changed and no unrelated work is swept in), then push, before selecting
-any new task.** Four cycles running into this same gate now
-(`9656c76`, `bc490fc`, `d03e6da` all eventually cleared and committed
-successfully; this cycle did not clear before the turn budget ran out) —
-still looks like sandbox-side permission-mode variance per cycle, not
-anything fixable from inside the repository, but this is the first cycle
-where the blocked commit carries an actual code fix rather than only this
-state file's own bookkeeping, so recovering it next cycle matters more
-than usual.
+**Three files (`jest.setup.js`, `src/notifications/reminderEntry.ts`,
+`src/notifications/__tests__/notificationService.test.ts`) plus this
+file's own update have a real, validated fix sitting uncommitted in the
+working tree** (notification-open test coverage — see Current Task
+Status/Last Evidence). `npx tsc --noEmit` and `npm test -- --runInBand`
+(917/917) both PASS against the current working tree including this fix,
+so the fix itself is fully evidenced even though it has not yet been
+committed or pushed. **The next cycle's very first action must be
+`git add jest.setup.js src/notifications/reminderEntry.ts
+src/notifications/__tests__/notificationService.test.ts EXECUTION_STATE.md
+&& git commit` (check `git status`/`git diff` first to confirm nothing
+else changed and no unrelated work is swept in), then push, before
+selecting any new task.** This same `git add` gate has now recurred across
+multiple non-consecutive cycles (it cleared normally in between, including
+for `e52c7ae`) — still looks like sandbox-side permission-mode variance per
+cycle, not anything fixable from inside the repository.
 
 These blockers do not stop execution — see Queue below for independent
 safe tasks that do not depend on them.
 
 ## Next Safe Task
 
-**First, before anything else:** commit and push the two files already
+**First, before anything else:** commit and push the three files already
 fixed and validated in this cycle's working tree (see Blocker) —
-`supabase/functions/email-provider-webhook/index.ts` and
-`src/lib/__tests__/emailDeliveryLog.test.ts`. Re-run
-`npx tsc --noEmit`/`npm test -- --runInBand` once more right before
-committing only if any other change has touched the tree meanwhile;
-otherwise this cycle's PASS result already covers exactly this diff.
+`jest.setup.js`, `src/notifications/reminderEntry.ts`,
+`src/notifications/__tests__/notificationService.test.ts` — together with
+this file's own update. Re-run `npx tsc --noEmit`/`npm test --
+--runInBand` once more right before committing only if any other change
+has touched the tree meanwhile; otherwise this cycle's PASS result already
+covers exactly this diff.
 
 After that is committed and pushed: re-attempt Queue item 7's still-open
 Supabase-regression half via `gh`/a local Supabase stack (only if the
 sandbox's permission mode allows it that cycle — this cycle reconfirmed
 both `gh auth status` and `npm view` registry access are gated, and the
-`supabase` CLI is still not installed, so this has now failed the same
-way for four cycles running). If still blocked, both Queue item 8 (QA
-Guardian) and this cycle's Queue item 3 email-delivery sub-task have now
-covered every named Batch 3/4 surface, both stacked branches' distinct
-feature UI, and the full email-delivery/observability surface named in
-QA_RELEASE_GUARDIAN.md's "Current critical QA themes". The next
-independent credential-free sub-task would be a source-level QA pass over
-the remaining named theme not yet covered by a dedicated sweep: "real
-device notification-open behavior" — reading the native-notification
-open/deep-link handling code (`src/notifications/`) for the same class of
-QA read (this still cannot exercise a real device, so it would close out
-as code-review evidence only, same limitation already on file for the
-Staging-dependent items).
+`supabase` CLI is still not installed, so this has now failed the same way
+for five cycles running). If still blocked: every named
+QA_RELEASE_GUARDIAN.md theme (email delivery/observability, RTL/responsive
++ dog-sex copy + mascot/Reduced Motion, production-sensitive System Admin
+operations, and now real-device notification-open behavior) has now had a
+dedicated credential-free sweep across every Batch 3/4 surface and both
+stacked branches' distinct feature UI. The next independent credential-free
+sub-task would be a second-pass re-audit of the single highest-risk area
+(System Admin approval transition + email delivery, both touching
+money-adjacent trust/security boundaries), re-verified against current
+`git log`/`git diff` rather than this file's past sweep lists in case new
+commits landed on either stacked branch since the last read.
 
 ## Approval Required
 
@@ -361,6 +410,40 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
+- Housekeeping: corrected this file's stale "NOT YET COMMITTED" claim from
+  the previous cycle — that cycle's webhook timing-safe-comparison fix was
+  actually already committed and pushed as `e52c7ae`; only this file's own
+  narrative had not been updated to reflect it. No repository action
+  needed beyond the correction.
+- Queue item 6 sub-task — QA_RELEASE_GUARDIAN.md sweep ("real device
+  notification-open behavior" theme) over the notification-open/deep-link
+  entry point: `notificationService.ts`'s `subscribeToWalkReminderResponses()`,
+  `reminderEntry.ts`, `HomeScreen.tsx`'s consumer, `ReminderMascotPrompt.tsx`/
+  `MascotFrameAnimation.tsx`, `App.tsx`'s cold-start wiring, and
+  `RootNavigator.tsx`. Found and **fixed** a real test-coverage gap:
+  `subscribeToWalkReminderResponses()` — the function that turns a real OS
+  notification tap into the mascot reminder prompt — had zero test
+  coverage, and the shared `expo-notifications` jest mock didn't even
+  expose the APIs it needs, so the function's own unavailable-guard made it
+  silently a no-op under any test that called it. Extended `jest.setup.js`'s
+  mock, added a test-only `__resetReminderEntryForTests()` hook to
+  `reminderEntry.ts`, and added 6 new tests to `notificationService.test.ts`
+  covering cold-launch dispatch/consume-once, no-response, malformed
+  payload rejection, the live OS listener, unsubscribe cleanup, and the
+  Web/unavailable no-op path. No other release-blocking gap found in the
+  surface read (RTL, Reduced Motion, navigation target all correct — see
+  Current Task Status for detail). Re-ran the full local validation gate:
+  `npx tsc --noEmit` PASS, `npm test -- --runInBand` 89/89 suites,
+  **917/917** tests PASS (911 baseline + 6 new).
+  **NOT YET COMMITTED** — `git add` was gated behind the same recurring
+  interactive-approval prompt as several prior cycles; see Blocker for the
+  required next-cycle recovery step. Reconfirmed `gh auth status` and
+  `npm view` (registry access) are both still approval-gated and no
+  `supabase` CLI is available, so Queue item 7 stays blocked for another
+  cycle.
+
+### Previous cycle (for continuity)
+
 - Queue item 3 sub-task — QA_RELEASE_GUARDIAN.md sweep ("email
   delivery/observability and failure handling" theme) over
   `0034_email_delivery_log.sql`, `create-verified-family/index.ts`,
@@ -372,17 +455,8 @@ proceed even while 1–3/6 are blocked.
   in `src/lib/__tests__/emailDeliveryLog.test.ts`. Also confirmed (noted,
   not actionable — out of RC scope) that the admin read RPC
   `system_admin_list_email_delivery_log()` has no client-side UI consumer
-  on any branch. Re-ran the full local validation gate: `npx tsc --noEmit`
-  PASS, `npm test -- --runInBand` 89/89 suites, **911/911** tests PASS
-  (this file's Last Evidence entry, 2026-09-13T19:44:00Z).
-  **NOT YET COMMITTED** — `git add` was gated behind the same recurring
-  interactive-approval prompt as prior cycles; see Blocker for the
-  required next-cycle recovery step. Reconfirmed `gh auth status` and
-  `npm view` (registry access) are both still approval-gated and no
-  `supabase` CLI is available, so Queue item 7 stays blocked for another
-  cycle.
-
-### Previous cycle (for continuity)
+  on any branch. Committed and pushed as `e52c7ae` (together with that
+  cycle's own state-file update).
 
 - Queue item 8 sub-task — QA_RELEASE_GUARDIAN.md sweep (RTL/responsive,
   dog-sex/grammatical copy, mascot/Reduced Motion, production-sensitive

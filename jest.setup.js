@@ -18,6 +18,11 @@ jest.mock('expo-notifications', () => ({
   // care override this per-test.
   getAllScheduledNotificationsAsync: jest.fn().mockResolvedValue([]),
   setNotificationChannelAsync: jest.fn().mockResolvedValue(undefined),
+  // Notification-open / deep-link entry point (subscribeToWalkReminderResponses):
+  // cold-launch consumption plus the live-tap listener.
+  getLastNotificationResponseAsync: jest.fn().mockResolvedValue(null),
+  clearLastNotificationResponseAsync: jest.fn().mockResolvedValue(undefined),
+  addNotificationResponseReceivedListener: jest.fn().mockReturnValue({ remove: jest.fn() }),
   AndroidImportance: { HIGH: 4 },
   SchedulableTriggerInputTypes: { DATE: 'date' },
 }));
