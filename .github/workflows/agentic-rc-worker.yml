@@ -235,9 +235,6 @@ jobs:
           npm run typecheck
           npm test -- --runInBand
           git diff --check
-            echo "Worker completed without repository changes." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
 
           git config user.name "walkie-agentic-worker[bot]"
           git config user.email "walkie-agentic-worker[bot]@users.noreply.github.com"
