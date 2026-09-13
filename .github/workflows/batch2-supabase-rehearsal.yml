@@ -2,7 +2,6 @@ name: Batch 2 Supabase Rehearsal
 
 on:
   pull_request:
-    branches: [main]
     paths:
       - "supabase/**"
       - "src/lib/verifiedAdminOnboarding.ts"
