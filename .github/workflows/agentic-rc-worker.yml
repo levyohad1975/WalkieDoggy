@@ -1,0 +1,134 @@
+name: Agentic RC Worker
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+      - Batch 2 Supabase Rehearsal
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+  id-token: write
+
+concurrency:
+  group: agentic-rc-worker
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    name: Autonomous RC continuation
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'workflow_dispatch')
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+    steps:
+      - name: Checkout target ref
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}
+
+      - name: Detect worker authentication
+        id: auth
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            echo "mode=oauth" >> "$GITHUB_OUTPUT"
+          elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "mode=api" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=none" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Record inactive worker state
+        if: steps.auth.outputs.mode == 'none'
+        shell: bash
+        run: |
+          {
+            echo "## Agentic RC Worker"
+            echo
+            echo "No Claude worker credential is configured."
+            echo "The workflow exits safely without mutation."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run Claude worker with OAuth token
+        if: steps.auth.outputs.mode == 'oauth'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          additional_permissions: |
+            actions: read
+          prompt: |
+            Act as the Walkie Doggy Release Candidate autonomous execution worker.
+
+            First read AGENTS.md, EXECUTION_STATE.md, and
+            docs/engineering/AGENTIC_EXECUTION_V1.md before acting.
+            Reconstruct state from fresh repository/GitHub evidence.
+
+            Trigger context:
+            - event: ${{ github.event_name }}
+            - upstream workflow: ${{ github.event.workflow_run.name || 'manual-dispatch' }}
+            - upstream run id: ${{ github.event.workflow_run.id || 'n/a' }}
+            - upstream conclusion: ${{ github.event.workflow_run.conclusion || 'manual' }}
+            - target branch: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+            - target sha: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+            Locked RC queue:
+            1. Staging family-creation E2E through persisted family, invite/join code/link/QR and second-member join.
+            2. AUTO_APPROVE_NEW_FAMILIES true/false plus System Admin approve/reject.
+            3. Welcome/system-owner email, Resend webhook and email_delivery_log.
+            4. Settings/Roles/System Admin QA and release-blocking fixes.
+            5. Batch 4 regression.
+            6. Real iPhone E2E/RTL/navigation/family flows.
+            7. Full CI and Supabase regression.
+            8. QA Guardian.
+            Then stop at the Release Candidate approval gate.
+
+            Execute the highest-priority safe task possible from this environment.
+            If an upstream run failed, inspect the failure and attempt the smallest safe repository-side fix permitted by AGENTS.md.
+            If it passed, advance to the next executable safe RC task instead of only reporting.
+
+            Never merge. Never direct-push main. Never deploy to Production.
+            Never run Production migrations or modify Production data/RLS/secrets/credentials.
+            Never perform destructive/irreversible actions, purchases/charges, or public publishing.
+            Do not expose or print secrets.
+            No evidence = not completed.
+
+            End with: Current Task, Status, Fresh Evidence, Blocker,
+            Next Safe Task, Owner Approval Required, Action Taken.
+          claude_args: |
+            --max-turns 12
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*)"
+
+      - name: Run Claude worker with Anthropic API key
+        if: steps.auth.outputs.mode == 'api'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          additional_permissions: |
+            actions: read
+          prompt: |
+            Act as the Walkie Doggy Release Candidate autonomous execution worker.
+            Read AGENTS.md, EXECUTION_STATE.md, and docs/engineering/AGENTIC_EXECUTION_V1.md first.
+            Reconstruct state from fresh repository/GitHub evidence and execute the highest-priority safe RC task permitted by those rules.
+            Never merge, direct-push main, deploy to Production, run Production migrations, modify Production data/RLS/secrets/credentials, expose secrets, perform destructive actions, purchases/charges, or public publishing.
+            No evidence = not completed.
+            End with: Current Task, Status, Fresh Evidence, Blocker, Next Safe Task, Owner Approval Required, Action Taken.
+          claude_args: |
+            --max-turns 12
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*)"
