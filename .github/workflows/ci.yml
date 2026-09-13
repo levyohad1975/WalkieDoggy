@@ -29,34 +29,8 @@ jobs:
         run: |
           set -euo pipefail
           workflow=".github/workflows/agentic-rc-worker.yml"
-          grep -Eq '^[[:space:]]+id-token:[[:space:]]+write[[:space:]]*        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Run tests
-        run: npm test -- --runInBand
- "$workflow"
-          if grep -Eq '^[[:space:]]+(pull-requests|issues):[[:space:]]+write[[:space:]]*        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Run tests
-        run: npm test -- --runInBand
- "$workflow"; then
+          grep -Eq '^[[:space:]]+id-token:[[:space:]]+write[[:space:]]*$' "$workflow"
+          if grep -Eq '^[[:space:]]+(pull-requests|issues):[[:space:]]+write[[:space:]]*$' "$workflow"; then
             echo "::error::Agentic worker permissions are broader than the approved contract."
             exit 1
           fi
