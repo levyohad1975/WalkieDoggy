@@ -16,10 +16,7 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
-  issues: write
   actions: read
-  id-token: write
 
 concurrency:
   group: agentic-rc-worker-${{ github.event.workflow_run.head_branch || inputs.target_branch || github.ref_name }}
@@ -43,20 +40,40 @@ jobs:
 
     steps:
       - name: Guard autonomous target
+        id: guard
         shell: bash
         run: |
           set -euo pipefail
           if [ "$TARGET_BRANCH" = "main" ]; then
-            echo "Manual execution on main is inspection/test-only. Repository mutations and pushes remain forbidden." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "Autonomous feature-branch target: $TARGET_BRANCH" >> "$GITHUB_STEP_SUMMARY"
+            echo "mode=read" >> "$GITHUB_OUTPUT"
+            echo "Manual execution on main is inspection/test-only." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
+
+          git check-ref-format --branch "$TARGET_BRANCH" >/dev/null
+          if [[ "$TARGET_BRANCH" == *".."* || "$TARGET_BRANCH" == *"//"* || "$TARGET_BRANCH" == *"@{"* ]]; then
+            echo "::error::Unsafe target branch syntax."
+            exit 1
+          fi
+
+          case "$TARGET_BRANCH" in
+            feat/*|fix/*|chore/*|test/*|docs/*|rc/*)
+              ;;
+            *)
+              echo "::error::Writable target must be an approved non-main feature branch."
+              exit 1
+              ;;
+          esac
+
+          echo "mode=write" >> "$GITHUB_OUTPUT"
+          echo "Validated autonomous feature-branch target: $TARGET_BRANCH" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Checkout target ref
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ env.TARGET_BRANCH }}
+          persist-credentials: ${{ steps.guard.outputs.mode == 'write' }}
 
       - name: Detect worker authentication
         id: auth
@@ -133,7 +150,7 @@ jobs:
             Next Safe Task, Owner Approval Required, Action Taken.
           claude_args: |
             --max-turns 30
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git branch:*),Bash(git checkout:*),Bash(git add:*),Bash(git commit:*),Bash(git push origin HEAD:*)"
+            --allowedTools "${{ steps.guard.outputs.mode == 'write' && 'Read,Edit,Write,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*)' || 'Read,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*)' }}"
 
       - name: Run Claude worker with Anthropic API key
         if: steps.auth.outputs.mode == 'api'
@@ -153,4 +170,42 @@ jobs:
             End with: Current Task, Status, Fresh Evidence, Blocker, Next Safe Task, Owner Approval Required, Action Taken.
           claude_args: |
             --max-turns 30
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git branch:*),Bash(git checkout:*),Bash(git add:*),Bash(git commit:*),Bash(git push origin HEAD:*)"
+            --allowedTools "${{ steps.guard.outputs.mode == 'write' && 'Read,Edit,Write,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*)' || 'Read,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*)' }}"
+
+
+      - name: Commit and push validated feature-branch changes
+        if: success() && steps.guard.outputs.mode == 'write' && steps.auth.outputs.mode != 'none'
+        shell: bash
+        env:
+          SAFE_TARGET_BRANCH: ${{ github.event.workflow_run.head_branch || inputs.target_branch || github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          case "$SAFE_TARGET_BRANCH" in
+            feat/*|fix/*|chore/*|test/*|docs/*|rc/*)
+              ;;
+            *)
+              echo "::error::Refusing to publish to an unapproved branch."
+              exit 1
+              ;;
+          esac
+
+          current_branch="$(git branch --show-current)"
+          if [ "$current_branch" != "$SAFE_TARGET_BRANCH" ]; then
+            echo "::error::Current branch does not match the validated target."
+            exit 1
+          fi
+
+          git diff --check
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Worker completed without repository changes." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          git config user.name "walkie-agentic-worker[bot]"
+          git config user.email "walkie-agentic-worker[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "chore(agentic): continue RC execution"
+          git push origin "HEAD:refs/heads/$SAFE_TARGET_BRANCH"
+          echo "Published a validated commit to $SAFE_TARGET_BRANCH." >> "$GITHUB_STEP_SUMMARY"
