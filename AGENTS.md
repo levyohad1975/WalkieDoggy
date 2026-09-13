@@ -35,6 +35,26 @@ For every meaningful task, classify it before editing as Engineering, Creative, 
 
 For auth, permissions, onboarding identity, database-backed workflows, notification security, system administration, migrations, and other security-sensitive user-visible work, Engineering leads technical architecture and security while Creative contributes experience and presentation. Client/UI behavior never substitutes for server-side authorization. If a conflict affects security, data integrity, authorization, or production safety, `AGENTS.md` and Engineering authority prevail; surface the conflict rather than guessing. If evidence is insufficient or a security/production boundary is crossed, stop and follow the applicable existing approval rules.
 
+## Agentic Execution Worker
+
+For autonomous multi-cycle execution against the Release Candidate
+pipeline (an owner-directed "keep executing safe tasks and report
+evidence" mode, as opposed to a single one-off task), read, in order,
+before taking any action:
+
+1. `EXECUTION_STATE.md` — the live single source of truth for current
+   task, status, evidence, blocker, and the next-safe-task queue.
+2. `docs/engineering/AGENTIC_EXECUTION_V1.md` — the execution protocol,
+   state machine, evidence rules, and approval gates this file's state is
+   governed by.
+
+This applies to Claude, Codex, or any other execution worker operating in
+this mode. Follow the loop and safety/scope rules defined there. Nothing
+in that protocol weakens or replaces any rule below or elsewhere in this
+file — in particular the git-push and production-approval rules below
+remain fully in force; the Agentic V1 documents add a state-tracking and
+continuity layer on top of them, not new authority.
+
 ## Working rules
 
 1. Work only inside this repository.
