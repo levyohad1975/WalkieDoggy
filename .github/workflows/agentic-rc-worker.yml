@@ -8,6 +8,11 @@ on:
     types:
       - completed
   workflow_dispatch:
+    inputs:
+      target_branch:
+        description: "Feature branch to continue; leave blank to use the selected workflow branch"
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -17,7 +22,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: agentic-rc-worker
+  group: agentic-rc-worker-${{ github.event.workflow_run.head_branch || inputs.target_branch || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -30,17 +35,28 @@ jobs:
         (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'workflow_dispatch')
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      TARGET_BRANCH: ${{ github.event.workflow_run.head_branch || inputs.target_branch || github.ref_name }}
 
     steps:
+      - name: Guard autonomous target
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$TARGET_BRANCH" = "main" ]; then
+            echo "Manual execution on main is inspection/test-only. Repository mutations and pushes remain forbidden." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Autonomous feature-branch target: $TARGET_BRANCH" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Checkout target ref
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}
+          ref: ${{ env.TARGET_BRANCH }}
 
       - name: Detect worker authentication
         id: auth
@@ -85,7 +101,7 @@ jobs:
             - upstream workflow: ${{ github.event.workflow_run.name || 'manual-dispatch' }}
             - upstream run id: ${{ github.event.workflow_run.id || 'n/a' }}
             - upstream conclusion: ${{ github.event.workflow_run.conclusion || 'manual' }}
-            - target branch: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+            - target branch: ${{ env.TARGET_BRANCH }}
             - target sha: ${{ github.event.workflow_run.head_sha || github.sha }}
 
             Locked RC queue:
@@ -103,17 +119,21 @@ jobs:
             If an upstream run failed, inspect the failure and attempt the smallest safe repository-side fix permitted by AGENTS.md.
             If it passed, advance to the next executable safe RC task instead of only reporting.
 
-            Never merge. Never direct-push main. Never deploy to Production.
+            For a non-main TARGET_BRANCH you may edit files, run approved tests, create commits, and push only to that same TARGET_BRANCH.
+            For TARGET_BRANCH=main you are inspection/test-only: do not edit, commit, or push repository changes.
+            Never create, update, or merge a PR unless the repository governance explicitly permits that action; never merge under any circumstance.
+            Never direct-push main. Never deploy to Production.
             Never run Production migrations or modify Production data/RLS/secrets/credentials.
             Never perform destructive/irreversible actions, purchases/charges, or public publishing.
             Do not expose or print secrets.
             No evidence = not completed.
+            If one path is blocked, select the next independent safe RC task.
 
             End with: Current Task, Status, Fresh Evidence, Blocker,
             Next Safe Task, Owner Approval Required, Action Taken.
           claude_args: |
-            --max-turns 12
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*)"
+            --max-turns 30
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git branch:*),Bash(git checkout:*),Bash(git add:*),Bash(git commit:*),Bash(git push origin HEAD:*)"
 
       - name: Run Claude worker with Anthropic API key
         if: steps.auth.outputs.mode == 'api'
@@ -126,9 +146,11 @@ jobs:
             Act as the Walkie Doggy Release Candidate autonomous execution worker.
             Read AGENTS.md, EXECUTION_STATE.md, and docs/engineering/AGENTIC_EXECUTION_V1.md first.
             Reconstruct state from fresh repository/GitHub evidence and execute the highest-priority safe RC task permitted by those rules.
+            Target branch is ${{ env.TARGET_BRANCH }}.
+            On a non-main target you may edit, test, commit, and push only to that same target branch. On main you are inspection/test-only.
             Never merge, direct-push main, deploy to Production, run Production migrations, modify Production data/RLS/secrets/credentials, expose secrets, perform destructive actions, purchases/charges, or public publishing.
             No evidence = not completed.
             End with: Current Task, Status, Fresh Evidence, Blocker, Next Safe Task, Owner Approval Required, Action Taken.
           claude_args: |
-            --max-turns 12
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*)"
+            --max-turns 30
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git branch:*),Bash(git checkout:*),Bash(git add:*),Bash(git commit:*),Bash(git push origin HEAD:*)"
