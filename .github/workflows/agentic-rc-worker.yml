@@ -150,7 +150,7 @@ jobs:
             End with: Current Task, Status, Fresh Evidence, Blocker,
             Next Safe Task, Owner Approval Required, Action Taken.
           claude_args: |
-            --max-turns 30
+            --max-turns 50
             --allowedTools "${{ steps.guard.outputs.mode == 'write' && 'Read,Edit,Write,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*)' || 'Read,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*)' }}"
 
       - name: Run Claude worker with Anthropic API key
@@ -170,7 +170,7 @@ jobs:
             No evidence = not completed.
             End with: Current Task, Status, Fresh Evidence, Blocker, Next Safe Task, Owner Approval Required, Action Taken.
           claude_args: |
-            --max-turns 30
+            --max-turns 50
             --allowedTools "${{ steps.guard.outputs.mode == 'write' && 'Read,Edit,Write,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*)' || 'Read,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*)' }}"
 
 
