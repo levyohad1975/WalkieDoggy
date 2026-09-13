@@ -34,6 +34,15 @@ jobs:
             echo "::error::Agentic worker permissions are broader than the approved contract."
             exit 1
           fi
+          [ "$(grep -c -- '--max-turns 60' "$workflow")" -eq 2 ]
+          [ "$(grep -c 'continue-on-error: true' "$workflow")" -eq 2 ]
+          grep -q 'name: Record validated Claude result' "$workflow"
+          grep -q 'name: Enforce validated Claude completion' "$workflow"
+          grep -q 'npm run typecheck' "$workflow"
+          grep -q 'npm test -- --runInBand' "$workflow"
+          grep -q 'AGENTIC_RC_TARGET_BRANCH' "$workflow"
+          grep -Eq '^[[:space:]]+PUSH_TOKEN:[[:space:]]+' "$workflow"
+          grep -q 'x-access-token:%s' "$workflow"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
