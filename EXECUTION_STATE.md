@@ -27,60 +27,65 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 
 ## Current Task
 
-Queue item 5 — Batch 4 regression: repository-level, credential-free sweep
-of migrations `0026`/`0027`/`0028`/`0031` (admin direct reschedule, History/
-Statistics server enforcement, invite detail preview, admin mutual walk
-swap) and their client call sites, following the same upstream
-`Batch 2 Supabase Rehearsal` workflow run (id `34754710595`, conclusion
-`success`) on `feat/verified-auth-onboarding-batch-2` @
-`63c00fb7e84f1f2b371e6739d5d3d05dda6754f7` — this cycle's repo state was
-already one commit ahead of that sha (`94a19a5`, the prior cycle's own
-Queue-item-4 close-out), reconciled as expected drift, not new work lost.
+Queue item 8 (QA Guardian sub-task) — credential-free QA_RELEASE_GUARDIAN.md
+sweep (Hebrew RTL/responsive, dog-sex/grammatical copy, mascot/Reduced
+Motion) over the UI touched by Batches 3/4: the admin reschedule/swap UI
+(`EditWalkModal.tsx`, `SwapWalkPickerModal.tsx`), `FamilyOnboardingScreen.tsx`'s
+0028 invite-detail preview block, and `HistoryScreen.tsx`/`StatisticsScreen.tsx`.
+Selected per the prior cycle's own "Next Safe Task" note, since both
+higher-priority alternatives were re-confirmed still blocked this cycle
+(see Last Evidence/Blocker).
 
 ## Current Task Status
 
-DONE. All four migrations and their identified client call sites
-(`src/lib/walkAdmin.ts`, `src/store/scheduleStore.ts`
-(`rescheduleWalk`/`swapTwoWalks`), `src/lib/invites.ts` +
-`FamilyOnboardingScreen.tsx` (`inspectFamilyInviteDetail`),
-`src/lib/permissionedWalks.ts` + `HistoryScreen.tsx`/`StatisticsScreen.tsx`/
-`HomeScreen.tsx`, `src/data/supabaseRepository.ts`'s `toWalk`/swap-column
-mapping) were read in full. No release-blocking gap found:
+DONE. Fresh (this-cycle) independent read of each in-scope file against
+the four QA_RELEASE_GUARDIAN.md themes named in Queue item 6/8 (RTL/
+responsive, dog-sex/grammatical copy, mascot/Reduced Motion). No
+release-blocking gap found:
 
-- `admin_reschedule_walk`/`admin_swap_walks` (0026/0031) are admin-gated via
-  `is_family_admin()` (fail-closed under impersonation), collision/pending/
-  same-family checked, audited, and their client wrappers
-  (`src/lib/walkAdmin.ts`) do not perform any redundant second raw write —
-  matches `scheduleStore.ts`'s own documented single-authoritative-write
-  correction.
-- The 0031 `admin_swap_walks` "both walks must belong to the same dog"
-  constraint is a no-op in practice, not a latent UI gap: `familyStore.ts`
-  models exactly one `dog: Dog | null` per family (not an array), so every
-  walk in a family already shares the same `dogId` — confirmed by reading
-  `familyStore.ts` rather than assumed.
-- `swapWalksMutual` (`src/logic/walkActions.ts`) reproduces
-  `admin_swap_walks`'s `swap_original_user_id`
-  coalesce-preserve-across-swaps semantics exactly, and
-  `supabaseRepository.ts`'s `toWalk`/write-mapping round-trips all four
-  `swap_*` columns consistently with it.
-- `inspect_family_invite_detail` (0028) is additive/narrower-safe per its
-  own header reasoning (never returns family_id/token_hash/raw token; rich
-  fields only for a still-pending/unexpired token) and
-  `FamilyOnboardingScreen.tsx` only renders `dogPhotoUrl`/`members` when
-  present, matching the RPC's own pending-only gating.
-- `has_member_permission`/the tightened `walks` RLS policy/
-  `list_history_walks`/`list_statistics_walks`/`get_last_resolved_walk`
-  (0027) fail closed on an unknown permission key and on no active family;
-  `permissionedWalks.ts`'s wrappers are the screens' actual dataset (not a
-  discarded probe), matching the migration's own corrected model.
-- A handful of 0026/0031 raise strings (`walk not found in this family`,
-  `choose a different walk`, `one of the swap members is no longer active`,
-  `both walks must belong to the same dog`) have no entry in
-  `src/lib/errorMessages.ts` and fall through to the generic Hebrew
-  fallback. Checked against precedent: `walk not found in this family` is a
-  pre-existing 0005 string already left unmapped today, so this is
-  consistent existing convention for rare/edge "stale UI" cases, not a
-  regression introduced by this batch — not treated as release-blocking.
+- `EditWalkModal.tsx`/`SwapWalkPickerModal.tsx`: all copy renders through
+  `RtlText`, right-aligned; both already carry prior-round "final QA"
+  fix comments (sheet-collapse `flexGrow:0/flexShrink:1` fix, dedicated
+  full-size swap picker replacing a cramped nested ScrollView) — no new
+  regression found on top of that prior work. No dog-gendered copy in
+  either file (walk/user text only, no dog pronouns).
+- `FamilyOnboardingScreen.tsx`'s 0028 invite-detail preview block: dog
+  name/photo row uses `previewDogRow: { flexDirection: 'row-reverse',
+  alignItems: 'center' }` and the member-avatar row uses
+  `justifyContent: 'flex-end'` — both correctly RTL-anchored, not left as
+  a bare unflipped `row`. Dog-name label is gender-neutral ("שם הכלב/ה")
+  matching the app's established dog-sex-neutral-copy convention.
+  Mascot usage (`WalkieMascot state="idle"`) delegates Reduced-Motion
+  handling entirely to `WalkieMascot.tsx` itself, which already fails
+  closed to static (`useState(true)` fail-safe default until
+  `AccessibilityInfo.isReduceMotionEnabled()` resolves) — no bypass
+  introduced at the call site.
+- `HistoryScreen.tsx`/`StatisticsScreen.tsx`: RTL rows consistently use
+  the project's `nativeDirection('rtl')` pin (see `theme/tokens.ts`)
+  alongside `RtlText`/`textAlign:'right'`/`writingDirection:'rtl'`;
+  numeric KPI values are deliberately kept LTR via a separate
+  `ltrText`/ `nativeDirection` pairing, matching the documented
+  Countdown.tsx precedent for "digits must stay LTR, labels stay RTL."
+  Neither screen references dog sex/pronouns at all (counts and names
+  only), and `HistoryScreen.tsx`'s dog-name fallback ("הכלב/ה") is
+  already gender-neutral.
+- Noted, not actionable: `src/components/EditWalkModal.tsx`'s `userRow`
+  chip grid (`flexDirection:'row', flexWrap:'wrap'`) does not use
+  `nativeDirection('rtl')` the way History/Statistics' single-line rows
+  do. Read `nativeDirection`'s own doc comment and the Countdown.tsx bug
+  it fixes: the pin exists for rows whose *physical* left-to-right vs.
+  right-to-left order carries meaning (digit sequences, single-line
+  label rows). A wrapping chip grid has no such meaning to preserve
+  either way, this component predates Batch 3/4 and already carries
+  multiple past QA-round fix comments, and no test or QA record flags it
+  as a regression — treated as a pre-existing, non-blocking convention
+  difference, not a defect, and intentionally not touched this cycle to
+  avoid an unreviewed layout change outside the requested scope.
+- Also noted, not actionable: a pre-existing tracked stray file,
+  `src/components/WalkRow.tsx.encoding-backup` (committed at `bea2739`,
+  "before major change", unrelated to Batches 3/4). Repo-hygiene-only,
+  no behavior impact; left untouched as out of scope for a QA content
+  sweep.
 
 Confirmed the full local validation gate still passes with zero code
 changes needed for this sweep — see Last Evidence. Queue item 7's
@@ -98,45 +103,43 @@ Supabase-regression half remains BLOCKED — see Blocker.
 ## Last Evidence
 
 - Repo state reconciled at cycle start: on `feat/verified-auth-onboarding-batch-2`,
-  clean tree, HEAD `94a19a5` (two commits ahead of the trigger's target sha
-  `63c00fb`: `da6deea` and `94a19a5` are both the prior cycle's own
-  state-tracking + Queue-item-4 close-out commits — expected and
-  consistent, not a drift). Confirmed via `git show --stat` on both commits
-  that `94a19a5` contains exactly the Edge Function welcome-email fix, its
-  regression test, and the `EXECUTION_STATE.md` update described in the
-  previous cycle's evidence below — nothing lost, nothing to redo.
+  clean tree, HEAD `9656c76` (the prior cycle's own successful commit of
+  its Queue-item-5 close-out and this file's update — confirmed via
+  `git show --stat 9656c76`: `EXECUTION_STATE.md` only, no source changes
+  — so the prior cycle's "THIS CYCLE ONLY" git-commit-approval blocker
+  resolved itself before that cycle ended; nothing was lost or needs
+  redoing). Trigger's target sha `eff4228` is a older ancestor on this
+  same branch (`ci: add isolated Agentic Staging readiness gate (#24)`);
+  branch has legitimately advanced past it since dispatch, not a drift to
+  reconcile.
 - `gh auth status` again required interactive approval with no owner
   present in this sandbox's permission mode this cycle too — same
-  secondary GitHub-tooling blocker already on file, not retried
-  repeatedly, not new information.
-- QA read performed (Queue item 5, this cycle): full read of
-  `supabase/migrations/0026_admin_reschedule_walk.sql`,
-  `0027_history_statistics_server_enforcement.sql`,
-  `0028_family_invite_detail_preview.sql`,
-  `0031_admin_mutual_walk_swap.sql`, plus client call sites
-  `src/lib/walkAdmin.ts`, `src/lib/invites.ts`, `src/lib/permissionedWalks.ts`,
-  `src/store/scheduleStore.ts`, `src/logic/walkActions.ts`,
-  `src/data/supabaseRepository.ts`, `src/screens/FamilyOnboardingScreen.tsx`,
-  `src/screens/HomeScreen.tsx`, `src/lib/errorMessages.ts`. Finding: sound,
-  no release-blocking gap — full reasoning recorded in Current Task Status
-  above (admin RPCs fail-closed and audited with no redundant client
-  double-write, the same-dog swap constraint is moot by construction
-  because `familyStore.ts` models one dog per family, swap-attribution
-  logic and swap-column mapping match the RPC exactly, invite-detail
-  enrichment stays pending-only gated end to end, and the small set of
-  unmapped rare-error strings matches pre-existing 0005-era convention
-  rather than a new regression).
+  secondary GitHub-tooling blocker already on file, retried once (not
+  repeatedly) to reconfirm it's still current, not new information.
+  `docker ps` succeeded (daemon reachable, zero containers running) but no
+  local Supabase stack is running and the `supabase` CLI is still not
+  installed in this sandbox — Queue item 7's Supabase-regression half
+  remains blocked for the same reason as prior cycles.
+- QA sweep performed (Queue item 8 sub-task, this cycle): fresh read of
+  `src/components/EditWalkModal.tsx`, `src/components/SwapWalkPickerModal.tsx`,
+  `src/screens/FamilyOnboardingScreen.tsx` (0028 invite-detail preview
+  block), `src/screens/HistoryScreen.tsx`, `src/screens/StatisticsScreen.tsx`,
+  `src/theme/tokens.ts` (`nativeDirection`), `src/components/Countdown.tsx`
+  (precedent for `nativeDirection`'s intended use), and
+  `src/components/WalkieMascot.tsx` (Reduced Motion fail-safe default).
+  Finding: sound, no release-blocking gap — full reasoning recorded in
+  Current Task Status above.
 - `npm ci` — succeeded, 907 packages installed fresh in this sandbox (fresh
   checkout, no `node_modules` present at cycle start).
 - `npx tsc --noEmit` — **PASS**, zero errors, zero output.
 - `npm test -- --runInBand` — **PASS**: Test Suites: 89 passed, 89 total;
-  Tests: 910 passed, 910 total; Snapshots: 0 total; Time ~20s. No test or
+  Tests: 910 passed, 910 total; Snapshots: 0 total; Time ~15s. No test or
   source changes were needed for this cycle's QA sweep — this run
   reconfirms the exact baseline the prior cycle already left green.
 
 ## Last Evidence Timestamp
 
-2026-09-13T13:10:00Z
+2026-09-13T16:45:00Z
 
 ## Blocker
 
@@ -151,42 +154,51 @@ the non-Production deployment/config steps and shares evidence to verify,
 or (B) the owner grants this session the credentials directly. Unanswered
 as of the last check.
 
-Separately, this cycle found `gh` CLI access itself gated behind an
-interactive approval prompt with no owner present to answer it, so
-GitHub-side PR/CI state (PR #7, PR #11, workflow run metadata) could not
-be pulled directly this cycle. This is a secondary, independent blocker
-from the Staging-credentials one above; it affects only GitHub-metadata
-inspection, not local repository work, which proceeded normally.
+Separately, `gh` CLI access itself remains gated behind an interactive
+approval prompt with no owner present to answer it in this sandbox's
+permission mode (reconfirmed this cycle, `gh auth status` → "This command
+requires approval"), so GitHub-side PR/CI state (PR #7, PR #11, workflow
+run metadata) still cannot be pulled directly. This is a secondary,
+independent blocker from the Staging-credentials one above; it affects
+only GitHub-metadata inspection, not local repository work, which
+proceeded normally. `docker` itself is reachable this cycle, but no local
+Supabase stack is running and the `supabase` CLI is not installed, so
+Queue item 7's Supabase-regression half stays blocked on tooling, not on
+the `docker`-approval issue specifically.
 
-THIS CYCLE ONLY — a third, new blocker: `git add`/`git commit` themselves
-were gated behind the same kind of interactive approval prompt in this
-cycle's sandbox permission mode, with no owner present to answer it (read-only
-git commands like `git status`/`git log`/`git diff` were unaffected and ran
-normally). Unlike the previous two cycles (`da6deea`/`94a19a5`, both
-committed and pushed successfully), this cycle's QA-sweep evidence and this
-file's own update are therefore recorded in the working tree only, NOT
-committed or pushed — `git status` shows `EXECUTION_STATE.md` as locally
-modified. No content is lost (nothing destructive was attempted, and this
-is this cycle's own edit, not prior work), and the next cycle should
-re-attempt the commit/push of this file first, before selecting a new task,
-so the queue history stays continuous.
+THIS CYCLE ONLY — the same intermittent blocker recurred: `git add`
+itself was gated behind an interactive approval prompt with no owner
+present in this cycle's sandbox permission mode (read-only git commands —
+`git status`/`git log`/`git diff`/`git show`/`git branch` — were
+unaffected and ran normally throughout). The prior cycle hit this same
+gate and it resolved itself before that cycle ended (`9656c76` committed
+successfully); this cycle it did not clear by the end of the run, so this
+file's own update below is recorded in the working tree only, NOT
+committed or pushed this cycle. Nothing is lost — this is only this
+cycle's own edit, not prior work — and the next cycle should re-attempt
+committing this file first, before selecting a new task, so the queue
+history stays continuous. Given the pattern across cycles (blocked →
+resolved → blocked again with no code-side trigger), this looks like
+sandbox-side permission-mode variance per cycle rather than anything
+fixable from inside the repository.
 
-This blocker does not stop execution — see Queue below for independent
-safe tasks that do not depend on it.
+These blockers do not stop execution — see Queue below for independent
+safe tasks that do not depend on them.
 
 ## Next Safe Task
 
-Queue item 5 is now closed out with no actionable defect found (see
-Current Task Status/Last Evidence above). Next: re-attempt Queue item 7's
-still-open Supabase-regression half via `gh`/`docker` access (only if the
-sandbox's permission mode allows it that cycle — it has not in either of
-the last two cycles); if still blocked, fall back to a fresh line-by-line
-QA pass over `docs/qa/QA_RELEASE_GUARDIAN.md`'s remaining untouched themes
-(Hebrew RTL/responsive, dog-sex/grammatical copy, mascot/Reduced Motion)
-for the files already touched by Batches 3/4 (the admin reschedule/swap
-modals, `FamilyOnboardingScreen.tsx`'s new invite-detail preview UI,
-History/Statistics screens) — a credential-free QA sub-task of Queue item
-8 that does not depend on either open blocker.
+This cycle's Queue item 8 sub-task (QA_RELEASE_GUARDIAN.md sweep over the
+Batch 3/4-touched reschedule/swap/invite-preview/History/Statistics UI) is
+closed out with no actionable defect found (see Current Task Status/Last
+Evidence above). Next: re-attempt Queue item 7's still-open
+Supabase-regression half via `gh`/a local Supabase stack (only if the
+sandbox's permission mode and available tooling allow it that cycle — the
+`supabase` CLI has not been installed in any cycle so far); if still
+blocked, continue the Queue item 8 QA_RELEASE_GUARDIAN.md sweep into its
+remaining untouched surface — the System Admin approve/reject screens on
+the stacked `feat/system-admin-approval-controls` branch (PR #11), and the
+Settings/Roles screens — for the same four themes, another credential-free
+sub-task that does not depend on either open blocker.
 
 ## Approval Required
 
@@ -231,31 +243,26 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
+- Queue item 8 sub-task — QA_RELEASE_GUARDIAN.md sweep (RTL/responsive,
+  dog-sex/grammatical copy, mascot/Reduced Motion) over
+  `EditWalkModal.tsx`/`SwapWalkPickerModal.tsx`/
+  `FamilyOnboardingScreen.tsx`'s 0028 invite-preview block/
+  `HistoryScreen.tsx`/`StatisticsScreen.tsx`. No release-blocking gap
+  found; no code changes required this cycle. Re-ran the full local
+  validation gate as evidence: `npx tsc --noEmit` PASS,
+  `npm test -- --runInBand` 89/89 suites, 910/910 tests PASS (this file's
+  Last Evidence entry, 2026-09-13T16:45:00Z). Reconfirmed `gh` CLI is
+  still approval-gated in this sandbox and no local Supabase stack/CLI is
+  available, so Queue item 7 stays blocked for another cycle.
+
+### Previous cycle (for continuity)
+
 - Queue item 5 — Batch 4 regression: full read of migrations
   0026/0027/0028/0031 and their client call sites
   (`walkAdmin.ts`/`invites.ts`/`permissionedWalks.ts`/`scheduleStore.ts`/
   `walkActions.ts`/`supabaseRepository.ts`/`FamilyOnboardingScreen.tsx`/
-  `HomeScreen.tsx`/`errorMessages.ts`). No release-blocking gap found; no
-  code changes required this cycle. Re-ran the full local validation gate
-  as evidence: `npx tsc --noEmit` PASS, `npm test -- --runInBand` 89/89
-  suites, 910/910 tests PASS (this file's Last Evidence entry,
-  2026-09-13T13:10:00Z). No commit needed — working tree stayed clean
-  (docs-only `EXECUTION_STATE.md` update follows this entry).
-
-### Previous cycle (for continuity)
-
-- Queue item 4 — Settings/Roles/System Admin QA: full read of
-  `SystemAdminScreen.tsx`/`systemAdminStore.ts`/`systemAdmin.ts` and
-  migrations 0024/0029/0030. No release-blocking gap found in the named
-  scope; confirmed the approve/reject UI gap is intentionally deferred to
-  PR #11 (`feat/system-admin-approval-controls`), not a defect on this
-  branch.
-- Adjacent fix (Queue item 3 territory, found during the above QA) —
-  `create-verified-family`'s welcome email no longer claims a `pending`
-  family is ready to share/join; it now sends approval-status-aware
-  content and withholds the (currently non-functional) invite link/QR
-  until a system admin approves. New regression test added. Committed and
-  pushed to `feat/verified-auth-onboarding-batch-2` as `94a19a5`.
+  `HomeScreen.tsx`/`errorMessages.ts`). No release-blocking gap found.
+  Committed and pushed as `9656c76`.
 
 ## Explicitly Out of Scope
 
