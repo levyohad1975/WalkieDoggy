@@ -17,6 +17,7 @@ on:
 permissions:
   contents: write
   actions: read
+  id-token: write
 
 concurrency:
   group: agentic-rc-worker-${{ github.event.workflow_run.head_branch || inputs.target_branch || github.ref_name }}

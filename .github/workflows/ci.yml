@@ -24,6 +24,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate Agentic worker OIDC contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          workflow=".github/workflows/agentic-rc-worker.yml"
+          grep -Eq '^[[:space:]]+id-token:[[:space:]]+write[[:space:]]*$' "$workflow"
+          if grep -Eq '^[[:space:]]+(pull-requests|issues):[[:space:]]+write[[:space:]]*$' "$workflow"; then
+            echo "::error::Agentic worker permissions are broader than the approved contract."
+            exit 1
+          fi
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
