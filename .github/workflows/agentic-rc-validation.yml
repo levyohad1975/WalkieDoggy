@@ -1,0 +1,299 @@
+name: Agentic RC Validation
+
+on:
+  workflow_run:
+    workflows:
+      - Agentic RC Worker
+    types:
+      - completed
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: agentic-rc-validation
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate fresh Agentic RC progress
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      TARGET_BRANCH: ${{ vars.AGENTIC_RC_TARGET_BRANCH || 'feat/verified-auth-onboarding-batch-2' }}
+    outputs:
+      continue: ${{ steps.mark.outputs.continue }}
+      target_branch: ${{ steps.guard.outputs.target_branch }}
+
+    steps:
+      - name: Guard RC target
+        id: guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          git check-ref-format --branch "$TARGET_BRANCH" >/dev/null
+          case "$TARGET_BRANCH" in
+            feat/*|fix/*|chore/*|test/*|docs/*|rc/*)
+              ;;
+            *)
+              echo "::error::Refusing to validate an unapproved or main target branch."
+              exit 1
+              ;;
+          esac
+          if [ "$TARGET_BRANCH" = "main" ]; then
+            echo "::error::Agentic RC validation must never target main."
+            exit 1
+          fi
+          echo "target_branch=$TARGET_BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout RC target
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify this worker run published a fresh commit
+        id: fresh
+        shell: bash
+        env:
+          RUN_STARTED_AT: ${{ github.event.workflow_run.run_started_at }}
+          RUN_CREATED_AT: ${{ github.event.workflow_run.created_at }}
+        run: |
+          set -euo pipefail
+          echo "fresh=false" >> "$GITHUB_OUTPUT"
+
+          author="$(git log -1 --format='%an')"
+          subject="$(git log -1 --format='%s')"
+          committed_at="$(git log -1 --format='%cI')"
+          started_at="${RUN_STARTED_AT:-$RUN_CREATED_AT}"
+
+          if [ "$author" != "walkie-agentic-worker[bot]" ]; then
+            echo "Latest RC commit was not published by the Agentic worker; no continuation is required." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          case "$subject" in
+            "chore(agentic): continue RC execution"|"chore(agentic): checkpoint RC execution")
+              ;;
+            *)
+              echo "Latest RC commit is not an Agentic continuation/checkpoint commit." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+              ;;
+          esac
+
+          if [ -z "$started_at" ]; then
+            echo "::error::Upstream worker start time is unavailable; refusing to infer freshness."
+            exit 1
+          fi
+
+          commit_epoch="$(date -d "$committed_at" +%s)"
+          start_epoch="$(date -d "$started_at" +%s)"
+          if [ "$commit_epoch" -lt "$start_epoch" ]; then
+            echo "The RC head predates this worker run; no new progress was published." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "fresh=true" >> "$GITHUB_OUTPUT"
+          echo "Fresh Agentic RC commit detected on $TARGET_BRANCH." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up Node.js
+        if: steps.fresh.outputs.fresh == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.fresh.outputs.fresh == 'true'
+        run: npm ci
+
+      - name: Typecheck
+        if: steps.fresh.outputs.fresh == 'true'
+        run: npm run typecheck
+
+      - name: Run tests
+        if: steps.fresh.outputs.fresh == 'true'
+        run: npm test -- --runInBand
+
+      - name: Verify known duplicate 0019 state
+        if: steps.fresh.outputs.fresh == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f supabase/migrations/0019_request_result_read_state.sql
+          test -f supabase/migrations/0019_request_result_seen_state.sql
+          test ! -s supabase/migrations/0019_request_result_read_state.sql
+          test -s supabase/migrations/0019_request_result_seen_state.sql
+
+      - name: Prepare ephemeral Batch 2 migration history
+        if: steps.fresh.outputs.fresh == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rehearsal_dir="$(mktemp -d)"
+          cp supabase/migrations/0032_verified_family_onboarding.sql "$rehearsal_dir/"
+          cp supabase/migrations/0033_verified_family_onboarding_cutover.sql "$rehearsal_dir/"
+          cp supabase/migrations/0034_email_delivery_log.sql "$rehearsal_dir/"
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -delete
+          cp supabase/schema.sql supabase/migrations/0000_base_schema.sql
+          cp "$rehearsal_dir/"0032_verified_family_onboarding.sql supabase/migrations/
+          cp "$rehearsal_dir/"0033_verified_family_onboarding_cutover.sql supabase/migrations/
+          cp "$rehearsal_dir/"0034_email_delivery_log.sql supabase/migrations/
+
+      - name: Set up Supabase CLI
+        if: steps.fresh.outputs.fresh == 'true'
+        uses: supabase/setup-cli@v3
+        with:
+          version: 2.116.0
+
+      - name: Start isolated Supabase stack
+        if: steps.fresh.outputs.fresh == 'true'
+        run: supabase start -x studio,imgproxy,storage-api,realtime,edge-runtime,logflare,vector,supavisor
+
+      - name: Reapply Batch 2 migrations from a clean database
+        if: steps.fresh.outputs.fresh == 'true'
+        run: supabase db reset --local
+
+      - name: Verify Batch 2 schema and authorization cutover
+        if: steps.fresh.outputs.fresh == 'true'
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 <<'SQL'
+          select 1 / (
+            (select count(*) from information_schema.columns
+             where table_schema = 'public'
+               and table_name = 'families'
+               and column_name in ('approval_status', 'created_by_auth_user_id')) = 2
+          )::int;
+
+          select 1 / (to_regprocedure(
+            'public.create_verified_family(uuid,text,text,boolean)'
+          ) is not null)::int;
+
+          select 1 / (to_regprocedure(
+            'public.system_admin_set_family_approval(uuid,text)'
+          ) is not null)::int;
+
+          select 1 / (
+            not has_function_privilege(
+              'anon', 'public.create_family(text,text)', 'EXECUTE'
+            )
+          )::int;
+
+          select 1 / (
+            not has_function_privilege(
+              'authenticated', 'public.create_family(text,text)', 'EXECUTE'
+            )
+          )::int;
+
+          select 1 / (
+            has_function_privilege(
+              'service_role',
+              'public.create_verified_family(uuid,text,text,boolean)',
+              'EXECUTE'
+            )
+          )::int;
+
+          select 1 / (
+            position(
+              'approval_status' in pg_get_functiondef(
+                'public.current_family_id()'::regprocedure
+              )
+            ) > 0
+          )::int;
+
+          select 1 / (
+            (select count(*) from information_schema.tables
+             where table_schema = 'public'
+               and table_name = 'email_delivery_log') = 1
+          )::int;
+
+          select 1 / (
+            (select relrowsecurity from pg_class
+             where oid = 'public.email_delivery_log'::regclass) is true
+          )::int;
+
+          select 1 / (
+            (select count(*) from pg_policies
+             where schemaname = 'public'
+               and tablename = 'email_delivery_log') = 0
+          )::int;
+
+          select 1 / (to_regprocedure(
+            'public.record_email_delivery_attempt(uuid,uuid,text,text,text,text,text,text)'
+          ) is not null)::int;
+
+          select 1 / (to_regprocedure(
+            'public.update_email_delivery_status(text,text,text,text)'
+          ) is not null)::int;
+
+          select 1 / (
+            has_function_privilege(
+              'service_role',
+              'public.record_email_delivery_attempt(uuid,uuid,text,text,text,text,text,text)',
+              'EXECUTE'
+            )
+          )::int;
+
+          select 1 / (
+            not has_function_privilege(
+              'authenticated',
+              'public.record_email_delivery_attempt(uuid,uuid,text,text,text,text,text,text)',
+              'EXECUTE'
+            )
+          )::int;
+
+          select 1 / (
+            not has_function_privilege(
+              'anon',
+              'public.update_email_delivery_status(text,text,text,text)',
+              'EXECUTE'
+            )
+          )::int;
+
+          select 1 / (
+            has_function_privilege(
+              'authenticated',
+              'public.system_admin_list_email_delivery_log(integer)',
+              'EXECUTE'
+            )
+          )::int;
+          SQL
+
+      - name: Stop isolated Supabase stack
+        if: always() && steps.fresh.outputs.fresh == 'true'
+        run: supabase stop --no-backup
+
+      - name: Mark validated continuation
+        id: mark
+        if: steps.fresh.outputs.fresh == 'true'
+        shell: bash
+        run: |
+          echo "continue=true" >> "$GITHUB_OUTPUT"
+          echo "CI, tests, and isolated Supabase rehearsal passed for the fresh Agentic RC commit." >> "$GITHUB_STEP_SUMMARY"
+
+  continue:
+    name: Dispatch next bounded Agentic unit
+    needs: validate
+    if: needs.validate.result == 'success' && needs.validate.outputs.continue == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch Agentic RC Worker
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_BRANCH: ${{ needs.validate.outputs.target_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run agentic-rc-worker.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f target_branch="$TARGET_BRANCH"
+          echo "Dispatched the next bounded Agentic RC unit for $TARGET_BRANCH." >> "$GITHUB_STEP_SUMMARY"
