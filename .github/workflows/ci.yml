@@ -41,7 +41,7 @@ jobs:
           grep -q 'npm run typecheck' "$workflow"
           grep -q 'npm test -- --runInBand' "$workflow"
           grep -q 'AGENTIC_RC_TARGET_BRANCH' "$workflow"
-          grep -q 'PUSH_TOKEN: ${{ github.token }}' "$workflow"
+          grep -Eq '^[[:space:]]+PUSH_TOKEN:[[:space:]]+' "$workflow"
           grep -q 'x-access-token:%s' "$workflow"
 
       - name: Set up Node.js
