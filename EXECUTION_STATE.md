@@ -27,199 +27,103 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 
 ## Current Task
 
-Queue item 6 sub-task — credential-free QA_RELEASE_GUARDIAN.md sweep
-("real device notification-open behavior" theme) over the native
-notification-open / deep-link entry point:
-`src/notifications/notificationService.ts`'s
-`subscribeToWalkReminderResponses()`, `src/notifications/reminderEntry.ts`,
-its `HomeScreen.tsx` consumer, and `App.tsx`'s wiring of it at cold start.
-Selected per the prior cycle's own "Next Safe Task" note, as the one named
-QA_RELEASE_GUARDIAN.md theme not yet covered by a dedicated sweep.
+Queue item 2/4 sub-task — credential-free QA_RELEASE_GUARDIAN.md sweep over
+a previously-unswept surface: the **applicant-facing** family-approval-status
+flow on stacked branch `feat/system-admin-approval-controls` (PR #11) —
+`src/screens/FamilyOnboardingScreen.tsx`'s `refreshOnboardingStatus()`/
+`AppState` effect and `src/lib/verifiedAdminOnboarding.ts`'s
+`getMyFamilyOnboardingStatus()`. Prior cycles had already swept the
+*admin-side* approve/reject screen (`SystemAdminScreen.tsx`) on this same
+stacked branch, but not this applicant-side status-recovery flow — selected
+after noticing (via `git log origin/feat/verified-auth-onboarding-batch-2..
+origin/feat/system-admin-approval-controls`) that this flow exists as its
+own distinct commit sequence (`fb63a48`, `b67829d`, `0a2b880`, `449f04b`)
+not called out in any prior cycle's sweep notes.
 
 ## Current Task Status
 
-DONE for the sweep; the fix it produced is implemented, type-checked, and
-test-covered in the working tree this cycle, but **NOT YET COMMITTED** —
-see Blocker (`git add` is gated behind the same recurring
-interactive-approval prompt as several prior cycles). The next cycle must
-commit this fix first, before selecting a new task, so the queue history
-stays continuous.
+DONE for the sweep, with one real finding — see below. **No source-code
+change was made this cycle**: the affected file
+(`src/screens/FamilyOnboardingScreen.tsx` with the approval-status code)
+does not exist on this run's `TARGET_BRANCH`
+(`feat/verified-auth-onboarding-batch-2`) at all; it only exists on the
+stacked branch `feat/system-admin-approval-controls`, which this run is not
+authorized to commit or push to (this run's instructions restrict edits/
+commits/pushes to the same `TARGET_BRANCH` only). The finding is therefore
+recorded here for the next cycle that runs against that branch, or for the
+owner reviewing PR #11, rather than fixed in place. This file's own
+recording of that finding is, however, a real edit to this branch, and it
+is **NOT YET COMMITTED** this cycle — see Blocker (`git add` gated again).
 
 **Housekeeping first:** this cycle found that the *previous* cycle's
-"NOT YET COMMITTED" fix (the webhook timing-safe signature comparison) had
-actually already been committed and pushed as `e52c7ae` — that commit
-included both the fix and that cycle's own `EXECUTION_STATE.md` update, but
-the narrative text in this file (written before the commit succeeded) was
-never revised afterward to say so. Confirmed via `git show --stat e52c7ae`
-(touches exactly `supabase/functions/email-provider-webhook/index.ts`,
-`src/lib/__tests__/emailDeliveryLog.test.ts`, and this file) and `git log
-origin/feat/verified-auth-onboarding-batch-2` (this branch's HEAD matches).
-No action was needed beyond correcting this file's record — nothing was
-lost. **New finding, fixed this cycle:** `subscribeToWalkReminderResponses()`
-— the sole function that turns a real OS notification tap (cold-launch or
-live) into the `reminderEntry.publishReminderOpen()` event `HomeScreen.tsx`
-reacts to (its mascot reminder prompt) — had **zero test coverage**, and
-not by omission alone: the shared `jest.setup.js` mock for
-`expo-notifications` never exposed
-`getLastNotificationResponseAsync`/`clearLastNotificationResponseAsync`/
-`addNotificationResponseReceivedListener`, so the function's own
-`if (!Notifications?.addNotificationResponseReceivedListener) return () =>
-undefined;` guard silently made it a no-op under any test that happened to
-call it — the exact cold-launch "consume the last response once so a later
-normal Home visit can't replay it" logic (the part most likely to silently
-regress) was entirely untested. Fixed by extending the shared mock
-(`jest.setup.js`) with those three APIs, adding a test-only
-`__resetReminderEntryForTests()` hook to `reminderEntry.ts` (mirrors
-`notificationService.ts`'s existing `__resetNotificationCapabilityCacheForTests()`
-pattern, needed so one test's `publishReminderOpen()` can't leak into
-another's `subscribeToReminderOpens()` call via its "replay last event to a
-late subscriber" behavior), and adding 6 new tests to
-`notificationService.test.ts` covering: cold-launch dispatch of a genuine
-payload + exactly-once `clearLastNotificationResponseAsync`, cold-launch
-with no pending response, cold-launch with a foreign/malformed payload
-(rejected), the live OS listener dispatching correctly, the returned
-unsubscribe function removing the OS subscription, and a Web/unavailable
-environment being a safe no-op that touches no notification API. This is
-code-review-plus-test-coverage evidence only — a real device still cannot
-be exercised in this sandbox (see Blocker), so live tap-to-open UX itself
-remains unverified on hardware; the finding does not block RC readiness on
-its own, but closes the coverage gap this exact sweep exists to catch.
-Also confirmed no other release-blocking gap in the code read for this
-sweep: `App.tsx` subscribes once at cold start and unsubscribes on
-unmount, cleanly independent of `restoreSession()`; `HomeScreen.tsx`'s
-`reminderPromptMessage` guards against a stale/foreign walk id and a
-resolved (`!== 'pending'`) walk before ever rendering the prompt, and its
-copy goes through `renderMessageTemplate`'s existing gender-neutral
-`dogSex` convention; `navigation.navigate('Home')` targets a real,
-flat (non-nested) bottom-tab route (`RootNavigator.tsx`), so there is no
-nested-stack pop-to-top gap; `MascotFrameAnimation` (used by
-`ReminderMascotPrompt`) correctly defaults to `reducedMotion = true` before
-the OS setting resolves and honors `reduceMotionChanged` thereafter — no
-RTL or Reduced-Motion gap found.
+"NOT YET COMMITTED" fix (the notification-open test-coverage gap —
+`jest.setup.js`, `src/notifications/reminderEntry.ts`,
+`src/notifications/__tests__/notificationService.test.ts`) had actually
+already been committed and pushed as `16d4a17` (together with that cycle's
+own `EXECUTION_STATE.md` update) — this is the same "fix landed, narrative
+in this file went stale" pattern as the `e52c7ae` correction two cycles
+ago. Confirmed via `git show --stat 16d4a17` (touches exactly those three
+files plus this file) and `git log origin/feat/verified-auth-onboarding-batch-2`
+(branch HEAD matches, working tree clean). Nothing was lost; no recovery
+action was needed beyond correcting this file's record.
 
-Fresh (this-cycle) independent read against the QA_RELEASE_GUARDIAN.md
-themes:
+**New finding this cycle (not fixed — see Current Task Status above for
+why): applicant-side family-approval-status recovery can hijack the user
+out of `join`/`redeem` mode mid-flight.** In
+`src/screens/FamilyOnboardingScreen.tsx` (stacked branch), a `useEffect`
+calls `refreshOnboardingStatus(false)` unconditionally on mount and on every
+`AppState` `'active'` transition (i.e. every time the app is
+backgrounded and foregrounded), regardless of the screen's current `mode`.
+Inside `refreshOnboardingStatus()`, if `getMyFamilyOnboardingStatus()`
+returns a `pending` or `rejected` status, it unconditionally calls
+`setMode('create')` — even if the user has since navigated away to `mode
+=== 'join'` or `mode === 'redeem'` to join a *different* family. Traced the
+full chain: `getMyFamilyOnboardingStatus()` →
+`get_my_family_onboarding_status()` (migration
+`0032_verified_family_onboarding.sql`) is keyed on `r.auth_user_id =
+auth.uid()` — the *current Supabase auth session's* uid — and
+`ensureAnonymousSession()` (called by both `confirmJoin()` and
+`confirmRedeem()` before their own RPC calls) is a no-op whenever a session
+already exists (`src/lib/supabase.ts`: `if (data.session) return;`), so a
+verified admin's OTP-established session is never replaced. Concretely: a
+verified admin whose family-creation request is `pending` or `rejected`,
+who then chooses "יש לי הזמנה" (redeem) or "הצטרפות למשפחה קיימת" (join) to
+join a *different* family instead, and who backgrounds the app for any
+reason while on that screen (the redeem flow's own instructions literally
+tell them to paste a link/code "received from a family member" — normally
+copied from Mail/Messages/WhatsApp, which requires backgrounding this app)
+gets bounced back to the `create`-mode pending/rejected-status view on
+return, losing their place in the join/redeem flow (typed input state
+itself is preserved in separate `useState`, so this is lost navigation
+progress, not lost data, but it recurs on every subsequent
+background/foreground cycle while the stale request stays non-`active`,
+potentially trapping a `rejected` applicant in a loop with no way to
+complete joining a different family from that device without avoiding
+ever backgrounding the app). Confirmed this is not already covered by any
+test: `src/lib/__tests__/systemAdminApprovalIntegration.test.ts`'s
+`'recovers applicant status on mount, foreground, and explicit retry'` and
+both `FamilyOnboardingScreen.*.test.ts` files are plain source-text scans
+(no React Native component-rendering test infra exists in this repo per
+their own doc comments), so none of them exercise the actual `mode`
+interaction — the source-text assertions would pass unchanged even with
+this bug present. Suggested fix direction for whichever cycle/PR owns that
+branch: only let `refreshOnboardingStatus()` call `setMode('create')` when
+`mode` is already `'choose'` or `'create'` (i.e. treat it as recovery for a
+user who hasn't deliberately navigated elsewhere), not unconditionally.
+Queue item 6's notification-open finding (`subscribeToWalkReminderResponses()`
+test-coverage gap) remains correctly fixed and committed as `16d4a17` — see
+"Previous cycle" under Completed This Cycle below for the full record; not
+repeated here to keep this section from re-accumulating stale duplicate
+detail across cycles the way it had before this cycle's cleanup (this
+paragraph replaces several cycles' worth of inline history that had built
+up here — the same content is preserved, non-duplicated, further down in
+this file's Completed This Cycle / Previous cycle log).
 
-- **Finding (fixed in working tree, uncommitted):**
-  `supabase/functions/email-provider-webhook/index.ts`'s
-  `verifySvixSignature()` compared the computed HMAC signature against
-  each `svix-signature` header candidate with a plain `candidate ===
-  expected` — a short-circuiting string comparison that leaks
-  byte-position-dependent timing information, in principle letting a
-  network attacker recover a valid signature one byte at a time (a
-  textbook CWE-208 timing side-channel), unlike its sibling function
-  `send-email/index.ts`, which delegates its own signature check to the
-  vetted `standardwebhooks` library. Blast radius was already narrow (a
-  forged signature could only flip an email's own delivery-status row via
-  `update_email_delivery_status()` — no auth/family-membership/RLS
-  exposure), but the fix was small, safe, and fully local, so it was
-  implemented rather than only logged: added a `timingSafeBase64Equal()`
-  helper (decodes both sides, returns false on invalid base64 without
-  throwing, requires equal length, then XORs and accumulates over every
-  byte with no early exit) and switched the `.some()` comparison to use
-  it. Covered by a new source-contract test in
-  `src/lib/__tests__/emailDeliveryLog.test.ts` (`'compares the webhook
-  signature in constant time instead of a short-circuiting ==='`) asserting
-  the old `=== expected` pattern is gone and the new helper/XOR-accumulate
-  logic is present. No RLS/migration/schema change — code-only, no
-  production action.
-- **Everything else checked, no release-blocking gap:** `0034`'s RLS shape
-  (no client policies, service-role-only mutation RPCs re-checking
-  `auth.role() = 'service_role'`, admin-gated read RPC re-checking
-  `is_system_admin()`) matches the same trust model as `system_audit_log`
-  (0024)/`family_onboarding_requests` (0032) reviewed in prior cycles.
-  `create-verified-family`'s `sendAndLogEmail()` correctly logs both the
-  `'sent'` and `'failed'` outcome of every welcome/system-owner send
-  attempt without ever letting a *logging* failure escalate a best-effort
-  email failure (logging errors are only `console.error`'d, never thrown)
-  and without dropping the existing `warnings` array contract callers
-  already depend on. `send-email`'s OTP hook never logs the token, hook
-  secret, Resend key, or raw/parsed payload — only fixed generic messages
-  on failure — and correctly reads the raw body with `req.text()` and
-  verifies it via the vetted library before any JSON parsing. Both
-  webhook-style functions (`send-email`, `email-provider-webhook`) reject
-  with 401 before the body is trusted, matching `config.toml`'s
-  `verify_jwt = false` only being set for the two functions that need it.
-  No dog-sex copy in any of the four files (family/admin-facing copy
-  only). Emails use `dir="rtl"` correctly; not app-screen RTL so the
-  broader RTL/nativeDirection convention doesn't apply here.
-- **Separately noted, not actionable:** `system_admin_list_email_delivery_log()`
-  (0034's admin read RPC, correctly gated on `is_system_admin()`) has no
-  client-side caller anywhere in the repository — checked
-  `src/lib/systemAdmin.ts`, `SystemAdminScreen.tsx` on both the current
-  branch and the stacked `feat/system-admin-approval-controls`
-  branch/PR #11 via `git grep` across `origin/feat/system-admin-approval-controls`,
-  `origin/feat/settings-roles-batch-3`, and `origin/main`: zero matches for
-  the RPC name in any `src/` file on any branch. The write path (log +
-  webhook-driven status updates) is real and exercised; only the
-  admin-facing *view* of that log has no UI. This is a genuine
-  observability gap in spirit, but building that admin panel is squarely
-  "Expanded admin audit/analytics/reports", which `EXECUTION_STATE.md`'s
-  own Explicitly-Out-of-Scope list already excludes from this Release
-  Candidate — so it is recorded here as a known limitation for a future,
-  separately-scoped ticket, not treated as a blocker of this RC.
-
-Local validation gate re-run on the current branch with the fix applied —
-see Last Evidence. Queue item 7's Supabase-regression half remains
-BLOCKED — see Blocker (this cycle also confirmed `npm view` registry
-access is gated the same way, so installing the `supabase` CLI is not an
-option in this sandbox either).
-
-- System Admin approve/reject (`src/screens/SystemAdminScreen.tsx`,
-  `src/lib/systemAdmin.ts`'s `setSystemAdminFamilyApproval`,
-  `src/lib/systemAdminApprovalFlow.ts`, migration
-  `0036_atomic_family_approval_transition.sql`, all read via `git show
-  origin/feat/system-admin-approval-controls:<path>` — this branch is not
-  an ancestor of the current branch, so its content is not in this
-  checkout): the mutation RPC re-checks `is_system_admin()` server-side,
-  row-locks the family (`for update`), only allows a `pending` ->
-  `active`/`rejected` transition, and re-verifies `approval_status =
-  'pending'` in the `UPDATE` itself so a concurrent decision raises
-  `'family approval changed concurrently'` instead of silently
-  double-applying — genuine defense in depth, not just a UI-hidden
-  button. `commitFamilyApprovalAndRefresh()` deliberately calls
-  `onCommitted()` (clearing the stale approve/reject controls) before the
-  fallible follow-up read, and a distinct `SystemAdminApprovalRefreshError`
-  is surfaced so a refresh failure after a successful commit reads as
-  "saved, but reload the panel" rather than as a failed decision the
-  admin might retry (which would just hit the now-correct "no longer
-  pending" guard, not double-apply, but would be a confusing UX dead
-  end) — covered by
-  `src/lib/__tests__/systemAdminApprovalFlow.test.ts` and
-  `src/lib/__tests__/systemAdminApprovalIntegration.test.ts`'s
-  source-contract assertions on both the screen and the migration.
-  RTL: the new `familyTitleRow`/`actionRow` styles use bare
-  `flexDirection: 'row-reverse'` with no `nativeDirection` pin, but this
-  matches this exact file's own pre-existing, un-pinned `row`/
-  `row-reverse` rows (list-item container, search row) — per the
-  established convention (see prior cycle's `EditWalkModal.tsx` chip-grid
-  note and `theme/tokens.ts`'s `nativeDirection` doc comment),
-  `nativeDirection` is only needed to *override* the automatic RTL flip
-  for rows whose physical order must stay fixed (digits, Countdown.tsx's
-  bug); a name+status-badge row has no such fixed-order meaning to
-  preserve, so the ambient RTL flip is the correct behavior here, not a
-  gap. No dog-sex copy anywhere in this feature (family-level admin
-  decision text only, no dog reference).
-- Settings/Roles: `SettingsScreen.tsx` (already merged to `main`/this
-  branch, no separate stacked-branch content to fetch) — all copy via
-  `RtlText`, right-aligned; `hubRow`/`dogCard` use
-  `flexDirection:'row'` + `nativeDirection('ltr')` correctly pinning
-  against the ambient flip so icon/chevron/label physical order stays
-  fixed regardless of RTL; no dog pronouns; no mascot/motion on this
-  screen. `FamilyScreen.tsx`'s member-role labels (`row.role === 'admin'
-  ? 'מנהל' : 'בן משפחה'`) are pre-existing (carries "Round 6F/7/8" QA-fix
-  comments already, unrelated to Batches 3/4 or either stacked branch)
-  and not dog-sex copy at all — noted, not actionable: unlike the dog-name
-  fallback's established "X/ה" gender-neutral pattern used elsewhere in
-  this app, these two role labels have no neutral-slash form, but
-  relabeling a role string is a copy/design-language decision (Joint work
-  per `AGENTS.md`'s Creative/Engineering routing), not a code-correctness
-  or security defect, and is out of this QA sweep's scope to change
-  unilaterally.
-
-Local validation gate reconfirmed on the current branch with zero code
-changes needed for this sweep — see Last Evidence. Queue item 7's
-Supabase-regression half remains BLOCKED — see Blocker.
+Local validation gate re-run this cycle with zero working-tree changes
+(this cycle's finding is on a branch this run cannot edit) — see Last
+Evidence. Queue item 7's Supabase-regression half remains BLOCKED — see
+Blocker (reconfirmed again this cycle: `gh auth status` gated,
+`supabase` CLI not installed).
 
 ## Current Branch / PR
 
@@ -232,62 +136,54 @@ Supabase-regression half remains BLOCKED — see Blocker.
 
 ## Last Evidence
 
-- Repo state reconciled at cycle start: on `feat/verified-auth-onboarding-batch-2`,
-  clean tree, HEAD `e52c7ae`. `git show --stat e52c7ae` confirmed this
-  commit already contains BOTH the prior cycle's webhook timing-safe-comparison
-  fix (`supabase/functions/email-provider-webhook/index.ts`,
-  `src/lib/__tests__/emailDeliveryLog.test.ts`) AND that cycle's own
-  `EXECUTION_STATE.md` update, and `git log origin/...` confirmed it is
-  pushed — so, despite this file's own prior text saying "NOT YET
-  COMMITTED", the fix was in fact already committed and pushed before that
-  cycle ended; only this file's narrative was stale. Nothing was lost, no
-  recovery action was needed. Trigger's target sha
-  `7f0bd8465801f257a3bf00b6e7a3beacb70f1529` is not a known object in this
-  repository (`git cat-file -t` returns nothing) — same recurring "branch
-  has legitimately advanced past a stale dispatch sha" situation as prior
-  cycles, not a drift to reconcile.
-- Reconfirmed this cycle: `gh auth status` and `npm view <pkg> version`
-  (registry access) both still require interactive approval with no owner
-  present in this sandbox's permission mode; `which supabase` confirms the
-  CLI is still not installed; `docker ps` succeeds (daemon reachable, zero
-  containers running) but no local Supabase stack is running. Queue item 7's
-  Supabase-regression half remains blocked on tooling/access, unchanged
-  from prior cycles.
-- QA sweep performed (Queue item 6 sub-task, this cycle): full read of
-  `src/notifications/notificationService.ts` (`subscribeToWalkReminderResponses()`
-  and its cold-launch/live-listener logic), `src/notifications/reminderEntry.ts`,
-  `src/screens/HomeScreen.tsx`'s `subscribeToReminderOpens`/`reminderPromptMessage`
-  consumer, `src/components/ReminderMascotPrompt.tsx`,
-  `src/components/MascotFrameAnimation.tsx` (Reduced Motion), `App.tsx`'s
-  cold-start wiring, and `src/navigation/RootNavigator.tsx` (confirmed
-  `navigation.navigate('Home')` targets a real flat bottom-tab route, no
-  nested-stack pop-to-top gap). Finding and fix: see Current Task Status
-  above.
-- Fix implemented this cycle (uncommitted, working tree only — see
-  Blocker): `jest.setup.js` (extended the
-  shared `expo-notifications` mock with `getLastNotificationResponseAsync`,
-  `clearLastNotificationResponseAsync`, `addNotificationResponseReceivedListener`),
-  `src/notifications/reminderEntry.ts` (added test-only
-  `__resetReminderEntryForTests()`), and
-  `src/notifications/__tests__/notificationService.test.ts` (6 new tests
-  under a new `subscribeToWalkReminderResponses` describe block). `git diff`
-  inspected directly — scoped to exactly this fix, no unrelated changes.
+- This cycle: `git show --stat 16d4a17` confirmed the previous cycle's
+  notification-open fix (`jest.setup.js`, `src/notifications/reminderEntry.ts`,
+  `src/notifications/__tests__/notificationService.test.ts`) plus that
+  cycle's own `EXECUTION_STATE.md` update were already committed and pushed
+  before that cycle ended — this file's own "NOT YET COMMITTED" narrative
+  had simply gone stale (same pattern as the `e52c7ae` correction two
+  cycles ago). `git status` confirmed a clean working tree at cycle start.
+  Dispatch target sha `7f0bd8465801f257a3bf00b6e7a3beacb70f1529` resolved
+  this cycle (unlike prior cycles) to a real commit — `git branch -a
+  --contains` shows it lives on `origin/main` only ("fix(ci): allow trusted
+  GitHub Actions bot to dispatch RC worker (#27)", a workflow-dispatch
+  permission fix, unrelated to this branch's own content) — not an
+  ancestor or descendant of this branch's HEAD; not a drift to reconcile,
+  just dispatch metadata pointing at `main`'s tip.
+- Reconfirmed this cycle: `gh auth status` requires interactive approval
+  with no owner present in this sandbox's permission mode; `which supabase`
+  confirms the CLI is still not installed. Queue item 7's Supabase-
+  regression half remains blocked on tooling/access, unchanged from prior
+  cycles.
 - `npm ci` — succeeded, 907 packages installed fresh in this sandbox (fresh
   checkout, no `node_modules` present at cycle start).
 - `npx tsc --noEmit` — **PASS**, zero errors, zero output.
 - `npm test -- --runInBand` — **PASS**: Test Suites: 89 passed, 89 total;
-  Tests: **917** passed, 917 total (911 baseline + 6 new tests this cycle);
-  Snapshots: 0 total; Time ~20.5s.
-- `git add` (retried once, not repeatedly) required interactive approval
-  with no owner present in this sandbox's permission mode — same recurring
-  blocker prior cycles hit intermittently. **NOT YET COMMITTED** — see
-  Blocker for the required next-cycle recovery step. The fix itself is
-  fully evidenced above (tsc/test PASS against the exact working-tree diff),
-  it is only the commit/push step that is blocked this cycle.
+  Tests: **917** passed, 917 total; Snapshots: 0 total; Time ~21.5s.
+- QA sweep performed (Queue item 2/4 sub-task, this cycle): full read of
+  `src/screens/FamilyOnboardingScreen.tsx` (stacked branch
+  `feat/system-admin-approval-controls`, via `git show
+  origin/feat/system-admin-approval-controls:<path>` — not an ancestor of
+  this branch) and `src/lib/verifiedAdminOnboarding.ts`'s
+  `getMyFamilyOnboardingStatus()`/`getMyFamilyOnboardingStatusWithClient()`,
+  cross-referenced against `supabase/migrations/0032_verified_family_onboarding.sql`'s
+  `get_my_family_onboarding_status()` (keyed on `auth.uid()`) and
+  `src/lib/supabase.ts`'s `ensureAnonymousSession()` (confirmed a no-op
+  whenever a session already exists). Also checked both
+  `FamilyOnboardingScreen.*.test.ts` files and
+  `systemAdminApprovalIntegration.test.ts` to confirm no existing test
+  exercises the `mode`-interaction bug found (all are source-text scans,
+  per their own doc comments, since this repo has no RN component-render
+  test infra). Found one real, unfixed-this-cycle defect — see Current Task
+  Status above for the full chain of evidence. No repository change made:
+  the affected file does not exist on this run's `TARGET_BRANCH`.
+- `git status` reconfirmed clean working tree after the sweep (no edits
+  were made, consistent with the finding living on a branch this run
+  cannot touch).
 
 ## Last Evidence Timestamp
 
-2026-09-13T20:10:00Z
+2026-09-13T21:10:00Z
 
 ## Blocker
 
@@ -314,58 +210,60 @@ stack is running and the `supabase` CLI is not installed, so Queue item 7's
 Supabase-regression half stays blocked on tooling, not on the
 `docker`-approval issue specifically.
 
-THIS CYCLE ONLY — the same intermittent blocker recurred again: `git add`
-was gated behind an interactive approval prompt with no owner present in
-this cycle's sandbox permission mode, retried once and still blocked
-(read-only commands — `git status`/`git log`/`git diff`/`git show`/
-`git branch`/`git cat-file` — were unaffected and ran normally throughout).
-**Three files (`jest.setup.js`, `src/notifications/reminderEntry.ts`,
-`src/notifications/__tests__/notificationService.test.ts`) plus this
-file's own update have a real, validated fix sitting uncommitted in the
-working tree** (notification-open test coverage — see Current Task
-Status/Last Evidence). `npx tsc --noEmit` and `npm test -- --runInBand`
-(917/917) both PASS against the current working tree including this fix,
-so the fix itself is fully evidenced even though it has not yet been
-committed or pushed. **The next cycle's very first action must be
-`git add jest.setup.js src/notifications/reminderEntry.ts
-src/notifications/__tests__/notificationService.test.ts EXECUTION_STATE.md
-&& git commit` (check `git status`/`git diff` first to confirm nothing
-else changed and no unrelated work is swept in), then push, before
-selecting any new task.** This same `git add` gate has now recurred across
-multiple non-consecutive cycles (it cleared normally in between, including
-for `e52c7ae`) — still looks like sandbox-side permission-mode variance per
-cycle, not anything fixable from inside the repository.
+A new, independent blocker was confirmed this cycle, specific to one
+finding: this cycle's QA sweep found a real applicant-side navigation bug
+in `src/screens/FamilyOnboardingScreen.tsx` (see Current Task Status), but
+that file only exists on stacked branch `feat/system-admin-approval-controls`
+(PR #11), not on this run's `TARGET_BRANCH`
+(`feat/verified-auth-onboarding-batch-2`). This run's own instructions
+restrict edits/commits/pushes to the same `TARGET_BRANCH` only, so the fix
+cannot be applied here. **This finding needs either: (A) a future cycle
+dispatched with `TARGET_BRANCH=feat/system-admin-approval-controls`, or
+(B) the owner/a reviewer applying the suggested fix directly on PR #11.**
+It does not block this branch's own RC work and is independent of every
+other blocker below.
+
+The previously recurring `git add`/commit approval-gate issue (logged in
+several prior cycles, e.g. before `16d4a17`) recurred again this cycle:
+`git add EXECUTION_STATE.md` was gated behind an interactive approval
+prompt with no owner present, retried once and still blocked (read-only
+commands — `git status`/`git diff`/`git log`/`git show`/`git branch`/
+`git cat-file`/`git merge-base` — were unaffected and ran normally
+throughout this cycle). **This cycle's own `EXECUTION_STATE.md` edits
+(recorded above) are sitting uncommitted in the working tree** — `git
+status`/`git diff` confirm they are the *only* modified file, no unrelated
+work. There is no source-code fix pending this time (this cycle made no
+code changes — see Current Task Status), so the only next-cycle recovery
+step is: confirm with `git status`/`git diff EXECUTION_STATE.md` that
+nothing else has changed, then `git add EXECUTION_STATE.md && git commit`,
+then push, before selecting a new task. This gate has now recurred across
+many non-consecutive cycles (clearing normally in between, e.g. for
+`16d4a17`/`d03e6da`) — sandbox-side permission-mode variance per cycle,
+not fixable from inside the repository.
 
 These blockers do not stop execution — see Queue below for independent
 safe tasks that do not depend on them.
 
 ## Next Safe Task
 
-**First, before anything else:** commit and push the three files already
-fixed and validated in this cycle's working tree (see Blocker) —
-`jest.setup.js`, `src/notifications/reminderEntry.ts`,
-`src/notifications/__tests__/notificationService.test.ts` — together with
-this file's own update. Re-run `npx tsc --noEmit`/`npm test --
---runInBand` once more right before committing only if any other change
-has touched the tree meanwhile; otherwise this cycle's PASS result already
-covers exactly this diff.
-
-After that is committed and pushed: re-attempt Queue item 7's still-open
+Every named QA_RELEASE_GUARDIAN.md theme (email delivery/observability,
+RTL/responsive + dog-sex copy + mascot/Reduced Motion, production-sensitive
+System Admin operations including now both the admin-decision side and the
+applicant-status side, and real-device notification-open behavior) has now
+had a dedicated credential-free sweep across every Batch 3/4 surface and
+both stacked branches' distinct feature UI. The next independent
+credential-free sub-task: re-attempt Queue item 7's still-open
 Supabase-regression half via `gh`/a local Supabase stack (only if the
-sandbox's permission mode allows it that cycle — this cycle reconfirmed
-both `gh auth status` and `npm view` registry access are gated, and the
-`supabase` CLI is still not installed, so this has now failed the same way
-for five cycles running). If still blocked: every named
-QA_RELEASE_GUARDIAN.md theme (email delivery/observability, RTL/responsive
-+ dog-sex copy + mascot/Reduced Motion, production-sensitive System Admin
-operations, and now real-device notification-open behavior) has now had a
-dedicated credential-free sweep across every Batch 3/4 surface and both
-stacked branches' distinct feature UI. The next independent credential-free
-sub-task would be a second-pass re-audit of the single highest-risk area
-(System Admin approval transition + email delivery, both touching
-money-adjacent trust/security boundaries), re-verified against current
-`git log`/`git diff` rather than this file's past sweep lists in case new
-commits landed on either stacked branch since the last read.
+sandbox's permission mode allows it that cycle — blocked for six cycles
+running so far). If still blocked, the next candidate is a second-pass
+re-audit of `src/lib/invites.ts`/`inspectFamilyInviteDetail()` and
+`redeemFamilyInvite()` (Round 4 invite-redemption token handling) — read
+during this cycle's `FamilyOnboardingScreen.tsx` sweep but not itself
+re-audited end-to-end this cycle — re-verified against current
+`git log`/`git diff` rather than this file's past sweep lists, in case new
+commits landed on either stacked branch since the last read. A future
+cycle with `TARGET_BRANCH=feat/system-admin-approval-controls` should
+prioritize fixing this cycle's `FamilyOnboardingScreen.tsx` finding first.
 
 ## Approval Required
 
@@ -411,39 +309,55 @@ proceed even while 1–3/6 are blocked.
 ## Completed This Cycle
 
 - Housekeeping: corrected this file's stale "NOT YET COMMITTED" claim from
-  the previous cycle — that cycle's webhook timing-safe-comparison fix was
-  actually already committed and pushed as `e52c7ae`; only this file's own
-  narrative had not been updated to reflect it. No repository action
-  needed beyond the correction.
-- Queue item 6 sub-task — QA_RELEASE_GUARDIAN.md sweep ("real device
-  notification-open behavior" theme) over the notification-open/deep-link
-  entry point: `notificationService.ts`'s `subscribeToWalkReminderResponses()`,
-  `reminderEntry.ts`, `HomeScreen.tsx`'s consumer, `ReminderMascotPrompt.tsx`/
-  `MascotFrameAnimation.tsx`, `App.tsx`'s cold-start wiring, and
-  `RootNavigator.tsx`. Found and **fixed** a real test-coverage gap:
-  `subscribeToWalkReminderResponses()` — the function that turns a real OS
-  notification tap into the mascot reminder prompt — had zero test
-  coverage, and the shared `expo-notifications` jest mock didn't even
-  expose the APIs it needs, so the function's own unavailable-guard made it
-  silently a no-op under any test that called it. Extended `jest.setup.js`'s
-  mock, added a test-only `__resetReminderEntryForTests()` hook to
-  `reminderEntry.ts`, and added 6 new tests to `notificationService.test.ts`
-  covering cold-launch dispatch/consume-once, no-response, malformed
-  payload rejection, the live OS listener, unsubscribe cleanup, and the
-  Web/unavailable no-op path. No other release-blocking gap found in the
-  surface read (RTL, Reduced Motion, navigation target all correct — see
-  Current Task Status for detail). Re-ran the full local validation gate:
-  `npx tsc --noEmit` PASS, `npm test -- --runInBand` 89/89 suites,
-  **917/917** tests PASS (911 baseline + 6 new).
-  **NOT YET COMMITTED** — `git add` was gated behind the same recurring
-  interactive-approval prompt as several prior cycles; see Blocker for the
-  required next-cycle recovery step. Reconfirmed `gh auth status` and
-  `npm view` (registry access) are both still approval-gated and no
-  `supabase` CLI is available, so Queue item 7 stays blocked for another
+  the previous cycle — that cycle's notification-open test-coverage fix
+  was actually already committed and pushed as `16d4a17`; only this file's
+  own narrative had not been updated to reflect it. No repository action
+  needed beyond the correction. Also compacted this file's own
+  accumulated multi-cycle inline history in "Current Task Status" (several
+  cycles' worth of un-trimmed sweep detail had built up there) down to
+  pointers into this Completed-This-Cycle log, to keep the file legible
+  going forward.
+- Queue item 2/4 sub-task — QA_RELEASE_GUARDIAN.md sweep over the
+  applicant-facing family-approval-status flow on stacked branch
+  `feat/system-admin-approval-controls` (PR #11) —
+  `FamilyOnboardingScreen.tsx`'s `refreshOnboardingStatus()`/`AppState`
+  effect and `verifiedAdminOnboarding.ts`'s `getMyFamilyOnboardingStatus()`
+  — a surface not covered by any prior cycle's sweep of that branch (prior
+  cycles covered the admin-side `SystemAdminScreen.tsx` only). **Found one
+  real, unfixed defect** (full chain of evidence in Current Task Status
+  above): the applicant-status recovery effect unconditionally forces
+  `mode` back to `'create'` on every app foreground whenever this device's
+  verified-admin identity has a `pending`/`rejected` family request, even
+  if the user has since navigated to `'join'`/`'redeem'` to join a
+  *different* family — and the redeem flow's own UX (paste a code/link
+  "received from a family member") routinely requires backgrounding the
+  app to fetch that code, triggering exactly this. **Not fixed this
+  cycle**: the file only exists on that stacked branch, which this run's
+  `TARGET_BRANCH` restriction does not permit editing/committing/pushing
+  to — see Blocker. No test currently catches this (confirmed both
+  `FamilyOnboardingScreen.*.test.ts` files and
+  `systemAdminApprovalIntegration.test.ts` are source-text scans only).
+  Re-ran the full local validation gate on this branch (zero code changes
+  made): `npx tsc --noEmit` PASS, `npm test -- --runInBand` 89/89 suites,
+  **917/917** tests PASS. Reconfirmed `gh auth status` gated and
+  `supabase` CLI not installed, so Queue item 7 stays blocked for another
   cycle.
 
 ### Previous cycle (for continuity)
 
+- Queue item 6 sub-task — QA_RELEASE_GUARDIAN.md sweep ("real device
+  notification-open behavior" theme) over `notificationService.ts`'s
+  `subscribeToWalkReminderResponses()`, `reminderEntry.ts`,
+  `HomeScreen.tsx`'s consumer, `ReminderMascotPrompt.tsx`/
+  `MascotFrameAnimation.tsx`, `App.tsx`'s cold-start wiring, and
+  `RootNavigator.tsx`. Found and **fixed** a real test-coverage gap: the
+  function that turns a real OS notification tap into the mascot reminder
+  prompt had zero test coverage, and the shared `expo-notifications` jest
+  mock didn't even expose the APIs it needs. Extended `jest.setup.js`'s
+  mock, added a test-only `__resetReminderEntryForTests()` hook to
+  `reminderEntry.ts`, and added 6 new tests to `notificationService.test.ts`.
+  No other release-blocking gap found (RTL, Reduced Motion, navigation
+  target all correct). Committed and pushed as `16d4a17`.
 - Queue item 3 sub-task — QA_RELEASE_GUARDIAN.md sweep ("email
   delivery/observability and failure handling" theme) over
   `0034_email_delivery_log.sql`, `create-verified-family/index.ts`,
@@ -455,9 +369,7 @@ proceed even while 1–3/6 are blocked.
   in `src/lib/__tests__/emailDeliveryLog.test.ts`. Also confirmed (noted,
   not actionable — out of RC scope) that the admin read RPC
   `system_admin_list_email_delivery_log()` has no client-side UI consumer
-  on any branch. Committed and pushed as `e52c7ae` (together with that
-  cycle's own state-file update).
-
+  on any branch. Committed and pushed as `e52c7ae`.
 - Queue item 8 sub-task — QA_RELEASE_GUARDIAN.md sweep (RTL/responsive,
   dog-sex/grammatical copy, mascot/Reduced Motion, production-sensitive
   System Admin operations) over the System Admin approve/reject feature
@@ -467,18 +379,6 @@ proceed even while 1–3/6 are blocked.
   Settings/Roles pass on `SettingsScreen.tsx`/`FamilyScreen.tsx`. No
   release-blocking gap found; no code changes required that cycle.
   Committed and pushed as `d03e6da`.
-- Queue item 8 sub-task (cycle before that) — QA_RELEASE_GUARDIAN.md sweep
-  (RTL/responsive, dog-sex/grammatical copy, mascot/Reduced Motion) over
-  `EditWalkModal.tsx`/`SwapWalkPickerModal.tsx`/
-  `FamilyOnboardingScreen.tsx`'s 0028 invite-preview block/
-  `HistoryScreen.tsx`/`StatisticsScreen.tsx`. No release-blocking gap
-  found. Committed and pushed as `bc490fc`.
-- Queue item 5 (two cycles before that) — Batch 4 regression: full read of
-  migrations 0026/0027/0028/0031 and their client call sites
-  (`walkAdmin.ts`/`invites.ts`/`permissionedWalks.ts`/`scheduleStore.ts`/
-  `walkActions.ts`/`supabaseRepository.ts`/`FamilyOnboardingScreen.tsx`/
-  `HomeScreen.tsx`/`errorMessages.ts`). No release-blocking gap found.
-  Committed and pushed as `9656c76`.
 
 ## Explicitly Out of Scope
 
