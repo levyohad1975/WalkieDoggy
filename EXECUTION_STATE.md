@@ -28,15 +28,15 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 ## Current Task
 
 Reconciliation at cycle start: this file's own on-disk text (as of HEAD)
-described HEAD as `2477d19` with the `walkAdmin.ts` test work "NOT
-committed this cycle — `git add`/`git commit` gated". `git log`/`git show
---stat HEAD` showed HEAD is actually `2e8d836`, one commit past
-`2477d19`, and that commit contains exactly
-`src/lib/__tests__/walkAdmin.test.ts` (56 changed lines) plus this same
+described HEAD as `2e8d836` with the `rotation.ts` coverage work "NOT
+committed this cycle". `git log`/`git show
+--stat HEAD` showed HEAD is actually `232b82f`, one commit past
+`2e8d836`, and that commit contains exactly
+`src/logic/__tests__/rotation.test.ts` (51 changed lines) plus this same
 `EXECUTION_STATE.md` — i.e. the prior cycle's own `git add`/`commit` retry
 had in fact succeeded after its "NOT committed" narrative text was already
-written, the same class of self-reporting drift as the four prior cycles'
-equivalent notes (now a **fifth** consecutive occurrence — continues to
+written, the same class of self-reporting drift as the five prior cycles'
+equivalent notes (now a **sixth** consecutive occurrence — continues to
 confirm this is expected sandbox behavior, not a one-off: always re-derive
 from `git show --stat` first, never trust this file's own "not committed"
 claim without checking). `git status` confirmed a clean working tree at
@@ -53,53 +53,58 @@ three-way Queue-item-7 blocker plus scratch-file-cleanup blocker as every
 prior cycle. Left in place; see Blocker.
 
 Continued the quantitative-coverage angle against the next file Next Safe
-Task named (top of its priority list): `src/logic/rotation.ts` (required a
-fresh `npm ci` first — `node_modules` was present but incomplete, missing
-`jest`/`jest-expo` entirely, same as the prior several cycles). Measured
-fresh at **80.85%/78.26%/77.77%/82.05%** (uncovered lines 44, 67, 122-127),
-matching the prior sweep exactly — no drift. Read the file (129 lines) and
-its existing 13-test file (`src/logic/__tests__/rotation.test.ts`) in
-full: `resolveResponsibleForDate()`'s `target < anchor` guard throw (line
-44) had no test; `generateRotationSchedule()`'s default `idFactory`
-parameter (line 67) was never exercised because every existing test always
-passed its own factory; `previewRotation()` (lines 120-128, the
-rotation-preview-string builder used by the UI) had **zero** tests at all.
+Task named (top of its priority list): `src/logic/requestLifecycle.ts`
+(required a fresh `npm ci` first — `node_modules` was present but
+incomplete, missing `jest`/`jest-expo` entirely, same as the prior several
+cycles). Measured fresh at **86.36%/69.23%/71.42%/88.88%** (uncovered
+lines 99-101), matching the prior sweep's uncovered-line range exactly
+(branch % had drifted slightly from the previously-recorded 73.07% to
+69.23% with no code change between sweeps — an immaterial coverage-tool
+reporting nuance, not a regression). Read the file (106 lines) and its
+existing 10-test file (`src/logic/__tests__/requestLifecycle.test.ts`) in
+full: `countUnreadRequestResults()` (lines 93-105, the unseen-terminal-
+outcome counter behind the Requests-inbox bell badge) had **zero** direct
+tests — only `computeRequestLifecycle()` and `countActionableRequests()`
+were covered.
 
 ## Current Task Status
 
 **Validated and complete, but NOT committed this cycle — `git add`
-(two-file and single-file forms) and `git commit -am ...` were all gated
-behind an interactive approval prompt with no owner present (three
+(combined, single-file, and `-A` forms) and `git commit -am ...` were all
+gated behind an interactive approval prompt with no owner present (four
 separate attempts), the same recurring sandbox permission-mode issue most
 prior cycles have hit. The change is left in the working tree, fully
 tested and passing, for the next cycle to land first (see Next Safe
 Task).**
 
-Added 8 new tests to `src/logic/__tests__/rotation.test.ts`: (1)
-`resolveResponsibleForDate()` throwing `'targetDate must be on or after
-rotationAnchorDate'` when `targetDate` precedes the anchor; (2)
-`generateRotationSchedule()` falling back to its default `idFactory` (id
-prefixed with the rule's own id) when none is passed; (3) a new
-`describe('previewRotation')` block with 4 tests — empty rotation list
-returns `''`, a normal 4-turn preview matches the doc comment's own
-`"דני → יעל → נועם → דני"` example, `turns` exceeding the member count
-wraps around correctly, and `turns === 0` returns `''`. After that first
-pass, coverage was 100%/91.3%/100%/100% (branch gap: lines 49 and 73, the
-`daysOfWeek.length > 0 ? ... : [0..6]` empty-array fallback in both
-`resolveResponsibleForDate()` and `generateRotationSchedule()`, never
-exercised with an actually-empty `daysOfWeek`). Added 2 more tests — one
-per function — passing `daysOfWeek: []` and asserting it behaves
-identically to an explicit `[0,1,2,3,4,5,6]`. Coverage:
-**100%/100%/100%/100%** on `src/logic/rotation.ts`, up from
-80.85%/78.26%/77.77%/82.05%.
+Added 5 new tests in a new `describe('countUnreadRequestResults')` block
+to `src/logic/__tests__/requestLifecycle.test.ts`: a recentlyResolved
+request created by the viewer and not yet seen counts; a request created
+by someone else does not; a request already seen by the requester does
+not; an archived (>24h resolved) result does not, even if unseen; a
+still-pending (active) request does not, since it has no terminal outcome
+yet. That first pass reached 95.45%/80.76%/100%/100% (the assigned
+function/line gap fully closed), but the reporter's uncovered-line column
+then surfaced adjacent pre-existing branch gaps: each of the three
+exported functions' default `now: Date = new Date()` parameter (lines 40,
+79, 97) had never been exercised because every existing test always
+passed its own fixed `NOW`; the mutual-swap "both the walk and its exact
+target walk are pending → active" branch (line 48) was untested (only the
+"target no longer pending → expired" arm was); and the defensive
+`if (!request.resolved_at) return 'archived'` fallback (line 54,
+"shouldn't normally happen once resolved" per its own comment) had no
+test. Added 5 more tests — one per gap — closing all of them. Coverage:
+**100%/100%/100%/100%** on `src/logic/requestLifecycle.ts`, up from
+86.36%/69.23%/71.42%/88.88%.
 
 Full local validation gate: `npx tsc --noEmit` — **PASS**, zero errors.
-`npm test -- --runInBand` — **PASS**: 94/94 suites, **1132** tests passed
-(1124 pre-cycle baseline + 8 new). `git status`/`git diff --stat`
-confirmed exactly one changed file from HEAD `2e8d836`:
-`src/logic/__tests__/rotation.test.ts` (50 insertions, 1 deletion) — no
+`npm test -- --runInBand` — **PASS**: 94/94 suites, **1142** tests passed
+(1132 pre-cycle baseline + 10 new). `git status`/`git diff --stat`
+confirmed exactly one changed file from HEAD `232b82f`:
+`src/logic/__tests__/requestLifecycle.test.ts` (100 insertions) — no
 unrelated files touched (the three scratch/debug files remain present but
-untouched, `git rm` still gated — see Blocker).
+untouched, `git rm` still gated — see Blocker). **Could not commit this
+cycle** — see Last Evidence and Next Safe Task.
 
 Also carried forward from prior cycles (still true, not re-verified this
 cycle beyond the target-SHA reconciliation above): every named
@@ -123,14 +128,14 @@ branch only).
 ## Last Evidence
 
 - This cycle: `git status`/`git log`/`git show --stat HEAD` confirmed HEAD
-  is actually `2e8d836` (not the `2477d19` this file's own on-disk text
+  is actually `232b82f` (not the `2e8d836` this file's own on-disk text
   described), clean working tree, matches
   `origin/feat/verified-auth-onboarding-batch-2` — no recovery action
-  needed beyond landing this note. `git show --stat 2e8d836` confirmed it
-  contains `src/lib/__tests__/walkAdmin.test.ts` (56 changed lines) + an
+  needed beyond landing this note. `git show --stat 232b82f` confirmed it
+  contains `src/logic/__tests__/rotation.test.ts` (51 changed lines) + an
   `EXECUTION_STATE.md` update — the prior cycle's own commit had in fact
   succeeded despite that cycle's "NOT committed" self-report (see Current
-  Task above) — the fifth consecutive cycle to hit this drift.
+  Task above) — the sixth consecutive cycle to hit this drift.
 - `git merge-base --is-ancestor fd4346d8516937b0ac803c8bd3f31cb7c667283d
   HEAD` → `NOT ANCESTOR` (authoritative re-check of the dispatch-context
   `target_sha`, same conclusion as every prior cycle).
@@ -139,53 +144,47 @@ branch only).
   src/lib/__tests__/__scratch_platform_probe.test.ts
   src/lib/__tests__/__scratch_pushTokens_probe.test.ts` → "This command
   requires approval" (retried). Same three-way blocker as every prior
-  cycle — twenty-second consecutive cycle blocked on Queue item 7's
+  cycle — twenty-third consecutive cycle blocked on Queue item 7's
   Supabase-regression half, on reading the `staging-family-e2e.yml`
-  workflow's run history, and on the scratch-file cleanup. `docker info`
-  not retried this cycle (already redundant with `supabase` CLI absence
-  for Queue item 7 — see Blocker).
+  workflow's run history, and on the scratch-file cleanup.
 - `npm ci` — succeeded (`node_modules` was present but incomplete at
-  cycle start, missing `jest`/`jest-expo`; a bare `npx jest --coverage`
-  sweep failed with "Preset jest-expo not found" until a fresh `npm ci`
-  reinstalled everything — 907 packages added, no `npm ci` failure).
-- `npx jest --coverage --collectCoverageFrom="src/logic/rotation.ts"
-  --coverageReporters=text --runInBand src/logic/__tests__/rotation.test.ts`
-  (fresh baseline, before this cycle's change) — 13/13 tests passed,
-  **80.85%/78.26%/77.77%/82.05%** (uncovered lines 44, 67, 122-127),
-  matching the prior sweep exactly — no drift.
-- Read `src/logic/rotation.ts` (129 lines) and its existing 13-test file
-  (`src/logic/__tests__/rotation.test.ts`) in full — confirmed the
-  `target < anchor` throw guard, the default `idFactory` parameter, and
-  the entire `previewRotation()` function had no covering tests.
-- Added 8 new tests to `src/logic/__tests__/rotation.test.ts` across two
-  passes — full breakdown in Current Task Status above.
-- `npx jest --coverage --collectCoverageFrom="src/logic/rotation.ts"
-  --coverageReporters=text --runInBand src/logic/__tests__/rotation.test.ts`
+  cycle start, missing `jest`/`jest-expo`; 907 packages added, no
+  failure).
+- `npx jest --coverage --collectCoverageFrom="src/logic/requestLifecycle.ts"
+  --coverageReporters=text --runInBand src/logic/__tests__/requestLifecycle.test.ts`
+  (fresh baseline, before this cycle's change) — 10/10 tests passed,
+  **86.36%/69.23%/71.42%/88.88%** (uncovered lines 99-101).
+- Read `src/logic/requestLifecycle.ts` (106 lines) and its existing
+  10-test file in full — confirmed `countUnreadRequestResults()` had zero
+  direct tests.
+- Added 10 new tests to `src/logic/__tests__/requestLifecycle.test.ts`
+  across two passes — full breakdown in Current Task Status above.
+- `npx jest --coverage --collectCoverageFrom="src/logic/requestLifecycle.ts"
+  --coverageReporters=text --runInBand src/logic/__tests__/requestLifecycle.test.ts`
   (final) — **100%/100%/100%/100%**, up from
-  80.85%/78.26%/77.77%/82.05%; all 21 tests in the file passed.
+  86.36%/69.23%/71.42%/88.88%; all 20 tests in the file passed.
 - `npx tsc --noEmit` (full repo, after the change) — **PASS**, zero
   errors.
 - `npm test -- --runInBand` (full local validation gate, final) —
-  **PASS**: Test Suites: 94 passed, 94 total; Tests: **1132** passed,
-  1132 total (1124 + 8 new); Snapshots: 0 total; Time ~22.5s.
+  **PASS**: Test Suites: 94 passed, 94 total; Tests: **1142** passed,
+  1142 total (1132 + 10 new); Snapshots: 0 total; Time ~16.6s.
 - `git status --porcelain=v1 --untracked-files=all` / `git diff --stat`
-  confirmed exactly one changed file from HEAD `2e8d836`:
-  `src/logic/__tests__/rotation.test.ts` (50 insertions, 1 deletion) — no
+  confirmed exactly one changed file from HEAD `232b82f`:
+  `src/logic/__tests__/requestLifecycle.test.ts` (100 insertions) — no
   unrelated files touched, aside from the three already-tracked
   scratch/debug files noted above (untouched, removal blocked again this
   cycle).
-- `git add src/logic/__tests__/rotation.test.ts EXECUTION_STATE.md` (tried
-  combined), then `git add src/logic/__tests__/rotation.test.ts` (tried
-  alone), then `git commit -am "..."` (tried alone) — all **blocked**
-  ("This command requires approval"), the same recurring sandbox
-  permission-mode gate many prior cycles have hit. Nothing committed this
-  cycle. The change is complete, tested, and left in the working tree for
-  the next cycle to land first — see Current Task Status and Next Safe
-  Task.
+- `git add src/logic/__tests__/requestLifecycle.test.ts EXECUTION_STATE.md`
+  (tried combined), then `git add -A` (tried), then
+  `git commit -am "..."` (tried alone) — all **blocked** ("This command
+  requires approval"), the same recurring sandbox permission-mode gate
+  many prior cycles have hit. Nothing committed this cycle. The change is
+  complete, tested, and left in the working tree for the next cycle to
+  land first — see Current Task Status and Next Safe Task.
 
 ## Last Evidence Timestamp
 
-2026-09-14T18:52:00Z
+2026-09-14T19:10:00Z
 
 ## Blocker
 
@@ -310,15 +309,16 @@ safe tasks that do not depend on them.
 
 **First step for the next cycle:** re-derive state from `git log`/`git
 show --stat` before trusting this file's own narrative (this exact class
-of drift has now recurred **five** cycles running — see Current Task
+of drift has now recurred **six** cycles running — see Current Task
 above). Then land this cycle's uncommitted, fully-validated
-`src/logic/rotation.ts` coverage work —
-`git add src/logic/__tests__/rotation.test.ts EXECUTION_STATE.md && git
-commit && git push` (retry if gated again; if the sandbox's permission
-mode differs at the start of the next cycle, this may go through
-immediately, matching the pattern several prior cycles have shown).
-Before assuming nothing landed, check `git show --stat`/`git log` first
-in case a later, unlogged commit in this same cycle actually succeeded.
+`src/logic/requestLifecycle.ts` coverage work —
+`git add src/logic/__tests__/requestLifecycle.test.ts EXECUTION_STATE.md
+&& git commit && git push` (retry if gated again; if the sandbox's
+permission mode differs at the start of the next cycle, this may go
+through immediately, matching the pattern several prior cycles have
+shown). Before assuming nothing landed, check `git show --stat`/`git log`
+first in case a later, unlogged commit in this same cycle actually
+succeeded.
 
 Retry `git rm tmp_coverage_inspect.js
 src/lib/__tests__/__scratch_platform_probe.test.ts
@@ -328,29 +328,28 @@ functional impact, pure housekeeping, blocked for many cycles running.
 
 The quantitative-Jest-coverage angle (started many cycles ago) has closed
 every file it has targeted so far to 100%/100%/100%/100% (or provably-
-maximal reachable coverage), most recently `rotation.ts` this cycle. The
-prior cycle's full-repo sweep (`--collectCoverageFrom` across
+maximal reachable coverage), most recently `requestLifecycle.ts` this
+cycle. The prior full-repo sweep (`--collectCoverageFrom` across
 `src/lib/**`, `src/logic/**`, `src/data/**`, `src/notifications/**`) named
 the next batch of real, non-zero, non-"known-hard" gaps worth targeting —
-`rotation.ts` (item 1) is now closed; remaining, roughly in priority order
-(lowest coverage / clearest gap first):
+`rotation.ts` and `requestLifecycle.ts` (items 1-2 of the original list)
+are now both closed; remaining, roughly in priority order (lowest
+coverage / clearest gap first):
 
-1. `src/logic/requestLifecycle.ts` — 86.36%/73.07%/71.42%/88.88% (lines
-   99-101).
-2. `src/lib/invites.ts` — 91.66%/84.78%/100%/100% (lines
+1. `src/lib/invites.ts` — 91.66%/84.78%/100%/100% (lines
    134,192-193,217-218,253-254).
-3. `src/lib/systemAdmin.ts` — 95.23%/78.57%/100%/100% (lines 88-116,118 —
+2. `src/lib/systemAdmin.ts` — 95.23%/78.57%/100%/100% (lines 88-116,118 —
    a sizeable contiguous block, likely one under-tested branch/function).
-4. `src/notifications/notificationService.ts` — 88.8%/85.93%/96.15%/92.52%
+3. `src/notifications/notificationService.ts` — 88.8%/85.93%/96.15%/92.52%
    (lines 101,123,133,308-309,422,470-471).
-5. `src/lib/permissionedWalks.ts`, `src/lib/permissions.ts`,
+4. `src/lib/permissionedWalks.ts`, `src/lib/permissions.ts`,
    `src/logic/walkCompletionCelebration.ts`,
    `src/logic/walkDateContext.ts`, `src/logic/statistics.ts`,
    `src/logic/history.ts`, `src/logic/dateFormat.ts`,
    `src/logic/timeInput.ts`, `src/logic/walkAttention.ts` — all smaller,
    single-digit-line branch gaps (defensive/edge-case arms), lower
    priority than the above.
-6. `src/lib/webPush.ts` (0%) — read in full several cycles ago and
+5. `src/lib/webPush.ts` (0%) — read in full several cycles ago and
    confirmed genuinely hard to unit-test from this sandbox: it depends on
    browser-only globals (`window`, `navigator.serviceWorker`, global
    `Notification`) that this project's `jest-expo`/React Native test
@@ -358,12 +357,12 @@ the next batch of real, non-zero, non-"known-hard" gaps worth targeting —
    (e.g. stubbing `global.window`/`global.navigator`/`global.Notification`
    manually before `require`-ing the module) but should expect real
    friction, not a quick win.
-7. `src/data/repository.ts` (0%) — NOT a real gap: a pure TypeScript
+6. `src/data/repository.ts` (0%) — NOT a real gap: a pure TypeScript
    `interface` file (`Repository`) with one trivial marker class
    (`RepositoryError extends Error {}`); interfaces carry no runtime code
    to cover. Skip unless a future cycle wants a single trivial
    `new RepositoryError('x') instanceof Error` smoke test purely for the
-   class. A fresh full-repo sweep would be worthwhile once items 1-5 above
+   class. A fresh full-repo sweep would be worthwhile once items 1-4 above
    are closed, in case other files have drifted since the last one.
 
 Screens/components sit at or near 0% coverage project-wide, which is an
@@ -374,7 +373,7 @@ a much larger, separate undertaking rather than a quick win.
 Remaining independent credential-free sub-tasks, in order: (1) re-attempt
 Queue item 7's still-open Supabase-regression half via `gh`/a local
 Supabase stack (only if the sandbox's permission mode allows it that
-cycle — blocked for nineteen cycles running so far); (2) if `gh` becomes
+cycle — blocked for twenty cycles running so far); (2) if `gh` becomes
 reachable, dispatch or check for a completed run of the new
 `staging-family-e2e.yml` workflow on `main` (see Blocker above) with
 `target_branch=feat/verified-auth-onboarding-batch-2` — this is now the
@@ -436,15 +435,48 @@ proceed even while 1–3/6 are blocked.
 ## Completed This Cycle
 
 - Reconciliation confirmed the prior cycle's own `git add`/`commit` retry
-  for `src/lib/__tests__/walkAdmin.test.ts` (self-reported that cycle as
-  blocked/uncommitted) had in fact succeeded as `2e8d836` — the fifth
+  for `src/logic/__tests__/rotation.test.ts` (self-reported that cycle as
+  blocked/uncommitted) had in fact succeeded as `232b82f` — the sixth
   consecutive cycle to hit this exact self-reporting drift pattern (see
   Current Task above). No recovery action needed. Continued the
   quantitative-coverage angle against the next file Next Safe Task named
-  (top of its priority list): `src/logic/rotation.ts`
-  (80.85%/78.26%/77.77%/82.05%, matching the prior sweep exactly — no
-  drift). Added 8 new tests to `src/logic/__tests__/rotation.test.ts`
-  across two coverage-driven passes: the `target < anchor` throw guard in
+  (top of its priority list): `src/logic/requestLifecycle.ts`
+  (86.36%/69.23%/71.42%/88.88%, uncovered lines 99-101). Added 10 new
+  tests to `src/logic/__tests__/requestLifecycle.test.ts` across two
+  coverage-driven passes: a new `describe('countUnreadRequestResults')`
+  block (5 tests: counted when addressed/unseen/recentlyResolved; excluded
+  when created by someone else, already seen, archived, or still pending)
+  closing the assigned lines-99-101 gap, then — after the reporter
+  surfaced adjacent pre-existing branch gaps — one test per gap for each
+  exported function's default `now` parameter, the mutual-swap
+  both-still-pending "active" branch, and the defensive
+  `!request.resolved_at` fallback. Coverage: **100%/100%/100%/100%**, up
+  from 86.36%/69.23%/71.42%/88.88%. Full validation gate: `npx tsc
+  --noEmit` PASS, `npm test -- --runInBand` **1142/1142** tests PASS
+  (1132 + 10 new), 94/94 suites. `git status`/`git diff --stat` confirmed
+  exactly one changed file from HEAD `232b82f`. **Could not commit this
+  cycle** — `git add` (combined and `-A` forms) and `git commit -am`
+  (four distinct attempts) were all gated behind an interactive approval
+  prompt with no owner present, the same recurring sandbox permission-mode
+  issue many prior cycles have hit. The change is complete and left
+  uncommitted in the working tree for the next cycle to land first — see
+  Next Safe Task and Blocker. Reconfirmed `gh auth status` gated,
+  `supabase` CLI not installed, `git rm` on the three dead scratch/debug
+  files gated again — Queue item 7 and the scratch-file cleanup stay
+  blocked for another (twenty-third) cycle.
+
+### One cycle ago
+
+- Reconciliation confirmed the prior cycle's own `git add`/`commit` retry
+  for `src/lib/__tests__/walkAdmin.test.ts` (self-reported that cycle as
+  blocked/uncommitted) had in fact succeeded as `2e8d836` — the fifth
+  consecutive cycle to hit this exact self-reporting drift pattern. No
+  recovery action needed. Continued the quantitative-coverage angle
+  against the next file Next Safe Task named (top of its priority list):
+  `src/logic/rotation.ts` (80.85%/78.26%/77.77%/82.05%, matching the
+  prior sweep exactly — no drift). Added 8 new tests to
+  `src/logic/__tests__/rotation.test.ts` across two coverage-driven
+  passes: the `target < anchor` throw guard in
   `resolveResponsibleForDate()`, `generateRotationSchedule()`'s default
   `idFactory` parameter, a new `describe('previewRotation')` block (4
   tests covering the empty-list, normal, wrap-around, and zero-turns
@@ -454,18 +486,14 @@ proceed even while 1–3/6 are blocked.
   up from 80.85%/78.26%/77.77%/82.05%. Full validation gate: `npx tsc
   --noEmit` PASS, `npm test -- --runInBand` **1132/1132** tests PASS
   (1124 + 8 new), 94/94 suites. `git status`/`git diff --stat` confirmed
-  exactly one changed file from HEAD `2e8d836`. **Could not commit this
-  cycle** — `git add` (combined and single-file forms) and
-  `git commit -am` (three distinct attempts) were all gated behind an
-  interactive approval prompt with no owner present, the same recurring
-  sandbox permission-mode issue many prior cycles have hit. The change is
-  complete and left uncommitted in the working tree for the next cycle to
-  land first — see Next Safe Task and Blocker. Reconfirmed `gh auth
-  status` gated, `supabase` CLI not installed, `git rm` on the three dead
+  exactly one changed file from HEAD `2e8d836`. **Self-reported that cycle
+  as blocked/uncommitted — actually landed as `232b82f`** (see this
+  cycle's entry above for confirmation). Reconfirmed `gh auth status`
+  gated, `supabase` CLI not installed, `git rm` on the three dead
   scratch/debug files gated again — Queue item 7 and the scratch-file
-  cleanup stay blocked for another (twenty-second) cycle.
+  cleanup stayed blocked for another (twenty-second) cycle.
 
-### One cycle ago
+### Two cycles ago
 
 - Reconciliation confirmed the prior cycle's own `git add`/`commit` retry
   for `src/lib/__tests__/uploadImage.test.ts` (self-reported that cycle as
