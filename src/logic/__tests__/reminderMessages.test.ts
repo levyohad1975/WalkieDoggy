@@ -96,6 +96,22 @@ describe('buildWalkReminderMessage', () => {
     expect(early.title).not.toContain('🚨');
     expect(late.title).toContain('🚨');
   });
+
+  it('T+30 reminder uses the correct gendered "went out" verb, never the other one, when sex is known', () => {
+    const seeds = Array.from({ length: 20 }, (_, i) => `walk-${i}`);
+    const maleBodies = seeds.map(
+      (varietySeed) => buildWalkReminderMessage({ ...BASE_INPUT, stage: 'T+30', varietySeed, dogSex: 'male' }).body
+    );
+    const femaleBodies = seeds.map(
+      (varietySeed) => buildWalkReminderMessage({ ...BASE_INPUT, stage: 'T+30', varietySeed, dogSex: 'female' }).body
+    );
+    // Only the variant that references the dog's "went out" state uses this verb —
+    // the other T+30 variant never mentions it. Enough seeds to reach both variants.
+    expect(maleBodies.some((b) => b.includes('לא יצא '))).toBe(true);
+    expect(femaleBodies.some((b) => b.includes('לא יצאה '))).toBe(true);
+    expect(maleBodies.every((b) => !b.includes('יצאה'))).toBe(true);
+    expect(femaleBodies.every((b) => !b.includes('לא יצא '))).toBe(true);
+  });
 });
 
 describe('buildWalkAttentionEscalationMessage', () => {
@@ -124,5 +140,19 @@ describe('buildWalkAttentionEscalationMessage', () => {
     const toResponsible = buildWalkReminderMessage({ ...BASE_INPUT, stage: 'T+30' });
     const toAdmin = buildWalkAttentionEscalationMessage(BASE_INPUT);
     expect(toAdmin).not.toEqual(toResponsible);
+  });
+
+  it('uses the correct gendered "went out" verb, never the other one, when sex is known', () => {
+    const seeds = Array.from({ length: 20 }, (_, i) => `walk-${i}`);
+    const maleBodies = seeds.map(
+      (varietySeed) => buildWalkAttentionEscalationMessage({ ...BASE_INPUT, varietySeed, dogSex: 'male' }).body
+    );
+    const femaleBodies = seeds.map(
+      (varietySeed) => buildWalkAttentionEscalationMessage({ ...BASE_INPUT, varietySeed, dogSex: 'female' }).body
+    );
+    expect(maleBodies.some((b) => b.includes('לא יצא '))).toBe(true);
+    expect(femaleBodies.some((b) => b.includes('לא יצאה '))).toBe(true);
+    expect(maleBodies.every((b) => !b.includes('יצאה'))).toBe(true);
+    expect(femaleBodies.every((b) => !b.includes('לא יצא '))).toBe(true);
   });
 });
