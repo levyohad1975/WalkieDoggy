@@ -9,10 +9,11 @@ Use the existing GitHub Environment named `staging` and configure only non-Produ
 - `SUPABASE_STAGING_URL`
 - `SUPABASE_STAGING_ANON_KEY`
 - `STAGING_OTP_TEST_EMAIL`
-- `STAGING_OTP_MAILBOX_TOKEN`
-- `STAGING_OTP_MAILOSAUR_SERVER_ID`
+- `STAGING_OTP_GMAIL_CLIENT_ID`
+- `STAGING_OTP_GMAIL_CLIENT_SECRET`
+- `STAGING_OTP_GMAIL_REFRESH_TOKEN`
 
-The mailbox values are for an isolated automated test inbox. The workflow does not need Production credentials, a service-role key, database write credentials, or deployment permissions.
+The mailbox is the dedicated Walkie Doggy Gmail test account. The Google OAuth app stays in Testing mode, the Gmail API scope is `gmail.readonly`, and the workflow only needs read access to receive OTP evidence. The workflow does not need Production credentials, a service-role key, database write credentials, or deployment permissions.
 
 ## Evidence contract
 
@@ -31,7 +32,8 @@ A green repository CI run is not equivalent to this evidence.
 - The workflow refuses `main` as the target branch.
 - It is bound to GitHub Environment `staging`.
 - It has `contents: read` only.
+- Gmail access uses the `gmail.readonly` OAuth scope.
 - It performs no Production deploy, migration, secret change, merge, or destructive action.
-- OTP and mailbox credentials are never printed.
+- OTP and Gmail OAuth credentials are never printed.
 
 After this gate is proven, extend the same staging executor to family creation persistence, join artifacts, and second-member join rather than giving the general-purpose Claude worker direct Staging credentials.
