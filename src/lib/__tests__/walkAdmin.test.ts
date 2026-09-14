@@ -88,3 +88,59 @@ describe('lib/walkAdmin — adminRescheduleWalk (Supabase mode)', () => {
     await expect(adminRescheduleWalk('walk-1', '19:30')).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
   });
 });
+
+/**
+ * Same call-shape / error-propagation coverage as above, for the sibling
+ * admin_swap_walks RPC wrapper (adminSwapWalks) — previously untested.
+ */
+describe('lib/walkAdmin — adminSwapWalks (Supabase mode)', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    process.env = {
+      ...ORIGINAL_ENV,
+      EXPO_PUBLIC_SUPABASE_URL: 'https://example.supabase.co',
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'anon-key',
+    };
+  });
+
+  afterEach(() => {
+    process.env = ORIGINAL_ENV;
+  });
+
+  it('calls admin_swap_walks with p_walk_a_id/p_walk_b_id and resolves on success', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    mockSupabaseClient(rpc);
+    const { adminSwapWalks } = require('../walkAdmin');
+
+    await expect(adminSwapWalks('walk-a', 'walk-b')).resolves.toBeUndefined();
+    expect(rpc).toHaveBeenCalledWith('admin_swap_walks', { p_walk_a_id: 'walk-a', p_walk_b_id: 'walk-b' });
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces "admin permission required" (non-admin, or an admin currently impersonating) rather than swallowing it', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'admin permission required' } });
+    mockSupabaseClient(rpc);
+    const { adminSwapWalks } = require('../walkAdmin');
+
+    await expect(adminSwapWalks('walk-a', 'walk-b')).rejects.toBeTruthy();
+  });
+
+  it('surfaces a server-side rejection (e.g. one of the two walks is no longer pending) rather than swallowing it', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'walk is no longer pending' } });
+    mockSupabaseClient(rpc);
+    const { adminSwapWalks } = require('../walkAdmin');
+
+    await expect(adminSwapWalks('walk-a', 'walk-b')).rejects.toBeTruthy();
+  });
+
+  it('local/demo mode (no Supabase configured): throws SupabaseNotConfiguredError rather than pretending to succeed', async () => {
+    jest.resetModules();
+    process.env = { ...ORIGINAL_ENV };
+    delete process.env.EXPO_PUBLIC_SUPABASE_URL;
+    delete process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+    const { adminSwapWalks } = require('../walkAdmin');
+    const { SupabaseNotConfiguredError } = require('../supabase');
+
+    await expect(adminSwapWalks('walk-a', 'walk-b')).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
+  });
+});
