@@ -55,12 +55,13 @@ jobs:
           SUPABASE_STAGING_URL: ${{ secrets.SUPABASE_STAGING_URL }}
           SUPABASE_STAGING_ANON_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
           STAGING_OTP_TEST_EMAIL: ${{ secrets.STAGING_OTP_TEST_EMAIL }}
-          STAGING_OTP_MAILBOX_TOKEN: ${{ secrets.STAGING_OTP_MAILBOX_TOKEN }}
-          STAGING_OTP_MAILOSAUR_SERVER_ID: ${{ secrets.STAGING_OTP_MAILOSAUR_SERVER_ID }}
+          STAGING_OTP_GMAIL_CLIENT_ID: ${{ secrets.STAGING_OTP_GMAIL_CLIENT_ID }}
+          STAGING_OTP_GMAIL_CLIENT_SECRET: ${{ secrets.STAGING_OTP_GMAIL_CLIENT_SECRET }}
+          STAGING_OTP_GMAIL_REFRESH_TOKEN: ${{ secrets.STAGING_OTP_GMAIL_REFRESH_TOKEN }}
         run: |
           set -euo pipefail
           missing=0
-          for name in SUPABASE_STAGING_URL SUPABASE_STAGING_ANON_KEY STAGING_OTP_TEST_EMAIL STAGING_OTP_MAILBOX_TOKEN STAGING_OTP_MAILOSAUR_SERVER_ID; do
+          for name in SUPABASE_STAGING_URL SUPABASE_STAGING_ANON_KEY STAGING_OTP_TEST_EMAIL STAGING_OTP_GMAIL_CLIENT_ID STAGING_OTP_GMAIL_CLIENT_SECRET STAGING_OTP_GMAIL_REFRESH_TOKEN; do
             if [ -z "${!name:-}" ]; then
               echo "::error::Missing required staging secret: $name"
               missing=1
@@ -74,9 +75,9 @@ jobs:
           SUPABASE_STAGING_URL: ${{ secrets.SUPABASE_STAGING_URL }}
           SUPABASE_STAGING_ANON_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
           STAGING_OTP_TEST_EMAIL: ${{ secrets.STAGING_OTP_TEST_EMAIL }}
-          STAGING_OTP_MAILBOX_TOKEN: ${{ secrets.STAGING_OTP_MAILBOX_TOKEN }}
-          STAGING_OTP_MAILOSAUR_SERVER_ID: ${{ secrets.STAGING_OTP_MAILOSAUR_SERVER_ID }}
-          STAGING_OTP_MAILBOX_PROVIDER: mailosaur
+          STAGING_OTP_GMAIL_CLIENT_ID: ${{ secrets.STAGING_OTP_GMAIL_CLIENT_ID }}
+          STAGING_OTP_GMAIL_CLIENT_SECRET: ${{ secrets.STAGING_OTP_GMAIL_CLIENT_SECRET }}
+          STAGING_OTP_GMAIL_REFRESH_TOKEN: ${{ secrets.STAGING_OTP_GMAIL_REFRESH_TOKEN }}
         run: node scripts/staging-otp-e2e.mjs
 
       - name: Write evidence summary
@@ -88,6 +89,7 @@ jobs:
             echo ""
             echo "- Associated RC branch: \`$TARGET_BRANCH\`"
             echo "- Environment: \`staging\`"
+            echo "- Mailbox provider: dedicated Gmail test inbox (read-only OAuth)"
             echo "- Production credentials used: no"
             echo "- Production deploy/migration performed: no"
             echo "- Result: \`${{ job.status }}\`"
