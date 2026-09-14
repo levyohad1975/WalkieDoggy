@@ -27,59 +27,64 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 
 ## Current Task
 
-Queue item 4 credential-free sub-task, per the previous cycle's own "Next
-Safe Task" pointer (Queue item 7's Supabase-regression half reconfirmed
-blocked again first — see Last Evidence): dedicated **Settings/Roles
-backend-authorization** sweep on this run's own `TARGET_BRANCH`
-(`feat/verified-auth-onboarding-batch-2`) — the one named
-`QA_RELEASE_GUARDIAN.md` theme ("Settings/Roles backend authorization")
-that had not yet had a dedicated sweep on this branch specifically (a
-prior cycle's Settings/Roles pass was on the stacked
-`feat/system-admin-approval-controls` branch only, alongside that
-branch's System Admin approve/reject sweep).
+Per the previous cycle's own "Next Safe Task" pointer (Queue item 7's
+Supabase-regression half reconfirmed blocked again first — see Last
+Evidence): a **second, full end-to-end re-read of the diff between this
+run's own `TARGET_BRANCH` (`feat/verified-auth-onboarding-batch-2`) and
+`main`** (`git diff origin/main...HEAD`), specifically looking for
+anything the prior theme-by-theme sweeps might have missed, since every
+named `QA_RELEASE_GUARDIAN.md` theme already had at least one dedicated
+sweep as of last cycle.
 
 ## Current Task Status
 
-DONE. **No defect found.** Cross-referenced `src/screens/SettingsScreen.tsx`
-/ `src/screens/FamilyScreen.tsx` role gates, `src/logic/permissions.ts` /
-`src/lib/permissions.ts` / `src/logic/familyManagement.ts`,
-`src/store/authStore.ts` / `src/store/familyStore.ts`, and the actual
-server-side enforcement in `supabase/migrations/0007_multi_admin_roles.sql`
-and `0023_member_permission_overrides.sql`. Independently verified (not
-just accepted the first-pass report) the RPC bodies directly by reading
-the migration SQL: (1) every admin-only mutation reachable from the
-Settings/Family UI — `set_member_role()` (`0007` line ~74), member removal
-`admin_delete_family_member()` (`0007` line ~173), and
-`set_member_permission_override()`/`clear_member_permission_override()`
-(`0023` lines ~105/~161) — re-derives the caller's admin status
-server-side via `is_family_admin(target_family)` looked up from
-`auth.uid()`/`current_family_id()`, never from a client-supplied role
-parameter; (2) the zero-admin guard is enforced in the database, not just
-client UX — `set_member_role()` counts remaining active admins excluding
-the target and rejects demoting the last one (`0007` lines ~98-111), and
-`admin_delete_family_member()` has an equivalent guard sharing the same
-per-family advisory lock (`0007` lines ~180-196) to close a two-admin
-race; `src/logic/familyManagement.ts`'s client-side
-`isLastActiveAdminMember()` is UX-only and fails open, matching its own
-comment — the RPC is the real backstop; (3) `member_permission_overrides`
-has no client INSERT/UPDATE/DELETE RLS policy at all (`0023` — SELECT-only
-for the owning member/family admin), so all writes are RPC-gated and a
-member cannot self-grant an override; (4) the QA impersonation/"simulate
-as member" feature (`0006_qa_impersonation.sql`) can only narrow an
-admin's view, never escalate — `is_family_admin()` is redefined to
-unconditionally return `false` during an active impersonation session,
-`begin_impersonation()` itself requires the original
-impersonation-unaware `is_real_family_admin()` check plus same-family
-target validation, and the client's `useEffectiveFamilyRole()` forces
-`'member'` whenever impersonating/test-mode, while role-management UI
-gates on `isRealFamilyAdmin()` specifically so an impersonated session
-never shows admin controls. Test Mode mutations are separately blocked by
-`guardTestModeMutation()` as the first line of the relevant store actions.
-No release-blocking gap found; existing tests
-(`familyStore.permissionOverrides.test.ts`,
-`permissionVisibility.test.ts`, `SettingsScreen.personalAccessible.test.ts`,
-`SettingsScreen.switchUserFlow.test.ts`, `permissions.test.ts`) already
-cover this surface. No repository change was made this cycle as a result.
+DONE. **No defect found.** Read the full 32-file diff
+(`git diff origin/main...HEAD`, 2281 insertions/54 deletions excluding
+this file's own history) end to end, with particular attention to the
+smaller UI-only files no prior cycle's theme sweep had named explicitly:
+`src/components/Countdown.tsx`/`NextWalkCard.tsx`/`WalkRow.tsx`,
+`src/navigation/RootNavigator.tsx`, `src/screens/LoginScreen.tsx`/
+`HistoryScreen.tsx`/`ScheduleScreen.tsx`/`StatisticsScreen.tsx`, and
+`src/theme/tokens.ts`. Findings: (1) a `nativeDirection()` helper added to
+`theme/tokens.ts` replaces bare `direction: 'ltr'|'rtl'` style props
+across those five components/screens — well-reasoned and correctly
+scoped: RN's `direction` `ViewStyle` prop is required on native to pin a
+fixed physical row order under RTL, but `react-native-web`'s style
+validator silently strips that exact key and logs a `console.error` on
+every render, so the helper returns `{}` on web and `{ direction: value }`
+on native, a true behavior no-op with an observability improvement; the
+existing structural tests (`Countdown.test.ts`,
+`tabBarRtlContract.test.ts`) were updated in lockstep to assert
+`nativeDirection(...)` instead of the literal, so regression coverage
+carried over rather than being lost; (2) `LoginScreen.tsx`/
+`HistoryScreen.tsx`/`ScheduleScreen.tsx`/`StatisticsScreen.tsx` each
+gained an identical `Platform.OS === 'web'`-gated `maxWidth:
+breakpoints.desktopContent, alignSelf: 'center'` wrapper, the same
+desktop-containment pattern already used elsewhere (e.g. HomeScreen per
+`LoginScreen.tsx`'s own comment) — native layout is untouched since the
+extra style only applies under the web check. No release-blocking gap
+found in this pass. Also noted, for context and not actionable from this
+sandbox: `.github/workflows/batch2-supabase-rehearsal.yml` already exists
+on this branch (`workflow_dispatch`-enabled, plus path-triggered on
+`supabase/**` PRs) and implements exactly a CI-side, credential-free
+Supabase rehearsal for Batch 2 — ephemeral migration history rebuilt onto
+`supabase/schema.sql`, a real `supabase start`/`db reset --local`, and
+`psql` assertions on the `0032`-`0034` schema/RPC/RLS/grant surface. This
+is Queue item 7's Supabase-regression path already implemented, just not
+triggerable from this sandbox (`gh` gated, `supabase` CLI absent
+locally — see Blocker). Separately, `origin/main` (not this branch) has
+since grown a distinct Gmail-backed **Staging OTP E2E** CI executor
+(`docs/engineering/STAGING_OTP_E2E.md`, merged via PRs #30/#35/#37, bound
+to GitHub Environment `staging`, refuses `main` as its own target branch)
+with a defined evidence contract for a real, non-Production OTP round-trip
+— its own doc states intent to extend it to "family creation persistence,
+join artifacts, and second-member join" next, i.e. toward Queue items 1-3.
+That executor lives in `main`'s CI/governance layer, is out of this
+feature branch's diff and this cycle's scope, and still requires
+GitHub-side dispatch/secrets this sandbox cannot reach (`gh` gated) — not
+something actionable this cycle, but recorded for continuity since it
+changes the Blocker's long-term unblock story. No repository change was
+made this cycle as a result of either review.
 
 Local validation gate re-run this cycle after a fresh `npm ci` (no
 `node_modules` present at cycle start, same as every prior cycle — each
@@ -101,42 +106,43 @@ prior cycle).
 ## Last Evidence
 
 - This cycle: `git status`/`git rev-parse HEAD` confirmed a clean working
-  tree at cycle start (HEAD `6a902de`, matches
-  `origin/feat/verified-auth-onboarding-batch-2`, `git diff --stat` against
-  origin empty) — confirms the previous cycle's own end-of-cycle commit
-  landed cleanly and pushed with no recovery action needed this time.
+  tree at cycle start (HEAD `dc5c46f`, matches
+  `origin/feat/verified-auth-onboarding-batch-2`) — confirms the previous
+  cycle's own end-of-cycle commit landed cleanly and pushed with no
+  recovery action needed this time.
 - Reconfirmed this cycle: `gh auth status` → "This command requires
   approval" (no owner present); `which supabase` → exit 1 (still not
   installed); `docker info` → "This command requires approval". Queue item
   7's Supabase-regression half stays blocked on tooling/access, unchanged
-  from prior cycles — eleventh consecutive cycle blocked.
+  from prior cycles — twelfth consecutive cycle blocked.
 - `npm ci` — succeeded, 907 packages installed fresh in this sandbox (fresh
   checkout, no `node_modules` present at cycle start — every cycle so far
   starts from a clean sandbox, not a persisted one).
 - `npx tsc --noEmit` — **PASS**, zero errors, zero output.
 - `npm test -- --runInBand` — **PASS**: Test Suites: 89 passed, 89 total;
   Tests: **918** passed, 918 total (unchanged — no code change this
-  cycle); Snapshots: 0 total; Time ~20s.
-- QA sweep performed this cycle (Queue item 4 credential-free sub-task —
-  Settings/Roles backend-authorization theme, this run's own
-  `TARGET_BRANCH`): dispatched a fresh-context research agent to
-  cross-reference the Settings/Family UI role gates against
-  `0007_multi_admin_roles.sql`/`0023_member_permission_overrides.sql`,
-  then independently re-verified its five claims by reading the actual RPC
-  SQL bodies directly (`set_member_role()`, `admin_delete_family_member()`,
-  `set_member_permission_override()`/`clear_member_permission_override()`,
-  the zero-admin guards, and the impersonation-narrows-never-escalates
-  design in `0006_qa_impersonation.sql`) rather than accepting the agent
-  report at face value — full detail in Current Task Status. **No defect
-  found; no gap found.** No repository change was needed or made this
-  cycle.
+  cycle); Snapshots: 0 total; Time ~22s.
+- QA sweep performed this cycle (second full end-to-end re-read of
+  `git diff origin/main...HEAD`, this run's own `TARGET_BRANCH`): reviewed
+  all 32 changed files, with particular focus on the smaller UI-only files
+  (`Countdown.tsx`/`NextWalkCard.tsx`/`WalkRow.tsx`/`RootNavigator.tsx`'s
+  `nativeDirection()` web-console-warning fix; `LoginScreen.tsx`/
+  `HistoryScreen.tsx`/`ScheduleScreen.tsx`/`StatisticsScreen.tsx`'s web
+  desktop max-width containment) that no prior theme-named sweep had
+  called out individually. **No defect found; no gap found.** Also
+  surveyed `origin/main`'s recent history (`git log origin/main`, `git
+  show origin/main:docs/engineering/STAGING_OTP_E2E.md`) and confirmed
+  `.github/workflows/batch2-supabase-rehearsal.yml` already exists on this
+  branch — both recorded in Current Task Status for continuity, neither
+  actionable from this sandbox this cycle. No repository change was
+  needed or made this cycle.
 - `git status`/`git diff --stat` confirmed no working-tree changes from
   this cycle's audit itself — only this file's own end-of-cycle update
   (below) needs to be committed.
 
 ## Last Evidence Timestamp
 
-2026-09-14T08:40:00Z
+2026-09-14T09:20:00Z
 
 ## Blocker
 
@@ -150,6 +156,24 @@ local stack. Two unblock options were posted on PR #7: (A) the owner runs
 the non-Production deployment/config steps and shares evidence to verify,
 or (B) the owner grants this session the credentials directly. Unanswered
 as of the last check.
+
+**Update this cycle (context, not yet actionable from this sandbox):**
+`origin/main` (a separate lineage from this feature branch, out of this
+cycle's editable scope) has since grown a dedicated CI-only **Staging OTP
+E2E executor** (`docs/engineering/STAGING_OTP_E2E.md`, merged via PRs
+#30/#35/#37) that reads a real OTP from a dedicated Gmail test inbox via a
+GitHub Actions workflow bound to GitHub Environment `staging`, so it never
+hands Staging/Gmail credentials to this worker directly. It defines a
+concrete evidence contract (Supabase Staging accepts the OTP request, the
+email actually arrives, the code is extracted only inside the runner,
+Supabase Staging returns an authenticated session, workflow emits
+`STAGING_OTP_E2E_OK`) and explicitly states the next intended extension is
+"family creation persistence, join artifacts, and second-member join" —
+i.e. directly toward unblocking Queue items 1-3/6. This does not unblock
+anything this cycle (this sandbox still cannot dispatch or read GitHub
+Actions runs — `gh auth status` gated), but it is a live, evolving unblock
+path the owner/a future cycle with `gh`/environment access should check for
+a completed run before re-treating 1-3/6 as fully blocked.
 
 Separately, `gh` CLI access itself remains gated behind an interactive
 approval prompt with no owner present to answer it in this sandbox's
@@ -200,27 +224,25 @@ safe tasks that do not depend on them.
 
 ## Next Safe Task
 
-Every named QA_RELEASE_GUARDIAN.md theme (verified onboarding/auth and
-family isolation, email delivery/observability, Settings/Roles backend
-authorization, RTL/responsive + dog-sex copy + mascot/Reduced Motion,
-production-sensitive System Admin operations, real-device
-notification-open behavior, invite-redemption token handling, the
-short-code join path, the `AUTO_APPROVE_NEW_FAMILIES` Edge Function
-wiring, and the `send-email`/`SEND_EMAIL_HOOK_SECRET` Standard Webhooks
-wiring) now has at least one dedicated credential-free sweep across every
-Batch 3/4 surface on this branch and the stacked branches' distinct
-feature UI, with **no unresolved release-blocking gap** on any of them.
-The next independent credential-free sub-task: re-attempt Queue item 7's
+Every named QA_RELEASE_GUARDIAN.md theme has at least one dedicated
+credential-free sweep across every Batch 3/4 surface on this branch and
+the stacked branches' distinct feature UI, with **no unresolved
+release-blocking gap** on any of them, and this cycle's second full
+end-to-end diff re-read (`origin/main...HEAD`) found nothing the
+theme-by-theme sweeps had missed either. Remaining independent
+credential-free sub-tasks, in order: (1) re-attempt Queue item 7's
 still-open Supabase-regression half via `gh`/a local Supabase stack (only
 if the sandbox's permission mode allows it that cycle — blocked for
-eleven cycles running so far). If still blocked, no theme remains fully
-unswept on this branch specifically; a productive next step is a second
-pass re-reading the diff between this branch and `main` end-to-end for
-anything missed by the theme-by-theme sweeps, or picking up Queue item 5
-(Batch 4 regression) if it has independent, credential-free repository
-evidence to check. A future cycle with
-`TARGET_BRANCH=feat/system-admin-approval-controls` should still
-prioritize fixing the `FamilyOnboardingScreen.tsx`
+twelve cycles running so far); (2) check whether `origin/main`'s new
+Staging OTP E2E executor (see Blocker above) has a completed run with
+`gh`, if `gh` becomes reachable — this could produce real evidence toward
+Queue items 1-3/6 without needing credentials in this sandbox directly;
+(3) Queue item 5 (Batch 4 regression) if/when independent,
+credential-free repository evidence for it exists — no `batch-4`-named
+branch or work exists in this repository yet, so this item currently has
+no distinct surface to regress beyond what Batch 2/3 sweeps already
+covered. A future cycle with `TARGET_BRANCH=feat/system-admin-approval-controls`
+should still prioritize fixing the `FamilyOnboardingScreen.tsx`
 applicant-status-recovery finding recorded under Blocker above — that
 remains the one known, unfixed, actionable defect from this whole
 campaign.
@@ -268,30 +290,52 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Queue item 4 credential-free sub-task — dedicated **Settings/Roles
-  backend-authorization** sweep, on this run's own `TARGET_BRANCH`. **No
-  defect found; no gap found** — full list of invariants checked in
-  Current Task Status above (every admin-only mutation re-derives caller
-  admin status server-side via `is_family_admin()`, never from a
-  client-supplied role; zero-admin guard enforced in the database with a
-  shared advisory lock, not just client UX; `member_permission_overrides`
-  has no client write RLS policy, RPC-gated only; QA impersonation can
-  only narrow an admin's view, never escalate a member's). Used a
-  fresh-context research agent for the initial cross-reference, then
-  independently re-verified all five of its claims by reading the actual
-  RPC SQL in `0007_multi_admin_roles.sql`/`0023_member_permission_overrides.sql`
-  directly rather than accepting the report at face value. No repository
-  change was needed or made. Re-ran the full local validation gate after a
-  fresh `npm ci` (no `node_modules` present at cycle start): `npx tsc
-  --noEmit` PASS, `npm test -- --runInBand` 89/89 suites, **918/918**
-  tests PASS (unchanged from prior cycle — no code change). Reconfirmed
-  `gh auth status` gated, `supabase` CLI not installed, `docker info`
-  gated — Queue item 7 stays blocked for another (eleventh) cycle. Also
-  confirmed the prior cycle's deliverable (its own `EXECUTION_STATE.md`
-  update) landed and is now on `origin` as `6a902de` — no recovery action
-  needed this cycle.
+- Second full end-to-end re-read of `git diff origin/main...HEAD` (32
+  files, 2281 insertions/54 deletions) on this run's own `TARGET_BRANCH`,
+  focused on the smaller UI-only files no prior theme sweep had named
+  individually. **No defect found; no gap found** — the `nativeDirection()`
+  web-console-warning fix (`theme/tokens.ts`, applied across
+  `Countdown.tsx`/`NextWalkCard.tsx`/`WalkRow.tsx`/`RootNavigator.tsx`/
+  `HistoryScreen.tsx`/`StatisticsScreen.tsx`) and the `LoginScreen.tsx`/
+  `HistoryScreen.tsx`/`ScheduleScreen.tsx`/`StatisticsScreen.tsx` web
+  desktop max-width containment are both well-reasoned, correctly
+  platform-scoped, and already covered by updated structural tests. Also
+  discovered and recorded for continuity (not actionable this cycle):
+  `.github/workflows/batch2-supabase-rehearsal.yml` already implements
+  Queue item 7's Supabase-regression path in CI; `origin/main` has grown a
+  separate Gmail-backed Staging OTP E2E CI executor
+  (`docs/engineering/STAGING_OTP_E2E.md`) intended to next extend toward
+  family creation/join flows — see Blocker above for full detail on both.
+  No repository change was needed or made. Re-ran the full local
+  validation gate after a fresh `npm ci` (no `node_modules` present at
+  cycle start): `npx tsc --noEmit` PASS, `npm test -- --runInBand` 89/89
+  suites, **918/918** tests PASS (unchanged from prior cycle — no code
+  change). Reconfirmed `gh auth status` gated, `supabase` CLI not
+  installed, `docker info` gated — Queue item 7 stays blocked for another
+  (twelfth) cycle. Also confirmed the prior cycle's deliverable (its own
+  `EXECUTION_STATE.md` update) landed and is now on `origin` as `dc5c46f`
+  — no recovery action needed this cycle.
 
 ### Previous cycle
+
+- Queue item 4 credential-free sub-task — dedicated **Settings/Roles
+  backend-authorization** sweep, on this run's own `TARGET_BRANCH`. **No
+  defect found; no gap found** — full list of invariants checked: every
+  admin-only mutation re-derives caller admin status server-side via
+  `is_family_admin()`, never from a client-supplied role; zero-admin guard
+  enforced in the database with a shared advisory lock, not just client
+  UX; `member_permission_overrides` has no client write RLS policy,
+  RPC-gated only; QA impersonation can only narrow an admin's view, never
+  escalate a member's. Independently re-verified by reading the actual RPC
+  SQL in `0007_multi_admin_roles.sql`/`0023_member_permission_overrides.sql`
+  directly. No repository change was needed or made. Re-ran the full local
+  validation gate after a fresh `npm ci`: `npx tsc --noEmit` PASS, `npm
+  test -- --runInBand` 89/89 suites, **918/918** tests PASS. Reconfirmed
+  `gh auth status` gated, `supabase` CLI not installed, `docker info`
+  gated — Queue item 7 stayed blocked for another (eleventh) cycle.
+  Committed and pushed as `dc5c46f`.
+
+### Two cycles ago
 
 - Queue item 3 credential-free sub-task — dedicated audit of the
   **`send-email` Edge Function's `SEND_EMAIL_HOOK_SECRET`/Standard
@@ -311,7 +355,7 @@ proceed even while 1–3/6 are blocked.
   Queue item 7 stayed blocked for another (tenth) cycle. Committed and
   pushed as `6a902de`.
 
-### Two cycles ago
+### Three cycles ago
 
 - Queue item 2 credential-free sub-task — dedicated sweep of the
   **`create-verified-family` Edge Function's `AUTO_APPROVE_NEW_FAMILIES`
@@ -336,7 +380,7 @@ proceed even while 1–3/6 are blocked.
   gate, but landed successfully as `0bc88c3` (confirmed at the start of
   the following cycle — see Last Evidence above).
 
-### Four cycles ago
+### Five cycles ago
 
 - Queue item 1/2 credential-free sub-task — dedicated end-to-end
   QA_RELEASE_GUARDIAN.md sweep of the **short-code join path**
