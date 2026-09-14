@@ -62,6 +62,23 @@ describe('lib/supabase — family create/join/lookup (Supabase mode)', () => {
     expect(await findFamilyByInviteCode('zzzzzz')).toBeNull();
   });
 
+  it('findFamilyByInviteCode rejects when the RPC errors', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'boom' } });
+    mockSupabaseClient(rpc);
+    const { findFamilyByInviteCode } = require('../supabase');
+
+    await expect(findFamilyByInviteCode('abc123')).rejects.toBeTruthy();
+  });
+
+  it('findFamilyByInviteCode accepts a single-row (non-array) response and omits dogName when absent', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: { id: 'fam-4', name: 'משפחה ללא כלב' }, error: null });
+    mockSupabaseClient(rpc);
+    const { findFamilyByInviteCode } = require('../supabase');
+
+    const result = await findFamilyByInviteCode('nodoge');
+    expect(result).toEqual({ id: 'fam-4', name: 'משפחה ללא כלב', dogName: undefined });
+  });
+
   it('joinFamily calls join_family with the code and returns the joined family', async () => {
     const rpc = jest.fn().mockResolvedValue({ data: [{ id: 'fam-1', name: 'המשפחה שלנו' }], error: null });
     mockSupabaseClient(rpc);
@@ -78,6 +95,23 @@ describe('lib/supabase — family create/join/lookup (Supabase mode)', () => {
     const { joinFamily } = require('../supabase');
 
     await expect(joinFamily('nope')).rejects.toBeTruthy();
+  });
+
+  it('joinFamily throws a Hebrew error when the RPC succeeds but returns no row', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: [], error: null });
+    mockSupabaseClient(rpc);
+    const { joinFamily } = require('../supabase');
+
+    await expect(joinFamily('nope')).rejects.toThrow('לא נמצאה משפחה עם הקוד הזה');
+  });
+
+  it('joinFamily accepts a single-row (non-array) response', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: { id: 'fam-5', name: 'משפחת אבני' }, error: null });
+    mockSupabaseClient(rpc);
+    const { joinFamily } = require('../supabase');
+
+    const result = await joinFamily('abc123');
+    expect(result).toEqual({ id: 'fam-5', name: 'משפחת אבני' });
   });
 
   it('createFamily calls create_family with the family name and no forced dog name by default', async () => {
@@ -108,6 +142,22 @@ describe('lib/supabase — family create/join/lookup (Supabase mode)', () => {
     expect(rpc).toHaveBeenCalledWith('create_family', { family_name: 'משפחת לוי', dog_name: 'ריקי' });
   });
 
+  it('createFamily rejects when the RPC errors', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'boom' } });
+    mockSupabaseClient(rpc);
+    const { createFamily } = require('../supabase');
+
+    await expect(createFamily('משפחה')).rejects.toBeTruthy();
+  });
+
+  it('createFamily throws a Hebrew error when the RPC succeeds but returns no row', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    mockSupabaseClient(rpc);
+    const { createFamily } = require('../supabase');
+
+    await expect(createFamily('משפחה')).rejects.toThrow('יצירת המשפחה נכשלה');
+  });
+
   it('regenerateInviteCode calls regenerate_invite_code with the target family id and returns the new code', async () => {
     const rpc = jest.fn().mockResolvedValue({ data: 'NEWCODE', error: null });
     mockSupabaseClient(rpc);
@@ -116,6 +166,14 @@ describe('lib/supabase — family create/join/lookup (Supabase mode)', () => {
     const code = await regenerateInviteCode('fam-1');
     expect(rpc).toHaveBeenCalledWith('regenerate_invite_code', { target_family_id: 'fam-1' });
     expect(code).toBe('NEWCODE');
+  });
+
+  it('regenerateInviteCode rejects when the RPC errors (e.g. caller is not a member of the family)', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'not a member' } });
+    mockSupabaseClient(rpc);
+    const { regenerateInviteCode } = require('../supabase');
+
+    await expect(regenerateInviteCode('fam-1')).rejects.toBeTruthy();
   });
 
   it.each(['admin', 'member'] as const)('getCurrentFamilyRole calls current_family_role and returns %s as-is', async (role) => {

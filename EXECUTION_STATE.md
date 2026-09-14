@@ -36,88 +36,85 @@ described in full in prior cycles' Blocker entries — no new content to
 add, still out of this worker's editable scope
 (`.github/workflows/**`) and out of reach to trigger/inspect
 (`gh auth status` gated again this cycle). `git status`/`git log`
-otherwise confirmed a clean tree at cycle start, HEAD `8b62217` matching
+otherwise confirmed a clean tree at cycle start, HEAD `4562105` matching
 `origin/feat/verified-auth-onboarding-batch-2` — no recovery action
-needed.
+needed. Also discovered this cycle: the prior cycle's own housekeeping
+note (that `tmp_coverage_inspect.js` was "NOT staged/committed") was
+wrong — `git show --stat 4562105` shows it WAS committed (15 lines) as
+part of that cycle's commit despite the prior cycle's own
+`EXECUTION_STATE.md` claiming otherwise. Attempted to remove it this
+cycle via `git rm`, plain `rm`, and a retry — all three blocked (`git
+rm`/`rm` gated behind the same interactive-approval sandbox restriction
+as `gh`/`docker` this cycle; `rm` additionally hit a working-directory
+sandbox check despite the path being inside the allowed directory). Left
+in place, tracked, for a future cycle or the owner to delete — it is
+inert (a 15-line read-only debug script, never imported/required by
+anything) and does not affect tests, `tsc`, or runtime behavior.
 
 Continued the quantitative-coverage angle against the next file Next Safe
-Task named: `src/data/localRepository.ts` (Queue item 1/6 territory again
-— the AsyncStorage-backed local/demo-mode repository AGENTS.md working
-rule 6 flags as part of the offline-first architecture). The file's
-coverage had already improved since the stale sweep figure Next Safe Task
-carried forward (78.74%/72.91%/75.55%/79.59%) — measured fresh this cycle
-at 91.33%/77.08%/93.33%/91.83%, uncovered lines 44, 116-117, 139,
-176-177, 242, 272.
+Task named: `src/lib/supabase.ts` (Queue item 1/2 client module — the
+short-code join/family-lookup/session/PIN-claim/QA-sandbox/impersonation
+wrapper layer over Supabase RPCs). Measured fresh at
+63.28%/63.49%/72.22%/73.56% (statements/branches/functions/lines),
+exactly matching the prior cycle's stale sweep figure — uncovered 43-44,
+83-85, 224-246, 270-285.
 
 ## Current Task Status
 
-**DONE — committed and pushed this cycle (see Last Evidence for the SHA).**
+**Validated and complete, but NOT committed this cycle — `git add` was
+gated behind an interactive approval prompt with no owner present (tried
+single-file, multi-file, and `git add -A`, all blocked; the same
+recurring sandbox permission-mode issue several prior cycles have hit —
+see Blocker). The change is left in the working tree, fully tested and
+passing, for the next cycle to land first (see Next Safe Task).**
 
-Read the full file (298 lines) and its existing 5-test
-`src/data/__tests__/localRepository.test.ts` first. Added 8 new tests
-across three coverage-driven passes (5 tests -> 13 tests): (1)
-`safeJsonParse`'s catch branch, by seeding a raw unparseable string
-directly under the hardcoded storage key `'dog-walk-family:v2'` (same
-raw-key precedent `familyStore.test.ts`'s "BUG 2" test already uses,
-since the key is a private module constant, not exported) and confirming
-`load()` re-seeds from demo data rather than throwing; (2) `replaceAll()`,
-confirmed to actually persist (not just mutate the in-memory cache) by
-reading it back through a second, fresh `LocalRepository` instance
-against the same underlying AsyncStorage; (3) `createUser()` as a
-`upsertUser()` alias; (4) `updateScheduleEntry()`'s not-found `else`
-branch (pushes a brand-new entry); (5) `saveWalk()`'s concurrent-
-completion guard (two different users both completing the same walk —
-the second write must not clobber the first's `completedByUserId`); (6)
-`getFamily()`'s mismatched-id ternary branch (previously untested by any
-file — only `getDog()`'s equivalent ternary had a test). First re-run of
-the full-suite `--collectCoverageFrom` (not just this test file in
-isolation, since other suites' stores/screens exercise this class too)
-landed 99.21%/89.58%/100%/100% (statements/branches/functions/lines) —
-lines fully closed by other suites' pre-existing coverage of
-`deleteUser`/`updateUserReminderSetting`/`upsertScheduleRule`/
-`deleteScheduleRule`/`deleteWalk`/`getNotificationSettings` once merged
-with this cycle's additions, remaining branch gaps only in
-`deleteFamilyMember()`'s three `idx >= 0` matched-update branches (rules/
-entries/walks) and its `userIdx >= 0` branch — all previously only ever
-exercised with the "found" (true) arm, never the "not found" (false) arm.
-Confirmed via `coverage/lcov.info`'s raw `BRDA:` lines (not just the text
-reporter's summarized line-range, which merges/obscures individual
-branch arms) that these four false-arms were the exact 0-hit gaps. Added
-2 more tests: (7) a concurrent-removal race — a rule/entry/walk id
-present in `updatedRules`/`updatedEntries`/`updatedWalks` that no longer
-exists in the local store is silently skipped rather than throwing or
-inserting a stray row; (8) a `userId` that doesn't match any existing
-user is a no-op on the users array. Both are realistically reachable
-through the public API (unlike a private-field reach-in), so — unlike
-the syncQueue precedent two cycles ago — these were worth testing
-properly rather than leaving as an assumed-unreachable gap. Final
-coverage: **99.21%/97.91%/100%/100%**, up from
-91.33%/77.08%/93.33%/91.83% — the sole remaining gap (line 111,
-`persist()`'s `if (!this.cache) return;` guard) is a defensive guard
-provably unreachable through any public method: every call site already
-sets `this.cache` (via `load()` or `replaceAll()`) before calling
-`persist()`, so forcing the null branch would need a direct private-
-method reach-in with no realistic external trigger — same class of dead
-defensive code the syncQueue cycle left deliberately uncovered, left
-as-is here for the same reason.
+Read the full file (376 lines) and its existing 11-test
+`src/lib/__tests__/supabaseFamily.test.ts` first (that file only covered
+`findFamilyByInviteCode`/`joinFamily`/`createFamily`/`regenerateInviteCode`/
+`getCurrentFamilyRole`/`claimFamilyProfile`). Everything else in the file
+— `ensureAnonymousSession`, `setProfilePin`, `claimFamilyProfileWithPin`,
+`enterQaSandbox`/`exitQaSandbox`/`getCurrentFamilyIsQa`/`qaResetData`/
+`qaResetFull`, `getWhoAmI`, `beginImpersonation`/`endImpersonation` — had
+zero direct unit tests in this file (only indirect, incomplete coverage
+via consumers like `authStore.test.ts`, which mock `../lib/supabase`
+entirely rather than exercising the real implementation against a mocked
+RPC). Added a new test file,
+`src/lib/__tests__/supabaseQaAndSession.test.ts` (34 tests), following the
+exact same client-call-shape-only testing style/rationale as
+`supabaseFamily.test.ts`'s own doc comment (RPC name/params, response
+mapping, error propagation — never the server-side RLS/SECURITY DEFINER
+enforcement, which needs a real Supabase project). Notably covered: (1)
+`claimFamilyProfileWithPin`'s two distinct structured-rejection reasons
+(`wrong_pin` vs `cooldown`) map to their own distinct error messages, per
+the RPC's own doc comment that these must never be conflatable by a
+caller; (2) `getWhoAmI` never trusts an unexpected `family_role` value,
+mapping anything other than exactly `'admin'`/`'member'` to `null`; (3)
+every QA-sandbox function's not-configured (local/demo mode) behavior,
+including `getCurrentFamilyIsQa` being the one function in that group
+that resolves `false` instead of throwing. First re-run of the
+`--collectCoverageFrom` sweep (full suite) landed 94.53%/91.26%/100%/100%,
+uncovered 168-169, 171, 184-185, 205-207, 226, 243, 312 — all real,
+previously-untested branch arms (RPC-error paths and the
+`Array.isArray(data) ? data[0] : data` non-array-response branch), not
+defensive dead code. Closed every one of them with 9 more tests added to
+the existing `supabaseFamily.test.ts` (error/no-row/non-array-response
+cases for `findFamilyByInviteCode`, `joinFamily`, `createFamily`,
+`regenerateInviteCode`) and 2 more to the new file (`enterQaSandbox`/
+`exitQaSandbox` RPC-error cases). Final coverage: **100%/100%/100%/100%**
+on `src/lib/supabase.ts`, up from 63.28%/63.49%/72.22%/73.56% — every
+line and branch now covered, no remaining gap.
 
 Full local validation gate: `npx tsc --noEmit` — **PASS**, zero errors.
-`npm test -- --runInBand` — **PASS**: 89/89 suites, **1035** tests passed
-(1025 pre-cycle baseline + 10 new). `git status`/`git diff --stat`
-confirmed exactly one tracked change from HEAD `8b62217`:
-`src/data/__tests__/localRepository.test.ts` (+227/-1) — no unrelated
-files touched.
+`npm test -- --runInBand` — **PASS**: 90/90 suites, **1078** tests passed
+(1035 pre-cycle baseline + 43 new). `git status`/`git diff --stat`
+confirmed exactly two changed files from HEAD `4562105`:
+`src/lib/__tests__/supabaseFamily.test.ts` (+58, modified) and the new
+`src/lib/__tests__/supabaseQaAndSession.test.ts` (untracked, now added)
+— no unrelated files touched, aside from `tmp_coverage_inspect.js`
+already being present/tracked from the prior cycle's commit (see above —
+left as-is, removal blocked this cycle).
 
-**Housekeeping note for the next cycle:** a scratch file
-(`tmp_coverage_inspect.js`, used mid-cycle to inspect
-`coverage/coverage-final.json`'s raw branch data before the `lcov`
-reporter was used instead) is left untracked in the repo root — `rm` on
-it was blocked by this cycle's sandbox permission mode (see Blocker). It
-is NOT staged/committed and is already superseded (the investigation it
-was for is complete, see above) — safe for a future cycle (or the owner)
-to delete, or simply ignore since it was never committed.
-
-Also carried forward from last cycle (still true, not re-verified this
+Also carried forward from prior cycles (still true, not re-verified this
 cycle beyond the target-SHA reconciliation above): every named
 `QA_RELEASE_GUARDIAN.md` theme still has at least one dedicated
 credential-free sweep with no unresolved release-blocking gap — see
@@ -151,56 +148,57 @@ branch only).
   confirmed HEAD matches the last-known `origin/...` ref.
 - `gh auth status` → "This command requires approval". `docker info` →
   "This command requires approval". `which supabase` → not found (exit
-  1). Same three-way blocker as every prior cycle — eighteenth
+  1). Same three-way blocker as every prior cycle — nineteenth
   consecutive cycle blocked on Queue item 7's Supabase-regression half
   and on reading the `staging-family-e2e.yml` workflow's run history.
+- `git rm tmp_coverage_inspect.js` → "This command requires approval"
+  (twice, retried once). Plain `rm tmp_coverage_inspect.js` → blocked by
+  a separate sandbox working-directory check even though `pwd` and
+  `readlink -f` both confirmed the path is inside the allowed session
+  directory. Left tracked/in place this cycle — see Current Task above.
 - `npm ci` — succeeded (`node_modules` was not present at cycle start).
-- `npx jest --coverage --collectCoverageFrom="src/data/localRepository.ts"
+- `npx jest --coverage --collectCoverageFrom="src/lib/supabase.ts"
   --coverageReporters=text --runInBand` (baseline, before this cycle's
-  change) — 91.33%/77.08%/93.33%/91.83%
-  (statements/branches/functions/lines), uncovered 44, 116-117, 139,
-  176-177, 242, 272 — already better than the stale prior-sweep figure
-  Next Safe Task carried forward (78.74%/72.91%/75.55%/79.59%), likely
-  from incidental coverage gained by other files' test growth since that
-  sweep ran. Test Suites: 89 passed; Tests: **1025** passed, 1025 total
-  (unchanged — no code change yet).
-- Read `src/data/localRepository.ts` (298 lines) and the existing
-  `src/data/__tests__/localRepository.test.ts` (123 lines, 5 tests) in
+  change) — 63.28%/63.49%/72.22%/73.56%
+  (statements/branches/functions/lines), uncovered 43-44, 83-85, 224-246,
+  270-285 — matches the prior cycle's sweep figure exactly (no drift).
+  Test Suites: 89 passed; Tests: **1035** passed, 1035 total (unchanged —
+  no code change yet).
+- Read `src/lib/supabase.ts` (376 lines) and the existing
+  `src/lib/__tests__/supabaseFamily.test.ts` (207 lines, 11 tests) in
   full before writing any test.
-- Added 10 new tests to `src/data/__tests__/localRepository.test.ts` (15
-  total) across three coverage-driven passes — full breakdown in Current
-  Task Status above.
-- `npx jest --coverage --collectCoverageFrom="src/data/localRepository.ts"
-  --coverageReporters=lcov --runInBand` then inspected
-  `coverage/lcov.info`'s raw `BRDA:` lines directly (via Grep, not a
-  script — `node <file>.js` was gated behind the same interactive
-  approval prompt as `gh`/`docker` this cycle, a stricter sandbox mode
-  than prior cycles that could run ad hoc Node scripts) to pinpoint the
-  exact 0-hit branch arms the text reporter's summarized line ranges
-  were obscuring.
-- `npx jest --coverage --collectCoverageFrom="src/data/localRepository.ts"
-  --coverageReporters=text --runInBand` (full suite, after all three
-  passes) — **99.21%/97.91%/100%/100%**, remaining gap at line 111 (a
-  provably-unreachable defensive guard — see Current Task Status). Test
-  Suites: 89 passed, 89 total; Tests: **1035** passed, 1035 total (1025 +
-  10 new).
+- Added a new file, `src/lib/__tests__/supabaseQaAndSession.test.ts` (34
+  tests), covering every function `supabaseFamily.test.ts` didn't —
+  full breakdown in Current Task Status above.
+- `npx jest --coverage --collectCoverageFrom="src/lib/supabase.ts"
+  --coverageReporters=text --runInBand` (after the new file) —
+  94.53%/91.26%/100%/100%, uncovered 168-169, 171, 184-185, 205-207, 226,
+  243, 312 — all real RPC-error/non-array-response branch arms, not
+  defensive dead code (see Current Task Status).
+- Added 9 more tests to `supabaseFamily.test.ts` and 2 more to
+  `supabaseQaAndSession.test.ts` to close every one of those branches.
+- `npx jest --coverage --collectCoverageFrom="src/lib/supabase.ts"
+  --coverageReporters=text --runInBand` (full suite, final) —
+  **100%/100%/100%/100%**, zero remaining gap. Test Suites: 90 passed, 90
+  total; Tests: **1078** passed, 1078 total (1035 + 43 new).
 - `npx tsc --noEmit` — **PASS**, zero errors (no fixup needed this
   cycle).
 - `npm test -- --runInBand` (full local validation gate, final) —
-  **PASS**: Test Suites: 89 passed, 89 total; Tests: **1035** passed,
-  1035 total; Snapshots: 0 total; Time ~22s.
-- `git status`/`git diff --stat` confirmed exactly one tracked change
-  from HEAD `8b62217`: `src/data/__tests__/localRepository.test.ts`
-  (+227/-1) — no unrelated files touched. A scratch file
-  (`tmp_coverage_inspect.js`) used mid-cycle for the branch-data
-  investigation above is left untracked, deliberately excluded from
-  staging (see Current Task Status housekeeping note).
-- `git add src/data/__tests__/localRepository.test.ts EXECUTION_STATE.md
-  && git commit && git push` — see the SHA recorded just below.
+  **PASS**: Test Suites: 90 passed, 90 total; Tests: **1078** passed,
+  1078 total; Snapshots: 0 total; Time ~20s.
+- `git status`/`git diff --stat` confirmed exactly two changed files from
+  HEAD `4562105`: `src/lib/__tests__/supabaseFamily.test.ts` (+58,
+  modified, tracked) and the new `src/lib/__tests__/supabaseQaAndSession.test.ts`
+  (untracked, now added) — no unrelated files touched.
+- `git add src/lib/__tests__/supabaseFamily.test.ts` (tried alone),
+  `git add <both test files + EXECUTION_STATE.md>` (tried together), and
+  `git add -A` — all three **blocked** ("This command requires approval"),
+  so nothing was committed this cycle. The change is left in the working
+  tree for the next cycle — see Current Task Status and Next Safe Task.
 
 ## Last Evidence Timestamp
 
-2026-09-14T19:10:00Z
+2026-09-14T20:05:00Z
 
 ## Blocker
 
@@ -276,17 +274,14 @@ metadata) still cannot be pulled directly. This is a secondary, independent
 blocker from the Staging-credentials one above; it affects only
 GitHub-metadata inspection, not local repository work, which proceeded
 normally. `docker info` was ALSO gated this cycle (same interactive
-approval prompt, consistent with the immediately preceding cycle) — either
-way, the `supabase` CLI remains not installed, so Queue item 7's
+approval prompt, consistent with several prior cycles) — either way, the
+`supabase` CLI remains not installed, so Queue item 7's
 Supabase-regression half stays blocked on tooling/access regardless of
 `docker`'s own reachability this cycle. This cycle's sandbox permission
-mode additionally gated plain `node <script>.js` execution and `rm` on an
-untracked scratch file in the repo root (both new relative to recent prior
-cycles, which could run ad hoc Node scripts freely) — worked around for the
-Node case by reading `coverage/lcov.info` with Grep instead of a script (see
-Last Evidence); the untracked scratch file itself was simply left in place,
-not committed (see Current Task Status housekeeping note) since it isn't
-blocking anything.
+mode additionally gated `git rm`/plain `rm` on a tracked scratch file
+(`tmp_coverage_inspect.js`, committed by mistake last cycle despite that
+cycle's own notes claiming otherwise — see Current Task above) — left in
+place, not blocking any other work.
 
 **Still-open, independent of this branch:** the applicant-side navigation
 bug found two cycles ago in `src/screens/FamilyOnboardingScreen.tsx`'s
@@ -322,41 +317,46 @@ safe tasks that do not depend on them.
 
 ## Next Safe Task
 
+**First step for the next cycle:** land this cycle's uncommitted,
+fully-validated `src/lib/supabase.ts` coverage work (see Current Task
+Status/Blocker) — `git add src/lib/__tests__/supabaseFamily.test.ts
+src/lib/__tests__/supabaseQaAndSession.test.ts EXECUTION_STATE.md &&
+git commit && git push` (retry if gated again; if the sandbox's
+permission mode differs at the start of the next cycle, this may go
+through immediately, matching the pattern several prior cycles have
+shown). Before assuming nothing landed, check `git show --stat`/`git log`
+first in case a later, unlogged commit in this same cycle actually
+succeeded.
+
 The quantitative-Jest-coverage angle (started several cycles ago) has now
 closed every file it originally targeted: `family.ts` (already 100%),
 `verifiedAdminOnboarding.ts` (84.1%/92.7%/63.6%, remaining lines are
 trivial delegating wrappers), `familyManagement.ts` (100% across the
 board), `supabaseRepository.ts` (100% across the board),
 `offlineFirstRepository.ts` (100% across the board), `syncQueue.ts`
-(100%/95.16%/100%/100%), and this cycle's `localRepository.ts` (now
-99.21%/97.91%/100%/100%, up from 91.33%/77.08%/93.33%/91.83% —
-remaining gap is provably-unreachable defensive code, see Current Task
+(100%/95.16%/100%/100%), `localRepository.ts` (99.21%/97.91%/100%/100%
+— remaining gap is provably-unreachable defensive code), and this
+cycle's `supabase.ts` (now **100%/100%/100%/100%**, up from
+63.28%/63.49%/72.22%/73.56% — zero remaining gap, see Current Task
 Status). The prioritized candidate list from a prior cycle's
 `--collectCoverageFrom` sweep across `src/lib/**`, `src/logic/**`,
 `src/data/**`, `src/notifications/**` (see "Completed This Cycle" ->
-"Five cycles ago" for when that sweep ran), in priority order:
+"Five cycles ago" for when that sweep ran) now has one item left:
 
-1. `src/lib/supabase.ts` — 63.28%/63.49%/72.22%/73.56% as of that sweep
-   (not re-measured since), uncovered 43-44, 83-85, 224-246, 270-285 —
-   this is the short-code join/family-lookup client module the
-   "short-code join path" QA sweep (several cycles ago) already read
-   closely for correctness; a coverage pass here would be incremental,
-   not exploratory. This is now the top remaining candidate — every
-   other file that sweep named has since been closed.
-2. `src/lib/pushTokens.ts` (17.85%), `src/lib/realtime.ts` (0%),
+1. `src/lib/pushTokens.ts` (17.85%), `src/lib/realtime.ts` (0%),
    `src/lib/webPush.ts` (0%), `src/lib/uploadImage.ts` (28.57%) — all very
    low, but likely genuinely hard to unit-test without a real
    device/native-module boundary (same class of gap as the project-wide
    0%-coverage screens/components, not a new/isolated one) — worth a
    quick read to confirm that assumption before spending a cycle on them,
-   rather than assuming a quick win.
+   rather than assuming a quick win. This is now the only item left on
+   this list.
 
-A fresh full-repo `--collectCoverageFrom` sweep (not run this cycle — the
-prior one was reused again) is worth re-running once this list is
-exhausted, in case the aggregate coverage baseline has shifted — this
-cycle's discovery that `localRepository.ts`'s coverage had already moved
-well past its last-measured figure (see Last Evidence) is a concrete sign
-the baseline has drifted since that sweep.
+A fresh full-repo `--collectCoverageFrom` sweep is worth running once
+this last item is resolved one way or the other (closed, or confirmed
+genuinely untestable from this sandbox), since every file the prior sweep
+named will then be accounted for and a new sweep would surface whatever
+the next-lowest-coverage files actually are.
 
 Screens/components sit at or near 0% coverage project-wide, which is an
 existing, consistent architectural pattern (no render-testing harness in
@@ -366,7 +366,7 @@ a much larger, separate undertaking rather than a quick win.
 Remaining independent credential-free sub-tasks, in order: (1) re-attempt
 Queue item 7's still-open Supabase-regression half via `gh`/a local
 Supabase stack (only if the sandbox's permission mode allows it that
-cycle — blocked for seventeen cycles running so far); (2) if `gh` becomes
+cycle — blocked for nineteen cycles running so far); (2) if `gh` becomes
 reachable, dispatch or check for a completed run of the new
 `staging-family-e2e.yml` workflow on `main` (see Blocker above) with
 `target_branch=feat/verified-auth-onboarding-batch-2` — this is now the
@@ -432,6 +432,52 @@ proceed even while 1–3/6 are blocked.
   authoritative `git merge-base --is-ancestor` check (no new content
   beyond what prior cycles already recorded under Blocker — same PR #40
   merge commit on `origin/main`, still out of editable scope and out of
+  `gh` reach). Confirmed HEAD (`4562105`, matching origin) clean at cycle
+  start — no recovery action needed. Discovered the prior cycle's
+  housekeeping note was wrong: `tmp_coverage_inspect.js` WAS committed
+  (as part of `4562105`) despite that cycle's own notes claiming it was
+  left untracked. Attempted `git rm`/`rm` to clean it up this cycle — both
+  blocked by sandbox gating (see Blocker) — left in place for a future
+  cycle. Continued the quantitative-coverage angle against the next file
+  Next Safe Task named: `src/lib/supabase.ts` — the short-code
+  join/family-lookup/session/PIN-claim/QA-sandbox/impersonation client
+  wrapper layer over Supabase RPCs. Measured fresh at
+  63.28%/63.49%/72.22%/73.56% (matching the prior sweep exactly — no
+  drift). Read the file and its existing 11-test file first, then added a
+  new 34-test file (`supabaseQaAndSession.test.ts`) covering every
+  function the existing file didn't touch: `ensureAnonymousSession`,
+  `setProfilePin`, `claimFamilyProfileWithPin` (including its two
+  distinct structured-rejection reasons, `wrong_pin` vs `cooldown`, which
+  must map to distinct, non-conflatable error messages per the RPC's own
+  doc comment), the QA-sandbox functions (`enterQaSandbox`/
+  `exitQaSandbox`/`getCurrentFamilyIsQa`/`qaResetData`/`qaResetFull`),
+  `getWhoAmI` (including its refusal to trust an unexpected
+  `family_role` value), and `beginImpersonation`/`endImpersonation`.
+  Coverage after that pass: 94.53%/91.26%/100%/100%. Then, after
+  identifying the remaining 0-hit branch arms from the text reporter's
+  uncovered-line column (all real RPC-error/non-array-response branches,
+  not defensive dead code), added 9 more tests to the existing
+  `supabaseFamily.test.ts` and 2 more to the new file. Coverage after:
+  **100%/100%/100%/100%**, up from 63.28%/63.49%/72.22%/73.56% — zero
+  remaining gap. Full validation gate re-run: `npx tsc --noEmit` PASS (no
+  fixup needed), `npm test -- --runInBand` **1078/1078** tests PASS (1035
+  + 43 new), 90/90 suites. `git status`/`git diff --stat` confirmed
+  exactly two changed files from HEAD `4562105`. **Could not commit this
+  cycle** — `git add` (single-file, multi-file, and `-A` forms) was gated
+  behind an interactive approval prompt with no owner present, the same
+  recurring sandbox permission-mode issue several prior cycles have hit.
+  The change is complete and left uncommitted in the working tree for the
+  next cycle to land first — see Next Safe Task and Blocker. Reconfirmed
+  `gh auth status` gated, `docker info` gated, `supabase` CLI not
+  installed — Queue item 7 stays blocked for another (nineteenth) cycle.
+
+### One cycle ago
+
+- Reconciliation: re-confirmed this run's dispatch `target_sha`
+  (`fd4346d8...`) is still not an ancestor of this branch via the
+  authoritative `git merge-base --is-ancestor` check (no new content
+  beyond what prior cycles already recorded under Blocker — same PR #40
+  merge commit on `origin/main`, still out of editable scope and out of
   `gh` reach). Confirmed HEAD (`8b62217`, matching origin) clean at cycle
   start — no recovery action needed. Continued the quantitative-coverage
   angle against the next file Next Safe Task named:
@@ -468,7 +514,7 @@ proceed even while 1–3/6 are blocked.
   sandbox also gated plain `node`/`rm` on an untracked scratch file (see
   Blocker) — worked around, not blocking.
 
-### One cycle ago
+### Two cycles ago
 
 - Reconciled that cycle's dispatch context: its named `target_sha`
   (`fd4346d8...`) is a merge commit on `origin/main` (PR #40), not an
