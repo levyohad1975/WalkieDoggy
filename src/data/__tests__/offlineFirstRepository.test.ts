@@ -1,5 +1,6 @@
 import type { Repository } from '../repository';
-import type { FamilyUser } from '../../types';
+import type { OfflineFirstRepository as OfflineFirstRepositoryType } from '../offlineFirstRepository';
+import type { Dog, FamilyUser, ScheduleEntry, ScheduleRule, Walk } from '../../types';
 
 function stubRemote(overrides: Partial<Repository> = {}): Repository {
   return {
@@ -203,5 +204,353 @@ describe('OfflineFirstRepository.deleteFamilyMember — online rejection propaga
 
     const localUsers = await (repo as any).local.getUsers('family-1');
     expect(localUsers.find((u: FamilyUser) => u.id === 'user-5')?.removedAt).toBeTruthy();
+  });
+});
+
+/** Builds a fresh, isolated OfflineFirstRepository for one test: resets the module registry so the NetInfo mock below takes effect, clears the AsyncStorage-backed local cache, then constructs the repository against `remote`. */
+async function makeRepo(online: boolean, remote: Repository | null): Promise<OfflineFirstRepositoryType> {
+  jest.resetModules();
+  jest.doMock('@react-native-community/netinfo', () => ({
+    __esModule: true,
+    default: { fetch: jest.fn().mockResolvedValue({ isConnected: online, isInternetReachable: online }) },
+  }));
+  const AsyncStorage = require('@react-native-async-storage/async-storage');
+  await AsyncStorage.clear();
+  const { OfflineFirstRepository } = require('../offlineFirstRepository');
+  return new OfflineFirstRepository(remote);
+}
+
+describe('OfflineFirstRepository — trySync', () => {
+  it('is a no-op when no remote repository is configured (e.g. App.tsx calling it opportunistically in local/demo mode)', async () => {
+    const repo = await makeRepo(true, null);
+    await expect(repo.trySync()).resolves.toBeUndefined();
+  });
+});
+
+describe('OfflineFirstRepository — hasPendingForOtherUser delegates to the SyncQueue', () => {
+  it('returns whatever the queue reports, for the given userId', async () => {
+    const repo = await makeRepo(true, null);
+    (repo as any).queue = { hasPendingForOtherUser: jest.fn().mockResolvedValue(true) };
+
+    await expect(repo.hasPendingForOtherUser('user-9')).resolves.toBe(true);
+    expect((repo as any).queue.hasPendingForOtherUser).toHaveBeenCalledWith('user-9');
+  });
+});
+
+describe('OfflineFirstRepository — online + remote succeeds: reads return the fresh remote data directly', () => {
+  it('getFamily returns the remote family without consulting the local cache', async () => {
+    const fresh = { id: 'family-1', name: 'משפחת בדיקה' };
+    const remote = stubRemote({ getFamily: jest.fn().mockResolvedValue(fresh) });
+    const repo = await makeRepo(true, remote);
+
+    await expect(repo.getFamily('family-1')).resolves.toEqual(fresh);
+    expect(remote.getFamily).toHaveBeenCalledWith('family-1');
+  });
+
+  it('getUsers returns the remote list', async () => {
+    const fresh: FamilyUser[] = [
+      { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, createdAt: new Date().toISOString() },
+    ];
+    const remote = stubRemote({ getUsers: jest.fn().mockResolvedValue(fresh) });
+    const repo = await makeRepo(true, remote);
+
+    await expect(repo.getUsers('family-1')).resolves.toEqual(fresh);
+    expect(remote.getUsers).toHaveBeenCalledWith('family-1');
+  });
+
+  it('getDog returns the remote dog', async () => {
+    const fresh: Dog = { id: 'dog-1', familyId: 'family-1', name: 'ריקי', walksPerDay: 3 };
+    const remote = stubRemote({ getDog: jest.fn().mockResolvedValue(fresh) });
+    const repo = await makeRepo(true, remote);
+
+    await expect(repo.getDog('family-1')).resolves.toEqual(fresh);
+    expect(remote.getDog).toHaveBeenCalledWith('family-1');
+  });
+
+  it('getScheduleRules returns the remote rules', async () => {
+    const fresh: ScheduleRule[] = [
+      {
+        id: 'rule-1',
+        familyId: 'family-1',
+        dogId: 'dog-1',
+        time: '08:00',
+        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        rotationUserIds: ['u1'],
+        rotationAnchorDate: '2026-01-01',
+        sortOrder: 0,
+        active: true,
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    const remote = stubRemote({ getScheduleRules: jest.fn().mockResolvedValue(fresh) });
+    const repo = await makeRepo(true, remote);
+
+    await expect(repo.getScheduleRules('family-1')).resolves.toEqual(fresh);
+    expect(remote.getScheduleRules).toHaveBeenCalledWith('family-1');
+  });
+
+  it('getScheduleEntries returns the remote entries', async () => {
+    const fresh: ScheduleEntry[] = [
+      { id: 'entry-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-01-02', time: '08:00', responsibleUserId: 'u1', createdAt: new Date().toISOString() },
+    ];
+    const remote = stubRemote({ getScheduleEntries: jest.fn().mockResolvedValue(fresh) });
+    const repo = await makeRepo(true, remote);
+
+    await expect(repo.getScheduleEntries('family-1')).resolves.toEqual(fresh);
+    expect(remote.getScheduleEntries).toHaveBeenCalledWith('family-1');
+  });
+
+  it('getWalks returns the remote walks', async () => {
+    const fresh: Walk[] = [
+      { id: 'walk-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-01-02', scheduledTime: '08:00', responsibleUserId: 'u1', status: 'pending', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    ];
+    const remote = stubRemote({ getWalks: jest.fn().mockResolvedValue(fresh) });
+    const repo = await makeRepo(true, remote);
+
+    await expect(repo.getWalks('family-1')).resolves.toEqual(fresh);
+    expect(remote.getWalks).toHaveBeenCalledWith('family-1');
+  });
+});
+
+describe('OfflineFirstRepository — writes with a remote repository configured: applied locally and queued for sync', () => {
+  // Offline for this whole block so the queued item is left sitting in the
+  // queue (trySync's own early-return branch — already covered elsewhere —
+  // is exercised either way); this isolates "did this method enqueue at
+  // all" from SyncQueue.flush()'s own replay/quarantine behavior, which is
+  // that module's own test file's concern, not this one's.
+  const dog: Dog = { id: 'dog-1', familyId: 'family-1', name: 'ריקי', walksPerDay: 2 };
+  const rule: ScheduleRule = {
+    id: 'rule-1',
+    familyId: 'family-1',
+    dogId: 'dog-1',
+    time: '08:00',
+    daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+    rotationUserIds: ['u1'],
+    rotationAnchorDate: '2026-01-01',
+    sortOrder: 0,
+    active: true,
+    createdAt: new Date().toISOString(),
+  };
+  const entry: ScheduleEntry = { id: 'entry-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-01-02', time: '08:00', responsibleUserId: 'u1', createdAt: new Date().toISOString() };
+  const walk: Walk = { id: 'walk-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-01-02', scheduledTime: '08:00', responsibleUserId: 'u1', status: 'pending', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  const user: FamilyUser = { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, createdAt: new Date().toISOString() };
+
+  it('deleteUser removes the local user and enqueues a sync op', async () => {
+    const repo = await makeRepo(false, stubRemote());
+    await repo.upsertUser(user);
+    const before = await repo.pendingSyncCount();
+
+    await repo.deleteUser('u1');
+
+    expect((await repo.getUsers('family-1')).find((u) => u.id === 'u1')).toBeUndefined();
+    expect(await repo.pendingSyncCount()).toBe(before + 1);
+  });
+
+  it('updateUserReminderSetting updates the local flag and enqueues a sync op', async () => {
+    const repo = await makeRepo(false, stubRemote());
+    await repo.upsertUser(user);
+    const before = await repo.pendingSyncCount();
+
+    await repo.updateUserReminderSetting('u1', false);
+
+    expect((await repo.getUsers('family-1')).find((u) => u.id === 'u1')?.remindersEnabled).toBe(false);
+    expect(await repo.pendingSyncCount()).toBe(before + 1);
+  });
+
+  it('upsertDog writes the local dog and enqueues a sync op', async () => {
+    const repo = await makeRepo(false, stubRemote());
+
+    await repo.upsertDog(dog);
+
+    await expect(repo.getDog('family-1')).resolves.toEqual(dog);
+    expect(await repo.pendingSyncCount()).toBe(1);
+  });
+
+  it('upsertScheduleRule writes the local rule and enqueues a sync op', async () => {
+    const repo = await makeRepo(false, stubRemote());
+
+    await repo.upsertScheduleRule(rule);
+
+    await expect(repo.getScheduleRules('family-1')).resolves.toEqual([rule]);
+    expect(await repo.pendingSyncCount()).toBe(1);
+  });
+
+  it('deleteScheduleRule removes the local rule and enqueues a sync op', async () => {
+    const repo = await makeRepo(false, stubRemote());
+    await repo.upsertScheduleRule(rule);
+    const before = await repo.pendingSyncCount();
+
+    await repo.deleteScheduleRule('rule-1');
+
+    await expect(repo.getScheduleRules('family-1')).resolves.toEqual([]);
+    expect(await repo.pendingSyncCount()).toBe(before + 1);
+  });
+
+  it('addScheduleEntries writes the local entry and enqueues a sync op', async () => {
+    const repo = await makeRepo(false, stubRemote());
+
+    await repo.addScheduleEntries([entry]);
+
+    await expect(repo.getScheduleEntries('family-1')).resolves.toEqual([entry]);
+    expect(await repo.pendingSyncCount()).toBe(1);
+  });
+
+  it('updateScheduleEntry updates the local entry and enqueues a sync op', async () => {
+    const repo = await makeRepo(false, stubRemote());
+    await repo.addScheduleEntries([entry]);
+    const before = await repo.pendingSyncCount();
+    const updated: ScheduleEntry = { ...entry, time: '09:00' };
+
+    await repo.updateScheduleEntry(updated);
+
+    await expect(repo.getScheduleEntries('family-1')).resolves.toEqual([updated]);
+    expect(await repo.pendingSyncCount()).toBe(before + 1);
+  });
+
+  it('deleteScheduleEntry removes the local entry and enqueues a sync op', async () => {
+    const repo = await makeRepo(false, stubRemote());
+    await repo.addScheduleEntries([entry]);
+    const before = await repo.pendingSyncCount();
+
+    await repo.deleteScheduleEntry('entry-1');
+
+    await expect(repo.getScheduleEntries('family-1')).resolves.toEqual([]);
+    expect(await repo.pendingSyncCount()).toBe(before + 1);
+  });
+
+  it('saveWalk writes the local walk and enqueues a sync op', async () => {
+    const repo = await makeRepo(false, stubRemote());
+
+    await repo.saveWalk(walk);
+
+    await expect(repo.getWalks('family-1')).resolves.toEqual([walk]);
+    expect(await repo.pendingSyncCount()).toBe(1);
+  });
+
+  it('deleteWalk removes the local walk and enqueues a sync op', async () => {
+    const repo = await makeRepo(false, stubRemote());
+    await repo.saveWalk(walk);
+    const before = await repo.pendingSyncCount();
+
+    await repo.deleteWalk('walk-1');
+
+    await expect(repo.getWalks('family-1')).resolves.toEqual([]);
+    expect(await repo.pendingSyncCount()).toBe(before + 1);
+  });
+});
+
+describe('OfflineFirstRepository — local/demo mode (no remote configured): writes apply locally only, nothing is ever queued', () => {
+  const dog: Dog = { id: 'dog-1', familyId: 'family-1', name: 'ריקי', walksPerDay: 2 };
+  const rule: ScheduleRule = {
+    id: 'rule-1',
+    familyId: 'family-1',
+    dogId: 'dog-1',
+    time: '08:00',
+    daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+    rotationUserIds: ['u1'],
+    rotationAnchorDate: '2026-01-01',
+    sortOrder: 0,
+    active: true,
+    createdAt: new Date().toISOString(),
+  };
+  const entry: ScheduleEntry = { id: 'entry-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-01-02', time: '08:00', responsibleUserId: 'u1', createdAt: new Date().toISOString() };
+  const walk: Walk = { id: 'walk-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-01-02', scheduledTime: '08:00', responsibleUserId: 'u1', status: 'pending', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  const user: FamilyUser = { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, createdAt: new Date().toISOString() };
+
+  it('deleteUser removes the local user, nothing queued', async () => {
+    const repo = await makeRepo(true, null);
+    await repo.upsertUser(user);
+
+    await repo.deleteUser('u1');
+
+    expect((await repo.getUsers('family-1')).find((u) => u.id === 'u1')).toBeUndefined();
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+
+  it('updateUserReminderSetting updates locally, nothing queued', async () => {
+    const repo = await makeRepo(true, null);
+    await repo.upsertUser(user);
+
+    await repo.updateUserReminderSetting('u1', false);
+
+    expect((await repo.getUsers('family-1')).find((u) => u.id === 'u1')?.remindersEnabled).toBe(false);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+
+  it('upsertDog writes locally, nothing queued', async () => {
+    const repo = await makeRepo(true, null);
+
+    await repo.upsertDog(dog);
+
+    await expect(repo.getDog('family-1')).resolves.toEqual(dog);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+
+  it('upsertScheduleRule writes locally, nothing queued', async () => {
+    const repo = await makeRepo(true, null);
+
+    await repo.upsertScheduleRule(rule);
+
+    await expect(repo.getScheduleRules('family-1')).resolves.toEqual([rule]);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+
+  it('deleteScheduleRule removes locally, nothing queued', async () => {
+    const repo = await makeRepo(true, null);
+    await repo.upsertScheduleRule(rule);
+
+    await repo.deleteScheduleRule('rule-1');
+
+    await expect(repo.getScheduleRules('family-1')).resolves.toEqual([]);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+
+  it('addScheduleEntries writes locally, nothing queued', async () => {
+    const repo = await makeRepo(true, null);
+
+    await repo.addScheduleEntries([entry]);
+
+    await expect(repo.getScheduleEntries('family-1')).resolves.toEqual([entry]);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+
+  it('updateScheduleEntry updates locally, nothing queued', async () => {
+    const repo = await makeRepo(true, null);
+    await repo.addScheduleEntries([entry]);
+    const updated: ScheduleEntry = { ...entry, time: '09:00' };
+
+    await repo.updateScheduleEntry(updated);
+
+    await expect(repo.getScheduleEntries('family-1')).resolves.toEqual([updated]);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+
+  it('deleteScheduleEntry removes locally, nothing queued', async () => {
+    const repo = await makeRepo(true, null);
+    await repo.addScheduleEntries([entry]);
+
+    await repo.deleteScheduleEntry('entry-1');
+
+    await expect(repo.getScheduleEntries('family-1')).resolves.toEqual([]);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+
+  it('saveWalk writes locally, nothing queued', async () => {
+    const repo = await makeRepo(true, null);
+
+    await repo.saveWalk(walk);
+
+    await expect(repo.getWalks('family-1')).resolves.toEqual([walk]);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+
+  it('deleteWalk removes locally, nothing queued', async () => {
+    const repo = await makeRepo(true, null);
+    await repo.saveWalk(walk);
+
+    await repo.deleteWalk('walk-1');
+
+    await expect(repo.getWalks('family-1')).resolves.toEqual([]);
+    expect(await repo.pendingSyncCount()).toBe(0);
   });
 });
