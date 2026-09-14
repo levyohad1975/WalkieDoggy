@@ -1,0 +1,98 @@
+name: Staging Family E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'Non-main RC branch associated with this Staging validation'
+        required: true
+        default: 'feat/verified-auth-onboarding-batch-2'
+
+permissions:
+  contents: read
+
+env:
+  TARGET_BRANCH: ${{ inputs.target_branch }}
+
+jobs:
+  staging-family-e2e:
+    name: Real Staging Family E2E
+    runs-on: ubuntu-24.04
+    environment: staging
+    timeout-minutes: 25
+
+    steps:
+      - name: Guard staging-only target
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$TARGET_BRANCH" = "main" ]; then
+            echo "::error::Refusing to associate live Staging family E2E with main."
+            exit 1
+          fi
+          git check-ref-format --branch "$TARGET_BRANCH" >/dev/null
+          case "$TARGET_BRANCH" in
+            feat/*|fix/*|chore/*|test/*|docs/*|rc/*) ;;
+            *) echo "::error::Target must be an approved non-main RC branch."; exit 1 ;;
+          esac
+
+      - name: Checkout trusted executor
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify required Staging secrets are present
+        shell: bash
+        env:
+          SUPABASE_STAGING_URL: ${{ secrets.SUPABASE_STAGING_URL }}
+          SUPABASE_STAGING_ANON_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
+          STAGING_OTP_TEST_EMAIL: ${{ secrets.STAGING_OTP_TEST_EMAIL }}
+          STAGING_OTP_GMAIL_CLIENT_ID: ${{ secrets.STAGING_OTP_GMAIL_CLIENT_ID }}
+          STAGING_OTP_GMAIL_CLIENT_SECRET: ${{ secrets.STAGING_OTP_GMAIL_CLIENT_SECRET }}
+          STAGING_OTP_GMAIL_REFRESH_TOKEN: ${{ secrets.STAGING_OTP_GMAIL_REFRESH_TOKEN }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in SUPABASE_STAGING_URL SUPABASE_STAGING_ANON_KEY STAGING_OTP_TEST_EMAIL STAGING_OTP_GMAIL_CLIENT_ID STAGING_OTP_GMAIL_CLIENT_SECRET STAGING_OTP_GMAIL_REFRESH_TOKEN; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required staging secret: $name"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Run verified family creation E2E against Staging
+        shell: bash
+        env:
+          SUPABASE_STAGING_URL: ${{ secrets.SUPABASE_STAGING_URL }}
+          SUPABASE_STAGING_ANON_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
+          STAGING_OTP_TEST_EMAIL: ${{ secrets.STAGING_OTP_TEST_EMAIL }}
+          STAGING_OTP_GMAIL_CLIENT_ID: ${{ secrets.STAGING_OTP_GMAIL_CLIENT_ID }}
+          STAGING_OTP_GMAIL_CLIENT_SECRET: ${{ secrets.STAGING_OTP_GMAIL_CLIENT_SECRET }}
+          STAGING_OTP_GMAIL_REFRESH_TOKEN: ${{ secrets.STAGING_OTP_GMAIL_REFRESH_TOKEN }}
+        run: node scripts/staging-family-e2e.mjs
+
+      - name: Write evidence summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Staging Family E2E"
+            echo
+            echo "- Associated RC branch: \`$TARGET_BRANCH\`"
+            echo "- Environment: \`staging\`"
+            echo "- Flow: OTP → verified session → family persistence → invite lookup → second-device join when active"
+            echo "- Service-role credential used: no"
+            echo "- Production credentials used: no"
+            echo "- Production deploy/migration performed: no"
+            echo "- Result: \`${{ job.status }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
