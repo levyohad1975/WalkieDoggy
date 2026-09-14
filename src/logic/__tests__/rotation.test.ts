@@ -1,4 +1,9 @@
-import { generateRotationSchedule, resolveResponsibleForDate, ruleNeedsEntryBackfill } from '../rotation';
+import {
+  generateRotationSchedule,
+  previewRotation,
+  resolveResponsibleForDate,
+  ruleNeedsEntryBackfill,
+} from '../rotation';
 import type { ScheduleEntry, ScheduleRule } from '../../types';
 
 function makeRule(overrides: Partial<ScheduleRule> = {}): ScheduleRule {
@@ -49,6 +54,19 @@ describe('resolveResponsibleForDate (rotation)', () => {
     const rule = makeRule({ rotationUserIds: [] });
     expect(() => resolveResponsibleForDate(rule, '2026-08-24')).toThrow();
   });
+
+  it('throws when targetDate is before rotationAnchorDate', () => {
+    const rule = makeRule({ rotationAnchorDate: '2026-08-24' });
+    expect(() => resolveResponsibleForDate(rule, '2026-08-23')).toThrow(
+      'targetDate must be on or after rotationAnchorDate'
+    );
+  });
+
+  it('treats an empty daysOfWeek as every day (same as an explicit 0-6 list)', () => {
+    const rule = makeRule({ daysOfWeek: [] });
+    expect(resolveResponsibleForDate(rule, '2026-08-25')).toBe('yael');
+    expect(resolveResponsibleForDate(rule, '2026-08-26')).toBe('noam');
+  });
 });
 
 describe('generateRotationSchedule', () => {
@@ -91,6 +109,37 @@ describe('generateRotationSchedule', () => {
       '14:00 yael',
       '20:00 noam',
     ]);
+  });
+
+  it('falls back to a default idFactory (prefixed with the rule id) when none is provided', () => {
+    const rule = makeRule({ id: 'rule-42' });
+    const entries = generateRotationSchedule(rule, '2026-08-24', '2026-08-24');
+    expect(entries).toHaveLength(1);
+    expect(entries[0].id.startsWith('rule-42-')).toBe(true);
+  });
+
+  it('treats an empty daysOfWeek as every day (same as an explicit 0-6 list)', () => {
+    const rule = makeRule({ daysOfWeek: [] });
+    const entries = generateRotationSchedule(rule, '2026-08-24', '2026-08-26', () => 'id');
+    expect(entries.map((e) => e.date)).toEqual(['2026-08-24', '2026-08-25', '2026-08-26']);
+  });
+});
+
+describe('previewRotation', () => {
+  it('returns an empty string for an empty rotation list', () => {
+    expect(previewRotation([], 3)).toBe('');
+  });
+
+  it('builds an arrow-joined preview for the requested number of turns', () => {
+    expect(previewRotation(['דני', 'יעל', 'נועם'], 4)).toBe('דני → יעל → נועם → דני');
+  });
+
+  it('wraps around the rotation when turns exceeds the member count', () => {
+    expect(previewRotation(['a', 'b'], 5)).toBe('a → b → a → b → a');
+  });
+
+  it('returns an empty string when turns is zero', () => {
+    expect(previewRotation(['a', 'b'], 0)).toBe('');
   });
 });
 
