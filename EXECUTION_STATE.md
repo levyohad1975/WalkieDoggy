@@ -27,103 +27,71 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 
 ## Current Task
 
-Queue item 2/4 sub-task — credential-free QA_RELEASE_GUARDIAN.md sweep over
-a previously-unswept surface: the **applicant-facing** family-approval-status
-flow on stacked branch `feat/system-admin-approval-controls` (PR #11) —
-`src/screens/FamilyOnboardingScreen.tsx`'s `refreshOnboardingStatus()`/
-`AppState` effect and `src/lib/verifiedAdminOnboarding.ts`'s
-`getMyFamilyOnboardingStatus()`. Prior cycles had already swept the
-*admin-side* approve/reject screen (`SystemAdminScreen.tsx`) on this same
-stacked branch, but not this applicant-side status-recovery flow — selected
-after noticing (via `git log origin/feat/verified-auth-onboarding-batch-2..
-origin/feat/system-admin-approval-controls`) that this flow exists as its
-own distinct commit sequence (`fb63a48`, `b67829d`, `0a2b880`, `449f04b`)
-not called out in any prior cycle's sweep notes.
+Queue item 1/2 credential-free sub-task, per the previous cycle's own
+"Next Safe Task" pointer: second-pass re-audit of `src/lib/invites.ts`
+(`inspectFamilyInvite`/`inspectFamilyInviteDetail`/`redeemFamilyInvite`,
+Round 4 invite-redemption token handling) on **this run's own
+`TARGET_BRANCH`** (`feat/verified-auth-onboarding-batch-2`, not a stacked
+branch this time — so any defect found here would actually be fixable in
+this cycle). Re-verified against current `git log`/file contents rather
+than relying on the prior sweep list, covering the full chain: migrations
+`0008_family_invites.sql`, `0009_family_invites_pgcrypto_fix.sql`,
+`0028_family_invite_detail_preview.sql`; the client wrapper
+`src/lib/invites.ts` and its test file; the UI consumers
+`src/components/InviteShareModal.tsx` and `src/screens/FamilyOnboardingScreen.tsx`'s
+`redeem` mode (`inspectInvite`/`confirmRedeem`); and
+`src/store/authStore.ts`'s `completeInviteRedemption()`/
+`retryPendingInviteRedemptionVerification()`/`verifyAndCommitPendingRedemption()`
+or the whoami-verified commit ordering.
 
 ## Current Task Status
 
-DONE for the sweep, with one real finding — see below. **No source-code
-change was made this cycle**: the affected file
-(`src/screens/FamilyOnboardingScreen.tsx` with the approval-status code)
-does not exist on this run's `TARGET_BRANCH`
-(`feat/verified-auth-onboarding-batch-2`) at all; it only exists on the
-stacked branch `feat/system-admin-approval-controls`, which this run is not
-authorized to commit or push to (this run's instructions restrict edits/
-commits/pushes to the same `TARGET_BRANCH` only). The finding is therefore
-recorded here for the next cycle that runs against that branch, or for the
-owner reviewing PR #11, rather than fixed in place. This file's own
-recording of that finding is, however, a real edit to this branch, and it
-is **NOT YET COMMITTED** this cycle — see Blocker (`git add` gated again).
+DONE. **No defect found** — this surface is already heavily hardened (the
+migrations alone document 9 correction rounds; `authStore.ts`'s redemption
+path documents its own "Round 4" whoami-verification-before-commit
+ordering with an explicit three-way verified/unverified/mismatch outcome).
+Specifically checked and found correct: token is 256-bit
+server-generated randomness, hashed (sha256) before storage, never
+returned by list/inspect endpoints; `redeem_family_invite()` takes a
+`select ... for update` row lock before branching on status (serializes
+concurrent redemption of the same token); expiry is derived
+(`status='pending' AND expires_at<=now()`), never a persisted status;
+target-family/removed/already-claimed are all re-checked fresh at
+redemption time, not trusted from invite-creation time; the collision
+guards (different-family / already-has-a-claimed-profile) fail closed;
+the invite-detail enrichment (dog photo + member list, migration 0028)
+is gated to `status = 'pending'` only, matching `inspect_family_invite()`'s
+existing minimal-disclosure default for every other status; the client
+(`InviteShareModal.tsx`) never auto-opens the link (explicit Hebrew copy
+tells the user so) and drops the raw token from memory on modal close;
+`FamilyOnboardingScreen.tsx`'s `redeem` mode never logs/persists the raw
+token (confirmed no `AsyncStorage`/Zustand/`console.*` reference to
+`redeemToken`/`redeemInput`); `authStore.ts`'s
+`verifyAndCommitPendingRedemption()` only commits `familyId`/`currentUserId`
+after a fresh `getWhoAmI()` confirms `realProfileId === pending.targetUserId`,
+leaves the pending marker untouched on an inconclusive (offline/RPC-failure)
+check rather than guessing, and never re-calls `redeemFamilyInvite()` on
+retry (replaying an already-consumed token would incorrectly surface
+"invite already used"). Also explicitly confirmed this branch's own
+(simpler, pre-approval-feature) `FamilyOnboardingScreen.tsx` does **not**
+contain the `refreshOnboardingStatus()`/`AppState`-driven `setMode('create')`
+effect that the previous cycle found buggy on stacked branch
+`feat/system-admin-approval-controls` — that logic genuinely does not exist
+on this branch (this branch's file predates that feature entirely, per
+`git log --oneline -- src/screens/FamilyOnboardingScreen.tsx` showing only
+`08c5074`/`0ba307b`/`37db85e`), so the previous cycle's "file doesn't exist
+on this TARGET_BRANCH" reconciliation was correct, not stale.
 
-**Housekeeping first:** this cycle found that the *previous* cycle's
-"NOT YET COMMITTED" fix (the notification-open test-coverage gap —
-`jest.setup.js`, `src/notifications/reminderEntry.ts`,
-`src/notifications/__tests__/notificationService.test.ts`) had actually
-already been committed and pushed as `16d4a17` (together with that cycle's
-own `EXECUTION_STATE.md` update) — this is the same "fix landed, narrative
-in this file went stale" pattern as the `e52c7ae` correction two cycles
-ago. Confirmed via `git show --stat 16d4a17` (touches exactly those three
-files plus this file) and `git log origin/feat/verified-auth-onboarding-batch-2`
-(branch HEAD matches, working tree clean). Nothing was lost; no recovery
-action was needed beyond correcting this file's record.
+No code changes were made this cycle (nothing to fix). This is a valid
+`DONE` sweep outcome, same as Queue item 8's prior cycle (no release-blocking
+gap found there either).
 
-**New finding this cycle (not fixed — see Current Task Status above for
-why): applicant-side family-approval-status recovery can hijack the user
-out of `join`/`redeem` mode mid-flight.** In
-`src/screens/FamilyOnboardingScreen.tsx` (stacked branch), a `useEffect`
-calls `refreshOnboardingStatus(false)` unconditionally on mount and on every
-`AppState` `'active'` transition (i.e. every time the app is
-backgrounded and foregrounded), regardless of the screen's current `mode`.
-Inside `refreshOnboardingStatus()`, if `getMyFamilyOnboardingStatus()`
-returns a `pending` or `rejected` status, it unconditionally calls
-`setMode('create')` — even if the user has since navigated away to `mode
-=== 'join'` or `mode === 'redeem'` to join a *different* family. Traced the
-full chain: `getMyFamilyOnboardingStatus()` →
-`get_my_family_onboarding_status()` (migration
-`0032_verified_family_onboarding.sql`) is keyed on `r.auth_user_id =
-auth.uid()` — the *current Supabase auth session's* uid — and
-`ensureAnonymousSession()` (called by both `confirmJoin()` and
-`confirmRedeem()` before their own RPC calls) is a no-op whenever a session
-already exists (`src/lib/supabase.ts`: `if (data.session) return;`), so a
-verified admin's OTP-established session is never replaced. Concretely: a
-verified admin whose family-creation request is `pending` or `rejected`,
-who then chooses "יש לי הזמנה" (redeem) or "הצטרפות למשפחה קיימת" (join) to
-join a *different* family instead, and who backgrounds the app for any
-reason while on that screen (the redeem flow's own instructions literally
-tell them to paste a link/code "received from a family member" — normally
-copied from Mail/Messages/WhatsApp, which requires backgrounding this app)
-gets bounced back to the `create`-mode pending/rejected-status view on
-return, losing their place in the join/redeem flow (typed input state
-itself is preserved in separate `useState`, so this is lost navigation
-progress, not lost data, but it recurs on every subsequent
-background/foreground cycle while the stale request stays non-`active`,
-potentially trapping a `rejected` applicant in a loop with no way to
-complete joining a different family from that device without avoiding
-ever backgrounding the app). Confirmed this is not already covered by any
-test: `src/lib/__tests__/systemAdminApprovalIntegration.test.ts`'s
-`'recovers applicant status on mount, foreground, and explicit retry'` and
-both `FamilyOnboardingScreen.*.test.ts` files are plain source-text scans
-(no React Native component-rendering test infra exists in this repo per
-their own doc comments), so none of them exercise the actual `mode`
-interaction — the source-text assertions would pass unchanged even with
-this bug present. Suggested fix direction for whichever cycle/PR owns that
-branch: only let `refreshOnboardingStatus()` call `setMode('create')` when
-`mode` is already `'choose'` or `'create'` (i.e. treat it as recovery for a
-user who hasn't deliberately navigated elsewhere), not unconditionally.
-Queue item 6's notification-open finding (`subscribeToWalkReminderResponses()`
-test-coverage gap) remains correctly fixed and committed as `16d4a17` — see
-"Previous cycle" under Completed This Cycle below for the full record; not
-repeated here to keep this section from re-accumulating stale duplicate
-detail across cycles the way it had before this cycle's cleanup (this
-paragraph replaces several cycles' worth of inline history that had built
-up here — the same content is preserved, non-duplicated, further down in
-this file's Completed This Cycle / Previous cycle log).
-
-Local validation gate re-run this cycle with zero working-tree changes
-(this cycle's finding is on a branch this run cannot edit) — see Last
-Evidence. Queue item 7's Supabase-regression half remains BLOCKED — see
-Blocker (reconfirmed again this cycle: `gh auth status` gated,
-`supabase` CLI not installed).
+Local validation gate re-run this cycle after a fresh `npm ci` (no
+`node_modules` present at cycle start) — see Last Evidence. Queue item 7's
+Supabase-regression half remains BLOCKED — see Blocker (reconfirmed again
+this cycle: `gh auth status` gated, `supabase` CLI not installed, and this
+cycle `docker info` was ALSO gated behind interactive approval, unlike some
+recent cycles where `docker` itself was reachable).
 
 ## Current Branch / PR
 
@@ -136,54 +104,50 @@ Blocker (reconfirmed again this cycle: `gh auth status` gated,
 
 ## Last Evidence
 
-- This cycle: `git show --stat 16d4a17` confirmed the previous cycle's
-  notification-open fix (`jest.setup.js`, `src/notifications/reminderEntry.ts`,
-  `src/notifications/__tests__/notificationService.test.ts`) plus that
-  cycle's own `EXECUTION_STATE.md` update were already committed and pushed
-  before that cycle ended — this file's own "NOT YET COMMITTED" narrative
-  had simply gone stale (same pattern as the `e52c7ae` correction two
-  cycles ago). `git status` confirmed a clean working tree at cycle start.
-  Dispatch target sha `7f0bd8465801f257a3bf00b6e7a3beacb70f1529` resolved
-  this cycle (unlike prior cycles) to a real commit — `git branch -a
-  --contains` shows it lives on `origin/main` only ("fix(ci): allow trusted
-  GitHub Actions bot to dispatch RC worker (#27)", a workflow-dispatch
-  permission fix, unrelated to this branch's own content) — not an
-  ancestor or descendant of this branch's HEAD; not a drift to reconcile,
-  just dispatch metadata pointing at `main`'s tip.
+- This cycle: `git status` confirmed a clean working tree at cycle start
+  (HEAD `28821a5`, matches `origin/feat/verified-auth-onboarding-batch-2`).
+  Dispatch target sha `6f0365386fdd456957bdbca1ee67a86e7eb3688f` resolved to
+  a real commit ("Merge pull request #29 from
+  levyohad1975/fix/agentic-watchdog-gh-jq") that `git branch -a --contains`
+  shows lives on `origin/main` only — same recurring pattern as prior
+  cycles' dispatch-sha checks (workflow_dispatch metadata points at `main`'s
+  tip, not this branch); confirmed via `git merge-base --is-ancestor` (not
+  an ancestor of this branch's HEAD) — not a drift to reconcile.
 - Reconfirmed this cycle: `gh auth status` requires interactive approval
-  with no owner present in this sandbox's permission mode; `which supabase`
-  confirms the CLI is still not installed. Queue item 7's Supabase-
-  regression half remains blocked on tooling/access, unchanged from prior
-  cycles.
+  with no owner present; `which supabase` confirms the CLI is still not
+  installed; `docker info` was ALSO gated behind interactive approval this
+  cycle (a stricter sandbox permission mode than some recent prior cycles,
+  where plain `docker info` succeeded even though the CLI/stack still
+  weren't usable for a real local Supabase run). Queue item 7's
+  Supabase-regression half remains blocked on tooling/access, unchanged in
+  outcome from prior cycles.
 - `npm ci` — succeeded, 907 packages installed fresh in this sandbox (fresh
   checkout, no `node_modules` present at cycle start).
 - `npx tsc --noEmit` — **PASS**, zero errors, zero output.
 - `npm test -- --runInBand` — **PASS**: Test Suites: 89 passed, 89 total;
-  Tests: **917** passed, 917 total; Snapshots: 0 total; Time ~21.5s.
-- QA sweep performed (Queue item 2/4 sub-task, this cycle): full read of
-  `src/screens/FamilyOnboardingScreen.tsx` (stacked branch
-  `feat/system-admin-approval-controls`, via `git show
-  origin/feat/system-admin-approval-controls:<path>` — not an ancestor of
-  this branch) and `src/lib/verifiedAdminOnboarding.ts`'s
-  `getMyFamilyOnboardingStatus()`/`getMyFamilyOnboardingStatusWithClient()`,
-  cross-referenced against `supabase/migrations/0032_verified_family_onboarding.sql`'s
-  `get_my_family_onboarding_status()` (keyed on `auth.uid()`) and
-  `src/lib/supabase.ts`'s `ensureAnonymousSession()` (confirmed a no-op
-  whenever a session already exists). Also checked both
-  `FamilyOnboardingScreen.*.test.ts` files and
-  `systemAdminApprovalIntegration.test.ts` to confirm no existing test
-  exercises the `mode`-interaction bug found (all are source-text scans,
-  per their own doc comments, since this repo has no RN component-render
-  test infra). Found one real, unfixed-this-cycle defect — see Current Task
-  Status above for the full chain of evidence. No repository change made:
-  the affected file does not exist on this run's `TARGET_BRANCH`.
-- `git status` reconfirmed clean working tree after the sweep (no edits
-  were made, consistent with the finding living on a branch this run
-  cannot touch).
+  Tests: **917** passed, 917 total; Snapshots: 0 total; Time ~14.7s.
+- QA sweep performed this cycle (Queue item 1/2 credential-free sub-task —
+  invite-redemption token handling, this run's own `TARGET_BRANCH`): full
+  read of `supabase/migrations/0008_family_invites.sql`,
+  `0009_family_invites_pgcrypto_fix.sql`,
+  `0028_family_invite_detail_preview.sql`, `src/lib/invites.ts` +
+  `src/lib/__tests__/invites.test.ts`, `src/components/InviteShareModal.tsx`,
+  `src/screens/FamilyOnboardingScreen.tsx` (this branch's own version, via a
+  direct file read — not the stacked branch), and
+  `src/store/authStore.ts`'s `completeInviteRedemption()`/
+  `retryPendingInviteRedemptionVerification()`/
+  `verifyAndCommitPendingRedemption()`. No defect found — see Current Task
+  Status for the full list of specific invariants checked. Also confirmed
+  (via `git log --oneline -- src/screens/FamilyOnboardingScreen.tsx`) that
+  this branch's file genuinely predates the applicant-approval-status
+  feature the previous cycle found buggy on the stacked branch, so that
+  prior cycle's "does not exist on this TARGET_BRANCH" call was correct.
+- `git status` reconfirmed clean working tree after the sweep (no repo
+  changes needed this cycle beyond this file's own update).
 
 ## Last Evidence Timestamp
 
-2026-09-13T21:10:00Z
+2026-09-14T00:00:00Z
 
 ## Blocker
 
@@ -205,41 +169,46 @@ approval), so GitHub-side PR/CI state (PR #7, PR #11, workflow run
 metadata) still cannot be pulled directly. This is a secondary, independent
 blocker from the Staging-credentials one above; it affects only
 GitHub-metadata inspection, not local repository work, which proceeded
-normally. `docker` itself is reachable this cycle, but no local Supabase
-stack is running and the `supabase` CLI is not installed, so Queue item 7's
-Supabase-regression half stays blocked on tooling, not on the
-`docker`-approval issue specifically.
+normally. This cycle `docker info` was ALSO gated behind the same kind of
+interactive approval prompt (a stricter sandbox permission mode than some
+recent prior cycles, where plain `docker info` succeeded even though a
+real local Supabase stack still wasn't usable) — either way, the
+`supabase` CLI remains not installed, so Queue item 7's Supabase-regression
+half stays blocked on tooling/access regardless of `docker`'s own
+reachability this cycle.
 
-A new, independent blocker was confirmed this cycle, specific to one
-finding: this cycle's QA sweep found a real applicant-side navigation bug
-in `src/screens/FamilyOnboardingScreen.tsx` (see Current Task Status), but
-that file only exists on stacked branch `feat/system-admin-approval-controls`
-(PR #11), not on this run's `TARGET_BRANCH`
-(`feat/verified-auth-onboarding-batch-2`). This run's own instructions
-restrict edits/commits/pushes to the same `TARGET_BRANCH` only, so the fix
-cannot be applied here. **This finding needs either: (A) a future cycle
-dispatched with `TARGET_BRANCH=feat/system-admin-approval-controls`, or
-(B) the owner/a reviewer applying the suggested fix directly on PR #11.**
-It does not block this branch's own RC work and is independent of every
-other blocker below.
+**Still-open, independent of this branch:** the applicant-side navigation
+bug found two cycles ago in `src/screens/FamilyOnboardingScreen.tsx`'s
+`refreshOnboardingStatus()`/`AppState` effect (unconditional
+`setMode('create')` on foreground can hijack a user out of `join`/`redeem`
+mode) still only exists on stacked branch
+`feat/system-admin-approval-controls` (PR #11) — confirmed again this
+cycle that it is NOT present on this run's own `TARGET_BRANCH`. Still
+needs either (A) a future cycle dispatched with
+`TARGET_BRANCH=feat/system-admin-approval-controls`, or (B) the
+owner/a reviewer applying the fix directly on PR #11 (suggested direction:
+only call `setMode('create')` when `mode` is already `'choose'`/`'create'`).
+Not reproduced in full detail again here — see two-cycles-ago's entry in
+git history of this file for the complete chain of evidence.
 
 The previously recurring `git add`/commit approval-gate issue (logged in
 several prior cycles, e.g. before `16d4a17`) recurred again this cycle:
 `git add EXECUTION_STATE.md` was gated behind an interactive approval
-prompt with no owner present, retried once and still blocked (read-only
-commands — `git status`/`git diff`/`git log`/`git show`/`git branch`/
-`git cat-file`/`git merge-base` — were unaffected and ran normally
-throughout this cycle). **This cycle's own `EXECUTION_STATE.md` edits
-(recorded above) are sitting uncommitted in the working tree** — `git
-status`/`git diff` confirm they are the *only* modified file, no unrelated
-work. There is no source-code fix pending this time (this cycle made no
-code changes — see Current Task Status), so the only next-cycle recovery
-step is: confirm with `git status`/`git diff EXECUTION_STATE.md` that
-nothing else has changed, then `git add EXECUTION_STATE.md && git commit`,
-then push, before selecting a new task. This gate has now recurred across
-many non-consecutive cycles (clearing normally in between, e.g. for
-`16d4a17`/`d03e6da`) — sandbox-side permission-mode variance per cycle,
-not fixable from inside the repository.
+prompt with no owner present, retried twice more and still blocked. Plain
+read-only git commands (`git status`, `git rev-parse`, `git log`,
+`git cat-file`, `git branch -a --contains`, `git merge-base`) ran normally
+throughout this cycle with no approval needed — only `git fetch` (network)
+and `git add`/commit-adjacent (working-tree-mutating) commands were gated,
+consistent with most prior cycles' pattern. **This cycle's own
+`EXECUTION_STATE.md` edits (recorded above) are sitting uncommitted in the
+working tree** — no other file was touched this cycle (no source-code fix
+was needed — see Current Task Status), so the only next-cycle recovery step
+is: confirm with `git status`/`git diff EXECUTION_STATE.md` that nothing
+else has changed, then `git add EXECUTION_STATE.md && git commit`, then
+push, before selecting a new task. This gate has now recurred across many
+non-consecutive cycles (clearing normally in between, e.g. for
+`16d4a17`/`d03e6da`) — sandbox-side permission-mode variance per cycle, not
+fixable from inside the repository.
 
 These blockers do not stop execution — see Queue below for independent
 safe tasks that do not depend on them.
@@ -248,22 +217,26 @@ safe tasks that do not depend on them.
 
 Every named QA_RELEASE_GUARDIAN.md theme (email delivery/observability,
 RTL/responsive + dog-sex copy + mascot/Reduced Motion, production-sensitive
-System Admin operations including now both the admin-decision side and the
-applicant-status side, and real-device notification-open behavior) has now
-had a dedicated credential-free sweep across every Batch 3/4 surface and
-both stacked branches' distinct feature UI. The next independent
-credential-free sub-task: re-attempt Queue item 7's still-open
-Supabase-regression half via `gh`/a local Supabase stack (only if the
-sandbox's permission mode allows it that cycle — blocked for six cycles
-running so far). If still blocked, the next candidate is a second-pass
-re-audit of `src/lib/invites.ts`/`inspectFamilyInviteDetail()` and
-`redeemFamilyInvite()` (Round 4 invite-redemption token handling) — read
-during this cycle's `FamilyOnboardingScreen.tsx` sweep but not itself
-re-audited end-to-end this cycle — re-verified against current
-`git log`/`git diff` rather than this file's past sweep lists, in case new
-commits landed on either stacked branch since the last read. A future
-cycle with `TARGET_BRANCH=feat/system-admin-approval-controls` should
-prioritize fixing this cycle's `FamilyOnboardingScreen.tsx` finding first.
+System Admin operations, real-device notification-open behavior, and now
+invite-redemption token handling) has had a dedicated credential-free sweep
+across every Batch 3/4 surface on this branch and the stacked branches'
+distinct feature UI. The next independent credential-free sub-task:
+re-attempt Queue item 7's still-open Supabase-regression half via `gh`/a
+local Supabase stack (only if the sandbox's permission mode allows it that
+cycle — blocked for seven cycles running so far, now including `docker`
+itself this cycle). If still blocked, the next candidate is a
+credential-free sweep of the **short-code join path** (distinct from the
+invite-token path just audited): `src/lib/supabase.ts`'s
+`findFamilyByInviteCode()`/`joinFamily()` and
+`FamilyOnboardingScreen.tsx`'s `mode === 'join'` branch (`lookup()`/
+`confirmJoin()`), cross-referenced against migration
+`0002_invite_codes_and_family_membership.sql` — not yet given its own
+dedicated end-to-end sweep in this file's history (only referenced in
+passing as the "different kind of secret" comparison inside migration
+0028's own header comment). A future cycle with
+`TARGET_BRANCH=feat/system-admin-approval-controls` should still prioritize
+fixing the `FamilyOnboardingScreen.tsx` applicant-status-recovery finding
+recorded under Blocker above.
 
 ## Approval Required
 
@@ -308,15 +281,31 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Housekeeping: corrected this file's stale "NOT YET COMMITTED" claim from
-  the previous cycle — that cycle's notification-open test-coverage fix
-  was actually already committed and pushed as `16d4a17`; only this file's
-  own narrative had not been updated to reflect it. No repository action
-  needed beyond the correction. Also compacted this file's own
-  accumulated multi-cycle inline history in "Current Task Status" (several
-  cycles' worth of un-trimmed sweep detail had built up there) down to
-  pointers into this Completed-This-Cycle log, to keep the file legible
-  going forward.
+- Queue item 1/2 credential-free sub-task — second-pass QA_RELEASE_GUARDIAN.md
+  sweep of invite-redemption token handling (`src/lib/invites.ts`,
+  migrations 0008/0009/0028, `InviteShareModal.tsx`,
+  `FamilyOnboardingScreen.tsx`'s `redeem` mode,
+  `authStore.ts`'s `completeInviteRedemption()`/
+  `retryPendingInviteRedemptionVerification()`), this time on this run's own
+  `TARGET_BRANCH` rather than a stacked branch — full detail in Current Task
+  Status above. **No defect found**; this surface is already correctly
+  hardened (256-bit server-generated token, sha256-hashed at rest, row-locked
+  redemption, derived (never persisted) expiry, fresh re-checks of target
+  state at redemption time, fail-closed collision guards, whoami-verified
+  commit ordering with a genuine three-way verified/unverified/mismatch
+  outcome). Also reconfirmed the applicant-status-recovery bug found two
+  cycles ago genuinely does not exist on this branch's own
+  `FamilyOnboardingScreen.tsx` (that file here predates the feature
+  entirely) — the prior cycle's TARGET_BRANCH reconciliation was correct.
+  No repository change was needed. Re-ran the full local validation gate
+  after a fresh `npm ci`: `npx tsc --noEmit` PASS, `npm test -- --runInBand`
+  89/89 suites, **917/917** tests PASS. Reconfirmed `gh auth status` gated,
+  `supabase` CLI not installed, and — new this cycle — `docker info` itself
+  also gated (stricter sandbox permission mode than some recent prior
+  cycles), so Queue item 7 stays blocked for another cycle.
+
+### Previous cycle (for continuity)
+
 - Queue item 2/4 sub-task — QA_RELEASE_GUARDIAN.md sweep over the
   applicant-facing family-approval-status flow on stacked branch
   `feat/system-admin-approval-controls` (PR #11) —
@@ -324,27 +313,19 @@ proceed even while 1–3/6 are blocked.
   effect and `verifiedAdminOnboarding.ts`'s `getMyFamilyOnboardingStatus()`
   — a surface not covered by any prior cycle's sweep of that branch (prior
   cycles covered the admin-side `SystemAdminScreen.tsx` only). **Found one
-  real, unfixed defect** (full chain of evidence in Current Task Status
-  above): the applicant-status recovery effect unconditionally forces
-  `mode` back to `'create'` on every app foreground whenever this device's
-  verified-admin identity has a `pending`/`rejected` family request, even
-  if the user has since navigated to `'join'`/`'redeem'` to join a
-  *different* family — and the redeem flow's own UX (paste a code/link
-  "received from a family member") routinely requires backgrounding the
-  app to fetch that code, triggering exactly this. **Not fixed this
-  cycle**: the file only exists on that stacked branch, which this run's
-  `TARGET_BRANCH` restriction does not permit editing/committing/pushing
-  to — see Blocker. No test currently catches this (confirmed both
-  `FamilyOnboardingScreen.*.test.ts` files and
-  `systemAdminApprovalIntegration.test.ts` are source-text scans only).
-  Re-ran the full local validation gate on this branch (zero code changes
-  made): `npx tsc --noEmit` PASS, `npm test -- --runInBand` 89/89 suites,
-  **917/917** tests PASS. Reconfirmed `gh auth status` gated and
-  `supabase` CLI not installed, so Queue item 7 stays blocked for another
-  cycle.
-
-### Previous cycle (for continuity)
-
+  real, unfixed defect**: the applicant-status recovery effect
+  unconditionally forces `mode` back to `'create'` on every app foreground
+  whenever this device's verified-admin identity has a `pending`/`rejected`
+  family request, even if the user has since navigated to `'join'`/
+  `'redeem'` to join a *different* family — and the redeem flow's own UX
+  (paste a code/link "received from a family member") routinely requires
+  backgrounding the app to fetch that code, triggering exactly this. **Not
+  fixed that cycle**: the file only exists on that stacked branch, which
+  that run's `TARGET_BRANCH` restriction did not permit editing/committing/
+  pushing to. No test caught this (both `FamilyOnboardingScreen.*.test.ts`
+  files and `systemAdminApprovalIntegration.test.ts` are source-text scans
+  only). Suggested fix direction (still open — see Blocker above): only
+  call `setMode('create')` when `mode` is already `'choose'`/`'create'`.
 - Queue item 6 sub-task — QA_RELEASE_GUARDIAN.md sweep ("real device
   notification-open behavior" theme) over `notificationService.ts`'s
   `subscribeToWalkReminderResponses()`, `reminderEntry.ts`,
