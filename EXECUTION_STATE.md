@@ -27,154 +27,113 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 
 ## Current Task
 
-Continuation of the quantitative-coverage angle: confirmed at cycle start
-that last cycle's `supabaseRepository.ts` coverage-gap fix (45 new tests,
-100% coverage), self-reported as `BLOCKED` on the commit/approval gate,
-had in fact landed cleanly as commit `645b336` — already on
-`origin/feat/verified-auth-onboarding-batch-2` before this cycle began
-(same self-reporting-artifact pattern as the cycle before it: the prior
-cycle's own prose was stale relative to its own final commit, not a real
-blocker — no recovery action was needed). Then continued the same
-methodology against the top-priority file Next Safe Task named:
-`src/data/offlineFirstRepository.ts` (Queue item 1/6, the SyncQueue-backed
-offline-first read/write orchestration layer AGENTS.md working rule 6
-explicitly flags as security/reliability-sensitive).
+Reconciliation at cycle start: this run's dispatch context named a
+`target_sha` (`fd4346d8...`) that is NOT an ancestor of this branch — it is
+a merge commit on `origin/main` (PR #40,
+`test/staging-family-e2e-v1` -> `main`) that adds a brand-new **Staging
+Family E2E** GitHub Actions workflow
+(`.github/workflows/staging-family-e2e.yml`) and harness script
+(`scripts/staging-family-e2e.mjs`) directly targeting Queue item 1 (family
+creation persistence, invite-code lookup, second-device join) via a real
+Gmail-backed OTP round-trip against Staging, gated behind GitHub
+Environment `staging` secrets. This is out-of-scope to edit (it lives on
+`main`, and even if it were on this branch, workflow files under
+`.github/workflows/**` are off-limits to this worker per AGENTS.md/dispatch
+rules) and out of reach to trigger or inspect run results for (`gh auth
+status` reconfirmed gated this cycle, same as every prior cycle) — recorded
+under Blocker below as a new, concrete, not-yet-actionable unblock path for
+Queue item 1. `git status`/`git log` otherwise confirmed a clean tree at
+cycle start, HEAD `ed8f503` matching `origin/feat/verified-auth-onboarding-batch-2`,
+containing exactly the `offlineFirstRepository.test.ts` coverage work the
+previous cycle's own prose described as pending a SHA — no recovery action
+needed, that commit had already landed.
+
+Continued the quantitative-coverage angle against the next file Next Safe
+Task named: `src/data/syncQueue.ts` (Queue item 1/6 territory again — the
+SyncQueue-backed offline-first replay/conflict/quarantine engine AGENTS.md
+working rule 6 explicitly flags as security/reliability-sensitive), at
+92.9%/72.58%/100%/92.12% (statements/branches/functions/lines).
 
 ## Current Task Status
 
 **DONE — committed and pushed this cycle (see Last Evidence for the SHA).**
-Reconfirmed at cycle start that last cycle's commit `645b336` (HEAD,
-matching origin) already contains the full `supabaseRepository.test.ts`
-coverage fix its own prose described as blocked — no recovery action
-needed, the commit gate had in fact cleared before the cycle ended.
+Reconfirmed at cycle start that HEAD (`ed8f503`, matching origin) already
+contains the full `offlineFirstRepository.test.ts` coverage work the prior
+cycle's own prose described as pending a commit SHA — no recovery action
+needed, the commit had already landed.
 
 This cycle's own work: targeted coverage run
-(`--collectCoverageFrom="src/data/offlineFirstRepository.ts"`) confirmed
-the 56.73%/59.25%/77.77%/56.43% (statements/branches/functions/lines)
-figure Next Safe Task carried forward. Read the full file (322 lines) and
-`syncQueue.ts` (605 lines) together first, per Next Safe Task's own
-scoping note. The existing test file
-(`src/data/__tests__/offlineFirstRepository.test.ts`, 5 tests) covered
-only `deleteFamilyMember`'s online-reject/online-succeed/offline/
-local-demo-mode branches (the Round 7 fix); every other method had
-partial-to-zero coverage: the online-success (`try` block) path of every
-read method (`getFamily`/`getUsers`/`getDog`/`getScheduleRules`/
-`getScheduleEntries`/`getWalks`) was untested (only the offline/no-remote
-local-fallback path was exercised elsewhere), `hasPendingForOtherUser`'s
-delegation to the queue was untested, and `deleteUser`/
-`updateUserReminderSetting`/`upsertDog`/`upsertScheduleRule`/
-`deleteScheduleRule`/`addScheduleEntries`/`updateScheduleEntry`/
-`deleteScheduleEntry`/`saveWalk`/`deleteWalk` had **zero** direct coverage
-in either the remote-configured (enqueue-for-sync) or local/demo-mode
-branch. Added 28 new tests to
-`src/data/__tests__/offlineFirstRepository.test.ts` (+350 lines, 5 -> 33
-tests total): one for the `hasPendingForOtherUser` delegation (via a
-stubbed `queue`, matching the file's own established pattern of reaching
-into `(repo as any).queue`/`.local` where useful rather than inventing a
-new abstraction), six for the online-success read paths, ten for each
-write method with a remote repository configured (offline, so the queued
-item is left deterministically sitting in the queue rather than depending
-on `SyncQueue.flush()`'s own actor-tagging/replay behavior, which is that
-module's own test file's concern), ten mirroring those same ten methods
-in local/demo mode (remote `null`, asserting nothing is ever queued), and
-one for `trySync()`'s own direct no-remote no-op guard (only reachable via
-an external caller like `App.tsx` invoking `trySync()` directly with no
-remote configured — every internal call site already checks `this.remote`
-first, so this line needed its own explicit test). Added a small
-`makeRepo(online, remote)` test-local helper (resets modules, mocks
-NetInfo, clears the AsyncStorage-backed local cache, constructs the
-repository) to avoid repeating that five-line setup across ~30 new tests —
-the one abstraction added, scoped to this test file only, not a
-production-code or shared-mock-builder change. Iterated using the
-coverage tool's line-level output (not `coverage-final.json` this time —
-the remaining gaps were few enough that the text summary's line numbers
-were unambiguous) to find and close two additional narrow gaps a first
-pass missed: `getUsers`/`updateUserReminderSetting`'s local-array
-`.find(...)` callbacks needed an explicit `FamilyUser` type import to
-avoid an implicit-`any` `tsc` error once the loose `require(...)`-based
-repository typing was tightened, and `trySync()`'s own no-remote branch
-(line 41) needed one direct `repo.trySync()` call with `remote: null`,
-since no other test path reaches it. Final re-run: `offlineFirstRepository.ts`
-now **100%/100%/100%/100%** (statements/branches/functions/lines), up
-from 56.73%/59.25%/77.77%/56.43% — closes the next file the multi-cycle
-quantitative-coverage angle was tracking (`family.ts`, `familyManagement.ts`,
-`supabaseRepository.ts` were already 100% from prior cycles).
+(`--collectCoverageFrom="src/data/syncQueue.ts"`) confirmed the
+92.9%/72.58%/100%/92.12% (statements/branches/functions/lines) figure Next
+Safe Task carried forward, uncovered at lines 482 (flush()'s re-entrant
+guard), 581-591/595/599-601 (most of apply()'s SyncOperation-to-Repository
+dispatch switch). Read the full file (605 lines) and the existing
+`src/data/__tests__/syncQueue.test.ts` (686 lines) first. Confirmed via the
+existing test file that `createUser`/`upsertUser`/`updateScheduleEntry`/
+`saveWalk` were the only `apply()` routes ever actually exercised — every
+other op type (`deleteUser`, `deleteFamilyMember`, `upsertDog`,
+`upsertScheduleRule`, `deleteScheduleRule`, `addScheduleEntries`,
+`deleteScheduleEntry`, `deleteWalk`, `updateUserReminderSetting`) reached
+apply() zero times, because `OfflineFirstRepository`'s own tests (last
+cycle's target) stub the queue rather than exercising real
+`flush()`/`apply()` replay, and `hasClaimedActor()` had no direct test at
+all. Added 10 new tests to `src/data/__tests__/syncQueue.test.ts` (+202 lines,
+29 -> 39 tests total, confirmed via `grep -c "  it("` on HEAD vs. the
+working tree) across two passes, driven by re-running
+`--collectCoverageFrom` after each pass rather than guessing the full gap
+up front: (1) `flush()`'s re-entrant guard, tested by setting
+`(queue as unknown as { flushing: boolean }).flushing = true` directly
+before calling `flush()` — reaching into the private field the same way
+the `offlineFirstRepository.test.ts` precedent reaches into
+`(repo as any).queue`, rather than trying to race two real concurrent
+`flush()` calls against a manually-blocked promise; (2) one test enqueuing
+one of each of the seven still-uncovered non-terminal op types and
+asserting each reaches its matching `remote` method with the right
+payload; (3) a dedicated test proving a freshly-enqueued `deleteFamilyMember`
+op still reaches `apply()`'s own dispatch (distinct from — and not
+shadowed by — `load()`'s legacy-discard path, which only ever runs once,
+on the very FIRST `load()` call, so an op pushed by `enqueue()` afterward
+is never discarded); (4) `deleteWalk` both with and without
+`remote.deleteWalk` present, covering the `remote.deleteWalk?.(...)`
+optional-chaining branch both ways; (5) `hasClaimedActor()` true/false.
+First re-run landed 100%/100%/100%/100% for statements/functions/lines but
+only 95.16% branch (four gaps: `isPermanentError`'s untested class-`28`
+Postgres-code prefix, a non-`Error` thrown value never exercising the
+`String(error)` fallback in the conflict-message ternary, and
+`getConflicts()`/`getQuarantined()` never actually parsing a
+pre-persisted, non-empty conflict/quarantine list from a prior session —
+every existing test only ever builds these lists up fresh in-memory).
+Closed those four with a second small batch of tests. Final coverage:
+**100%/95.16%/100%/100%**, up from 92.9%/72.58%/100%/92.12% — the
+remaining branch gap (lines 289, 300, 321 — the `?? []` fallback inside
+`persist()`/`persistConflicts()`/`persistQuarantined()`) is a defensive
+null-coalescing guard that is provably unreachable through any public
+method: every call site already assigns the backing field
+(`this.queue`/`this.conflicts`/`this.quarantined`) before calling the
+corresponding `persist*()` method, so forcing the `null` branch would
+require reaching into a private method directly with no realistic
+external trigger, unlike the other reach-ins above (all of which stub a
+public-surface collaborator or field this class's own code already
+reads/writes through normal control flow) — left as-is rather than
+manufacturing an artificial test for dead defensive code.
 
-Full local validation gate re-run after the change: `npx tsc --noEmit` —
-**PASS**, zero errors (after fixing the `Walk` fixture's missing
-`createdAt`/`updatedAt` fields and the `makeRepo` helper's return type,
-both caught by this same `tsc` run before commit, not after). `npm test
--- --runInBand` — **PASS**: 89/89 suites, **1015** tests passed (987
-pre-cycle baseline, already including last cycle's 45
-`supabaseRepository.test.ts` tests, + 28 new this cycle). `git status`/
-`git diff --stat` confirmed
-exactly one tracked change from HEAD `645b336`:
-`src/data/__tests__/offlineFirstRepository.test.ts` (+350/-1) — no
-unrelated files touched. Committed and pushed successfully this cycle —
-see Last Evidence for the resulting SHA.
+Full local validation gate: `npx tsc --noEmit` — **PASS**, zero errors (no
+type-fixup needed this cycle, unlike the two most recent prior cycles).
+`npm test -- --runInBand` — **PASS**: 89/89 suites, **1025** tests passed
+(1015 pre-cycle baseline + 10 new). `git
+status`/`git diff --stat` confirmed exactly one tracked change from HEAD
+`ed8f503`: `src/data/__tests__/syncQueue.test.ts` (+202 lines, single
+diff hunk appended at end of file) — no unrelated files touched.
 
-Also carried forward from last cycle (still true, re-verified this cycle
-— see below): every named `QA_RELEASE_GUARDIAN.md` theme still has at
-least one dedicated credential-free sweep with no unresolved
-release-blocking gap, and the prior cycle's second full diff re-read
-against `main` found nothing the theme sweeps missed either. Full text of
-that prior finding, preserved for continuity:
-
-DONE. **No defect found.** Read the full 32-file diff
-(`git diff origin/main...HEAD`, 2281 insertions/54 deletions excluding
-this file's own history) end to end, with particular attention to the
-smaller UI-only files no prior cycle's theme sweep had named explicitly:
-`src/components/Countdown.tsx`/`NextWalkCard.tsx`/`WalkRow.tsx`,
-`src/navigation/RootNavigator.tsx`, `src/screens/LoginScreen.tsx`/
-`HistoryScreen.tsx`/`ScheduleScreen.tsx`/`StatisticsScreen.tsx`, and
-`src/theme/tokens.ts`. Findings: (1) a `nativeDirection()` helper added to
-`theme/tokens.ts` replaces bare `direction: 'ltr'|'rtl'` style props
-across those five components/screens — well-reasoned and correctly
-scoped: RN's `direction` `ViewStyle` prop is required on native to pin a
-fixed physical row order under RTL, but `react-native-web`'s style
-validator silently strips that exact key and logs a `console.error` on
-every render, so the helper returns `{}` on web and `{ direction: value }`
-on native, a true behavior no-op with an observability improvement; the
-existing structural tests (`Countdown.test.ts`,
-`tabBarRtlContract.test.ts`) were updated in lockstep to assert
-`nativeDirection(...)` instead of the literal, so regression coverage
-carried over rather than being lost; (2) `LoginScreen.tsx`/
-`HistoryScreen.tsx`/`ScheduleScreen.tsx`/`StatisticsScreen.tsx` each
-gained an identical `Platform.OS === 'web'`-gated `maxWidth:
-breakpoints.desktopContent, alignSelf: 'center'` wrapper, the same
-desktop-containment pattern already used elsewhere (e.g. HomeScreen per
-`LoginScreen.tsx`'s own comment) — native layout is untouched since the
-extra style only applies under the web check. No release-blocking gap
-found in this pass. Also noted, for context and not actionable from this
-sandbox: `.github/workflows/batch2-supabase-rehearsal.yml` already exists
-on this branch (`workflow_dispatch`-enabled, plus path-triggered on
-`supabase/**` PRs) and implements exactly a CI-side, credential-free
-Supabase rehearsal for Batch 2 — ephemeral migration history rebuilt onto
-`supabase/schema.sql`, a real `supabase start`/`db reset --local`, and
-`psql` assertions on the `0032`-`0034` schema/RPC/RLS/grant surface. This
-is Queue item 7's Supabase-regression path already implemented, just not
-triggerable from this sandbox (`gh` gated, `supabase` CLI absent
-locally — see Blocker). Separately, `origin/main` (not this branch) has
-since grown a distinct Gmail-backed **Staging OTP E2E** CI executor
-(`docs/engineering/STAGING_OTP_E2E.md`, merged via PRs #30/#35/#37, bound
-to GitHub Environment `staging`, refuses `main` as its own target branch)
-with a defined evidence contract for a real, non-Production OTP round-trip
-— its own doc states intent to extend it to "family creation persistence,
-join artifacts, and second-member join" next, i.e. toward Queue items 1-3.
-That executor lives in `main`'s CI/governance layer, is out of this
-feature branch's diff and this cycle's scope, and still requires
-GitHub-side dispatch/secrets this sandbox cannot reach (`gh` gated) — not
-something actionable this cycle, but recorded for continuity since it
-changes the Blocker's long-term unblock story. No repository change was
-made this cycle as a result of either review.
-
-Local validation gate re-run this cycle after a fresh `npm ci` (no
-`node_modules` present at cycle start, same as every prior cycle — each
-cycle starts from a clean sandbox) — see Last Evidence. Queue item 7's
-Supabase-regression half remains BLOCKED — see Blocker (reconfirmed again
-this cycle: `gh auth status` gated, `supabase` CLI not installed, `docker
-info` also gated behind interactive approval — same pattern as every
-prior cycle).
+Also carried forward from last cycle (still true, not re-verified this
+cycle beyond the target-SHA reconciliation above): every named
+`QA_RELEASE_GUARDIAN.md` theme still has at least one dedicated
+credential-free sweep with no unresolved release-blocking gap — see
+"Completed This Cycle" history below for the full list of which cycle
+covered which theme, and Blocker below for the still-open
+`FamilyOnboardingScreen.tsx` applicant-navigation defect (the one known,
+unfixed, actionable finding from the whole campaign, on the stacked
+branch only).
 
 ## Current Branch / PR
 
@@ -201,67 +160,59 @@ prior cycle).
   re-checked individually this cycle, but neither has changed in fifteen
   prior cycles and `gh` alone already re-confirms the blocker).
 - `npm ci` — succeeded (`node_modules` was not present at cycle start).
-- `npx jest --coverage --collectCoverageFrom="src/data/offlineFirstRepository.ts"
+- Dispatch-context reconciliation: the trigger's `target_sha`
+  (`fd4346d8516937b0ac803c8bd3f31cb7c667283d`) is not an ancestor of this
+  branch. `git show --stat fd4346d8...` confirmed it is merge commit "Merge
+  pull request #40 from levyohad1975/test/staging-family-e2e-v1" on
+  `origin/main`, adding `.github/workflows/staging-family-e2e.yml` (98
+  lines) and `scripts/staging-family-e2e.mjs` (194 lines) — read both in
+  full (see Blocker below for what they do and why they're not actionable
+  this cycle). `git status`/`git log` confirmed this branch's own tree was
+  clean at cycle start, HEAD `ed8f503` matching
+  `origin/feat/verified-auth-onboarding-batch-2`; `git show --stat
+  ed8f503` confirmed it contains exactly `EXECUTION_STATE.md` and
+  `src/data/__tests__/offlineFirstRepository.test.ts` (+351/-163 net,
+  matching the prior cycle's own described change) — no recovery action
+  needed.
+- `gh auth status` → "This command requires approval" (attempted twice
+  this cycle, once standalone). `docker info` → "This command requires
+  approval." `which supabase` → not installed. Same three-way blocker as
+  every prior cycle — seventeenth consecutive cycle blocked on Queue item
+  7's Supabase-regression half and on reading the new
+  `staging-family-e2e.yml` workflow's run history.
+- `npx jest --coverage --collectCoverageFrom="src/data/syncQueue.ts"
   --coverageReporters=text --runInBand` (baseline, before this cycle's
-  change) — confirmed 56.73%/59.25%/77.77%/56.43%
+  change) — confirmed 92.9%/72.58%/100%/92.12%
   (statements/branches/functions/lines), matching the figure Next Safe
-  Task carried forward; uncovered ranges 51, 66-68, 78-79, 133-136,
-  203-206, 212-213, 224-225, 231-232, 243-252, 258-259, 270-271, 278-287,
-  293-294, 306-315. Test Suites: 89 passed; Tests: **987** passed, 987
-  total (unchanged from last cycle's final count — no code change yet).
-- Read `src/data/offlineFirstRepository.ts` (322 lines) and
-  `src/data/syncQueue.ts` (605 lines) in full, plus the existing
-  `src/data/__tests__/offlineFirstRepository.test.ts` (5 tests, all about
-  the `deleteFamilyMember` Round 7 fix), before writing any test, per Next
-  Safe Task's own scoping instruction. Confirmed via
-  `grep -rn "new OfflineFirstRepository("` that only one other test file
-  (`bootstrapCreateUser.test.ts`) constructs this class directly — every
-  other consumer goes through mocked store-level tests, explaining why
-  most of this file's own branches had literally never run.
-- Added 28 new tests to `src/data/__tests__/offlineFirstRepository.test.ts`
-  (33 total, +350/-1 lines): `hasPendingForOtherUser`'s delegation to a
-  stubbed `queue`; the online-success (`remote` call succeeds) path of
-  `getFamily`/`getUsers`/`getDog`/`getScheduleRules`/`getScheduleEntries`/
-  `getWalks`; `deleteUser`/`updateUserReminderSetting`/`upsertDog`/
-  `upsertScheduleRule`/`deleteScheduleRule`/`addScheduleEntries`/
-  `updateScheduleEntry`/`deleteScheduleEntry`/`saveWalk`/`deleteWalk`,
-  each with a remote repository configured while offline (so the queued
-  item is left deterministically in the queue, isolating this file's own
-  enqueue-call statement from `SyncQueue.flush()`'s separate
-  actor-tagging/replay logic) and again in local/demo mode (`remote:
-  null`, asserting nothing is ever queued); and `trySync()`'s own
-  no-remote guard via a direct call with `remote: null` (the only path
-  that reaches it — every internal call site already checks `this.remote`
-  first).
-- `npx jest --coverage --collectCoverageFrom="src/data/offlineFirstRepository.ts"
-  --coverageReporters=text --runInBand` (full suite, after the change) —
-  **100%/100%/100%/100%**, zero remaining gap; Test Suites: 89 passed, 89
-  total; Tests: **1015** passed, 1015 total (987 + 28 new).
-- `npx tsc --noEmit` — initially failed with 7 errors in the new test
-  file: three `Walk` fixture literals missing the interface's required
-  `createdAt`/`updatedAt` fields, and four implicit-`any` `.find((u) =>
-  ...)` callbacks caused by the `makeRepo` test helper's return type
-  resolving to `any` (it returned a `require(...)`-typed local, not the
-  real `OfflineFirstRepository` class). Fixed by adding `createdAt`/
-  `updatedAt` to the three `Walk` fixtures and importing
-  `type { OfflineFirstRepository as OfflineFirstRepositoryType }` to type
-  `makeRepo`'s return value properly. Re-ran — **PASS**, zero errors.
+  Task carried forward; uncovered 482, 581-591, 595, 599-601. Test Suites:
+  89 passed; Tests: **1015** passed, 1015 total (unchanged — no code
+  change yet).
+- Read `src/data/syncQueue.ts` (605 lines) and the existing
+  `src/data/__tests__/syncQueue.test.ts` (686 lines, 29 tests) in full
+  before writing any test.
+- Added 10 new tests to `src/data/__tests__/syncQueue.test.ts` (39 total,
+  +202/-0 lines, confirmed via `grep -c "  it("` on HEAD vs. the working
+  tree: 29 -> 39) across two coverage-driven passes — full breakdown in
+  Current Task Status above.
+- `npx jest --coverage --collectCoverageFrom="src/data/syncQueue.ts"
+  --coverageReporters=text --runInBand` (full suite, after both passes) —
+  **100%/95.16%/100%/100%**, remaining gap at lines 289, 300, 321 (a
+  provably-unreachable defensive `?? []` fallback — see Current Task
+  Status). Test Suites: 89 passed, 89 total; Tests: **1025** passed, 1025
+  total (1015 + 10 new).
+- `npx tsc --noEmit` — **PASS**, zero errors (no fixup needed this cycle).
 - `npm test -- --runInBand` (full local validation gate, final) —
-  **PASS**: Test Suites: 89 passed, 89 total; Tests: **1015** passed,
-  1015 total; Snapshots: 0 total; Time ~19s.
-- `git status`/`git diff --stat` confirmed exactly one tracked change
-  from HEAD `645b336`: `src/data/__tests__/offlineFirstRepository.test.ts`
-  (+350/-1) — no unrelated files touched.
-- `git add src/data/__tests__/offlineFirstRepository.test.ts
-  EXECUTION_STATE.md && git commit && git push` — see the SHA recorded
-  just below; the recurring commit/approval-gate issue did not recur this
-  cycle (consistent with last cycle, inconsistent with the two cycles
-  before that — sandbox-side permission-mode variance per cycle, not
-  fixable from inside the repository, exactly as previously documented).
+  **PASS**: Test Suites: 89 passed, 89 total; Tests: **1025** passed, 1025
+  total; Snapshots: 0 total; Time ~20s.
+- `git status`/`git diff --stat` confirmed exactly one tracked change from
+  HEAD `ed8f503`: `src/data/__tests__/syncQueue.test.ts` (+202/-0) — no
+  unrelated files touched.
+- `git add src/data/__tests__/syncQueue.test.ts EXECUTION_STATE.md && git
+  commit && git push` — see the SHA recorded just below.
 
 ## Last Evidence Timestamp
 
-2026-09-14T17:05:00Z
+2026-09-14T18:20:00Z
 
 ## Blocker
 
@@ -276,23 +227,58 @@ the non-Production deployment/config steps and shares evidence to verify,
 or (B) the owner grants this session the credentials directly. Unanswered
 as of the last check.
 
-**Update this cycle (context, not yet actionable from this sandbox):**
+**Update this cycle (context, not yet actionable from this sandbox) — the
+Staging OTP E2E executor's own stated next step has now shipped:**
 `origin/main` (a separate lineage from this feature branch, out of this
-cycle's editable scope) has since grown a dedicated CI-only **Staging OTP
-E2E executor** (`docs/engineering/STAGING_OTP_E2E.md`, merged via PRs
-#30/#35/#37) that reads a real OTP from a dedicated Gmail test inbox via a
-GitHub Actions workflow bound to GitHub Environment `staging`, so it never
-hands Staging/Gmail credentials to this worker directly. It defines a
-concrete evidence contract (Supabase Staging accepts the OTP request, the
-email actually arrives, the code is extracted only inside the runner,
-Supabase Staging returns an authenticated session, workflow emits
-`STAGING_OTP_E2E_OK`) and explicitly states the next intended extension is
-"family creation persistence, join artifacts, and second-member join" —
-i.e. directly toward unblocking Queue items 1-3/6. This does not unblock
-anything this cycle (this sandbox still cannot dispatch or read GitHub
-Actions runs — `gh auth status` gated), but it is a live, evolving unblock
-path the owner/a future cycle with `gh`/environment access should check for
-a completed run before re-treating 1-3/6 as fully blocked.
+cycle's editable scope) merged PR #40
+(`test/staging-family-e2e-v1` -> `main`, merge commit `fd4346d8...` — this
+is the `target_sha` this run's own dispatch context named, which is why it
+was inspected this cycle even though it sits on `main`, not this branch)
+adding a **Staging Family E2E** workflow
+(`.github/workflows/staging-family-e2e.yml`) and harness
+(`scripts/staging-family-e2e.mjs`) that is exactly Queue item 1's
+credentialed half: it requests a real OTP, reads it from the dedicated
+Gmail test inbox, calls `create-verified-family`, verifies the persisted
+`get_my_family_onboarding_status()` row matches, verifies
+`find_family_by_invite_code()` resolves the invite code from a second
+anonymous session, and — only when the created family's approval status is
+`active` (not `pending`, i.e. only when `AUTO_APPROVE_NEW_FAMILIES` is
+effectively true for that Staging project) — has the second device actually
+call `join_family()` and confirms it joined. It takes a
+`target_branch` `workflow_dispatch` input (defaulting to
+`feat/verified-auth-onboarding-batch-2`, this branch), explicitly refuses
+`main` as a target, and requires GitHub Environment `staging` secrets
+(`SUPABASE_STAGING_URL`, `SUPABASE_STAGING_ANON_KEY`,
+`STAGING_OTP_TEST_EMAIL`, three `STAGING_OTP_GMAIL_*` OAuth values) — none
+of which this worker ever sees directly, since the workflow runs the
+script in CI. This is a real, close-to-complete, non-Production-only
+evidence path for Queue item 1's "persisted family, invite/join code,
+second-member join" requirement, contingent on: (a) the `staging`
+GitHub Environment actually having those six secrets configured
+(unverifiable from this sandbox), and (b) someone/something with `gh`
+access (or repository UI access) actually dispatching it and reading the
+result — this sandbox's `gh auth status` remains gated (reconfirmed this
+cycle), so neither triggering nor reading a run of this workflow is
+possible from here. This workflow file and script are NOT edited or
+copied onto this branch this cycle — they live on `main`, and even a
+same-content version on this branch would fall under the
+`.github/workflows/**` no-edit restriction, so building/adjusting this
+harness is not something this worker can do regardless of branch. Owner/a
+future cycle with `gh`/environment access should: (1) confirm the
+`staging` GitHub Environment has all six secrets, (2) dispatch
+`staging-family-e2e.yml` with `target_branch=feat/verified-auth-onboarding-batch-2`,
+(3) read the run's `$GITHUB_STEP_SUMMARY`/logs for `STAGING_FAMILY_E2E_OK`
+or `STAGING_FAMILY_E2E_PENDING_OK`. This does not unblock anything this
+cycle, but is the most concrete unblock path yet found for Queue item 1.
+
+The pre-existing (older, narrower) **Staging OTP E2E executor**
+(`docs/engineering/STAGING_OTP_E2E.md`, merged via PRs #30/#35/#37,
+OTP-round-trip only, no family creation) also still lives on `main` — its
+own doc's stated intent to extend toward family creation is what the
+`staging-family-e2e.yml` workflow above now delivers, so this older
+executor is superseded by, not in addition to, the one just described for
+Queue item 1's purposes. Both remain equally unreachable from this sandbox
+for the same `gh`-gating reason.
 
 Separately, `gh` CLI access itself remains gated behind an interactive
 approval prompt with no owner present to answer it in this sandbox's
@@ -347,33 +333,28 @@ The quantitative-Jest-coverage angle (started several cycles ago) has now
 closed every file it originally targeted: `family.ts` (already 100%),
 `verifiedAdminOnboarding.ts` (84.1%/92.7%/63.6%, remaining lines are
 trivial delegating wrappers), `familyManagement.ts` (100% across the
-board), `supabaseRepository.ts` (100% across the board), and this cycle's
-`offlineFirstRepository.ts` (now 100% across the board, up from
-56.73%/59.25%/77.77%/56.43%). The prioritized candidate list from last
-cycle's `--collectCoverageFrom` sweep across `src/lib/**`, `src/logic/**`,
-`src/data/**`, `src/notifications/**`, in priority order:
+board), `supabaseRepository.ts` (100% across the board),
+`offlineFirstRepository.ts` (100% across the board), and this cycle's
+`syncQueue.ts` (now 100%/95.16%/100%/100%, up from
+92.9%/72.58%/100%/92.12% — remaining branch gap is provably-unreachable
+defensive code, see Current Task Status). The prioritized candidate list
+from a prior cycle's `--collectCoverageFrom` sweep across `src/lib/**`,
+`src/logic/**`, `src/data/**`, `src/notifications/**` (see "Completed This
+Cycle" -> "Three cycles ago" for when that sweep ran), in priority order:
 
-1. `src/data/syncQueue.ts` — **92.9%/72.58%/100%/92.12%** as of the sweep
-   two cycles ago (not re-measured this cycle — this file's own coverage
-   wasn't touched by this cycle's `offlineFirstRepository.test.ts`
-   additions, which stub the queue rather than exercising real
-   `SyncQueue.flush()`/`apply()` replay logic), small remaining gap at
-   lines 482, 581-591, 595, 599-601 — the smallest of the remaining
-   candidates, same offline-first/SyncQueue family AGENTS.md working rule
-   6 flags as security/reliability-sensitive. Good next bite: read
-   `syncQueue.ts`'s own `flush()`/`apply()`/quarantine logic (already read
-   in full this cycle, see Last Evidence) and its existing
-   `src/data/__tests__/syncQueue.test.ts` before scoping.
-2. `src/data/localRepository.ts` — 78.74%/72.91%/75.55%/79.59%, uncovered
-   lines 44, 116-117, 139, 151-153, 176-177, 185-187, 215-217, 242, 272,
-   289-291 — smaller, same offline-first family (already read in full
-   this cycle, see Last Evidence).
-3. `src/lib/supabase.ts` — 63.28%/63.49%/72.22%/73.56%, uncovered 43-44,
+1. `src/data/localRepository.ts` — 78.74%/72.91%/75.55%/79.59% as of that
+   sweep (not re-measured since), uncovered lines 44, 116-117, 139,
+   151-153, 176-177, 185-187, 215-217, 242, 272, 289-291 — same
+   offline-first family AGENTS.md working rule 6 flags as
+   security/reliability-sensitive; already read in full a few cycles ago.
+   Good next bite for the same coverage-driven methodology this and the
+   prior two cycles used.
+2. `src/lib/supabase.ts` — 63.28%/63.49%/72.22%/73.56%, uncovered 43-44,
    83-85, 224-246, 270-285 — this is the short-code join/family-lookup
    client module the "short-code join path" QA sweep (several cycles ago)
    already read closely for correctness; a coverage pass here would be
    incremental, not exploratory.
-4. `src/lib/pushTokens.ts` (17.85%), `src/lib/realtime.ts` (0%),
+3. `src/lib/pushTokens.ts` (17.85%), `src/lib/realtime.ts` (0%),
    `src/lib/webPush.ts` (0%), `src/lib/uploadImage.ts` (28.57%) — all very
    low, but likely genuinely hard to unit-test without a real
    device/native-module boundary (same class of gap as the project-wide
@@ -382,7 +363,7 @@ cycle's `--collectCoverageFrom` sweep across `src/lib/**`, `src/logic/**`,
    rather than assuming a quick win.
 
 A fresh full-repo `--collectCoverageFrom` sweep (not run this cycle — the
-one from two cycles ago was reused) is worth re-running once this list is
+prior one was reused again) is worth re-running once this list is
 exhausted, in case the aggregate coverage baseline has shifted.
 
 Screens/components sit at or near 0% coverage project-wide, which is an
@@ -393,11 +374,14 @@ a much larger, separate undertaking rather than a quick win.
 Remaining independent credential-free sub-tasks, in order: (1) re-attempt
 Queue item 7's still-open Supabase-regression half via `gh`/a local
 Supabase stack (only if the sandbox's permission mode allows it that
-cycle — blocked for sixteen cycles running so far); (2) check whether
-`origin/main`'s new Staging OTP E2E executor (see Blocker above) has a
-completed run with `gh`, if `gh` becomes reachable — this could produce
-real evidence toward Queue items 1-3/6 without needing credentials in
-this sandbox directly; (3) Queue item 5 (Batch 4 regression) if/when
+cycle — blocked for seventeen cycles running so far); (2) if `gh` becomes
+reachable, dispatch or check for a completed run of the new
+`staging-family-e2e.yml` workflow on `main` (see Blocker above) with
+`target_branch=feat/verified-auth-onboarding-batch-2` — this is now the
+single most direct, concrete unblock path found so far for Queue item 1's
+credentialed half (persisted family, invite-code lookup, second-device
+join), contingent only on the `staging` GitHub Environment already having
+its six secrets configured; (3) Queue item 5 (Batch 4 regression) if/when
 independent, credential-free repository evidence for it exists — no
 `batch-4`-named branch or work exists in this repository yet, so this
 item currently has no distinct surface to regress beyond what Batch 2/3
@@ -451,6 +435,46 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
+- Reconciled this run's dispatch context: its named `target_sha`
+  (`fd4346d8...`) is a merge commit on `origin/main` (PR #40), not an
+  ancestor of this branch — inspected it and found it adds a new
+  **Staging Family E2E** GitHub Actions workflow + harness script that is
+  a real, close-to-complete evidence path for Queue item 1, gated behind
+  `gh`/GitHub Environment access this sandbox still doesn't have; recorded
+  in full under Blocker. Confirmed HEAD (`ed8f503`, matching origin)
+  already contained last cycle's full `offlineFirstRepository.test.ts`
+  coverage work — no recovery action needed. Continued the
+  quantitative-coverage angle against the next file Next Safe Task named:
+  `src/data/syncQueue.ts`, at 92.9%/72.58%/100%/92.12%
+  (statements/branches/functions/lines) — the SyncQueue replay/conflict/
+  quarantine engine. Read the file and its existing 29-test file first,
+  then added 10 new tests (39 total) across two coverage-driven passes:
+  `flush()`'s re-entrant guard (via directly setting the private
+  `flushing` field, the same reach-in style the prior cycle used for
+  `(repo as any).queue`), the seven still-untested `apply()` dispatch
+  routes (`deleteUser`/`upsertDog`/`upsertScheduleRule`/
+  `deleteScheduleRule`/`addScheduleEntries`/`deleteScheduleEntry`/
+  `updateUserReminderSetting`), a freshly-enqueued (non-legacy)
+  `deleteFamilyMember` op reaching `apply()`'s own dispatch, `deleteWalk`
+  both with and without `remote.deleteWalk` present (its optional-chaining
+  branch), `hasClaimedActor()`, `isPermanentError`'s untested class-`28`
+  Postgres-code prefix, a non-`Error` thrown value's `String(error)`
+  fallback, and `getConflicts()`/`getQuarantined()` actually parsing a
+  pre-persisted (not freshly-built) list. Coverage after:
+  **100%/95.16%/100%/100%**, up from 92.9%/72.58%/100%/92.12% — remaining
+  branch gap is a defensive `?? []` fallback provably unreachable through
+  any public method (see Current Task Status for why it was deliberately
+  left rather than manufactured a test for it). Full validation gate
+  re-run: `npx tsc --noEmit` PASS (no fixup needed), `npm test --
+  --runInBand` **1025/1025** tests PASS (1015 + 10 new), 89/89 suites.
+  `git status`/`git diff --stat` confirmed exactly one tracked change from
+  HEAD `ed8f503`. **Committed and pushed successfully this cycle** — see
+  Last Evidence for the resulting SHA. Reconfirmed `gh auth status` gated,
+  `docker info` gated, `supabase` CLI not installed — Queue item 7 stays
+  blocked for another (seventeenth) cycle.
+
+### One cycle ago
+
 - Confirmed last cycle's commit (`645b336`, containing the
   `supabaseRepository.test.ts` coverage fix, self-reported as blocked at
   commit-time last cycle) had in fact landed cleanly on `origin` — no
@@ -482,7 +506,7 @@ proceed even while 1–3/6 are blocked.
   gated, `supabase` CLI not installed — Queue item 7 stays blocked for
   another (sixteenth) cycle.
 
-### One cycle ago
+### Two cycles ago
 
 - Confirmed last cycle's commit (`4e8de5a`, containing the
   `familyManagement.test.ts` coverage fix plus the `.gitignore`/
@@ -514,7 +538,7 @@ proceed even while 1–3/6 are blocked.
   prioritized list (`offlineFirstRepository.ts` at 56.73% is the top
   pick).
 
-### Two cycles ago
+### Three cycles ago
 
 - Confirmed last cycle's commit (`8cb511b`, containing the
   `verifiedAdminOnboarding.test.ts` coverage fix that was blocked at
@@ -549,7 +573,7 @@ proceed even while 1–3/6 are blocked.
   (28.12%/34.93%/41.66%/36.61%) remains open for a future cycle — see Next
   Safe Task for the uncovered line ranges and scoping note.
 
-### Three cycles ago
+### Four cycles ago
 
 - New angle: ran `npx jest --coverage` across `src/**` (first cycle to
   measure quantitative Jest coverage rather than manually re-reading code)
@@ -575,7 +599,7 @@ proceed even while 1–3/6 are blocked.
   (thirteenth) cycle. **This did land** — see this cycle's entry above for
   confirmation (commit `8cb511b`).
 
-### Four cycles ago
+### Five cycles ago
 
 - Second full end-to-end re-read of `git diff origin/main...HEAD` (32
   files, 2281 insertions/54 deletions) on this run's own `TARGET_BRANCH`,
@@ -603,7 +627,7 @@ proceed even while 1–3/6 are blocked.
   `EXECUTION_STATE.md` update) landed and is now on `origin` as `dc5c46f`
   — no recovery action needed this cycle.
 
-### Five cycles ago
+### Six cycles ago
 
 - Queue item 4 credential-free sub-task — dedicated **Settings/Roles
   backend-authorization** sweep, on this run's own `TARGET_BRANCH`. **No
@@ -622,7 +646,7 @@ proceed even while 1–3/6 are blocked.
   gated — Queue item 7 stayed blocked for another (eleventh) cycle.
   Committed and pushed as `dc5c46f`.
 
-### Six cycles ago
+### Seven cycles ago
 
 - Queue item 3 credential-free sub-task — dedicated audit of the
   **`send-email` Edge Function's `SEND_EMAIL_HOOK_SECRET`/Standard
@@ -642,7 +666,7 @@ proceed even while 1–3/6 are blocked.
   Queue item 7 stayed blocked for another (tenth) cycle. Committed and
   pushed as `6a902de`.
 
-### Five cycles ago
+### Six cycles ago
 
 - Queue item 2 credential-free sub-task — dedicated sweep of the
   **`create-verified-family` Edge Function's `AUTO_APPROVE_NEW_FAMILIES`
@@ -667,7 +691,7 @@ proceed even while 1–3/6 are blocked.
   gate, but landed successfully as `0bc88c3` (confirmed at the start of
   the following cycle — see Last Evidence above).
 
-### Seven cycles ago
+### Eight cycles ago
 
 - Queue item 1/2 credential-free sub-task — dedicated end-to-end
   QA_RELEASE_GUARDIAN.md sweep of the **short-code join path**
