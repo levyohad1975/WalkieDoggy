@@ -24,6 +24,11 @@ describe('walkDateContextLabel', () => {
     expect(walkDateContextLabel('2026-09-04', new Date('2026-09-04T00:01:00'))).toBe('היום');
     expect(walkDateContextLabel('2026-09-04', new Date('2026-09-04T23:59:00'))).toBe('היום');
   });
+
+  it('defaults to the real current moment when called with no `now` argument', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    expect(walkDateContextLabel(today)).toBe('היום');
+  });
 });
 
 describe('walkTimeWithDateContext', () => {
@@ -36,5 +41,10 @@ describe('walkTimeWithDateContext', () => {
     const next = walkTimeWithDateContext('2026-09-04', '07:00', NOW);
     const last = walkTimeWithDateContext('2026-09-03', '07:00', NOW);
     expect(next).not.toBe(last);
+  });
+
+  it('defaults to the real current moment when called with no `now` argument', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    expect(walkTimeWithDateContext(today, '07:00')).toBe('היום · 07:00');
   });
 });

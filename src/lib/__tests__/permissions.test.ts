@@ -100,6 +100,15 @@ describe('lib/permissions — Supabase mode', () => {
     ]);
   });
 
+  it('listMemberPermissionOverrides defaults to an empty array when the select succeeds with a null data payload', async () => {
+    const select = jest.fn().mockResolvedValue({ data: null, error: null });
+    const from = jest.fn(() => ({ select }));
+    mockSupabaseClient(jest.fn(), from);
+    const { listMemberPermissionOverrides } = require('../permissions');
+
+    await expect(listMemberPermissionOverrides()).resolves.toEqual([]);
+  });
+
   it('listMemberPermissionOverrides propagates a select error rather than swallowing it', async () => {
     const select = jest.fn().mockResolvedValue({ data: null, error: { message: 'boom' } });
     const from = jest.fn(() => ({ select }));

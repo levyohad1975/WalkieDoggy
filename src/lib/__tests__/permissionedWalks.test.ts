@@ -102,6 +102,22 @@ describe('lib/permissionedWalks — fetchHistoryWalks / fetchStatisticsWalks (Su
     expect(rpc).toHaveBeenCalledTimes(1);
   });
 
+  it('fetchHistoryWalks defaults to an empty array when the RPC succeeds with a null data payload', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    mockSupabaseClient(rpc);
+    const { fetchHistoryWalks } = require('../permissionedWalks');
+
+    await expect(fetchHistoryWalks()).resolves.toEqual([]);
+  });
+
+  it('fetchStatisticsWalks defaults to an empty array when the RPC succeeds with a null data payload', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    mockSupabaseClient(rpc);
+    const { fetchStatisticsWalks } = require('../permissionedWalks');
+
+    await expect(fetchStatisticsWalks()).resolves.toEqual([]);
+  });
+
   it('fetchStatisticsWalks surfaces "view_statistics permission required" rather than swallowing it', async () => {
     const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'view_statistics permission required' } });
     mockSupabaseClient(rpc);
@@ -144,6 +160,14 @@ describe('lib/permissionedWalks — fetchHistoryWalks / fetchStatisticsWalks (Su
 
   it('fetchLastResolvedWalk resolves null (not an error) when the family has no resolved walk yet — zero rows is a genuine, non-error outcome', async () => {
     const rpc = jest.fn().mockResolvedValue({ data: [], error: null });
+    mockSupabaseClient(rpc);
+    const { fetchLastResolvedWalk } = require('../permissionedWalks');
+
+    await expect(fetchLastResolvedWalk()).resolves.toBeNull();
+  });
+
+  it('fetchLastResolvedWalk resolves null when the RPC succeeds with a null data payload (not just an empty array)', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
     mockSupabaseClient(rpc);
     const { fetchLastResolvedWalk } = require('../permissionedWalks');
 

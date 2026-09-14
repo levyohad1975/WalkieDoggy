@@ -11,6 +11,12 @@ describe('localDateOnly', () => {
   it('pads single-digit month/day', () => {
     expect(localDateOnly(new Date(2026, 2, 4))).toBe('2026-03-04');
   });
+
+  it('defaults to the real current moment when called with no argument', () => {
+    const now = new Date();
+    const expected = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    expect(localDateOnly()).toBe(expected);
+  });
 });
 
 describe('formatHistoryDate', () => {
@@ -40,5 +46,9 @@ describe('formatHistoryDate', () => {
     const now = new Date(2027, 0, 1, 12, 0); // Jan 1 2027
     expect(formatHistoryDate('2026-12-31', now)).toBe('31-12-2026');
     expect(formatHistoryDate('2027-01-01', now)).toBe('היום');
+  });
+
+  it('defaults to the real current moment when called with no `now` argument', () => {
+    expect(formatHistoryDate(localDateOnly())).toBe('היום');
   });
 });
