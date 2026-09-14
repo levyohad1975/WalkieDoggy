@@ -74,6 +74,14 @@ function fakeScheduledRequest(
   } as unknown as Notifications.NotificationRequest;
 }
 
+/** `YYYY-MM-DD`/`HH:MM` in LOCAL time, matching walkDateTime()'s own (y, mo, d, h, m) construction. */
+function localDateString(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function localTimeString(d: Date): string {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   // Round 6D fix: jest.clearAllMocks() clears call history but does NOT
@@ -425,5 +433,118 @@ describe('notificationService — subscribeToWalkReminderResponses (notification
     expect(getLastResponseMock).not.toHaveBeenCalled();
     expect(clearLastResponseMock).not.toHaveBeenCalled();
     expect(addResponseListenerMock).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * detectCapability()'s and getNotifications()'s own try/catch fallbacks (fail
+ * OPEN toward "available" if expo-constants can't be loaded; return `null` —
+ * never throw — if expo-notifications itself can't be loaded) are covered in
+ * the dedicated notificationServiceCapabilityFallbacks.test.ts file instead
+ * of here: this file has a static top-level `import * as Notifications from
+ * 'expo-notifications'` that ~25 other tests depend on referencing a stable
+ * singleton, and both `jest.resetModules()` and `jest.isolateModules()` were
+ * found (empirically, not just in theory) to risk evicting/bypassing that
+ * singleton for later tests in this same file. A separate file with no such
+ * static import — mirroring src/lib/__tests__/pushTokensNative.test.ts's
+ * established per-test `jest.doMock` + `jest.resetModules()` + fresh
+ * `require()` pattern — avoids the cross-test pollution entirely, since Jest
+ * gives each test FILE its own isolated module registry already.
+ */
+
+/**
+ * The handleNotification() callback passed to Notifications.setNotificationHandler
+ * is itself never invoked by any mock (it's only ever called by the real OS),
+ * so its body had zero coverage. Reset the module-scope `handlerRegistered`
+ * flag first (it starts `true` for the rest of this file's tests by this
+ * point) so the handler is actually (re-)registered here, then capture and
+ * invoke the callback the same way the OS eventually would.
+ */
+describe('notificationService — registered notification handler presentation behavior', () => {
+  it('resolves the documented foreground-presentation options', async () => {
+    __resetNotificationCapabilityCacheForTests();
+    const setHandlerMock = Notifications.setNotificationHandler as jest.Mock;
+
+    await cancelWalkNotifications('walk-handler-check');
+
+    expect(setHandlerMock).toHaveBeenCalledTimes(1);
+    const { handleNotification } = setHandlerMock.mock.calls[0][0];
+    await expect(handleNotification()).resolves.toEqual({
+      shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+    });
+  });
+});
+
+describe('notificationService — scheduleWalkNotifications no-longer-pending guard', () => {
+  it('cancels rather than schedules when the walk passed in is no longer pending', async () => {
+    const doneWalk = fakeWalk('walk-done-guard', { status: 'done' });
+    await scheduleWalkNotifications(doneWalk, setting, 'עומר', 'רקסי');
+
+    expect(cancelMock).toHaveBeenCalledWith('notif:walk-done-guard:pre_walk_reminder');
+    expect(cancelMock).toHaveBeenCalledWith('notif:walk-done-guard:overdue_reminder');
+    expect(scheduleMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('notificationService — scheduleWalkNotifications stale-kind cleanup', () => {
+  it('cancels the one kind whose computed fire time has already passed while still (re)scheduling the other', async () => {
+    // walkTime 5 minutes ago: preFireAt (15 min before) is ~20 min ago (past,
+    // skipped by the `fireDate.getTime() <= Date.now()` guard); overdueFireAt
+    // (10 min after) is ~5 min from now (future, still scheduled) — so only
+    // ONE of the two kinds ends up in `scheduledKinds`, leaving the other one
+    // stale and reaching the Promise.all(staleKinds.map(...)) cleanup below.
+    const walkTime = new Date(Date.now() - 5 * 60000);
+    const walk = fakeWalk('walk-stale-kind', {
+      date: localDateString(walkTime),
+      scheduledTime: localTimeString(walkTime),
+    });
+
+    await scheduleWalkNotifications(walk, setting, 'עומר', 'רקסי');
+
+    expect(scheduleMock).toHaveBeenCalledTimes(1);
+    expect(scheduleMock.mock.calls[0][0].identifier).toBe('notif:walk-stale-kind:overdue_reminder');
+    expect(cancelMock).toHaveBeenCalledWith('notif:walk-stale-kind:pre_walk_reminder');
+  });
+});
+
+describe('notificationService — cancelOrphanedWalkNotifications resiliency', () => {
+  it('does not throw, and still completes reconciliation, when the OS fails to enumerate scheduled notifications', async () => {
+    getAllScheduledMock.mockRejectedValueOnce(new Error('OS enumeration failed'));
+
+    await expect(
+      reconcileWalkNotifications([fakeWalk('walk-enum-fail')], async () => setting, () => 'עומר', 'רקסי')
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe('notificationService — reconcileWalkNotifications missing-setting/name guard', () => {
+  it('cancels a pending walk whose responsible user has no notification setting at all', async () => {
+    const walk = fakeWalk('walk-no-setting');
+    await reconcileWalkNotifications([walk], async () => undefined, () => 'עומר', 'רקסי');
+
+    expect(cancelMock).toHaveBeenCalledWith('notif:walk-no-setting:pre_walk_reminder');
+    expect(cancelMock).toHaveBeenCalledWith('notif:walk-no-setting:overdue_reminder');
+    expect(scheduleMock).not.toHaveBeenCalled();
+  });
+
+  it('cancels a pending walk whose responsible user has disabled reminders', async () => {
+    const walk = fakeWalk('walk-disabled-setting');
+    const disabledSetting: NotificationSetting = { ...setting, enabled: false };
+    await reconcileWalkNotifications([walk], async () => disabledSetting, () => 'עומר', 'רקסי');
+
+    expect(cancelMock).toHaveBeenCalledWith('notif:walk-disabled-setting:pre_walk_reminder');
+    expect(scheduleMock).not.toHaveBeenCalled();
+  });
+
+  it('cancels a pending walk whose responsible user name cannot be resolved', async () => {
+    const walk = fakeWalk('walk-no-username');
+    await reconcileWalkNotifications([walk], async () => setting, () => undefined, 'רקסי');
+
+    expect(cancelMock).toHaveBeenCalledWith('notif:walk-no-username:pre_walk_reminder');
+    expect(scheduleMock).not.toHaveBeenCalled();
   });
 });
