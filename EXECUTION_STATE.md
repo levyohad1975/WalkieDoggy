@@ -27,37 +27,61 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 
 ## Current Task
 
-Reconciliation at cycle start: re-verified this run's dispatch context
-(`target_sha` `fd4346d8...`) is still NOT an ancestor of this branch —
-`git merge-base --is-ancestor` reconfirmed it directly this cycle (prior
-cycles inferred this from `git show --stat`; this cycle checked with the
-authoritative ancestor test). Same merge commit on `origin/main` (PR #40)
-described in full in prior cycles' Blocker entries — no new content to
-add, still out of this worker's editable scope
-(`.github/workflows/**`) and out of reach to trigger/inspect
-(`gh auth status` gated again this cycle). `git status`/`git log`
-otherwise confirmed a clean tree at cycle start, HEAD `4562105` matching
-`origin/feat/verified-auth-onboarding-batch-2` — no recovery action
-needed. Also discovered this cycle: the prior cycle's own housekeeping
-note (that `tmp_coverage_inspect.js` was "NOT staged/committed") was
-wrong — `git show --stat 4562105` shows it WAS committed (15 lines) as
-part of that cycle's commit despite the prior cycle's own
-`EXECUTION_STATE.md` claiming otherwise. Attempted to remove it this
-cycle via `git rm`, plain `rm`, and a retry — all three blocked (`git
-rm`/`rm` gated behind the same interactive-approval sandbox restriction
-as `gh`/`docker` this cycle; `rm` additionally hit a working-directory
-sandbox check despite the path being inside the allowed directory). Left
-in place, tracked, for a future cycle or the owner to delete — it is
-inert (a 15-line read-only debug script, never imported/required by
-anything) and does not affect tests, `tsc`, or runtime behavior.
+Reconciliation at cycle start found this run's `EXECUTION_STATE.md`
+significantly stale relative to actual repo state — a real discrepancy,
+not just the usual `target_sha` check. `git log` showed HEAD at `5dbfb16`,
+**two** commits ahead of the `4562105` this file's own text still
+described as "cycle start": `845a9e5` (which actually landed the
+`src/lib/supabase.ts` 100%-coverage test work this file had claimed was
+"NOT committed... left in the working tree for the next cycle to land" —
+confirmed via `git show --stat 845a9e5`, it committed both new/modified
+test files together with an `EXECUTION_STATE.md` update in the same
+commit, so that prior cycle's own uncommitted-state note was written
+before its `git add`/`commit` retry actually succeeded), and `5dbfb16`
+(which added a real, working 461-test-line file,
+`src/lib/__tests__/pushTokensNative.test.ts`, taking `src/lib/pushTokens.ts`
+from 17.85% to **100%/100%/100%/100%** coverage — verified fresh this
+cycle — but left **two throwaway exploratory scratch files** alongside it,
+`src/lib/__tests__/__scratch_platform_probe.test.ts` and
+`__scratch_pushTokens_probe.test.ts` (console.log-only, zero `expect()`
+assertions, superseded by the real `pushTokensNative.test.ts`), and never
+updated `EXECUTION_STATE.md` at all for that cycle's work). This is the
+same class of self-reporting drift prior cycles have already hit (see
+"prior cycle's own housekeeping note... was wrong" language two cycles
+back) — recorded here as a repeat pattern worth a future cycle's attention
+if it keeps recurring: this worker's own end-of-cycle `EXECUTION_STATE.md`
+update is not always the last action taken, or is sometimes skipped
+entirely, so the *next* cycle must always re-derive state from `git
+log`/`git show --stat`, never trust the prior cycle's narrative alone.
+`git merge-base --is-ancestor fd4346d8... HEAD` reconfirmed `NOT ANCESTOR`
+(same PR #40-on-`main` situation as every prior cycle — no new content).
 
-Continued the quantitative-coverage angle against the next file Next Safe
-Task named: `src/lib/supabase.ts` (Queue item 1/2 client module — the
-short-code join/family-lookup/session/PIN-claim/QA-sandbox/impersonation
-wrapper layer over Supabase RPCs). Measured fresh at
-63.28%/63.49%/72.22%/73.56% (statements/branches/functions/lines),
-exactly matching the prior cycle's stale sweep figure — uncovered 43-44,
-83-85, 224-246, 270-285.
+Attempted to remove the two `__scratch_*.test.ts` files (and the still-
+present `tmp_coverage_inspect.js` debug script from several cycles ago)
+via `git rm` — **blocked again** ("This command requires approval"), the
+same recurring sandbox gate on `git rm`/`rm` prior cycles have hit. Left
+in place; see Blocker. None of the three affect `tsc`, test results, or
+runtime behavior — they are dead, unreferenced files.
+
+Selected the next Next-Safe-Task-named coverage candidate from the
+remaining list — `src/lib/pushTokens.ts` was resolved by the untracked-
+in-`EXECUTION_STATE.md` prior cycle (see above), leaving `realtime.ts`
+(0%), `webPush.ts` (0%), `uploadImage.ts` (28.57%). Read all three in full
+to judge testability before committing to one (per Next Safe Task's own
+"worth a quick read to confirm... rather than assuming a quick win"
+caveat): `realtime.ts` (78 lines, `subscribeToFamilyChanges()`) only
+touches the already-established mockable surface (`supabase.channel()`/
+`.on()`/`.subscribe()`/`.removeChannel()`, same shape as every existing
+`src/lib/__tests__/supabase*.test.ts` file's `@supabase/supabase-js` mock)
+— genuinely testable, no native/browser boundary. `webPush.ts` (164
+lines) is browser-only (`window`, `navigator.serviceWorker`, global
+`Notification`) with no such global available under this project's
+`jest-expo`/React Native test environment — confirms the Next Safe Task
+list's own suspicion for at least this one file; not attempted this
+cycle. `uploadImage.ts` (95 lines) touches `expo-image-picker`/`Alert`/
+`Linking`/`fetch` — plausibly testable but a distinct, larger surface;
+left for a future cycle rather than starting a second substantial unit
+this cycle.
 
 ## Current Task Status
 
@@ -65,54 +89,44 @@ exactly matching the prior cycle's stale sweep figure — uncovered 43-44,
 gated behind an interactive approval prompt with no owner present (tried
 single-file, multi-file, and `git add -A`, all blocked; the same
 recurring sandbox permission-mode issue several prior cycles have hit —
-see Blocker). The change is left in the working tree, fully tested and
-passing, for the next cycle to land first (see Next Safe Task).**
+see Blocker/Last Evidence). The change is left in the working tree, fully
+tested and passing, for the next cycle to land first (see Next Safe
+Task).**
 
-Read the full file (376 lines) and its existing 11-test
-`src/lib/__tests__/supabaseFamily.test.ts` first (that file only covered
-`findFamilyByInviteCode`/`joinFamily`/`createFamily`/`regenerateInviteCode`/
-`getCurrentFamilyRole`/`claimFamilyProfile`). Everything else in the file
-— `ensureAnonymousSession`, `setProfilePin`, `claimFamilyProfileWithPin`,
-`enterQaSandbox`/`exitQaSandbox`/`getCurrentFamilyIsQa`/`qaResetData`/
-`qaResetFull`, `getWhoAmI`, `beginImpersonation`/`endImpersonation` — had
-zero direct unit tests in this file (only indirect, incomplete coverage
-via consumers like `authStore.test.ts`, which mock `../lib/supabase`
-entirely rather than exercising the real implementation against a mocked
-RPC). Added a new test file,
-`src/lib/__tests__/supabaseQaAndSession.test.ts` (34 tests), following the
-exact same client-call-shape-only testing style/rationale as
-`supabaseFamily.test.ts`'s own doc comment (RPC name/params, response
-mapping, error propagation — never the server-side RLS/SECURITY DEFINER
-enforcement, which needs a real Supabase project). Notably covered: (1)
-`claimFamilyProfileWithPin`'s two distinct structured-rejection reasons
-(`wrong_pin` vs `cooldown`) map to their own distinct error messages, per
-the RPC's own doc comment that these must never be conflatable by a
-caller; (2) `getWhoAmI` never trusts an unexpected `family_role` value,
-mapping anything other than exactly `'admin'`/`'member'` to `null`; (3)
-every QA-sandbox function's not-configured (local/demo mode) behavior,
-including `getCurrentFamilyIsQa` being the one function in that group
-that resolves `false` instead of throwing. First re-run of the
-`--collectCoverageFrom` sweep (full suite) landed 94.53%/91.26%/100%/100%,
-uncovered 168-169, 171, 184-185, 205-207, 226, 243, 312 — all real,
-previously-untested branch arms (RPC-error paths and the
-`Array.isArray(data) ? data[0] : data` non-array-response branch), not
-defensive dead code. Closed every one of them with 9 more tests added to
-the existing `supabaseFamily.test.ts` (error/no-row/non-array-response
-cases for `findFamilyByInviteCode`, `joinFamily`, `createFamily`,
-`regenerateInviteCode`) and 2 more to the new file (`enterQaSandbox`/
-`exitQaSandbox` RPC-error cases). Final coverage: **100%/100%/100%/100%**
-on `src/lib/supabase.ts`, up from 63.28%/63.49%/72.22%/73.56% — every
-line and branch now covered, no remaining gap.
+Chose `realtime.ts`'s `subscribeToFamilyChanges()` as this cycle's single
+bounded unit. Added `src/lib/__tests__/realtime.test.ts` (7 tests) in the
+same client-call-shape-only style as the rest of `src/lib/__tests__/`:
+(1) the not-configured no-op path calls neither `channel()` nor the
+returned unsubscribe's cleanup; (2) the configured path subscribes to
+exactly the 7 `WATCHED_TABLES` entries (`users`/`dogs`/`schedule_rules`/
+`schedule_entries`/`walks`/`walk_swap_requests`/`time_change_requests`)
+each with the correct `postgres_changes`/`schema: 'public'`/per-family
+`filter`, then calls `channel.subscribe()`; (3) the 500ms debounce
+actually collapses rapid successive row-change callbacks into one
+`onChange` call (via `jest.useFakeTimers()`/`advanceTimersByTime`, a
+pattern not previously used in this repo but standard Jest, needed here
+since this file's callback is genuinely time-based unlike any Supabase-RPC
+wrapper tested so far); (4) `unsubscribe()` clears a pending debounce timer
+(no stale `onChange` fires after unsubscribe) and calls
+`removeChannel(channel)`; (5) `channel.subscribe()` throwing (Realtime not
+enabled on the project) is caught silently and `unsubscribe()` still works
+safely; (6) `supabase.channel()` itself throwing leaves `channel` `null`,
+so `unsubscribe()` correctly skips calling `removeChannel` at all (the one
+branch arm the first coverage pass missed); (7) a rejected
+`removeChannel()` promise is swallowed, never becoming an unhandled
+rejection. Coverage: **100%/100%/100%/100%** on `src/lib/realtime.ts`, up
+from 0%/0%/0%/0%.
 
 Full local validation gate: `npx tsc --noEmit` — **PASS**, zero errors.
-`npm test -- --runInBand` — **PASS**: 90/90 suites, **1078** tests passed
-(1035 pre-cycle baseline + 43 new). `git status`/`git diff --stat`
-confirmed exactly two changed files from HEAD `4562105`:
-`src/lib/__tests__/supabaseFamily.test.ts` (+58, modified) and the new
-`src/lib/__tests__/supabaseQaAndSession.test.ts` (untracked, now added)
-— no unrelated files touched, aside from `tmp_coverage_inspect.js`
-already being present/tracked from the prior cycle's commit (see above —
-left as-is, removal blocked this cycle).
+`npm test -- --runInBand` — **PASS**: 94/94 suites, **1109** tests passed
+(1102 pre-cycle baseline + 7 new). `git status`/`git diff --stat`
+confirmed exactly one new file from HEAD `5dbfb16`:
+`src/lib/__tests__/realtime.test.ts` (untracked, now added) — no
+unrelated files touched. The `845a9e5`/`5dbfb16` work described under
+Current Task above was already committed on `origin` before this cycle
+started, so nothing from that needed landing here — only this cycle's own
+`realtime.test.ts` (plus this `EXECUTION_STATE.md` update) needed
+committing.
 
 Also carried forward from prior cycles (still true, not re-verified this
 cycle beyond the target-SHA reconciliation above): every named
@@ -151,54 +165,59 @@ branch only).
   1). Same three-way blocker as every prior cycle — nineteenth
   consecutive cycle blocked on Queue item 7's Supabase-regression half
   and on reading the `staging-family-e2e.yml` workflow's run history.
-- `git rm tmp_coverage_inspect.js` → "This command requires approval"
-  (twice, retried once). Plain `rm tmp_coverage_inspect.js` → blocked by
-  a separate sandbox working-directory check even though `pwd` and
-  `readlink -f` both confirmed the path is inside the allowed session
-  directory. Left tracked/in place this cycle — see Current Task above.
+- `git log --oneline -5` at cycle start showed HEAD `5dbfb16`, two commits
+  past the `4562105` this file's own (stale) text described — `git show
+  --stat 845a9e5` and `git show --stat 5dbfb16` used to reconstruct what
+  each actually contained (see Current Task above for the full
+  reconciliation).
+- `git rm tmp_coverage_inspect.js src/lib/__tests__/__scratch_platform_probe.test.ts
+  src/lib/__tests__/__scratch_pushTokens_probe.test.ts` → "This command
+  requires approval" (tried twice). Same recurring sandbox gate as every
+  prior cycle's `git rm`/`rm` attempts. Left all three tracked/in place —
+  see Blocker.
 - `npm ci` — succeeded (`node_modules` was not present at cycle start).
-- `npx jest --coverage --collectCoverageFrom="src/lib/supabase.ts"
-  --coverageReporters=text --runInBand` (baseline, before this cycle's
-  change) — 63.28%/63.49%/72.22%/73.56%
-  (statements/branches/functions/lines), uncovered 43-44, 83-85, 224-246,
-  270-285 — matches the prior cycle's sweep figure exactly (no drift).
-  Test Suites: 89 passed; Tests: **1035** passed, 1035 total (unchanged —
-  no code change yet).
-- Read `src/lib/supabase.ts` (376 lines) and the existing
-  `src/lib/__tests__/supabaseFamily.test.ts` (207 lines, 11 tests) in
-  full before writing any test.
-- Added a new file, `src/lib/__tests__/supabaseQaAndSession.test.ts` (34
-  tests), covering every function `supabaseFamily.test.ts` didn't —
-  full breakdown in Current Task Status above.
-- `npx jest --coverage --collectCoverageFrom="src/lib/supabase.ts"
-  --coverageReporters=text --runInBand` (after the new file) —
-  94.53%/91.26%/100%/100%, uncovered 168-169, 171, 184-185, 205-207, 226,
-  243, 312 — all real RPC-error/non-array-response branch arms, not
-  defensive dead code (see Current Task Status).
-- Added 9 more tests to `supabaseFamily.test.ts` and 2 more to
-  `supabaseQaAndSession.test.ts` to close every one of those branches.
-- `npx jest --coverage --collectCoverageFrom="src/lib/supabase.ts"
-  --coverageReporters=text --runInBand` (full suite, final) —
-  **100%/100%/100%/100%**, zero remaining gap. Test Suites: 90 passed, 90
-  total; Tests: **1078** passed, 1078 total (1035 + 43 new).
-- `npx tsc --noEmit` — **PASS**, zero errors (no fixup needed this
-  cycle).
+- `npx tsc --noEmit` (baseline, before this cycle's change) — **PASS**,
+  zero errors.
+- `npm test -- --runInBand` (baseline) — **PASS**: 93/93 suites, **1102**
+  tests passed (includes the prior, previously-unlogged `845a9e5`/
+  `5dbfb16` cycles' work).
+- `npx jest --coverage --collectCoverageFrom="src/lib/pushTokens.ts"
+  --coverageReporters=text --runInBand` — confirmed **100%/100%/100%/100%**
+  already landed via `5dbfb16`'s `pushTokensNative.test.ts` (461 lines) —
+  no further work needed on this file.
+- Read `src/lib/realtime.ts` (78 lines), `src/lib/webPush.ts` (164 lines),
+  and `src/lib/uploadImage.ts` (95 lines) in full to judge testability
+  before picking one — see Current Task above for the per-file verdict.
+- Added `src/lib/__tests__/realtime.test.ts` (7 tests) covering
+  `subscribeToFamilyChanges()` — full breakdown in Current Task Status
+  above.
+- `npx jest --coverage --collectCoverageFrom="src/lib/realtime.ts"
+  --coverageReporters=text --runInBand src/lib/__tests__/realtime.test.ts`
+  — first pass: 100%/90%/100%/100% (one branch arm, `channel` still
+  `null` in `unsubscribe()`, uncovered). Added one more test
+  (`supabase.channel()` itself throwing) to close it. Final:
+  **100%/100%/100%/100%**.
+- `npx tsc --noEmit` (full repo, after the change) — **PASS**, zero
+  errors.
 - `npm test -- --runInBand` (full local validation gate, final) —
-  **PASS**: Test Suites: 90 passed, 90 total; Tests: **1078** passed,
-  1078 total; Snapshots: 0 total; Time ~20s.
-- `git status`/`git diff --stat` confirmed exactly two changed files from
-  HEAD `4562105`: `src/lib/__tests__/supabaseFamily.test.ts` (+58,
-  modified, tracked) and the new `src/lib/__tests__/supabaseQaAndSession.test.ts`
-  (untracked, now added) — no unrelated files touched.
-- `git add src/lib/__tests__/supabaseFamily.test.ts` (tried alone),
-  `git add <both test files + EXECUTION_STATE.md>` (tried together), and
-  `git add -A` — all three **blocked** ("This command requires approval"),
-  so nothing was committed this cycle. The change is left in the working
-  tree for the next cycle — see Current Task Status and Next Safe Task.
+  **PASS**: Test Suites: 94 passed, 94 total; Tests: **1109** passed,
+  1109 total (1102 + 7 new); Snapshots: 0 total; Time ~14s.
+- `git status --porcelain=v1 --untracked-files=all` confirmed exactly one
+  new file from HEAD `5dbfb16`: `src/lib/__tests__/realtime.test.ts`
+  (untracked) — no unrelated files touched, aside from the three
+  already-tracked scratch/debug files noted above (untouched, removal
+  blocked this cycle).
+- `git add src/lib/__tests__/realtime.test.ts EXECUTION_STATE.md` (tried
+  together), then `git add src/lib/__tests__/realtime.test.ts` (tried
+  alone) — both **blocked** ("This command requires approval"), the same
+  recurring sandbox permission-mode gate several prior cycles have hit.
+  Nothing committed this cycle. The change is complete, tested, and left
+  in the working tree for the next cycle to land first — see Current Task
+  Status and Next Safe Task.
 
 ## Last Evidence Timestamp
 
-2026-09-14T20:05:00Z
+2026-09-14T21:20:00Z
 
 ## Blocker
 
@@ -278,10 +297,14 @@ approval prompt, consistent with several prior cycles) — either way, the
 `supabase` CLI remains not installed, so Queue item 7's
 Supabase-regression half stays blocked on tooling/access regardless of
 `docker`'s own reachability this cycle. This cycle's sandbox permission
-mode additionally gated `git rm`/plain `rm` on a tracked scratch file
-(`tmp_coverage_inspect.js`, committed by mistake last cycle despite that
-cycle's own notes claiming otherwise — see Current Task above) — left in
-place, not blocking any other work.
+mode additionally gated `git rm` on three tracked scratch/debug files —
+`tmp_coverage_inspect.js` (committed several cycles ago),
+`src/lib/__tests__/__scratch_platform_probe.test.ts`, and
+`src/lib/__tests__/__scratch_pushTokens_probe.test.ts` (both committed by
+`5dbfb16`, a throwaway exploratory precursor to that same cycle's real
+`pushTokensNative.test.ts` — see Current Task above) — left in place, not
+blocking any other work. A future cycle should retry `git rm` on all
+three together the moment the sandbox's permission mode allows it.
 
 **Still-open, independent of this branch:** the applicant-side navigation
 bug found two cycles ago in `src/screens/FamilyOnboardingScreen.tsx`'s
@@ -317,43 +340,58 @@ safe tasks that do not depend on them.
 
 ## Next Safe Task
 
-**First step for the next cycle:** land this cycle's uncommitted,
-fully-validated `src/lib/supabase.ts` coverage work (see Current Task
-Status/Blocker) — `git add src/lib/__tests__/supabaseFamily.test.ts
-src/lib/__tests__/supabaseQaAndSession.test.ts EXECUTION_STATE.md &&
-git commit && git push` (retry if gated again; if the sandbox's
-permission mode differs at the start of the next cycle, this may go
-through immediately, matching the pattern several prior cycles have
-shown). Before assuming nothing landed, check `git show --stat`/`git log`
-first in case a later, unlogged commit in this same cycle actually
-succeeded.
+**First step for the next cycle:** re-derive state from `git log`/`git
+show --stat` before trusting this file's own narrative (see Current Task
+above for why — this file was already found two commits stale once this
+cycle). Then land this cycle's uncommitted, fully-validated
+`src/lib/realtime.ts` coverage work —
+`git add src/lib/__tests__/realtime.test.ts EXECUTION_STATE.md && git
+commit && git push` (retry if gated again; if the sandbox's permission
+mode differs at the start of the next cycle, this may go through
+immediately, matching the pattern several prior cycles have shown).
+Before assuming nothing landed, check `git show --stat`/`git log` first
+in case a later, unlogged commit in this same cycle actually succeeded.
 
-The quantitative-Jest-coverage angle (started several cycles ago) has now
+Also retry `git rm tmp_coverage_inspect.js
+src/lib/__tests__/__scratch_platform_probe.test.ts
+src/lib/__tests__/__scratch_pushTokens_probe.test.ts` the moment the
+sandbox's permission mode allows it — three inert, dead files with no
+functional impact, pure housekeeping.
+
+The quantitative-Jest-coverage angle (started many cycles ago) has now
 closed every file it originally targeted: `family.ts` (already 100%),
 `verifiedAdminOnboarding.ts` (84.1%/92.7%/63.6%, remaining lines are
 trivial delegating wrappers), `familyManagement.ts` (100% across the
 board), `supabaseRepository.ts` (100% across the board),
 `offlineFirstRepository.ts` (100% across the board), `syncQueue.ts`
 (100%/95.16%/100%/100%), `localRepository.ts` (99.21%/97.91%/100%/100%
-— remaining gap is provably-unreachable defensive code), and this
-cycle's `supabase.ts` (now **100%/100%/100%/100%**, up from
-63.28%/63.49%/72.22%/73.56% — zero remaining gap, see Current Task
-Status). The prioritized candidate list from a prior cycle's
-`--collectCoverageFrom` sweep across `src/lib/**`, `src/logic/**`,
-`src/data/**`, `src/notifications/**` (see "Completed This Cycle" ->
-"Five cycles ago" for when that sweep ran) now has one item left:
+— remaining gap is provably-unreachable defensive code), `supabase.ts`
+(100% across the board), `pushTokens.ts` (100% across the board, landed
+via `5dbfb16`), and this cycle's `realtime.ts` (now
+**100%/100%/100%/100%**, up from 0%/0%/0%/0%). The prioritized candidate
+list from a prior cycle's `--collectCoverageFrom` sweep across
+`src/lib/**`, `src/logic/**`, `src/data/**`, `src/notifications/**` (see
+"Completed This Cycle" -> "many cycles ago" for when that sweep ran) now
+has two items left:
 
-1. `src/lib/pushTokens.ts` (17.85%), `src/lib/realtime.ts` (0%),
-   `src/lib/webPush.ts` (0%), `src/lib/uploadImage.ts` (28.57%) — all very
-   low, but likely genuinely hard to unit-test without a real
-   device/native-module boundary (same class of gap as the project-wide
-   0%-coverage screens/components, not a new/isolated one) — worth a
-   quick read to confirm that assumption before spending a cycle on them,
-   rather than assuming a quick win. This is now the only item left on
-   this list.
+1. `src/lib/uploadImage.ts` (28.57% at last measurement) — read in full
+   this cycle and confirmed plausibly testable (touches
+   `expo-image-picker`/`Alert`/`Linking`/`fetch`/Supabase Storage, all
+   mockable the same way other `src/lib/__tests__/` files already mock
+   their native/RPC boundaries), just a larger surface than fit in this
+   cycle's single bounded unit — good next candidate.
+2. `src/lib/webPush.ts` (0%) — read in full this cycle and confirmed
+   genuinely hard to unit-test from this sandbox: it depends on browser-
+   only globals (`window`, `navigator.serviceWorker`, global
+   `Notification`) that this project's `jest-expo`/React Native test
+   environment does not provide, unlike every other file this angle has
+   closed so far. A future cycle could still attempt it (e.g. stubbing
+   `global.window`/`global.navigator`/`global.Notification` manually
+   before `require`-ing the module) but should expect real friction, not
+   a quick win — try `uploadImage.ts` first.
 
 A fresh full-repo `--collectCoverageFrom` sweep is worth running once
-this last item is resolved one way or the other (closed, or confirmed
+these two are resolved one way or the other (closed, or confirmed
 genuinely untestable from this sandbox), since every file the prior sweep
 named will then be accounted for and a new sweep would surface whatever
 the next-lowest-coverage files actually are.
@@ -426,6 +464,56 @@ sub-tasks (repository-level QA, regression sweeps, CI runs) that can
 proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
+
+- Reconciliation found this file two commits stale (HEAD was `5dbfb16`,
+  not the `4562105` this file's text described) and its own prior-cycle
+  narrative wrong in two places: `845a9e5` had already committed the
+  `src/lib/supabase.ts` 100%-coverage work this file claimed was still
+  uncommitted, and `5dbfb16` had already landed `src/lib/pushTokens.ts` at
+  100% coverage via a real 461-line test file, but left two throwaway
+  `__scratch_*.test.ts` probe files behind and never updated this file at
+  all. Reconstructed all of this from `git show --stat`, not from this
+  file's own (stale) narrative — see Current Task above for full detail.
+  Attempted `git rm` on those two scratch files plus the older
+  `tmp_coverage_inspect.js` — blocked again by the same recurring sandbox
+  gate; left in place. Selected `src/lib/realtime.ts` (0% coverage,
+  `subscribeToFamilyChanges()`) as this cycle's single bounded unit after
+  reading it plus `webPush.ts`/`uploadImage.ts` to judge relative
+  testability first. Added `src/lib/__tests__/realtime.test.ts` (7 tests):
+  not-configured no-op, correct per-table/per-family `postgres_changes`
+  filter wiring across all 7 `WATCHED_TABLES`, the 500ms debounce actually
+  collapsing rapid changes into one `onChange` call, `unsubscribe()`
+  correctly clearing a pending timer and calling `removeChannel`,
+  `channel.subscribe()` throwing being caught safely, `supabase.channel()`
+  itself throwing leaving `channel` `null` so `unsubscribe()` skips
+  `removeChannel`, and a rejected `removeChannel()` promise being
+  swallowed rather than becoming an unhandled rejection. Coverage:
+  **100%/100%/100%/100%**, up from 0%/0%/0%/0%. Full validation gate:
+  `npx tsc --noEmit` PASS, `npm test -- --runInBand` **1109/1109** tests
+  PASS (1102 + 7 new), 94/94 suites. `git status`/`git diff --stat`
+  confirmed exactly one new file from HEAD `5dbfb16`. Reconfirmed `gh auth
+  status` gated, `docker info` gated, `supabase` CLI not installed — Queue
+  item 7 stays blocked for another cycle.
+
+### One cycle ago (previously unlogged — reconstructed this cycle from `git show --stat`)
+
+- `845a9e5`: landed the full `src/lib/supabase.ts` coverage work described
+  in a prior cycle's own "Current Task Status" as blocked-uncommitted —
+  it was not actually blocked; that cycle's `git add`/`commit` retry
+  succeeded after its own `EXECUTION_STATE.md` text had already been
+  written, so the file went stale relative to its own cycle's outcome.
+  `5dbfb16`: added `src/lib/__tests__/pushTokensNative.test.ts` (461
+  lines), taking `src/lib/pushTokens.ts` from 17.85% to
+  **100%/100%/100%/100%** coverage, following the same
+  client-call-shape-only mocking pattern as the rest of
+  `src/lib/__tests__/`. Left two uncommitted-in-intent scratch files
+  behind (`__scratch_platform_probe.test.ts`,
+  `__scratch_pushTokens_probe.test.ts` — console.log-only exploration,
+  no assertions) and did not update `EXECUTION_STATE.md` for this cycle's
+  own work at all — both gaps addressed this cycle (see above; the
+  scratch-file removal itself remains blocked by sandbox gating).
+
+### Two cycles ago
 
 - Reconciliation: re-confirmed this run's dispatch `target_sha`
   (`fd4346d8...`) is still not an ancestor of this branch via the
