@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       target_branch:
-        description: 'Non-main RC branch to validate'
+        description: 'Non-main RC branch associated with this Staging validation'
         required: true
         default: 'feat/verified-auth-onboarding-batch-2'
 
@@ -27,7 +27,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$TARGET_BRANCH" = "main" ]; then
-            echo "::error::Refusing to run live Staging E2E against main."
+            echo "::error::Refusing to associate live Staging E2E with main."
             exit 1
           fi
           git check-ref-format --branch "$TARGET_BRANCH" >/dev/null
@@ -39,20 +39,15 @@ jobs:
               ;;
           esac
 
-      - name: Checkout RC branch
+      - name: Checkout trusted executor
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.target_branch }}
           fetch-depth: 1
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Verify required Staging secrets are present
         shell: bash
@@ -91,7 +86,7 @@ jobs:
           {
             echo "## Staging OTP E2E"
             echo ""
-            echo "- Target branch: \`$TARGET_BRANCH\`"
+            echo "- Associated RC branch: \`$TARGET_BRANCH\`"
             echo "- Environment: \`staging\`"
             echo "- Production credentials used: no"
             echo "- Production deploy/migration performed: no"
