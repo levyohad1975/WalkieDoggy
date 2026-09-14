@@ -76,7 +76,7 @@ jobs:
             exit 0
           fi
 
-          validated_after_head="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" --jq --arg t "$committed_at" '[.workflow_runs[] | select(.name == "Agentic RC Validation" and .created_at >= $t)] | length')"
+          validated_after_head="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" --jq "[.workflow_runs[] | select(.name == \"Agentic RC Validation\" and .created_at >= \"$committed_at\")] | length")"
           if [ "$validated_after_head" -gt 0 ]; then
             echo "This RC head already has a Validation dispatch after its commit time; watchdog will not repeat it." >> "$GITHUB_STEP_SUMMARY"
             exit 0
