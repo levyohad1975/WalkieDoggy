@@ -144,6 +144,7 @@ jobs:
             If it passed, advance to the next executable safe RC task instead of only reporting.
 
             For a non-main TARGET_BRANCH you may edit files, run approved tests, create commits, and push only to that same TARGET_BRANCH.
+            Do not edit, create, rename, or delete files under .github/workflows/**. Workflow changes require a separate guarded infrastructure PR and are not publishable by this worker.
             For TARGET_BRANCH=main you are inspection/test-only: do not edit, commit, or push repository changes.
             Never create, update, or merge a PR unless the repository governance explicitly permits that action; never merge under any circumstance.
             Never direct-push main. Never deploy to Production.
@@ -176,7 +177,8 @@ jobs:
             Prefer a unit that can be fully implemented and locally validated within this run. Do not start a second substantial unit after the first coherent unit is ready for validation.
             Reserve enough turns to leave the repository in a coherent checkpoint state. Before the turn budget is exhausted, update EXECUTION_STATE.md with fresh evidence, blocker/remaining work, and the next safe continuation step whenever repository governance permits edits.
             Target branch is ${{ env.TARGET_BRANCH }}.
-            On a non-main target you may edit, test, commit, and push only to that same target branch. On main you are inspection/test-only.
+            On a non-main target you may edit, test, commit, and push only to that same target branch. Do not edit, create, rename, or delete files under .github/workflows/**; workflow changes require a separate guarded infrastructure PR.
+            On main you are inspection/test-only.
             Never merge, direct-push main, deploy to Production, run Production migrations, modify Production data/RLS/secrets/credentials, expose secrets, perform destructive actions, purchases/charges, or public publishing.
             No evidence = not completed.
             End with: Current Task, Status, Fresh Evidence, Blocker, Next Safe Task, Owner Approval Required, Action Taken.
@@ -246,6 +248,18 @@ jobs:
           if [ "$current_branch" != "$SAFE_TARGET_BRANCH" ]; then
             echo "::error::Current branch does not match the validated target."
             exit 1
+          fi
+
+          workflow_changes="$(git status --porcelain -- .github/workflows || true)"
+          if [ -n "$workflow_changes" ]; then
+            {
+              echo "## Workflow-change guard"
+              echo
+              echo "The autonomous worker attempted to change .github/workflows/**."
+              echo "Those workflow edits were discarded from the publishable checkpoint and require a separate infrastructure PR."
+            } >> "$GITHUB_STEP_SUMMARY"
+            git restore --staged --worktree -- .github/workflows || true
+            git clean -fd -- .github/workflows
           fi
 
           git diff --check
