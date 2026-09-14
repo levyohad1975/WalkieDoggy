@@ -1,7 +1,10 @@
 import {
   createVerifiedFamily,
+  getVerifiedAdminIdentity,
   getVerifiedAdminIdentityWithAuth,
+  requestAdminEmailVerification,
   requestAdminEmailVerificationWithAuth,
+  verifyAdminEmailOtp,
   verifyAdminEmailOtpWithAuth,
   type VerifiedAdminAuthClient,
 } from '../verifiedAdminOnboarding';
@@ -12,12 +15,16 @@ import { supabase } from '../supabase';
 // — see scheduleStore.loadResult.test.ts's comment for why that pattern
 // matters with jest.mock()'s hoisting.
 jest.mock('../supabase', () => ({
-  supabase: { functions: { invoke: jest.fn() } },
+  supabase: {
+    functions: { invoke: jest.fn() },
+    auth: { signInWithOtp: jest.fn(), verifyOtp: jest.fn(), getUser: jest.fn() },
+  },
   SupabaseNotConfiguredError: class SupabaseNotConfiguredError extends Error {},
 }));
 
 const mockInvoke = (supabase as unknown as { functions: { invoke: jest.Mock } }).functions
   .invoke;
+const mockAuth = (supabase as unknown as { auth: jest.Mocked<VerifiedAdminAuthClient> }).auth;
 
 function authClient(): jest.Mocked<VerifiedAdminAuthClient> {
   return {
@@ -179,6 +186,100 @@ describe('verified admin onboarding', () => {
     await expect(getVerifiedAdminIdentityWithAuth(auth)).rejects.toThrow(
       'יש לאמת את כתובת הדוא״ל'
     );
+  });
+});
+
+describe('the requireAuthClient()-backed exports (delegate to the real supabase.auth)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('requestAdminEmailVerification() calls supabase.auth.signInWithOtp with the normalized email', async () => {
+    mockAuth.signInWithOtp.mockResolvedValue({ error: null });
+
+    await expect(requestAdminEmailVerification('  Admin@Example.COM ')).resolves.toBe(
+      'admin@example.com'
+    );
+    expect(mockAuth.signInWithOtp).toHaveBeenCalledWith({
+      email: 'admin@example.com',
+      options: { shouldCreateUser: true },
+    });
+  });
+
+  it('verifyAdminEmailOtp() calls supabase.auth.verifyOtp and returns the confirmed identity', async () => {
+    mockAuth.verifyOtp.mockResolvedValue({
+      data: {
+        user: {
+          id: 'auth-user-1',
+          email: 'admin@example.com',
+          email_confirmed_at: '2026-09-11T07:00:00Z',
+        },
+      },
+      error: null,
+    });
+
+    await expect(verifyAdminEmailOtp('admin@example.com', '123456')).resolves.toEqual({
+      userId: 'auth-user-1',
+      email: 'admin@example.com',
+    });
+    expect(mockAuth.verifyOtp).toHaveBeenCalledWith({
+      email: 'admin@example.com',
+      token: '123456',
+      type: 'email',
+    });
+  });
+
+  it('getVerifiedAdminIdentity() calls supabase.auth.getUser and returns the confirmed identity', async () => {
+    mockAuth.getUser.mockResolvedValue({
+      data: {
+        user: {
+          id: 'auth-user-1',
+          email: 'admin@example.com',
+          confirmed_at: '2026-09-11T07:00:00Z',
+        },
+      },
+      error: null,
+    });
+
+    await expect(getVerifiedAdminIdentity()).resolves.toEqual({
+      userId: 'auth-user-1',
+      email: 'admin@example.com',
+    });
+    expect(mockAuth.getUser).toHaveBeenCalled();
+  });
+});
+
+describe('the requireAuthClient()-backed exports in local/demo mode (no Supabase configured)', () => {
+  it('every export throws SupabaseNotConfiguredError rather than reaching a null supabase.auth', async () => {
+    jest.resetModules();
+    jest.doMock('../supabase', () => ({
+      supabase: null,
+      SupabaseNotConfiguredError: class SupabaseNotConfiguredError extends Error {},
+    }));
+
+    const {
+      requestAdminEmailVerification: requestAdminEmailVerificationDemo,
+      verifyAdminEmailOtp: verifyAdminEmailOtpDemo,
+      getVerifiedAdminIdentity: getVerifiedAdminIdentityDemo,
+      createVerifiedFamily: createVerifiedFamilyDemo,
+    } = require('../verifiedAdminOnboarding');
+    const { SupabaseNotConfiguredError } = require('../supabase');
+
+    // requireAuthClient() is evaluated as an argument to the *WithAuth call
+    // before that call ever returns a promise, so each wrapper throws
+    // synchronously here rather than returning a rejected promise.
+    expect(() => requestAdminEmailVerificationDemo('admin@example.com')).toThrow(
+      SupabaseNotConfiguredError
+    );
+    expect(() => verifyAdminEmailOtpDemo('admin@example.com', '123456')).toThrow(
+      SupabaseNotConfiguredError
+    );
+    expect(() => getVerifiedAdminIdentityDemo()).toThrow(SupabaseNotConfiguredError);
+    await expect(createVerifiedFamilyDemo('The Cohens')).rejects.toBeInstanceOf(
+      SupabaseNotConfiguredError
+    );
+
+    jest.dontMock('../supabase');
   });
 });
 
