@@ -1,14 +1,16 @@
-import React, { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, AppState, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
+import { useSystemAdminStore } from '../store/systemAdminStore';
 import { colors } from '../theme/colors';
 import { breakpoints } from '../theme/tokens';
 import { Button } from '../components/Button';
 import { ensureAnonymousSession, findFamilyByInviteCode, joinFamily } from '../lib/supabase';
 import {
   createVerifiedFamily,
+  getMyFamilyOnboardingStatus,
   getVerifiedAdminIdentity,
   requestAdminEmailVerification,
   verifyAdminEmailOtp,
@@ -62,6 +64,41 @@ export function FamilyOnboardingScreen() {
   const [verifiedAdminEmail, setVerifiedAdminEmail] = useState<string | null>(null);
   const [verifyingEmail, setVerifyingEmail] = useState(false);
   const [pendingApprovalFamilyName, setPendingApprovalFamilyName] = useState<string | null>(null);
+  const [onboardingApprovalStatus, setOnboardingApprovalStatus] = useState<'pending' | 'rejected' | null>(null);
+  const [approvalStatusChecking, setApprovalStatusChecking] = useState(false);
+  const [approvalStatusError, setApprovalStatusError] = useState<string | null>(null);
+
+  const refreshOnboardingStatus = useCallback(async (surfaceError = false) => {
+    setApprovalStatusChecking(true);
+    if (surfaceError) setApprovalStatusError(null);
+    try {
+      const status = await getMyFamilyOnboardingStatus();
+      if (!status) return;
+      if (status.approvalStatus === 'active') {
+        setPendingApprovalFamilyName(null);
+        setOnboardingApprovalStatus(null);
+        await setFamilyId(status.familyId);
+        return;
+      }
+      setPendingApprovalFamilyName(status.familyName);
+      setOnboardingApprovalStatus(status.approvalStatus);
+      setMode('create');
+    } catch (e) {
+      if (surfaceError) setApprovalStatusError(friendlyErrorMessage(e));
+    } finally {
+      setApprovalStatusChecking(false);
+    }
+  }, [setFamilyId]);
+
+  useEffect(() => {
+    // Recovers pending/rejected/approved requests after a cold start and when
+    // the app returns from the background after an administrator's decision.
+    void refreshOnboardingStatus(false);
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') void refreshOnboardingStatus(false);
+    });
+    return () => subscription.remove();
+  }, [refreshOnboardingStatus]);
 
   const sendAdminVerification = async () => {
     setVerifyingEmail(true);
@@ -84,6 +121,11 @@ export function FamilyOnboardingScreen() {
     try {
       const identity = await verifyAdminEmailOtp(adminEmail, verificationCode);
       setVerifiedAdminEmail(identity.email);
+      // OTP verification replaces the anonymous bootstrap session with the
+      // verified identity. Refresh the separate platform-admin gate now,
+      // rather than requiring an app restart before a verified System Admin
+      // can see the shield entry point. refresh() fails closed internally.
+      await useSystemAdminStore.getState().refresh({ retryOnce: true });
     } catch (e) {
       setCreateError(friendlyErrorMessage(e));
     } finally {
@@ -103,6 +145,7 @@ export function FamilyOnboardingScreen() {
       const family = await createVerifiedFamily(familyName.trim(), dogName.trim() || undefined);
       if (family.approvalStatus === 'pending') {
         setPendingApprovalFamilyName(family.name);
+        setOnboardingApprovalStatus('pending');
         return;
       }
       await setFamilyId(family.id);
@@ -297,14 +340,26 @@ export function FamilyOnboardingScreen() {
   }
 
   if (mode === 'create') {
-    if (pendingApprovalFamilyName) {
+    if (pendingApprovalFamilyName && onboardingApprovalStatus) {
+      const rejected = onboardingApprovalStatus === 'rejected';
       return (
         <SafeAreaView style={styles.container}>
-          <RtlText style={styles.emoji}>⏳</RtlText>
-          <RtlText style={styles.title}>המשפחה ממתינה לאישור</RtlText>
-          <RtlText style={styles.subtitle}>
-            הבקשה ליצירת {pendingApprovalFamilyName} התקבלה. נשלח עדכון לאחר אישור מנהל המערכת.
+          <RtlText style={styles.emoji}>{rejected ? '⚠️' : '⏳'}</RtlText>
+          <RtlText style={styles.title}>
+            {rejected ? 'בקשת המשפחה נדחתה' : 'המשפחה ממתינה לאישור'}
           </RtlText>
+          <RtlText style={styles.subtitle}>
+            {rejected
+              ? `הבקשה ליצירת ${pendingApprovalFamilyName} נדחתה. אפשר לבדוק שוב את הסטטוס כאן.`
+              : `הבקשה ליצירת ${pendingApprovalFamilyName} התקבלה. אפשר לבדוק כאן לאחר החלטת מנהל המערכת.`}
+          </RtlText>
+          {approvalStatusError ? <RtlText style={styles.error}>{approvalStatusError}</RtlText> : null}
+          <Button
+            label={approvalStatusChecking ? 'בודק סטטוס...' : 'בדיקת סטטוס'}
+            onPress={() => refreshOnboardingStatus(true)}
+            loading={approvalStatusChecking}
+            style={styles.wideButton}
+          />
           <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
         </SafeAreaView>
       );

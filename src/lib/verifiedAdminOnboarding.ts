@@ -180,3 +180,49 @@ export async function createVerifiedFamily(
     warnings: Array.isArray(data?.warnings) ? data.warnings : [],
   };
 }
+
+
+export type VerifiedFamilyOnboardingStatus = {
+  familyId: string;
+  familyName: string;
+  approvalStatus: 'pending' | 'active' | 'rejected';
+};
+
+type OnboardingStatusRpcClient = {
+  rpc(name: 'get_my_family_onboarding_status'): PromiseLike<{
+    data: unknown;
+    error: unknown | null;
+  }>;
+};
+
+/**
+ * Reads the persisted result for the current verified applicant. Returning
+ * null means this identity has never submitted a family request.
+ */
+export async function getMyFamilyOnboardingStatusWithClient(
+  client: OnboardingStatusRpcClient
+): Promise<VerifiedFamilyOnboardingStatus | null> {
+  const { data, error } = await client.rpc('get_my_family_onboarding_status');
+  if (error) throw error;
+
+  const row = Array.isArray(data) ? data[0] : null;
+  if (!row) return null;
+  if (
+    typeof row.family_id !== 'string' ||
+    typeof row.family_name !== 'string' ||
+    !['pending', 'active', 'rejected'].includes(row.approval_status)
+  ) {
+    throw new Error('סטטוס בקשת המשפחה אינו תקין');
+  }
+
+  return {
+    familyId: row.family_id,
+    familyName: row.family_name,
+    approvalStatus: row.approval_status,
+  };
+}
+
+export function getMyFamilyOnboardingStatus(): Promise<VerifiedFamilyOnboardingStatus | null> {
+  if (!supabase) throw new SupabaseNotConfiguredError();
+  return getMyFamilyOnboardingStatusWithClient(supabase);
+}

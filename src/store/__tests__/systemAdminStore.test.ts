@@ -94,4 +94,39 @@ describe('store/systemAdminStore — useSystemAdminStore', () => {
     expect(useSystemAdminStore.getState().isSystemAdmin).toBe(false);
     expect(useSystemAdminStore.getState().checked).toBe(false);
   });
+  it('a session-changing refresh supersedes an older in-flight identity check', async () => {
+    process.env = { ...ORIGINAL_ENV, EXPO_PUBLIC_SUPABASE_URL: 'https://example.supabase.co', EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'anon-key' };
+    mockSupabaseJs();
+    let resolveOld!: (value: boolean) => void;
+    const oldResult = new Promise<boolean>((resolve) => { resolveOld = resolve; });
+    const checkIsSystemAdmin = jest.fn()
+      .mockReturnValueOnce(oldResult)
+      .mockResolvedValueOnce(true);
+    jest.doMock('../../lib/systemAdmin', () => ({ checkIsSystemAdmin }));
+    const { useSystemAdminStore } = require('../systemAdminStore');
+
+    const oldRefresh = useSystemAdminStore.getState().refresh();
+    await useSystemAdminStore.getState().refresh({ retryOnce: true });
+    expect(useSystemAdminStore.getState().isSystemAdmin).toBe(true);
+
+    resolveOld(false);
+    await oldRefresh;
+    expect(useSystemAdminStore.getState().isSystemAdmin).toBe(true);
+    expect(useSystemAdminStore.getState().checking).toBe(false);
+  });
+
+  it('performs one bounded retry when requested after an identity change', async () => {
+    process.env = { ...ORIGINAL_ENV, EXPO_PUBLIC_SUPABASE_URL: 'https://example.supabase.co', EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'anon-key' };
+    mockSupabaseJs();
+    const checkIsSystemAdmin = jest.fn()
+      .mockRejectedValueOnce(new Error('session propagation'))
+      .mockResolvedValueOnce(true);
+    jest.doMock('../../lib/systemAdmin', () => ({ checkIsSystemAdmin }));
+    const { useSystemAdminStore } = require('../systemAdminStore');
+
+    await useSystemAdminStore.getState().refresh({ retryOnce: true });
+    expect(checkIsSystemAdmin).toHaveBeenCalledTimes(2);
+    expect(useSystemAdminStore.getState().isSystemAdmin).toBe(true);
+  });
+
 });

@@ -43,11 +43,15 @@ jobs:
           cp supabase/migrations/0032_verified_family_onboarding.sql "$rehearsal_dir/"
           cp supabase/migrations/0033_verified_family_onboarding_cutover.sql "$rehearsal_dir/"
           cp supabase/migrations/0034_email_delivery_log.sql "$rehearsal_dir/"
+          cp supabase/migrations/0035_system_admin_family_approval_status.sql "$rehearsal_dir/"
+          cp supabase/migrations/0036_atomic_family_approval_transition.sql "$rehearsal_dir/"
           find supabase/migrations -maxdepth 1 -type f -name '*.sql' -delete
           cp supabase/schema.sql supabase/migrations/0000_base_schema.sql
           cp "$rehearsal_dir/"0032_verified_family_onboarding.sql supabase/migrations/
           cp "$rehearsal_dir/"0033_verified_family_onboarding_cutover.sql supabase/migrations/
           cp "$rehearsal_dir/"0034_email_delivery_log.sql supabase/migrations/
+          cp "$rehearsal_dir/"0035_system_admin_family_approval_status.sql supabase/migrations/
+          cp "$rehearsal_dir/"0036_atomic_family_approval_transition.sql supabase/migrations/
 
       - uses: supabase/setup-cli@v3
         with:
@@ -78,6 +82,14 @@ jobs:
           select 1 / (to_regprocedure(
             'public.system_admin_set_family_approval(uuid,text)'
           ) is not null)::int;
+
+          select 1 / (
+            position(
+              'f.approval_status' in pg_get_functiondef(
+                'public.system_admin_list_families(text)'::regprocedure
+              )
+            ) > 0
+          )::int;
 
           select 1 / (
             not has_function_privilege(
@@ -163,6 +175,107 @@ jobs:
               'EXECUTE'
             )
           )::int;
+          SQL
+
+      - name: Execute atomic family approval authorization and transition cases
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 <<'SQL'
+          begin;
+
+          -- The historical System Admin migration is part of deployed project
+          -- history but not schema.sql's rehearsal baseline. These transaction-
+          -- local fixtures provide its exact authorization/audit dependencies.
+          create table if not exists system_audit_log (
+            id uuid primary key default gen_random_uuid(),
+            actor_auth_user_id uuid,
+            action text not null,
+            target_type text not null,
+            target_id uuid,
+            metadata jsonb not null default '{}'::jsonb,
+            created_at timestamptz not null default now()
+          );
+
+          create or replace function is_system_admin()
+          returns boolean
+          language sql
+          stable
+          security definer
+          set search_path = public
+          as $fixture$
+            select auth.uid() = '10000000-0000-0000-0000-000000000001'::uuid;
+          $fixture$;
+
+          insert into families (id, name, invite_code, approval_status)
+          values
+            ('20000000-0000-0000-0000-000000000001', 'Pending A', 'PENDA1', 'pending'),
+            ('20000000-0000-0000-0000-000000000002', 'Pending B', 'PENDB2', 'pending');
+
+          set local role authenticated;
+          select set_config(
+            'request.jwt.claim.sub',
+            '10000000-0000-0000-0000-000000000099',
+            true
+          );
+
+          do $test$
+          begin
+            begin
+              perform system_admin_set_family_approval(
+                '20000000-0000-0000-0000-000000000001', 'active'
+              );
+              raise exception 'expected non-admin denial';
+            exception when others then
+              if sqlerrm <> 'system admin permission required' then raise; end if;
+            end;
+          end;
+          $test$;
+
+          select set_config(
+            'request.jwt.claim.sub',
+            '10000000-0000-0000-0000-000000000001',
+            true
+          );
+          select system_admin_set_family_approval(
+            '20000000-0000-0000-0000-000000000001', 'active'
+          );
+          select 1 / (
+            (select approval_status from families
+             where id = '20000000-0000-0000-0000-000000000001') = 'active'
+          )::int;
+
+          do $test$
+          begin
+            begin
+              perform system_admin_set_family_approval(
+                '20000000-0000-0000-0000-000000000001', 'rejected'
+              );
+              raise exception 'expected stale transition denial';
+            exception when others then
+              if sqlerrm <> 'family approval is no longer pending' then raise; end if;
+            end;
+
+            begin
+              perform system_admin_set_family_approval(
+                '20000000-0000-0000-0000-000000000099', 'active'
+              );
+              raise exception 'expected missing family denial';
+            exception when others then
+              if sqlerrm <> 'family not found' then raise; end if;
+            end;
+          end;
+          $test$;
+
+          select system_admin_set_family_approval(
+            '20000000-0000-0000-0000-000000000002', 'rejected'
+          );
+          select 1 / (
+            (select approval_status from families
+             where id = '20000000-0000-0000-0000-000000000002') = 'rejected'
+          )::int;
+
+          rollback;
           SQL
 
       - name: Stop isolated stack
