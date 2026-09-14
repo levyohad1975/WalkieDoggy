@@ -6,6 +6,16 @@ on:
       - Agentic RC Worker
     types:
       - completed
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: "RC feature branch to validate"
+        required: false
+        type: string
+      expected_sha:
+        description: "Optional RC head SHA expected by the dispatcher"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -18,11 +28,14 @@ concurrency:
 jobs:
   validate:
     name: Validate fresh Agentic RC progress
-    if: github.event.workflow_run.conclusion == 'success'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
-      TARGET_BRANCH: ${{ vars.AGENTIC_RC_TARGET_BRANCH || 'feat/verified-auth-onboarding-batch-2' }}
+      TARGET_BRANCH: ${{ inputs.target_branch || vars.AGENTIC_RC_TARGET_BRANCH || 'feat/verified-auth-onboarding-batch-2' }}
+      EXPECTED_SHA: ${{ inputs.expected_sha || '' }}
     outputs:
       continue: ${{ steps.mark.outputs.continue }}
       target_branch: ${{ steps.guard.outputs.target_branch }}
@@ -55,10 +68,11 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Verify this worker run published a fresh commit
+      - name: Verify fresh Agentic RC commit
         id: fresh
         shell: bash
         env:
+          EVENT_NAME: ${{ github.event_name }}
           RUN_STARTED_AT: ${{ github.event.workflow_run.run_started_at }}
           RUN_CREATED_AT: ${{ github.event.workflow_run.created_at }}
         run: |
@@ -68,7 +82,7 @@ jobs:
           author="$(git log -1 --format='%an')"
           subject="$(git log -1 --format='%s')"
           committed_at="$(git log -1 --format='%cI')"
-          started_at="${RUN_STARTED_AT:-$RUN_CREATED_AT}"
+          head_sha="$(git rev-parse HEAD)"
 
           if [ "$author" != "walkie-agentic-worker[bot]" ]; then
             echo "Latest RC commit was not published by the Agentic worker; no continuation is required." >> "$GITHUB_STEP_SUMMARY"
@@ -84,6 +98,23 @@ jobs:
               ;;
           esac
 
+          if [ -n "$EXPECTED_SHA" ]; then
+            if [ "$head_sha" != "$EXPECTED_SHA" ]; then
+              echo "::error::RC head $head_sha does not match expected dispatcher SHA $EXPECTED_SHA."
+              exit 1
+            fi
+            echo "fresh=true" >> "$GITHUB_OUTPUT"
+            echo "Fresh Agentic RC commit confirmed by explicit dispatch for $TARGET_BRANCH at $head_sha." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "fresh=true" >> "$GITHUB_OUTPUT"
+            echo "Fresh Agentic RC commit accepted from guarded manual/watchdog dispatch at $head_sha." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          started_at="${RUN_STARTED_AT:-$RUN_CREATED_AT}"
           if [ -z "$started_at" ]; then
             echo "::error::Upstream worker start time is unavailable; refusing to infer freshness."
             exit 1
