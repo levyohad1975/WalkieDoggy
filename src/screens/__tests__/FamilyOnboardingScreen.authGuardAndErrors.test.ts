@@ -40,6 +40,23 @@ describe('FamilyOnboardingScreen — create/join auth guard and error mapping (s
     expect(body).not.toContain('ensureAnonymousSession()');
   });
 
+  it('submitCreate() never calls setFamilyId() for a pending (unapproved) family', () => {
+    // AUTO_APPROVE_NEW_FAMILIES=false makes create-verified-family return
+    // approvalStatus: 'pending'. The client must show the pending screen
+    // instead of treating the caller as an admitted family member -- so the
+    // 'pending' branch's own return must come strictly before setFamilyId(),
+    // not merely appear earlier in the function by coincidence.
+    const body = bodyOf('submitCreate');
+    const pendingCheckIdx = body.indexOf("family.approvalStatus === 'pending'");
+    const pendingSetIdx = body.indexOf('setPendingApprovalFamilyName(family.name)');
+    expect(pendingCheckIdx).toBeGreaterThan(-1);
+    expect(pendingSetIdx).toBeGreaterThan(pendingCheckIdx);
+    const returnIdx = body.indexOf('return;', pendingSetIdx);
+    const setFamilyIdIdx = body.indexOf('setFamilyId(family.id)');
+    expect(returnIdx).toBeGreaterThan(pendingSetIdx);
+    expect(setFamilyIdIdx).toBeGreaterThan(returnIdx);
+  });
+
   it('confirmJoin() ensures an anonymous session before calling joinFamily()', () => {
     const body = bodyOf('confirmJoin');
     const sessionIdx = body.indexOf('ensureAnonymousSession()');
