@@ -1,9 +1,23 @@
 import {
+  createVerifiedFamily,
   getVerifiedAdminIdentityWithAuth,
   requestAdminEmailVerificationWithAuth,
   verifyAdminEmailOtpWithAuth,
   type VerifiedAdminAuthClient,
 } from '../verifiedAdminOnboarding';
+import { supabase } from '../supabase';
+
+// Defined as a literal inside the factory (not a closed-over outer const) so
+// there is no risk of the mock referencing an as-yet-uninitialized variable
+// — see scheduleStore.loadResult.test.ts's comment for why that pattern
+// matters with jest.mock()'s hoisting.
+jest.mock('../supabase', () => ({
+  supabase: { functions: { invoke: jest.fn() } },
+  SupabaseNotConfiguredError: class SupabaseNotConfiguredError extends Error {},
+}));
+
+const mockInvoke = (supabase as unknown as { functions: { invoke: jest.Mock } }).functions
+  .invoke;
 
 function authClient(): jest.Mocked<VerifiedAdminAuthClient> {
   return {
@@ -95,5 +109,151 @@ describe('verified admin onboarding', () => {
       userId: 'auth-user-1',
       email: 'admin@example.com',
     });
+  });
+
+  it('propagates a Supabase error instead of returning a normalized email', async () => {
+    const auth = authClient();
+    const supabaseError = new Error('rate limited');
+    auth.signInWithOtp.mockResolvedValue({ error: supabaseError });
+
+    await expect(
+      requestAdminEmailVerificationWithAuth(auth, 'admin@example.com')
+    ).rejects.toBe(supabaseError);
+  });
+
+  it('rejects an empty/whitespace-only OTP code before calling Supabase', async () => {
+    const auth = authClient();
+
+    await expect(
+      verifyAdminEmailOtpWithAuth(auth, 'admin@example.com', '   ')
+    ).rejects.toThrow('קוד האימות');
+    expect(auth.verifyOtp).not.toHaveBeenCalled();
+  });
+
+  it('propagates a Supabase error from OTP verification', async () => {
+    const auth = authClient();
+    const supabaseError = new Error('invalid token');
+    auth.verifyOtp.mockResolvedValue({ data: { user: null }, error: supabaseError });
+
+    await expect(
+      verifyAdminEmailOtpWithAuth(auth, 'admin@example.com', '123456')
+    ).rejects.toBe(supabaseError);
+  });
+
+  it('falls back to the session user when the response has no top-level user', async () => {
+    const auth = authClient();
+    auth.verifyOtp.mockResolvedValue({
+      data: {
+        user: null,
+        session: {
+          user: {
+            id: 'auth-user-2',
+            email: 'Admin2@Example.com',
+            email_confirmed_at: '2026-09-11T07:00:00Z',
+          },
+        },
+      },
+      error: null,
+    });
+
+    await expect(
+      verifyAdminEmailOtpWithAuth(auth, 'admin2@example.com', '123456')
+    ).resolves.toEqual({ userId: 'auth-user-2', email: 'admin2@example.com' });
+  });
+
+  it('propagates a Supabase error instead of returning a stale/unconfirmed identity', async () => {
+    const auth = authClient();
+    const supabaseError = new Error('session expired');
+    auth.getUser.mockResolvedValue({ data: { user: null }, error: supabaseError });
+
+    await expect(getVerifiedAdminIdentityWithAuth(auth)).rejects.toBe(supabaseError);
+  });
+
+  it('fails closed when the current session user is not email-confirmed', async () => {
+    const auth = authClient();
+    auth.getUser.mockResolvedValue({
+      data: { user: { id: 'auth-user-1', email: 'admin@example.com', confirmed_at: null } },
+      error: null,
+    });
+
+    await expect(getVerifiedAdminIdentityWithAuth(auth)).rejects.toThrow(
+      'יש לאמת את כתובת הדוא״ל'
+    );
+  });
+});
+
+describe('createVerifiedFamily', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('trims the family/dog name and calls the server-authoritative Edge Function only', async () => {
+    mockInvoke.mockResolvedValue({
+      data: {
+        family: {
+          id: 'family-1',
+          name: 'The Cohens',
+          inviteCode: 'ABC123',
+          approvalStatus: 'active',
+        },
+        warnings: [],
+      },
+      error: null,
+    });
+
+    const result = await createVerifiedFamily('  The Cohens  ', '  Rex  ');
+
+    expect(mockInvoke).toHaveBeenCalledWith('create-verified-family', {
+      body: { familyName: 'The Cohens', dogName: 'Rex' },
+    });
+    expect(result).toEqual({
+      id: 'family-1',
+      name: 'The Cohens',
+      inviteCode: 'ABC123',
+      approvalStatus: 'active',
+      warnings: [],
+    });
+  });
+
+  it('sends null for an absent/whitespace-only dog name rather than an empty string', async () => {
+    mockInvoke.mockResolvedValue({
+      data: {
+        family: { id: 'family-1', name: 'x', inviteCode: 'c', approvalStatus: 'pending' },
+      },
+      error: null,
+    });
+
+    await createVerifiedFamily('x', '   ');
+
+    expect(mockInvoke).toHaveBeenCalledWith('create-verified-family', {
+      body: { familyName: 'x', dogName: null },
+    });
+  });
+
+  it('defaults warnings to an empty array when the Edge Function omits it', async () => {
+    mockInvoke.mockResolvedValue({
+      data: { family: { id: 'family-1', name: 'x', inviteCode: 'c', approvalStatus: 'active' } },
+      error: null,
+    });
+
+    const result = await createVerifiedFamily('x');
+
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('propagates an Edge Function invocation error', async () => {
+    const invokeError = new Error('network error');
+    mockInvoke.mockResolvedValue({ data: null, error: invokeError });
+
+    await expect(createVerifiedFamily('x')).rejects.toBe(invokeError);
+  });
+
+  it('fails closed on a malformed success response missing required family fields', async () => {
+    mockInvoke.mockResolvedValue({
+      data: { family: { id: 'family-1', name: 'x', inviteCode: 'c', approvalStatus: 'bogus' } },
+      error: null,
+    });
+
+    await expect(createVerifiedFamily('x')).rejects.toThrow('יצירת המשפחה נכשלה');
   });
 });

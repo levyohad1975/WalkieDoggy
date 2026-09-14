@@ -27,16 +27,66 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 
 ## Current Task
 
-Per the previous cycle's own "Next Safe Task" pointer (Queue item 7's
-Supabase-regression half reconfirmed blocked again first — see Last
-Evidence): a **second, full end-to-end re-read of the diff between this
-run's own `TARGET_BRANCH` (`feat/verified-auth-onboarding-batch-2`) and
-`main`** (`git diff origin/main...HEAD`), specifically looking for
-anything the prior theme-by-theme sweeps might have missed, since every
-named `QA_RELEASE_GUARDIAN.md` theme already had at least one dedicated
-sweep as of last cycle.
+New angle this cycle (all prior cycles used manual/source-text-scan code
+reading; this is the first cycle to measure actual Jest coverage
+quantitatively): ran `npx jest --coverage` across `src/**` on this run's
+own `TARGET_BRANCH` and used the resulting per-file function/branch/line
+percentages to find a real, previously-undiscovered test-coverage gap in
+an RC-critical file that thirteen prior read-based sweeps had missed,
+then closed it.
 
 ## Current Task Status
+
+**BLOCKED on the commit/approval gate (see Blocker) — code change complete,
+tested, and correct; only the local `git commit` step could not run this
+cycle.** Coverage run found: `src/lib/verifiedAdminOnboarding.ts`
+(Queue item 1/2's client-side verified-admin-identity and family-creation
+module) sat at only 54.5%/43.9%/54.5% (statements/branches/functions)
+despite having a real (non-source-scan) unit test file,
+`verifiedAdminOnboarding.test.ts`. Root cause: `createVerifiedFamily()` —
+the function that actually invokes the `create-verified-family` Edge
+Function — had **zero direct unit tests anywhere in the repository**. The
+only existing reference to it (`verifiedFamilyServerBoundary.test.ts`) is
+a source-text scan of the Edge Function/migration SQL, not an invocation
+test of this client function's own logic (name/dog-name trimming, the
+`warnings` array defaulting to `[]`, or the malformed-response validation
+that throws `'יצירת המשפחה נכשלה'`). The three `...WithAuth` functions
+also had several untested branches: error propagation from
+`signInWithOtp`/`verifyOtp`/`getUser`, the empty/whitespace-OTP-token
+guard, the `data.user ?? data.session?.user` fallback, and the
+unconfirmed-session fail-closed path. Added 5 new tests for
+`createVerifiedFamily` (mocking `../supabase`'s `functions.invoke` via a
+`jest.mock` factory literal, in the same hoisting-safe style
+`scheduleStore.loadResult.test.ts` already documents) and 6 new tests for
+the previously-uncovered `...WithAuth` branches, all to
+`src/lib/__tests__/verifiedAdminOnboarding.test.ts` (160 lines added, no
+other file touched). Re-ran coverage after the change:
+`verifiedAdminOnboarding.ts` now 84.1%/92.7%/63.6%
+(statements/branches/functions) — the four remaining uncovered lines
+(51-52, 76, 113, 134) are the trivial one-line
+`requireAuthClient()`-delegating wrappers
+(`requestAdminEmailVerification`/`verifyAdminEmailOtp`/
+`getVerifiedAdminIdentity`), a reasonable stopping point since their own
+logic is already fully exercised through the `...WithAuth` variants they
+delegate to. No defect in the underlying logic was found — this was a
+coverage gap, not a behavioral bug. Full local validation gate re-run
+after the change: `npx tsc --noEmit` PASS; `npm test -- --runInBand`
+**929/929** tests passed (918 + 11 new), 89/89 suites — see Last Evidence
+for exact output. **The code change itself is complete and fully
+validated**, but `git add`/`git commit` were both gated behind an
+interactive approval prompt this cycle with no owner present (see
+Blocker) — same class of issue as the "previously recurring `git
+add`/commit approval-gate issue" this file's own history already
+documents recurring and clearing across many prior cycles. The change is
+left in the working tree, uncommitted, for the next cycle (or the owner)
+to commit — see Next Safe Task.
+
+Also carried forward from last cycle (still true, re-verified this cycle
+— see below): every named `QA_RELEASE_GUARDIAN.md` theme still has at
+least one dedicated credential-free sweep with no unresolved
+release-blocking gap, and the prior cycle's second full diff re-read
+against `main` found nothing the theme sweeps missed either. Full text of
+that prior finding, preserved for continuity:
 
 DONE. **No defect found.** Read the full 32-file diff
 (`git diff origin/main...HEAD`, 2281 insertions/54 deletions excluding
@@ -106,7 +156,7 @@ prior cycle).
 ## Last Evidence
 
 - This cycle: `git status`/`git rev-parse HEAD` confirmed a clean working
-  tree at cycle start (HEAD `dc5c46f`, matches
+  tree at cycle start (HEAD `0b2e3fb`, matches
   `origin/feat/verified-auth-onboarding-batch-2`) — confirms the previous
   cycle's own end-of-cycle commit landed cleanly and pushed with no
   recovery action needed this time.
@@ -114,35 +164,73 @@ prior cycle).
   approval" (no owner present); `which supabase` → exit 1 (still not
   installed); `docker info` → "This command requires approval". Queue item
   7's Supabase-regression half stays blocked on tooling/access, unchanged
-  from prior cycles — twelfth consecutive cycle blocked.
-- `npm ci` — succeeded, 907 packages installed fresh in this sandbox (fresh
-  checkout, no `node_modules` present at cycle start — every cycle so far
-  starts from a clean sandbox, not a persisted one).
-- `npx tsc --noEmit` — **PASS**, zero errors, zero output.
-- `npm test -- --runInBand` — **PASS**: Test Suites: 89 passed, 89 total;
-  Tests: **918** passed, 918 total (unchanged — no code change this
-  cycle); Snapshots: 0 total; Time ~22s.
-- QA sweep performed this cycle (second full end-to-end re-read of
-  `git diff origin/main...HEAD`, this run's own `TARGET_BRANCH`): reviewed
-  all 32 changed files, with particular focus on the smaller UI-only files
-  (`Countdown.tsx`/`NextWalkCard.tsx`/`WalkRow.tsx`/`RootNavigator.tsx`'s
-  `nativeDirection()` web-console-warning fix; `LoginScreen.tsx`/
-  `HistoryScreen.tsx`/`ScheduleScreen.tsx`/`StatisticsScreen.tsx`'s web
-  desktop max-width containment) that no prior theme-named sweep had
-  called out individually. **No defect found; no gap found.** Also
-  surveyed `origin/main`'s recent history (`git log origin/main`, `git
-  show origin/main:docs/engineering/STAGING_OTP_E2E.md`) and confirmed
-  `.github/workflows/batch2-supabase-rehearsal.yml` already exists on this
-  branch — both recorded in Current Task Status for continuity, neither
-  actionable from this sandbox this cycle. No repository change was
-  needed or made this cycle.
-- `git status`/`git diff --stat` confirmed no working-tree changes from
-  this cycle's audit itself — only this file's own end-of-cycle update
-  (below) needs to be committed.
+  from prior cycles — thirteenth consecutive cycle blocked.
+- `npm ci` — succeeded, 907 packages installed fresh in this sandbox (this
+  cycle actually started with `node_modules` already present, unlike every
+  prior cycle's logged clean sandbox — ran `npm ci` anyway for an exact
+  lockfile-matched install before validating).
+- `npx tsc --noEmit` — **PASS**, zero errors, zero output (re-run again
+  after the test-file change below; still zero errors).
+- `npm test -- --runInBand` (before this cycle's change) — **PASS**: Test
+  Suites: 89 passed, 89 total; Tests: **918** passed, 918 total; Snapshots:
+  0 total.
+- `npx jest --coverage --collectCoverageFrom="src/**/*.ts(x)"
+  --coverageReporters=json-summary --runInBand` (new this cycle — no prior
+  cycle had run a quantitative coverage report) — read
+  `coverage/coverage-summary.json` directly and sorted by function-coverage
+  ascending. Found `src/lib/verifiedAdminOnboarding.ts` at
+  54.5%/43.9%/54.5% (statements/branches/functions) with a real
+  (non-source-scan) test file already present but not covering
+  `createVerifiedFamily()` at all (zero references to it in any test that
+  actually invokes it — the one hit in
+  `verifiedFamilyServerBoundary.test.ts` is a source-text scan of the Edge
+  Function/migration files, confirmed by reading that file directly).
+- Added 11 new tests to `src/lib/__tests__/verifiedAdminOnboarding.test.ts`
+  (160 lines): 5 for `createVerifiedFamily()` (name/dog-name trimming,
+  null-vs-empty-string dog name, `warnings` defaulting, Edge Function error
+  propagation, malformed-response fail-closed validation — via a
+  `jest.mock('../supabase', ...)` factory literal mocking
+  `functions.invoke`) and 6 for previously-untested branches of the
+  `...WithAuth` functions (Supabase error propagation from
+  `signInWithOtp`/`verifyOtp`/`getUser`, the empty/whitespace-OTP guard,
+  the `data.user ?? data.session?.user` fallback, the unconfirmed-session
+  fail-closed path).
+- `npx jest src/lib/__tests__/verifiedAdminOnboarding.test.ts --runInBand`
+  — **PASS**, 16/16 tests in that file alone (5 original + 6 new
+  `...WithAuth` branch tests + 5 new `createVerifiedFamily` tests).
+- Full local validation gate re-run after the change: `npx tsc --noEmit` —
+  **PASS**, zero errors. `npm test -- --runInBand` — **PASS**: Test Suites:
+  89 passed, 89 total; Tests: **929** passed, 929 total (918 + 11 new);
+  Snapshots: 0 total; Time ~10s.
+- Coverage re-run scoped to the changed file only
+  (`npx jest src/lib/__tests__/verifiedAdminOnboarding.test.ts --coverage
+  --collectCoverageFrom="src/lib/verifiedAdminOnboarding.ts"
+  --coverageReporters=text --runInBand`) — confirmed the improvement:
+  `verifiedAdminOnboarding.ts` now 84.09% stmts / 92.68% branches / 63.63%
+  funcs / 86.48% lines, up from 54.5%/43.9%/54.5%/64.9% pre-change.
+  Remaining uncovered lines 51-52/76/113/134 are the trivial one-line
+  `requireAuthClient()`-delegating wrappers around the now-fully-tested
+  `...WithAuth` functions.
+- `git status`/`git diff --stat` confirmed exactly one tracked file
+  changed (`src/lib/__tests__/verifiedAdminOnboarding.test.ts`, +160/-0)
+  plus an untracked, uncommitted `coverage/` directory this cycle's own
+  coverage runs generated (harmless local build output — not part of the
+  change, deliberately left unstaged rather than committed; `rm -rf
+  coverage/` itself was blocked by the sandbox's path-restriction check
+  even though the path is inside the allowed working directory, so it
+  remains on disk untracked).
+- **`git add src/lib/__tests__/verifiedAdminOnboarding.test.ts`** — "This
+  command requires approval" (retried twice, same result both times).
+  **`git commit -a -m "..."`** — also "This command requires approval".
+  Both are the same class of "previously recurring `git add`/commit
+  approval-gate issue" this file's own history documents recurring and
+  clearing across several prior, non-consecutive cycles — this cycle it
+  did not clear. The tested, TypeScript-clean, fully-passing test-file
+  change is left in the working tree uncommitted for the next cycle.
 
 ## Last Evidence Timestamp
 
-2026-09-14T09:20:00Z
+2026-09-14T14:10:00Z
 
 ## Blocker
 
@@ -206,17 +294,24 @@ git history of this file for the complete chain of evidence.
 
 The previously recurring `git add`/commit approval-gate issue (logged in
 several prior cycles, e.g. before `16d4a17`) had cleared for the prior
-cycle: its only change (this file's own update) is confirmed landed and
-pushed as `6a902de` (`origin/feat/verified-auth-onboarding-batch-2`
-matched HEAD at this cycle's start — see Last Evidence), so no recovery
-action was needed at the start of this cycle. This gate has recurred
-across many non-consecutive cycles historically (clearing normally in
-between, e.g. for `16d4a17`/`d03e6da`/`d5d0a0e`/`c117837`/`0bc88c3`/
-`6a902de`) — sandbox-side permission-mode variance per cycle, not fixable
-from inside the repository. If it recurs again on this cycle's own
-end-of-cycle commit, the recovery step for the next cycle is: confirm
-with `git status`/`git diff --stat` that only `EXECUTION_STATE.md` differs
-from HEAD, then `git add EXECUTION_STATE.md && git commit`, then push,
+several cycles in a row (`16d4a17`/`d03e6da`/`d5d0a0e`/`c117837`/
+`0bc88c3`/`6a902de`/`dc5c46f`/`0b2e3fb` all landed without incident) but
+**recurred this cycle**: both `git add
+src/lib/__tests__/verifiedAdminOnboarding.test.ts` (tried twice) and
+`git commit -a -m "..."` returned "This command requires approval" with
+no owner present to answer it — see Last Evidence for the exact attempts.
+This confirms the issue is sandbox-side permission-mode variance per
+cycle, not fixable from inside the repository, exactly as previously
+documented. **Recovery step for the next cycle (do this FIRST, before
+selecting any new task):** confirm with `git status`/`git diff --stat`
+that the only tracked change from HEAD is
+`src/lib/__tests__/verifiedAdminOnboarding.test.ts` (+160/-0; there may
+also be an untracked, harmless `coverage/` directory — leave it
+unstaged), re-run `npx tsc --noEmit` and `npm test -- --runInBand` to
+reconfirm PASS (929/929) since this file's own instructions require
+validation immediately before commit, then `git add
+src/lib/__tests__/verifiedAdminOnboarding.test.ts && git commit`, update
+this file's own status to DONE with the resulting commit SHA, then push
 before selecting a new task.
 
 These blockers do not stop execution — see Queue below for independent
@@ -224,25 +319,42 @@ safe tasks that do not depend on them.
 
 ## Next Safe Task
 
-Every named QA_RELEASE_GUARDIAN.md theme has at least one dedicated
-credential-free sweep across every Batch 3/4 surface on this branch and
-the stacked branches' distinct feature UI, with **no unresolved
-release-blocking gap** on any of them, and this cycle's second full
-end-to-end diff re-read (`origin/main...HEAD`) found nothing the
-theme-by-theme sweeps had missed either. Remaining independent
-credential-free sub-tasks, in order: (1) re-attempt Queue item 7's
-still-open Supabase-regression half via `gh`/a local Supabase stack (only
-if the sandbox's permission mode allows it that cycle — blocked for
-twelve cycles running so far); (2) check whether `origin/main`'s new
-Staging OTP E2E executor (see Blocker above) has a completed run with
-`gh`, if `gh` becomes reachable — this could produce real evidence toward
-Queue items 1-3/6 without needing credentials in this sandbox directly;
-(3) Queue item 5 (Batch 4 regression) if/when independent,
-credential-free repository evidence for it exists — no `batch-4`-named
-branch or work exists in this repository yet, so this item currently has
-no distinct surface to regress beyond what Batch 2/3 sweeps already
-covered. A future cycle with `TARGET_BRANCH=feat/system-admin-approval-controls`
-should still prioritize fixing the `FamilyOnboardingScreen.tsx`
+**First priority for the next cycle:** commit and push this cycle's
+already-complete, already-validated `verifiedAdminOnboarding.test.ts`
+coverage improvement — see the recovery step immediately above. This is
+not new work, just landing work this cycle already finished but could not
+commit.
+
+After that: every named QA_RELEASE_GUARDIAN.md theme still has at least
+one dedicated credential-free sweep across every Batch 3/4 surface on
+this branch and the stacked branches' distinct feature UI, with **no
+unresolved release-blocking gap** on any of them, and two full
+end-to-end diff re-reads (`origin/main...HEAD`) across separate cycles
+found nothing the theme-by-theme sweeps had missed either. This cycle
+added a new, productive angle beyond manual reading — quantitative Jest
+coverage — that a future cycle should continue: `coverage-summary.json`
+still shows several other RC-adjacent files at low branch/function
+coverage worth the same treatment if a real (non-source-scan) test file
+already exists for them, e.g. `src/lib/family.ts`/`familyManagement.ts`
+(75%/53.8% branches/funcs) or `src/data/supabaseRepository.ts`
+(36.6%/41.7%) — screens/components sit at or near 0% coverage
+project-wide, which is an existing, consistent architectural pattern (no
+render-testing harness in use anywhere in this codebase yet), not a
+new/isolated gap, so treat that as a much larger, separate undertaking
+rather than a quick win. Remaining independent credential-free sub-tasks,
+in order: (1) re-attempt Queue item 7's still-open Supabase-regression
+half via `gh`/a local Supabase stack (only if the sandbox's permission
+mode allows it that cycle — blocked for thirteen cycles running so far);
+(2) check whether `origin/main`'s new Staging OTP E2E executor (see
+Blocker above) has a completed run with `gh`, if `gh` becomes reachable —
+this could produce real evidence toward Queue items 1-3/6 without needing
+credentials in this sandbox directly; (3) Queue item 5 (Batch 4
+regression) if/when independent, credential-free repository evidence for
+it exists — no `batch-4`-named branch or work exists in this repository
+yet, so this item currently has no distinct surface to regress beyond
+what Batch 2/3 sweeps already covered. A future cycle with
+`TARGET_BRANCH=feat/system-admin-approval-controls` should still
+prioritize fixing the `FamilyOnboardingScreen.tsx`
 applicant-status-recovery finding recorded under Blocker above — that
 remains the one known, unfixed, actionable defect from this whole
 campaign.
@@ -290,6 +402,31 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
+- New angle: ran `npx jest --coverage` across `src/**` (first cycle to
+  measure quantitative Jest coverage rather than manually re-reading code)
+  and found `src/lib/verifiedAdminOnboarding.ts` — the Queue item 1/2
+  client module for verified-admin identity and family creation — at only
+  54.5%/43.9%/54.5% (statements/branches/functions) because
+  `createVerifiedFamily()` had zero direct unit tests anywhere in the repo
+  (the only existing reference was a source-text scan of the Edge
+  Function/migration SQL, not an invocation test). Added 11 new tests to
+  `src/lib/__tests__/verifiedAdminOnboarding.test.ts` (+160 lines): 5 for
+  `createVerifiedFamily()` and 6 for previously-uncovered error/fallback
+  branches of the `...WithAuth` functions. Coverage after:
+  84.1%/92.7%/63.6%. Full validation gate re-run: `npx tsc --noEmit` PASS,
+  `npm test -- --runInBand` **929/929** tests PASS (918 + 11 new), 89/89
+  suites. **Could not commit this cycle** — both `git add` and
+  `git commit -a` were gated behind an interactive approval prompt with no
+  owner present (the same recurring, previously-documented sandbox
+  permission-mode issue, which had cleared for the prior several cycles
+  but recurred this one). The change is complete and left uncommitted in
+  the working tree for the next cycle to land first — see Next Safe Task
+  and Blocker. Reconfirmed `gh auth status` gated, `supabase` CLI not
+  installed, `docker info` gated — Queue item 7 stays blocked for another
+  (thirteenth) cycle.
+
+### Two cycles ago
+
 - Second full end-to-end re-read of `git diff origin/main...HEAD` (32
   files, 2281 insertions/54 deletions) on this run's own `TARGET_BRANCH`,
   focused on the smaller UI-only files no prior theme sweep had named
@@ -316,7 +453,7 @@ proceed even while 1–3/6 are blocked.
   `EXECUTION_STATE.md` update) landed and is now on `origin` as `dc5c46f`
   — no recovery action needed this cycle.
 
-### Previous cycle
+### Three cycles ago
 
 - Queue item 4 credential-free sub-task — dedicated **Settings/Roles
   backend-authorization** sweep, on this run's own `TARGET_BRANCH`. **No
@@ -335,7 +472,7 @@ proceed even while 1–3/6 are blocked.
   gated — Queue item 7 stayed blocked for another (eleventh) cycle.
   Committed and pushed as `dc5c46f`.
 
-### Two cycles ago
+### Four cycles ago
 
 - Queue item 3 credential-free sub-task — dedicated audit of the
   **`send-email` Edge Function's `SEND_EMAIL_HOOK_SECRET`/Standard
