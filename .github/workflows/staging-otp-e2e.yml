@@ -61,10 +61,11 @@ jobs:
           SUPABASE_STAGING_ANON_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
           STAGING_OTP_TEST_EMAIL: ${{ secrets.STAGING_OTP_TEST_EMAIL }}
           STAGING_OTP_MAILBOX_TOKEN: ${{ secrets.STAGING_OTP_MAILBOX_TOKEN }}
+          STAGING_OTP_MAILOSAUR_SERVER_ID: ${{ secrets.STAGING_OTP_MAILOSAUR_SERVER_ID }}
         run: |
           set -euo pipefail
           missing=0
-          for name in SUPABASE_STAGING_URL SUPABASE_STAGING_ANON_KEY STAGING_OTP_TEST_EMAIL STAGING_OTP_MAILBOX_TOKEN; do
+          for name in SUPABASE_STAGING_URL SUPABASE_STAGING_ANON_KEY STAGING_OTP_TEST_EMAIL STAGING_OTP_MAILBOX_TOKEN STAGING_OTP_MAILOSAUR_SERVER_ID; do
             if [ -z "${!name:-}" ]; then
               echo "::error::Missing required staging secret: $name"
               missing=1
@@ -79,8 +80,9 @@ jobs:
           SUPABASE_STAGING_ANON_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
           STAGING_OTP_TEST_EMAIL: ${{ secrets.STAGING_OTP_TEST_EMAIL }}
           STAGING_OTP_MAILBOX_TOKEN: ${{ secrets.STAGING_OTP_MAILBOX_TOKEN }}
-          STAGING_OTP_MAILBOX_PROVIDER: ${{ vars.STAGING_OTP_MAILBOX_PROVIDER }}
-        run: npm run test:staging:otp
+          STAGING_OTP_MAILOSAUR_SERVER_ID: ${{ secrets.STAGING_OTP_MAILOSAUR_SERVER_ID }}
+          STAGING_OTP_MAILBOX_PROVIDER: mailosaur
+        run: node scripts/staging-otp-e2e.mjs
 
       - name: Write evidence summary
         if: always()
