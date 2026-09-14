@@ -1,0 +1,101 @@
+name: Agentic RC Watchdog
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: agentic-rc-watchdog
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    name: Recover stalled RC continuation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TARGET_BRANCH: ${{ vars.AGENTIC_RC_TARGET_BRANCH || 'feat/verified-auth-onboarding-batch-2' }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Guard RC target
+        shell: bash
+        run: |
+          set -euo pipefail
+          git check-ref-format --branch "$TARGET_BRANCH" >/dev/null
+          case "$TARGET_BRANCH" in
+            feat/*|fix/*|chore/*|test/*|docs/*|rc/*)
+              ;;
+            *)
+              echo "::error::Refusing to watch an unapproved target branch."
+              exit 1
+              ;;
+          esac
+          test "$TARGET_BRANCH" != "main"
+
+      - name: Checkout RC target
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Decide whether recovery is needed
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "dispatch=false" >> "$GITHUB_OUTPUT"
+
+          author="$(git log -1 --format='%an')"
+          subject="$(git log -1 --format='%s')"
+          committed_at="$(git log -1 --format='%cI')"
+          head_sha="$(git rev-parse HEAD)"
+
+          if [ "$author" != "walkie-agentic-worker[bot]" ]; then
+            echo "RC head is not an Agentic worker commit; watchdog will not dispatch." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          case "$subject" in
+            "chore(agentic): continue RC execution"|"chore(agentic): checkpoint RC execution")
+              ;;
+            *)
+              echo "RC head is not an Agentic continuation/checkpoint; watchdog will not dispatch." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+              ;;
+          esac
+
+          active_count="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" --jq '[.workflow_runs[] | select((.name == "Agentic RC Worker" or .name == "Agentic RC Validation") and (.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested" or .status == "pending"))] | length')"
+          if [ "$active_count" -gt 0 ]; then
+            echo "Agentic Worker/Validation is already active; watchdog will not duplicate it." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          validated_after_head="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" --jq --arg t "$committed_at" '[.workflow_runs[] | select(.name == "Agentic RC Validation" and .created_at >= $t)] | length')"
+          if [ "$validated_after_head" -gt 0 ]; then
+            echo "This RC head already has a Validation dispatch after its commit time; watchdog will not repeat it." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "dispatch=true" >> "$GITHUB_OUTPUT"
+          echo "Detected stalled Agentic RC head $head_sha with no active or subsequent validation." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dispatch RC Validation recovery
+        if: steps.gate.outputs.dispatch == 'true'
+        shell: bash
+        env:
+          HEAD_SHA: ${{ steps.gate.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          gh workflow run agentic-rc-validation.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f target_branch="$TARGET_BRANCH" \
+            -f expected_sha="$HEAD_SHA"
+          echo "Dispatched guarded Agentic RC Validation recovery for $TARGET_BRANCH at $HEAD_SHA." >> "$GITHUB_STEP_SUMMARY"
