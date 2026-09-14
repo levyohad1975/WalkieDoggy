@@ -1,0 +1,94 @@
+name: Staging OTP E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'Non-main RC branch associated with this Staging validation'
+        required: true
+        default: 'feat/verified-auth-onboarding-batch-2'
+
+permissions:
+  contents: read
+
+env:
+  TARGET_BRANCH: ${{ inputs.target_branch }}
+
+jobs:
+  staging-otp-e2e:
+    name: Real Staging OTP E2E
+    runs-on: ubuntu-24.04
+    environment: staging
+    timeout-minutes: 20
+
+    steps:
+      - name: Guard staging-only target
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$TARGET_BRANCH" = "main" ]; then
+            echo "::error::Refusing to associate live Staging E2E with main."
+            exit 1
+          fi
+          git check-ref-format --branch "$TARGET_BRANCH" >/dev/null
+          case "$TARGET_BRANCH" in
+            feat/*|fix/*|chore/*|test/*|docs/*|rc/*) ;;
+            *)
+              echo "::error::Target must be an approved non-main RC branch."
+              exit 1
+              ;;
+          esac
+
+      - name: Checkout trusted executor
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify required Staging secrets are present
+        shell: bash
+        env:
+          SUPABASE_STAGING_URL: ${{ secrets.SUPABASE_STAGING_URL }}
+          SUPABASE_STAGING_ANON_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
+          STAGING_OTP_TEST_EMAIL: ${{ secrets.STAGING_OTP_TEST_EMAIL }}
+          STAGING_OTP_MAILBOX_TOKEN: ${{ secrets.STAGING_OTP_MAILBOX_TOKEN }}
+          STAGING_OTP_MAILOSAUR_SERVER_ID: ${{ secrets.STAGING_OTP_MAILOSAUR_SERVER_ID }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in SUPABASE_STAGING_URL SUPABASE_STAGING_ANON_KEY STAGING_OTP_TEST_EMAIL STAGING_OTP_MAILBOX_TOKEN STAGING_OTP_MAILOSAUR_SERVER_ID; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required staging secret: $name"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Run real OTP E2E against Staging
+        shell: bash
+        env:
+          SUPABASE_STAGING_URL: ${{ secrets.SUPABASE_STAGING_URL }}
+          SUPABASE_STAGING_ANON_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
+          STAGING_OTP_TEST_EMAIL: ${{ secrets.STAGING_OTP_TEST_EMAIL }}
+          STAGING_OTP_MAILBOX_TOKEN: ${{ secrets.STAGING_OTP_MAILBOX_TOKEN }}
+          STAGING_OTP_MAILOSAUR_SERVER_ID: ${{ secrets.STAGING_OTP_MAILOSAUR_SERVER_ID }}
+          STAGING_OTP_MAILBOX_PROVIDER: mailosaur
+        run: node scripts/staging-otp-e2e.mjs
+
+      - name: Write evidence summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Staging OTP E2E"
+            echo ""
+            echo "- Associated RC branch: \`$TARGET_BRANCH\`"
+            echo "- Environment: \`staging\`"
+            echo "- Production credentials used: no"
+            echo "- Production deploy/migration performed: no"
+            echo "- Result: \`${{ job.status }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
