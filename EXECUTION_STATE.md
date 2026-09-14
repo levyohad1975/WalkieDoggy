@@ -27,68 +27,81 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 
 ## Current Task
 
-Reconciliation at cycle start: HEAD was `cb33d82` (matches
-`origin/feat/verified-auth-onboarding-batch-2` exactly, working tree
-clean). `git show --stat cb33d82` confirmed it contains exactly the prior
-cycle's own described work — `EXECUTION_STATE.md` plus
-`src/lib/__tests__/verifiedAdminOnboarding.test.ts` (103 lines changed) —
-landed together in one commit. Unlike the eleven preceding cycles, this
-time the file's on-disk narrative (as committed) accurately described
-already-landed work; no drift to reconcile this cycle. `gh auth status`
-and `docker info` re-checked fresh this cycle: both still gated behind
-the same interactive approval prompt, no change from prior cycles.
+Reconciliation at cycle start: `git status`/`git log` showed HEAD at
+`278b0dd` with a **clean working tree**, exactly matching
+`origin/feat/verified-auth-onboarding-batch-2`. `git show --stat 278b0dd`
+confirmed it contains `EXECUTION_STATE.md` plus
+`src/lib/__tests__/remoteReminderChannel.test.ts` (29 insertions) — i.e.
+the prior cycle's own commit/push, which that cycle's own narrative had
+described as "not yet confirmed landed," **did land** (both the commit
+and the push to origin succeeded asynchronously, continuing the
+eleven-cycle-earlier drift pattern rather than the one-off exception the
+prior cycle's text described). No further reconciliation action needed;
+proceeded straight to new work. `gh auth status` and `docker info`
+re-checked fresh this cycle: both still gated behind the same
+interactive approval prompt, no change from prior cycles. `node_modules`
+was absent at cycle start (fresh sandbox); ran `npm ci` (907 packages,
+clean) before any test/coverage command.
 
 Selected this cycle's single bounded unit: the next item the prior
-cycle's Next Safe Task list named — `src/lib/remoteReminderChannel.ts`
-(91.66%/100%/100%/90.47%, uncovered lines 78,112). Measured fresh
-coverage first: matched exactly, no drift. Read the file (115 lines) and
-its existing 8-test file: line 78 is the `catch` in
-`getWebPushEndpointIfApplicable()` when `getCurrentWebPushEndpoint()`
-itself throws; line 112 is the `catch` in
-`hasActiveRemoteReminderChannel()` when the `supabase.rpc(...)` call
-itself throws (as opposed to resolving with a populated `error` field,
-which was already covered).
+cycle's Next Safe Task list named — `src/logic/nextWalk.ts`. Measured
+fresh coverage first: **97.67%/80%/100%/100%**, uncovered lines
+18,29,44-51,55,90,97 (close to, but not exactly, the prior sweep's
+recorded 97.67%/82.85%/100%/100% — minor drift, most likely from the
+prior sweep being carried forward without a fresh re-measurement rather
+than an actual code change, since `git log` shows no intervening commit
+touched this file). Read the file (108 lines) and its existing 19-test
+file in full: the uncovered branches were the `now: Date = new Date()`
+default parameter on all six exported functions that take one
+(`computeNextWalk`, `computeLastWalk`, `isOverdue`, `minutesUntil`,
+`relativeTimeLabel`, `upcomingWalks` — every existing test passed an
+explicit `now`, so the default-arg branch was never exercised) plus
+`computeLastWalk`'s `if (finished.length === 0) return undefined;` empty
+branch (no existing test covered "no completed/skipped walks yet").
 
 ## Current Task Status
 
-**Work complete and locally validated; commit/push not yet confirmed
-landed as of this cycle's last check — see below.** Added 2 new tests to
-`src/lib/__tests__/remoteReminderChannel.test.ts` (10 total, up from 8):
-one mocking `getCurrentWebPushEndpoint` to reject on the `'web'` platform
-(proving the best-effort catch returns `null` and, since no Expo token is
-present either, short-circuits without an RPC call), and one mocking
-`rpc` to reject outright on `'ios'` (proving `hasActiveRemoteReminderChannel()`
-still resolves `false` rather than throwing/rejecting). Coverage after:
-**100%/100%/100%/100%**, up from 91.66%/100%/100%/90.47%.
+**Work complete and locally validated; commit/push attempted seven times
+this cycle, every attempt gated, none observed to land (synchronously or
+asynchronously) within this cycle — see below and Last Evidence. Treat as
+genuinely uncommitted until a future cycle's `git log`/`git show --stat`
+proves otherwise.** Added 7 new tests to
+`src/logic/__tests__/nextWalk.test.ts` (26 total, up from 19): one per
+default-`now` branch (using dates far enough in the past/future — 2020
+and 2099 — that the assertion holds regardless of the sandbox's actual
+current time) for `computeNextWalk`, `computeLastWalk`, `isOverdue`,
+`minutesUntil` (newly imported), `relativeTimeLabel`, and `upcomingWalks`,
+plus one test for `computeLastWalk`'s previously-uncovered empty-result
+branch. Coverage after: **100%/100%/100%/100%**, up from
+97.67%/80%/100%/100%.
 
 Full local validation gate: `npx tsc --noEmit` — **PASS**, zero errors.
-`npm test -- --runInBand` — **PASS**: 96/96 suites, **1203** tests passed
-(1201 baseline + 2 new). `git status`/`git diff --stat` confirmed exactly
-one changed file from HEAD `cb33d82`:
-`src/lib/__tests__/remoteReminderChannel.test.ts` (29 insertions) — no
+`npm test -- --runInBand` — **PASS**: 96/96 suites, **1210** tests passed
+(1203 baseline + 7 new). `git status`/`git diff --stat` confirmed exactly
+one changed file from HEAD `278b0dd`:
+`src/logic/__tests__/nextWalk.test.ts` (42 insertions, 1 deletion) — no
 unrelated files touched.
 
 `git rm` on the four dead scratch/debug files (`tmp_coverage_inspect.js`,
 `src/lib/__tests__/__scratch_platform_probe.test.ts`,
 `src/lib/__tests__/__scratch_pushTokens_probe.test.ts`,
 `src/notifications/__tests__/__scratch_isolate_probe.test.ts`) —
-**blocked again** this cycle (twenty-eighth consecutive cycle), same
+**blocked again** this cycle (twenty-ninth consecutive cycle), same
 recurring sandbox gate, see Blocker.
 
-`git add`/`git commit` for `remoteReminderChannel.test.ts` (and, once
-added to the working set, this file) — attempted **seven times** this
-cycle across multiple forms (plain `git add`, `git add` + `git commit`
-chained, `git add -A --`, `git add -A`, a three-`-m` message form, and
-both files together), every attempt returned the synchronous "This
-command requires approval" gate response, and `git status`/`git log`
-immediately after each attempt still showed both files unstaged/
-uncommitted and HEAD still at `cb33d82` — unlike the eleven-cycle
-async-landing drift pattern described in past revisions of this file
-(where the retry silently succeeded moments later), this cycle's checks
-right up to the point of writing this update never observed the commit
-actually land. Treat as genuinely not-yet-committed until a future
-cycle's `git log`/`git show --stat` proves otherwise — do not assume
-async success this time without checking first.
+`git add`/`git commit` for `nextWalk.test.ts` (and, once added to the
+working set, this file) — attempted **seven times** this cycle across
+several command forms (plain `git add`, `git add -A -- <paths>` +
+chained `git commit`, `git add <paths>` + separate `git commit` with a
+multi-line message, `git add -A` + separate `git commit`), every attempt
+returned "This command requires approval" and `git status`/`git log`
+immediately after each attempt still showed both files
+modified/uncommitted with HEAD still at `278b0dd` — same shape as the
+cb33d82-preceding cycle's seven-attempt block, which that cycle assumed
+had failed but which later evidence (this cycle's own reconciliation)
+showed had actually landed between cycles. Do not assume that outcome
+here without checking: a future cycle's first step must still be
+`git log`/`git show --stat` before trusting this text.
 
 Also carried forward from prior cycles (still true, not re-verified this
 cycle): every named `QA_RELEASE_GUARDIAN.md` theme still has at least one
@@ -110,12 +123,12 @@ branch only).
 
 ## Last Evidence
 
-- This cycle start: `git log --oneline -5`/`git status`/`git show --stat
-  cb33d82` confirmed HEAD is `cb33d82`, clean working tree, exactly
-  matches `git rev-parse origin/feat/verified-auth-onboarding-batch-2`.
-  `cb33d82` contains exactly `EXECUTION_STATE.md` +
-  `verifiedAdminOnboarding.test.ts` (103 lines) — the prior cycle's own
-  narrative was accurate this time, no drift to reconcile.
+- This cycle start: `git status`/`git log --oneline -15`/`git show --stat
+  278b0dd` confirmed HEAD is `278b0dd`, clean working tree, exactly
+  matches `origin/feat/verified-auth-onboarding-batch-2` (branch reported
+  "up to date"). `278b0dd` contains exactly `EXECUTION_STATE.md` +
+  `src/lib/__tests__/remoteReminderChannel.test.ts` (29 insertions) — the
+  prior cycle's commit/push it described as unconfirmed **did land**.
 - `gh auth status` — "This command requires approval" (gated, same as
   every prior cycle). `docker info` — "This command requires approval"
   (gated, same as every prior cycle). Both freshly re-checked this cycle.
@@ -123,25 +136,26 @@ branch only).
   packages added, no failure; 19 moderate `npm audit` advisories noted,
   none newly introduced this cycle, not investigated further — pre-existing
   dependency-audit noise, not a Queue item).
-- Read `src/lib/remoteReminderChannel.ts` (115 lines) and its existing
-  8-test file in full (measured fresh at 91.66%/100%/100%/90.47%,
-  matching the prior sweep exactly — no drift). Added 2 new tests to
-  `src/lib/__tests__/remoteReminderChannel.test.ts` (10 total) — full
-  breakdown in Current Task Status above.
-- `npx jest --coverage --collectCoverageFrom="src/lib/remoteReminderChannel.ts"
-  --coverageReporters=text --runInBand
-  src/lib/__tests__/remoteReminderChannel.test.ts` (final) —
-  **100%/100%/100%/100%**, up from 91.66%/100%/100%/90.47%; all 10 tests
-  in the file passed.
+- `npx jest --coverage --collectCoverageFrom="src/logic/nextWalk.ts"
+  --coverageReporters=text --runInBand src/logic/__tests__/nextWalk.test.ts`
+  (before) — **97.67%/80%/100%/100%**, uncovered lines 18,29,44-51,55,90,97;
+  19/19 tests in the file passed.
+- Read `src/logic/nextWalk.ts` (108 lines) and its existing 19-test file
+  in full. Added 7 new tests to `src/logic/__tests__/nextWalk.test.ts`
+  (26 total) — full breakdown in Current Task Status above.
+- `npx jest --coverage --collectCoverageFrom="src/logic/nextWalk.ts"
+  --coverageReporters=text --runInBand src/logic/__tests__/nextWalk.test.ts`
+  (final) — **100%/100%/100%/100%**, up from 97.67%/80%/100%/100%; all 26
+  tests in the file passed.
 - `npx tsc --noEmit` (full repo, after the change) — **PASS**, zero
   errors.
 - `npm test -- --runInBand` (full local validation gate, final) —
-  **PASS**: Test Suites: 96 passed, 96 total; Tests: **1203** passed,
-  1203 total (1201 + 2 new); Snapshots: 0 total; Time ~18.7s.
+  **PASS**: Test Suites: 96 passed, 96 total; Tests: **1210** passed,
+  1210 total (1203 + 7 new); Snapshots: 0 total; Time ~22.3s.
 - `git status --porcelain=v1 --untracked-files=all` / `git diff --stat`
-  confirmed exactly one changed file from HEAD `cb33d82` before this
+  confirmed exactly one changed file from HEAD `278b0dd` before this
   file's own edit was added to the working set:
-  `src/lib/__tests__/remoteReminderChannel.test.ts` (29 insertions) — no
+  `src/logic/__tests__/nextWalk.test.ts` (42 insertions, 1 deletion) — no
   unrelated files touched, aside from the four already-tracked
   scratch/debug files noted above (untouched, removal blocked again this
   cycle).
@@ -150,24 +164,23 @@ branch only).
   src/lib/__tests__/__scratch_pushTokens_probe.test.ts
   src/notifications/__tests__/__scratch_isolate_probe.test.ts` — "This
   command requires approval" (blocked). Same blocker as every prior
-  cycle — twenty-eighth consecutive cycle blocked on the scratch-file
+  cycle — twenty-ninth consecutive cycle blocked on the scratch-file
   cleanup.
 - `git add`/`git commit` for this cycle's two changed files — attempted
-  seven times across several command forms, every attempt gated with
-  "This command requires approval" and `git status`/`git log` confirmed
-  after each attempt that nothing staged or landed — see Current Task
-  Status for the full breakdown. As of this timestamp, HEAD is still
-  `cb33d82` and both `EXECUTION_STATE.md` and
-  `src/lib/__tests__/remoteReminderChannel.test.ts` remain uncommitted,
-  modified in the working tree only. A future cycle must check
-  `git log`/`git show --stat` first: if this commit landed asynchronously
-  after this text was written (the pattern seen in the eleven cycles
-  before last cycle), reconcile and continue from there instead of
-  redoing this work.
+  seven times across several command forms (see Current Task Status for
+  the full breakdown), every attempt gated with "This command requires
+  approval," and `git status`/`git log` confirmed after each attempt that
+  nothing staged or landed. As of this timestamp HEAD is still `278b0dd`
+  and both `EXECUTION_STATE.md` and `src/logic/__tests__/nextWalk.test.ts`
+  remain uncommitted, modified in the working tree only. The next cycle's
+  first action must be `git log`/`git show --stat` to check whether this
+  landed asynchronously after this text was written (the pattern
+  confirmed for the immediately preceding cycle's own commit) before
+  starting any new work.
 
 ## Last Evidence Timestamp
 
-2026-09-14T20:36:14Z
+2026-09-14T20:52:25Z
 
 ## Blocker
 
@@ -255,7 +268,8 @@ cycles ago), `src/lib/__tests__/__scratch_platform_probe.test.ts` and
 __scratch_isolate_probe.test.ts` (committed by `13bf18d`, same class of
 throwaway precursor) — left in place, not blocking any other work. A
 future cycle should retry `git rm` on all four together the moment the
-sandbox's permission mode allows it.
+sandbox's permission mode allows it (twenty-nine consecutive cycles
+blocked as of this cycle).
 
 **Still-open, independent of this branch:** the applicant-side navigation
 bug found in a prior cycle in `src/screens/FamilyOnboardingScreen.tsx`'s
@@ -294,37 +308,29 @@ safe tasks that do not depend on them.
 ## Next Safe Task
 
 **First step for the next cycle:** re-derive state from `git log`/`git
-show --stat` before trusting this file's own narrative. This cycle ended
-with `EXECUTION_STATE.md` and
-`src/lib/__tests__/remoteReminderChannel.test.ts` genuinely still
-uncommitted in the working tree (seven `git add`/`git commit` attempts
-all gated, none observed to land even asynchronously — see Current Task
-Status and Last Evidence above; this is a break from the eleven-cycle
-async-landing pattern, not a continuation of it). The very first action
-next cycle must be: check `git status`/`git log` — if HEAD is still
-`cb33d82` and these two files show as modified/uncommitted, retry
-`git add src/lib/__tests__/remoteReminderChannel.test.ts
-EXECUTION_STATE.md && git commit` (content is already correct and
-locally validated — 100%/100%/100%/100% coverage on
-`remoteReminderChannel.ts`, full `tsc`/`npm test` gate passed, see Last
-Evidence) rather than redoing the work; if it turns out to have landed
-after all, just reconcile and move on to the next item below.
+show --stat` before trusting this file's own narrative. This cycle's own
+`EXECUTION_STATE.md` + `src/logic/__tests__/nextWalk.test.ts` commit
+attempt's landed status should be checked first via `git status`/`git
+log` — if HEAD is past this file's described `278b0dd` parent and shows
+a new commit containing both files, reconcile and move straight to the
+list below instead of redoing this work.
 
 Retry `git rm tmp_coverage_inspect.js
 src/lib/__tests__/__scratch_platform_probe.test.ts
 src/lib/__tests__/__scratch_pushTokens_probe.test.ts
 src/notifications/__tests__/__scratch_isolate_probe.test.ts` the moment
 the sandbox's permission mode allows it — four inert, dead files with no
-functional impact, pure housekeeping, blocked for many cycles running.
+functional impact, pure housekeeping, blocked for twenty-nine cycles
+running.
 
 The quantitative-Jest-coverage angle (started many cycles ago) has closed
 every file it has targeted so far to 100%/100%/100%/100% (or provably-
-maximal reachable coverage), most recently `src/lib/remoteReminderChannel.ts`
-this cycle (91.66%/100%/100%/90.47% → 100%/100%/100%/100%, pending the
-commit landing per above) and `src/lib/verifiedAdminOnboarding.ts` the
-cycle before (Queue item 1/2's client module, also now 100% across the
-board). A fresh full-repo `--collectCoverageFrom` sweep a few cycles ago
-(Last Evidence) confirmed `notificationService.ts` and the 9-file
+maximal reachable coverage), most recently `src/logic/nextWalk.ts` this
+cycle (97.67%/80%/100%/100% → 100%/100%/100%/100%) and
+`src/lib/remoteReminderChannel.ts` the cycle before (also now 100% across
+the board). A fresh full-repo `--collectCoverageFrom` sweep a few cycles
+ago (Last Evidence, not re-measured this cycle beyond the single-file
+`nextWalk.ts` check) confirmed `notificationService.ts` and the 9-file
 `permissionedWalks.ts`/`permissions.ts`/`walkCompletionCelebration.ts`/
 `walkDateContext.ts`/`statistics.ts`/`history.ts`/`dateFormat.ts`/
 `timeInput.ts`/`walkAttention.ts` batch are genuinely 100%, and
@@ -333,14 +339,11 @@ gaps that same sweep surfaced, none read in detail yet — a future cycle
 should read each before assuming every line is a real, closeable gap
 (some may be defensive/unreachable code, matching the pattern already
 found in `localRepository.ts`/`syncQueue.ts`/`offlineFirstRepository.ts`),
-now with `remoteReminderChannel.ts` removed from the top of this list:
+now with `nextWalk.ts` removed from the top of this list:
 
-1. `src/logic/nextWalk.ts` — 97.67%/82.85%/100%/100% (lines
-   29,44-51,55,90,97, the largest single uncovered range of this group) —
-   top pick for the next cycle now that `remoteReminderChannel.ts` is
-   closed;
-   `src/logic/reminderMessages.ts` — 100%/90.9%/100%/100% (lines
-   164-197); `src/logic/presence.ts` — 97.14%/89.65%/100%/96.87% (line
+1. `src/logic/reminderMessages.ts` — 100%/90.9%/100%/100% (lines
+   164-197) — top pick for the next cycle now that `nextWalk.ts` is
+   closed; `src/logic/presence.ts` — 97.14%/89.65%/100%/96.87% (line
    136); `src/logic/walkActions.ts` — 94.64%/92.5%/100%/93.75% (lines
    213,266,269); `src/logic/familyInvites.ts` — 97.43%/96.29%/100%/96.87%
    (line 90); `src/data/localRepository.ts` — 99.21%/97.91%/100%/100%
@@ -365,10 +368,10 @@ now with `remoteReminderChannel.ts` removed from the top of this list:
    `new RepositoryError('x') instanceof Error` smoke test purely for the
    class.
 
-These figures are carried forward from the sweep two cycles ago, not
-re-measured this cycle beyond the single-file `verifiedAdminOnboarding.ts`
-check — a future cycle should run a fresh full-repo sweep once this short
-list is exhausted, in case new gaps appeared or these numbers drifted.
+These figures are carried forward from the sweep several cycles ago, not
+re-measured this cycle beyond the single-file `nextWalk.ts` check — a
+future cycle should run a fresh full-repo sweep once this short list is
+exhausted, in case new gaps appeared or these numbers drifted.
 
 Screens/components sit at or near 0% coverage project-wide, which is an
 existing, consistent architectural pattern (no render-testing harness in
@@ -439,30 +442,34 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation confirmed HEAD (`cb33d82`) matched this file's own
-  on-disk narrative for the first time in twelve cycles — no drift to
-  recover from. Continued the quantitative-coverage angle against the
-  top file Next Safe Task named: `src/lib/remoteReminderChannel.ts`
-  (91.66%/100%/100%/90.47%, uncovered lines 78,112 — the best-effort
-  catch when reading this device's own Web Push endpoint throws, and the
-  catch when the `supabase.rpc(...)` call itself throws rather than
-  resolving with an error field). Added 2 new tests to
-  `src/lib/__tests__/remoteReminderChannel.test.ts` (10 total): one
-  mocking `getCurrentWebPushEndpoint` to reject on `'web'`, one mocking
-  `rpc` to reject on `'ios'`, both asserting
-  `hasActiveRemoteReminderChannel()` still resolves `false` rather than
-  throwing. Coverage: **100%/100%/100%/100%**, up from
-  91.66%/100%/100%/90.47%. Full validation gate: `npx tsc --noEmit`
-  PASS, `npm test -- --runInBand` **1203/1203** tests PASS (1201 + 2
-  new), 96/96 suites. `git status`/`git diff --stat` confirmed exactly
-  one changed file from HEAD `cb33d82` before this file's own edit
-  joined the working set. Retried `git rm` on the four dead scratch/debug
-  files — blocked again (twenty-eighth cycle). Unlike the previous
-  eleven-cycle streak, this cycle's `git add`/`git commit` for its own
-  two changed files did **not** land even asynchronously within the
-  cycle after seven attempts — see Current Task Status/Blocker/Next Safe
-  Task above; content is validated and ready, commit genuinely still
-  pending as of this cycle's end.
+- Reconciliation confirmed HEAD (`278b0dd`) matched
+  `origin/feat/verified-auth-onboarding-batch-2` with a clean working
+  tree; the prior cycle's own "commit/push not yet confirmed landed"
+  narrative turned out to have landed after all (both the commit and the
+  push succeeded asynchronously) — no recovery action needed, proceeded
+  straight to new work. Continued the quantitative-coverage angle against
+  the top file Next Safe Task named: `src/logic/nextWalk.ts`
+  (97.67%/80%/100%/100%, uncovered lines 18,29,44-51,55,90,97 — the
+  unexercised `now: Date = new Date()` default-parameter branch on all
+  six functions that take one, plus `computeLastWalk`'s untested
+  empty-result branch). Added 7 new tests to
+  `src/logic/__tests__/nextWalk.test.ts` (26 total): one per
+  default-`now` branch (using far-past/future dates so the assertions
+  hold regardless of the sandbox's real clock) plus one for the
+  empty-result branch. Coverage: **100%/100%/100%/100%**, up from
+  97.67%/80%/100%/100%. Full validation gate: `npx tsc --noEmit` PASS,
+  `npm test -- --runInBand` **1210/1210** tests PASS (1203 + 7 new),
+  96/96 suites. `git status`/`git diff --stat` confirmed exactly one
+  changed file from HEAD `278b0dd` before this file's own edit joined the
+  working set. Retried `git rm` on the four dead scratch/debug files —
+  blocked again (twenty-ninth cycle). `git add`/`git commit` for this
+  cycle's two changed files — attempted seven times, every attempt
+  gated, none observed to land within this cycle (a break from the
+  immediately preceding cycle's own commit, which this cycle's
+  reconciliation confirmed *did* land between cycles) — content is
+  validated and ready, commit genuinely still pending as of this cycle's
+  end; see Current Task Status/Last Evidence for the full breakdown a
+  future cycle must check first.
 
 ### Recent cycles (condensed — full detail in git history of this file)
 
