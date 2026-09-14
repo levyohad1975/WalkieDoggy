@@ -27,67 +27,58 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 
 ## Current Task
 
-Queue item 2 credential-free sub-task, per the previous cycle's own "Next
+Queue item 3 credential-free sub-task, per the previous cycle's own "Next
 Safe Task" pointer (Queue item 7's Supabase-regression half reconfirmed
-blocked again first — see Last Evidence): sweep of the
-`create-verified-family` Edge Function's `AUTO_APPROVE_NEW_FAMILIES`
-env-var wiring on this run's own `TARGET_BRANCH`
-(`feat/verified-auth-onboarding-batch-2`) —
-`supabase/functions/create-verified-family/index.ts`'s
-`autoApproveFromEnvironment()`, its wiring into `create_verified_family`'s
-`p_auto_approve` parameter (`supabase/migrations/0032_verified_family_onboarding.sql`,
-the only definition — not superseded by any later migration), the
-client-side `approvalStatus`-gated branch in
-`src/screens/FamilyOnboardingScreen.tsx`'s `submitCreate()`, and
-`docs/engineering/VERIFIED_AUTH_ONBOARDING_ROLLOUT.md`'s documented
-contract for the env var.
+blocked again first — see Last Evidence): dedicated audit of the
+`send-email` Edge Function's `SEND_EMAIL_HOOK_SECRET` / Standard Webhooks
+signature-verification wiring on this run's own `TARGET_BRANCH`
+(`feat/verified-auth-onboarding-batch-2`) — this was the one named
+candidate in the previous cycle's Next Safe Task note that had not yet
+had a dedicated sweep the way `AUTO_APPROVE_NEW_FAMILIES` and the
+`email-provider-webhook` signature check already had.
 
 ## Current Task Status
 
-DONE. **No defect found in the wiring itself; one real test-coverage gap
-found and fixed.** Wiring audit: `autoApproveFromEnvironment()` reads
-`AUTO_APPROVE_NEW_FAMILIES`, trims/lowercases it, defaults to `'true'`
-only when the var is absent, and throws (fail-safe, not a silent
-fallback) on any value other than exactly `'true'`/`'false'` — matches
-`VERIFIED_AUTH_ONBOARDING_ROLLOUT.md`'s documented contract verbatim. The
-computed `autoApprove` boolean is passed explicitly as `p_auto_approve` on
-every call (`verifiedAdminOnboarding.ts`'s client wrapper never accepts or
-forwards a client-supplied value, confirmed previously and reconfirmed
-this cycle), and `create_verified_family` (0032) is `revoke`d from
-`public`/`anon`/`authenticated` and only `grant`ed to `service_role` —
-matching the Edge Function's use of the service-role key — so the env var
-is the sole, server-only control point for `active` vs `pending` status;
-`v_status := case when p_auto_approve then 'active' else 'pending' end`
-is the only place that decision is made. Confirmed idempotent re-request
-(existing `family_onboarding_requests` row) returns the family's
-already-decided `approval_status` unchanged rather than recomputing it
-from a possibly-since-changed env var.
-
-**Gap found**: `FamilyOnboardingScreen.tsx`'s `submitCreate()` has the
-client-side gate that actually matters for a `pending` family — `if
-(family.approvalStatus === 'pending') { setPendingApprovalFamilyName(...);
-return; }` before `await setFamilyId(family.id)` — but had zero test
-coverage (neither the existing structural scan in
-`FamilyOnboardingScreen.authGuardAndErrors.test.ts` nor any other test
-asserted that `setFamilyId()` is unreachable on the pending branch).
-Severity was moderate, not release-blocking on its own: even if this
-client gate regressed, server-side RLS (`current_family_id()`, audited two
-cycles ago) independently re-checks `approval_status = 'active'` on every
-query, so a regression here would produce a confusing "looks joined but
-every request fails" UX rather than an actual authorization bypass — but
-it's exactly the kind of silent-regression risk this sweep exists to
-close, and the fix is cheap and in-pattern. **Fixed**: added one test to
-`FamilyOnboardingScreen.authGuardAndErrors.test.ts` (same
-source-text-scan style as that file's existing tests, per its own doc
-comment explaining why — no RN component-rendering harness in this repo)
-asserting the pending-check → `setPendingApprovalFamilyName` →
-`return;` → `setFamilyId(family.id)` ordering in `submitCreate()`'s source.
-
-Also reconfirmed no client-side UI reads the `warnings` array
-`createVerifiedFamily()` returns (e.g. `welcome_email_not_sent`) — this is
-the same already-noted, out-of-RC-scope observability gap two cycles
-recorded for `system_admin_list_email_delivery_log()` having no UI
-consumer, not a new finding.
+DONE. **No defect found.** Full read of
+`supabase/functions/send-email/index.ts`,
+`src/lib/__tests__/sendEmailHook.test.ts`, the `[functions.send-email]`
+section of `supabase/config.toml`, and
+`docs/engineering/VERIFIED_AUTH_ONBOARDING_ROLLOUT.md`'s documented
+`SEND_EMAIL_HOOK_SECRET` contract and deployment steps. Verified: (1) raw
+request bytes are read via `req.text()` and passed to the official
+`npm:standardwebhooks@1.0.0` verifier's `wh.verify(payload, headers)`
+*before* the body is ever treated as parsed JSON — `email_data.token` is
+only read after `wh.verify()` returns, confirmed by index-ordering in the
+`Deno.serve` body (matches the existing test's own ordering assertions);
+(2) any verification failure (missing/invalid signature) is caught and
+answered with a generic 401 without inspecting the body further —
+fail-closed; (3) `req.headers` is converted with `Object.fromEntries`,
+and the Fetch `Headers` spec normalizes all header names to lowercase on
+iteration, so the `webhook-id`/`webhook-timestamp`/`webhook-signature`
+headers the verifier expects arrive correctly cased regardless of the
+caller's casing; (4) the function is registered with `verify_jwt = false`
+in `supabase/config.toml` (required, since Auth calls this hook
+server-to-server with a Standard Webhooks signature, never a
+Supabase-issued JWT — confirmed this is still the case and the config
+comment matches the code); (5) `RESEND_API_KEY`/`WELCOME_EMAIL_FROM` env
+var names are used identically here and in
+`create-verified-family/index.ts` (`sendViaResend`), so there is no
+naming-drift risk between the two Edge Functions that both send through
+Resend; (6) confirmed no console logging call anywhere in the file
+includes the OTP token, the hook secret, the Resend API key, the
+Authorization header, or the raw/parsed payload — only fixed generic
+strings are logged on failure, matching the file's own security-model
+comment and the existing test's forbidden-word scan; (7) replay-window /
+timestamp-tolerance protection is delegated entirely to the official
+`standardwebhooks` verifier (the same trust boundary the file's own
+comment documents — "mirrors the official Supabase Send Email Hook
+pattern"), which is appropriate: re-implementing that check locally would
+be the actual security regression risk, not the current design. No gap —
+test-coverage or otherwise — was found on this surface; the existing
+`sendEmailHook.test.ts` (present since the feature's original commit,
+`b1b2495`) already covers the ordering, fail-closed, and no-sensitive-
+logging invariants exercised above. No repository change was made this
+cycle as a result.
 
 Local validation gate re-run this cycle after a fresh `npm ci` (no
 `node_modules` present at cycle start, same as every prior cycle — each
@@ -109,53 +100,42 @@ prior cycle).
 ## Last Evidence
 
 - This cycle: `git status` confirmed a clean working tree at cycle start
-  (HEAD `c117837`, matches `origin/feat/verified-auth-onboarding-batch-2`).
-  Dispatch target sha `6f0365386fdd456957bdbca1ee67a86e7eb3688f` is `main`'s
-  workflow_dispatch metadata tip, not this branch's — same recurring,
-  already-understood non-drift pattern as every prior cycle.
+  (HEAD `0bc88c3`, matches `origin/feat/verified-auth-onboarding-batch-2`)
+  — confirms the previous cycle's recovery commit landed cleanly (its
+  uncommitted test file + `EXECUTION_STATE.md` update are both present in
+  `0bc88c3`, already on `origin`). Dispatch target sha
+  `6f0365386fdd456957bdbca1ee67a86e7eb3688f` is `main`'s workflow_dispatch
+  metadata tip, not this branch's — same recurring, already-understood
+  non-drift pattern as every prior cycle.
 - Reconfirmed this cycle: `gh auth status` → "This command requires
   approval" (no owner present); `which supabase` → exit 1 (still not
   installed); `docker info` → "This command requires approval". Queue item
   7's Supabase-regression half stays blocked on tooling/access, unchanged
-  from prior cycles.
+  from prior cycles — tenth consecutive cycle blocked.
 - `npm ci` — succeeded, 907 packages installed fresh in this sandbox (fresh
   checkout, no `node_modules` present at cycle start — every cycle so far
   starts from a clean sandbox, not a persisted one).
 - `npx tsc --noEmit` — **PASS**, zero errors, zero output.
 - `npm test -- --runInBand` — **PASS**: Test Suites: 89 passed, 89 total;
-  Tests: **918** passed, 918 total (917 + 1 new this cycle); Snapshots: 0
-  total; Time ~16.2s.
-- QA sweep performed this cycle (Queue item 2 credential-free sub-task —
-  `AUTO_APPROVE_NEW_FAMILIES` wiring, this run's own `TARGET_BRANCH`): full
-  read of `supabase/functions/create-verified-family/index.ts`,
-  `supabase/migrations/0032_verified_family_onboarding.sql`'s
-  `create_verified_family()`/its grants, `src/lib/verifiedAdminOnboarding.ts`'s
-  `createVerifiedFamily()` client wrapper, `src/screens/FamilyOnboardingScreen.tsx`'s
-  `submitCreate()`, `src/lib/__tests__/verifiedFamilyServerBoundary.test.ts`,
-  `src/lib/__tests__/emailDeliveryLog.test.ts` (to confirm this codebase's
-  established Edge Function test pattern is source-text-scan-only, not
-  actual Deno execution — so that is not itself a gap specific to this
-  surface), `src/screens/__tests__/FamilyOnboardingScreen.authGuardAndErrors.test.ts`,
-  and `docs/engineering/VERIFIED_AUTH_ONBOARDING_ROLLOUT.md`'s documented
-  env-var contract. Wiring itself: no defect found (see Current Task Status
-  for the full list of invariants checked). Test-coverage gap found and
-  fixed: added one test to `FamilyOnboardingScreen.authGuardAndErrors.test.ts`
-  asserting `submitCreate()`'s pending-family branch returns before
-  `setFamilyId(family.id)` is reachable — full detail in Current Task
-  Status.
-- `git diff --stat` after the edit showed exactly the one intended file
-  changed (17 insertions, 0 deletions) — no unrelated files touched.
-- **Commit could not be produced this cycle**: `git add
-  src/screens/__tests__/FamilyOnboardingScreen.authGuardAndErrors.test.ts`
-  → "This command requires approval" (the same recurring working-tree-
-  mutating-git-command gate logged in several prior cycles' Blocker
-  sections, e.g. before `16d4a17`). The test file edit itself (via the
-  file-edit tool, not `git`) succeeded and is sitting uncommitted in the
-  working tree as of this entry — see Blocker for the exact recovery step.
+  Tests: **918** passed, 918 total (unchanged — no code change this
+  cycle); Snapshots: 0 total; Time ~22.5s.
+- QA sweep performed this cycle (Queue item 3 credential-free sub-task —
+  `send-email` Edge Function's `SEND_EMAIL_HOOK_SECRET`/Standard Webhooks
+  wiring, this run's own `TARGET_BRANCH`): full read of
+  `supabase/functions/send-email/index.ts`,
+  `src/lib/__tests__/sendEmailHook.test.ts`, the `[functions.send-email]`
+  section of `supabase/config.toml`, and
+  `docs/engineering/VERIFIED_AUTH_ONBOARDING_ROLLOUT.md`'s documented
+  contract/deployment steps for the hook — full list of invariants checked
+  in Current Task Status. **No defect found; no gap found.** No repository
+  change was needed or made this cycle.
+- `git status`/`git diff --stat` confirmed no working-tree changes from
+  this cycle's audit itself — only this file's own end-of-cycle update
+  (below) needs to be committed.
 
 ## Last Evidence Timestamp
 
-2026-09-14T08:15:00Z
+2026-09-14T07:55:22Z
 
 ## Blocker
 
@@ -200,27 +180,29 @@ Not reproduced in full detail again here — see two-cycles-ago's entry in
 git history of this file for the complete chain of evidence.
 
 The previously recurring `git add`/commit approval-gate issue (logged in
-several prior cycles, e.g. before `16d4a17`) recurred again this cycle:
-`git add src/screens/__tests__/FamilyOnboardingScreen.authGuardAndErrors.test.ts`
-and a combined `git add && git commit` were both gated behind an
-interactive approval prompt with no owner present. Plain read-only git
-commands (`git status`, `git diff --stat`, `git log`, `git rev-parse`) ran
-normally throughout this cycle with no approval needed — only
-working-tree-mutating commands (`git add`) were gated, consistent with
-most prior cycles' pattern. **This cycle's real deliverable — the new test
-in `FamilyOnboardingScreen.authGuardAndErrors.test.ts` — is sitting
-uncommitted in the working tree**, plus this file's own edits, at the
-point this paragraph is read back. `git status`/`git diff --stat`
-reconfirmed exactly those two files changed, nothing else. Next-cycle
-recovery step: confirm with `git status`/`git diff --stat` that still only
-those two files differ from HEAD, then `git add
-src/screens/__tests__/FamilyOnboardingScreen.authGuardAndErrors.test.ts
-EXECUTION_STATE.md && git commit`, then push, before selecting a new task
-— do not select a new task first, since committing this cycle's actual
-fix takes priority over starting further work. This gate has now recurred
-across many non-consecutive cycles (clearing normally in between, e.g. for
-`16d4a17`/`d03e6da`/`d5d0a0e`/`c117837`) — sandbox-side permission-mode
-variance per cycle, not fixable from inside the repository.
+several prior cycles, e.g. before `16d4a17`) had cleared for the prior
+cycle: its uncommitted work (the pending-family test plus its
+`EXECUTION_STATE.md` update) is confirmed landed and pushed as `0bc88c3`
+(`origin/feat/verified-auth-onboarding-batch-2` matches HEAD at this
+cycle's start — see Last Evidence). **It recurred again this cycle**:
+both a standalone `git add EXECUTION_STATE.md` and a combined
+`git add && git commit` were gated behind an interactive approval prompt
+with no owner present, immediately after this cycle's send-email audit
+found no code to change but this file's own update still needed
+committing. Plain read-only git commands (`git status`, `git diff --stat`,
+`git log`) ran normally throughout this cycle with no approval needed —
+only working-tree-mutating commands were gated, consistent with the
+established pattern. This gate has now recurred across many
+non-consecutive cycles (clearing normally in between, e.g. for
+`16d4a17`/`d03e6da`/`d5d0a0e`/`c117837`/`0bc88c3`) — sandbox-side
+permission-mode variance per cycle, not fixable from inside the
+repository. **This cycle's only change — this file's own update — is
+sitting uncommitted in the working tree** as of this entry; `git status`/
+`git diff --stat` reconfirmed exactly `EXECUTION_STATE.md` differs from
+HEAD, nothing else. Next-cycle recovery step: confirm with `git status`/
+`git diff --stat` that still only this file differs from HEAD, then
+`git add EXECUTION_STATE.md && git commit`, then push, before selecting a
+new task.
 
 These blockers do not stop execution — see Queue below for independent
 safe tasks that do not depend on them.
@@ -228,27 +210,25 @@ safe tasks that do not depend on them.
 ## Next Safe Task
 
 **Immediate next step, before selecting a new sweep**: land this cycle's
-uncommitted work (the new pending-family test plus this file's update) —
-see the recovery step at the end of the Blocker section.
+uncommitted work (this file's own update) — see the recovery step at the
+end of the Blocker section. No code change is pending this time, only the
+state file itself.
 
 Every named QA_RELEASE_GUARDIAN.md theme (email delivery/observability,
 RTL/responsive + dog-sex copy + mascot/Reduced Motion, production-sensitive
 System Admin operations, real-device notification-open behavior,
-invite-redemption token handling, the short-code join path, and now the
-`AUTO_APPROVE_NEW_FAMILIES` Edge Function wiring) has had a dedicated
-credential-free sweep across every Batch 3/4 surface on this branch and
-the stacked branches' distinct feature UI. The next independent
-credential-free sub-task once this cycle's commit lands: re-attempt Queue
+invite-redemption token handling, the short-code join path, the
+`AUTO_APPROVE_NEW_FAMILIES` Edge Function wiring, and now the
+`send-email`/`SEND_EMAIL_HOOK_SECRET` Standard Webhooks wiring) has had a
+dedicated credential-free sweep across every Batch 3/4 surface on this
+branch and the stacked branches' distinct feature UI. The next independent
+credential-free sub-task, once this cycle's commit lands: re-attempt Queue
 item 7's still-open Supabase-regression half via `gh`/a local Supabase
 stack (only if the sandbox's permission mode allows it that cycle —
-blocked for nine cycles running so far). If still blocked, candidates not
-yet swept in this file's history include: (a) `send-email`'s
-`SEND_EMAIL_HOOK_SECRET`/Standard-Webhooks verification wiring (documented
-in `VERIFIED_AUTH_ONBOARDING_ROLLOUT.md` but not yet audited the way the
-webhook signature and `AUTO_APPROVE_NEW_FAMILIES` wiring have been), or (b)
-a Settings/Roles QA pass on this branch specifically (Queue item 4) beyond
-the System Admin approve/reject surface already swept on the stacked
-branch. A future cycle with
+blocked for ten cycles running so far). If still blocked, the remaining
+not-yet-swept candidate is: a Settings/Roles QA pass on this branch
+specifically (Queue item 4) beyond the System Admin approve/reject surface
+already swept on the stacked branch. A future cycle with
 `TARGET_BRANCH=feat/system-admin-approval-controls` should still
 prioritize fixing the `FamilyOnboardingScreen.tsx`
 applicant-status-recovery finding recorded under Blocker above.
@@ -296,6 +276,31 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
+- Queue item 3 credential-free sub-task — dedicated audit of the
+  **`send-email` Edge Function's `SEND_EMAIL_HOOK_SECRET`/Standard
+  Webhooks signature-verification wiring**, on this run's own
+  `TARGET_BRANCH`. **No defect found; no gap found** — full list of
+  invariants checked in Current Task Status above (verify-before-trust
+  byte ordering, fail-closed 401 on bad signature, correct header
+  lowercasing via `Object.fromEntries(req.headers)`, `verify_jwt = false`
+  config matches the code's own trust model, `RESEND_API_KEY`/
+  `WELCOME_EMAIL_FROM` naming matches `create-verified-family`'s usage, no
+  sensitive value ever logged, replay-window protection correctly
+  delegated to the official `standardwebhooks` verifier rather than
+  reimplemented locally). No repository change was needed or made. Re-ran
+  the full local validation gate after a fresh `npm ci` (no `node_modules`
+  present at cycle start): `npx tsc --noEmit` PASS, `npm test --
+  --runInBand` 89/89 suites, **918/918** tests PASS (unchanged from prior
+  cycle — no code change). Reconfirmed `gh auth status` gated, `supabase`
+  CLI not installed, `docker info` gated — Queue item 7 stays blocked for
+  another (tenth) cycle. Also confirmed the prior cycle's previously-
+  uncommitted deliverable (the pending-family test in
+  `FamilyOnboardingScreen.authGuardAndErrors.test.ts`) landed and is now
+  on `origin` as part of `0bc88c3` — no recovery action needed this cycle
+  for that item.
+
+### Previous cycle
+
 - Queue item 2 credential-free sub-task — dedicated sweep of the
   **`create-verified-family` Edge Function's `AUTO_APPROVE_NEW_FAMILIES`
   wiring** (env var → `autoApproveFromEnvironment()` →
@@ -315,13 +320,11 @@ proceed even while 1–3/6 are blocked.
   `npm test -- --runInBand` 89/89 suites, **918/918** tests PASS (917 + 1
   new). Reconfirmed `gh auth status` gated, `supabase` CLI not installed,
   `docker info` gated — Queue item 7 stays blocked for another (ninth)
-  cycle. **This cycle's commit could not be produced**: `git add` was
-  gated behind an interactive approval prompt with no owner present — the
-  test-file change and this file's own update are both sitting
-  uncommitted in the working tree; see Blocker for the exact recovery
-  step, which the next cycle must perform before selecting a new task.
+  cycle. That cycle's commit was initially blocked by a `git add` approval
+  gate, but landed successfully as `0bc88c3` (confirmed at the start of
+  the following cycle — see Last Evidence above).
 
-### Two cycles ago
+### Three cycles ago
 
 - Queue item 1/2 credential-free sub-task — dedicated end-to-end
   QA_RELEASE_GUARDIAN.md sweep of the **short-code join path**
