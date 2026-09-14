@@ -136,6 +136,28 @@ describe('lib/systemAdmin — Supabase mode', () => {
     await expect(listSystemAdminFamilies()).rejects.toBeTruthy();
   });
 
+  it('listSystemAdminFamilies defaults to an empty list when the RPC succeeds with a null/undefined data payload', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    mockSupabaseClient(rpc);
+    const { listSystemAdminFamilies } = require('../systemAdmin');
+
+    await expect(listSystemAdminFamilies()).resolves.toEqual([]);
+  });
+
+  it('listSystemAdminFamilies maps a null admin_names to an empty array rather than null', async () => {
+    const rpc = jest.fn().mockResolvedValue({
+      data: [
+        { family_id: 'fam-1', family_name: 'משפחת כהן', invite_code: 'CCC333', created_at: '2026-01-01T00:00:00Z', member_count: 1, admin_names: null, dog_name: null, status: 'active' },
+      ],
+      error: null,
+    });
+    mockSupabaseClient(rpc);
+    const { listSystemAdminFamilies } = require('../systemAdmin');
+
+    const result = await listSystemAdminFamilies();
+    expect(result[0].adminNames).toEqual([]);
+  });
+
   it('getSystemAdminFamilyDetail calls system_admin_get_family_detail with p_family_id and returns the jsonb bundle with safe array defaults', async () => {
     const rpc = jest.fn().mockResolvedValue({
       data: {
@@ -157,6 +179,30 @@ describe('lib/systemAdmin — Supabase mode', () => {
     expect(result.members).toHaveLength(1);
     expect(result.activeRequests).toEqual([]);
     expect(result.recentAudit).toEqual([]);
+  });
+
+  it('getSystemAdminFamilyDetail surfaces a genuine RPC error rather than swallowing it', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'system admin permission required' } });
+    mockSupabaseClient(rpc);
+    const { getSystemAdminFamilyDetail } = require('../systemAdmin');
+
+    await expect(getSystemAdminFamilyDetail('fam-1')).rejects.toBeTruthy();
+  });
+
+  it('getSystemAdminFamilyDetail defaults every field to its safe empty shape when the RPC succeeds with a null/undefined data payload', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    mockSupabaseClient(rpc);
+    const { getSystemAdminFamilyDetail } = require('../systemAdmin');
+
+    const result = await getSystemAdminFamilyDetail('fam-1');
+    expect(result).toEqual({
+      family: null,
+      dog: null,
+      members: [],
+      walks: [],
+      activeRequests: [],
+      recentAudit: [],
+    });
   });
 
   it('local/demo mode: every function throws SupabaseNotConfiguredError rather than pretending to succeed', async () => {

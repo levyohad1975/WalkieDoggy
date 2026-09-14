@@ -28,20 +28,20 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 ## Current Task
 
 Reconciliation at cycle start: this file's own on-disk text (as of HEAD)
-described HEAD as `232b82f` with the `requestLifecycle.ts` coverage work
-"NOT committed this cycle". `git status`/`git log`/`git show --stat HEAD`
-showed HEAD is actually `a3788ca`, one commit past `232b82f`, and that
-commit contains exactly `src/logic/__tests__/requestLifecycle.test.ts`
-(100 changed lines) plus this same `EXECUTION_STATE.md` — i.e. the prior
-cycle's own `git add`/`commit` retry had in fact succeeded after its "NOT
-committed" narrative text was already written, the same class of
-self-reporting drift as the six prior cycles' equivalent notes (now a
-**seventh** consecutive occurrence — continues to confirm this is expected
-sandbox behavior, not a one-off: always re-derive from `git show --stat`
-first, never trust this file's own "not committed" claim without
-checking). `git status` confirmed a clean working tree at cycle start,
-HEAD matching `origin/feat/verified-auth-onboarding-batch-2` — no recovery
-action needed beyond landing this note. `git merge-base --is-ancestor
+described HEAD as `a3788ca` with the `invites.ts` coverage work "NOT
+committed this cycle". `git status`/`git log`/`git rev-parse HEAD` showed
+HEAD is actually `d96d0aa`, one commit past `a3788ca`, and that commit
+contains exactly `src/lib/__tests__/invites.test.ts` (77 changed lines)
+plus this same `EXECUTION_STATE.md` — i.e. the prior cycle's own
+`git add`/`commit` retry had in fact succeeded after its "NOT committed"
+narrative text was already written, the same class of self-reporting
+drift as the seven prior cycles' equivalent notes (now an **eighth**
+consecutive occurrence — continues to confirm this is expected sandbox
+behavior, not a one-off: always re-derive from `git show --stat` first,
+never trust this file's own "not committed" claim without checking).
+`git status` confirmed a clean working tree at cycle start, HEAD matching
+`origin/feat/verified-auth-onboarding-batch-2` — no recovery action
+needed beyond landing this note. `git merge-base --is-ancestor
 fd4346d8... HEAD` reconfirmed `NOT ANCESTOR` (same PR #40-on-`main`
 situation as every prior cycle — no new content). `gh auth status` retried
 and **blocked again** ("This command requires approval"); `git rm` on the
@@ -52,52 +52,59 @@ three-way Queue-item-7 blocker plus scratch-file-cleanup blocker as every
 prior cycle. Left in place; see Blocker.
 
 Continued the quantitative-coverage angle against the next file Next Safe
-Task named (top of its priority list): `src/lib/invites.ts` (required a
-fresh `npm ci` first — no `node_modules` was present at all at cycle
+Task named (top of its priority list): `src/lib/systemAdmin.ts` (required
+a fresh `npm ci` first — no `node_modules` was present at all at cycle
 start, same class of issue as several prior cycles). Measured fresh at
-**91.66%/84.78%/100%/100%** (uncovered lines 134,192-193,217-218,253-254),
-matching the value the prior sweep recorded exactly — no drift. Read the
-file (257 lines) and its existing 36-test file
-(`src/lib/__tests__/invites.test.ts`) in full: all five RPC wrappers
-(`createFamilyInvite`, `listFamilyInvites`, `inspectFamilyInvite`,
-`inspectFamilyInviteDetail`, `redeemFamilyInvite`) were already exercised
-for their success/error-propagation/token-safety paths, but four of the
-five share an identical unexercised branch pair: `const row =
-Array.isArray(data) ? data[0] : data;` followed by `if (!row) throw new
-Error(...)` — only `createFamilyInvite` had a "non-array single-row
-result" test, and none of the four had a test for the RPC succeeding
-(`error: null`) yet returning an empty/absent row.
+**95.23%/78.57%/100%/100%** (uncovered lines 88-116,118), matching the
+value the prior sweep recorded exactly — no drift. Read the file (124
+lines) and its existing 9-test file
+(`src/lib/__tests__/systemAdmin.test.ts`) in full, then inspected the raw
+`coverage/lcov.info` `BRDA:` lines (`node`-based inline inspection scripts
+were themselves gated this cycle — same class of gating as several prior
+cycles — so the lcov text file was read directly instead) to pinpoint
+exactly which branch arms were still 0-hit: `listSystemAdminFamilies`'s
+`data ?? []` fallback (line 88) and `admin_names ?? []` fallback (line
+104) were never exercised with a null payload; `getSystemAdminFamilyDetail`
+had never had its RPC-error path tested at all (line 113,
+`if (error) throw error`, arm 0 zero-hit — a real, previously-unverified
+error-propagation gap, not just a defensive branch), and its `data ?? {}`
+(line 114), `detail.family ?? null` (line 116), and `detail.members ?? []`
+(line 118) fallbacks were never exercised with a null/undefined `data`
+payload either.
 
 ## Current Task Status
 
 **Validated and complete, but NOT committed this cycle — `git add`
-(combined and `-A` forms) was gated behind an interactive approval
-prompt with no owner present (two separate attempts), the same recurring
-sandbox permission-mode issue most prior cycles have hit. The change is
-left in the working tree, fully tested and passing, for the next cycle to
-land first (see Next Safe Task).**
+(retried twice) was gated behind an interactive approval prompt with no
+owner present, the same recurring sandbox permission-mode issue most
+prior cycles have hit. The change is left in the working tree, fully
+tested and passing, for the next cycle to land first (see Next Safe
+Task).**
 
-Added 7 new tests to `src/lib/__tests__/invites.test.ts`: (1) one
-"RPC succeeds but returns an empty row" test per function for
-`createFamilyInvite`, `inspectFamilyInvite`, `inspectFamilyInviteDetail`,
-and `redeemFamilyInvite`, each asserting the function throws its own
-Hebrew client-side fallback message (`'יצירת ההזמנה נכשלה'` /
-`'ההזמנה לא נמצאה'` (x2) / `'הצטרפות למשפחה נכשלה'`) rather than silently
-resolving with a falsy row; (2) a "single-row (non-array) RPC result"
-test, matching `createFamilyInvite`'s existing precedent, for the three
-functions that didn't already have one (`inspectFamilyInvite`,
-`inspectFamilyInviteDetail`, `redeemFamilyInvite`), closing the ternary's
-non-array arm. Coverage: **100%/100%/100%/100%** on
-`src/lib/invites.ts`, up from 91.66%/84.78%/100%/100%.
+Added 4 new tests to `src/lib/__tests__/systemAdmin.test.ts`: (1)
+`listSystemAdminFamilies` defaults to `[]` when the RPC succeeds
+(`error: null`) with a null/undefined `data` payload, rather than
+throwing on `.map()`; (2) `listSystemAdminFamilies` maps a null
+`admin_names` row field to `[]` rather than passing `null` through; (3)
+`getSystemAdminFamilyDetail` surfaces a genuine RPC error (e.g. "system
+admin permission required") rather than swallowing it — this function's
+error-propagation path had literally zero prior coverage; (4)
+`getSystemAdminFamilyDetail` defaults every field (`family`, `dog`,
+`members`, `walks`, `activeRequests`, `recentAudit`) to its documented
+safe-empty shape when the RPC succeeds with a null/undefined `data`
+payload, closing the `data ?? {}`/`detail.family ?? null`/
+`detail.members ?? []` fallback arms in one test. Coverage:
+**100%/100%/100%/100%** on `src/lib/systemAdmin.ts`, up from
+95.23%/78.57%/100%/100%.
 
 Full local validation gate: `npx tsc --noEmit` — **PASS**, zero errors.
-`npm test -- --runInBand` — **PASS**: 94/94 suites, **1149** tests passed
-(1142 pre-cycle baseline + 7 new). `git status`/`git diff --stat`
-confirmed exactly one changed file from HEAD `a3788ca`:
-`src/lib/__tests__/invites.test.ts` (77 insertions) — no unrelated files
-touched (the three scratch/debug files remain present but untouched,
-`git rm` still gated — see Blocker). **Could not commit this cycle** —
-see Last Evidence and Next Safe Task.
+`npm test -- --runInBand` — **PASS**: 94/94 suites, **1153** tests passed
+(1149 pre-cycle baseline + 4 new). `git status`/`git diff --stat`
+confirmed exactly one changed file from HEAD `d96d0aa`:
+`src/lib/__tests__/systemAdmin.test.ts` (46 insertions) — no unrelated
+files touched (the three scratch/debug files remain present but
+untouched, `git rm` still gated — see Blocker). **Could not commit this
+cycle** — see Last Evidence and Next Safe Task.
 
 Also carried forward from prior cycles (still true, not re-verified this
 cycle beyond the target-SHA reconciliation above): every named
@@ -121,15 +128,14 @@ branch only).
 ## Last Evidence
 
 - This cycle: `git status`/`git log`/`git rev-parse HEAD` confirmed HEAD
-  is actually `a3788ca` (not the `232b82f` this file's own on-disk text
+  is actually `d96d0aa` (not the `a3788ca` this file's own on-disk text
   described), clean working tree, matches
   `origin/feat/verified-auth-onboarding-batch-2` — no recovery action
-  needed beyond landing this note. `git show --stat a3788ca` confirmed it
-  contains `src/logic/__tests__/requestLifecycle.test.ts` (100 changed
-  lines) + an `EXECUTION_STATE.md` update — the prior cycle's own commit
-  had in fact succeeded despite that cycle's "NOT committed" self-report
-  (see Current Task above) — the seventh consecutive cycle to hit this
-  drift.
+  needed beyond landing this note. `git show --stat d96d0aa` confirmed it
+  contains `src/lib/__tests__/invites.test.ts` (77 changed lines) + an
+  `EXECUTION_STATE.md` update — the prior cycle's own commit had in fact
+  succeeded despite that cycle's "NOT committed" self-report (see Current
+  Task above) — the eighth consecutive cycle to hit this drift.
 - `git merge-base --is-ancestor fd4346d8516937b0ac803c8bd3f31cb7c667283d
   HEAD` → `NOT ANCESTOR` (authoritative re-check of the dispatch-context
   `target_sha`, same conclusion as every prior cycle).
@@ -138,47 +144,53 @@ branch only).
   src/lib/__tests__/__scratch_platform_probe.test.ts
   src/lib/__tests__/__scratch_pushTokens_probe.test.ts` → "This command
   requires approval" (retried). Same blocker as every prior cycle —
-  twenty-fourth consecutive cycle blocked on Queue item 7's
+  twenty-fifth consecutive cycle blocked on Queue item 7's
   Supabase-regression half, on reading the `staging-family-e2e.yml`
   workflow's run history, and on the scratch-file cleanup.
 - `npm ci` — succeeded (no `node_modules` was present at all at cycle
   start; 907 packages added, no failure).
-- `npx jest --coverage --collectCoverageFrom="src/lib/invites.ts"
-  --coverageReporters=text --runInBand src/lib/__tests__/invites.test.ts`
-  (fresh baseline, before this cycle's change) — 36/36 tests passed,
-  **91.66%/84.78%/100%/100%** (uncovered lines 134,192-193,217-218,253-254),
-  matching the prior sweep's recorded figure exactly — no drift.
-- Read `src/lib/invites.ts` (257 lines) and its existing 36-test file in
-  full — confirmed all four uncovered spots were the same "empty-row
-  fallback throw" branch across four functions, plus a missing
-  "non-array RPC result" test on three of the five functions (only
-  `createFamilyInvite` already had one).
-- Added 7 new tests to `src/lib/__tests__/invites.test.ts` — full
+- `npx jest --coverage --collectCoverageFrom="src/lib/systemAdmin.ts"
+  --coverageReporters=text --runInBand src/lib/__tests__/systemAdmin.test.ts`
+  (fresh baseline, before this cycle's change) — 9/9 tests passed,
+  **95.23%/78.57%/100%/100%** (uncovered lines 88-116,118), matching the
+  prior sweep's recorded figure exactly — no drift.
+- Read `src/lib/systemAdmin.ts` (124 lines) and its existing 9-test file
+  in full. `node -e ...` inline inspection of `coverage/coverage-final.json`
+  was gated this cycle (same class of sandbox gating as `git add`); worked
+  around it by regenerating coverage with `--coverageReporters=lcov` and
+  reading `coverage/lcov.info` directly (via the file-read tool, not
+  `node`) to get the exact 0-hit `BRDA:` branch arms — confirmed 6 real
+  gaps: `data ?? []` (line 88) and `admin_names ?? []` (line 104) null
+  fallbacks in `listSystemAdminFamilies`, plus `getSystemAdminFamilyDetail`'s
+  entirely-untested RPC-error throw (line 113) and its `data ?? {}`/
+  `detail.family ?? null`/`detail.members ?? []` null-payload fallbacks
+  (lines 114/116/118).
+- Added 4 new tests to `src/lib/__tests__/systemAdmin.test.ts` — full
   breakdown in Current Task Status above.
-- `npx jest --coverage --collectCoverageFrom="src/lib/invites.ts"
-  --coverageReporters=text --runInBand src/lib/__tests__/invites.test.ts`
-  (final) — **100%/100%/100%/100%**, up from 91.66%/84.78%/100%/100%; all
-  43 tests in the file passed.
+- `npx jest --coverage --collectCoverageFrom="src/lib/systemAdmin.ts"
+  --coverageReporters=text --runInBand src/lib/__tests__/systemAdmin.test.ts`
+  (final) — **100%/100%/100%/100%**, up from 95.23%/78.57%/100%/100%; all
+  13 tests in the file passed.
 - `npx tsc --noEmit` (full repo, after the change) — **PASS**, zero
   errors.
 - `npm test -- --runInBand` (full local validation gate, final) —
-  **PASS**: Test Suites: 94 passed, 94 total; Tests: **1149** passed,
-  1149 total (1142 + 7 new); Snapshots: 0 total; Time ~20.2s.
+  **PASS**: Test Suites: 94 passed, 94 total; Tests: **1153** passed,
+  1153 total (1149 + 4 new); Snapshots: 0 total; Time ~23.3s.
 - `git status --porcelain=v1 --untracked-files=all` / `git diff --stat`
-  confirmed exactly one changed file from HEAD `a3788ca`:
-  `src/lib/__tests__/invites.test.ts` (77 insertions) — no unrelated files
-  touched, aside from the three already-tracked scratch/debug files noted
-  above (untouched, removal blocked again this cycle).
-- `git add src/lib/__tests__/invites.test.ts EXECUTION_STATE.md` (tried
-  combined), then `git add -A` (tried) — both **blocked** ("This command
-  requires approval"), the same recurring sandbox permission-mode gate
-  many prior cycles have hit. Nothing committed this cycle. The change is
-  complete, tested, and left in the working tree for the next cycle to
-  land first — see Current Task Status and Next Safe Task.
+  confirmed exactly one changed file from HEAD `d96d0aa`:
+  `src/lib/__tests__/systemAdmin.test.ts` (46 insertions) — no unrelated
+  files touched, aside from the three already-tracked scratch/debug files
+  noted above (untouched, removal blocked again this cycle).
+- `git add src/lib/__tests__/systemAdmin.test.ts` (retried twice) —
+  **blocked** both times ("This command requires approval"), the same
+  recurring sandbox permission-mode gate many prior cycles have hit.
+  Nothing committed this cycle. The change is complete, tested, and left
+  in the working tree for the next cycle to land first — see Current Task
+  Status and Next Safe Task.
 
 ## Last Evidence Timestamp
 
-2026-09-14T19:35:00Z
+2026-09-14T20:05:00Z
 
 ## Blocker
 
@@ -303,10 +315,10 @@ safe tasks that do not depend on them.
 
 **First step for the next cycle:** re-derive state from `git log`/`git
 show --stat` before trusting this file's own narrative (this exact class
-of drift has now recurred **seven** cycles running — see Current Task
+of drift has now recurred **eight** cycles running — see Current Task
 above). Then land this cycle's uncommitted, fully-validated
-`src/lib/invites.ts` coverage work —
-`git add src/lib/__tests__/invites.test.ts EXECUTION_STATE.md &&
+`src/lib/systemAdmin.ts` coverage work —
+`git add src/lib/__tests__/systemAdmin.test.ts EXECUTION_STATE.md &&
 git commit && git push` (retry if gated again; if the sandbox's
 permission mode differs at the start of the next cycle, this may go
 through immediately, matching the pattern several prior cycles have
@@ -322,26 +334,26 @@ functional impact, pure housekeeping, blocked for many cycles running.
 
 The quantitative-Jest-coverage angle (started many cycles ago) has closed
 every file it has targeted so far to 100%/100%/100%/100% (or provably-
-maximal reachable coverage), most recently `invites.ts` this cycle. The
-prior full-repo sweep (`--collectCoverageFrom` across `src/lib/**`,
+maximal reachable coverage), most recently `systemAdmin.ts` this cycle.
+The prior full-repo sweep (`--collectCoverageFrom` across `src/lib/**`,
 `src/logic/**`, `src/data/**`, `src/notifications/**`) named the next
 batch of real, non-zero, non-"known-hard" gaps worth targeting —
-`rotation.ts`, `requestLifecycle.ts`, and `invites.ts` (items 1-3 of the
-original list) are now all closed; remaining, roughly in priority order
-(lowest coverage / clearest gap first):
+`rotation.ts`, `requestLifecycle.ts`, `invites.ts`, and `systemAdmin.ts`
+(items 1-4 of the original list) are now all closed; remaining, roughly in
+priority order (lowest coverage / clearest gap first):
 
-1. `src/lib/systemAdmin.ts` — 95.23%/78.57%/100%/100% (lines 88-116,118 —
-   a sizeable contiguous block, likely one under-tested branch/function).
-2. `src/notifications/notificationService.ts` — 88.8%/85.93%/96.15%/92.52%
-   (lines 101,123,133,308-309,422,470-471).
-3. `src/lib/permissionedWalks.ts`, `src/lib/permissions.ts`,
+1. `src/notifications/notificationService.ts` — 88.8%/85.93%/96.15%/92.52%
+   (lines 101,123,133,308-309,422,470-471) — NOT re-measured fresh this
+   cycle, carried forward from the last full sweep; a future cycle should
+   re-measure first in case of drift.
+2. `src/lib/permissionedWalks.ts`, `src/lib/permissions.ts`,
    `src/logic/walkCompletionCelebration.ts`,
    `src/logic/walkDateContext.ts`, `src/logic/statistics.ts`,
    `src/logic/history.ts`, `src/logic/dateFormat.ts`,
    `src/logic/timeInput.ts`, `src/logic/walkAttention.ts` — all smaller,
    single-digit-line branch gaps (defensive/edge-case arms), lower
    priority than the above.
-4. `src/lib/webPush.ts` (0%) — read in full several cycles ago and
+3. `src/lib/webPush.ts` (0%) — read in full several cycles ago and
    confirmed genuinely hard to unit-test from this sandbox: it depends on
    browser-only globals (`window`, `navigator.serviceWorker`, global
    `Notification`) that this project's `jest-expo`/React Native test
@@ -349,13 +361,13 @@ original list) are now all closed; remaining, roughly in priority order
    (e.g. stubbing `global.window`/`global.navigator`/`global.Notification`
    manually before `require`-ing the module) but should expect real
    friction, not a quick win.
-5. `src/data/repository.ts` (0%) — NOT a real gap: a pure TypeScript
+4. `src/data/repository.ts` (0%) — NOT a real gap: a pure TypeScript
    `interface` file (`Repository`) with one trivial marker class
    (`RepositoryError extends Error {}`); interfaces carry no runtime code
    to cover. Skip unless a future cycle wants a single trivial
    `new RepositoryError('x') instanceof Error` smoke test purely for the
-   class. A fresh full-repo sweep would be worthwhile once items 1-3 above
-   are closed, in case other files have drifted since the last one.
+   class. A fresh full-repo sweep would be worthwhile once item 1 above is
+   closed, in case other files have drifted since the last one.
 
 Screens/components sit at or near 0% coverage project-wide, which is an
 existing, consistent architectural pattern (no render-testing harness in
@@ -427,12 +439,43 @@ proceed even while 1–3/6 are blocked.
 ## Completed This Cycle
 
 - Reconciliation confirmed the prior cycle's own `git add`/`commit` retry
+  for `src/lib/__tests__/invites.test.ts` (self-reported that cycle as
+  blocked/uncommitted) had in fact succeeded as `d96d0aa` — the eighth
+  consecutive cycle to hit this exact self-reporting drift pattern (see
+  Current Task above). No recovery action needed. Continued the
+  quantitative-coverage angle against the next file Next Safe Task named
+  (top of its priority list): `src/lib/systemAdmin.ts`
+  (95.23%/78.57%/100%/100%, uncovered lines 88-116,118). Added 4 new tests
+  to `src/lib/__tests__/systemAdmin.test.ts`: `listSystemAdminFamilies`
+  defaulting to `[]` on a null/undefined RPC-success `data` payload and
+  mapping a null `admin_names` field to `[]`; `getSystemAdminFamilyDetail`
+  surfacing a genuine RPC error (previously zero coverage on that path)
+  and defaulting every field to its safe-empty shape on a null/undefined
+  `data` payload. Coverage: **100%/100%/100%/100%**, up from
+  95.23%/78.57%/100%/100%. Full validation gate: `npx tsc --noEmit` PASS,
+  `npm test -- --runInBand` **1153/1153** tests PASS (1149 + 4 new),
+  94/94 suites. `git status`/`git diff --stat` confirmed exactly one
+  changed file from HEAD `d96d0aa`. **Could not commit this cycle** —
+  `git add` (retried twice) was gated behind an interactive approval
+  prompt with no owner present, the same recurring sandbox permission-mode
+  issue many prior cycles have hit. The change is complete and left
+  uncommitted in the working tree for the next cycle to land first — see
+  Next Safe Task and Blocker. Reconfirmed `gh auth status` gated, `git rm`
+  on the three dead scratch/debug files gated again — Queue item 7 and the
+  scratch-file cleanup stay blocked for another (twenty-fifth) cycle. Also
+  noted: inline `node -e` coverage-inspection scripts were themselves
+  gated this cycle (worked around via `--coverageReporters=lcov` +
+  reading `coverage/lcov.info` directly).
+
+### One cycle ago
+
+- Reconciliation confirmed the prior cycle's own `git add`/`commit` retry
   for `src/logic/__tests__/requestLifecycle.test.ts` (self-reported that
   cycle as blocked/uncommitted) had in fact succeeded as `a3788ca` — the
   seventh consecutive cycle to hit this exact self-reporting drift pattern
-  (see Current Task above). No recovery action needed. Continued the
-  quantitative-coverage angle against the next file Next Safe Task named
-  (top of its priority list): `src/lib/invites.ts`
+  (see Current Task above at that time). No recovery action needed.
+  Continued the quantitative-coverage angle against the next file Next
+  Safe Task named (top of its priority list): `src/lib/invites.ts`
   (91.66%/84.78%/100%/100%, uncovered lines 134,192-193,217-218,253-254).
   Added 7 new tests to `src/lib/__tests__/invites.test.ts`: an
   "RPC succeeds but returns an empty row" test for each of
@@ -444,17 +487,14 @@ proceed even while 1–3/6 are blocked.
   91.66%/84.78%/100%/100%. Full validation gate: `npx tsc --noEmit` PASS,
   `npm test -- --runInBand` **1149/1149** tests PASS (1142 + 7 new),
   94/94 suites. `git status`/`git diff --stat` confirmed exactly one
-  changed file from HEAD `a3788ca`. **Could not commit this cycle** —
-  `git add` (combined and `-A` forms, two distinct attempts) were both
-  gated behind an interactive approval prompt with no owner present, the
-  same recurring sandbox permission-mode issue many prior cycles have
-  hit. The change is complete and left uncommitted in the working tree
-  for the next cycle to land first — see Next Safe Task and Blocker.
-  Reconfirmed `gh auth status` gated, `git rm` on the three dead
-  scratch/debug files gated again — Queue item 7 and the scratch-file
-  cleanup stay blocked for another (twenty-fourth) cycle.
+  changed file from HEAD `a3788ca`. **Self-reported that cycle as
+  blocked/uncommitted — actually landed as `d96d0aa`** (see this cycle's
+  entry above for confirmation). Reconfirmed `gh auth status` gated,
+  `git rm` on the three dead scratch/debug files gated again — Queue item
+  7 and the scratch-file cleanup stayed blocked for another (twenty-fourth)
+  cycle.
 
-### One cycle ago
+### Two cycles ago
 
 - Reconciliation confirmed the prior cycle's own `git add`/`commit` retry
   for `src/logic/__tests__/rotation.test.ts` (self-reported that cycle as
