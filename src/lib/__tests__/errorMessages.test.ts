@@ -52,6 +52,11 @@ describe('friendlyErrorMessage — role management (0007)', () => {
       'cannot demote the last admin of this family'
     );
   });
+
+  it('rawMessageOf falls back to an empty string for a nullish error (thrown `null`/`undefined`, never a real Error/string/object)', () => {
+    expect(rawMessageOf(null)).toBe('');
+    expect(rawMessageOf(undefined)).toBe('');
+  });
 });
 
 /**
