@@ -77,7 +77,14 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
             </View>
 
             <RtlText style={styles.label}>שם</RtlText>
-            <TextInput value={name} onChangeText={setName} style={styles.input} placeholder="שם" textAlign="right" />
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              style={styles.input}
+              placeholder="שם"
+              textAlign="right"
+              accessibilityLabel="שם"
+            />
 
             <RtlText style={styles.label}>סמל (אם אין תמונה)</RtlText>
             <View style={styles.optionRow}>

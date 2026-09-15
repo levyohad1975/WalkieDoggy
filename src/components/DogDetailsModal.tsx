@@ -78,6 +78,7 @@ export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, o
                 onBlur={() => name.trim() && onSave({ name: name.trim() })}
                 style={styles.input}
                 textAlign="right"
+                accessibilityLabel="שם הכלב"
               />
 
               {/*
@@ -115,6 +116,7 @@ export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, o
                 textAlign="right"
                 placeholder="למשל: אוהב להריח כל עמוד"
                 placeholderTextColor={colors.textSecondary}
+                accessibilityLabel="הערות"
               />
 
               <RtlText style={styles.hint}>{dog.walksPerDay} טיולים ביום · שינוי בלוח זמנים</RtlText>

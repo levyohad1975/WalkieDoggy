@@ -197,6 +197,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                 style={styles.searchInput}
                 textAlign="right"
                 returnKeyType="search"
+                accessibilityLabel="חיפוש לפי שם משפחה, קוד, או שם משתמש"
               />
               <Button label="חיפוש" onPress={() => loadFamilies(search)} compact />
             </View>

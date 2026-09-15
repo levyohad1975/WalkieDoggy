@@ -336,6 +336,7 @@ export function FamilyOnboardingScreen() {
                 autoCorrect={false}
                 keyboardType="email-address"
                 editable={!verifyingEmail && !verifiedAdminEmail}
+                accessibilityLabel="דוא״ל של מנהל/ת המשפחה"
               />
 
               {!verificationSent && !verifiedAdminEmail ? (
@@ -361,6 +362,7 @@ export function FamilyOnboardingScreen() {
                     keyboardType="number-pad"
                     autoCorrect={false}
                     maxLength={8}
+                    accessibilityLabel="קוד האימות שקיבלת בדוא״ל"
                   />
                   <Button
                     label={verifyingEmail ? 'מאמת...' : 'אימות הדוא״ל'}
@@ -392,6 +394,7 @@ export function FamilyOnboardingScreen() {
                 style={styles.input}
                 textAlign="right"
                 editable={Boolean(verifiedAdminEmail)}
+                accessibilityLabel="שם המשפחה"
               />
 
               <RtlText style={styles.label}>שם הכלב/ה (אופציונלי)</RtlText>
@@ -403,6 +406,7 @@ export function FamilyOnboardingScreen() {
                 style={styles.input}
                 textAlign="right"
                 editable={Boolean(verifiedAdminEmail)}
+                accessibilityLabel="שם הכלב/ה (אופציונלי)"
               />
 
               {createError ? <RtlText style={styles.error}>{createError}</RtlText> : null}
@@ -447,6 +451,7 @@ export function FamilyOnboardingScreen() {
                 textAlign="left"
                 autoCapitalize="none"
                 autoCorrect={false}
+                accessibilityLabel="קישור או קוד הזמנה"
               />
 
               {inspecting ? <ActivityIndicator color={colors.primary} style={{ marginTop: 8 }} /> : null}
@@ -549,6 +554,7 @@ export function FamilyOnboardingScreen() {
               autoCapitalize="characters"
               autoCorrect={false}
               maxLength={8}
+              accessibilityLabel="קוד הזמנה"
             />
 
             {looking ? <ActivityIndicator color={colors.primary} style={{ marginTop: 8 }} /> : null}

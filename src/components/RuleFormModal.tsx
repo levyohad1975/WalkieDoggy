@@ -80,7 +80,14 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
             <TimePickerField value={time} onChange={setTime} webLabel="בחירת שעת טיול" />
 
             <RtlText style={styles.label}>שם (אופציונלי)</RtlText>
-            <TextInput value={label} onChangeText={setLabel} placeholder="למשל: טיול בוקר" style={styles.input} textAlign="right" />
+            <TextInput
+              value={label}
+              onChangeText={setLabel}
+              placeholder="למשל: טיול בוקר"
+              style={styles.input}
+              textAlign="right"
+              accessibilityLabel="שם (אופציונלי)"
+            />
 
             <RtlText style={styles.label}>ימים</RtlText>
             <View style={styles.dayRow}>

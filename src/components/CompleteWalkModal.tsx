@@ -116,6 +116,7 @@ export function CompleteWalkModal({
               style={styles.noteInput}
               multiline
               textAlign="right"
+              accessibilityLabel="הערה (אופציונלי)"
             />
 
             <View style={styles.actions}>

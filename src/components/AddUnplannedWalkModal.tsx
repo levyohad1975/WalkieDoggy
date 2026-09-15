@@ -186,7 +186,14 @@ export function AddUnplannedWalkModal({
             <View style={styles.row}>
               <View style={styles.flex}>
                 <RtlText style={styles.label}>תאריך</RtlText>
-                <TextInput value={date} onChangeText={setDate} style={styles.input} placeholder="YYYY-MM-DD" textAlign="center" />
+                <TextInput
+                  value={date}
+                  onChangeText={setDate}
+                  style={styles.input}
+                  placeholder="YYYY-MM-DD"
+                  textAlign="center"
+                  accessibilityLabel="תאריך"
+                />
               </View>
               <View style={styles.flex}>
                 <RtlText style={styles.label}>שעה</RtlText>
@@ -248,6 +255,7 @@ export function AddUnplannedWalkModal({
               placeholderTextColor={colors.textSecondary}
               style={styles.input}
               textAlign="center"
+              accessibilityLabel="משך (דקות, אופציונלי)"
             />
 
             <RtlText style={styles.label}>הערה (אופציונלי)</RtlText>
@@ -259,6 +267,7 @@ export function AddUnplannedWalkModal({
               style={styles.noteInput}
               multiline
               textAlign="right"
+              accessibilityLabel="הערה (אופציונלי)"
             />
 
             <View style={styles.actions}>

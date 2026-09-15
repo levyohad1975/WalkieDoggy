@@ -100,6 +100,7 @@ export function PinSetupModal({ visible, userName, hasExistingPin, onSave, onClo
               placeholder="••••"
               placeholderTextColor={colors.textSecondary}
               textAlign="center"
+              accessibilityLabel="קוד PIN חדש"
             />
             <RtlText style={styles.label}>אימות קוד PIN</RtlText>
             <TextInput
@@ -112,6 +113,7 @@ export function PinSetupModal({ visible, userName, hasExistingPin, onSave, onClo
               placeholder="••••"
               placeholderTextColor={colors.textSecondary}
               textAlign="center"
+              accessibilityLabel="אימות קוד PIN"
             />
             {error ? <RtlText style={styles.error}>{error}</RtlText> : null}
             <View style={styles.actions}>

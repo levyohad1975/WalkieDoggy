@@ -94,6 +94,7 @@ export function PinEntryModal({ visible, userName, subtitle, onSubmit, onCancel 
               placeholderTextColor={colors.textSecondary}
               textAlign="center"
               autoFocus
+              accessibilityLabel="קוד PIN"
             />
             {error ? <RtlText style={styles.error}>{error}</RtlText> : null}
             <View style={styles.actions}>

@@ -123,6 +123,7 @@ export function EditDoneDetailsModal({
               style={styles.noteInput}
               multiline
               textAlign="right"
+              accessibilityLabel="הערה"
             />
 
             <View style={styles.actions}>
