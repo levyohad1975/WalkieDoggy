@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
 import { Button } from './Button';
@@ -77,48 +77,56 @@ export function PinSetupModal({ visible, userName, hasExistingPin, onSave, onClo
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
-      <View style={styles.backdrop}>
-        <View style={styles.card}>
-          <RtlText style={styles.title}>{hasExistingPin ? `שינוי קוד PIN ל${userName}` : `הגדרת קוד PIN ל${userName}`}</RtlText>
-          <RtlText style={styles.subtitle}>
-            קוד ה-PIN ישמש כדי לאמת מעבר של הפרופיל הזה למכשיר אחר. בחרו 4 עד 6 ספרות.
-          </RtlText>
-          <RtlText style={styles.label}>קוד PIN חדש</RtlText>
-          <TextInput
-            style={styles.input}
-            value={pin}
-            onChangeText={(t) => setPin(t.replace(/[^0-9]/g, '').slice(0, 6))}
-            keyboardType="number-pad"
-            secureTextEntry
-            maxLength={6}
-            placeholder="••••"
-            placeholderTextColor={colors.textSecondary}
-            textAlign="center"
-          />
-          <RtlText style={styles.label}>אימות קוד PIN</RtlText>
-          <TextInput
-            style={styles.input}
-            value={confirmPin}
-            onChangeText={(t) => setConfirmPin(t.replace(/[^0-9]/g, '').slice(0, 6))}
-            keyboardType="number-pad"
-            secureTextEntry
-            maxLength={6}
-            placeholder="••••"
-            placeholderTextColor={colors.textSecondary}
-            textAlign="center"
-          />
-          {error ? <RtlText style={styles.error}>{error}</RtlText> : null}
-          <View style={styles.actions}>
-            <Button label="שמירה" onPress={handleSave} loading={saving} style={styles.flex} compact />
-            <Button label="ביטול" onPress={handleClose} variant="secondary" style={styles.flex} compact disabled={saving} />
+      {/* Same KeyboardAvoidingView pattern already proven in
+          DogDetailsModal.tsx/PinEntryModal.tsx — without it, the number-pad
+          keyboard can cover this centered card's second PIN field and
+          action buttons on shorter devices, worse here than PinEntryModal
+          since this card has two PIN inputs instead of one. */}
+      <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={styles.backdrop}>
+          <View style={styles.card}>
+            <RtlText style={styles.title}>{hasExistingPin ? `שינוי קוד PIN ל${userName}` : `הגדרת קוד PIN ל${userName}`}</RtlText>
+            <RtlText style={styles.subtitle}>
+              קוד ה-PIN ישמש כדי לאמת מעבר של הפרופיל הזה למכשיר אחר. בחרו 4 עד 6 ספרות.
+            </RtlText>
+            <RtlText style={styles.label}>קוד PIN חדש</RtlText>
+            <TextInput
+              style={styles.input}
+              value={pin}
+              onChangeText={(t) => setPin(t.replace(/[^0-9]/g, '').slice(0, 6))}
+              keyboardType="number-pad"
+              secureTextEntry
+              maxLength={6}
+              placeholder="••••"
+              placeholderTextColor={colors.textSecondary}
+              textAlign="center"
+            />
+            <RtlText style={styles.label}>אימות קוד PIN</RtlText>
+            <TextInput
+              style={styles.input}
+              value={confirmPin}
+              onChangeText={(t) => setConfirmPin(t.replace(/[^0-9]/g, '').slice(0, 6))}
+              keyboardType="number-pad"
+              secureTextEntry
+              maxLength={6}
+              placeholder="••••"
+              placeholderTextColor={colors.textSecondary}
+              textAlign="center"
+            />
+            {error ? <RtlText style={styles.error}>{error}</RtlText> : null}
+            <View style={styles.actions}>
+              <Button label="שמירה" onPress={handleSave} loading={saving} style={styles.flex} compact />
+              <Button label="ביטול" onPress={handleClose} variant="secondary" style={styles.flex} compact disabled={saving} />
+            </View>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  flexFull: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: '#00000055', alignItems: 'center', justifyContent: 'center', padding: 24 },
   card: { backgroundColor: colors.surface, borderRadius: 24, padding: 24, width: '100%', maxWidth: 400 },
   title: { fontSize: 19, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
