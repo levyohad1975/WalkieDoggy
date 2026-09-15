@@ -22,24 +22,25 @@ permissions:
   actions: read
 
 concurrency:
-  group: agentic-rc-validation
+  group: agentic-rc-validation-${{ inputs.target_branch || vars.AGENTIC_RC_TARGET_BRANCH || 'feat/verified-auth-onboarding-batch-2' }}
   cancel-in-progress: false
 
+env:
+  TARGET_BRANCH: ${{ inputs.target_branch || vars.AGENTIC_RC_TARGET_BRANCH || 'feat/verified-auth-onboarding-batch-2' }}
+  EXPECTED_SHA: ${{ inputs.expected_sha || '' }}
+
 jobs:
-  validate:
-    name: Validate fresh Agentic RC progress
+  guard:
+    name: Guard fresh Agentic RC progress
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 35
-    env:
-      TARGET_BRANCH: ${{ inputs.target_branch || vars.AGENTIC_RC_TARGET_BRANCH || 'feat/verified-auth-onboarding-batch-2' }}
-      EXPECTED_SHA: ${{ inputs.expected_sha || '' }}
+    timeout-minutes: 5
     outputs:
-      continue: ${{ steps.mark.outputs.continue }}
+      fresh: ${{ steps.fresh.outputs.fresh }}
       target_branch: ${{ steps.guard.outputs.target_branch }}
-
+      head_sha: ${{ steps.fresh.outputs.head_sha }}
     steps:
       - name: Guard RC target
         id: guard
@@ -48,8 +49,7 @@ jobs:
           set -euo pipefail
           git check-ref-format --branch "$TARGET_BRANCH" >/dev/null
           case "$TARGET_BRANCH" in
-            feat/*|fix/*|chore/*|test/*|docs/*|rc/*)
-              ;;
+            feat/*|fix/*|chore/*|test/*|docs/*|rc/*) ;;
             *)
               echo "::error::Refusing to validate an unapproved or main target branch."
               exit 1
@@ -83,6 +83,7 @@ jobs:
           subject="$(git log -1 --format='%s')"
           committed_at="$(git log -1 --format='%cI')"
           head_sha="$(git rev-parse HEAD)"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
 
           if [ "$author" != "walkie-agentic-worker[bot]" ]; then
             echo "Latest RC commit was not published by the Agentic worker; no continuation is required." >> "$GITHUB_STEP_SUMMARY"
@@ -90,8 +91,7 @@ jobs:
           fi
 
           case "$subject" in
-            "chore(agentic): continue RC execution"|"chore(agentic): checkpoint RC execution")
-              ;;
+            "chore(agentic): continue RC execution"|"chore(agentic): checkpoint RC execution") ;;
             *)
               echo "Latest RC commit is not an Agentic continuation/checkpoint commit." >> "$GITHUB_STEP_SUMMARY"
               exit 0
@@ -130,27 +130,58 @@ jobs:
           echo "fresh=true" >> "$GITHUB_OUTPUT"
           echo "Fresh Agentic RC commit detected on $TARGET_BRANCH." >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Set up Node.js
-        if: steps.fresh.outputs.fresh == 'true'
-        uses: actions/setup-node@v4
+  typecheck:
+    name: TypeScript gate
+    needs: guard
+    if: needs.guard.outputs.fresh == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.guard.outputs.target_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - run: npm ci
+      - run: npm run typecheck
 
-      - name: Install dependencies
-        if: steps.fresh.outputs.fresh == 'true'
-        run: npm ci
+  tests:
+    name: Jest gate
+    needs: guard
+    if: needs.guard.outputs.fresh == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.guard.outputs.target_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test -- --runInBand
 
-      - name: Typecheck
-        if: steps.fresh.outputs.fresh == 'true'
-        run: npm run typecheck
-
-      - name: Run tests
-        if: steps.fresh.outputs.fresh == 'true'
-        run: npm test -- --runInBand
+  supabase-rehearsal:
+    name: Isolated Supabase gate
+    needs: guard
+    if: needs.guard.outputs.fresh == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.guard.outputs.target_branch }}
+          fetch-depth: 1
+          persist-credentials: false
 
       - name: Verify known duplicate 0019 state
-        if: steps.fresh.outputs.fresh == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -160,7 +191,6 @@ jobs:
           test -s supabase/migrations/0019_request_result_seen_state.sql
 
       - name: Prepare ephemeral Batch 2 migration history
-        if: steps.fresh.outputs.fresh == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -174,22 +204,17 @@ jobs:
           cp "$rehearsal_dir/"0033_verified_family_onboarding_cutover.sql supabase/migrations/
           cp "$rehearsal_dir/"0034_email_delivery_log.sql supabase/migrations/
 
-      - name: Set up Supabase CLI
-        if: steps.fresh.outputs.fresh == 'true'
-        uses: supabase/setup-cli@v3
+      - uses: supabase/setup-cli@v3
         with:
           version: 2.116.0
 
       - name: Start isolated Supabase stack
-        if: steps.fresh.outputs.fresh == 'true'
         run: supabase start -x studio,imgproxy,storage-api,realtime,edge-runtime,logflare,vector,supavisor
 
       - name: Reapply Batch 2 migrations from a clean database
-        if: steps.fresh.outputs.fresh == 'true'
         run: supabase db reset --local
 
       - name: Verify Batch 2 schema and authorization cutover
-        if: steps.fresh.outputs.fresh == 'true'
         env:
           PGPASSWORD: postgres
         run: |
@@ -200,118 +225,65 @@ jobs:
                and table_name = 'families'
                and column_name in ('approval_status', 'created_by_auth_user_id')) = 2
           )::int;
-
-          select 1 / (to_regprocedure(
-            'public.create_verified_family(uuid,text,text,boolean)'
-          ) is not null)::int;
-
-          select 1 / (to_regprocedure(
-            'public.system_admin_set_family_approval(uuid,text)'
-          ) is not null)::int;
-
-          select 1 / (
-            not has_function_privilege(
-              'anon', 'public.create_family(text,text)', 'EXECUTE'
-            )
-          )::int;
-
-          select 1 / (
-            not has_function_privilege(
-              'authenticated', 'public.create_family(text,text)', 'EXECUTE'
-            )
-          )::int;
-
-          select 1 / (
-            has_function_privilege(
-              'service_role',
-              'public.create_verified_family(uuid,text,text,boolean)',
-              'EXECUTE'
-            )
-          )::int;
-
-          select 1 / (
-            position(
-              'approval_status' in pg_get_functiondef(
-                'public.current_family_id()'::regprocedure
-              )
-            ) > 0
-          )::int;
-
-          select 1 / (
-            (select count(*) from information_schema.tables
-             where table_schema = 'public'
-               and table_name = 'email_delivery_log') = 1
-          )::int;
-
-          select 1 / (
-            (select relrowsecurity from pg_class
-             where oid = 'public.email_delivery_log'::regclass) is true
-          )::int;
-
-          select 1 / (
-            (select count(*) from pg_policies
-             where schemaname = 'public'
-               and tablename = 'email_delivery_log') = 0
-          )::int;
-
-          select 1 / (to_regprocedure(
-            'public.record_email_delivery_attempt(uuid,uuid,text,text,text,text,text,text)'
-          ) is not null)::int;
-
-          select 1 / (to_regprocedure(
-            'public.update_email_delivery_status(text,text,text,text)'
-          ) is not null)::int;
-
-          select 1 / (
-            has_function_privilege(
-              'service_role',
-              'public.record_email_delivery_attempt(uuid,uuid,text,text,text,text,text,text)',
-              'EXECUTE'
-            )
-          )::int;
-
-          select 1 / (
-            not has_function_privilege(
-              'authenticated',
-              'public.record_email_delivery_attempt(uuid,uuid,text,text,text,text,text,text)',
-              'EXECUTE'
-            )
-          )::int;
-
-          select 1 / (
-            not has_function_privilege(
-              'anon',
-              'public.update_email_delivery_status(text,text,text,text)',
-              'EXECUTE'
-            )
-          )::int;
-
-          select 1 / (
-            has_function_privilege(
-              'authenticated',
-              'public.system_admin_list_email_delivery_log(integer)',
-              'EXECUTE'
-            )
-          )::int;
+          select 1 / (to_regprocedure('public.create_verified_family(uuid,text,text,boolean)') is not null)::int;
+          select 1 / (to_regprocedure('public.system_admin_set_family_approval(uuid,text)') is not null)::int;
+          select 1 / (not has_function_privilege('anon', 'public.create_family(text,text)', 'EXECUTE'))::int;
+          select 1 / (not has_function_privilege('authenticated', 'public.create_family(text,text)', 'EXECUTE'))::int;
+          select 1 / (has_function_privilege('service_role','public.create_verified_family(uuid,text,text,boolean)','EXECUTE'))::int;
+          select 1 / (position('approval_status' in pg_get_functiondef('public.current_family_id()'::regprocedure)) > 0)::int;
+          select 1 / ((select count(*) from information_schema.tables where table_schema = 'public' and table_name = 'email_delivery_log') = 1)::int;
+          select 1 / ((select relrowsecurity from pg_class where oid = 'public.email_delivery_log'::regclass) is true)::int;
+          select 1 / ((select count(*) from pg_policies where schemaname = 'public' and tablename = 'email_delivery_log') = 0)::int;
+          select 1 / (to_regprocedure('public.record_email_delivery_attempt(uuid,uuid,text,text,text,text,text,text)') is not null)::int;
+          select 1 / (to_regprocedure('public.update_email_delivery_status(text,text,text,text)') is not null)::int;
+          select 1 / (has_function_privilege('service_role','public.record_email_delivery_attempt(uuid,uuid,text,text,text,text,text,text)','EXECUTE'))::int;
+          select 1 / (not has_function_privilege('authenticated','public.record_email_delivery_attempt(uuid,uuid,text,text,text,text,text,text)','EXECUTE'))::int;
+          select 1 / (not has_function_privilege('anon','public.update_email_delivery_status(text,text,text,text)','EXECUTE'))::int;
+          select 1 / (has_function_privilege('authenticated','public.system_admin_list_email_delivery_log(integer)','EXECUTE'))::int;
           SQL
 
       - name: Stop isolated Supabase stack
-        if: always() && steps.fresh.outputs.fresh == 'true'
+        if: always()
         run: supabase stop --no-backup
 
-      - name: Mark validated continuation
-        id: mark
-        if: steps.fresh.outputs.fresh == 'true'
+  staging-family-e2e:
+    name: Dispatch live Staging family E2E
+    needs: guard
+    if: needs.guard.outputs.fresh == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch independent Staging lane
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_BRANCH: ${{ needs.guard.outputs.target_branch }}
         shell: bash
         run: |
-          echo "continue=true" >> "$GITHUB_OUTPUT"
-          echo "CI, tests, and isolated Supabase rehearsal passed for the fresh Agentic RC commit." >> "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          gh workflow run staging-family-e2e.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f target_branch="$TARGET_BRANCH"
+          echo "Dispatched live Staging Family E2E in parallel for $TARGET_BRANCH." >> "$GITHUB_STEP_SUMMARY"
 
   continue:
     name: Dispatch next bounded Agentic unit
-    needs: validate
-    if: needs.validate.result == 'success' && needs.validate.outputs.continue == 'true'
+    needs:
+      - guard
+      - typecheck
+      - tests
+      - supabase-rehearsal
+    if: >-
+      always() &&
+      needs.guard.outputs.fresh == 'true' &&
+      needs.typecheck.result == 'success' &&
+      needs.tests.result == 'success' &&
+      needs.supabase-rehearsal.result == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       actions: write
       contents: read
@@ -319,7 +291,7 @@ jobs:
       - name: Dispatch Agentic RC Worker
         env:
           GH_TOKEN: ${{ github.token }}
-          TARGET_BRANCH: ${{ needs.validate.outputs.target_branch }}
+          TARGET_BRANCH: ${{ needs.guard.outputs.target_branch }}
         shell: bash
         run: |
           set -euo pipefail
@@ -327,4 +299,4 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --ref main \
             -f target_branch="$TARGET_BRANCH"
-          echo "Dispatched the next bounded Agentic RC unit for $TARGET_BRANCH." >> "$GITHUB_STEP_SUMMARY"
+          echo "Parallel local gates passed; dispatched next bounded Agentic RC unit for $TARGET_BRANCH without waiting for the independent live Staging lane." >> "$GITHUB_STEP_SUMMARY"
