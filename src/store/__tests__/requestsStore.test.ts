@@ -7,9 +7,22 @@ jest.mock('../../lib/requests', () => ({
   approveTimeChangeRequest: jest.fn(),
   rejectTimeChangeRequest: jest.fn(),
   listTimeChangeRequests: jest.fn(),
+  markMyRequestResultsSeen: jest.fn(),
+}));
+
+jest.mock('../scheduleStore', () => ({
+  useScheduleStore: { getState: jest.fn(() => ({ load: jest.fn() })) },
 }));
 
 const ORIGINAL_ENV = process.env;
+
+function setupSupabaseMode() {
+  process.env = {
+    ...ORIGINAL_ENV,
+    EXPO_PUBLIC_SUPABASE_URL: 'https://example.supabase.co',
+    EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'anon-key',
+  };
+}
 
 /**
  * requestsStore is the client-side state for the migration-0005 approval
@@ -51,14 +64,6 @@ describe('requestsStore', () => {
     expect(createTimeChangeRequest).not.toHaveBeenCalled();
     expect(useRequestsStore.getState().error).toMatch(/מצב הדגמה/);
   });
-
-  function setupSupabaseMode() {
-    process.env = {
-      ...ORIGINAL_ENV,
-      EXPO_PUBLIC_SUPABASE_URL: 'https://example.supabase.co',
-      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'anon-key',
-    };
-  }
 
   it('Supabase mode: createSwap calls the RPC then reloads both lists', async () => {
     jest.resetModules();
@@ -209,5 +214,303 @@ describe('requestsStore', () => {
     useRequestsStore.getState().clearError();
 
     expect(useRequestsStore.getState().error).toBeNull();
+  });
+});
+
+/**
+ * approveSwap / rejectSwap / approveTimeChange / rejectTimeChange /
+ * markResultsSeen / load()'s own failure path — none of these were
+ * previously exercised beyond the Hebrew-error-mapping cases (which only
+ * ever hit createTimeChange's catch and approveSwap's catch). This also
+ * covers reloadScheduleAndNotifications(), the best-effort helper that
+ * refreshes scheduleStore after a swap/time-change approval mutates a walk
+ * directly server-side (A3): its early-return (no familyId known yet), its
+ * real call (familyId known), and its own catch (a failed reload must never
+ * surface as an approval failure, since the approval itself already
+ * succeeded).
+ */
+describe('requestsStore — approveSwap / rejectSwap / approveTimeChange / rejectTimeChange / markResultsSeen / load failure', () => {
+  afterEach(() => {
+    process.env = ORIGINAL_ENV;
+    jest.clearAllMocks();
+  });
+
+  it('load() surfaces a server failure via `error` without wiping the last successfully loaded lists', async () => {
+    jest.resetModules();
+    setupSupabaseMode();
+    const { useRequestsStore } = require('../requestsStore');
+    const { listSwapRequests, listTimeChangeRequests } = require('../../lib/requests');
+    (listSwapRequests as jest.Mock).mockRejectedValue(new Error('network down'));
+    (listTimeChangeRequests as jest.Mock).mockResolvedValue([]);
+    useRequestsStore.setState({ swapRequests: [{ id: 'stale', status: 'pending' }] });
+
+    await useRequestsStore.getState().load();
+
+    expect(useRequestsStore.getState().loading).toBe(false);
+    expect(useRequestsStore.getState().error).toBe('משהו השתבש, נסו שוב');
+    expect(useRequestsStore.getState().swapRequests).toEqual([{ id: 'stale', status: 'pending' }]);
+  });
+
+  it('createSwap surfaces a server RPC failure via `error`', async () => {
+    jest.resetModules();
+    setupSupabaseMode();
+    const { useRequestsStore } = require('../requestsStore');
+    const { createSwapRequest } = require('../../lib/requests');
+    (createSwapRequest as jest.Mock).mockRejectedValue(new Error('some unrecognized failure'));
+
+    await useRequestsStore.getState().createSwap('walk-1', 'walk-2');
+
+    expect(useRequestsStore.getState().error).toBe('משהו השתבש, נסו שוב');
+  });
+
+  it('approveSwap succeeds, reloads both lists, and — when a familyId is known — reloads the schedule store too', async () => {
+    jest.resetModules();
+    setupSupabaseMode();
+    const { useRequestsStore } = require('../requestsStore');
+    const { useAuthStore } = require('../authStore');
+    const { useScheduleStore } = require('../scheduleStore');
+    const { approveSwapRequest, listSwapRequests, listTimeChangeRequests } = require('../../lib/requests');
+    (approveSwapRequest as jest.Mock).mockResolvedValue(undefined);
+    (listSwapRequests as jest.Mock).mockResolvedValue([{ id: 'req-1', status: 'approved' }]);
+    (listTimeChangeRequests as jest.Mock).mockResolvedValue([]);
+    const scheduleLoad = jest.fn().mockResolvedValue(true);
+    (useScheduleStore.getState as jest.Mock).mockReturnValue({ load: scheduleLoad });
+    useAuthStore.setState({ familyId: 'family-1' });
+
+    await useRequestsStore.getState().approveSwap('req-1');
+
+    expect(approveSwapRequest).toHaveBeenCalledWith('req-1');
+    expect(useRequestsStore.getState().swapRequests).toEqual([{ id: 'req-1', status: 'approved' }]);
+    expect(useRequestsStore.getState().error).toBeNull();
+    expect(scheduleLoad).toHaveBeenCalledWith('family-1');
+  });
+
+  it('approveSwap never reloads the schedule store when no familyId is known yet (reloadScheduleAndNotifications early-return)', async () => {
+    jest.resetModules();
+    setupSupabaseMode();
+    const { useRequestsStore } = require('../requestsStore');
+    const { useAuthStore } = require('../authStore');
+    const { useScheduleStore } = require('../scheduleStore');
+    const { approveSwapRequest, listSwapRequests, listTimeChangeRequests } = require('../../lib/requests');
+    (approveSwapRequest as jest.Mock).mockResolvedValue(undefined);
+    (listSwapRequests as jest.Mock).mockResolvedValue([]);
+    (listTimeChangeRequests as jest.Mock).mockResolvedValue([]);
+    const scheduleLoad = jest.fn();
+    (useScheduleStore.getState as jest.Mock).mockReturnValue({ load: scheduleLoad });
+    useAuthStore.setState({ familyId: null });
+
+    await useRequestsStore.getState().approveSwap('req-1');
+
+    expect(scheduleLoad).not.toHaveBeenCalled();
+    expect(useRequestsStore.getState().error).toBeNull();
+  });
+
+  it('a failed schedule-store reload after approveSwap is swallowed (best-effort) and never surfaces as an approval failure', async () => {
+    jest.resetModules();
+    setupSupabaseMode();
+    const { useRequestsStore } = require('../requestsStore');
+    const { useAuthStore } = require('../authStore');
+    const { useScheduleStore } = require('../scheduleStore');
+    const { approveSwapRequest, listSwapRequests, listTimeChangeRequests } = require('../../lib/requests');
+    (approveSwapRequest as jest.Mock).mockResolvedValue(undefined);
+    (listSwapRequests as jest.Mock).mockResolvedValue([]);
+    (listTimeChangeRequests as jest.Mock).mockResolvedValue([]);
+    const scheduleLoad = jest.fn().mockRejectedValue(new Error('schedule reload blew up'));
+    (useScheduleStore.getState as jest.Mock).mockReturnValue({ load: scheduleLoad });
+    useAuthStore.setState({ familyId: 'family-1' });
+
+    await useRequestsStore.getState().approveSwap('req-1');
+
+    expect(scheduleLoad).toHaveBeenCalledWith('family-1');
+    expect(useRequestsStore.getState().error).toBeNull();
+  });
+
+  it('rejectSwap succeeds and reloads both lists', async () => {
+    jest.resetModules();
+    setupSupabaseMode();
+    const { useRequestsStore } = require('../requestsStore');
+    const { rejectSwapRequest, listSwapRequests, listTimeChangeRequests } = require('../../lib/requests');
+    (rejectSwapRequest as jest.Mock).mockResolvedValue(undefined);
+    (listSwapRequests as jest.Mock).mockResolvedValue([{ id: 'req-1', status: 'rejected' }]);
+    (listTimeChangeRequests as jest.Mock).mockResolvedValue([]);
+
+    await useRequestsStore.getState().rejectSwap('req-1');
+
+    expect(rejectSwapRequest).toHaveBeenCalledWith('req-1');
+    expect(useRequestsStore.getState().swapRequests).toEqual([{ id: 'req-1', status: 'rejected' }]);
+    expect(useRequestsStore.getState().error).toBeNull();
+  });
+
+  it('rejectSwap surfaces a server rejection via `error`', async () => {
+    jest.resetModules();
+    setupSupabaseMode();
+    const { useRequestsStore } = require('../requestsStore');
+    const { rejectSwapRequest } = require('../../lib/requests');
+    (rejectSwapRequest as jest.Mock).mockRejectedValue(new Error('cannot reject an already-approved request'));
+
+    await useRequestsStore.getState().rejectSwap('req-1');
+
+    expect(useRequestsStore.getState().error).toBe('משהו השתבש, נסו שוב');
+  });
+
+  it('approveTimeChange succeeds, reloads both lists, and reloads the schedule store', async () => {
+    jest.resetModules();
+    setupSupabaseMode();
+    const { useRequestsStore } = require('../requestsStore');
+    const { useAuthStore } = require('../authStore');
+    const { useScheduleStore } = require('../scheduleStore');
+    const { approveTimeChangeRequest, listSwapRequests, listTimeChangeRequests } = require('../../lib/requests');
+    (approveTimeChangeRequest as jest.Mock).mockResolvedValue(undefined);
+    (listSwapRequests as jest.Mock).mockResolvedValue([]);
+    (listTimeChangeRequests as jest.Mock).mockResolvedValue([{ id: 'tc-1', status: 'approved' }]);
+    const scheduleLoad = jest.fn().mockResolvedValue(true);
+    (useScheduleStore.getState as jest.Mock).mockReturnValue({ load: scheduleLoad });
+    useAuthStore.setState({ familyId: 'family-1' });
+
+    await useRequestsStore.getState().approveTimeChange('tc-1');
+
+    expect(approveTimeChangeRequest).toHaveBeenCalledWith('tc-1');
+    expect(useRequestsStore.getState().timeChangeRequests).toEqual([{ id: 'tc-1', status: 'approved' }]);
+    expect(scheduleLoad).toHaveBeenCalledWith('family-1');
+  });
+
+  it('approveTimeChange surfaces a server rejection via `error`', async () => {
+    jest.resetModules();
+    setupSupabaseMode();
+    const { useRequestsStore } = require('../requestsStore');
+    const { approveTimeChangeRequest } = require('../../lib/requests');
+    (approveTimeChangeRequest as jest.Mock).mockRejectedValue(new Error('some brand new failure'));
+
+    await useRequestsStore.getState().approveTimeChange('tc-1');
+
+    expect(useRequestsStore.getState().error).toBe('משהו השתבש, נסו שוב');
+  });
+
+  it('rejectTimeChange succeeds and reloads both lists', async () => {
+    jest.resetModules();
+    setupSupabaseMode();
+    const { useRequestsStore } = require('../requestsStore');
+    const { rejectTimeChangeRequest, listSwapRequests, listTimeChangeRequests } = require('../../lib/requests');
+    (rejectTimeChangeRequest as jest.Mock).mockResolvedValue(undefined);
+    (listSwapRequests as jest.Mock).mockResolvedValue([]);
+    (listTimeChangeRequests as jest.Mock).mockResolvedValue([{ id: 'tc-1', status: 'rejected' }]);
+
+    await useRequestsStore.getState().rejectTimeChange('tc-1');
+
+    expect(rejectTimeChangeRequest).toHaveBeenCalledWith('tc-1');
+    expect(useRequestsStore.getState().timeChangeRequests).toEqual([{ id: 'tc-1', status: 'rejected' }]);
+  });
+
+  it('rejectTimeChange surfaces a server rejection via `error`', async () => {
+    jest.resetModules();
+    setupSupabaseMode();
+    const { useRequestsStore } = require('../requestsStore');
+    const { rejectTimeChangeRequest } = require('../../lib/requests');
+    (rejectTimeChangeRequest as jest.Mock).mockRejectedValue(new Error('cannot reject'));
+
+    await useRequestsStore.getState().rejectTimeChange('tc-1');
+
+    expect(useRequestsStore.getState().error).toBe('משהו השתבש, נסו שוב');
+  });
+
+  it('markResultsSeen is a no-op in local/demo mode (never calls the RPC)', async () => {
+    jest.resetModules();
+    process.env = { ...ORIGINAL_ENV };
+    delete process.env.EXPO_PUBLIC_SUPABASE_URL;
+    delete process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+    const { useRequestsStore } = require('../requestsStore');
+    const { markMyRequestResultsSeen } = require('../../lib/requests');
+
+    await useRequestsStore.getState().markResultsSeen();
+
+    expect(markMyRequestResultsSeen).not.toHaveBeenCalled();
+  });
+
+  it('markResultsSeen calls the RPC then reloads both lists', async () => {
+    jest.resetModules();
+    setupSupabaseMode();
+    const { useRequestsStore } = require('../requestsStore');
+    const { markMyRequestResultsSeen, listSwapRequests, listTimeChangeRequests } = require('../../lib/requests');
+    (markMyRequestResultsSeen as jest.Mock).mockResolvedValue(undefined);
+    (listSwapRequests as jest.Mock).mockResolvedValue([{ id: 'req-1', status: 'approved', resultSeen: true }]);
+    (listTimeChangeRequests as jest.Mock).mockResolvedValue([]);
+
+    await useRequestsStore.getState().markResultsSeen();
+
+    expect(markMyRequestResultsSeen).toHaveBeenCalled();
+    expect(useRequestsStore.getState().swapRequests).toEqual([
+      { id: 'req-1', status: 'approved', resultSeen: true },
+    ]);
+  });
+
+  it('markResultsSeen surfaces a server failure via `error`', async () => {
+    jest.resetModules();
+    setupSupabaseMode();
+    const { useRequestsStore } = require('../requestsStore');
+    const { markMyRequestResultsSeen } = require('../../lib/requests');
+    (markMyRequestResultsSeen as jest.Mock).mockRejectedValue(new Error('boom'));
+
+    await useRequestsStore.getState().markResultsSeen();
+
+    expect(useRequestsStore.getState().error).toBe('משהו השתבש, נסו שוב');
+  });
+
+  it('load() is a no-op in local/demo mode (never calls the RPC)', async () => {
+    jest.resetModules();
+    process.env = { ...ORIGINAL_ENV };
+    delete process.env.EXPO_PUBLIC_SUPABASE_URL;
+    delete process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+    const { useRequestsStore } = require('../requestsStore');
+    const { listSwapRequests, listTimeChangeRequests } = require('../../lib/requests');
+
+    await useRequestsStore.getState().load();
+
+    expect(listSwapRequests).not.toHaveBeenCalled();
+    expect(listTimeChangeRequests).not.toHaveBeenCalled();
+    expect(useRequestsStore.getState().loading).toBe(false);
+  });
+
+  it("load()'s failure is never logged to the console in a production build", async () => {
+    jest.resetModules();
+    setupSupabaseMode();
+    process.env.NODE_ENV = 'production';
+    const { useRequestsStore } = require('../requestsStore');
+    const { listSwapRequests, listTimeChangeRequests } = require('../../lib/requests');
+    (listSwapRequests as jest.Mock).mockRejectedValue(new Error('network down'));
+    (listTimeChangeRequests as jest.Mock).mockResolvedValue([]);
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    await useRequestsStore.getState().load();
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(useRequestsStore.getState().error).toBe('משהו השתבש, נסו שוב');
+    spy.mockRestore();
+  });
+
+  it('read-only Test Mode also blocks approveSwap, rejectSwap, approveTimeChange, rejectTimeChange, and markResultsSeen', async () => {
+    jest.resetModules();
+    setupSupabaseMode();
+    const { useRequestsStore } = require('../requestsStore');
+    const { useAuthStore } = require('../authStore');
+    const {
+      approveSwapRequest,
+      rejectSwapRequest,
+      approveTimeChangeRequest,
+      rejectTimeChangeRequest,
+      markMyRequestResultsSeen,
+    } = require('../../lib/requests');
+    useAuthStore.setState({ testModeUserId: 'member-1' });
+
+    await useRequestsStore.getState().approveSwap('req-1');
+    await useRequestsStore.getState().rejectSwap('req-1');
+    await useRequestsStore.getState().approveTimeChange('tc-1');
+    await useRequestsStore.getState().rejectTimeChange('tc-1');
+    await useRequestsStore.getState().markResultsSeen();
+
+    expect(approveSwapRequest).not.toHaveBeenCalled();
+    expect(rejectSwapRequest).not.toHaveBeenCalled();
+    expect(approveTimeChangeRequest).not.toHaveBeenCalled();
+    expect(rejectTimeChangeRequest).not.toHaveBeenCalled();
+    expect(markMyRequestResultsSeen).not.toHaveBeenCalled();
   });
 });
