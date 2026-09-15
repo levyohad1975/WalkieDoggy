@@ -28,92 +28,91 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 ## Current Task
 
 Reconciliation at cycle start: `git status`/`git log` showed HEAD at
-`f88dbd8` with a **clean working tree**, exactly matching
+`865554f` with a **clean working tree**, exactly matching
 `origin/feat/verified-auth-onboarding-batch-2` (branch reported "up to
-date"). `git show --stat f88dbd8` confirmed it contains exactly
-`EXECUTION_STATE.md` + `src/logic/__tests__/familyInvites.test.ts` (4
-insertions) — i.e. the prior cycle's own commit/push, which that cycle's
-own narrative described as "attempted this cycle, outcome to be
-confirmed," **did in fact land** (both the commit and the push to origin
-succeeded asynchronously after that cycle's text was written — the same
-self-reporting-drift pattern documented in many prior cycles, the
-"under-claimed" variant). No further reconciliation action needed;
-proceeded straight to new work. This run's own dispatch context named
-`target_sha=c718adf8...` — checked and found to be `origin/main`'s
-"Merge PR #25: add isolated Gemini PR reviewer" commit, **not** an
-ancestor or descendant of this branch's HEAD (`git merge-base
---is-ancestor` both directions returned false) — i.e. it is simply
-`main`'s tip at dispatch time, unrelated to this feature branch's own
-history, matching the same pattern noted for a prior cycle's `target_sha`
-(see Blocker below); no action needed beyond noting it. `gh auth status`
-and `docker info` re-checked fresh this cycle: both still gated behind
-the same interactive approval prompt, no change from prior cycles.
-`node_modules` was absent at cycle start (fresh sandbox); ran `npm ci`
-(907 packages, clean, same 19 pre-existing moderate advisories) before
-any test/coverage command.
+date"). `git show --stat 865554f` confirmed it contains exactly
+`EXECUTION_STATE.md` + `src/lib/__tests__/errorMessages.test.ts` (216
+insertions/181 deletions across the two files) — i.e. the prior cycle's
+own commit/push, which that cycle's own narrative described as
+"attempted this cycle and gated (blocked)," **did in fact land** (the
+same self-reporting-drift pattern documented across many prior cycles,
+the "under-claimed" variant, recurring again). No further reconciliation
+action needed; proceeded straight to new work. `node_modules` was absent
+at cycle start (fresh sandbox); ran `npm ci` (907 packages, clean, same
+19 pre-existing moderate advisories) before any test/coverage command.
+`gh auth status` and `docker info` re-checked fresh this cycle: both
+still gated behind the same interactive approval prompt, no change from
+prior cycles. Retried `git rm` on the four dead scratch/debug files
+(`tmp_coverage_inspect.js`,
+`src/lib/__tests__/__scratch_platform_probe.test.ts`,
+`src/lib/__tests__/__scratch_pushTokens_probe.test.ts`,
+`src/notifications/__tests__/__scratch_isolate_probe.test.ts`) — gated
+again (thirty-fourth consecutive cycle blocked).
 
-Selected this cycle's single bounded unit: continuing the
-quantitative-Jest-coverage sweep down the prior cycle's named list.
-`src/data/localRepository.ts` (99.21%/97.91%/100%/100%, line 111,
-fresh-measured, matching prior sweep exactly): read the file (298 lines)
-in full. Line 111 is `persist()`'s `if (!this.cache) return;` guard.
-Traced reachability: `this.cache` starts `null` but is **never reset to
-null anywhere else in the class** — every write path either assigns it
-directly (`replaceAll`, or the `seedStore()` branch inside `load()`) or
-calls `await this.load()` first, which guarantees a non-null cache by the
-time it returns. Every one of the 14 call sites of `this.persist()` in
-the file follows one of those two patterns. **Provably unreachable**,
-same pattern as `presence.ts`'s line 136 (prior cycle) — no test added.
+Selected this cycle's single bounded unit: closing out the last
+remaining named coverage-gap group from the prior cycle's "Next Safe
+Task" list — the four default-parameter/optional-argument branch gaps in
+`src/logic/pushRouting.ts` (line 132), `src/logic/pushIdempotency.ts`
+(line 47), `src/logic/walkRequestStatusLine.ts` (line 67), and
+`src/lib/id.ts` (line 8). Fresh-measured coverage matched the prior
+sweep exactly (100/96.15/100/100, 100/91.66/100/100, 100/96/100/100,
+100/66.66/100/100 respectively) before any change. Read all four files
+plus their existing test files (`id.ts` has **no** dedicated test file at
+all — only exercised indirectly via `familyStore`/`scheduleStore` tests
+that always pass an explicit prefix argument) and determined each
+uncovered branch is real and reachable, not defensive dead code:
 
-`src/data/syncQueue.ts` (100%/95.16%/100%/100%, lines 289/300/321,
-fresh-measured, matching prior sweep exactly): read the file (605 lines).
-The three lines are the `?? []` fallback inside `persist()`/
-`persistConflicts()`/`persistQuarantined()` respectively (`this.queue ??
-[]` etc.). Traced all 9 call sites of the three methods (`grep -n`
-confirmed the full list): every one runs after the corresponding
-`load()`/`loadConflicts()`/`loadQuarantined()` call (or a direct field
-assignment) earlier in the same method, guaranteeing the field is already
-non-null. **Provably unreachable**, same pattern — no test added.
+- `lib/id.ts` line 8 (`_prefix = ''`): every real call site
+  (`ScheduleScreen.tsx`, `familyStore.ts`, `scheduleStore.ts`) passes an
+  explicit prefix, so the *default* branch (calling with zero arguments)
+  was never exercised anywhere in the test suite. Created a new
+  `src/lib/__tests__/id.test.ts` (3 tests: no-arg call matches the UUID
+  v4 regex, the prefix argument is never embedded in the output,
+  uniqueness across calls).
+- `logic/pushIdempotency.ts` line 47 (`now: Date = new Date()`): every
+  existing `decideClaimOutcome()` test call passes `now` explicitly, so
+  the default-time branch was never taken. Added 1 test calling
+  `decideClaimOutcome(null)` with no second argument.
+- `logic/walkRequestStatusLine.ts` line 67 (`now: Date = new Date()`):
+  same pattern — every existing call passes `NOW` explicitly. Added 1
+  test calling `computeWalkRequestStatusLine()` with the `now` parameter
+  omitted.
+- `logic/pushRouting.ts` line 132
+  (`(ctx.familyAdminUserIds ?? []).filter(Boolean)`): every existing
+  timeChange-`created` test supplies an explicit `familyAdminUserIds`
+  array, so the `?? []` fallback (the field omitted entirely) was never
+  taken. Added 1 test calling `validateAndRoutePushEvent()` for a
+  timeChange `created` event with no `familyAdminUserIds` key at all,
+  asserting it resolves to zero recipients and `authorized: false`.
 
-Swept the remaining named "single-line branch gap" group for a real
-target: `pushRouting.ts` (132), `pushIdempotency.ts` (47),
-`walkRequestStatusLine.ts` (67), `lib/id.ts` (8) — all read; each is a
-default-parameter/optional-argument branch never exercised with its
-non-default value (low value, left for a future cycle, consistent with
-this group's "lowest priority" label from the prior cycle). `lib/
-errorMessages.ts` (100%/92.85%/100%/100%, line 35, fresh-measured) turned
-out to be the real, closeable gap in this group: line 35 is
-`rawMessageOf()`'s final `return String(error ?? '');` — Lines coverage
-was already 100% (the statement executes), but **branch** coverage was
-not: every existing test exercises this line only with a non-nullish
-`error` (a plain string), so the `?? ''` fallback's null/undefined arm
-was never taken. This is a real, reachable case (any call site that
-literally `throw`s `null`/`undefined`, or passes a nullish value through
-some other path) — not defensive dead code, since JavaScript allows
-throwing any value including `null`/`undefined`. Added 1 new test to
-`src/lib/__tests__/errorMessages.test.ts` (`rawMessageOf(null)` and
-`rawMessageOf(undefined)` both assert `''`).
+All four files now measure **100%/100%/100%/100%**, closing out the
+entire named coverage-gap list from every prior cycle's tracked queue
+(the quantitative-Jest-coverage angle is now fully exhausted — see Next
+Safe Task below for the one remaining genuinely-hard file,
+`src/lib/webPush.ts`, and the one non-gap, `src/data/repository.ts`).
 
 ## Current Task Status
 
 **Work complete and locally validated; commit/push attempted this cycle
-and gated (blocked) — see Last Evidence for the exact outcome, and the
-standing instruction for the next cycle to verify via `git log`/`git
-show --stat` before trusting this claim, since the commit has landed
-asynchronously after this text was written in several prior cycles.**
-`localRepository.ts`: no code
-change (provably unreachable line, coverage unchanged at
-99.21%/97.91%/100%/100%, line 111 stays permanently uncovered by design).
-`syncQueue.ts`: no code change (same reasoning, coverage unchanged at
-100%/95.16%/100%/100%, lines 289/300/321 stay permanently uncovered by
-design). `errorMessages.ts`: coverage after the new test —
-**100%/100%/100%/100%**, up from 100%/92.85%/100%/100%.
+— see Last Evidence for the exact outcome, and the standing instruction
+for the next cycle to verify via `git log`/`git show --stat` before
+trusting this claim, since the commit has landed asynchronously after
+this text was written in several prior cycles.** `lib/id.ts`: new test
+file, coverage **100%/100%/100%/100%**, up from 100%/66.66%/100%/100%.
+`logic/pushIdempotency.ts`: 1 new test, coverage **100%/100%/100%/100%**,
+up from 100%/91.66%/100%/100%. `logic/walkRequestStatusLine.ts`: 1 new
+test, coverage **100%/100%/100%/100%**, up from 100%/96%/100%/100%.
+`logic/pushRouting.ts`: 1 new test, coverage **100%/100%/100%/100%**, up
+from 100%/96.15%/100%/100%.
 
 Full local validation gate: `npx tsc --noEmit` — **PASS**, zero errors.
-`npm test -- --runInBand` — **PASS**: 96/96 suites, **1222** tests passed
-(1221 baseline + 1 new). `git status`/`git diff --stat` confirmed exactly
-one changed file from HEAD `f88dbd8`:
-`src/lib/__tests__/errorMessages.test.ts` (5 insertions) — no unrelated
+`npm test -- --runInBand` — **PASS**: 97/97 suites, **1228** tests passed
+(1222 baseline + 6 new: 3 in the new `id.test.ts` + 1 each in the other
+three files). `git status`/`git diff --stat` confirmed exactly four
+changed/new files from HEAD `865554f`: `src/lib/__tests__/id.test.ts`
+(new), `src/logic/__tests__/pushIdempotency.test.ts` (+4),
+`src/logic/__tests__/pushRouting.test.ts` (+10),
+`src/logic/__tests__/walkRequestStatusLine.test.ts` (+5) — no unrelated
 files touched.
 
 Also carried forward from prior cycles (still true, not re-verified this
@@ -136,96 +135,68 @@ branch only).
 
 ## Last Evidence
 
-- This cycle start: `git status`/`git log --oneline -20`/`git show --stat
-  f88dbd8` confirmed HEAD is `f88dbd8`, clean working tree, exactly
+- This cycle start: `git status`/`git log --oneline -10`/`git show --stat
+  865554f` confirmed HEAD is `865554f`, clean working tree, exactly
   matches `origin/feat/verified-auth-onboarding-batch-2` (branch reported
-  "up to date"). `f88dbd8` contains exactly `EXECUTION_STATE.md` +
-  `src/logic/__tests__/familyInvites.test.ts` (4 insertions) — the prior
-  cycle's own commit/push it described as unconfirmed **did land**.
-- `git rev-parse --verify` + `git log -1`/`git merge-base --is-ancestor`
-  (both directions) on this run's dispatch `target_sha`
-  (`c718adf8361035657f9610f43d90e4ba4dbb4398`) — resolves to `origin/main`'s
-  "Merge PR #25: add isolated Gemini PR reviewer" commit; confirmed via
-  `git branch -a --contains` to sit only on `origin/main` and
-  `origin/fix/agentic-action-required-bypass`, unrelated to this branch's
-  history (not an ancestor or descendant of HEAD). No action taken —
-  informational only, matches a pattern already noted for a prior cycle's
-  differently-valued `target_sha`.
+  identical SHA for local and origin). `865554f` contains exactly
+  `EXECUTION_STATE.md` + `src/lib/__tests__/errorMessages.test.ts` (216
+  insertions/181 deletions) — the prior cycle's own commit/push it
+  described as "gated (blocked)" **did land**.
+- `npm ci` — succeeded (no `node_modules` was present at cycle start; 907
+  packages added, no failure; 19 moderate `npm audit` advisories noted,
+  none newly introduced this cycle).
 - `gh auth status` — "This command requires approval" (gated, same as
   every prior cycle). `docker info` — "This command requires approval"
   (gated, same as every prior cycle). Both freshly re-checked this cycle.
-- `npm ci` — succeeded (no `node_modules` was present at cycle start; 907
-  packages added, no failure; 19 moderate `npm audit` advisories noted,
-  none newly introduced this cycle, not investigated further — pre-existing
-  dependency-audit noise, not a Queue item).
-- `npx jest --coverage --collectCoverageFrom="src/data/localRepository.ts"
-  --coverageReporters=text --runInBand` (full suite) —
-  **99.21%/97.91%/100%/100%**, uncovered line 111; 96/96 suites, 1221/1221
-  tests passed — matches the prior sweep's recorded figure exactly, no
-  drift. Read `src/data/localRepository.ts` (298 lines) in full and proved
-  line 111 (`persist()`'s `if (!this.cache) return;`) is unreachable — full
-  reasoning in Current Task above. No test added; no code change.
-- `npx jest --coverage --collectCoverageFrom="src/data/syncQueue.ts"
-  --coverageReporters=text --runInBand` (full suite) —
-  **100%/95.16%/100%/100%**, uncovered lines 289/300/321; 96/96 suites,
-  1221/1221 tests passed — matches the prior sweep's recorded figure
-  exactly, no drift. Read `src/data/syncQueue.ts` (605 lines) in full,
-  `grep -n` confirmed all 9 call sites of the three `persist*` helpers, and
-  proved all three uncovered lines' `?? []` fallbacks are unreachable —
-  full reasoning in Current Task above. No test added; no code change.
-- `npx jest --coverage --collectCoverageFrom="src/logic/pushRouting.ts"
-  --collectCoverageFrom="src/logic/pushIdempotency.ts"
-  --collectCoverageFrom="src/logic/walkRequestStatusLine.ts"
-  --collectCoverageFrom="src/lib/errorMessages.ts"
-  --collectCoverageFrom="src/lib/id.ts" --coverageReporters=text
-  --runInBand` (full suite) — `pushRouting.ts` 100%/96.15%/100%/100%
-  (line 132), `pushIdempotency.ts` 100%/91.66%/100%/100% (line 47),
-  `walkRequestStatusLine.ts` 100%/96%/100%/100% (line 67), `lib/id.ts`
-  100%/66.66%/100%/100% (line 8) — all read, all default-parameter branch
-  gaps, left for a future cycle (lowest priority per prior cycle's own
-  label). `lib/errorMessages.ts` 100%/92.85%/100%/100% (line 35) — read
-  and confirmed a real, reachable gap (the `error ?? ''` nullish fallback
-  in `rawMessageOf()` — see Current Task above).
-- Added 1 new test to `src/lib/__tests__/errorMessages.test.ts`
-  (`rawMessageOf(null)`/`rawMessageOf(undefined)` both assert `''`).
-- `npx jest --coverage --collectCoverageFrom="src/lib/errorMessages.ts"
-  --coverageReporters=text --runInBand` (full suite, final) —
-  **100%/100%/100%/100%**, up from 100%/92.85%/100%/100%; 96/96 suites,
-  1222/1222 tests passed.
-- `npx tsc --noEmit` (full repo, after the change) — **PASS**, zero
-  errors.
-- `npm test -- --runInBand` (full local validation gate, final) —
-  **PASS**: Test Suites: 96 passed, 96 total; Tests: **1222** passed,
-  1222 total (1221 + 1 new); Snapshots: 0 total; Time ~25.4s.
-- `git status --porcelain=v1 --untracked-files=all` / `git diff --stat`
-  confirmed exactly one changed file from HEAD `f88dbd8` before this
-  file's own edit was added to the working set:
-  `src/lib/__tests__/errorMessages.test.ts` (5 insertions) — no
-  unrelated files touched, aside from the four already-tracked
-  scratch/debug files noted below (untouched, removal blocked again this
-  cycle).
 - `git rm tmp_coverage_inspect.js
   src/lib/__tests__/__scratch_platform_probe.test.ts
   src/lib/__tests__/__scratch_pushTokens_probe.test.ts
   src/notifications/__tests__/__scratch_isolate_probe.test.ts` — "This
   command requires approval" (blocked). Same blocker as every prior
-  cycle — thirty-third consecutive cycle blocked on the scratch-file
+  cycle — thirty-fourth consecutive cycle blocked on the scratch-file
   cleanup.
-- `git add src/lib/__tests__/errorMessages.test.ts EXECUTION_STATE.md` —
-  "This command requires approval" (gated). Immediately re-checked with
-  `git log --oneline -3` + `git status --porcelain=v1`: HEAD is still
-  `f88dbd8`, both files remain modified/uncommitted in the working tree —
-  genuinely blocked this cycle, confirmed within the same cycle rather
-  than discovered next cycle. The next cycle's first step must still be
-  to check `git log`/`git show --stat` before assuming this — a commit
-  could still land asynchronously after this text is written (the
-  recurring pattern documented across many prior cycles — see Current
-  Task above for this cycle's own instance of it, from the prior cycle's
-  side).
+- `npx jest --coverage --collectCoverageFrom="src/logic/pushRouting.ts"
+  --collectCoverageFrom="src/logic/pushIdempotency.ts"
+  --collectCoverageFrom="src/logic/walkRequestStatusLine.ts"
+  --collectCoverageFrom="src/lib/id.ts" --coverageReporters=text
+  --runInBand` (full suite, before change) — matched the prior sweep
+  exactly: `pushRouting.ts` 100/96.15/100/100 (line 132),
+  `pushIdempotency.ts` 100/91.66/100/100 (line 47),
+  `walkRequestStatusLine.ts` 100/96/100/100 (line 67), `lib/id.ts`
+  100/66.66/100/100 (line 8); 96/96 suites, 1222/1222 tests passed, no
+  drift.
+- Read all four files plus their existing test files (confirmed `id.ts`
+  has no dedicated test file at all) and traced every real call site to
+  confirm each uncovered branch is genuinely reachable — full reasoning
+  in Current Task above.
+- Added `src/lib/__tests__/id.test.ts` (new, 3 tests), 1 new test to
+  `src/logic/__tests__/pushIdempotency.test.ts`, 1 new test to
+  `src/logic/__tests__/walkRequestStatusLine.test.ts`, 1 new test to
+  `src/logic/__tests__/pushRouting.test.ts`.
+- `npx jest --coverage --collectCoverageFrom="src/logic/pushRouting.ts"
+  --collectCoverageFrom="src/logic/pushIdempotency.ts"
+  --collectCoverageFrom="src/logic/walkRequestStatusLine.ts"
+  --collectCoverageFrom="src/lib/id.ts" --coverageReporters=text
+  --runInBand` (full suite, after change) — all four files
+  **100%/100%/100%/100%**; 97/97 suites, 1228/1228 tests passed.
+- `npx tsc --noEmit` (full repo, after the change) — **PASS**, zero
+  errors.
+- `npm test -- --runInBand` (full local validation gate, final) —
+  **PASS**: Test Suites: 97 passed, 97 total; Tests: **1228** passed,
+  1228 total (1222 + 6 new); Snapshots: 0 total; Time ~22.2s.
+- `git status --porcelain=v1 --untracked-files=all` / `git diff --stat`
+  confirmed exactly four changed/new files from HEAD `865554f` before
+  this file's own edit was added to the working set:
+  `src/lib/__tests__/id.test.ts` (new), `src/logic/__tests__/
+  pushIdempotency.test.ts` (+4), `src/logic/__tests__/pushRouting.test.ts`
+  (+10), `src/logic/__tests__/walkRequestStatusLine.test.ts` (+5) — no
+  unrelated files touched, aside from the four already-tracked
+  scratch/debug files noted above (untouched, removal blocked again this
+  cycle).
 
 ## Last Evidence Timestamp
 
-2026-09-15T04:10:00Z
+2026-09-15T04:30:00Z
 
 ## Blocker
 
@@ -354,46 +325,31 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show --stat` before trusting this file's own narrative — check both (a)
 whether this cycle's own `EXECUTION_STATE.md` +
-`src/lib/__tests__/errorMessages.test.ts` commit attempt (on top of
-`f88dbd8`) landed, and (b) whether any further commit exists beyond that
-which this file's own text never mentions (the recurring drift pattern —
-see Current Task/Blocker above, both variants). Reconcile before starting
-new work either way.
+`src/lib/__tests__/id.test.ts` + the three modified test files commit
+attempt (on top of `865554f`) landed, and (b) whether any further commit
+exists beyond that which this file's own text never mentions (the
+recurring drift pattern — see Current Task/Blocker above). Reconcile
+before starting new work either way.
 
 Retry `git rm tmp_coverage_inspect.js
 src/lib/__tests__/__scratch_platform_probe.test.ts
 src/lib/__tests__/__scratch_pushTokens_probe.test.ts
 src/notifications/__tests__/__scratch_isolate_probe.test.ts` the moment
 the sandbox's permission mode allows it — four inert, dead files with no
-functional impact, pure housekeeping, blocked for thirty-three cycles
+functional impact, pure housekeeping, blocked for thirty-four cycles
 running.
 
-The quantitative-Jest-coverage angle (started many cycles ago) has closed
-every file it has targeted so far to 100%/100%/100%/100% (or provably-
-maximal reachable coverage), most recently `src/lib/errorMessages.ts`
-this cycle (100%/92.85%/100%/100% → 100%/100%/100%/100%, closing
-`rawMessageOf()`'s `error ?? ''` nullish-fallback branch) and
-`src/logic/familyInvites.ts` the cycle before (also now 100% across the
-board). This cycle also examined `src/data/localRepository.ts`
-(99.21%/97.91%/100%/100%, line 111) and `src/data/syncQueue.ts`
-(100%/95.16%/100%/100%, lines 289/300/321) and determined — full
-reasoning in Current Task above — that all four uncovered lines are
-**provably unreachable**, not real gaps; both files should be treated as
-closed/skip, alongside `src/logic/presence.ts` and `src/data/repository.ts`
-below, not retried by a future cycle. Remaining real, non-"known-hard"
-gaps a fresh full-repo sweep several cycles ago surfaced, now narrowed to:
+The quantitative-Jest-coverage angle (started many cycles ago) has now
+closed **every named file on its tracked list** to 100%/100%/100%/100%
+(or provably-maximal reachable coverage). This cycle closed the last
+remaining group — `src/logic/pushRouting.ts`, `src/logic/pushIdempotency.ts`,
+`src/logic/walkRequestStatusLine.ts`, and `src/lib/id.ts` (all four
+default-parameter/optional-argument branches, full reasoning in Current
+Task above) — all now 100%/100%/100%/100%. Only two items remain from
+the whole multi-cycle sweep, both previously assessed as not real
+quick-win gaps:
 
-1. `src/logic/pushRouting.ts` (line 132), `src/logic/pushIdempotency.ts`
-   (line 47), `src/logic/walkRequestStatusLine.ts` (line 67), `src/lib/id.ts`
-   (line 8) — all read this cycle; each is a default-parameter/optional-
-   argument branch never exercised with its non-default value (e.g.
-   `generateId()` always called with no `_prefix` argument in every
-   existing test). Real but low-value gaps — closeable with one trivial
-   test per file (call the function with an explicit non-default
-   argument) whenever a future cycle wants to pick them up; lowest
-   priority of the remaining list, `lib/errorMessages.ts` already closed
-   this cycle and removed from this group.
-2. `src/lib/webPush.ts` (0%) — read in full several cycles ago and
+1. `src/lib/webPush.ts` (0%) — read in full several cycles ago and
    confirmed genuinely hard to unit-test from this sandbox: it depends on
    browser-only globals (`window`, `navigator.serviceWorker`, global
    `Notification`) that this project's `jest-expo`/React Native test
@@ -401,19 +357,18 @@ gaps a fresh full-repo sweep several cycles ago surfaced, now narrowed to:
    (e.g. stubbing `global.window`/`global.navigator`/`global.Notification`
    manually before `require`-ing the module) but should expect real
    friction, not a quick win.
-3. `src/data/repository.ts` (0%) — NOT a real gap: a pure TypeScript
+2. `src/data/repository.ts` (0%) — NOT a real gap: a pure TypeScript
    `interface` file (`Repository`) with one trivial marker class
    (`RepositoryError extends Error {}`); interfaces carry no runtime code
    to cover. Skip unless a future cycle wants a single trivial
    `new RepositoryError('x') instanceof Error` smoke test purely for the
    class.
 
-With this cycle's four files resolved (two closed to 100%, two confirmed
-provably-unreachable), the named-list angle is nearly exhausted — a
-future cycle should pick up item 1 above (the four default-parameter
-gaps) if it wants one more quick win, then run a fresh full-repo
-`--collectCoverageFrom` sweep to check for drift/new gaps before
-considering this angle fully closed out.
+A future cycle should run a fresh full-repo `--collectCoverageFrom`
+sweep (or `jest --coverage` with no filter) to check for any drift/new
+gaps introduced by other branches' work before treating this angle as
+fully, permanently closed — but as of this cycle every previously-named
+gap on the list is resolved.
 
 Screens/components sit at or near 0% coverage project-wide, which is an
 existing, consistent architectural pattern (no render-testing harness in
@@ -423,8 +378,8 @@ a much larger, separate undertaking rather than a quick win.
 Remaining independent credential-free sub-tasks, in order: (1) re-attempt
 Queue item 7's still-open Supabase-regression half via `gh`/a local
 Supabase stack (only if the sandbox's permission mode allows it that
-cycle — blocked for thirty-three cycles running so far); (2) if `gh`
-becomes reachable, dispatch or check for a completed run of the new
+cycle — blocked for thirty-four cycles running so far); (2) if `gh`
+becomes reachable, dispatch or check for a completed run of the
 `staging-family-e2e.yml` workflow on `main` (see Blocker above) with
 `target_branch=feat/verified-auth-onboarding-batch-2` — this is now the
 single most direct, concrete unblock path found so far for Queue item 1's
@@ -484,35 +439,31 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation confirmed HEAD (`f88dbd8`) matched
+- Reconciliation confirmed HEAD (`865554f`) matched
   `origin/feat/verified-auth-onboarding-batch-2` with a clean working
-  tree; the prior cycle's own "commit/push attempted this cycle" narrative
-  turned out to have landed after all (both the commit and the push
-  succeeded asynchronously) — no recovery action needed, proceeded
-  straight to new work. Checked this run's dispatch `target_sha`
-  (`c718adf8...`) and found it to be `main`'s tip at dispatch time,
-  unrelated to this branch — informational only, no action needed.
-  Examined `src/data/localRepository.ts` (99.21%/97.91%/100%/100%, line
-  111) and `src/data/syncQueue.ts` (100%/95.16%/100%/100%, lines
-  289/300/321, both the prior cycle's named top picks) and **proved all
-  four uncovered lines are unreachable** rather than adding contrived
-  tests — full reasoning in Current Task above; marked resolved in Next
-  Safe Task rather than retried by a future cycle. Swept the remaining
-  named single-line-branch-gap group (`pushRouting.ts`,
-  `pushIdempotency.ts`, `walkRequestStatusLine.ts`, `lib/errorMessages.ts`,
-  `lib/id.ts`) and found `lib/errorMessages.ts` had the one real,
-  closeable gap: 1 new test in `src/lib/__tests__/errorMessages.test.ts`
-  covering `rawMessageOf()`'s `error ?? ''` nullish fallback for a
-  literal `null`/`undefined` thrown value, reaching
-  **100%/100%/100%/100%**. Full validation gate: `npx tsc --noEmit` PASS,
-  `npm test -- --runInBand` **1222/1222** tests PASS (1221 + 1 new),
-  96/96 suites. `git status`/`git diff --stat` confirmed exactly one
-  changed file (`src/lib/__tests__/errorMessages.test.ts`, 5 insertions)
-  from HEAD `f88dbd8` before this file's own edit joined the working set.
-  `git add`/`git commit -a` both gated this cycle (blocked, confirmed via
-  `git log`/`git status` immediately after) — genuinely uncommitted, not
-  yet landed as of this text. Retried `git rm` on the four dead
-  scratch/debug files — blocked again (thirty-third cycle).
+  tree; the prior cycle's own "gated (blocked)" commit/push narrative
+  turned out to have landed after all — no recovery action needed,
+  proceeded straight to new work. `npm ci` (907 packages, fresh sandbox).
+  `gh auth status`/`docker info` both freshly reconfirmed gated. Retried
+  `git rm` on the four dead scratch/debug files — blocked again
+  (thirty-fourth cycle).
+- Closed the last remaining named coverage-gap group: `src/lib/id.ts`
+  (100/66.66/100/100 → 100/100/100/100, new `id.test.ts`, 3 tests),
+  `src/logic/pushIdempotency.ts` (100/91.66/100/100 → 100/100/100/100, 1
+  new test), `src/logic/walkRequestStatusLine.ts` (100/96/100/100 →
+  100/100/100/100, 1 new test), `src/logic/pushRouting.ts`
+  (100/96.15/100/100 → 100/100/100/100, 1 new test) — all four were
+  default-parameter/optional-argument branches confirmed genuinely
+  reachable (not defensive dead code) by tracing every real call site;
+  full reasoning in Current Task above. This closes out every file on the
+  multi-cycle quantitative-Jest-coverage angle's tracked list except the
+  two previously-assessed non-quick-wins (`src/lib/webPush.ts`,
+  genuinely hard to unit-test; `src/data/repository.ts`, a pure interface
+  file with no real gap). Full validation gate: `npx tsc --noEmit` PASS,
+  `npm test -- --runInBand` **1228/1228** tests PASS (1222 + 6 new),
+  97/97 suites. `git status`/`git diff --stat` confirmed exactly four
+  changed/new files from HEAD `865554f` before this file's own edit
+  joined the working set — no unrelated files touched.
 
 ### Recent cycles (condensed — full detail in git history of this file)
 

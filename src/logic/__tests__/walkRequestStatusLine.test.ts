@@ -131,6 +131,11 @@ describe('computeWalkRequestStatusLine', () => {
     expect(result).toBeNull();
   });
 
+  it('defaults "now" to the real current time when omitted', () => {
+    const result = computeWalkRequestStatusLine({ id: 'walk-1' }, [], [timeChange()], walksById);
+    expect(result).toEqual({ text: '🕐 19:30 · ממתין', kind: 'timeChange', status: 'pending' });
+  });
+
   it('picks the MOST RECENT relevant request when several exist for the same walk', () => {
     const older = timeChange({
       id: 'tc-old',

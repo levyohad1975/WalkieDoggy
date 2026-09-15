@@ -135,6 +135,16 @@ describe('validateAndRoutePushEvent — time-change requests', () => {
     expect(result).toMatchObject({ authorized: true, recipientUserIds: ['requester'] });
   });
 
+  it('resolves no recipients (and denies) for a new time-change request when no admin list is provided at all', () => {
+    const result = validateAndRoutePushEvent(timeChangeRow(), 'created', {
+      callerUserId: 'requester',
+      callerFamilyId: 'fam1',
+      callerIsAdmin: false,
+    });
+    expect(result.authorized).toBe(false);
+    expect(result.recipientUserIds).toEqual([]);
+  });
+
   it('never broadcasts a swap request with no target to anyone', () => {
     const row = swapRow({ targetUserId: undefined });
     const result = validateAndRoutePushEvent(row, 'created', {
