@@ -1,5 +1,5 @@
 import type { Walk } from '../types';
-import { toDateOnly } from './rotation';
+import { localDateOnly } from './dateFormat';
 import { walkDateTime } from './nextWalk';
 
 /**
@@ -7,9 +7,13 @@ import { walkDateTime } from './nextWalk';
  * A future occurrence can transiently carry `skipped`/`done` after schedule
  * edits or request resolution; it must never be presented as a past
  * "לא בוצע" item before that day.
+ *
+ * Local calendar day, not UTC — see dateFormat.ts's doc comment on why a
+ * UTC-anchored "today" is wrong for a viewer-facing check like this one, for
+ * anyone in a timezone ahead of UTC (e.g. Israel).
  */
 export function isWalkEligibleForHistory(walk: Walk, now: Date = new Date()): boolean {
   return walk.status === 'pending'
     ? walkDateTime(walk).getTime() <= now.getTime()
-    : walk.date <= toDateOnly(now);
+    : walk.date <= localDateOnly(now);
 }

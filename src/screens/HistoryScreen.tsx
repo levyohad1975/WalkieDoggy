@@ -8,9 +8,8 @@ import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { summarizeWalksByUser } from '../logic/walkActions';
-import { toDateOnly } from '../logic/rotation';
 import { isOverdue } from '../logic/nextWalk';
-import { formatHistoryDate } from '../logic/dateFormat';
+import { formatHistoryDate, localDateOnly } from '../logic/dateFormat';
 import { isWalkEligibleForHistory } from '../logic/history';
 import { canAccessHistoryScreen } from '../logic/permissions';
 import { isSupabaseConfigured } from '../lib/supabase';
@@ -123,7 +122,10 @@ export function HistoryScreen() {
   const resolveWalk = resolveWalkId ? sourceWalks.find((w) => w.id === resolveWalkId) : undefined;
   const canResolveWalk = (w: Walk) => w.status === 'pending' && isOverdue(w) && (effectiveRole === 'admin' || w.responsibleUserId === effectiveUserId);
 
-  const weekAgo = useMemo(() => toDateOnly(new Date(Date.now() - 7 * 86400000)), []);
+  // Local calendar day, not UTC — see dateFormat.ts's doc comment; a
+  // UTC-anchored cutoff would shift this boundary by a day for anyone
+  // ahead of UTC (e.g. Israel) for a few hours after local midnight.
+  const weekAgo = useMemo(() => localDateOnly(new Date(Date.now() - 7 * 86400000)), []);
   const weeklyWalks = useMemo(
     () => sourceWalks.filter((w) => w.date >= weekAgo && isWalkEligibleForHistory(w)),
     [sourceWalks, weekAgo]
@@ -145,11 +147,11 @@ export function HistoryScreen() {
     [sourceWalks]
   );
 
-  const todayString = useMemo(() => toDateOnly(new Date()), []);
+  const todayString = useMemo(() => localDateOnly(new Date()), []);
   const rangeStartDate = useMemo(() => {
     if (rangeFilter === 'today') return todayString;
-    if (rangeFilter === '7d') return toDateOnly(new Date(Date.now() - 6 * 86400000));
-    if (rangeFilter === '30d') return toDateOnly(new Date(Date.now() - 29 * 86400000));
+    if (rangeFilter === '7d') return localDateOnly(new Date(Date.now() - 6 * 86400000));
+    if (rangeFilter === '30d') return localDateOnly(new Date(Date.now() - 29 * 86400000));
     return null;
   }, [rangeFilter, todayString]);
 
@@ -256,7 +258,7 @@ export function HistoryScreen() {
                 key={key}
                 onPress={() => {
                   if (key === 'custom') {
-                    setDraftCustomDate(customDate ?? toDateOnly(new Date()));
+                    setDraftCustomDate(customDate ?? localDateOnly(new Date()));
                     setCustomPickerOpen(true);
                   } else {
                     setRangeFilter(key);
@@ -281,7 +283,7 @@ export function HistoryScreen() {
               onChange={(_event: DateTimePickerEvent, selected?: Date) => {
                 setCustomPickerOpen(false);
                 if (selected) {
-                  const value = toDateOnly(selected);
+                  const value = localDateOnly(selected);
                   setCustomDate(value);
                   setRangeFilter('custom');
                 }
@@ -298,7 +300,7 @@ export function HistoryScreen() {
                   mode="date"
                   display="inline"
                   onChange={(_event: DateTimePickerEvent, selected?: Date) => {
-                    if (selected) setDraftCustomDate(toDateOnly(selected));
+                    if (selected) setDraftCustomDate(localDateOnly(selected));
                   }}
                 />
                 <View style={styles.dateModalActions}>
@@ -306,7 +308,7 @@ export function HistoryScreen() {
                     <RtlText style={styles.dateModalCancelText}>ביטול</RtlText>
                   </Pressable>
                   <Pressable style={[styles.dateModalButton, styles.dateModalConfirm]} onPress={() => {
-                    const value = draftCustomDate ?? toDateOnly(new Date());
+                    const value = draftCustomDate ?? localDateOnly(new Date());
                     setCustomDate(value);
                     setRangeFilter('custom');
                     setCustomPickerOpen(false);

@@ -31,135 +31,137 @@ A "commit/`git add` requires approval" sandbox message has been wrong
 15+ times in a row now across many prior cycles (see git history of this
 file for the full run) — every one of those "could not commit"
 self-reports turned out to be incorrect; the commit had already landed
-and pushed by the time the next cycle checked. **This cycle reconfirmed
-the pattern yet again**: the prior cycle's own file narrative recorded its
-17-file modal-backdrop-accessibility fix + new test file +
-`EXECUTION_STATE.md` update commit as `BLOCKED`/"genuinely blocked this
-cycle, not yet reconciled as landed" — but `git log --oneline -5` at this
-cycle's start showed HEAD already at `a70a8f4`, one commit past the
-`09758ec` the prior file narrative referenced, and `git show --stat
-a70a8f4` confirmed it contains exactly that fix (`EXECUTION_STATE.md` plus
-all 17 modal source files plus the new
-`modalBackdropAccessibility.test.ts`, 336 insertions/177 deletions across
-19 files) — i.e. it *had* landed and pushed, despite the prior cycle's own
-confirmed-by-`git-status` "BLOCKED" observation. The next cycle's **first
-action, before trusting anything else in this file**, must still be:
-`git log --oneline -5` + `git status` to see whether HEAD has moved past
-whatever SHA this file currently names as HEAD, and if so, `git show
---stat <new HEAD>` to confirm what actually landed before doing anything
-else.
+and pushed by the time the next cycle checked. The pattern was reconfirmed
+yet again at the start of this cycle (see Current Task below).
+
+**New variant of the same drift confirmed this cycle**: it is not only
+individual commits that land silently despite a "BLOCKED" self-report —
+this file's own narrative can also simply fall behind by more than one
+full cycle of real, already-pushed work. At this cycle's start, HEAD was
+three commits past `327b74a` (the SHA this file's own prior narrative
+described as current): `909c450` (the `TextInput`-accessibilityLabel
+sweep this file's prior text described as uncommitted/blocked — it had in
+fact landed), then **two entirely undocumented commits**, `f2d4366`
+(108 new lines in `familyStore.test.ts`) and `31d00f8` (a real,
+substantive fix: migrated four more UTC-anchored `toDateOnly()` call
+sites in `demoData.ts`/`statistics.ts`/`familyStore.ts`/`scheduleStore.ts`
+to the local-calendar `localDateOnly()` helper), neither of which this
+file was ever updated to describe. The next cycle's **first action,
+before trusting anything else in this file**, must still be: `git log
+--oneline -5` + `git status` to see whether HEAD has moved past whatever
+SHA this file currently names as HEAD, and if so, `git show --stat` on
+**every** commit between the old and new HEAD (not just the newest one —
+this cycle found two undocumented commits, not one) to confirm what
+actually landed before doing anything else.
 
 ## Current Task
 
 Reconciliation at cycle start (this cycle, manual `workflow_dispatch`,
 target sha `f174a053eefb5594c385e1378a74ac0143414af4`): `git log --oneline
--5`/`git status` showed HEAD at `327b74a`, clean working tree, "up to
-date with origin/feat/verified-auth-onboarding-batch-2" — one commit past
-the `a70a8f4` the prior cycle's own file narrative described as HEAD.
-`git show --stat 327b74a` confirmed the prior cycle's own PIN-modal
-keyboard-avoidance fix (`PinEntryModal.tsx`/`PinSetupModal.tsx` + 2 new
-test files + this file's own update) had in fact landed and pushed
-(committed by `walkie-agentic-worker[bot]`) — despite that cycle
-recording both its `git add` and `git commit -a` attempts as
-`BLOCKED`/"This command requires approval". **This is the same recurring
-self-reporting-drift pattern documented in the standing protocol note
-above, now confirmed a 16th+ time.** Reconciled before starting new work,
-per protocol.
+-5`/`git status` showed HEAD at `31d00f8`, clean working tree, "up to
+date with origin/feat/verified-auth-onboarding-batch-2" — **three**
+commits past the `327b74a` this file's own prior narrative described as
+HEAD. `git show --stat` on each of the three (`909c450`, `f2d4366`,
+`31d00f8`) confirmed: (1) `909c450` is the prior cycle's own
+`TextInput`-accessibilityLabel sweep (10 files + 1 new test file + this
+file's own update) it had recorded as commit-`BLOCKED` — it had in fact
+landed; (2) `f2d4366` and (3) `31d00f8` are **two further, entirely
+undocumented commits** — `f2d4366` adds 108 lines of new tests to
+`src/store/__tests__/familyStore.test.ts`; `31d00f8` is a real fix
+migrating four more UTC-anchored `rotation.ts#toDateOnly()` call sites
+(`src/data/demoData.ts`, `src/logic/statistics.ts`,
+`src/store/familyStore.ts`, `src/store/scheduleStore.ts`) to the
+already-established viewer-facing `src/logic/dateFormat.ts#localDateOnly()`
+helper (introduced by an earlier, already-landed cycle for
+`ScheduleScreen.tsx`/`presence.ts`). Neither `f2d4366` nor `31d00f8` was
+ever reflected in this file — **a new variant of the standing
+self-reporting-drift pattern**: not just a single commit landing despite
+a "blocked" self-report, but this file's own narrative falling two full
+cycles behind actual HEAD. See the standing protocol note above (updated
+this cycle) for the generalized lesson. Reconciled before starting new
+work, per protocol.
 
 `node_modules` was again stale/incomplete at cycle start (same
 `TS2688`/path-resolution symptom as every prior cycle). Ran `npm ci` (907
 packages, clean, 16 moderate advisories — same class as before), which
-fixed it. `npx tsc --noEmit` at `327b74a` post-`npm ci` — **PASS**, zero
-errors. `npm test -- --runInBand` at `327b74a` — **PASS**: **114/114**
-suites, **1378/1378** tests (matches the prior cycle's own post-fix count
-exactly, confirming `327b74a` is genuinely HEAD and the fix is present).
+fixed it. `npx tsc --noEmit` at `31d00f8` post-`npm ci` — **PASS**, zero
+errors. `npm test -- --runInBand` at `31d00f8` — **PASS**: **115/115**
+suites, **1391/1391** tests (1388 + the 3 new tests `f2d4366` added to
+`familyStore.test.ts`, confirming `31d00f8` is genuinely HEAD and both
+undocumented commits' work is present and passing).
 
-Retried `git rm` on all sixteen known dead scratch/backup files in a
-single combined attempt (literal filenames, no command substitution) —
-gated again ("This command requires approval"; the block persists this
-cycle, same general file-deletion permission gate documented in prior
-cycles; confirmed via immediate `git status --porcelain=v1` that nothing
-was staged). `gh auth status` (run standalone) — still gated. `which
-supabase` — still exit 1 (not installed). `docker info` (standalone) —
-also gated this cycle ("This command requires approval").
+Read `31d00f8`'s `toDateOnly()` → `localDateOnly()` migration in full and
+grepped every remaining `toDateOnly` call site in `src/` to check whether
+the migration was complete. It was not: three more call sites use
+`rotation.ts#toDateOnly()` (UTC-anchored, correct only for internal
+rotation-arithmetic per that file's own doc comment) for what is clearly
+the same viewer-facing "today" concept the migration is fixing elsewhere
+— `src/logic/history.ts#isWalkEligibleForHistory()` (decides whether a
+resolved walk's calendar day has "arrived" from the viewer's perspective),
+`src/components/AddUnplannedWalkModal.tsx` (defaults the "date" field to
+"today" when logging a walk that already happened), and
+`src/screens/HistoryScreen.tsx` (six call sites: the weekly-summary cutoff,
+the today/7d/30d range-filter cutoffs, and the custom-date-picker
+defaults/selection). All three are the identical off-by-one bug class the
+existing `dateFormat.ts` doc comment describes: for a viewer in a timezone
+ahead of UTC (e.g. Israel), a few hours after local midnight is still
+"yesterday" in UTC, which would wrongly compute "today"/date-range
+boundaries one day off.
 
-Continued the "screens/modals with a `TextInput`" QA Guardian angle the
-prior cycle flagged as needing one more confirming pass. Audited
-`SystemAdminScreen.tsx` (the one remaining screen with a `TextInput` not
-yet checked — a search box) for the same keyboard-coverage defect class
-already fixed on `DogDetailsModal.tsx`/`PinEntryModal.tsx`/
-`PinSetupModal.tsx`: **not a real gap** — the search input sits in a
-fixed row directly under the header in a full-height slide `Modal`, above
-where the list scrolls, so the keyboard rising from the bottom cannot
-cover it (unlike the centered-card/bottom-sheet layouts already fixed).
-No code change for that angle. `SettingsScreen.tsx`/
-`FamilyOnboardingScreen.tsx` already correctly wrap their `TextInput`s in
-`KeyboardAvoidingView` (confirmed via grep). The keyboard-avoidance-
-coverage sweep is now genuinely exhausted — every modal/screen
-`TextInput` in the app is covered.
-
-That same audit surfaced a genuinely new, real, first-time-discovered
-angle: see Current Task Status.
-
-## Current Task Status
-
-Prior cycle's `PinEntryModal.tsx`/`PinSetupModal.tsx` keyboard-avoidance
-fix is confirmed landed at `327b74a` (see standing protocol note above
-and Current Task above) — closed, `DONE`.
-
-This cycle's own QA Guardian sweep is **DONE**: while doing the one-more-
-confirming-pass the prior cycle asked for on the keyboard-avoidance-
-coverage angle (see Current Task above — `SystemAdminScreen.tsx`'s search
-`TextInput` checked, confirmed not a real gap), audited every `TextInput`
-call site in the app (11 files, all `TextInput` usages found via grep) for
-`accessibilityLabel`, since the already-fixed backdrop-`Pressable`/role-
-toggle-chip sweeps established that Buttons/Pressables in this app
-correctly carry `accessibilityRole`/`accessibilityLabel` but no such sweep
-had ever been done for `TextInput`. Found a genuine, first-time-discovered
-gap: **zero** of the 19 `TextInput` call sites in the app (across
-`PinEntryModal.tsx`, `PinSetupModal.tsx`, `RuleFormModal.tsx`,
-`CompleteWalkModal.tsx`, `AddUnplannedWalkModal.tsx`, `DogDetailsModal.tsx`,
-`EditDoneDetailsModal.tsx`, `UserFormModal.tsx`,
-`FamilyOnboardingScreen.tsx`, `SystemAdminScreen.tsx`) had an
-`accessibilityLabel` — each relied only on `placeholder` text and/or an
-adjacent (visually, not programmatically associated) `RtlText` label.
-Android TalkBack does not reliably fall back to `placeholder` as the
-accessible name (it disappears once typed, and RN has no
-`accessibilityLabelledBy` linking a sibling `Text` to an input), so a
-screen-reader user landing on any of these fields would hear little or no
-context about what it is.
-
-**Fixed**: added `accessibilityLabel` to all 19 `TextInput` call sites,
-using each field's existing adjacent visible label text (or the same copy
-already used for `placeholder`/title context where no separate `RtlText`
-label exists, e.g. `SystemAdminScreen.tsx`'s search box). No behavior,
-styling, layout, or visible-copy change — purely additive assistive-tech
-metadata, following the exact pattern already used for
-`accessibilityLabel` on this branch's `Pressable`/`Button` elements.
-
-One new regression test file added, following this repo's established
-source-scan-via-`fs.readFileSync` convention (mirroring
-`modalBackdropAccessibility.test.ts`):
-`src/components/__tests__/textInputAccessibilityLabel.test.ts` (10
-sub-tests, one per audited file, each asserting every `<TextInput` call
-site in that file has a non-empty `accessibilityLabel` between its open
-tag and its `/>`).
+**Fixed**: migrated all three files' viewer-facing `toDateOnly()` calls to
+`localDateOnly()` (importing from `../logic/dateFormat` instead of
+`../logic/rotation`/`./rotation`), completing the pattern `31d00f8` left
+half-finished. No behavior change other than the timezone-correctness fix
+itself — no visible-copy, layout, or unrelated logic change.
+`rotation.ts#toDateOnly()` itself is untouched (still correct/in-use for
+its documented internal-arithmetic purpose, e.g. `familyStore.ts`'s
+`rotationAnchorDate`).
 
 `npx tsc --noEmit` after the change — **PASS**, zero errors. `npm test --
 --runInBand` after the change — **PASS**: **115/115** suites,
-**1388/1388** tests (up from the 114/114 · 1378/1378 baseline at
-`327b74a` — exactly the +1 suite/+10 tests this cycle's new test file
-adds, no other suite's count changed). `git status --porcelain=v1
---untracked-files=all` confirmed the changeset is scoped to exactly the
-10 fixed source files, the 1 new test file, and this `EXECUTION_STATE.md`
-update — no unrelated file touched, no user work at risk.
+**1391/1391** tests (unchanged from the pre-change count — no test
+depended on the old UTC-anchored values in a way that broke under
+`TZ=UTC`, which is this sandbox's and CI's process timezone, confirmed via
+`date`). `git status --porcelain=v1 --untracked-files=all` confirmed the
+changeset is scoped to exactly the 3 fixed files
+(`src/logic/history.ts`, `src/components/AddUnplannedWalkModal.tsx`,
+`src/screens/HistoryScreen.tsx`) plus this `EXECUTION_STATE.md` update —
+no unrelated file touched, no user work at risk.
 
-**Commit attempted this cycle** — see Blocker/Last Evidence below for
-outcome, subject to the standing caveat that a cycle's own "could not
-commit" self-report has been wrong 16+ times before; the next cycle's
-first action must still be `git log --oneline -5` + `git show --stat` to
-re-derive ground truth before trusting this narrative. The code work
-itself is complete and validated regardless of commit status.
+No new regression test file was added for this specific fix: a TZ-divergent
+scenario (the only way to observably distinguish `localDateOnly()` from
+`toDateOnly()` in a test) requires forcing the process timezone away from
+this sandbox's/CI's `TZ=UTC`, and an attempt to spot-check that
+(`TZ=Pacific/Kiritimati node -e ...`) was itself gated
+("This command requires approval") — not retried per the "don't retry a
+gated command in a loop" guidance. `localDateOnly()`'s own correctness is
+already covered by `src/logic/__tests__/dateFormat.test.ts`'s existing
+suite; this fix is a mechanical substitution of that already-tested
+helper for the same bug class two prior cycles already fixed and tested
+elsewhere (`ScheduleScreen.tsx`/`FamilyOnboardingScreen.tsx`'s RTL-input
+date fixes, `31d00f8`'s four-file migration). A future cycle with a
+sandbox permission mode that allows `TZ=...` invocations should add a
+TZ-forcing regression test to `history.test.ts` for
+`isWalkEligibleForHistory()` (the one file in this fix with existing pure-
+logic unit tests) to close this gap.
+
+## Current Task Status
+
+Prior cycle's `TextInput`-accessibilityLabel sweep (`909c450`) and the two
+previously-undocumented commits (`f2d4366`'s `familyStore.test.ts` tests,
+`31d00f8`'s partial `toDateOnly`→`localDateOnly` migration) are all
+confirmed landed and pushed — closed, `DONE`.
+
+This cycle's own task — completing the `toDateOnly()` → `localDateOnly()`
+migration for the three remaining viewer-facing call sites
+(`history.ts`, `AddUnplannedWalkModal.tsx`, `HistoryScreen.tsx`) — is
+**DONE**, code-complete and validated (`tsc` PASS, `npm test` PASS
+115/115 · 1391/1391). **Commit attempted this cycle** — see Blocker/Last
+Evidence below for outcome, subject to the standing caveat that a cycle's
+own "could not commit" self-report has been wrong 16+ times before; the
+next cycle's first action must still be `git log --oneline -5` + `git
+show --stat` on every commit past whatever SHA this file names, to
+re-derive ground truth before trusting this narrative.
 
 ## Current Branch / PR
 
@@ -174,87 +176,79 @@ itself is complete and validated regardless of commit status.
 
 - This cycle start (manual `workflow_dispatch`, target sha
   `f174a053eefb5594c385e1378a74ac0143414af4`): `git log --oneline
-  -5`/`git status` confirmed HEAD is `327b74a`, clean working tree, "up
-  to date with origin/feat/verified-auth-onboarding-batch-2" — one commit
-  past what the prior cycle's own file narrative described as HEAD
-  (`a70a8f4`). `git show --stat 327b74a` confirmed the prior cycle's
-  PIN-modal keyboard-avoidance fix + two new test files + this file's own
-  update had in fact landed and pushed, despite the prior cycle recording
-  both its `git add` and `git commit -a` attempts as `BLOCKED` — see
-  standing protocol note above (16th+ confirmed instance of this
-  pattern).
+  -5`/`git status` confirmed HEAD is `31d00f8`, clean working tree, "up
+  to date with origin/feat/verified-auth-onboarding-batch-2" — **three**
+  commits past `327b74a`, what this file's own prior narrative described
+  as HEAD. `git show --stat` on `909c450`/`f2d4366`/`31d00f8` (see
+  Current Task above for full detail) confirmed all three had landed and
+  pushed, including two (`f2d4366`, `31d00f8`) this file was never
+  updated to describe — see standing protocol note above (new variant of
+  the drift pattern, confirmed this cycle).
 - `node_modules` present but stale/incomplete at cycle start (`tsc`
   failed with `TS2688`/path-resolution errors); `npm ci` — succeeded (907
   packages, 16 moderate `npm audit` advisories, same class as before),
   which fixed it.
-- `npx tsc --noEmit` at `327b74a` post-`npm ci` — **PASS**, zero errors.
-- `npm test -- --runInBand` at `327b74a` — **PASS**: **114/114** suites,
-  **1378/1378** tests (matches the prior cycle's own post-fix count
-  exactly).
-- `git rm` on all sixteen known dead scratch/backup/`.before-*` files
-  (combined single attempt, literal filenames) — "This command requires
-  approval" (blocked again, same general file-deletion permission gate
-  documented in prior cycles; confirmed via immediate `git status
-  --porcelain=v1` that nothing was staged). `gh auth status` (standalone)
-  — still gated. `which supabase` — still exit 1, not installed. `docker
-  info` (standalone) — also gated this cycle.
-- Audited `SystemAdminScreen.tsx`'s search `TextInput` (the one remaining
-  screen/modal `TextInput` not yet checked for the keyboard-avoidance
-  defect class) — **not a real gap**: fixed search row above a
-  full-height slide `Modal`'s list, not covered by the keyboard rising
-  from the bottom. Confirmed `SettingsScreen.tsx`/
-  `FamilyOnboardingScreen.tsx` already correctly wrap their `TextInput`s
-  in `KeyboardAvoidingView`. This closes the keyboard-avoidance-coverage
-  angle as genuinely exhausted.
-- **Code changes this cycle:** added `accessibilityLabel` to all 19
-  `TextInput` call sites across 10 files (`PinEntryModal.tsx`,
-  `PinSetupModal.tsx`, `RuleFormModal.tsx`, `CompleteWalkModal.tsx`,
-  `AddUnplannedWalkModal.tsx`, `DogDetailsModal.tsx`,
-  `EditDoneDetailsModal.tsx`, `UserFormModal.tsx`,
-  `FamilyOnboardingScreen.tsx`, `SystemAdminScreen.tsx`) — none had one
-  before, relying only on `placeholder`/adjacent-but-unassociated
-  `RtlText` labels, which Android TalkBack does not reliably read as the
-  accessible name. One new regression test file added
-  (`textInputAccessibilityLabel.test.ts`, 10 sub-tests, source-scan
-  convention).
+- `npx tsc --noEmit` at `31d00f8` post-`npm ci` — **PASS**, zero errors.
+- `npm test -- --runInBand` at `31d00f8` — **PASS**: **115/115** suites,
+  **1391/1391** tests.
+- Grepped every `toDateOnly` call site in `src/` against `31d00f8`'s
+  partial migration and found three files where the same viewer-facing
+  "today" bug class was still present: `src/logic/history.ts`,
+  `src/components/AddUnplannedWalkModal.tsx`,
+  `src/screens/HistoryScreen.tsx` (six call sites). Confirmed via reading
+  `rotation.ts#toDateOnly()`'s and `dateFormat.ts#localDateOnly()`'s own
+  doc comments, and `familyStore.test.ts`'s existing
+  `rotationAnchorDate` usage, that `toDateOnly()` remains correct/in-use
+  for internal rotation-arithmetic elsewhere — only these three files'
+  viewer-facing usages needed migrating.
+- **Code changes this cycle:** migrated all `toDateOnly()` call sites in
+  `src/logic/history.ts` (`isWalkEligibleForHistory`),
+  `src/components/AddUnplannedWalkModal.tsx` (date-field default, 2
+  sites), and `src/screens/HistoryScreen.tsx` (weekly cutoff,
+  today/7d/30d range cutoffs, custom-date-picker default/selection, 6
+  sites) to `localDateOnly()` from `../logic/dateFormat`. No behavior
+  change beyond the timezone-correctness fix; no unrelated files touched.
 - `npx tsc --noEmit` after the change — **PASS**, zero errors.
 - `npm test -- --runInBand` after the change — **PASS**: **115/115**
-  suites, **1388/1388** tests (114→115 suites, 1378→1388 tests — exactly
-  this cycle's one new test file / 10 new tests, no other suite
-  affected).
+  suites, **1391/1391** tests (unchanged — no existing test depended on
+  the old UTC-anchored values in a way sensitive to this change under
+  this sandbox's/CI's `TZ=UTC`).
 - `git status --porcelain=v1 --untracked-files=all` confirmed the
-  changeset is scoped to exactly the 10 fixed source files, the 1 new
-  test file, and this `EXECUTION_STATE.md` update — no unrelated file
-  touched, no user work at risk.
-- **Commit attempts this cycle, both blocked:** `git add` naming all 12
-  intended files explicitly — "This command requires approval"; retried
-  with `git commit -a -m ...` as an alternate invocation shape — also
-  "This command requires approval". `git status --porcelain=v1` and
-  `git log --oneline -3` re-checked immediately after both attempts
-  confirmed HEAD unchanged at `327b74a` and nothing staged.
+  changeset is scoped to exactly the 3 fixed files
+  (`src/logic/history.ts`, `src/components/AddUnplannedWalkModal.tsx`,
+  `src/screens/HistoryScreen.tsx`) plus this `EXECUTION_STATE.md` update
+  — no unrelated file touched, no user work at risk.
+- A spot-check attempt to force a TZ-divergent value for a regression
+  test (`TZ=Pacific/Kiritimati node -e ...`) was gated ("This command
+  requires approval") — not retried; see Current Task above and Next Safe
+  Task below.
+- **Commit attempt this cycle:** see Blocker below for outcome, subject
+  to the standing caveat that a cycle's own "could not commit" self-report
+  has been wrong 16+ times before.
 
 ## Last Evidence Timestamp
 
-2026-09-15T18:10:00Z
+2026-09-15T18:30:00Z
 
 ## Blocker
 
-**This cycle's own `git add`/`git commit -a` were both blocked** ("This
-command requires approval") for the 10-file `TextInput`-accessibilityLabel
-sweep + 1 new test file + this `EXECUTION_STATE.md` update — tried twice
-with two different invocation shapes, and this cycle explicitly ran
-`git status --porcelain=v1` + `git log --oneline -3` immediately after
-both attempts and confirmed nothing was staged and HEAD unchanged, i.e.
-genuinely not committed, not merely an unresolved self-report. The
-working-tree change is real and validated (`tsc`/`npm test` both PASS,
-115/115 suites, 1388/1388 tests) and left in place uncommitted per "never
-discard uncommitted work." Per the standing protocol note and the 16th+
-confirmed instance of the self-reporting-drift pattern (this cycle's own
-reconciliation found `327b74a` already landed the *prior* cycle's
-"BLOCKED"-recorded commit despite an identical-looking block), this
-cycle's own observation that its commit did not land is not reliable
-evidence either way — the next cycle's first action must still be
-`git log --oneline -5` + `git show --stat` to re-derive ground truth
+**This cycle's own `git add` was blocked** ("This command requires
+approval") for the 3-file `toDateOnly`→`localDateOnly` completion fix
+(`src/logic/history.ts`, `src/components/AddUnplannedWalkModal.tsx`,
+`src/screens/HistoryScreen.tsx`) + this `EXECUTION_STATE.md` update —
+tried once, standalone (not retried in a loop per the "don't retry a
+gated command repeatedly" guidance; this exact pattern has already been
+retried with multiple invocation shapes across 16+ prior cycles with no
+change in outcome). The working-tree change is real and validated
+(`tsc`/`npm test` both PASS, 115/115 suites, 1391/1391 tests) and left in
+place uncommitted per "never discard uncommitted work." Per the standing
+protocol note above and the now-confirmed pattern that this file's own
+narrative can fall multiple cycles behind actual HEAD (this cycle's own
+reconciliation found *two* undocumented commits past what the file
+described, not just one), this cycle's own observation that its commit
+did not land is not reliable evidence either way — the next cycle's
+first action must still be `git log --oneline -5` + `git show --stat` on
+every commit past whatever SHA this file names, to re-derive ground truth
 before trusting this section's narrative, regardless of what this
 section says.
 
@@ -355,12 +349,24 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the 10-file `TextInput`-accessibilityLabel sweep + 1
-new test file + this `EXECUTION_STATE.md` update) landed. The recurring
-self-reporting-drift pattern documented in prior cycles means a cycle's
-own uncertain end-of-cycle commit status is not reliable evidence either
-way — always re-check `git log --oneline -5` fresh before trusting this
-file's narrative.
+cycle's own commit (the 3-file `toDateOnly`→`localDateOnly` completion
+fix + this `EXECUTION_STATE.md` update) landed, **and** check every commit
+between whatever SHA this file names and actual HEAD, not just the
+newest one — this cycle found two previously-undocumented commits behind
+a single stale SHA, not one.
+
+If a future cycle's sandbox permission mode allows a `TZ=...`-prefixed
+command, add a TZ-forcing regression test to
+`src/logic/__tests__/history.test.ts` for `isWalkEligibleForHistory()`
+proving it uses local-calendar semantics (matching this cycle's
+`localDateOnly()` migration) rather than UTC — this cycle's own attempt
+(`TZ=Pacific/Kiritimati node -e ...`) was gated. Worth also grepping
+`src/` fresh for any other `rotation.ts#toDateOnly()` call site that
+looks viewer-facing (e.g. a future new date-picker default) rather than
+internal-rotation-arithmetic, in case one was missed — this cycle's own
+grep found and fixed all it could find (`history.ts`,
+`AddUnplannedWalkModal.tsx`, `HistoryScreen.tsx`), but a fresh confirming
+pass is cheap.
 
 Retry deletion of the sixteen now-confirmed dead scratch/backup files
 (full list in the Blocker section above) the moment the sandbox's
@@ -461,52 +467,51 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `327b74a`, one commit
-  past the `a70a8f4` the prior cycle's own file narrative described as
-  HEAD — `git show --stat 327b74a` confirmed the prior cycle's PIN-modal
-  keyboard-avoidance fix + two new test files, recorded by that cycle as
-  `BLOCKED` on the commit step (both `git add` and `git commit -a`), had
-  in fact landed and pushed (standing pattern, now 16+ times).
-  `node_modules` was stale (tsc failed with `TS2688`); `npm ci` (907
-  packages) fixed it. Full baseline validation at `327b74a`: `npx tsc
-  --noEmit` PASS, `npm test -- --runInBand` PASS (114/114 suites,
-  1378/1378 tests). Retried `git rm` on all sixteen known dead
-  scratch/backup files in one combined attempt — blocked again (same
-  general file-deletion permission gate; confirmed via immediate `git
-  status`). `gh auth status` and `docker info` still gated (standalone);
-  `supabase` CLI reconfirmed absent.
-- Closed the keyboard-avoidance-coverage angle for real: audited
-  `SystemAdminScreen.tsx`'s search `TextInput` (the prior cycle's
-  suggested confirming-pass target) and confirmed it's not a real gap
-  (fixed row above a full-height slide `Modal`'s list, never covered by
-  the keyboard). `SettingsScreen.tsx`/`FamilyOnboardingScreen.tsx`
-  reconfirmed already correct. No code change for this angle.
-- **QA Guardian sweep, real defect fixed (new angle):** while doing the
-  above audit, checked whether `TextInput`s across the app carry
-  `accessibilityLabel` (a class of fix already done for
-  `Pressable`/`Button` elements but never checked for `TextInput`).
-  Found **zero** of 19 `TextInput` call sites (11 files) had one — all
-  relied only on `placeholder`/adjacent-but-unassociated `RtlText` labels,
-  which Android TalkBack does not reliably read as the accessible name.
-  Added `accessibilityLabel` to all 19 sites across 10 files
-  (`PinEntryModal.tsx`, `PinSetupModal.tsx`, `RuleFormModal.tsx`,
-  `CompleteWalkModal.tsx`, `AddUnplannedWalkModal.tsx`,
-  `DogDetailsModal.tsx`, `EditDoneDetailsModal.tsx`, `UserFormModal.tsx`,
-  `FamilyOnboardingScreen.tsx`, `SystemAdminScreen.tsx`), using each
-  field's existing adjacent label/placeholder copy — no behavior,
-  styling, or visible-copy change. Added one new regression test file
-  (`textInputAccessibilityLabel.test.ts`, 10 sub-tests) following this
-  repo's established source-scan convention. `npx tsc --noEmit` PASS and
-  `npm test -- --runInBand` PASS (**115/115** suites, **1388/1388**
-  tests) after the change. `git status`/diff scoped to exactly the 10
-  fixed files + 1 new test file + this `EXECUTION_STATE.md` update.
-  **Commit attempts blocked** (`git add` and `git commit -a`, both "This
-  command requires approval"; confirmed via immediate `git
-  status`/`git log` that nothing landed) — see Blocker above.
+- Reconciliation found HEAD had actually moved to `31d00f8`, **three**
+  commits past the `327b74a` the prior cycle's own file narrative
+  described as HEAD — `git show --stat` on `909c450`/`f2d4366`/`31d00f8`
+  confirmed all three had landed and pushed, including two (`f2d4366`'s
+  `familyStore.test.ts` tests, `31d00f8`'s partial
+  `toDateOnly`→`localDateOnly` migration) this file was never updated to
+  describe — a new variant of the standing self-reporting-drift pattern
+  (see standing protocol note above, updated this cycle). `node_modules`
+  was stale (`tsc` failed with `TS2688`); `npm ci` (907 packages) fixed
+  it. Full baseline validation at `31d00f8`: `npx tsc --noEmit` PASS,
+  `npm test -- --runInBand` PASS (115/115 suites, 1391/1391 tests).
+- **Real defect fixed, completing a prior cycle's half-finished
+  migration:** `31d00f8` (undocumented, this cycle's own reconciliation
+  found it) migrated four UTC-anchored `rotation.ts#toDateOnly()` call
+  sites to the viewer-facing `dateFormat.ts#localDateOnly()` helper but
+  left three more of the same bug class unmigrated. Grepped all remaining
+  `toDateOnly` call sites in `src/` and found/fixed: `src/logic/history.ts`
+  (`isWalkEligibleForHistory`'s history-day-arrived check),
+  `src/components/AddUnplannedWalkModal.tsx` (date-field default, 2
+  sites), and `src/screens/HistoryScreen.tsx` (weekly-summary cutoff,
+  today/7d/30d range cutoffs, custom-date-picker default/selection, 6
+  sites) — 9 call sites across 3 files, all switched to `localDateOnly()`.
+  No behavior change beyond the timezone-correctness fix. `npx tsc
+  --noEmit` PASS and `npm test -- --runInBand` PASS (115/115 suites,
+  1391/1391 tests, unchanged) after the change. `git status`/diff scoped
+  to exactly the 3 fixed files + this `EXECUTION_STATE.md` update. A
+  TZ-forcing regression-test attempt was gated (see Next Safe Task).
+  **Commit attempt blocked** (`git add`, "This command requires
+  approval"; confirmed via immediate `git status`/`git log` that nothing
+  landed) — see Blocker above.
 
 ### Recent cycles (condensed — full detail in git history of this file)
 
-- Prior cycle: fixed one real, first-time-discovered keyboard-avoidance
+- Prior cycle: audited `SystemAdminScreen.tsx`'s search `TextInput` for
+  the keyboard-avoidance defect class (not a real gap, closing that angle
+  for real) and found+fixed a first-time-discovered `accessibilityLabel`
+  gap across all 19 `TextInput` call sites in 10 files (none had one
+  before; Android TalkBack doesn't reliably read `placeholder` as the
+  accessible name). Added a 10-sub-test regression file. Landed as
+  `909c450` despite that cycle's own "genuinely blocked" commit
+  self-report. Also landed, undocumented by that cycle's own narrative:
+  `f2d4366` (108 new lines in `familyStore.test.ts`) and `31d00f8` (a
+  real fix migrating four `toDateOnly()`→`localDateOnly()` call sites in
+  `demoData.ts`/`statistics.ts`/`familyStore.ts`/`scheduleStore.ts`).
+- Two cycles ago: fixed one real, first-time-discovered keyboard-avoidance
   gap in `PinEntryModal.tsx`/`PinSetupModal.tsx` (centered-card `Modal`s
   with number-pad `TextInput`s, no `KeyboardAvoidingView`, unlike every
   sibling modal). Landed as `327b74a` despite that cycle's own

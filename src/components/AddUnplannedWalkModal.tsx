@@ -6,7 +6,7 @@ import type { FamilyUser, Walk } from '../types';
 import { colors } from '../theme/colors';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
-import { toDateOnly } from '../logic/rotation';
+import { localDateOnly } from '../logic/dateFormat';
 
 export interface UnplannedWalkResult {
   performedByUserId: string;
@@ -85,7 +85,10 @@ export function AddUnplannedWalkModal({
 }: AddUnplannedWalkModalProps) {
   const isEditing = !!editingWalk;
   const [performedBy, setPerformedBy] = useState(defaultUserId);
-  const [date, setDate] = useState(toDateOnly(new Date()));
+  // Local calendar day, not UTC — see dateFormat.ts's doc comment; a
+  // UTC-anchored default would show "yesterday" for a few hours after local
+  // midnight for anyone ahead of UTC (e.g. Israel).
+  const [date, setDate] = useState(localDateOnly(new Date()));
   const [time, setTime] = useState(nowTime());
   // Round 6C-time: same pickerOpen convention as RequestTimeChangeModal.tsx —
   // always open (inline spinner) on iOS, closed until the "שנה שעה" button is
@@ -108,7 +111,7 @@ export function AddUnplannedWalkModal({
         setDuration(editingWalk.durationMinutes ? String(editingWalk.durationMinutes) : '');
       } else {
         setPerformedBy(defaultUserId);
-        setDate(toDateOnly(new Date()));
+        setDate(localDateOnly(new Date()));
         setTime(nowTime());
         setHadPee(false);
         setHadPoop(false);
