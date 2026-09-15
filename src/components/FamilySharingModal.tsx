@@ -53,7 +53,7 @@ export function FamilySharingModal({
                       the OS's own text-selection menu) independent of the
                       Clipboard API succeeding, same pattern already proven
                       by InviteShareModal's `linkText`. */}
-                  <RtlText style={styles.codeText} selectable>
+                  <RtlText style={[styles.codeText, styles.ltrText]} selectable>
                     {inviteCode}
                   </RtlText>
                 </View>
@@ -101,6 +101,11 @@ const styles = StyleSheet.create({
   meta: { fontSize: 14, color: colors.textSecondary, textAlign: 'right', marginTop: 8 },
   codeCard: { backgroundColor: colors.surfaceMuted, borderRadius: 16, paddingVertical: 18, alignItems: 'center', marginTop: 12 },
   codeText: { fontSize: 32, fontWeight: '800', color: colors.textPrimary, letterSpacing: 6 },
+  // The invite code (generate_invite_code()) is always drawn from a plain
+  // Latin-letter/digit alphabet — inherently LTR content, same convention
+  // as InviteShareModal's `linkText` — so it must not inherit RtlText's
+  // default `textAlign: 'right', writingDirection: 'rtl'`.
+  ltrText: { textAlign: 'center', writingDirection: 'ltr' },
   copyFeedback: { fontSize: 13, fontWeight: '700', color: colors.statusDone, textAlign: 'center', marginTop: 8 },
   copyFeedbackError: { color: colors.statusOverdue },
   actionsRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
