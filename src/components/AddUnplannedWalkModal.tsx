@@ -214,10 +214,22 @@ export function AddUnplannedWalkModal({
             ) : null}
 
             <View style={styles.toggleRow}>
-              <Pressable onPress={() => setHadPee((v) => !v)} style={[styles.toggle, hadPee && styles.toggleActivePee]}>
+              <Pressable
+                onPress={() => setHadPee((v) => !v)}
+                style={[styles.toggle, hadPee && styles.toggleActivePee]}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: hadPee }}
+                accessibilityLabel="סימון פיפי בטיול"
+              >
                 <RtlText style={styles.toggleEmoji}>💧</RtlText>
               </Pressable>
-              <Pressable onPress={() => setHadPoop((v) => !v)} style={[styles.toggle, hadPoop && styles.toggleActivePoop]}>
+              <Pressable
+                onPress={() => setHadPoop((v) => !v)}
+                style={[styles.toggle, hadPoop && styles.toggleActivePoop]}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: hadPoop }}
+                accessibilityLabel="סימון קקי בטיול"
+              >
                 <RtlText style={styles.toggleEmoji}>💩</RtlText>
               </Pressable>
             </View>

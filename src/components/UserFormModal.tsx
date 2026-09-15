@@ -77,7 +77,14 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
             <RtlText style={styles.label}>סמל (אם אין תמונה)</RtlText>
             <View style={styles.optionRow}>
               {EMOJI_OPTIONS.map((e) => (
-                <Pressable key={e} onPress={() => setAvatar(e)} style={[styles.emojiChip, avatar === e && styles.emojiChipActive]}>
+                <Pressable
+                  key={e}
+                  onPress={() => setAvatar(e)}
+                  style={[styles.emojiChip, avatar === e && styles.emojiChipActive]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: avatar === e }}
+                  accessibilityLabel={`סמל ${e}`}
+                >
                   <RtlText style={styles.emojiText}>{e}</RtlText>
                 </Pressable>
               ))}
@@ -90,6 +97,9 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
                   key={c}
                   onPress={() => setColor(c)}
                   style={[styles.colorChip, { backgroundColor: c }, color === c && styles.colorChipActive]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: color === c }}
+                  accessibilityLabel={`צבע ${c}`}
                 />
               ))}
             </View>

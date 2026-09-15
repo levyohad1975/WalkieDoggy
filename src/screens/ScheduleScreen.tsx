@@ -297,11 +297,18 @@ export function ScheduleScreen() {
         setRuleFormVisible(true);
       }}
       hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={`עריכת שעת טיול ${r.time}`}
     >
       <RtlText style={styles.ruleActionIcon}>✏️</RtlText>
     </Pressable>
 
-    <Pressable onPress={() => setDeleteRuleId(r.id)} hitSlop={8}>
+    <Pressable
+      onPress={() => setDeleteRuleId(r.id)}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={`מחיקת שעת טיול ${r.time}`}
+    >
       <RtlText style={styles.ruleActionIcon}>🗑️</RtlText>
     </Pressable>
   </View>
