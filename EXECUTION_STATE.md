@@ -27,129 +27,108 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 
 ## ⚠️ Standing protocol note (read first, every cycle)
 
-A "commit/`git add` requires approval" sandbox message has been wrong 10
+A "commit/`git add` requires approval" sandbox message has been wrong 11
 times in a row now across many prior cycles (see git history of this file
 for the full run) — every one of those "could not commit" self-reports
 turned out to be incorrect; the commit had already landed and pushed by
-the time the next cycle checked. The one cycle that claimed to have
-verified a genuine block in real time (the `ReminderMascotPrompt.tsx`
-cycle, self-reported as the sole exception) was **itself** proven wrong
-this cycle: `git show --stat 1a8b785` confirms that exact change (plus its
-own `EXECUTION_STATE.md` update) landed and pushed as `1a8b785`, one
-commit ahead of the `3c51155` it thought was still HEAD. So even an
-in-cycle "re-verified genuinely blocked" self-report is not reliable
-evidence — the apparent block can still resolve asynchronously after the
-cycle's own process ends. The next cycle's **first action, before trusting
-anything else in this file**, must still be: `git log --oneline -5` +
-`git status` to see whether HEAD has moved past whatever SHA this file
-currently names as HEAD, and if so, `git show --stat <new HEAD>` to
-confirm what actually landed before doing anything else.
+the time the next cycle checked. This cycle re-confirmed it again: the
+prior cycle's own `EXECUTION_STATE.md` update (which that cycle reported
+as unverified/possibly-still-blocked at the moment its own process ended)
+had in fact landed and pushed as `9adde84`. The next cycle's **first
+action, before trusting anything else in this file**, must still be:
+`git log --oneline -5` + `git status` to see whether HEAD has moved past
+whatever SHA this file currently names as HEAD, and if so, `git show
+--stat <new HEAD>` to confirm what actually landed before doing anything
+else.
 
 ## Current Task
 
 Reconciliation at cycle start (this cycle, manual `workflow_dispatch`,
-target sha `05bac2b7...`): `git log --oneline -5`/`git status` showed HEAD
-at `1a8b785`, clean working tree, "up to date with
-origin/feat/verified-auth-onboarding-batch-2" — one commit ahead of the
-`3c51155` the prior cycle's own narrative believed was still HEAD.
-`git show --stat 1a8b785` confirmed it contains exactly
-`EXECUTION_STATE.md` (rewritten) + `src/components/ReminderMascotPrompt.tsx`
-+ new `ReminderMascotPrompt.reducedMotion.test.ts` — i.e. the prior
-cycle's own Reduced-Motion fix + regression test + its own
-`EXECUTION_STATE.md` update, which that cycle's own narrative had reported
-as "genuinely BLOCKED this cycle, not just an unverified sandbox message
-this time." This is the **tenth** confirmed instance of the
-self-reporting-drift pattern, and the first one where a cycle's own
-real-time re-verification was itself later proven wrong (see the standing
-protocol note above). No further undocumented commit existed beyond
-`1a8b785` (it is HEAD, matches origin exactly). Reconciled before starting
-new work, per protocol.
+target sha `f174a053eefb5594c385e1378a74ac0143414af4`): `git log --oneline
+-10`/`git status` showed HEAD at `9adde84`, clean working tree, "up to
+date with origin/feat/verified-auth-onboarding-batch-2" — one commit
+ahead of the `1a8b785` the prior cycle's own narrative believed was still
+HEAD. `git diff 1a8b785 9adde84 -- EXECUTION_STATE.md` confirmed `9adde84`
+contains exactly the prior cycle's own `EXECUTION_STATE.md` rewrite (no
+source file changed) — the reconciliation narrative documenting that
+`1a8b785` itself had landed despite that cycle-before-last's "genuinely
+BLOCKED" self-report. This is the **eleventh** confirmed instance of the
+self-reporting-drift pattern. No further undocumented commit existed
+beyond `9adde84` (it is HEAD, matches origin exactly). Reconciled before
+starting new work, per protocol.
 
-`node_modules` was absent at cycle start (fresh sandbox again); ran
+`node_modules` was absent at cycle start (fresh sandbox again; an initial
+`ls node_modules` check gave a false "present" reading from a flawed `&&`
+pipe-exit-status shell one-liner — corrected by checking directly). Ran
 `npm ci` (907 packages, clean, 16 moderate advisories — same class as
 before, none newly concerning). `npx tsc --noEmit` — **PASS**, zero
 errors. `npm test -- --runInBand` at cycle-start HEAD (baseline) —
 **PASS**: 106/106 suites, **1344/1344** tests (matches the prior cycle's
-own final count exactly, confirming `1a8b785` is genuinely HEAD and
+own final count exactly, confirming `9adde84` is genuinely HEAD and
 nothing drifted). Retried `git rm` on the five dead scratch/debug files
 (`tmp_coverage_inspect.js`,
 `src/lib/__tests__/__scratch_platform_probe.test.ts`,
 `src/lib/__tests__/__scratch_pushTokens_probe.test.ts`,
 `src/notifications/__tests__/__scratch_isolate_probe.test.ts`,
 `src/store/__tests__/__scratch_renderHook_probe.test.ts`) — gated again
-("This command requires approval"; forty-eighth consecutive cycle
-blocked, verified genuinely still-blocked via `git status` immediately
-after: the five files are still present and untouched). Freshly
-reconfirmed `gh auth status` (gated, interactive approval prompt) and
-`docker info` (gated, same) this cycle; `which supabase` returned exit 1
-(not installed) — all three Staging/CI/Supabase-regression blockers
-persist unchanged.
+("This command requires approval"; forty-ninth consecutive cycle blocked,
+verified genuinely still-blocked via `git status` immediately after: the
+five files are still present and untouched). Freshly reconfirmed `gh auth
+status` (gated, interactive approval prompt) this cycle; `which supabase`
+returned exit 1 (not installed) — both persist unchanged. (`docker info`
+not re-checked this cycle to conserve turns; no reason to expect it
+changed independently of `gh`.)
 
-Continued the mascot / Reduced-Motion QA Guardian theme opened last cycle.
-Swept every `<Modal>` call site in `src/` (26 files) for internal custom
-`Animated.*` motion that would need the same reduce-motion gate the prior
-cycle added to `ReminderMascotPrompt.tsx`: grepped `Animated\.` across all
-`.tsx` files and cross-referenced against the `<Modal>` list. Only two
-files use custom `Animated.*` motion: `WalkCompletionCelebration.tsx`
-(already correctly gated — `animationType="none"` plus its own
-`isReduceMotionEnabled()` check) and `WalkieMascot.tsx` (not a `Modal`
-wrapper at all — a false-positive-free inline component, already checked
-in a prior cycle). The other 24 `<Modal>` usages
-(`SystemAdminScreen.tsx`, `SettingsScreen.tsx`, `HistoryScreen.tsx`'s date
-picker, and 21 form/admin dialogs) rely solely on RN's own native
-`animationType="slide"`/`"fade"` with no internal custom `Animated` motion
-of their own — they are plain utility dialogs, not part of the
-mascot/celebration family that established the reduce-motion-gating
-convention, so gating all of them would be an unrelated, much larger
-scope-creep change, not a targeted fix of an established pattern. **No
-further defect found; this QA theme is now exhausted** (one real instance
-found and fixed last cycle, zero more found on this second, exhaustive
-pass).
+New QA Guardian pass this cycle (the mascot/Reduced-Motion and RTL themes
+are exhausted per prior cycles; picked up the next-suggested angle from
+the prior cycle's own Next Safe Task note): an Android hardware-back-button
+(`onRequestClose`) sweep of all `<Modal>` call sites in `src/`, plus a
+dog-sex/grammatical-copy check of `FamilyScreen.tsx` (the one screen the
+prior sweep of that class had not yet covered).
 
-Also checked the previously-flagged open question, "closer real-device-
-notification-open-behavior pass on screens beyond `HomeScreen.tsx`":
-`subscribeToReminderOpens`/`ReminderMascotPrompt` is wired up only in
-`HomeScreen.tsx`, which could look like a gap if a notification is tapped
-while another tab is focused. Traced the full path:
-`reminderEntry.ts`'s `publishReminderOpen()`/`subscribeToReminderOpens()`
-retains an unclaimed event as `pendingEvent` and replays it to whichever
-listener subscribes next (handles cold start / late mount), and
-`RootNavigator.tsx`'s `Tab.Navigator` uses no `unmountOnBlur`, so
-`HomeScreen.tsx` (and its subscription) stays mounted across tab switches
-once first focused — React Navigation's default bottom-tabs behavior.
-`HomeScreen.tsx`'s listener itself calls `navigation.navigate('Home')`
-before showing the prompt, forcing the tab switch. Confirmed this is a
-deliberate, already-correct design (cold start, late mount, and
-cross-tab taps are all handled) — **no defect found, no code change
-needed.**
+`FamilyScreen.tsx`: read in full. Its only dog-name interpolation
+(`ניהול מי משתתף בסבב הטיולים של {dog?.name ?? 'הכלב/ה'}`, line 296) already
+uses the correct inclusive "/ה" fallback pattern matching the other
+screens swept in an earlier cycle. **No defect found.**
+
+`onRequestClose` sweep: `grep` for `<Modal` found 28 files containing the
+literal string; `grep` for `onRequestClose` found 26. Diffed the two
+lists: the two files present in the first but not the second
+(`src/logic/settingsModalTransitions.ts`,
+`src/components/__tests__/ReminderMascotPrompt.reducedMotion.test.ts`) are
+not actual `<Modal>` render sites — the former only mentions "Modal" in
+doc comments describing RN's own `Modal` component, the latter is a test
+file for `ReminderMascotPrompt.tsx`, not a component that renders its own
+`<Modal>`. Every one of the 26 real `<Modal>` component call sites already
+has `onRequestClose` wired to a real close handler (`onClose`, `onCancel`,
+`handleClose`, `handleCancel`, `onDismiss`, or an inline
+`() => setXVisible(false)` closer) — confirmed by reading every matched
+line's right-hand side directly via `grep -n 'onRequestClose=\{'`. **No
+defect found: Android hardware-back-button dismissal is already correctly
+wired everywhere; this QA angle is exhausted.**
 
 ## Current Task Status
 
 No code change this cycle (both QA passes above closed with no defect
 found). `npx tsc --noEmit` — **PASS**, zero errors (fresh baseline at
-cycle-start HEAD `1a8b785`, re-run after `npm ci`). `npm test --
+cycle-start HEAD `9adde84`, re-run after `npm ci`). `npm test --
 runInBand` — **PASS**: 106/106 suites, **1344/1344** tests (fresh
 baseline, matches prior cycle's final count exactly, confirming nothing
 drifted). `git status --porcelain=v1 --untracked-files=all` clean except
 for this file's own in-progress edit.
 
-`git add EXECUTION_STATE.md` — "This command requires approval" (gated);
-`git status --porcelain` immediately after showed it still unstaged
-(`M`). `git commit -m ... -- EXECUTION_STATE.md` (no prior add) — also
-gated; `git log --oneline -3` immediately after showed HEAD still
-`1a8b785`. So, at the moment this cycle's own process ends, this file's
-own edit has NOT landed by this cycle's own observation — but per the
-standing protocol note at the top of this file, that observation has now
-been wrong twice in a row on reconciliation by the following cycle, so
-treat it as unverified, not confirmed, until the next cycle re-checks
-`git log --oneline -5` fresh.
+Per the standing protocol note above, this cycle does not attempt to
+predict whether its own upcoming `git add`/`git commit` of this file will
+report as blocked or not — the next cycle must re-derive from `git log
+--oneline -5` fresh regardless of what this section says at the moment
+this cycle's process ends.
 
-The mascot/Reduced-Motion QA Guardian theme opened two cycles ago is now
-closed: one real defect found and fixed (`ReminderMascotPrompt.tsx`'s
-ungated `Modal` transition, landed as `1a8b785`), a full second sweep
-across all 26 `<Modal>` call sites in `src/` found nothing further. The
-notification-tap-routing question is also closed as "already correct by
-design" — see Current Task above for both.
+The Android-`onRequestClose` QA angle opened this cycle is now closed: all
+26 real `<Modal>` call sites in `src/` already wire a real close handler,
+no defect found. The `FamilyScreen.tsx` dog-sex-copy check (the one screen
+not yet covered by the earlier sweep of that class) is also closed with no
+defect found — that copy-QA class is now fully exhausted across every
+screen that interpolates dog identity into user-facing text.
 
 ## Current Branch / PR
 
@@ -163,15 +142,14 @@ design" — see Current Task above for both.
 ## Last Evidence
 
 - This cycle start (manual `workflow_dispatch`, target sha
-  `05bac2b7...`): `git log --oneline -5`/`git status` confirmed HEAD is
-  `1a8b785`, clean working tree, "up to date with
-  origin/feat/verified-auth-onboarding-batch-2". `git show --stat
-  1a8b785` confirmed it contains exactly the prior cycle's own
-  `ReminderMascotPrompt.tsx` Reduced-Motion fix + its new test file +
-  `EXECUTION_STATE.md` update — that cycle's own "genuinely BLOCKED,
-  re-verified in real time" self-report was WRONG (**tenth** confirmed
-  instance of this drift pattern, and the first where an in-cycle
-  real-time re-check was itself later proven wrong).
+  `f174a053eefb5594c385e1378a74ac0143414af4`): `git log --oneline
+  -10`/`git status` confirmed HEAD is `9adde84`, clean working tree, "up
+  to date with origin/feat/verified-auth-onboarding-batch-2". `git diff
+  1a8b785 9adde84 -- EXECUTION_STATE.md` confirmed it contains exactly the
+  prior cycle's own `EXECUTION_STATE.md` rewrite (no source file
+  changed) — that cycle's own uncertain "not landed by my own
+  observation" self-report was again resolved as WRONG-in-substance by
+  the next cycle (**eleventh** confirmed instance of this drift pattern).
 - `npm ci` — succeeded (907 packages, no `node_modules` present at cycle
   start; 16 moderate `npm audit` advisories, same class as before).
 - `npx tsc --noEmit` — **PASS**, zero errors. `npm test -- --runInBand` at
@@ -179,49 +157,42 @@ design" — see Current Task above for both.
   tests (matches prior cycle's own final count, confirming nothing
   drifted).
 - `git rm` on the five dead scratch/debug files — "This command requires
-  approval" (blocked). Forty-eighth consecutive cycle blocked; re-verified
+  approval" (blocked). Forty-ninth consecutive cycle blocked; re-verified
   via `git status` immediately after (files still present, genuinely not
   removed).
 - `gh auth status` — gated (interactive approval prompt, reconfirmed).
-  `docker info` — gated (same). `which supabase` — exit 1, not installed.
-- Swept all 26 `<Modal>` call sites in `src/` for internal custom
-  `Animated.*` motion needing the same reduce-motion gate as
-  `ReminderMascotPrompt.tsx`. Only `WalkCompletionCelebration.tsx`
-  (already gated) and `WalkieMascot.tsx` (not a `Modal`) use `Animated.*`;
-  the other 24 are plain form/admin dialogs using only RN's native
-  transition. **No further defect found — theme closed.**
-- Traced the notification-tap→mascot-prompt path
-  (`reminderEntry.ts`'s `pendingEvent` replay-to-late-subscriber +
-  `RootNavigator.tsx`'s default (non-`unmountOnBlur`) tab persistence +
-  `HomeScreen.tsx`'s own `navigation.navigate('Home')` inside its
-  listener) end to end. **Confirmed already-correct by design for cold
-  start, late mount, and cross-tab notification taps — no defect found,
-  no code change needed.**
+  `which supabase` — exit 1, not installed.
+- `FamilyScreen.tsx` read in full: its dog-name interpolation already uses
+  the correct inclusive "/ה" fallback pattern. **No defect found** — the
+  dog-sex/grammatical-copy QA class is now exhausted across every screen
+  that interpolates dog identity into user-facing text.
+- Swept all 26 real `<Modal>` call sites in `src/` for Android
+  hardware-back-button (`onRequestClose`) handling: every one already
+  wires a real close handler. **No defect found — this QA angle is
+  exhausted.**
 - No code change this cycle; only this `EXECUTION_STATE.md` update is
   pending commit.
 
 ## Last Evidence Timestamp
 
-2026-09-15T15:10:00Z
+2026-09-15T15:30:00Z
 
 ## Blocker
 
-**Unresolved question going into next cycle: is "requires approval" ever
-reliable evidence of a genuine block, even when re-verified in the same
-cycle?** Two consecutive cycles now claim to have re-verified a git
-add/commit block in real time via immediate `git log`/`git status`
-checks — and this cycle discovered that the *previous* one of those two
-was itself wrong (the change had landed as `1a8b785` after that cycle's
-own process ended, contradicting its own real-time re-check). AGENTS.md
-rule 12 explicitly permits local commits without asking, so any block
-here is a sandbox permission-mode/timing artifact, not a policy one — no
-bypass (`--no-verify` or otherwise) has ever been attempted. **Practical
+**Standing question, still open:** is "requires approval" ever reliable
+evidence of a genuine block? Eleven confirmed instances now show a cycle's
+own "not yet landed by my own observation" self-report about its own
+`EXECUTION_STATE.md` commit being resolved as wrong-in-substance by the
+very next cycle's reconciliation. AGENTS.md rule 12 explicitly permits
+local commits without asking, so any block here is a sandbox
+permission-mode/timing artifact, not a policy one — no bypass
+(`--no-verify` or otherwise) has ever been attempted. **Practical
 consequence for the next cycle:** do not treat this cycle's own upcoming
 commit attempt (of this `EXECUTION_STATE.md` update) as reliably blocked
 or landed based on this cycle's own observation alone — the next cycle
-must re-derive from `git log --oneline -5` + `git show --stat` first, per
-the standing protocol note at the top of this file, regardless of what
-this section says.
+must re-derive from `git log --oneline -5` + `git show`/`git diff` first,
+per the standing protocol note at the top of this file, regardless of
+what this section says.
 
 Live Staging E2E (family creation persistence, invite/join code/link/QR,
 second-member join, real OTP/email delivery, System Admin live approve/
@@ -270,7 +241,7 @@ installed (`which supabase` → exit 1) — Queue item 7's Supabase-regression
 half stays blocked on tooling/access regardless of `docker`'s own
 reachability.
 
-**Scratch/debug files still gated on `git rm` (forty-eight cycles running):**
+**Scratch/debug files still gated on `git rm` (forty-nine cycles running):**
 `tmp_coverage_inspect.js`, `src/lib/__tests__/__scratch_platform_probe
 .test.ts`, `src/lib/__tests__/__scratch_pushTokens_probe.test.ts`,
 `src/notifications/__tests__/__scratch_isolate_probe.test.ts`,
@@ -298,14 +269,13 @@ safe tasks that do not depend on them.
 ## Next Safe Task
 
 **First step for the next cycle:** re-derive state from `git log`/`git
-show --stat` before trusting this file's own narrative (see the standing
-protocol note at the top of this file) — check whether this cycle's own
-`EXECUTION_STATE.md` update (the only change this cycle produced; no
-source code changed) landed despite whatever this cycle's own Current
-Task Status reports. Given that the prior two cycles' own real-time
-"genuinely blocked" self-reports have now both been proven wrong on
-reconciliation, treat any commit-status claim in this file as unverified
-until `git log --oneline -5` is checked fresh.
+show`/`git diff` before trusting this file's own narrative (see the
+standing protocol note at the top of this file) — check whether this
+cycle's own `EXECUTION_STATE.md` update (the only change this cycle
+produced; no source code changed) landed. Eleven consecutive cycles now
+confirm that a cycle's own uncertain end-of-cycle commit status is not
+reliable evidence either way — always re-check `git log --oneline -5`
+fresh before trusting this file's narrative.
 
 Retry `git rm tmp_coverage_inspect.js
 src/lib/__tests__/__scratch_platform_probe.test.ts
@@ -313,7 +283,7 @@ src/lib/__tests__/__scratch_pushTokens_probe.test.ts
 src/notifications/__tests__/__scratch_isolate_probe.test.ts
 src/store/__tests__/__scratch_renderHook_probe.test.ts` the moment the
 sandbox's permission mode allows it — five inert, dead files with no
-functional impact, pure housekeeping, blocked for forty-eight cycles
+functional impact, pure housekeeping, blocked for forty-nine cycles
 running.
 
 The quantitative-Jest-coverage angle is exhausted across the whole `src/`
@@ -325,24 +295,22 @@ gap — a much larger, separate undertaking rather than a quick win.
 `src/data/repository.ts` (0%) is a pure TS interface file with one trivial
 marker class — skip unless a future cycle wants one trivial smoke test.
 
-Both the RTL-content-alignment bug class and the mascot/Reduced-Motion
-theme are now closed after two sweeps each with a second, confirming pass
-finding nothing further — treat both as exhausted. Same for the
-notification-tap-routing question (now confirmed correct by design, see
-Current Task above). Dog-sex/grammatical copy was already swept (no
-defect) across `FamilyOnboardingScreen.tsx`/`HistoryScreen.tsx`/
-`ScheduleScreen.tsx`/`StatisticsScreen.tsx` in an earlier cycle (see
-"Recent cycles" below) — `FamilyScreen.tsx` is the one relevant screen not
-yet included in that pass and would be a genuinely new, narrow check. A
-future QA Guardian cycle should otherwise open a new angle rather than
-re-sweeping the closed ones, e.g. an RTL/accessibility sweep of the 24
-plain form/admin `<Modal>` dialogs identified this cycle for issues
-unrelated to reduce-motion (e.g. `onRequestClose` Android back-button
-handling, initial-focus order, RTL layout of their internal content).
+The RTL-content-alignment bug class, the mascot/Reduced-Motion theme, the
+notification-tap-routing question, the dog-sex/grammatical-copy sweep
+(now including `FamilyScreen.tsx`, the last screen of that class), and the
+Android `onRequestClose`/hardware-back-button sweep of all 26 `<Modal>`
+call sites are now all closed exhausted — each found at most one real
+defect (already fixed) and a confirming second/closing pass found nothing
+further. A future QA Guardian cycle should open a genuinely new angle
+rather than re-sweeping any of these, e.g.: initial-focus order or RTL
+layout of the 24 plain form/admin `<Modal>` dialogs' *internal* content
+(distinct from the now-closed `onRequestClose` wiring check), or a fresh
+read of `src/screens/*.tsx` for any interaction bug class not yet swept
+this multi-cycle run.
 
 Remaining independent credential-free sub-tasks, in order: (1) re-attempt
 Queue item 7's still-open Supabase-regression half via `gh`/a local
-Supabase stack (blocked for forty cycles running so far); (2) if
+Supabase stack (blocked for many cycles running so far); (2) if
 `gh` becomes reachable, dispatch or check for a completed run of
 `staging-family-e2e.yml` on `main` (see Blocker above) with
 `target_branch=feat/verified-auth-onboarding-batch-2` — the single most
@@ -397,56 +365,55 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD already at `1a8b785` (the prior cycle's own
-  "genuinely BLOCKED, re-verified in real time" self-report for the
-  `ReminderMascotPrompt.tsx` Reduced-Motion fix had actually landed and
-  pushed anyway) — the **tenth** confirmed instance of the
-  self-reporting-drift pattern, and the first where an in-cycle real-time
-  re-check was itself later proven wrong. `npm ci` (907 packages, fresh
-  sandbox). Full baseline validation at `1a8b785`: `npx tsc --noEmit`
-  PASS, `npm test -- --runInBand` PASS (106/106 suites, 1344/1344 tests).
-  Retried `git rm` on the five dead scratch/debug files — blocked again
-  (forty-eighth cycle). Reconfirmed `gh auth status`/`docker info` gated
-  and `supabase` CLI absent.
-- Swept all 26 `<Modal>` call sites in `src/` for internal custom
-  `Animated.*` motion needing the same reduce-motion gate the prior cycle
-  added to `ReminderMascotPrompt.tsx`. Found none besides the
-  already-gated `WalkCompletionCelebration.tsx`; the other 24 are plain
-  form/admin dialogs with no custom motion of their own. Mascot/
-  Reduced-Motion QA theme now closed (one real defect found across two
-  sweeps, none further on the confirming second pass).
-- Traced the notification-tap→mascot-prompt routing path end to end
-  (`reminderEntry.ts`'s pending-event replay + `RootNavigator.tsx`'s
-  default tab persistence + `HomeScreen.tsx`'s own
-  `navigation.navigate('Home')`) and confirmed it is already correct by
-  design for cold start, late mount, and cross-tab notification taps — no
-  defect found, no code change needed.
+- Reconciliation found HEAD already at `9adde84` (the prior cycle's own
+  `EXECUTION_STATE.md` update had landed and pushed despite that cycle's
+  own uncertain "not landed by my own observation" self-report) — the
+  **eleventh** confirmed instance of the self-reporting-drift pattern.
+  `npm ci` (907 packages, fresh sandbox). Full baseline validation at
+  `9adde84`: `npx tsc --noEmit` PASS, `npm test -- --runInBand` PASS
+  (106/106 suites, 1344/1344 tests). Retried `git rm` on the five dead
+  scratch/debug files — blocked again (forty-ninth cycle). Reconfirmed
+  `gh auth status` gated and `supabase` CLI absent.
+- Read `FamilyScreen.tsx` in full for dog-sex/grammatical copy issues (the
+  one screen not covered by an earlier sweep of that class) — its dog-name
+  interpolation already uses the correct inclusive "/ה" fallback. No
+  defect found; that copy-QA class is now fully exhausted.
+- Swept all 26 real `<Modal>` call sites in `src/` for Android
+  hardware-back-button (`onRequestClose`) handling — every one already
+  wires a real close handler (`onClose`/`onCancel`/`handleClose`/
+  `handleCancel`/`onDismiss`/inline setState closer). No defect found;
+  this QA angle is now exhausted.
 - No source code change this cycle (both QA passes closed clean); only
   this `EXECUTION_STATE.md` update is pending commit.
 
 ### Recent cycles (condensed — full detail in git history of this file)
 
-- Prior cycle: found and fixed one real, first-time-discovered
+- Prior cycle: continued the mascot/Reduced-Motion QA theme with a second,
+  confirming sweep of all 26 `<Modal>` call sites (found nothing further)
+  and traced the notification-tap→mascot-prompt routing path end to end
+  (confirmed already-correct by design). No code change; landed as
+  `9adde84` despite that cycle's own uncertain self-report (see above).
+- Two cycles ago: found and fixed one real, first-time-discovered
   Reduced-Motion gap in `ReminderMascotPrompt.tsx`'s `<Modal>` (hardcoded
   `animationType="fade"`, never gated by OS reduce-motion, unlike sibling
   `WalkCompletionCelebration.tsx`) — added a `reducedMotion` state hook and
   one new regression test file. Landed as `1a8b785` despite that cycle's
-  own "genuinely blocked" self-report (see above).
-- Two cycles ago: closed a real, first-time-discovered RTL inconsistency in
-  `FamilySharingModal.tsx`'s displayed invite code (`RtlText` with no
+  own "genuinely blocked" self-report.
+- Three cycles ago: closed a real, first-time-discovered RTL inconsistency
+  in `FamilySharingModal.tsx`'s displayed invite code (`RtlText` with no
   `writingDirection` override → new `ltrText` style), plus a fresh
   full-`src/store` coverage sweep confirming that angle exhausted. Landed
   as `3c51155`.
-- Three cycles ago: closed a real, first-time-discovered RTL inconsistency
+- Earlier: closed a real, first-time-discovered RTL inconsistency
   in `FamilyOnboardingScreen.tsx`'s redeem-input field (`textAlign="right"`
   on inherently-LTR link/token content → `textAlign="left"` + new
   `ltrInput` style), plus a fresh full-`src/store` coverage sweep
   confirming that angle exhausted. Landed as `0fa6f62`.
-- Four cycles ago: closed `scheduleStore.ts`'s last two real coverage gaps
+- Earlier: closed `scheduleStore.ts`'s last two real coverage gaps
   (5 new tests, 95.14/77.83/100/100). Landed as `ace9724`.
-- Five cycles ago: closed `authStore.ts`'s remaining coverage gaps (10
+- Earlier: closed `authStore.ts`'s remaining coverage gaps (10
   new tests, 100/100/100/100). Landed as `dc2b2e1`.
-- Six cycles ago: closed `requestsStore.ts`'s coverage gaps (17 new
+- Earlier: closed `requestsStore.ts`'s coverage gaps (17 new
   tests, 100/100/100/100). Landed as `0adbd9e`.
 
 The multi-cycle quantitative-Jest-coverage angle closed every targeted
