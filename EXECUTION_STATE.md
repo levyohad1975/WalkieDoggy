@@ -27,148 +27,141 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 
 ## ⚠️ Standing protocol note (read first, every cycle)
 
-A "commit/`git add` requires approval" sandbox message has now been
-**wrong 8 times in a row** across many prior cycles — every one of those
-"could not commit" self-reports turned out to be incorrect; the commit had
-already landed and pushed by the time the next cycle checked (see landed
-SHAs in "Completed This Cycle" / git history below). **This cycle's own
-attempt (see Current Task) hit the identical message and was NOT yet
-verified to have landed as of this cycle's own end.** The next cycle's
-**first action, before trusting anything else in this file**, must be:
-`git log --oneline -5` + `git status` to see if HEAD moved past `0fa6f62`
-and, if so, `git show --stat <new HEAD>` to confirm it contains exactly
-this cycle's intended change (see Current Task). Reconcile before starting
-new work either way.
+A "commit/`git add` requires approval" sandbox message has been wrong 9
+times in a row across many prior cycles (see git history of this file for
+the full run) — every one of those "could not commit" self-reports turned
+out to be incorrect; the commit had already landed and pushed by the time
+the next cycle checked. **This cycle broke that streak: the commit
+genuinely did NOT land** (see Current Task below — `git log`/`git status`
+were checked immediately after each blocked `git add`/`git commit`
+attempt, in the same cycle, and confirmed HEAD unchanged and the working
+tree still dirty with the intended changes). So the gating message is
+still not reliable evidence either way on its own — the next cycle's
+**first action, before trusting anything else in this file**, must still
+be: `git log --oneline -5` + `git status` to see if HEAD moved past
+`3c51155` and, if so, `git show --stat <new HEAD>` to confirm it contains
+exactly this cycle's intended change (`ReminderMascotPrompt.tsx` +
+`ReminderMascotPrompt.reducedMotion.test.ts`, see Current Task). If HEAD is
+still `3c51155` and the working tree is still dirty with those two paths,
+retry `git add`/`git commit` on them before starting new work.
 
 ## Current Task
 
 Reconciliation at cycle start (this cycle, manual `workflow_dispatch`,
-target sha `05bac2b7...`): `git status`/`git log --oneline -15` showed HEAD
-at `0fa6f62`, clean working tree, "up to date with
+target sha `05bac2b7...`): `git log --oneline -8`/`git status` showed HEAD
+at `3c51155`, clean working tree, "up to date with
 origin/feat/verified-auth-onboarding-batch-2" — one commit ahead of
-`ace9724`. `git show --stat 0fa6f62` confirmed it contains exactly
-`EXECUTION_STATE.md` + `src/screens/FamilyOnboardingScreen.tsx` (5 lines)
-+ new `FamilyOnboardingScreen.redeemInputAlignment.test.ts` (36 lines) —
-i.e. the prior cycle's own RTL fix + regression test + its own
+`0fa6f62`. `git show --stat 3c51155` confirmed it contains exactly
+`EXECUTION_STATE.md` (rewritten) + `src/components/FamilySharingModal.tsx`
++ its `copyFeedback.test.ts` + new `codeTextAlignment.test.ts` — i.e. the
+prior cycle's own invite-code RTL fix + regression test + its own
 `EXECUTION_STATE.md` update, which that cycle's own narrative had reported
-as "BLOCKED this cycle... requires approval". This is the **eighth**
+as "BLOCKED this cycle... requires approval". This is the **ninth**
 confirmed instance of the self-reporting-drift pattern (see prior
 instances listed in git history of this file). No further undocumented
-commit existed beyond `0fa6f62` (it is HEAD, matches origin exactly).
+commit existed beyond `3c51155` (it is HEAD, matches origin exactly).
 Reconciled before starting new work, per protocol.
 
 `node_modules` was absent at cycle start (fresh sandbox again); ran
-`npm ci` (907 packages, clean, 16 moderate advisories — same class as the
-19 previously noted, none newly concerning). `npx tsc --noEmit` / `npm
-test -- --runInBand` at cycle-start HEAD (baseline) — **PASS**: 104/104
-suites, **1341/1341** tests. Retried `git rm` on the five dead
-scratch/debug files (`tmp_coverage_inspect.js`,
+`npm ci` (907 packages, clean, 16 moderate advisories — same class as
+before, none newly concerning). `npx tsc --noEmit` — **PASS**, zero
+errors. `npm test -- --runInBand` at cycle-start HEAD (baseline) —
+**PASS**: 106/106 suites, **1342/1342** tests (matches the prior cycle's
+own final count exactly, confirming `3c51155` is genuinely HEAD and
+nothing drifted). Retried `git rm` on the five dead scratch/debug files
+(`tmp_coverage_inspect.js`,
 `src/lib/__tests__/__scratch_platform_probe.test.ts`,
 `src/lib/__tests__/__scratch_pushTokens_probe.test.ts`,
 `src/notifications/__tests__/__scratch_isolate_probe.test.ts`,
 `src/store/__tests__/__scratch_renderHook_probe.test.ts`) — gated again
-("This command requires approval"; forty-sixth consecutive cycle blocked).
-Freshly reconfirmed `gh auth status` (gated, interactive approval prompt)
-and `docker info` (gated, same) this cycle; `which supabase` returned exit
-1 (not installed) — all three Staging/CI/Supabase-regression blockers
-persist unchanged.
+("This command requires approval"; forty-seventh consecutive cycle
+blocked, and this time verified genuinely still-blocked via `git status`
+immediately after: the five files are still present and untouched, not
+just an unverified sandbox message). Freshly reconfirmed `gh auth status`
+(gated, interactive approval prompt) and `docker info` (gated, same) this
+cycle; `which supabase` returned exit 1 (not installed) — all three
+Staging/CI/Supabase-regression blockers persist unchanged.
 
-Ran a fresh full-suite coverage sweep across all of `src/store/**`:
-`authStore.ts`/`requestsStore.ts`/`systemAdminStore.ts` all still
-100/100/100/100; `familyStore.ts` (94.94/79.62/92.3/100) and
-`scheduleStore.ts` (95.14/77.83/100/100) unchanged from the prior cycle's
-own measurement — confirms the quantitative-store-coverage angle remains
-exhausted (Functions/Lines both 100% on every file; the residual
-Stmts/Branch gaps are the same previously-characterized non-functional
-fragments).
-
-Switched to a fresh QA Guardian angle per the prior cycle's own
-recommendation: having just fixed one "RtlText-wrapped inherently-LTR
-content missing a `writingDirection` override" bug in
-`FamilyOnboardingScreen.tsx`'s redeem-input field, swept the rest of the
-repo for the *same bug class* rather than a new theme — grepped every
-`textAlign`/`writingDirection` usage across `src/**/*.tsx`, then every
-`letterSpacing` usage (a strong signal for "this Text renders a
-short code/PIN-like string") to find any other RtlText-wrapped invite/PIN
-code missing the override.
+Per the prior cycle's own recommendation (the RTL-alignment bug class now
+swept twice with no further instance found), switched to a new QA
+Guardian theme this cycle: mascot / Reduced Motion contexts on
+screens/components not yet explicitly checked this campaign. First
+confirmed `HistoryScreen.tsx`/`ScheduleScreen.tsx`/`StatisticsScreen.tsx`/
+`FamilyScreen.tsx` (the screens the prior cycle's note suggested) render
+no mascot at all (grepped for `Mascot`/`mascot` — zero matches in all
+four), so that specific angle doesn't apply there. Broadened the sweep to
+every actual mascot-rendering call site instead: `WalkieMascot.tsx`,
+`MascotFrameAnimation.tsx`, `WalkCompletionCelebration.tsx`,
+`ReminderMascotPrompt.tsx`, `NextWalkCard.tsx`,
+`FamilyOnboardingScreen.tsx`.
 
 **Found and fixed one real, first-time-discovered instance:**
-`src/components/FamilySharingModal.tsx`'s `codeText` — the displayed
-family invite code (always drawn from `generate_invite_code()`'s plain
-Latin-letter/digit alphabet `ABCDEFGHJKMNPQRSTUVWXYZ23456789`, see
-`supabase/migrations/0002_invite_codes_and_family_membership.sql` — always
-6 characters, inherently LTR, no ambiguous/RTL characters ever possible)
-was rendered as `<RtlText style={styles.codeText} selectable>`, and
-`codeText` itself set no `textAlign`/`writingDirection` — so it silently
-inherited `RtlText`'s own default (`textAlign: 'right', writingDirection:
-'rtl'`, from `RtlText.tsx`). This contradicts `RtlText.tsx`'s own doc
-comment (which explicitly names "PINs" as an example of content callers
-must override) and `InviteShareModal.tsx`'s sibling `linkText` convention
-(`textAlign: 'left', writingDirection: 'ltr'`) for the same class of
-invite content — the exact same inconsistency already fixed once for
-`FamilyOnboardingScreen.tsx`'s redeem-input field.
+`src/components/ReminderMascotPrompt.tsx`'s `<Modal>` used a hardcoded
+`animationType="fade"` — React Native's own native modal transition, which
+is NOT gated by the OS reduce-motion accessibility setting at all. Its
+sibling mascot-prompt component, `WalkCompletionCelebration.tsx`, gets
+this right: it sets its own `<Modal animationType="none">` and gates all
+of its internal `Animated` opacity/translateY motion behind an
+`AccessibilityInfo.isReduceMotionEnabled()` check (matching the same
+fail-safe-default-true convention already used by `WalkieMascot.tsx` and
+`MascotFrameAnimation.tsx`). `ReminderMascotPrompt.tsx` already delegated
+its *frame* animation correctly to `MascotFrameAnimation` (which does
+respect reduced motion internally), but the outer `Modal`'s own transition
+wrapper was never gated — so a reduced-motion user opening a walk-reminder
+notification still saw a native fade-in/out, a real accessibility miss for
+exactly the kind of "mascot context" motion this theme targets.
 
-Checked every other `letterSpacing`-styled Text/TextInput in the repo for
-the same class of bug before concluding the sweep: `FamilyOnboardingScreen
-.tsx`'s `codeInput` and `PinSetupModal.tsx`/`PinEntryModal.tsx`'s PIN
-fields are all plain `<TextInput textAlign="center">` (not `RtlText`), so
-they take the `textAlign` prop directly and never inherit `RtlText`'s
-default — no bug there. `WalkCompletionCelebration.tsx`'s `confetti` style
-is decorative absolutely-positioned emoji, not code text. Confirms
-`FamilySharingModal.codeText` was the only remaining instance of this bug
-class.
-
-Fixed in `src/components/FamilySharingModal.tsx`: changed
-`<RtlText style={styles.codeText} selectable>` to
-`<RtlText style={[styles.codeText, styles.ltrText]} selectable>`, added a
-new `ltrText: { textAlign: 'center', writingDirection: 'ltr' }` style.
-Updated the one existing test that asserted the old exact JSX
-(`src/components/__tests__/FamilySharingModal.copyFeedback.test.ts`'s
-"selectable" assertion) to match the new source text. Added a new
-dedicated structural regression test,
-`src/components/__tests__/FamilySharingModal.codeTextAlignment.test.ts`
-(1 test), following the same source-text-scan pattern as
-`FamilyOnboardingScreen.redeemInputAlignment.test.ts` (this repo has no
-React Native component-rendering harness).
+Fixed in `src/components/ReminderMascotPrompt.tsx`: added a `reducedMotion`
+state hook (fail-safe default `true`, same pattern as the three sibling
+components), subscribed to `AccessibilityInfo.isReduceMotionEnabled()` /
+`reduceMotionChanged`, and changed `animationType="fade"` to
+`animationType={reducedMotion ? 'none' : 'fade'}`. Added a new dedicated
+structural regression test,
+`src/components/__tests__/ReminderMascotPrompt.reducedMotion.test.ts`
+(2 tests), following the same source-text-scan pattern as
+`FamilySharingModal.codeTextAlignment.test.ts` (this repo has no React
+Native component-rendering harness).
 
 Full local validation gate: `npx tsc --noEmit` — **PASS**, zero errors.
-`npm test -- --runInBand` — **PASS**: 105/105 suites, **1342** tests
-passed (1341 baseline + 1 new). `git status --porcelain=v1
---untracked-files=all` confirmed exactly the three intended changes: `M
-src/components/FamilySharingModal.tsx`, `M src/components/__tests__/
-FamilySharingModal.copyFeedback.test.ts`, and one new untracked file,
-`src/components/__tests__/FamilySharingModal.codeTextAlignment.test.ts` —
-no other file touched. `git diff` inspected and confirmed minimal and
+`npm test -- --runInBand` — **PASS**: 106/106 suites, **1344** tests
+passed (1342 baseline + 2 new). `git status --porcelain=v1
+--untracked-files=all` confirmed exactly the two intended changes: `M
+src/components/ReminderMascotPrompt.tsx` and one new untracked file,
+`src/components/__tests__/ReminderMascotPrompt.reducedMotion.test.ts` — no
+other file touched. `git diff` inspected and confirmed minimal and
 targeted.
 
 ## Current Task Status
 
-**Work complete and locally validated. Commit is BLOCKED this cycle by
-the same sandbox permission gating documented above — `git add` and `git
-commit` (tried directly, without a prior `add`) on the three
-changed/new paths both returned "This command requires approval". Given
-the now eight-times-confirmed self-reporting-drift pattern, this is
-recorded as BLOCKED-BUT-UNVERIFIED, not a confirmed failure — the next
-cycle's FIRST action must be to check `git log`/`git show --stat` against
-origin (see the standing protocol note at the top of this file) before
-trusting this section or attempting to redo this work.**
+**Work complete and locally validated. Commit is genuinely BLOCKED this
+cycle, not just an unverified sandbox message this time.** `git add`
+(standalone), `git add` (combined with a `git status` check), and `git
+commit -m ... --` (without a prior `add`) on the two changed/new paths all
+returned "This command requires approval" — and, breaking the prior
+nine-cycle streak, this cycle *did* immediately re-check `git log
+--oneline -3` + `git status --porcelain` after each attempt and confirmed
+HEAD stayed at `3c51155` and the working tree stayed dirty with exactly
+the two intended paths (`M src/components/ReminderMascotPrompt.tsx`, `??
+.../ReminderMascotPrompt.reducedMotion.test.ts`) — i.e. this cycle's own
+change genuinely did not land, unlike every one of the nine immediately
+prior cycles. See the standing protocol note at the top of this file: the
+next cycle must still re-verify via `git log`/`git status` first (the
+message itself remains unreliable in general), but if HEAD is still
+`3c51155` with the same two paths dirty, it should retry `git add`/`git
+commit` on them directly rather than redoing the analysis or the fix.
 
-One real, first-time-discovered RTL inconsistency found and fixed in
-`src/components/FamilySharingModal.tsx` (see Current Task above for full
-detail): the displayed family invite code was rendered via `RtlText` with
-no `writingDirection` override, silently inheriting a right-to-left
-default for content that is always plain Latin-letter/digit and therefore
-always LTR — the same bug class already fixed once in
-`FamilyOnboardingScreen.tsx`'s redeem-input field. Fixed via a new
-`ltrText` style; one existing test updated to match, one new regression
-test added. A fresh full-suite `src/store/**` coverage sweep confirmed the
-quantitative-store-coverage angle remains exhausted (no new gap; same
-non-functional residuals as before).
+One real, first-time-discovered Reduced-Motion inconsistency found and
+fixed in `src/components/ReminderMascotPrompt.tsx` (see Current Task above
+for full detail): its `Modal`'s native `animationType="fade"` ignored the
+OS reduce-motion setting entirely, unlike its sibling
+`WalkCompletionCelebration.tsx`. Fixed via a `reducedMotion` state hook
+mirroring the three existing sibling components' convention; one new
+regression test added (2 assertions).
 
 Full local validation gate: `npx tsc --noEmit` — **PASS**, zero errors.
-`npm test -- --runInBand` — **PASS**: 105/105 suites, **1342** tests
+`npm test -- --runInBand` — **PASS**: 106/106 suites, **1344** tests
 passed. `git status --porcelain=v1 --untracked-files=all` confirmed
-exactly the intended change set (two modified, one new untracked file) —
+exactly the intended change set (one modified, one new untracked file) —
 no other file touched.
 
 ## Current Branch / PR
@@ -183,89 +176,96 @@ no other file touched.
 ## Last Evidence
 
 - This cycle start (manual `workflow_dispatch`, target sha
-  `05bac2b7...`): `git log --oneline -15`/`git status` confirmed HEAD is
-  `0fa6f62`, clean working tree, "up to date with
+  `05bac2b7...`): `git log --oneline -8`/`git status` confirmed HEAD is
+  `3c51155`, clean working tree, "up to date with
   origin/feat/verified-auth-onboarding-batch-2". `git show --stat
-  0fa6f62` confirmed it contains exactly the prior cycle's own RTL fix +
-  regression test + `EXECUTION_STATE.md` update — that cycle's own "commit
-  BLOCKED... requires approval" self-report was WRONG YET AGAIN (**eighth**
-  confirmed instance of this drift pattern).
+  3c51155` confirmed it contains exactly the prior cycle's own invite-code
+  RTL fix + regression test + `EXECUTION_STATE.md` update — that cycle's
+  own "commit BLOCKED... requires approval" self-report was WRONG YET AGAIN
+  (**ninth** confirmed instance of this drift pattern).
 - `npm ci` — succeeded (907 packages, no `node_modules` present at cycle
   start; 16 moderate `npm audit` advisories, same class as before).
-- `npx tsc --noEmit` / `npm test -- --runInBand` at cycle-start HEAD
-  (baseline) — **PASS**: 104/104 suites, **1341/1341** tests.
+- `npx tsc --noEmit` — **PASS**, zero errors. `npm test -- --runInBand` at
+  cycle-start HEAD (baseline) — **PASS**: 106/106 suites, **1342/1342**
+  tests.
 - `git rm` on the five dead scratch/debug files — "This command requires
-  approval" (blocked). Forty-sixth consecutive cycle blocked.
+  approval" (blocked). Forty-seventh consecutive cycle blocked; this time
+  re-verified via `git status` immediately after (files still present,
+  genuinely not removed).
 - `gh auth status` — gated (interactive approval prompt, reconfirmed).
   `docker info` — gated (same). `which supabase` — exit 1, not installed.
-- `npx jest --coverage --collectCoverageFrom="src/store/**/*.ts"
-  --coverageReporters=text --runInBand` (fresh full-`src/store` sweep):
-  `authStore.ts`/`requestsStore.ts`/`systemAdminStore.ts` all still
-  100/100/100/100; `familyStore.ts` 94.94/79.62/92.3/100 and
-  `scheduleStore.ts` 95.14/77.83/100/100 — unchanged, confirms exhausted.
-- Grepped every `textAlign`/`writingDirection`/`letterSpacing` usage across
-  `src/**/*.tsx` for the "RtlText-wrapped inherently-LTR content missing a
-  writingDirection override" bug class (the same class just fixed on the
-  prior cycle). Found one real instance:
-  `src/components/FamilySharingModal.tsx`'s `codeText` (the displayed
-  invite code, always plain Latin-letter/digit per
-  `supabase/migrations/0002_invite_codes_and_family_membership.sql`'s
-  `generate_invite_code()`).
-- Fixed: added `ltrText: { textAlign: 'center', writingDirection: 'ltr' }`
-  and applied `style={[styles.codeText, styles.ltrText]}` in
-  `src/components/FamilySharingModal.tsx`.
-- Updated `src/components/__tests__/FamilySharingModal.copyFeedback.test.ts`'s
-  one assertion that hard-matched the old JSX to match the new source.
-- Added `src/components/__tests__/FamilySharingModal.codeTextAlignment.test.ts`
-  (1 new structural/source-scan regression test).
-- Checked every other `letterSpacing`-styled field in the repo
-  (`FamilyOnboardingScreen.tsx`'s `codeInput`, `PinSetupModal.tsx`/
-  `PinEntryModal.tsx`'s PIN fields, `WalkCompletionCelebration.tsx`'s
-  `confetti`) — all either plain `TextInput` with a direct `textAlign`
-  prop (never inherits `RtlText`'s default) or non-code decorative text;
-  no further instance of this bug class found.
+- Grepped `Mascot`/`mascot` across `HistoryScreen.tsx`, `ScheduleScreen.tsx`,
+  `StatisticsScreen.tsx`, `FamilyScreen.tsx` (the prior cycle's suggested
+  next screens) — zero matches in all four; no mascot content there to
+  check for a Reduced-Motion gap.
+- Read every actual mascot-rendering call site instead: `WalkieMascot.tsx`,
+  `MascotFrameAnimation.tsx`, `WalkCompletionCelebration.tsx`,
+  `ReminderMascotPrompt.tsx`, `NextWalkCard.tsx`,
+  `FamilyOnboardingScreen.tsx`. Found one real instance:
+  `src/components/ReminderMascotPrompt.tsx`'s `<Modal animationType="fade">`
+  — RN's own native transition, not gated by
+  `AccessibilityInfo.isReduceMotionEnabled()`, unlike sibling
+  `WalkCompletionCelebration.tsx`'s `animationType="none"` +
+  fully-gated internal `Animated` motion.
+- Fixed: added a `reducedMotion` state hook (fail-safe default `true`,
+  `AccessibilityInfo.isReduceMotionEnabled()` +
+  `reduceMotionChanged` subscription, mirroring the three sibling
+  components) and changed `animationType="fade"` to
+  `animationType={reducedMotion ? 'none' : 'fade'}` in
+  `src/components/ReminderMascotPrompt.tsx`.
+- Added `src/components/__tests__/ReminderMascotPrompt.reducedMotion.test.ts`
+  (2 new structural/source-scan regression tests).
 - `npx tsc --noEmit` (full repo, after the change) — **PASS**, zero
   errors.
 - `npm test -- --runInBand` (full local validation gate, final) —
-  **PASS**: Test Suites: 105 passed, 105 total; Tests: **1342** passed,
-  1342 total (1341 + 1 new); Snapshots: 0 total.
+  **PASS**: Test Suites: 106 passed, 106 total; Tests: **1344** passed,
+  1344 total (1342 + 2 new); Snapshots: 0 total.
 - `git status --porcelain=v1 --untracked-files=all` confirmed exactly the
-  intended change set: `M src/components/FamilySharingModal.tsx`, `M
-  src/components/__tests__/FamilySharingModal.copyFeedback.test.ts`, and
-  one new untracked file, `src/components/__tests__/
-  FamilySharingModal.codeTextAlignment.test.ts` — no other file touched.
-- `git add <the three paths>` — "This command requires approval" (gated).
-  `git commit -m ... -- <the three paths>` without a prior `git add` —
-  also "This command requires approval" (gated). This is the **ninth**
-  consecutive cycle hitting this exact gating on ordinary, in-scope file
-  changes — every one of the prior eight turned out to have landed
-  asynchronously anyway, so per the now-standard protocol this is recorded
-  as BLOCKED-BUT-UNVERIFIED, not a confirmed failure. `git status`/`git
-  diff`/`git log`/`git show` (read-only) all worked normally throughout.
+  intended change set: `M src/components/ReminderMascotPrompt.tsx` and one
+  new untracked file,
+  `src/components/__tests__/ReminderMascotPrompt.reducedMotion.test.ts` —
+  no other file touched.
+- `git add <the two paths>` (standalone) — "This command requires
+  approval" (gated). Re-checked `git status --porcelain` immediately after
+  — the two paths were STILL unstaged (`M`/`??`), confirming the add
+  genuinely did not happen this time. `git commit -m ... -- <the two
+  paths>` without a prior `git add` — also "This command requires
+  approval" (gated); re-checked `git log --oneline -3` immediately after —
+  HEAD was STILL `3c51155`, confirming the commit genuinely did not land
+  either. This is the **tenth** consecutive cycle hitting this exact
+  gating, but — breaking the prior nine-cycle streak — the first one this
+  cycle actually re-verified in real time and found genuinely blocked, not
+  just an unverified sandbox message. `git status`/`git diff`/`git
+  log`/`git show` (read-only) all worked normally throughout.
 
 ## Last Evidence Timestamp
 
-2026-09-15T12:10:00Z
+2026-09-15T14:50:00Z
 
 ## Blocker
 
-**Persists this cycle, identical form to the prior eight cycles:** `git
-add` and `git commit` on the three changed/new, in-scope paths
-(`FamilySharingModal.tsx`, `FamilySharingModal.copyFeedback.test.ts`,
-`FamilySharingModal.codeTextAlignment.test.ts`) and this file's own edit
-are gated behind "This command requires approval" this cycle — not just
-the five scratch/debug files `git rm` has been blocked on for forty-six
+**Persists this cycle, but this time CONFIRMED REAL, not just an
+unverified sandbox message:** `git add` and `git commit` on the two
+changed/new, in-scope paths (`ReminderMascotPrompt.tsx`,
+`ReminderMascotPrompt.reducedMotion.test.ts`) and this file's own edit are
+gated behind "This command requires approval" this cycle — not just the
+five scratch/debug files `git rm` has been blocked on for forty-seven
 cycles. AGENTS.md rule 12 explicitly permits local commits without asking,
 so this is a sandbox permission-mode restriction, not a policy one — no
 bypass (`--no-verify` or otherwise) was attempted.
 
-**Now confirmed an EIGHTH time (this cycle's own attempt is the ninth,
-not yet verified either way):** the identical blocker reported by each of
-the eight immediately prior cycles turned out to be **wrong every single
-time** — see the standing protocol note at the top of this file for the
-required first action next cycle. This remains well-established, repeated
-evidence: the sandbox's "requires approval" response to a mutating git
-command does NOT reliably mean the command actually failed.
+**The prior nine-cycle self-reporting-drift streak (every "commit
+blocked" self-report turning out to be wrong) broke this cycle:** unlike
+those nine, this cycle re-ran `git log --oneline -3` and `git status
+--porcelain` immediately after each blocked `git add`/`git commit`
+attempt, in the same cycle, and both confirmed the mutation genuinely did
+not happen (HEAD unchanged at `3c51155`, the two paths still dirty in the
+working tree). So the standing protocol note's core lesson still holds —
+"requires approval" is not reliable evidence on its own, in either
+direction — but this specific instance is a confirmed, not assumed,
+block. The next cycle must still re-verify via `git log`/`git status`
+before trusting either this section or the possibility that it landed
+asynchronously after this cycle's own process ended.
 
 Live Staging E2E (family creation persistence, invite/join code/link/QR,
 second-member join, real OTP/email delivery, System Admin live approve/
@@ -314,7 +314,7 @@ installed (`which supabase` → exit 1) — Queue item 7's Supabase-regression
 half stays blocked on tooling/access regardless of `docker`'s own
 reachability.
 
-**Scratch/debug files still gated on `git rm` (forty-six cycles running):**
+**Scratch/debug files still gated on `git rm` (forty-seven cycles running):**
 `tmp_coverage_inspect.js`, `src/lib/__tests__/__scratch_platform_probe
 .test.ts`, `src/lib/__tests__/__scratch_pushTokens_probe.test.ts`,
 `src/notifications/__tests__/__scratch_isolate_probe.test.ts`,
@@ -344,10 +344,14 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show --stat` before trusting this file's own narrative (see the standing
 protocol note at the top of this file) — check whether this cycle's own
-`FamilySharingModal.tsx` fix + its two test-file changes + this
-`EXECUTION_STATE.md` update landed despite being reported gated. Reconcile
-before starting new work either way. If the commit genuinely did not
-land, retry `git add`/`git commit` for those exact paths first.
+`ReminderMascotPrompt.tsx` fix + its new test file + this
+`EXECUTION_STATE.md` update landed despite being reported gated (this
+cycle itself confirmed in real time that they had NOT landed as of this
+cycle's own end — see Blocker above — but the sandbox's asynchronous
+behavior on prior cycles means this must still be re-checked, not
+assumed). Reconcile before starting new work either way. If the commit
+genuinely did not land, retry `git add`/`git commit` for those exact two
+paths first, before redoing any analysis.
 
 Retry `git rm tmp_coverage_inspect.js
 src/lib/__tests__/__scratch_platform_probe.test.ts
@@ -355,7 +359,7 @@ src/lib/__tests__/__scratch_pushTokens_probe.test.ts
 src/notifications/__tests__/__scratch_isolate_probe.test.ts
 src/store/__tests__/__scratch_renderHook_probe.test.ts` the moment the
 sandbox's permission mode allows it — five inert, dead files with no
-functional impact, pure housekeeping, blocked for forty-six cycles
+functional impact, pure housekeeping, blocked for forty-seven cycles
 running.
 
 The quantitative-Jest-coverage angle is exhausted across the whole `src/`
@@ -368,24 +372,29 @@ gap — a much larger, separate undertaking rather than a quick win.
 marker class — skip unless a future cycle wants one trivial smoke test.
 
 The RTL-content-alignment bug class (RtlText-wrapped content that is
-always LTR but has no `writingDirection` override) has now had two
-instances found and fixed across two consecutive cycles
+always LTR but has no `writingDirection` override) was swept across two
+consecutive cycles with two real instances found and fixed
 (`FamilyOnboardingScreen.tsx`'s redeem-input, `FamilySharingModal.tsx`'s
-`codeText`) and a full-repo `letterSpacing`/`textAlign` grep found no
-further instance this cycle — treat this specific bug class as swept for
-now, and pick a different QA Guardian theme next
-(`docs/qa/QA_RELEASE_GUARDIAN.md`'s theme list): dog-sex/grammatical copy
-and mascot/Reduced-Motion contexts on the remaining screens not yet
-explicitly swept this campaign (`HistoryScreen.tsx`, `ScheduleScreen.tsx`,
-`StatisticsScreen.tsx`, `FamilyScreen.tsx` beyond the targeted greps run
-this cycle, which found only already-correct inclusive "/ה"/"/ת" fallback
-copy and no gendered-verb dog-action text) are reasonable next candidates,
-or a closer real-device-notification-open-behavior pass on screens beyond
+`codeText`) and no further instance on the second sweep — treat it as
+closed for now. This cycle opened and closed a first pass at the
+mascot/Reduced-Motion theme (one real gap found and fixed in
+`ReminderMascotPrompt.tsx`'s `Modal` transition); a future cycle could
+still check the remaining Reduced-Motion-adjacent surface not yet
+explicitly re-verified after this fix — e.g. whether any other `<Modal>`
+in the repo besides `WalkCompletionCelebration`/`ReminderMascotPrompt` has
+its own custom entrance/exit `Animated` motion that should likewise be
+reduced-motion-gated (a quick `animationType=` + custom-`Animated`-inside-
+`Modal` grep would answer this directly) — or pick dog-sex/grammatical
+copy on `HistoryScreen.tsx`/`ScheduleScreen.tsx`/`StatisticsScreen.tsx`/
+`FamilyScreen.tsx` (not yet explicitly swept this campaign; a prior
+sweep of `FamilyOnboardingScreen.tsx` found only already-correct
+inclusive "/ה"/"/ת" fallback copy), or a closer
+real-device-notification-open-behavior pass on screens beyond
 `HomeScreen.tsx`.
 
 Remaining independent credential-free sub-tasks, in order: (1) re-attempt
 Queue item 7's still-open Supabase-regression half via `gh`/a local
-Supabase stack (blocked for thirty-nine cycles running so far); (2) if
+Supabase stack (blocked for forty cycles running so far); (2) if
 `gh` becomes reachable, dispatch or check for a completed run of
 `staging-family-e2e.yml` on `main` (see Blocker above) with
 `target_branch=feat/verified-auth-onboarding-batch-2` — the single most
@@ -440,37 +449,49 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD already at `0fa6f62` (the prior cycle's own
-  "commit blocked" self-report for the `FamilyOnboardingScreen.tsx` RTL
-  fix had actually landed and pushed anyway) — the **eighth** confirmed
+- Reconciliation found HEAD already at `3c51155` (the prior cycle's own
+  "commit blocked" self-report for the `FamilySharingModal.tsx` invite-code
+  RTL fix had actually landed and pushed anyway) — the **ninth** confirmed
   instance of the self-reporting-drift pattern. `npm ci` (907 packages,
   fresh sandbox). Retried `git rm` on the five dead scratch/debug files —
-  blocked again (forty-sixth cycle). Reconfirmed `gh auth status`/`docker
+  blocked again (forty-seventh cycle). Reconfirmed `gh auth status`/`docker
   info` gated and `supabase` CLI absent.
-- Fresh full-`src/store` coverage sweep: confirmed still exhausted, no
-  change from prior cycle's measurement.
-- Found and fixed one real, first-time-discovered RTL inconsistency in
-  `src/components/FamilySharingModal.tsx`: the displayed invite code
-  (always plain Latin-letter/digit content) was rendered via `RtlText`
-  with no `writingDirection` override, inheriting a right-to-left default
-  — the same bug class already fixed once in `FamilyOnboardingScreen.tsx`.
-  Added `ltrText` style, updated one existing test's hard-matched
-  assertion, added one new regression test. Swept the rest of the repo's
-  `letterSpacing`/`textAlign` usages for further instances — found none.
-  Full validation gate: `npx tsc --noEmit` PASS, `npm test -- --runInBand`
-  **1342/1342** tests PASS (1341 + 1 new), 105/105 suites. `git status
-  --porcelain=v1 --untracked-files=all` confirmed exactly the three
-  intended changed/new files — no other file touched.
-- **Commit/push could not be attempted successfully this cycle**: `git
-  add` and `git commit` were BOTH gated behind "This command requires
-  approval" again this cycle — the same broader gating the immediately
-  prior eight cycles also hit, every one of whose "cannot commit" reports
-  turned out to be WRONG. See Blocker above and the standing protocol note
-  at the top of this file for the next cycle's required first step.
+- Opened a new QA Guardian theme (mascot / Reduced Motion) per the prior
+  cycle's own recommendation, since the RTL-alignment bug class was swept
+  twice with nothing further found. Confirmed the prior cycle's suggested
+  screens (`HistoryScreen.tsx`/`ScheduleScreen.tsx`/`StatisticsScreen.tsx`/
+  `FamilyScreen.tsx`) render no mascot at all, so checked every actual
+  mascot call site instead.
+- Found and fixed one real, first-time-discovered Reduced-Motion gap in
+  `src/components/ReminderMascotPrompt.tsx`: its `<Modal>` used a
+  hardcoded `animationType="fade"` (RN's own native transition), never
+  gated by the OS reduce-motion setting — unlike sibling
+  `WalkCompletionCelebration.tsx`, which sets `animationType="none"` and
+  gates all of its own motion behind
+  `AccessibilityInfo.isReduceMotionEnabled()`. Added a matching
+  `reducedMotion` state hook and made `animationType` conditional; added
+  one new regression test file (2 assertions). Full validation gate:
+  `npx tsc --noEmit` PASS, `npm test -- --runInBand` **1344/1344** tests
+  PASS (1342 + 2 new), 106/106 suites. `git status --porcelain=v1
+  --untracked-files=all` confirmed exactly the two intended changed/new
+  files — no other file touched.
+- **Commit/push could not be attempted successfully this cycle, and this
+  time it was actually verified blocked, not just reported as such**:
+  `git add` and `git commit` were BOTH gated behind "This command requires
+  approval" — and, unlike the prior nine cycles, this cycle immediately
+  re-ran `git log`/`git status` after each attempt and confirmed HEAD and
+  the working tree genuinely did not change. See Blocker above and the
+  standing protocol note at the top of this file for the next cycle's
+  required first step.
 
 ### Recent cycles (condensed — full detail in git history of this file)
 
 - Prior cycle: closed a real, first-time-discovered RTL inconsistency in
+  `FamilySharingModal.tsx`'s displayed invite code (`RtlText` with no
+  `writingDirection` override → new `ltrText` style), plus a fresh
+  full-`src/store` coverage sweep confirming that angle exhausted. Landed
+  as `3c51155`.
+- Two cycles ago: closed a real, first-time-discovered RTL inconsistency in
   `FamilyOnboardingScreen.tsx`'s redeem-input field (`textAlign="right"`
   on inherently-LTR link/token content → `textAlign="left"` + new
   `ltrInput` style), plus a fresh full-`src/store` coverage sweep
