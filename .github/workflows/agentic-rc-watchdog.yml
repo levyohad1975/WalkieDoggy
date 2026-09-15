@@ -49,26 +49,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "dispatch=false" >> "$GITHUB_OUTPUT"
+          echo "dispatch_validation=false" >> "$GITHUB_OUTPUT"
+          echo "dispatch_worker=false" >> "$GITHUB_OUTPUT"
 
           author="$(git log -1 --format='%an')"
           subject="$(git log -1 --format='%s')"
           committed_at="$(git log -1 --format='%cI')"
           head_sha="$(git rev-parse HEAD)"
-
-          if [ "$author" != "walkie-agentic-worker[bot]" ]; then
-            echo "RC head is not an Agentic worker commit; watchdog will not dispatch." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          case "$subject" in
-            "chore(agentic): continue RC execution"|"chore(agentic): checkpoint RC execution")
-              ;;
-            *)
-              echo "RC head is not an Agentic continuation/checkpoint; watchdog will not dispatch." >> "$GITHUB_STEP_SUMMARY"
-              exit 0
-              ;;
-          esac
 
           active_count="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" --jq '[.workflow_runs[] | select((.name == "Agentic RC Worker" or .name == "Agentic RC Validation") and (.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested" or .status == "pending"))] | length')"
           if [ "$active_count" -gt 0 ]; then
@@ -76,18 +63,42 @@ jobs:
             exit 0
           fi
 
-          validated_after_head="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" --jq "[.workflow_runs[] | select(.name == \"Agentic RC Validation\" and .created_at >= \"$committed_at\")] | length")"
-          if [ "$validated_after_head" -gt 0 ]; then
-            echo "This RC head already has a Validation dispatch after its commit time; watchdog will not repeat it." >> "$GITHUB_STEP_SUMMARY"
+          if [ "$author" = "walkie-agentic-worker[bot]" ]; then
+            case "$subject" in
+              "chore(agentic): continue RC execution"|"chore(agentic): checkpoint RC execution")
+                validated_after_head="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" --jq "[.workflow_runs[] | select(.name == \"Agentic RC Validation\" and .created_at >= \"$committed_at\")] | length")"
+                if [ "$validated_after_head" -gt 0 ]; then
+                  echo "This RC head already has a Validation dispatch after its commit time; watchdog will not repeat it." >> "$GITHUB_STEP_SUMMARY"
+                  exit 0
+                fi
+
+                echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+                echo "dispatch_validation=true" >> "$GITHUB_OUTPUT"
+                echo "Detected stalled Agentic RC head $head_sha with no active or subsequent validation." >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+                ;;
+            esac
+          fi
+
+          main_committed_at="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq '.commit.committer.date')"
+          latest_worker_created_at="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" --jq '[.workflow_runs[] | select(.name == "Agentic RC Worker")] | first | .created_at // ""')"
+          latest_worker_conclusion="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" --jq '[.workflow_runs[] | select(.name == "Agentic RC Worker")] | first | .conclusion // "none"')"
+
+          if [ -z "$latest_worker_created_at" ] || [[ "$latest_worker_created_at" < "$main_committed_at" ]]; then
+            echo "dispatch_worker=true" >> "$GITHUB_OUTPUT"
+            echo "No Agentic RC Worker has run since the latest main infrastructure change; dispatching one guarded bootstrap recovery." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
-          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
-          echo "dispatch=true" >> "$GITHUB_OUTPUT"
-          echo "Detected stalled Agentic RC head $head_sha with no active or subsequent validation." >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "RC head is not a publishable Agentic checkpoint and a Worker already ran after the latest main infrastructure change."
+            echo "Latest Worker conclusion: $latest_worker_conclusion."
+            echo "Automatic retry is intentionally suppressed to prevent a retry/cost storm; a new infrastructure change or explicit dispatch is required."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::RC loop is idle after a post-infrastructure Worker attempt; watchdog is failing closed instead of retrying indefinitely."
 
       - name: Dispatch RC Validation recovery
-        if: steps.gate.outputs.dispatch == 'true'
+        if: steps.gate.outputs.dispatch_validation == 'true'
         shell: bash
         env:
           HEAD_SHA: ${{ steps.gate.outputs.head_sha }}
@@ -99,3 +110,14 @@ jobs:
             -f target_branch="$TARGET_BRANCH" \
             -f expected_sha="$HEAD_SHA"
           echo "Dispatched guarded Agentic RC Validation recovery for $TARGET_BRANCH at $HEAD_SHA." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dispatch one guarded Worker bootstrap recovery
+        if: steps.gate.outputs.dispatch_worker == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run agentic-rc-worker.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f target_branch="$TARGET_BRANCH"
+          echo "Dispatched one guarded Agentic RC Worker bootstrap recovery for $TARGET_BRANCH after a newer main infrastructure change." >> "$GITHUB_STEP_SUMMARY"
