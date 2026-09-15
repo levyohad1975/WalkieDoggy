@@ -479,4 +479,112 @@ describe('familyStore — deleteUser (soft delete, preserving history)', () => {
 
     spy.mockRestore();
   });
+
+  /**
+   * A CLIENT-side rejection, unlike the server-side one above: planUserRemoval()
+   * (src/logic/familyManagement.ts) throws FamilyManagementError itself,
+   * before repository.deleteFamilyMember is ever called, when the target is
+   * the sole member of a rotation and no replacement was given. Its message
+   * must reach actionError verbatim (the `e instanceof FamilyManagementError
+   * ? e.message : ...` branch), not the generic "לא הצלחנו למחוק" fallback
+   * meant for opaque server-side failures.
+   */
+  it('a client-side rejection (sole rotation member, no replacement given) surfaces the FamilyManagementError message verbatim, not the generic fallback', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { useScheduleStore } = require('../scheduleStore');
+    const { DEMO_FAMILY } = require('../../data/demoData');
+    const { toDateOnly } = require('../../logic/rotation');
+    const { repository } = require('../../data');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    await useScheduleStore.getState().load(DEMO_FAMILY.id);
+
+    const solo = await useFamilyStore.getState().addUser({ name: 'יחיד', avatar: '🧍', color: '#654321' });
+    const deleteFamilyMemberSpy = jest.spyOn(repository, 'deleteFamilyMember');
+
+    await useScheduleStore.getState().addRule({
+      id: 'rule-solo-rotation-test',
+      familyId: DEMO_FAMILY.id,
+      dogId: useFamilyStore.getState().dog.id,
+      time: '09:00',
+      label: 'טיול יחיד',
+      daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+      rotationUserIds: [solo.id],
+      rotationAnchorDate: toDateOnly(new Date()),
+      sortOrder: 99,
+      active: true,
+      createdAt: new Date().toISOString(),
+    });
+
+    await useFamilyStore.getState().deleteUser(solo.id, null);
+
+    expect(useFamilyStore.getState().actionError).toBe(
+      'אי אפשר למחוק — זה בן המשפחה היחיד בסבב הזה. בחר מי יחליף אותו.'
+    );
+    // Rejected client-side before any server call or local removedAt update.
+    expect(deleteFamilyMemberSpy).not.toHaveBeenCalled();
+    expect(useFamilyStore.getState().users.find((u: any) => u.id === solo.id)?.removedAt).toBeFalsy();
+
+    deleteFamilyMemberSpy.mockRestore();
+  });
+});
+
+/**
+ * load()'s "signed in as an already-removed profile" auto-recovery: if
+ * another admin removed the member THIS device is currently signed in as
+ * (see FamilyUser.removedAt), the next load() must sign this device out
+ * rather than let a removed profile keep acting as if nothing happened —
+ * see familyStore.ts's own doc comment on this exact block.
+ */
+describe('familyStore — load() auto-recovery when the signed-in profile was removed elsewhere', () => {
+  beforeEach(() => {
+    jest.resetModules();
+  });
+
+  it('signs the device out when the currently signed-in user is found removed in the freshly loaded users list', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { useAuthStore } = require('../authStore');
+    const { DEMO_FAMILY } = require('../../data/demoData');
+    const { repository } = require('../../data');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    const [victim] = useFamilyStore.getState().users;
+
+    // This device is signed in as `victim`; another admin (a different
+    // device) has already soft-deleted them server-side.
+    useAuthStore.setState({ currentUserId: victim.id });
+    await repository.upsertUser({ ...victim, removedAt: new Date().toISOString() });
+
+    const signOutSpy = jest.spyOn(useAuthStore.getState(), 'signOut').mockResolvedValue(undefined);
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+
+    expect(signOutSpy).toHaveBeenCalledTimes(1);
+
+    signOutSpy.mockRestore();
+  });
+
+  it('does NOT sign out when the signed-in user is present and not removed', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { useAuthStore } = require('../authStore');
+    const { DEMO_FAMILY } = require('../../data/demoData');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    const [victim] = useFamilyStore.getState().users;
+    useAuthStore.setState({ currentUserId: victim.id });
+
+    const signOutSpy = jest.spyOn(useAuthStore.getState(), 'signOut').mockResolvedValue(undefined);
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+
+    expect(signOutSpy).not.toHaveBeenCalled();
+
+    signOutSpy.mockRestore();
+  });
 });
