@@ -443,8 +443,8 @@ export function FamilyOnboardingScreen() {
                 }}
                 placeholder="dogwalkfamily://invite/... או הקוד עצמו"
                 placeholderTextColor={colors.textSecondary}
-                style={styles.input}
-                textAlign="right"
+                style={[styles.input, styles.ltrInput]}
+                textAlign="left"
                 autoCapitalize="none"
                 autoCorrect={false}
               />
@@ -605,6 +605,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   codeInput: { fontSize: 24, fontWeight: '800', letterSpacing: 4 },
+  ltrInput: { writingDirection: 'ltr' },
   error: { fontSize: 13, color: colors.statusOverdue, fontWeight: '600', marginTop: 10, textAlign: 'right' },
   foundCard: {
     backgroundColor: colors.surface,
