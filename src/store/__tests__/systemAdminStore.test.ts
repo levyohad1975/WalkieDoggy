@@ -81,6 +81,28 @@ describe('store/systemAdminStore — useSystemAdminStore', () => {
     expect(checkIsSystemAdmin).not.toHaveBeenCalled();
   });
 
+  it('refresh() re-entrancy guard: a second concurrent call while the first is still in flight does not call checkIsSystemAdmin() again', async () => {
+    process.env = { ...ORIGINAL_ENV, EXPO_PUBLIC_SUPABASE_URL: 'https://example.supabase.co', EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'anon-key' };
+    mockSupabaseJs();
+    let resolveCheck: (value: boolean) => void = () => {};
+    const checkIsSystemAdmin = jest.fn(() => new Promise<boolean>((resolve) => { resolveCheck = resolve; }));
+    jest.doMock('../../lib/systemAdmin', () => ({ checkIsSystemAdmin }));
+    const { useSystemAdminStore } = require('../systemAdminStore');
+
+    const firstCall = useSystemAdminStore.getState().refresh();
+    expect(useSystemAdminStore.getState().checking).toBe(true);
+
+    const secondCall = useSystemAdminStore.getState().refresh();
+    expect(checkIsSystemAdmin).toHaveBeenCalledTimes(1);
+
+    resolveCheck(true);
+    await Promise.all([firstCall, secondCall]);
+
+    expect(checkIsSystemAdmin).toHaveBeenCalledTimes(1);
+    expect(useSystemAdminStore.getState().isSystemAdmin).toBe(true);
+    expect(useSystemAdminStore.getState().checking).toBe(false);
+  });
+
   it('reset() returns to the initial unchecked state', async () => {
     process.env = { ...ORIGINAL_ENV, EXPO_PUBLIC_SUPABASE_URL: 'https://example.supabase.co', EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'anon-key' };
     mockSupabaseJs();

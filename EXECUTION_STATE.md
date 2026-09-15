@@ -28,93 +28,76 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 ## Current Task
 
 Reconciliation at cycle start (this cycle, manual `workflow_dispatch`,
-target sha `c718adf8...`): `git status`/`git log` showed HEAD at
-`20c832a` with a **clean working tree**, one commit ahead of the
-`f41e766` this file's own last-committed narrative described as current.
-`git show --stat 20c832a` / `git diff --stat f41e766 20c832a` confirmed
-`20c832a` contains exactly `EXECUTION_STATE.md` +
-`src/mascot/__tests__/messageEngine.test.ts` +
-`src/mascot/__tests__/messageEngineFallback.test.ts` — i.e. the prior
-cycle's own commit, which its narrative said had been "gated"/"requires
-approval" and might land asynchronously, **did land**, exactly the
-self-reporting-drift pattern this file has flagged for many cycles
-running. No other undocumented commits existed beyond it. Reconciled
-before starting new work, per protocol.
+target sha `35c8717f...`): `git status`/`git log` showed HEAD at
+`a68f48e` with a **clean working tree**, one commit ahead of the
+`20c832a` this file's own last-committed narrative described as current.
+`git show --stat a68f48e` / `git diff --stat f41e766 HEAD` confirmed
+`a68f48e` contains exactly `EXECUTION_STATE.md` +
+`src/lib/__tests__/webPush.test.ts` — i.e. the prior cycle's own commit,
+which its narrative said had been "gated"/"requires approval" and might
+land asynchronously, **did land**, exactly the self-reporting-drift
+pattern this file has flagged for many cycles running. No other
+undocumented commits existed beyond it. Reconciled before starting new
+work, per protocol.
 
 `node_modules` was absent at cycle start (fresh sandbox); ran `npm ci`
 (907 packages, clean, same 19 pre-existing moderate advisories, no new
 ones). `gh auth status` and `docker info` re-checked fresh this cycle:
-both still gated behind the same interactive approval prompt. Retried
-`git rm` on the four dead scratch/debug files
-(`tmp_coverage_inspect.js`,
+both still gated behind the same interactive approval prompt (thirty-
+eighth consecutive cycle blocked on both). Retried `git rm` on the four
+dead scratch/debug files (`tmp_coverage_inspect.js`,
 `src/lib/__tests__/__scratch_platform_probe.test.ts`,
 `src/lib/__tests__/__scratch_pushTokens_probe.test.ts`,
 `src/notifications/__tests__/__scratch_isolate_probe.test.ts`) — gated
-again (thirty-seventh consecutive cycle blocked).
+again (thirty-eighth consecutive cycle blocked on this too).
 
 Ran a fresh full-repo `npx jest --coverage --coverageReporters=text
---runInBand` sweep (no `--collectCoverageFrom` filter) per the prior
-cycle's own suggested next step, to check for drift/new gaps since the
-last full sweep: 98/98 suites, 1237/1237 tests passed, and every file in
+--runInBand` sweep (no `--collectCoverageFrom` filter) to check for
+drift/new gaps: 99/99 suites, 1259/1259 tests passed, and every file in
 `src/lib`, `src/logic`, `src/mascot`, `src/notifications` previously
-labeled 100%/100%/100%/100% remained so — the only partial-branch
-residuals (`localRepository.ts` line 111, `syncQueue.ts` lines 289/300/
-321, `presence.ts` line 136) matched the already-documented,
-provably-unreachable defensive-code gaps from prior cycles. **No new or
-drifted gap found.**
+labeled 100%/100%/100%/100% remained so (including `webPush.ts`, now
+confirmed landed at 100%/100%/100%/100%) — the only partial-branch
+residuals in that set (`localRepository.ts` line 111, `syncQueue.ts`
+lines 289/300/321, `presence.ts` line 136) matched the already-
+documented, provably-unreachable defensive-code gaps from prior cycles.
+**No new or drifted gap found in that previously-tracked file set.**
 
-Selected this cycle's single bounded unit: close the one real remaining
-local coverage gap, `src/lib/webPush.ts` (0%/0%/0%/0%, all 165 lines
-uncovered), which every recent cycle had read and deferred as
-"genuinely hard... expect real friction" because it depends on
-browser-only globals (`window`, `navigator.serviceWorker`, global
-`Notification`) that jest-expo's Node test environment does not provide
-by default. Attempted it for real this cycle rather than deferring
-again. Read the file in full plus the existing
-`remoteReminderChannel.test.ts` (which already mocks `Platform.OS` and
-`../webPush` itself, giving a proven local pattern for `Object.
-defineProperty(Platform, 'OS', ...)`, `jest.resetModules()` +
-`jest.doMock()` + `require()`) and `jest.setup.js`. Confirmed the actual
-Jest test environment is Node (via `@react-native/jest-preset`, no
-`testEnvironment` override), so `window`/`navigator`/`Notification` are
-genuinely absent unless a test stubs them onto `global` directly — this
-is exactly what blocked every prior attempt from being a "quick win."
+This full sweep's output also surfaces `src/store/*` coverage, which the
+prior cycles' "quantitative angle exhausted" conclusion never actually
+addressed (it only ever scoped `src/lib`/`src/logic`/`src/mascot`/
+`src/notifications`) — `systemAdminStore.ts` was at 92.3/75/100/100
+(one branch gap, line 40), `familyStore.ts` at 71.71/61.11/69.23/75.3,
+`requestsStore.ts`/`scheduleStore.ts`/`authStore.ts` lower still. Store
+files are real business logic (not screens needing a render harness), so
+this is a legitimate, previously-unexamined angle, not a re-tread.
 
-Created `src/lib/__tests__/webPush.test.ts` (new file, 22 tests, no
-other file touched):
-- Stubbed `global.window` (with `PushManager`, a `Notification` key, and
-  a `Buffer`-backed `atob` matching real `atob`'s byte-for-byte
-  behavior), `global.navigator.serviceWorker`, and `global.Notification`
-  (the *same object reference* as `window.Notification`, mirroring how a
-  real browser aliases the two) via small `stubBrowserGlobals()`/
-  `setNavigatorServiceWorker()`/`clearBrowserGlobals()` helpers, cleaned
-  up in `afterEach` alongside `Platform.OS` and `process.env` restoration
-  (same pattern as `remoteReminderChannel.test.ts`).
-- `getCurrentWebPushEndpoint()` (6 tests): native-platform unsupported;
-  web but missing `PushManager`/`Notification` (still unsupported); no
-  registration; registration with no subscription; registration with a
-  subscription (returns its `endpoint`); registration lookup throws
-  (resolves `null`, not throwing).
-- `getWebPushStatus()` (7 tests): native `'unsupported'`; `'denied'`;
-  `'default'`; `'granted'` with no registration; `'granted'` with a
-  registration but no subscription; `'subscribed'` with a subscription;
-  registration lookup throws → falls back to `'granted'`.
-- `enableWebPush()` (9 tests, using the `jest.doMock('../supabase', ...)`
-  + `jest.resetModules()` + `require('../webPush')` pattern since only
-  this function branches on `isSupabaseConfigured`/`supabase`): native
-  `'unsupported'` before touching Supabase; throws when Supabase isn't
-  configured; throws when `EXPO_PUBLIC_VAPID_PUBLIC_KEY` is missing/
-  whitespace-only; permission `'default'` → user declines → `'denied'`,
-  no service-worker registration attempted; permission `'default'` →
-  prompt dismissed without a decision → `'default'`; existing Push
-  subscription is reused (not re-subscribed) and its endpoint/keys are
-  upserted via RPC; no existing subscription → `pushManager.subscribe()`
-  is called with `userVisibleOnly: true` and an `applicationServerKey`
-  whose decoded bytes were asserted equal (via an independently
-  reimplemented `urlBase64ToBytes()` in the test file) to the real
-  VAPID-key transform; incomplete browser subscription (missing
-  endpoint/`p256dh`/`auth`) throws before any RPC call; RPC error is
-  propagated by reference (`rejects.toBe(rpcError)`).
+Selected this cycle's single bounded unit: close `systemAdminStore.ts`'s
+one remaining branch gap (line 40, the `if (get().checking) return;`
+re-entrancy guard inside `refresh()`) — chosen over the larger
+`familyStore.ts`/other store gaps as the smallest coherent unit directly
+relevant to Queue items 2/4 (System Admin approve/reject correctness):
+this guard is what prevents duplicate concurrent
+`checkIsSystemAdmin()` RPC calls if `refresh()` is invoked twice before
+the first resolves (e.g. rapid App.tsx foreground events), and it had
+zero test coverage. Read the file and its existing 5-test
+`systemAdminStore.test.ts` in full first.
+
+Added one new test to the existing `src/store/__tests__/
+systemAdminStore.test.ts` (no other file touched): calls `refresh()`
+twice without awaiting the first (using a controllable, unresolved
+`checkIsSystemAdmin()` promise), asserts `checkIsSystemAdmin` was called
+exactly once while the first call is still in flight (i.e. the second
+call's `get().checking` guard actually bailed out), then resolves the
+promise and asserts both calls settle with `checkIsSystemAdmin` still
+only ever called once, `isSystemAdmin` reflecting the resolved value, and
+`checking` back to `false`.
+
+`src/store/systemAdminStore.ts` now measures **100%/100%/100%/100%**
+(up from 92.3/75/100/100) — confirmed via `npx jest --coverage
+--collectCoverageFrom="src/store/systemAdminStore.ts"
+--coverageReporters=text --runInBand
+src/store/__tests__/systemAdminStore.test.ts`: 6/6 tests passed, one
+suite.
 
 `src/lib/webPush.ts` now measures **100%/100%/100%/100%** (up from
 0%/0%/0%/0%) — confirmed via `npx jest --coverage
@@ -137,27 +120,13 @@ above). Full detail in git history of this file if needed; the
 `pushRouting.ts` default-parameter closures from earlier cycles are
 summarized in "Recent cycles" below.
 
-## Current Task Status
+## Prior cycle's Current Task Status (superseded, kept for continuity — condensed)
 
-**Work complete and locally validated; commit/push attempted this cycle
-— see Last Evidence for the exact outcome, and the standing instruction
-for the next cycle to verify via `git log`/`git show --stat` before
-trusting this claim, since several prior cycles' own "gated" commits
-turned out to have already landed by the next cycle's reconciliation
-(this cycle's own reconciliation above is the latest confirmed instance
-of that pattern, for `20c832a`).** `src/lib/webPush.ts`: 1 new test file
-(`webPush.test.ts`, 22 tests), coverage **100%/100%/100%/100%**, up from
-0%/0%/0%/0% — this was the last real 0%-coverage gap in `src/lib`/
-`src/logic`/`src/mascot`/`src/notifications` (see Current Task above for
-why prior cycles had deferred it, and why this cycle's fresh full sweep
-found no other new/drifted gap first).
-
-Full local validation gate: `npx tsc --noEmit` — **PASS**, zero errors.
-`npm test -- --runInBand` — **PASS**: 99/99 suites, **1259** tests passed
-(1237 baseline + 22 new, all in `webPush.test.ts`). `git status`/
-`git diff --stat` confirmed exactly one changed file from HEAD `20c832a`:
-`src/lib/__tests__/webPush.test.ts` (new file, untracked) — no unrelated
-files touched.
+`src/lib/webPush.ts`: 1 new test file (`webPush.test.ts`, 22 tests),
+coverage 100%/100%/100%/100%, up from 0%/0%/0%/0% — the last real
+0%-coverage gap in `src/lib`/`src/logic`/`src/mascot`/`src/notifications`.
+Committed as `a68f48e` (confirmed landed at this cycle's start — see
+Current Task above), superseding that cycle's own "gated" self-report.
 
 Also carried forward from prior cycles (still true, not re-verified this
 cycle): every named `QA_RELEASE_GUARDIAN.md` theme still has at least one
@@ -167,6 +136,29 @@ covered which theme, and Blocker below for the still-open
 `FamilyOnboardingScreen.tsx` applicant-navigation defect (the one known,
 unfixed, actionable finding from the whole campaign, on the stacked
 branch only).
+
+## Current Task Status
+
+**Work complete and locally validated. Commit/push attempted this
+cycle — see Last Evidence for the exact outcome, and per the recurring
+self-reporting-drift pattern documented throughout this file, the next
+cycle must verify via `git log`/`git show --stat` before trusting
+whatever this section claims, since the prior cycle's own "gated"
+`webPush.test.ts` commit turned out to have already landed as `a68f48e`
+by this cycle's own reconciliation (see Current Task above).**
+`src/store/systemAdminStore.ts`: 1 new test added to the existing
+`src/store/__tests__/systemAdminStore.test.ts` (6 tests total, was 5),
+coverage **100%/100%/100%/100%**, up from 92.3/75/100/100 — closed the
+`refresh()` re-entrancy-guard branch gap (line 40), directly relevant to
+Queue items 2/4 (System Admin correctness under concurrent
+`refresh()` calls).
+
+Full local validation gate: `npx tsc --noEmit` — **PASS**, zero errors.
+`npm test -- --runInBand` — **PASS**: 99/99 suites, **1260** tests
+passed (1259 baseline + 1 new, in `systemAdminStore.test.ts`). `git
+status`/`git diff --stat` confirmed exactly one changed file from HEAD
+`a68f48e`: `src/store/__tests__/systemAdminStore.test.ts` — no unrelated
+files touched.
 
 ## Current Branch / PR
 
@@ -180,14 +172,14 @@ branch only).
 ## Last Evidence
 
 - This cycle start (manual `workflow_dispatch`, target sha
-  `c718adf8...`): `git status`/`git log --oneline -15`/`git show --stat
-  20c832a`/`git diff --stat f41e766 20c832a` confirmed HEAD is `20c832a`,
-  clean working tree, one commit ahead of the `f41e766` this file's own
-  last-committed narrative described as current. `20c832a` contains
-  exactly `EXECUTION_STATE.md` + `messageEngine.test.ts` +
-  `messageEngineFallback.test.ts` — the prior cycle's own commit, which
-  its narrative said was gated, **did land** (self-reporting-drift
-  pattern again). No further undocumented commit existed beyond it.
+  `35c8717f...`): `git status`/`git log --oneline -15`/`git show --stat
+  a68f48e`/`git diff --stat f41e766 HEAD` confirmed HEAD is `a68f48e`,
+  clean working tree, one commit ahead of the `20c832a` this file's own
+  last-committed narrative described as current. `a68f48e` contains
+  exactly `EXECUTION_STATE.md` + `src/lib/__tests__/webPush.test.ts` —
+  the prior cycle's own commit, which its narrative said was gated,
+  **did land** (self-reporting-drift pattern again). No further
+  undocumented commit existed beyond it.
 - `npm ci` — succeeded (no `node_modules` was present at cycle start; 907
   packages added, no failure; 19 moderate `npm audit` advisories noted,
   none newly introduced this cycle).
@@ -199,72 +191,62 @@ branch only).
   src/lib/__tests__/__scratch_pushTokens_probe.test.ts
   src/notifications/__tests__/__scratch_isolate_probe.test.ts` — "This
   command requires approval" (blocked). Same blocker as every prior
-  cycle — thirty-seventh consecutive cycle blocked on the scratch-file
+  cycle — thirty-eighth consecutive cycle blocked on the scratch-file
   cleanup.
 - Fresh full-repo `npx jest --coverage --coverageReporters=text
-  --runInBand` sweep (no `--collectCoverageFrom` filter): 98/98 suites,
-  1237/1237 tests passed. Every `src/lib`/`src/logic`/`src/mascot`/
+  --runInBand` sweep (no `--collectCoverageFrom` filter): 99/99 suites,
+  1259/1259 tests passed. Every `src/lib`/`src/logic`/`src/mascot`/
   `src/notifications` file previously labeled 100%/100%/100%/100%
-  remained so; the only partial-branch residuals
+  remained so (including `webPush.ts`, confirmed landed at
+  100%/100%/100%/100%); the only partial-branch residuals
   (`localRepository.ts` line 111, `syncQueue.ts` lines 289/300/321,
   `presence.ts` line 136) matched already-documented, provably-
-  unreachable defensive code from prior cycles. No new/drifted gap
-  found. Confirmed `src/lib/webPush.ts` still at 0%/0%/0%/0% — the one
-  real remaining gap, previously deferred by every recent cycle as hard.
-- Read `src/lib/webPush.ts` in full, plus `remoteReminderChannel.test.ts`
-  (existing local pattern for mocking `Platform.OS` and `../webPush`
-  itself) and `jest.setup.js`. Confirmed the Jest test environment is
-  Node (via `@react-native/jest-preset`, no `testEnvironment` override),
-  so `window`/`navigator`/`Notification` are genuinely absent unless
-  stubbed onto `global` — the actual source of prior cycles' "hard"
-  assessment.
-- Created `src/lib/__tests__/webPush.test.ts` (new file, 22 tests):
-  stubbed `global.window`/`global.navigator.serviceWorker`/
-  `global.Notification` (Notification aliased to the same object as
-  `window.Notification`, matching real browser semantics) via local
-  helpers, cleaned up in `afterEach`. 6 tests for
-  `getCurrentWebPushEndpoint()`, 7 for `getWebPushStatus()`, 9 for
-  `enableWebPush()` (via `jest.doMock('../supabase', ...)` +
-  `jest.resetModules()` + `require()`, since only that function branches
-  on Supabase config) — covering every permission/registration/
-  subscription branch, the VAPID-key-missing guard, the new-vs-reused-
-  subscription paths (with the new-subscription `applicationServerKey`
-  bytes asserted against an independently reimplemented
-  `urlBase64ToBytes()`), the incomplete-subscription guard, and RPC
-  success/error propagation. Full reasoning in Current Task above.
-- `npx jest --coverage --collectCoverageFrom="src/lib/webPush.ts"
-  --coverageReporters=text --runInBand src/lib/__tests__/webPush.test.ts`
-  (after change) — **100%/100%/100%/100%**; 1/1 suite, 22/22 tests
-  passed.
+  unreachable defensive code from prior cycles. No new/drifted gap found
+  in that previously-tracked set. This sweep's full output also surfaced
+  `src/store/*` coverage (never in scope of the prior "quantitative angle
+  exhausted" conclusion) — `systemAdminStore.ts` at 92.3/75/100/100 (one
+  branch gap, line 40), `familyStore.ts` at 71.71/61.11/69.23/75.3,
+  `requestsStore.ts`/`scheduleStore.ts`/`authStore.ts` lower still.
+- Read `src/store/systemAdminStore.ts` in full plus its existing 5-test
+  `src/store/__tests__/systemAdminStore.test.ts`. Confirmed the one
+  branch gap (line 40) is the `if (get().checking) return;` re-entrancy
+  guard inside `refresh()`, with no existing test exercising concurrent
+  `refresh()` calls.
+- Added 1 new test to `src/store/__tests__/systemAdminStore.test.ts`
+  (6 tests total, was 5; no other file touched): calls `refresh()` twice
+  without awaiting the first (via a controllable, unresolved
+  `checkIsSystemAdmin()` promise), asserts `checkIsSystemAdmin` was
+  called exactly once while the first call is in flight, then resolves
+  and asserts both calls settle with `checkIsSystemAdmin` still called
+  only once, `isSystemAdmin` reflecting the resolved value, and
+  `checking` back to `false`.
+- `npx jest --coverage
+  --collectCoverageFrom="src/store/systemAdminStore.ts"
+  --coverageReporters=text --runInBand
+  src/store/__tests__/systemAdminStore.test.ts` (after change) —
+  **100%/100%/100%/100%**; 1/1 suite, 6/6 tests passed.
 - `npx tsc --noEmit` (full repo, after the change) — **PASS**, zero
   errors.
 - `npm test -- --runInBand` (full local validation gate, final) —
-  **PASS**: Test Suites: 99 passed, 99 total; Tests: **1259** passed,
-  1259 total (1237 + 22 new); Snapshots: 0 total; Time ~17.4s.
+  **PASS**: Test Suites: 99 passed, 99 total; Tests: **1260** passed,
+  1260 total (1259 + 1 new); Snapshots: 0 total; Time ~11s.
 - `git status --porcelain=v1 --untracked-files=all` / `git diff --stat`
-  confirmed exactly one changed file from HEAD `20c832a` before this
+  confirmed exactly one changed file from HEAD `a68f48e` before this
   file's own edit was added to the working set:
-  `src/lib/__tests__/webPush.test.ts` (new, untracked) — no unrelated
-  files touched, aside from the four already-tracked scratch/debug files
-  noted above (untouched, removal blocked again this cycle).
-- `git add EXECUTION_STATE.md src/lib/__tests__/webPush.test.ts` and,
-  separately, `git commit -m "..." -- EXECUTION_STATE.md
-  src/lib/__tests__/webPush.test.ts` (explicit pathspec, skipping the add
-  step) each returned "This command requires approval" this cycle —
-  gated, same interactive-approval-prompt class as `gh auth status`/
-  `docker info`/the scratch-file `git rm` above. `git log -3`/
-  `git status --porcelain` immediately after confirmed HEAD is still
-  `20c832a` and both files remain uncommitted in the working tree as of
-  the end of this cycle. Per the recurring self-reporting-drift pattern
-  documented above, a future cycle must check `git show --stat`/
-  `git log` first — this commit may land asynchronously after this text
-  is written, the same way several prior cycles' own "gated" commits
-  (most recently `20c832a` itself, per this cycle's own reconciliation)
-  turned out to have actually landed by the next cycle's reconciliation.
+  `src/store/__tests__/systemAdminStore.test.ts` — no unrelated files
+  touched, aside from the four already-tracked scratch/debug files noted
+  above (untouched, removal blocked again this cycle).
+- Commit/push of `EXECUTION_STATE.md` +
+  `src/store/__tests__/systemAdminStore.test.ts` was attempted at the end
+  of this cycle. Per the recurring self-reporting-drift pattern
+  documented throughout this file (most recently confirmed again this
+  cycle for `a68f48e`), the next cycle's first step must be to check
+  `git show --stat`/`git log` before trusting whether this landed,
+  regardless of what this text claims about the attempt's outcome.
 
 ## Last Evidence Timestamp
 
-2026-09-15T05:52:00Z
+2026-09-15T06:10:00Z
 
 ## Blocker
 
@@ -352,7 +334,7 @@ cycles ago), `src/lib/__tests__/__scratch_platform_probe.test.ts` and
 __scratch_isolate_probe.test.ts` (committed by `13bf18d`, same class of
 throwaway precursor) — left in place, not blocking any other work. A
 future cycle should retry `git rm` on all four together the moment the
-sandbox's permission mode allows it (thirty-seven consecutive cycles
+sandbox's permission mode allows it (thirty-eight consecutive cycles
 blocked as of this cycle).
 
 **Still-open, independent of this branch:** the applicant-side navigation
@@ -393,47 +375,42 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show --stat` before trusting this file's own narrative — check both (a)
 whether this cycle's own `EXECUTION_STATE.md` + new
-`src/lib/__tests__/webPush.test.ts` commit attempt (on top of `20c832a`)
-landed, and (b) whether any further commit exists beyond that which this
-file's own text never mentions (the recurring drift pattern — see
-Current Task/Blocker above). Reconcile before starting new work either
-way.
+`src/store/__tests__/systemAdminStore.test.ts` commit attempt (on top of
+`a68f48e`) landed, and (b) whether any further commit exists beyond that
+which this file's own text never mentions (the recurring drift pattern —
+see Current Task/Blocker above). Reconcile before starting new work
+either way.
 
 Retry `git rm tmp_coverage_inspect.js
 src/lib/__tests__/__scratch_platform_probe.test.ts
 src/lib/__tests__/__scratch_pushTokens_probe.test.ts
 src/notifications/__tests__/__scratch_isolate_probe.test.ts` the moment
 the sandbox's permission mode allows it — four inert, dead files with no
-functional impact, pure housekeeping, blocked for thirty-seven cycles
+functional impact, pure housekeeping, blocked for thirty-eight cycles
 running.
 
-The quantitative-Jest-coverage angle has now closed every file this
-sandbox can reach, including this cycle's `src/lib/webPush.ts` closure
-(0%/0%/0%/0% → 100%/100%/100%/100%, full reasoning in Current Task
-above) — the last remaining real gap from the prior cycle's own tracked
-list. Remaining known item:
+The quantitative-Jest-coverage angle is exhausted for
+`src/lib`/`src/logic`/`src/mascot`/`src/notifications` (every file is
+100%/100%/100%/100% or a documented, provably-unreachable residual), but
+this cycle found it was **not** exhausted for `src/store/*`, which no
+prior cycle's sweep had actually scoped in. This cycle closed
+`systemAdminStore.ts` (92.3/75/100/100 → 100/100/100/100). Remaining
+`src/store` gaps, in descending size (all real business logic, not
+render-harness-dependent, so each is a legitimate small bounded unit for
+a future cycle):
 
-1. `src/data/repository.ts` (0%) — NOT a real gap: a pure TypeScript
-   `interface` file (`Repository`) with one trivial marker class
-   (`RepositoryError extends Error {}`); interfaces carry no runtime code
-   to cover. Skip unless a future cycle wants a single trivial
-   `new RepositoryError('x') instanceof Error` smoke test purely for the
-   class.
+1. `familyStore.ts` — 71.71/61.11/69.23/75.3 (largest remaining gap;
+   family creation/join/admin state, directly Queue-1/2-relevant).
+2. `scheduleStore.ts` — 60.64/46.9/60.55/64.36.
+3. `requestsStore.ts` — 52.56/53.84/84.61/50.74.
+4. `authStore.ts` — 86.43/86.4/71.42/90.65 (already fairly high; likely
+   just a handful of specific branch/line gaps — see uncovered line
+   list in a fresh coverage sweep before picking specific tests).
 
-With the quantitative-coverage angle now genuinely exhausted (every
-non-screen/component `src/lib`/`src/logic`/`src/mascot`/
-`src/notifications` file is at 100%/100%/100%/100% or a documented,
-provably-unreachable residual), a future cycle should shift its default
-bounded unit away from further coverage micro-closures and toward: (a) a
-fresh full-repo `--collectCoverageFrom`-free `jest --coverage` sweep
-periodically to catch drift/new gaps from other branches' work (pull
-`--coverageReporters=lcov`'s `BRDA` detail, not just the text summary,
-for any file whose branch % is below 100 — this campaign's own
-`messageEngine.ts` discovery proved the text summary alone is
-insufficient to certify "100%"); (b) a fresh `QA_RELEASE_GUARDIAN.md`-
-style credential-free sweep of a not-yet-covered theme/screen, since
-Queue items 4/5/8 remain the only items with real credential-free
-surface left; (c) the independent sub-tasks listed below.
+Also still remaining, unchanged from before: `src/data/repository.ts`
+(0%) — NOT a real gap, a pure TypeScript `interface` file with one
+trivial marker class (`RepositoryError extends Error {}`); skip unless a
+future cycle wants a single trivial smoke test purely for the class.
 
 Screens/components sit at or near 0% coverage project-wide, which is an
 existing, consistent architectural pattern (no render-testing harness in
@@ -443,7 +420,7 @@ a much larger, separate undertaking rather than a quick win.
 Remaining independent credential-free sub-tasks, in order: (1) re-attempt
 Queue item 7's still-open Supabase-regression half via `gh`/a local
 Supabase stack (only if the sandbox's permission mode allows it that
-cycle — blocked for thirty-six cycles running so far); (2) if `gh`
+cycle — blocked for thirty-seven cycles running so far); (2) if `gh`
 becomes reachable, dispatch or check for a completed run of the
 `staging-family-e2e.yml` workflow on `main` (see Blocker above) with
 `target_branch=feat/verified-auth-onboarding-batch-2` — this is now the
@@ -504,17 +481,36 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had advanced to `20c832a` (one commit past
-  the `f41e766` this file's own last-committed narrative named) — the
+- Reconciliation found HEAD had advanced to `a68f48e` (one commit past
+  the `20c832a` this file's own last-committed narrative named) — the
   prior cycle's own "commit gated" claim turned out to have landed
   anyway, the same self-reporting-drift pattern flagged for many cycles
   running. `npm ci` (907 packages, fresh sandbox). `gh auth status`/
   `docker info` both freshly reconfirmed gated. Retried `git rm` on the
-  four dead scratch/debug files — blocked again (thirty-seventh cycle).
+  four dead scratch/debug files — blocked again (thirty-eighth cycle).
 - Ran a fresh full-repo coverage sweep (no `--collectCoverageFrom`
   filter): confirmed no new/drifted gap versus the prior cycle's known
-  state — every previously-100%-labeled `src/lib`/`src/logic`/
-  `src/mascot`/`src/notifications` file remained so.
+  state in `src/lib`/`src/logic`/`src/mascot`/`src/notifications`
+  (including confirming `webPush.ts` landed at 100%/100%/100%/100%), and
+  additionally identified that `src/store/*` was never actually in scope
+  of the prior "quantitative angle exhausted" conclusion — real gaps
+  exist there (`familyStore.ts`, `scheduleStore.ts`, `requestsStore.ts`,
+  `authStore.ts`, `systemAdminStore.ts`).
+- Closed `src/store/systemAdminStore.ts`'s coverage gap
+  (92.3/75/100/100 → 100/100/100/100) — added 1 new test to the existing
+  `src/store/__tests__/systemAdminStore.test.ts` (6 total, was 5)
+  covering the `refresh()` re-entrancy guard (line 40: `if
+  (get().checking) return;`), asserting a second concurrent `refresh()`
+  call while the first is in flight does not trigger a duplicate
+  `checkIsSystemAdmin()` RPC call. Directly relevant to Queue items 2/4
+  (System Admin approve/reject correctness). Full validation gate:
+  `npx tsc --noEmit` PASS, `npm test -- --runInBand` **1260/1260** tests
+  PASS (1259 + 1 new), 99/99 suites. `git status`/`git diff --stat`
+  confirmed exactly one changed file from HEAD `a68f48e` before this
+  file's own edit joined the working set — no unrelated files touched.
+
+### Recent cycles (condensed — full detail in git history of this file)
+
 - Closed `src/lib/webPush.ts`'s coverage gap (0%/0%/0%/0% →
   100%/100%/100%/100%) — the one real remaining gap every recent cycle
   had read and deferred as "genuinely hard" because it needs
@@ -524,15 +520,8 @@ proceed even while 1–3/6 are blocked.
   covering `getCurrentWebPushEndpoint()`, `getWebPushStatus()`, and
   `enableWebPush()` (permission states, registration/subscription
   branches, VAPID-key guard, new-vs-reused subscription, incomplete-
-  subscription guard, RPC success/error). Full reasoning in Current Task
-  above. Full validation gate: `npx tsc --noEmit` PASS, `npm test --
-  runInBand` **1259/1259** tests PASS (1237 + 22 new), 99/99 suites.
-  `git status`/`git diff --stat` confirmed exactly one changed file from
-  HEAD `20c832a` before this file's own edit joined the working set — no
-  unrelated files touched.
-
-### Recent cycles (condensed — full detail in git history of this file)
-
+  subscription guard, RPC success/error). Full validation gate passed;
+  committed as `a68f48e`.
 - Closed `src/mascot/messageEngine.ts`'s `selectMessage()` coverage gap
   (97.36/81.39/100/96.96 → 100/100/100/100), including 5 branch gaps
   found by reading raw `lcov`/`BRDA` detail instead of the text
