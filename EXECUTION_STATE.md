@@ -29,98 +29,112 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 
 Reconciliation at cycle start (this cycle, manual `workflow_dispatch`,
 target sha `c718adf8...`): `git status`/`git log` showed HEAD at
-`f41e766` with a **clean working tree**. This file's own
-previously-committed narrative (the content read at the very start of
-this cycle) described its own in-flight commit as "attempted this
-cycle" for the mascot coverage work — `git show --stat f41e766`
-confirmed that exact commit (`EXECUTION_STATE.md` + `mascotStage.test.ts`
-+ `celebrationAnimationManifest.test.ts`) **did land** as `f41e766`, and
-`f41e766` matches what the checked-out working tree's `EXECUTION_STATE.md`
-already said — i.e. the file was internally consistent with its own HEAD
-this time (no drift to reconcile). `node_modules` was absent at cycle
-start (fresh sandbox); ran `npm ci` (907 packages, clean, same 19
-pre-existing moderate advisories). `gh auth status` and `docker info`
-re-checked fresh this cycle: both still gated behind the same
-interactive approval prompt. Retried `git rm` on the four dead
-scratch/debug files (`tmp_coverage_inspect.js`,
+`20c832a` with a **clean working tree**, one commit ahead of the
+`f41e766` this file's own last-committed narrative described as current.
+`git show --stat 20c832a` / `git diff --stat f41e766 20c832a` confirmed
+`20c832a` contains exactly `EXECUTION_STATE.md` +
+`src/mascot/__tests__/messageEngine.test.ts` +
+`src/mascot/__tests__/messageEngineFallback.test.ts` — i.e. the prior
+cycle's own commit, which its narrative said had been "gated"/"requires
+approval" and might land asynchronously, **did land**, exactly the
+self-reporting-drift pattern this file has flagged for many cycles
+running. No other undocumented commits existed beyond it. Reconciled
+before starting new work, per protocol.
+
+`node_modules` was absent at cycle start (fresh sandbox); ran `npm ci`
+(907 packages, clean, same 19 pre-existing moderate advisories, no new
+ones). `gh auth status` and `docker info` re-checked fresh this cycle:
+both still gated behind the same interactive approval prompt. Retried
+`git rm` on the four dead scratch/debug files
+(`tmp_coverage_inspect.js`,
 `src/lib/__tests__/__scratch_platform_probe.test.ts`,
 `src/lib/__tests__/__scratch_pushTokens_probe.test.ts`,
 `src/notifications/__tests__/__scratch_isolate_probe.test.ts`) — gated
-again (thirty-sixth consecutive cycle blocked).
+again (thirty-seventh consecutive cycle blocked).
 
-Selected this cycle's single bounded unit: close the one coverage gap
-the prior cycle explicitly deferred — `src/mascot/messageEngine.ts` line
-158, `selectMessage()`'s `if (candidates.length === 0)` fallback
-(pre-change: 97.36/81.39/100/96.96, uncovered line 158). Read the file
-plus its existing test file (`messageEngine.test.ts`) and, this time,
-pulled the exact `lcov`/`BRDA` branch detail (`coverage/lcov.info`,
-gitignored, not committed) rather than relying on the text reporter's
-summary column alone — this surfaced that the file's true branch gap was
-**larger than line 158 alone**: the text reporter's "Uncovered Line #s"
-column only lists lines with an uncovered *statement*, so five other
-partial-branch gaps on already-100%-statement lines (142, 143, 146, 151,
-167/169) were real but had never been individually named by any prior
-cycle's narrative, which had mislabeled the entire 81.39%-branch gap as
-"just line 158." Traced every branch to real call sites/reachability:
+Ran a fresh full-repo `npx jest --coverage --coverageReporters=text
+--runInBand` sweep (no `--collectCoverageFrom` filter) per the prior
+cycle's own suggested next step, to check for drift/new gaps since the
+last full sweep: 98/98 suites, 1237/1237 tests passed, and every file in
+`src/lib`, `src/logic`, `src/mascot`, `src/notifications` previously
+labeled 100%/100%/100%/100% remained so — the only partial-branch
+residuals (`localRepository.ts` line 111, `syncQueue.ts` lines 289/300/
+321, `presence.ts` line 136) matched the already-documented,
+provably-unreachable defensive-code gaps from prior cycles. **No new or
+drifted gap found.**
 
-- Line 158 (zero-candidates fallback): needs `jest.mock`-ing
-  `messageLibrary.ts` to simulate an empty `MESSAGE_LIBRARY` — the real
-  library always has variants per category. Created a new file,
-  `src/mascot/__tests__/messageEngineFallback.test.ts` (a **separate**
-  file, not added to `messageEngine.test.ts`, because `jest.mock` at
-  module scope would otherwise mock `MESSAGE_LIBRARY` for that whole
-  file's other, non-mocked assertions too). 2 tests: fallback id/text
-  with and without a `dogName` in context.
-- Lines 142 (`ctx: MessageContext = {}`), 143
-  (`options: SelectMessageOptions = {}`), 146 (`options.history ??
-  defaultMessageHistory`): every existing test call supplied `ctx` and
-  `options` explicitly (with `history` always inside `options`), so the
-  three defaults were never exercised — same default-parameter pattern
-  as every prior default-argument closure this campaign has done. Added
-  1 test in `messageEngine.test.ts` calling `selectMessage('encouragement')`
-  with only the category argument.
-- Lines 167/169 (`pool.length > 0 ? pool : candidates` and `... ??
-  effectivePool[0]`): the existing "anti-repetition window is bounded"
-  test never actually drives `pool` to empty, because it uses the
-  *default* `windowSize` (3), which is smaller than every real
-  category's variant count — `recentIds()` always evicts old entries
-  before the whole category is excluded, so `pool` never reaches zero
-  length, and the `Math.floor(random() * length)` index is always
-  in-bounds so the `?? effectivePool[0]` arm never fires either. Added 2
-  new tests to `messageEngine.test.ts`: (a) `windowSize` set to the
-  category's own total variant count with `random: () => 0`, walking the
-  whole category in order via real anti-repetition bookkeeping until the
-  pool is provably fully exhausted and the fallback-to-`candidates` arm
-  fires for real; (b) a `random` implementation that returns `1`
-  (violating the documented `[0, 1)` contract) to exercise the
-  out-of-range defensive fallback.
-- Line 151 (`m.presets.includes(preset)`): unreachable with the real
-  library, since every shipped template today omits `presets` entirely
-  (confirmed in `messageEngine.test.ts`'s own comment). Added 1 more test
-  to `messageEngineFallback.test.ts`, in a second `describe` block using
-  `jest.resetModules()` + `jest.doMock()` + `require()` (rather than the
-  file-level `jest.mock()` used by the first block, so the two mocked
-  shapes don't collide within one file) with a single mocked template
-  tagged `presets: ['calm']`, then selecting with the `'default'`
-  preset — proving the presets-mismatch filter actually excludes it and
-  falls back correctly. This is a genuine behavioral test of the
-  not-yet-used presets feature (see `personalityPresets.ts`), not pure
-  coverage padding.
+Selected this cycle's single bounded unit: close the one real remaining
+local coverage gap, `src/lib/webPush.ts` (0%/0%/0%/0%, all 165 lines
+uncovered), which every recent cycle had read and deferred as
+"genuinely hard... expect real friction" because it depends on
+browser-only globals (`window`, `navigator.serviceWorker`, global
+`Notification`) that jest-expo's Node test environment does not provide
+by default. Attempted it for real this cycle rather than deferring
+again. Read the file in full plus the existing
+`remoteReminderChannel.test.ts` (which already mocks `Platform.OS` and
+`../webPush` itself, giving a proven local pattern for `Object.
+defineProperty(Platform, 'OS', ...)`, `jest.resetModules()` +
+`jest.doMock()` + `require()`) and `jest.setup.js`. Confirmed the actual
+Jest test environment is Node (via `@react-native/jest-preset`, no
+`testEnvironment` override), so `window`/`navigator`/`Notification` are
+genuinely absent unless a test stubs them onto `global` directly — this
+is exactly what blocked every prior attempt from being a "quick win."
 
-`src/mascot/messageEngine.ts` now measures **100%/100%/100%/100%** (up
-from 97.36/81.39/100/96.96).
+Created `src/lib/__tests__/webPush.test.ts` (new file, 22 tests, no
+other file touched):
+- Stubbed `global.window` (with `PushManager`, a `Notification` key, and
+  a `Buffer`-backed `atob` matching real `atob`'s byte-for-byte
+  behavior), `global.navigator.serviceWorker`, and `global.Notification`
+  (the *same object reference* as `window.Notification`, mirroring how a
+  real browser aliases the two) via small `stubBrowserGlobals()`/
+  `setNavigatorServiceWorker()`/`clearBrowserGlobals()` helpers, cleaned
+  up in `afterEach` alongside `Platform.OS` and `process.env` restoration
+  (same pattern as `remoteReminderChannel.test.ts`).
+- `getCurrentWebPushEndpoint()` (6 tests): native-platform unsupported;
+  web but missing `PushManager`/`Notification` (still unsupported); no
+  registration; registration with no subscription; registration with a
+  subscription (returns its `endpoint`); registration lookup throws
+  (resolves `null`, not throwing).
+- `getWebPushStatus()` (7 tests): native `'unsupported'`; `'denied'`;
+  `'default'`; `'granted'` with no registration; `'granted'` with a
+  registration but no subscription; `'subscribed'` with a subscription;
+  registration lookup throws → falls back to `'granted'`.
+- `enableWebPush()` (9 tests, using the `jest.doMock('../supabase', ...)`
+  + `jest.resetModules()` + `require('../webPush')` pattern since only
+  this function branches on `isSupabaseConfigured`/`supabase`): native
+  `'unsupported'` before touching Supabase; throws when Supabase isn't
+  configured; throws when `EXPO_PUBLIC_VAPID_PUBLIC_KEY` is missing/
+  whitespace-only; permission `'default'` → user declines → `'denied'`,
+  no service-worker registration attempted; permission `'default'` →
+  prompt dismissed without a decision → `'default'`; existing Push
+  subscription is reused (not re-subscribed) and its endpoint/keys are
+  upserted via RPC; no existing subscription → `pushManager.subscribe()`
+  is called with `userVisibleOnly: true` and an `applicationServerKey`
+  whose decoded bytes were asserted equal (via an independently
+  reimplemented `urlBase64ToBytes()` in the test file) to the real
+  VAPID-key transform; incomplete browser subscription (missing
+  endpoint/`p256dh`/`auth`) throws before any RPC call; RPC error is
+  propagated by reference (`rejects.toBe(rpcError)`).
+
+`src/lib/webPush.ts` now measures **100%/100%/100%/100%** (up from
+0%/0%/0%/0%) — confirmed via `npx jest --coverage
+--collectCoverageFrom="src/lib/webPush.ts" --coverageReporters=text
+--runInBand src/lib/__tests__/webPush.test.ts`: 22/22 tests passed, one
+suite.
 
 ## Prior cycle's Current Task (superseded, kept for continuity — condensed)
 
-Prior cycle closed two other previously-untracked `src/mascot/` gaps
-found in the same full-repo sweep that surfaced `messageEngine.ts` line
-158: `mascotStage.ts` (100/83.33/100/100 → 100/100/100/100, 2 tests for
-the omitted-`now` default-parameter branch on both exported functions)
-and `celebrationAnimationManifest.ts` (100/83.33/100/100 →
-100/100/100/100, 1 test for the no-match/`undefined` branch). Committed
-as `f41e766`. Full detail in git history of this file if needed; the
+Prior cycle closed `src/mascot/messageEngine.ts`'s `selectMessage()`
+coverage gap (97.36/81.39/100/96.96 → 100/100/100/100), including 5
+branch gaps (lines 142/143/146/151/167/169) found by reading raw
+`lcov`/`BRDA` detail instead of trusting the text reporter's summary
+column alone. 6 new tests across a new `messageEngineFallback.test.ts`
+and additions to the existing `messageEngine.test.ts`. Committed as
+`20c832a` (confirmed landed at this cycle's start — see Current Task
+above). Full detail in git history of this file if needed; the
+`mascotStage.ts` / `celebrationAnimationManifest.ts` /
 `src/lib/id.ts` / `pushIdempotency.ts` / `walkRequestStatusLine.ts` /
-`pushRouting.ts` default-parameter closures from two cycles ago are
+`pushRouting.ts` default-parameter closures from earlier cycles are
 summarized in "Recent cycles" below.
 
 ## Current Task Status
@@ -128,22 +142,22 @@ summarized in "Recent cycles" below.
 **Work complete and locally validated; commit/push attempted this cycle
 — see Last Evidence for the exact outcome, and the standing instruction
 for the next cycle to verify via `git log`/`git show --stat` before
-trusting this claim, since the commit has landed asynchronously after
-this text was written in several prior cycles.** `src/mascot/messageEngine.ts`:
-6 new tests across two files, coverage **100%/100%/100%/100%**, up from
-97.36%/81.39%/100%/96.96%. This closes the entire named coverage-gap
-queue again (no known file left with an untested reachable branch as of
-this cycle's fresh measurement — see Next Safe Task for the residual
-non-gap/genuinely-hard items).
+trusting this claim, since several prior cycles' own "gated" commits
+turned out to have already landed by the next cycle's reconciliation
+(this cycle's own reconciliation above is the latest confirmed instance
+of that pattern, for `20c832a`).** `src/lib/webPush.ts`: 1 new test file
+(`webPush.test.ts`, 22 tests), coverage **100%/100%/100%/100%**, up from
+0%/0%/0%/0% — this was the last real 0%-coverage gap in `src/lib`/
+`src/logic`/`src/mascot`/`src/notifications` (see Current Task above for
+why prior cycles had deferred it, and why this cycle's fresh full sweep
+found no other new/drifted gap first).
 
 Full local validation gate: `npx tsc --noEmit` — **PASS**, zero errors.
-`npm test -- --runInBand` — **PASS**: 98/98 suites, **1237** tests passed
-(1231 baseline + 6 new: 3 in `messageEngine.test.ts` + 3 in the new
-`messageEngineFallback.test.ts`). `git status`/`git diff --stat`
-confirmed exactly two changed files from HEAD `f41e766`:
-`src/mascot/__tests__/messageEngine.test.ts` (modified, +21/-0) and
-`src/mascot/__tests__/messageEngineFallback.test.ts` (new file,
-41 lines) — no unrelated files touched.
+`npm test -- --runInBand` — **PASS**: 99/99 suites, **1259** tests passed
+(1237 baseline + 22 new, all in `webPush.test.ts`). `git status`/
+`git diff --stat` confirmed exactly one changed file from HEAD `20c832a`:
+`src/lib/__tests__/webPush.test.ts` (new file, untracked) — no unrelated
+files touched.
 
 Also carried forward from prior cycles (still true, not re-verified this
 cycle): every named `QA_RELEASE_GUARDIAN.md` theme still has at least one
@@ -166,12 +180,14 @@ branch only).
 ## Last Evidence
 
 - This cycle start (manual `workflow_dispatch`, target sha
-  `c718adf8...`): `git status`/`git log --oneline -8`/`git show --stat
-  f41e766` confirmed HEAD is `f41e766`, clean working tree. `f41e766`
-  contains exactly `EXECUTION_STATE.md` + `mascotStage.test.ts` +
-  `celebrationAnimationManifest.test.ts` — the prior cycle's own
-  commit/push **did land**, and this file's own narrative already
-  matched HEAD (no drift found this cycle).
+  `c718adf8...`): `git status`/`git log --oneline -15`/`git show --stat
+  20c832a`/`git diff --stat f41e766 20c832a` confirmed HEAD is `20c832a`,
+  clean working tree, one commit ahead of the `f41e766` this file's own
+  last-committed narrative described as current. `20c832a` contains
+  exactly `EXECUTION_STATE.md` + `messageEngine.test.ts` +
+  `messageEngineFallback.test.ts` — the prior cycle's own commit, which
+  its narrative said was gated, **did land** (self-reporting-drift
+  pattern again). No further undocumented commit existed beyond it.
 - `npm ci` — succeeded (no `node_modules` was present at cycle start; 907
   packages added, no failure; 19 moderate `npm audit` advisories noted,
   none newly introduced this cycle).
@@ -183,63 +199,72 @@ branch only).
   src/lib/__tests__/__scratch_pushTokens_probe.test.ts
   src/notifications/__tests__/__scratch_isolate_probe.test.ts` — "This
   command requires approval" (blocked). Same blocker as every prior
-  cycle — thirty-sixth consecutive cycle blocked on the scratch-file
+  cycle — thirty-seventh consecutive cycle blocked on the scratch-file
   cleanup.
-- `npx jest --coverage --collectCoverageFrom="src/mascot/messageEngine.ts"
-  --coverageReporters=text --runInBand src/mascot/__tests__/messageEngine.test.ts`
-  (before change) — 97.36/81.39/100/96.96, matching the prior cycle's
-  sweep exactly.
-- Pulled `--coverageReporters=lcov` output (`coverage/lcov.info`,
-  gitignored) to get exact `BRDA` branch-arm hit counts rather than
-  relying on the text reporter's summary line, which surfaced 5
-  additional real branch gaps beyond line 158 that no prior cycle's
-  narrative had named individually (full reasoning in Current Task
-  above): lines 142, 143, 146 (default-parameter branches), 167/169
-  (pool-exhaustion + out-of-range-`random()` defensive fallback), and
-  151 (presets-mismatch filter arm).
-- Added 2 tests to a new `src/mascot/__tests__/messageEngineFallback.test.ts`
-  (line 158's zero-candidates fallback, with/without `dogName`), 1 more
-  test to the same new file in a second `describe` block using
-  `jest.resetModules()`/`jest.doMock()`/`require()` (line 151's
-  presets-mismatch arm), and 3 tests to the existing
-  `src/mascot/__tests__/messageEngine.test.ts` (lines 142/143/146's
-  omitted-argument defaults in one test; lines 167/169's genuine
-  pool-exhaustion and out-of-range-`random()` cases in two more).
-- `npx jest --coverage --collectCoverageFrom="src/mascot/messageEngine.ts"
-  --coverageReporters=text --runInBand src/mascot/__tests__/messageEngine.test.ts
-  src/mascot/__tests__/messageEngineFallback.test.ts` (after change) —
-  **100%/100%/100%/100%**; 2/2 suites, 25/25 tests passed.
+- Fresh full-repo `npx jest --coverage --coverageReporters=text
+  --runInBand` sweep (no `--collectCoverageFrom` filter): 98/98 suites,
+  1237/1237 tests passed. Every `src/lib`/`src/logic`/`src/mascot`/
+  `src/notifications` file previously labeled 100%/100%/100%/100%
+  remained so; the only partial-branch residuals
+  (`localRepository.ts` line 111, `syncQueue.ts` lines 289/300/321,
+  `presence.ts` line 136) matched already-documented, provably-
+  unreachable defensive code from prior cycles. No new/drifted gap
+  found. Confirmed `src/lib/webPush.ts` still at 0%/0%/0%/0% — the one
+  real remaining gap, previously deferred by every recent cycle as hard.
+- Read `src/lib/webPush.ts` in full, plus `remoteReminderChannel.test.ts`
+  (existing local pattern for mocking `Platform.OS` and `../webPush`
+  itself) and `jest.setup.js`. Confirmed the Jest test environment is
+  Node (via `@react-native/jest-preset`, no `testEnvironment` override),
+  so `window`/`navigator`/`Notification` are genuinely absent unless
+  stubbed onto `global` — the actual source of prior cycles' "hard"
+  assessment.
+- Created `src/lib/__tests__/webPush.test.ts` (new file, 22 tests):
+  stubbed `global.window`/`global.navigator.serviceWorker`/
+  `global.Notification` (Notification aliased to the same object as
+  `window.Notification`, matching real browser semantics) via local
+  helpers, cleaned up in `afterEach`. 6 tests for
+  `getCurrentWebPushEndpoint()`, 7 for `getWebPushStatus()`, 9 for
+  `enableWebPush()` (via `jest.doMock('../supabase', ...)` +
+  `jest.resetModules()` + `require()`, since only that function branches
+  on Supabase config) — covering every permission/registration/
+  subscription branch, the VAPID-key-missing guard, the new-vs-reused-
+  subscription paths (with the new-subscription `applicationServerKey`
+  bytes asserted against an independently reimplemented
+  `urlBase64ToBytes()`), the incomplete-subscription guard, and RPC
+  success/error propagation. Full reasoning in Current Task above.
+- `npx jest --coverage --collectCoverageFrom="src/lib/webPush.ts"
+  --coverageReporters=text --runInBand src/lib/__tests__/webPush.test.ts`
+  (after change) — **100%/100%/100%/100%**; 1/1 suite, 22/22 tests
+  passed.
 - `npx tsc --noEmit` (full repo, after the change) — **PASS**, zero
   errors.
 - `npm test -- --runInBand` (full local validation gate, final) —
-  **PASS**: Test Suites: 98 passed, 98 total; Tests: **1237** passed,
-  1237 total (1231 + 6 new); Snapshots: 0 total; Time ~21.9s.
+  **PASS**: Test Suites: 99 passed, 99 total; Tests: **1259** passed,
+  1259 total (1237 + 22 new); Snapshots: 0 total; Time ~17.4s.
 - `git status --porcelain=v1 --untracked-files=all` / `git diff --stat`
-  confirmed exactly two changed files from HEAD `f41e766` before this
+  confirmed exactly one changed file from HEAD `20c832a` before this
   file's own edit was added to the working set:
-  `src/mascot/__tests__/messageEngine.test.ts` (modified) and
-  `src/mascot/__tests__/messageEngineFallback.test.ts` (new) — no
-  unrelated files touched, aside from the four already-tracked
-  scratch/debug files noted above (untouched, removal blocked again this
-  cycle) and the gitignored `coverage/` directory generated by the lcov
-  runs above (not committed).
-- `git add` (of the three intended files) and `git commit` (both plain
-  and with an explicit pathspec, to avoid needing a separate `git add`)
-  each returned "This command requires approval" this cycle — gated,
-  same interactive-approval-prompt class as `gh auth status`/`docker
-  info`/the scratch-file `git rm` above, not a code or content problem.
-  `git log -3`/`git status --porcelain` immediately after confirmed HEAD
-  is still `f41e766` and the three files remain uncommitted in the
-  working tree as of the end of this cycle. Per the recurring
-  self-reporting-drift pattern documented in Blocker below, a future
-  cycle must check `git show --stat`/`git log` first — this commit may
-  land asynchronously after this text is written, the same way several
-  prior cycles' own "gated" commits turned out to have actually landed
-  by the next cycle's reconciliation.
+  `src/lib/__tests__/webPush.test.ts` (new, untracked) — no unrelated
+  files touched, aside from the four already-tracked scratch/debug files
+  noted above (untouched, removal blocked again this cycle).
+- `git add EXECUTION_STATE.md src/lib/__tests__/webPush.test.ts` and,
+  separately, `git commit -m "..." -- EXECUTION_STATE.md
+  src/lib/__tests__/webPush.test.ts` (explicit pathspec, skipping the add
+  step) each returned "This command requires approval" this cycle —
+  gated, same interactive-approval-prompt class as `gh auth status`/
+  `docker info`/the scratch-file `git rm` above. `git log -3`/
+  `git status --porcelain` immediately after confirmed HEAD is still
+  `20c832a` and both files remain uncommitted in the working tree as of
+  the end of this cycle. Per the recurring self-reporting-drift pattern
+  documented above, a future cycle must check `git show --stat`/
+  `git log` first — this commit may land asynchronously after this text
+  is written, the same way several prior cycles' own "gated" commits
+  (most recently `20c832a` itself, per this cycle's own reconciliation)
+  turned out to have actually landed by the next cycle's reconciliation.
 
 ## Last Evidence Timestamp
 
-2026-09-15T05:40:00Z
+2026-09-15T05:52:00Z
 
 ## Blocker
 
@@ -327,7 +352,7 @@ cycles ago), `src/lib/__tests__/__scratch_platform_probe.test.ts` and
 __scratch_isolate_probe.test.ts` (committed by `13bf18d`, same class of
 throwaway precursor) — left in place, not blocking any other work. A
 future cycle should retry `git rm` on all four together the moment the
-sandbox's permission mode allows it (thirty-six consecutive cycles
+sandbox's permission mode allows it (thirty-seven consecutive cycles
 blocked as of this cycle).
 
 **Still-open, independent of this branch:** the applicant-side navigation
@@ -367,8 +392,8 @@ safe tasks that do not depend on them.
 
 **First step for the next cycle:** re-derive state from `git log`/`git
 show --stat` before trusting this file's own narrative — check both (a)
-whether this cycle's own `EXECUTION_STATE.md` + `messageEngine.test.ts` +
-new `messageEngineFallback.test.ts` commit attempt (on top of `f41e766`)
+whether this cycle's own `EXECUTION_STATE.md` + new
+`src/lib/__tests__/webPush.test.ts` commit attempt (on top of `20c832a`)
 landed, and (b) whether any further commit exists beyond that which this
 file's own text never mentions (the recurring drift pattern — see
 Current Task/Blocker above). Reconcile before starting new work either
@@ -379,44 +404,36 @@ src/lib/__tests__/__scratch_platform_probe.test.ts
 src/lib/__tests__/__scratch_pushTokens_probe.test.ts
 src/notifications/__tests__/__scratch_isolate_probe.test.ts` the moment
 the sandbox's permission mode allows it — four inert, dead files with no
-functional impact, pure housekeeping, blocked for thirty-six cycles
+functional impact, pure housekeeping, blocked for thirty-seven cycles
 running.
 
-The quantitative-Jest-coverage angle has now closed every file on its
-tracked list, including this cycle's `src/mascot/messageEngine.ts`
-closure (97.36/81.39/100/96.96 → 100%/100%/100%/100%, full reasoning in
-Current Task above). Remaining known items, both previously assessed as
-not quick wins and unaffected by this cycle's work:
+The quantitative-Jest-coverage angle has now closed every file this
+sandbox can reach, including this cycle's `src/lib/webPush.ts` closure
+(0%/0%/0%/0% → 100%/100%/100%/100%, full reasoning in Current Task
+above) — the last remaining real gap from the prior cycle's own tracked
+list. Remaining known item:
 
-1. `src/lib/webPush.ts` (0%) — read in full several cycles ago and
-   confirmed genuinely hard to unit-test from this sandbox: it depends on
-   browser-only globals (`window`, `navigator.serviceWorker`, global
-   `Notification`) that this project's `jest-expo`/React Native test
-   environment does not provide. A future cycle could still attempt it
-   (e.g. stubbing `global.window`/`global.navigator`/`global.Notification`
-   manually before `require`-ing the module) but should expect real
-   friction, not a quick win.
-2. `src/data/repository.ts` (0%) — NOT a real gap: a pure TypeScript
+1. `src/data/repository.ts` (0%) — NOT a real gap: a pure TypeScript
    `interface` file (`Repository`) with one trivial marker class
    (`RepositoryError extends Error {}`); interfaces carry no runtime code
    to cover. Skip unless a future cycle wants a single trivial
    `new RepositoryError('x') instanceof Error` smoke test purely for the
    class.
 
-A future cycle should still run a fresh full-repo `--collectCoverageFrom`-
-free `jest --coverage` sweep periodically to check for any further
-drift/new gaps introduced by other branches' work, **and this time also
-pull `--coverageReporters=lcov`'s `BRDA` detail (not just the default
-text summary) for any file whose branch % is below 100** — this cycle's
-own discovery (5 branch gaps on `messageEngine.ts` that the plain text
-reporter's "Uncovered Line #s" column never surfaced, because that
-column only lists lines with an uncovered *statement*, not a
-partially-covered branch on an otherwise-covered line) is proof the plain
-text summary alone is not sufficient to certify "100%" claims from any
-prior cycle — a future cycle with time budget remaining could reasonably
-re-check the highest-value already-"100%"-labeled files this way before
-trusting the label. Treat "fully closed" claims from any single cycle as
-provisional until a `lcov`-detail re-sweep re-confirms them.
+With the quantitative-coverage angle now genuinely exhausted (every
+non-screen/component `src/lib`/`src/logic`/`src/mascot`/
+`src/notifications` file is at 100%/100%/100%/100% or a documented,
+provably-unreachable residual), a future cycle should shift its default
+bounded unit away from further coverage micro-closures and toward: (a) a
+fresh full-repo `--collectCoverageFrom`-free `jest --coverage` sweep
+periodically to catch drift/new gaps from other branches' work (pull
+`--coverageReporters=lcov`'s `BRDA` detail, not just the text summary,
+for any file whose branch % is below 100 — this campaign's own
+`messageEngine.ts` discovery proved the text summary alone is
+insufficient to certify "100%"); (b) a fresh `QA_RELEASE_GUARDIAN.md`-
+style credential-free sweep of a not-yet-covered theme/screen, since
+Queue items 4/5/8 remain the only items with real credential-free
+surface left; (c) the independent sub-tasks listed below.
 
 Screens/components sit at or near 0% coverage project-wide, which is an
 existing, consistent architectural pattern (no render-testing harness in
@@ -487,28 +504,42 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation confirmed HEAD (`f41e766`) matched this file's own
-  narrative with a clean working tree; the prior cycle's own commit/push
-  had landed — no drift this time, proceeded straight to new work.
-  `npm ci` (907 packages, fresh sandbox). `gh auth status`/`docker info`
-  both freshly reconfirmed gated. Retried `git rm` on the four dead
-  scratch/debug files — blocked again (thirty-sixth cycle).
-- Closed `src/mascot/messageEngine.ts`'s `selectMessage()` coverage gap
-  (97.36/81.39/100/96.96 → 100/100/100/100) — the item the prior cycle
-  explicitly deferred (line 158's zero-candidates fallback), plus 5
-  further branch gaps on lines 142/143/146/151/167/169 discovered this
-  cycle by reading raw `lcov`/`BRDA` detail instead of trusting the text
-  reporter's summary column. 6 new tests across a new
-  `messageEngineFallback.test.ts` (2 `jest.mock` + 1 `jest.doMock` tests)
-  and 3 added to the existing `messageEngine.test.ts`. Full reasoning in
-  Current Task above. Full validation gate: `npx tsc --noEmit` PASS,
-  `npm test -- --runInBand` **1237/1237** tests PASS (1231 + 6 new),
-  98/98 suites. `git status`/`git diff --stat` confirmed exactly two
-  changed files from HEAD `f41e766` before this file's own edit joined
-  the working set — no unrelated files touched.
+- Reconciliation found HEAD had advanced to `20c832a` (one commit past
+  the `f41e766` this file's own last-committed narrative named) — the
+  prior cycle's own "commit gated" claim turned out to have landed
+  anyway, the same self-reporting-drift pattern flagged for many cycles
+  running. `npm ci` (907 packages, fresh sandbox). `gh auth status`/
+  `docker info` both freshly reconfirmed gated. Retried `git rm` on the
+  four dead scratch/debug files — blocked again (thirty-seventh cycle).
+- Ran a fresh full-repo coverage sweep (no `--collectCoverageFrom`
+  filter): confirmed no new/drifted gap versus the prior cycle's known
+  state — every previously-100%-labeled `src/lib`/`src/logic`/
+  `src/mascot`/`src/notifications` file remained so.
+- Closed `src/lib/webPush.ts`'s coverage gap (0%/0%/0%/0% →
+  100%/100%/100%/100%) — the one real remaining gap every recent cycle
+  had read and deferred as "genuinely hard" because it needs
+  browser-only globals (`window`, `navigator.serviceWorker`, global
+  `Notification`) that jest-expo's Node test environment doesn't provide
+  by default. New file `src/lib/__tests__/webPush.test.ts`, 22 tests
+  covering `getCurrentWebPushEndpoint()`, `getWebPushStatus()`, and
+  `enableWebPush()` (permission states, registration/subscription
+  branches, VAPID-key guard, new-vs-reused subscription, incomplete-
+  subscription guard, RPC success/error). Full reasoning in Current Task
+  above. Full validation gate: `npx tsc --noEmit` PASS, `npm test --
+  runInBand` **1259/1259** tests PASS (1237 + 22 new), 99/99 suites.
+  `git status`/`git diff --stat` confirmed exactly one changed file from
+  HEAD `20c832a` before this file's own edit joined the working set — no
+  unrelated files touched.
 
 ### Recent cycles (condensed — full detail in git history of this file)
 
+- Closed `src/mascot/messageEngine.ts`'s `selectMessage()` coverage gap
+  (97.36/81.39/100/96.96 → 100/100/100/100), including 5 branch gaps
+  found by reading raw `lcov`/`BRDA` detail instead of the text
+  reporter's summary column. 6 new tests across a new
+  `messageEngineFallback.test.ts` and additions to
+  `messageEngine.test.ts`. Full validation gate passed; committed as
+  `20c832a`.
 - Closed two previously-untracked `src/mascot/` gaps found in a
   full-repo sweep: `mascotStage.ts` (100/83.33/100/100 →
   100/100/100/100, 2 new tests for the omitted-`now` default-parameter
