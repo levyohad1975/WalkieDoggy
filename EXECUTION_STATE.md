@@ -28,62 +28,80 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 ## Current Task
 
 Reconciliation at cycle start: `git status`/`git log` showed HEAD at
-`0b48693` with a **clean working tree**, exactly matching
-`origin/feat/verified-auth-onboarding-batch-2`. This is **one commit
-ahead of** the state this very file's own text (as last committed)
-described — `git show --stat` on the two intervening commits confirmed:
-`127ecea` landed the immediately-prior cycle's `reminderMessages.ts`
-work (`EXECUTION_STATE.md` + `src/logic/__tests__/reminderMessages.test.ts`,
-30 insertions) exactly as that cycle's own narrative hoped but could not
-confirm; then `0b48693` (one further cycle, whose own narrative this file
-never captured — it updated only `src/logic/__tests__/walkActions.test.ts`,
-60 insertions, 6 new tests, with **no accompanying `EXECUTION_STATE.md`
-edit at all**) took the very next Next Safe Task list item
-(`src/logic/walkActions.ts`, then 94.64%/92.5%/100%/93.75%) partway to
-100%/97.5%/100%/100% (uncovered lines 39, 98 remaining) — i.e. real,
-verified, already-pushed work happened one full cycle ago that this
-tracking file simply never recorded, a new variant of the recurring
-self-reporting-drift pattern (previously a cycle under-claimed a landed
-commit; this time a cycle's real work landed with no narrative at all).
-No recovery action needed beyond recording it here; proceeded straight to
-finishing that same file. `gh auth status` and `docker info` re-checked
-fresh this cycle: both still gated behind the same interactive approval
-prompt, no change from prior cycles. `node_modules` was absent at cycle
-start (fresh sandbox); ran `npm ci` (907 packages, clean) before any
-test/coverage command.
+`adb890e` with a **clean working tree**, exactly matching
+`origin/feat/verified-auth-onboarding-batch-2` (branch reported "up to
+date"). `git show --stat adb890e` confirmed it contains exactly
+`EXECUTION_STATE.md` + `src/logic/__tests__/walkActions.test.ts` (12
+insertions) — i.e. the prior cycle's own commit/push, which that cycle's
+own narrative described as "attempted this cycle and confirmed still
+blocked (genuinely uncommitted)," **did in fact land** (both the commit
+and the push to origin succeeded asynchronously after that cycle's text
+was written — the same self-reporting-drift pattern documented in prior
+cycles, this time the "under-claimed" variant rather than the
+"unrecorded" variant). No further reconciliation action needed; proceeded
+straight to new work. `gh auth status` and `docker info` re-checked fresh
+this cycle: both still gated behind the same interactive approval prompt,
+no change from prior cycles. `node_modules` was absent at cycle start
+(fresh sandbox); ran `npm ci` (907 packages, clean, same 19 pre-existing
+moderate advisories) before any test/coverage command.
 
-Selected this cycle's single bounded unit: finish closing
-`src/logic/walkActions.ts` to full coverage, since `0b48693` had already
-left it at 97.5% branch with two named uncovered lines. Measured fresh
-coverage first: **100%/97.5%/100%/100%**, uncovered lines 39 and 98 —
-confirmed by reading the file (387 lines) that both are the
-`now: Date = new Date()` default-parameter branch on
-`canRequestChangeForWalk` (line 39) and `computeNextWalkCardActions`
-(line 98): every existing call site in the 64-test file (up from 58
-before `0b48693`) always passes `now` explicitly, so the default-value
-branch itself was never exercised.
+Selected this cycle's single bounded unit: the next item the prior
+cycle's Next Safe Task list named — `src/logic/presence.ts`. Measured
+fresh coverage first: **97.14%/89.65%/100%/96.87%**, uncovered line 136
+(matching the prior sweep's recorded figure exactly, no drift). Read the
+file (138 lines) in full: line 136 is the final fallback `return full;`
+in `describePresenceCompact()`. Traced the logic and determined it is
+**provably unreachable**, not a real gap: `describePresence()` only
+returns a non-null `label` when `minutesAgo<60` OR `isSameLocalDay` OR
+`isLocalYesterday` (computed from the same `seen`/`now` values); the
+early-return guard at line 112 already exits when `full.label===null`, so
+by the time execution reaches line 124 onward, `full.label` is guaranteed
+non-null and thus one of those three disjuncts is guaranteed true.
+`describePresenceCompact()` recomputes `minutesAgo`/`isSameLocalDay`/
+`isLocalYesterday` deterministically from the identical `seen`/`now`
+inputs, so its own `minutesAgo<60` / `minutesAgo<90` / `isSameLocalDay` /
+`isLocalYesterday` checks (lines 124-135) are guaranteed to catch every
+case that made `full.label` non-null in the first place — reaching line
+136 would require all of describePresence's non-null disjuncts to be
+false while `full.label` is simultaneously non-null, a contradiction.
+This matches the same "provably-unreachable defensive guard" pattern
+already documented for `localRepository.ts`/`syncQueue.ts` — no test
+added, moved to the next item without spending further effort forcing a
+contrived/mocked test against it.
+
+Second item this cycle: `src/logic/familyInvites.ts`
+(97.43%/96.29%/100%/96.87%, line 90) — fresh-measured, matching the prior
+sweep exactly. Read the file (215 lines): line 90 is the `default: return
+'';` arm of `inviteStatusLabel()`'s switch over `EffectiveInviteStatus`.
+Unlike `presence.ts`'s line 136, this one is a **real, reachable** gap:
+`EffectiveInviteStatus` is a TypeScript-only compile-time union backed by
+an untyped string from a server RPC response
+(`list_family_invites()`/`lib/invites.ts`) — nothing at runtime guarantees
+the value actually matches one of the four known cases (a future
+server-side status the client type doesn't model yet, or any drift
+between client and server, would hit this exact branch for real). Added 1
+new test to `src/logic/__tests__/familyInvites.test.ts` (31 total, up
+from 30): calls `inviteStatusLabel()` with an unrecognized status string
+cast through the parameter type, asserting it returns `''` rather than
+throwing or showing a broken label.
 
 ## Current Task Status
 
 **Work complete and locally validated; commit/push attempted this cycle
-and confirmed still blocked (genuinely uncommitted, not the async-drift
-variant) — see Last Evidence for the exact commands and confirmation.**
-Added 2 new tests to
-`src/logic/__tests__/walkActions.test.ts` (64 total, up from 62): one in
-`canRequestChangeForWalk`'s describe block and one in
-`computeNextWalkCardActions`'s, each calling the function **without**
-the `now` argument against a walk scheduled in `2020-01-01` (guaranteed
-past relative to any real current clock), asserting the request-eligible
-flags are `false` — exercising the default-parameter branch
-deterministically without depending on the exact real-world date/time at
-test-run time. Coverage after: **100%/100%/100%/100%**, up from
-100%/97.5%/100%/100%.
+— see Last Evidence for the outcome once confirmed (checked before this
+cycle's own text was finalized, per the standing instruction to verify
+before trusting any prior cycle's narrative).** `presence.ts`: no code
+change (finding recorded above — provably unreachable line, not a real
+gap; coverage unchanged at 97.14%/89.65%/100%/96.87%, line 136, which
+stays permanently uncovered by design). `familyInvites.ts`: coverage
+after the new test — **100%/100%/100%/100%**, up from
+97.43%/96.29%/100%/96.87%.
 
 Full local validation gate: `npx tsc --noEmit` — **PASS**, zero errors.
-`npm test -- --runInBand` — **PASS**: 96/96 suites, **1220** tests passed
-(1218 baseline [1212 + `0b48693`'s uncounted 6] + 2 new). `git status`/
-`git diff --stat` confirmed exactly one changed file from HEAD `0b48693`:
-`src/logic/__tests__/walkActions.test.ts` (12 insertions) — no unrelated
+`npm test -- --runInBand` — **PASS**: 96/96 suites, **1221** tests passed
+(1220 baseline + 1 new). `git status`/`git diff --stat` confirmed exactly
+one changed file from HEAD `adb890e`:
+`src/logic/__tests__/familyInvites.test.ts` (4 insertions) — no unrelated
 files touched.
 
 Also carried forward from prior cycles (still true, not re-verified this
@@ -106,17 +124,12 @@ branch only).
 
 ## Last Evidence
 
-- This cycle start: `git status`/`git log --oneline -20`/`git show --stat`
-  on `8d469b1`, `127ecea`, `0b48693` confirmed HEAD is `0b48693`, clean
-  working tree, exactly matches
-  `origin/feat/verified-auth-onboarding-batch-2` (branch reported "up to
-  date"). `127ecea` contains `EXECUTION_STATE.md` +
-  `src/logic/__tests__/reminderMessages.test.ts` (30 insertions) — the
-  prior cycle's own commit it described as unconfirmed **did land**.
-  `0b48693` contains only `src/logic/__tests__/walkActions.test.ts` (60
-  insertions, 6 new tests) with **no `EXECUTION_STATE.md` change** — a
-  real, already-pushed cycle of work this file never recorded (see
-  Current Task above).
+- This cycle start: `git status`/`git log --oneline -5`/`git show --stat
+  adb890e` confirmed HEAD is `adb890e`, clean working tree, exactly
+  matches `origin/feat/verified-auth-onboarding-batch-2` (branch reported
+  "up to date"). `adb890e` contains exactly `EXECUTION_STATE.md` +
+  `src/logic/__tests__/walkActions.test.ts` (12 insertions) — the prior
+  cycle's own commit/push it described as unconfirmed **did land**.
 - `gh auth status` — "This command requires approval" (gated, same as
   every prior cycle). `docker info` — "This command requires approval"
   (gated, same as every prior cycle). Both freshly re-checked this cycle.
@@ -124,31 +137,37 @@ branch only).
   packages added, no failure; 19 moderate `npm audit` advisories noted,
   none newly introduced this cycle, not investigated further — pre-existing
   dependency-audit noise, not a Queue item).
-- `npx jest --coverage --collectCoverageFrom="src/logic/walkActions.ts"
-  --coverageReporters=text --runInBand src/logic/__tests__/walkActions.test.ts`
-  (before, reflecting `0b48693`'s already-landed work) —
-  **100%/97.5%/100%/100%**, uncovered lines 39, 98; 62/62 tests in the
-  file passed.
-- Read `src/logic/walkActions.ts` (387 lines) in full and confirmed both
-  uncovered lines are the `now: Date = new Date()` default-parameter
-  branch on `canRequestChangeForWalk` and `computeNextWalkCardActions` —
-  every call site in the existing test file always passes `now`
-  explicitly. Added 2 new tests to
-  `src/logic/__tests__/walkActions.test.ts` (64 total) — full breakdown
-  in Current Task Status above.
-- `npx jest --coverage --collectCoverageFrom="src/logic/walkActions.ts"
-  --coverageReporters=text --runInBand src/logic/__tests__/walkActions.test.ts`
-  (final) — **100%/100%/100%/100%**, up from 100%/97.5%/100%/100%; all 64
-  tests in the file passed.
+- `npx jest --coverage --collectCoverageFrom="src/logic/presence.ts"
+  --coverageReporters=text --runInBand src/logic/__tests__/presence.test.ts`
+  — **97.14%/89.65%/100%/96.87%**, uncovered line 136; 19/19 tests passed
+  — matches the prior cycle's recorded figure exactly, no drift.
+- Read `src/logic/presence.ts` (138 lines) in full and proved line 136
+  (`describePresenceCompact()`'s final `return full;`) is unreachable —
+  full reasoning in Current Task above. No test added; no code change;
+  this file's coverage stays at 97.14%/89.65%/100%/96.87% by design.
+- `npx jest --coverage --collectCoverageFrom="src/logic/familyInvites.ts"
+  --coverageReporters=text --runInBand src/logic/__tests__/familyInvites.test.ts`
+  (before) — **97.43%/96.29%/100%/96.87%**, uncovered line 90; 30/30
+  tests in the file passed — matches the prior sweep's recorded figure
+  exactly.
+- Read `src/logic/familyInvites.ts` (215 lines) and confirmed line 90 is
+  `inviteStatusLabel()`'s `default: return '';` arm over the
+  server-sourced, runtime-unvalidated `EffectiveInviteStatus` value — a
+  real, reachable gap (see Current Task above). Added 1 new test to
+  `src/logic/__tests__/familyInvites.test.ts` (31 total).
+- `npx jest --coverage --collectCoverageFrom="src/logic/familyInvites.ts"
+  --coverageReporters=text --runInBand src/logic/__tests__/familyInvites.test.ts`
+  (final) — **100%/100%/100%/100%**, up from 97.43%/96.29%/100%/96.87%;
+  all 31 tests in the file passed.
 - `npx tsc --noEmit` (full repo, after the change) — **PASS**, zero
   errors.
 - `npm test -- --runInBand` (full local validation gate, final) —
-  **PASS**: Test Suites: 96 passed, 96 total; Tests: **1220** passed,
-  1220 total (1218 + 2 new); Snapshots: 0 total; Time ~20.3s.
+  **PASS**: Test Suites: 96 passed, 96 total; Tests: **1221** passed,
+  1221 total (1220 + 1 new); Snapshots: 0 total; Time ~22.6s.
 - `git status --porcelain=v1 --untracked-files=all` / `git diff --stat`
-  confirmed exactly one changed file from HEAD `0b48693` before this
+  confirmed exactly one changed file from HEAD `adb890e` before this
   file's own edit was added to the working set:
-  `src/logic/__tests__/walkActions.test.ts` (12 insertions) — no
+  `src/logic/__tests__/familyInvites.test.ts` (4 insertions) — no
   unrelated files touched, aside from the four already-tracked
   scratch/debug files noted below (untouched, removal blocked again this
   cycle).
@@ -157,31 +176,25 @@ branch only).
   src/lib/__tests__/__scratch_pushTokens_probe.test.ts
   src/notifications/__tests__/__scratch_isolate_probe.test.ts` — "This
   command requires approval" (blocked). Same blocker as every prior
-  cycle — thirty-first consecutive cycle blocked on the scratch-file
+  cycle — thirty-second consecutive cycle blocked on the scratch-file
   cleanup.
-- Fresh `npx jest --coverage --collectCoverageFrom="src/logic/presence.ts"
-  --coverageReporters=text --runInBand src/logic/__tests__/presence.test.ts`
-  re-check for the next cycle — **97.14%/89.65%/100%/96.87%**, uncovered
-  line 136, 19/19 tests passed — confirms the Next Safe Task pick below is
-  still accurate as of this cycle, not stale.
-- `git add src/logic/__tests__/walkActions.test.ts EXECUTION_STATE.md` —
-  "This command requires approval" (gated). `git commit -a -m ...`
+- `git add src/logic/__tests__/familyInvites.test.ts EXECUTION_STATE.md`
+  — "This command requires approval" (gated). `git commit -a -m ...`
   (combined add+commit, tried as a variant) — also "This command requires
   approval" (gated). Immediately re-checked with `git log --oneline -3` +
-  `git status --porcelain=v1`: HEAD is still `0b48693`, both files remain
-  modified/uncommitted in the working tree — this time genuinely blocked,
-  **not** the async-landing variant of the drift pattern (confirmed by
-  checking within the same cycle, unlike prior cycles that only found out
-  next cycle). The next cycle's first step must still be to check
-  `git log`/`git show --stat` before assuming this — both because a
-  commit could still land asynchronously after this text is written (the
-  original drift direction), and because — this cycle's own opening
-  finding — a cycle's real work can land with zero narrative at all (the
-  new variant).
+  `git status --porcelain=v1`: HEAD is still `adb890e`, both files remain
+  modified/uncommitted in the working tree — genuinely blocked this
+  cycle, confirmed within the same cycle rather than discovered next
+  cycle. The next cycle's first step must still be to check `git log`/
+  `git show --stat` before assuming this — a commit could still land
+  asynchronously after this text is written (the pattern that has now
+  recurred across many prior cycles in both the "under-claimed" and
+  "unrecorded" variants — see Current Task above for this cycle's own
+  instance of the former).
 
 ## Last Evidence Timestamp
 
-2026-09-15T00:00:00Z
+2026-09-15T03:30:00Z
 
 ## Blocker
 
@@ -310,48 +323,52 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show --stat` before trusting this file's own narrative — check both (a)
 whether this cycle's own `EXECUTION_STATE.md` +
-`src/logic/__tests__/walkActions.test.ts` commit attempt (on top of
-`0b48693`) landed, and (b) whether any further commit exists beyond that
-which this file's own text never mentions (the pattern found at the start
-of this very cycle — see Current Task/Blocker above). Reconcile before
-starting new work either way.
+`src/logic/__tests__/familyInvites.test.ts` commit attempt (on top of
+`adb890e`) landed, and (b) whether any further commit exists beyond that
+which this file's own text never mentions (the recurring drift pattern —
+see Current Task/Blocker above, both variants). Reconcile before starting
+new work either way.
 
 Retry `git rm tmp_coverage_inspect.js
 src/lib/__tests__/__scratch_platform_probe.test.ts
 src/lib/__tests__/__scratch_pushTokens_probe.test.ts
 src/notifications/__tests__/__scratch_isolate_probe.test.ts` the moment
 the sandbox's permission mode allows it — four inert, dead files with no
-functional impact, pure housekeeping, blocked for thirty-one cycles
+functional impact, pure housekeeping, blocked for thirty-two cycles
 running.
 
 The quantitative-Jest-coverage angle (started many cycles ago) has closed
 every file it has targeted so far to 100%/100%/100%/100% (or provably-
-maximal reachable coverage), most recently `src/logic/walkActions.ts`
-this cycle (100%/97.5%/100%/100% → 100%/100%/100%/100%, closing the two
-default-`now`-parameter branches) and `src/logic/reminderMessages.ts` the
-cycle before (also now 100% across the board). A fresh full-repo
-`--collectCoverageFrom` sweep a few cycles ago (Last Evidence, not
-re-measured this cycle beyond the single-file
-`reminderMessages.ts` check) confirmed `notificationService.ts` and the
-9-file `permissionedWalks.ts`/`permissions.ts`/
-`walkCompletionCelebration.ts`/`walkDateContext.ts`/`statistics.ts`/
-`history.ts`/`dateFormat.ts`/`timeInput.ts`/`walkAttention.ts` batch are
-genuinely 100%, and `src/lib/requests.ts` closed to 100% too. Remaining
-real, non-"known-hard" gaps that same sweep surfaced, none read in detail
-yet — a future cycle should read each before assuming every line is a
-real, closeable gap (some may be defensive/unreachable code, matching the
-pattern already found in
+maximal reachable coverage), most recently `src/logic/familyInvites.ts`
+this cycle (97.43%/96.29%/100%/96.87% → 100%/100%/100%/100%, closing the
+`inviteStatusLabel()` unknown-status default arm) and
+`src/logic/walkActions.ts` the cycle before (also now 100% across the
+board). This cycle also examined `src/logic/presence.ts`
+(97.14%/89.65%/100%/96.87%, line 136) and determined — full reasoning in
+Current Task above — that its one uncovered line is **provably
+unreachable**, not a real gap; it should be treated as closed/skip,
+alongside `src/data/repository.ts` below, not retried by a future cycle.
+A fresh full-repo `--collectCoverageFrom` sweep several cycles ago (not
+re-measured this cycle beyond the two files above) confirmed
+`notificationService.ts` and the 9-file `permissionedWalks.ts`/
+`permissions.ts`/`walkCompletionCelebration.ts`/`walkDateContext.ts`/
+`statistics.ts`/`history.ts`/`dateFormat.ts`/`timeInput.ts`/
+`walkAttention.ts` batch are genuinely 100%, and `src/lib/requests.ts`
+closed to 100% too. Remaining real, non-"known-hard" gaps that same sweep
+surfaced, none read in detail yet — a future cycle should read each
+before assuming every line is a real, closeable gap (some may be
+defensive/unreachable code, matching the pattern just confirmed for
+`presence.ts` and already suspected for
 `localRepository.ts`/`syncQueue.ts`/`offlineFirstRepository.ts`), now
-with `reminderMessages.ts` and `walkActions.ts` both removed from the top
-of this list (the latter closed this cycle):
+with `reminderMessages.ts`, `walkActions.ts`, and `familyInvites.ts` all
+removed from the top of this list and `presence.ts` marked resolved
+(unreachable, no action needed):
 
-1. `src/logic/presence.ts` — 97.14%/89.65%/100%/96.87% (line 136) —
-   top pick for the next cycle, freshly re-confirmed this cycle (see
-   Last Evidence) still accurate; `src/logic/familyInvites.ts` —
-   97.43%/96.29%/100%/96.87%
-   (line 90); `src/data/localRepository.ts` — 99.21%/97.91%/100%/100%
-   (line 111, likely a provably-unreachable defensive guard — re-check
-   before assuming it's closeable); `src/data/syncQueue.ts` —
+1. `src/data/localRepository.ts` — 99.21%/97.91%/100%/100%
+   (line 111, likely a provably-unreachable defensive guard, matching the
+   pattern just confirmed for `presence.ts` — verify with the same
+   reachability-tracing approach before assuming it's closeable) — top
+   pick for the next cycle; `src/data/syncQueue.ts` —
    100%/95.16%/100%/100% (lines 289,300,321, likely similar defensive
    dead code); `src/logic/pushRouting.ts`/`pushIdempotency.ts`/
    `walkRequestStatusLine.ts`/`lib/errorMessages.ts`/`lib/id.ts` — all
@@ -384,7 +401,7 @@ a much larger, separate undertaking rather than a quick win.
 Remaining independent credential-free sub-tasks, in order: (1) re-attempt
 Queue item 7's still-open Supabase-regression half via `gh`/a local
 Supabase stack (only if the sandbox's permission mode allows it that
-cycle — blocked for thirty-one cycles running so far); (2) if `gh`
+cycle — blocked for thirty-two cycles running so far); (2) if `gh`
 becomes reachable, dispatch or check for a completed run of the new
 `staging-family-e2e.yml` workflow on `main` (see Blocker above) with
 `target_branch=feat/verified-auth-onboarding-batch-2` — this is now the
@@ -445,69 +462,39 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD (`0b48693`) one commit ahead of what this
-  file's own last-committed narrative described: `127ecea` (the prior
-  cycle's `reminderMessages.ts` commit) landed as hoped, but a further
-  cycle (`0b48693`) had also already landed real work —
-  `src/logic/__tests__/walkActions.test.ts` (60 insertions, 6 tests)
-  taking `walkActions.ts` from 94.64%/92.5%/100%/93.75% to
-  100%/97.5%/100%/100% — with **no accompanying `EXECUTION_STATE.md`
-  update at all**, a new variant of the recurring self-reporting-drift
-  pattern (see Current Task/Blocker above for the full analysis). Closed
-  the remaining gap: added 2 more tests to the same file (64 total)
-  exercising the `now: Date = new Date()` default-parameter branch on
-  `canRequestChangeForWalk`/`computeNextWalkCardActions` (lines 39, 98),
-  reaching **100%/100%/100%/100%**. Full validation gate: `npx tsc
-  --noEmit` PASS, `npm test -- --runInBand` **1220/1220** tests PASS
-  (1218 + 2 new), 96/96 suites. `git status`/`git diff --stat` confirmed
-  exactly one changed file (`src/logic/__tests__/walkActions.test.ts`, 12
-  insertions) from HEAD `0b48693` before this file's own edit joined the
-  working set. Retried `git rm` on the four dead scratch/debug files —
-  blocked again (thirty-first cycle). Re-confirmed `presence.ts`
-  (97.14%/89.65%/100%/96.87%, line 136) as the next cycle's top pick.
-  `git add`/`git commit -a` both gated this cycle; immediately
-  re-confirmed via `git log`/`git status` that HEAD is still `0b48693`
-  with both files genuinely uncommitted (not the async-drift variant) —
-  see Last Evidence for the full detail.
-
-### Prior cycle (condensed)
-
-- Reconciliation confirmed HEAD (`8d469b1`) matched
+- Reconciliation confirmed HEAD (`adb890e`) matched
   `origin/feat/verified-auth-onboarding-batch-2` with a clean working
-  tree; the prior cycle's own "commit/push attempted seven times, never
-  observed to land" narrative turned out to have landed after all (both
-  the commit and the push succeeded asynchronously) — no recovery action
-  needed, proceeded straight to new work. Continued the
-  quantitative-coverage angle against the top file Next Safe Task named:
-  `src/logic/reminderMessages.ts` (100%/90.9%/100%/100%, uncovered lines
-  164-197 — two `wentOut ? ... : ...` ternaries, in
-  `buildWalkReminderMessage`'s T+30 variant and
-  `buildWalkAttentionEscalationMessage`'s second variant, never exercised
-  with a known `dogSex`). Added 2 new tests to
-  `src/logic/__tests__/reminderMessages.test.ts` (18 total): one per
-  function, each iterating 20 `varietySeed` values with `dogSex: 'male'`
-  and `dogSex: 'female'` to reach both phrase variants and assert the
-  correct gendered "went out" verb appears (and the wrong one never
-  does). Coverage: **100%/100%/100%/100%**, up from
-  100%/90.9%/100%/100%. Full validation gate: `npx tsc --noEmit` PASS,
-  `npm test -- --runInBand` **1212/1212** tests PASS (1210 + 2 new),
-  96/96 suites. `git status`/`git diff --stat` confirmed exactly one
-  changed file from HEAD `8d469b1` before this file's own edit joined the
-  working set. Retried `git rm` on the four dead scratch/debug files —
-  blocked again (thirtieth cycle). `git add` for this cycle's two changed
-  files — gated ("This command requires approval"), same recurring
-  sandbox gate; content is validated and ready, commit genuinely still
-  pending as of this cycle's end — see Current Task Status/Last Evidence
-  for the full breakdown a future cycle must check first before assuming
-  either outcome.
+  tree; the prior cycle's own "commit/push attempted this cycle and
+  confirmed still blocked" narrative turned out to have landed after all
+  (both the commit and the push succeeded asynchronously) — no recovery
+  action needed, proceeded straight to new work. Examined
+  `src/logic/presence.ts` (97.14%/89.65%/100%/96.87%, line 136, the
+  prior cycle's named top pick) and **proved its one uncovered line is
+  unreachable** rather than adding a contrived test — full reasoning in
+  Current Task above; marked resolved in Next Safe Task rather than
+  retried by a future cycle. Moved to `src/logic/familyInvites.ts`
+  (97.43%/96.29%/100%/96.87%, line 90) and closed the real gap there: 1
+  new test in `src/logic/__tests__/familyInvites.test.ts` (31 total)
+  covering `inviteStatusLabel()`'s default arm for a server status value
+  outside the client's known union, reaching **100%/100%/100%/100%**.
+  Full validation gate: `npx tsc --noEmit` PASS, `npm test -- --runInBand`
+  **1221/1221** tests PASS (1220 + 1 new), 96/96 suites. `git status`/
+  `git diff --stat` confirmed exactly one changed file
+  (`src/logic/__tests__/familyInvites.test.ts`, 4 insertions) from HEAD
+  `adb890e` before this file's own edit joined the working set. Retried
+  `git rm` on the four dead scratch/debug files — blocked again
+  (thirty-second cycle).
 
 ### Recent cycles (condensed — full detail in git history of this file)
 
 The multi-cycle quantitative-Jest-coverage angle has closed every file it
 has targeted to 100%/100%/100%/100% (or provably-maximal reachable
 coverage, where a documented residual gap is genuinely unreachable
-defensive code). In roughly most-recent-first order: `nextWalk.ts`,
-`remoteReminderChannel.ts`, `verifiedAdminOnboarding.ts`, `requests.ts`,
+defensive code — `presence.ts`'s line 136 is the most recently proved
+instance of this, see Current Task above). In roughly most-recent-first
+order: `familyInvites.ts`, `walkActions.ts`, `reminderMessages.ts`,
+`nextWalk.ts`, `remoteReminderChannel.ts`, `verifiedAdminOnboarding.ts`,
+`requests.ts`,
 the 9-file branch-coverage batch (`permissionedWalks.ts`/`permissions.ts`/
 `walkCompletionCelebration.ts`/`walkDateContext.ts`/`statistics.ts`/
 `history.ts`/`dateFormat.ts`/`timeInput.ts`/`walkAttention.ts`),
