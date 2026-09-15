@@ -28,12 +28,8 @@ jobs:
           set -euo pipefail
           git check-ref-format --branch "$TARGET_BRANCH" >/dev/null
           case "$TARGET_BRANCH" in
-            feat/*|fix/*|chore/*|test/*|docs/*|rc/*)
-              ;;
-            *)
-              echo "::error::Refusing to watch an unapproved target branch."
-              exit 1
-              ;;
+            feat/*|fix/*|chore/*|test/*|docs/*|rc/*) ;;
+            *) echo "::error::Refusing to watch an unapproved target branch."; exit 1 ;;
           esac
           test "$TARGET_BRANCH" != "main"
 
@@ -66,15 +62,35 @@ jobs:
           if [ "$author" = "walkie-agentic-worker[bot]" ]; then
             case "$subject" in
               "chore(agentic): continue RC execution"|"chore(agentic): checkpoint RC execution")
-                validated_after_head="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" --jq "[.workflow_runs[] | select(.name == \"Agentic RC Validation\" and .created_at >= \"$committed_at\")] | length")"
-                if [ "$validated_after_head" -gt 0 ]; then
-                  echo "This RC head already has a Validation dispatch after its commit time; watchdog will not repeat it." >> "$GITHUB_STEP_SUMMARY"
+                successful_validation_count="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" --jq "[.workflow_runs[] | select(.name == \"Agentic RC Validation\" and .created_at >= \"$committed_at\" and .conclusion == \"success\")] | length")"
+                if [ "$successful_validation_count" -gt 0 ]; then
+                  echo "This RC head already has successful Validation evidence; watchdog will not repeat it." >> "$GITHUB_STEP_SUMMARY"
                   exit 0
                 fi
 
-                echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
-                echo "dispatch_validation=true" >> "$GITHUB_OUTPUT"
-                echo "Detected stalled Agentic RC head $head_sha with no active or subsequent validation." >> "$GITHUB_STEP_SUMMARY"
+                validation_count="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" --jq "[.workflow_runs[] | select(.name == \"Agentic RC Validation\" and .created_at >= \"$committed_at\")] | length")"
+                worker_count="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" --jq "[.workflow_runs[] | select(.name == \"Agentic RC Worker\" and .created_at >= \"$committed_at\")] | length")"
+                latest_worker_conclusion="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" --jq "[.workflow_runs[] | select(.name == \"Agentic RC Worker\" and .created_at >= \"$committed_at\")] | first | .conclusion // \"none\"")"
+
+                if [ "$validation_count" -eq 0 ]; then
+                  echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+                  echo "dispatch_validation=true" >> "$GITHUB_OUTPUT"
+                  echo "Detected Agentic RC head $head_sha with no Validation dispatch; recovering Validation." >> "$GITHUB_STEP_SUMMARY"
+                  exit 0
+                fi
+
+                if [ "$latest_worker_conclusion" = "failure" ] && [ "$worker_count" -lt 2 ]; then
+                  echo "dispatch_worker=true" >> "$GITHUB_OUTPUT"
+                  echo "Validation exists but the latest Worker failed before publishing a newer checkpoint; dispatching one bounded recovery Worker (attempt $((worker_count + 1))/2 for this RC head)." >> "$GITHUB_STEP_SUMMARY"
+                  exit 0
+                fi
+
+                {
+                  echo "RC head has Validation history but no successful Validation evidence."
+                  echo "Worker attempts since this RC head: $worker_count; latest conclusion: $latest_worker_conclusion."
+                  echo "Automatic recovery is capped at two Worker attempts per unchanged RC head to prevent retry/cost storms."
+                } >> "$GITHUB_STEP_SUMMARY"
+                echo "::warning::RC remains stalled after bounded recovery attempts; failing closed."
                 exit 0
                 ;;
             esac
@@ -120,4 +136,4 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --ref main \
             -f target_branch="$TARGET_BRANCH"
-          echo "Dispatched one guarded Agentic RC Worker bootstrap recovery for $TARGET_BRANCH after a newer main infrastructure change." >> "$GITHUB_STEP_SUMMARY"
+          echo "Dispatched one guarded Agentic RC Worker recovery for $TARGET_BRANCH." >> "$GITHUB_STEP_SUMMARY"
