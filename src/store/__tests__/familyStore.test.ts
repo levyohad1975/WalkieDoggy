@@ -94,6 +94,172 @@ describe('familyStore — dog loading (local/demo mode)', () => {
     expect(dog?.name).toBe('טופי'); // re-seeded, not the stale "רקס"
     expect(dog?.familyId).toBe(FAMILY.id);
   });
+
+  it('load(familyId) surfaces a repository failure as `error` instead of throwing, and leaves loading false', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { repository } = require('../../data');
+
+    const spy = jest.spyOn(repository, 'getFamily').mockRejectedValueOnce(new Error('boom'));
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+
+    const state = useFamilyStore.getState();
+    expect(state.loading).toBe(false);
+    expect(state.error).toBe('boom');
+
+    spy.mockRestore();
+  });
+});
+
+describe('familyStore — setReminderEnabled', () => {
+  beforeEach(() => {
+    jest.resetModules();
+  });
+
+  it('optimistically flips remindersEnabled and persists it via the repository', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { repository } = require('../../data');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    const [user] = useFamilyStore.getState().users;
+    const spy = jest.spyOn(repository, 'updateUserReminderSetting');
+
+    await useFamilyStore.getState().setReminderEnabled(user.id, false);
+
+    expect(spy).toHaveBeenCalledWith(user.id, false);
+    expect(useFamilyStore.getState().users.find((u: any) => u.id === user.id)?.remindersEnabled).toBe(false);
+
+    spy.mockRestore();
+  });
+
+  it('rolls back the optimistic update and sets a friendly error when the repository call fails', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { repository } = require('../../data');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    const usersBefore = useFamilyStore.getState().users;
+    const [user] = usersBefore;
+    const spy = jest.spyOn(repository, 'updateUserReminderSetting').mockRejectedValueOnce(new Error('boom'));
+
+    await useFamilyStore.getState().setReminderEnabled(user.id, false);
+
+    expect(useFamilyStore.getState().users).toEqual(usersBefore);
+    expect(useFamilyStore.getState().error).toBe('לא הצלחנו לעדכן את הגדרות התזכורות');
+
+    spy.mockRestore();
+  });
+});
+
+describe('familyStore — updateUser', () => {
+  beforeEach(() => {
+    jest.resetModules();
+  });
+
+  it('optimistically applies the update and persists it via the repository', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { repository } = require('../../data');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    const [user] = useFamilyStore.getState().users;
+    const spy = jest.spyOn(repository, 'upsertUser');
+    const updated = { ...user, name: 'שם חדש' };
+
+    await useFamilyStore.getState().updateUser(updated);
+
+    expect(spy).toHaveBeenCalledWith(updated);
+    expect(useFamilyStore.getState().users.find((u: any) => u.id === user.id)?.name).toBe('שם חדש');
+
+    spy.mockRestore();
+  });
+
+  it('rolls back to the previous users list and sets a friendly actionError when the repository call fails', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { repository } = require('../../data');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    const usersBefore = useFamilyStore.getState().users;
+    const [user] = usersBefore;
+    const spy = jest.spyOn(repository, 'upsertUser').mockRejectedValueOnce(new Error('boom'));
+
+    await useFamilyStore.getState().updateUser({ ...user, name: 'שם חדש' });
+
+    expect(useFamilyStore.getState().users).toEqual(usersBefore);
+    expect(useFamilyStore.getState().actionError).toBe('לא הצלחנו לעדכן את בן המשפחה');
+
+    spy.mockRestore();
+  });
+});
+
+describe('familyStore — addUser repository failure', () => {
+  beforeEach(() => {
+    jest.resetModules();
+  });
+
+  it('rolls back the optimistically-added user and sets actionError, then rethrows for the caller', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { repository } = require('../../data');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    const usersBefore = useFamilyStore.getState().users;
+    const spy = jest.spyOn(repository, 'createUser').mockRejectedValueOnce(new Error('boom'));
+
+    await expect(
+      useFamilyStore.getState().addUser({ name: 'חדש', avatar: '🐶', color: '#000' })
+    ).rejects.toThrow('boom');
+
+    expect(useFamilyStore.getState().users).toEqual(usersBefore);
+    expect(useFamilyStore.getState().actionError).toBe('לא הצלחנו להוסיף את בן המשפחה');
+
+    spy.mockRestore();
+  });
+});
+
+describe('familyStore — getUserDeletionImpact / clearActionError', () => {
+  beforeEach(() => {
+    jest.resetModules();
+  });
+
+  it('getUserDeletionImpact delegates to computeUserDeletionImpact with the current schedule state', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { useScheduleStore } = require('../scheduleStore');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    await useScheduleStore.getState().load(DEMO_FAMILY.id);
+    const [victim] = useFamilyStore.getState().users;
+
+    const impact = useFamilyStore.getState().getUserDeletionImpact(victim.id);
+
+    expect(impact).toBeDefined();
+    expect(typeof impact.futureScheduleEntryCount).toBe('number');
+    expect(Array.isArray(impact.rulesAffected)).toBe(true);
+  });
+
+  it('clearActionError resets actionError back to null', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+
+    useFamilyStore.setState({ actionError: 'משהו השתבש' });
+    expect(useFamilyStore.getState().actionError).toBe('משהו השתבש');
+
+    useFamilyStore.getState().clearActionError();
+
+    expect(useFamilyStore.getState().actionError).toBeNull();
+  });
 });
 
 /**

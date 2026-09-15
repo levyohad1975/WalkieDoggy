@@ -162,3 +162,40 @@ describe('familyStore — permission override loading in local/demo mode (Task 3
     expect(useFamilyStore.getState().permissionOverrides).toEqual([]);
   });
 });
+
+/**
+ * addUser's "no active family" guard (familyStore.ts lines ~190-194): in
+ * Supabase mode, before `load()` has resolved a `family` AND this device's
+ * joined familyId (authStore) is also not yet known, there is genuinely no
+ * family to attach the new member to. This must reject with a friendly
+ * Hebrew actionError rather than silently building a user record with an
+ * undefined/empty familyId that would fail confusingly server-side.
+ */
+describe('familyStore — addUser with no resolvable family (Supabase mode, family not yet loaded)', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    jest.doMock('../../lib/supabase', () => ({ isSupabaseConfigured: true }));
+    jest.doMock('../../lib/testModeGuard', () => ({
+      guardTestModeMutation: () => true,
+      TEST_MODE_READ_ONLY_MESSAGE: 'read-only',
+    }));
+  });
+
+  it('rejects with a friendly Hebrew error and never calls repository.createUser', async () => {
+    const { useFamilyStore } = require('../familyStore');
+    const { useAuthStore } = require('../authStore');
+    const { repository } = require('../../data');
+
+    useAuthStore.setState({ familyId: null });
+    const spy = jest.spyOn(repository, 'createUser');
+
+    await expect(
+      useFamilyStore.getState().addUser({ name: 'חדש', avatar: '🐶', color: '#000' })
+    ).rejects.toThrow('לא נמצאה משפחה פעילה');
+
+    expect(useFamilyStore.getState().actionError).toBe('לא נמצאה משפחה פעילה');
+    expect(spy).not.toHaveBeenCalled();
+
+    spy.mockRestore();
+  });
+});
