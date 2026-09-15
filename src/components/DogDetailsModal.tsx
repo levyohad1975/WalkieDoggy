@@ -48,7 +48,12 @@ export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, o
           "name"/"notes" TextInputs near the bottom of this bottom-anchored
           sheet get covered by the keyboard instead of the sheet shifting up. */}
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable
+          style={styles.backdrop}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel={`סגירת פרטי ${dog.name}`}
+        >
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
               <RtlText style={styles.title}>🐶 פרטי {dog.name}</RtlText>

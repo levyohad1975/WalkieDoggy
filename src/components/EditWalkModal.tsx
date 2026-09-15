@@ -69,7 +69,12 @@ export function EditWalkModal({
           in a separate SwapWalkPickerModal — see Section 8 — so it's no
           longer nested inside this sheet's own ScrollView.) */}
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable
+          style={styles.backdrop}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel={`סגירת עריכת הטיול — ${walk.scheduledTime}`}
+        >
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             {/* Section 7's original fix here (`scroll: {flex:1}`, to keep
                 the "בטל את הטיול"/"סגור" buttons reachable for long content)

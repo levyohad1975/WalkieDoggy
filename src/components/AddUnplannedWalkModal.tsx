@@ -137,7 +137,12 @@ export function AddUnplannedWalkModal({
           RequestTimeChangeModal.tsx — wraps the existing backdrop/sheet/
           ScrollView structure unchanged. */}
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable
+          style={styles.backdrop}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel={isEditing ? `סגירת עריכת טיול ספונטני של ${dogName}` : `סגירת הוספת טיול ספונטני של ${dogName}`}
+        >
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView keyboardShouldPersistTaps="handled">
               <RtlText style={styles.title}>

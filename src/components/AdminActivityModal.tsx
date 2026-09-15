@@ -52,7 +52,12 @@ export function AdminActivityModal({ visible, onClose }: AdminActivityModalProps
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
+      <Pressable
+        style={styles.backdrop}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="סגירת מי בשימוש במערכת"
+      >
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <RtlText style={styles.title}>מי בשימוש במערכת</RtlText>
           {loading ? <ActivityIndicator color={colors.primary} /> : null}

@@ -67,7 +67,12 @@ export function RemindersModal({
   };
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
+      <Pressable
+        style={styles.backdrop}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="סגירת חלון תזכורות"
+      >
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <RtlText style={styles.title}>🔔 תזכורות</RtlText>
           <ScrollView style={styles.scroll}>

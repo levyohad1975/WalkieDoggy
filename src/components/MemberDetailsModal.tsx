@@ -299,7 +299,12 @@ export function MemberDetailsModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
+      <Pressable
+        style={styles.backdrop}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel={`סגירת פרטי ${user.name}`}
+      >
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <View style={styles.header}>
             <Avatar emoji={user.avatar} color={user.color} photoUrl={user.photoUrl} size={72} />

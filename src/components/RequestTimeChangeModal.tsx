@@ -75,7 +75,12 @@ export function RequestTimeChangeModal({ visible, currentTime, onSubmit, onClose
         style={styles.flexFull}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable
+          style={styles.backdrop}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="סגירת בקשת שינוי שעה"
+        >
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView
               keyboardShouldPersistTaps="handled"

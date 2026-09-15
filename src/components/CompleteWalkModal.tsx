@@ -50,7 +50,12 @@ export function CompleteWalkModal({
           RequestTimeChangeModal.tsx — wraps the existing backdrop/sheet/
           ScrollView structure unchanged. */}
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <Pressable style={styles.backdrop} onPress={onCancel}>
+        <Pressable
+          style={styles.backdrop}
+          onPress={onCancel}
+          accessibilityRole="button"
+          accessibilityLabel={`סגירת סימון הטיול של ${dogName} כבוצע`}
+        >
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView keyboardShouldPersistTaps="handled">
               <RtlText style={styles.title}>סימון הטיול של {dogName} כבוצע</RtlText>

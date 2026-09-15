@@ -19,7 +19,7 @@ export function UserPickerModal({ visible, title, users, excludeUserId, onSelect
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel={`סגירת ${title}`}>
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <RtlText style={styles.title}>{title}</RtlText>
           {options.length === 0 ? (

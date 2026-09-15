@@ -33,7 +33,12 @@ export function FamilySharingModal({
 }: FamilySharingModalProps) {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
+      <Pressable
+        style={styles.backdrop}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="סגירת שיתוף המשפחה"
+      >
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <ScrollView style={styles.scroll}>
             <RtlText style={styles.title}>👨‍👩‍👧‍👦 שיתוף המשפחה</RtlText>

@@ -53,7 +53,12 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
           RequestTimeChangeModal.tsx — wraps the existing backdrop/sheet/
           ScrollView structure unchanged. */}
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable
+          style={styles.backdrop}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel={editingUser ? 'סגירת עריכת בן משפחה' : 'סגירת הוספת בן משפחה'}
+        >
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView keyboardShouldPersistTaps="handled">
               <RtlText style={styles.title}>{editingUser ? 'עריכת בן משפחה' : 'הוספת בן משפחה'}</RtlText>

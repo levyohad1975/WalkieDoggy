@@ -86,7 +86,12 @@ export function RequestsInboxModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
+      <Pressable
+        style={styles.backdrop}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="סגירת חלון בקשות"
+      >
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <RtlText style={styles.title}>בקשות</RtlText>
           <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">

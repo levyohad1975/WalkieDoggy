@@ -49,7 +49,12 @@ function weekdayLabel(date: string): string {
 export function SwapWalkPickerModal({ visible, walk, options, onSelect, onClose }: SwapWalkPickerModalProps) {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
+      <Pressable
+        style={styles.backdrop}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="סגירת בחירת טיול להחלפה"
+      >
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <RtlText style={styles.title}>להחליף עם איזה טיול?</RtlText>
           {walk ? (

@@ -88,7 +88,12 @@ export function AdminAuditLogModal({ visible, onClose }: AdminAuditLogModalProps
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
+      <Pressable
+        style={styles.backdrop}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="סגירת יומן פעילות"
+      >
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <RtlText style={styles.title}>יומן פעילות</RtlText>
           {error ? <RtlText style={styles.error}>{error}</RtlText> : null}
