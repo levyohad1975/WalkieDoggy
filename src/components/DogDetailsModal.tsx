@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
 import { DogPhoto } from './DogPhoto';
@@ -43,81 +43,88 @@ export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, o
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
-            <RtlText style={styles.title}>🐶 פרטי {dog.name}</RtlText>
+      {/* Same KeyboardAvoidingView pattern already proven in
+          AddUnplannedWalkModal.tsx/CompleteWalkModal.tsx — without it, the
+          "name"/"notes" TextInputs near the bottom of this bottom-anchored
+          sheet get covered by the keyboard instead of the sheet shifting up. */}
+      <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <Pressable style={styles.backdrop} onPress={onClose}>
+          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+            <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
+              <RtlText style={styles.title}>🐶 פרטי {dog.name}</RtlText>
 
-            <View style={styles.photoRow}>
-              <DogPhoto photoUrl={dog.photoUrl} size={88} />
-              <Pressable
-                onPress={onChangePhoto}
-                disabled={uploadingPhoto}
-                style={styles.photoButton}
-                accessibilityRole="button"
-                accessibilityLabel="החלפת תמונת הכלב"
-              >
-                <RtlText style={styles.photoLink}>{uploadingPhoto ? 'מעלה תמונה...' : dog.photoUrl ? 'החלף תמונה' : 'הוסף תמונה מהגלריה'}</RtlText>
-              </Pressable>
-            </View>
+              <View style={styles.photoRow}>
+                <DogPhoto photoUrl={dog.photoUrl} size={88} />
+                <Pressable
+                  onPress={onChangePhoto}
+                  disabled={uploadingPhoto}
+                  style={styles.photoButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="החלפת תמונת הכלב"
+                >
+                  <RtlText style={styles.photoLink}>{uploadingPhoto ? 'מעלה תמונה...' : dog.photoUrl ? 'החלף תמונה' : 'הוסף תמונה מהגלריה'}</RtlText>
+                </Pressable>
+              </View>
 
-            <RtlText style={styles.label}>שם</RtlText>
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              onBlur={() => name.trim() && onSave({ name: name.trim() })}
-              style={styles.input}
-              textAlign="right"
-            />
+              <RtlText style={styles.label}>שם</RtlText>
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                onBlur={() => name.trim() && onSave({ name: name.trim() })}
+                style={styles.input}
+                textAlign="right"
+              />
 
-            {/*
-              BATCH 4 (item B — dog profile completion): the dogs.sex column
-              (migration 0022) had no client UI anywhere in the app — this
-              is the missing piece. Three explicit choices including a real
-              "not set" option (nullable fallback, per the brief) rather
-              than forcing male/female on a family that doesn't want to say.
-            */}
-            <RtlText style={styles.label}>מין הכלב/ה</RtlText>
-            <View style={styles.sexRow}>
-              {SEX_OPTIONS.map((opt) => {
-                const selected = (dog.sex ?? undefined) === opt.value;
-                return (
-                  <Pressable
-                    key={opt.value ?? 'unset'}
-                    onPress={() => onSave({ sex: opt.value })}
-                    style={[styles.sexChip, selected && styles.sexChipActive]}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={opt.label}
-                  >
-                    <RtlText style={[styles.sexChipText, selected && styles.sexChipTextActive]}>{opt.label}</RtlText>
-                  </Pressable>
-                );
-              })}
-            </View>
+              {/*
+                BATCH 4 (item B — dog profile completion): the dogs.sex column
+                (migration 0022) had no client UI anywhere in the app — this
+                is the missing piece. Three explicit choices including a real
+                "not set" option (nullable fallback, per the brief) rather
+                than forcing male/female on a family that doesn't want to say.
+              */}
+              <RtlText style={styles.label}>מין הכלב/ה</RtlText>
+              <View style={styles.sexRow}>
+                {SEX_OPTIONS.map((opt) => {
+                  const selected = (dog.sex ?? undefined) === opt.value;
+                  return (
+                    <Pressable
+                      key={opt.value ?? 'unset'}
+                      onPress={() => onSave({ sex: opt.value })}
+                      style={[styles.sexChip, selected && styles.sexChipActive]}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={opt.label}
+                    >
+                      <RtlText style={[styles.sexChipText, selected && styles.sexChipTextActive]}>{opt.label}</RtlText>
+                    </Pressable>
+                  );
+                })}
+              </View>
 
-            <RtlText style={styles.label}>הערות</RtlText>
-            <TextInput
-              value={notes}
-              onChangeText={setNotes}
-              onBlur={() => onSave({ notes: notes.trim() || undefined })}
-              style={styles.input}
-              textAlign="right"
-              placeholder="למשל: אוהב להריח כל עמוד"
-              placeholderTextColor={colors.textSecondary}
-            />
+              <RtlText style={styles.label}>הערות</RtlText>
+              <TextInput
+                value={notes}
+                onChangeText={setNotes}
+                onBlur={() => onSave({ notes: notes.trim() || undefined })}
+                style={styles.input}
+                textAlign="right"
+                placeholder="למשל: אוהב להריח כל עמוד"
+                placeholderTextColor={colors.textSecondary}
+              />
 
-            <RtlText style={styles.hint}>{dog.walksPerDay} טיולים ביום · שינוי בלוח זמנים</RtlText>
+              <RtlText style={styles.hint}>{dog.walksPerDay} טיולים ביום · שינוי בלוח זמנים</RtlText>
 
-            <Button label="סגור" variant="secondary" onPress={onClose} style={styles.closeButton} />
-          </ScrollView>
+              <Button label="סגור" variant="secondary" onPress={onClose} style={styles.closeButton} />
+            </ScrollView>
+          </Pressable>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  flexFull: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '88%' },
   // BUG FIX (real-device regression): `flex: 1` here overrides RN's own
