@@ -5,7 +5,8 @@ import { repository } from '../data';
 import { generateId } from '../lib/id';
 import { computeUserDeletionImpact, FamilyManagementError, planUserRemoval } from '../logic/familyManagement';
 import { friendlyErrorMessage } from '../lib/errorMessages';
-import { resolveResponsibleForDate, toDateOnly } from '../logic/rotation';
+import { resolveResponsibleForDate } from '../logic/rotation';
+import { localDateOnly } from '../logic/dateFormat';
 import { useScheduleStore } from './scheduleStore';
 import { DEMO_DOG, DEMO_FAMILY } from '../data/demoData';
 import { isSupabaseConfigured } from '../lib/supabase';
@@ -230,7 +231,10 @@ if (!familyId) {
 
   getUserDeletionImpact: (userId: string) => {
     const { rules, entries } = useScheduleStore.getState();
-    return computeUserDeletionImpact(userId, rules, entries, toDateOnly(new Date()));
+    // Local calendar day, not UTC — see scheduleStore.ts's `today` doc
+    // comment for why a UTC-anchored "today" is wrong here for anyone in a
+    // timezone ahead of UTC (e.g. Israel) for a few hours after midnight.
+    return computeUserDeletionImpact(userId, rules, entries, localDateOnly(new Date()));
   },
 
   deleteUser: async (userId: string, replacementUserId: string | null) => {
@@ -244,7 +248,7 @@ if (!familyId) {
         rules,
         entries,
         walks,
-        toDateOnly(new Date()),
+        localDateOnly(new Date()),
         resolveResponsibleForDate
       );
 

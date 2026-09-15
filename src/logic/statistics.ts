@@ -1,5 +1,5 @@
 import type { Walk } from '../types';
-import { toDateOnly } from './rotation';
+import { localDateOnly } from './dateFormat';
 
 export type StatsPeriod = '7d' | '30d' | 'all';
 
@@ -7,7 +7,12 @@ export type StatsPeriod = '7d' | '30d' | 'all';
 export function filterWalksByPeriod(walks: Walk[], period: StatsPeriod, now: Date = new Date()): Walk[] {
   if (period === 'all') return walks;
   const days = period === '7d' ? 6 : 29;
-  const start = toDateOnly(new Date(now.getTime() - days * 86400000));
+  // `w.date` is the walk's local calendar date (see dateFormat.ts's own
+  // doc comment) — the cutoff must be computed the same way, or a UTC-
+  // anchored `toDateOnly` would shift this boundary by a day for anyone
+  // in a timezone ahead of UTC (e.g. Israel) for a few hours after
+  // local midnight.
+  const start = localDateOnly(new Date(now.getTime() - days * 86400000));
   return walks.filter((w) => w.date >= start);
 }
 

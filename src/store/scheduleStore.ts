@@ -1,7 +1,8 @@
 ﻿import { create } from 'zustand';
 import type { ScheduleEntry, ScheduleRule, UnplannedWalkInput, Walk } from '../types';
 import { repository } from '../data';
-import { generateRotationSchedule, resolveResponsibleForDate, ruleNeedsEntryBackfill, toDateOnly } from '../logic/rotation';
+import { generateRotationSchedule, resolveResponsibleForDate, ruleNeedsEntryBackfill } from '../logic/rotation';
+import { localDateOnly } from '../logic/dateFormat';
 import {
   editWalkDetails,
   markWalkDone,
@@ -187,8 +188,12 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // never ran, was interrupted, or entries were wiped some other way)
       // must never just silently show an empty schedule — backfill it from
       // the rule itself, right here, before the screen ever renders.
-      const today = toDateOnly(new Date());
-      const endDate = toDateOnly(new Date(Date.now() + GENERATE_DAYS_AHEAD * 86400000));
+      // Local calendar day, not UTC — `entries`/`walks` dates are the
+      // family's local "today" (see dateFormat.ts), and a UTC-anchored
+      // "today" would be wrong for a few hours after local midnight for
+      // anyone ahead of UTC (e.g. Israel), generating a day-early entry.
+      const today = localDateOnly(new Date());
+      const endDate = localDateOnly(new Date(Date.now() + GENERATE_DAYS_AHEAD * 86400000));
       const rulesMissingEntries = rules.filter((r) => ruleNeedsEntryBackfill(r, entries, today));
 
       let finalEntries = entries;
@@ -229,8 +234,12 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     if (!guardTestModeMutation()) return;
     try {
       await repository.upsertScheduleRule(rule);
-      const today = toDateOnly(new Date());
-      const endDate = toDateOnly(new Date(Date.now() + GENERATE_DAYS_AHEAD * 86400000));
+      // Local calendar day, not UTC — `entries`/`walks` dates are the
+      // family's local "today" (see dateFormat.ts), and a UTC-anchored
+      // "today" would be wrong for a few hours after local midnight for
+      // anyone ahead of UTC (e.g. Israel), generating a day-early entry.
+      const today = localDateOnly(new Date());
+      const endDate = localDateOnly(new Date(Date.now() + GENERATE_DAYS_AHEAD * 86400000));
       const newEntries = generateRotationSchedule(rule, today, endDate, () => generateId('entry'));
       await repository.addScheduleEntries(newEntries);
 
@@ -268,7 +277,11 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       const updatedRule: ScheduleRule = { ...rule, ...patch };
       await repository.upsertScheduleRule(updatedRule);
 
-      const today = toDateOnly(new Date());
+      // Local calendar day, not UTC — `entries`/`walks` dates are the
+      // family's local "today" (see dateFormat.ts), and a UTC-anchored
+      // "today" would be wrong for a few hours after local midnight for
+      // anyone ahead of UTC (e.g. Israel), generating a day-early entry.
+      const today = localDateOnly(new Date());
       const affectedEntries = get().entries.filter((e) => e.ruleId === ruleId && e.date >= today);
       const updatedEntries: ScheduleEntry[] = [];
       for (const entry of affectedEntries) {
@@ -303,7 +316,11 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   deleteRule: async (ruleId: string) => {
     if (!guardTestModeMutation()) return;
     try {
-      const today = toDateOnly(new Date());
+      // Local calendar day, not UTC — `entries`/`walks` dates are the
+      // family's local "today" (see dateFormat.ts), and a UTC-anchored
+      // "today" would be wrong for a few hours after local midnight for
+      // anyone ahead of UTC (e.g. Israel), generating a day-early entry.
+      const today = localDateOnly(new Date());
       const { entries, walks } = get();
       const futureEntries = entries.filter((e) => e.ruleId === ruleId && e.date >= today);
       for (const entry of futureEntries) {
