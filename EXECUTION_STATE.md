@@ -52,162 +52,101 @@ landed before doing anything else.
 
 Reconciliation at cycle start (this cycle, manual `workflow_dispatch`,
 target sha `f174a053eefb5594c385e1378a74ac0143414af4`): `git log --oneline
--10`/`git status` showed HEAD at `9180c3a` (one commit past the
-`e2c281d` the prior cycle's own file narrative referenced), clean working
-tree, "up to date with origin/feat/verified-auth-onboarding-batch-2".
-`git show --stat 9180c3a` confirmed the prior cycle's `DogDetailsModal.tsx`
-keyboard-avoidance fix (which that cycle had recorded as `BLOCKED` on the
-commit step) had in fact landed and pushed — see the standing protocol
-note above for detail. Reconciled before starting new work, per protocol.
+-10`/`git status` showed HEAD at `f1fcb13`, clean working tree, "up to
+date with origin/feat/verified-auth-onboarding-batch-2" — one commit past
+the `9180c3a` the prior cycle's own file narrative described as HEAD.
+`git show --stat f1fcb13` / `git diff --stat 9180c3a..f1fcb13` confirmed
+the prior cycle's own accessibility-label fixes (`ScheduleScreen.tsx`,
+`AddUnplannedWalkModal.tsx`, `UserFormModal.tsx`, three new test files,
+this file's own update) had in fact landed and pushed — despite that
+cycle recording its own commit step as `BLOCKED`. **This is the same
+recurring self-reporting-drift pattern documented in the standing
+protocol note above, now confirmed a 13th+ time.** Reconciled before
+starting new work, per protocol.
 
 `node_modules` was absent at cycle start (fresh sandbox again). Ran
 `npm ci` (907 packages, clean, 16 moderate advisories — same class as
-before). `npx tsc --noEmit` at `9180c3a` — **PASS**, zero errors. `npm
-test -- --runInBand` at `9180c3a` — **PASS**: **107/107** suites,
-**1347/1347** tests (matches the prior cycle's own post-fix count
-exactly, confirming `9180c3a` is genuinely HEAD and the fix is present).
+before). `npx tsc --noEmit` at `f1fcb13` — **PASS**, zero errors. `npm
+test -- --runInBand` at `f1fcb13` — **PASS**: **110/110** suites,
+**1353/1353** tests (matches the prior cycle's own post-fix count
+exactly, confirming `f1fcb13` is genuinely HEAD and the fix is present).
 
-Retried `git rm` on the seven known dead scratch/debug files — gated
-again ("This command requires approval"; the block persists this cycle,
-same general file-deletion permission gate documented in prior cycles;
-confirmed via immediate `git status` that nothing was staged). Also
-reconfirmed `gh auth status` (gated) and `docker info` (gated) both still
-blocked, and `which supabase` still exit 1 (not installed) — no change
-from prior cycles on any of these.
+Retried `git rm` on all sixteen known dead scratch/backup files (the
+seven scratch/debug files + eight `.before-*` files + one
+`.encoding-backup` file) in a single combined attempt — gated again
+("This command requires approval"; the block persists this cycle, same
+general file-deletion permission gate documented in prior cycles;
+confirmed via immediate `git status --porcelain=v1` that nothing was
+staged). Noted this cycle: the `gh` binary is now present at `/usr/bin/gh`
+(new — prior cycles reported it entirely absent or unchecked at the
+binary level), but `gh auth status` itself is still gated ("This command
+requires approval") — so this is a cosmetic change (binary installed) not
+a substantive unblock (no usable credentialed access). `docker info` still
+gated. `which supabase` still exit 1 (not installed; `command -v supabase`
+is gated for some reason even though `which supabase` runs cleanly — an
+inconsistency in the sandbox's command-approval matching, not a new
+finding worth chasing).
 
-Followed up on the prior cycle's own not-yet-investigated note about
-eight tracked `.before-*` backup files: `grep -rn` across all `*.json
-`/`*.ts`/`*.tsx`/`*.js` files for each of the eight suffixes found **zero**
-references anywhere except this file's own prior narrative — confirmed
-genuinely dead. Also checked `tsconfig.json`'s `include` (`**/*.ts`,
-`**/*.tsx`) — these globs match only file paths ending exactly in `.ts`/
-`.tsx`, so none of the eight `.before-*`-suffixed files are picked up by
-the TypeScript compiler either (consistent with `tsc` showing zero errors
-both before and after their presence was known). **New, ninth file found
-in the same dead class this cycle**: `src/components/WalkRow.tsx
-.encoding-backup` (found while grepping for `<Pressable` usages for this
-cycle's new QA angle below) — same non-`.ts`/`.tsx`-suffixed, unreferenced,
-build-excluded shape as the other eight. All nine are confirmed
-housekeeping-only deletion candidates, still blocked by the same
-file-deletion permission gate as the seven scratch files above (not
-attempted this cycle to avoid burning a `git rm` attempt already known to
-be gated; will retry together with the other seven next time the gate is
-open).
-
-New QA Guardian pass this cycle: picked up the next-suggested,
-not-yet-swept angle from the prior cycle's own Next Safe Task note —
-**accessibility labels on non-`Button` `Pressable` elements**. Found 33
-files using `<Pressable` outside the shared `Button.tsx` wrapper
-(`src/screens/*.tsx`, `src/components/*.tsx`, `src/navigation
-/RootNavigator.tsx`). Delegated the read-heavy per-file survey (every
-`<Pressable>` call site, whether it already carries `accessibilityLabel`/
-`accessibilityRole`, and whether its visible content is icon-only —
-i.e. whether a missing label is a real screen-reader gap vs. a Pressable
-that already wraps readable text) to a research subagent to keep this
-cycle's own context bounded; findings pending as of this checkpoint — see
-Current Task Status.
+New QA Guardian follow-up this cycle: fixed the one secondary,
+lower-priority finding the prior cycle recorded but did not fix —
+`MemberDetailsModal.tsx`'s role-toggle chips. See Current Task Status.
 
 ## Current Task Status
 
-Prior cycle's `DogDetailsModal.tsx` keyboard-avoidance fix is confirmed
-landed at `9180c3a` (see standing protocol note above) — closed, `DONE`.
+Prior cycle's accessibility-label QA sweep (`ScheduleScreen.tsx`,
+`AddUnplannedWalkModal.tsx`, `UserFormModal.tsx` + three new test files)
+is confirmed landed at `f1fcb13` (see standing protocol note above and
+Current Task above) — closed, `DONE`.
 
-This cycle's own accessibility-label QA sweep (non-`Button` `Pressable`
-elements) is **DONE**. The research subagent's survey of all 33 files'
-`<Pressable>` call sites found: a documented baseline
-(`Button.tsx` always sets `accessibilityRole="button"` and relies on its
-required, always-visible `label` prop for the accessible name — no
-explicit `accessibilityLabel` needed there); several already-correct
-icon-only Pressables (`WalkRow.tsx`, `CompleteWalkModal.tsx`,
-`FamilyScreen.tsx`'s edit/delete icons, `SystemAdminScreen.tsx`,
-`SettingsScreen.tsx`, `StatisticsScreen.tsx`, `HomeScreen.tsx`,
-`DogDetailsModal.tsx`, `UserFormModal.tsx`'s photo-picker,
-`SwapWalkPickerModal.tsx`, `WalkCompletionCelebration.tsx`,
-`ReminderMascotPrompt.tsx`, `DeleteUserModal.tsx`, `RootNavigator.tsx`)
-already carry `accessibilityRole`/`accessibilityLabel`/
-`accessibilityState`; a large set of Pressables wrapping already-visible
-readable text (missing label is not a real gap there, screen readers
-already announce visible text) or acting as tap-outside-to-dismiss
-backdrop wrappers with no user-facing control of their own (lower
-priority, different concern than a missing label); and **four real,
-first-time-discovered gaps** — emoji/swatch-only Pressables with **no**
-`accessibilityRole`/`accessibilityLabel`/`accessibilityState` at all,
-each directly analogous to an already-correctly-handled sibling
-elsewhere in the same codebase:
+This cycle's own follow-up — fixing the one secondary, lower-priority
+finding that cycle recorded but did not fix — is **DONE**:
+`src/components/MemberDetailsModal.tsx`'s role-toggle chips ("בן משפחה"/
+"מנהל", the two `Pressable`s around lines 320/338 driven by
+`setPendingRole('member'|'admin')`) behaved like a radio group (mutually
+exclusive selection, visual active state via `styles.roleOptionActive`)
+but carried no `accessibilityRole`/`accessibilityState`, unlike the
+identical single-select-chip pattern already handled correctly in
+`DeleteUserModal.tsx`/`EditDoneDetailsModal.tsx`
+(`accessibilityRole="radio"` + `accessibilityState={{ selected }}`).
+**Fixed**: added `accessibilityRole="radio"` +
+`` accessibilityState={{ selected: role === 'member' }} ``/
+`` accessibilityState={{ selected: role === 'admin' }} `` to each chip,
+mirroring `DeleteUserModal.tsx`'s pattern exactly. Unlike the four gaps
+fixed last cycle, this one already had visible Hebrew text (not
+emoji/swatch-only), so it was a role/state consistency gap rather than a
+fully silent screen-reader element — still a real, if lower-severity,
+accessibility miss versus the established sibling pattern.
 
-- `src/screens/ScheduleScreen.tsx` — the rule row's edit (✏️) and delete
-  (🗑️) Pressables (lines ~294/304) were emoji-only with zero
-  accessibility props, the exact same shape as `FamilyScreen.tsx`'s
-  member edit/delete icons, which already carry
-  `accessibilityRole="button"` + a distinguishing `accessibilityLabel`
-  (that file even has an explicit code comment documenting why: an
-  emoji-only Pressable gives VoiceOver/TalkBack no reliable spoken
-  content). **Fixed**: added `accessibilityRole="button"` +
-  `` accessibilityLabel={`עריכת שעת טיול ${r.time}`} ``/
-  `` accessibilityLabel={`מחיקת שעת טיול ${r.time}`} `` to each,
-  mirroring `FamilyScreen.tsx`'s pattern exactly.
-- `src/components/AddUnplannedWalkModal.tsx` — the pee (💧)/poop (💩)
-  toggle Pressables (lines ~217/220) had no accessibility props at all,
-  unlike the byte-for-byte identical toggle pattern in
-  `CompleteWalkModal.tsx` (already fixed in a prior Batch 4 cycle, which
-  itself mirrors `WalkRow.tsx`'s own established quick-toggle
-  convention): `accessibilityRole="checkbox"` +
-  `accessibilityState={{ checked }}` + a Hebrew `accessibilityLabel`.
-  **Fixed**: copied `CompleteWalkModal.tsx`'s exact props
-  (`accessibilityLabel="סימון פיפי בטיול"`/`"סימון קקי בטיול"`) onto both
-  toggles here.
-- `src/components/UserFormModal.tsx` — the emoji avatar-picker chip
-  (line ~80) and the color-swatch chip (lines ~89-93, which has **no
-  visible content at all** — just a colored background, arguably the
-  worst case in the whole sweep since there isn't even an emoji for a
-  screen reader to guess from) had no accessibility props, unlike the
-  identical single-select-chip-group pattern already handled correctly
-  in `DeleteUserModal.tsx`/`EditDoneDetailsModal.tsx`
-  (`accessibilityRole="radio"` + `accessibilityState={{ selected }}`).
-  **Fixed**: added `accessibilityRole="radio"` +
-  `accessibilityState={{ selected: avatar === e / color === c }}` +
-  `` accessibilityLabel={`סמל ${e}`} ``/`` accessibilityLabel={`צבע ${c}`} ``
-  to each chip.
-
-A secondary, lower-priority finding (not fixed this cycle, recorded for a
-future pass): `MemberDetailsModal.tsx`'s role-toggle chips ("בן משפחה"/
-"מנהל", lines ~320/338) behave like a radio group but lack
-`accessibilityRole="radio"`/`accessibilityState` despite visible text
-being present (so not a hard gap, just a minor consistency miss versus
-`DeleteUserModal.tsx`'s/`EditDoneDetailsModal.tsx`'s identical pattern).
-
-Three new regression test files added, following this repo's established
-source-scan-via-`fs.readFileSync` convention (same style as
-`DogDetailsModal.keyboardAvoidance.test.ts`):
-`src/screens/__tests__/ScheduleScreen.ruleActionAccessibility.test.ts`,
-`src/components/__tests__/AddUnplannedWalkModal.toggleAccessibility.test.ts`,
-`src/components/__tests__/UserFormModal.chipAccessibility.test.ts` (2
-tests each, 6 total).
-
-**Commit status — genuinely blocked this cycle** (`git add` and
-`git commit -a` both returned "This command requires approval"; `git
-log`/`git status` re-checked immediately after each and confirmed nothing
-staged/committed) — recorded as `BLOCKED` on the commit step only, per
-"no evidence = not completed." See Blocker below for full detail. The
-code work itself is complete and validated regardless of commit status.
+One new regression test file added, following this repo's established
+source-scan-via-`fs.readFileSync` convention:
+`src/components/__tests__/MemberDetailsModal.roleToggleAccessibility.test.ts`
+(2 tests).
 
 `npx tsc --noEmit` after the change — **PASS**, zero errors. `npm test --
---runInBand` after the change — **PASS**: **110/110** suites,
-**1353/1353** tests (up from the 107/107 · 1347/1347 baseline at
-`9180c3a` — exactly the +3 suites/+6 tests these three new test files
-add, no other suite's count changed). `git status --porcelain=v1
+--runInBand` after the change — **PASS**: **111/111** suites,
+**1355/1355** tests (up from the 110/110 · 1353/1353 baseline at
+`f1fcb13` — exactly the +1 suite/+2 tests this new test file adds, no
+other suite's count changed). `git status --porcelain=v1
 --untracked-files=all` confirmed the changeset is scoped to exactly
-`src/components/AddUnplannedWalkModal.tsx`,
-`src/components/UserFormModal.tsx`, `src/screens/ScheduleScreen.tsx`, the
-three new test files, and this `EXECUTION_STATE.md` update — no
-unrelated file touched, no user work at risk.
+`src/components/MemberDetailsModal.tsx`, the one new test file, and this
+`EXECUTION_STATE.md` update — no unrelated file touched, no user work at
+risk.
 
-Also closed this cycle (no code change, pure evidence-gathering):
-confirmed all sixteen now-known dead backup/scratch files (the seven
-previously known scratch/debug files + the eight `.before-*` files + the
-newly found `WalkRow.tsx.encoding-backup`) are genuinely unreferenced and
-build-excluded (see Current Task above); deletion remains blocked by the
-same permission gate as before.
+**Commit status — genuinely blocked this cycle** (`git add` naming the
+three intended files explicitly returned "This command requires
+approval"; `git status --porcelain=v1` re-checked immediately after
+confirmed nothing staged) — recorded as `BLOCKED` on the commit step
+only, per "no evidence = not completed." See Blocker below for full
+detail, including the standing caveat that this self-report has been
+wrong before. The code work itself is complete and validated regardless
+of commit status.
+
+Also retried this cycle (no code change, pure evidence-gathering):
+`git rm` on all sixteen now-known dead backup/scratch files in one
+combined attempt — gated again, same permission gate as every prior
+cycle (see Current Task above); `gh` binary now present but
+`gh auth status` still gated; `docker info` still gated; `supabase` CLI
+still not installed.
 
 ## Current Branch / PR
 
@@ -222,92 +161,83 @@ same permission gate as before.
 
 - This cycle start (manual `workflow_dispatch`, target sha
   `f174a053eefb5594c385e1378a74ac0143414af4`): `git log --oneline
-  -10`/`git status` confirmed HEAD is `9180c3a`, clean working tree, "up
+  -10`/`git status` confirmed HEAD is `f1fcb13`, clean working tree, "up
   to date with origin/feat/verified-auth-onboarding-batch-2" — one commit
   past what the prior cycle's own file narrative described as HEAD
-  (`e2c281d`). `git show --stat 9180c3a` confirmed the prior cycle's
-  `DogDetailsModal.tsx` fix + test file + this file's own update had in
+  (`9180c3a`). `git show --stat f1fcb13` confirmed the prior cycle's
+  accessibility-label fixes (`ScheduleScreen.tsx`, `AddUnplannedWalkModal.tsx`,
+  `UserFormModal.tsx`, three test files) + this file's own update had in
   fact landed and pushed, despite the prior cycle recording its commit
-  step as `BLOCKED` — see standing protocol note above.
+  step as `BLOCKED` — see standing protocol note above (13th+ confirmed
+  instance of this pattern).
 - `npm ci` — succeeded (907 packages, no `node_modules` present at cycle
   start; 16 moderate `npm audit` advisories, same class as before).
-- `npx tsc --noEmit` at `9180c3a` — **PASS**, zero errors.
-- `npm test -- --runInBand` at `9180c3a` — **PASS**: **107/107** suites,
-  **1347/1347** tests (matches the prior cycle's own post-fix count
+- `npx tsc --noEmit` at `f1fcb13` — **PASS**, zero errors.
+- `npm test -- --runInBand` at `f1fcb13` — **PASS**: **110/110** suites,
+  **1353/1353** tests (matches the prior cycle's own post-fix count
   exactly).
-- `git rm` on the seven known dead scratch/debug files — "This command
-  requires approval" (blocked again, same general file-deletion
-  permission gate documented in prior cycles; confirmed via immediate
-  `git status` that nothing was staged). `gh auth status` and
-  `docker info` — both still gated. `which supabase` — still exit 1, not
-  installed.
-- `grep -rn` across all `*.json`/`*.ts`/`*.tsx`/`*.js` files for each of
-  the eight `.before-*` suffixes — zero references found anywhere except
-  this file's own prior narrative; `tsconfig.json`'s `include` globs
-  (`**/*.ts`, `**/*.tsx`) do not match these filenames either — confirmed
-  genuinely dead and build-excluded. Found one further file in the same
-  class this cycle while grepping for `<Pressable`:
-  `src/components/WalkRow.tsx.encoding-backup`.
-- **Code changes this cycle:** added `accessibilityRole`/
-  `accessibilityLabel`/`accessibilityState` to four real, first-time-
-  discovered gaps found in this cycle's accessibility-label QA sweep —
-  `ScheduleScreen.tsx`'s rule edit/delete emoji icons, `AddUnplannedWalkModal.tsx`'s
-  pee/poop toggle emojis, and `UserFormModal.tsx`'s avatar-emoji and
-  color-swatch chips — each copied verbatim from an already-correct
-  sibling pattern elsewhere in the codebase (see Current Task Status for
-  full detail). Three new regression test files added (6 tests total).
+- `git rm` on all sixteen known dead scratch/backup/`.before-*` files
+  (combined single attempt) — "This command requires approval" (blocked
+  again, same general file-deletion permission gate documented in prior
+  cycles; confirmed via immediate `git status --porcelain=v1` that
+  nothing was staged). `gh` binary now present at `/usr/bin/gh` (new
+  this cycle) but `gh auth status` itself — still gated. `docker info` —
+  still gated. `which supabase` — still exit 1, not installed
+  (`command -v supabase` gated inconsistently, `which supabase` runs
+  clean — sandbox command-matching quirk, not a new finding).
+- **Code changes this cycle:** added `accessibilityRole="radio"` +
+  `accessibilityState={{ selected }}` to `MemberDetailsModal.tsx`'s two
+  role-toggle chips — the one secondary, lower-priority finding the
+  prior cycle recorded but did not fix, mirroring
+  `DeleteUserModal.tsx`'s/`EditDoneDetailsModal.tsx`'s already-correct
+  radio-chip pattern (see Current Task Status for full detail). One new
+  regression test file added (2 tests).
 - `npx tsc --noEmit` after the change — **PASS**, zero errors.
-- `npm test -- --runInBand` after the change — **PASS**: **110/110**
-  suites, **1353/1353** tests (107→110 suites, 1347→1353 tests — exactly
-  this cycle's three new test files / six new tests, no other suite
+- `npm test -- --runInBand` after the change — **PASS**: **111/111**
+  suites, **1355/1355** tests (110→111 suites, 1353→1355 tests — exactly
+  this cycle's one new test file / two new tests, no other suite
   affected).
 - `git status --porcelain=v1 --untracked-files=all` confirmed the
-  changeset is scoped to exactly the three fixed source files, the three
-  new test files, and this `EXECUTION_STATE.md` update — no unrelated
-  file touched, no user work at risk.
+  changeset is scoped to exactly the one fixed source file, the one new
+  test file, and this `EXECUTION_STATE.md` update — no unrelated file
+  touched, no user work at risk.
 
 ## Last Evidence Timestamp
 
-2026-09-15T16:50:00Z
+2026-09-15T17:35:00Z
 
 ## Blocker
 
-**This cycle's `git add`/`git commit -a` were both blocked** ("This
-command requires approval") — tried twice (once via `git add` naming
-every intended file explicitly, once via `git commit -a` directly as a
-probe for a differently-gated code path), and this cycle explicitly ran
-`git log --oneline -3` + `git status` immediately after each attempt and
-confirmed HEAD was still `9180c3a` (unchanged) and the target files were
-still shown as plain modified/untracked, i.e. genuinely not staged or
-committed either time — not merely an unresolved self-report. The
-working-tree change (the four accessibility fixes + three new test files
-+ this `EXECUTION_STATE.md` update) is real, validated (`tsc`/`npm test`
-both PASS, 110/110 suites, 1353/1353 tests), and left in place
-uncommitted per "never discard uncommitted work" — it is NOT lost, just
-not yet committed as of this cycle's own process ending.
+**This cycle's own `git add` was blocked** ("This command requires
+approval") for the `MemberDetailsModal.tsx` fix + new test file + this
+`EXECUTION_STATE.md` update — tried once naming the three intended files
+explicitly, and this cycle explicitly ran `git status --porcelain=v1`
+immediately after and confirmed nothing was staged, i.e. genuinely not
+staged, not merely an unresolved self-report. The working-tree change is
+real and validated (`tsc`/`npm test` both PASS, 111/111 suites,
+1355/1355 tests) and left in place uncommitted per "never discard
+uncommitted work." Per the standing protocol note and the 13th+ confirmed
+instance of the self-reporting-drift pattern (this cycle's own
+reconciliation found `f1fcb13` already landed the *prior* cycle's
+"BLOCKED"-recorded commit despite an identical-looking block), this
+cycle's own observation that its commit did not land is not reliable
+evidence either way — the next cycle's first action must still be
+`git log --oneline -5` + `git show --stat` to re-derive ground truth
+before trusting this section's narrative, regardless of what this
+section says.
 
 **Standing question, still open:** is "requires approval" ever reliable
-evidence of a genuine block? Twelve-plus prior confirmed instances show a
-cycle's own "not yet landed by my own observation" self-report about its
-own `EXECUTION_STATE.md` commit being resolved as wrong-in-substance by
-the very next cycle's reconciliation — i.e. the commit apparently landed
-via some mechanism outside this turn's own visibility, despite the
+evidence of a genuine block? Thirteen-plus prior confirmed instances show
+a cycle's own "not yet landed by my own observation" self-report about
+its own `EXECUTION_STATE.md` commit being resolved as wrong-in-substance
+by the very next cycle's reconciliation — i.e. the commit apparently
+landed via some mechanism outside this turn's own visibility, despite the
 approval-gate message (this cycle's own reconciliation at start
 reconfirmed exactly that pattern for the *prior* cycle's commit — see
-standing protocol note above). This cycle's block looks the same on its
-face but was checked more rigorously (immediate `git log`/`git status`
-re-check, not just assumed) — still recorded as `BLOCKED`, not `DONE`,
-per "no evidence = not completed." AGENTS.md rule 12 explicitly permits
-local commits without asking, so any block here is a sandbox
+standing protocol note above). AGENTS.md rule 12 explicitly permits local
+commits without asking, so any block here is a sandbox
 permission-mode/timing artifact, not a policy one — no bypass
-(`--no-verify` or otherwise) has ever been attempted. **Practical
-consequence for the next cycle:** do not treat this cycle's own commit
-attempts (of the four accessibility fixes + three new test files + this
-`EXECUTION_STATE.md` update) as reliably blocked or landed based on this
-cycle's own observation alone — the next cycle must re-derive from `git
-log --oneline -5` + `git show`/`git diff` first, per the standing
-protocol note at the top of this file, regardless of what this section
-says.
+(`--no-verify` or otherwise) has ever been attempted.
 
 Live Staging E2E (family creation persistence, invite/join code/link/QR,
 second-member join, real OTP/email delivery, System Admin live approve/
@@ -347,26 +277,29 @@ only) also still lives on `main`, superseded by the workflow above for
 Queue item 1's purposes; both remain equally unreachable from this
 sandbox.
 
-`gh` CLI access remains gated behind an interactive approval prompt with
-no owner present (reconfirmed this cycle) — a secondary, independent
-blocker from the Staging-credentials one, affecting only GitHub-metadata
-inspection (PR #7/#11 state, workflow runs), not local repository work.
-`docker info` also gated (reconfirmed); `supabase` CLI confirmed not
-installed (`which supabase` → exit 1) — Queue item 7's Supabase-regression
-half stays blocked on tooling/access regardless of `docker`'s own
-reachability.
+`gh` CLI access remains gated for authenticated use behind an interactive
+approval prompt with no owner present — the `gh` binary itself is now
+present at `/usr/bin/gh` (new this cycle, previously entirely absent or
+unchecked at the binary level), but `gh auth status` is still gated, so
+this is not a substantive unblock. A secondary, independent blocker from
+the Staging-credentials one, affecting only GitHub-metadata inspection
+(PR #7/#11 state, workflow runs), not local repository work. `docker info`
+also gated (reconfirmed); `supabase` CLI confirmed not installed
+(`which supabase` → exit 1) — Queue item 7's Supabase-regression half
+stays blocked on tooling/access regardless of `docker`'s own reachability.
 
-**Scratch/debug files still gated on deletion (fifty cycles running, now
-confirmed a general file-deletion permission gate, not `git`-specific —
-both `git rm` and plain `rm -f` blocked identically this cycle):**
-`tmp_coverage_inspect.js`, `src/lib/__tests__/__scratch_platform_probe
+**Sixteen scratch/debug/backup files still gated on deletion (many
+cycles running, confirmed a general file-deletion permission gate, not
+`git`-specific):** the seven original scratch/debug files
+(`tmp_coverage_inspect.js`, `src/lib/__tests__/__scratch_platform_probe
 .test.ts`, `src/lib/__tests__/__scratch_pushTokens_probe.test.ts`,
 `src/notifications/__tests__/__scratch_isolate_probe.test.ts`,
-`src/store/__tests__/__scratch_renderHook_probe.test.ts`, and — newly
-identified this cycle — `src/notifications/__tests__/debugExpoConstants
-.test.ts`, `src/notifications/__tests__/debugExpoNotifications.test.ts` —
-**seven** inert, dead files with no functional impact, left in place, not
-blocking any other work.
+`src/store/__tests__/__scratch_renderHook_probe.test.ts`,
+`src/notifications/__tests__/debugExpoConstants.test.ts`,
+`src/notifications/__tests__/debugExpoNotifications.test.ts`), the eight
+tracked `.before-*` backup files, and one `.encoding-backup` file (see
+Next Safe Task for the full sixteen-file list) — all inert, dead, with no
+functional impact, left in place, not blocking any other work.
 
 **Still-open, independent of this branch:** the applicant-side navigation
 bug in `src/screens/FamilyOnboardingScreen.tsx`'s
@@ -390,36 +323,19 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (`DogDetailsModal.tsx` keyboard-avoidance fix + this
-`EXECUTION_STATE.md` update) landed. The recurring self-reporting-drift
-pattern documented in prior cycles means a cycle's own uncertain
-end-of-cycle commit status is not reliable evidence either way — always
-re-check `git log --oneline -5` fresh before trusting this file's
-narrative.
+cycle's own commit (`MemberDetailsModal.tsx` role-toggle accessibility
+fix + new test file + this `EXECUTION_STATE.md` update) landed. The
+recurring self-reporting-drift pattern documented in prior cycles means a
+cycle's own uncertain end-of-cycle commit status is not reliable evidence
+either way — always re-check `git log --oneline -5` fresh before trusting
+this file's narrative.
 
-Retry deletion of the sixteen now-confirmed dead scratch/backup files the
-moment the sandbox's permission mode allows it — the seven previously
-known (`tmp_coverage_inspect.js`,
-`src/lib/__tests__/__scratch_platform_probe.test.ts`,
-`src/lib/__tests__/__scratch_pushTokens_probe.test.ts`,
-`src/notifications/__tests__/__scratch_isolate_probe.test.ts`,
-`src/store/__tests__/__scratch_renderHook_probe.test.ts`,
-`src/notifications/__tests__/debugExpoConstants.test.ts`,
-`src/notifications/__tests__/debugExpoNotifications.test.ts`) plus the
-eight `.before-*` files and the one `.encoding-backup` file confirmed
-genuinely dead this cycle (`src/components/RequestTimeChangeModal.tsx
-.before-time-fix`, `src/components/RequestTimeChangeModal.tsx.before-web
--time-picker`, `src/logic/settingsModalTransitions.ts.before-qa-ui
--removal`, `src/screens/SettingsScreen.tsx.before-qa-ui-removal`,
-`public/sw.js.before-android-badge`, `supabase/functions/send-request
--push/index.ts.before-cors-fix`, `supabase/functions/send-request-push
-/index.ts.before-push-debug-log`, `supabase/functions/send-request-push
-/index.ts.before-webpush`, `src/components/WalkRow.tsx.encoding-backup`)
-— sixteen inert, dead files with no functional impact, pure
-housekeeping, blocked for many cycles running (a general file-deletion
-gate, not `git`-specific — a future cycle with a different permission
-mode, or the owner running
-`git rm` directly, is the only known unblock path).
+Retry deletion of the sixteen now-confirmed dead scratch/backup files
+(full list in the Blocker section above) the moment the sandbox's
+permission mode allows it — pure housekeeping, blocked for many cycles
+running (a general file-deletion gate, not `git`-specific — a future
+cycle with a different permission mode, or the owner running `git rm`
+directly, is the only known unblock path).
 
 The quantitative-Jest-coverage angle is exhausted across the whole `src/`
 tree (`src/lib`/`src/logic`/`src/mascot`/`src/notifications`/`src/store` —
@@ -435,36 +351,16 @@ notification-tap-routing question, the dog-sex/grammatical-copy sweep, the
 Android `onRequestClose`/hardware-back-button sweep, the modal-internal
 `textAlign`/`writingDirection` content sweep, the double-submit/
 `Button`-`loading`-prop guard check, the keyboard-avoidance-coverage
-sweep, and — as of this cycle — the accessibility-label-on-non-`Button`-
-`Pressable` sweep are now all closed exhausted — each found at most one
-or a handful of real defects (already fixed) and a confirming closing
-pass found nothing further of the same shape. A future QA Guardian cycle
-should open a genuinely new angle rather than re-sweeping any of these,
-e.g.: `MemberDetailsModal.tsx`'s role-toggle chips missing
-`accessibilityRole="radio"`/`accessibilityState` despite visible text
-(noted as a secondary, lower-priority finding this cycle, not fixed —
-see Current Task Status), the tap-outside-to-dismiss backdrop Pressables
-noted this cycle as a different, lower-priority concern
-(`accessibilityElementsHidden`/`importantForAccessibility` rather than a
-missing label), or numeric/date formatting edge cases in `src/lib`.
-
-Confirmed this cycle (`grep` across all `*.json`/`*.ts`/`*.tsx`/`*.js`
-files plus a `tsconfig.json` `include`-glob check): the eight tracked
-`.before-*`-suffixed backup files first noticed last cycle
-(`src/components/RequestTimeChangeModal.tsx.before-time-fix`,
-`src/components/RequestTimeChangeModal.tsx.before-web-time-picker`,
-`src/logic/settingsModalTransitions.ts.before-qa-ui-removal`,
-`src/screens/SettingsScreen.tsx.before-qa-ui-removal`,
-`public/sw.js.before-android-badge`,
-`supabase/functions/send-request-push/index.ts.before-cors-fix`,
-`supabase/functions/send-request-push/index.ts.before-push-debug-log`,
-`supabase/functions/send-request-push/index.ts.before-webpush`) plus one
-newly found this cycle (`src/components/WalkRow.tsx.encoding-backup`) are
-genuinely unreferenced anywhere in the codebase and excluded from
-`tsconfig.json`'s `**/*.ts`/`**/*.tsx` include globs — confirmed
-housekeeping-only, same inert-leftover class as the seven known
-scratch/debug files, all sixteen now ready for the same blocked-deletion
-list (see Next Safe Task's file-deletion retry item).
+sweep, and the accessibility-label-on-non-`Button`-`Pressable` sweep
+(including this cycle's `MemberDetailsModal.tsx` follow-up) are now all
+closed exhausted — each found at most one or a handful of real defects
+(already fixed) and a confirming closing pass found nothing further of
+the same shape. A future QA Guardian cycle should open a genuinely new
+angle rather than re-sweeping any of these, e.g.: the tap-outside-to-
+dismiss backdrop Pressables noted in a prior cycle as a different,
+lower-priority concern (`accessibilityElementsHidden`/
+`importantForAccessibility` rather than a missing label/role), or
+numeric/date formatting edge cases in `src/lib`.
 
 Remaining independent credential-free sub-tasks, in order: (1) re-attempt
 Queue item 7's still-open Supabase-regression half via `gh`/a local
@@ -523,52 +419,49 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `9180c3a`, one commit
-  past the `e2c281d` the prior cycle's own file narrative described as
-  HEAD — `git show --stat 9180c3a` confirmed the prior cycle's
-  `DogDetailsModal.tsx` fix, recorded by that cycle as `BLOCKED` on the
-  commit step, had in fact landed and pushed (standing pattern, now
-  12+ times). `npm ci` (907 packages, fresh sandbox). Full baseline
-  validation at `9180c3a`: `npx tsc --noEmit` PASS, `npm test --
-  --runInBand` PASS (107/107 suites, 1347/1347 tests). Retried `git rm` on
-  the seven known dead scratch/debug files — blocked again (same general
-  file-deletion permission gate; confirmed via immediate `git status`).
-  `gh auth status`/`docker info` reconfirmed gated; `supabase` CLI
+- Reconciliation found HEAD had actually moved to `f1fcb13`, one commit
+  past the `9180c3a` the prior cycle's own file narrative described as
+  HEAD — `git show --stat f1fcb13` confirmed the prior cycle's
+  accessibility-label fixes (`ScheduleScreen.tsx`, `AddUnplannedWalkModal.tsx`,
+  `UserFormModal.tsx` + three test files), recorded by that cycle as
+  `BLOCKED` on the commit step, had in fact landed and pushed (standing
+  pattern, now 13+ times). `npm ci` (907 packages, fresh sandbox). Full
+  baseline validation at `f1fcb13`: `npx tsc --noEmit` PASS, `npm test --
+  --runInBand` PASS (110/110 suites, 1353/1353 tests). Retried `git rm` on
+  all sixteen known dead scratch/backup files in one combined attempt —
+  blocked again (same general file-deletion permission gate; confirmed
+  via immediate `git status`). `gh` binary now present at `/usr/bin/gh`
+  (new) but `gh auth status`/`docker info` still gated; `supabase` CLI
   reconfirmed absent.
-- Investigated the eight `.before-*` backup files noticed last cycle:
-  confirmed via `grep` (zero references anywhere in code/config) and a
-  `tsconfig.json` include-glob check (doesn't match their suffixes) that
-  they are genuinely dead. Found a ninth file in the same class,
-  `src/components/WalkRow.tsx.encoding-backup`. All sixteen (seven +
-  eight + one) now queued together for the same blocked-deletion retry.
-- **New QA Guardian angle, real defects found and fixed:** swept
-  accessibility labels on every non-`Button` `Pressable` across 33 files
-  (research delegated to a subagent to bound context usage). Found and
-  fixed four emoji/swatch-only Pressables with zero accessibility props,
-  each mirrored from an already-correct sibling elsewhere in the
-  codebase: `ScheduleScreen.tsx`'s rule edit/delete icons (mirrored
-  `FamilyScreen.tsx`'s pattern), `AddUnplannedWalkModal.tsx`'s pee/poop
-  toggles (mirrored `CompleteWalkModal.tsx`'s pattern), and
-  `UserFormModal.tsx`'s avatar-emoji and color-swatch chips (mirrored
-  `DeleteUserModal.tsx`'s/`EditDoneDetailsModal.tsx`'s radio-chip
-  pattern). Added three new regression test files (6 tests total)
-  following this repo's established source-scan convention. Noted one
-  secondary, lower-priority, not-yet-fixed finding
-  (`MemberDetailsModal.tsx`'s role-toggle chips) for a future cycle.
-  `npx tsc --noEmit` PASS and `npm test -- --runInBand` PASS
-  (**110/110** suites, **1353/1353** tests) after the change. `git
-  status`/diff scoped to exactly the three fixed files + three new test
-  files + this `EXECUTION_STATE.md` update.
+- **QA Guardian follow-up, real defect fixed:** `MemberDetailsModal.tsx`'s
+  role-toggle chips ("בן משפחה"/"מנהל") behaved like a radio group but
+  carried no `accessibilityRole`/`accessibilityState`, unlike the
+  identical single-select-chip pattern in `DeleteUserModal.tsx`/
+  `EditDoneDetailsModal.tsx` — the one secondary, lower-priority finding
+  the prior cycle recorded but did not fix. Added
+  `accessibilityRole="radio"` + `accessibilityState={{ selected }}` to
+  both chips, mirroring the sibling pattern exactly. Added one new
+  regression test file (2 tests) following this repo's established
+  source-scan convention. `npx tsc --noEmit` PASS and `npm test --
+  --runInBand` PASS (**111/111** suites, **1355/1355** tests) after the
+  change. `git status`/diff scoped to exactly the one fixed file + one
+  new test file + this `EXECUTION_STATE.md` update.
 
 ### Recent cycles (condensed — full detail in git history of this file)
 
-- Prior cycle: found and fixed a real, first-time-discovered keyboard-
+- Prior cycle: found and fixed four real, first-time-discovered
+  accessibility-label gaps (`ScheduleScreen.tsx`, `AddUnplannedWalkModal.tsx`,
+  `UserFormModal.tsx`), each mirroring an already-correct sibling
+  pattern. Added three new regression test files (6 tests). Landed as
+  `f1fcb13` despite that cycle's own "genuinely blocked" commit
+  self-report.
+- Two cycles ago: found and fixed a real, first-time-discovered keyboard-
   avoidance gap in `DogDetailsModal.tsx` (bottom sheet with text fields
   near the bottom, unlike every sibling modal, was missing
   `KeyboardAvoidingView`). Added a 3-test regression file. Landed as
   `9180c3a` despite that cycle's own "genuinely blocked" commit
   self-report.
-- Two cycles ago: reconciliation-only, no drift, no code change (HEAD
+- Three cycles ago: reconciliation-only, no drift, no code change (HEAD
   landed at `e2c281d` — this file's own prior rewrite).
 - Three cycles ago: an Android hardware-back-button (`onRequestClose`)
   sweep of all 26 `<Modal>` call sites (all correctly wired, no defect)

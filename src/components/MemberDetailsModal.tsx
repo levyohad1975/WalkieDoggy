@@ -330,6 +330,8 @@ export function MemberDetailsModal({
                     role === 'member' && styles.roleOptionActive,
                     role === 'admin' && isLastAdmin && styles.roleOptionDisabled,
                   ]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: role === 'member' }}
                 >
                   <RtlText style={[styles.roleOptionText, role === 'member' && styles.roleOptionTextActive]}>
                     בן משפחה
@@ -343,6 +345,8 @@ export function MemberDetailsModal({
                     }
                   }}
                   style={[styles.roleOption, role === 'admin' && styles.roleOptionActive]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: role === 'admin' }}
                 >
                   <RtlText style={[styles.roleOptionText, role === 'admin' && styles.roleOptionTextActive]}>מנהל</RtlText>
                 </Pressable>
