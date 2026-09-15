@@ -316,6 +316,11 @@ describe('canRequestChangeForWalk', () => {
     const pastWalk = makeWalk({ date: '2026-09-01', scheduledTime: '09:00', status: 'pending', responsibleUserId: 'noam' });
     expect(canRequestChangeForWalk(pastWalk, 'noam', 'member', true, future)).toBe(false);
   });
+
+  it('defaults `now` to the real current time when omitted', () => {
+    const longPastWalk = makeWalk({ date: '2020-01-01', scheduledTime: '09:00', status: 'pending', responsibleUserId: 'noam' });
+    expect(canRequestChangeForWalk(longPastWalk, 'noam', 'member', true)).toBe(false);
+  });
 });
 
 /**
@@ -380,6 +385,13 @@ describe('computeNextWalkCardActions', () => {
     expect(actions.canRequestTimeChange).toBe(false);
     expect(actions.canSwapDirect).toBe(true);
     expect(actions.canEditDirect).toBe(true);
+  });
+
+  it('defaults `now` to the real current time when omitted', () => {
+    const longPastWalk = makeWalk({ date: '2020-01-01', scheduledTime: '09:00', status: 'pending', responsibleUserId: 'noam' });
+    const actions = computeNextWalkCardActions(longPastWalk, 'noam', 'member', true);
+    expect(actions.canRequestSwap).toBe(false);
+    expect(actions.canRequestTimeChange).toBe(false);
   });
 });
 
