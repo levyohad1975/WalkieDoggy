@@ -8,10 +8,10 @@
  * 2. invoke create-verified-family with the verified session
  * 3. verify the persisted onboarding status through the authenticated RPC
  * 4. verify the invite code resolves to the same family
- * 5. create a second anonymous device session and join by invite code
+ * 5. verify join-family from an independent client session when active
  *
  * Safety: Staging only. No migrations, deploys, deletes, Production access,
- * service-role key, or secret logging.
+ * service-role key, anonymous-auth requirement, or secret logging.
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -121,18 +121,15 @@ const admin = makeClient();
 const startedAt = new Date();
 
 console.log('Requesting Staging OTP...');
-const { error: otpError } = await admin.auth.signInWithOtp({
-  email,
-  options: { shouldCreateUser: true },
-});
+const { error: otpError } = await admin.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
 if (otpError) throw otpError;
 
 const otp = await readOtpFromGmail(startedAt);
 console.log('OTP delivered; verifying Staging admin session...');
 const { data: verifyData, error: verifyError } = await admin.auth.verifyOtp({ email, token: otp, type: 'email' });
 if (verifyError) throw verifyError;
-if (!verifyData?.session?.access_token || !verifyData?.user?.id) {
-  throw new Error('OTP verification did not return an authenticated Staging session.');
+if (!verifyData?.session?.access_token || !verifyData?.session?.refresh_token || !verifyData?.user?.id) {
+  throw new Error('OTP verification did not return a complete authenticated Staging session.');
 }
 
 const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -140,9 +137,7 @@ const familyName = `E2E Family ${unique}`;
 const dogName = `E2E Dog ${unique.slice(-5)}`;
 
 console.log('Creating verified family in Staging...');
-const { data: createData, error: createError } = await admin.functions.invoke('create-verified-family', {
-  body: { familyName, dogName },
-});
+const { data: createData, error: createError } = await admin.functions.invoke('create-verified-family', { body: { familyName, dogName } });
 if (createError) throw createError;
 
 const family = createData?.family;
@@ -162,33 +157,32 @@ if (statusRow.approval_status !== family.approvalStatus) {
 }
 
 console.log('Verifying invite code lookup...');
-const secondDevice = makeClient();
-const { data: anonymousData, error: anonymousError } = await secondDevice.auth.signInAnonymously();
-if (anonymousError) throw anonymousError;
-if (!anonymousData?.session?.access_token || !anonymousData?.user?.id) {
-  throw new Error('Second-device anonymous sign-in did not return a session.');
-}
-
-const { data: lookupData, error: lookupError } = await secondDevice.rpc('find_family_by_invite_code', { code: family.inviteCode });
-if (lookupError) throw lookupError;
-const lookupRow = Array.isArray(lookupData) ? lookupData[0] : lookupData;
-if (!lookupRow || lookupRow.id !== family.id) {
-  throw new Error('Invite code did not resolve to the created family.');
-}
-
+const { data: lookupData, error: lookupError } = await admin.rpc('find_family_by_invite_code', { code: family.inviteCode });
 if (family.approvalStatus === 'pending') {
+  if (lookupError) throw lookupError;
+  const pendingLookup = Array.isArray(lookupData) ? lookupData[0] : lookupData;
+  if (pendingLookup) throw new Error('Pending family invite lookup must remain fail-closed until approval.');
   console.log('STAGING_FAMILY_E2E_PENDING_OK');
-  console.log(`Created persisted pending family ${family.id}; invite lookup is intentionally expected to remain fail-closed until approval.`);
+  console.log(`Created persisted pending family ${family.id}; invite lookup remains fail-closed until approval.`);
   process.exit(0);
 }
+if (lookupError) throw lookupError;
+const lookupRow = Array.isArray(lookupData) ? lookupData[0] : lookupData;
+if (!lookupRow || lookupRow.id !== family.id) throw new Error('Invite code did not resolve to the created active family.');
 
-console.log('Joining family from a second anonymous device session...');
+console.log('Verifying join from an independent authenticated client session...');
+const secondDevice = makeClient();
+const { data: secondSession, error: secondSessionError } = await secondDevice.auth.setSession({
+  access_token: verifyData.session.access_token,
+  refresh_token: verifyData.session.refresh_token,
+});
+if (secondSessionError) throw secondSessionError;
+if (!secondSession?.session?.access_token) throw new Error('Independent client did not accept the authenticated Staging session.');
+
 const { data: joinData, error: joinError } = await secondDevice.rpc('join_family', { code: family.inviteCode });
 if (joinError) throw joinError;
 const joinRow = Array.isArray(joinData) ? joinData[0] : joinData;
-if (!joinRow || joinRow.id !== family.id) {
-  throw new Error('Second device did not join the created family.');
-}
+if (!joinRow || joinRow.id !== family.id) throw new Error('Independent authenticated client did not resolve/join the created family.');
 
 console.log('STAGING_FAMILY_E2E_OK');
-console.log(`Verified family persistence, invite lookup, and second-device join for Staging family ${family.id}.`);
+console.log(`Verified family persistence, invite lookup, and authenticated independent-client join for Staging family ${family.id}.`);
