@@ -105,7 +105,11 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
             </Pressable>
 
             {detailLoading ? <ActivityIndicator color={colors.primary} style={styles.spinner} accessibilityLabel="טוען…" /> : null}
-            {detailError ? <RtlText style={styles.error}>{detailError}</RtlText> : null}
+            {detailError ? (
+              <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                {detailError}
+              </RtlText>
+            ) : null}
 
             {detail ? (
               <View>
@@ -203,7 +207,11 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
             </View>
 
             {listLoading ? <ActivityIndicator color={colors.primary} style={styles.spinner} accessibilityLabel="טוען…" /> : null}
-            {listError ? <RtlText style={styles.error}>{listError}</RtlText> : null}
+            {listError ? (
+              <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                {listError}
+              </RtlText>
+            ) : null}
 
             <ScrollView contentContainerStyle={styles.content}>
               {!listLoading && families.length === 0 ? <RtlText style={styles.cardLine}>לא נמצאו משפחות</RtlText> : null}

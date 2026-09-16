@@ -359,7 +359,11 @@ export function MemberDetailsModal({
               {role === 'admin' && isLastAdmin ? (
                 <RtlText style={styles.hint}>לא ניתן להסיר הרשאת מנהל מהמנהל האחרון במשפחה.</RtlText>
               ) : null}
-              {error ? <RtlText style={styles.error}>{error}</RtlText> : null}
+              {error ? (
+                <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                  {error}
+                </RtlText>
+              ) : null}
             </View>
           ) : null}
 
@@ -410,7 +414,11 @@ export function MemberDetailsModal({
                   </View>
                 );
               })}
-              {permissionError ? <RtlText style={styles.error}>{permissionError}</RtlText> : null}
+              {permissionError ? (
+                <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                  {permissionError}
+                </RtlText>
+              ) : null}
             </View>
           ) : null}
 
@@ -429,7 +437,11 @@ export function MemberDetailsModal({
                 disabled={creatingInvite}
                 onPress={handleCreateInvite}
               />
-              {inviteError ? <RtlText style={styles.error}>{inviteError}</RtlText> : null}
+              {inviteError ? (
+                <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                  {inviteError}
+                </RtlText>
+              ) : null}
             </View>
           ) : null}
 

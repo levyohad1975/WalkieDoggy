@@ -115,7 +115,11 @@ export function PinSetupModal({ visible, userName, hasExistingPin, onSave, onClo
               textAlign="center"
               accessibilityLabel="אימות קוד PIN"
             />
-            {error ? <RtlText style={styles.error}>{error}</RtlText> : null}
+            {error ? (
+              <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                {error}
+              </RtlText>
+            ) : null}
             <View style={styles.actions}>
               <Button label="שמירה" onPress={handleSave} loading={saving} style={styles.flex} compact />
               <Button label="ביטול" onPress={handleClose} variant="secondary" style={styles.flex} compact disabled={saving} />

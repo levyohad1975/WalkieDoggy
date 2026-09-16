@@ -61,7 +61,11 @@ export function AdminActivityModal({ visible, onClose }: AdminActivityModalProps
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <RtlText style={styles.title}>מי בשימוש במערכת</RtlText>
           {loading ? <ActivityIndicator color={colors.primary} accessibilityLabel="טוען…" /> : null}
-          {error ? <RtlText style={styles.error}>{error}</RtlText> : null}
+          {error ? (
+            <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+              {error}
+            </RtlText>
+          ) : null}
           <ScrollView style={styles.list}>
             {rows.map((r) => (
               <View key={r.user_id} style={styles.row}>

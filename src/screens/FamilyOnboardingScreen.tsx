@@ -409,7 +409,11 @@ export function FamilyOnboardingScreen() {
                 accessibilityLabel="שם הכלב/ה (אופציונלי)"
               />
 
-              {createError ? <RtlText style={styles.error}>{createError}</RtlText> : null}
+              {createError ? (
+                <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                  {createError}
+                </RtlText>
+              ) : null}
 
               <Button
                 label={creating ? 'יוצר משפחה...' : 'יצירת המשפחה'}
@@ -455,7 +459,11 @@ export function FamilyOnboardingScreen() {
               />
 
               {inspecting ? <ActivityIndicator color={colors.primary} style={{ marginTop: 8 }} accessibilityLabel="טוען…" /> : null}
-              {inspectError ? <RtlText style={styles.error}>{inspectError}</RtlText> : null}
+              {inspectError ? (
+                <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                  {inspectError}
+                </RtlText>
+              ) : null}
 
               {preview ? (
                 <View style={styles.foundCard}>
@@ -494,7 +502,11 @@ export function FamilyOnboardingScreen() {
                     </View>
                   ) : null}
 
-                  {redeemError ? <RtlText style={styles.error}>{redeemError}</RtlText> : null}
+                  {redeemError ? (
+                    <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                      {redeemError}
+                    </RtlText>
+                  ) : null}
 
                   <Button
                     label={redeeming ? 'מצטרף...' : 'הצטרפות'}
@@ -558,7 +570,11 @@ export function FamilyOnboardingScreen() {
             />
 
             {looking ? <ActivityIndicator color={colors.primary} style={{ marginTop: 8 }} accessibilityLabel="טוען…" /> : null}
-            {joinError ? <RtlText style={styles.error}>{joinError}</RtlText> : null}
+            {joinError ? (
+              <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                {joinError}
+              </RtlText>
+            ) : null}
 
             {found ? (
               <View style={styles.foundCard}>

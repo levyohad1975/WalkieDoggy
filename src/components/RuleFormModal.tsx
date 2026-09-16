@@ -148,7 +148,11 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
               </RtlText>
             ) : null}
 
-            {error ? <RtlText style={styles.error}>{error}</RtlText> : null}
+            {error ? (
+              <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                {error}
+              </RtlText>
+            ) : null}
 
             <View style={styles.actions}>
               <Button label="שמירה" onPress={submit} style={styles.flex} />

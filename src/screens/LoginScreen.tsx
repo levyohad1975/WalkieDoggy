@@ -199,7 +199,7 @@ export function LoginScreen() {
 
       {staleClaimRecovered ? (
         <View style={styles.errorBanner}>
-          <RtlText style={styles.errorText}>
+          <RtlText style={styles.errorText} accessibilityRole="alert" accessibilityLiveRegion="polite">
             {staleClaimUser
               ? `הפרופיל ${staleClaimUser.name} הופעל במכשיר אחר.`
               : 'החיבור של המכשיר הזה פג — בחרו את הפרופיל שלכם שוב כדי להמשיך.'}
@@ -220,7 +220,9 @@ export function LoginScreen() {
 
       {claimError ? (
         <View style={styles.errorBanner}>
-          <RtlText style={styles.errorText}>{claimError}</RtlText>
+          <RtlText style={styles.errorText} accessibilityRole="alert" accessibilityLiveRegion="polite">
+            {claimError}
+          </RtlText>
           <RtlText style={styles.errorDismiss} onPress={() => setClaimError(null)}>
             הבנתי
           </RtlText>

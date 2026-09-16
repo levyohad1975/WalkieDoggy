@@ -96,7 +96,11 @@ export function AdminAuditLogModal({ visible, onClose }: AdminAuditLogModalProps
       >
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <RtlText style={styles.title}>יומן פעילות</RtlText>
-          {error ? <RtlText style={styles.error}>{error}</RtlText> : null}
+          {error ? (
+            <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+              {error}
+            </RtlText>
+          ) : null}
           <ScrollView style={styles.list}>
             {rows.map((r) => (
               <View key={r.id} style={styles.row}>

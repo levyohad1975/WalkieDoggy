@@ -162,7 +162,11 @@ export function InviteShareModal({ visible, targetName, invite, onRevoked, onClo
             style={styles.revokeButton}
           />
 
-          {error ? <RtlText style={styles.error}>{error}</RtlText> : null}
+          {error ? (
+            <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+              {error}
+            </RtlText>
+          ) : null}
 
           <Button label="סגור" variant="secondary" onPress={onClose} style={styles.closeButton} />
         </Pressable>

@@ -96,7 +96,11 @@ export function PinEntryModal({ visible, userName, subtitle, onSubmit, onCancel 
               autoFocus
               accessibilityLabel="קוד PIN"
             />
-            {error ? <RtlText style={styles.error}>{error}</RtlText> : null}
+            {error ? (
+              <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                {error}
+              </RtlText>
+            ) : null}
             <View style={styles.actions}>
               <Button label="התחבר" onPress={handleSubmit} loading={submitting} style={styles.flex} compact />
               <Button label="ביטול" onPress={handleCancel} variant="secondary" style={styles.flex} compact disabled={submitting} />

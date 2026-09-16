@@ -458,7 +458,9 @@ export function FamilyScreen() {
 
       {actionError ? (
         <View style={styles.errorBanner}>
-          <RtlText style={styles.errorText}>{actionError}</RtlText>
+          <RtlText style={styles.errorText} accessibilityRole="alert" accessibilityLiveRegion="polite">
+            {actionError}
+          </RtlText>
           <RtlText style={styles.errorDismiss} onPress={clearActionError}>
             הבנתי
           </RtlText>
@@ -467,7 +469,9 @@ export function FamilyScreen() {
 
       {roleRefreshNotice ? (
         <View style={styles.errorBanner}>
-          <RtlText style={styles.errorText}>{roleRefreshNotice}</RtlText>
+          <RtlText style={styles.errorText} accessibilityRole="alert" accessibilityLiveRegion="polite">
+            {roleRefreshNotice}
+          </RtlText>
           <RtlText
             style={styles.errorDismiss}
             onPress={() => useAuthStore.getState().clearRoleRefreshNotice()}
