@@ -241,12 +241,24 @@ export function WalkRow({
       {onMarkDone || onMarkNotDone ? (
         <View style={styles.resolveRow}>
           {onMarkDone ? (
-            <Pressable onPress={onMarkDone} style={[styles.resolveChip, styles.resolveChipDone]} hitSlop={6}>
+            <Pressable
+              onPress={onMarkDone}
+              style={[styles.resolveChip, styles.resolveChipDone]}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel="סימון הטיול כבוצע"
+            >
               <RtlText style={styles.resolveChipText} numberOfLines={1}>✓ בוצע</RtlText>
             </Pressable>
           ) : null}
           {onMarkNotDone ? (
-            <Pressable onPress={onMarkNotDone} style={[styles.resolveChip, styles.resolveChipNotDone]} hitSlop={6}>
+            <Pressable
+              onPress={onMarkNotDone}
+              style={[styles.resolveChip, styles.resolveChipNotDone]}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel="סימון הטיול כלא בוצע"
+            >
               <RtlText style={[styles.resolveChipText, { color: colors.statusSkipped }]} numberOfLines={1}>✕ לא בוצע</RtlText>
             </Pressable>
           ) : null}
