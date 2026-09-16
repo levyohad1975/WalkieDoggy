@@ -587,7 +587,7 @@ export function FamilyOnboardingScreen() {
               }}
               placeholder="ABC123"
               placeholderTextColor={colors.textSecondary}
-              style={[styles.input, styles.codeInput]}
+              style={[styles.input, styles.codeInput, styles.ltrInput]}
               textAlign="center"
               autoCapitalize="characters"
               autoCorrect={false}

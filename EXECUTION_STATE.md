@@ -50,18 +50,18 @@ else.
 ## Current Task
 
 Reconciliation at cycle start: `git log --oneline -20`/`git status` showed
-HEAD at `f26419d`, clean working tree, "up to date with
+HEAD at `3c4c517`, clean working tree, "up to date with
 origin/feat/verified-auth-onboarding-batch-2" — **one** commit past the
-`453dac5` the prior cycle's own file narrative described as HEAD.
-`git show --stat f26419d` confirmed it contains exactly the prior cycle's
-own `email_delivery_log` client-wiring fix (`EXECUTION_STATE.md`,
-`src/lib/systemAdmin.ts`, `src/lib/__tests__/systemAdmin.test.ts`,
-`src/screens/SystemAdminScreen.tsx`,
-`src/screens/__tests__/systemAdminScreenEmailDeliveryLog.test.ts`,
-`src/components/__tests__/errorBannerLiveRegionAccessibility.test.ts`) —
-i.e. the prior cycle's own "commit attempt outcome recorded under
-Blocker/Last Evidence" hedge resolved the same way as the prior 28
-documented instances (now 29): the commit had already landed and pushed.
+`f26419d` the prior cycle's own file narrative described as HEAD.
+`git show --stat 3c4c517` confirmed it contains exactly the prior cycle's
+own `get_my_family_onboarding_status()` client-wiring fix
+(`EXECUTION_STATE.md`, `src/lib/verifiedAdminOnboarding.ts`,
+`src/lib/__tests__/verifiedAdminOnboarding.test.ts`,
+`src/screens/FamilyOnboardingScreen.tsx`,
+`src/screens/__tests__/FamilyOnboardingScreen.onboardingStatusRecovery.test.ts`)
+— i.e. the prior cycle's own "commit attempt outcome recorded under
+Blocker/Last Evidence" hedge resolved the same way as the prior 29
+documented instances (now 30): the commit had already landed and pushed.
 Reconciled before starting new work, per protocol.
 
 `node_modules` was absent entirely at cycle start (confirmed via `ls
@@ -70,107 +70,80 @@ previously-gated independent sub-tasks fresh this cycle: `gh auth status`
 still blocked ("requires approval"); `which supabase` ran cleanly and
 confirmed the CLI is still not installed (exit 1); `git rm` on one of the
 seventeen dead scratch/backup files (`tmp_coverage_inspect.js`) still
-blocked ("requires approval") — all three reconfirmed still gated, same as
-every prior cycle.
+blocked ("requires approval"); a `TZ=Pacific/Kiritimati node -e ...` probe
+also still blocked ("requires approval"); `docker info` still blocked
+("requires approval") — all five reconfirmed still gated, same as every
+prior cycle. Re-ran the repo-wide SQL-function-vs-`.rpc()`-call-site
+cross-reference fresh (`grep` over every `create (or replace) function` in
+`supabase/migrations/*.sql`, 20 migration files, same 0002–0035 set as
+last cycle) — confirmed no migration has landed since 0035, so that angle
+remains genuinely exhausted, matching last cycle's own conclusion.
 
-Moved to a fresh independent safe task: a repo-wide audit cross-referencing
-every SQL function defined across `supabase/migrations/*.sql` against every
-`.rpc('...')` call site in `src/` and `supabase/functions/`, looking for
-the same "migrated, permission-gated, but never wired into a client" shape
-that the last two cycles both found and fixed (the `approval_status` field
-and `email_delivery_log`, respectively).
+Moved to a fresh independent safe task. Dispatched a research-only
+subagent (constrained with the full list of already-closed and
+already-deliberately-deferred items from this file, to avoid rediscovering
+either) to search for one more concrete, unambiguous, first-time-discovered
+engineering gap. It found a real one: **`FamilyOnboardingScreen.tsx`'s
+`mode === 'join'` invite-code `TextInput`** (the "קוד הזמנה" field, line
+590, placeholder `"ABC123"`, `autoCapitalize="characters"`) accepts the
+same alphanumeric, mixed-letters-and-digits invite code
+(`supabase/migrations/0002_invite_codes_and_family_membership.sql`'s
+`generate_invite_code()`, alphabet `'ABCDEFGHJKMNPQRSTUVWXYZ23456789'`) as
+two siblings this codebase already fixed for exactly this reason: this
+same file's own `'redeem'`-mode paste field (`styles.ltrInput`, landed
+earlier this campaign, see
+`FamilyOnboardingScreen.redeemInputAlignment.test.ts`) and
+`FamilySharingModal.tsx`'s *displayed* invite code (`ltrText`, landed
+earlier this campaign, see `EXECUTION_STATE.md` git history) — yet this
+field used only `styles.codeInput` (font-size/weight/letter-spacing, no
+directionality) with no `writingDirection` override at all. Verified this
+is the only remaining call site of this class: `grep -n
+'autoCapitalize="characters"'` across `src/` matched exactly this one
+`TextInput`. Ruled out the sibling OTP `verificationCode` field on the
+same screen (line 386) as a **false positive** for this specific fix,
+unlike the agent's initial read: it is `keyboardType="number-pad"`
+(digits-only), and pure-digit runs are "European Number" characters under
+the Unicode Bidi Algorithm, which keeps them in natural left-to-right
+order regardless of paragraph direction — unlike the mixed
+letters-and-digits invite code, there is no actual visual reordering risk
+there, so adding `ltrInput` to it would be a no-op cosmetic addition, not
+a real fix; left untouched.
 
-**Found and fixed a real, first-time-discovered gap**, directly on Queue
-item 2 ("Validate `AUTO_APPROVE_NEW_FAMILIES=true/false` plus System Admin
-approve/reject"): `get_my_family_onboarding_status()` (migration 0032, the
-same migration that added `create_verified_family()`) had **zero** client
-call sites anywhere in this repo. Its own migration comment names it
-explicitly: "No direct client policies. The Edge Function's service-role-
-only RPC and the status RPC below are the only supported surfaces" for
-`family_onboarding_requests` — i.e. this was the designed self-service way
-for a device that already completed OTP verification to check whether its
-pending family had since been approved/rejected, without redoing the OTP
-round trip. Instead, `FamilyOnboardingScreen.tsx`'s pending-approval state
-(`pendingApprovalFamilyName`, `mode`) was plain `useState` with zero
-persistence — confirmed by reading `authStore.ts` end to end for any
-onboarding-status recovery logic (found none; all its restart-recovery
-logic is for invite *redemption*, a different flow) and confirming
-`src/lib/supabase.ts`'s Supabase client is configured with
-`persistSession: true` + `AsyncStorage` (so the verified, non-anonymous
-session itself *does* survive a restart — only the in-app UI state did
-not). Net effect: a device that verified its admin email, submitted
-create, and landed on "המשפחה ממתינה לאישור" (family pending approval) lost
-all memory of that the moment the app restarted, with no way back in short
-of redoing full OTP email verification (and even then, only by luck of
-`create_verified_family()`'s own idempotent re-invocation branch returning
-the updated status as a side effect of a flow not designed for that
-purpose). A rejected-family UX (the RPC's third possible status) is
-deliberately left unhandled this cycle, matching this file's established
-pattern of not making a unilateral product/UX call where the right
-behavior (retry? new family? appeal?) isn't specified anywhere — confirmed
-`lib/verifiedAdminOnboarding.ts`'s existing `VerifiedFamilyCreationResult`
-type already only recognizes `'pending' | 'active'` for the same reason,
-predating this cycle.
-
-**Fixed**: added `getMyFamilyOnboardingStatus()` to
-`src/lib/verifiedAdminOnboarding.ts` (thin wrapper over
-`supabase.rpc('get_my_family_onboarding_status')`, returning `null` when
-the caller has no onboarding request — the safe, expected outcome for
-demo/local mode's absence, an anonymous session, or a device that never
-attempted family creation). `src/screens/FamilyOnboardingScreen.tsx` gained
-a mount-only `useEffect` (empty dependency array, matching this repo's
-existing no-cancellation-flag convention for screen effects) that calls it
-once: an `'active'` result calls `setFamilyId()` directly (recovering
-straight into the app without re-showing onboarding at all); a `'pending'`
-result restores the existing pending-approval screen
-(`setMode('create')` + `setPendingApprovalFamilyName()`) without any OTP
-re-entry; any error (offline, demo mode, etc.) is swallowed, falling back
-to the ordinary choose screen exactly as before this change. No schema
-change, no new RPC, no mutation — purely wiring an existing, already-
-migrated, already-`security definer`-scoped read RPC into the one screen
-that has a reason to call it.
-
-Added 5 new tests to `src/lib/__tests__/verifiedAdminOnboarding.test.ts`
-(RPC call shape, array-vs-single-object response handling, null-on-no-row,
-null-on-null-data, error propagation) plus extended the existing demo-mode
-"every export throws `SupabaseNotConfiguredError`" test to cover the new
-function. Added a new 5-sub-test source-scan regression file
-`src/screens/__tests__/FamilyOnboardingScreen.onboardingStatusRecovery.test.ts`
-(this repo's established convention for screens with no render harness)
-proving the screen imports the function, calls it inside a mount-only
-effect, recovers the active case via `setFamilyId()`, recovers the pending
-case via `setMode('create')`/`setPendingApprovalFamilyName()`, and swallows
-errors via `.catch()`.
+**Fixed**: added `styles.ltrInput` alongside the existing `styles.codeInput`
+on the join-mode invite-code `TextInput`
+(`src/screens/FamilyOnboardingScreen.tsx`, `style={[styles.input,
+styles.codeInput, styles.ltrInput]}`) — a one-line, purely-additive style
+change, no logic change, matching the exact pattern already established
+twice elsewhere in this same file/campaign. Added a new source-scan
+regression test,
+`src/screens/__tests__/FamilyOnboardingScreen.joinCodeInputAlignment.test.ts`
+(same convention as `FamilyOnboardingScreen.redeemInputAlignment.test.ts`),
+proving the `code` field's `TextInput` block carries both
+`styles.ltrInput` and `styles.codeInput`.
 
 `npx tsc --noEmit` after the change — **PASS**, zero errors. `npm test --
---runInBand` after the change — **PASS**: **128/128** suites, **1481/1481**
-tests (1471 + 10 new: 5 in `verifiedAdminOnboarding.test.ts` + 5 in the new
-screen test file). `git status --porcelain=v1 --untracked-files=all`
+--runInBand` after the change — **PASS**: **129/129** suites, **1482/1482**
+tests (1481 + 1 new). `git status --porcelain=v1 --untracked-files=all`
 confirmed the changeset is scoped to exactly:
-`src/lib/verifiedAdminOnboarding.ts`,
-`src/lib/__tests__/verifiedAdminOnboarding.test.ts`,
-`src/screens/FamilyOnboardingScreen.tsx` (all modified), plus one new file
-(`src/screens/__tests__/FamilyOnboardingScreen.onboardingStatusRecovery.test.ts`)
+`src/screens/FamilyOnboardingScreen.tsx` (modified, +1/-1) plus one new
+file (`src/screens/__tests__/FamilyOnboardingScreen.joinCodeInputAlignment.test.ts`)
 and this `EXECUTION_STATE.md` update — no unrelated file touched, no user
-work at risk. `git diff --stat` confirmed
-`verifiedAdminOnboarding.ts` +30/-0, `FamilyOnboardingScreen.tsx` +28/-1,
-`verifiedAdminOnboarding.test.ts` +59/-0 — purely additive, no removed
-behavior.
+work at risk.
 
 ## Current Task Status
 
-Prior cycle's `email_delivery_log` client-wiring fix (`f26419d`) is
-confirmed landed and pushed — closed, `DONE`.
+Prior cycle's `get_my_family_onboarding_status()` client-wiring fix
+(`3c4c517`) is confirmed landed and pushed — closed, `DONE`.
 
-This cycle's own task — wiring `get_my_family_onboarding_status()` (0032)
-into `lib/verifiedAdminOnboarding.ts`/`FamilyOnboardingScreen.tsx`, closing
-a real applicant-side status-recovery gap for Queue item 2 — is
-code-complete and validated (`tsc` PASS, `npm test` PASS 128/128 ·
-1481/1481). Commit attempt outcome recorded under Blocker/Last Evidence
-below; per the standing 29-cycle pattern, even a "blocked" self-report this
-same cycle should not be assumed final — the next cycle's first action
-must still be its own independent `git log --oneline -5` + `git status`
-check.
+This cycle's own task — adding `styles.ltrInput` to
+`FamilyOnboardingScreen.tsx`'s join-mode invite-code field, closing the
+last remaining call site of this campaign's already-established
+LTR-code-input fix pattern — is code-complete and validated (`tsc` PASS,
+`npm test` PASS 129/129 · 1482/1482). Commit attempt outcome recorded under
+Blocker/Last Evidence below; per the standing 30-cycle pattern, even a
+"blocked" self-report this same cycle should not be assumed final — the
+next cycle's first action must still be its own independent `git log
+--oneline -5` + `git status` check.
 
 ## Current Branch / PR
 
@@ -184,109 +157,126 @@ check.
 ## Last Evidence
 
 - This cycle start: `git log --oneline -20`/`git status` confirmed HEAD is
-  `453dac5`, clean working tree, "up to date with
+  `3c4c517`, clean working tree, "up to date with
   origin/feat/verified-auth-onboarding-batch-2" — **one** commit past
-  `26329b6`, what this file's own prior narrative described as HEAD.
-  `git show --stat 453dac5` confirmed it contains exactly the prior
-  cycle's own migration-0035 `approval_status` fix (`systemAdmin.ts`,
-  `SystemAdminScreen.tsx`, `systemAdmin.test.ts`, the new
-  `systemAdminScreenApprovalStatus.test.ts`, and the migration file) — it
-  had landed and pushed despite the prior cycle's own hedged "commit
-  attempt outcome recorded under Blocker" self-report.
+  `f26419d`, what this file's own prior narrative described as HEAD.
+  `git show --stat 3c4c517` confirmed it contains exactly the prior
+  cycle's own `get_my_family_onboarding_status()` client-wiring fix
+  (`verifiedAdminOnboarding.ts`, `verifiedAdminOnboarding.test.ts`,
+  `FamilyOnboardingScreen.tsx`, the new
+  `FamilyOnboardingScreen.onboardingStatusRecovery.test.ts`) — it had
+  landed and pushed despite the prior cycle's own hedged "commit attempt
+  outcome recorded under Blocker" self-report (30th confirmed instance of
+  the standing pattern).
 - `node_modules` absent entirely at cycle start (not stale — missing);
   `npm ci` succeeded, which fixed it.
-- **This cycle's own code changes:** continued the System Admin V1 sweep
-  the prior cycle started, per its own "Next Safe Task" note. Read
-  migration 0034 (`email_delivery_log` + its RPCs) end to end. Its own
-  table comment names `system_admin_list_email_delivery_log()` as the
-  only client-reachable read surface for delivery status of the
-  verified-onboarding welcome/system-owner emails — directly relevant to
-  Queue items 3/4. A repo-wide grep
-  (`grep -rn "system_admin_list_email_delivery_log\|email_delivery_log" src/`)
-  found **zero** client call sites: the RPC has existed, applied and
-  `is_system_admin()`-gated, since 0034 landed, but nothing in
-  `lib/systemAdmin.ts`/`SystemAdminScreen.tsx` ever called it. Also
-  checked `system_admin_get_family_detail()`'s `walks`/`activeRequests`/
-  `recentAudit`/`members` sub-objects against every later migration — no
-  staleness of the same shape found (`members` reading from `users` matches
-  the pre-existing, still-correct convention, confirmed against 0002's own
-  `create_family()`).
-- **Fixed** (wired up an existing, already-migrated, already-permission-
-  gated RPC that had no client — not a new backlog feature): added
-  `SystemAdminEmailDeliveryLogEntry` + `getSystemAdminEmailDeliveryLog(limit?)`
-  to `lib/systemAdmin.ts`. Added an `emailMessageTypeLabel()`/
-  `emailStatusLabel()` Hebrew-label helper pair, a new `emailLogVisible`
-  view state, a header button, and a rendering block to
-  `SystemAdminScreen.tsx`. Updated `systemAdmin.test.ts` (4 new tests) and
-  added `src/screens/__tests__/systemAdminScreenEmailDeliveryLog.test.ts`
-  (4 sub-tests, source-scan convention). The new error banner's
-  `accessibilityRole="alert"`/`accessibilityLiveRegion="polite"` treatment
-  (matching this repo's established pattern) tripped an existing exact-count
-  regression test (`errorBannerLiveRegionAccessibility.test.ts`); updated its
-  expected count for `SystemAdminScreen.tsx` from 2 to 3 (the new banner
-  already carries the required attributes — the test would have failed
-  loudly otherwise). No unrelated files touched.
+- Re-attempted every previously-gated independent sub-task fresh this
+  cycle, each as a standalone command: `gh auth status` (still blocked,
+  "requires approval"), `which supabase` (ran cleanly, still exit 1 — CLI
+  not installed), `git rm tmp_coverage_inspect.js` (still blocked),
+  `TZ=Pacific/Kiritimati node -e ...` (still blocked), `docker info` (still
+  blocked) — all five reconfirmed gated, unchanged from every prior cycle.
+- Re-ran the repo-wide `create (or replace) function` scan over
+  `supabase/migrations/*.sql` fresh this cycle — same 20 migration files
+  (0002–0035), confirming no new migration has landed since 0035 and that
+  the SQL-function-vs-`.rpc()`-call-site audit remains genuinely exhausted.
+- **This cycle's own code changes:** dispatched a research-only
+  general-purpose subagent, explicitly primed with the full list of
+  already-closed and already-deliberately-deferred items from this file
+  (to avoid rediscovering either), to search for one more concrete,
+  unambiguous, first-time-discovered engineering gap. It found a real one
+  in `FamilyOnboardingScreen.tsx`'s `mode === 'join'` invite-code
+  `TextInput` (the "קוד הזמנה" field, placeholder `"ABC123"`,
+  `autoCapitalize="characters"`): it accepts the same alphanumeric,
+  mixed-letters-and-digits invite code
+  (`supabase/migrations/0002_invite_codes_and_family_membership.sql`'s
+  `generate_invite_code()`, alphabet `'ABCDEFGHJKMNPQRSTUVWXYZ23456789'`)
+  as two siblings already fixed earlier in this campaign for exactly this
+  reason — this same file's own `'redeem'`-mode paste field
+  (`styles.ltrInput`, see `FamilyOnboardingScreen.redeemInputAlignment.test.ts`)
+  and `FamilySharingModal.tsx`'s displayed invite code (`ltrText`) — yet
+  this field used only `styles.codeInput` (font-size/weight/letter-
+  spacing) with no `writingDirection` override at all. Independently
+  verified before fixing: `grep -n 'autoCapitalize="characters"'` across
+  `src/` matched exactly this one `TextInput`, confirming it is the sole
+  remaining call site of this already-established fix pattern. Also
+  independently checked the subagent's other candidate, the sibling OTP
+  `verificationCode` field on the same screen, and ruled it out as a false
+  positive for this specific fix: it is `keyboardType="number-pad"`
+  (digits-only), and pure-digit runs are "European Number" characters
+  under the Unicode Bidi Algorithm, which keeps them in natural
+  left-to-right order regardless of surrounding paragraph direction —
+  unlike the mixed letters-and-digits invite code, there is no actual
+  visual-reordering risk there, so left untouched rather than applying a
+  cosmetic no-op.
+- **Fixed**: one-line, purely-additive style change —
+  `style={[styles.input, styles.codeInput, styles.ltrInput]}` on the
+  join-mode invite-code `TextInput` in
+  `src/screens/FamilyOnboardingScreen.tsx`. No logic change. Added
+  `src/screens/__tests__/FamilyOnboardingScreen.joinCodeInputAlignment.test.ts`
+  (source-scan convention, matching
+  `FamilyOnboardingScreen.redeemInputAlignment.test.ts`'s own shape),
+  proving the `code` field's `TextInput` block carries both
+  `styles.ltrInput` and `styles.codeInput`.
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `npm test -- --runInBand` after this cycle's own change — **PASS**:
-  **128/128** suites, **1481/1481** tests (1471 + 10 new).
+  **129/129** suites, **1482/1482** tests (1481 + 1 new).
 - `git status --porcelain=v1 --untracked-files=all` confirmed the
-  changeset is scoped to exactly: `src/lib/verifiedAdminOnboarding.ts`,
-  `src/lib/__tests__/verifiedAdminOnboarding.test.ts`,
-  `src/screens/FamilyOnboardingScreen.tsx` (modified) +
-  `src/screens/__tests__/FamilyOnboardingScreen.onboardingStatusRecovery.test.ts`
-  (new) + this `EXECUTION_STATE.md` update — no unrelated file touched, no
-  user work at risk. `git diff --stat` confirmed
-  `verifiedAdminOnboarding.ts` +30/-0, `FamilyOnboardingScreen.tsx` +28/-1,
-  `verifiedAdminOnboarding.test.ts` +59/-0.
+  changeset is scoped to exactly: `src/screens/FamilyOnboardingScreen.tsx`
+  (modified, +1/-1) + one new file
+  (`src/screens/__tests__/FamilyOnboardingScreen.joinCodeInputAlignment.test.ts`)
+  + this `EXECUTION_STATE.md` update — no unrelated file touched, no user
+  work at risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
   checked directly via `git log`/`git status` after the attempt.
 
 ## Last Evidence Timestamp
 
-2026-09-16T08:39:07Z (prior landed commit `f26419d`); this cycle's own
-work validated at HEAD `f26419d` + working tree as of this cycle's own
+2026-09-16T08:55:22Z (prior landed commit `3c4c517`); this cycle's own
+work validated at HEAD `3c4c517` + working tree as of this cycle's own
 run (same UTC day, 2026-09-16), commit attempt outcome per Blocker below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
-self-reported.** Per the standing 28-cycle pattern documented above and in
+self-reported.** Per the standing 29-cycle pattern documented above and in
 the protocol note at the top of this file, any "requires approval" message
 observed during this cycle's own commit attempt must NOT be assumed final
-by itself — every prior such self-report across 29 consecutive cycles was
+by itself — every prior such self-report across 30 consecutive cycles was
 later found, by the *next* cycle's own independent `git log`
 reconciliation, to have been wrong (the commit had actually landed and
 pushed via some mechanism outside that turn's own visibility). The
-working-tree change itself (the `get_my_family_onboarding_status()`
-client-wiring fix in `verifiedAdminOnboarding.ts`/
-`FamilyOnboardingScreen.tsx`/`verifiedAdminOnboarding.test.ts` + the new
-screen test file + this `EXECUTION_STATE.md` update) is real, validated
-(`tsc`/`npm test` both PASS, 128/128 suites, 1481/1481 tests) — per "never
-discard uncommitted work," it is NOT reverted regardless of the commit
-attempt's own outcome. The next cycle's first action must still be its own
-`git log --oneline -5` + `git status` to determine the actual outcome
-independently before assuming either way.
+working-tree change itself (the join-mode invite-code `ltrInput` fix in
+`FamilyOnboardingScreen.tsx` + the new
+`FamilyOnboardingScreen.joinCodeInputAlignment.test.ts` + this
+`EXECUTION_STATE.md` update) is real, validated (`tsc`/`npm test` both
+PASS, 129/129 suites, 1482/1482 tests) — per "never discard uncommitted
+work," it is NOT reverted regardless of the commit attempt's own outcome.
+The next cycle's first action must still be its own `git log --oneline -5`
++ `git status` to determine the actual outcome independently before
+assuming either way.
 
 **Standing question, still open:** is "requires approval" ever reliable
-evidence of a genuine block? Twenty-nine prior confirmed instances show a
+evidence of a genuine block? Thirty prior confirmed instances show a
 cycle's own "not yet landed by my own observation" self-report about its
 own `EXECUTION_STATE.md` commit being resolved as wrong-in-substance by
 the very next cycle's reconciliation — i.e. the commit apparently landed
 via some mechanism outside this turn's own visibility, despite the
 approval-gate message (this cycle's own reconciliation at start
 reconfirmed exactly that pattern for the *prior* cycle's commit — see
-standing protocol note above). By contrast, `gh auth status` and `git rm`
-on a scratch file were checked this cycle with the same direct method and
-reconfirmed genuinely blocked with no side effect (while `which supabase`
-ran cleanly this cycle, showing the gate is command-specific, not a
-blanket sandbox freeze) — so "requires approval" is NOT uniformly
-unreliable; it tracks a real, if inconsistent, gate whose effect on any
-*specific* command in any *specific* cycle can only be known by direct
-post-attempt inspection, never from the message alone. AGENTS.md rule 12
-explicitly permits local commits without asking, so any block here is a
-sandbox permission-mode/timing artifact, not a policy one — no bypass
-(`--no-verify` or otherwise) has ever been attempted.
+standing protocol note above). By contrast, `gh auth status`, `git rm` on
+a scratch file, a `TZ=...`-prefixed probe, and `docker info` were all
+checked this cycle with the same direct method and reconfirmed genuinely
+blocked with no side effect (while `which supabase` ran cleanly this
+cycle, showing the gate is command-specific, not a blanket sandbox freeze)
+— so "requires approval" is NOT uniformly unreliable; it tracks a real, if
+inconsistent, gate whose effect on any *specific* command in any
+*specific* cycle can only be known by direct post-attempt inspection,
+never from the message alone. AGENTS.md rule 12 explicitly permits local
+commits without asking, so any block here is a sandbox permission-mode/
+timing artifact, not a policy one — no bypass (`--no-verify` or otherwise)
+has ever been attempted.
 
 Live Staging E2E (family creation persistence, invite/join code/link/QR,
 second-member join, real OTP/email delivery, System Admin live approve/
@@ -340,9 +330,10 @@ command).
 
 **Seventeen scratch/debug/backup/dead files still gated on deletion (many
 cycles running, confirmed a general file-deletion permission gate, not
-`git`-specific — not separately re-attempted this cycle; last
-reconfirmed via `git rm` two cycles ago):** the seven original
-scratch/debug files
+`git`-specific — `git rm` on one of the seven, `tmp_coverage_inspect.js`,
+reconfirmed still gated again this cycle; the other sixteen not
+separately re-attempted this cycle):** the seven original scratch/debug
+files
 (`tmp_coverage_inspect.js`, `src/lib/__tests__/__scratch_platform_probe
 .test.ts`, `src/lib/__tests__/__scratch_pushTokens_probe.test.ts`,
 `src/notifications/__tests__/__scratch_isolate_probe.test.ts`,
@@ -377,38 +368,53 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (`get_my_family_onboarding_status()` client-wiring fix
-in `verifiedAdminOnboarding.ts`/`FamilyOnboardingScreen.tsx`/
-`verifiedAdminOnboarding.test.ts` +
-`FamilyOnboardingScreen.onboardingStatusRecovery.test.ts` + this
+cycle's own commit (the join-mode invite-code `ltrInput` fix in
+`FamilyOnboardingScreen.tsx` +
+`FamilyOnboardingScreen.joinCodeInputAlignment.test.ts` + this
 `EXECUTION_STATE.md` update) landed, and check every commit between
 whatever SHA this file names and actual HEAD, not just the newest one.
 
-**This cycle's own `get_my_family_onboarding_status()` client-wiring fix
+**This cycle's own `styles.ltrInput` fix on `FamilyOnboardingScreen.tsx`'s
+join-mode invite-code field closes the last remaining call site of the
+RTL-alphanumeric-code-input pattern already established twice elsewhere in
+this campaign** (this same file's `'redeem'`-mode paste field, and
+`FamilySharingModal.tsx`'s displayed invite code). Confirmed via
+`grep -n 'autoCapitalize="characters"' src/` that no other `TextInput` in
+the codebase shares this exact unfixed shape — this specific angle is now
+genuinely closed, correcting the "RTL-content-alignment bug class... closed
+exhausted" claim a few cycles ago (see below), which had not in fact
+covered every sibling field in the same file. The sibling OTP
+`verificationCode` field was deliberately left untouched — it is
+digits-only (`keyboardType="number-pad"`), and pure-digit runs do not
+reorder under the Unicode Bidi Algorithm regardless of RTL context, so
+`ltrInput` there would be cosmetic, not a real fix; no further action
+needed on it.
+
+**Prior cycle's own `get_my_family_onboarding_status()` client-wiring fix
 closes a real Queue-item-2 gap: a device that verified its admin email,
 submitted create, and landed on "pending approval" no longer loses that
-state on an app restart.** The RPC (migration 0032) existed, applied and
-`security definer`-scoped to the caller's own `auth.uid()`, with zero
-client call sites before this cycle — its own migration comment already
-named it one of only two supported surfaces for
-`family_onboarding_requests`, so this was a clean, unambiguous,
+state on an app restart** (landed as `3c4c517`). The RPC (migration 0032)
+existed, applied and `security definer`-scoped to the caller's own
+`auth.uid()`, with zero client call sites before that cycle — its own
+migration comment already named it one of only two supported surfaces for
+`family_onboarding_requests`, so that was a clean, unambiguous,
 no-judgment-call completion, not a new backlog feature. A follow-up
 deliberately left open, not a unilateral engineering call: the RPC's third
-possible `approval_status`, `'rejected'`, is still unhandled by both this
+possible `approval_status`, `'rejected'`, is still unhandled by both that
 fix and `lib/verifiedAdminOnboarding.ts`'s pre-existing
 `VerifiedFamilyCreationResult` type (which already only recognized
-`'pending' | 'active'` before this cycle) — what a rejected applicant
-should be able to do next (retry with a new family name, appeal, contact
-support) is a product/UX decision, not something to assume. The repo-wide
-migrated-function-vs-`.rpc()`-call-site cross-reference this cycle ran (see
-Current Task above) found no other unwired RPC of the same shape — every
-other function defined only in migrations and never called from `src/` or
-`supabase/functions/` is either an internal trigger/helper function (not
-meant to be client-callable at all) or `system_admin_set_family_approval()`
-(correctly out of scope for this branch, belongs to stacked branch
-`feat/system-admin-approval-controls`, PR #11) — so that angle is now
-considered exhausted for this branch, similar to the System Admin V1
-surface sweep the prior two cycles closed.
+`'pending' | 'active'`) — what a rejected applicant should be able to do
+next (retry with a new family name, appeal, contact support) is a
+product/UX decision, not something to assume. The repo-wide migrated-
+function-vs-`.rpc()`-call-site cross-reference (re-run fresh again this
+cycle, see Current Task above) found no other unwired RPC of the same
+shape — every other function defined only in migrations and never called
+from `src/` or `supabase/functions/` is either an internal trigger/helper
+function (not meant to be client-callable at all) or
+`system_admin_set_family_approval()` (correctly out of scope for this
+branch, belongs to stacked branch `feat/system-admin-approval-controls`,
+PR #11) — so that angle remains exhausted for this branch, similar to the
+System Admin V1 surface sweep closed two cycles ago.
 
 **Prior cycle's own `system_admin_list_email_delivery_log()` client-wiring
 fix closed a real Queue-item-3/4 gap: a system admin can now actually see
@@ -546,7 +552,11 @@ on components without a render harness — worth reusing for the one
 remaining `accessibilityHint`-on-destructive-actions follow-up item above
 once its product/UX decision is made.
 
-The RTL-content-alignment bug class, the mascot/Reduced-Motion theme, the
+The RTL-content-alignment bug class (now including this cycle's own
+join-code-input fix — see above; a confirming
+`grep -n 'autoCapitalize="characters"' src/` after the fix found no other
+unfixed sibling, so this angle is now genuinely exhausted, not just the
+prior two fixes), the mascot/Reduced-Motion theme, the
 notification-tap-routing question, the dog-sex/grammatical-copy sweep, the
 Android `onRequestClose`/hardware-back-button sweep, the modal-internal
 `textAlign`/`writingDirection` content sweep, the double-submit/
@@ -623,52 +633,59 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `f26419d`, one commit
-  past the `453dac5` the prior cycle's own file narrative described as
-  HEAD — `git show --stat f26419d` confirmed it contains exactly the
-  prior cycle's own `email_delivery_log` client-wiring fix
-  (`systemAdmin.ts`/`SystemAdminScreen.tsx`/`systemAdmin.test.ts` + its new
-  screen test file + the error-banner-count test fix + that cycle's own
-  `EXECUTION_STATE.md` update), reconfirming the standing self-reporting-
-  drift pattern yet again (29th time). `node_modules` was absent entirely;
-  `npm ci` fixed it. Re-attempted `gh auth status` (still gated), `which
-  supabase` (ran cleanly, still exit 1 — not installed), and `git rm` on a
-  scratch file (still gated) fresh this cycle.
-- **New gap found and fixed:** ran a repo-wide cross-reference of every SQL
-  function defined in `supabase/migrations/*.sql` against every `.rpc()`
-  call site in `src/`/`supabase/functions/`, looking for the same
-  "migrated, permission-gated, never wired into a client" shape the prior
-  two cycles both found. Found `get_my_family_onboarding_status()`
-  (migration 0032) — its own migration comment names it one of only two
-  supported client surfaces for `family_onboarding_requests` — with zero
-  call sites. Confirmed the real-world impact by reading `authStore.ts` end
-  to end (no onboarding-status recovery logic exists; all its restart
-  recovery is for invite *redemption*, a different flow) and confirming
-  `lib/supabase.ts` persists the verified session
-  (`persistSession: true` + `AsyncStorage`) — so a device that verified its
-  admin email, submitted create under `AUTO_APPROVE_NEW_FAMILIES=false`,
-  and closed the app while pending had no way back into that state short of
-  redoing full OTP verification. Fixed: added
-  `getMyFamilyOnboardingStatus()` to `lib/verifiedAdminOnboarding.ts` and a
-  mount-only `useEffect` to `FamilyOnboardingScreen.tsx` that recovers the
-  `'active'` case via `setFamilyId()` and the `'pending'` case via
-  `setMode('create')`/`setPendingApprovalFamilyName()`, swallowing errors
-  to fall back to the ordinary choose screen. The RPC's third status,
-  `'rejected'`, is deliberately left unhandled (a product/UX decision, not
-  a unilateral call — matches the pre-existing `VerifiedFamilyCreationResult`
-  type's same scope boundary). Added 5 new tests to
-  `verifiedAdminOnboarding.test.ts` and a new 5-sub-test source-scan
-  regression file
-  `FamilyOnboardingScreen.onboardingStatusRecovery.test.ts`. `npx tsc
-  --noEmit` PASS and `npm test -- --runInBand` PASS (128/128 suites,
-  1481/1481 tests, +10) after the change. `git status`/diff scoped to
-  exactly the three modified files + the new test file + this
+- Reconciliation found HEAD had actually moved to `3c4c517`, one commit
+  past the `f26419d` the prior cycle's own file narrative described as
+  HEAD — `git show --stat 3c4c517` confirmed it contains exactly the
+  prior cycle's own `get_my_family_onboarding_status()` client-wiring fix
+  (`verifiedAdminOnboarding.ts`/`FamilyOnboardingScreen.tsx`/
+  `verifiedAdminOnboarding.test.ts` + its new screen test file + that
+  cycle's own `EXECUTION_STATE.md` update), reconfirming the standing
+  self-reporting-drift pattern yet again (30th time). `node_modules` was
+  absent entirely; `npm ci` fixed it. Re-attempted `gh auth status` (still
+  gated), `which supabase` (ran cleanly, still exit 1 — not installed),
+  `git rm` on a scratch file (still gated), a `TZ=...`-prefixed probe
+  (still gated), and `docker info` (still gated) fresh this cycle, each as
+  a standalone command. Re-ran the repo-wide SQL-function-vs-`.rpc()`-
+  call-site cross-reference fresh — confirmed no migration has landed
+  since 0035, so that angle remains exhausted.
+- **New gap found and fixed:** dispatched a research-only subagent
+  (primed with the full list of already-closed/already-deferred items in
+  this file) to search for one more concrete, unambiguous engineering gap.
+  It found, and this cycle independently verified, that
+  `FamilyOnboardingScreen.tsx`'s join-mode invite-code `TextInput` (the
+  "קוד הזמנה" field) was the sole remaining unfixed call site of an
+  already-established fix pattern in this exact campaign: it accepts the
+  same alphanumeric, mixed-letters-and-digits invite code
+  (`generate_invite_code()`, migration 0002) as this file's own
+  `'redeem'`-mode paste field and `FamilySharingModal.tsx`'s displayed
+  invite code — both already fixed with `styles.ltrInput` — yet used only
+  `styles.codeInput` with no `writingDirection` override. Verified via
+  `grep -n 'autoCapitalize="characters"' src/` that this was the only
+  remaining call site. Ruled out the sibling OTP `verificationCode` field
+  as a false positive: it's digits-only (`keyboardType="number-pad"`), and
+  pure-digit runs don't reorder under RTL per the Unicode Bidi Algorithm,
+  so left untouched. Fixed: added `styles.ltrInput` alongside the existing
+  `styles.codeInput` on the join-code field (one line, purely additive, no
+  logic change). Added a new source-scan regression test,
+  `FamilyOnboardingScreen.joinCodeInputAlignment.test.ts`, matching
+  `FamilyOnboardingScreen.redeemInputAlignment.test.ts`'s own convention.
+  `npx tsc --noEmit` PASS and `npm test -- --runInBand` PASS (129/129
+  suites, 1482/1482 tests, +1) after the change. `git status`/diff scoped
+  to exactly the one modified file + the new test file + this
   `EXECUTION_STATE.md` update. **Commit attempt outcome:** see Blocker
   above.
 
 ### Recent cycles (condensed — full detail in git history of this file)
 
-- Prior cycle: reconciliation found HEAD at `453dac5` and fixed a real,
+- Prior cycle: reconciliation found HEAD at `f26419d` and fixed a real,
+  first-time-discovered gap: `get_my_family_onboarding_status()`
+  (migration 0032) had zero client call sites despite its own migration
+  comment naming it a supported surface. Wired it into
+  `lib/verifiedAdminOnboarding.ts`/`FamilyOnboardingScreen.tsx` so a
+  restarted device recovers its pending/active family-creation status.
+  Landed as `3c4c517` despite that cycle's own hedged "commit attempt
+  outcome recorded under Blocker" self-report.
+- Two cycles ago: reconciliation found HEAD at `453dac5` and fixed a real,
   first-time-discovered gap: `system_admin_list_email_delivery_log()`
   (migration 0034) had zero client call sites despite its own table
   comment naming it the intended read surface. Wired it into
