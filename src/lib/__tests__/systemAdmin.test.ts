@@ -98,6 +98,22 @@ describe('lib/systemAdmin — Supabase mode', () => {
     ]);
   });
 
+  it('listSystemAdminFamilies passes through a real (non-"active") approval status, not a hardcoded constant', async () => {
+    const rpc = jest.fn().mockResolvedValue({
+      data: [
+        { family_id: 'fam-1', family_name: 'משפחה ממתינה', invite_code: 'PND001', created_at: '2026-01-01T00:00:00Z', member_count: 1, admin_names: ['דנה'], dog_name: null, status: 'pending' },
+        { family_id: 'fam-2', family_name: 'משפחה נדחתה', invite_code: 'REJ002', created_at: '2026-01-02T00:00:00Z', member_count: 1, admin_names: ['יוסי'], dog_name: null, status: 'rejected' },
+      ],
+      error: null,
+    });
+    mockSupabaseClient(rpc);
+    const { listSystemAdminFamilies } = require('../systemAdmin');
+
+    const result = await listSystemAdminFamilies();
+    expect(result[0].status).toBe('pending');
+    expect(result[1].status).toBe('rejected');
+  });
+
   it('listSystemAdminFamilies with no/blank search sends p_search: null (server treats it as "no filter")', async () => {
     const rpc = jest.fn().mockResolvedValue({ data: [], error: null });
     mockSupabaseClient(rpc);
@@ -161,7 +177,7 @@ describe('lib/systemAdmin — Supabase mode', () => {
   it('getSystemAdminFamilyDetail calls system_admin_get_family_detail with p_family_id and returns the jsonb bundle with safe array defaults', async () => {
     const rpc = jest.fn().mockResolvedValue({
       data: {
-        family: { id: 'fam-1', name: 'משפחת לוי', inviteCode: 'ABC123', createdAt: '2026-01-01T00:00:00Z' },
+        family: { id: 'fam-1', name: 'משפחת לוי', inviteCode: 'ABC123', createdAt: '2026-01-01T00:00:00Z', approvalStatus: 'pending' },
         dog: null,
         members: [{ id: 'u1', name: 'דנה', avatar: '🐶', photoUrl: null, role: 'admin', removedAt: null, claimed: true }],
         // activeRequests/recentAudit intentionally omitted — mapping must default to [], never throw.
@@ -175,6 +191,9 @@ describe('lib/systemAdmin — Supabase mode', () => {
 
     expect(rpc).toHaveBeenCalledWith('system_admin_get_family_detail', { p_family_id: 'fam-1' });
     expect(result.family?.name).toBe('משפחת לוי');
+    // approvalStatus must be a real per-family value passed through verbatim
+    // (0035 fix), not silently dropped or a hardcoded constant.
+    expect(result.family?.approvalStatus).toBe('pending');
     expect(result.dog).toBeNull();
     expect(result.members).toHaveLength(1);
     expect(result.activeRequests).toEqual([]);

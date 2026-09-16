@@ -59,7 +59,7 @@ export interface SystemAdminAuditEntry {
 }
 
 export interface SystemAdminFamilyDetail {
-  family: { id: string; name: string; inviteCode: string; createdAt: string } | null;
+  family: { id: string; name: string; inviteCode: string; createdAt: string; approvalStatus: string } | null;
   dog: { id: string; name: string; photoUrl: string | null; sex: 'male' | 'female' | null; walksPerDay: number } | null;
   members: SystemAdminFamilyMember[];
   walks: SystemAdminWalkSummary[];

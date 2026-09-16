@@ -17,6 +17,14 @@ interface SystemAdminScreenProps {
   onClose: () => void;
 }
 
+/** Hebrew label for families.approval_status (0032/0035) — falls back to the raw value for any future status this screen doesn't know about yet, rather than hiding it. */
+function approvalStatusLabel(status: string): string {
+  if (status === 'active') return 'פעילה';
+  if (status === 'pending') return 'ממתינה לאישור';
+  if (status === 'rejected') return 'נדחתה';
+  return status;
+}
+
 /**
  * BATCH 4 (item A) — "🛡️ ניהול מערכת", System Admin V1 (read-only).
  *
@@ -119,6 +127,9 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                   <RtlText style={styles.cardLine}>קוד הצטרפות: {detail.family?.inviteCode ?? '—'}</RtlText>
                   <RtlText style={styles.cardLine}>
                     נוצרה: {detail.family?.createdAt ? new Date(detail.family.createdAt).toLocaleDateString('he-IL') : '—'}
+                  </RtlText>
+                  <RtlText style={styles.cardLine}>
+                    סטטוס אישור: {detail.family?.approvalStatus ? approvalStatusLabel(detail.family.approvalStatus) : '—'}
                   </RtlText>
                 </View>
 
@@ -232,6 +243,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                     מנהלים: {f.adminNames.length > 0 ? f.adminNames.join(', ') : '—'} · נוצרה{' '}
                     {new Date(f.createdAt).toLocaleDateString('he-IL')}
                   </RtlText>
+                  <RtlText style={styles.familyMeta}>סטטוס: {approvalStatusLabel(f.status)}</RtlText>
                 </Pressable>
               ))}
             </ScrollView>
