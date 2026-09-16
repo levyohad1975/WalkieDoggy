@@ -26,26 +26,44 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:TARGET_BRANCH)) { throw 'Missing RC target.' }
           if ($env:TARGET_BRANCH -eq 'main') { throw 'Refusing main as RC target.' }
-          git check-ref-format --branch $env:TARGET_BRANCH | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw 'Invalid RC branch.' }
-          if ($env:TARGET_BRANCH -notmatch '^(feat|fix|chore|test|docs|rc)/') { throw 'Refusing unapproved RC target.' }
+          if ($env:TARGET_BRANCH -notmatch '^(feat|fix|chore|test|docs|rc)/[A-Za-z0-9._/-]+$') { throw 'Refusing invalid or unapproved RC target.' }
+          if ($env:TARGET_BRANCH.Contains('..') -or $env:TARGET_BRANCH.EndsWith('/') -or $env:TARGET_BRANCH.Contains('//')) { throw 'Invalid RC branch.' }
 
-      - name: Checkout RC target
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ env.TARGET_BRANCH }}
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Recover only an unvalidated worker head
+      - name: Resolve RC head through GitHub API
+        id: rc
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $headSha = (git rev-parse HEAD).Trim()
-          $author = (git log -1 --format='%an').Trim()
-          $subject = (git log -1 --format='%s').Trim()
-          $committedAt = [DateTimeOffset]::Parse((git log -1 --format='%cI').Trim())
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = 'application/vnd.github+json'
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          $encodedBranch = [System.Uri]::EscapeDataString($env:TARGET_BRANCH)
+          $branchUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/branches/$encodedBranch"
+          $branch = Invoke-RestMethod -Uri $branchUrl -Headers $headers -Method Get
+          $headSha = [string]$branch.commit.sha
+          if ($headSha -notmatch '^[0-9a-f]{40}$') { throw 'Could not resolve exact RC head.' }
+          "head_sha=$headSha" | Add-Content $env:GITHUB_OUTPUT
+
+      - name: Recover only an unvalidated worker head
+        shell: powershell
+        env:
+          HEAD_SHA: ${{ steps.rc.outputs.head_sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = 'application/vnd.github+json'
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          $commitUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/commits/$env:HEAD_SHA"
+          $commit = Invoke-RestMethod -Uri $commitUrl -Headers $headers -Method Get
+          $author = [string]$commit.commit.author.name
+          $subject = ([string]$commit.commit.message -split "`n")[0].Trim()
+          $committedAt = [DateTimeOffset]::Parse([string]$commit.commit.committer.date)
 
           if ($author -ne 'walkie-agentic-worker[bot]') {
             'No recovery: RC head is not Worker-authored.' | Add-Content $env:GITHUB_STEP_SUMMARY
@@ -56,14 +74,8 @@ jobs:
             exit 0
           }
 
-          $headers = @{
-            Authorization = "Bearer $env:GH_TOKEN"
-            Accept = 'application/vnd.github+json'
-            'X-GitHub-Api-Version' = '2022-11-28'
-          }
           $runsUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100"
           $runs = Invoke-RestMethod -Uri $runsUrl -Headers $headers -Method Get
-
           $active = @($runs.workflow_runs | Where-Object {
             $_.name -in @('Agentic RC Validation', 'Agentic RC Worker') -and
             $_.status -in @('queued', 'in_progress', 'waiting', 'requested', 'pending')
@@ -87,8 +99,8 @@ jobs:
             ref = 'main'
             inputs = @{
               target_branch = $env:TARGET_BRANCH
-              expected_sha = $headSha
+              expected_sha = $env:HEAD_SHA
             }
           } | ConvertTo-Json -Depth 4
           Invoke-RestMethod -Uri $dispatchUrl -Headers $headers -Method Post -ContentType 'application/json' -Body $body
-          "Recovered stalled RC by dispatching exact-head Validation for $headSha." | Add-Content $env:GITHUB_STEP_SUMMARY
+          "Recovered stalled RC by dispatching exact-head Validation for $env:HEAD_SHA." | Add-Content $env:GITHUB_STEP_SUMMARY
