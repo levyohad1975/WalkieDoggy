@@ -99,11 +99,23 @@ jobs:
               'No recovery: current Worker head already has successful Validation.' | Add-Content $env:GITHUB_STEP_SUMMARY
               exit 0
             }
+
             if ([string]$latestValidation.head_sha -eq $mainSha) {
-              "No recovery: latest Validation already used current workflow revision $mainSha and concluded $($latestValidation.conclusion)." | Add-Content $env:GITHUB_STEP_SUMMARY
-              exit 0
+              $currentRevisionFailures = @($validations | Where-Object {
+                [string]$_.head_sha -eq $mainSha -and
+                $_.conclusion -in @('failure', 'cancelled', 'timed_out', 'action_required', 'startup_failure')
+              }).Count
+
+              if ($currentRevisionFailures -ge 2) {
+                $message = "RC is stalled: $currentRevisionFailures Validation runs on current workflow revision $mainSha have failed. Refusing an unbounded retry loop."
+                $message | Add-Content $env:GITHUB_STEP_SUMMARY
+                throw $message
+              }
+
+              "Retrying Validation once after current workflow revision $mainSha concluded $($latestValidation.conclusion)." | Add-Content $env:GITHUB_STEP_SUMMARY
+            } else {
+              "Retrying Validation because the latest failed Validation used older workflow revision $($latestValidation.head_sha), while main is $mainSha." | Add-Content $env:GITHUB_STEP_SUMMARY
             }
-            "Retrying Validation because the latest failed Validation used older workflow revision $($latestValidation.head_sha), while main is $mainSha." | Add-Content $env:GITHUB_STEP_SUMMARY
           }
 
           $dispatchUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/workflows/agentic-rc-validation.yml/dispatches"
