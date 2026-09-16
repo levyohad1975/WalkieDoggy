@@ -33,7 +33,7 @@ jobs:
         (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'workflow_dispatch') &&
         github.event.workflow_run.head_branch == (vars.AGENTIC_RC_TARGET_BRANCH || 'feat/verified-auth-onboarding-batch-2')
       )
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 45
     env:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
