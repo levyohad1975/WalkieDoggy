@@ -397,7 +397,13 @@ export function MemberDetailsModal({
                       accessibilityLabel={`הרשאת ${label} עבור ${user.name}`}
                     />
                     {override ? (
-                      <Pressable disabled={rowBusy} onPress={() => handleResetPermission(key)} hitSlop={8}>
+                      <Pressable
+                        disabled={rowBusy}
+                        onPress={() => handleResetPermission(key)}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={`איפוס הרשאת ${label} עבור ${user.name}`}
+                      >
                         <RtlText style={[styles.resetLink, rowBusy && styles.resetLinkDisabled]}>איפוס</RtlText>
                       </Pressable>
                     ) : null}
