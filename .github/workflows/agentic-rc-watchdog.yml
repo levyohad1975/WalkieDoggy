@@ -3,11 +3,6 @@ name: Agentic RC Watchdog
 on:
   schedule:
     - cron: '2-57/5 * * * *'
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/agentic-rc-watchdog.yml'
   workflow_dispatch:
 
 permissions:
@@ -20,9 +15,9 @@ concurrency:
 
 jobs:
   recover:
-    name: Deterministic RC controller
+    name: RC anti-stall fallback
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     env:
       TARGET_BRANCH: ${{ vars.AGENTIC_RC_TARGET_BRANCH || 'feat/verified-auth-onboarding-batch-2' }}
       GH_TOKEN: ${{ github.token }}
@@ -31,12 +26,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test "$TARGET_BRANCH" != "main"
           git check-ref-format --branch "$TARGET_BRANCH" >/dev/null
           case "$TARGET_BRANCH" in
             feat/*|fix/*|chore/*|test/*|docs/*|rc/*) ;;
-            *) echo "::error::Refusing to watch an unapproved target branch."; exit 1 ;;
+            *) echo "::error::Refusing unapproved RC target."; exit 1 ;;
           esac
-          test "$TARGET_BRANCH" != "main"
 
       - name: Checkout RC target
         uses: actions/checkout@v4
@@ -45,86 +40,40 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Decide deterministic next action
-        id: gate
+      - name: Recover only an unvalidated worker head
         shell: bash
         run: |
           set -euo pipefail
-          echo "dispatch_validation=false" >> "$GITHUB_OUTPUT"
-          echo "dispatch_worker=false" >> "$GITHUB_OUTPUT"
-
           head_sha="$(git rev-parse HEAD)"
           author="$(git log -1 --format='%an')"
           subject="$(git log -1 --format='%s')"
           committed_at="$(git log -1 --format='%cI')"
-          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
 
-          runs_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100")"
-          active_count="$(printf '%s' "$runs_json" | jq '[.workflow_runs[] | select((.name == "Agentic RC Worker" or .name == "Agentic RC Validation" or .name == "Staging Family E2E") and (.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested" or .status == "pending"))] | length')"
-          if [ "$active_count" -gt 0 ]; then
-            echo "ACTIVE: trusted RC execution is already running; no duplicate dispatch." >> "$GITHUB_STEP_SUMMARY"
+          if [ "$author" != "walkie-agentic-worker[bot]" ]; then
+            echo "No recovery: RC head is not Worker-authored." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          case "$subject" in
+            "chore(agentic): continue RC execution"|"chore(agentic): checkpoint RC execution") ;;
+            *) echo "No recovery: RC head is not an Agentic checkpoint." >> "$GITHUB_STEP_SUMMARY"; exit 0 ;;
+          esac
+
+          runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100")"
+          active="$(printf '%s' "$runs" | jq '[.workflow_runs[] | select((.name == "Agentic RC Validation" or .name == "Agentic RC Worker") and (.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested" or .status == "pending"))] | length')"
+          if [ "$active" -gt 0 ]; then
+            echo "No recovery: trusted RC execution is active." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
-          if [ "$author" = "walkie-agentic-worker[bot]" ]; then
-            case "$subject" in
-              "chore(agentic): continue RC execution"|"chore(agentic): checkpoint RC execution")
-                validation_json="$(printf '%s' "$runs_json" | jq --arg committed "$committed_at" '[.workflow_runs[] | select(.name == "Agentic RC Validation" and .created_at >= $committed)] | sort_by(.created_at) | reverse')"
-                validation_count="$(printf '%s' "$validation_json" | jq 'length')"
-                latest_validation_conclusion="$(printf '%s' "$validation_json" | jq -r '.[0].conclusion // "none"')"
-
-                if [ "$validation_count" -eq 0 ]; then
-                  echo "dispatch_validation=true" >> "$GITHUB_OUTPUT"
-                  echo "RECOVER: fresh Worker head $head_sha has no Validation; dispatching exact-head Validation." >> "$GITHUB_STEP_SUMMARY"
-                  exit 0
-                fi
-
-                if [ "$latest_validation_conclusion" = "success" ]; then
-                  workers_after_validation="$(printf '%s' "$runs_json" | jq --arg validated "$(printf '%s' "$validation_json" | jq -r '.[0].created_at')" '[.workflow_runs[] | select(.name == "Agentic RC Worker" and .created_at > $validated)] | length')"
-                  if [ "$workers_after_validation" -eq 0 ]; then
-                    echo "dispatch_worker=true" >> "$GITHUB_OUTPUT"
-                    echo "CONTINUE: current Worker head is validated; dispatching next bounded Worker." >> "$GITHUB_STEP_SUMMARY"
-                  else
-                    echo "WAIT: a Worker has already been dispatched after current Validation." >> "$GITHUB_STEP_SUMMARY"
-                  fi
-                  exit 0
-                fi
-
-                if [ "$latest_validation_conclusion" = "failure" ] || [ "$latest_validation_conclusion" = "cancelled" ] || [ "$latest_validation_conclusion" = "timed_out" ]; then
-                  echo "::error::VALIDATION_BLOCKED: latest exact-head Validation did not succeed; refusing to publish more RC work."
-                  exit 1
-                fi
-
-                echo "WAIT: Validation exists for fresh Worker head and is not terminal yet." >> "$GITHUB_STEP_SUMMARY"
-                exit 0
-                ;;
-            esac
+          validations="$(printf '%s' "$runs" | jq --arg committed "$committed_at" '[.workflow_runs[] | select(.name == "Agentic RC Validation" and .created_at >= $committed)] | length')"
+          if [ "$validations" -gt 0 ]; then
+            echo "No recovery: Validation already exists after current Worker head." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
 
-          echo "dispatch_worker=true" >> "$GITHUB_OUTPUT"
-          echo "CONTINUE: non-Agentic RC head has no trusted execution active; dispatching Worker." >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Dispatch exact-head Validation
-        if: steps.gate.outputs.dispatch_validation == 'true'
-        shell: bash
-        env:
-          HEAD_SHA: ${{ steps.gate.outputs.head_sha }}
-        run: |
-          set -euo pipefail
           gh workflow run agentic-rc-validation.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref main \
             -f target_branch="$TARGET_BRANCH" \
-            -f expected_sha="$HEAD_SHA"
-          echo "Validation dispatched for exact RC head $HEAD_SHA." >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Dispatch bounded Worker
-        if: steps.gate.outputs.dispatch_worker == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh workflow run agentic-rc-worker.yml \
-            --repo "$GITHUB_REPOSITORY" \
-            --ref main \
-            -f target_branch="$TARGET_BRANCH"
-          echo "Worker dispatched for $TARGET_BRANCH." >> "$GITHUB_STEP_SUMMARY"
+            -f expected_sha="$head_sha"
+          echo "Recovered stalled RC by dispatching exact-head Validation for $head_sha." >> "$GITHUB_STEP_SUMMARY"
