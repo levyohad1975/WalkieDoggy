@@ -17,58 +17,56 @@ concurrency:
 jobs:
   validate:
     name: Typecheck and tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Validate Agentic worker OIDC contract
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
-          workflow=".github/workflows/agentic-rc-worker.yml"
-          grep -Eq '^[[:space:]]+id-token:[[:space:]]+write[[:space:]]*$' "$workflow"
-          if grep -Eq '^[[:space:]]+(pull-requests|issues):[[:space:]]+write[[:space:]]*$' "$workflow"; then
-            echo "::error::Agentic worker permissions are broader than the approved contract."
-            exit 1
-          fi
-          [ "$(grep -c -- '--max-turns 60' "$workflow")" -eq 3 ]
-          [ "$(grep -c 'continue-on-error: true' "$workflow")" -eq 3 ]
-          grep -q 'name: Detect transient OAuth startup failure' "$workflow"
-          grep -q 'name: Retry Claude worker once after transient OAuth startup failure' "$workflow"
-          grep -q "steps.oauth_transient.outputs.retry == 'true'" "$workflow"
-          grep -q 'OAUTH_RETRY_OUTCOME' "$workflow"
-          grep -q 'name: Classify Claude result' "$workflow"
-          grep -q 'name: Enforce validated Claude completion or checkpoint' "$workflow"
-          grep -q 'checkpoint_eligible=true' "$workflow"
-          grep -q 'chore(agentic): checkpoint RC execution' "$workflow"
-          grep -q "steps.publish.outputs.published != 'true'" "$workflow"
-          grep -q 'npm run typecheck' "$workflow"
-          grep -q 'npm test -- --runInBand' "$workflow"
-          grep -q 'AGENTIC_RC_TARGET_BRANCH' "$workflow"
-          grep -Eq '^[[:space:]]+PUSH_TOKEN:[[:space:]]+' "$workflow"
-          grep -q 'x-access-token:%s' "$workflow"
+          $ErrorActionPreference = 'Stop'
+          $workflow = Get-Content '.github/workflows/agentic-rc-worker.yml' -Raw
+          if ($workflow -notmatch '(?m)^\s+id-token:\s+write\s*$') { throw 'Agentic worker is missing id-token: write.' }
+          if ($workflow -match '(?m)^\s+(pull-requests|issues):\s+write\s*$') { throw 'Agentic worker permissions are broader than the approved contract.' }
+          if ([regex]::Matches($workflow, '--max-turns 60').Count -ne 3) { throw 'Unexpected max-turns contract.' }
+          if ([regex]::Matches($workflow, 'continue-on-error: true').Count -ne 3) { throw 'Unexpected continue-on-error contract.' }
+          @(
+            'name: Detect transient OAuth startup failure',
+            'name: Retry Claude worker once after transient OAuth startup failure',
+            "steps.oauth_transient.outputs.retry == 'true'",
+            'OAUTH_RETRY_OUTCOME',
+            'name: Classify Claude result',
+            'name: Enforce validated Claude completion or checkpoint',
+            'checkpoint_eligible=true',
+            'chore(agentic): checkpoint RC execution',
+            "steps.publish.outputs.published != 'true'",
+            'npm run typecheck',
+            'npm test -- --runInBand',
+            'AGENTIC_RC_TARGET_BRANCH',
+            'x-access-token:%s'
+          ) | ForEach-Object { if (-not $workflow.Contains($_)) { throw "Missing Agentic worker contract marker: $_" } }
+          if ($workflow -notmatch '(?m)^\s+PUSH_TOKEN:\s+') { throw 'Agentic worker is missing PUSH_TOKEN.' }
 
       - name: Validate isolated Staging readiness contract
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
-          workflow=".github/workflows/agentic-staging-readiness.yml"
-          grep -Eq '^[[:space:]]+environment:[[:space:]]+staging[[:space:]]*$' "$workflow"
-          grep -Eq '^[[:space:]]+EXPECTED_STAGING_PROJECT_REF:[[:space:]]+czbxhsoxyawprqehkfit[[:space:]]*$' "$workflow"
-          grep -q 'secrets.SUPABASE_STAGING_URL' "$workflow"
-          grep -q 'secrets.SUPABASE_STAGING_ANON_KEY' "$workflow"
-          grep -q 'secrets.SUPABASE_ACCESS_TOKEN' "$workflow"
-          grep -q '/auth/v1/health' "$workflow"
-          grep -q -- '--output /dev/null' "$workflow"
-          grep -q 'api.supabase.com/v1/projects/$EXPECTED_STAGING_PROJECT_REF/database/migrations' "$workflow"
-          grep -q 'Apply only approved migration 0035 through Management API' "$workflow"
-          if grep -Eq 'SERVICE_ROLE|DB_PASSWORD|RESEND_API_KEY|contents:[[:space:]]+write' "$workflow"; then
-            echo "::error::Staging readiness workflow requests a credential or permission outside the approved Staging migration contract."
-            exit 1
-          fi
+          $ErrorActionPreference = 'Stop'
+          $workflow = Get-Content '.github/workflows/agentic-staging-readiness.yml' -Raw
+          if ($workflow -notmatch '(?m)^\s+environment:\s+staging\s*$') { throw 'Staging environment guard missing.' }
+          if ($workflow -notmatch '(?m)^\s+EXPECTED_STAGING_PROJECT_REF:\s+czbxhsoxyawprqehkfit\s*$') { throw 'Unexpected Staging project ref.' }
+          @(
+            'secrets.SUPABASE_STAGING_URL',
+            'secrets.SUPABASE_STAGING_ANON_KEY',
+            'secrets.SUPABASE_ACCESS_TOKEN',
+            '/auth/v1/health',
+            '--output /dev/null',
+            'api.supabase.com/v1/projects/$EXPECTED_STAGING_PROJECT_REF/database/migrations',
+            'Apply only approved migration 0035 through Management API'
+          ) | ForEach-Object { if (-not $workflow.Contains($_)) { throw "Missing Staging contract marker: $_" } }
+          if ($workflow -match 'SERVICE_ROLE|DB_PASSWORD|RESEND_API_KEY|contents:\s+write') { throw 'Staging readiness workflow requests a credential or permission outside the approved Staging migration contract.' }
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
