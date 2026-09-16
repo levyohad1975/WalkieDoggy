@@ -1,11 +1,8 @@
 name: Agentic RC Watchdog
 
 on:
-  # Offset from the top of the hour to reduce GitHub schedule congestion.
   schedule:
     - cron: '2-57/5 * * * *'
-  # Bootstrap the controller immediately when its implementation lands on main.
-  # This gives us a non-cron recovery path after controller/infrastructure merges.
   push:
     branches:
       - main
@@ -55,6 +52,7 @@ jobs:
           set -euo pipefail
           echo "dispatch_validation=false" >> "$GITHUB_OUTPUT"
           echo "dispatch_worker=false" >> "$GITHUB_OUTPUT"
+          echo "dispatch_family_e2e=false" >> "$GITHUB_OUTPUT"
 
           head_sha="$(git rev-parse HEAD)"
           author="$(git log -1 --format='%an')"
@@ -63,10 +61,44 @@ jobs:
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
 
           runs_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100")"
-          active_count="$(printf '%s' "$runs_json" | jq '[.workflow_runs[] | select((.name == "Agentic RC Worker" or .name == "Agentic RC Validation") and (.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested" or .status == "pending"))] | length')"
+          active_count="$(printf '%s' "$runs_json" | jq '[.workflow_runs[] | select((.name == "Agentic RC Worker" or .name == "Agentic RC Validation" or .name == "Staging Family E2E") and (.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested" or .status == "pending"))] | length')"
           if [ "$active_count" -gt 0 ]; then
-            echo "ACTIVE: an Agentic Worker/Validation is already running; no duplicate dispatch." >> "$GITHUB_STEP_SUMMARY"
+            echo "ACTIVE: Worker, Validation, or Family E2E is already running; no duplicate dispatch." >> "$GITHUB_STEP_SUMMARY"
             exit 0
+          fi
+
+          # A successful Staging Readiness run is durable environment evidence. Once it
+          # exists, the next safe gate is the real Family E2E, not another retry of an
+          # older Worker failure on the same RC head.
+          readiness_json="$(printf '%s' "$runs_json" | jq '[.workflow_runs[] | select(.name == "Agentic Staging Readiness")] | sort_by(.created_at) | reverse')"
+          latest_readiness_time="$(printf '%s' "$readiness_json" | jq -r '.[0].created_at // ""')"
+          latest_readiness_conclusion="$(printf '%s' "$readiness_json" | jq -r '.[0].conclusion // "none"')"
+          family_success_time=""
+
+          if [ -n "$latest_readiness_time" ] && [ "$latest_readiness_conclusion" = "success" ]; then
+            family_json="$(printf '%s' "$runs_json" | jq --arg ready "$latest_readiness_time" '[.workflow_runs[] | select(.name == "Staging Family E2E" and .created_at > $ready)] | sort_by(.created_at) | reverse')"
+            family_count="$(printf '%s' "$family_json" | jq 'length')"
+            if [ "$family_count" -eq 0 ]; then
+              echo "dispatch_family_e2e=true" >> "$GITHUB_OUTPUT"
+              echo "DISPATCHED: Staging Readiness succeeded; advancing to real Staging Family E2E." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+
+            latest_family_conclusion="$(printf '%s' "$family_json" | jq -r '.[0].conclusion // "none"')"
+            latest_family_time="$(printf '%s' "$family_json" | jq -r '.[0].created_at // ""')"
+            if [ "$latest_family_conclusion" = "failure" ]; then
+              echo "::error::STAGING_FAMILY_E2E_BLOCKED: latest Family E2E failed after verified Staging Readiness."
+              exit 1
+            fi
+            if [ "$latest_family_conclusion" = "success" ]; then
+              family_success_time="$latest_family_time"
+              workers_after_family="$(printf '%s' "$runs_json" | jq --arg family "$family_success_time" '[.workflow_runs[] | select(.name == "Agentic RC Worker" and .created_at > $family)] | length')"
+              if [ "$workers_after_family" -eq 0 ]; then
+                echo "dispatch_worker=true" >> "$GITHUB_OUTPUT"
+                echo "DISPATCHED: Family E2E succeeded; continuing RC execution." >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+              fi
+            fi
           fi
 
           if [ "$author" = "walkie-agentic-worker[bot]" ]; then
@@ -82,13 +114,14 @@ jobs:
                   exit 0
                 fi
 
-                # Recovery attempts from an older Worker implementation must not consume
-                # the bounded retry budget of a newly merged Worker generation.
                 worker_generation_time="$(gh api "repos/$GITHUB_REPOSITORY/commits?path=.github/workflows/agentic-rc-worker.yml&sha=main&per_page=1" --jq '.[0].commit.committer.date // empty')"
                 recovery_epoch="$latest_validation_time"
                 if [ -n "$worker_generation_time" ] && [[ "$worker_generation_time" > "$recovery_epoch" ]]; then
                   recovery_epoch="$worker_generation_time"
-                  echo "RESET: ignoring Worker attempts older than current Worker generation ($worker_generation_time)." >> "$GITHUB_STEP_SUMMARY"
+                fi
+                if [ -n "$family_success_time" ] && [[ "$family_success_time" > "$recovery_epoch" ]]; then
+                  recovery_epoch="$family_success_time"
+                  echo "RESET: Family E2E success supersedes older Worker recovery attempts." >> "$GITHUB_STEP_SUMMARY"
                 fi
 
                 post_validation_workers="$(printf '%s' "$runs_json" | jq --arg epoch "$recovery_epoch" '[.workflow_runs[] | select(.name == "Agentic RC Worker" and .created_at > $epoch)] | sort_by(.created_at) | reverse')"
@@ -97,31 +130,20 @@ jobs:
 
                 if [ "$post_count" -eq 0 ]; then
                   echo "dispatch_worker=true" >> "$GITHUB_OUTPUT"
-                  echo "DISPATCHED: head $head_sha is validated and has no later Worker in the current Worker generation; continuing RC." >> "$GITHUB_STEP_SUMMARY"
+                  echo "DISPATCHED: validated RC head has no Worker in the current recovery epoch." >> "$GITHUB_STEP_SUMMARY"
                   exit 0
                 fi
-
-                if [ "$latest_post_conclusion" = "success" ]; then
-                  if [ "$post_count" -lt 2 ]; then
-                    echo "dispatch_worker=true" >> "$GITHUB_OUTPUT"
-                    echo "DISPATCHED: successful Worker produced no newer head; one bounded continuation retry." >> "$GITHUB_STEP_SUMMARY"
-                    exit 0
-                  fi
-                  echo "::error::STALLED: two Worker attempts completed after Validation without publishing a newer RC head."
-                  exit 1
+                if [ "$latest_post_conclusion" = "success" ] && [ "$post_count" -lt 2 ]; then
+                  echo "dispatch_worker=true" >> "$GITHUB_OUTPUT"
+                  echo "DISPATCHED: one bounded continuation retry." >> "$GITHUB_STEP_SUMMARY"
+                  exit 0
                 fi
-
-                if [ "$latest_post_conclusion" = "failure" ]; then
-                  if [ "$post_count" -lt 2 ]; then
-                    echo "dispatch_worker=true" >> "$GITHUB_OUTPUT"
-                    echo "DISPATCHED: latest Worker failed; one bounded recovery attempt for unchanged head $head_sha." >> "$GITHUB_STEP_SUMMARY"
-                    exit 0
-                  fi
-                  echo "::error::STALLED: repeated Worker failure on unchanged RC head $head_sha after bounded recovery."
-                  exit 1
+                if [ "$latest_post_conclusion" = "failure" ] && [ "$post_count" -lt 2 ]; then
+                  echo "dispatch_worker=true" >> "$GITHUB_OUTPUT"
+                  echo "DISPATCHED: one bounded recovery attempt." >> "$GITHUB_STEP_SUMMARY"
+                  exit 0
                 fi
-
-                echo "::error::STALLED: latest post-Validation Worker has unsupported conclusion '$latest_post_conclusion'."
+                echo "::error::STALLED: bounded Worker recovery exhausted for current recovery epoch."
                 exit 1
                 ;;
             esac
@@ -129,6 +151,17 @@ jobs:
 
           echo "dispatch_worker=true" >> "$GITHUB_OUTPUT"
           echo "DISPATCHED: RC work exists at non-Agentic head $head_sha and no execution is active." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dispatch Staging Family E2E
+        if: steps.gate.outputs.dispatch_family_e2e == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run staging-family-e2e.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f target_branch="$TARGET_BRANCH"
+          echo "Staging Family E2E dispatched for $TARGET_BRANCH." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Dispatch exact-head Validation
         if: steps.gate.outputs.dispatch_validation == 'true'
