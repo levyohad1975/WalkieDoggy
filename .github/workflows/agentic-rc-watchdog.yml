@@ -36,14 +36,9 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $headers = @{
-            Authorization = "Bearer $env:GH_TOKEN"
-            Accept = 'application/vnd.github+json'
-            'X-GitHub-Api-Version' = '2022-11-28'
-          }
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
           $encodedBranch = [System.Uri]::EscapeDataString($env:TARGET_BRANCH)
-          $branchUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/branches/$encodedBranch"
-          $branch = Invoke-RestMethod -Uri $branchUrl -Headers $headers -Method Get
+          $branch = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/branches/$encodedBranch" -Headers $headers -Method Get
           $headSha = [string]$branch.commit.sha
           if ($headSha -notmatch '^[0-9a-f]{40}$') { throw 'Could not resolve exact RC head.' }
           "head_sha=$headSha" | Add-Content $env:GITHUB_OUTPUT
@@ -54,110 +49,63 @@ jobs:
           HEAD_SHA: ${{ steps.rc.outputs.head_sha }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $headers = @{
-            Authorization = "Bearer $env:GH_TOKEN"
-            Accept = 'application/vnd.github+json'
-            'X-GitHub-Api-Version' = '2022-11-28'
-          }
-          $commitUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/commits/$env:HEAD_SHA"
-          $commit = Invoke-RestMethod -Uri $commitUrl -Headers $headers -Method Get
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
+          $commit = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/commits/$env:HEAD_SHA" -Headers $headers -Method Get
           $author = [string]$commit.commit.author.name
           $subject = ([string]$commit.commit.message -split "`n")[0].Trim()
           $committedAt = [DateTimeOffset]::Parse([string]$commit.commit.committer.date)
-
-          if ($author -ne 'walkie-agentic-worker[bot]') {
-            'No recovery: RC head is not Worker-authored.' | Add-Content $env:GITHUB_STEP_SUMMARY
-            exit 0
-          }
-          if ($subject -notin @('chore(agentic): continue RC execution', 'chore(agentic): checkpoint RC execution')) {
-            'No recovery: RC head is not an Agentic checkpoint.' | Add-Content $env:GITHUB_STEP_SUMMARY
-            exit 0
-          }
+          if ($author -ne 'walkie-agentic-worker[bot]') { 'No recovery: RC head is not Worker-authored.' | Add-Content $env:GITHUB_STEP_SUMMARY; exit 0 }
+          if ($subject -notin @('chore(agentic): continue RC execution', 'chore(agentic): checkpoint RC execution')) { 'No recovery: RC head is not an Agentic checkpoint.' | Add-Content $env:GITHUB_STEP_SUMMARY; exit 0 }
 
           $runsUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100"
           $runs = Invoke-RestMethod -Uri $runsUrl -Headers $headers -Method Get
-          $active = @($runs.workflow_runs | Where-Object {
-            $_.name -in @('Agentic RC Validation', 'Agentic RC Worker') -and
-            $_.status -in @('queued', 'in_progress', 'waiting', 'requested', 'pending')
-          }).Count
-          if ($active -gt 0) {
-            'No recovery: trusted RC execution is active.' | Add-Content $env:GITHUB_STEP_SUMMARY
-            exit 0
-          }
+          $active = @($runs.workflow_runs | Where-Object { $_.name -in @('Agentic RC Validation','Agentic RC Worker') -and $_.status -in @('queued','in_progress','waiting','requested','pending') }).Count
+          if ($active -gt 0) { 'No recovery: trusted RC execution is active.' | Add-Content $env:GITHUB_STEP_SUMMARY; exit 0 }
 
-          $mainBranchUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/branches/main"
-          $mainBranch = Invoke-RestMethod -Uri $mainBranchUrl -Headers $headers -Method Get
+          $mainBranch = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/branches/main" -Headers $headers -Method Get
           $mainSha = [string]$mainBranch.commit.sha
-          $validations = @($runs.workflow_runs | Where-Object {
-            $_.name -eq 'Agentic RC Validation' -and
-            [DateTimeOffset]::Parse($_.created_at) -ge $committedAt
-          } | Sort-Object { [DateTimeOffset]::Parse($_.created_at) } -Descending)
+          $validations = @($runs.workflow_runs | Where-Object { $_.name -eq 'Agentic RC Validation' -and [DateTimeOffset]::Parse($_.created_at) -ge $committedAt } | Sort-Object { [DateTimeOffset]::Parse($_.created_at) } -Descending)
 
           if ($validations.Count -gt 0) {
             $latestValidation = $validations[0]
             if ($latestValidation.conclusion -eq 'success') {
               $validationCreatedAt = [DateTimeOffset]::Parse([string]$latestValidation.created_at)
-              $workersAfterValidation = @($runs.workflow_runs | Where-Object {
-                $_.name -eq 'Agentic RC Worker' -and
-                [DateTimeOffset]::Parse($_.created_at) -ge $validationCreatedAt
-              })
+              $workersAfterValidation = @($runs.workflow_runs | Where-Object { $_.name -eq 'Agentic RC Worker' -and [DateTimeOffset]::Parse($_.created_at) -ge $validationCreatedAt } | Sort-Object { [DateTimeOffset]::Parse($_.created_at) } -Descending)
               if ($workersAfterValidation.Count -gt 0) {
-                'No recovery: successful Validation already has a subsequent Worker run.' | Add-Content $env:GITHUB_STEP_SUMMARY
-                exit 0
+                $latestWorker = $workersAfterValidation[0]
+                if ($latestWorker.conclusion -eq 'success') { 'No recovery: successful Validation already has a successful subsequent Worker.' | Add-Content $env:GITHUB_STEP_SUMMARY; exit 0 }
+                $failedWorkersCurrentRevision = @($workersAfterValidation | Where-Object { [string]$_.head_sha -eq $mainSha -and $_.conclusion -in @('failure','cancelled','timed_out','action_required','startup_failure') }).Count
+                if ([string]$latestWorker.head_sha -eq $mainSha -and $failedWorkersCurrentRevision -ge 2) {
+                  $message = "RC is stalled: $failedWorkersCurrentRevision Worker runs on current workflow revision $mainSha failed. Refusing an unbounded Worker retry loop."
+                  $message | Add-Content $env:GITHUB_STEP_SUMMARY
+                  throw $message
+                }
+                "Recovering failed Worker $($latestWorker.id) ($($latestWorker.conclusion)); bounded retry on current workflow revision." | Add-Content $env:GITHUB_STEP_SUMMARY
               }
 
-              # Break the GITHUB_TOKEN workflow-chain stall from an independent scheduled/manual Watchdog event.
               $workerDispatchUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/workflows/agentic-rc-worker.yml/dispatches"
               $workerBody = @{ ref = 'main'; inputs = @{ target_branch = $env:TARGET_BRANCH } } | ConvertTo-Json -Depth 4
               $dispatchStartedAt = [DateTimeOffset]::UtcNow
               Invoke-RestMethod -Uri $workerDispatchUrl -Headers $headers -Method Post -ContentType 'application/json' -Body $workerBody
-
               $workerFound = $false
               for ($attempt = 1; $attempt -le 6; $attempt++) {
                 Start-Sleep -Seconds 5
                 $freshRuns = Invoke-RestMethod -Uri $runsUrl -Headers $headers -Method Get
-                $newWorker = @($freshRuns.workflow_runs | Where-Object {
-                  $_.name -eq 'Agentic RC Worker' -and
-                  $_.event -eq 'workflow_dispatch' -and
-                  [DateTimeOffset]::Parse($_.created_at) -ge $dispatchStartedAt.AddSeconds(-2)
-                } | Sort-Object { [DateTimeOffset]::Parse($_.created_at) } -Descending | Select-Object -First 1)
-                if ($newWorker.Count -gt 0) {
-                  $workerFound = $true
-                  "Recovered Validation-to-Worker handoff; Worker run $($newWorker[0].id) is $($newWorker[0].status)." | Add-Content $env:GITHUB_STEP_SUMMARY
-                  break
-                }
+                $newWorker = @($freshRuns.workflow_runs | Where-Object { $_.name -eq 'Agentic RC Worker' -and $_.event -eq 'workflow_dispatch' -and [DateTimeOffset]::Parse($_.created_at) -ge $dispatchStartedAt.AddSeconds(-2) } | Sort-Object { [DateTimeOffset]::Parse($_.created_at) } -Descending | Select-Object -First 1)
+                if ($newWorker.Count -gt 0) { $workerFound = $true; "Recovered Validation-to-Worker handoff; Worker run $($newWorker[0].id) is $($newWorker[0].status)." | Add-Content $env:GITHUB_STEP_SUMMARY; break }
               }
-              if (-not $workerFound) {
-                throw 'Worker dispatch returned successfully but no Worker run appeared within 30 seconds.'
-              }
+              if (-not $workerFound) { throw 'Worker dispatch returned successfully but no Worker run appeared within 30 seconds.' }
               exit 0
             }
 
             if ([string]$latestValidation.head_sha -eq $mainSha) {
-              $currentRevisionFailures = @($validations | Where-Object {
-                [string]$_.head_sha -eq $mainSha -and
-                $_.conclusion -in @('failure', 'cancelled', 'timed_out', 'action_required', 'startup_failure')
-              }).Count
-
-              if ($currentRevisionFailures -ge 2) {
-                $message = "RC is stalled: $currentRevisionFailures Validation runs on current workflow revision $mainSha have failed. Refusing an unbounded retry loop."
-                $message | Add-Content $env:GITHUB_STEP_SUMMARY
-                throw $message
-              }
-
+              $currentRevisionFailures = @($validations | Where-Object { [string]$_.head_sha -eq $mainSha -and $_.conclusion -in @('failure','cancelled','timed_out','action_required','startup_failure') }).Count
+              if ($currentRevisionFailures -ge 2) { $message = "RC is stalled: $currentRevisionFailures Validation runs on current workflow revision $mainSha have failed. Refusing an unbounded retry loop."; $message | Add-Content $env:GITHUB_STEP_SUMMARY; throw $message }
               "Retrying Validation once after current workflow revision $mainSha concluded $($latestValidation.conclusion)." | Add-Content $env:GITHUB_STEP_SUMMARY
-            } else {
-              "Retrying Validation because the latest failed Validation used older workflow revision $($latestValidation.head_sha), while main is $mainSha." | Add-Content $env:GITHUB_STEP_SUMMARY
-            }
+            } else { "Retrying Validation because the latest failed Validation used older workflow revision $($latestValidation.head_sha), while main is $mainSha." | Add-Content $env:GITHUB_STEP_SUMMARY }
           }
 
           $dispatchUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/workflows/agentic-rc-validation.yml/dispatches"
-          $body = @{
-            ref = 'main'
-            inputs = @{
-              target_branch = $env:TARGET_BRANCH
-              expected_sha = $env:HEAD_SHA
-            }
-          } | ConvertTo-Json -Depth 4
+          $body = @{ ref = 'main'; inputs = @{ target_branch = $env:TARGET_BRANCH; expected_sha = $env:HEAD_SHA } } | ConvertTo-Json -Depth 4
           Invoke-RestMethod -Uri $dispatchUrl -Headers $headers -Method Post -ContentType 'application/json' -Body $body
           "Recovered stalled RC by dispatching exact-head Validation for $env:HEAD_SHA." | Add-Content $env:GITHUB_STEP_SUMMARY
