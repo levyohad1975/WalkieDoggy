@@ -48,7 +48,7 @@ jobs:
           if ($headSha -notmatch '^[0-9a-f]{40}$') { throw 'Could not resolve exact RC head.' }
           "head_sha=$headSha" | Add-Content $env:GITHUB_OUTPUT
 
-      - name: Recover only an unvalidated worker head
+      - name: Recover stalled validation or worker handoff
         shell: powershell
         env:
           HEAD_SHA: ${{ steps.rc.outputs.head_sha }}
@@ -96,7 +96,40 @@ jobs:
           if ($validations.Count -gt 0) {
             $latestValidation = $validations[0]
             if ($latestValidation.conclusion -eq 'success') {
-              'No recovery: current Worker head already has successful Validation.' | Add-Content $env:GITHUB_STEP_SUMMARY
+              $validationCreatedAt = [DateTimeOffset]::Parse([string]$latestValidation.created_at)
+              $workersAfterValidation = @($runs.workflow_runs | Where-Object {
+                $_.name -eq 'Agentic RC Worker' -and
+                [DateTimeOffset]::Parse($_.created_at) -ge $validationCreatedAt
+              })
+              if ($workersAfterValidation.Count -gt 0) {
+                'No recovery: successful Validation already has a subsequent Worker run.' | Add-Content $env:GITHUB_STEP_SUMMARY
+                exit 0
+              }
+
+              # Break the GITHUB_TOKEN workflow-chain stall from an independent scheduled/manual Watchdog event.
+              $workerDispatchUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/workflows/agentic-rc-worker.yml/dispatches"
+              $workerBody = @{ ref = 'main'; inputs = @{ target_branch = $env:TARGET_BRANCH } } | ConvertTo-Json -Depth 4
+              $dispatchStartedAt = [DateTimeOffset]::UtcNow
+              Invoke-RestMethod -Uri $workerDispatchUrl -Headers $headers -Method Post -ContentType 'application/json' -Body $workerBody
+
+              $workerFound = $false
+              for ($attempt = 1; $attempt -le 6; $attempt++) {
+                Start-Sleep -Seconds 5
+                $freshRuns = Invoke-RestMethod -Uri $runsUrl -Headers $headers -Method Get
+                $newWorker = @($freshRuns.workflow_runs | Where-Object {
+                  $_.name -eq 'Agentic RC Worker' -and
+                  $_.event -eq 'workflow_dispatch' -and
+                  [DateTimeOffset]::Parse($_.created_at) -ge $dispatchStartedAt.AddSeconds(-2)
+                } | Sort-Object { [DateTimeOffset]::Parse($_.created_at) } -Descending | Select-Object -First 1)
+                if ($newWorker.Count -gt 0) {
+                  $workerFound = $true
+                  "Recovered Validation-to-Worker handoff; Worker run $($newWorker[0].id) is $($newWorker[0].status)." | Add-Content $env:GITHUB_STEP_SUMMARY
+                  break
+                }
+              }
+              if (-not $workerFound) {
+                throw 'Worker dispatch returned successfully but no Worker run appeared within 30 seconds.'
+              }
               exit 0
             }
 
