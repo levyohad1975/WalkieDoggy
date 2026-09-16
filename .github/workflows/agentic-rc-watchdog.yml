@@ -16,22 +16,20 @@ concurrency:
 jobs:
   recover:
     name: RC anti-stall fallback
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 5
     env:
       TARGET_BRANCH: ${{ vars.AGENTIC_RC_TARGET_BRANCH || 'feat/verified-auth-onboarding-batch-2' }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Guard RC target
-        shell: bash
+        shell: powershell
         run: |
-          set -euo pipefail
-          test "$TARGET_BRANCH" != "main"
-          git check-ref-format --branch "$TARGET_BRANCH" >/dev/null
-          case "$TARGET_BRANCH" in
-            feat/*|fix/*|chore/*|test/*|docs/*|rc/*) ;;
-            *) echo "::error::Refusing unapproved RC target."; exit 1 ;;
-          esac
+          $ErrorActionPreference = 'Stop'
+          if ($env:TARGET_BRANCH -eq 'main') { throw 'Refusing main as RC target.' }
+          git check-ref-format --branch $env:TARGET_BRANCH | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Invalid RC branch.' }
+          if ($env:TARGET_BRANCH -notmatch '^(feat|fix|chore|test|docs|rc)/') { throw 'Refusing unapproved RC target.' }
 
       - name: Checkout RC target
         uses: actions/checkout@v4
@@ -41,39 +39,56 @@ jobs:
           persist-credentials: false
 
       - name: Recover only an unvalidated worker head
-        shell: bash
+        shell: powershell
         run: |
-          set -euo pipefail
-          head_sha="$(git rev-parse HEAD)"
-          author="$(git log -1 --format='%an')"
-          subject="$(git log -1 --format='%s')"
-          committed_at="$(git log -1 --format='%cI')"
+          $ErrorActionPreference = 'Stop'
+          $headSha = (git rev-parse HEAD).Trim()
+          $author = (git log -1 --format='%an').Trim()
+          $subject = (git log -1 --format='%s').Trim()
+          $committedAt = [DateTimeOffset]::Parse((git log -1 --format='%cI').Trim())
 
-          if [ "$author" != "walkie-agentic-worker[bot]" ]; then
-            echo "No recovery: RC head is not Worker-authored." >> "$GITHUB_STEP_SUMMARY"
+          if ($author -ne 'walkie-agentic-worker[bot]') {
+            'No recovery: RC head is not Worker-authored.' | Add-Content $env:GITHUB_STEP_SUMMARY
             exit 0
-          fi
-          case "$subject" in
-            "chore(agentic): continue RC execution"|"chore(agentic): checkpoint RC execution") ;;
-            *) echo "No recovery: RC head is not an Agentic checkpoint." >> "$GITHUB_STEP_SUMMARY"; exit 0 ;;
-          esac
-
-          runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100")"
-          active="$(printf '%s' "$runs" | jq '[.workflow_runs[] | select((.name == "Agentic RC Validation" or .name == "Agentic RC Worker") and (.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested" or .status == "pending"))] | length')"
-          if [ "$active" -gt 0 ]; then
-            echo "No recovery: trusted RC execution is active." >> "$GITHUB_STEP_SUMMARY"
+          }
+          if ($subject -notin @('chore(agentic): continue RC execution', 'chore(agentic): checkpoint RC execution')) {
+            'No recovery: RC head is not an Agentic checkpoint.' | Add-Content $env:GITHUB_STEP_SUMMARY
             exit 0
-          fi
+          }
 
-          validations="$(printf '%s' "$runs" | jq --arg committed "$committed_at" '[.workflow_runs[] | select(.name == "Agentic RC Validation" and .created_at >= $committed)] | length')"
-          if [ "$validations" -gt 0 ]; then
-            echo "No recovery: Validation already exists after current Worker head." >> "$GITHUB_STEP_SUMMARY"
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = 'application/vnd.github+json'
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          $runsUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100"
+          $runs = Invoke-RestMethod -Uri $runsUrl -Headers $headers -Method Get
+
+          $active = @($runs.workflow_runs | Where-Object {
+            $_.name -in @('Agentic RC Validation', 'Agentic RC Worker') -and
+            $_.status -in @('queued', 'in_progress', 'waiting', 'requested', 'pending')
+          }).Count
+          if ($active -gt 0) {
+            'No recovery: trusted RC execution is active.' | Add-Content $env:GITHUB_STEP_SUMMARY
             exit 0
-          fi
+          }
 
-          gh workflow run agentic-rc-validation.yml \
-            --repo "$GITHUB_REPOSITORY" \
-            --ref main \
-            -f target_branch="$TARGET_BRANCH" \
-            -f expected_sha="$head_sha"
-          echo "Recovered stalled RC by dispatching exact-head Validation for $head_sha." >> "$GITHUB_STEP_SUMMARY"
+          $validations = @($runs.workflow_runs | Where-Object {
+            $_.name -eq 'Agentic RC Validation' -and
+            [DateTimeOffset]::Parse($_.created_at) -ge $committedAt
+          }).Count
+          if ($validations -gt 0) {
+            'No recovery: Validation already exists after current Worker head.' | Add-Content $env:GITHUB_STEP_SUMMARY
+            exit 0
+          }
+
+          $dispatchUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/workflows/agentic-rc-validation.yml/dispatches"
+          $body = @{
+            ref = 'main'
+            inputs = @{
+              target_branch = $env:TARGET_BRANCH
+              expected_sha = $headSha
+            }
+          } | ConvertTo-Json -Depth 4
+          Invoke-RestMethod -Uri $dispatchUrl -Headers $headers -Method Post -ContentType 'application/json' -Body $body
+          "Recovered stalled RC by dispatching exact-head Validation for $headSha." | Add-Content $env:GITHUB_STEP_SUMMARY
