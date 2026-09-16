@@ -51,12 +51,12 @@ function suggestedTimeFrom(currentTime: string): string {
  * added to this modal later).
  */
 export function RequestTimeChangeModal({ visible, currentTime, onSubmit, onClose }: RequestTimeChangeModalProps) {
-  const [time, setTime] = useState(currentTime);
+  const [time, setTime] = useState(() => suggestedTimeFrom(currentTime));
   const [pickerOpen, setPickerOpen] = useState(Platform.OS === 'ios');
 
   useEffect(() => {
     if (visible) {
-      setTime(currentTime);
+      setTime(suggestedTimeFrom(currentTime));
       setPickerOpen(Platform.OS === 'ios');
     }
   }, [visible, currentTime]);
