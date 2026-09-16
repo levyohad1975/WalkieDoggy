@@ -60,10 +60,13 @@ jobs:
           grep -Eq '^[[:space:]]+EXPECTED_STAGING_PROJECT_REF:[[:space:]]+czbxhsoxyawprqehkfit[[:space:]]*$' "$workflow"
           grep -q 'secrets.SUPABASE_STAGING_URL' "$workflow"
           grep -q 'secrets.SUPABASE_STAGING_ANON_KEY' "$workflow"
+          grep -q 'secrets.SUPABASE_ACCESS_TOKEN' "$workflow"
           grep -q '/auth/v1/health' "$workflow"
           grep -q -- '--output /dev/null' "$workflow"
-          if grep -Eq 'SERVICE_ROLE|DB_PASSWORD|ACCESS_TOKEN|RESEND_API_KEY|contents:[[:space:]]+write' "$workflow"; then
-            echo "::error::Staging readiness workflow requests a credential or permission outside the approved read-only contract."
+          grep -q 'api.supabase.com/v1/projects/$EXPECTED_STAGING_PROJECT_REF/database/migrations' "$workflow"
+          grep -q 'Apply only approved migration 0035 through Management API' "$workflow"
+          if grep -Eq 'SERVICE_ROLE|DB_PASSWORD|RESEND_API_KEY|contents:[[:space:]]+write' "$workflow"; then
+            echo "::error::Staging readiness workflow requests a credential or permission outside the approved Staging migration contract."
             exit 1
           fi
 
