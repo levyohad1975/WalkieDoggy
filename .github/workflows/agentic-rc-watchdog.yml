@@ -82,13 +82,22 @@ jobs:
                   exit 0
                 fi
 
-                post_validation_workers="$(printf '%s' "$runs_json" | jq --arg validated "$latest_validation_time" '[.workflow_runs[] | select(.name == "Agentic RC Worker" and .created_at > $validated)] | sort_by(.created_at) | reverse')"
+                # Recovery attempts from an older Worker implementation must not consume
+                # the bounded retry budget of a newly merged Worker generation.
+                worker_generation_time="$(gh api "repos/$GITHUB_REPOSITORY/commits?path=.github/workflows/agentic-rc-worker.yml&sha=main&per_page=1" --jq '.[0].commit.committer.date // empty')"
+                recovery_epoch="$latest_validation_time"
+                if [ -n "$worker_generation_time" ] && [[ "$worker_generation_time" > "$recovery_epoch" ]]; then
+                  recovery_epoch="$worker_generation_time"
+                  echo "RESET: ignoring Worker attempts older than current Worker generation ($worker_generation_time)." >> "$GITHUB_STEP_SUMMARY"
+                fi
+
+                post_validation_workers="$(printf '%s' "$runs_json" | jq --arg epoch "$recovery_epoch" '[.workflow_runs[] | select(.name == "Agentic RC Worker" and .created_at > $epoch)] | sort_by(.created_at) | reverse')"
                 post_count="$(printf '%s' "$post_validation_workers" | jq 'length')"
                 latest_post_conclusion="$(printf '%s' "$post_validation_workers" | jq -r '.[0].conclusion // "none"')"
 
                 if [ "$post_count" -eq 0 ]; then
                   echo "dispatch_worker=true" >> "$GITHUB_OUTPUT"
-                  echo "DISPATCHED: head $head_sha is validated and has no later Worker; continuing RC." >> "$GITHUB_STEP_SUMMARY"
+                  echo "DISPATCHED: head $head_sha is validated and has no later Worker in the current Worker generation; continuing RC." >> "$GITHUB_STEP_SUMMARY"
                   exit 0
                 fi
 
