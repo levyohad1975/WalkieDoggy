@@ -118,7 +118,13 @@ export function RequestsInboxModal({
                     {canApprove ? (
                       <View style={styles.rowActions}>
                         <Button label="אשר" onPress={() => onApproveSwap(r.id)} style={styles.flex} />
-                        <Button label="דחה" variant="secondary" onPress={() => onRejectSwap(r.id)} style={styles.flex} />
+                        <Button
+                          label="דחה"
+                          variant="secondary"
+                          onPress={() => onRejectSwap(r.id)}
+                          style={styles.flex}
+                          accessibilityHint="הבקשה תידחה מיידית, ללא אפשרות ביטול"
+                        />
                       </View>
                     ) : null}
                   </View>
@@ -145,7 +151,13 @@ export function RequestsInboxModal({
                     {canApprove ? (
                       <View style={styles.rowActions}>
                         <Button label="אשר" onPress={() => onApproveTimeChange(r.id)} style={styles.flex} />
-                        <Button label="דחה" variant="secondary" onPress={() => onRejectTimeChange(r.id)} style={styles.flex} />
+                        <Button
+                          label="דחה"
+                          variant="secondary"
+                          onPress={() => onRejectTimeChange(r.id)}
+                          style={styles.flex}
+                          accessibilityHint="הבקשה תידחה מיידית, ללא אפשרות ביטול"
+                        />
                       </View>
                     ) : null}
                   </View>

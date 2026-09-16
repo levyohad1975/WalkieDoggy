@@ -42,16 +42,34 @@ interface ButtonProps {
    * site is unaffected (defaults to the original single-line behavior).
    */
   wrap?: boolean;
+  /**
+   * QA Guardian follow-up (accessibilityHint-on-destructive-actions):
+   * an optional screen-reader hint for buttons whose action fires
+   * immediately with no confirmation step (e.g. an irreversible reject/
+   * remove action) — announced after the accessible name, same as
+   * `accessibilityLabel` below. Omitted by every existing call site
+   * (defaults to `undefined`, i.e. no behavior change).
+   */
+  accessibilityHint?: string;
+  /**
+   * Overrides the accessible name RN would otherwise derive from the
+   * visible `label` text. Only needed when the visible label alone is
+   * ambiguous out of context; every existing call site omits this and
+   * keeps relying on the label-derived accessible name.
+   */
+  accessibilityLabel?: string;
 }
 
 /** Big, easy-to-tap button — minimum 52px tall, per the "buttons kids and adults can both tap" requirement. */
-export function Button({ label, onPress, variant = 'primary', loading, disabled, icon, style, compact, shrinkToFit, wrap }: ButtonProps) {
+export function Button({ label, onPress, variant = 'primary', loading, disabled, icon, style, compact, shrinkToFit, wrap, accessibilityHint, accessibilityLabel }: ButtonProps) {
   const isPrimary = variant === 'primary';
   const isDanger = variant === 'danger';
 
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
       onPress={onPress}
       disabled={disabled || loading}
       style={({ pressed }) => [
