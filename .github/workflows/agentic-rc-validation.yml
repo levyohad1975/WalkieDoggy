@@ -107,23 +107,52 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
+          $nodeVersion = 'v22.22.0'
           $nodeRoot = Join-Path $env:RUNNER_TEMP 'walkie-node-v22.22.0-win-x64'
           $nodeExe = Join-Path $nodeRoot 'node.exe'
           $npmCmd = Join-Path $nodeRoot 'npm.cmd'
+
           if (-not (Test-Path $nodeExe) -or -not (Test-Path $npmCmd)) {
-            if (Test-Path $nodeRoot) { Remove-Item -Recurse -Force $nodeRoot }
+            if (Test-Path $nodeRoot) {
+              try { Remove-Item -Recurse -Force $nodeRoot -ErrorAction Stop } catch { Write-Warning "Could not remove incomplete Node cache: $($_.Exception.Message)" }
+            }
             $zip = Join-Path $env:RUNNER_TEMP 'walkie-node-v22.22.0-win-x64.zip'
-            Invoke-WebRequest -Uri 'https://nodejs.org/dist/v22.22.0/node-v22.22.0-win-x64.zip' -OutFile $zip
             $extract = Join-Path $env:RUNNER_TEMP 'walkie-node-extract'
-            if (Test-Path $extract) { Remove-Item -Recurse -Force $extract }
-            Expand-Archive -Path $zip -DestinationPath $extract
-            Move-Item (Join-Path $extract 'node-v22.22.0-win-x64') $nodeRoot
-            Remove-Item -Recurse -Force $extract
-            Remove-Item -Force $zip
+            $url = "https://nodejs.org/dist/$nodeVersion/node-$nodeVersion-win-x64.zip"
+            $downloaded = $false
+            for ($attempt = 1; $attempt -le 4; $attempt++) {
+              try {
+                if (Test-Path $zip) { Remove-Item -Force $zip -ErrorAction SilentlyContinue }
+                Write-Host "Downloading Node $nodeVersion (attempt $attempt/4)..."
+                Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing -TimeoutSec 120
+                if (-not (Test-Path $zip) -or (Get-Item $zip).Length -lt 1000000) { throw 'Downloaded Node archive is missing or unexpectedly small.' }
+                $downloaded = $true
+                break
+              } catch {
+                Write-Warning "Node download attempt $attempt failed: $($_.Exception.Message)"
+                if ($attempt -lt 4) { Start-Sleep -Seconds (5 * $attempt) }
+              }
+            }
+            if (-not $downloaded) { throw 'Unable to download Node after 4 bounded attempts.' }
+            if (Test-Path $extract) { Remove-Item -Recurse -Force $extract -ErrorAction SilentlyContinue }
+            try {
+              Expand-Archive -Path $zip -DestinationPath $extract -Force
+              $source = Join-Path $extract 'node-v22.22.0-win-x64'
+              if (-not (Test-Path (Join-Path $source 'node.exe')) -or -not (Test-Path (Join-Path $source 'npm.cmd'))) { throw 'Extracted Node archive is incomplete.' }
+              if (Test-Path $nodeRoot) { Remove-Item -Recurse -Force $nodeRoot -ErrorAction SilentlyContinue }
+              Move-Item $source $nodeRoot
+            } finally {
+              if (Test-Path $extract) { Remove-Item -Recurse -Force $extract -ErrorAction SilentlyContinue }
+              if (Test-Path $zip) { Remove-Item -Force $zip -ErrorAction SilentlyContinue }
+            }
           }
           if (-not (Test-Path $nodeExe) -or -not (Test-Path $npmCmd)) { throw 'Node bootstrap did not produce node.exe and npm.cmd.' }
+          $nodeVersionActual = & $nodeExe --version
+          if ($LASTEXITCODE -ne 0) { throw 'Bootstrapped node.exe is not executable.' }
+          $npmVersionActual = & $npmCmd --version
+          if ($LASTEXITCODE -ne 0) { throw 'Bootstrapped npm.cmd is not executable.' }
           "node_root=$nodeRoot" | Add-Content $env:GITHUB_OUTPUT
-          "Node bootstrap ready: $(& $nodeExe --version); npm $(& $npmCmd --version)." | Add-Content $env:GITHUB_STEP_SUMMARY
+          "Node bootstrap ready from persistent runner cache: $nodeVersionActual; npm $npmVersionActual." | Add-Content $env:GITHUB_STEP_SUMMARY
 
       - name: Run TypeScript and Jest on exact RC head
         id: gates
