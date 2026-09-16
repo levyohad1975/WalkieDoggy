@@ -6,6 +6,9 @@ on:
       - Agentic RC Worker
     types:
       - completed
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -19,9 +22,13 @@ jobs:
   dispatch-validation:
     name: Dispatch validation for fresh Agentic checkpoint
     if: >-
-      github.event.workflow_run.head_repository.full_name == github.repository &&
-      github.event.workflow_run.event == 'workflow_dispatch' &&
-      github.event.workflow_run.conclusion == 'success'
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        github.event.workflow_run.event == 'workflow_dispatch' &&
+        github.event.workflow_run.conclusion == 'success'
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -47,11 +54,9 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Detect fresh worker-published head
+      - name: Detect unvalidated worker-published head
         id: gate
         shell: bash
-        env:
-          WORKER_STARTED_AT: ${{ github.event.workflow_run.run_started_at }}
         run: |
           set -euo pipefail
           echo "dispatch=false" >> "$GITHUB_OUTPUT"
@@ -62,7 +67,7 @@ jobs:
           head_sha="$(git rev-parse HEAD)"
 
           if [ "$author" != "walkie-agentic-worker[bot]" ]; then
-            echo "Worker completed without leaving an Agentic-authored RC head; no validation dispatch." >> "$GITHUB_STEP_SUMMARY"
+            echo "RC head is not Agentic-authored; no validation dispatch." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
@@ -74,20 +79,15 @@ jobs:
               ;;
           esac
 
-          if [[ "$committed_at" < "$WORKER_STARTED_AT" ]]; then
-            echo "Agentic RC head predates this Worker run; refusing to redispatch validation for stale evidence." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
           existing="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" --jq "[.workflow_runs[] | select(.name == \"Agentic RC Validation\" and .created_at >= \"$committed_at\")] | length")"
           if [ "$existing" -gt 0 ]; then
-            echo "Validation already dispatched for this Agentic head; not duplicating." >> "$GITHUB_STEP_SUMMARY"
+            echo "Validation already dispatched for the current Agentic head; not duplicating." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
           echo "dispatch=true" >> "$GITHUB_OUTPUT"
-          echo "Fresh Agentic checkpoint detected at $head_sha; dispatching validation directly." >> "$GITHUB_STEP_SUMMARY"
+          echo "Unvalidated Agentic checkpoint detected at $head_sha; dispatching validation independently of workflow_run chain depth." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Dispatch RC Validation
         if: steps.gate.outputs.dispatch == 'true'
