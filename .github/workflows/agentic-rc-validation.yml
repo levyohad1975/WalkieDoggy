@@ -70,47 +70,26 @@ jobs:
             'X-GitHub-Api-Version' = '2022-11-28'
           }
           $encodedBranch = [System.Uri]::EscapeDataString($env:TARGET_BRANCH)
-          $branchUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/branches/$encodedBranch"
-          $branch = Invoke-RestMethod -Uri $branchUrl -Headers $headers -Method Get
+          $branch = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/branches/$encodedBranch" -Headers $headers -Method Get
           $headSha = [string]$branch.commit.sha
           if ($headSha -notmatch '^[0-9a-f]{40}$') { throw 'Could not resolve exact RC head.' }
           "head_sha=$headSha" | Add-Content $env:GITHUB_OUTPUT
-
-          $commitUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/commits/$headSha"
-          $commit = Invoke-RestMethod -Uri $commitUrl -Headers $headers -Method Get
+          $commit = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/commits/$headSha" -Headers $headers -Method Get
           $author = [string]$commit.commit.author.name
           $subject = ([string]$commit.commit.message -split "`n")[0].Trim()
           $committedAt = [DateTimeOffset]::Parse([string]$commit.commit.committer.date)
-
-          if ($author -ne 'walkie-agentic-worker[bot]') {
-            'Latest RC commit was not published by the Agentic worker; no continuation is required.' | Add-Content $env:GITHUB_STEP_SUMMARY
-            exit 0
-          }
-          if ($subject -notin @('chore(agentic): continue RC execution', 'chore(agentic): checkpoint RC execution')) {
-            'Latest RC commit is not an Agentic continuation/checkpoint commit.' | Add-Content $env:GITHUB_STEP_SUMMARY
-            exit 0
-          }
-
+          if ($author -ne 'walkie-agentic-worker[bot]') { 'Latest RC commit was not published by the Agentic worker; no continuation is required.' | Add-Content $env:GITHUB_STEP_SUMMARY; exit 0 }
+          if ($subject -notin @('chore(agentic): continue RC execution', 'chore(agentic): checkpoint RC execution')) { 'Latest RC commit is not an Agentic continuation/checkpoint commit.' | Add-Content $env:GITHUB_STEP_SUMMARY; exit 0 }
           if (-not [string]::IsNullOrWhiteSpace($env:EXPECTED_SHA)) {
             if ($headSha -ne $env:EXPECTED_SHA) { throw "RC head $headSha does not match expected dispatcher SHA $env:EXPECTED_SHA." }
             'fresh=true' | Add-Content $env:GITHUB_OUTPUT
             "Fresh Agentic RC commit confirmed by explicit dispatch for $env:TARGET_BRANCH at $headSha." | Add-Content $env:GITHUB_STEP_SUMMARY
             exit 0
           }
-
-          if ($env:EVENT_NAME -eq 'workflow_dispatch') {
-            'fresh=true' | Add-Content $env:GITHUB_OUTPUT
-            "Fresh Agentic RC commit accepted from guarded manual/watchdog dispatch at $headSha." | Add-Content $env:GITHUB_STEP_SUMMARY
-            exit 0
-          }
-
+          if ($env:EVENT_NAME -eq 'workflow_dispatch') { 'fresh=true' | Add-Content $env:GITHUB_OUTPUT; "Fresh Agentic RC commit accepted from guarded manual/watchdog dispatch at $headSha." | Add-Content $env:GITHUB_STEP_SUMMARY; exit 0 }
           $startedAtRaw = if (-not [string]::IsNullOrWhiteSpace($env:RUN_STARTED_AT)) { $env:RUN_STARTED_AT } else { $env:RUN_CREATED_AT }
           if ([string]::IsNullOrWhiteSpace($startedAtRaw)) { throw 'Upstream worker start time is unavailable; refusing to infer freshness.' }
-          $startedAt = [DateTimeOffset]::Parse($startedAtRaw)
-          if ($committedAt -lt $startedAt) {
-            'The RC head predates this worker run; no new progress was published.' | Add-Content $env:GITHUB_STEP_SUMMARY
-            exit 0
-          }
+          if ($committedAt -lt [DateTimeOffset]::Parse($startedAtRaw)) { 'The RC head predates this worker run; no new progress was published.' | Add-Content $env:GITHUB_STEP_SUMMARY; exit 0 }
           'fresh=true' | Add-Content $env:GITHUB_OUTPUT
           "Fresh Agentic RC commit detected on $env:TARGET_BRANCH." | Add-Content $env:GITHUB_STEP_SUMMARY
 
@@ -123,52 +102,68 @@ jobs:
     outputs:
       passed: ${{ steps.gates.outputs.passed }}
     steps:
+      - name: Bootstrap Node 22 for isolated validation
+        id: node
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $nodeRoot = Join-Path $env:RUNNER_TEMP 'walkie-node-v22.22.0-win-x64'
+          $nodeExe = Join-Path $nodeRoot 'node.exe'
+          $npmCmd = Join-Path $nodeRoot 'npm.cmd'
+          if (-not (Test-Path $nodeExe) -or -not (Test-Path $npmCmd)) {
+            if (Test-Path $nodeRoot) { Remove-Item -Recurse -Force $nodeRoot }
+            $zip = Join-Path $env:RUNNER_TEMP 'walkie-node-v22.22.0-win-x64.zip'
+            Invoke-WebRequest -Uri 'https://nodejs.org/dist/v22.22.0/node-v22.22.0-win-x64.zip' -OutFile $zip
+            $extract = Join-Path $env:RUNNER_TEMP 'walkie-node-extract'
+            if (Test-Path $extract) { Remove-Item -Recurse -Force $extract }
+            Expand-Archive -Path $zip -DestinationPath $extract
+            Move-Item (Join-Path $extract 'node-v22.22.0-win-x64') $nodeRoot
+            Remove-Item -Recurse -Force $extract
+            Remove-Item -Force $zip
+          }
+          if (-not (Test-Path $nodeExe) -or -not (Test-Path $npmCmd)) { throw 'Node bootstrap did not produce node.exe and npm.cmd.' }
+          "node_root=$nodeRoot" | Add-Content $env:GITHUB_OUTPUT
+          "Node bootstrap ready: $(& $nodeExe --version); npm $(& $npmCmd --version)." | Add-Content $env:GITHUB_STEP_SUMMARY
+
       - name: Run TypeScript and Jest on exact RC head
         id: gates
         shell: powershell
         env:
           HEAD_SHA: ${{ needs.guard.outputs.head_sha }}
           GH_TOKEN: ${{ github.token }}
+          NODE_ROOT: ${{ steps.node.outputs.node_root }}
         run: |
           $ErrorActionPreference = 'Stop'
           'passed=false' | Add-Content $env:GITHUB_OUTPUT
+          $npm = Join-Path $env:NODE_ROOT 'npm.cmd'
+          if (-not (Test-Path $npm)) { throw 'Bootstrapped npm.cmd is unavailable.' }
+          $env:PATH = "$env:NODE_ROOT;$env:PATH"
           $work = Join-Path $env:RUNNER_TEMP ("walkie-validation-" + $env:GITHUB_RUN_ID)
           if (Test-Path $work) { Remove-Item -Recurse -Force $work }
           New-Item -ItemType Directory -Path $work | Out-Null
           try {
-            $headers = @{
-              Authorization = "Bearer $env:GH_TOKEN"
-              Accept = 'application/vnd.github+json'
-              'X-GitHub-Api-Version' = '2022-11-28'
-            }
+            $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
             $zip = Join-Path $work 'rc.zip'
-            $archiveUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/zipball/$env:HEAD_SHA"
-            Invoke-WebRequest -Uri $archiveUrl -Headers $headers -OutFile $zip
+            Invoke-WebRequest -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/zipball/$env:HEAD_SHA" -Headers $headers -OutFile $zip
             Expand-Archive -Path $zip -DestinationPath $work
             $repo = Get-ChildItem -Path $work -Directory | Select-Object -First 1
             if (-not $repo) { throw 'Could not extract RC source.' }
             Push-Location $repo.FullName
             try {
-              npm.cmd ci
+              & $npm ci
               if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
-              npm.cmd run typecheck
+              & $npm run typecheck
               if ($LASTEXITCODE -ne 0) { throw 'TypeScript gate failed.' }
-              npm.cmd test -- --runInBand
+              & $npm test -- --runInBand
               if ($LASTEXITCODE -ne 0) { throw 'Jest gate failed.' }
-            } finally {
-              Pop-Location
-            }
+            } finally { Pop-Location }
             'passed=true' | Add-Content $env:GITHUB_OUTPUT
             "TypeScript and Jest passed for exact RC head $env:HEAD_SHA." | Add-Content $env:GITHUB_STEP_SUMMARY
-          } finally {
-            if (Test-Path $work) { Remove-Item -Recurse -Force $work }
-          }
+          } finally { if (Test-Path $work) { Remove-Item -Recurse -Force $work } }
 
   continue:
     name: Dispatch next bounded Agentic unit
-    needs:
-      - guard
-      - local-gates
+    needs: [guard, local-gates]
     if: >-
       always() &&
       needs.guard.outputs.fresh == 'true' &&
@@ -187,11 +182,7 @@ jobs:
           TARGET_BRANCH: ${{ needs.guard.outputs.target_branch }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $headers = @{
-            Authorization = "Bearer $env:GH_TOKEN"
-            Accept = 'application/vnd.github+json'
-            'X-GitHub-Api-Version' = '2022-11-28'
-          }
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
           $dispatchUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/workflows/agentic-rc-worker.yml/dispatches"
           $body = @{ ref = 'main'; inputs = @{ target_branch = $env:TARGET_BRANCH } } | ConvertTo-Json -Depth 4
           Invoke-RestMethod -Uri $dispatchUrl -Headers $headers -Method Post -ContentType 'application/json' -Body $body
