@@ -67,6 +67,20 @@ export interface SystemAdminFamilyDetail {
   recentAudit: SystemAdminAuditEntry[];
 }
 
+export interface SystemAdminEmailDeliveryLogEntry {
+  id: string;
+  familyId: string | null;
+  authUserId: string | null;
+  messageType: 'family_welcome' | 'system_owner_new_family';
+  recipientEmail: string;
+  provider: string;
+  providerMessageId: string | null;
+  status: string;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /**
  * Safe to call for ANY authenticated session — resolves the caller's own
  * System Admin status only (never anyone else's), used to decide whether to
@@ -120,4 +134,44 @@ export async function getSystemAdminFamilyDetail(familyId: string): Promise<Syst
     activeRequests: detail.activeRequests ?? [],
     recentAudit: detail.recentAudit ?? [],
   };
+}
+
+/**
+ * Migration 0034's read-only counterpart to record_email_delivery_attempt()/
+ * update_email_delivery_status() (both service-role-only, called from the
+ * Edge Function and the Resend webhook function respectively) — this is the
+ * "admin-gated read RPC" 0034's own table comment refers to as the only
+ * client-reachable way to see email_delivery_log. p_limit is clamped
+ * server-side to [1, 200]; omit to get the server's own default of 50.
+ */
+export async function getSystemAdminEmailDeliveryLog(limit?: number): Promise<SystemAdminEmailDeliveryLogEntry[]> {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc('system_admin_list_email_delivery_log', { p_limit: limit ?? null });
+  if (error) throw error;
+  const rows = (data ?? []) as Array<{
+    id: string;
+    family_id: string | null;
+    auth_user_id: string | null;
+    message_type: 'family_welcome' | 'system_owner_new_family';
+    recipient_email: string;
+    provider: string;
+    provider_message_id: string | null;
+    status: string;
+    error: string | null;
+    created_at: string;
+    updated_at: string;
+  }>;
+  return rows.map((r) => ({
+    id: r.id,
+    familyId: r.family_id,
+    authUserId: r.auth_user_id,
+    messageType: r.message_type,
+    recipientEmail: r.recipient_email,
+    provider: r.provider,
+    providerMessageId: r.provider_message_id,
+    status: r.status,
+    error: r.error,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }));
 }

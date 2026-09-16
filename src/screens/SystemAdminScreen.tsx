@@ -6,8 +6,10 @@ import { Button } from '../components/Button';
 import { colors } from '../theme/colors';
 import { friendlyErrorMessage } from '../lib/errorMessages';
 import {
+  getSystemAdminEmailDeliveryLog,
   getSystemAdminFamilyDetail,
   listSystemAdminFamilies,
+  type SystemAdminEmailDeliveryLogEntry,
   type SystemAdminFamilyDetail,
   type SystemAdminFamilyListItem,
 } from '../lib/systemAdmin';
@@ -23,6 +25,28 @@ function approvalStatusLabel(status: string): string {
   if (status === 'pending') return 'ממתינה לאישור';
   if (status === 'rejected') return 'נדחתה';
   return status;
+}
+
+/** Hebrew label for email_delivery_log.message_type (0034). */
+function emailMessageTypeLabel(type: string): string {
+  if (type === 'family_welcome') return 'ברוכים הבאים למשפחה';
+  if (type === 'system_owner_new_family') return 'התראת מנהל מערכת';
+  return type;
+}
+
+/** Hebrew label for email_delivery_log.status (0034) — falls back to the raw value for any future provider status. */
+function emailStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    queued: 'בתור',
+    sent: 'נשלח',
+    failed: 'נכשל',
+    delivered: 'נמסר',
+    bounced: 'הוחזר',
+    complained: 'תלונת דואר זבל',
+    opened: 'נפתח',
+    clicked: 'נלחץ',
+  };
+  return labels[status] ?? status;
 }
 
 /**
@@ -54,6 +78,11 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
+  const [emailLogVisible, setEmailLogVisible] = useState(false);
+  const [emailLog, setEmailLog] = useState<SystemAdminEmailDeliveryLogEntry[]>([]);
+  const [emailLogLoading, setEmailLogLoading] = useState(false);
+  const [emailLogError, setEmailLogError] = useState<string | null>(null);
+
   const loadFamilies = useCallback(async (query?: string) => {
     setListLoading(true);
     setListError(null);
@@ -71,9 +100,24 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
     if (visible) {
       setSelectedFamilyId(null);
       setDetail(null);
+      setEmailLogVisible(false);
       void loadFamilies();
     }
   }, [visible, loadFamilies]);
+
+  const openEmailLog = async () => {
+    setEmailLogVisible(true);
+    setEmailLogLoading(true);
+    setEmailLogError(null);
+    try {
+      const result = await getSystemAdminEmailDeliveryLog();
+      setEmailLog(result);
+    } catch (e) {
+      setEmailLogError(friendlyErrorMessage(e));
+    } finally {
+      setEmailLogLoading(false);
+    }
+  };
 
   const openFamily = async (familyId: string) => {
     setSelectedFamilyId(familyId);
@@ -101,12 +145,51 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
           <RtlText style={styles.title} accessibilityRole="header">🛡️ ניהול מערכת</RtlText>
-          <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="סגירת ניהול מערכת" hitSlop={10}>
-            <RtlText style={styles.closeLink}>סגירה</RtlText>
-          </Pressable>
+          <View style={styles.headerActions}>
+            {!selectedFamilyId && !emailLogVisible ? (
+              <Pressable onPress={openEmailLog} accessibilityRole="button" accessibilityLabel="פתיחת יומן משלוח אימיילים" hitSlop={10}>
+                <RtlText style={styles.headerLink}>יומן אימיילים</RtlText>
+              </Pressable>
+            ) : null}
+            <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="סגירת ניהול מערכת" hitSlop={10}>
+              <RtlText style={styles.closeLink}>סגירה</RtlText>
+            </Pressable>
+          </View>
         </View>
 
-        {selectedFamilyId ? (
+        {emailLogVisible ? (
+          <ScrollView contentContainerStyle={styles.content}>
+            <Pressable
+              onPress={() => setEmailLogVisible(false)}
+              accessibilityRole="button"
+              accessibilityLabel="חזרה לרשימת המשפחות"
+            >
+              <RtlText style={styles.backLink}>‹ חזרה לרשימה</RtlText>
+            </Pressable>
+
+            {emailLogLoading ? <ActivityIndicator color={colors.primary} style={styles.spinner} accessibilityLabel="טוען…" /> : null}
+            {emailLogError ? (
+              <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                {emailLogError}
+              </RtlText>
+            ) : null}
+
+            <RtlText style={styles.sectionTitle}>יומן משלוח אימיילים ({emailLog.length})</RtlText>
+            <View style={styles.card}>
+              {!emailLogLoading && emailLog.length === 0 ? (
+                <RtlText style={styles.cardLine}>אין רשומות</RtlText>
+              ) : (
+                emailLog.map((e) => (
+                  <RtlText key={e.id} style={styles.cardLine}>
+                    {new Date(e.createdAt).toLocaleString('he-IL')} · {emailMessageTypeLabel(e.messageType)} ·{' '}
+                    {e.recipientEmail} · {emailStatusLabel(e.status)}
+                    {e.error ? ` · שגיאה: ${e.error}` : ''}
+                  </RtlText>
+                ))
+              )}
+            </View>
+          </ScrollView>
+        ) : selectedFamilyId ? (
           <ScrollView contentContainerStyle={styles.content}>
             <Pressable onPress={backToList} accessibilityRole="button" accessibilityLabel="חזרה לרשימת המשפחות">
               <RtlText style={styles.backLink}>‹ חזרה לרשימה</RtlText>
@@ -267,6 +350,8 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   title: { fontSize: 20, fontWeight: '800', color: colors.textPrimary },
+  headerActions: { flexDirection: 'row-reverse', alignItems: 'center', gap: 14 },
+  headerLink: { color: colors.primaryDark, fontWeight: '700', fontSize: 14 },
   closeLink: { color: colors.primaryDark, fontWeight: '700', fontSize: 15 },
   backLink: { color: colors.primaryDark, fontWeight: '700', fontSize: 14, marginBottom: 12 },
   content: { padding: 20, gap: 10, paddingBottom: 48 },

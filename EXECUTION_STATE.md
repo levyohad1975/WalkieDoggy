@@ -50,121 +50,129 @@ else.
 ## Current Task
 
 Reconciliation at cycle start: `git log --oneline -20`/`git status` showed
-HEAD at `26329b6`, clean working tree, "up to date with
+HEAD at `453dac5`, clean working tree, "up to date with
 origin/feat/verified-auth-onboarding-batch-2" — **one** commit past the
-`ed3cea0` the prior cycle's own file narrative described as HEAD.
-`git show --stat 26329b6` confirmed it contains exactly the prior cycle's
-own `Avatar.tsx`/`DogPhoto.tsx` decorative-image accessibility fix +
-`src/components/__tests__/avatarAndDogPhotoDecorativeAccessibility.test.ts`
-+ that cycle's own `EXECUTION_STATE.md` update — i.e. the prior cycle's own
-"genuinely did NOT land, directly confirmed" self-report was, once again
-(27th time running now), wrong; the commit had already landed and pushed.
+`26329b6` the prior cycle's own file narrative described as HEAD.
+`git show --stat 453dac5` confirmed it contains exactly the prior cycle's
+own migration 0035 `approval_status` fix (`EXECUTION_STATE.md`,
+`src/lib/systemAdmin.ts`, `src/lib/__tests__/systemAdmin.test.ts`,
+`src/screens/SystemAdminScreen.tsx`,
+`src/screens/__tests__/systemAdminScreenApprovalStatus.test.ts`,
+`supabase/migrations/0035_system_admin_family_approval_status.sql`) — i.e.
+the prior cycle's own "commit attempt outcome recorded under
+Blocker/Last Evidence" hedge resolved the same way as the prior 27
+documented instances: the commit had already landed and pushed.
 Reconciled before starting new work, per protocol.
 
 `node_modules` was absent entirely at cycle start (confirmed via `ls
 node_modules` failing). `npm ci` fixed it (907 packages).
 
-Re-attempted previously-blocked independent sub-tasks fresh this cycle,
-reconfirmed still gated: `gh auth status` blocked outright ("requires
-approval"); `which supabase` confirmed the CLI is still not installed
-(exit 1); a `TZ=Pacific/Kiritimati`-prefixed command and `git rm` on a
-scratch file were both re-attempted and both still blocked ("requires
-approval").
+Continued the System Admin V1 functional-correctness sweep this cycle's
+own predecessor started (deliberately outside the now-exhausted
+accessibility theme), per its own "Next Safe Task" note: swept the OTHER
+System Admin surfaces for the same pre-0032/0033/0034 staleness shape as
+the `approval_status` bug. Read migration 0034
+(`email_delivery_log`/`record_email_delivery_attempt()`/
+`update_email_delivery_status()`/`system_admin_list_email_delivery_log()`)
+end to end — its own table comment names
+`system_admin_list_email_delivery_log()` as "the admin-gated read RPC...
+the only supported surface[]" (besides service-role) for inspecting
+welcome-email/system-owner-email delivery status, directly relevant to
+Queue item 3 ("Validate release-critical: welcome email, system-owner
+email, Resend webhook, `email_delivery_log`") and item 4 (Settings/Roles/
+System Admin QA). A repo-wide grep
+(`grep -rn "system_admin_list_email_delivery_log\|email_delivery_log" src/`)
+confirmed **zero** client call sites anywhere in this repo — the RPC has
+existed, applied and permission-gated, since 0034 landed, but nothing in
+`lib/systemAdmin.ts` or `SystemAdminScreen.tsx` ever called it, so a
+system admin had no way to see whether verified-onboarding emails were
+actually being delivered short of a raw SQL query.
 
-Moved to a fresh independent safe task, this time deliberately outside the
-accessibility-sweep theme that the prior ~20 cycles had been mining (that
-theme is now exhausted per the Next Safe Task notes below): a
-functional/correctness read of the System Admin V1 read-only surface
-(`lib/systemAdmin.ts`, `SystemAdminScreen.tsx`) against the RPCs backing it
-(migrations 0029/0030), specifically for Queue item 2 ("Validate
-AUTO_APPROVE_NEW_FAMILIES=true/false plus System Admin approve/reject") and
-item 4 (Settings/Roles/System Admin QA).
+Also checked `system_admin_get_family_detail()`'s `walks`/`activeRequests`/
+`recentAudit` sub-objects and the `members` sub-object (`users` table, not
+`family_auth_members`) against every later migration — found no staleness
+of the `approval_status`-bug shape there: `members` reading from `users`
+(not `family_auth_members`) is not a 0032-era regression, it matches the
+pre-existing, still-correct convention that `users` rows are claimed
+per-family profiles (created via `claim_family_profile`, never via
+`create_family()`/`create_verified_family()`) while `family_auth_members`
+is separate device-level auth membership — confirmed by reading 0002's own
+`create_family()`, which likewise never inserted a `users` row.
+`walks`/`activeRequests`/`recentAudit` all read tables untouched by
+0032-0034's schema changes. No fix needed there.
 
-**Found and fixed a real, first-time-discovered bug**: migration 0029
-(System Admin V1 read-only RPCs) was written BEFORE migration 0032 added
-the real `families.approval_status` column (`'pending' | 'active' |
-'rejected'`, driven by `AUTO_APPROVE_NEW_FAMILIES`). 0029's
-`system_admin_list_families()` hardcoded its returned `status` column to
-the literal `'active'` for every row, with a comment explaining that no
-lifecycle state existed yet at the time — that comment is no longer true.
-`system_admin_get_family_detail()`'s `family` object never had an
-approval-status field at all. Migration 0033 (the cutover) already
-correctly gates every OTHER family-scoped RPC
-(`current_family_id`/`current_family_role`/`is_family_admin`/
-`find_family_by_invite_code`/`join_family`) on `approval_status = 'active'`,
-but 0029's two System Admin RPCs were never updated to match — so the one
-screen ("🛡️ ניהול מערכת") a system admin/owner has to review families,
-including pending or rejected ones, falsely reported EVERY family as
-`'active'`, with the client (`lib/systemAdmin.ts`) already correctly
-fetching and forwarding that (wrong) value, and the screen not even
-rendering it. Confirmed via direct inspection of 0029/0032/0033 and a
-repo-wide grep confirming `system_admin_list_families`/
-`system_admin_get_family_detail` are defined only in 0029 (touched by
-0030 for an unrelated is_system_admin() fix) and never redefined again
-before this cycle. Also confirmed the approve/reject RPC
-(`system_admin_set_family_approval`, also in 0032) has zero client call
-sites anywhere in this repo — expected, since that mutation surface
-belongs to the stacked branch `feat/system-admin-approval-controls` (PR
-#11), not this branch; this cycle's fix is scoped to the read-only
-status-reporting bug only, which IS in this branch's own migration
-lineage (0029→0032→0033, all authored for this Issue #3 effort).
+**Wired up the unused RPC** (a completion of an already-intended,
+already-migrated read surface, not a new backlog feature — 0034's own
+comment already designated it "the only supported surface"):
+`src/lib/systemAdmin.ts` gained `SystemAdminEmailDeliveryLogEntry` (camelCase
+mapping of every `email_delivery_log` column) and
+`getSystemAdminEmailDeliveryLog(limit?)`, calling
+`system_admin_list_email_delivery_log` with `p_limit` (explicit `null` when
+omitted, so the server's own `coalesce(p_limit, 50)` default applies).
+`src/screens/SystemAdminScreen.tsx` gained: an `emailMessageTypeLabel()` and
+`emailStatusLabel()` Hebrew-label helper pair (covering every
+`message_type`/`status` value 0034's check constraints allow, falling back
+to the raw value for any future one); a new `emailLogVisible` view state,
+mutually exclusive with the existing list/detail views; a header button
+("יומן אימיילים", shown only in list view) that fetches and shows the log;
+and a rendering block showing each entry's timestamp, message-type label,
+recipient email, status label, and error (when present). No mutation, no
+new RPC, no schema change — purely wiring an existing read-only,
+already-`is_system_admin()`-gated RPC into the one screen that has a
+reason to call it.
 
-**Fixed**, per AGENTS.md rule 8 (never edit an already-applied migration):
-new migration `supabase/migrations/0035_system_admin_family_approval_status
-.sql`, `create or replace function`-ing both `system_admin_list_families()`
-(now selects `f.approval_status` instead of the literal `'active'`) and
-`system_admin_get_family_detail()` (family object gains `'approvalStatus',
-f.approval_status`). No signature change, no grant change, no RLS change,
-no `is_system_admin()` change — purely the value each RPC reports.
-`src/lib/systemAdmin.ts`: added `approvalStatus: string` to the
-`SystemAdminFamilyDetail.family` type (the function already passes the
-whole object through verbatim, so no runtime remapping needed).
-`src/screens/SystemAdminScreen.tsx`: added an `approvalStatusLabel()`
-Hebrew-label helper (active/pending/rejected, falling back to the raw
-value for any future status) and rendered it in both the family list row
-(`f.status`) and the family detail card (`detail.family?.approvalStatus`).
-Still v1 read-only — no approve/reject controls added; those remain the
-stacked branch's job per the file's own header comment.
-
-Updated `src/lib/__tests__/systemAdmin.test.ts`: the existing
-`getSystemAdminFamilyDetail` mock now includes `approvalStatus: 'pending'`
-with an assertion it passes through verbatim (not dropped, not
-hardcoded), plus a new test proving `listSystemAdminFamilies` forwards a
-real `'pending'`/`'rejected'` status rather than always `'active'`. Added
-a new source-scan regression file
-`src/screens/__tests__/systemAdminScreenApprovalStatus.test.ts` (3
+Updated `src/lib/__tests__/systemAdmin.test.ts` (4 new tests: RPC call
+shape with an explicit limit, `p_limit: null` when omitted, error
+propagation, null-data-defaults-to-`[]`, plus the demo-mode-throws test
+extended to cover the new function). Added a new source-scan regression
+file `src/screens/__tests__/systemAdminScreenEmailDeliveryLog.test.ts` (4
 sub-tests, this repo's established convention for screens with no render
-harness) proving the screen actually renders the label helper in both the
-list row and detail card, not just that the client fetches the field.
+harness) proving the screen imports the client function, defines both
+label helpers, wires the header button to `openEmailLog`, and renders
+every entry's recipient/message-type-label/status-label.
+
+Fixing the new email-log error banner to match this repo's established
+`accessibilityRole="alert"` + `accessibilityLiveRegion="polite"` pattern
+(closed as its own sweep several cycles ago) tripped an existing exact-count
+regression test, `errorBannerLiveRegionAccessibility.test.ts`, which asserts
+`SystemAdminScreen.tsx` has exactly 2 such `RtlText` error banners — a
+correct count before this cycle, now stale because this cycle added a
+legitimate third one with the identical correct treatment. Updated that
+test's expected count for `SystemAdminScreen.tsx` from 2 to 3 (not a
+weakening of the regression check — the new banner already carries the
+required `accessibilityRole`/`accessibilityLiveRegion` attributes; the test
+would have failed loudly if it didn't).
 
 `npx tsc --noEmit` after the change — **PASS**, zero errors. `npm test --
---runInBand` after the change — **PASS**: **126/126** suites,
-**1463/1463** tests (1459 + 4 new: 1 in the edited `systemAdmin.test.ts` +
-3 in the new screen test file). `git status --porcelain=v1
+--runInBand` after the change — **PASS**: **127/127** suites,
+**1471/1471** tests (1463 + 8 new: 4 in `systemAdmin.test.ts` + 4 in the
+new screen test file, plus the 1-line count fix in
+`errorBannerLiveRegionAccessibility.test.ts`). `git status --porcelain=v1
 --untracked-files=all` confirmed the changeset is scoped to exactly:
 `src/lib/systemAdmin.ts`, `src/lib/__tests__/systemAdmin.test.ts`,
-`src/screens/SystemAdminScreen.tsx` (all modified), plus two new files
-(`supabase/migrations/0035_system_admin_family_approval_status.sql`,
-`src/screens/__tests__/systemAdminScreenApprovalStatus.test.ts`) and this
-`EXECUTION_STATE.md` update — no unrelated file touched, no user work at
-risk. `git diff --stat` confirmed `systemAdmin.ts` +1/-1,
-`SystemAdminScreen.tsx` +12/-0, `systemAdmin.test.ts` +21/-1 — small,
-additive, no removed behavior.
+`src/screens/SystemAdminScreen.tsx`,
+`src/components/__tests__/errorBannerLiveRegionAccessibility.test.ts` (all
+modified), plus one new file
+(`src/screens/__tests__/systemAdminScreenEmailDeliveryLog.test.ts`) and
+this `EXECUTION_STATE.md` update — no unrelated file touched, no user work
+at risk. `git diff --stat` confirmed `systemAdmin.ts` +54/-0,
+`SystemAdminScreen.tsx` +93/-6, `systemAdmin.test.ts` +75/-1,
+`errorBannerLiveRegionAccessibility.test.ts` +1/-1 — additive, one
+expected-count correction, no removed behavior.
 
 ## Current Task Status
 
-Prior cycle's `accessible={false}` fix on `Avatar.tsx`'s/`DogPhoto.tsx`'s
-wrapping `View` (`26329b6`) is confirmed landed and pushed — closed,
-`DONE`.
+Prior cycle's migration-0035 `approval_status` fix (`453dac5`) is confirmed
+landed and pushed — closed, `DONE`.
 
-This cycle's own task — the `system_admin_list_families()`/
-`system_admin_get_family_detail()` `approval_status` bug fix (new
-migration 0035) plus client type/render/test updates — is code-complete
-and validated (`tsc` PASS, `npm test` PASS 126/126 · 1463/1463). Commit
-attempt outcome recorded under Blocker/Last Evidence below; per the
-standing 27+-cycle pattern, even a "blocked" self-report this same cycle
-should not be assumed final — the next cycle's first action must still be
-its own independent `git log --oneline -5` + `git status` check.
+This cycle's own task — wiring `system_admin_list_email_delivery_log()`
+(0034) into `lib/systemAdmin.ts`/`SystemAdminScreen.tsx`, closing the
+zero-client-call-site gap for Queue items 3/4 — is code-complete and
+validated (`tsc` PASS, `npm test` PASS 127/127 · 1471/1471). Commit attempt
+outcome recorded under Blocker/Last Evidence below; per the standing
+27+-cycle pattern, even a "blocked" self-report this same cycle should not
+be assumed final — the next cycle's first action must still be its own
+independent `git log --oneline -5` + `git status` check.
 
 ## Current Branch / PR
 
@@ -178,68 +186,69 @@ its own independent `git log --oneline -5` + `git status` check.
 ## Last Evidence
 
 - This cycle start: `git log --oneline -20`/`git status` confirmed HEAD is
-  `26329b6`, clean working tree, "up to date with
+  `453dac5`, clean working tree, "up to date with
   origin/feat/verified-auth-onboarding-batch-2" — **one** commit past
-  `ed3cea0`, what this file's own prior narrative described as HEAD.
-  `git show --stat 26329b6` confirmed it contains exactly the prior
-  cycle's own `Avatar.tsx`/`DogPhoto.tsx` decorative-image fix + its new
-  test file — it had landed and pushed despite the prior cycle's own
-  "genuinely did NOT land, directly confirmed" self-report.
+  `26329b6`, what this file's own prior narrative described as HEAD.
+  `git show --stat 453dac5` confirmed it contains exactly the prior
+  cycle's own migration-0035 `approval_status` fix (`systemAdmin.ts`,
+  `SystemAdminScreen.tsx`, `systemAdmin.test.ts`, the new
+  `systemAdminScreenApprovalStatus.test.ts`, and the migration file) — it
+  had landed and pushed despite the prior cycle's own hedged "commit
+  attempt outcome recorded under Blocker" self-report.
 - `node_modules` absent entirely at cycle start (not stale — missing);
   `npm ci` succeeded, which fixed it.
-- Re-verified previously-gated sub-tasks fresh this cycle, reconfirmed
-  genuinely still blocked (not landed-but-misreported): `gh auth status`
-  blocked outright with no side effect to reconcile; `which supabase`
-  confirmed the CLI still isn't installed (exit 1); a
-  `TZ=Pacific/Kiritimati`-prefixed node command and `git rm` on a scratch
-  file were both re-attempted standalone and both still blocked.
-- **This cycle's own code changes:** read `lib/systemAdmin.ts`,
-  `SystemAdminScreen.tsx`, and migrations 0029/0030/0032/0033 end to end
-  looking for a functional/correctness gap (deliberately outside the
-  now-exhausted accessibility-sweep theme). Found that 0029's
-  `system_admin_list_families()` hardcoded its `status` column to the
-  literal `'active'` for every family (written before 0032 added the real
-  `families.approval_status`), and `system_admin_get_family_detail()`
-  never returned an approval-status field at all — while 0033 already
-  correctly gates every other family-scoped RPC on
-  `approval_status = 'active'`. Net effect: the System Admin read-only
-  screen, the one surface a system admin/owner has to review pending or
-  rejected families, falsely reported every family as `'active'`. Fixed
-  via a new migration (0035, `create or replace function` on both RPCs —
-  0029 is already applied, never edited directly per AGENTS.md rule 8),
-  plus a type addition in `lib/systemAdmin.ts` and a rendering addition
-  (`approvalStatusLabel()` helper) in `SystemAdminScreen.tsx`'s family
-  list row and detail card. Confirmed the approve/reject mutation RPC
-  (`system_admin_set_family_approval`) has zero client call sites in this
-  repo — correctly out of scope here, belongs to stacked branch
-  `feat/system-admin-approval-controls` (PR #11). Updated
-  `systemAdmin.test.ts` (existing detail mock now includes
-  `approvalStatus: 'pending'` with a pass-through assertion, plus a new
-  test proving `listSystemAdminFamilies` forwards real `'pending'`/
-  `'rejected'` values) and added a new source-scan regression file
-  `src/screens/__tests__/systemAdminScreenApprovalStatus.test.ts`
-  (3 sub-tests) proving the screen renders the label in both places, not
-  just that the client fetches the field. No unrelated files touched.
+- **This cycle's own code changes:** continued the System Admin V1 sweep
+  the prior cycle started, per its own "Next Safe Task" note. Read
+  migration 0034 (`email_delivery_log` + its RPCs) end to end. Its own
+  table comment names `system_admin_list_email_delivery_log()` as the
+  only client-reachable read surface for delivery status of the
+  verified-onboarding welcome/system-owner emails — directly relevant to
+  Queue items 3/4. A repo-wide grep
+  (`grep -rn "system_admin_list_email_delivery_log\|email_delivery_log" src/`)
+  found **zero** client call sites: the RPC has existed, applied and
+  `is_system_admin()`-gated, since 0034 landed, but nothing in
+  `lib/systemAdmin.ts`/`SystemAdminScreen.tsx` ever called it. Also
+  checked `system_admin_get_family_detail()`'s `walks`/`activeRequests`/
+  `recentAudit`/`members` sub-objects against every later migration — no
+  staleness of the same shape found (`members` reading from `users` matches
+  the pre-existing, still-correct convention, confirmed against 0002's own
+  `create_family()`).
+- **Fixed** (wired up an existing, already-migrated, already-permission-
+  gated RPC that had no client — not a new backlog feature): added
+  `SystemAdminEmailDeliveryLogEntry` + `getSystemAdminEmailDeliveryLog(limit?)`
+  to `lib/systemAdmin.ts`. Added an `emailMessageTypeLabel()`/
+  `emailStatusLabel()` Hebrew-label helper pair, a new `emailLogVisible`
+  view state, a header button, and a rendering block to
+  `SystemAdminScreen.tsx`. Updated `systemAdmin.test.ts` (4 new tests) and
+  added `src/screens/__tests__/systemAdminScreenEmailDeliveryLog.test.ts`
+  (4 sub-tests, source-scan convention). The new error banner's
+  `accessibilityRole="alert"`/`accessibilityLiveRegion="polite"` treatment
+  (matching this repo's established pattern) tripped an existing exact-count
+  regression test (`errorBannerLiveRegionAccessibility.test.ts`); updated its
+  expected count for `SystemAdminScreen.tsx` from 2 to 3 (the new banner
+  already carries the required attributes — the test would have failed
+  loudly otherwise). No unrelated files touched.
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `npm test -- --runInBand` after this cycle's own change — **PASS**:
-  **126/126** suites, **1463/1463** tests (1459 + 4 new).
+  **127/127** suites, **1471/1471** tests (1463 + 8 new).
 - `git status --porcelain=v1 --untracked-files=all` confirmed the
   changeset is scoped to exactly: `src/lib/systemAdmin.ts`,
   `src/lib/__tests__/systemAdmin.test.ts`,
-  `src/screens/SystemAdminScreen.tsx` (modified) +
-  `supabase/migrations/0035_system_admin_family_approval_status.sql` +
-  `src/screens/__tests__/systemAdminScreenApprovalStatus.test.ts` (new) +
-  this `EXECUTION_STATE.md` update — no unrelated file touched, no user
-  work at risk. `git diff --stat` confirmed `systemAdmin.ts` +1/-1,
-  `SystemAdminScreen.tsx` +12/-0, `systemAdmin.test.ts` +21/-1.
+  `src/screens/SystemAdminScreen.tsx`,
+  `src/components/__tests__/errorBannerLiveRegionAccessibility.test.ts`
+  (modified) + `src/screens/__tests__/systemAdminScreenEmailDeliveryLog.test.ts`
+  (new) + this `EXECUTION_STATE.md` update — no unrelated file touched, no
+  user work at risk. `git diff --stat` confirmed `systemAdmin.ts` +54/-0,
+  `SystemAdminScreen.tsx` +93/-6, `systemAdmin.test.ts` +75/-1,
+  `errorBannerLiveRegionAccessibility.test.ts` +1/-1.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
   checked directly via `git log`/`git status` after the attempt.
 
 ## Last Evidence Timestamp
 
-2026-09-16T07:59:28Z (prior landed commit `26329b6`); this cycle's own
-work validated at HEAD `26329b6` + working tree as of this cycle's own
+2026-09-16T08:14:56Z (prior landed commit `453dac5`); this cycle's own
+work validated at HEAD `453dac5` + working tree as of this cycle's own
 run (same UTC day, 2026-09-16), commit attempt outcome per Blocker below.
 
 ## Blocker
@@ -248,21 +257,22 @@ run (same UTC day, 2026-09-16), commit attempt outcome per Blocker below.
 self-reported.** Per the standing 27-cycle pattern documented above and in
 the protocol note at the top of this file, any "requires approval" message
 observed during this cycle's own commit attempt must NOT be assumed final
-by itself — every prior such self-report across 27 consecutive cycles was
+by itself — every prior such self-report across 28 consecutive cycles was
 later found, by the *next* cycle's own independent `git log`
 reconciliation, to have been wrong (the commit had actually landed and
 pushed via some mechanism outside that turn's own visibility). The
-working-tree change itself (the migration 0035 fix + `systemAdmin.ts`/
-`SystemAdminScreen.tsx`/`systemAdmin.test.ts` updates + the new screen
-test file + this `EXECUTION_STATE.md` update) is real, validated
-(`tsc`/`npm test` both PASS, 126/126 suites, 1463/1463 tests) — per "never
-discard uncommitted work," it is NOT reverted regardless of the commit
-attempt's own outcome. The next cycle's first action must still be its own
-`git log --oneline -5` + `git status` to determine the actual outcome
-independently before assuming either way.
+working-tree change itself (the `email_delivery_log` client-wiring fix +
+`systemAdmin.ts`/`SystemAdminScreen.tsx`/`systemAdmin.test.ts` updates +
+the new screen test file + the error-banner-count test fix + this
+`EXECUTION_STATE.md` update) is real, validated (`tsc`/`npm test` both
+PASS, 127/127 suites, 1471/1471 tests) — per "never discard uncommitted
+work," it is NOT reverted regardless of the commit attempt's own outcome.
+The next cycle's first action must still be its own `git log --oneline -5`
++ `git status` to determine the actual outcome independently before
+assuming either way.
 
 **Standing question, still open:** is "requires approval" ever reliable
-evidence of a genuine block? Twenty-seven prior confirmed instances show a
+evidence of a genuine block? Twenty-eight prior confirmed instances show a
 cycle's own "not yet landed by my own observation" self-report about its
 own `EXECUTION_STATE.md` commit being resolved as wrong-in-substance by
 the very next cycle's reconciliation — i.e. the commit apparently landed
@@ -368,26 +378,35 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (migration 0035 + `systemAdmin.ts`/
-`SystemAdminScreen.tsx`/`systemAdmin.test.ts` updates +
-`systemAdminScreenApprovalStatus.test.ts` + this `EXECUTION_STATE.md`
-update) landed, and check every commit between whatever SHA this file
-names and actual HEAD, not just the newest one.
+cycle's own commit (`email_delivery_log` client-wiring fix in
+`systemAdmin.ts`/`SystemAdminScreen.tsx`/`systemAdmin.test.ts` +
+`systemAdminScreenEmailDeliveryLog.test.ts` +
+`errorBannerLiveRegionAccessibility.test.ts` count fix + this
+`EXECUTION_STATE.md` update) landed, and check every commit between
+whatever SHA this file names and actual HEAD, not just the newest one.
 
-**This cycle's own `system_admin_list_families()`/
-`system_admin_get_family_detail()` `approval_status` fix (migration 0035)
-closes a real Queue-item-2/4 gap: the System Admin read-only screen no
-longer falsely reports every family as `'active'`.** This was a clean,
-unambiguous, no-judgment-call fix (the RPCs simply predated the column
-they should have been reading). Not yet done, and worth a future cycle's
-own bounded unit: sweep the OTHER System Admin V1 surfaces
-(`system_admin_get_family_detail()`'s `walks`/`activeRequests`/
-`recentAudit` sub-objects, and the still-unused
-`system_admin_set_family_approval()` mutation RPC itself) for any other
-pre-0032/0033 staleness of the same shape — this cycle only checked the
-one field this branch's own onboarding work directly touches
-(`approval_status`), not an exhaustive re-audit of every System Admin RPC
-against every later migration.
+**This cycle's own `system_admin_list_email_delivery_log()` client-wiring
+fix closes a real Queue-item-3/4 gap: a system admin can now actually see
+whether verified-onboarding welcome/system-owner emails were delivered,
+via the "יומן אימיילים" button on the "🛡️ ניהול מערכת" screen.** The RPC
+(migration 0034) existed, applied and `is_system_admin()`-gated, with zero
+client call sites before this cycle — this was a clean, unambiguous,
+no-judgment-call completion (0034's own table comment already designated
+it the intended read surface), not a new backlog feature. The System Admin
+V1 surface sweep the prior two cycles started is now complete:
+`system_admin_list_families()`/`system_admin_get_family_detail()`'s
+`approval_status` field (fixed, migration 0035) and
+`system_admin_list_email_delivery_log()` (fixed this cycle) were the two
+real gaps found; `walks`/`activeRequests`/`recentAudit`/`members` were
+checked this cycle and found not stale, and the
+`system_admin_set_family_approval()` mutation RPC remains correctly out of
+scope for this branch (belongs to stacked branch
+`feat/system-admin-approval-controls`, PR #11). A worthwhile follow-up for
+a future cycle, not folded in here: `system_admin_list_email_delivery_log()`
+takes only `p_limit`, no family filter — if the product wants per-family
+email history inside the family detail card (alongside `recentAudit`), that
+needs a new RPC parameter or a client-side filter by `familyId`, which is a
+small but distinct design choice left open rather than assumed.
 
 **Prior cycle's own `accessible={false}` fix on `Avatar.tsx`'s/
 `DogPhoto.tsx`'s wrapping `View` closes the untitled-photo/emoji-stop gap
@@ -586,40 +605,49 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `ed3cea0`, one commit
-  past the `26c8537` the prior cycle's own file narrative described as
-  HEAD — `git show --stat ed3cea0` confirmed it contains exactly the
-  prior cycle's own 37-site `accessibilityRole="header"` fix across 29
-  files + its new test file + that cycle's own `EXECUTION_STATE.md`
-  update, reconfirming the standing self-reporting-drift pattern yet
-  again (26th time — that cycle's own "genuinely did NOT land, directly
-  confirmed" self-report was wrong). `node_modules` was absent entirely;
-  `npm ci` fixed it.
-- Re-attempted previously-gated sub-tasks fresh this cycle (`gh auth
-  status`, `which supabase`) — both reconfirmed genuinely still blocked.
-- **New gap class found and fixed:** grepped the whole `src/` tree for
-  `<Image` usage (5 files) and inspected each for missing accessibility
-  treatment. `HomeScreen.tsx`'s wordmark, `WalkieMascot.tsx`'s mascot
-  image, and `MascotFrameAnimation.tsx` were already correctly handled.
-  The shared `Avatar.tsx`/`DogPhoto.tsx` components (18 call sites) had
-  no `accessible`/`accessibilityLabel` handling at all — RN's `Image` is
-  an accessibility element by default, so the bare photo (or the emoji
-  fallback) became its own untitled screen-reader stop, even though
-  neither component takes a `name` prop and every caller already shows
-  the person's/dog's name as adjacent text or via an interactive parent's
-  own label. Fixed: added `accessible={false}` to the wrapping `View` in
-  both files, with a one-line comment on each explaining why. Added a new
-  2-sub-test regression file,
-  `src/components/__tests__/avatarAndDogPhotoDecorativeAccessibility.test.ts`,
-  reusing this repo's established source-scan convention. `npx tsc
-  --noEmit` PASS and `npm test -- --runInBand` PASS (125/125 suites,
-  1459/1459 tests, +2) after the change. `git status`/diff scoped to
-  exactly the two modified files + the new test file + this
+- Reconciliation found HEAD had actually moved to `453dac5`, one commit
+  past the `26329b6` the prior cycle's own file narrative described as
+  HEAD — `git show --stat 453dac5` confirmed it contains exactly the
+  prior cycle's own migration-0035 `approval_status` fix (`systemAdmin.ts`/
+  `SystemAdminScreen.tsx`/`systemAdmin.test.ts` + its new test file + the
+  migration file + that cycle's own `EXECUTION_STATE.md` update),
+  reconfirming the standing self-reporting-drift pattern yet again (28th
+  time). `node_modules` was absent entirely; `npm ci` fixed it.
+- **New gap found and fixed:** continued the System Admin V1
+  functional-correctness sweep, per the prior cycle's own "Next Safe Task"
+  note. Read migration 0034 (`email_delivery_log`) end to end — its own
+  table comment names `system_admin_list_email_delivery_log()` as the
+  intended admin-gated read surface for email-delivery observability, but
+  a repo-wide grep found zero client call sites anywhere in this repo.
+  Checked `system_admin_get_family_detail()`'s other sub-objects
+  (`walks`/`activeRequests`/`recentAudit`/`members`) against every later
+  migration and found no staleness of the same shape (not a fix — a
+  confirming negative). Fixed the email-log gap: added
+  `getSystemAdminEmailDeliveryLog()` to `lib/systemAdmin.ts`, and a header
+  button + dedicated view + two Hebrew-label helpers to
+  `SystemAdminScreen.tsx`. Added 4 new tests to `systemAdmin.test.ts` and a
+  new 4-sub-test source-scan regression file
+  `src/screens/__tests__/systemAdminScreenEmailDeliveryLog.test.ts`. Fixed
+  one incidental test breakage: the new error banner's correct
+  `accessibilityRole="alert"` treatment tripped an existing exact-count
+  regression test (`errorBannerLiveRegionAccessibility.test.ts`), whose
+  expected count for `SystemAdminScreen.tsx` needed updating from 2 to 3.
+  `npx tsc --noEmit` PASS and `npm test -- --runInBand` PASS (127/127
+  suites, 1471/1471 tests, +8) after the change. `git status`/diff scoped
+  to exactly the four modified files + the new test file + this
   `EXECUTION_STATE.md` update. **Commit attempt outcome:** see Blocker
   above.
 
 ### Recent cycles (condensed — full detail in git history of this file)
 
+- Prior cycle: reconciliation found HEAD at `26329b6` and fixed a real,
+  first-time-discovered functional bug: migration 0029's
+  `system_admin_list_families()`/`system_admin_get_family_detail()`
+  predated migration 0032's `families.approval_status` column and
+  hardcoded every family's reported status to `'active'`. Fixed via new
+  migration 0035 plus client type/render/test updates. Landed as
+  `453dac5` despite that cycle's own hedged "commit attempt outcome
+  recorded under Blocker" self-report.
 - Prior cycle: reconciliation found HEAD at `26c8537` and fixed a real,
   first-time-discovered accessibility gap: 37 screen/modal title
   `<RtlText>` call sites across 29 files had no
