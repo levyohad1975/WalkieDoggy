@@ -298,6 +298,7 @@ export function AddUnplannedWalkModal({
                 label="מחק טיול זה"
                 variant="danger"
                 style={styles.deleteButton}
+                accessibilityHint="יוצג אישור לפני מחיקה לצמיתות של הטיול"
                 onPress={() => {
                   Alert.alert(
                     'למחוק את הטיול הזה?',

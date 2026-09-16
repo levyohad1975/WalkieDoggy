@@ -157,6 +157,7 @@ export function InviteShareModal({ visible, targetName, invite, onRevoked, onClo
           <Button
             label="בטל הזמנה"
             variant="danger"
+            accessibilityHint="יוצג אישור לפני ביטול ההזמנה"
             onPress={() => setConfirmingRevoke(true)}
             style={styles.revokeButton}
           />

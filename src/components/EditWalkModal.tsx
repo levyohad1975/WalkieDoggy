@@ -117,6 +117,7 @@ export function EditWalkModal({
             <Button
   label="בטל את הטיול הזה"
   variant="danger"
+  accessibilityHint="יוצג אישור לפני ביטול הטיול"
   onPress={() => {
     Alert.alert(
       'לבטל את הטיול הזה?',

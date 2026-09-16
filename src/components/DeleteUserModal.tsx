@@ -83,6 +83,7 @@ export function DeleteUserModal({ visible, user, impact, otherUsers, onConfirm, 
                 label="מחק"
                 variant="danger"
                 disabled={hasImpact && !replacement}
+                accessibilityHint="המחיקה מיידית ואינה ניתנת לביטול"
                 onPress={() => onConfirm(hasImpact ? replacement : null)}
                 style={styles.flex}
                 compact

@@ -150,6 +150,7 @@ export function EditDoneDetailsModal({
               <Button
                 label="🗑️ מחיקת הטיול"
                 variant="danger"
+                accessibilityHint="יוצג אישור לפני מחיקה לצמיתות של הטיול"
                 onPress={() =>
                   Alert.alert('למחוק את הטיול?', 'הפעולה תסיר את הטיול הזה לצמיתות. אי אפשר לבטל.', [
                     { text: 'ביטול', style: 'cancel' },

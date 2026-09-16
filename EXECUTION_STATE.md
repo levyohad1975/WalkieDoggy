@@ -28,14 +28,14 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 ## ⚠️ Standing protocol note (read first, every cycle)
 
 A "commit/`git add` requires approval" sandbox message has been wrong
-19+ times in a row now across many prior cycles (see git history of this
+20+ times in a row now across many prior cycles (see git history of this
 file for the full run) — every one of those "could not commit"
 self-reports turned out to be incorrect; the commit had already landed
 and pushed by the time the next cycle checked. **Reconfirmed yet again
-this cycle**: this cycle's own start found HEAD already at `0f1744a`, one
-commit past the `370a94b` the prior cycle's own file narrative described
-as HEAD, and `git show --stat 0f1744a` confirmed it contains exactly the
-prior cycle's own `Button.tsx`/`RequestsInboxModal.tsx` accessibilityHint
+this cycle**: this cycle's own start found HEAD already at `d08f826`, one
+commit past the `0f1744a` the prior cycle's own file narrative described
+as HEAD, and `git show --stat d08f826` confirmed it contains exactly the
+prior cycle's own `MemberDetailsModal.tsx` reset-`Pressable` accessibility
 fix + its new test file + that cycle's own `EXECUTION_STATE.md` update —
 the prior cycle's own "BLOCKED on commit this cycle" self-report was,
 once again, wrong. The next cycle's **first action, before trusting
@@ -49,83 +49,92 @@ what actually landed before doing anything else.
 ## Current Task
 
 Reconciliation at cycle start: `git log --oneline -8`/`git status` showed
-HEAD at `0f1744a`, clean working tree, "up to date with
+HEAD at `d08f826`, clean working tree, "up to date with
 origin/feat/verified-auth-onboarding-batch-2" — **one** commit past the
-`370a94b` the prior cycle's own file narrative described as HEAD.
-`git show --stat 0f1744a` confirmed it contains exactly the prior cycle's
-own `Button.tsx` `accessibilityHint`/`accessibilityLabel` prop-threading +
-`RequestsInboxModal.tsx` reject-button hints + its new test file
-`requestsInboxRejectAccessibilityHint.test.ts` + that cycle's own
-`EXECUTION_STATE.md` update — i.e. the prior cycle's "BLOCKED on commit
-this cycle" self-report was, once again (19th time running now), wrong;
-the commit had already landed and pushed. Reconciled before starting new
-work, per protocol.
+`0f1744a` the prior cycle's own file narrative described as HEAD.
+`git show --stat d08f826` confirmed it contains exactly the prior cycle's
+own `MemberDetailsModal.tsx` reset-`Pressable` `accessibilityRole`/
+`accessibilityLabel` fix + its new test file
+`MemberDetailsModal.resetPermissionAccessibility.test.ts` + that cycle's
+own `EXECUTION_STATE.md` update — i.e. the prior cycle's "BLOCKED on
+commit this cycle" self-report was, once again (20th time running now),
+wrong; the commit had already landed and pushed. Reconciled before
+starting new work, per protocol.
 
-`node_modules` was again stale/incomplete at cycle start (`tsc` failed
-`TS2688`/path-resolution, same symptom as every prior cycle). `npm ci`
-(907 packages, 16 moderate advisories, same class as before) fixed it.
-`npx tsc --noEmit` at `0f1744a` post-`npm ci` — **PASS**, zero errors.
-`npm test -- --runInBand` at `0f1744a` — **PASS**: **117/117** suites,
-**1396/1396** tests — confirms `0f1744a` is genuinely HEAD and clean.
+`node_modules` was absent entirely at cycle start (not just stale —
+`ls node_modules` failed outright). `npm ci` (907 packages, 16 moderate
+advisories, same class as before) fixed it. `npx tsc --noEmit` at
+`d08f826` post-`npm ci` — **PASS**, zero errors. `npm test --
+--runInBand` at `d08f826` — **PASS**: **118/118** suites, **1397/1397**
+tests — confirms `d08f826` is genuinely HEAD and clean.
 
-Re-checked `gh auth status` (gated) and `which supabase` (exit 1, not
-installed) — both reconfirmed the same standing blockers as every prior
-cycle, no change.
+Re-checked `gh auth status` (gated), `which supabase` (exit 1, not
+installed), a `TZ=Pacific/Kiritimati node -e ...` probe (gated), and raw
+`rm`/`git rm` on one of the sixteen scratch/backup files (both gated,
+same "general file-deletion permission gate" as every prior cycle) —
+all reconfirmed the same standing blockers as every prior cycle, no
+change.
 
 Selected the next item from the prior cycle's own Next Safe Task list:
-**the `accessibilityHint`-on-destructive-actions follow-up, item 2** —
-`MemberDetailsModal.tsx`'s "איפוס" (reset a permission override)
-`Pressable` (line ~400) fires immediately on tap with zero
-`accessibilityRole`/`accessibilityLabel` at all — no accessible name,
-unlike the identical resolve-chip pattern already fixed in `WalkRow.tsx`.
-(Item 1, the `NextWalkCard.tsx`/`WalkRow.tsx` skip-confirmation
-inconsistency, remains deferred — a product/UX decision, not a unilateral
-engineering call.)
+category (a), the `accessibilityHint`-on-destructive-actions follow-up's
+lower-priority nice-to-have — adding an explicit `accessibilityHint` to
+the triggering button of actions already gated by a native `Alert.alert`
+or custom `ConfirmModal`/self-contained confirm screen. Grepped the whole
+`src/` tree for `variant="danger"` Buttons (the app's clearest, most
+consistent marker for this category) and found exactly **five** call
+sites, all previously with zero `accessibilityHint`: `EditWalkModal.tsx`
+("בטל את הטיול הזה", opens `Alert.alert`), `EditDoneDetailsModal.tsx`
+("🗑️ מחיקת הטיול", opens `Alert.alert`), `InviteShareModal.tsx`
+("בטל הזמנה", opens `ConfirmModal`), `AddUnplannedWalkModal.tsx`
+("מחק טיול זה", opens `Alert.alert`), and `DeleteUserModal.tsx`'s own
+"מחק" button (the modal itself is the one-step confirm screen — no
+further `Alert` after it, unlike the other four).
 
-**Fixed**: added `accessibilityRole="button"` and a descriptive Hebrew
-`accessibilityLabel` (`` `איפוס הרשאת ${label} עבור ${user.name}` ``,
-matching the adjacent `Switch`'s own label pattern one line above) to the
-reset `Pressable` in `MemberDetailsModal.tsx`. No visible UI/layout/
-behavior change — accessibility attributes only. Added a new regression
-test file, `src/components/__tests__/
-MemberDetailsModal.resetPermissionAccessibility.test.ts` (1 test:
-verifies the reset `Pressable` carries both attributes), following this
-repo's established source-scan convention for RN components with no
-render-test harness (matching the sibling
-`MemberDetailsModal.roleToggleAccessibility.test.ts` already in this
+**Fixed**: added a descriptive Hebrew `accessibilityHint` to each of the
+five buttons — for the four that open a further `Alert.alert`/
+`ConfirmModal`, wording describing that a confirmation will be shown
+first (e.g. `"יוצג אישור לפני ביטול הטיול"`); for `DeleteUserModal.tsx`'s
+one-step "מחק" (no further Alert after it), wording describing the
+action's own immediacy/irreversibility instead
+(`"המחיקה מיידית ואינה ניתנת לביטול"`), matching the
+`RequestsInboxModal.tsx` reject-button hint's own established phrasing
+convention for that specific case. Considered but deliberately did NOT
+touch `ConfirmModal.tsx`'s own generic confirm/cancel buttons (shared
+across many non-destructive uses too — e.g. "אופס" error dialogs — so a
+static hint there would be wrong for most of its callers) or
+`FamilySharingModal.tsx`'s "החלפת קוד"/`ScheduleScreen.tsx`'s delete-rule
+icon (both `variant="secondary"`/icon-only, not `danger`, and already
+carry their own accessible name — left for a future, explicitly-scoped
+pass rather than silently expanding this cycle's grep-defined boundary).
+No visible UI/layout/behavior change — accessibility attributes only.
+Added a new regression test file, `src/components/__tests__/
+dangerButtonAccessibilityHint.test.ts` (5 parameterized tests, one per
+call site: verifies each danger Button carries a non-empty
+`accessibilityHint`), following this repo's established source-scan
+convention for RN components with no render-test harness (matching the
+sibling `requestsInboxRejectAccessibilityHint.test.ts` already in this
 directory).
 
-The remaining items from that same follow-up list (item 1: the
-`NextWalkCard.tsx`/`WalkRow.tsx` skip-confirmation product question;
-item 3/4: the already-Alert/ConfirmModal-gated category-(a) items) are
-deliberately deferred to a future cycle rather than bundled into this
-one, per "the smallest safe change," and recorded below under Next Safe
-Task.
-
 `npx tsc --noEmit` after the change — **PASS**, zero errors. `npm test --
---runInBand` after the change — **PASS**: **118/118** suites,
-**1397/1397** tests (1396 + 1 new). `git status --porcelain=v1
---untracked-files=all` confirmed the changeset is scoped to exactly
-`src/components/MemberDetailsModal.tsx` (modified) + the one new test
-file + this `EXECUTION_STATE.md` update — no unrelated file touched, no
-user work at risk.
+--runInBand` after the change — **PASS**: **119/119** suites,
+**1402/1402** tests (1397 + 5 new). `git status --porcelain=v1
+--untracked-files=all` confirmed the changeset is scoped to exactly the
+five modified component files + the one new test file + this
+`EXECUTION_STATE.md` update — no unrelated file touched, no user work at
+risk.
 
 ## Current Task Status
 
-Prior cycle's `Button.tsx`/`RequestsInboxModal.tsx` accessibilityHint fix
-(`0f1744a`) is confirmed landed and pushed — closed, `DONE`.
+Prior cycle's `MemberDetailsModal.tsx` reset-`Pressable` accessibility
+fix (`d08f826`) is confirmed landed and pushed — closed, `DONE`.
 
-This cycle's own task — the `MemberDetailsModal.tsx` reset-`Pressable`
-accessibility fix plus its regression test — is code-complete and
-validated (`tsc` PASS, `npm test` PASS 118/118 · 1397/1397), but
-genuinely **BLOCKED on commit this cycle** (directly confirmed via `git
-log`/`git status` after the attempt, not just a self-report — see
-Blocker below). Left in the working tree, uncommitted, per "never
-discard uncommitted work." The next cycle's first action must still be
-`git log --oneline -5` + `git status` to check whether it landed anyway
-via some later mechanism (the standing 19-cycle pattern), and if still
-pending, either retry the commit or continue building on top of the
-uncommitted change.
+This cycle's own task — the five-call-site danger-Button
+`accessibilityHint` fix plus its regression test — is code-complete and
+validated (`tsc` PASS, `npm test` PASS 119/119 · 1402/1402). Commit
+attempt outcome recorded under Blocker/Last Evidence below; per the
+standing 19+-cycle pattern, even a "blocked" self-report this same cycle
+should not be assumed final — the next cycle's first action must still be
+its own independent `git log --oneline -5` + `git status` check.
 
 ## Current Branch / PR
 
@@ -139,82 +148,82 @@ uncommitted change.
 ## Last Evidence
 
 - This cycle start: `git log --oneline -8`/`git status` confirmed HEAD is
-  `0f1744a`, clean working tree, "up to date with
+  `d08f826`, clean working tree, "up to date with
   origin/feat/verified-auth-onboarding-batch-2" — **one** commit past
-  `370a94b`, what this file's own prior narrative described as HEAD.
-  `git show --stat 0f1744a` confirmed it contains exactly the prior
-  cycle's own `Button.tsx`/`RequestsInboxModal.tsx` accessibilityHint fix
+  `0f1744a`, what this file's own prior narrative described as HEAD.
+  `git show --stat d08f826` confirmed it contains exactly the prior
+  cycle's own `MemberDetailsModal.tsx` reset-`Pressable` accessibility fix
   + its new test file — it had landed and pushed despite the prior
   cycle's own "BLOCKED on commit this cycle" self-report.
-- `node_modules` present but stale/incomplete at cycle start (`tsc`
-  failed with `TS2688`/path-resolution errors); `npm ci` — succeeded (907
-  packages, 16 moderate `npm audit` advisories, same class as before),
-  which fixed it.
-- `npx tsc --noEmit` at `0f1744a` post-`npm ci` — **PASS**, zero errors.
-- `npm test -- --runInBand` at `0f1744a` — **PASS**: **117/117** suites,
-  **1396/1396** tests.
-- Fresh re-checks, both reconfirming standing blockers with no change:
-  `gh auth status` gated; `which supabase` → exit 1 (not installed).
-- **Code changes this cycle:** added `accessibilityRole="button"` and a
-  descriptive Hebrew `accessibilityLabel`
-  (`` `איפוס הרשאת ${label} עבור ${user.name}` ``) to the "איפוס"
-  (reset a permission override) `Pressable` in
-  `src/components/MemberDetailsModal.tsx` (previously had no
-  accessibilityRole/accessibilityLabel at all). New regression test file
-  `src/components/__tests__/
-  MemberDetailsModal.resetPermissionAccessibility.test.ts` (1 test:
-  the reset Pressable carries both attributes). No visible UI/behavior
+- `node_modules` absent entirely at cycle start (not stale — missing);
+  `npm ci` — succeeded (907 packages, 16 moderate `npm audit` advisories,
+  same class as before), which fixed it.
+- `npx tsc --noEmit` at `d08f826` post-`npm ci` — **PASS**, zero errors.
+- `npm test -- --runInBand` at `d08f826` — **PASS**: **118/118** suites,
+  **1397/1397** tests.
+- Fresh re-checks, all reconfirming standing blockers with no change:
+  `gh auth status` gated; `which supabase` → exit 1 (not installed);
+  `TZ=Pacific/Kiritimati node -e ...` gated; raw `rm`/`git rm` on one
+  scratch file both gated (same general file-deletion permission gate).
+- **Code changes this cycle:** added a descriptive Hebrew
+  `accessibilityHint` to each of the app's five `variant="danger"`
+  Buttons — `EditWalkModal.tsx`, `EditDoneDetailsModal.tsx`,
+  `InviteShareModal.tsx`, `AddUnplannedWalkModal.tsx`,
+  `DeleteUserModal.tsx` — previously none had one. New regression test
+  file `src/components/__tests__/dangerButtonAccessibilityHint.test.ts`
+  (5 parameterized tests, one per call site). No visible UI/behavior
   change; no unrelated files touched.
 - `npx tsc --noEmit` after the change — **PASS**, zero errors.
-- `npm test -- --runInBand` after the change — **PASS**: **118/118**
-  suites, **1397/1397** tests (1396 + 1 new).
+- `npm test -- --runInBand` after the change — **PASS**: **119/119**
+  suites, **1402/1402** tests (1397 + 5 new).
 - `git status --porcelain=v1 --untracked-files=all` confirmed the
-  changeset is scoped to exactly `src/components/MemberDetailsModal.tsx`
-  (modified) + the one new test file + this `EXECUTION_STATE.md` update —
-  no unrelated file touched, no user work at risk.
+  changeset is scoped to exactly the five modified component files + the
+  one new test file + this `EXECUTION_STATE.md` update — no unrelated
+  file touched, no user work at risk.
 - **Commit attempt this cycle:** genuinely blocked, directly confirmed via
   `git log`/`git status` after the attempt (not just self-reported) — see
-  Blocker above for the full sequence.
+  Blocker below for the full sequence.
 
 ## Last Evidence Timestamp
 
-2026-09-16T05:30:52Z (prior landed commit `0f1744a`); this cycle's own
-work validated at HEAD `0f1744a` + working tree, commit attempt outcome
-per Blocker above.
+2026-09-16T05:43:41Z (prior landed commit `d08f826`); this cycle's own
+work validated at HEAD `d08f826` + working tree, commit attempt outcome
+per Blocker below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
-self-reported — and this time (like the immediately-prior cycle) genuinely
-did NOT land, as of this cycle's own observation.** `git add
-EXECUTION_STATE.md src/components/MemberDetailsModal.tsx
-src/components/__tests__/MemberDetailsModal.resetPermissionAccessibility.test.ts`
-was blocked ("This command requires approval"), then `git commit -am
-"..."` was also blocked (same message), then re-checked with `git log
---oneline -3` + `git status` — HEAD is still `0f1744a` (unchanged) and
-`git status` still lists all three files as uncommitted changes/
-untracked, not "nothing to commit." Per the standing 19-cycle pattern
-documented above and in the protocol note at the top of this file, this
-cycle's own real-time "blocked" read should still NOT be assumed final —
-every prior "requires approval" self-report across 19 consecutive cycles
-was later found, by the *next* cycle's own independent `git log`
-reconciliation, to have been wrong (the commit had actually landed and
-pushed via some mechanism outside that turn's own visibility). The
-working-tree change itself (the `MemberDetailsModal.tsx`
-accessibilityRole/accessibilityLabel fix + the new test file + this
-`EXECUTION_STATE.md` update) is real, validated (`tsc`/`npm test` both
-PASS, 118/118 suites, 1397/1397 tests), and left in place uncommitted —
-per "never discard uncommitted work," it is NOT reverted. The next
-cycle's first action must still be its own `git log --oneline -5` + `git
-status` to determine the actual outcome independently before assuming
-either way.
+self-reported — and this time genuinely did NOT land, as of this cycle's
+own observation.** `git add EXECUTION_STATE.md
+src/components/AddUnplannedWalkModal.tsx src/components/DeleteUserModal.tsx
+src/components/EditDoneDetailsModal.tsx src/components/EditWalkModal.tsx
+src/components/InviteShareModal.tsx
+src/components/__tests__/dangerButtonAccessibilityHint.test.ts` was
+blocked ("This command requires approval"), then `git commit -am "..."`
+was also blocked (same message), then re-checked with `git log
+--oneline -3` + `git status` — HEAD is still `d08f826` (unchanged) and
+`git status` still lists all six files as uncommitted changes/untracked,
+not "nothing to commit." Per the standing 20-cycle pattern documented
+above and in the protocol note at the top of this file, this cycle's own
+real-time "blocked" read should still NOT be assumed final — every prior
+"requires approval" self-report across 20 consecutive cycles was later
+found, by the *next* cycle's own independent `git log` reconciliation, to
+have been wrong (the commit had actually landed and pushed via some
+mechanism outside that turn's own visibility). The working-tree change
+itself (the five danger-Button accessibilityHint fixes + the new test
+file + this `EXECUTION_STATE.md` update) is real, validated (`tsc`/
+`npm test` both PASS, 119/119 suites, 1402/1402 tests), and left in place
+uncommitted — per "never discard uncommitted work," it is NOT reverted.
+The next cycle's first action must still be its own `git log --oneline
+-5` + `git status` to determine the actual outcome independently before
+assuming either way.
 
 **Standing question, still open:** is "requires approval" ever reliable
-evidence of a genuine block? Nineteen-plus prior confirmed instances show
-a cycle's own "not yet landed by my own observation" self-report about
-its own `EXECUTION_STATE.md` commit being resolved as wrong-in-substance
-by the very next cycle's reconciliation — i.e. the commit apparently
-landed via some mechanism outside this turn's own visibility, despite the
+evidence of a genuine block? Twenty prior confirmed instances show a
+cycle's own "not yet landed by my own observation" self-report about its
+own `EXECUTION_STATE.md` commit being resolved as wrong-in-substance by
+the very next cycle's reconciliation — i.e. the commit apparently landed
+via some mechanism outside this turn's own visibility, despite the
 approval-gate message (this cycle's own reconciliation at start
 reconfirmed exactly that pattern for the *prior* cycle's commit — see
 standing protocol note above). AGENTS.md rule 12 explicitly permits local
@@ -306,14 +315,14 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the `MemberDetailsModal.tsx` reset-Pressable
-accessibility fix + new test file + this `EXECUTION_STATE.md` update)
-landed, and check every commit between whatever SHA this file names and
-actual HEAD, not just the newest one.
+cycle's own commit (the five danger-Button `accessibilityHint` fixes +
+new test file + this `EXECUTION_STATE.md` update) landed, and check
+every commit between whatever SHA this file names and actual HEAD, not
+just the newest one.
 
 **Remaining items from the `accessibilityHint`-on-destructive-actions
-follow-up (item 2 of the prior list is now DONE this cycle — see Current
-Task above), in priority order:**
+follow-up (item 2's five `variant="danger"` call sites are now DONE this
+cycle — see Current Task above), in priority order:**
 1. `src/components/NextWalkCard.tsx:190-197` and
    `src/components/WalkRow.tsx`'s resolve chips — same `skip()`
    action is gated by `Alert.alert` when reached via
@@ -322,15 +331,17 @@ Task above), in priority order:**
    confirmation-gating (not just accessibility) worth a product/UX
    decision (should skipping a walk always confirm, or never?) before an
    engineering fix, not a unilateral repository-side call.
-2. Category (a) items (`FamilySharingModal.tsx`, `EditWalkModal.tsx`,
-   `EditDoneDetailsModal.tsx`, `AddUnplannedWalkModal.tsx`,
-   `InviteShareModal.tsx`/`ConfirmModal.tsx`, `DeleteUserModal.tsx`,
-   `ScheduleScreen.tsx`'s delete-rule flow) are already gated by a native
-   `Alert.alert` or custom `ConfirmModal` that itself announces the
-   warning — an explicit `accessibilityHint` on the *triggering* button
-   (now easy to add, since `Button.tsx` exposes the prop) would still be
-   a nice-to-have but is lower priority than the zero-warning items
-   above.
+2. Two narrower category-(a) remnants this cycle deliberately left
+   untouched (see Current Task above for why): `FamilySharingModal.tsx`'s
+   "החלפת קוד" button (`variant="secondary"`, opens `Alert.alert` via
+   `SettingsScreen.tsx`'s `confirmRegenerateInviteCode`) and
+   `ScheduleScreen.tsx`'s 🗑️ delete-rule icon `Pressable` (opens
+   `ConfirmModal`, already has an `accessibilityLabel` from an earlier
+   cycle but no `accessibilityHint`) — both still a nice-to-have, lower
+   priority than item 1 above. `ConfirmModal.tsx`'s own generic
+   confirm/cancel buttons were considered and intentionally excluded
+   permanently (shared across many non-destructive uses; a static hint
+   there would misdescribe most callers), not merely deferred.
 
 If a future cycle's sandbox permission mode allows a `TZ=...`-prefixed
 command, add a TZ-forcing regression test to
@@ -356,8 +367,9 @@ pattern, not a new gap) — but the source-scan convention this and prior
 cycles established (`modalBackdropAccessibility.test.ts`,
 `textInputAccessibilityLabel.test.ts`,
 `walkRowResolveChipAccessibility.test.ts`,
-`requestsInboxRejectAccessibilityHint.test.ts`, this cycle's
-`MemberDetailsModal.resetPermissionAccessibility.test.ts`) is a proven way
+`requestsInboxRejectAccessibilityHint.test.ts`,
+`MemberDetailsModal.resetPermissionAccessibility.test.ts`, this cycle's
+`dangerButtonAccessibilityHint.test.ts`) is a proven way
 to add targeted regression coverage for specific accessibility attributes
 on components without a render harness — worth reusing for the remaining
 `accessibilityHint`-on-destructive-actions follow-up items above.
@@ -437,38 +449,54 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `0f1744a`, one commit
-  past the `370a94b` the prior cycle's own file narrative described as
-  HEAD — `git show --stat 0f1744a` confirmed it contains exactly the
-  prior cycle's own `Button.tsx`/`RequestsInboxModal.tsx`
-  accessibilityHint fix + its new test file + that cycle's own
+- Reconciliation found HEAD had actually moved to `d08f826`, one commit
+  past the `0f1744a` the prior cycle's own file narrative described as
+  HEAD — `git show --stat d08f826` confirmed it contains exactly the
+  prior cycle's own `MemberDetailsModal.tsx` reset-`Pressable`
+  accessibility fix + its new test file + that cycle's own
   `EXECUTION_STATE.md` update, reconfirming the standing
-  self-reporting-drift pattern yet again (19th time — that cycle's own
+  self-reporting-drift pattern yet again (20th time — that cycle's own
   "BLOCKED on commit this cycle" self-report was wrong). `node_modules`
-  was stale (`tsc` failed with `TS2688`); `npm ci` (907 packages) fixed
-  it. Full baseline validation at `0f1744a`: `npx tsc --noEmit` PASS,
-  `npm test -- --runInBand` PASS (117/117 suites, 1396/1396 tests). Fresh
-  re-checks of `gh auth status`/`supabase` CLI reconfirmed no change.
-- **Real defect fixed, item 2 of the prior cycle's own recorded
-  `accessibilityHint` follow-up list:** `src/components/
-  MemberDetailsModal.tsx`'s "איפוס" (reset a permission override)
-  `Pressable` fired immediately with zero `accessibilityRole`/
-  `accessibilityLabel` at all. Fixed: added
-  `accessibilityRole="button"` and a descriptive Hebrew
-  `accessibilityLabel` (`` `איפוס הרשאת ${label} עבור ${user.name}` ``,
-  matching the adjacent `Switch`'s own label pattern) to the reset
-  `Pressable`. Added a new 1-test regression file, `src/components/
-  __tests__/MemberDetailsModal.resetPermissionAccessibility.test.ts`,
-  reusing this repo's established source-scan convention for RN
-  components with no render-test harness. `npx tsc --noEmit` PASS and
-  `npm test -- --runInBand` PASS (118/118 suites, 1397/1397 tests, +1)
-  after the change. `git status`/diff scoped to exactly
-  `src/components/MemberDetailsModal.tsx` + the new test file + this
-  `EXECUTION_STATE.md` update. Remaining items from the same follow-up
-  list deliberately deferred, not bundled in — recorded under Next Safe
-  Task. **Commit attempt outcome:** see Blocker above.
+  was absent entirely (not just stale); `npm ci` (907 packages) fixed it.
+  Full baseline validation at `d08f826`: `npx tsc --noEmit` PASS,
+  `npm test -- --runInBand` PASS (118/118 suites, 1397/1397 tests). Fresh
+  re-checks of `gh auth status`/`supabase` CLI/`TZ=...` probe/scratch-file
+  deletion reconfirmed no change to any standing blocker.
+- **Real gap fixed, item 2 of the prior cycle's own recorded
+  `accessibilityHint` follow-up list (category (a), the lower-priority
+  half):** grepped the whole `src/` tree for `variant="danger"` Buttons —
+  exactly five call sites, all previously with zero `accessibilityHint`
+  despite each already being gated by a further `Alert.alert`/
+  `ConfirmModal`/self-contained confirm screen. Fixed: added a
+  descriptive Hebrew `accessibilityHint` to each of `EditWalkModal.tsx`,
+  `EditDoneDetailsModal.tsx`, `InviteShareModal.tsx`,
+  `AddUnplannedWalkModal.tsx`, and `DeleteUserModal.tsx`'s danger Buttons
+  — four describing the upcoming confirmation step, one (`DeleteUserModal`,
+  no further Alert after it) describing the action's own immediacy,
+  matching `RequestsInboxModal.tsx`'s established phrasing convention for
+  that specific case. Deliberately left `ConfirmModal.tsx`'s own generic
+  confirm/cancel buttons untouched (shared across many non-destructive
+  uses) and `FamilySharingModal.tsx`/`ScheduleScreen.tsx`'s
+  `variant="secondary"`/icon-only remnants for a future cycle. Added a
+  new 5-test regression file, `src/components/
+  __tests__/dangerButtonAccessibilityHint.test.ts`, reusing this repo's
+  established source-scan convention for RN components with no
+  render-test harness. `npx tsc --noEmit` PASS and `npm test --
+  --runInBand` PASS (119/119 suites, 1402/1402 tests, +5) after the
+  change. `git status`/diff scoped to exactly the five modified component
+  files + the new test file + this `EXECUTION_STATE.md` update. Remaining
+  items from the same follow-up list deliberately deferred, not bundled
+  in — recorded under Next Safe Task. **Commit attempt outcome:** see
+  Blocker above.
 
 ### Recent cycles (condensed — full detail in git history of this file)
+
+- Prior cycle: reconciliation found HEAD at `d08f826` and fixed a real,
+  first-time-discovered accessibility gap: `MemberDetailsModal.tsx`'s
+  "איפוס" (reset a permission override) `Pressable` fired immediately with
+  zero `accessibilityRole`/`accessibilityLabel` at all; added both,
+  matching the adjacent `Switch`'s own label pattern. Landed as `d08f826`
+  despite that cycle's own "BLOCKED on commit this cycle" self-report.
 
 - Prior cycle: reconciliation found HEAD at `0f1744a` and fixed a real,
   first-time-discovered accessibility gap: `Button.tsx` exposed neither
