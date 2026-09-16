@@ -50,98 +50,92 @@ else.
 ## Current Task
 
 Reconciliation at cycle start: `git log --oneline -20`/`git status` showed
-HEAD at `cbf1b6f`, clean working tree, "up to date with
+HEAD at `49d4764`, clean working tree, "up to date with
 origin/feat/verified-auth-onboarding-batch-2" — **one** commit past the
-`3c4c517` the prior cycle's own file narrative described as HEAD.
-`git show --stat cbf1b6f` confirmed it contains exactly the prior cycle's
-own join-mode invite-code `ltrInput` fix (`EXECUTION_STATE.md`,
-`src/screens/FamilyOnboardingScreen.tsx` +1/-1,
-`src/screens/__tests__/FamilyOnboardingScreen.joinCodeInputAlignment.test.ts`)
-— i.e. the prior cycle's own "commit attempt outcome recorded under
-Blocker/Last Evidence" hedge resolved the same way as the prior 30
-documented instances (now 31): the commit had already landed and pushed.
-Reconciled before starting new work, per protocol.
+`cbf1b6f` the prior cycle's own file narrative described as HEAD.
+`git show --stat 49d4764` confirmed it contains exactly the prior cycle's
+own `RequestTimeChangeModal.tsx` `suggestedTimeFrom` restoration
+(`EXECUTION_STATE.md`, `src/components/RequestTimeChangeModal.tsx` +2/-2,
+the new `RequestTimeChangeModal.suggestedTime.test.ts`) — i.e. the prior
+cycle's own "commit attempt outcome recorded under Blocker/Last Evidence"
+hedge resolved the same way as the prior 31 documented instances (now 32):
+the commit had already landed and pushed. Reconciled before starting new
+work, per protocol.
 
-`node_modules` was absent entirely at cycle start again (confirmed via
-`ls node_modules` failing). `npm ci` fixed it (907 packages). Re-attempted
-previously-gated independent sub-tasks fresh this cycle, each as its own
-standalone command: `gh auth status` still blocked ("requires approval");
-`which supabase` ran cleanly and confirmed the CLI is still not installed
-(exit 1); `docker info` still blocked ("requires approval"); `git rm
-tmp_coverage_inspect.js` still blocked ("requires approval"); a
-`TZ=Pacific/Kiritimati node -e ...` probe also still blocked ("requires
-approval") — all five reconfirmed still gated, same as every prior cycle.
-Confirmed no `batch-4`-named branch exists on `origin` (`git branch -r`
-listed every remote branch; still none matching that name), so Queue item
-5 remains genuinely inapplicable, not just unattempted.
+`node_modules` was absent entirely at cycle start again; `npm ci` fixed it
+(907 packages). Reconfirmed `gh auth status` still blocked ("requires
+approval"), `which supabase` still exit 1 (CLI not installed), and (via
+`git branch -r`) no `batch-4`-named branch on `origin` — same state as
+every prior cycle, Queue item 5 remains genuinely inapplicable.
+`npx tsc --noEmit` at reconciled HEAD — **PASS**, zero errors, confirming
+the baseline is healthy before starting new work.
 
 Moved to a fresh independent safe task. Dispatched a research-only
-subagent (constrained with the full list of already-closed and
+Explore subagent (constrained with the full list of already-closed and
 already-deliberately-deferred items from this file, to avoid rediscovering
 either) to search for one more concrete, unambiguous, first-time-discovered
 engineering gap. It found a real one, independently verified before
-fixing: **`RequestTimeChangeModal.tsx`'s `suggestedTimeFrom(currentTime)`
-helper (lines 30–34, "current time + 30 minutes") was defined but never
-called** — both its intended call sites, the initial `time` state
-(line 54) and the `visible`-effect reset (line 59), had been silently
-replaced with plain `currentTime` at some point. Confirmed this was an
-accidental regression, not a design choice, by diffing against the
-committed backup file
-`src/components/RequestTimeChangeModal.tsx.before-web-time-picker`, which
-still calls `suggestedTimeFrom` in both places — the only substantive
-logic difference between that backup and the live file, bundled into an
-otherwise-unrelated commit that added the web `<input type="time">`
-control and some accessibility props. Real user-facing consequence: since
-`valid = timeIsValid(time) && time !== currentTime` gates the "שלח בקשה"
-submit button, and `time` started equal to `currentTime`, the button was
-disabled the instant the modal opened, and the component's own "07:00 →
-08:30" before/after preview (explicitly described in this file's own doc
-comment) rendered as an identical, no-change-looking pair until the user
-manually operated the time picker. Verified via `grep -rn
-"suggestedTimeFrom" src/ supabase/` that the helper had zero call sites
-anywhere before this fix, and via `grep -rln "RequestTimeChangeModal"
-src/**/__tests__` that no existing test pinned (and thus no test needed
-updating for) the broken behavior.
+fixing: **`walkActions.ts`'s `walkMetadataLine()` never showed the
+"הוחלף" (swapped) badge** — its own doc comment (line 306) documents the
+return value as `"טיול ספונטני"` / `"הוחלף"` / both joined with `" · "`,
+but the implementation only ever checked `walk.isUnplanned` and never
+called the already-fully-implemented, already-unit-tested
+`isCurrentlySwapped(walk)` helper (lines 289–302, same file) at all.
+Confirmed via `grep -rn "walkMetadataLine|isCurrentlySwapped" src/` that
+`isCurrentlySwapped()`'s only call sites anywhere were inside its own
+`describe` block in `src/logic/__tests__/walkActions.test.ts` — never from
+`walkMetadataLine()` or any component. Confirmed this was a real,
+user-facing regression, not a design choice, by reading the existing tests
+themselves: the test *titles* at lines 407 (`'"הוחלף" for a
+currently-swapped walk...'`) and 415 (`'joins both when a walk is both
+unplanned and swapped'`) describe the correct spec'd behavior, but their
+own assertions (lines 412, 421) were written against the buggy
+implementation (`toBeNull()` and `toBe('טיול ספונטני')` respectively,
+i.e. never actually asserting a join happened) — the tests had silently
+drifted to pin the bug instead of catching it. Confirmed
+`walkMetadataLine()` is a live, rendered call site, not dead code: `grep`
+on `src/components/WalkRow.tsx` shows line 133 calls
+`walkMetadataLine(walk)` directly into the rendered metadata line, and
+`WalkRow` is used by Home/Schedule/History. Real user-facing consequence:
+any family member viewing a swapped walk in any of those three screens saw
+no indication the responsibility had changed hands, despite the feature
+being fully designed, implemented (`isCurrentlySwapped`), and unit-tested
+in isolation.
 
-**Fixed**: restored both dropped call sites —
-`useState(() => suggestedTimeFrom(currentTime))` (was
-`useState(currentTime)`) and `setTime(suggestedTimeFrom(currentTime))`
-inside the `visible`-effect (was `setTime(currentTime)`) — a 2-line change
-in `src/components/RequestTimeChangeModal.tsx`, no other logic touched.
-Added a new regression test,
-`src/components/__tests__/RequestTimeChangeModal.suggestedTime.test.ts`,
-combining a source-scan (proving both call sites now wire in
-`suggestedTimeFrom`, this repo's established convention for
-render-harness-free component logic) with an independent
-re-implementation of the same minute-rollover math to pin the expected
-value (same-hour, hour-rollover, and midnight-rollover cases), so the test
-does not just parrot the fixed source back at itself.
+**Fixed**: `walkMetadataLine()` in `src/logic/walkActions.ts` now builds a
+`parts` array, pushing `'טיול ספונטני'` when `walk.isUnplanned` and
+`'הוחלף'` when `isCurrentlySwapped(walk)`, joining with `' · '` (matching
+the function's own doc comment) — a 4-line change, no other logic touched.
+Corrected the two drifted assertions in
+`src/logic/__tests__/walkActions.test.ts` (lines 412, 421) to match what
+their own titles already described:
+`expect(walkMetadataLine(swapped)).toBe('הוחלף')` and
+`expect(walkMetadataLine(both)).toBe('טיול ספונטני · הוחלף')`. No new test
+file needed — the existing tests already had the right shape and coverage,
+they just asserted the wrong (buggy) value; fixing the two assertions is
+itself the regression-proofing (they will fail again if the join breaks).
 
 `npx tsc --noEmit` after the change — **PASS**, zero errors. `npm test --
 --runInBand` after the change — **PASS**: **130/130** suites, **1487/1487**
-tests (1482 + 5 new). `git status --porcelain=v1 --untracked-files=all`
-confirmed the changeset is scoped to exactly:
-`src/components/RequestTimeChangeModal.tsx` (modified, +2/-2) plus one new
-file (`src/components/__tests__/RequestTimeChangeModal.suggestedTime.test.ts`)
-and this `EXECUTION_STATE.md` update — no unrelated file touched, no user
-work at risk. (Incidental, not part of this fix's scope: the two stray
-backup files `RequestTimeChangeModal.tsx.before-time-fix` and
-`RequestTimeChangeModal.tsx.before-web-time-picker` are themselves
-already-known dead files — see the seventeen-scratch-file list in Blocker
-below, unchanged by this cycle.)
+tests (same total; two existing assertions corrected, no test added or
+removed). `git status --porcelain=v1 --untracked-files=all` confirmed the
+changeset is scoped to exactly: `src/logic/walkActions.ts` (modified,
++4/-1) and `src/logic/__tests__/walkActions.test.ts` (modified, +2/-2)
+plus this `EXECUTION_STATE.md` update — no unrelated file touched, no user
+work at risk.
 
 ## Current Task Status
 
-Prior cycle's `get_my_family_onboarding_status()` client-wiring fix
-(`3c4c517`) is confirmed landed and pushed — closed, `DONE`.
+Prior cycle's `RequestTimeChangeModal.tsx` `suggestedTimeFrom` restoration
+(`49d4764`) is confirmed landed and pushed — closed, `DONE`.
 
-This cycle's own task — restoring the two dropped `suggestedTimeFrom(currentTime)`
-call sites in `RequestTimeChangeModal.tsx`, fixing a real
-always-disabled-submit-button regression — is code-complete and validated
-(`tsc` PASS, `npm test` PASS 130/130 · 1487/1487). Commit attempt outcome
-recorded under Blocker/Last Evidence below; per the standing 31-cycle
-pattern, even a "blocked" self-report this same cycle should not be
-assumed final — the next cycle's first action must still be its own
+This cycle's own task — wiring `isCurrentlySwapped()` into
+`walkMetadataLine()` so the "הוחלף" swapped-walk badge actually renders,
+fixing a real always-missing-indicator regression — is code-complete and
+validated (`tsc` PASS, `npm test` PASS 130/130 · 1487/1487). Commit attempt
+outcome recorded under Blocker/Last Evidence below; per the standing
+32-cycle pattern, even a "blocked" self-report this same cycle should not
+be assumed final — the next cycle's first action must still be its own
 independent `git log --oneline -5` + `git status` check.
 
 ## Current Branch / PR
@@ -156,138 +150,129 @@ independent `git log --oneline -5` + `git status` check.
 ## Last Evidence
 
 - This cycle start: `git log --oneline -20`/`git status` confirmed HEAD is
-  `cbf1b6f`, clean working tree, "up to date with
+  `49d4764`, clean working tree, "up to date with
   origin/feat/verified-auth-onboarding-batch-2" — **one** commit past
-  `3c4c517`, what this file's own prior narrative described as HEAD.
-  `git show --stat cbf1b6f` confirmed it contains exactly the prior
-  cycle's own join-mode invite-code `ltrInput` fix
-  (`EXECUTION_STATE.md`, `src/screens/FamilyOnboardingScreen.tsx` +1/-1,
-  the new
-  `src/screens/__tests__/FamilyOnboardingScreen.joinCodeInputAlignment.test.ts`)
-  — it had landed and pushed despite the prior cycle's own hedged "commit
-  attempt outcome recorded under Blocker" self-report (31st confirmed
-  instance of the standing pattern).
+  `cbf1b6f`, what this file's own prior narrative described as HEAD.
+  `git show --stat 49d4764` confirmed it contains exactly the prior
+  cycle's own `RequestTimeChangeModal.tsx` `suggestedTimeFrom` restoration
+  (`EXECUTION_STATE.md`, `src/components/RequestTimeChangeModal.tsx`
+  +4/-4 total across the diff, the new
+  `RequestTimeChangeModal.suggestedTime.test.ts`) — it had landed and
+  pushed despite the prior cycle's own hedged "commit attempt outcome
+  recorded under Blocker" self-report (32nd confirmed instance of the
+  standing pattern).
 - `node_modules` absent entirely at cycle start again (not stale —
   missing); `npm ci` succeeded, which fixed it (907 packages).
-- Re-attempted every previously-gated independent sub-task fresh this
-  cycle, each as a standalone command: `gh auth status` (still blocked,
-  "requires approval"), `which supabase` (ran cleanly, still exit 1 — CLI
-  not installed), `docker info` (still blocked), `git rm
-  tmp_coverage_inspect.js` (still blocked), `TZ=Pacific/Kiritimati node -e
-  ...` (still blocked) — all five reconfirmed gated, unchanged from every
-  prior cycle.
-- Confirmed via `git branch -r` (full remote branch listing) that no
-  `batch-4`-named branch exists on `origin` — Queue item 5 remains
-  genuinely inapplicable this cycle, not just unattempted.
-- **This cycle's own code changes:** dispatched a research-only
-  general-purpose subagent, explicitly primed with the full list of
-  already-closed and already-deliberately-deferred items from this file
-  (to avoid rediscovering either), to search for one more concrete,
-  unambiguous, first-time-discovered engineering gap. It found a real one
-  in `src/components/RequestTimeChangeModal.tsx`: the
-  `suggestedTimeFrom(currentTime)` helper (lines 30–34, "current time + 30
-  minutes") was defined but had zero call sites — both its intended call
-  sites, the initial `time` state and the `visible`-effect reset, had been
-  silently replaced with plain `currentTime`. Independently verified
-  before fixing: `git diff` against the committed backup file
-  `src/components/RequestTimeChangeModal.tsx.before-web-time-picker`
-  showed the backup still calls `suggestedTimeFrom` in both places — the
-  only substantive logic difference from the live file, bundled into an
-  otherwise-unrelated commit that added the web `<input type="time">`
-  control and some accessibility props — confirming this was an
-  accidental regression, not a design choice. Real user-facing
-  consequence: `valid = timeIsValid(time) && time !== currentTime` gates
-  the "שלח בקשה" submit button, so with `time` starting equal to
-  `currentTime`, the button was disabled the instant the modal opened and
-  the component's own documented "07:00 → 08:30" before/after preview
-  rendered as an identical, no-change pair until the user manually
-  operated the time picker. `grep -rn "suggestedTimeFrom" src/
-  supabase/` confirmed zero call sites before the fix (only the unused
-  definition); `grep -rln "RequestTimeChangeModal"
-  src/**/__tests__` confirmed no existing test pinned the broken
-  behavior, so no other test needed updating.
-- **Fixed**: restored both dropped call sites in
-  `src/components/RequestTimeChangeModal.tsx` —
-  `useState(() => suggestedTimeFrom(currentTime))` and
-  `setTime(suggestedTimeFrom(currentTime))` inside the `visible`-effect —
-  a 2-line change, no other logic touched. Added
-  `src/components/__tests__/RequestTimeChangeModal.suggestedTime.test.ts`:
-  a source-scan proving both call sites wire in `suggestedTimeFrom`
-  (matching this repo's established render-harness-free convention) plus
-  an independent re-implementation of the minute-rollover math (same-hour,
-  hour-rollover, midnight-rollover cases) so the test pins the expected
-  value rather than just echoing the fixed source.
+- Reconfirmed `gh auth status` (still blocked, "requires approval"),
+  `which supabase` (still exit 1 — CLI not installed), and via
+  `git branch -r` that no `batch-4`-named branch exists on `origin` —
+  Queue item 5 remains genuinely inapplicable this cycle, not just
+  unattempted. `npx tsc --noEmit` at reconciled HEAD `49d4764` — **PASS**,
+  zero errors, confirming a healthy baseline before new work.
+- **This cycle's own code changes:** dispatched a research-only Explore
+  subagent, explicitly primed with the full list of already-closed and
+  already-deliberately-deferred items from this file (to avoid
+  rediscovering either), to search for one more concrete, unambiguous,
+  first-time-discovered engineering gap. It found a real one in
+  `src/logic/walkActions.ts`: `walkMetadataLine()`'s own doc comment
+  (line 306) documents the return value as `"טיול ספונטני"` / `"הוחלף"` /
+  both joined with `" · "`, but the implementation only checked
+  `walk.isUnplanned` and never called the already-implemented,
+  already-unit-tested `isCurrentlySwapped(walk)` helper (lines 289–302,
+  same file) at all. `grep -rn "walkMetadataLine|isCurrentlySwapped" src/`
+  confirmed `isCurrentlySwapped()`'s only call sites anywhere were inside
+  its own `describe` block in
+  `src/logic/__tests__/walkActions.test.ts` — never from
+  `walkMetadataLine()` or any component. Confirmed this was a real,
+  user-facing regression, not a design choice, by reading the existing
+  tests: their *titles* (lines 407, 415) describe the correct spec'd
+  "הוחלף"/joined behavior, but their own assertions (lines 412, 421) had
+  silently drifted to pin the buggy `toBeNull()`/`toBe('טיול ספונטני')`
+  result instead of catching it. Confirmed `walkMetadataLine()` is a live,
+  rendered call site (not dead code): `src/components/WalkRow.tsx:133`
+  calls it directly into the rendered metadata line, and `WalkRow` backs
+  Home/Schedule/History. Real user-facing consequence: any family member
+  viewing a swapped walk on any of those three screens saw no indication
+  the responsibility had changed hands.
+- **Fixed**: `walkMetadataLine()` in `src/logic/walkActions.ts` now builds
+  a `parts` array (`'טיול ספונטני'` when `walk.isUnplanned`, `'הוחלף'`
+  when `isCurrentlySwapped(walk)`) and joins with `' · '`, matching the
+  function's own doc comment — a 4-line change, no other logic touched.
+  Corrected the two drifted assertions in
+  `src/logic/__tests__/walkActions.test.ts` (lines 412, 421) to match what
+  their own titles already described. No new test file needed — the
+  existing tests already had the right shape and coverage; fixing their
+  assertions to the correct expected value is itself the
+  regression-proofing.
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `npm test -- --runInBand` after this cycle's own change — **PASS**:
-  **130/130** suites, **1487/1487** tests (1482 + 5 new).
+  **130/130** suites, **1487/1487** tests (same total — two existing
+  assertions corrected, no test added or removed).
 - `git status --porcelain=v1 --untracked-files=all` confirmed the
-  changeset is scoped to exactly:
-  `src/components/RequestTimeChangeModal.tsx` (modified, +2/-2) + one new
-  file
-  (`src/components/__tests__/RequestTimeChangeModal.suggestedTime.test.ts`)
-  + this `EXECUTION_STATE.md` update — no unrelated file touched, no user
-  work at risk.
+  changeset is scoped to exactly: `src/logic/walkActions.ts` (modified,
+  +4/-1) and `src/logic/__tests__/walkActions.test.ts` (modified, +2/-2)
+  plus this `EXECUTION_STATE.md` update — no unrelated file touched, no
+  user work at risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
   checked directly via `git log`/`git status` after the attempt.
 
 ## Last Evidence Timestamp
 
-2026-09-16T09:14:33Z (prior landed commit `cbf1b6f`); this cycle's own
-work validated at HEAD `cbf1b6f` + working tree as of this cycle's own
+2026-09-16T14:16:53Z (prior landed commit `49d4764`); this cycle's own
+work validated at HEAD `49d4764` + working tree as of this cycle's own
 run (same UTC day, 2026-09-16), commit attempt outcome per Blocker below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
-self-reported, using three independent attempts** (`git add` +
-`git commit -m ...` as one attempt, then `git add` alone, then
-`git commit -a -m ...`) — all three returned "requires approval" from the
-tool layer itself (not a git error), and a `git log --oneline -5` +
-`git status --porcelain` run immediately after each attempt confirmed HEAD
-stayed at `cbf1b6f` and the working tree diff was byte-for-byte unchanged
-each time. So *within this turn's own visibility*, this cycle's commit
+self-reported, using two independent attempts** (`git add` on the three
+changed files alone, then `git commit -a -m ...`) — both returned
+"requires approval" from the tool layer itself (not a git error), and a
+`git log --oneline -5` + `git status --porcelain` run immediately after
+confirmed HEAD stayed at `49d4764` and the working tree diff was
+byte-for-byte unchanged (still exactly `EXECUTION_STATE.md`,
+`src/logic/walkActions.ts`, `src/logic/__tests__/walkActions.test.ts`
+modified). So *within this turn's own visibility*, this cycle's commit
 attempt is a genuine, directly-confirmed no-op, not merely a hedged
-self-report.
+self-report — the 33rd such instance.
 
 **Standing question — now answered with direct supporting evidence, not
 just inference:** `git log -5 --format="%h %an <%ae> — %s"` shows every
-one of the last 5 landed commits (`cbf1b6f`, `3c4c517`, `f26419d`,
-`453dac5`, `26329b6`) is authored by
+one of the last 5 landed commits (`49d4764`, `cbf1b6f`, `3c4c517`,
+`f26419d`, `453dac5`) is authored by
 `walkie-agentic-worker[bot] <walkie-agentic-worker[bot]@users.noreply.github.com>`
 with a generic `chore(agentic): checkpoint/continue RC execution` message
 — **never** this session's own attempted commit message (this cycle
-attempted `fix(RequestTimeChangeModal): restore suggestedTimeFrom default
-proposed time`; prior cycles' own attempted messages are equally absent
-from `git log`). This is direct, reproducible evidence for the mechanism
-behind the 31-cycle "self-report says blocked, next cycle finds it
-landed" pattern: an external supervising process — not this turn's own
-`git commit` call — periodically snapshots this session's own
-working-tree diff into a generically-named checkpoint commit under its
-own bot identity, on a schedule outside this turn's own visibility. That
-means this turn's own direct "nothing changed" observation immediately
-after the attempt is real and correctly reported, but is **not** predictive
-of the final outcome once this turn ends — consistent with, not
-contradicting, the standing pattern. The working-tree change itself (the
-`RequestTimeChangeModal.tsx` `suggestedTimeFrom` restoration + the new
-`RequestTimeChangeModal.suggestedTime.test.ts` + this `EXECUTION_STATE.md`
-update) is real, validated (`tsc`/`npm test` both PASS, 130/130 suites,
-1487/1487 tests) — per "never discard uncommitted work," it is NOT
-reverted regardless of this turn's own commit-attempt outcome. The next
-cycle's first action must still be its own `git log --oneline -5` +
-`git status` to determine the actual final outcome independently.
+attempted `fix(walkActions): show swapped-walk badge in metadata line`;
+prior cycles' own attempted messages are equally absent from `git log`).
+This is direct, reproducible evidence for the mechanism behind the
+32-cycle "self-report says blocked, next cycle finds it landed" pattern:
+an external supervising process — not this turn's own `git commit` call —
+periodically snapshots this session's own working-tree diff into a
+generically-named checkpoint commit under its own bot identity, on a
+schedule outside this turn's own visibility. That means this turn's own
+direct "nothing changed" observation immediately after the attempt is
+real and correctly reported, but is **not** predictive of the final
+outcome once this turn ends — consistent with, not contradicting, the
+standing pattern. The working-tree change itself (the
+`walkActions.ts`/`walkActions.test.ts` swapped-badge fix + this
+`EXECUTION_STATE.md` update) is real, validated (`tsc`/`npm test` both
+PASS, 130/130 suites, 1487/1487 tests) — per "never discard uncommitted
+work," it is NOT reverted regardless of this turn's own commit-attempt
+outcome. The next cycle's first action must still be its own
+`git log --oneline -5` + `git status` to determine the actual final
+outcome independently.
 
-By contrast, `gh auth status`, `git rm` on a scratch file, a
-`TZ=...`-prefixed probe, and `docker info` were all checked this cycle
-with the same direct method and reconfirmed genuinely blocked with no
-side effect (while `which supabase` ran cleanly this cycle, showing the
-gate is command-specific, not a blanket sandbox freeze) — the external
-checkpoint mechanism above appears specific to this session's own
-working-tree diff via `git add`/`git commit`, not a general bypass of
-every gated command. AGENTS.md rule 12 explicitly permits local commits
-without asking, so any block here is a sandbox permission-mode/timing
-artifact, not a policy one — no bypass (`--no-verify` or otherwise) has
-ever been attempted.
+By contrast, `gh auth status` was re-checked this cycle with the same
+direct method and reconfirmed genuinely blocked with no side effect
+(while `which supabase` ran cleanly this cycle, showing the gate is
+command-specific, not a blanket sandbox freeze) — the external checkpoint
+mechanism above appears specific to this session's own working-tree diff
+via `git add`/`git commit`, not a general bypass of every gated command.
+AGENTS.md rule 12 explicitly permits local commits without asking, so any
+block here is a sandbox permission-mode/timing artifact, not a policy
+one — no bypass (`--no-verify` or otherwise) has ever been attempted.
 
 Live Staging E2E (family creation persistence, invite/join code/link/QR,
 second-member join, real OTP/email delivery, System Admin live approve/
@@ -379,13 +364,23 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the `RequestTimeChangeModal.tsx` `suggestedTimeFrom`
-restoration + the new
-`RequestTimeChangeModal.suggestedTime.test.ts` + this
-`EXECUTION_STATE.md` update) landed, and check every commit between
-whatever SHA this file names and actual HEAD, not just the newest one.
+cycle's own commit (the `walkActions.ts`/`walkActions.test.ts`
+swapped-walk-badge fix + this `EXECUTION_STATE.md` update) landed, and
+check every commit between whatever SHA this file names and actual HEAD,
+not just the newest one.
 
-**This cycle's own fix in `RequestTimeChangeModal.tsx` closes a real,
+**This cycle's own fix in `walkActions.ts` closes a real,
+first-time-discovered functional regression**, not a cosmetic gap:
+`walkMetadataLine()` never called the already-implemented
+`isCurrentlySwapped()` helper, so the documented "הוחלף" (swapped)
+indicator never rendered anywhere in the app despite existing tests whose
+*titles* described the correct behavior (their assertions had silently
+drifted to pin the bug instead). `grep -rn "walkMetadataLine|
+isCurrentlySwapped" src/` confirmed no other call site of either helper
+exists, so this is a complete fix, not a partial one. No further
+follow-up needed on this specific defect.
+
+**Prior cycle's own fix in `RequestTimeChangeModal.tsx` closed a real,
 first-time-discovered functional regression**, not a cosmetic gap: the
 `suggestedTimeFrom(currentTime)` helper had been silently dropped from
 both its call sites (confirmed via diff against the committed backup
@@ -393,9 +388,8 @@ both its call sites (confirmed via diff against the committed backup
 בקשה" submit button disabled the instant the modal opened until the user
 manually operated the time picker. `grep -rn "suggestedTimeFrom" src/
 supabase/` confirmed no other call site of this helper exists anywhere,
-so this is a complete fix, not a partial one. No further follow-up needed
-on this specific defect. A distinct, smaller housekeeping item surfaced
-incidentally (not fixed this cycle, not in scope): the two backup files
+so that was a complete fix too. A distinct, smaller housekeeping item
+surfaced incidentally (not fixed, not in scope): the two backup files
 `RequestTimeChangeModal.tsx.before-time-fix` and
 `RequestTimeChangeModal.tsx.before-web-time-picker` are themselves already
 on the seventeen-scratch-file dead-file list below, gated on the same
@@ -660,46 +654,46 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `cbf1b6f`, one commit
-  past the `3c4c517` the prior cycle's own file narrative described as
-  HEAD — `git show --stat cbf1b6f` confirmed it contains exactly the
-  prior cycle's own join-mode invite-code `ltrInput` fix
-  (`FamilyOnboardingScreen.tsx` +
-  `FamilyOnboardingScreen.joinCodeInputAlignment.test.ts` + that cycle's
-  own `EXECUTION_STATE.md` update), reconfirming the standing
-  self-reporting-drift pattern yet again (31st time). `node_modules` was
-  absent entirely; `npm ci` fixed it. Re-attempted `gh auth status` (still
-  gated), `which supabase` (ran cleanly, still exit 1 — not installed),
-  `docker info` (still gated), `git rm` on a scratch file (still gated),
-  and a `TZ=...`-prefixed probe (still gated) fresh this cycle, each as a
-  standalone command. Confirmed via `git branch -r` that no `batch-4`
-  branch exists on `origin`.
-- **New gap found and fixed:** dispatched a research-only subagent
+- Reconciliation found HEAD had actually moved to `49d4764`, one commit
+  past the `cbf1b6f` the prior cycle's own file narrative described as
+  HEAD — `git show --stat 49d4764` confirmed it contains exactly the
+  prior cycle's own `RequestTimeChangeModal.tsx` `suggestedTimeFrom`
+  restoration (+ the new `RequestTimeChangeModal.suggestedTime.test.ts` +
+  that cycle's own `EXECUTION_STATE.md` update), reconfirming the standing
+  self-reporting-drift pattern yet again (32nd time). `node_modules` was
+  absent entirely; `npm ci` fixed it. Reconfirmed `gh auth status` (still
+  gated) and no `batch-4` branch on `origin` via `git branch -r`. `npx tsc
+  --noEmit` at reconciled HEAD — PASS.
+- **New gap found and fixed:** dispatched a research-only Explore subagent
   (primed with the full list of already-closed/already-deferred items in
   this file) to search for one more concrete, unambiguous engineering gap.
-  It found, and this cycle independently verified via diff against the
-  committed backup file `RequestTimeChangeModal.tsx.before-web-time-picker`,
-  that `RequestTimeChangeModal.tsx`'s `suggestedTimeFrom(currentTime)`
-  helper (proposes "current time + 30 minutes") had been silently dropped
-  from both its call sites (the initial `time` state and the
-  `visible`-effect reset), leaving the submit button disabled the instant
-  the modal opened until the user manually operated the time picker — a
-  genuine functional regression, not a style/accessibility gap like recent
-  prior cycles. `grep -rn "suggestedTimeFrom" src/ supabase/` confirmed
-  zero call sites before the fix. Fixed: restored both call sites (2-line
-  change, no other logic touched). Added a new regression test,
-  `RequestTimeChangeModal.suggestedTime.test.ts`, combining a source-scan
-  of both call sites with an independent re-implementation of the
-  minute-rollover math (same-hour/hour-rollover/midnight-rollover cases).
-  `npx tsc --noEmit` PASS and `npm test -- --runInBand` PASS (130/130
-  suites, 1487/1487 tests, +5) after the change. `git status`/diff scoped
-  to exactly the one modified file + the new test file + this
-  `EXECUTION_STATE.md` update. **Commit attempt outcome:** see Blocker
-  above.
+  It found, and this cycle independently verified via `grep`/reading the
+  source, that `src/logic/walkActions.ts`'s `walkMetadataLine()` never
+  called the already-implemented `isCurrentlySwapped()` helper, so the
+  documented "הוחלף" (swapped-walk) badge never rendered in `WalkRow.tsx`
+  (used by Home/Schedule/History) despite existing tests whose titles
+  described the correct behavior (assertions had silently drifted to pin
+  the bug) — a genuine functional/UI regression, not a style/accessibility
+  gap like several recent prior cycles. Fixed: `walkMetadataLine()` now
+  joins `'טיול ספונטני'` and `'הוחלף'` with `' · '` per its own doc
+  comment (4-line change); corrected the two drifted test assertions in
+  `walkActions.test.ts` to match their own titles' spec'd behavior — no
+  new test file needed. `npx tsc --noEmit` PASS and `npm test --
+  --runInBand` PASS (130/130 suites, 1487/1487 tests, same total) after
+  the change. `git status`/diff scoped to exactly the two modified source
+  files + this `EXECUTION_STATE.md` update. **Commit attempt outcome:**
+  see Blocker above.
 
 ### Recent cycles (condensed — full detail in git history of this file)
 
-- Prior cycle: reconciliation found HEAD at `3c4c517` and fixed a real,
+- Prior cycle: reconciliation found HEAD at `cbf1b6f` and fixed a real,
+  first-time-discovered functional regression:
+  `RequestTimeChangeModal.tsx`'s `suggestedTimeFrom(currentTime)` helper
+  had been silently dropped from both its call sites, leaving the submit
+  button disabled the instant the modal opened. Landed as `49d4764`
+  despite that cycle's own hedged "commit attempt outcome recorded under
+  Blocker" self-report.
+- Two cycles ago: reconciliation found HEAD at `3c4c517` and fixed a real,
   first-time-discovered gap: `FamilyOnboardingScreen.tsx`'s join-mode
   invite-code `TextInput` was the sole remaining unfixed call site of the
   RTL-alphanumeric-code-input pattern (added `styles.ltrInput`). Landed as
