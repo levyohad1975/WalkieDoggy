@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate Agentic worker OIDC contract
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $workflow = Get-Content '.github/workflows/agentic-rc-worker.yml' -Raw
@@ -51,7 +51,7 @@ jobs:
           if ($workflow -notmatch '(?m)^\s+PUSH_TOKEN:\s+') { throw 'Agentic worker is missing PUSH_TOKEN.' }
 
       - name: Validate isolated Staging readiness contract
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $workflow = Get-Content '.github/workflows/agentic-staging-readiness.yml' -Raw
