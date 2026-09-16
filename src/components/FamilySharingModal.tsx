@@ -79,6 +79,7 @@ export function FamilySharingModal({
                     disabled={regenerating}
                     loading={regenerating}
                     style={styles.regenButton}
+                    accessibilityHint="יוצג אישור לפני החלפת קוד ההצטרפות"
                   />
                 ) : null}
               </>

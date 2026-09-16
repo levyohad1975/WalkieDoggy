@@ -308,6 +308,7 @@ export function ScheduleScreen() {
       hitSlop={8}
       accessibilityRole="button"
       accessibilityLabel={`מחיקת שעת טיול ${r.time}`}
+      accessibilityHint="יוצג אישור לפני מחיקת שעת הטיול"
     >
       <RtlText style={styles.ruleActionIcon}>🗑️</RtlText>
     </Pressable>
