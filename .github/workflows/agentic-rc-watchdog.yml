@@ -85,13 +85,25 @@ jobs:
             exit 0
           }
 
+          $mainBranchUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/branches/main"
+          $mainBranch = Invoke-RestMethod -Uri $mainBranchUrl -Headers $headers -Method Get
+          $mainSha = [string]$mainBranch.commit.sha
           $validations = @($runs.workflow_runs | Where-Object {
             $_.name -eq 'Agentic RC Validation' -and
             [DateTimeOffset]::Parse($_.created_at) -ge $committedAt
-          }).Count
-          if ($validations -gt 0) {
-            'No recovery: Validation already exists after current Worker head.' | Add-Content $env:GITHUB_STEP_SUMMARY
-            exit 0
+          } | Sort-Object { [DateTimeOffset]::Parse($_.created_at) } -Descending)
+
+          if ($validations.Count -gt 0) {
+            $latestValidation = $validations[0]
+            if ($latestValidation.conclusion -eq 'success') {
+              'No recovery: current Worker head already has successful Validation.' | Add-Content $env:GITHUB_STEP_SUMMARY
+              exit 0
+            }
+            if ([string]$latestValidation.head_sha -eq $mainSha) {
+              "No recovery: latest Validation already used current workflow revision $mainSha and concluded $($latestValidation.conclusion)." | Add-Content $env:GITHUB_STEP_SUMMARY
+              exit 0
+            }
+            "Retrying Validation because the latest failed Validation used older workflow revision $($latestValidation.head_sha), while main is $mainSha." | Add-Content $env:GITHUB_STEP_SUMMARY
           }
 
           $dispatchUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/workflows/agentic-rc-validation.yml/dispatches"
