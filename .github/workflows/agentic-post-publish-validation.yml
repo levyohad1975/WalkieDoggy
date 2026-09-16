@@ -6,9 +6,6 @@ on:
       - Agentic RC Worker
     types:
       - completed
-  schedule:
-    - cron: '*/5 * * * *'
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -20,23 +17,18 @@ concurrency:
 
 jobs:
   dispatch-validation:
-    name: Dispatch validation for fresh Agentic checkpoint
+    name: Dispatch exact-head validation after Worker publish
     if: >-
-      github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch' ||
-      (
-        github.event.workflow_run.head_repository.full_name == github.repository &&
-        github.event.workflow_run.event == 'workflow_dispatch' &&
-        github.event.workflow_run.conclusion == 'success'
-      )
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.event == 'workflow_dispatch' &&
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       TARGET_BRANCH: ${{ vars.AGENTIC_RC_TARGET_BRANCH || 'feat/verified-auth-onboarding-batch-2' }}
       GH_TOKEN: ${{ github.token }}
-
     steps:
-      - name: Guard approved RC target
+      - name: Guard RC target
         shell: bash
         run: |
           set -euo pipefail
@@ -44,7 +36,7 @@ jobs:
           git check-ref-format --branch "$TARGET_BRANCH" >/dev/null
           case "$TARGET_BRANCH" in
             feat/*|fix/*|chore/*|test/*|docs/*|rc/*) ;;
-            *) echo "::error::Target must be an approved non-main RC branch."; exit 1 ;;
+            *) echo "::error::Refusing unapproved RC target."; exit 1 ;;
           esac
 
       - name: Checkout RC target
@@ -54,51 +46,33 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Detect unvalidated worker-published head
-        id: gate
+      - name: Dispatch Validation only for a fresh Worker checkpoint
         shell: bash
         run: |
           set -euo pipefail
-          echo "dispatch=false" >> "$GITHUB_OUTPUT"
-
           author="$(git log -1 --format='%an')"
           subject="$(git log -1 --format='%s')"
           committed_at="$(git log -1 --format='%cI')"
           head_sha="$(git rev-parse HEAD)"
 
           if [ "$author" != "walkie-agentic-worker[bot]" ]; then
-            echo "RC head is not Agentic-authored; no validation dispatch." >> "$GITHUB_STEP_SUMMARY"
+            echo "No dispatch: latest RC head is not Worker-authored." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-
           case "$subject" in
             "chore(agentic): continue RC execution"|"chore(agentic): checkpoint RC execution") ;;
-            *)
-              echo "RC head is not an Agentic continuation/checkpoint; no validation dispatch." >> "$GITHUB_STEP_SUMMARY"
-              exit 0
-              ;;
+            *) echo "No dispatch: latest RC head is not an Agentic checkpoint." >> "$GITHUB_STEP_SUMMARY"; exit 0 ;;
           esac
 
           existing="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100" --jq "[.workflow_runs[] | select(.name == \"Agentic RC Validation\" and .created_at >= \"$committed_at\")] | length")"
           if [ "$existing" -gt 0 ]; then
-            echo "Validation already dispatched for the current Agentic head; not duplicating." >> "$GITHUB_STEP_SUMMARY"
+            echo "No dispatch: Validation already exists after current Worker head." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
-          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
-          echo "dispatch=true" >> "$GITHUB_OUTPUT"
-          echo "Unvalidated Agentic checkpoint detected at $head_sha; dispatching validation independently of workflow_run chain depth." >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Dispatch RC Validation
-        if: steps.gate.outputs.dispatch == 'true'
-        shell: bash
-        env:
-          HEAD_SHA: ${{ steps.gate.outputs.head_sha }}
-        run: |
-          set -euo pipefail
           gh workflow run agentic-rc-validation.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref main \
             -f target_branch="$TARGET_BRANCH" \
-            -f expected_sha="$HEAD_SHA"
-          echo "Dispatched Agentic RC Validation for $TARGET_BRANCH at $HEAD_SHA." >> "$GITHUB_STEP_SUMMARY"
+            -f expected_sha="$head_sha"
+          echo "Dispatched exact-head Validation for $head_sha." >> "$GITHUB_STEP_SUMMARY"
