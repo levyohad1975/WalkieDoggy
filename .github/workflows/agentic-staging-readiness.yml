@@ -20,62 +20,114 @@ jobs:
     name: Verify isolated Staging access
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     environment: staging
     env:
       EXPECTED_STAGING_PROJECT_REF: czbxhsoxyawprqehkfit
+      RC_BRANCH: feat/verified-auth-onboarding-batch-2
       SUPABASE_STAGING_URL: ${{ secrets.SUPABASE_STAGING_URL }}
       SUPABASE_STAGING_ANON_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_STAGING_DB_PASSWORD: ${{ secrets.SUPABASE_STAGING_DB_PASSWORD }}
 
     steps:
       - name: Guard exact Staging binding
         shell: bash
         run: |
           set -euo pipefail
-
           if [ -z "${SUPABASE_STAGING_URL:-}" ] || [ -z "${SUPABASE_STAGING_ANON_KEY:-}" ]; then
             echo "::error::Required staging Environment secrets are not configured."
             exit 1
           fi
-
           echo "::add-mask::$SUPABASE_STAGING_URL"
           echo "::add-mask::$SUPABASE_STAGING_ANON_KEY"
-
           expected_url="https://$EXPECTED_STAGING_PROJECT_REF.supabase.co"
           if [ "$SUPABASE_STAGING_URL" != "$expected_url" ]; then
             echo "::error::Supabase URL does not match the approved Staging project."
             exit 1
           fi
 
-          {
-            echo "## Agentic Staging Readiness"
-            echo
-            echo "Environment: staging"
-            echo "Approved project ref: $EXPECTED_STAGING_PROJECT_REF"
-            echo "Mode: read-only health verification"
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Verify Supabase Staging health
         shell: bash
         run: |
           set -euo pipefail
+          http_status="$(curl --silent --show-error --max-time 20 --output /dev/null --write-out '%{http_code}' --header "apikey: $SUPABASE_STAGING_ANON_KEY" --header "Authorization: Bearer $SUPABASE_STAGING_ANON_KEY" "$SUPABASE_STAGING_URL/auth/v1/health")"
+          test "$http_status" = "200" || { echo "::error::Staging health check returned HTTP $http_status."; exit 1; }
 
-          http_status="$(
-            curl               --silent               --show-error               --max-time 20               --output /dev/null               --write-out '%{http_code}'               --header "apikey: $SUPABASE_STAGING_ANON_KEY"               --header "Authorization: Bearer $SUPABASE_STAGING_ANON_KEY"               "$SUPABASE_STAGING_URL/auth/v1/health"
-          )"
+      - name: Require migration-only Staging credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ] || [ -z "${SUPABASE_STAGING_DB_PASSWORD:-}" ]; then
+            echo "::error::STAGING_MIGRATION_CREDENTIALS_MISSING: configure SUPABASE_ACCESS_TOKEN and SUPABASE_STAGING_DB_PASSWORD in the staging Environment only."
+            exit 1
+          fi
+          echo "::add-mask::$SUPABASE_ACCESS_TOKEN"
+          echo "::add-mask::$SUPABASE_STAGING_DB_PASSWORD"
 
-          if [ "$http_status" != "200" ]; then
-            echo "::error::Staging health check returned HTTP $http_status."
+      - name: Checkout approved RC branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RC_BRANCH }}
+          fetch-depth: 1
+
+      - name: Guard migration 0035 exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          count="$(find supabase/migrations -maxdepth 1 -type f -name '0035_*' | wc -l | tr -d ' ')"
+          if [ "$count" != "1" ]; then
+            echo "::error::Expected exactly one 0035 migration on the approved RC branch; found $count."
+            exit 1
+          fi
+          find supabase/migrations -maxdepth 1 -type f -name '0035_*' -print
+
+      - name: Install Supabase CLI
+        shell: bash
+        run: npm install --no-save supabase@2.117.0
+
+      - name: Link exact approved Staging project
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx supabase link --project-ref "$EXPECTED_STAGING_PROJECT_REF" --password "$SUPABASE_STAGING_DB_PASSWORD"
+
+      - name: Dry-run and allow only migration 0035
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx supabase db push --linked --dry-run 2>&1 | tee /tmp/staging-dry-run.txt
+          pending="$(grep -Eo '[0-9]{4}_[A-Za-z0-9_.-]+\.sql' /tmp/staging-dry-run.txt | sort -u || true)"
+          if [ -z "$pending" ]; then
+            echo "No pending migration reported by dry-run; verifying remote history."
+          elif echo "$pending" | grep -Ev '^0035_' >/dev/null; then
+            echo "::error::Unexpected pending migration(s); refusing to mutate Staging."
+            printf '%s\n' "$pending"
+            exit 1
+          elif ! echo "$pending" | grep -Eq '^0035_'; then
+            echo "::error::Migration 0035 was not the pending migration; refusing to mutate Staging."
             exit 1
           fi
 
-          echo "Supabase Staging health check passed." >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Preserve approval gates
+      - name: Apply approved migration to Staging only
         shell: bash
         run: |
+          set -euo pipefail
+          npx supabase db push --linked
+
+      - name: Verify migration history contains 0035
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx supabase migration list --linked 2>&1 | tee /tmp/migration-history.txt
+          if ! grep -Eq '0035' /tmp/migration-history.txt; then
+            echo "::error::Migration 0035 is not visible in linked Staging migration history after push."
+            exit 1
+          fi
           {
+            echo "## Staging migration evidence"
             echo
-            echo "No deploy, migration, data mutation, RLS change, secret change, or Production action was performed."
-            echo "Live OTP, email delivery, webhooks, and device E2E remain separate explicit tests."
+            echo "Project ref: $EXPECTED_STAGING_PROJECT_REF"
+            echo "Migration 0035: present in linked Staging migration history"
+            echo "Production: untouched"
           } >> "$GITHUB_STEP_SUMMARY"
