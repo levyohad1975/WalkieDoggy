@@ -58,7 +58,7 @@ export function CompleteWalkModal({
         >
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView keyboardShouldPersistTaps="handled">
-              <RtlText style={styles.title}>סימון הטיול של {dogName} כבוצע</RtlText>
+              <RtlText style={styles.title} accessibilityRole="header">סימון הטיול של {dogName} כבוצע</RtlText>
             {scheduledTime ? <RtlText style={styles.subtitle}>מתוכנן לשעה {scheduledTime}</RtlText> : null}
 
             <RtlText style={styles.label}>מי טייל בפועל?</RtlText>

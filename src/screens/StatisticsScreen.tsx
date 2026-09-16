@@ -154,7 +154,7 @@ export function StatisticsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
-        <RtlText style={styles.header}>📈 סטטיסטיקה</RtlText>
+        <RtlText style={styles.header} accessibilityRole="header">📈 סטטיסטיקה</RtlText>
 
         <View style={styles.periodRow}>
           {PERIOD_LABELS.map(([key, label]) => (

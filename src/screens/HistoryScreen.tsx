@@ -227,7 +227,7 @@ export function HistoryScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
-        <RtlText style={styles.header} maxFontSizeMultiplier={1.35}>היסטוריה</RtlText>
+        <RtlText style={styles.header} accessibilityRole="header" maxFontSizeMultiplier={1.35}>היסטוריה</RtlText>
 
         <View>
           <RtlText style={styles.sectionTitle}>סיכום שבועי</RtlText>

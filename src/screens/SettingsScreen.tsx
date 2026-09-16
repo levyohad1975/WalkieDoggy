@@ -302,7 +302,7 @@ export function SettingsScreen() {
         contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}
         keyboardShouldPersistTaps="handled"
       >
-        <RtlText style={styles.header} maxFontSizeMultiplier={1.35}>הגדרות</RtlText>
+        <RtlText style={styles.header} accessibilityRole="header" maxFontSizeMultiplier={1.35}>הגדרות</RtlText>
 
         {/*
           FINAL CORRECTION PASS — Deliverable 3C, the approved Design 3
@@ -439,7 +439,7 @@ export function SettingsScreen() {
         <Pressable style={styles.backdrop} onPress={() => setManagementVisible(false)}>
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView style={styles.sheetScroll} keyboardShouldPersistTaps="handled">
-              <RtlText style={styles.title}>⚙️ ניהול</RtlText>
+              <RtlText style={styles.title} accessibilityRole="header">⚙️ ניהול</RtlText>
 
               {/*
                 BATCH 3 (Task 1): "👥 מי משתמש במערכת" removed from here —

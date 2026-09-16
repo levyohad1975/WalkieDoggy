@@ -87,7 +87,7 @@ export function RequestTimeChangeModal({ visible, currentTime, onSubmit, onClose
               contentContainerStyle={styles.sheetContent}
               showsVerticalScrollIndicator={false}
             >
-              <RtlText style={styles.title}>בקשת שינוי שעה</RtlText>
+              <RtlText style={styles.title} accessibilityRole="header">בקשת שינוי שעה</RtlText>
               <RtlText style={styles.subtitle}>הבקשה תישלח למנהל/ת המשפחה לאישור — השעה לא תשתנה מיד</RtlText>
 
               {/* "07:00 → 08:30" before/after preview */}

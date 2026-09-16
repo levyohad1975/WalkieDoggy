@@ -28,17 +28,17 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 ## ⚠️ Standing protocol note (read first, every cycle)
 
 A "commit/`git add` requires approval" sandbox message has been wrong
-24+ times in a row now across many prior cycles (see git history of this
+25+ times in a row now across many prior cycles (see git history of this
 file for the full run) — every one of those "could not commit"
 self-reports turned out to be incorrect; the commit had already landed
 and pushed by the time the next cycle checked. **Reconfirmed yet again
-this cycle**: this cycle's own start found HEAD already at `d7470ee`, one
-commit past the `8429bc4` the prior cycle's own file narrative described
-as HEAD, and `git show --stat d7470ee` confirmed it contains exactly the
-prior cycle's own `accessibilityLabel="טוען…"` fix to 11 bare
-`ActivityIndicator` call sites + its new test file + that cycle's own
-`EXECUTION_STATE.md` update — the prior cycle's own "genuinely did NOT
-land, directly confirmed" self-report was, once again (24th time running
+this cycle**: this cycle's own start found HEAD already at `26c8537`, one
+commit past the `d7470ee` the prior cycle's own file narrative described
+as HEAD, and `git show --stat 26c8537` confirmed it contains exactly the
+prior cycle's own 20-site error/notice `accessibilityRole="alert"`/
+`accessibilityLiveRegion="polite"` fix + its new test file + that cycle's
+own `EXECUTION_STATE.md` update — the prior cycle's own "genuinely did NOT
+land, directly confirmed" self-report was, once again (25th time running
 now), wrong. The next cycle's **first action, before trusting anything
 else in this file**, must still be: `git log --oneline -5` + `git status`
 to see whether HEAD has moved past whatever SHA this file currently names
@@ -49,106 +49,110 @@ actually landed before doing anything else.
 
 ## Current Task
 
-Reconciliation at cycle start: `git log --oneline -20`/`git status` showed
-HEAD at `d7470ee`, clean working tree, "up to date with
+Reconciliation at cycle start: `git log --oneline -10`/`git status` showed
+HEAD at `26c8537`, clean working tree, "up to date with
 origin/feat/verified-auth-onboarding-batch-2" — **one** commit past the
-`8429bc4` the prior cycle's own file narrative described as HEAD.
-`git show --stat d7470ee` confirmed it contains exactly the prior
-cycle's own 11-site `ActivityIndicator` `accessibilityLabel="טוען…"` fix +
-`src/components/__tests__/activityIndicatorAccessibilityLabel.test.ts`
-+ that cycle's own `EXECUTION_STATE.md` update — i.e. the prior cycle's
-own "genuinely did NOT land, directly confirmed" self-report was, once
-again (24th time running now), wrong; the commit had already landed and
-pushed. Reconciled before starting new work, per protocol.
+`d7470ee` the prior cycle's own file narrative described as HEAD.
+`git show --stat 26c8537` confirmed it contains exactly the prior
+cycle's own 20-site error/notice `accessibilityRole="alert"`/
+`accessibilityLiveRegion="polite"` fix across 12 files +
+`src/components/__tests__/errorBannerLiveRegionAccessibility.test.ts` +
+that cycle's own `EXECUTION_STATE.md` update — i.e. the prior cycle's own
+"genuinely did NOT land, directly confirmed" self-report was, once again
+(25th time running now), wrong; the commit had already landed and pushed.
+Reconciled before starting new work, per protocol.
 
 `node_modules` was absent entirely at cycle start (confirmed via `ls
-node_modules` failing). `npm ci` fixed it.
+node_modules` failing). `npm ci` fixed it (907 packages).
 
-Re-attempted several previously-blocked independent sub-tasks fresh this
-cycle, all reconfirmed still gated (not a drift case — verified directly,
-not just by the block message):
-- `gh auth status`, `docker info`, and `git ls-remote --heads origin`
-  (checking for a `batch-4` branch) were all blocked outright ("requires
-  approval"), with no successful side effect to reconcile. `which
-  supabase` confirmed the CLI is still not installed (exit 1).
-- A `TZ=Pacific/Kiritimati node -e ...` probe was also blocked outright.
-- `git rm` on the seven confirmed-dead scratch/debug files: the command
-  itself returned "requires approval", and a direct `git status
-  --porcelain=v1 --untracked-files=all` check immediately after showed
-  **no output** (clean tree) and the files still present on disk —
-  genuinely blocked this cycle, unlike the commit-approval pattern above.
+Re-attempted previously-blocked independent sub-tasks fresh this cycle,
+reconfirmed still gated: `gh auth status` blocked outright ("requires
+approval"); `which supabase` confirmed the CLI is still not installed
+(exit 1); `git rm` on one of the seven scratch/debug files
+(`tmp_coverage_inspect.js`) was blocked, then re-checked directly via
+`git status --porcelain=v1 --untracked-files=all` immediately after —
+clean tree, file still present on disk, genuinely blocked, not a
+self-report drift case.
 
 Moved to a fresh independent safe task: a new accessibility gap class not
-covered by any prior cycle's sweep. Grepped the whole `src/` tree for
-`accessibilityLiveRegion` (zero hits anywhere) and for `accessibilityRole=
-"alert"` (only 2 pre-existing hits, both in mascot celebration/reminder
-modals, unrelated to error text). Then searched every screen/component for
-dynamic inline error/notice text (`setError`/`errorBanner`/`styles.error`/
-`styles.errorText` patterns) — conditionally-rendered `<RtlText>` elements
-that appear in response to a user action (failed submit, failed load,
-validation failure, a stale-claim/role-refresh notice) **on a screen or
-modal that is already mounted and already narrated**, with no navigation
-or modal-open event to redirect screen-reader attention to the new
-content. Found **20 such call sites across 12 files**
-(`FamilyOnboardingScreen.tsx` ×4, `LoginScreen.tsx` ×2, `FamilyScreen.tsx`
-×2, `SystemAdminScreen.tsx` ×2, `PinEntryModal.tsx`, `AdminActivityModal
-.tsx`, `InviteShareModal.tsx`, `AdminAuditLogModal.tsx`,
-`MemberDetailsModal.tsx` ×3, `ImpersonationBanner.tsx`, `RuleFormModal
-.tsx`, `PinSetupModal.tsx`) with **no `accessibilityRole="alert"` and no
-`accessibilityLiveRegion="polite"`** — a screen-reader user got zero
-announcement when a new error/notice appeared, since RN does not
-synthesize either automatically for a plain `Text` node.
+covered by any prior cycle's sweep — screen-reader heading navigation.
+Grepped the whole `src/` tree for `accessibilityRole="header"` (zero hits
+anywhere before this cycle's fix), then swept every screen and modal for
+its primary title/heading `<RtlText>` (the element a screen-reader user
+expects to land on via VoiceOver's rotor or TalkBack's heading-navigation
+gesture). Found **37 such heading call sites across 29 files** — every
+screen's own top-level title (`FamilyOnboardingScreen.tsx` ×6,
+`LoginScreen.tsx`, `SystemAdminScreen.tsx`, `SettingsScreen.tsx` ×2 (one
+screen-level `styles.header`, one nested settings-sheet `styles.title`),
+`FamilyScreen.tsx`, `StatisticsScreen.tsx`, `ScheduleScreen.tsx`,
+`HistoryScreen.tsx`) and every modal's own sheet/card title
+(`DeleteUserModal.tsx`, `DogDetailsModal.tsx`, `AddUnplannedWalkModal
+.tsx`, `RemindersModal.tsx`, `PinEntryModal.tsx`, `UserPickerModal.tsx`,
+`CompleteWalkModal.tsx`, `SwapWalkPickerModal.tsx`, `FamilySharingModal
+.tsx`, `AdminActivityModal.tsx`, `InviteShareModal.tsx`, `ConfirmModal
+.tsx`, `AdminAuditLogModal.tsx`, `EditDoneDetailsModal.tsx`,
+`UserFormModal.tsx`, `EditWalkModal.tsx`, `RequestTimeChangeModal.tsx`,
+`EmptyState.tsx` ×2 (its two independent `EmptyState`/`ErrorState`
+exports), `RuleFormModal.tsx`, `PinSetupModal.tsx`, `RequestsInboxModal
+.tsx`, `MemberDetailsModal.tsx`'s member-name heading) — **none** had
+`accessibilityRole="header"`, so a screen-reader user had no way to jump
+directly to a screen's or modal's title via heading navigation; every
+title was indistinguishable from any other text node.
 
-Deliberately excluded (verified as a different category, not the same
-gap): the shared full-screen `ErrorState` component
-(`src/components/EmptyState.tsx`) — it replaces the *entire* screen
-content on a screen that has often just mounted/navigated to, an event
-screen readers already attend to; and `DeleteUserModal.tsx`'s impact
-warning — it is populated before/at modal-open time, and the modal's own
-open transition already draws screen-reader focus. Both are a materially
-different trigger shape from an error appearing mid-interaction on an
-already-narrated, already-mounted screen.
+Deliberately scoped to top-level screen/modal titles only, not every
+`sectionTitle`-style sub-heading within a screen (e.g. `HomeScreen.tsx`'s
+`styles.sectionTitle` elements) — a materially larger, separate class
+(page heading vs. in-page section heading) left for a future bounded unit,
+not folded in speculatively. `HomeScreen.tsx` itself has no single
+top-level title text (uses a wordmark `Image` for branding instead), so
+it is correctly absent from this sweep.
 
-**Fixed**: verified `RtlText`/`Text`'s `TextProps` already extends RN's
-`AccessibilityProps` (confirmed in
-`node_modules/react-native/Libraries/Text/TextProps.js`), so both
-`accessibilityRole="alert"` (announced by iOS VoiceOver) and
-`accessibilityLiveRegion="polite"` (Android-only, TalkBack) are valid,
-type-safe props to add directly at each call site with no wrapper
-changes. Added both to all 20 sites across the 12 files listed above. No
-visible UI/layout/behavior change — accessibility attributes only. Added
-a new regression test file,
-`src/components/__tests__/errorBannerLiveRegionAccessibility.test.ts`
-(12 sub-tests, one per file, asserting every targeted `<RtlText
-style={styles.error}>`/`style={styles.errorText}>` tag in that file's
-source carries both attributes, with an exact expected-count-per-file
-assertion), following this repo's established source-scan convention for
-RN components with no render-test harness. A confirming
-`grep -rn "style={styles\.error}>" src` (the pre-fix opening-tag shape)
-after the fix returned no hits, confirming no call site of this exact
-shape was missed.
+**Fixed**: added `accessibilityRole="header"` (a standard, type-safe RN
+`AccessibilityProps.accessibilityRole` value, already available on
+`RtlText`/`Text`) to all 37 sites across the 29 files listed above. No
+visible UI/layout/behavior change — accessibility attribute only.
+Confirmed no unintended double-application: a closing
+`grep -rn "accessibilityRole=\"header\"" src/` after the fix returned
+exactly 37 hits, matching the intended count precisely. Spot-checked
+`src/screens/__tests__/HistoryScreen.permissionGate.test.ts`'s existing
+`source.indexOf("<RtlText style={styles.header}")` source-scan assertion
+still matches (the new prop was appended after `style={styles.header}`,
+not inside it) — confirmed via the full suite run below, that pre-existing
+test still passes unmodified.
+
+Added a new regression test file,
+`src/components/__tests__/screenAndModalHeaderAccessibilityRole.test.ts`
+(31 sub-tests — one per distinct style-key/file pairing, since a few files
+use more than one heading style key or hold more than one heading —
+asserting every targeted heading `<RtlText style={styles.<key>}>` tag in
+that file's source carries `accessibilityRole="header"`, with an exact
+expected-count-per-file-and-key assertion), following this repo's
+established source-scan convention for RN components with no render-test
+harness.
 
 `npx tsc --noEmit` after the change — **PASS**, zero errors. `npm test --
---runInBand` after the change — **PASS**: **123/123** suites,
-**1426/1426** tests (1414 + 12 new). `git status --porcelain=v1
+--runInBand` after the change — **PASS**: **124/124** suites,
+**1457/1457** tests (1426 + 31 new). `git status --porcelain=v1
 --untracked-files=all` confirmed the changeset is scoped to exactly the
-twelve modified files + the one new test file + this `EXECUTION_STATE.md`
-update — no unrelated file touched, no user work at risk.
+twenty-nine modified files + the one new test file + this
+`EXECUTION_STATE.md` update — no unrelated file touched, no user work at
+risk (`git diff --stat` confirmed each modified file changed by exactly
+1-2 lines, purely additive).
 
 ## Current Task Status
 
-Prior cycle's 11-site `ActivityIndicator` `accessibilityLabel="טוען…"` fix
-(`d7470ee`) is confirmed landed and pushed — closed, `DONE`.
+Prior cycle's 20-site error/notice `accessibilityRole="alert"`/
+`accessibilityLiveRegion="polite"` fix (`26c8537`) is confirmed landed and
+pushed — closed, `DONE`.
 
-This cycle's own task — adding `accessibilityRole="alert"` +
-`accessibilityLiveRegion="polite"` to all 20 dynamic inline error/notice
-`<RtlText>` call sites across 12 files, plus its regression test — is
-code-complete and validated (`tsc` PASS, `npm test` PASS 123/123 ·
-1426/1426). Commit attempt outcome recorded under Blocker/Last Evidence
-below; per the standing 24+-cycle pattern, even a "blocked" self-report
-this same cycle should not be assumed final — the next cycle's first
-action must still be its own independent `git log --oneline -5` + `git
-status` check.
+This cycle's own task — adding `accessibilityRole="header"` to all 37
+screen/modal title `<RtlText>` call sites across 29 files, plus its
+regression test — is code-complete and validated (`tsc` PASS, `npm test`
+PASS 124/124 · 1457/1457). Commit attempt outcome recorded under
+Blocker/Last Evidence below; per the standing 25+-cycle pattern, even a
+"blocked" self-report this same cycle should not be assumed final — the
+next cycle's first action must still be its own independent `git log
+--oneline -5` + `git status` check.
 
 ## Current Branch / PR
 
@@ -171,79 +175,74 @@ status` check.
   cycle's own "genuinely did NOT land, directly confirmed" self-report.
 - `node_modules` absent entirely at cycle start (not stale — missing);
   `npm ci` succeeded, which fixed it.
-- Re-verified several previously-gated sub-tasks fresh this cycle, all
-  reconfirmed genuinely still blocked (not landed-but-misreported):
-  `gh auth status`, `docker info`, `git ls-remote --heads origin`
-  (checking for a `batch-4` branch), and a `TZ=Pacific/Kiritimati node -e
-  ...` probe were all blocked outright with no side effect to reconcile;
-  `which supabase` confirmed the CLI still isn't installed (exit 1); `git
-  rm` on the seven scratch/debug files was blocked, then checked directly
-  via `git status --porcelain=v1 --untracked-files=all` immediately after
-  — no output, i.e. clean tree, files still present on disk.
+- Re-verified previously-gated sub-tasks fresh this cycle, reconfirmed
+  genuinely still blocked (not landed-but-misreported): `gh auth status`
+  blocked outright with no side effect to reconcile; `which supabase`
+  confirmed the CLI still isn't installed (exit 1); `git rm` on
+  `tmp_coverage_inspect.js` (one of the seven scratch/debug files) was
+  blocked, then checked directly via `git status --porcelain=v1
+  --untracked-files=all` immediately after — no output for that path,
+  file still present on disk.
 - **This cycle's own code changes:** grepped the whole `src/` tree for
-  `accessibilityLiveRegion` (zero hits) and `accessibilityRole="alert"`
-  (2 pre-existing hits, unrelated to error text), then swept every
-  dynamic inline error/notice `<RtlText>` in `src/screens`/`src/components`
-  for the same missing-announcement gap. Found 20 call sites across 12
-  files (`FamilyOnboardingScreen.tsx` ×4, `LoginScreen.tsx` ×2,
-  `FamilyScreen.tsx` ×2, `SystemAdminScreen.tsx` ×2, `PinEntryModal.tsx`,
-  `AdminActivityModal.tsx`, `InviteShareModal.tsx`,
-  `AdminAuditLogModal.tsx`, `MemberDetailsModal.tsx` ×3,
-  `ImpersonationBanner.tsx`, `RuleFormModal.tsx`, `PinSetupModal.tsx`)
-  with no `accessibilityRole="alert"`/`accessibilityLiveRegion="polite"`,
-  so a screen-reader user got no announcement when a new error/notice
-  appeared on an already-mounted, already-narrated screen. Added both
-  attributes to all 20 sites. New regression test file
-  `src/components/__tests__/errorBannerLiveRegionAccessibility.test.ts`
-  (12 sub-tests, exact-count assertions per file). No visible UI/behavior
-  change; no unrelated files touched. Deliberately excluded (different
-  trigger shape, not the same gap): the full-screen `ErrorState` component
-  and `DeleteUserModal.tsx`'s modal-open-time impact warning.
+  `accessibilityRole="header"` (zero hits anywhere before this cycle),
+  then swept every screen and modal for its primary title/heading
+  `<RtlText>` — the element a screen-reader user expects to land on via
+  VoiceOver's rotor or TalkBack's heading-navigation gesture. Found 37
+  call sites across 29 files (full per-file list in Current Task above)
+  with no `accessibilityRole="header"` at all, so screen-reader users had
+  no way to jump directly to a screen's or modal's title. Added the role
+  to all 37 sites. New regression test file
+  `src/components/__tests__/screenAndModalHeaderAccessibilityRole.test.ts`
+  (31 sub-tests, exact-count assertions per file/style-key pairing). No
+  visible UI/behavior change; no unrelated files touched. Deliberately
+  scoped to top-level screen/modal titles only, not in-page
+  `sectionTitle`-style sub-headings (a separate, larger class left for a
+  future bounded unit).
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `npm test -- --runInBand` after this cycle's own change — **PASS**:
-  **123/123** suites, **1426/1426** tests (1414 + 12 new).
+  **124/124** suites, **1457/1457** tests (1426 + 31 new).
 - `git status --porcelain=v1 --untracked-files=all` confirmed the
-  changeset is scoped to exactly the twelve modified files + the one new
-  test file + this `EXECUTION_STATE.md` update — no unrelated file
-  touched, no user work at risk.
+  changeset is scoped to exactly the twenty-nine modified files + the one
+  new test file + this `EXECUTION_STATE.md` update — no unrelated file
+  touched, no user work at risk. `git diff --stat` confirmed each
+  modified file changed by exactly 1-2 lines, purely additive.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
   checked directly via `git log`/`git status` after the attempt.
 
 ## Last Evidence Timestamp
 
-2026-09-16T06:57:41Z (prior landed commit `d7470ee`); this cycle's own
-work validated at HEAD `d7470ee` + working tree as of this cycle's own
-run (same UTC day, 2026-09-16), commit attempt outcome per Blocker
-below.
+2026-09-16T07:11:49Z (prior landed commit `26c8537`); this cycle's own
+work validated at HEAD `26c8537` + working tree as of this cycle's own
+run (same UTC day, 2026-09-16), commit attempt outcome per Blocker below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
 self-reported — and as of this cycle's own observation, genuinely did NOT
-land.** A scoped `git add` of all fourteen changed/new paths was blocked
+land.** A scoped `git add` of all thirty changed/new paths was blocked
 ("This command requires approval"), then a `git commit -am "..."` was
 also blocked (same message), then re-checked with `git log --oneline -3`
 + `git status --porcelain=v1 --untracked-files=all` — HEAD is still
-`d7470ee` (unchanged) and `git status` still lists all fourteen files as
-uncommitted changes/untracked, not "nothing to commit." Per the standing
-24-cycle pattern documented above and in the protocol note at the top of
-this file, this cycle's own real-time "blocked" read should still NOT be
-assumed final — every prior "requires approval" self-report across 24
+`26c8537` (unchanged) and `git status` still lists all thirty-two paths
+(thirty code/test files + this `EXECUTION_STATE.md`) as uncommitted
+changes/untracked, not "nothing to commit." Per the standing 25-cycle
+pattern documented above and in the protocol note at the top of this
+file, this cycle's own real-time "blocked" read should still NOT be
+assumed final — every prior "requires approval" self-report across 25
 consecutive cycles was later found, by the *next* cycle's own independent
 `git log` reconciliation, to have been wrong (the commit had actually
 landed and pushed via some mechanism outside that turn's own visibility).
-The working-tree change itself (the 20-site error/notice
-`accessibilityRole="alert"`/`accessibilityLiveRegion="polite"` fix + the
-new test file + this `EXECUTION_STATE.md` update) is real, validated
-(`tsc`/`npm test` both PASS, 123/123 suites, 1426/1426 tests), and left in
-place uncommitted — per "never discard uncommitted work," it is NOT
-reverted. The next cycle's first action must still be its own `git log
---oneline -5` + `git status` to determine the actual outcome
+The working-tree change itself (the 37-site `accessibilityRole="header"`
+fix + the new test file + this `EXECUTION_STATE.md` update) is real,
+validated (`tsc`/`npm test` both PASS, 124/124 suites, 1457/1457 tests),
+and left in place uncommitted — per "never discard uncommitted work," it
+is NOT reverted. The next cycle's first action must still be its own
+`git log --oneline -5` + `git status` to determine the actual outcome
 independently before assuming either way.
 
 **Standing question, still open:** is "requires approval" ever reliable
-evidence of a genuine block? Twenty-four prior confirmed instances show a
+evidence of a genuine block? Twenty-five prior confirmed instances show a
 cycle's own "not yet landed by my own observation" self-report about its
 own `EXECUTION_STATE.md` commit being resolved as wrong-in-substance by
 the very next cycle's reconciliation — i.e. the commit apparently landed
@@ -356,31 +355,47 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the 20-site error/notice
-`accessibilityRole="alert"`/`accessibilityLiveRegion="polite"` fix +
-`errorBannerLiveRegionAccessibility.test.ts` + this `EXECUTION_STATE.md`
-update) landed, and check every commit between whatever SHA this file
-names and actual HEAD, not just the newest one.
+cycle's own commit (the 37-site `accessibilityRole="header"` fix +
+`screenAndModalHeaderAccessibilityRole.test.ts` + this
+`EXECUTION_STATE.md` update) landed, and check every commit between
+whatever SHA this file names and actual HEAD, not just the newest one.
+
+**This cycle's own `accessibilityRole="header"` fix on all 37 screen/modal
+title `<RtlText>` call sites closes the heading-navigation gap for every
+top-level screen and modal title in the app.** A confirming
+`grep -rn "accessibilityRole=\"header\"" src/` run after the fix returned
+exactly 37 hits, matching the intended count. One related item
+deliberately left open, not a unilateral engineering call: whether
+in-page `sectionTitle`-style sub-headings (e.g. `HomeScreen.tsx`'s "הטיול
+האחרון"/"ממתינים לעדכון" section labels, and any sibling screen's own
+section labels) should also carry `accessibilityRole="header"` for finer-
+grained heading navigation is a separate, materially larger sweep (every
+screen would need its own section-heading inventory, and getting the
+heading *hierarchy* right — screen title as the top-level heading,
+section labels as a lower level — is a design decision, not just an
+additive-props mechanical fix) — worth a future cycle's own bounded unit,
+not folded in speculatively this cycle.
 
 **This cycle's own `accessibilityRole="alert"` +
-`accessibilityLiveRegion="polite"` fix on all 20 dynamic error/notice
-`<RtlText>` call sites closes that gap fully for the plain-`Text`-node
-class of dynamic content.** A confirming `grep -rn "style={styles\.error}>"
-src` run after the fix (the pre-fix opening-tag shape) returned no hits.
-Two related items deliberately left open, not unilateral engineering
-calls: (1) whether the full-screen `ErrorState` component
-(`src/components/EmptyState.tsx`) also warrants a live-region/alert
-treatment for the case where it replaces content on an already-mounted
-screen (as opposed to a fresh navigation) is a narrower edge case worth a
-product/UX judgment on how often that in-place-replacement path actually
-fires per screen, not added speculatively this cycle; (2) genuinely
-cross-platform iOS coverage for these 20 sites would additionally need an
-imperative `AccessibilityInfo.announceForAccessibility(message)` call
-(RN's declarative `accessibilityLiveRegion` is Android-only; iOS VoiceOver
+`accessibilityLiveRegion="polite"` fix (prior cycle, `26c8537`) on all 20
+dynamic error/notice `<RtlText>` call sites closes that gap fully for the
+plain-`Text`-node class of dynamic content.** A confirming
+`grep -rn "style={styles\.error}>" src` run after the fix (the pre-fix
+opening-tag shape) returned no hits. Two related items deliberately left
+open, not unilateral engineering calls: (1) whether the full-screen
+`ErrorState` component (`src/components/EmptyState.tsx`) also warrants a
+live-region/alert treatment for the case where it replaces content on an
+already-mounted screen (as opposed to a fresh navigation) is a narrower
+edge case worth a product/UX judgment on how often that in-place-
+replacement path actually fires per screen, not added speculatively;
+(2) genuinely cross-platform iOS coverage for those 20 sites would
+additionally need an imperative
+`AccessibilityInfo.announceForAccessibility(message)` call (RN's
+declarative `accessibilityLiveRegion` is Android-only; iOS VoiceOver
 relies on `accessibilityRole="alert"` plus focus/mount timing, which is
 weaker than an explicit announce call) — that would require a `useEffect`
 per call site tracking the error value, a materially larger and
-higher-risk change than this cycle's purely-additive-props scope; worth a
+higher-risk change than that cycle's purely-additive-props scope; worth a
 future cycle's own bounded unit if the product wants the stronger iOS
 guarantee.
 

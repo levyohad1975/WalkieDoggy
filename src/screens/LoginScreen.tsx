@@ -163,7 +163,7 @@ export function LoginScreen() {
     <SafeAreaView style={styles.container}>
       <View style={[styles.contentWrap, Platform.OS === 'web' && styles.webContent]}>
       <RtlText style={styles.emoji}>🐶</RtlText>
-      <RtlText style={styles.title}>{family?.name ?? 'המשפחה שלנו'}</RtlText>
+      <RtlText style={styles.title} accessibilityRole="header">{family?.name ?? 'המשפחה שלנו'}</RtlText>
       <RtlText style={styles.subtitle}>מי אתה?</RtlText>
 
       {activeUsers.length === 0 ? (

@@ -252,7 +252,7 @@ export function FamilyOnboardingScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <RtlText style={styles.emoji}>⏳</RtlText>
-        <RtlText style={styles.title}>ממתין לאימות</RtlText>
+        <RtlText style={styles.title} accessibilityRole="header">ממתין לאימות</RtlText>
         <RtlText style={styles.subtitle}>
           ההצטרפות למשפחה כבר בוצעה בהצלחה, אך לא הצלחנו לאמת זאת במכשיר הזה כרגע — כנראה בעיית חיבור. אין
           צורך להזין את ההזמנה מחדש.
@@ -278,7 +278,7 @@ export function FamilyOnboardingScreen() {
             IS the meaningful content on this screen, not a decorative
             corner badge. */}
         <WalkieMascot state="idle" size={128} accessibilityLabel="הקמע של Walkie Doggy Link" testID="onboarding-mascot" />
-        <RtlText style={styles.title}>ברוכים הבאים</RtlText>
+        <RtlText style={styles.title} accessibilityRole="header">ברוכים הבאים</RtlText>
         <RtlText style={styles.subtitle}>יצירת משפחה חדשה, או הצטרפות למשפחה קיימת עם קוד הזמנה</RtlText>
 
         <Button label="יצירת משפחה חדשה" onPress={() => setMode('create')} style={styles.wideButton} />
@@ -301,7 +301,7 @@ export function FamilyOnboardingScreen() {
       return (
         <SafeAreaView style={styles.container}>
           <RtlText style={styles.emoji}>⏳</RtlText>
-          <RtlText style={styles.title}>המשפחה ממתינה לאישור</RtlText>
+          <RtlText style={styles.title} accessibilityRole="header">המשפחה ממתינה לאישור</RtlText>
           <RtlText style={styles.subtitle}>
             הבקשה ליצירת {pendingApprovalFamilyName} התקבלה. נשלח עדכון לאחר אישור מנהל המערכת.
           </RtlText>
@@ -314,7 +314,7 @@ export function FamilyOnboardingScreen() {
       <SafeAreaView style={styles.formSafeArea}>
         <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
-            <RtlText style={styles.title}>יצירת משפחה חדשה</RtlText>
+            <RtlText style={styles.title} accessibilityRole="header">יצירת משפחה חדשה</RtlText>
             <RtlText style={styles.subtitle}>אחרי היצירה תוכלו להוסיף את בני המשפחה</RtlText>
 
             <View style={styles.form}>
@@ -435,7 +435,7 @@ export function FamilyOnboardingScreen() {
       <SafeAreaView style={styles.formSafeArea}>
         <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
-            <RtlText style={styles.title}>יש לי הזמנה</RtlText>
+            <RtlText style={styles.title} accessibilityRole="header">יש לי הזמנה</RtlText>
             <RtlText style={styles.subtitle}>הדביקו את קישור ההזמנה, או את קוד ההזמנה עצמו, שקיבלתם מבן/בת המשפחה</RtlText>
 
             <View style={styles.form}>
@@ -547,7 +547,7 @@ export function FamilyOnboardingScreen() {
     <SafeAreaView style={styles.formSafeArea}>
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
-          <RtlText style={styles.title}>הצטרפות למשפחה קיימת</RtlText>
+          <RtlText style={styles.title} accessibilityRole="header">הצטרפות למשפחה קיימת</RtlText>
           <RtlText style={styles.subtitle}>הקלידו את קוד ההזמנה שקיבלתם מבן/בת המשפחה</RtlText>
 
           <View style={styles.form}>

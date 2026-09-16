@@ -61,7 +61,7 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
         >
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView keyboardShouldPersistTaps="handled">
-              <RtlText style={styles.title}>{editingUser ? 'עריכת בן משפחה' : 'הוספת בן משפחה'}</RtlText>
+              <RtlText style={styles.title} accessibilityRole="header">{editingUser ? 'עריכת בן משפחה' : 'הוספת בן משפחה'}</RtlText>
 
             <View style={styles.photoRow}>
               <Avatar emoji={avatar} color={color} photoUrl={photoUrl} size={72} />

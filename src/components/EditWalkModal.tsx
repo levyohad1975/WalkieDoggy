@@ -85,7 +85,7 @@ export function EditWalkModal({
                 shrinks/scrolls rather than pushing the sheet past its
                 maxHeight cap for long content. */}
             <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
-              <RtlText style={styles.title}>עריכת הטיול — {walk.scheduledTime}</RtlText>
+              <RtlText style={styles.title} accessibilityRole="header">עריכת הטיול — {walk.scheduledTime}</RtlText>
             <RtlText style={styles.subtitle}>שינוי חד-פעמי, לא משפיע על שאר הסבב</RtlText>
 
             <RtlText style={styles.label}>שעה</RtlText>

@@ -308,7 +308,7 @@ export function MemberDetailsModal({
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <View style={styles.header}>
             <Avatar emoji={user.avatar} color={user.color} photoUrl={user.photoUrl} size={72} />
-            <RtlText style={styles.name}>{user.name}</RtlText>
+            <RtlText style={styles.name} accessibilityRole="header">{user.name}</RtlText>
             {roleLabel ? <RtlText style={styles.roleBadge}>{roleLabel}</RtlText> : null}
             {presence.label ? (
               <RtlText style={styles.presenceText}>

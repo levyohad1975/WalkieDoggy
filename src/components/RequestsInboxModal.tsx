@@ -93,7 +93,7 @@ export function RequestsInboxModal({
         accessibilityLabel="סגירת חלון בקשות"
       >
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <RtlText style={styles.title}>בקשות</RtlText>
+          <RtlText style={styles.title} accessibilityRole="header">בקשות</RtlText>
           <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
             <RtlText style={styles.sectionTitle}>בקשות החלפה</RtlText>
             {(() => {

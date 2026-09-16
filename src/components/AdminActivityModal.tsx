@@ -59,7 +59,7 @@ export function AdminActivityModal({ visible, onClose }: AdminActivityModalProps
         accessibilityLabel="סגירת מי בשימוש במערכת"
       >
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <RtlText style={styles.title}>מי בשימוש במערכת</RtlText>
+          <RtlText style={styles.title} accessibilityRole="header">מי בשימוש במערכת</RtlText>
           {loading ? <ActivityIndicator color={colors.primary} accessibilityLabel="טוען…" /> : null}
           {error ? (
             <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">

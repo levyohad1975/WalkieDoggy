@@ -67,7 +67,7 @@ export function EditDoneDetailsModal({
         >
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView keyboardShouldPersistTaps="handled">
-              <RtlText style={styles.title}>עריכת פרטי הטיול</RtlText>
+              <RtlText style={styles.title} accessibilityRole="header">עריכת פרטי הטיול</RtlText>
             <RtlText style={styles.subtitle}>
               {walk.date} · {walk.scheduledTime}
             </RtlText>

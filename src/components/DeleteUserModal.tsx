@@ -35,7 +35,7 @@ export function DeleteUserModal({ visible, user, impact, otherUsers, onConfirm, 
       <View style={styles.backdrop}>
         <View style={styles.card}>
           <ScrollView>
-            <RtlText style={styles.title}>למחוק את {user.name}?</RtlText>
+            <RtlText style={styles.title} accessibilityRole="header">למחוק את {user.name}?</RtlText>
 
             {hasImpact ? (
               <>

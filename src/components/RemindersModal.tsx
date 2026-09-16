@@ -74,7 +74,7 @@ export function RemindersModal({
         accessibilityLabel="סגירת חלון תזכורות"
       >
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <RtlText style={styles.title}>🔔 תזכורות</RtlText>
+          <RtlText style={styles.title} accessibilityRole="header">🔔 תזכורות</RtlText>
           <ScrollView style={styles.scroll}>
 {Platform.OS === 'web' && (
   <View style={styles.webPushSection}>

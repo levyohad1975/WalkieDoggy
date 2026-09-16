@@ -41,7 +41,7 @@ export function FamilySharingModal({
       >
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <ScrollView style={styles.scroll}>
-            <RtlText style={styles.title}>👨‍👩‍👧‍👦 שיתוף המשפחה</RtlText>
+            <RtlText style={styles.title} accessibilityRole="header">👨‍👩‍👧‍👦 שיתוף המשפחה</RtlText>
 
             <RtlText style={styles.meta}>
               {isSupabaseConfigured

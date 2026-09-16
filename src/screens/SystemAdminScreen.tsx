@@ -92,7 +92,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
-          <RtlText style={styles.title}>🛡️ ניהול מערכת</RtlText>
+          <RtlText style={styles.title} accessibilityRole="header">🛡️ ניהול מערכת</RtlText>
           <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="סגירת ניהול מערכת" hitSlop={10}>
             <RtlText style={styles.closeLink}>סגירה</RtlText>
           </Pressable>

@@ -30,7 +30,7 @@ export function ConfirmModal({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View style={styles.backdrop}>
         <View style={styles.card}>
-          <RtlText style={styles.title}>{title}</RtlText>
+          <RtlText style={styles.title} accessibilityRole="header">{title}</RtlText>
           {message ? <RtlText style={styles.message}>{message}</RtlText> : null}
           <View style={styles.actions}>
             {/* Round 8, Fix 3: compact — a paired flex:1 row is the exact

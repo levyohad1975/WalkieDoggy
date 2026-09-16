@@ -21,7 +21,7 @@ export function UserPickerModal({ visible, title, users, excludeUserId, onSelect
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel={`סגירת ${title}`}>
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <RtlText style={styles.title}>{title}</RtlText>
+          <RtlText style={styles.title} accessibilityRole="header">{title}</RtlText>
           {options.length === 0 ? (
             <RtlText style={styles.empty}>אין בני משפחה נוספים</RtlText>
           ) : (

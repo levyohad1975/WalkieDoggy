@@ -95,7 +95,7 @@ export function AdminAuditLogModal({ visible, onClose }: AdminAuditLogModalProps
         accessibilityLabel="סגירת יומן פעילות"
       >
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <RtlText style={styles.title}>יומן פעילות</RtlText>
+          <RtlText style={styles.title} accessibilityRole="header">יומן פעילות</RtlText>
           {error ? (
             <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
               {error}

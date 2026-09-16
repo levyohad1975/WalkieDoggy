@@ -74,7 +74,7 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
         >
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView keyboardShouldPersistTaps="handled">
-              <RtlText style={styles.title}>{editingRule ? 'עריכת שעת טיול' : 'הוספת שעת טיול'}</RtlText>
+              <RtlText style={styles.title} accessibilityRole="header">{editingRule ? 'עריכת שעת טיול' : 'הוספת שעת טיול'}</RtlText>
 
             <RtlText style={styles.label}>שעה</RtlText>
             <TimePickerField value={time} onChange={setTime} webLabel="בחירת שעת טיול" />

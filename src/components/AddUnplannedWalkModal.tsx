@@ -148,7 +148,7 @@ export function AddUnplannedWalkModal({
         >
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView keyboardShouldPersistTaps="handled">
-              <RtlText style={styles.title}>
+              <RtlText style={styles.title} accessibilityRole="header">
                 {isEditing ? `עריכת טיול ספונטני של ${dogName}` : `הוספת טיול ספונטני של ${dogName}`}
               </RtlText>
             <RtlText style={styles.subtitle}>לטיול שכבר קרה, בלי לשנות את הסבב</RtlText>

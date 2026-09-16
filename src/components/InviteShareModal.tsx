@@ -122,7 +122,7 @@ export function InviteShareModal({ visible, targetName, invite, onRevoked, onClo
         accessibilityLabel={`סגירת הזמנה ל${targetName}`}
       >
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <RtlText style={styles.title}>הזמנה ל{targetName}</RtlText>
+          <RtlText style={styles.title} accessibilityRole="header">הזמנה ל{targetName}</RtlText>
           {expiryText ? <RtlText style={styles.expiry}>ההזמנה בתוקף עד {expiryText}</RtlText> : null}
 
           <RtlText style={styles.explainer}>

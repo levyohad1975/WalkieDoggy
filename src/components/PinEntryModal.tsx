@@ -79,7 +79,7 @@ export function PinEntryModal({ visible, userName, subtitle, onSubmit, onCancel 
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.backdrop}>
           <View style={styles.card}>
-            <RtlText style={styles.title}>התחברות מחדש כ{userName}</RtlText>
+            <RtlText style={styles.title} accessibilityRole="header">התחברות מחדש כ{userName}</RtlText>
             <RtlText style={styles.subtitle}>
               {subtitle ?? 'הפרופיל הזה פעיל כרגע במכשיר אחר. הזינו את קוד ה-PIN כדי להעביר אותו למכשיר הזה.'}
             </RtlText>

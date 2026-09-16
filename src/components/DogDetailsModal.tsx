@@ -56,7 +56,7 @@ export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, o
         >
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
-              <RtlText style={styles.title}>🐶 פרטי {dog.name}</RtlText>
+              <RtlText style={styles.title} accessibilityRole="header">🐶 פרטי {dog.name}</RtlText>
 
               <View style={styles.photoRow}>
                 <DogPhoto photoUrl={dog.photoUrl} size={88} />

@@ -85,7 +85,7 @@ export function PinSetupModal({ visible, userName, hasExistingPin, onSave, onClo
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.backdrop}>
           <View style={styles.card}>
-            <RtlText style={styles.title}>{hasExistingPin ? `שינוי קוד PIN ל${userName}` : `הגדרת קוד PIN ל${userName}`}</RtlText>
+            <RtlText style={styles.title} accessibilityRole="header">{hasExistingPin ? `שינוי קוד PIN ל${userName}` : `הגדרת קוד PIN ל${userName}`}</RtlText>
             <RtlText style={styles.subtitle}>
               קוד ה-PIN ישמש כדי לאמת מעבר של הפרופיל הזה למכשיר אחר. בחרו 4 עד 6 ספרות.
             </RtlText>

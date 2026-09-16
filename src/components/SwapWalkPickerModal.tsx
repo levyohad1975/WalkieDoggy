@@ -56,7 +56,7 @@ export function SwapWalkPickerModal({ visible, walk, options, onSelect, onClose 
         accessibilityLabel="סגירת בחירת טיול להחלפה"
       >
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <RtlText style={styles.title}>להחליף עם איזה טיול?</RtlText>
+          <RtlText style={styles.title} accessibilityRole="header">להחליף עם איזה טיול?</RtlText>
           {walk ? (
             <RtlText style={styles.subtitle}>
               הטיול של {walk.scheduledTime} יוחלף עם הטיול שתבחרו — שני הטיולים יתחלפו

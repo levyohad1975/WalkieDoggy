@@ -206,7 +206,7 @@ export function ScheduleScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
-        <RtlText style={styles.header}>לוח הזמנים של {dog?.name ?? 'הכלב/ה שלנו'}</RtlText>
+        <RtlText style={styles.header} accessibilityRole="header">לוח הזמנים של {dog?.name ?? 'הכלב/ה שלנו'}</RtlText>
 
         <View style={styles.tabs}>
           {(Object.keys(RANGE_LABELS) as RangeKey[]).map((key) => (
