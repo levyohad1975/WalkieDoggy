@@ -454,7 +454,7 @@ export function FamilyOnboardingScreen() {
                 accessibilityLabel="קישור או קוד הזמנה"
               />
 
-              {inspecting ? <ActivityIndicator color={colors.primary} style={{ marginTop: 8 }} /> : null}
+              {inspecting ? <ActivityIndicator color={colors.primary} style={{ marginTop: 8 }} accessibilityLabel="טוען…" /> : null}
               {inspectError ? <RtlText style={styles.error}>{inspectError}</RtlText> : null}
 
               {preview ? (
@@ -557,7 +557,7 @@ export function FamilyOnboardingScreen() {
               accessibilityLabel="קוד הזמנה"
             />
 
-            {looking ? <ActivityIndicator color={colors.primary} style={{ marginTop: 8 }} /> : null}
+            {looking ? <ActivityIndicator color={colors.primary} style={{ marginTop: 8 }} accessibilityLabel="טוען…" /> : null}
             {joinError ? <RtlText style={styles.error}>{joinError}</RtlText> : null}
 
             {found ? (

@@ -217,7 +217,7 @@ export function ScheduleScreen() {
         </View>
 
         {loading && walks.length === 0 ? (
-          <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />
+          <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} accessibilityLabel="טוען…" />
         ) : error ? (
           <ErrorState message={error} onRetry={() => loadSchedule(familyId)} />
         ) : grouped.length === 0 ? (

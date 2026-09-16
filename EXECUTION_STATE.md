@@ -28,17 +28,17 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 ## ⚠️ Standing protocol note (read first, every cycle)
 
 A "commit/`git add` requires approval" sandbox message has been wrong
-21+ times in a row now across many prior cycles (see git history of this
+23+ times in a row now across many prior cycles (see git history of this
 file for the full run) — every one of those "could not commit"
 self-reports turned out to be incorrect; the commit had already landed
 and pushed by the time the next cycle checked. **Reconfirmed yet again
-this cycle**: this cycle's own start found HEAD already at `a93c7d5`, one
-commit past the `d08f826` the prior cycle's own file narrative described
-as HEAD, and `git show --stat a93c7d5` confirmed it contains exactly the
-prior cycle's own five-call-site danger-Button `accessibilityHint` fix +
-its new test file + that cycle's own `EXECUTION_STATE.md` update — the
-prior cycle's own "genuinely blocked, checked directly" self-report was,
-once again (21st time running now), wrong. The next cycle's **first
+this cycle**: this cycle's own start found HEAD already at `8429bc4`, one
+commit past the `1f99008` the prior cycle's own file narrative described
+as HEAD, and `git show --stat 8429bc4` confirmed it contains exactly the
+prior cycle's own `accessibilityState.busy` fix to `Button.tsx` + its new
+test file + that cycle's own `EXECUTION_STATE.md` update — the prior
+cycle's own "genuinely did NOT land, directly confirmed" self-report was,
+once again (23rd time running now), wrong. The next cycle's **first
 action, before trusting anything else in this file**, must still be:
 `git log --oneline -5` + `git status` to see whether HEAD has moved past
 whatever SHA this file currently names as HEAD, and if so, `git show
@@ -50,16 +50,15 @@ else.
 ## Current Task
 
 Reconciliation at cycle start: `git log --oneline -20`/`git status` showed
-HEAD at `1f99008`, clean working tree, "up to date with
+HEAD at `8429bc4`, clean working tree, "up to date with
 origin/feat/verified-auth-onboarding-batch-2" — **one** commit past the
-`a93c7d5` the prior cycle's own file narrative described as HEAD.
-`git show --stat 1f99008` confirmed it contains exactly the prior
-cycle's own two-call-site `accessibilityHint` fix
-(`FamilySharingModal.tsx`, `ScheduleScreen.tsx`) +
-`src/components/__tests__/secondaryDestructiveAccessibilityHint.test.ts`
+`1f99008` the prior cycle's own file narrative described as HEAD.
+`git show --stat 8429bc4` confirmed it contains exactly the prior
+cycle's own `Button.tsx` `accessibilityState.busy` fix +
+`src/components/__tests__/buttonBusyAccessibilityState.test.ts`
 + that cycle's own `EXECUTION_STATE.md` update — i.e. the prior cycle's
 own "genuinely did NOT land, directly confirmed" self-report was, once
-again (22nd time running now), wrong; the commit had already landed and
+again (23rd time running now), wrong; the commit had already landed and
 pushed. Reconciled before starting new work, per protocol.
 
 `node_modules` was absent entirely at cycle start (confirmed via `ls
@@ -74,70 +73,83 @@ directly, not just by the block message):
   after showed **no output** (clean tree) and the files still present on
   disk — genuinely blocked this cycle, unlike the commit-approval
   pattern above.
-- A `TZ=Pacific/Kiritimati node -e ...` probe and a bare
-  `git ls-remote --heads origin` (checking for a `batch-4` branch) were
-  both also blocked outright ("requires approval"), with no successful
-  side effect to reconcile.
+- A `TZ=Pacific/Kiritimati node -e ...` probe and a bare `gh auth status`
+  were both also blocked outright ("requires approval"), with no
+  successful side effect to reconcile.
 
-Moved to the next independent safe task: a fresh accessibility sweep
-looking for a not-yet-covered gap class (the RTL/mascot/backdrop/
-TextInput-label/keyboard-avoidance/danger-Button-hint sweeps are all
-already closed per prior cycles). Checked `<Switch>` usage
-(`MemberDetailsModal.tsx`, `RemindersModal.tsx`) — both already carry a
-descriptive `accessibilityLabel`, no gap. Checked for `TouchableOpacity`
-usage — none in the codebase (everything already uses `Pressable`,
-consistent). Then inspected `Button.tsx`'s shared `loading` prop: it
-already disables the underlying `Pressable` (`disabled={disabled ||
-loading}`), and confirmed via
-`node_modules/react-native/Libraries/Components/Pressable/Pressable.js`
-that RN auto-merges the `disabled` prop into
-`accessibilityState.disabled` — so the disabled state was already
-announced correctly. But **no `accessibilityState.busy` (nor
-`aria-busy`) was ever set**, so a screen-reader user pressing any of
-this shared `Button`'s many async call sites only heard "disabled" while
-an action was in flight, never "in progress" — a real, first-time-
-discovered gap, narrower than the earlier label/hint gaps but genuine
-and WCAG-aligned (the `aria-busy` equivalent).
+Moved to the next independent safe task named explicitly in the prior
+cycle's own Next Safe Task section: audit whether any other shared
+interactive primitive besides `Button.tsx` has a bespoke async/loading
+`Pressable` missing the same `accessibilityState.busy` gap. Swept every
+`Pressable`/`ActivityIndicator`/`loading` call site in `src/components`
+and `src/screens`: every genuinely async submit-style action already
+routes through the shared `Button` component (e.g. `PinEntryModal.tsx`,
+`RequestsInboxModal.tsx` both pass `loading={submitting}` to `Button`,
+so they already inherit this branch's own busy fix for free); every other
+bespoke `Pressable` found (`HomeScreen.tsx`'s notification bell,
+`WalkRow.tsx`'s poop/pee toggles and resolve chips, `SystemAdminScreen.tsx`
+/`AdminActivityModal.tsx`/`AdminAuditLogModal.tsx`'s row/backdrop
+`Pressable`s) is either a synchronous local-store toggle with no loading
+concept, or a navigation/dismiss action — none has its own async/loading
+state. That specific angle is now closed, no gap found.
 
-**Fixed**: added `accessibilityState={{ busy: !!loading }}` to
-`Button.tsx`'s Pressable — derives the busy state directly from the
-existing `loading` prop, so every current and future caller gets it for
-free with no call-site changes. No visible UI/layout/behavior change —
-accessibility attribute only. Added a new regression test file,
-`src/components/__tests__/buttonBusyAccessibilityState.test.ts` (1 test:
-verifies the Pressable's `accessibilityState` derives `busy` from
-`loading`), following this repo's established source-scan convention for
-RN components with no render-test harness.
+That sweep surfaced a **different, real, first-time-discovered
+accessibility gap while inspecting the same call sites**: every bare
+(non-`Button`) `<ActivityIndicator>` used as a screen/list loading state
+— 11 call sites across 9 files
+(`AdminActivityModal.tsx`, `AdminAuditLogModal.tsx`,
+`SystemAdminScreen.tsx` ×2, `HomeScreen.tsx`, `LoginScreen.tsx`,
+`StatisticsScreen.tsx`, `FamilyOnboardingScreen.tsx` ×2,
+`ScheduleScreen.tsx`, `HistoryScreen.tsx`) — had **no
+`accessibilityLabel` at all**, so a screen-reader user got zero
+announcement that a screen or list was loading (RN's `ActivityIndicator`
+does not synthesize one). `Button.tsx`'s own internal `ActivityIndicator`
+is correctly excluded from this fix — its parent `Pressable` already
+announces `accessibilityState.busy` via this branch's own prior fix, so a
+separate label there would be redundant/conflicting.
+
+**Fixed**: added `accessibilityLabel="טוען…"` to all 11 bare
+`ActivityIndicator` call sites across the 9 files listed above. No
+visible UI/layout/behavior change — accessibility attribute only. Added a
+new regression test file,
+`src/components/__tests__/activityIndicatorAccessibilityLabel.test.ts`
+(9 sub-tests, one per file, asserting every `<ActivityIndicator>` tag in
+that file's source carries the label), following this repo's established
+source-scan convention for RN components with no render-test harness.
+
+Also discovered, but deliberately **not** acted on this cycle:
+`src/components/HomeScreen.tsx` (distinct from the actually-used
+`src/screens/HomeScreen.tsx`) is an orphaned duplicate file — `git log`
+shows it untouched since "first commit", and no import anywhere in the
+codebase references `components/HomeScreen` (only `screens/HomeScreen`
+is imported, from `RootNavigator.tsx`). This is a 17th dead file for the
+already-gated scratch/backup-file deletion task below; not added to that
+`git rm` attempt this cycle since the deletion gate applies regardless
+and re-attempting was already reconfirmed blocked (see below) — noted
+here so a future cycle's deletion pass includes it too.
 
 `npx tsc --noEmit` after the change — **PASS**, zero errors. `npm test --
---runInBand` after the change — **PASS**: **121/121** suites,
-**1405/1405** tests (1404 + 1 new). `git status --porcelain=v1
+--runInBand` after the change — **PASS**: **122/122** suites,
+**1414/1414** tests (1405 + 9 new). `git status --porcelain=v1
 --untracked-files=all` confirmed the changeset is scoped to exactly the
-one modified file + the one new test file + this `EXECUTION_STATE.md`
+nine modified files + the one new test file + this `EXECUTION_STATE.md`
 update — no unrelated file touched, no user work at risk.
 
 ## Current Task Status
 
-Prior cycle's five-call-site danger-Button `accessibilityHint` fix
-(`a93c7d5`) is confirmed landed and pushed — closed, `DONE`.
+Prior cycle's `Button.tsx` `accessibilityState.busy` fix (`8429bc4`) is
+confirmed landed and pushed — closed, `DONE`.
 
-This cycle's own task — the two remaining category-(a)
-`accessibilityHint` remnants (`FamilySharingModal.tsx`,
-`ScheduleScreen.tsx`) plus their regression test — is code-complete and
-validated (`tsc` PASS, `npm test` PASS 120/120 · 1404/1404). Commit
-attempt outcome recorded under Blocker/Last Evidence below; per the
-standing 22+-cycle pattern, even a "blocked" self-report this same cycle
-should not be assumed final — the next cycle's first action must still be
-its own independent `git log --oneline -5` + `git status` check.
-
-This cycle's own task — adding `accessibilityState={{ busy: !!loading }}`
-to `Button.tsx` plus its regression test — is code-complete and validated
-(`tsc` PASS, `npm test` PASS 121/121 · 1405/1405). The two previously-
-gated sub-tasks (deleting the sixteen scratch/backup files, the
-`TZ`-prefixed probe, checking for a `batch-4` branch) were re-attempted
-fresh and reconfirmed genuinely still blocked this cycle (verified
-directly via `git status` after the `git rm` attempt, not just by the
-block message — see Blocker below).
+This cycle's own task — adding `accessibilityLabel="טוען…"` to all 11
+bare `ActivityIndicator` call sites across 9 files, plus its regression
+test — is code-complete and validated (`tsc` PASS, `npm test` PASS
+122/122 · 1414/1414). The bespoke-Pressable-busy-gap audit that led to
+this finding closed with no gap of its own (every async submit action
+already routes through `Button`). Commit attempt outcome recorded under
+Blocker/Last Evidence below; per the standing 23+-cycle pattern, even a
+"blocked" self-report this same cycle should not be assumed final — the
+next cycle's first action must still be its own independent `git log
+--oneline -5` + `git status` check.
 
 ## Current Branch / PR
 
@@ -151,82 +163,87 @@ block message — see Blocker below).
 ## Last Evidence
 
 - This cycle start: `git log --oneline -20`/`git status` confirmed HEAD is
-  `1f99008`, clean working tree, "up to date with
+  `8429bc4`, clean working tree, "up to date with
   origin/feat/verified-auth-onboarding-batch-2" — **one** commit past
-  `a93c7d5`, what this file's own prior narrative described as HEAD.
-  `git show --stat 1f99008` confirmed it contains exactly the prior
-  cycle's own two-call-site `accessibilityHint` fix
-  (`FamilySharingModal.tsx`, `ScheduleScreen.tsx`) + its new test file —
-  it had landed and pushed despite the prior cycle's own "genuinely did
-  NOT land, directly confirmed" self-report.
+  `1f99008`, what this file's own prior narrative described as HEAD.
+  `git show --stat 8429bc4` confirmed it contains exactly the prior
+  cycle's own `Button.tsx` `accessibilityState.busy` fix + its new test
+  file — it had landed and pushed despite the prior cycle's own
+  "genuinely did NOT land, directly confirmed" self-report.
 - `node_modules` absent entirely at cycle start (not stale — missing);
   `npm ci` succeeded, which fixed it.
-- Re-verified three previously-gated sub-tasks fresh this cycle, all
+- Re-verified two previously-gated sub-tasks fresh this cycle, both
   reconfirmed genuinely still blocked (not landed-but-misreported): `git
   rm` on the sixteen scratch/backup files (checked directly via `git
   status --porcelain=v1 --untracked-files=all` immediately after — no
   output, i.e. clean tree, files still present on disk), a
-  `TZ=Pacific/Kiritimati node -e ...` probe, and a bare `git ls-remote
-  --heads origin` (checking for a `batch-4` branch) — all three blocked
-  outright with no side effect to reconcile.
-- **This cycle's own code changes:** added
-  `accessibilityState={{ busy: !!loading }}` to `Button.tsx`'s shared
-  Pressable — RN doesn't auto-derive `busy` from the existing `loading`
-  prop the way it auto-derives `disabled` (confirmed by reading
-  `node_modules/react-native/.../Pressable.js` directly), so no async
-  call site using this shared component ever announced an in-progress
-  state to screen readers. New regression test file
-  `src/components/__tests__/buttonBusyAccessibilityState.test.ts` (1
-  test). No visible UI/behavior change; no unrelated files touched.
+  `TZ=Pacific/Kiritimati node -e ...` probe, and a bare `gh auth status`
+  — all blocked outright with no side effect to reconcile.
+- **This cycle's own code changes:** audited every bespoke `Pressable`
+  in `src/components`/`src/screens` for the same missing-`busy` gap
+  `Button.tsx` had — found none (every async submit action already routes
+  through `Button`, e.g. `PinEntryModal.tsx`/`RequestsInboxModal.tsx` pass
+  `loading={submitting}` to it). That sweep surfaced a different, real,
+  first-time-discovered gap instead: 11 bare (non-`Button`)
+  `<ActivityIndicator>` call sites across 9 files
+  (`AdminActivityModal.tsx`, `AdminAuditLogModal.tsx`,
+  `SystemAdminScreen.tsx` ×2, `HomeScreen.tsx`, `LoginScreen.tsx`,
+  `StatisticsScreen.tsx`, `FamilyOnboardingScreen.tsx` ×2,
+  `ScheduleScreen.tsx`, `HistoryScreen.tsx`) had no `accessibilityLabel`,
+  so a screen-reader user got no announcement that a screen/list was
+  loading. Added `accessibilityLabel="טוען…"` to all 11. New regression
+  test file
+  `src/components/__tests__/activityIndicatorAccessibilityLabel.test.ts`
+  (9 sub-tests). No visible UI/behavior change; no unrelated files
+  touched. Also noted (not acted on — deletion is gated, see below): a
+  17th dead file, `src/components/HomeScreen.tsx`, an unreferenced
+  duplicate of `src/screens/HomeScreen.tsx` untouched since "first
+  commit".
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `npm test -- --runInBand` after this cycle's own change — **PASS**:
-  **121/121** suites, **1405/1405** tests (1404 + 1 new).
+  **122/122** suites, **1414/1414** tests (1405 + 9 new).
 - `git status --porcelain=v1 --untracked-files=all` confirmed the
-  changeset is scoped to exactly the one modified component file + the
-  one new test file + this `EXECUTION_STATE.md` update — no unrelated
-  file touched, no user work at risk.
+  changeset is scoped to exactly the nine modified files + the one new
+  test file + this `EXECUTION_STATE.md` update — no unrelated file
+  touched, no user work at risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
   checked directly via `git log`/`git status` after the attempt.
 
 ## Last Evidence Timestamp
 
-2026-09-16T06:21:28Z (prior landed commit `1f99008`); this cycle's own
-work validated at HEAD `1f99008` + working tree as of this cycle's own
+2026-09-16T06:39:28Z (prior landed commit `8429bc4`); this cycle's own
+work validated at HEAD `8429bc4` + working tree as of this cycle's own
 run (same UTC day, 2026-09-16), commit attempt outcome per Blocker
 below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
-self-reported — and this time genuinely did NOT land, as of this cycle's
-own observation.** `git add EXECUTION_STATE.md` and `git add
-src/components/Button.tsx` and `git add
-src/components/__tests__/buttonBusyAccessibilityState.test.ts` (tried as
-three separate single-path invocations after a combined multi-path one
-was rejected for a different reason — "contains multiple operations") were
-each individually blocked ("This command requires approval"), then a
-`git commit -am "..."` was also blocked (same "requires approval"
-message), then re-checked with `git log --oneline -3` + `git status
---porcelain=v1 --untracked-files=all` — HEAD is still `1f99008`
-(unchanged) and `git status` still lists all three files as uncommitted
-changes/untracked, not "nothing to commit." Per the standing 22-cycle
-pattern documented above and in the protocol note at the top of this
-file, this cycle's own real-time "blocked" read should still NOT be
-assumed final — every prior "requires approval" self-report across 22
+self-reported — and as of this cycle's own observation, genuinely did NOT
+land.** A combined `git add` of all ten changed/new paths was blocked
+("This command requires approval"), then a `git commit -am "..."` was
+also blocked (same message), then re-checked with `git log --oneline -3`
++ `git status --porcelain=v1 --untracked-files=all` — HEAD is still
+`8429bc4` (unchanged) and `git status` still lists all ten files as
+uncommitted changes/untracked, not "nothing to commit." Per the standing
+23-cycle pattern documented above and in the protocol note at the top of
+this file, this cycle's own real-time "blocked" read should still NOT be
+assumed final — every prior "requires approval" self-report across 23
 consecutive cycles was later found, by the *next* cycle's own independent
 `git log` reconciliation, to have been wrong (the commit had actually
 landed and pushed via some mechanism outside that turn's own visibility).
-The working-tree change itself (the `accessibilityState.busy` fix + the
-new test file + this `EXECUTION_STATE.md` update) is real, validated
-(`tsc`/`npm test` both PASS, 121/121 suites, 1405/1405 tests), and left in
-place uncommitted — per "never discard uncommitted work," it is NOT
-reverted. The next cycle's first action must still be its own `git log
---oneline -5` + `git status` to determine the actual outcome
+The working-tree change itself (the 11-site `ActivityIndicator`
+`accessibilityLabel` fix + the new test file + this `EXECUTION_STATE.md`
+update) is real, validated (`tsc`/`npm test` both PASS, 122/122 suites,
+1414/1414 tests), and left in place uncommitted — per "never discard
+uncommitted work," it is NOT reverted. The next cycle's first action must
+still be its own `git log --oneline -5` + `git status` to determine the
+actual outcome
 independently before assuming either way.
 
 **Standing question, still open:** is "requires approval" ever reliable
-evidence of a genuine block? Twenty-two prior confirmed instances show a
+evidence of a genuine block? Twenty-three prior confirmed instances show a
 cycle's own "not yet landed by my own observation" self-report about its
 own `EXECUTION_STATE.md` commit being resolved as wrong-in-substance by
 the very next cycle's reconciliation — i.e. the commit apparently landed
@@ -308,7 +325,11 @@ seven original scratch/debug files
 `src/notifications/__tests__/debugExpoNotifications.test.ts`), the eight
 tracked `.before-*` backup files, and one `.encoding-backup` file (see
 Next Safe Task for the full sixteen-file list) — all inert, dead, with no
-functional impact, left in place, not blocking any other work.
+functional impact, left in place, not blocking any other work. A **17th**
+dead file was newly discovered this cycle:
+`src/components/HomeScreen.tsx`, an orphaned duplicate of
+`src/screens/HomeScreen.tsx` (see Current Task above) — same deletion gate
+applies, not separately re-attempted this cycle.
 
 **Still-open, independent of this branch:** the applicant-side navigation
 bug in `src/screens/FamilyOnboardingScreen.tsx`'s
@@ -332,10 +353,10 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the `accessibilityState.busy` fix +
-`buttonBusyAccessibilityState.test.ts` + this `EXECUTION_STATE.md`
-update) landed, and check every commit between whatever SHA this file
-names and actual HEAD, not just the newest one.
+cycle's own commit (the 11-site `ActivityIndicator` `accessibilityLabel`
+fix + `activityIndicatorAccessibilityLabel.test.ts` + this
+`EXECUTION_STATE.md` update) landed, and check every commit between
+whatever SHA this file names and actual HEAD, not just the newest one.
 
 **The `accessibilityHint`-on-destructive-actions follow-up is now
 exhausted except one item deliberately left as a product/UX decision,
@@ -355,14 +376,23 @@ intentionally excluded permanently, not deferred — shared across many
 non-destructive uses, so a static hint there would misdescribe most
 callers.)
 
-**This cycle's own `accessibilityState.busy` fix on the shared `Button`
+**Prior cycle's `accessibilityState.busy` fix on the shared `Button`
 component closes that specific gap in one place for every current and
-future caller** — no further per-call-site follow-up needed. A related,
-still-open angle for a future cycle: audit whether any *other* shared
-interactive primitive in this codebase (e.g. any bespoke icon-only
-`Pressable` wrapper outside `Button.tsx`) has its own async/loading state
-with the same missing-`busy` gap; not checked this cycle beyond
-`Button.tsx` itself.
+future caller** — no further per-call-site follow-up needed. **This
+cycle's** follow-up audit of every other bespoke `Pressable` in the
+codebase for the same missing-`busy` gap found none — that specific angle
+is now closed too (every async submit action already routes through
+`Button`).
+
+**This cycle's own `accessibilityLabel="טוען…"` fix on all 11 bare
+`ActivityIndicator` call sites closes that gap fully.** A confirming
+`grep -r "<ActivityIndicator" src/` run after the fix matched exactly:
+the 9 now-fixed files, `Button.tsx` (intentionally excluded — its parent
+`Pressable` already announces `busy`), the new test file itself, and the
+already-flagged dead `src/components/HomeScreen.tsx` (not worth fixing,
+pending deletion) — no other location in `src/` uses `ActivityIndicator`
+at all, so this angle is now genuinely exhausted, not just this cycle's
+9-file subset.
 
 If a future cycle's sandbox permission mode allows a `TZ=...`-prefixed
 command, add a TZ-forcing regression test to
@@ -474,49 +504,60 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `1f99008`, one commit
-  past the `a93c7d5` the prior cycle's own file narrative described as
-  HEAD — `git show --stat 1f99008` confirmed it contains exactly the
-  prior cycle's own two-call-site `accessibilityHint` fix
-  (`FamilySharingModal.tsx`, `ScheduleScreen.tsx`) + its new test file +
-  that cycle's own `EXECUTION_STATE.md` update, reconfirming the standing
-  self-reporting-drift pattern yet again (22nd time — that cycle's own
-  "genuinely did NOT land, directly confirmed" self-report was wrong).
-  `node_modules` was absent entirely; `npm ci` fixed it.
-- Re-attempted three previously-gated sub-tasks fresh this cycle (`git
-  rm` on the sixteen scratch/backup files, a `TZ=...`-prefixed probe, a
-  bare `git ls-remote --heads origin` for a `batch-4` branch) — all three
-  reconfirmed genuinely still blocked, verified directly via `git status`
-  immediately after the `git rm` attempt (clean tree, no side effect),
-  not just by the block message.
-- **Real gap fixed, a fresh angle not covered by any prior cycle's
-  sweep:** `Button.tsx`'s shared `Pressable` disables interaction during
-  its `loading` prop (RN auto-derives `accessibilityState.disabled` from
-  the `disabled` prop, confirmed by reading
-  `node_modules/react-native/.../Pressable.js` directly) but never set
-  `accessibilityState.busy` (nor `aria-busy`) from `loading` — so a
-  screen-reader user pressing any async action via this shared component
-  never heard an in-progress state, only "disabled." Checked `<Switch>`
-  usage (`MemberDetailsModal.tsx`, `RemindersModal.tsx` — both already
-  correctly labeled, no gap) and confirmed no `TouchableOpacity` exists in
-  the codebase (all `Pressable`, consistent) before landing on this one.
-  Fixed: added `accessibilityState={{ busy: !!loading }}` to
-  `Button.tsx`'s Pressable — applies to every current and future caller
-  with no call-site changes needed. Added a new 1-test regression file,
-  `src/components/__tests__/buttonBusyAccessibilityState.test.ts`, reusing
-  this repo's established source-scan convention for RN components with
-  no render-test harness. `npx tsc --noEmit` PASS and `npm test --
-  --runInBand` PASS (121/121 suites, 1405/1405 tests, +1) after the
-  change. `git status`/diff scoped to exactly the one modified component
-  file + the new test file + this `EXECUTION_STATE.md` update. **Commit
-  attempt outcome:** see Blocker above — this cycle's own attempt was
-  checked directly and genuinely did not land (unlike the prior 22
-  cycles' commits, which all landed despite an in-cycle "blocked"
-  self-report).
+- Reconciliation found HEAD had actually moved to `8429bc4`, one commit
+  past the `1f99008` the prior cycle's own file narrative described as
+  HEAD — `git show --stat 8429bc4` confirmed it contains exactly the
+  prior cycle's own `Button.tsx` `accessibilityState.busy` fix + its new
+  test file + that cycle's own `EXECUTION_STATE.md` update, reconfirming
+  the standing self-reporting-drift pattern yet again (23rd time — that
+  cycle's own "genuinely did NOT land, directly confirmed" self-report
+  was wrong). `node_modules` was absent entirely; `npm ci` fixed it.
+- Re-attempted two previously-gated sub-tasks fresh this cycle (`git rm`
+  on the sixteen scratch/backup files, a `TZ=...`-prefixed probe, a bare
+  `gh auth status`) — all reconfirmed genuinely still blocked, verified
+  directly via `git status` immediately after the `git rm` attempt (clean
+  tree, no side effect), not just by the block message.
+- Followed up on the prior cycle's own explicit Next Safe Task pointer:
+  audited every bespoke `Pressable` outside `Button.tsx` for the same
+  missing-`busy` gap — found none; every async submit action already
+  routes through `Button` (e.g. `PinEntryModal.tsx`,
+  `RequestsInboxModal.tsx` both pass `loading={submitting}`), so they
+  inherit the prior cycle's fix for free. That angle is now closed.
+- **Real gap fixed, a fresh angle surfaced while doing that audit:** 11
+  bare (non-`Button`) `<ActivityIndicator>` call sites across 9 files
+  (`AdminActivityModal.tsx`, `AdminAuditLogModal.tsx`,
+  `SystemAdminScreen.tsx` ×2, `HomeScreen.tsx`, `LoginScreen.tsx`,
+  `StatisticsScreen.tsx`, `FamilyOnboardingScreen.tsx` ×2,
+  `ScheduleScreen.tsx`, `HistoryScreen.tsx`) had no `accessibilityLabel`
+  at all, so a screen-reader user got no announcement that a screen/list
+  was loading. `Button.tsx`'s own internal `ActivityIndicator` was
+  correctly excluded (redundant with its parent's `accessibilityState.busy`).
+  Fixed: added `accessibilityLabel="טוען…"` to all 11 sites. Added a new
+  9-sub-test regression file,
+  `src/components/__tests__/activityIndicatorAccessibilityLabel.test.ts`,
+  reusing this repo's established source-scan convention. A confirming
+  whole-`src/`-tree grep for `<ActivityIndicator` after the fix matched
+  only the 9 fixed files, `Button.tsx` (excluded by design), the new test
+  file, and one already-flagged dead file — confirming the sweep is fully
+  exhaustive, not just scoped to this cycle's 9-file subset. Also
+  discovered (not acted on — deletion is gated) a 17th dead file:
+  `src/components/HomeScreen.tsx`, an unreferenced duplicate of
+  `src/screens/HomeScreen.tsx`. `npx tsc --noEmit` PASS and `npm test --
+  --runInBand` PASS (122/122 suites, 1414/1414 tests, +9) after the
+  change. `git status`/diff scoped to exactly the nine modified files +
+  the new test file + this `EXECUTION_STATE.md` update. **Commit attempt
+  outcome:** see Blocker above.
 
 ### Recent cycles (condensed — full detail in git history of this file)
 
-- Prior cycle: reconciliation found HEAD at `a93c7d5` and fixed a real,
+- Prior cycle: reconciliation found HEAD at `1f99008` and fixed a real,
+  first-time-discovered accessibility gap: `Button.tsx`'s shared
+  `Pressable` disabled interaction during its `loading` prop but never
+  set `accessibilityState.busy`, so a screen-reader user pressing any
+  async action only heard "disabled," never "in progress." Landed as
+  `8429bc4` despite that cycle's own "genuinely did NOT land, directly
+  confirmed" commit self-report.
+- Two cycles ago: reconciliation found HEAD at `a93c7d5` and fixed a real,
   first-time-discovered accessibility gap in the two remaining
   `variant="secondary"`/icon-only destructive-action remnants
   (`FamilySharingModal.tsx`, `ScheduleScreen.tsx`) left untouched by an

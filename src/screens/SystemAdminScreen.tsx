@@ -104,7 +104,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
               <RtlText style={styles.backLink}>‹ חזרה לרשימה</RtlText>
             </Pressable>
 
-            {detailLoading ? <ActivityIndicator color={colors.primary} style={styles.spinner} /> : null}
+            {detailLoading ? <ActivityIndicator color={colors.primary} style={styles.spinner} accessibilityLabel="טוען…" /> : null}
             {detailError ? <RtlText style={styles.error}>{detailError}</RtlText> : null}
 
             {detail ? (
@@ -202,7 +202,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
               <Button label="חיפוש" onPress={() => loadFamilies(search)} compact />
             </View>
 
-            {listLoading ? <ActivityIndicator color={colors.primary} style={styles.spinner} /> : null}
+            {listLoading ? <ActivityIndicator color={colors.primary} style={styles.spinner} accessibilityLabel="טוען…" /> : null}
             {listError ? <RtlText style={styles.error}>{listError}</RtlText> : null}
 
             <ScrollView contentContainerStyle={styles.content}>

@@ -106,7 +106,7 @@ export function AdminAuditLogModal({ visible, onClose }: AdminAuditLogModalProps
                 </RtlText>
               </View>
             ))}
-            {loading ? <ActivityIndicator color={colors.primary} style={styles.spinner} /> : null}
+            {loading ? <ActivityIndicator color={colors.primary} style={styles.spinner} accessibilityLabel="טוען…" /> : null}
           </ScrollView>
           {hasMore && !loading ? (
             <Button label="טען עוד" variant="secondary" onPress={() => load(page + 1)} style={styles.moreButton} />

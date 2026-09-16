@@ -118,7 +118,7 @@ export function StatisticsScreen() {
   if (loading && sourceWalks.length === 0) {
     return (
       <SafeAreaView style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={colors.primary} accessibilityLabel="טוען…" />
       </SafeAreaView>
     );
   }

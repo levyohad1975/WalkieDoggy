@@ -427,7 +427,7 @@ export function HomeScreen() {
   if (loading && walks.length === 0) {
     return (
       <SafeAreaView style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={colors.primary} accessibilityLabel="טוען…" />
       </SafeAreaView>
     );
   }
