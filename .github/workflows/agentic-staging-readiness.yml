@@ -104,8 +104,8 @@ jobs:
         run: |
           set -euo pipefail
           api="https://api.supabase.com/v1/projects/$EXPECTED_STAGING_PROJECT_REF/database/migrations"
-          if jq -e '.[] | select((.version | tostring) == "0035")' /tmp/migrations-before.json >/dev/null; then
-            echo "Migration 0035 is already present in Staging history; no mutation needed."
+          if jq -e --arg name "$MIGRATION_NAME" '.[] | select(.name == $name)' /tmp/migrations-before.json >/dev/null; then
+            echo "Migration 0035 ($MIGRATION_NAME) is already present in Staging history; no mutation needed."
             exit 0
           fi
 
@@ -136,15 +136,15 @@ jobs:
             --header 'Accept: application/json' \
             "$api")"
           test "$status" = "200" || { echo "::error::Could not verify Staging migration history (HTTP $status)."; exit 1; }
-          if ! jq -e '.[] | select((.version | tostring) == "0035")' /tmp/migrations-after.json >/dev/null; then
-            echo "::error::Migration 0035 is not visible in Staging migration history after apply."
+          if ! jq -e --arg name "$MIGRATION_NAME" '.[] | select(.name == $name)' /tmp/migrations-after.json >/dev/null; then
+            echo "::error::Migration 0035 ($MIGRATION_NAME) is not visible in Staging migration history after apply."
             exit 1
           fi
           {
             echo "## Staging migration evidence"
             echo
             echo "Project ref: $EXPECTED_STAGING_PROJECT_REF"
-            echo "Migration 0035: present in Staging migration history"
+            echo "Migration 0035 ($MIGRATION_NAME): present in Staging migration history"
             echo "Executor: scoped Management API; no supabase link required"
             echo "Production: untouched"
           } >> "$GITHUB_STEP_SUMMARY"
