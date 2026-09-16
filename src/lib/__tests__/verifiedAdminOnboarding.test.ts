@@ -1,5 +1,6 @@
 import {
   createVerifiedFamily,
+  getMyFamilyOnboardingStatus,
   getVerifiedAdminIdentity,
   getVerifiedAdminIdentityWithAuth,
   requestAdminEmailVerification,
@@ -18,6 +19,7 @@ jest.mock('../supabase', () => ({
   supabase: {
     functions: { invoke: jest.fn() },
     auth: { signInWithOtp: jest.fn(), verifyOtp: jest.fn(), getUser: jest.fn() },
+    rpc: jest.fn(),
   },
   SupabaseNotConfiguredError: class SupabaseNotConfiguredError extends Error {},
 }));
@@ -25,6 +27,7 @@ jest.mock('../supabase', () => ({
 const mockInvoke = (supabase as unknown as { functions: { invoke: jest.Mock } }).functions
   .invoke;
 const mockAuth = (supabase as unknown as { auth: jest.Mocked<VerifiedAdminAuthClient> }).auth;
+const mockRpc = (supabase as unknown as { rpc: jest.Mock }).rpc;
 
 function authClient(): jest.Mocked<VerifiedAdminAuthClient> {
   return {
@@ -262,6 +265,7 @@ describe('the requireAuthClient()-backed exports in local/demo mode (no Supabase
       verifyAdminEmailOtp: verifyAdminEmailOtpDemo,
       getVerifiedAdminIdentity: getVerifiedAdminIdentityDemo,
       createVerifiedFamily: createVerifiedFamilyDemo,
+      getMyFamilyOnboardingStatus: getMyFamilyOnboardingStatusDemo,
     } = require('../verifiedAdminOnboarding');
     const { SupabaseNotConfiguredError } = require('../supabase');
 
@@ -276,6 +280,9 @@ describe('the requireAuthClient()-backed exports in local/demo mode (no Supabase
     );
     expect(() => getVerifiedAdminIdentityDemo()).toThrow(SupabaseNotConfiguredError);
     await expect(createVerifiedFamilyDemo('The Cohens')).rejects.toBeInstanceOf(
+      SupabaseNotConfiguredError
+    );
+    await expect(getMyFamilyOnboardingStatusDemo()).rejects.toBeInstanceOf(
       SupabaseNotConfiguredError
     );
 
@@ -356,5 +363,57 @@ describe('createVerifiedFamily', () => {
     });
 
     await expect(createVerifiedFamily('x')).rejects.toThrow('יצירת המשפחה נכשלה');
+  });
+});
+
+describe('getMyFamilyOnboardingStatus', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('calls get_my_family_onboarding_status with no arguments and maps the row', async () => {
+    mockRpc.mockResolvedValue({
+      data: [{ family_id: 'family-1', family_name: 'The Cohens', approval_status: 'pending' }],
+      error: null,
+    });
+
+    const result = await getMyFamilyOnboardingStatus();
+
+    expect(mockRpc).toHaveBeenCalledWith('get_my_family_onboarding_status');
+    expect(result).toEqual({
+      familyId: 'family-1',
+      familyName: 'The Cohens',
+      approvalStatus: 'pending',
+    });
+  });
+
+  it('also accepts a single-object (non-array) response shape', async () => {
+    mockRpc.mockResolvedValue({
+      data: { family_id: 'family-1', family_name: 'The Cohens', approval_status: 'active' },
+      error: null,
+    });
+
+    const result = await getMyFamilyOnboardingStatus();
+
+    expect(result?.approvalStatus).toBe('active');
+  });
+
+  it('returns null when the caller has no onboarding request', async () => {
+    mockRpc.mockResolvedValue({ data: [], error: null });
+
+    await expect(getMyFamilyOnboardingStatus()).resolves.toBeNull();
+  });
+
+  it('returns null on a null data response', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: null });
+
+    await expect(getMyFamilyOnboardingStatus()).resolves.toBeNull();
+  });
+
+  it('propagates an RPC error', async () => {
+    const rpcError = new Error('network error');
+    mockRpc.mockResolvedValue({ data: null, error: rpcError });
+
+    await expect(getMyFamilyOnboardingStatus()).rejects.toBe(rpcError);
   });
 });

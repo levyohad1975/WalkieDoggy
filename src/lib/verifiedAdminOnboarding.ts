@@ -180,3 +180,33 @@ export async function createVerifiedFamily(
     warnings: Array.isArray(data?.warnings) ? data.warnings : [],
   };
 }
+
+export type FamilyOnboardingStatus = {
+  familyId: string;
+  familyName: string;
+  approvalStatus: 'pending' | 'active' | 'rejected';
+};
+
+/**
+ * Reads the caller's own family-creation request (if any) via
+ * get_my_family_onboarding_status() (0032) -- the "status RPC" its own
+ * migration comment names as one of only two supported surfaces for
+ * family_onboarding_requests (the other being the create-verified-family
+ * Edge Function itself). Lets a device that already holds a verified
+ * (non-anonymous) session recover pending/active state after an app
+ * restart, without redoing email OTP verification just to check whether a
+ * system admin has acted. Returns null when the caller has no onboarding
+ * request (never created a family, or is still on an anonymous session).
+ */
+export async function getMyFamilyOnboardingStatus(): Promise<FamilyOnboardingStatus | null> {
+  if (!supabase) throw new SupabaseNotConfiguredError();
+  const { data, error } = await supabase.rpc('get_my_family_onboarding_status');
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row?.family_id) return null;
+  return {
+    familyId: row.family_id,
+    familyName: row.family_name,
+    approvalStatus: row.approval_status,
+  };
+}

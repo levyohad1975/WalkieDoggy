@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,6 +9,7 @@ import { Button } from '../components/Button';
 import { ensureAnonymousSession, findFamilyByInviteCode, joinFamily } from '../lib/supabase';
 import {
   createVerifiedFamily,
+  getMyFamilyOnboardingStatus,
   getVerifiedAdminIdentity,
   requestAdminEmailVerification,
   verifyAdminEmailOtp,
@@ -62,6 +63,31 @@ export function FamilyOnboardingScreen() {
   const [verifiedAdminEmail, setVerifiedAdminEmail] = useState<string | null>(null);
   const [verifyingEmail, setVerifyingEmail] = useState(false);
   const [pendingApprovalFamilyName, setPendingApprovalFamilyName] = useState<string | null>(null);
+
+  // Recovers an already-verified device's pending/active family-creation
+  // request after an app restart (e.g. it closed while awaiting System
+  // Admin approval). A device only has one if it already completed OTP
+  // verification and submitted create at least once, so this is a safe,
+  // side-effect-free no-op for every other case (demo/local mode, an
+  // anonymous session, or a device that never tried creating a family) --
+  // get_my_family_onboarding_status() simply returns no row.
+  useEffect(() => {
+    getMyFamilyOnboardingStatus()
+      .then((status) => {
+        if (!status) return;
+        if (status.approvalStatus === 'active') {
+          setFamilyId(status.familyId);
+        } else if (status.approvalStatus === 'pending') {
+          setMode('create');
+          setPendingApprovalFamilyName(status.familyName);
+        }
+      })
+      .catch(() => {
+        // Best-effort recovery only -- the ordinary choose screen is
+        // already the correct fallback (offline, demo mode, etc.).
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const sendAdminVerification = async () => {
     setVerifyingEmail(true);
