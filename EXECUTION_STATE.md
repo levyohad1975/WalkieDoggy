@@ -50,19 +50,21 @@ else.
 ## Current Task
 
 Reconciliation at cycle start: `git log --oneline -20`/`git status` showed
-HEAD at `49d4764`, clean working tree, "up to date with
+HEAD at `f30814b`, clean working tree, "up to date with
 origin/feat/verified-auth-onboarding-batch-2" — **one** commit past the
-`cbf1b6f` the prior cycle's own file narrative described as HEAD.
-`git show --stat 49d4764` confirmed it contains exactly the prior cycle's
-own `RequestTimeChangeModal.tsx` `suggestedTimeFrom` restoration
-(`EXECUTION_STATE.md`, `src/components/RequestTimeChangeModal.tsx` +2/-2,
-the new `RequestTimeChangeModal.suggestedTime.test.ts`) — i.e. the prior
-cycle's own "commit attempt outcome recorded under Blocker/Last Evidence"
-hedge resolved the same way as the prior 31 documented instances (now 32):
-the commit had already landed and pushed. Reconciled before starting new
-work, per protocol.
+`49d4764` the prior cycle's own file narrative described as HEAD.
+`git show --stat f30814b` confirmed it contains exactly the prior cycle's
+own `walkActions.ts`/`walkActions.test.ts` swapped-walk-badge fix (the
+`walkMetadataLine()`/`isCurrentlySwapped()` wiring described below) plus
+that cycle's own `EXECUTION_STATE.md` update — i.e. the prior cycle's own
+"commit attempt outcome recorded under Blocker/Last Evidence" hedge
+resolved the same way as the prior 32 documented instances (now 33): the
+commit had already landed and pushed. Reconciled before starting new work,
+per protocol.
 
-`node_modules` was absent entirely at cycle start again; `npm ci` fixed it
+`node_modules` was absent entirely at cycle start again (a `head -1`
+pipeline false-positive masked this on the first check; a direct
+`ls node_modules` confirmed it was actually absent); `npm ci` fixed it
 (907 packages). Reconfirmed `gh auth status` still blocked ("requires
 approval"), `which supabase` still exit 1 (CLI not installed), and (via
 `git branch -r`) no `batch-4`-named branch on `origin` — same state as
@@ -73,70 +75,77 @@ the baseline is healthy before starting new work.
 Moved to a fresh independent safe task. Dispatched a research-only
 Explore subagent (constrained with the full list of already-closed and
 already-deliberately-deferred items from this file, to avoid rediscovering
-either) to search for one more concrete, unambiguous, first-time-discovered
-engineering gap. It found a real one, independently verified before
-fixing: **`walkActions.ts`'s `walkMetadataLine()` never showed the
-"הוחלף" (swapped) badge** — its own doc comment (line 306) documents the
-return value as `"טיול ספונטני"` / `"הוחלף"` / both joined with `" · "`,
-but the implementation only ever checked `walk.isUnplanned` and never
-called the already-fully-implemented, already-unit-tested
-`isCurrentlySwapped(walk)` helper (lines 289–302, same file) at all.
-Confirmed via `grep -rn "walkMetadataLine|isCurrentlySwapped" src/` that
-`isCurrentlySwapped()`'s only call sites anywhere were inside its own
-`describe` block in `src/logic/__tests__/walkActions.test.ts` — never from
-`walkMetadataLine()` or any component. Confirmed this was a real,
-user-facing regression, not a design choice, by reading the existing tests
-themselves: the test *titles* at lines 407 (`'"הוחלף" for a
-currently-swapped walk...'`) and 415 (`'joins both when a walk is both
-unplanned and swapped'`) describe the correct spec'd behavior, but their
-own assertions (lines 412, 421) were written against the buggy
-implementation (`toBeNull()` and `toBe('טיול ספונטני')` respectively,
-i.e. never actually asserting a join happened) — the tests had silently
-drifted to pin the bug instead of catching it. Confirmed
-`walkMetadataLine()` is a live, rendered call site, not dead code: `grep`
-on `src/components/WalkRow.tsx` shows line 133 calls
-`walkMetadataLine(walk)` directly into the rendered metadata line, and
-`WalkRow` is used by Home/Schedule/History. Real user-facing consequence:
-any family member viewing a swapped walk in any of those three screens saw
-no indication the responsibility had changed hands, despite the feature
-being fully designed, implemented (`isCurrentlySwapped`), and unit-tested
-in isolation.
+either, and primed with the same "implemented+unit-tested helper with zero
+real call sites" discovery method that found the prior cycle's own
+`walkMetadataLine`/`isCurrentlySwapped` gap) to search for one more
+concrete, unambiguous, first-time-discovered engineering gap. It found a
+real one, independently verified before fixing:
+**`src/logic/statistics.ts`'s `computePeePoopStats()` was fully
+implemented and unit-tested but never wired into `StatisticsScreen.tsx`**
+— the only one of the file's five exported stats helpers
+(`filterWalksByPeriod`, `computeCompletionStats`,
+`computeMemberDistribution`, `computePlannedVsSpontaneous`,
+`computePeePoopStats`) missing from the screen's import block and with no
+rendered card. `grep -rn "computePeePoopStats" src/` confirmed its only
+two references anywhere were its own definition and its own dedicated
+`describe('computePeePoopStats', ...)` block in
+`src/logic/__tests__/statistics.test.ts` (lines 101–116, two passing
+tests) — zero call sites from any screen/component/store. Confirmed this
+is live, reachable data, not dead code: `hadPee`/`hadPoop` are captured on
+every walk completion (`CompleteWalkModal.tsx`, `AddUnplannedWalkModal.tsx`,
+`EditDoneDetailsModal.tsx`), persisted to Supabase
+(`supabaseRepository.ts` `had_pee`/`had_poop` columns), and already
+displayed per-walk elsewhere (`HistoryScreen.tsx`'s own inline
+`dayWalks.filter(w => w.hadPee)` count, `HomeScreen.tsx`/`WalkRow.tsx`
+toggles) — only the aggregate percentage view
+(`PeePoopStats.peePercent`/`poopPercent`, directly analogous to the
+already-shown `donePercentOfResolved`) was missing. `git log
+-S"computePeePoopStats"` showed it existed unchanged since the repo's
+first commit (`897fdfd`) — a long-standing gap, not a recent regression —
+and no design doc (`docs/design/PRODUCT_CONTEXT.md`) documents excluding
+pee/poop data from statistics; `PRODUCT_CONTEXT.md`'s completion-flow
+description explicitly names "duration, notes, and pee/poop toggles" as
+captured data with no note it's deliberately excluded from the stats
+screen.
 
-**Fixed**: `walkMetadataLine()` in `src/logic/walkActions.ts` now builds a
-`parts` array, pushing `'טיול ספונטני'` when `walk.isUnplanned` and
-`'הוחלף'` when `isCurrentlySwapped(walk)`, joining with `' · '` (matching
-the function's own doc comment) — a 4-line change, no other logic touched.
-Corrected the two drifted assertions in
-`src/logic/__tests__/walkActions.test.ts` (lines 412, 421) to match what
-their own titles already described:
-`expect(walkMetadataLine(swapped)).toBe('הוחלף')` and
-`expect(walkMetadataLine(both)).toBe('טיול ספונטני · הוחלף')`. No new test
-file needed — the existing tests already had the right shape and coverage,
-they just asserted the wrong (buggy) value; fixing the two assertions is
-itself the regression-proofing (they will fail again if the join breaks).
+**Fixed**: `StatisticsScreen.tsx` now imports `computePeePoopStats`,
+computes it via `useMemo(() => computePeePoopStats(periodWalks),
+[periodWalks])`, and renders one additional "פיפי וקקי" card (same visual
+pattern as the existing "מתוכנן לעומת ספונטני" card immediately above it —
+same `styles.card`/`styles.rowBetween`/`styles.metaText`/
+`styles.metaTextStrong` styles, same empty-state fallback text for
+`doneCount === 0`), with two `Bar` fills reusing the file's own already-
+established color mapping from `CompleteWalkModal.tsx`'s pee/poop toggles
+(`colors.primary` for pee, `colors.statusSkipped` for poop). Purely
+additive UI wiring — no existing card, style, or logic touched; the `Bar`
+component and all styles reused as-is. A 30-line, single-file change
+(`src/screens/StatisticsScreen.tsx` only).
 
 `npx tsc --noEmit` after the change — **PASS**, zero errors. `npm test --
 --runInBand` after the change — **PASS**: **130/130** suites, **1487/1487**
-tests (same total; two existing assertions corrected, no test added or
-removed). `git status --porcelain=v1 --untracked-files=all` confirmed the
-changeset is scoped to exactly: `src/logic/walkActions.ts` (modified,
-+4/-1) and `src/logic/__tests__/walkActions.test.ts` (modified, +2/-2)
-plus this `EXECUTION_STATE.md` update — no unrelated file touched, no user
-work at risk.
+tests (same total — no new test file; `computePeePoopStats()` itself
+already had full unit coverage, and this screen has no render-testing
+harness, consistent with every other screen in this codebase per this
+file's own established coverage-scope note). `git status --porcelain=v1
+--untracked-files=all` confirmed the changeset is scoped to exactly:
+`src/screens/StatisticsScreen.tsx` (modified, +30/-0) plus this
+`EXECUTION_STATE.md` update — no unrelated file touched, no user work at
+risk.
 
 ## Current Task Status
 
-Prior cycle's `RequestTimeChangeModal.tsx` `suggestedTimeFrom` restoration
-(`49d4764`) is confirmed landed and pushed — closed, `DONE`.
+Prior cycle's `walkActions.ts`/`walkActions.test.ts` swapped-walk-badge fix
+(`f30814b`) is confirmed landed and pushed — closed, `DONE`.
 
-This cycle's own task — wiring `isCurrentlySwapped()` into
-`walkMetadataLine()` so the "הוחלף" swapped-walk badge actually renders,
-fixing a real always-missing-indicator regression — is code-complete and
-validated (`tsc` PASS, `npm test` PASS 130/130 · 1487/1487). Commit attempt
-outcome recorded under Blocker/Last Evidence below; per the standing
-32-cycle pattern, even a "blocked" self-report this same cycle should not
-be assumed final — the next cycle's first action must still be its own
-independent `git log --oneline -5` + `git status` check.
+This cycle's own task — wiring `computePeePoopStats()` into
+`StatisticsScreen.tsx` so the pee/poop aggregate percentages actually
+render as a new "פיפי וקקי" card, fixing a real always-missing-feature gap
+— is code-complete and validated (`tsc` PASS, `npm test` PASS 130/130 ·
+1487/1487). Commit attempt outcome recorded under Blocker/Last Evidence
+below; per the standing 33-cycle pattern, even a "blocked" self-report this
+same cycle should not be assumed final — the next cycle's first action
+must still be its own independent `git log --oneline -5` + `git status`
+check.
 
 ## Current Branch / PR
 
@@ -150,113 +159,112 @@ independent `git log --oneline -5` + `git status` check.
 ## Last Evidence
 
 - This cycle start: `git log --oneline -20`/`git status` confirmed HEAD is
-  `49d4764`, clean working tree, "up to date with
+  `f30814b`, clean working tree, "up to date with
   origin/feat/verified-auth-onboarding-batch-2" — **one** commit past
-  `cbf1b6f`, what this file's own prior narrative described as HEAD.
-  `git show --stat 49d4764` confirmed it contains exactly the prior
-  cycle's own `RequestTimeChangeModal.tsx` `suggestedTimeFrom` restoration
-  (`EXECUTION_STATE.md`, `src/components/RequestTimeChangeModal.tsx`
-  +4/-4 total across the diff, the new
-  `RequestTimeChangeModal.suggestedTime.test.ts`) — it had landed and
-  pushed despite the prior cycle's own hedged "commit attempt outcome
-  recorded under Blocker" self-report (32nd confirmed instance of the
+  `49d4764`, what this file's own prior narrative described as HEAD.
+  `git show --stat f30814b` confirmed it contains exactly the prior
+  cycle's own `walkActions.ts`/`walkActions.test.ts` swapped-walk-badge fix
+  (`EXECUTION_STATE.md`, `src/logic/walkActions.ts`,
+  `src/logic/__tests__/walkActions.test.ts`, 232 insertions/235 deletions
+  total across the diff, mostly this file's own rewrite) — it had landed
+  and pushed despite the prior cycle's own hedged "commit attempt outcome
+  recorded under Blocker" self-report (33rd confirmed instance of the
   standing pattern).
 - `node_modules` absent entirely at cycle start again (not stale —
-  missing); `npm ci` succeeded, which fixed it (907 packages).
+  missing; an initial `ls node_modules | head -1` pipeline check falsely
+  reported it present because `head` exits 0 regardless of `ls`'s own exit
+  code — a direct `ls node_modules` without piping confirmed the true
+  absence); `npm ci` succeeded, which fixed it (907 packages).
 - Reconfirmed `gh auth status` (still blocked, "requires approval"),
   `which supabase` (still exit 1 — CLI not installed), and via
   `git branch -r` that no `batch-4`-named branch exists on `origin` —
   Queue item 5 remains genuinely inapplicable this cycle, not just
-  unattempted. `npx tsc --noEmit` at reconciled HEAD `49d4764` — **PASS**,
+  unattempted. `npx tsc --noEmit` at reconciled HEAD `f30814b` — **PASS**,
   zero errors, confirming a healthy baseline before new work.
 - **This cycle's own code changes:** dispatched a research-only Explore
   subagent, explicitly primed with the full list of already-closed and
   already-deliberately-deferred items from this file (to avoid
-  rediscovering either), to search for one more concrete, unambiguous,
-  first-time-discovered engineering gap. It found a real one in
-  `src/logic/walkActions.ts`: `walkMetadataLine()`'s own doc comment
-  (line 306) documents the return value as `"טיול ספונטני"` / `"הוחלף"` /
-  both joined with `" · "`, but the implementation only checked
-  `walk.isUnplanned` and never called the already-implemented,
-  already-unit-tested `isCurrentlySwapped(walk)` helper (lines 289–302,
-  same file) at all. `grep -rn "walkMetadataLine|isCurrentlySwapped" src/`
-  confirmed `isCurrentlySwapped()`'s only call sites anywhere were inside
-  its own `describe` block in
-  `src/logic/__tests__/walkActions.test.ts` — never from
-  `walkMetadataLine()` or any component. Confirmed this was a real,
-  user-facing regression, not a design choice, by reading the existing
-  tests: their *titles* (lines 407, 415) describe the correct spec'd
-  "הוחלף"/joined behavior, but their own assertions (lines 412, 421) had
-  silently drifted to pin the buggy `toBeNull()`/`toBe('טיול ספונטני')`
-  result instead of catching it. Confirmed `walkMetadataLine()` is a live,
-  rendered call site (not dead code): `src/components/WalkRow.tsx:133`
-  calls it directly into the rendered metadata line, and `WalkRow` backs
-  Home/Schedule/History. Real user-facing consequence: any family member
-  viewing a swapped walk on any of those three screens saw no indication
-  the responsibility had changed hands.
-- **Fixed**: `walkMetadataLine()` in `src/logic/walkActions.ts` now builds
-  a `parts` array (`'טיול ספונטני'` when `walk.isUnplanned`, `'הוחלף'`
-  when `isCurrentlySwapped(walk)`) and joins with `' · '`, matching the
-  function's own doc comment — a 4-line change, no other logic touched.
-  Corrected the two drifted assertions in
-  `src/logic/__tests__/walkActions.test.ts` (lines 412, 421) to match what
-  their own titles already described. No new test file needed — the
-  existing tests already had the right shape and coverage; fixing their
-  assertions to the correct expected value is itself the
-  regression-proofing.
+  rediscovering either) and the same "implemented+unit-tested helper with
+  zero real call sites" discovery method that found the prior cycle's own
+  gap, to search for one more concrete, unambiguous, first-time-discovered
+  engineering gap. It found a real one in `src/logic/statistics.ts`:
+  `computePeePoopStats()` (lines 79–91) is fully implemented with its own
+  dedicated, passing unit-test block
+  (`src/logic/__tests__/statistics.test.ts` lines 101–116), but is the
+  only one of the file's five exported stats helpers never imported or
+  rendered by `StatisticsScreen.tsx`. `grep -rn "computePeePoopStats"
+  src/` confirmed zero call sites anywhere outside its own definition and
+  its own test file. Confirmed this is live, reachable data, not dead
+  code: `hadPee`/`hadPoop` are captured on every walk completion
+  (`CompleteWalkModal.tsx`, `AddUnplannedWalkModal.tsx`,
+  `EditDoneDetailsModal.tsx`), persisted to Supabase
+  (`supabaseRepository.ts` `had_pee`/`had_poop` columns), and already
+  shown per-walk elsewhere (`HistoryScreen.tsx`'s own inline
+  `dayWalks.filter(w => w.hadPee)` count) — only the aggregate percentage
+  view was missing from the Statistics screen, unlike its three sibling
+  helpers which each already have a rendered card.
+- **Fixed**: `StatisticsScreen.tsx` now imports `computePeePoopStats`,
+  computes it via `useMemo`, and renders one additional "פיפי וקקי" card
+  matching the existing "מתוכנן לעומת ספונטני" card's exact visual pattern
+  (same `styles.card`/`styles.rowBetween`/`styles.metaText`/
+  `styles.metaTextStrong` styles, same `doneCount === 0` empty-state
+  fallback), with two `Bar` fills reusing the color mapping already
+  established in `CompleteWalkModal.tsx`'s pee/poop toggles
+  (`colors.primary` for pee, `colors.statusSkipped` for poop). Purely
+  additive UI wiring — no existing card, style, or logic touched.
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `npm test -- --runInBand` after this cycle's own change — **PASS**:
-  **130/130** suites, **1487/1487** tests (same total — two existing
-  assertions corrected, no test added or removed).
+  **130/130** suites, **1487/1487** tests (same total — no new test file;
+  `computePeePoopStats()` already had full unit coverage, and this screen
+  has no render-testing harness, consistent with every other screen in
+  this codebase).
 - `git status --porcelain=v1 --untracked-files=all` confirmed the
-  changeset is scoped to exactly: `src/logic/walkActions.ts` (modified,
-  +4/-1) and `src/logic/__tests__/walkActions.test.ts` (modified, +2/-2)
-  plus this `EXECUTION_STATE.md` update — no unrelated file touched, no
-  user work at risk.
+  changeset is scoped to exactly: `src/screens/StatisticsScreen.tsx`
+  (modified, +30/-0) plus this `EXECUTION_STATE.md` update — no unrelated
+  file touched, no user work at risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
   checked directly via `git log`/`git status` after the attempt.
 
 ## Last Evidence Timestamp
 
-2026-09-16T14:16:53Z (prior landed commit `49d4764`); this cycle's own
-work validated at HEAD `49d4764` + working tree as of this cycle's own
+2026-09-16T14:34:27Z (prior landed commit `f30814b`); this cycle's own
+work validated at HEAD `f30814b` + working tree as of this cycle's own
 run (same UTC day, 2026-09-16), commit attempt outcome per Blocker below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
-self-reported, using two independent attempts** (`git add` on the three
-changed files alone, then `git commit -a -m ...`) — both returned
-"requires approval" from the tool layer itself (not a git error), and a
-`git log --oneline -5` + `git status --porcelain` run immediately after
-confirmed HEAD stayed at `49d4764` and the working tree diff was
-byte-for-byte unchanged (still exactly `EXECUTION_STATE.md`,
-`src/logic/walkActions.ts`, `src/logic/__tests__/walkActions.test.ts`
-modified). So *within this turn's own visibility*, this cycle's commit
-attempt is a genuine, directly-confirmed no-op, not merely a hedged
-self-report — the 33rd such instance.
+self-reported, using two independent attempts** (a standalone `git add`
+on the two changed files, then a standalone `git commit -a -m ...`) —
+both returned "This command requires approval" from the tool layer itself
+(not a git error), and a `git log --oneline -5` + `git status --porcelain`
+run immediately after confirmed HEAD stayed at `f30814b` and the working
+tree diff was unchanged (still exactly `EXECUTION_STATE.md`,
+`src/screens/StatisticsScreen.tsx` modified). So *within this turn's own
+visibility*, this cycle's commit attempt is a genuine, directly-confirmed
+no-op, not merely a hedged self-report — the 34th such instance.
 
 **Standing question — now answered with direct supporting evidence, not
 just inference:** `git log -5 --format="%h %an <%ae> — %s"` shows every
-one of the last 5 landed commits (`49d4764`, `cbf1b6f`, `3c4c517`,
-`f26419d`, `453dac5`) is authored by
+one of the last 5 landed commits (`f30814b`, `49d4764`, `cbf1b6f`,
+`3c4c517`, `f26419d`) is authored by
 `walkie-agentic-worker[bot] <walkie-agentic-worker[bot]@users.noreply.github.com>`
 with a generic `chore(agentic): checkpoint/continue RC execution` message
 — **never** this session's own attempted commit message (this cycle
-attempted `fix(walkActions): show swapped-walk badge in metadata line`;
-prior cycles' own attempted messages are equally absent from `git log`).
-This is direct, reproducible evidence for the mechanism behind the
-32-cycle "self-report says blocked, next cycle finds it landed" pattern:
-an external supervising process — not this turn's own `git commit` call —
-periodically snapshots this session's own working-tree diff into a
-generically-named checkpoint commit under its own bot identity, on a
-schedule outside this turn's own visibility. That means this turn's own
-direct "nothing changed" observation immediately after the attempt is
-real and correctly reported, but is **not** predictive of the final
-outcome once this turn ends — consistent with, not contradicting, the
-standing pattern. The working-tree change itself (the
-`walkActions.ts`/`walkActions.test.ts` swapped-badge fix + this
+attempted `fix(statistics): wire computePeePoopStats into
+StatisticsScreen`; prior cycles' own attempted messages are equally absent
+from `git log`). This is direct, reproducible evidence for the mechanism
+behind the 33-cycle "self-report says blocked, next cycle finds it landed"
+pattern: an external supervising process — not this turn's own
+`git commit` call — periodically snapshots this session's own
+working-tree diff into a generically-named checkpoint commit under its
+own bot identity, on a schedule outside this turn's own visibility. That
+means this turn's own direct "nothing changed" observation immediately
+after the attempt is real and correctly reported, but is **not**
+predictive of the final outcome once this turn ends — consistent with,
+not contradicting, the standing pattern. The working-tree change itself
+(the `StatisticsScreen.tsx` pee/poop-card wiring + this
 `EXECUTION_STATE.md` update) is real, validated (`tsc`/`npm test` both
 PASS, 130/130 suites, 1487/1487 tests) — per "never discard uncommitted
 work," it is NOT reverted regardless of this turn's own commit-attempt
@@ -364,10 +372,24 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the `walkActions.ts`/`walkActions.test.ts`
-swapped-walk-badge fix + this `EXECUTION_STATE.md` update) landed, and
-check every commit between whatever SHA this file names and actual HEAD,
-not just the newest one.
+cycle's own commit (the `StatisticsScreen.tsx` `computePeePoopStats`
+pee/poop-card wiring + this `EXECUTION_STATE.md` update) landed, and check
+every commit between whatever SHA this file names and actual HEAD, not
+just the newest one.
+
+**This cycle's own fix in `StatisticsScreen.tsx` closes a real,
+first-time-discovered functional/feature gap**, not a cosmetic one:
+`computePeePoopStats()` was fully implemented and unit-tested but had
+zero call sites anywhere, so the Statistics screen's pee/poop aggregate
+percentages never rendered despite the underlying `hadPee`/`hadPoop` data
+being captured, persisted, and already shown per-walk elsewhere. A
+confirming `grep -rn "computePeePoopStats" src/` after the fix shows the
+new `StatisticsScreen.tsx` call site plus the original definition and test
+file — no other unwired sibling of the same shape remains in
+`statistics.ts` (`filterWalksByPeriod`, `computeCompletionStats`,
+`computeMemberDistribution`, and `computePlannedVsSpontaneous` were all
+already wired in before this cycle). No further follow-up needed on this
+specific file.
 
 **This cycle's own fix in `walkActions.ts` closes a real,
 first-time-discovered functional regression**, not a cosmetic gap:
@@ -654,39 +676,50 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `49d4764`, one commit
-  past the `cbf1b6f` the prior cycle's own file narrative described as
-  HEAD — `git show --stat 49d4764` confirmed it contains exactly the
-  prior cycle's own `RequestTimeChangeModal.tsx` `suggestedTimeFrom`
-  restoration (+ the new `RequestTimeChangeModal.suggestedTime.test.ts` +
-  that cycle's own `EXECUTION_STATE.md` update), reconfirming the standing
-  self-reporting-drift pattern yet again (32nd time). `node_modules` was
-  absent entirely; `npm ci` fixed it. Reconfirmed `gh auth status` (still
-  gated) and no `batch-4` branch on `origin` via `git branch -r`. `npx tsc
-  --noEmit` at reconciled HEAD — PASS.
+- Reconciliation found HEAD had actually moved to `f30814b`, one commit
+  past the `49d4764` the prior cycle's own file narrative described as
+  HEAD — `git show --stat f30814b` confirmed it contains exactly the
+  prior cycle's own `walkActions.ts`/`walkActions.test.ts` swapped-walk-
+  badge fix (+ that cycle's own `EXECUTION_STATE.md` update),
+  reconfirming the standing self-reporting-drift pattern yet again (33rd
+  time). `node_modules` was absent entirely (masked by a `head`-pipeline
+  false positive on the first check, confirmed absent via a direct `ls`);
+  `npm ci` fixed it. Reconfirmed `gh auth status` (still gated), `which
+  supabase` (still absent), and no `batch-4` branch on `origin` via
+  `git branch -r`. `npx tsc --noEmit` at reconciled HEAD — PASS.
 - **New gap found and fixed:** dispatched a research-only Explore subagent
   (primed with the full list of already-closed/already-deferred items in
   this file) to search for one more concrete, unambiguous engineering gap.
   It found, and this cycle independently verified via `grep`/reading the
-  source, that `src/logic/walkActions.ts`'s `walkMetadataLine()` never
-  called the already-implemented `isCurrentlySwapped()` helper, so the
-  documented "הוחלף" (swapped-walk) badge never rendered in `WalkRow.tsx`
-  (used by Home/Schedule/History) despite existing tests whose titles
-  described the correct behavior (assertions had silently drifted to pin
-  the bug) — a genuine functional/UI regression, not a style/accessibility
-  gap like several recent prior cycles. Fixed: `walkMetadataLine()` now
-  joins `'טיול ספונטני'` and `'הוחלף'` with `' · '` per its own doc
-  comment (4-line change); corrected the two drifted test assertions in
-  `walkActions.test.ts` to match their own titles' spec'd behavior — no
-  new test file needed. `npx tsc --noEmit` PASS and `npm test --
-  --runInBand` PASS (130/130 suites, 1487/1487 tests, same total) after
-  the change. `git status`/diff scoped to exactly the two modified source
-  files + this `EXECUTION_STATE.md` update. **Commit attempt outcome:**
-  see Blocker above.
+  source, that `src/logic/statistics.ts`'s `computePeePoopStats()` was
+  fully implemented and unit-tested but had zero call sites anywhere
+  outside its own test file — the only one of `StatisticsScreen.tsx`'s
+  five stats helpers never imported or rendered, despite the underlying
+  `hadPee`/`hadPoop` data being captured on every walk completion,
+  persisted to Supabase, and already shown per-walk elsewhere
+  (`HistoryScreen.tsx`) — a genuine missing-feature gap, not a
+  style/accessibility one. Fixed: `StatisticsScreen.tsx` now imports and
+  computes `computePeePoopStats` via `useMemo` and renders a new "פיפי
+  וקקי" card matching the existing "מתוכנן לעומת ספונטני" card's exact
+  visual pattern and color conventions (30-line, single-file addition, no
+  existing code touched). `npx tsc --noEmit` PASS and `npm test --
+  --runInBand` PASS (130/130 suites, 1487/1487 tests, same total — no new
+  test file needed, the helper already had full unit coverage) after the
+  change. `git status`/diff scoped to exactly the one modified source file
+  + this `EXECUTION_STATE.md` update. **Commit attempt outcome:** see
+  Blocker above.
 
 ### Recent cycles (condensed — full detail in git history of this file)
 
-- Prior cycle: reconciliation found HEAD at `cbf1b6f` and fixed a real,
+- Prior cycle: reconciliation found HEAD at `49d4764` and fixed a real,
+  first-time-discovered functional regression: `walkActions.ts`'s
+  `walkMetadataLine()` never called the already-implemented
+  `isCurrentlySwapped()` helper, so the documented "הוחלף" (swapped-walk)
+  badge never rendered in `WalkRow.tsx` (used by Home/Schedule/History)
+  despite existing tests whose titles described the correct behavior.
+  Landed as `f30814b` despite that cycle's own hedged "commit attempt
+  outcome recorded under Blocker" self-report.
+- Two cycles ago: reconciliation found HEAD at `cbf1b6f` and fixed a real,
   first-time-discovered functional regression:
   `RequestTimeChangeModal.tsx`'s `suggestedTimeFrom(currentTime)` helper
   had been silently dropped from both its call sites, leaving the submit

@@ -14,6 +14,7 @@ import { DEMO_FAMILY } from '../data/demoData';
 import {
   computeCompletionStats,
   computeMemberDistribution,
+  computePeePoopStats,
   computePlannedVsSpontaneous,
   filterWalksByPeriod,
   type StatsPeriod,
@@ -110,6 +111,7 @@ export function StatisticsScreen() {
   const completion = useMemo(() => computeCompletionStats(periodWalks), [periodWalks]);
   const memberDistribution = useMemo(() => computeMemberDistribution(periodWalks), [periodWalks]);
   const plannedVsSpontaneous = useMemo(() => computePlannedVsSpontaneous(periodWalks), [periodWalks]);
+  const peePoop = useMemo(() => computePeePoopStats(periodWalks), [periodWalks]);
 
   const loading = familyLoading || scheduleLoading;
   const error = familyError || scheduleError;
@@ -286,6 +288,34 @@ export function StatisticsScreen() {
                 }
                 color={colors.primary}
               />
+            </View>
+
+            <View style={styles.card}>
+              <RtlText style={styles.cardTitle}>פיפי וקקי</RtlText>
+              {peePoop.doneCount === 0 ? (
+                <RtlText style={styles.metaText}>עדיין אין טיולים שהושלמו בטווח הזה</RtlText>
+              ) : (
+                <>
+                  <View style={styles.rowBetween}>
+                    <RtlText style={[styles.metaText, styles.rtlText]}>
+                      פיפי
+                    </RtlText>
+                    <RtlText style={[styles.metaTextStrong, styles.ltrText]}>
+                      {peePoop.peePercent}%
+                    </RtlText>
+                  </View>
+                  <Bar percent={peePoop.peePercent} color={colors.primary} />
+                  <View style={styles.rowBetween}>
+                    <RtlText style={[styles.metaText, styles.rtlText]}>
+                      קקי
+                    </RtlText>
+                    <RtlText style={[styles.metaTextStrong, styles.ltrText]}>
+                      {peePoop.poopPercent}%
+                    </RtlText>
+                  </View>
+                  <Bar percent={peePoop.poopPercent} color={colors.statusSkipped} />
+                </>
+              )}
             </View>
 
           </>
