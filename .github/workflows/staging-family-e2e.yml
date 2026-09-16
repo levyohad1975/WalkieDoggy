@@ -56,7 +56,6 @@ jobs:
         env:
           SUPABASE_STAGING_URL: ${{ secrets.SUPABASE_STAGING_URL }}
           SUPABASE_STAGING_ANON_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           STAGING_OTP_TEST_EMAIL: ${{ secrets.STAGING_OTP_TEST_EMAIL }}
           STAGING_OTP_GMAIL_CLIENT_ID: ${{ secrets.STAGING_OTP_GMAIL_CLIENT_ID }}
           STAGING_OTP_GMAIL_CLIENT_SECRET: ${{ secrets.STAGING_OTP_GMAIL_CLIENT_SECRET }}
@@ -64,7 +63,7 @@ jobs:
         run: |
           set -euo pipefail
           missing=0
-          for name in SUPABASE_STAGING_URL SUPABASE_STAGING_ANON_KEY SUPABASE_ACCESS_TOKEN STAGING_OTP_TEST_EMAIL STAGING_OTP_GMAIL_CLIENT_ID STAGING_OTP_GMAIL_CLIENT_SECRET STAGING_OTP_GMAIL_REFRESH_TOKEN; do
+          for name in SUPABASE_STAGING_URL SUPABASE_STAGING_ANON_KEY STAGING_OTP_TEST_EMAIL STAGING_OTP_GMAIL_CLIENT_ID STAGING_OTP_GMAIL_CLIENT_SECRET STAGING_OTP_GMAIL_REFRESH_TOKEN; do
             if [ -z "${!name:-}" ]; then
               echo "::error::Missing required staging secret: $name"
               missing=1
@@ -72,47 +71,19 @@ jobs:
           done
           exit "$missing"
 
-      - name: Ensure Staging Auth email capacity for E2E
+      - name: Guard exact Staging project
         shell: bash
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_STAGING_URL: ${{ secrets.SUPABASE_STAGING_URL }}
         run: |
           set -euo pipefail
-          project_ref="${SUPABASE_STAGING_URL:-}"
-          project_ref="${project_ref#https://}"
+          project_ref="${SUPABASE_STAGING_URL#https://}"
           project_ref="${project_ref%%.*}"
-          if [ -z "$project_ref" ]; then
-            project_ref="$EXPECTED_STAGING_PROJECT_REF"
-          fi
           if [ "$project_ref" != "$EXPECTED_STAGING_PROJECT_REF" ]; then
-            echo "::error::Refusing Auth config change outside the approved Staging project."
+            echo "::error::Refusing Family E2E outside the approved Staging project."
             exit 1
           fi
-
-          config_url="https://api.supabase.com/v1/projects/$EXPECTED_STAGING_PROJECT_REF/config/auth"
-          current="$(curl --fail-with-body --silent --show-error \
-            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
-            "$config_url")"
-          current_limit="$(printf '%s' "$current" | jq -r '.rate_limit_email_sent // 0')"
-          echo "Current Staging Auth email limit: $current_limit/hour"
-
-          if [ "$current_limit" -lt 30 ]; then
-            echo "Raising Staging-only Auth email limit to 30/hour for repeatable E2E."
-            curl --fail-with-body --silent --show-error \
-              -X PATCH "$config_url" \
-              -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
-              -H "Content-Type: application/json" \
-              -d '{"rate_limit_email_sent":30}' >/dev/null
-          fi
-
-          verified="$(curl --fail-with-body --silent --show-error \
-            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
-            "$config_url" | jq -r '.rate_limit_email_sent // 0')"
-          if [ "$verified" -lt 30 ]; then
-            echo "::error::Staging Auth email rate limit remains below the E2E requirement. Configure custom SMTP or the Send Email Auth Hook, then retry."
-            exit 1
-          fi
-          echo "Verified Staging Auth email limit: $verified/hour"
+          echo "Verified approved Staging project target."
 
       - name: Run verified family creation E2E against Staging
         shell: bash
@@ -135,7 +106,7 @@ jobs:
             echo "- Associated RC branch: \`$TARGET_BRANCH\`"
             echo "- Environment: \`staging\`"
             echo "- Flow: OTP → verified session → family persistence → invite lookup → second-device join when active"
-            echo "- Auth email capacity: verified before E2E"
+            echo "- Auth configuration mutation: none"
             echo "- Service-role credential used: no"
             echo "- Production credentials used: no"
             echo "- Production deploy/migration performed: no"
