@@ -103,6 +103,38 @@ jobs:
           "path=$bunExe" | Add-Content $env:GITHUB_OUTPUT
           "Custom Bun ready at $bunExe; avoids setup-bun symlink creation under NETWORK SERVICE." | Add-Content $env:GITHUB_STEP_SUMMARY
 
+      - name: Provision native Claude Code for Windows
+        id: claude_cli
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $version = '2.1.274'
+          $claudeExe = Join-Path $env:USERPROFILE '.local\bin\claude.exe'
+          $valid = $false
+          if (Test-Path $claudeExe) {
+            & $claudeExe --version
+            if ($LASTEXITCODE -eq 0) { $valid = $true }
+          }
+          if (-not $valid) {
+            $installer = Invoke-RestMethod -Uri 'https://claude.ai/install.ps1'
+            & ([scriptblock]::Create($installer)) $version
+            if ($LASTEXITCODE) { throw "Claude Code Windows installer failed with exit code $LASTEXITCODE." }
+          }
+          $candidates = @(
+            $claudeExe,
+            (Join-Path $env:USERPROFILE '.local\bin\claude'),
+            (Join-Path $env:LOCALAPPDATA 'Programs\Claude\claude.exe')
+          )
+          $cmd = Get-Command claude.exe -ErrorAction SilentlyContinue
+          if ($cmd) { $candidates += $cmd.Source }
+          $resolved = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+          if (-not $resolved) { throw 'Claude Code Windows installer completed but claude.exe was not found.' }
+          & $resolved --version
+          if ($LASTEXITCODE) { throw 'Claude Code executable validation failed.' }
+          "path=$resolved" | Add-Content $env:GITHUB_OUTPUT
+          (Split-Path $resolved -Parent) | Add-Content $env:GITHUB_PATH
+          "Native Claude Code $version ready at $resolved; the action will skip its Linux-only install.sh path." | Add-Content $env:GITHUB_STEP_SUMMARY
+
       - name: Detect worker authentication
         id: auth
         shell: powershell
@@ -119,6 +151,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           path_to_bun_executable: ${{ steps.bun.outputs.path }}
+          path_to_claude_code_executable: ${{ steps.claude_cli.outputs.path }}
           additional_permissions: |
             actions: read
           allowed_bots: "github-actions[bot]"
@@ -136,6 +169,7 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           path_to_bun_executable: ${{ steps.bun.outputs.path }}
+          path_to_claude_code_executable: ${{ steps.claude_cli.outputs.path }}
           additional_permissions: |
             actions: read
           allowed_bots: "github-actions[bot]"
