@@ -46,34 +46,22 @@ jobs:
           ref: ${{ env.TARGET_BRANCH }}
           persist-credentials: true
 
+      - name: Provision Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
       - name: Verify Windows prerequisites
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
           Get-Command git -ErrorAction Stop | Out-Null
-
-          # Self-hosted Windows runners commonly run as NETWORK SERVICE, while
-          # Node may be installed by NVM4W outside the service account's PATH.
-          # Discover npm from supported machine locations and publish its
-          # directory to GITHUB_PATH instead of depending on the service PATH.
-          $npmCandidates = @()
-          $npmOnPath = Get-Command npm.cmd -ErrorAction SilentlyContinue
-          if ($npmOnPath) { $npmCandidates += $npmOnPath.Source }
-          $npmCandidates += @(
-            "$env:ProgramFiles\nodejs\npm.cmd",
-            "${env:ProgramFiles(x86)}\nodejs\npm.cmd",
-            "C:\nvm4w\nodejs\npm.cmd"
-          )
-          $npm = $npmCandidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
-          if (-not $npm) { throw 'npm.cmd was not found on PATH or in supported machine Node/NVM4W locations.' }
-          $nodeDir = Split-Path $npm -Parent
-          $nodeExe = Join-Path $nodeDir 'node.exe'
-          if (-not (Test-Path $nodeExe)) { throw "node.exe was not found next to npm.cmd at $nodeDir" }
-          $nodeDir | Add-Content $env:GITHUB_PATH
-          $env:PATH = "$nodeDir;$env:PATH"
-          & $nodeExe --version
+          $node = Get-Command node.exe -ErrorAction Stop
+          $npm = Get-Command npm.cmd -ErrorAction Stop
+          & $node.Source --version
           if ($LASTEXITCODE) { throw 'node executable validation failed' }
-          & $npm --version
+          & $npm.Source --version
           if ($LASTEXITCODE) { throw 'npm executable validation failed' }
 
           $candidates = @()
@@ -83,15 +71,13 @@ jobs:
             "$env:ProgramFiles\Git\bin\bash.exe",
             "$env:ProgramFiles\Git\usr\bin\bash.exe",
             "${env:ProgramFiles(x86)}\Git\bin\bash.exe",
-            "${env:ProgramFiles(x86)}\Git\usr\bin\bash.exe",
-            "$env:LOCALAPPDATA\Programs\Git\bin\bash.exe",
-            "$env:LOCALAPPDATA\Programs\Git\usr\bin\bash.exe"
+            "${env:ProgramFiles(x86)}\Git\usr\bin\bash.exe"
           )
           $bash = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
-          if (-not $bash) { throw 'Git Bash was not found on PATH or in supported Git for Windows locations.' }
+          if (-not $bash) { throw 'Git Bash was not found on PATH or in supported system-wide Git for Windows locations.' }
           "CLAUDE_CODE_GIT_BASH_PATH=$bash" | Add-Content $env:GITHUB_ENV
           (Split-Path $bash -Parent) | Add-Content $env:GITHUB_PATH
-          "Windows runner prerequisites ready. Node: $nodeExe; npm: $npm; Git Bash: $bash" | Add-Content $env:GITHUB_STEP_SUMMARY
+          "Windows runner prerequisites ready. Node: $($node.Source); npm: $($npm.Source); Git Bash: $bash" | Add-Content $env:GITHUB_STEP_SUMMARY
 
       - name: Detect worker authentication
         id: auth
