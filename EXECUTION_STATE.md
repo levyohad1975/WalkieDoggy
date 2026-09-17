@@ -50,7 +50,95 @@ anything else.
 ## Current Task
 
 **This cycle's reconciliation, done fresh via direct `git log`/`git show`,
-not trusted from this file's own prior narrative:** HEAD was `1482345`,
+not trusted from this file's own prior narrative:** HEAD was `891feca`, one
+commit past `1482345` (what this file's own prior text named as HEAD, and
+whose own commit attempt that prior cycle had hedged under Blocker as
+possibly not landed). `git show --stat 891feca` and `git diff --name-status
+1482345 891feca` confirmed it contains exactly that prior cycle's own
+push-deactivation-on-removal fix (`supabase/migrations/0037_deactivate_push_on_member_removal.sql`,
+`supabase/functions/send-request-push/index.ts`,
+`src/lib/__tests__/migration0037.pushDeactivationOnRemoval.test.ts`) plus
+that cycle's own `EXECUTION_STATE.md` rewrite — the standing self-
+reporting-drift pattern (see note at top of file) reconfirmed yet again
+(48th+ time running): the commit had already landed despite the prior
+cycle's own hedged "commit attempt outcome recorded under Blocker"
+self-report. `node_modules` was present at cycle start but `npx tsc
+--noEmit` failed with an unrelated `npx`-package-resolution error
+(`npx` tried to fetch a stray unscoped `tsc` package instead of resolving
+the workspace's own `typescript` binary); a subsequent `ls node_modules`
+check showed it had gone empty between commands (no action taken by this
+worker to remove it — consistent with this file's own documented external
+supervising-process behavior potentially touching the working tree
+between turns). `npm ci` restored it cleanly (906 packages, matching the
+expected baseline) and `npx tsc --noEmit` then ran clean with zero output.
+
+Ran the full `npm test -- --runInBand` at reconciled HEAD `891feca` as the
+pre-work baseline check (per this file's own standing habit of always
+re-running the full suite, not a per-file subset) and it did **not** match
+the expected 128/128 · 1514/1514 baseline the prior cycle's own Next Safe
+Task section predicted: exactly **one** test failed —
+`src/lib/__tests__/migration0037.pushDeactivationOnRemoval.test.ts`'s own
+"deactivates push_tokens and web_push_subscriptions... before removed_at is
+set" case, with `removedAtIdx` (an `indexOf` lookup for the literal string
+`'update users\n  set removed_at = now()'`) returning `-1` instead of a
+position after `webPushIdx`. Diagnosed directly (not guessed): this
+sandbox's Windows git checkout uses CRLF line endings for text files
+(confirmed via `[System.IO.File]::ReadAllBytes()` on the `.sql` file in
+PowerShell, showing byte pairs `13 10` — `\r\n` — at every line break,
+whereas Git Bash's own `sed`/`od` pipe had been silently normalizing `\r`
+away when displaying the same bytes, masking the discrepancy under a
+naive terminal check). `fs.readFileSync(..., 'utf8')` in Node preserves
+`\r\n` literally, so the test's own hard-coded `'update users\n  set
+removed_at = now()'` search string — which assumes LF-only line
+endings — could never match a real `\r\n`-terminated file on this
+checkout, even though the migration's actual SQL content
+(`update push_tokens` → `update web_push_subscriptions` → `update users` /
+`set removed_at = now()`, correctly ordered) was never wrong. Cross-checked
+with `grep -rn "indexOf('[^']*\\n" src/` (4 files) that no *other* existing
+test in the repo embeds a literal `\n` inside a multi-line search string in
+this fragile way — `migration0027.serverEnforcement.test.ts`, the other
+`.sql`-scanning test in that grep's results, only ever does
+`source.indexOf('\n', someOffset)` (searching *for* the next newline from a
+known offset, which tolerates `\r\n` fine since it still finds the `\n`
+byte) — so this was a narrow, one-test fragility introduced by the prior
+cycle's own new test file, not a systemic repo-wide line-ending problem.
+
+**Fixed:** normalized both `source` and `edge` in
+`migration0037.pushDeactivationOnRemoval.test.ts` with a `.replace(/\r\n/g,
+'\n')` immediately after `fs.readFileSync(...)`, so the test's assertions
+are correct regardless of which line-ending convention a given checkout's
+git config produces — matches the file's own already-LF-normalized source
+content on any platform without weakening any assertion (every other
+existing check in this file was already single-line or offset-relative and
+therefore already CRLF-tolerant; this only hardens the one two-line
+search). No production code changed — this is a test-only fix for a test
+that was already asserting the correct thing about already-correct
+production code, just fragile to how it read the file back.
+
+`npx jest src/lib/__tests__/migration0037.pushDeactivationOnRemoval.test.ts
+--runInBand` after the fix — **PASS: 5/5 tests** (up from 4/5 immediately
+before the fix, same file, same HEAD). Full `npm test -- --runInBand`
+re-run after the fix — **PASS: 128/128 suites, 1514/1514 tests** (the
+expected baseline, now actually matching it). `npx tsc --noEmit` — **PASS**,
+zero errors. `git status --porcelain=v1 --untracked-files=all` confirmed
+the tracked changeset is scoped to exactly
+`src/lib/__tests__/migration0037.pushDeactivationOnRemoval.test.ts` (9
+insertions, 8 deletions) plus this `EXECUTION_STATE.md` update — no
+unrelated file touched, no user work at risk. Two untracked scratch probe
+files this cycle's own diagnosis created
+(`_scratch_check0037.js`/`_scratch_check0037.ps1`, used only to inspect raw
+file bytes while diagnosing the CRLF mismatch) hit the same
+long-standing file-deletion sandbox gate documented elsewhere in this file
+(`rm`/`Remove-Item` both blocked as "may only remove files from the
+allowed working directories," even though this working directory *is* the
+allowed one) — left in place, untracked and not staged/committed, joining
+the existing housekeeping backlog rather than blocking this cycle's real
+fix.
+
+### Prior cycles' own narratives (full detail preserved here; see also the further-condensed "Recent cycles" and "Completed This Cycle" sections below for the same events in shorter form)
+
+Prior cycle's own reconciliation, done fresh via direct `git log`/`git
+show`: HEAD was `1482345`,
 clean working tree, **one** commit past `db72bb7`, what this file's own
 prior text described as HEAD (and which that prior cycle itself had hedged
 its commit attempt under Blocker). `git show --stat 1482345` and `git diff
@@ -677,21 +765,23 @@ mount-recovery dead end, which was the unambiguous, no-judgment-call part.
 
 ## Current Task Status
 
-Prior cycle's `directlyAssignedWalkCount` deletion-impact fix
-(`src/logic/familyManagement.ts` + wiring, `1482345`) is confirmed
-landed — closed, `DONE`.
+Prior cycle's push-deactivation-on-removal fix (new migration `0037`
++ `send-request-push/index.ts` filter + its own regression test, `891feca`)
+is confirmed landed — closed, `DONE`.
 
-This cycle's own task — deactivating a removed family member's
-`push_tokens`/`web_push_subscriptions` inside `admin_delete_family_member()`
-(new migration 0037) plus a `removed_at` defense-in-depth filter in
-`send-request-push/index.ts`, closing a real data-boundary/privacy leak
-where a removed member kept receiving push notifications about a pending
-request of theirs resolved after their removal — is code-complete and
-validated (`tsc` PASS, `npm test` PASS **128/128 · 1514/1514**, up from
-**127/127 · 1509/1509** at cycle start HEAD before the fix). Commit attempt
-outcome recorded under Blocker/Last Evidence below; per the standing
-46+-cycle pattern, even a "blocked" self-report this same cycle should not
-be assumed final — the next cycle's first action must still be its own
+This cycle's own task — repairing that same landed test file
+(`src/lib/__tests__/migration0037.pushDeactivationOnRemoval.test.ts`),
+whose own "before `removed_at` is set" assertion was failing on this
+sandbox's CRLF-checkout Windows environment because it embedded a
+literal LF-only `\n` in a two-line `indexOf` search string — is
+code-complete and validated (`tsc` PASS, targeted test PASS **5/5**, full
+`npm test` PASS **128/128 · 1514/1514**, matching the expected baseline
+that had regressed to 127/128 · 1513/1514 immediately before this cycle's
+own fix). No production code changed; the underlying migration/Edge
+Function fix this test covers was already correct. Commit attempt outcome
+recorded under Blocker/Last Evidence below; per the standing 47+-cycle
+pattern, even a "blocked" self-report this same cycle should not be
+assumed final — the next cycle's first action must still be its own
 independent `git log --oneline -5` + `git status` check.
 
 ## Current Branch / PR
@@ -705,103 +795,102 @@ independent `git log --oneline -5` + `git status` check.
 
 ## Last Evidence
 
-- This cycle start: `git log --oneline -10`/`git status` confirmed HEAD is
-  `1482345`, clean working tree — **one** commit past `db72bb7`, what this
-  file's own prior narrative described as HEAD. `git show --stat 1482345`
-  and `git diff --name-status db72bb7 1482345` confirmed it contains
-  exactly the prior cycle's own `directlyAssignedWalkCount` deletion-impact
-  fix (`src/types/index.ts`, `src/logic/familyManagement.ts`,
-  `src/logic/__tests__/familyManagement.test.ts`, `src/store/familyStore.ts`,
-  `src/store/__tests__/familyStore.test.ts`, `src/components/DeleteUserModal.tsx`)
-  plus that cycle's own `EXECUTION_STATE.md` rewrite — it had landed despite
+- This cycle start: `git log --oneline -20`/`git status` confirmed HEAD is
+  `891feca`, clean working tree — **one** commit past `1482345`, what this
+  file's own prior narrative described as HEAD. `git show --stat 891feca`
+  and `git diff --name-status 1482345 891feca` confirmed it contains
+  exactly the prior cycle's own push-deactivation-on-removal fix
+  (`supabase/migrations/0037_deactivate_push_on_member_removal.sql`,
+  `supabase/functions/send-request-push/index.ts`,
+  `src/lib/__tests__/migration0037.pushDeactivationOnRemoval.test.ts`) plus
+  that cycle's own `EXECUTION_STATE.md` rewrite — it had landed despite
   the prior cycle's own hedged "commit attempt outcome recorded under
   Blocker" self-report, consistent with the standing pattern (see note at
   top of file).
-- `node_modules` absent entirely at cycle start again; `npm ci` fixed it
-  (906 packages). `npx tsc --noEmit` at reconciled HEAD `1482345` —
-  **PASS**, zero errors. Full `npm test -- --runInBand` at reconciled
-  HEAD — **PASS: 127/127 suites, 1509/1509 tests** (the expected
-  baseline), confirming a healthy baseline before new work.
-- Dispatched a fresh Explore research agent, explicitly instructed not to
-  re-report any of the ~50+ already-exhausted defect classes documented in
-  this file, steered toward RC Queue item 4 (Settings/Roles/System Admin
-  QA) and named unswept areas (push-token lifecycle, other Edge Functions,
-  store race conditions, other migration/RPC logic bugs, other
-  error-swallowing sites). It found a real gap, verified directly by this
-  cycle (not just trusted from the report, including correcting the
-  report's own citation of the superseded 0007 definition in favor of the
-  actually-applied 0016 one) by reading
-  `supabase/migrations/0006_qa_impersonation.sql` (`approve_time_change_request`/
-  `reject_time_change_request`), `supabase/migrations/0016_profile_pin_reclaim_and_qa_sandbox.sql`
-  (current `admin_delete_family_member()`), `supabase/migrations/0013_push_tokens.sql`,
-  `0021_web_push_subscriptions.sql`, and `supabase/functions/send-request-push/index.ts`
-  in full: `admin_delete_family_member()` soft-deletes a member but never
-  deactivated their `push_tokens`/`web_push_subscriptions` rows, and
-  `send-request-push`'s own defense-in-depth `recipientFamilyIds` check only
-  re-confirmed `family_id`, never `removed_at` — so a member removed while
-  they had a pending time-change request kept receiving a real push
-  notification when an admin later approved/rejected it.
-- **This cycle's own fix:** added
-  `supabase/migrations/0037_deactivate_push_on_member_removal.sql` —
-  redefines `admin_delete_family_member()` (same 4-argument signature, via
-  `CREATE OR REPLACE`) to deactivate (`is_active = false`) the removed
-  member's `push_tokens`/`web_push_subscriptions` rows immediately before
-  `removed_at` is set. Also added `.is('removed_at', null)` to
-  `send-request-push/index.ts`'s `recipientFamilyIds` query as a second,
-  independent guard. Added a new 5-test source-text-scan regression file
-  `src/lib/__tests__/migration0037.pushDeactivationOnRemoval.test.ts`.
+- `node_modules` was present at cycle start; a stray `npx tsc --noEmit`
+  package-resolution error and a subsequent empty `node_modules` (neither
+  caused by this worker) led to running `npm ci` regardless (906 packages,
+  matching the expected baseline). `npx tsc --noEmit` at reconciled HEAD
+  `891feca` — **PASS**, zero errors.
+- Full `npm test -- --runInBand` at reconciled HEAD `891feca` — **did
+  NOT match the expected 128/128 · 1514/1514 baseline**: exactly one
+  failure, `src/lib/__tests__/migration0037.pushDeactivationOnRemoval.test.ts`'s
+  "before `removed_at` is set" case (**127/128 suites passing, 1513/1514
+  tests passing**). Diagnosed directly: the test's own hard-coded
+  `'update users\n  set removed_at = now()'` search string assumes
+  LF-only line endings, but this sandbox's Windows git checkout produces
+  CRLF (`\r\n`) line endings for text files (confirmed via
+  `[System.IO.File]::ReadAllBytes()` in PowerShell showing `13 10` byte
+  pairs at every line break — a fact Git Bash's own `sed`/`od` pipe had
+  been silently masking by normalizing `\r` away in its own display).
+  Cross-checked via `grep` that no other existing test in the repo shares
+  this exact fragile shape (`migration0027.serverEnforcement.test.ts`, the
+  one comparable `.sql`-scanning test, only ever does relative-offset
+  `indexOf('\n', someOffset)`, which tolerates `\r\n` fine) — a narrow,
+  one-test fragility from the prior cycle's own new test file, not a
+  systemic problem, and not a defect in the migration/Edge Function
+  content itself (which was already correct).
+- **This cycle's own fix:** normalized both `source` and `edge` in
+  `migration0037.pushDeactivationOnRemoval.test.ts` with
+  `.replace(/\r\n/g, '\n')` immediately after `fs.readFileSync(...)`. No
+  production code changed.
+- `npx jest src/lib/__tests__/migration0037.pushDeactivationOnRemoval.test.ts
+  --runInBand` after the fix — **PASS: 5/5 tests** (up from 4/5, same
+  file, same HEAD).
+- Full `npm test -- --runInBand` re-run after the fix — **PASS: 128/128
+  suites, 1514/1514 tests** (the expected baseline, now actually matching
+  it).
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
-- `npm test -- --runInBand` after this cycle's own change — **PASS:
-  128/128 suites, 1514/1514 tests** (up from 127/127 · 1509/1509
-  immediately before the change, same HEAD — exactly 1 new suite + 5 new
-  tests, matching the new regression test file one-for-one; every other
-  suite's count unchanged).
-- `git status --porcelain=v1 --untracked-files=all` confirmed the
+- `git status --porcelain=v1 --untracked-files=all` confirmed the tracked
   changeset is scoped to exactly
-  `supabase/migrations/0037_deactivate_push_on_member_removal.sql` (new),
-  `supabase/functions/send-request-push/index.ts`,
-  `src/lib/__tests__/migration0037.pushDeactivationOnRemoval.test.ts`
-  (new), plus this `EXECUTION_STATE.md` update — no unrelated file touched,
-  no user work at risk.
+  `src/lib/__tests__/migration0037.pushDeactivationOnRemoval.test.ts` (9
+  insertions, 8 deletions) plus this `EXECUTION_STATE.md` update — no
+  unrelated file touched, no user work at risk. Two untracked scratch
+  probe files this cycle's own CRLF diagnosis created
+  (`_scratch_check0037.js`/`_scratch_check0037.ps1`) hit the standing
+  file-deletion sandbox gate (`rm`/`Remove-Item` both blocked) and remain
+  untracked, not staged, joining the existing housekeeping backlog.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
   checked directly via `git log`/`git status` after the attempt.
 
 ## Last Evidence Timestamp
 
-2026-09-17T21:15:00Z (prior landed commit `1482345`); this cycle's own work
-validated at HEAD `1482345` + working tree as of this cycle's own run
+2026-09-17T21:26:27Z (prior landed commit `891feca`); this cycle's own work
+validated at HEAD `891feca` + working tree as of this cycle's own run
 (2026-09-17, this session), commit attempt outcome per Blocker below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
-self-reported:** a standalone `git add` of the four changed/new files
-(the two 0037 fix files, `send-request-push/index.ts`, and this
-`EXECUTION_STATE.md`) returned "This command requires approval" from the
+self-reported:** a standalone `git add` of the changed test file and this
+`EXECUTION_STATE.md` returned "This command requires approval" from the
 tool layer itself (not a git error), consistent with every standing
 blocked git-write command across every prior cycle. A `git status
 --porcelain=v1 --untracked-files=all` run immediately after confirmed the
-working tree was unchanged (still exactly the four files listed, nothing
+working tree was unchanged (still exactly the same file listed, nothing
 staged). So *within this turn's own visibility*, this cycle's commit
 attempt is a genuine, directly-confirmed no-op, not merely a hedged
 self-report — consistent with the standing pattern (see note at top of
-file, now reconfirmed for at least the 47th time running). The
-working-tree change itself (the push-deactivation-on-removal fix across
-`supabase/migrations/0037_deactivate_push_on_member_removal.sql`,
-`supabase/functions/send-request-push/index.ts`, the new test file — plus
-this `EXECUTION_STATE.md` update) is real and validated (`tsc`/`npm test`
-both PASS, 128/128 suites, 1514/1514 tests) — per "never discard
-uncommitted work," it is NOT reverted regardless of this turn's own
-commit-attempt outcome. The next cycle's first action must still be its
-own `git log --oneline -5` + `git status` to determine the actual final
-outcome independently.
+file, now reconfirmed for at least the 48th time running). The
+working-tree change itself (the CRLF-tolerance fix to
+`migration0037.pushDeactivationOnRemoval.test.ts` — plus this
+`EXECUTION_STATE.md` update) is real and validated (`tsc`/`npm test` both
+PASS, 128/128 suites, 1514/1514 tests) — per "never discard uncommitted
+work," it is NOT reverted regardless of this turn's own commit-attempt
+outcome. The next cycle's first action must still be its own `git log
+--oneline -5` + `git status` to determine the actual final outcome
+independently. Also unresolved: the two untracked scratch probe files
+(`_scratch_check0037.js`/`_scratch_check0037.ps1`) blocked from deletion —
+retry the moment the sandbox's permission mode allows it, alongside the
+pre-existing seventeen-scratch-file backlog described elsewhere in this
+file.
 
 **Prior cycle's own commit-attempt narrative (condensed, same shape as
 below — full text in git history of this file):** the prior cycle's own
-`directlyAssignedWalkCount` fix hit the identical "requires approval"
-block, yet was independently confirmed landed as `1482345` by this cycle's
-own reconciliation above — the 46th+ instance of this exact pattern.
+push-deactivation-on-removal fix hit the identical "requires approval"
+block, yet was independently confirmed landed as `891feca` by this cycle's
+own reconciliation above — the 47th+ instance of this exact pattern.
 
 **Standing question — mechanism already established with direct evidence
 in prior cycles' own history of this file:** an external supervising
@@ -926,23 +1015,28 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the push-deactivation-on-removal fix: new migration
-`0037_deactivate_push_on_member_removal.sql` + the `removed_at` filter in
-`supabase/functions/send-request-push/index.ts` + the new 5-test
+cycle's own commit (the CRLF-tolerance fix to
 `migration0037.pushDeactivationOnRemoval.test.ts` + this
 `EXECUTION_STATE.md` update) landed, and check every commit between
 whatever SHA this file names and actual HEAD, not just the newest one.
 **Also re-run the FULL `npm test -- --runInBand`** (standing habit,
 established several cycles ago after a full run caught 2 silently-failing
 tests that per-change subset runs had missed) — expect **128/128 suites,
-1514/1514 tests** as the new baseline (up from 127/127 · 1509/1509,
-correctly, due to this cycle's own new suite, not a fluke).
+1514/1514 tests** as the baseline. If this same CRLF-vs-LF discrepancy
+between this file's own predicted baseline and an actual full-suite run
+recurs on any *other* source-text-scan test (a fresh regression, not this
+one — this one is now fixed), the same diagnosis applies: check whether
+that test embeds a literal multi-line `\n` in an `indexOf`/similar search
+string against a file read via `fs.readFileSync(..., 'utf8')`, and
+normalize with `.replace(/\r\n/g, '\n')` after reading rather than
+assuming the underlying production code regressed.
 
 **This cycle's own fix — deactivating a removed family member's
 `push_tokens`/`web_push_subscriptions` inside `admin_delete_family_member()`
 (new migration 0037), plus a `removed_at` defense-in-depth filter in
-`send-request-push/index.ts` — is done and complete; do not re-propose
-it.** This closes a real data-boundary/privacy leak where a member removed
+`send-request-push/index.ts` — is done and complete (landed as `891feca`,
+its own regression test repaired this cycle); do not re-propose it.** This
+closes a real data-boundary/privacy leak where a member removed
 while they had a pending time-change request still received a real push
 notification when an admin later approved/rejected it. Nothing was
 deliberately deferred on this specific finding — the research agent
@@ -1329,58 +1423,54 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `1482345`, one commit
-  past `db72bb7` — confirmed via `git show --stat` and `git diff
+- Reconciliation found HEAD had actually moved to `891feca`, one commit
+  past `1482345` — confirmed via `git show --stat` and `git diff
   --name-status` it contains exactly the prior cycle's own
-  `directlyAssignedWalkCount` deletion-impact fix (`src/types/index.ts`,
-  `src/logic/familyManagement.ts`,
-  `src/logic/__tests__/familyManagement.test.ts`, `src/store/familyStore.ts`,
-  `src/store/__tests__/familyStore.test.ts`, `src/components/DeleteUserModal.tsx`)
-  + that cycle's own `EXECUTION_STATE.md` rewrite, reconfirming the
-  standing self-reporting-drift pattern yet again. `node_modules` was
-  absent entirely; `npm ci` fixed it. `npx tsc --noEmit` and full `npm
-  test -- --runInBand` at reconciled HEAD both PASS (127/127 suites,
-  1509/1509 tests), confirming a healthy baseline.
-- Dispatched a fresh Explore research agent (explicitly told not to
-  re-report any of the ~50+ already-exhausted defect classes), steered
-  toward RC Queue item 4 (Settings/Roles/System Admin QA) and named
-  unswept areas (push-token lifecycle, other Edge Functions, store race
-  conditions, other migration/RPC logic bugs, other error-swallowing
-  sites). It found: `admin_delete_family_member()` (0016's currently-
-  applied definition) soft-deletes a member but never deactivates their
-  `push_tokens`/`web_push_subscriptions` rows — the only prior
-  deactivation of either table anywhere in the schema is a whole-FAMILY
-  QA-sandbox reset (0016), never a per-member removal. A member removed
-  while they had a pending time-change request still got a real Expo push
-  when an admin later approved/rejected it: both
-  `approve_time_change_request()`/`reject_time_change_request()` (0006)
-  resolve the recipient purely from `requested_by_user_id` with no
-  active-membership check, and `send-request-push/index.ts`'s own
-  defense-in-depth `recipientFamilyIds` query only re-confirmed
-  `family_id`, never `removed_at`. Verified directly (read 0006, the
-  actually-applied 0016 definition of `admin_delete_family_member()` —
-  correcting the research agent's own citation of the superseded 0007
-  version — 0013/0021's table schemas, and the full Edge Function) rather
-  than trusting the report as-is.
-- **Fixed:** added `supabase/migrations/0037_deactivate_push_on_member_removal.sql`
-  — redefines `admin_delete_family_member()` (same 4-argument signature)
-  to deactivate (`is_active = false`) the removed member's
-  `push_tokens`/`web_push_subscriptions` rows immediately before
-  `removed_at` is set. Added `.is('removed_at', null)` to
-  `send-request-push/index.ts`'s `recipientFamilyIds` query as a second,
-  independent guard. Added a new 5-test source-text-scan regression file
-  `src/lib/__tests__/migration0037.pushDeactivationOnRemoval.test.ts`.
-  `npx tsc --noEmit` PASS. `npm test -- --runInBand` PASS: 128/128 suites,
-  1514/1514 tests (up from 127/127 · 1509/1509, exactly 1 new suite + 5
-  new tests, matching the new regression test file one-for-one). `git
-  status`/diff scoped to exactly
-  `supabase/migrations/0037_deactivate_push_on_member_removal.sql` (new),
-  `supabase/functions/send-request-push/index.ts`,
-  `src/lib/__tests__/migration0037.pushDeactivationOnRemoval.test.ts`
-  (new) + this `EXECUTION_STATE.md` update. **Commit attempt outcome:**
-  see Blocker above.
+  push-deactivation-on-removal fix (new migration `0037`,
+  `send-request-push/index.ts`, the new regression test file) + that
+  cycle's own `EXECUTION_STATE.md` rewrite, reconfirming the standing
+  self-reporting-drift pattern yet again. `npm ci` restored `node_modules`
+  (906 packages). `npx tsc --noEmit` at reconciled HEAD PASS.
+- Full `npm test -- --runInBand` at reconciled HEAD did **not** match the
+  predicted 128/128 · 1514/1514 baseline: exactly one failure, in
+  `migration0037.pushDeactivationOnRemoval.test.ts`'s own "before
+  `removed_at` is set" case (127/128 suites, 1513/1514 tests). Diagnosed:
+  the test's own hard-coded `'update users\n  set removed_at = now()'`
+  search string assumed LF-only line endings, but this sandbox's Windows
+  git checkout produces CRLF, so `fs.readFileSync(..., 'utf8')` returned
+  content with literal `\r\n` that the LF-only search string could never
+  match — confirmed via raw-byte inspection (`13 10` pairs) in PowerShell.
+  Not a production-code regression: the migration/Edge Function content
+  the test verifies was already correct.
+- **Fixed:** normalized `source`/`edge` in
+  `migration0037.pushDeactivationOnRemoval.test.ts` with
+  `.replace(/\r\n/g, '\n')` after `fs.readFileSync(...)`. `npx jest
+  .../migration0037.pushDeactivationOnRemoval.test.ts` PASS: 5/5 (up from
+  4/5). Full `npm test -- --runInBand` re-run PASS: 128/128 suites,
+  1514/1514 tests (the expected baseline, now actually matching it). `npx
+  tsc --noEmit` PASS. `git status`/diff scoped to exactly
+  `src/lib/__tests__/migration0037.pushDeactivationOnRemoval.test.ts` (9
+  insertions, 8 deletions) + this `EXECUTION_STATE.md` update. Two
+  untracked scratch probe files created during diagnosis
+  (`_scratch_check0037.js`/`_scratch_check0037.ps1`) hit the standing
+  file-deletion sandbox gate and remain untracked, not staged. **Commit
+  attempt outcome:** see Blocker above.
 
 ### Recent cycles (condensed — full detail in git history of this file)
+
+- Prior cycle: reconciliation found HEAD at `1482345`, one commit past
+  `db72bb7`, and fixed a real, first-time-discovered data-boundary/privacy
+  leak: `admin_delete_family_member()` (migration 0016) never deactivated
+  a removed member's `push_tokens`/`web_push_subscriptions`, so a member
+  removed while they had a pending time-change request still received a
+  real push notification when it was later approved/rejected. Added new
+  migration `0037_deactivate_push_on_member_removal.sql` (same 4-argument
+  `CREATE OR REPLACE` signature) plus a `removed_at` defense-in-depth
+  filter in `send-request-push/index.ts`. Landed as `891feca` despite that
+  cycle's own hedged "commit attempt outcome recorded under Blocker"
+  self-report; its own new regression test had a CRLF-fragility bug this
+  cycle repaired (see above), unrelated to the production fix itself,
+  which was correct throughout.
 
 - Prior cycle: reconciliation found HEAD at `db72bb7` and fixed a real,
   first-time-discovered data-integrity gap: `computeUserDeletionImpact()`

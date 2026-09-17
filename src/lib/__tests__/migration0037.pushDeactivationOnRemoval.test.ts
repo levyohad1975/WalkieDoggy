@@ -19,14 +19,15 @@ import path from 'path';
  */
 describe('migration 0037 — admin_delete_family_member() deactivates the removed member\'s push destinations', () => {
   const migrationsDir = path.resolve(__dirname, '../../../supabase/migrations');
-  const source = fs.readFileSync(
-    path.join(migrationsDir, '0037_deactivate_push_on_member_removal.sql'),
-    'utf8'
-  );
-  const edge = fs.readFileSync(
-    path.resolve(__dirname, '../../../supabase/functions/send-request-push/index.ts'),
-    'utf8'
-  );
+  const source = fs
+    .readFileSync(path.join(migrationsDir, '0037_deactivate_push_on_member_removal.sql'), 'utf8')
+    .replace(/\r\n/g, '\n');
+  const edge = fs
+    .readFileSync(
+      path.resolve(__dirname, '../../../supabase/functions/send-request-push/index.ts'),
+      'utf8'
+    )
+    .replace(/\r\n/g, '\n');
 
   it('does not edit any already-applied migration file (0001-0036) -- only adds a new one', () => {
     const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql'));
