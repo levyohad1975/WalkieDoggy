@@ -292,11 +292,22 @@ describe('the requireAuthClient()-backed exports in local/demo mode (no Supabase
 });
 
 describe('createVerifiedFamily', () => {
+  const originalDateTimeFormat = Intl.DateTimeFormat;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    // Stubbed so the request body's `timezone` field is deterministic
+    // regardless of the host machine/CI runner's own configured TZ.
+    (Intl as unknown as { DateTimeFormat: unknown }).DateTimeFormat = () => ({
+      resolvedOptions: () => ({ timeZone: 'Asia/Jerusalem' }),
+    });
   });
 
-  it('trims the family/dog name and calls the server-authoritative Edge Function only', async () => {
+  afterEach(() => {
+    (Intl as unknown as { DateTimeFormat: unknown }).DateTimeFormat = originalDateTimeFormat;
+  });
+
+  it('trims the family/dog name, sends the device timezone, and calls the server-authoritative Edge Function only', async () => {
     mockInvoke.mockResolvedValue({
       data: {
         family: {
@@ -313,7 +324,7 @@ describe('createVerifiedFamily', () => {
     const result = await createVerifiedFamily('  The Cohens  ', '  Rex  ');
 
     expect(mockInvoke).toHaveBeenCalledWith('create-verified-family', {
-      body: { familyName: 'The Cohens', dogName: 'Rex' },
+      body: { familyName: 'The Cohens', dogName: 'Rex', timezone: 'Asia/Jerusalem' },
     });
     expect(result).toEqual({
       id: 'family-1',
@@ -335,7 +346,7 @@ describe('createVerifiedFamily', () => {
     await createVerifiedFamily('x', '   ');
 
     expect(mockInvoke).toHaveBeenCalledWith('create-verified-family', {
-      body: { familyName: 'x', dogName: null },
+      body: { familyName: 'x', dogName: null, timezone: 'Asia/Jerusalem' },
     });
   });
 

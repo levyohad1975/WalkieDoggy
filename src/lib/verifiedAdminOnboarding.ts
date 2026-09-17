@@ -165,10 +165,27 @@ async function edgeFunctionErrorReason(error: unknown): Promise<string | null> {
 }
 
 /**
+ * families.timezone (0022) defaults new rows to 'Asia/Jerusalem' as a
+ * backfill compatibility value for pre-existing families only -- that
+ * migration's own header is explicit that family creation must determine
+ * each NEW family's real timezone rather than silently inheriting the
+ * default (see 0036_create_verified_family_timezone.sql). Sending the
+ * device's own resolved IANA zone here is what makes the walk reminder
+ * scheduler (0025) and current_family_local_date() (0027) correct for a
+ * family outside Israel; create_verified_family() (0036) still falls back
+ * to the schema default itself if this is ever missing or invalid.
+ */
+function deviceTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+/**
  * Creates a family only through the server-authoritative Edge Function.
  * The function derives the caller from the bearer token and reads
  * AUTO_APPROVE_NEW_FAMILIES from its own environment; neither value is
- * accepted from the client.
+ * accepted from the client. `timezone` is a client-supplied preference
+ * (like familyName/dogName), not a security-sensitive value -- the server
+ * validates it and falls back safely if it's missing or malformed.
  */
 export async function createVerifiedFamily(
   familyName: string,
@@ -179,6 +196,7 @@ export async function createVerifiedFamily(
     body: {
       familyName: familyName.trim(),
       dogName: dogName?.trim() || null,
+      timezone: deviceTimezone(),
     },
   });
   if (error) {

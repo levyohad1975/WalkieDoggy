@@ -50,11 +50,156 @@ anything else.
 ## Current Task
 
 **This cycle's reconciliation, done fresh via direct `git log`/`git show`,
-not trusted from this file's own prior narrative:** HEAD was `ee5f091`,
+not trusted from this file's own prior narrative:** HEAD was `5c34adc`,
 clean working tree, up to date with
 `origin/feat/verified-auth-onboarding-batch-2` — **one** commit past
-`e3462eb`, what this file's own prior text described as HEAD (and which
+`ee5f091`, what this file's own prior text described as HEAD (and which
 that prior cycle itself had hedged its commit attempt under Blocker).
+`git show --stat 5c34adc` and `git diff --name-status ee5f091 5c34adc`
+confirmed it contains exactly that prior cycle's own `edgeFunctionErrorReason()`
+Edge-Function-error-reason-recovery fix (`src/lib/verifiedAdminOnboarding.ts`,
+`src/lib/errorMessages.ts`, their test files) plus that cycle's own
+`EXECUTION_STATE.md` rewrite — the standing self-reporting-drift pattern
+(see note above) reconfirmed yet again (43rd+ time running): the commit had
+already landed and pushed despite the hedged self-report. Reconciled before
+starting new work, per protocol. `node_modules` was absent again at cycle
+start; `npm ci` restored it (906 packages). `npx tsc --noEmit` at reconciled
+HEAD `5c34adc` — **PASS**. Full `npm test -- --runInBand` at reconciled
+HEAD — **PASS: 126/126 suites, 1498/1498 tests** (the expected baseline,
+matching the prior cycle's own reported count), confirming a healthy
+baseline before starting new work. Retried the two cheapest still-open
+housekeeping items as a fresh sandbox-permission-mode check: `git rm` on the
+seven scratch/debug files and a `TZ=Pacific/Kiritimati node -e ...` probe
+both returned "This command requires approval" again this cycle — both
+genuinely still gated, not a fresh unblock, consistent with the standing
+pattern; working tree was confirmed unchanged after each attempt.
+
+**This cycle's own task — dispatched a fresh Explore research agent**,
+explicitly instructed not to re-report any of the ~30+ already-exhausted
+defect classes documented in this file (unwired functions/RPCs,
+accessibility prop sweeps, RTL/alignment fixes, keyboard-avoidance,
+Android back-button, dog-sex copy, notification-tap routing, quantitative
+coverage, the webhook timing side-channel, the two most recent
+create-verified-family/FamilyOnboardingScreen fixes), and steered toward
+unswept areas (SyncQueue/offline logic, other Edge Functions, store race
+conditions, business-logic date/time bugs, migration/RPC logic bugs,
+other error-swallowing call sites, push-token lifecycle). It found a real,
+first-time-discovered, non-cosmetic data-integrity bug, verified directly
+by this cycle (not just trusted from the report) by reading
+`supabase/migrations/0022_family_timezone_and_dog_sex.sql`,
+`supabase/migrations/0032_verified_family_onboarding.sql`,
+`supabase/migrations/0025_walk_reminder_scheduler.sql`,
+`supabase/migrations/0027_history_statistics_server_enforcement.sql`,
+`supabase/functions/create-verified-family/index.ts`, and
+`src/lib/verifiedAdminOnboarding.ts`:
+
+0022's own migration header is explicit that its `families.timezone`
+column's `'Asia/Jerusalem'` default is "a COMPATIBILITY/BACKFILL default for
+EXISTING families only" and "DOES NOT EXTEND TO FUTURE FAMILIES" — family
+creation/onboarding "must explicitly determine each NEW family's real
+timezone at creation time... rather than silently inheriting this column's
+default." `create_verified_family()` (0032) is exactly that later batch
+work, and — after 0033's cutover — the ONLY way to create a family in this
+app. But its own `insert into families (name, invite_code, approval_status,
+created_by_auth_user_id) values (...)` (pre-fix) never mentioned `timezone`
+at all, so every family created via verified onboarding silently fell
+through to the schema default regardless of where its members actually
+live, with **no way to correct it afterward** (no RPC, no Settings screen
+field). Confirmed via repo-wide grep that no `Intl.DateTimeFormat`/
+`resolvedOptions().timeZone` call existed anywhere in `src/` before this fix,
+and no migration after 0022 ever referenced `timezone`.
+
+This is not cosmetic — it corrupts two already-shipped, timezone-
+authoritative systems for any family outside Israel: the walk reminder
+scheduler (0025), whose `fire_at` is computed as `(date || ' ' ||
+scheduled_time) at time zone f.timezone` (so a 07:00-local walk fires its
+T-15/T/T+15/T+30 push reminders at 07:00 **Israel** time — hours off local
+morning for a non-Israel family, defeating the reminder feature entirely);
+and `current_family_local_date()` (0027), used for History/Statistics
+"today" boundaries and the raw `walks` RLS operational window (so a walk
+resolved late in the local evening can be mis-bucketed across the day
+boundary).
+
+**Fixed, via a new migration (0032 itself was left untouched, per rule 8):**
+added `supabase/migrations/0036_create_verified_family_timezone.sql` —
+drops the old 4-argument `create_verified_family(uuid, text, text, boolean)`
+(PostgreSQL cannot add a parameter via `CREATE OR REPLACE`, same reasoning
+0018 already used for `create_swap_request`) and creates a 5-argument
+replacement adding `p_timezone text default null` at the end (so any
+existing caller that omits it keeps today's default behavior unchanged).
+When provided, it is validated against `is_valid_timezone()` (0022) and
+falls back to the `'Asia/Jerusalem'` compatibility default on any
+missing/invalid value (a bad client-supplied string is not a reason to fail
+family creation outright) — mirrors the safe-fallback shape the prior
+cycle's `edgeFunctionErrorReason()` already established. The resolved
+timezone is now actually inserted into `families.timezone` and recorded in
+the `family.created` audit-log metadata. Re-locked to `service_role`-only
+execute, same as the original. Updated
+`supabase/functions/create-verified-family/index.ts` to read an optional
+`timezone` string from the request body and forward it as `p_timezone`
+(a client preference, not a security-sensitive value like the caller
+identity or auto-approve policy, so no `verifiedFamilyServerBoundary.test.ts`
+boundary rule applies to it). Updated
+`src/lib/verifiedAdminOnboarding.ts`'s `createVerifiedFamily()` to send
+`Intl.DateTimeFormat().resolvedOptions().timeZone` (RN 0.86/Expo 57's
+Hermes ships full ICU, confirmed via `package.json`; this is the app's
+first use of `Intl` anywhere in `src/`) as that `timezone` field.
+
+Added a new `src/lib/__tests__/migration0036.timezoneFix.test.ts` (6 tests,
+source-text-scan style matching `migration0027.serverEnforcement.test.ts`'s
+own established convention since this sandbox has no live Postgres):
+confirms 0022-0035 are untouched and exactly one 0036 file exists; confirms
+the drop-then-create ordering; confirms the `is_valid_timezone()` validation
+and fallback; confirms the resolved timezone is actually inserted, not just
+computed; confirms the new signature's grants match the original's
+service-role-only shape; confirms the Edge Function reads and forwards
+`timezone`/`p_timezone`. Updated the three existing
+`createVerifiedFamily()` body-assertion tests in
+`verifiedAdminOnboarding.test.ts` to expect the new `timezone` field,
+stubbing `Intl.DateTimeFormat` in a `beforeEach`/`afterEach` pair so the
+assertion is deterministic regardless of the host runner's own configured
+TZ (this repo has no fixed Jest `TZ`, confirmed via `package.json`/
+`jest.setup.js`).
+
+**Deliberately left open, not a unilateral engineering call:** correcting
+families already created before this fix (their `timezone` stays whatever
+was silently defaulted) — letting an admin change an existing family's
+timezone, whether via self-service Settings UI or a system-admin action, is
+a separate product/UX decision (also flagged in the new migration's own
+header), not something to assume or add speculatively.
+
+**Runner-up candidate the same research agent found, deliberately not
+fixed this cycle (recorded so a future cycle does not re-propose it as
+new):** `create-verified-family/index.ts`'s generic top-level `catch` block
+always returns `{error: 'family creation failed'}` for any RPC-level
+failure (e.g. a rare `create_verified_family()` unique-invite-code
+exhaustion after 20 attempts), discarding the real reason even though the
+prior cycle's own `edgeFunctionErrorReason()` is already built client-side
+to recover it. The whole transaction rolls back cleanly in that case, so
+this is a UX/diagnostics gap only, not a data-integrity issue — lower
+priority than the timezone fix above, worth a future cycle's own bounded
+unit if diagnosability of that rare failure mode becomes a priority.
+
+`npx tsc --noEmit` after this cycle's own change — **PASS**, zero errors.
+`npm test -- --runInBand` after this cycle's own change — **PASS: 127/127
+suites, 1504/1504 tests** (up from 126/126 · 1498/1498 immediately before
+the change, same HEAD — exactly 1 new suite + 6 new tests, matching the new
+`migration0036.timezoneFix.test.ts` file one-for-one; every other suite's
+count unchanged). `git status --porcelain=v1 --untracked-files=all`
+confirmed the changeset is scoped to exactly
+`supabase/migrations/0036_create_verified_family_timezone.sql` (new),
+`supabase/functions/create-verified-family/index.ts`,
+`src/lib/verifiedAdminOnboarding.ts`,
+`src/lib/__tests__/verifiedAdminOnboarding.test.ts`,
+`src/lib/__tests__/migration0036.timezoneFix.test.ts` (new) — plus this
+`EXECUTION_STATE.md` update — no unrelated file touched, no user work at
+risk.
+
+### Prior cycles' own narratives (condensed — full detail in git history of this file)
+
+Prior cycle: reconciliation found HEAD had actually moved to `ee5f091`, one
+commit past `e3462eb` (which that prior cycle itself had hedged its commit
+attempt under Blocker).
 `git show --stat ee5f091` confirmed it contains exactly that prior cycle's
 own `'rejected'`-status mount-recovery fix
 (`FamilyOnboardingScreen.tsx`/its test file/
@@ -250,20 +395,20 @@ mount-recovery dead end, which was the unambiguous, no-judgment-call part.
 
 ## Current Task Status
 
-Prior cycle's `'rejected'`-status mount-recovery fix in
-`FamilyOnboardingScreen.tsx` (`ee5f091`) is confirmed landed and pushed —
-closed, `DONE`.
+Prior cycle's `edgeFunctionErrorReason()` Edge-Function-error-reason-
+recovery fix (`5c34adc`) is confirmed landed and pushed — closed, `DONE`.
 
-This cycle's own task — recovering the specific reason a
-`create-verified-family` Edge Function failure carries (via
-`FunctionsHttpError.context`) instead of always showing a generic
-"something went wrong" message — is code-complete and validated (`tsc`
-PASS, `npm test` PASS **126/126 · 1498/1498**, up from **126/126 ·
-1493/1493** at cycle start HEAD before the fix). Commit attempt outcome
-recorded under Blocker/Last Evidence below; per the standing 40+-cycle
-pattern, even a "blocked" self-report this same cycle should not be
-assumed final — the next cycle's first action must still be its own
-independent `git log --oneline -5` + `git status` check.
+This cycle's own task — threading a client-resolved IANA timezone through
+`create_verified_family()` (new migration 0036), the `create-verified-family`
+Edge Function, and `createVerifiedFamily()`, fixing a real data-integrity
+bug where every new family silently inherited the `'Asia/Jerusalem'`
+schema default regardless of where its members live, with no correction
+path — is code-complete and validated (`tsc` PASS, `npm test` PASS
+**127/127 · 1504/1504**, up from **126/126 · 1498/1498** at cycle start HEAD
+before the fix). Commit attempt outcome recorded under Blocker/Last Evidence
+below; per the standing 40+-cycle pattern, even a "blocked" self-report this
+same cycle should not be assumed final — the next cycle's first action must
+still be its own independent `git log --oneline -5` + `git status` check.
 
 ## Current Branch / PR
 
@@ -276,81 +421,93 @@ independent `git log --oneline -5` + `git status` check.
 
 ## Last Evidence
 
-- This cycle start: `git log --oneline -10`/`git status` confirmed HEAD is
-  `ee5f091`, clean working tree, "up to date with
+- This cycle start: `git log --oneline -15`/`git status` confirmed HEAD is
+  `5c34adc`, clean working tree, "up to date with
   origin/feat/verified-auth-onboarding-batch-2" — **one** commit past
-  `e3462eb`, what this file's own prior narrative described as HEAD.
-  `git show --stat ee5f091` and `git diff --name-status e3462eb ee5f091`
-  confirmed it contains exactly the prior cycle's own `'rejected'`-status
-  mount-recovery fix (`FamilyOnboardingScreen.tsx` + its test file +
-  `screenAndModalHeaderAccessibilityRole.test.ts`) plus that cycle's own
+  `ee5f091`, what this file's own prior narrative described as HEAD.
+  `git show --stat 5c34adc` and `git diff --name-status ee5f091 5c34adc`
+  confirmed it contains exactly the prior cycle's own
+  `edgeFunctionErrorReason()` fix (`src/lib/verifiedAdminOnboarding.ts`,
+  `src/lib/errorMessages.ts`, their test files) plus that cycle's own
   `EXECUTION_STATE.md` rewrite — it had landed and pushed despite the
   prior cycle's own hedged "commit attempt outcome recorded under
   Blocker" self-report, consistent with the standing pattern (see note at
   top of file).
 - `node_modules` absent entirely at cycle start again; `npm ci` fixed it
-  (906 packages). `npx tsc --noEmit` at reconciled HEAD `ee5f091` —
+  (906 packages). `npx tsc --noEmit` at reconciled HEAD `5c34adc` —
   **PASS**, zero errors. Full `npm test -- --runInBand` at reconciled
-  HEAD — **PASS: 126/126 suites, 1493/1493 tests** (the expected
+  HEAD — **PASS: 126/126 suites, 1498/1498 tests** (the expected
   baseline), confirming a healthy baseline before new work.
-- `gh auth status` reconfirmed gated as a standalone command this cycle.
+- Retried `git rm` on the seven scratch/debug files and a
+  `TZ=Pacific/Kiritimati node -e ...` probe as a fresh sandbox-permission
+  check — both returned "This command requires approval" again this
+  cycle, `git status --porcelain` confirmed the working tree was unchanged
+  after each, genuinely still gated (not a fresh unblock).
 - Dispatched a fresh Explore research agent, explicitly instructed not to
-  re-report any of the ~30 already-exhausted defect classes documented in
-  this file. It found a real gap, verified directly by this cycle (not
-  just trusted from the report) by reading
-  `node_modules/@supabase/functions-js/dist/module/FunctionsClient.js`
-  and `types.d.ts`,
+  re-report any of the ~30+ already-exhausted defect classes documented in
+  this file, steered toward previously-unswept areas (SyncQueue/offline
+  logic, other Edge Functions, store race conditions, business-logic
+  date/time bugs, migration/RPC logic bugs, other error-swallowing sites,
+  push-token lifecycle). It found a real gap, verified directly by this
+  cycle (not just trusted from the report) by reading
+  `supabase/migrations/0022_family_timezone_and_dog_sex.sql`,
+  `supabase/migrations/0032_verified_family_onboarding.sql`,
+  `supabase/migrations/0025_walk_reminder_scheduler.sql`,
+  `supabase/migrations/0027_history_statistics_server_enforcement.sql`,
   `supabase/functions/create-verified-family/index.ts`, and
-  `src/lib/verifiedAdminOnboarding.ts`: `supabase-js`'s
-  `FunctionsHttpError` hard-codes `.message` to the generic literal
-  `"Edge Function returned a non-2xx status code"` for every non-2xx
-  response, discarding the specific reason
-  `create-verified-family/index.ts` already computes and returns in its
-  JSON body (401 `'missing authorization'`, 403 `'verified email identity
-  required'` — reachable via an anonymous/lapsed-OTP session, 400
-  `'familyName is required'`, 500 `'family creation failed'`). The real
-  reason only survives on `error.context` (the raw, unread `Response`),
-  which `createVerifiedFamily()`'s pre-fix `if (error) throw error;` never
-  read — so `FamilyOnboardingScreen.tsx`'s `friendlyErrorMessage()` always
-  fell through to its generic Hebrew fallback for every Edge Function
-  failure, including the actionable 403 case. Confirmed via grep that no
-  code anywhere read `error.context`, and that the pre-fix test only
-  exercised a plain `Error`, never a real `FunctionsHttpError`.
-- **This cycle's own fix:** added `edgeFunctionErrorReason()` to
-  `src/lib/verifiedAdminOnboarding.ts` (checks `error instanceof
-  FunctionsHttpError`, awaits `error.context.json()`, returns the body's
-  `error` string or `null` on any parse failure);
-  `createVerifiedFamily()` now rethrows `new Error(reason)` when a reason
-  is recovered, otherwise rethrows the original error unchanged (no
-  behavior change for non-HTTP errors). Added two new
-  `SHARED_ERROR_RULES` entries to `src/lib/errorMessages.ts` for the two
-  reachable reasons (`'verified email identity required'`,
-  `'familyName is required'`) — the two purely-technical reasons
-  (`'missing authorization'`, `'family creation failed'`) were
-  deliberately left unmapped, falling through to the existing generic
-  fallback correctly.
+  `src/lib/verifiedAdminOnboarding.ts`: 0022's own header warns its
+  `'Asia/Jerusalem'` `families.timezone` default "DOES NOT EXTEND TO
+  FUTURE FAMILIES" and that family creation must explicitly determine each
+  new family's real timezone — but `create_verified_family()` (0032), the
+  only way to create a family after 0033's cutover, never did, silently
+  defaulting every new family to Israel time with no correction path.
+  Confirmed via repo-wide grep that no `Intl.DateTimeFormat` call existed
+  anywhere in `src/` before this fix, and no migration after 0022 ever
+  referenced `timezone`. Consequence: the walk reminder scheduler (0025)
+  and `current_family_local_date()` (0027) both compute against the wrong
+  zone for any non-Israel family, breaking reminder timing and day-boundary
+  bucketing.
+- **This cycle's own fix:** added
+  `supabase/migrations/0036_create_verified_family_timezone.sql` — drops
+  the old 4-argument `create_verified_family()` and recreates it with a
+  new `p_timezone text default null` parameter, validated via
+  `is_valid_timezone()` (0022) with a safe fallback to `'Asia/Jerusalem'`
+  on any missing/invalid value, actually inserted into `families.timezone`
+  and recorded in the `family.created` audit-log metadata; re-locked to
+  `service_role`-only execute. Updated
+  `supabase/functions/create-verified-family/index.ts` to read an optional
+  `timezone` string from the request body and forward it as `p_timezone`.
+  Updated `src/lib/verifiedAdminOnboarding.ts`'s `createVerifiedFamily()`
+  to send `Intl.DateTimeFormat().resolvedOptions().timeZone` (this app's
+  first use of `Intl` anywhere in `src/`; RN 0.86/Expo 57's Hermes ships
+  full ICU). 0032 itself was left untouched, per rule 8.
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `npm test -- --runInBand` after this cycle's own change — **PASS:
-  126/126 suites, 1498/1498 tests** (up from 126/126 · 1493/1493
-  immediately before the change, same HEAD — exactly 5 new tests: 3 in
-  `verifiedAdminOnboarding.test.ts`, 2 in `errorMessages.test.ts`,
-  matching the new regression tests one-for-one, no new suite).
+  127/127 suites, 1504/1504 tests** (up from 126/126 · 1498/1498
+  immediately before the change, same HEAD — exactly 1 new suite (6 new
+  tests) in the new `migration0036.timezoneFix.test.ts`; the 3 existing
+  `createVerifiedFamily()` body-assertion tests in
+  `verifiedAdminOnboarding.test.ts` were updated in place, not added, to
+  expect the new `timezone` field, with `Intl.DateTimeFormat` stubbed for
+  determinism; every other suite's count unchanged).
 - `git status --porcelain=v1 --untracked-files=all` confirmed the
-  changeset is scoped to exactly `src/lib/verifiedAdminOnboarding.ts`,
-  `src/lib/errorMessages.ts`,
+  changeset is scoped to exactly
+  `supabase/migrations/0036_create_verified_family_timezone.sql` (new),
+  `supabase/functions/create-verified-family/index.ts`,
+  `src/lib/verifiedAdminOnboarding.ts`,
   `src/lib/__tests__/verifiedAdminOnboarding.test.ts`,
-  `src/lib/__tests__/errorMessages.test.ts` (82 insertions/2 deletions
-  combined), plus this `EXECUTION_STATE.md` update — no unrelated file
-  touched, no user work at risk.
+  `src/lib/__tests__/migration0036.timezoneFix.test.ts` (new), plus this
+  `EXECUTION_STATE.md` update — no unrelated file touched, no user work at
+  risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
   checked directly via `git log`/`git status` after the attempt.
 
 ## Last Evidence Timestamp
 
-2026-09-17T18:12:31Z (prior landed commit `ee5f091`); this cycle's own
-work validated at HEAD `ee5f091` + working tree as of this cycle's own
-run (2026-09-17T19:30:00Z), commit attempt outcome per Blocker below.
+2026-09-17T19:30:00Z (prior landed commit `5c34adc`); this cycle's own
+work validated at HEAD `5c34adc` + working tree as of this cycle's own
+run (2026-09-17T20:45:00Z), commit attempt outcome per Blocker below.
 
 ## Blocker
 
@@ -362,19 +519,26 @@ command requires approval" from the tool layer itself (not a git error),
 consistent with every standing blocked git-write command across every
 prior cycle. A `git status --porcelain` run immediately after confirmed
 the working tree diff was unchanged (still exactly the four modified
-source/test files plus this file, nothing staged). So *within this turn's
-own visibility*, this cycle's commit attempt is a genuine,
-directly-confirmed no-op, not merely a hedged self-report — consistent
-with the standing pattern (see note at top of file, now reconfirmed for
-at least the 42nd time running). The working-tree change itself
-(`verifiedAdminOnboarding.ts`'s/`errorMessages.ts`'s Edge-Function-error-
-reason recovery fix + the new/updated test files + this
+source/test files plus the two new files plus this file, nothing staged).
+So *within this turn's own visibility*, this cycle's commit attempt is a
+genuine, directly-confirmed no-op, not merely a hedged self-report —
+consistent with the standing pattern (see note at top of file, now
+reconfirmed for at least the 43rd time running). The working-tree change
+itself (the `create_verified_family()` timezone fix — new migration 0036,
+the Edge Function/client updates, the new/updated test files — plus this
 `EXECUTION_STATE.md` update) is real and validated (`tsc`/`npm test` both
-PASS, 126/126 suites, 1498/1498 tests) — per "never discard uncommitted
+PASS, 127/127 suites, 1504/1504 tests) — per "never discard uncommitted
 work," it is NOT reverted regardless of this turn's own commit-attempt
 outcome. The next cycle's first action
 must still be its own `git log --oneline -5` + `git status` to determine
 the actual final outcome independently.
+
+**Prior cycle's own commit-attempt narrative (condensed, same shape as
+above — full text in git history of this file):** the prior cycle's own
+`edgeFunctionErrorReason()` fix hit the identical three-attempt "requires
+approval" block, yet was independently confirmed landed as `5c34adc` by
+this cycle's own reconciliation above — the 42nd+ instance of this exact
+pattern.
 
 **Standing question — mechanism already established with direct evidence
 in prior cycles' own history of this file:** an external supervising
@@ -499,40 +663,53 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the `create-verified-family` error-reason-recovery fix
-in `verifiedAdminOnboarding.ts`/`errorMessages.ts` + the updated/new test
-files + this `EXECUTION_STATE.md` update) landed, and check every commit
-between whatever SHA this file names and actual HEAD, not just the newest
-one. **Also re-run the FULL `npm test -- --runInBand`** (standing habit,
+cycle's own commit (the `create_verified_family()` timezone fix — new
+migration 0036, `create-verified-family/index.ts`,
+`verifiedAdminOnboarding.ts` + the updated/new test files + this
+`EXECUTION_STATE.md` update) landed, and check every commit between
+whatever SHA this file names and actual HEAD, not just the newest one.
+**Also re-run the FULL `npm test -- --runInBand`** (standing habit,
 established several cycles ago after a full run caught 2 silently-failing
-tests that per-change subset runs had missed) — expect **126/126 suites,
-1498/1498 tests** as the new baseline (up from 126/126 · 1493/1493,
-correctly, due to this cycle's own 5 new regression tests, not a fluke).
+tests that per-change subset runs had missed) — expect **127/127 suites,
+1504/1504 tests** as the new baseline (up from 126/126 · 1498/1498,
+correctly, due to this cycle's own new `migration0036.timezoneFix.test.ts`
+suite (6 tests), not a fluke).
 
 The prior cycle's own `'rejected'`-status handling in
-`FamilyOnboardingScreen.tsx`'s mount-recovery path is done and complete
-(landed as `ee5f091`) — do not re-propose it.
-
-**This cycle's own fix — recovering the specific reason a
-`create-verified-family` Edge Function failure carries via
-`FunctionsHttpError.context`, instead of always showing the generic
-"something went wrong" fallback — is done and complete; do not re-propose
-it.** Two related items deliberately left open, not unilateral engineering
-calls: (1) the two purely-technical Edge Function reasons (`'missing
-authorization'`, `'family creation failed'`) were deliberately left
-unmapped in `SHARED_ERROR_RULES` — they fall through to the existing
-generic fallback correctly, since a user cannot action either differently
-from "try again"; do not add rules for them speculatively. (2) This fix
-does **not** touch the still-separately-open item from two cycles ago: a
+`FamilyOnboardingScreen.tsx`'s mount-recovery path (landed as `ee5f091`)
+and the `create-verified-family` Edge-Function error-reason-recovery fix
+via `FunctionsHttpError.context` (landed as `5c34adc`) are both done and
+complete — do not re-propose either. Their own still-open follow-ups
+remain unchanged: (1) the two purely-technical Edge Function reasons
+(`'missing authorization'`, `'family creation failed'`) were deliberately
+left unmapped in `SHARED_ERROR_RULES`, falling through to the generic
+fallback correctly — do not add rules for them speculatively; (2) a
 rejected admin who reaches the create *form* directly (`submitCreate()`),
 rather than via mount recovery, still gets a generic "יצירת המשפחה נכשלה"
 error from `createVerifiedFamily()`'s own success-path
-`approvalStatus !== 'active'/'pending'` guard (a different code path than
-the error-path fix this cycle made) — whether/how a rejected admin should
-be able to retry, appeal, or only contact support remains a product/UX
-decision on the Edge Function's/RPC's own re-submission behavior, not a
-unilateral engineering call. Worth a future cycle's own bounded unit once
-that decision is made.
+`approvalStatus !== 'active'/'pending'` guard — whether/how a rejected
+admin should be able to retry, appeal, or only contact support remains a
+product/UX decision, not a unilateral engineering call.
+
+**This cycle's own fix — threading a client-resolved IANA timezone through
+`create_verified_family()` (new migration 0036), the `create-verified-family`
+Edge Function, and the client, so a new family's `families.timezone` no
+longer silently defaults to `'Asia/Jerusalem'` regardless of where its
+members live — is done and complete; do not re-propose it.** Deliberately
+left open, not a unilateral engineering call: correcting families already
+created before this fix (their `timezone` stays whatever was silently
+defaulted) — letting an admin change an existing family's timezone later
+(self-service Settings UI, or a system-admin action) is a separate
+product/UX decision, flagged in the new migration's own header, not
+something to assume. Also found by the same research agent, deliberately
+not fixed (lower priority, recorded so a future cycle does not re-propose
+it as new): `create-verified-family/index.ts`'s generic top-level `catch`
+always returns `{error: 'family creation failed'}` for any RPC-level
+failure (e.g. rare unique-invite-code exhaustion), discarding the real
+reason even though `edgeFunctionErrorReason()` is already built
+client-side to recover it — a UX/diagnostics gap only (the transaction
+rolls back cleanly), not a data-integrity issue like the timezone bug
+this cycle fixed.
 
 The seventeen scratch/debug/backup/dead files themselves are still gated on
 deletion; retry `git rm`/file deletion the moment the sandbox's permission
@@ -842,51 +1019,71 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `ee5f091`, one commit
-  past `e3462eb` — confirmed via `git show --stat` and `git diff
+- Reconciliation found HEAD had actually moved to `5c34adc`, one commit
+  past `ee5f091` — confirmed via `git show --stat` and `git diff
   --name-status` it contains exactly the prior cycle's own
-  `'rejected'`-status mount-recovery fix (`FamilyOnboardingScreen.tsx` +
-  test files) + that cycle's own `EXECUTION_STATE.md` rewrite,
-  reconfirming the standing self-reporting-drift pattern yet again.
-  `node_modules` was absent entirely; `npm ci` fixed it. `npx tsc
-  --noEmit` and full `npm test -- --runInBand` at reconciled HEAD both
-  PASS (126/126 suites, 1493/1493 tests), confirming a healthy baseline.
+  `edgeFunctionErrorReason()` fix (`verifiedAdminOnboarding.ts`,
+  `errorMessages.ts` + test files) + that cycle's own
+  `EXECUTION_STATE.md` rewrite, reconfirming the standing
+  self-reporting-drift pattern yet again. `node_modules` was absent
+  entirely; `npm ci` fixed it. `npx tsc --noEmit` and full `npm test --
+  --runInBand` at reconciled HEAD both PASS (126/126 suites, 1498/1498
+  tests), confirming a healthy baseline. Retried `git rm` on the seven
+  scratch/debug files and a `TZ=...`-prefixed probe — both still gated.
 - Dispatched a fresh Explore research agent (explicitly told not to
-  re-report any of the ~30 already-exhausted defect classes) to find the
-  next real functional/correctness gap, steered away from the two
-  most-mined shapes (unwired functions, missing accessibility props). It
-  found: `supabase-js`'s `FunctionsHttpError` hard-codes its `.message` to
-  the generic literal `"Edge Function returned a non-2xx status code"`
-  for every non-2xx response, discarding the specific reason
-  `create-verified-family/index.ts` already computes and returns in its
-  JSON body (403 `'verified email identity required'` — reachable via an
-  anonymous/lapsed-OTP session — among others). The real reason only
-  survives on `error.context` (the raw, unread `Response`), which
-  `createVerifiedFamily()`'s pre-fix `if (error) throw error;` never read.
-  Verified directly (read `FunctionsClient.js`/`types.d.ts`, the Edge
-  Function's own source, and `verifiedAdminOnboarding.ts`) rather than
-  trusting the report as-is: confirmed via grep no code anywhere read
-  `error.context`, and the pre-fix test only exercised a plain `Error`,
-  never a real `FunctionsHttpError`.
-- **Fixed:** added `edgeFunctionErrorReason()` to
-  `verifiedAdminOnboarding.ts` (parses `error.context.json()` when `error
-  instanceof FunctionsHttpError`, falls back to `null` safely on any parse
-  failure); `createVerifiedFamily()` now rethrows the recovered reason as
-  a plain `Error` when present, otherwise rethrows unchanged. Added two
-  new `SHARED_ERROR_RULES` entries to `errorMessages.ts` for the two
-  user-reachable reasons. Added 3 new tests to
-  `verifiedAdminOnboarding.test.ts` and 2 new tests to
-  `errorMessages.test.ts`. `npx tsc --noEmit` PASS. `npm test --
-  --runInBand` PASS: 126/126 suites, 1498/1498 tests (up from 126/126 ·
-  1493/1493, exactly 5 new tests, no new suite, matching the new
+  re-report any of the ~30+ already-exhausted defect classes), steered
+  toward previously-unswept areas (SyncQueue/offline logic, other Edge
+  Functions, store race conditions, business-logic date/time bugs,
+  migration/RPC logic bugs, other error-swallowing sites, push-token
+  lifecycle). It found: migration 0022's own header warns that its
+  `'Asia/Jerusalem'` `families.timezone` default "DOES NOT EXTEND TO
+  FUTURE FAMILIES" — but `create_verified_family()` (0032), the only way
+  to create a family after 0033's cutover, never captured or forwarded a
+  real timezone, so every family created via verified onboarding silently
+  inherited the Israel default with no correction path, corrupting the
+  walk reminder scheduler (0025) and `current_family_local_date()` (0027)
+  for any non-Israel family. Verified directly (read migrations
+  0022/0025/0027/0032, the Edge Function, and `verifiedAdminOnboarding.ts`)
+  rather than trusting the report as-is: confirmed via grep no
+  `Intl.DateTimeFormat` call existed anywhere in `src/` before this fix,
+  and no migration after 0022 ever referenced `timezone`.
+- **Fixed:** added `supabase/migrations/0036_create_verified_family_timezone.sql`
+  (drops the old 4-argument `create_verified_family()`, recreates it with
+  a new `p_timezone text default null` parameter validated via
+  `is_valid_timezone()` with a safe `'Asia/Jerusalem'` fallback, actually
+  inserted into `families.timezone` and the audit-log metadata; re-locked
+  to `service_role`-only execute; 0032 itself untouched). Updated
+  `create-verified-family/index.ts` to read/forward an optional `timezone`
+  body field as `p_timezone`. Updated `verifiedAdminOnboarding.ts`'s
+  `createVerifiedFamily()` to send
+  `Intl.DateTimeFormat().resolvedOptions().timeZone` (this app's first use
+  of `Intl` anywhere in `src/`). Added a new 6-test
+  `migration0036.timezoneFix.test.ts` (source-scan style, matching
+  `migration0027.serverEnforcement.test.ts`'s established convention) and
+  updated 3 existing `createVerifiedFamily()` body-assertion tests in
+  `verifiedAdminOnboarding.test.ts` to expect the new `timezone` field,
+  stubbing `Intl.DateTimeFormat` for determinism. `npx tsc --noEmit` PASS.
+  `npm test -- --runInBand` PASS: 127/127 suites, 1504/1504 tests (up from
+  126/126 · 1498/1498, exactly 1 new suite/6 new tests, matching the new
   regression tests one-for-one). `git status`/diff scoped to exactly
-  `src/lib/verifiedAdminOnboarding.ts`, `src/lib/errorMessages.ts`,
+  `supabase/migrations/0036_create_verified_family_timezone.sql` (new),
+  `supabase/functions/create-verified-family/index.ts`,
+  `src/lib/verifiedAdminOnboarding.ts`,
   `src/lib/__tests__/verifiedAdminOnboarding.test.ts`,
-  `src/lib/__tests__/errorMessages.test.ts` (82 insertions/2 deletions
-  combined) + this `EXECUTION_STATE.md` update.
+  `src/lib/__tests__/migration0036.timezoneFix.test.ts` (new) + this
+  `EXECUTION_STATE.md` update.
   **Commit attempt outcome:** see Blocker above.
 
 ### Recent cycles (condensed — full detail in git history of this file)
+
+- Prior cycle: reconciliation found HEAD at `ee5f091` and fixed a real,
+  first-time-discovered gap: `supabase-js`'s `FunctionsHttpError`
+  hard-codes its `.message` to a generic literal for every non-2xx
+  response, discarding the specific reason `create-verified-family/index.ts`
+  already computes and returns in its JSON body. Added
+  `edgeFunctionErrorReason()` to `verifiedAdminOnboarding.ts` plus two new
+  `SHARED_ERROR_RULES` entries. Landed as `5c34adc` despite that cycle's
+  own hedged "commit attempt outcome recorded under Blocker" self-report.
 
 - Prior cycle: reconciliation found HEAD at `e3462eb` and fixed a real,
   first-time-discovered functional gap: `FamilyOnboardingScreen.tsx`'s

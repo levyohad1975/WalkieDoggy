@@ -146,6 +146,7 @@ Deno.serve(async (request) => {
     const body = await request.json().catch(() => ({}));
     const familyName = typeof body.familyName === 'string' ? body.familyName.trim() : '';
     const dogName = typeof body.dogName === 'string' ? body.dogName.trim() : null;
+    const timezone = typeof body.timezone === 'string' ? body.timezone.trim() : null;
     if (!familyName) return response(400, { error: 'familyName is required' });
 
     const autoApprove = autoApproveFromEnvironment();
@@ -155,6 +156,7 @@ Deno.serve(async (request) => {
       p_family_name: familyName,
       p_dog_name: dogName || null,
       p_auto_approve: autoApprove,
+      p_timezone: timezone || null,
     });
     if (error) throw error;
 
