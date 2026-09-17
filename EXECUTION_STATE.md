@@ -50,43 +50,38 @@ anything else.
 ## Current Task
 
 **This cycle's reconciliation, done fresh via direct `git log`/`git show`,
-not trusted from this file's own prior narrative:** HEAD was `bd375ea`,
+not trusted from this file's own prior narrative:** HEAD was `9c34701`,
 clean working tree, up to date with
 `origin/feat/verified-auth-onboarding-batch-2` — **one** commit past
-`6e3f491`, what this file's own prior text described as HEAD.
-`git show --stat bd375ea` confirmed it contains exactly the prior cycle's
-own `package.json` `testPathIgnorePatterns` addition (8 insertions) plus
-that cycle's own `EXECUTION_STATE.md` rewrite — i.e. the prior cycle's own
-hedged "commit attempt outcome recorded under Blocker" self-report
-resolved the same way as the standing pattern (see note above): the
-commit had already landed and pushed. Reconciled before starting new
+`bd375ea`, what this file's own prior text described as HEAD (and which
+that prior cycle itself had hedged as "commit attempt outcome recorded
+under Blocker"). `git show --stat 9c34701` confirmed it contains exactly
+that prior cycle's own `previewRotation()` wiring
+(`RuleFormModal.tsx`/`ScheduleScreen.tsx` + new
+`previewRotationWiring.test.ts`) plus that cycle's own `EXECUTION_STATE.md`
+rewrite — the standing self-reporting-drift pattern (see note above)
+reconfirmed yet again (40th+ time running): the commit had already landed
+and pushed despite the hedged self-report. Reconciled before starting new
 work, per protocol.
 
 `node_modules` was absent again at cycle start (confirmed via `test -d
 node_modules`); `npm ci` restored it (906 packages). `npx tsc --noEmit` at
-reconciled HEAD `bd375ea` — **PASS**. `npm test -- --runInBand` at
-reconciled HEAD, run in full — **PASS: 125/125 suites, 1482/1482 tests**
-(the expected post-`testPathIgnorePatterns` baseline), confirming a
-healthy baseline before starting new work.
-
-Rechecked every standing blocker directly this cycle, all unchanged from
-every prior cycle: `gh auth status` — gated ("This command requires
-approval"). `docker info` — gated. `which supabase` — exit 1, not
-installed. `git log --oneline --all | grep -i batch` — only a historical
-`a2c969b Batch 4 production release...` commit already in this branch's
-own ancestry, still no separate `batch-4`-named branch or unmerged Batch
-4 work anywhere in the repo. `git rm tmp_coverage_inspect.js` (one of the
-seventeen dead scratch files) — still gated, reconfirming the
-file-deletion permission block. `TZ=Pacific/Kiritimati node -e ...` —
-still gated too, reconfirming that blocker.
+reconciled HEAD `9c34701` — **PASS**. `npm test -- --runInBand` at
+reconciled HEAD, run in full — **PASS: 126/126 suites, 1486/1486 tests**
+(the expected baseline, matching the prior cycle's own reported count),
+confirming a healthy baseline before starting new work.
 
 **Dispatched a fresh research agent (Explore) to find one new,
 previously-undiscovered functional gap of the established "implemented
 and tested but never wired up" shape**, explicitly instructed not to
 re-report any already-exhausted defect class documented below
 (accessibility props, RTL alignment, keyboard avoidance, coverage,
-migration-vs-call-site sweep through migration 0035, etc.). It found one
-— see the new task below.
+migration-vs-call-site sweep through migration 0035, `previewRotation`,
+`computePeePoopStats`, `isCurrentlySwapped`, etc.). It proposed wiring
+`buildWalkReminderMessage()`/`reminderMessages.ts` wholesale into
+`notificationService.ts`'s local scheduler — **investigated and only
+partially accepted, not acted on as proposed; see this cycle's own fix
+below for what was actually real and what was correctly rejected.**
 
 **Two research-agent-proposed candidates were investigated and rejected
 in an earlier cycle, not acted on — recorded here so a future cycle does
@@ -117,59 +112,79 @@ not re-propose either:**
    test-only utility, not an unwired bug. Do not re-propose wiring it into
    `signOut()`.
 
-**This cycle's own task — wired `previewRotation()`
-(`src/logic/rotation.ts:121-128`) into its two intended call sites,
-closing a real, first-time-discovered functional gap:** the helper was
-fully implemented and unit-tested (`rotation.test.ts:128-144`, covering
-empty list/wraparound/zero-turns/a worked Hebrew example matching its own
-doc comment) but had zero production call sites — confirmed via
-`grep -rn "previewRotation" src/` returning only the definition and its
-test file. Two call sites had each independently hand-rolled a worse
-substitute: `RuleFormModal.tsx`'s rotation-order picker
-(`rotation.map(...).join(' → ')` plus a bolted-on `→ ${first} ...`
-suffix that never produced a true multi-turn wraparound) and
-`ScheduleScreen.tsx`'s rule-summary row
-(`r.rotationUserIds.map(...).join(' → ')`, a plain single pass). Verified
-directly (read both files in full) before acting, not just trusted the
-research agent's report.
+**This cycle's own task — threaded `Dog['sex']` through the LOCAL
+walk-reminder notification path (`notificationService.ts`), closing a
+real, first-time-discovered functional gap, narrower than the research
+agent's original proposal:** `Dog['sex']`'s own doc comment
+(`src/types/index.ts:67-74`) states it exists specifically "to produce
+grammatically correct Hebrew reminder wording", and the exact helpers
+built for that purpose — `dogNoun()`/`wentOutForm()`
+(`src/logic/reminderMessages.ts`) — are already reused by
+`src/mascot/messageEngine.ts` (confirmed via
+`grep -n "dogNoun|wentOutForm" src/mascot/messageEngine.ts`) for this
+exact purpose. But `notificationService.ts`'s `scheduleWalkNotifications()`
+(the function that actually schedules the on-device local walk-reminder
+notifications) never received `dogSex` at all and hard-coded
+gender-neutral body text — confirmed via reading both call sites in
+`scheduleStore.ts`, which already have `dog.sex` available (from
+`useFamilyStore`) but only ever passed `dog.name`.
 
-**Fixed:** both now call `previewRotation()` — `RuleFormModal.tsx` with
-`turns = rotation.length > 1 ? rotation.length + 1 : rotation.length`
-(reproduces the intended one-wraparound preview, dropping the redundant
-ad-hoc `"..."` suffix now that the repeated first name already conveys
-the wrap, matching `previewRotation`'s own canonical output format used
-by its test) and `ScheduleScreen.tsx` with
-`turns = r.rotationUserIds.length` (an exact behavior-preserving
-replacement of its existing single-pass display). Added
-`src/logic/__tests__/previewRotationWiring.test.ts` (4 sub-tests, this
-repo's established source-scan convention) asserting both files import
-and call `previewRotation` and no longer contain the ad-hoc
-`.join(' → ')` pattern. A confirming `grep -rn "join(' → ')" src/` after
-the fix returns only `rotation.ts`'s own implementation and this new
-test file's doc comment — no other unwired sibling of the same shape
-remains.
+**Rejected the research agent's literal proposal** (wholesale-replace
+`notificationService.ts`'s title/body construction with
+`buildWalkReminderMessage()`) **after verifying it directly, not just
+trusting the agent's report:** `reminderMessages.ts`'s own header comment
+states it is "the server-side walk reminder scheduler"'s canonical
+message source (4 fixed escalating stages T-15/T/T+15/T+30, used by the
+`send-walk-reminders` Edge Function), while `notificationService.ts`'s
+local scheduler is a deliberately separate system by design
+(`scheduleStore.ts`'s own "Batch 2 / Decision 4" comment: local scheduling
+is skipped entirely once a device has an active remote push channel, so
+the two are mutually exclusive, not duplicated) with only 2 kinds
+(`pre_walk_reminder`/`overdue_reminder`) and a user-configurable
+`minutesBefore` that `buildWalkReminderMessage`'s hard-coded "15 minutes"
+T-15 copy would have silently ignored. A wholesale swap would have been
+architecturally wrong, not a clean fix — so only the specific, narrow,
+genuinely-missing piece (dog-sex grammar) was wired in, reusing
+`dogNoun()`/`wentOutForm()` directly rather than the whole message
+builder.
+
+**Fixed:** `scheduleWalkNotifications()` and `reconcileWalkNotifications()`
+both gained an optional `dogSex?: Dog['sex'] | null` parameter (backward
+compatible — omitted/`undefined` reproduces the exact prior neutral text
+byte-for-byte, verified by a new test); the pre-walk and overdue body text
+now call `dogNoun()`/`wentOutForm()` instead of hard-coding gender-neutral
+phrasing when `dogSex` is known. Both `scheduleStore.ts` call sites
+(`scheduleNotificationsForWalk`, `reconcileScheduleNotifications`) now
+pass `dog.sex` through. Added 4 new tests to the existing
+`notificationService.test.ts` (neutral-when-omitted, male, female,
+reconcile-threads-through) plus updated one pre-existing exact-args
+assertion in `scheduleStore.notificationHappyPath.test.ts` for the new
+5th parameter (a mechanical update, not a behavior change — the test's
+fake dog has no `sex` set, so the expected 5th arg is `undefined`,
+matching production behavior for a dog whose sex isn't recorded).
 
 `npx tsc --noEmit` after the change — **PASS**, zero errors. `npm test --
---runInBand` after the change — **PASS: 126/126 suites, 1486/1486 tests**
-(up from 125/125 · 1482/1482 immediately before the change, same HEAD —
-exactly 1 new suite/4 new tests, matching the new regression file
-one-for-one; no other suite's count changed). `git status
---porcelain=v1 --untracked-files=all` confirmed the changeset is scoped
-to exactly `RuleFormModal.tsx`, `ScheduleScreen.tsx` (10 insertions/3
-deletions combined) plus the new test file — no unrelated file touched,
-no user work at risk.
+--runInBand` after the change — **PASS: 126/126 suites, 1490/1490 tests**
+(up from 126/126 · 1486/1486 immediately before the change, same HEAD —
+exactly 4 new tests, matching the new regression tests one-for-one; no
+new suite, no other suite's count changed). `git status
+--porcelain=v1 --untracked-files=all` confirmed the changeset is scoped to
+exactly `notificationService.ts`, `notificationService.test.ts`,
+`scheduleStore.ts`, `scheduleStore.notificationHappyPath.test.ts` (59
+insertions/9 deletions combined) — no unrelated file touched, no user work
+at risk.
 
 ## Current Task Status
 
-Prior cycle's `testPathIgnorePatterns` addition (`bd375ea`) is confirmed
-landed and pushed — closed, `DONE`.
+Prior cycle's `previewRotation()` wiring (`9c34701`) is confirmed landed
+and pushed — closed, `DONE`.
 
-This cycle's own task — wiring `previewRotation()` into
-`RuleFormModal.tsx`/`ScheduleScreen.tsx` — is code-complete and validated
-(`tsc` PASS, `npm test` PASS **126/126 · 1486/1486**, up from
-**125/125 · 1482/1482** at cycle start HEAD before the fix). Commit
+This cycle's own task — threading `dogSex` through
+`notificationService.ts`'s local walk-reminder path — is code-complete
+and validated (`tsc` PASS, `npm test` PASS **126/126 · 1490/1490**, up
+from **126/126 · 1486/1486** at cycle start HEAD before the fix). Commit
 attempt outcome recorded under Blocker/Last Evidence below; per the
-standing 38+-cycle pattern, even a "blocked" self-report this same cycle
+standing 40+-cycle pattern, even a "blocked" self-report this same cycle
 should not be assumed final — the next cycle's first action must still be
 its own independent `git log --oneline -5` + `git status` check.
 
@@ -208,55 +223,63 @@ its own independent `git log --oneline -5` + `git status` check.
   node -e ...` — still gated. All unchanged from every prior cycle.
 - Dispatched a fresh Explore research agent, explicitly instructed not to
   re-report any already-exhausted defect class, to find one new
-  "implemented but never wired up" functional gap. It found
-  `previewRotation()` (`src/logic/rotation.ts:121-128`) — fully
-  implemented and unit-tested, zero production call sites, with two
-  screens/components each hand-rolling a worse inline substitute. Read
-  both files directly to verify before acting, not just trusted the
-  agent's report — see Current Task above for full detail.
-- **This cycle's own fix:** wired `previewRotation()` into
-  `RuleFormModal.tsx`'s rotation-order picker and `ScheduleScreen.tsx`'s
-  rule-summary row, replacing both ad-hoc `.join(' → ')` implementations.
-  Added `src/logic/__tests__/previewRotationWiring.test.ts` (4 sub-tests)
-  asserting the wiring and the absence of the old ad-hoc pattern. A
-  confirming `grep -rn "join(' → ')" src/` after the fix found no other
-  unwired sibling.
+  "implemented but never wired up" functional gap. It proposed wiring
+  `buildWalkReminderMessage()` into `notificationService.ts`; verified
+  directly and found that literal proposal architecturally wrong (see
+  Current Task above), but confirmed a real, narrower gap underneath it:
+  `Dog['sex']`'s own doc comment names grammatically-correct reminder
+  wording as its purpose, and `dogNoun()`/`wentOutForm()` (the helpers
+  built for exactly that) were never threaded into the local
+  notification path despite `dog.sex` already being available at both
+  `scheduleStore.ts` call sites.
+- **This cycle's own fix:** added an optional `dogSex` parameter to
+  `scheduleWalkNotifications()`/`reconcileWalkNotifications()`
+  (`notificationService.ts`), used `dogNoun()`/`wentOutForm()` in the
+  notification body when sex is known, and passed `dog.sex` through from
+  both `scheduleStore.ts` call sites. Added 4 new tests to
+  `notificationService.test.ts` (neutral-when-omitted/male/female/
+  reconcile-threads-through) and updated one pre-existing exact-args
+  assertion in `scheduleStore.notificationHappyPath.test.ts` for the new
+  5th parameter.
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `npm test -- --runInBand` after this cycle's own change — **PASS:
-  126/126 suites, 1486/1486 tests** (up from 125/125 · 1482/1482
-  immediately before the change, same HEAD — exactly 1 new suite/4 new
-  tests, matching the new regression file one-for-one).
+  126/126 suites, 1490/1490 tests** (up from 126/126 · 1486/1486
+  immediately before the change, same HEAD — exactly 4 new tests, no new
+  suite, matching the new regression tests one-for-one).
 - `git status --porcelain=v1 --untracked-files=all` confirmed the
-  changeset is scoped to exactly `RuleFormModal.tsx`, `ScheduleScreen.tsx`
-  (10 insertions/3 deletions combined), the new test file, plus this
-  `EXECUTION_STATE.md` update — no unrelated file touched, no user work at
-  risk.
+  changeset is scoped to exactly `notificationService.ts`,
+  `notificationService.test.ts`, `scheduleStore.ts`,
+  `scheduleStore.notificationHappyPath.test.ts` (59 insertions/9
+  deletions combined), plus this `EXECUTION_STATE.md` update — no
+  unrelated file touched, no user work at risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
   checked directly via `git log`/`git status` after the attempt.
 
 ## Last Evidence Timestamp
 
-2026-09-17T12:44:58Z (prior landed commit `bd375ea`); this cycle's own
-work validated at HEAD `bd375ea` + working tree as of this cycle's own
-run (2026-09-17T13:51:07Z), commit attempt outcome per Blocker below.
+2026-09-17T13:51:07Z (prior landed commit `9c34701`); this cycle's own
+work validated at HEAD `9c34701` + working tree as of this cycle's own
+run (2026-09-17T14:27:58Z), commit attempt outcome per Blocker below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
 self-reported, using two independent attempts** (a standalone `git add
-src/components/RuleFormModal.tsx src/screens/ScheduleScreen.tsx
-src/logic/__tests__/previewRotationWiring.test.ts`, then a standalone
-`git commit -a -m ...`) — both returned "This command requires approval"
-from the tool layer itself (not a git error), consistent with every
-standing blocked git-write command this same cycle (`git rm`, and the
-`TZ=...`-prefixed node command). A `git status --porcelain` run
-immediately after confirmed the working tree diff was unchanged (still
-exactly the two modified files plus the new untracked test file). So
-*within this turn's own visibility*, this cycle's commit attempt is a
-genuine, directly-confirmed no-op, not merely a hedged self-report —
-consistent with the standing pattern (see note at top of file, now
-reconfirmed for at least the 39th time running).
+src/notifications/notificationService.ts
+src/notifications/__tests__/notificationService.test.ts
+src/store/scheduleStore.ts
+src/store/__tests__/scheduleStore.notificationHappyPath.test.ts
+EXECUTION_STATE.md`, then a standalone `git commit -a -m ...`) — both
+returned "This command requires approval" from the tool layer itself (not
+a git error), consistent with every standing blocked git-write command
+across every prior cycle. A `git status --porcelain` run immediately
+after confirmed the working tree diff was unchanged (still exactly the
+four modified source/test files plus this file). So *within this turn's
+own visibility*, this cycle's commit attempt is a genuine,
+directly-confirmed no-op, not merely a hedged self-report — consistent
+with the standing pattern (see note at top of file, now reconfirmed for
+at least the 40th time running).
 
 **Standing question — mechanism already established with direct evidence
 in prior cycles' own history of this file:** an external supervising
@@ -268,10 +291,11 @@ own visibility. That means this turn's own direct "nothing changed"
 observation immediately after the attempt is real and correctly reported,
 but is **not** predictive of the final outcome once this turn ends —
 consistent with, not contradicting, the standing pattern. The
-working-tree change itself (`RuleFormModal.tsx`/`ScheduleScreen.tsx`'s
-`previewRotation()` wiring + the new test file + this `EXECUTION_STATE.md`
-update) is real, validated (`tsc`/`npm test` both PASS, 126/126 suites,
-1486/1486 tests) — per "never discard uncommitted work," it is NOT
+working-tree change itself (`notificationService.ts`'s and
+`scheduleStore.ts`'s `dogSex` wiring + the new/updated test files + this
+`EXECUTION_STATE.md` update) is real, validated (`tsc`/`npm test` both
+PASS, 126/126 suites, 1490/1490 tests) — per "never discard uncommitted
+work," it is NOT
 reverted regardless of this turn's own commit-attempt outcome. The next
 cycle's first action must still be its own `git log --oneline -5` +
 `git status` to determine the actual final outcome independently.
@@ -380,23 +404,30 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the `previewRotation()` wiring in
-`RuleFormModal.tsx`/`ScheduleScreen.tsx` + the new
-`previewRotationWiring.test.ts` + this `EXECUTION_STATE.md` update)
-landed, and check every commit between whatever SHA this file names and
-actual HEAD, not just the newest one. **Also re-run the FULL
-`npm test -- --runInBand`** (standing habit, established several cycles
-ago after a full run caught 2 silently-failing tests that per-change
-subset runs had missed) — expect **126/126 suites, 1486/1486 tests** as
-the new baseline (up from 125/125 · 1482/1482, correctly, due to this
-cycle's own new regression test file, not a fluke).
+cycle's own commit (the `dogSex` wiring in
+`notificationService.ts`/`scheduleStore.ts` + the updated/new test files
++ this `EXECUTION_STATE.md` update) landed, and check every commit
+between whatever SHA this file names and actual HEAD, not just the
+newest one. **Also re-run the FULL `npm test -- --runInBand`** (standing
+habit, established several cycles ago after a full run caught 2
+silently-failing tests that per-change subset runs had missed) — expect
+**126/126 suites, 1490/1490 tests** as the new baseline (up from 126/126
+· 1486/1486, correctly, due to this cycle's own 4 new regression tests,
+not a fluke).
 
 The `testPathIgnorePatterns` interim mitigation a prior cycle had left
 open as an idea is done (landed as `bd375ea`) — do not re-propose it.
-This cycle's own `previewRotation()` wiring fix is also done and complete
-— a confirming `grep -rn "join(' → ')" src/` after the fix found no other
-unwired sibling of the same shape, so do not re-propose that either. The
-seventeen scratch/debug/backup/dead files themselves are still gated on
+The prior cycle's own `previewRotation()` wiring fix is also done and
+complete (landed as `9c34701`) — do not re-propose that either. This
+cycle's own `dogSex`-in-local-notifications wiring fix is also done and
+complete — do not re-propose it; a worthwhile but distinct follow-up
+deliberately NOT folded into this cycle's bounded unit: the
+`send-walk-reminders` Edge Function's own inlined copy of
+`reminderMessages.ts` (server-side push, the OTHER half of the reminder
+system) already has full `dogSex` support since it's a literal copy of
+the canonical file — so this angle is now fully closed on both the
+server-push and local-schedule sides, nothing further to wire for
+dog-sex grammar in reminders specifically. The seventeen scratch/debug/backup/dead files themselves are still gated on
 deletion; retry `git rm`/file deletion the moment the sandbox's permission
 mode allows it (see Blocker above for the current list). Also do not
 re-propose `system_admin_set_family_approval()` (belongs to stacked branch
@@ -704,45 +735,64 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `bd375ea`, one commit
-  past `6e3f491` — confirmed via `git show --stat` it contains exactly
-  the prior cycle's own `package.json` `testPathIgnorePatterns` addition +
-  that cycle's own `EXECUTION_STATE.md` rewrite, reconfirming the standing
+- Reconciliation found HEAD had actually moved to `9c34701`, one commit
+  past `bd375ea` — confirmed via `git show --stat` it contains exactly
+  the prior cycle's own `previewRotation()` wiring (`RuleFormModal.tsx`/
+  `ScheduleScreen.tsx` + `previewRotationWiring.test.ts`) + that cycle's
+  own `EXECUTION_STATE.md` rewrite, reconfirming the standing
   self-reporting-drift pattern yet again. `node_modules` was absent
   entirely; `npm ci` fixed it. `npx tsc --noEmit` and full `npm test --
-  --runInBand` at reconciled HEAD both PASS (125/125 suites, 1482/1482
+  --runInBand` at reconciled HEAD both PASS (126/126 suites, 1486/1486
   tests), confirming a healthy baseline.
-- Rechecked every standing blocker directly, standalone (`gh auth
-  status`, `docker info`, `which supabase`, `git log --all` for
-  `batch-4`, `git rm` on a scratch file, `TZ=...`-prefixed node) — all
-  unchanged, still gated/absent exactly as every prior cycle.
 - Dispatched a fresh Explore research agent (explicitly told not to
   re-report any already-exhausted defect class) to find the next
-  unambiguous "implemented but never wired up" functional gap. It found
-  `previewRotation()` (`src/logic/rotation.ts:121-128`) — fully
-  implemented and unit-tested, zero production call sites, with
-  `RuleFormModal.tsx` and `ScheduleScreen.tsx` each hand-rolling a worse
-  inline `.join(' → ')` substitute instead. Verified directly (read both
-  files in full) before acting.
-- **Fixed:** wired `previewRotation()` into both call sites —
-  `RuleFormModal.tsx`'s rotation-order picker (now shows a true one-turn
-  wraparound via `previewRotation`'s own canonical format, dropping a
-  redundant ad-hoc `"..."` suffix) and `ScheduleScreen.tsx`'s rule-summary
-  row (an exact behavior-preserving replacement). Added
-  `src/logic/__tests__/previewRotationWiring.test.ts` (4 sub-tests, this
-  repo's established source-scan convention). A confirming
-  `grep -rn "join(' → ')" src/` after the fix found no other unwired
-  sibling of the same shape. `npx tsc --noEmit` PASS. `npm test --
-  --runInBand` PASS: 126/126 suites, 1486/1486 tests (up from 125/125 ·
-  1482/1482, exactly 1 new suite/4 new tests, matching the new regression
-  file one-for-one). `git status`/diff scoped to exactly
-  `RuleFormModal.tsx`, `ScheduleScreen.tsx` (10 insertions/3 deletions
-  combined) + the new test file + this `EXECUTION_STATE.md` update.
+  unambiguous "implemented but never wired up" functional gap. It
+  proposed wiring `buildWalkReminderMessage()` wholesale into
+  `notificationService.ts`. Verified directly (read `reminderMessages.ts`,
+  `notificationService.ts`, and `scheduleStore.ts` in full) rather than
+  trusting the report as-is, and found the literal proposal
+  architecturally wrong: `reminderMessages.ts` is documented as the
+  server-side scheduler's canonical 4-stage message source (used by the
+  `send-walk-reminders` Edge Function), with a hard-coded "15 minutes"
+  T-15 phrase, while `notificationService.ts`'s local scheduler is a
+  deliberately separate 2-kind system with a user-configurable
+  `minutesBefore`, mutually exclusive with the server scheduler by design
+  (`scheduleStore.ts`'s own "Batch 2 / Decision 4" comment). Underneath
+  that flawed literal proposal was a real, narrower gap: `Dog['sex']`'s
+  own doc comment names grammatically-correct reminder wording as its
+  purpose, and the `dogNoun()`/`wentOutForm()` helpers built for exactly
+  that (already reused by `src/mascot/messageEngine.ts`) were never
+  threaded into the local notification path, even though `dog.sex` was
+  already available at both `scheduleStore.ts` call sites.
+- **Fixed:** added an optional `dogSex` parameter to
+  `scheduleWalkNotifications()`/`reconcileWalkNotifications()`
+  (`notificationService.ts`), used `dogNoun()`/`wentOutForm()` in the
+  notification body when sex is known (byte-for-byte unchanged neutral
+  text when omitted — verified by a new test), and passed `dog.sex`
+  through from both `scheduleStore.ts` call sites. Added 4 new tests to
+  `notificationService.test.ts` and updated one pre-existing exact-args
+  assertion in `scheduleStore.notificationHappyPath.test.ts` for the new
+  5th parameter. `npx tsc --noEmit` PASS. `npm test -- --runInBand` PASS:
+  126/126 suites, 1490/1490 tests (up from 126/126 · 1486/1486, exactly 4
+  new tests, no new suite, matching the new regression tests one-for-one).
+  `git status`/diff scoped to exactly `notificationService.ts`,
+  `notificationService.test.ts`, `scheduleStore.ts`,
+  `scheduleStore.notificationHappyPath.test.ts` (59 insertions/9
+  deletions combined) + this `EXECUTION_STATE.md` update.
   **Commit attempt outcome:** see Blocker above.
 
 ### Recent cycles (condensed — full detail in git history of this file)
 
-- Prior cycle: reconciliation found HEAD at `6e3f491` and fixed a real,
+- Prior cycle: reconciliation found HEAD at `bd375ea` and fixed a real,
+  first-time-discovered functional gap: `previewRotation()`
+  (`src/logic/rotation.ts:121-128`) was fully implemented and
+  unit-tested but had zero production call sites, with
+  `RuleFormModal.tsx`'s rotation-order picker and `ScheduleScreen.tsx`'s
+  rule-summary row each hand-rolling a worse ad-hoc `.join(' → ')`
+  substitute. Wired both to call `previewRotation()` directly. Landed as
+  `9c34701` despite that cycle's own hedged "commit attempt outcome
+  recorded under Blocker" self-report.
+- Two cycles ago: reconciliation found HEAD at `6e3f491` and fixed a real,
   first-time-discovered test-quality gap: 5 of 6 scratch/debug test files
   had zero `expect()` calls (always-green regardless of behavior).
   Added `testPathIgnorePatterns` to `package.json` to exclude them from

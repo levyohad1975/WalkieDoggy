@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
-import type { NotificationSetting, Walk } from '../types';
+import type { Dog, NotificationSetting, Walk } from '../types';
 import { planWalkNotifications, shouldSendNotification } from '../logic/reminders';
+import { dogNoun, wentOutForm } from '../logic/reminderMessages';
 import { mapExecutionEnvironment } from '../lib/expoRuntime';
 // TYPE-ONLY import — fully erased at compile time (both tsc and babel strip
 // `import type`), so this does NOT reintroduce the module-scope
@@ -285,7 +286,8 @@ export async function scheduleWalkNotifications(
   walk: Walk,
   setting: NotificationSetting,
   responsibleName: string,
-  dogName: string
+  dogName: string,
+  dogSex?: Dog['sex'] | null
 ): Promise<void> {
   const Notifications = await getNotifications();
   if (!Notifications) return;
@@ -317,10 +319,16 @@ export async function scheduleWalkNotifications(
     if (fireDate.getTime() <= Date.now()) continue; // don't schedule reminders in the past
 
     const title = item.kind === 'pre_walk_reminder' ? `🐶 עוד ${setting.minutesBefore} דקות לטיול` : `⏰ הטיול עדיין לא סומן כבוצע`;
+    // Reuse the same dog-sex grammar helpers as the server-side scheduler
+    // (reminderMessages.ts) and the mascot message engine, rather than
+    // hard-coding gender-neutral text — see Dog['sex']'s own doc comment.
+    const wentOut = wentOutForm(dogSex);
     const body =
       item.kind === 'pre_walk_reminder'
-        ? `${responsibleName} אחראי/ת על הטיול של ${dogName} בשעה ${walk.scheduledTime}`
-        : `הטיול של ${dogName} בשעה ${walk.scheduledTime} עדיין ממתין. אפשר לסמן כבוצע באפליקציה.`;
+        ? `${responsibleName} אחראי/ת על הטיול של ${dogNoun(dogName, dogSex)} בשעה ${walk.scheduledTime}`
+        : wentOut
+          ? `${dogNoun(dogName, dogSex)} עדיין לא ${wentOut} לטיול בשעה ${walk.scheduledTime}. אפשר לסמן כבוצע באפליקציה.`
+          : `הטיול של ${dogName} בשעה ${walk.scheduledTime} עדיין ממתין. אפשר לסמן כבוצע באפליקציה.`;
 
     await Notifications.scheduleNotificationAsync({
       identifier: notificationIdentifier(walk.id, item.kind as NotificationKind),
@@ -457,7 +465,8 @@ export async function reconcileWalkNotifications(
   walks: Walk[],
   getSetting: (userId: string) => Promise<NotificationSetting | undefined>,
   getUserName: (userId: string) => string | undefined,
-  dogName: string
+  dogName: string,
+  dogSex?: Dog['sex'] | null
 ): Promise<void> {
   for (const walk of walks) {
     if (walk.status !== 'pending') {
@@ -470,7 +479,7 @@ export async function reconcileWalkNotifications(
       await cancelWalkNotifications(walk.id);
       continue;
     }
-    await scheduleWalkNotifications(walk, setting, userName, dogName);
+    await scheduleWalkNotifications(walk, setting, userName, dogName, dogSex);
   }
 
   await cancelOrphanedWalkNotifications(new Set(walks.map((w) => w.id)));

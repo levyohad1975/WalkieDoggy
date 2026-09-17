@@ -548,3 +548,42 @@ describe('notificationService — reconcileWalkNotifications missing-setting/nam
     expect(scheduleMock).not.toHaveBeenCalled();
   });
 });
+
+describe('notificationService — dog-sex grammar wiring (reminderMessages helpers)', () => {
+  it('uses gender-neutral body text when dogSex is omitted (unchanged default behavior)', async () => {
+    const walk = fakeWalk('walk-sex-unknown');
+    await scheduleWalkNotifications(walk, setting, 'עומר', 'רקסי');
+
+    const bodies = scheduleMock.mock.calls.map((call) => call[0].content.body as string);
+    const preBody = bodies.find((b) => b.includes('אחראי/ת'));
+    const overdueBody = bodies.find((b) => !b.includes('אחראי/ת'));
+    expect(preBody).toBe('עומר אחראי/ת על הטיול של רקסי בשעה 12:00');
+    expect(overdueBody).toBe('הטיול של רקסי בשעה 12:00 עדיין ממתין. אפשר לסמן כבוצע באפליקציה.');
+  });
+
+  it('uses male-gendered body text ("הכלב"/"יצא") when dogSex is "male"', async () => {
+    const walk = fakeWalk('walk-sex-male');
+    await scheduleWalkNotifications(walk, setting, 'עומר', 'רקסי', 'male');
+
+    const bodies = scheduleMock.mock.calls.map((call) => call[0].content.body as string);
+    expect(bodies.some((b) => b.includes('הכלב רקסי'))).toBe(true);
+    expect(bodies.some((b) => b.includes('עדיין לא יצא לטיול'))).toBe(true);
+  });
+
+  it('uses female-gendered body text ("הכלבה"/"יצאה") when dogSex is "female"', async () => {
+    const walk = fakeWalk('walk-sex-female');
+    await scheduleWalkNotifications(walk, setting, 'עומר', 'רקסי', 'female');
+
+    const bodies = scheduleMock.mock.calls.map((call) => call[0].content.body as string);
+    expect(bodies.some((b) => b.includes('הכלבה רקסי'))).toBe(true);
+    expect(bodies.some((b) => b.includes('עדיין לא יצאה לטיול'))).toBe(true);
+  });
+
+  it('reconcileWalkNotifications threads dogSex through to scheduleWalkNotifications', async () => {
+    const walk = fakeWalk('walk-reconcile-sex');
+    await reconcileWalkNotifications([walk], async () => setting, () => 'עומר', 'רקסי', 'female');
+
+    const bodies = scheduleMock.mock.calls.map((call) => call[0].content.body as string);
+    expect(bodies.some((b) => b.includes('הכלבה רקסי'))).toBe(true);
+  });
+});

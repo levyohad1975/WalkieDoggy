@@ -130,7 +130,7 @@ async function scheduleNotificationsForWalk(walk: Walk) {
   const settings = await repository.getNotificationSettings(walk.familyId);
   const setting = settings.find((s) => s.userId === user.id);
   if (!setting) return;
-  await scheduleWalkNotifications(walk, setting, user.name, dog.name);
+  await scheduleWalkNotifications(walk, setting, user.name, dog.name, dog.sex);
 }
 
 /**
@@ -163,7 +163,8 @@ export async function reconcileScheduleNotifications(familyId: string, walks: Wa
       return settingsByUserId.get(userId);
     },
     (userId) => usersById.get(userId)?.name,
-    dog.name
+    dog.name,
+    dog.sex
   );
 }
 

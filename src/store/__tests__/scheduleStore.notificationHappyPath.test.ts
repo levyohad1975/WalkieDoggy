@@ -87,7 +87,8 @@ describe('scheduleNotificationsForWalk — local-scheduling happy path (via resc
       expect.objectContaining({ id: 'walk-1', scheduledTime: '19:30' }),
       expect.objectContaining({ userId: 'user-aba', enabled: true }),
       'אבא',
-      'טופי'
+      'טופי',
+      undefined
     );
   });
 
