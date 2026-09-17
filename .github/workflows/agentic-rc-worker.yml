@@ -1,16 +1,10 @@
 name: Agentic RC Worker
 
 on:
-  workflow_run:
-    workflows:
-      - CI
-      - Batch 2 Supabase Rehearsal
-    types:
-      - completed
   workflow_dispatch:
     inputs:
       target_branch:
-        description: "Feature branch to continue; leave blank to use the selected workflow branch"
+        description: "RC feature branch to continue"
         required: false
         type: string
 
@@ -20,86 +14,121 @@ permissions:
   id-token: write
 
 concurrency:
-  group: agentic-rc-worker-${{ github.event.workflow_run.head_branch || inputs.target_branch || github.ref_name }}
+  group: agentic-rc-worker-${{ inputs.target_branch || vars.AGENTIC_RC_TARGET_BRANCH || 'feat/verified-auth-onboarding-batch-2' }}
   cancel-in-progress: false
+
+env:
+  TARGET_BRANCH: ${{ inputs.target_branch || vars.AGENTIC_RC_TARGET_BRANCH || 'feat/verified-auth-onboarding-batch-2' }}
 
 jobs:
   execute:
     name: Autonomous RC continuation
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (
-        github.event.workflow_run.head_repository.full_name == github.repository &&
-        (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'workflow_dispatch') &&
-        github.event.workflow_run.head_branch == (vars.AGENTIC_RC_TARGET_BRANCH || 'feat/verified-auth-onboarding-batch-2')
-      )
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 45
     env:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      TARGET_BRANCH: ${{ github.event.workflow_run.head_branch || inputs.target_branch || github.ref_name }}
-
     steps:
       - name: Guard autonomous target
         id: guard
-        shell: bash
+        shell: powershell
         run: |
-          set -euo pipefail
-          if [ "$TARGET_BRANCH" = "main" ]; then
-            echo "mode=read" >> "$GITHUB_OUTPUT"
-            echo "Manual execution on main is inspection/test-only." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          git check-ref-format --branch "$TARGET_BRANCH" >/dev/null
-          if [[ "$TARGET_BRANCH" == *".."* || "$TARGET_BRANCH" == *"//"* || "$TARGET_BRANCH" == *"@{"* ]]; then
-            echo "::error::Unsafe target branch syntax."
-            exit 1
-          fi
-
-          case "$TARGET_BRANCH" in
-            feat/*|fix/*|chore/*|test/*|docs/*|rc/*)
-              ;;
-            *)
-              echo "::error::Writable target must be an approved non-main feature branch."
-              exit 1
-              ;;
-          esac
-
-          echo "mode=write" >> "$GITHUB_OUTPUT"
-          echo "Validated autonomous feature-branch target: $TARGET_BRANCH" >> "$GITHUB_STEP_SUMMARY"
+          $ErrorActionPreference='Stop'
+          if ([string]::IsNullOrWhiteSpace($env:TARGET_BRANCH) -or $env:TARGET_BRANCH -eq 'main') { throw 'Worker requires an explicit non-main RC branch.' }
+          if ($env:TARGET_BRANCH -notmatch '^(feat|fix|chore|test|docs|rc)/[A-Za-z0-9._/-]+$') { throw 'Unapproved RC branch.' }
+          if ($env:TARGET_BRANCH.Contains('..') -or $env:TARGET_BRANCH.Contains('//') -or $env:TARGET_BRANCH.Contains('@{') -or $env:TARGET_BRANCH.EndsWith('/')) { throw 'Unsafe RC branch syntax.' }
+          'mode=write' | Add-Content $env:GITHUB_OUTPUT
 
       - name: Checkout target ref
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ env.TARGET_BRANCH }}
-          persist-credentials: ${{ steps.guard.outputs.mode == 'write' }}
+          persist-credentials: true
+
+      - name: Provision Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Verify Windows prerequisites
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Get-Command git -ErrorAction Stop | Out-Null
+          $node = Get-Command node.exe -ErrorAction Stop
+          $npm = Get-Command npm.cmd -ErrorAction Stop
+          & $node.Source --version
+          if ($LASTEXITCODE) { throw 'node executable validation failed' }
+          & $npm.Source --version
+          if ($LASTEXITCODE) { throw 'npm executable validation failed' }
+          $candidates = @()
+          $onPath = Get-Command bash.exe -ErrorAction SilentlyContinue
+          if ($onPath) { $candidates += $onPath.Source }
+          $candidates += @("$env:ProgramFiles\Git\bin\bash.exe","$env:ProgramFiles\Git\usr\bin\bash.exe","${env:ProgramFiles(x86)}\Git\bin\bash.exe","${env:ProgramFiles(x86)}\Git\usr\bin\bash.exe")
+          $bash = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+          if (-not $bash) { throw 'Git Bash was not found on PATH or in supported system-wide Git for Windows locations.' }
+          "CLAUDE_CODE_GIT_BASH_PATH=$bash" | Add-Content $env:GITHUB_ENV
+          (Split-Path $bash -Parent) | Add-Content $env:GITHUB_PATH
+          "Windows runner prerequisites ready. Node: $($node.Source); npm: $($npm.Source); Git Bash: $bash" | Add-Content $env:GITHUB_STEP_SUMMARY
+
+      - name: Provision Bun without service-account symlinks
+        id: bun
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $bunRoot = Join-Path $env:RUNNER_TEMP 'walkie-bun-1.3.14'
+          $bunExe = Join-Path $bunRoot 'bun.exe'
+          if (-not (Test-Path $bunExe)) {
+            $zip = Join-Path $env:RUNNER_TEMP 'bun-windows-x64.zip'
+            $extract = Join-Path $env:RUNNER_TEMP 'bun-windows-x64-extract'
+            Remove-Item $zip -Force -ErrorAction SilentlyContinue
+            Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
+            Invoke-WebRequest -Uri 'https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/bun-windows-x64.zip' -OutFile $zip
+            Expand-Archive -Path $zip -DestinationPath $extract -Force
+            $downloaded = Get-ChildItem $extract -Recurse -Filter bun.exe | Select-Object -First 1
+            if (-not $downloaded) { throw 'Downloaded Bun archive did not contain bun.exe.' }
+            New-Item -ItemType Directory -Path $bunRoot -Force | Out-Null
+            Copy-Item $downloaded.FullName $bunExe -Force
+          }
+          & $bunExe --version
+          if ($LASTEXITCODE) { throw 'Bun executable validation failed.' }
+          "path=$bunExe" | Add-Content $env:GITHUB_OUTPUT
+          "Custom Bun ready at $bunExe; avoids setup-bun symlink creation under NETWORK SERVICE." | Add-Content $env:GITHUB_STEP_SUMMARY
+
+      - name: Provision native Claude Code for Windows
+        id: claude_cli
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $version = '2.1.274'
+          $claudeExe = Join-Path $env:USERPROFILE '.local\bin\claude.exe'
+          $valid = $false
+          if (Test-Path $claudeExe) { & $claudeExe --version; if ($LASTEXITCODE -eq 0) { $valid = $true } }
+          if (-not $valid) {
+            $installer = Invoke-RestMethod -Uri 'https://claude.ai/install.ps1'
+            & ([scriptblock]::Create($installer)) $version
+            if ($LASTEXITCODE) { throw "Claude Code Windows installer failed with exit code $LASTEXITCODE." }
+          }
+          $candidates = @($claudeExe,(Join-Path $env:USERPROFILE '.local\bin\claude'),(Join-Path $env:LOCALAPPDATA 'Programs\Claude\claude.exe'))
+          $cmd = Get-Command claude.exe -ErrorAction SilentlyContinue
+          if ($cmd) { $candidates += $cmd.Source }
+          $resolved = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+          if (-not $resolved) { throw 'Claude Code Windows installer completed but claude.exe was not found.' }
+          & $resolved --version
+          if ($LASTEXITCODE) { throw 'Claude Code executable validation failed.' }
+          "path=$resolved" | Add-Content $env:GITHUB_OUTPUT
+          (Split-Path $resolved -Parent) | Add-Content $env:GITHUB_PATH
+          "Native Claude Code $version ready at $resolved; the action will skip its Linux-only install.sh path." | Add-Content $env:GITHUB_STEP_SUMMARY
 
       - name: Detect worker authentication
         id: auth
-        shell: bash
+        shell: powershell
         run: |
-          set -euo pipefail
-          if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
-            echo "mode=oauth" >> "$GITHUB_OUTPUT"
-          elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-            echo "mode=api" >> "$GITHUB_OUTPUT"
-          else
-            echo "mode=none" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Record inactive worker state
-        if: steps.auth.outputs.mode == 'none'
-        shell: bash
-        run: |
-          {
-            echo "## Agentic RC Worker"
-            echo
-            echo "No Claude worker credential is configured."
-            echo "The workflow exits safely without mutation."
-          } >> "$GITHUB_STEP_SUMMARY"
+          if (-not [string]::IsNullOrWhiteSpace($env:CLAUDE_CODE_OAUTH_TOKEN)) { 'mode=oauth' | Add-Content $env:GITHUB_OUTPUT }
+          elseif (-not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) { 'mode=api' | Add-Content $env:GITHUB_OUTPUT }
+          else { throw 'No Claude worker credential configured.' }
 
       - name: Run Claude worker with OAuth token
         id: claude_oauth
@@ -108,189 +137,83 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          path_to_bun_executable: ${{ steps.bun.outputs.path }}
+          path_to_claude_code_executable: ${{ steps.claude_cli.outputs.path }}
           additional_permissions: |
             actions: read
+          allowed_bots: "github-actions[bot]"
           prompt: |
-            Act as the Walkie Doggy Release Candidate autonomous execution worker.
-
-            First read AGENTS.md, EXECUTION_STATE.md, and
-            docs/engineering/AGENTIC_EXECUTION_V1.md before acting.
-            Reconstruct state from fresh repository/GitHub evidence.
-
-            Trigger context:
-            - event: ${{ github.event_name }}
-            - upstream workflow: ${{ github.event.workflow_run.name || 'manual-dispatch' }}
-            - upstream run id: ${{ github.event.workflow_run.id || 'n/a' }}
-            - upstream conclusion: ${{ github.event.workflow_run.conclusion || 'manual' }}
-            - target branch: ${{ env.TARGET_BRANCH }}
-            - target sha: ${{ github.event.workflow_run.head_sha || github.sha }}
-
-            Locked RC queue:
-            1. Staging family-creation E2E through persisted family, invite/join code/link/QR and second-member join.
-            2. AUTO_APPROVE_NEW_FAMILIES true/false plus System Admin approve/reject.
-            3. Welcome/system-owner email, Resend webhook and email_delivery_log.
-            4. Settings/Roles/System Admin QA and release-blocking fixes.
-            5. Batch 4 regression.
-            6. Real iPhone E2E/RTL/navigation/family flows.
-            7. Full CI and Supabase regression.
-            8. QA Guardian.
-            Then stop at the Release Candidate approval gate.
-
-            Execute exactly one bounded, coherent unit of work from the highest-priority safe task possible in this environment.
-            Prefer a unit that can be fully implemented and locally validated within this run. Do not start a second substantial unit after the first coherent unit is ready for validation.
-            Reserve enough turns to leave the repository in a coherent checkpoint state. Before the turn budget is exhausted, update EXECUTION_STATE.md with fresh evidence, blocker/remaining work, and the next safe continuation step whenever repository governance permits edits.
-            If an upstream run failed, inspect the failure and attempt the smallest safe repository-side fix permitted by AGENTS.md.
-            If it passed, advance to the next executable safe RC task instead of only reporting.
-
-            For a non-main TARGET_BRANCH you may edit files, run approved tests, create commits, and push only to that same TARGET_BRANCH.
-            For TARGET_BRANCH=main you are inspection/test-only: do not edit, commit, or push repository changes.
-            Never create, update, or merge a PR unless the repository governance explicitly permits that action; never merge under any circumstance.
-            Never direct-push main. Never deploy to Production.
-            Never run Production migrations or modify Production data/RLS/secrets/credentials.
-            Never perform destructive/irreversible actions, purchases/charges, or public publishing.
-            Do not expose or print secrets.
-            No evidence = not completed.
-            If one path is blocked, select the next independent safe RC task.
-
-            End with: Current Task, Status, Fresh Evidence, Blocker,
-            Next Safe Task, Owner Approval Required, Action Taken.
+            Act as the Walkie Doggy Release Candidate autonomous execution worker. Read AGENTS.md, EXECUTION_STATE.md, and docs/engineering/AGENTIC_EXECUTION_V1.md first. Reconstruct state from fresh evidence. Target branch: ${{ env.TARGET_BRANCH }}. Execute exactly one bounded coherent unit from the highest-priority safe RC task. If blocked, select the next independent safe task. A successful run must leave durable repository evidence. You may edit files and run approved tests on this RC branch only. Do not edit .github/workflows/**. Never merge, push main, deploy Production, run Production migrations, modify Production data/RLS/secrets, perform destructive actions, purchases, or public publishing. No evidence = not completed. Budget execution deliberately: reserve the final 25 turns for focused tests, diagnosis, repair, and re-validation. Before finishing, run targeted tests for changed behavior and repair any failures you introduced; do not spend the full turn budget only exploring or implementing.
           claude_args: |
-            --max-turns 60
-            --allowedTools "${{ steps.guard.outputs.mode == 'write' && 'Read,Edit,Write,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git branch:*),Bash(git rev-parse:*),Bash(git show:*),Bash(git ls-files:*),Bash(ls:*),Bash(pwd),Bash(npm test:*),Bash(npx jest:*)' || 'Read,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git branch:*),Bash(git rev-parse:*),Bash(git show:*),Bash(git ls-files:*),Bash(ls:*),Bash(pwd),Bash(npm test:*),Bash(npx jest:*)' }}"
+            --max-turns 90
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test:*),Bash(npx jest:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git branch:*),Bash(git rev-parse:*),Bash(git show:*),Bash(git ls-files:*),Bash(ls:*),Bash(pwd)"
 
-      - name: Run Claude worker with Anthropic API key
+      - name: Run Claude worker with API key
         id: claude_api
         if: steps.auth.outputs.mode == 'api'
         continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          path_to_bun_executable: ${{ steps.bun.outputs.path }}
+          path_to_claude_code_executable: ${{ steps.claude_cli.outputs.path }}
           additional_permissions: |
             actions: read
+          allowed_bots: "github-actions[bot]"
           prompt: |
-            Act as the Walkie Doggy Release Candidate autonomous execution worker.
-            Read AGENTS.md, EXECUTION_STATE.md, and docs/engineering/AGENTIC_EXECUTION_V1.md first.
-            Reconstruct state from fresh repository/GitHub evidence and execute exactly one bounded, coherent unit of work from the highest-priority safe RC task permitted by those rules.
-            Prefer a unit that can be fully implemented and locally validated within this run. Do not start a second substantial unit after the first coherent unit is ready for validation.
-            Reserve enough turns to leave the repository in a coherent checkpoint state. Before the turn budget is exhausted, update EXECUTION_STATE.md with fresh evidence, blocker/remaining work, and the next safe continuation step whenever repository governance permits edits.
-            Target branch is ${{ env.TARGET_BRANCH }}.
-            On a non-main target you may edit, test, commit, and push only to that same target branch. On main you are inspection/test-only.
-            Never merge, direct-push main, deploy to Production, run Production migrations, modify Production data/RLS/secrets/credentials, expose secrets, perform destructive actions, purchases/charges, or public publishing.
-            No evidence = not completed.
-            End with: Current Task, Status, Fresh Evidence, Blocker, Next Safe Task, Owner Approval Required, Action Taken.
+            Act as the Walkie Doggy Release Candidate autonomous execution worker. Read AGENTS.md, EXECUTION_STATE.md, and docs/engineering/AGENTIC_EXECUTION_V1.md first. Target branch: ${{ env.TARGET_BRANCH }}. Execute one bounded safe RC unit and leave durable repository evidence. Do not edit .github/workflows/**. Never merge, push main, touch Production/data/migrations/secrets, purchase, publish publicly, or perform destructive actions. No evidence = not completed. Budget execution deliberately: reserve the final 25 turns for focused tests, diagnosis, repair, and re-validation. Before finishing, run targeted tests for changed behavior and repair any failures you introduced.
           claude_args: |
-            --max-turns 60
-            --allowedTools "${{ steps.guard.outputs.mode == 'write' && 'Read,Edit,Write,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git branch:*),Bash(git rev-parse:*),Bash(git show:*),Bash(git ls-files:*),Bash(ls:*),Bash(pwd),Bash(npm test:*),Bash(npx jest:*)' || 'Read,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test -- --runInBand),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git branch:*),Bash(git rev-parse:*),Bash(git show:*),Bash(git ls-files:*),Bash(ls:*),Bash(pwd),Bash(npm test:*),Bash(npx jest:*)' }}"
+            --max-turns 90
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test:*),Bash(npx jest:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git branch:*),Bash(git rev-parse:*),Bash(git show:*),Bash(git ls-files:*),Bash(ls:*),Bash(pwd)"
 
       - name: Classify Claude result
-        id: claude_result
-        if: always() && steps.auth.outputs.mode != 'none'
-        shell: bash
+        id: result
+        if: always()
+        shell: powershell
         env:
           OAUTH_OUTCOME: ${{ steps.claude_oauth.outcome }}
           API_OUTCOME: ${{ steps.claude_api.outcome }}
         run: |
-          set -euo pipefail
-          echo "success=false" >> "$GITHUB_OUTPUT"
-          echo "checkpoint_eligible=false" >> "$GITHUB_OUTPUT"
+          'success=false' | Add-Content $env:GITHUB_OUTPUT
+          'checkpoint=false' | Add-Content $env:GITHUB_OUTPUT
+          if ($env:OAUTH_OUTCOME -eq 'success' -or $env:API_OUTCOME -eq 'success') { 'success=true' | Add-Content $env:GITHUB_OUTPUT; exit 0 }
+          $f=Join-Path $env:RUNNER_TEMP 'claude-execution-output.json'
+          if (Test-Path $f) {
+            try { $r=Get-Content $f -Raw | ConvertFrom-Json; if ($r.subtype -eq 'success' -and $r.is_error -eq $false) { 'success=true' | Add-Content $env:GITHUB_OUTPUT }; if ($r.subtype -eq 'error_max_turns') { 'checkpoint=true' | Add-Content $env:GITHUB_OUTPUT } } catch { Write-Warning 'Could not parse Claude result.' }
+          }
 
-          if [ "$OAUTH_OUTCOME" = "success" ] || [ "$API_OUTCOME" = "success" ]; then
-            echo "success=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          result_file="$RUNNER_TEMP/claude-execution-output.json"
-          if [ -f "$result_file" ] &&
-             grep -Eq '"subtype"[[:space:]]*:[[:space:]]*"success"' "$result_file" &&
-             grep -Eq '"is_error"[[:space:]]*:[[:space:]]*false' "$result_file"; then
-            echo "success=true" >> "$GITHUB_OUTPUT"
-            echo "Claude returned a successful result despite the action wrapper outcome." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          if [ -f "$result_file" ] &&
-             grep -Eq '"subtype"[[:space:]]*:[[:space:]]*"error_max_turns"' "$result_file"; then
-            echo "checkpoint_eligible=true" >> "$GITHUB_OUTPUT"
-            echo "Claude reached the turn limit; coherent changes may be preserved only after the full validation gate passes." >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Validate and publish feature-branch progress
+      - name: Validate and publish RC progress
         id: publish
-        if: >-
-          always() &&
-          steps.guard.outputs.mode == 'write' &&
-          steps.auth.outputs.mode != 'none' &&
-          (steps.claude_result.outputs.success == 'true' || steps.claude_result.outputs.checkpoint_eligible == 'true')
-        shell: bash
+        if: always() && (steps.result.outputs.success == 'true' || steps.result.outputs.checkpoint == 'true')
+        shell: powershell
         env:
-          SAFE_TARGET_BRANCH: ${{ github.event.workflow_run.head_branch || inputs.target_branch || github.ref_name }}
-          PUSH_TOKEN: ${{ github.token }}
-          CLAUDE_SUCCESS: ${{ steps.claude_result.outputs.success }}
-          CHECKPOINT_ELIGIBLE: ${{ steps.claude_result.outputs.checkpoint_eligible }}
+          CLAUDE_SUCCESS: ${{ steps.result.outputs.success }}
+          CHECKPOINT: ${{ steps.result.outputs.checkpoint }}
+          GITHUB_PUSH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          echo "published=false" >> "$GITHUB_OUTPUT"
+          $ErrorActionPreference='Stop'
+          'published=false' | Add-Content $env:GITHUB_OUTPUT
+          if ((& git branch --show-current).Trim() -ne $env:TARGET_BRANCH) { throw 'Checked-out branch mismatch.' }
+          $wf=(& git status --porcelain -- .github/workflows)-join "`n"; if ($wf) { & git restore --staged --worktree -- .github/workflows; & git clean -fd -- .github/workflows }
+          & git diff --check; if ($LASTEXITCODE) { throw 'diff check failed' }
+          $changes=(& git status --porcelain)-join "`n"; if (-not $changes) { throw 'NO_PROGRESS: no durable RC evidence produced.' }
+          & npm.cmd ci; if ($LASTEXITCODE) { throw 'npm ci failed' }
+          & npm.cmd run typecheck; if ($LASTEXITCODE) { throw 'typecheck failed' }
+          & npm.cmd test -- --runInBand; if ($LASTEXITCODE) { throw 'tests failed' }
+          & git diff --check; if ($LASTEXITCODE) { throw 'diff check failed' }
+          & git config user.name 'walkie-agentic-worker[bot]'; & git config user.email 'walkie-agentic-worker[bot]@users.noreply.github.com'; & git add -A; & git diff --cached --check
+          $m=if ($env:CHECKPOINT -eq 'true' -and $env:CLAUDE_SUCCESS -ne 'true') {'chore(agentic): checkpoint RC execution'} else {'chore(agentic): continue RC execution'}
+          & git commit -m $m; if ($LASTEXITCODE) { throw 'commit failed' }
+          if ([string]::IsNullOrWhiteSpace($env:GITHUB_PUSH_TOKEN)) { throw 'GitHub workflow push token is unavailable.' }
+          $basic = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:GITHUB_PUSH_TOKEN"))
+          & git config --local --unset-all http.https://github.com/.extraheader 2>$null
+          & git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $basic"
+          & git push origin "HEAD:refs/heads/$env:TARGET_BRANCH"; if ($LASTEXITCODE) { throw 'push failed' }
+          'published=true' | Add-Content $env:GITHUB_OUTPUT
 
-          case "$SAFE_TARGET_BRANCH" in
-            feat/*|fix/*|chore/*|test/*|docs/*|rc/*)
-              ;;
-            *)
-              echo "::error::Refusing to publish to an unapproved branch."
-              exit 1
-              ;;
-          esac
-
-          current_branch="$(git branch --show-current)"
-          if [ "$current_branch" != "$SAFE_TARGET_BRANCH" ]; then
-            echo "::error::Current branch does not match the validated target."
-            exit 1
-          fi
-
-          git diff --check
-          if [ -z "$(git status --porcelain)" ]; then
-            if [ "$CLAUDE_SUCCESS" = "true" ]; then
-              echo "Worker completed without repository changes." >> "$GITHUB_STEP_SUMMARY"
-              exit 0
-            fi
-            echo "::error::Claude reached the turn limit without repository changes to checkpoint."
-            exit 1
-          fi
-
-          npm ci
-          npm run typecheck
-          npm test -- --runInBand
-          git diff --check
-
-          git config user.name "walkie-agentic-worker[bot]"
-          git config user.email "walkie-agentic-worker[bot]@users.noreply.github.com"
-          git add -A
-          git diff --cached --check
-
-          if [ "$CHECKPOINT_ELIGIBLE" = "true" ] && [ "$CLAUDE_SUCCESS" != "true" ]; then
-            commit_message="chore(agentic): checkpoint RC execution"
-          else
-            commit_message="chore(agentic): continue RC execution"
-          fi
-
-          git commit -m "$commit_message"
-          push_auth="$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 -w0)"
-          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $push_auth" \
-            push origin "HEAD:refs/heads/$SAFE_TARGET_BRANCH"
-          echo "published=true" >> "$GITHUB_OUTPUT"
-
-          if [ "$CHECKPOINT_ELIGIBLE" = "true" ] && [ "$CLAUDE_SUCCESS" != "true" ]; then
-            echo "Published a fully validated max-turn checkpoint to $SAFE_TARGET_BRANCH. CI can now drive the next continuation run." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "Published a validated commit to $SAFE_TARGET_BRANCH." >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Enforce validated Claude completion or checkpoint
-        if: >-
-          always() &&
-          steps.auth.outputs.mode != 'none' &&
-          steps.claude_result.outputs.success != 'true' &&
-          steps.publish.outputs.published != 'true'
-        shell: bash
+      - name: Enforce completion or checkpoint
+        if: always() && steps.result.outputs.success != 'true' && steps.publish.outputs.published != 'true'
+        shell: powershell
         run: |
-          echo "::error::Claude did not complete successfully and no fully validated checkpoint was published."
+          Write-Error 'Claude did not complete and no validated checkpoint was published.'
           exit 1

@@ -20,62 +20,131 @@ jobs:
     name: Verify isolated Staging access
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     environment: staging
     env:
       EXPECTED_STAGING_PROJECT_REF: czbxhsoxyawprqehkfit
+      RC_BRANCH: feat/verified-auth-onboarding-batch-2
       SUPABASE_STAGING_URL: ${{ secrets.SUPABASE_STAGING_URL }}
       SUPABASE_STAGING_ANON_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
     steps:
       - name: Guard exact Staging binding
         shell: bash
         run: |
           set -euo pipefail
-
           if [ -z "${SUPABASE_STAGING_URL:-}" ] || [ -z "${SUPABASE_STAGING_ANON_KEY:-}" ]; then
             echo "::error::Required staging Environment secrets are not configured."
             exit 1
           fi
-
           echo "::add-mask::$SUPABASE_STAGING_URL"
           echo "::add-mask::$SUPABASE_STAGING_ANON_KEY"
-
           expected_url="https://$EXPECTED_STAGING_PROJECT_REF.supabase.co"
           if [ "$SUPABASE_STAGING_URL" != "$expected_url" ]; then
             echo "::error::Supabase URL does not match the approved Staging project."
             exit 1
           fi
 
-          {
-            echo "## Agentic Staging Readiness"
-            echo
-            echo "Environment: staging"
-            echo "Approved project ref: $EXPECTED_STAGING_PROJECT_REF"
-            echo "Mode: read-only health verification"
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Verify Supabase Staging health
         shell: bash
         run: |
           set -euo pipefail
+          http_status="$(curl --silent --show-error --max-time 20 --output /dev/null --write-out '%{http_code}' --header "apikey: $SUPABASE_STAGING_ANON_KEY" --header "Authorization: Bearer $SUPABASE_STAGING_ANON_KEY" "$SUPABASE_STAGING_URL/auth/v1/health")"
+          test "$http_status" = "200" || { echo "::error::Staging health check returned HTTP $http_status."; exit 1; }
 
-          http_status="$(
-            curl               --silent               --show-error               --max-time 20               --output /dev/null               --write-out '%{http_code}'               --header "apikey: $SUPABASE_STAGING_ANON_KEY"               --header "Authorization: Bearer $SUPABASE_STAGING_ANON_KEY"               "$SUPABASE_STAGING_URL/auth/v1/health"
-          )"
+      - name: Require scoped Staging migration token
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+            echo "::error::STAGING_MIGRATION_TOKEN_MISSING: configure SUPABASE_ACCESS_TOKEN in the staging Environment only."
+            exit 1
+          fi
+          echo "::add-mask::$SUPABASE_ACCESS_TOKEN"
 
-          if [ "$http_status" != "200" ]; then
-            echo "::error::Staging health check returned HTTP $http_status."
+      - name: Checkout approved RC branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RC_BRANCH }}
+          fetch-depth: 1
+
+      - name: Guard migration 0035 exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          migration_file="$(find supabase/migrations -maxdepth 1 -type f -name '0035_*' -print)"
+          count="$(printf '%s\n' "$migration_file" | sed '/^$/d' | wc -l | tr -d ' ')"
+          if [ "$count" != "1" ]; then
+            echo "::error::Expected exactly one 0035 migration on the approved RC branch; found $count."
+            exit 1
+          fi
+          echo "MIGRATION_FILE=$migration_file" >> "$GITHUB_ENV"
+          echo "MIGRATION_NAME=$(basename "$migration_file" .sql | sed 's/^0035_//')" >> "$GITHUB_ENV"
+          printf '%s\n' "$migration_file"
+
+      - name: Verify scoped token can read Staging migration history
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.supabase.com/v1/projects/$EXPECTED_STAGING_PROJECT_REF/database/migrations"
+          status="$(curl --silent --show-error --max-time 30 --output /tmp/migrations-before.json --write-out '%{http_code}' \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header 'Accept: application/json' \
+            "$api")"
+          if [ "$status" != "200" ]; then
+            echo "::error::Scoped token cannot read Staging migration history (HTTP $status). It needs Migrations read access for this Staging project only."
+            cat /tmp/migrations-before.json || true
+            exit 1
+          fi
+          jq -e 'type == "array"' /tmp/migrations-before.json >/dev/null
+
+      - name: Apply only approved migration 0035 through Management API
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.supabase.com/v1/projects/$EXPECTED_STAGING_PROJECT_REF/database/migrations"
+          if jq -e --arg name "$MIGRATION_NAME" '.[] | select(.name == $name)' /tmp/migrations-before.json >/dev/null; then
+            echo "Migration 0035 ($MIGRATION_NAME) is already present in Staging history; no mutation needed."
+            exit 0
+          fi
+
+          jq -n \
+            --rawfile query "$MIGRATION_FILE" \
+            --arg name "$MIGRATION_NAME" \
+            '{query: $query, name: $name}' > /tmp/migration-request.json
+
+          status="$(curl --silent --show-error --max-time 60 --output /tmp/migration-apply.json --write-out '%{http_code}' \
+            --request POST \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header 'Content-Type: application/json' \
+            --data-binary @/tmp/migration-request.json \
+            "$api")"
+          if [ "$status" != "200" ]; then
+            echo "::error::Migration 0035 was not applied (HTTP $status). The scoped token must have Migrations read-write for this Staging project only."
+            cat /tmp/migration-apply.json || true
             exit 1
           fi
 
-          echo "Supabase Staging health check passed." >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Preserve approval gates
+      - name: Verify migration history contains 0035
         shell: bash
         run: |
+          set -euo pipefail
+          api="https://api.supabase.com/v1/projects/$EXPECTED_STAGING_PROJECT_REF/database/migrations"
+          status="$(curl --silent --show-error --max-time 30 --output /tmp/migrations-after.json --write-out '%{http_code}' \
+            --header "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --header 'Accept: application/json' \
+            "$api")"
+          test "$status" = "200" || { echo "::error::Could not verify Staging migration history (HTTP $status)."; exit 1; }
+          if ! jq -e --arg name "$MIGRATION_NAME" '.[] | select(.name == $name)' /tmp/migrations-after.json >/dev/null; then
+            echo "::error::Migration 0035 ($MIGRATION_NAME) is not visible in Staging migration history after apply."
+            exit 1
+          fi
           {
+            echo "## Staging migration evidence"
             echo
-            echo "No deploy, migration, data mutation, RLS change, secret change, or Production action was performed."
-            echo "Live OTP, email delivery, webhooks, and device E2E remain separate explicit tests."
+            echo "Project ref: $EXPECTED_STAGING_PROJECT_REF"
+            echo "Migration 0035 ($MIGRATION_NAME): present in Staging migration history"
+            echo "Executor: scoped Management API; no supabase link required"
+            echo "Production: untouched"
           } >> "$GITHUB_STEP_SUMMARY"
