@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "autonomyVersion": 2,
+  "status": "IMPLEMENTING",
+  "sourceIssue": 50,
+  "allowedTaskStates": ["READY", "LEASED", "RUNNING", "VERIFYING", "AUTO_REPAIR", "BLOCKED", "WAITING_APPROVAL", "DONE"],
+  "lanes": ["functional-staging", "creator-cx", "qa-regression", "autonomy-infrastructure"],
+  "currentMilestone": "A_STATE_POLICY_FOUNDATION",
+  "milestones": {
+    "A_STATE_POLICY_FOUNDATION": "IN_PROGRESS",
+    "B_SCHEDULER_LEASES_DEPENDENCIES": "READY",
+    "C_SELF_HEALING_REPAIR": "READY",
+    "D_MODEL_ROUTING_INDEPENDENT_VERIFICATION": "READY",
+    "E_SUPERVISOR_NOTIFICATIONS": "READY",
+    "F_AUTONOMY_REHEARSAL": "READY"
+  },
+  "ownerInterventionTarget": "routine~0",
+  "productionGateRequired": true,
+  "lastEvidence": {
+    "type": "commit",
+    "value": "Autonomy V2 state/policy foundation branch created",
+    "verified": false
+  }
+}
