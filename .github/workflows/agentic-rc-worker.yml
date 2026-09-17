@@ -46,12 +46,24 @@ jobs:
           ref: ${{ env.TARGET_BRANCH }}
           persist-credentials: true
 
+      - name: Provision Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
       - name: Verify Windows prerequisites
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
           Get-Command git -ErrorAction Stop | Out-Null
-          Get-Command npm.cmd -ErrorAction Stop | Out-Null
+          $node = Get-Command node.exe -ErrorAction Stop
+          $npm = Get-Command npm.cmd -ErrorAction Stop
+          & $node.Source --version
+          if ($LASTEXITCODE) { throw 'node executable validation failed' }
+          & $npm.Source --version
+          if ($LASTEXITCODE) { throw 'npm executable validation failed' }
+
           $candidates = @()
           $onPath = Get-Command bash.exe -ErrorAction SilentlyContinue
           if ($onPath) { $candidates += $onPath.Source }
@@ -59,15 +71,13 @@ jobs:
             "$env:ProgramFiles\Git\bin\bash.exe",
             "$env:ProgramFiles\Git\usr\bin\bash.exe",
             "${env:ProgramFiles(x86)}\Git\bin\bash.exe",
-            "${env:ProgramFiles(x86)}\Git\usr\bin\bash.exe",
-            "$env:LOCALAPPDATA\Programs\Git\bin\bash.exe",
-            "$env:LOCALAPPDATA\Programs\Git\usr\bin\bash.exe"
+            "${env:ProgramFiles(x86)}\Git\usr\bin\bash.exe"
           )
           $bash = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
-          if (-not $bash) { throw 'Git Bash was not found on PATH or in supported Git for Windows locations.' }
+          if (-not $bash) { throw 'Git Bash was not found on PATH or in supported system-wide Git for Windows locations.' }
           "CLAUDE_CODE_GIT_BASH_PATH=$bash" | Add-Content $env:GITHUB_ENV
           (Split-Path $bash -Parent) | Add-Content $env:GITHUB_PATH
-          "Windows runner prerequisites ready. Git Bash: $bash" | Add-Content $env:GITHUB_STEP_SUMMARY
+          "Windows runner prerequisites ready. Node: $($node.Source); npm: $($npm.Source); Git Bash: $bash" | Add-Content $env:GITHUB_STEP_SUMMARY
 
       - name: Detect worker authentication
         id: auth
