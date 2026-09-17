@@ -34,7 +34,9 @@ import path from 'path';
  * is kept as a COMPLEMENTARY guard (see below) rather than removed.
  */
 describe('HomeScreen — last-walk card falls back to get_last_resolved_walk() when nothing resolved today (Supabase mode)', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../HomeScreen.tsx'), 'utf8');
+  const source = fs
+    .readFileSync(path.resolve(__dirname, '../HomeScreen.tsx'), 'utf8')
+    .replace(/\r\n/g, '\n');
 
   it('imports fetchLastResolvedWalk (the get_last_resolved_walk() RPC wrapper) and useRef (needed for the request-generation guard)', () => {
     expect(source).toMatch(/import\s*\{\s*fetchLastResolvedWalk\s*\}\s*from\s*'\.\.\/lib\/permissionedWalks'/);

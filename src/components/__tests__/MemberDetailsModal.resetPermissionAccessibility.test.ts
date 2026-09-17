@@ -10,7 +10,9 @@ import path from 'path';
  * non-empty accessibilityLabel.
  */
 describe('MemberDetailsModal — permission reset Pressable accessibility', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '../MemberDetailsModal.tsx'), 'utf8');
+  const source = fs
+    .readFileSync(path.resolve(__dirname, '../MemberDetailsModal.tsx'), 'utf8')
+    .replace(/\r\n/g, '\n');
 
   it('the reset Pressable has accessibilityRole="button" and a non-empty accessibilityLabel', () => {
     const index = source.indexOf('handleResetPermission(key)');

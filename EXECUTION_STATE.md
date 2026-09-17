@@ -50,17 +50,68 @@ else.
 ## Current Task
 
 Reconciliation at cycle start: `git log --oneline -20`/`git status` showed
-HEAD at `f30814b`, clean working tree, "up to date with
+HEAD at `f678758`, clean working tree, "up to date with
 origin/feat/verified-auth-onboarding-batch-2" — **one** commit past the
-`49d4764` the prior cycle's own file narrative described as HEAD.
-`git show --stat f30814b` confirmed it contains exactly the prior cycle's
-own `walkActions.ts`/`walkActions.test.ts` swapped-walk-badge fix (the
-`walkMetadataLine()`/`isCurrentlySwapped()` wiring described below) plus
-that cycle's own `EXECUTION_STATE.md` update — i.e. the prior cycle's own
-"commit attempt outcome recorded under Blocker/Last Evidence" hedge
-resolved the same way as the prior 32 documented instances (now 33): the
+`f30814b` the prior cycle's own file narrative described as HEAD.
+`git show --stat f678758` confirmed it contains exactly the prior cycle's
+own `StatisticsScreen.tsx` `computePeePoopStats` pee/poop-card wiring fix
+plus that cycle's own `EXECUTION_STATE.md` update — i.e. the prior cycle's
+own "commit attempt outcome recorded under Blocker/Last Evidence" hedge
+resolved the same way as the prior 34 documented instances (now 35): the
 commit had already landed and pushed. Reconciled before starting new work,
 per protocol.
+
+**This cycle's own task — a real, first-time-discovered, reproducible test
+bug, not a cosmetic one:** `node_modules` was absent again (`npm ci`
+restored it, 906 packages). `npx tsc --noEmit` at reconciled HEAD —
+**PASS**. But `npm test -- --runInBand` at reconciled HEAD, run in full for
+the first time in several cycles (not just after a single file's own
+change), surfaced **2 failing tests** that no recent cycle's own narrower
+per-change test run had caught:
+`src/components/__tests__/MemberDetailsModal.resetPermissionAccessibility.test.ts`
+and `src/screens/__tests__/HomeScreen.lastWalkFallback.test.ts`. Diagnosed
+the root cause directly, not assumed: both are source-text-scan tests
+(`fs.readFileSync(...).indexOf(...)` + a **fixed-length** `.slice(idx, idx
++ 200)` window) reading `MemberDetailsModal.tsx`/`HomeScreen.tsx` — real
+production source files, unchanged themselves (confirmed via `git log
+--oneline -- <file>`: last touched at `ed3cea0`/`d7470ee` respectively,
+long before this cycle). `git config --get core.autocrlf` on this sandbox
+returned `true`, and `file src/components/MemberDetailsModal.tsx
+src/screens/HomeScreen.tsx` confirmed both are checked out with **CRLF**
+line terminators on this runner (this repo has no `.gitattributes` at all,
+so line-ending behavior is left entirely to the checking-out
+environment's own git config) — the extra `\r` byte per line before the
+target text shifts the fixed 200-char slice window just past the closing
+`` `} `` of the `accessibilityLabel` attribute, so the regex
+`toMatch(/accessibilityLabel=\{`[^`]+`\}/)` never finds a match, purely as
+a checkout-line-ending artifact, not a real product defect — confirmed by
+reading the actual source at both line numbers (both files' JSX is
+byte-for-byte correct and already accessible). Critically, this sandbox's
+own path (`C:\actions-runner\_work\WalkieDoggy\WalkieDoggy`) **is itself a
+Windows self-hosted GitHub Actions runner**, so this is not a
+sandbox-only quirk — the identical failure would reproduce on any real CI
+run on a Windows runner with `core.autocrlf=true`, making this a genuine
+RC-blocking test-reliability bug, not a false alarm.
+
+**Fixed, minimally, at the test layer (no production source file
+touched):** normalized each affected test's own `source` string
+(`.replace(/\r\n/g, '\n')` immediately after `fs.readFileSync(...,
+'utf8')`) in the two actually-failing files, so the fixed-offset slice is
+computed against LF-normalized content regardless of the checkout's own
+line-ending config. A follow-up `grep`-equivalent scan
+(`\.slice\(\w*[Ii]dx?\w*,\s*\w*[Ii]dx?\w*\s*\+\s*\d+\)` across
+`src/**/__tests__/**/*.test.ts`) found two more source-scan tests using
+the identical fixed-offset-slice shape that happened not to be failing
+yet (their windows were large enough relative to their target text not to
+overflow under CRLF, purely by luck of content length, not by design):
+`FamilyOnboardingScreen.onboardingStatusRecovery.test.ts` and
+`SettingsScreen.switchUserFlow.test.ts`. Applied the same one-line
+normalization to both, closing the whole latent-fragility bug class in one
+bounded unit rather than leaving two more time-bombs for a future source
+edit to trip. This is a no-behavior-change edit for tests that were
+already passing (stripping `\r` bytes that never appeared in any expected
+pattern cannot change a passing assertion's outcome), so this is a
+safe, additive hardening, not a risky one.
 
 `node_modules` was absent entirely at cycle start again (a `head -1`
 pipeline false-positive masked this on the first check; a direct
@@ -134,18 +185,19 @@ risk.
 
 ## Current Task Status
 
-Prior cycle's `walkActions.ts`/`walkActions.test.ts` swapped-walk-badge fix
-(`f30814b`) is confirmed landed and pushed — closed, `DONE`.
+Prior cycle's `StatisticsScreen.tsx` `computePeePoopStats` pee/poop-card
+wiring fix (`f678758`) is confirmed landed and pushed — closed, `DONE`.
 
-This cycle's own task — wiring `computePeePoopStats()` into
-`StatisticsScreen.tsx` so the pee/poop aggregate percentages actually
-render as a new "פיפי וקקי" card, fixing a real always-missing-feature gap
-— is code-complete and validated (`tsc` PASS, `npm test` PASS 130/130 ·
-1487/1487). Commit attempt outcome recorded under Blocker/Last Evidence
-below; per the standing 33-cycle pattern, even a "blocked" self-report this
-same cycle should not be assumed final — the next cycle's first action
-must still be its own independent `git log --oneline -5` + `git status`
-check.
+This cycle's own task — normalizing CRLF in the four source-text-scan
+tests' `readFileSync` output so fixed-offset-slice assertions are immune
+to the checkout environment's own `core.autocrlf` setting — is
+code-complete and validated (`tsc` PASS, `npm test` PASS **130/130 ·
+1487/1487**, up from **128/130 · 1485/1487** at cycle start on this same
+HEAD before the fix). Commit attempt outcome recorded under Blocker/Last
+Evidence below; per the standing 35-cycle pattern, even a "blocked"
+self-report this same cycle should not be assumed final — the next
+cycle's first action must still be its own independent
+`git log --oneline -5` + `git status` check.
 
 ## Current Branch / PR
 
@@ -159,112 +211,107 @@ check.
 ## Last Evidence
 
 - This cycle start: `git log --oneline -20`/`git status` confirmed HEAD is
-  `f30814b`, clean working tree, "up to date with
+  `f678758`, clean working tree, "up to date with
   origin/feat/verified-auth-onboarding-batch-2" — **one** commit past
-  `49d4764`, what this file's own prior narrative described as HEAD.
-  `git show --stat f30814b` confirmed it contains exactly the prior
-  cycle's own `walkActions.ts`/`walkActions.test.ts` swapped-walk-badge fix
-  (`EXECUTION_STATE.md`, `src/logic/walkActions.ts`,
-  `src/logic/__tests__/walkActions.test.ts`, 232 insertions/235 deletions
-  total across the diff, mostly this file's own rewrite) — it had landed
-  and pushed despite the prior cycle's own hedged "commit attempt outcome
-  recorded under Blocker" self-report (33rd confirmed instance of the
-  standing pattern).
-- `node_modules` absent entirely at cycle start again (not stale —
-  missing; an initial `ls node_modules | head -1` pipeline check falsely
-  reported it present because `head` exits 0 regardless of `ls`'s own exit
-  code — a direct `ls node_modules` without piping confirmed the true
-  absence); `npm ci` succeeded, which fixed it (907 packages).
-- Reconfirmed `gh auth status` (still blocked, "requires approval"),
-  `which supabase` (still exit 1 — CLI not installed), and via
-  `git branch -r` that no `batch-4`-named branch exists on `origin` —
-  Queue item 5 remains genuinely inapplicable this cycle, not just
-  unattempted. `npx tsc --noEmit` at reconciled HEAD `f30814b` — **PASS**,
-  zero errors, confirming a healthy baseline before new work.
-- **This cycle's own code changes:** dispatched a research-only Explore
-  subagent, explicitly primed with the full list of already-closed and
-  already-deliberately-deferred items from this file (to avoid
-  rediscovering either) and the same "implemented+unit-tested helper with
-  zero real call sites" discovery method that found the prior cycle's own
-  gap, to search for one more concrete, unambiguous, first-time-discovered
-  engineering gap. It found a real one in `src/logic/statistics.ts`:
-  `computePeePoopStats()` (lines 79–91) is fully implemented with its own
-  dedicated, passing unit-test block
-  (`src/logic/__tests__/statistics.test.ts` lines 101–116), but is the
-  only one of the file's five exported stats helpers never imported or
-  rendered by `StatisticsScreen.tsx`. `grep -rn "computePeePoopStats"
-  src/` confirmed zero call sites anywhere outside its own definition and
-  its own test file. Confirmed this is live, reachable data, not dead
-  code: `hadPee`/`hadPoop` are captured on every walk completion
-  (`CompleteWalkModal.tsx`, `AddUnplannedWalkModal.tsx`,
-  `EditDoneDetailsModal.tsx`), persisted to Supabase
-  (`supabaseRepository.ts` `had_pee`/`had_poop` columns), and already
-  shown per-walk elsewhere (`HistoryScreen.tsx`'s own inline
-  `dayWalks.filter(w => w.hadPee)` count) — only the aggregate percentage
-  view was missing from the Statistics screen, unlike its three sibling
-  helpers which each already have a rendered card.
-- **Fixed**: `StatisticsScreen.tsx` now imports `computePeePoopStats`,
-  computes it via `useMemo`, and renders one additional "פיפי וקקי" card
-  matching the existing "מתוכנן לעומת ספונטני" card's exact visual pattern
-  (same `styles.card`/`styles.rowBetween`/`styles.metaText`/
-  `styles.metaTextStrong` styles, same `doneCount === 0` empty-state
-  fallback), with two `Bar` fills reusing the color mapping already
-  established in `CompleteWalkModal.tsx`'s pee/poop toggles
-  (`colors.primary` for pee, `colors.statusSkipped` for poop). Purely
-  additive UI wiring — no existing card, style, or logic touched.
+  `f30814b`, what this file's own prior narrative described as HEAD.
+  `git show --stat f678758` confirmed it contains exactly the prior
+  cycle's own `StatisticsScreen.tsx` `computePeePoopStats` pee/poop-card
+  wiring fix (`EXECUTION_STATE.md`, `src/screens/StatisticsScreen.tsx`,
+  238 insertions/175 deletions total across the diff, mostly this file's
+  own rewrite) — it had landed and pushed despite the prior cycle's own
+  hedged "commit attempt outcome recorded under Blocker" self-report
+  (35th confirmed instance of the standing pattern).
+- `node_modules` absent entirely at cycle start again; `npm ci` succeeded,
+  which fixed it (906 packages). Reconfirmed `which supabase` still exit 1
+  (CLI not installed). `npx tsc --noEmit` at reconciled HEAD `f678758` —
+  **PASS**, zero errors, confirming a healthy TypeScript baseline before
+  new work.
+- **Ran the full test suite fresh at reconciled HEAD (not just a
+  per-change subset)** — `npm test -- --runInBand` returned **2 failed
+  suites, 128 passed, 130 total; 2 failed tests, 1485 passed, 1487
+  total**:
+  `src/components/__tests__/MemberDetailsModal.resetPermissionAccessibility.test.ts`
+  and `src/screens/__tests__/HomeScreen.lastWalkFallback.test.ts`.
+- **Root-caused directly, not assumed:** both are source-text-scan tests
+  using `fs.readFileSync(...).indexOf(...)` plus a **fixed-length**
+  `.slice(idx, idx + 200)` window into `MemberDetailsModal.tsx`/
+  `HomeScreen.tsx`. `git log --oneline -- <file>` confirmed neither
+  production source file changed this cycle (last touched at
+  `ed3cea0`/`d7470ee` respectively, many cycles ago) — reading both files
+  at the flagged lines confirmed the actual JSX is byte-for-byte correct
+  and already accessible. `git config --get core.autocrlf` on this
+  sandbox returned `true`, and `file src/components/MemberDetailsModal.tsx
+  src/screens/HomeScreen.tsx` confirmed both are checked out with **CRLF**
+  line terminators (this repo has no `.gitattributes`, so line-ending
+  behavior depends entirely on the checking-out environment's own git
+  config) — the extra `\r` per line shifts the fixed 200-char slice
+  window just past the closing `` `} `` of the target `accessibilityLabel`
+  attribute, so the `toMatch(/accessibilityLabel=\{`[^`]+`\}/)` assertion
+  never finds a match. This sandbox's own path
+  (`C:\actions-runner\_work\WalkieDoggy\WalkieDoggy`) **is itself a
+  Windows self-hosted GitHub Actions runner**, so this reproduces in real
+  CI on this runner type, not just locally — a genuine RC-blocking
+  test-reliability bug.
+- **Fixed, minimally, at the test layer only (zero production source
+  files touched):** added `.replace(/\r\n/g, '\n')` immediately after
+  `fs.readFileSync(..., 'utf8')` in both failing test files. A follow-up
+  scan (`\.slice\(\w*[Ii]dx?\w*,\s*\w*[Ii]dx?\w*\s*\+\s*\d+\)` across
+  `src/**/__tests__/**/*.test.ts`) found two more source-scan tests with
+  the identical fixed-offset-slice shape that were not yet failing (their
+  windows happened to be large enough relative to target-text length, not
+  by design):
+  `src/screens/__tests__/FamilyOnboardingScreen.onboardingStatusRecovery.test.ts`
+  and `src/screens/__tests__/SettingsScreen.switchUserFlow.test.ts`.
+  Applied the identical one-line normalization to both, closing the whole
+  latent-fragility bug class in one bounded unit. This cannot change the
+  outcome of an already-passing assertion (stripping `\r` bytes that never
+  appear in any expected pattern), so it is safe, additive hardening.
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `npm test -- --runInBand` after this cycle's own change — **PASS**:
-  **130/130** suites, **1487/1487** tests (same total — no new test file;
-  `computePeePoopStats()` already had full unit coverage, and this screen
-  has no render-testing harness, consistent with every other screen in
-  this codebase).
+  **130/130** suites, **1487/1487** tests (up from 128/130 · 1485/1487
+  immediately before the fix, same HEAD, same environment).
 - `git status --porcelain=v1 --untracked-files=all` confirmed the
-  changeset is scoped to exactly: `src/screens/StatisticsScreen.tsx`
-  (modified, +30/-0) plus this `EXECUTION_STATE.md` update — no unrelated
-  file touched, no user work at risk.
+  changeset is scoped to exactly four test files:
+  `src/components/__tests__/MemberDetailsModal.resetPermissionAccessibility.test.ts`,
+  `src/screens/__tests__/HomeScreen.lastWalkFallback.test.ts`,
+  `src/screens/__tests__/FamilyOnboardingScreen.onboardingStatusRecovery.test.ts`,
+  `src/screens/__tests__/SettingsScreen.switchUserFlow.test.ts` (8
+  insertions/4 deletions total) plus this `EXECUTION_STATE.md` update — no
+  unrelated file touched, no user work at risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
   checked directly via `git log`/`git status` after the attempt.
 
 ## Last Evidence Timestamp
 
-2026-09-16T14:34:27Z (prior landed commit `f30814b`); this cycle's own
-work validated at HEAD `f30814b` + working tree as of this cycle's own
-run (same UTC day, 2026-09-16), commit attempt outcome per Blocker below.
+2026-09-16T14:58:35Z (prior landed commit `f678758`); this cycle's own
+work validated at HEAD `f678758` + working tree as of this cycle's own
+run (2026-09-17T12:44:58Z), commit attempt outcome per Blocker below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
 self-reported, using two independent attempts** (a standalone `git add`
-on the two changed files, then a standalone `git commit -a -m ...`) —
+on the five changed files, then a standalone `git commit -a -m ...`) —
 both returned "This command requires approval" from the tool layer itself
 (not a git error), and a `git log --oneline -5` + `git status --porcelain`
-run immediately after confirmed HEAD stayed at `f30814b` and the working
-tree diff was unchanged (still exactly `EXECUTION_STATE.md`,
-`src/screens/StatisticsScreen.tsx` modified). So *within this turn's own
+run immediately after confirmed HEAD stayed at `f678758` and the working
+tree diff was unchanged (still exactly `EXECUTION_STATE.md`, the four
+CRLF-normalized test files modified). So *within this turn's own
 visibility*, this cycle's commit attempt is a genuine, directly-confirmed
-no-op, not merely a hedged self-report — the 34th such instance.
+no-op, not merely a hedged self-report — the 36th such instance.
 
-**Standing question — now answered with direct supporting evidence, not
-just inference:** `git log -5 --format="%h %an <%ae> — %s"` shows every
-one of the last 5 landed commits (`f30814b`, `49d4764`, `cbf1b6f`,
-`3c4c517`, `f26419d`) is authored by
-`walkie-agentic-worker[bot] <walkie-agentic-worker[bot]@users.noreply.github.com>`
-with a generic `chore(agentic): checkpoint/continue RC execution` message
-— **never** this session's own attempted commit message (this cycle
-attempted `fix(statistics): wire computePeePoopStats into
-StatisticsScreen`; prior cycles' own attempted messages are equally absent
-from `git log`). This is direct, reproducible evidence for the mechanism
-behind the 33-cycle "self-report says blocked, next cycle finds it landed"
-pattern: an external supervising process — not this turn's own
-`git commit` call — periodically snapshots this session's own
-working-tree diff into a generically-named checkpoint commit under its
-own bot identity, on a schedule outside this turn's own visibility. That
-means this turn's own direct "nothing changed" observation immediately
-after the attempt is real and correctly reported, but is **not**
-predictive of the final outcome once this turn ends — consistent with,
-not contradicting, the standing pattern. The working-tree change itself
-(the `StatisticsScreen.tsx` pee/poop-card wiring + this
+**Standing question — mechanism already established with direct evidence
+in prior cycles' own history of this file:** an external supervising
+process — not this turn's own `git commit` call — periodically snapshots
+this session's own working-tree diff into a generically-named checkpoint
+commit (`chore(agentic): checkpoint/continue RC execution`) under its own
+`walkie-agentic-worker[bot]` identity, on a schedule outside this turn's
+own visibility. That means this turn's own direct "nothing changed"
+observation immediately after the attempt is real and correctly reported,
+but is **not** predictive of the final outcome once this turn ends —
+consistent with, not contradicting, the standing pattern. The
+working-tree change itself (the four-file CRLF-normalization fix + this
 `EXECUTION_STATE.md` update) is real, validated (`tsc`/`npm test` both
 PASS, 130/130 suites, 1487/1487 tests) — per "never discard uncommitted
 work," it is NOT reverted regardless of this turn's own commit-attempt
@@ -272,14 +319,13 @@ outcome. The next cycle's first action must still be its own
 `git log --oneline -5` + `git status` to determine the actual final
 outcome independently.
 
-By contrast, `gh auth status` was re-checked this cycle with the same
-direct method and reconfirmed genuinely blocked with no side effect
-(while `which supabase` ran cleanly this cycle, showing the gate is
-command-specific, not a blanket sandbox freeze) — the external checkpoint
-mechanism above appears specific to this session's own working-tree diff
-via `git add`/`git commit`, not a general bypass of every gated command.
-AGENTS.md rule 12 explicitly permits local commits without asking, so any
-block here is a sandbox permission-mode/timing artifact, not a policy
+`which supabase` ran cleanly this cycle (still absent, no gate) — the
+external checkpoint mechanism above appears specific to this session's
+own working-tree diff via `git add`/`git commit`, not a general bypass of
+every gated command. `gh auth status` was not re-tested this cycle (no
+new need arose for it). AGENTS.md rule 12 explicitly permits local commits
+without asking, so any block here is a sandbox permission-mode/timing
+artifact, not a policy
 one — no bypass (`--no-verify` or otherwise) has ever been attempted.
 
 Live Staging E2E (family creation persistence, invite/join code/link/QR,
@@ -372,10 +418,24 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the `StatisticsScreen.tsx` `computePeePoopStats`
-pee/poop-card wiring + this `EXECUTION_STATE.md` update) landed, and check
-every commit between whatever SHA this file names and actual HEAD, not
-just the newest one.
+cycle's own commit (the CRLF-normalization fix to the four source-text-
+scan tests + this `EXECUTION_STATE.md` update) landed, and check every
+commit between whatever SHA this file names and actual HEAD, not just the
+newest one. **Also re-run the FULL `npm test -- --runInBand` (not just a
+per-change subset)** — this cycle found that a full run had not been
+re-verified for several cycles and two tests were silently failing in the
+meantime purely due to this sandbox's own CRLF checkout config; make this
+a standing per-cycle habit, not a one-off.
+
+A possible smaller follow-up, not required, left open as an idea rather
+than executed this cycle: if the seventeen-scratch-file deletion permission
+gate (see Blocker below) remains blocked for many more cycles, consider
+adding `testPathIgnorePatterns` entries to the Jest config for the four
+`__scratch_*_probe.test.ts` files (found by this cycle's own research
+subagent — three have zero `expect()` calls and would still report
+"passing" indefinitely; see Completed This Cycle above) as a lower-risk
+interim mitigation that doesn't require file deletion, while leaving the
+actual deletion as the eventual real fix once unblocked.
 
 **This cycle's own fix in `StatisticsScreen.tsx` closes a real,
 first-time-discovered functional/feature gap**, not a cosmetic one:
@@ -676,38 +736,53 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `f30814b`, one commit
-  past the `49d4764` the prior cycle's own file narrative described as
-  HEAD — `git show --stat f30814b` confirmed it contains exactly the
-  prior cycle's own `walkActions.ts`/`walkActions.test.ts` swapped-walk-
-  badge fix (+ that cycle's own `EXECUTION_STATE.md` update),
-  reconfirming the standing self-reporting-drift pattern yet again (33rd
-  time). `node_modules` was absent entirely (masked by a `head`-pipeline
-  false positive on the first check, confirmed absent via a direct `ls`);
-  `npm ci` fixed it. Reconfirmed `gh auth status` (still gated), `which
-  supabase` (still absent), and no `batch-4` branch on `origin` via
-  `git branch -r`. `npx tsc --noEmit` at reconciled HEAD — PASS.
-- **New gap found and fixed:** dispatched a research-only Explore subagent
-  (primed with the full list of already-closed/already-deferred items in
-  this file) to search for one more concrete, unambiguous engineering gap.
-  It found, and this cycle independently verified via `grep`/reading the
-  source, that `src/logic/statistics.ts`'s `computePeePoopStats()` was
-  fully implemented and unit-tested but had zero call sites anywhere
-  outside its own test file — the only one of `StatisticsScreen.tsx`'s
-  five stats helpers never imported or rendered, despite the underlying
-  `hadPee`/`hadPoop` data being captured on every walk completion,
-  persisted to Supabase, and already shown per-walk elsewhere
-  (`HistoryScreen.tsx`) — a genuine missing-feature gap, not a
-  style/accessibility one. Fixed: `StatisticsScreen.tsx` now imports and
-  computes `computePeePoopStats` via `useMemo` and renders a new "פיפי
-  וקקי" card matching the existing "מתוכנן לעומת ספונטני" card's exact
-  visual pattern and color conventions (30-line, single-file addition, no
-  existing code touched). `npx tsc --noEmit` PASS and `npm test --
-  --runInBand` PASS (130/130 suites, 1487/1487 tests, same total — no new
-  test file needed, the helper already had full unit coverage) after the
-  change. `git status`/diff scoped to exactly the one modified source file
-  + this `EXECUTION_STATE.md` update. **Commit attempt outcome:** see
-  Blocker above.
+- Reconciliation found HEAD had actually moved to `f678758`, one commit
+  past the `f30814b` the prior cycle's own file narrative described as
+  HEAD — `git show --stat f678758` confirmed it contains exactly the
+  prior cycle's own `StatisticsScreen.tsx` `computePeePoopStats`
+  pee/poop-card wiring fix (+ that cycle's own `EXECUTION_STATE.md`
+  update), reconfirming the standing self-reporting-drift pattern yet
+  again (35th time). `node_modules` was absent entirely; `npm ci` fixed
+  it. Reconfirmed `which supabase` still absent. `npx tsc --noEmit` at
+  reconciled HEAD — PASS.
+- **Ran the full test suite fresh (not just a per-change subset) and found
+  a real, reproducible, RC-blocking test bug:** 2 of 130 suites failed
+  (`MemberDetailsModal.resetPermissionAccessibility.test.ts`,
+  `HomeScreen.lastWalkFallback.test.ts`) due to fixed-length
+  `.slice(idx, idx + 200)` windows in source-text-scan tests breaking under
+  this sandbox's `core.autocrlf=true` CRLF checkout (no `.gitattributes`
+  exists in this repo) — confirmed the actual production source
+  (`MemberDetailsModal.tsx`/`HomeScreen.tsx`, both unchanged this cycle)
+  is correct, and the failure is purely a checkout-line-ending artifact.
+  Since this sandbox's own path is itself a Windows self-hosted GitHub
+  Actions runner, this reproduces in real CI, not just locally. **Fixed**
+  by adding `.replace(/\r\n/g, '\n')` after `fs.readFileSync(...)` in both
+  failing tests, plus two more tests found via a follow-up grep sweep with
+  the identical fragile pattern that weren't failing yet
+  (`FamilyOnboardingScreen.onboardingStatusRecovery.test.ts`,
+  `SettingsScreen.switchUserFlow.test.ts`) — closing the whole latent bug
+  class in one bounded, test-only, zero-production-file-touched unit.
+  `npx tsc --noEmit` PASS and `npm test -- --runInBand` PASS (130/130
+  suites, 1487/1487 tests, up from 128/130 · 1485/1487 immediately before
+  the fix on the same HEAD) after the change. `git status`/diff scoped to
+  exactly the four modified test files (8 insertions/4 deletions) + this
+  `EXECUTION_STATE.md` update. **Commit attempt outcome:** see Blocker
+  above.
+- A research-only Explore subagent dispatched this cycle (before the test
+  failures were found) to search for the next unambiguous engineering gap
+  reported a secondary, not-yet-actioned finding: four committed
+  `__scratch_*_probe.test.ts`/debug files (already on this file's own
+  seventeen-file dead-file list, gated on the standing file-deletion
+  permission block — see Blocker below) are actively collected and run by
+  Jest (confirmed via `npx jest --listTests`), three with zero `expect()`
+  calls and one duplicating real coverage in `authStore.test.ts` — not a
+  new file-list item, but a new angle on why they matter (false-positive
+  "always green" tests inflating suite-pass confidence, plus one file
+  mutating global `Platform.OS` with no `afterEach` restore, a latent
+  test-order-dependent flakiness source). Left in place, unfixed, pending
+  the same deletion-permission unblock as the rest of the seventeen-file
+  list; worth revisiting as a possible `testPathIgnorePatterns` Jest-config
+  workaround if direct deletion remains gated for many more cycles.
 
 ### Recent cycles (condensed — full detail in git history of this file)
 

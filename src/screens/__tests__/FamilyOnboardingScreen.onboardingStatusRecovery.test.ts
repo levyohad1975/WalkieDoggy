@@ -19,7 +19,7 @@ import fs from 'fs';
  * Source-scan convention: this repo has no render-test harness for screens.
  */
 describe('FamilyOnboardingScreen recovers onboarding status on mount (structural)', () => {
-  const source = fs.readFileSync(require.resolve('../FamilyOnboardingScreen'), 'utf8');
+  const source = fs.readFileSync(require.resolve('../FamilyOnboardingScreen'), 'utf8').replace(/\r\n/g, '\n');
 
   it('imports getMyFamilyOnboardingStatus from lib/verifiedAdminOnboarding', () => {
     expect(source).toMatch(/getMyFamilyOnboardingStatus/);
