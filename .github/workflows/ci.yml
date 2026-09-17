@@ -24,31 +24,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate Agentic worker OIDC contract
+      - name: Validate Agentic worker contract
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $workflow = Get-Content '.github/workflows/agentic-rc-worker.yml' -Raw
           if ($workflow -notmatch '(?m)^\s+id-token:\s+write\s*$') { throw 'Agentic worker is missing id-token: write.' }
           if ($workflow -match '(?m)^\s+(pull-requests|issues):\s+write\s*$') { throw 'Agentic worker permissions are broader than the approved contract.' }
-          if ([regex]::Matches($workflow, '--max-turns 60').Count -ne 3) { throw 'Unexpected max-turns contract.' }
-          if ([regex]::Matches($workflow, 'continue-on-error: true').Count -ne 3) { throw 'Unexpected continue-on-error contract.' }
+          if ([regex]::Matches($workflow, '--max-turns 60').Count -ne 2) { throw 'Unexpected max-turns contract.' }
+          if ([regex]::Matches($workflow, 'continue-on-error: true').Count -ne 2) { throw 'Unexpected continue-on-error contract.' }
           @(
-            'name: Detect transient OAuth startup failure',
-            'name: Retry Claude worker once after transient OAuth startup failure',
-            "steps.oauth_transient.outputs.retry == 'true'",
-            'OAUTH_RETRY_OUTCOME',
+            'name: Detect worker authentication',
+            'name: Run Claude worker with OAuth token',
+            'name: Run Claude worker with API key',
             'name: Classify Claude result',
-            'name: Enforce validated Claude completion or checkpoint',
-            'checkpoint_eligible=true',
+            'name: Validate and publish RC progress',
+            'name: Enforce completion or checkpoint',
             'chore(agentic): checkpoint RC execution',
             "steps.publish.outputs.published != 'true'",
-            'npm run typecheck',
-            'npm test -- --runInBand',
-            'AGENTIC_RC_TARGET_BRANCH',
-            'x-access-token:%s'
+            'npm.cmd run typecheck',
+            'npm.cmd test -- --runInBand',
+            'AGENTIC_RC_TARGET_BRANCH'
           ) | ForEach-Object { if (-not $workflow.Contains($_)) { throw "Missing Agentic worker contract marker: $_" } }
-          if ($workflow -notmatch '(?m)^\s+PUSH_TOKEN:\s+') { throw 'Agentic worker is missing PUSH_TOKEN.' }
+          if ($workflow -notmatch '(?m)^\s+CLAUDE_CODE_OAUTH_TOKEN:\s+') { throw 'Agentic worker is missing OAuth credential wiring.' }
+          if ($workflow -notmatch '(?m)^\s+ANTHROPIC_API_KEY:\s+') { throw 'Agentic worker is missing API-key fallback wiring.' }
 
       - name: Validate isolated Staging readiness contract
         shell: powershell
