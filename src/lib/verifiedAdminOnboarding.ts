@@ -1,3 +1,4 @@
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase, SupabaseNotConfiguredError } from './supabase';
 
 export type VerifiedAdminIdentity = {
@@ -144,6 +145,26 @@ export type VerifiedFamilyCreationResult = {
 };
 
 /**
+ * supabase-js's FunctionsHttpError hard-codes its own .message to a generic
+ * "Edge Function returned a non-2xx status code" for every non-2xx status,
+ * discarding the specific reason create-verified-family/index.ts already
+ * computed and returned in its JSON body (e.g. "verified email identity
+ * required" for a lapsed/anonymous session). That reason only survives on
+ * error.context, the unread Response object. Recovering it here lets
+ * friendlyErrorMessage()'s SHARED_ERROR_RULES match the real cause instead
+ * of always falling back to a generic "something went wrong" message.
+ */
+async function edgeFunctionErrorReason(error: unknown): Promise<string | null> {
+  if (!(error instanceof FunctionsHttpError)) return null;
+  try {
+    const body = await error.context.json();
+    return typeof body?.error === 'string' ? body.error : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Creates a family only through the server-authoritative Edge Function.
  * The function derives the caller from the bearer token and reads
  * AUTO_APPROVE_NEW_FAMILIES from its own environment; neither value is
@@ -160,7 +181,10 @@ export async function createVerifiedFamily(
       dogName: dogName?.trim() || null,
     },
   });
-  if (error) throw error;
+  if (error) {
+    const reason = await edgeFunctionErrorReason(error);
+    throw reason ? new Error(reason) : error;
+  }
 
   const family = data?.family;
   if (

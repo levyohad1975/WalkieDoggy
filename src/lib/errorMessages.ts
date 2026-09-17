@@ -168,6 +168,18 @@ export const SHARED_ERROR_RULES: ErrorRule[] = [
   { includes: 'this device is not a member of a family', message: 'המכשיר הזה אינו חבר במשפחה כרגע.' },
   { includes: 'must be authenticated', message: 'יש להתחבר כדי לבצע פעולה זו.' },
 
+  // ---- Verified-admin family creation — create-verified-family Edge
+  // Function (supabase/functions/create-verified-family/index.ts). These are
+  // the exact reason strings that function returns in its JSON error body;
+  // verifiedAdminOnboarding.ts's createVerifiedFamily() recovers them from
+  // the otherwise-generic FunctionsHttpError before this table ever sees
+  // them. 'verified email identity required' is the reachable, actionable
+  // case (an anonymous or lapsed OTP session) — same wording
+  // FamilyOnboardingScreen.tsx's own submitCreate() already throws for the
+  // sibling email-mismatch case, so the two paths read identically.
+  { includes: 'verified email identity required', message: 'יש לאמת מחדש את כתובת הדוא״ל לפני יצירת המשפחה.' },
+  { includes: 'familyName is required', message: 'יש להזין שם למשפחה.' },
+
   // ---- Generic network failure — never show a raw fetch/TypeError string ----
   { includes: 'Network request failed', message: 'אין חיבור לאינטרנט. בדקו את החיבור ונסו שוב.' },
   { includes: 'Failed to fetch', message: 'אין חיבור לאינטרנט. בדקו את החיבור ונסו שוב.' },

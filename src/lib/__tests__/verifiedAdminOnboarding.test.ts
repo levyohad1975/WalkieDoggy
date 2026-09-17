@@ -1,3 +1,4 @@
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import {
   createVerifiedFamily,
   getMyFamilyOnboardingStatus,
@@ -349,8 +350,32 @@ describe('createVerifiedFamily', () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it('propagates an Edge Function invocation error', async () => {
+  it('propagates a non-HTTP Edge Function invocation error as-is', async () => {
     const invokeError = new Error('network error');
+    mockInvoke.mockResolvedValue({ data: null, error: invokeError });
+
+    await expect(createVerifiedFamily('x')).rejects.toBe(invokeError);
+  });
+
+  it('recovers the specific reason from a FunctionsHttpError body instead of its generic message', async () => {
+    const response = { json: jest.fn().mockResolvedValue({ error: 'verified email identity required' }) };
+    const invokeError = new FunctionsHttpError(response);
+    mockInvoke.mockResolvedValue({ data: null, error: invokeError });
+
+    await expect(createVerifiedFamily('x')).rejects.toThrow('verified email identity required');
+  });
+
+  it('falls back to the generic FunctionsHttpError when its body has no error string', async () => {
+    const response = { json: jest.fn().mockResolvedValue({}) };
+    const invokeError = new FunctionsHttpError(response);
+    mockInvoke.mockResolvedValue({ data: null, error: invokeError });
+
+    await expect(createVerifiedFamily('x')).rejects.toBe(invokeError);
+  });
+
+  it('falls back to the generic FunctionsHttpError when its body is not valid JSON', async () => {
+    const response = { json: jest.fn().mockRejectedValue(new Error('not json')) };
+    const invokeError = new FunctionsHttpError(response);
     mockInvoke.mockResolvedValue({ data: null, error: invokeError });
 
     await expect(createVerifiedFamily('x')).rejects.toBe(invokeError);

@@ -277,3 +277,22 @@ describe('friendlyErrorMessage — History/Statistics server-side permission gat
     expect(message).not.toBe(friendlyErrorMessage(new Error('view_history permission required')));
   });
 });
+
+/**
+ * create-verified-family Edge Function reason strings, recovered from an
+ * otherwise-generic FunctionsHttpError by
+ * verifiedAdminOnboarding.ts's createVerifiedFamily() (see its own comment).
+ */
+describe('friendlyErrorMessage — create-verified-family Edge Function', () => {
+  it('maps a lapsed/anonymous verified-identity session', () => {
+    expect(friendlyErrorMessage(new Error('verified email identity required'))).toBe(
+      'יש לאמת מחדש את כתובת הדוא״ל לפני יצירת המשפחה.'
+    );
+  });
+
+  it('maps a missing family name', () => {
+    expect(friendlyErrorMessage(new Error('familyName is required'))).toBe(
+      'יש להזין שם למשפחה.'
+    );
+  });
+});
