@@ -24,13 +24,14 @@ jobs:
 
     steps:
       - name: Guard staging-only target
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           if ($env:TARGET_BRANCH -eq 'main') {
             throw 'Refusing to associate live Staging family E2E with main.'
           }
           git check-ref-format --branch $env:TARGET_BRANCH | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Invalid target branch name.' }
           if ($env:TARGET_BRANCH -notmatch '^(feat|fix|chore|test|docs|rc)/') {
             throw 'Target must be an approved non-main RC branch.'
           }
@@ -47,18 +48,22 @@ jobs:
           cache: npm
 
       - name: Verify Windows prerequisites
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           git --version
+          if ($LASTEXITCODE -ne 0) { throw 'Git is unavailable.' }
           node --version
+          if ($LASTEXITCODE -ne 0) { throw 'Node is unavailable.' }
           npm --version
+          if ($LASTEXITCODE -ne 0) { throw 'npm is unavailable.' }
 
       - name: Install dependencies
+        shell: powershell
         run: npm ci
 
       - name: Verify required Staging secrets are present
-        shell: pwsh
+        shell: powershell
         env:
           SUPABASE_STAGING_URL: ${{ secrets.SUPABASE_STAGING_URL }}
           SUPABASE_STAGING_ANON_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
@@ -86,7 +91,7 @@ jobs:
           }
 
       - name: Guard exact Staging project
-        shell: pwsh
+        shell: powershell
         env:
           SUPABASE_STAGING_URL: ${{ secrets.SUPABASE_STAGING_URL }}
         run: |
@@ -99,7 +104,7 @@ jobs:
           Write-Host 'Verified approved Staging project target.'
 
       - name: Run verified family creation E2E against Staging
-        shell: pwsh
+        shell: powershell
         env:
           SUPABASE_STAGING_URL: ${{ secrets.SUPABASE_STAGING_URL }}
           SUPABASE_STAGING_ANON_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
@@ -107,11 +112,13 @@ jobs:
           STAGING_OTP_GMAIL_CLIENT_ID: ${{ secrets.STAGING_OTP_GMAIL_CLIENT_ID }}
           STAGING_OTP_GMAIL_CLIENT_SECRET: ${{ secrets.STAGING_OTP_GMAIL_CLIENT_SECRET }}
           STAGING_OTP_GMAIL_REFRESH_TOKEN: ${{ secrets.STAGING_OTP_GMAIL_REFRESH_TOKEN }}
-        run: node scripts/staging-family-e2e.mjs
+        run: |
+          node scripts/staging-family-e2e.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Staging Family E2E exited with code $LASTEXITCODE." }
 
       - name: Write evidence summary
         if: always()
-        shell: pwsh
+        shell: powershell
         run: |
           @"
           ## Staging Family E2E
@@ -119,6 +126,7 @@ jobs:
           - Associated RC branch: ``$env:TARGET_BRANCH``
           - Environment: ``staging``
           - Runner: ``self-hosted Windows X64``
+          - Shell: ``Windows PowerShell``
           - Flow: OTP → verified session → family persistence → invite lookup → second-device join when active
           - Auth configuration mutation: none
           - Service-role credential used: no
