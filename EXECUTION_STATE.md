@@ -50,27 +50,106 @@ anything else.
 ## Current Task
 
 **This cycle's reconciliation, done fresh via direct `git log`/`git show`,
-not trusted from this file's own prior narrative:** HEAD was `264dc88`,
-clean working tree, **one** commit past `5c34adc`, what this file's own
+not trusted from this file's own prior narrative:** HEAD was `db72bb7`,
+clean working tree, **one** commit past `264dc88`, what this file's own
 prior text described as HEAD (and which that prior cycle itself had hedged
-its commit attempt under Blocker). `git show --stat 264dc88` and `git diff
---name-status 5c34adc 264dc88` confirmed it contains exactly that prior
-cycle's own `create_verified_family()` timezone fix (new migration 0036,
-`create-verified-family/index.ts`, `verifiedAdminOnboarding.ts` + their new/
-updated test files) plus that cycle's own `EXECUTION_STATE.md` rewrite —
-the standing self-reporting-drift pattern (see note above) reconfirmed yet
-again (44th+ time running): the commit had already landed despite the
-hedged self-report. Reconciled before starting new work, per protocol.
-`node_modules` was absent again at cycle start; `npm ci` restored it (906
-packages). `npx tsc --noEmit` at reconciled HEAD `264dc88` — **PASS**. Full
-`npm test -- --runInBand` at reconciled HEAD — **PASS: 127/127 suites,
-1504/1504 tests** (the expected baseline, matching the prior cycle's own
-reported count), confirming a healthy baseline before starting new work.
-Retried the cheapest still-open housekeeping/access checks as a fresh
-sandbox-permission-mode check: a compound `git rm --dry-run`/`gh auth
-status`/`docker info` command and a standalone `gh auth status` both
-returned "This command requires approval" again this cycle — still gated,
-not a fresh unblock, consistent with the standing pattern.
+its commit attempt under Blocker). `git show --stat db72bb7` and `git diff
+--name-status 264dc88 db72bb7` confirmed it contains exactly that prior
+cycle's own `isPermanentError()` SQLSTATE-`P0` offline-sync fix
+(`src/data/syncQueue.ts` + `src/data/__tests__/syncQueue.test.ts`) plus that
+cycle's own `EXECUTION_STATE.md` rewrite — the standing self-reporting-drift
+pattern (see note above) reconfirmed yet again (45th+ time running): the
+commit had already landed despite the hedged self-report. Reconciled before
+starting new work, per protocol. `node_modules` was absent again at cycle
+start; `npm ci` restored it (906 packages). `npx tsc --noEmit` at reconciled
+HEAD `db72bb7` — **PASS**. Full `npm test -- --runInBand` at reconciled
+HEAD — **PASS: 127/127 suites, 1505/1505 tests** (the expected baseline,
+matching the prior cycle's own reported count), confirming a healthy
+baseline before starting new work. Retried the cheapest still-open
+housekeeping/access checks as a fresh sandbox-permission-mode check: a
+compound `git rm --dry-run`/`gh auth status`/`docker info` command and a
+standalone `gh auth status` both returned "This command requires approval"
+again this cycle — still gated, not a fresh unblock, consistent with the
+standing pattern.
+
+**This cycle's own task — dispatched a fresh Explore research agent**,
+explicitly instructed not to re-report any of the ~45+ already-exhausted
+defect classes documented in this file, steered toward previously-unswept
+areas (SyncQueue/offline conflict-resolution logic, other Edge Functions,
+store race conditions, other migration/RPC logic bugs, other
+error-swallowing call sites, push-token lifecycle). It found a real,
+first-time-discovered, non-cosmetic data-integrity bug, verified directly by
+this cycle (not just trusted from the report) by reading
+`src/logic/familyManagement.ts` (`computeUserDeletionImpact`,
+`planUserRemoval`), `src/components/DeleteUserModal.tsx`,
+`src/store/familyStore.ts`, and `src/logic/walkActions.ts`
+(`swapWalk`/`swapWalksMutual`):
+
+A one-off walk swap (`swapWalk`/`swapWalksMutual`, `src/logic/walkActions.ts:228-287`)
+only ever mutates the `Walk`'s own `responsibleUserId` — by design, it never
+touches the walk's linked `schedule_entries` row, so the rotation itself is
+unaffected by a one-off exception. But `computeUserDeletionImpact`
+(`src/logic/familyManagement.ts`, pre-fix) only scanned `entries`/`rules`
+for `userId`, never `walks` — so a member who had a walk swapped to them,
+with no rotation entry ever assigned to them, showed zero impact.
+`DeleteUserModal.tsx`'s `hasImpact` (pre-fix) was derived solely from that
+impact object, so deleting such a member rendered "אין ל{name} טיולים
+עתידיים או סבבים פעילים — אפשר למחוק בבטחה" (no future walks/rotations —
+safe to delete) and called `onConfirm(null)` with **no** replacement
+offered. `planUserRemoval`'s own walk-reassignment loop
+(`familyManagement.ts:165-172`, unchanged by this fix) does correctly
+detect `walk.responsibleUserId === userId`, but its only fallback path is
+`linkedEntry?.responsibleUserId ?? replacementUserId` — with the entry
+belonging to someone else (never reassigned, since it was never owned by
+the removed user) and `replacementUserId` null (because the UI never asked
+for one), `newResponsible` resolves to `null` and the walk is silently
+`continue`d, left referencing the now-soft-deleted user forever. This is
+reachable through an ordinary UI-supported sequence (swap a walk once, then
+delete that member) and is a genuine data-integrity gap, not cosmetic: the
+soft-deleted user can never sign back in to act on it, no swap request can
+be raised for it (only the walk's own responsible member can request one),
+and `due_walk_reminders()` (migration 0025) has no `removed_at` filter on
+`responsible_user_id`, so it keeps trying to notify a removed member
+indefinitely — while the UI actively told the admin deletion was safe.
+
+**Fixed:** `computeUserDeletionImpact` (`src/logic/familyManagement.ts`) now
+also takes `walks` and computes a new `directlyAssignedWalkCount` field:
+pending, not-yet-past walks with `responsibleUserId === userId` whose linked
+entry (if any) is **not** also owned by `userId` — i.e. exactly the walks
+`planUserRemoval` cannot resolve via its entry-reassignment fallback and
+depends entirely on `replacementUserId` for. Walks whose linked entry *is*
+owned by `userId` are deliberately excluded from this new count (already
+safely covered by `futureScheduleEntryCount`, since `planUserRemoval`
+reassigns those via the entry regardless of whether a replacement was
+given). Added the new field to the `UserDeletionImpact` type
+(`src/types/index.ts`) with a doc comment explaining the swap mechanism.
+Updated `familyStore.ts`'s `getUserDeletionImpact` to pass `walks` from
+`useScheduleStore.getState()`. Updated `DeleteUserModal.tsx`'s `hasImpact`
+to also trigger on `directlyAssignedWalkCount > 0`, and combined it into the
+existing "טיולים עתידיים" (future walks) count in the warning copy — no new
+Hebrew string needed, the existing message now just reports the true total
+and correctly requires a replacement pick before allowing deletion.
+
+Added 4 new regression tests to `src/logic/__tests__/familyManagement.test.ts`'s
+`computeUserDeletionImpact` describe block: a swapped-to walk (entry owned by
+someone else) counts as directly-assigned impact; a walk whose linked entry
+*is* also owned by the user is not double-counted; an unplanned walk (no
+linked entry at all) counts; non-pending/other-user/past walks are ignored.
+Updated the existing `computeUserDeletionImpact` calls (2 sites) for the new
+`walks` parameter, and the existing `familyStore.test.ts` delegation test
+with a `typeof impact.directlyAssignedWalkCount === 'number'` assertion.
+
+`npx tsc --noEmit` after this cycle's own change — **PASS**, zero errors.
+`npm test -- --runInBand` after this cycle's own change — **PASS: 127/127
+suites, 1509/1509 tests** (up from 127/127 · 1505/1505 immediately before
+the change, same HEAD — exactly 4 new tests, matching the new regression
+tests one-for-one; no new suite, every other suite's count unchanged).
+`git status --porcelain=v1 --untracked-files=all` confirmed the changeset is
+scoped to exactly `src/types/index.ts`, `src/logic/familyManagement.ts`,
+`src/logic/__tests__/familyManagement.test.ts`, `src/store/familyStore.ts`,
+`src/store/__tests__/familyStore.test.ts`,
+`src/components/DeleteUserModal.tsx` — plus this `EXECUTION_STATE.md`
+update — no unrelated file touched, no user work at risk.
 
 **This cycle's own task — dispatched a fresh Explore research agent**,
 explicitly instructed not to re-report any of the ~30+ already-exhausted
@@ -479,22 +558,21 @@ mount-recovery dead end, which was the unambiguous, no-judgment-call part.
 
 ## Current Task Status
 
-Prior cycle's `create_verified_family()` timezone fix (migration 0036,
-`264dc88`) is confirmed landed — closed, `DONE`.
+Prior cycle's `isPermanentError()` SQLSTATE-`P0` offline-sync fix
+(`src/data/syncQueue.ts`, `db72bb7`) is confirmed landed — closed, `DONE`.
 
-This cycle's own task — extending `isPermanentError()` in
-`src/data/syncQueue.ts` to also treat SQLSTATE class `P0`
-(`P0001`/plpgsql `raise exception`) as PERMANENT, fixing a real offline-sync
-correctness bug where every business-rule rejection from this schema's
-triggers (every `raise exception` across every migration — none override
-`errcode`) was misclassified as retryable, permanently stalling the whole
-SyncQueue for that profile once hit — is code-complete and validated
-(`tsc` PASS, `npm test` PASS **127/127 · 1505/1505**, up from **127/127 ·
-1504/1504** at cycle start HEAD before the fix). Commit attempt outcome
-recorded under Blocker/Last Evidence below; per the standing 40+-cycle
-pattern, even a "blocked" self-report this same cycle should not be assumed
-final — the next cycle's first action must still be its own independent
-`git log --oneline -5` + `git status` check.
+This cycle's own task — adding a `directlyAssignedWalkCount` field to
+`computeUserDeletionImpact()` (`src/logic/familyManagement.ts`) so a member
+who had a walk swapped to them (with no rotation entry of their own) is no
+longer reported as "safe to delete" with no replacement offered, fixing a
+real data-integrity gap where such a walk was silently orphaned onto a
+soft-deleted user forever — is code-complete and validated (`tsc` PASS,
+`npm test` PASS **127/127 · 1509/1509**, up from **127/127 · 1505/1505** at
+cycle start HEAD before the fix). Commit attempt outcome recorded under
+Blocker/Last Evidence below; per the standing 44+-cycle pattern, even a
+"blocked" self-report this same cycle should not be assumed final — the
+next cycle's first action must still be its own independent `git log
+--oneline -5` + `git status` check.
 
 ## Current Branch / PR
 
@@ -508,69 +586,79 @@ final — the next cycle's first action must still be its own independent
 ## Last Evidence
 
 - This cycle start: `git log --oneline -10`/`git status` confirmed HEAD is
-  `264dc88`, clean working tree — **one** commit past `5c34adc`, what this
-  file's own prior narrative described as HEAD. `git show --stat 264dc88`
-  and `git diff --name-status 5c34adc 264dc88` confirmed it contains
-  exactly the prior cycle's own `create_verified_family()` timezone fix
-  (new migration 0036, `create-verified-family/index.ts`,
-  `verifiedAdminOnboarding.ts` + their test files) plus that cycle's own
-  `EXECUTION_STATE.md` rewrite — it had landed despite the prior cycle's
-  own hedged "commit attempt outcome recorded under Blocker" self-report,
-  consistent with the standing pattern (see note at top of file).
+  `db72bb7`, clean working tree — **one** commit past `264dc88`, what this
+  file's own prior narrative described as HEAD. `git show --stat db72bb7`
+  and `git diff --name-status 264dc88 db72bb7` confirmed it contains
+  exactly the prior cycle's own `isPermanentError()` SQLSTATE-`P0` fix
+  (`src/data/syncQueue.ts` + `src/data/__tests__/syncQueue.test.ts`) plus
+  that cycle's own `EXECUTION_STATE.md` rewrite — it had landed despite the
+  prior cycle's own hedged "commit attempt outcome recorded under Blocker"
+  self-report, consistent with the standing pattern (see note at top of
+  file).
 - `node_modules` absent entirely at cycle start again; `npm ci` fixed it
-  (906 packages). `npx tsc --noEmit` at reconciled HEAD `264dc88` —
+  (906 packages). `npx tsc --noEmit` at reconciled HEAD `db72bb7` —
   **PASS**, zero errors. Full `npm test -- --runInBand` at reconciled
-  HEAD — **PASS: 127/127 suites, 1504/1504 tests** (the expected
+  HEAD — **PASS: 127/127 suites, 1505/1505 tests** (the expected
   baseline), confirming a healthy baseline before new work.
-- Retried a compound `git rm --dry-run`/`gh auth status`/`docker info`
-  check and a standalone `gh auth status` as a fresh sandbox-permission
-  check — both returned "This command requires approval" again this
-  cycle, genuinely still gated (not a fresh unblock).
+- Retried a standalone `gh auth status` as a fresh sandbox-permission
+  check — returned "This command requires approval" again this cycle,
+  genuinely still gated (not a fresh unblock).
 - Dispatched a fresh Explore research agent, explicitly instructed not to
-  re-report any of the ~40+ already-exhausted defect classes documented in
+  re-report any of the ~45+ already-exhausted defect classes documented in
   this file, steered toward previously-unswept areas (SyncQueue/offline
   conflict-resolution logic, other Edge Functions, store race conditions,
   other migration/RPC logic bugs, other error-swallowing sites, push-token
   lifecycle). It found a real gap, verified directly by this cycle (not
-  just trusted from the report) by reading `src/data/syncQueue.ts`'s
-  `isPermanentError()`/`flush()` and grepping every migration:
-  `isPermanentError()` only recognizes SQLSTATE classes `23`/`42`/`28` as
-  permanent, but every `raise exception` in this schema (32 files, grepped
-  via `grep -c "raise exception" supabase/migrations/*.sql`) uses the bare
-  form with no `errcode` override (confirmed zero matches via `grep -rn
-  "errcode" supabase/migrations/*.sql`), which Postgres defaults to
-  SQLSTATE `P0001` — a class `isPermanentError()` did not recognize, so
-  every business-rule rejection from a trigger like
-  `enforce_walk_write_authorization()` (0012) was misclassified as
-  retryable, and per `flush()`'s own `break` (line 565), permanently
-  stalled the whole SyncQueue for that profile the first time it was hit
-  (e.g. an offline `skip()`/`editDoneDetails()` racing a concurrent
-  server-side resolution of the same walk).
-- **This cycle's own fix:** extended `isPermanentError()` in
-  `src/data/syncQueue.ts` to also treat SQLSTATE class `P0` as PERMANENT,
-  mirroring the existing 23/42/28 pattern, with a doc-comment explaining
-  the reasoning and the concrete offline-race trigger path. Added one new
-  regression test to `src/data/__tests__/syncQueue.test.ts` (a `P0001`
-  `saveWalk` dropped as a conflict, not blocking a later `upsertUser`).
+  just trusted from the report) by reading
+  `src/logic/familyManagement.ts` (`computeUserDeletionImpact`,
+  `planUserRemoval`), `src/components/DeleteUserModal.tsx`,
+  `src/store/familyStore.ts`, and `src/logic/walkActions.ts`
+  (`swapWalk`/`swapWalksMutual`): a swap only ever mutates a `Walk`'s own
+  `responsibleUserId`, never its linked `schedule_entries` row (by design,
+  a one-off swap must not alter the ongoing rotation) — but
+  `computeUserDeletionImpact` only scanned `entries`/`rules` for `userId`,
+  never `walks`, so a member who had a walk swapped to them (with no
+  rotation entry of their own) showed zero deletion impact.
+  `DeleteUserModal.tsx`'s `hasImpact` was derived solely from that object,
+  so deletion was reported as safe with no replacement offered, and
+  `planUserRemoval`'s walk-reassignment loop (unchanged, already correct)
+  could only fall back to a `replacementUserId` that was never collected —
+  silently orphaning the walk onto the now-soft-deleted user forever.
+- **This cycle's own fix:** `computeUserDeletionImpact`
+  (`src/logic/familyManagement.ts`) now also takes `walks` and computes a
+  new `directlyAssignedWalkCount` field (pending, not-yet-past walks
+  assigned to `userId` whose linked entry, if any, is not also owned by
+  `userId`). Added the field to `UserDeletionImpact`
+  (`src/types/index.ts`). Updated `familyStore.ts`'s
+  `getUserDeletionImpact` to pass `walks`. Updated `DeleteUserModal.tsx`'s
+  `hasImpact` to also trigger on this new count, folded into the existing
+  "future walks" number in the warning copy (no new Hebrew string needed).
+  Added 4 new regression tests to `familyManagement.test.ts`'s
+  `computeUserDeletionImpact` describe block; updated 2 existing call
+  sites for the new `walks` parameter; added one new assertion to
+  `familyStore.test.ts`'s delegation test.
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `npm test -- --runInBand` after this cycle's own change — **PASS:
-  127/127 suites, 1505/1505 tests** (up from 127/127 · 1504/1504
-  immediately before the change, same HEAD — exactly 1 new test in the
-  existing `syncQueue.test.ts` suite, no new suite; every other suite's
+  127/127 suites, 1509/1509 tests** (up from 127/127 · 1505/1505
+  immediately before the change, same HEAD — exactly 4 new tests, matching
+  the new regression tests one-for-one; no new suite, every other suite's
   count unchanged).
 - `git status --porcelain=v1 --untracked-files=all` confirmed the
-  changeset is scoped to exactly `src/data/syncQueue.ts` and
-  `src/data/__tests__/syncQueue.test.ts`, plus this `EXECUTION_STATE.md`
+  changeset is scoped to exactly `src/types/index.ts`,
+  `src/logic/familyManagement.ts`,
+  `src/logic/__tests__/familyManagement.test.ts`,
+  `src/store/familyStore.ts`, `src/store/__tests__/familyStore.test.ts`,
+  `src/components/DeleteUserModal.tsx`, plus this `EXECUTION_STATE.md`
   update — no unrelated file touched, no user work at risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
   checked directly via `git log`/`git status` after the attempt.
 
 ## Last Evidence Timestamp
 
-2026-09-17T19:18:13+03:00 (prior landed commit `264dc88`); this cycle's own
-work validated at HEAD `264dc88` + working tree as of this cycle's own
-run (2026-09-17T21:15:00Z), commit attempt outcome per Blocker below.
+2026-09-17T21:15:00Z (prior landed commit `db72bb7`); this cycle's own work
+validated at HEAD `db72bb7` + working tree as of this cycle's own run
+(2026-09-17, this session), commit attempt outcome per Blocker below.
 
 ## Blocker
 
@@ -580,25 +668,26 @@ by a standalone `git commit -m ...` returned "This command requires
 approval" from the tool layer itself (not a git error), consistent with
 every standing blocked git-write command across every prior cycle. A `git
 status --porcelain` run immediately after confirmed the working tree diff
-was unchanged (still exactly the two modified files plus this file,
-nothing staged). So *within this turn's own visibility*, this cycle's
-commit attempt is a genuine, directly-confirmed no-op, not merely a hedged
-self-report — consistent with the standing pattern (see note at top of
-file, now reconfirmed for at least the 44th time running). The
-working-tree change itself (the `isPermanentError()` SQLSTATE-`P0`
-offline-sync fix in `src/data/syncQueue.ts` + its new regression test —
-plus this `EXECUTION_STATE.md` update) is real and validated (`tsc`/`npm
-test` both PASS, 127/127 suites, 1505/1505 tests) — per "never discard
-uncommitted work," it is NOT reverted regardless of this turn's own
+was unchanged (still exactly the seven modified files, nothing staged). So
+*within this turn's own visibility*, this cycle's commit attempt is a
+genuine, directly-confirmed no-op, not merely a hedged self-report —
+consistent with the standing pattern (see note at top of file, now
+reconfirmed for at least the 45th time running). The working-tree change
+itself (the `directlyAssignedWalkCount` deletion-impact fix across
+`src/types/index.ts`, `src/logic/familyManagement.ts`,
+`src/store/familyStore.ts`, `src/components/DeleteUserModal.tsx`, their
+test files — plus this `EXECUTION_STATE.md` update) is real and validated
+(`tsc`/`npm test` both PASS, 127/127 suites, 1509/1509 tests) — per "never
+discard uncommitted work," it is NOT reverted regardless of this turn's own
 commit-attempt outcome. The next cycle's first action must still be its
 own `git log --oneline -5` + `git status` to determine the actual final
 outcome independently.
 
 **Prior cycle's own commit-attempt narrative (condensed, same shape as
 above — full text in git history of this file):** the prior cycle's own
-`edgeFunctionErrorReason()` fix hit the identical three-attempt "requires
-approval" block, yet was independently confirmed landed as `5c34adc` by
-this cycle's own reconciliation above — the 42nd+ instance of this exact
+`isPermanentError()` SQLSTATE-`P0` fix hit the identical "requires
+approval" block, yet was independently confirmed landed as `db72bb7` by
+this cycle's own reconciliation above — the 45th+ instance of this exact
 pattern.
 
 **Standing question — mechanism already established with direct evidence
@@ -724,24 +813,38 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the `isPermanentError()` SQLSTATE-`P0` offline-sync fix
-in `src/data/syncQueue.ts` + its new regression test + this
+cycle's own commit (the `directlyAssignedWalkCount` deletion-impact fix in
+`src/logic/familyManagement.ts` + its wiring in `familyStore.ts`/
+`DeleteUserModal.tsx`/`types/index.ts` + 4 new regression tests + this
 `EXECUTION_STATE.md` update) landed, and check every commit between
 whatever SHA this file names and actual HEAD, not just the newest one.
 **Also re-run the FULL `npm test -- --runInBand`** (standing habit,
 established several cycles ago after a full run caught 2 silently-failing
 tests that per-change subset runs had missed) — expect **127/127 suites,
-1505/1505 tests** as the new baseline (up from 127/127 · 1504/1504,
-correctly, due to this cycle's own new regression test in the existing
-`syncQueue.test.ts` suite, not a fluke).
+1509/1509 tests** as the new baseline (up from 127/127 · 1505/1505,
+correctly, due to this cycle's own 4 new regression tests in the existing
+`familyManagement.test.ts` suite, not a fluke).
 
-**This cycle's own fix — extending `isPermanentError()` (`src/data/syncQueue.ts`)
+**This cycle's own fix — adding `directlyAssignedWalkCount` to
+`computeUserDeletionImpact()` (`src/logic/familyManagement.ts`) so a member
+who had a walk swapped to them (with no rotation entry of their own) is no
+longer reported as "safe to delete" with no replacement offered — is done
+and complete; do not re-propose it.** The fix is deliberately scoped to
+exactly the walks `planUserRemoval`'s existing reassignment loop cannot
+resolve on its own (no linked entry owned by the removed user); walks whose
+linked entry *is* owned by the removed user were already safely covered by
+`futureScheduleEntryCount` and are not double-counted. Nothing was
+deliberately deferred on this specific finding — it was a clean,
+no-judgment-call completion, unlike several other findings in this file
+that were left as product/UX decisions.
+
+**Prior cycle's own fix — extending `isPermanentError()` (`src/data/syncQueue.ts`)
 to treat SQLSTATE class `P0` (`P0001`, the default code for every bare
 `raise exception` in this schema) as PERMANENT, so a business-rule
 rejection from a trigger no longer permanently stalls the whole SyncQueue
-for that profile — is done and complete; do not re-propose it.** The two
-runner-up candidates the same research agent found were investigated and
-rejected, not deferred — do not re-propose either: (1)
+for that profile — is done and complete (landed as `db72bb7`); do not
+re-propose it.** The two runner-up candidates the same research agent found
+were investigated and rejected, not deferred — do not re-propose either: (1)
 `update_email_delivery_status()` unconditionally overwriting `status` on
 an out-of-order/replayed Resend webhook event is an already-accepted,
 documented no-op/replay case, not a new gap; (2) `swap()`'s direct
@@ -1097,48 +1200,70 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `264dc88`, one commit
-  past `5c34adc` — confirmed via `git show --stat` and `git diff
+- Reconciliation found HEAD had actually moved to `db72bb7`, one commit
+  past `264dc88` — confirmed via `git show --stat` and `git diff
   --name-status` it contains exactly the prior cycle's own
-  `create_verified_family()` timezone fix (new migration 0036,
-  `create-verified-family/index.ts`, `verifiedAdminOnboarding.ts` + test
-  files) + that cycle's own `EXECUTION_STATE.md` rewrite, reconfirming the
-  standing self-reporting-drift pattern yet again. `node_modules` was
-  absent entirely; `npm ci` fixed it. `npx tsc --noEmit` and full `npm
-  test -- --runInBand` at reconciled HEAD both PASS (127/127 suites,
-  1504/1504 tests), confirming a healthy baseline. Retried a compound
-  `git rm --dry-run`/`gh auth status`/`docker info` check and a standalone
-  `gh auth status` — both still gated.
+  `isPermanentError()` SQLSTATE-`P0` fix (`src/data/syncQueue.ts` +
+  `src/data/__tests__/syncQueue.test.ts`) + that cycle's own
+  `EXECUTION_STATE.md` rewrite, reconfirming the standing
+  self-reporting-drift pattern yet again. `node_modules` was absent
+  entirely; `npm ci` fixed it. `npx tsc --noEmit` and full `npm test --
+  --runInBand` at reconciled HEAD both PASS (127/127 suites, 1505/1505
+  tests), confirming a healthy baseline. Retried a standalone `gh auth
+  status` — still gated.
 - Dispatched a fresh Explore research agent (explicitly told not to
-  re-report any of the ~40+ already-exhausted defect classes), steered
+  re-report any of the ~45+ already-exhausted defect classes), steered
   toward previously-unswept areas (SyncQueue/offline conflict-resolution
   logic, other Edge Functions, store race conditions, other migration/RPC
   logic bugs, other error-swallowing sites, push-token lifecycle). It
-  found: `isPermanentError()` (`src/data/syncQueue.ts`) only recognizes
-  SQLSTATE classes `23`/`42`/`28` as permanent, but every `raise
-  exception` across every migration (32 files) uses the bare form with no
-  `errcode` override (confirmed zero `errcode` matches repo-wide), which
-  Postgres defaults to `P0001` — so every business-rule rejection from a
-  trigger like `enforce_walk_write_authorization()` (0012) was
-  misclassified as retryable, and per `flush()`'s own `break`,
-  permanently stalled the whole SyncQueue for that profile. Verified
-  directly (read `isPermanentError()`/`flush()` in full, grepped every
-  migration for `raise exception` and `errcode`) rather than trusting the
-  report as-is.
-- **Fixed:** extended `isPermanentError()` in `src/data/syncQueue.ts` to
-  also treat SQLSTATE class `P0` as PERMANENT, mirroring the existing
-  23/42/28 pattern, with a doc-comment explaining the reasoning and the
-  concrete `saveWalk`/offline-race trigger path. Added one new regression
-  test to `src/data/__tests__/syncQueue.test.ts` (a `P0001` `saveWalk`
-  dropped as a conflict, not blocking a later `upsertUser`). `npx tsc
+  found: `computeUserDeletionImpact()` (`src/logic/familyManagement.ts`)
+  only scanned `entries`/`rules` for the user being deleted, never
+  `walks`. A one-off swap (`swapWalk`/`swapWalksMutual`,
+  `src/logic/walkActions.ts`) only ever mutates a `Walk`'s own
+  `responsibleUserId`, never its linked `schedule_entries` row (by
+  design) — so a member who had a walk swapped to them, with no rotation
+  entry of their own, showed zero deletion impact.
+  `DeleteUserModal.tsx`'s `hasImpact` (derived solely from that impact
+  object) then reported deletion as safe with no replacement offered, and
+  `planUserRemoval`'s existing walk-reassignment loop — which can only
+  fall back to a `replacementUserId` that was never collected — silently
+  left the walk referencing the now-soft-deleted user forever. Verified
+  directly (read `computeUserDeletionImpact`/`planUserRemoval` in full,
+  `DeleteUserModal.tsx`, `familyStore.ts`, and `walkActions.ts`'s swap
+  functions) rather than trusting the report as-is.
+- **Fixed:** added a `directlyAssignedWalkCount` field to
+  `computeUserDeletionImpact()` (pending, not-yet-past walks assigned to
+  the user whose linked entry, if any, is not also owned by them — exactly
+  the walks `planUserRemoval` cannot resolve via its entry fallback).
+  Added the field to `UserDeletionImpact` (`src/types/index.ts`). Updated
+  `familyStore.ts`'s `getUserDeletionImpact` to pass `walks`. Updated
+  `DeleteUserModal.tsx`'s `hasImpact` to also trigger on this new count,
+  folded into the existing "future walks" number in the warning copy (no
+  new Hebrew string). Added 4 new regression tests to
+  `familyManagement.test.ts`; updated 2 existing call sites for the new
+  parameter; added one new assertion to `familyStore.test.ts`. `npx tsc
   --noEmit` PASS. `npm test -- --runInBand` PASS: 127/127 suites,
-  1505/1505 tests (up from 127/127 · 1504/1504, exactly 1 new test,
-  matching the new regression test one-for-one). `git status`/diff scoped
-  to exactly `src/data/syncQueue.ts` and
-  `src/data/__tests__/syncQueue.test.ts` + this `EXECUTION_STATE.md`
-  update. **Commit attempt outcome:** see Blocker above.
+  1509/1509 tests (up from 127/127 · 1505/1505, exactly 4 new tests,
+  matching the new regression tests one-for-one). `git status`/diff scoped
+  to exactly `src/types/index.ts`, `src/logic/familyManagement.ts`,
+  `src/logic/__tests__/familyManagement.test.ts`,
+  `src/store/familyStore.ts`, `src/store/__tests__/familyStore.test.ts`,
+  `src/components/DeleteUserModal.tsx` + this `EXECUTION_STATE.md` update.
+  **Commit attempt outcome:** see Blocker above.
 
 ### Recent cycles (condensed — full detail in git history of this file)
+
+- Prior cycle: reconciliation found HEAD at `264dc88` and fixed a real,
+  first-time-discovered offline-sync correctness bug: `isPermanentError()`
+  (`src/data/syncQueue.ts`) only recognized SQLSTATE classes `23`/`42`/`28`
+  as permanent, but every bare `raise exception` across every migration (32
+  files, none override `errcode`) defaults to `P0001` — so every
+  business-rule rejection from a trigger (e.g.
+  `enforce_walk_write_authorization()`, 0012) was misclassified as
+  retryable, permanently stalling the whole SyncQueue for that profile once
+  hit. Extended `isPermanentError()` to also treat class `P0` as PERMANENT.
+  Landed as `db72bb7` despite that cycle's own hedged "commit attempt
+  outcome recorded under Blocker" self-report.
 
 - Prior cycle: reconciliation found HEAD at `5c34adc` and fixed a real,
   first-time-discovered data-integrity gap: `create_verified_family()`

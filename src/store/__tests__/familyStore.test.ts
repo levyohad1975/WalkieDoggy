@@ -246,6 +246,7 @@ describe('familyStore — getUserDeletionImpact / clearActionError', () => {
     expect(impact).toBeDefined();
     expect(typeof impact.futureScheduleEntryCount).toBe('number');
     expect(Array.isArray(impact.rulesAffected)).toBe(true);
+    expect(typeof impact.directlyAssignedWalkCount).toBe('number');
   });
 
   it('clearActionError resets actionError back to null', async () => {

@@ -28,7 +28,16 @@ export function DeleteUserModal({ visible, user, impact, otherUsers, onConfirm, 
   }, [visible, otherUsers]);
 
   if (!user) return null;
-  const hasImpact = Boolean(impact && (impact.futureScheduleEntryCount > 0 || impact.rulesAffected.length > 0));
+  const hasImpact = Boolean(
+    impact &&
+      (impact.futureScheduleEntryCount > 0 || impact.rulesAffected.length > 0 || impact.directlyAssignedWalkCount > 0)
+  );
+  // Combined for the warning copy below: from the admin's point of view these
+  // are all just "future walks of theirs" regardless of whether the walk
+  // comes from an owned rotation entry or was directly assigned via a swap
+  // (see computeUserDeletionImpact's doc comment for why the latter must
+  // count too).
+  const futureWalkCount = (impact?.futureScheduleEntryCount ?? 0) + (impact?.directlyAssignedWalkCount ?? 0);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -40,7 +49,7 @@ export function DeleteUserModal({ visible, user, impact, otherUsers, onConfirm, 
             {hasImpact ? (
               <>
                 <RtlText style={styles.warning}>
-                  ל{user.name} יש {impact!.futureScheduleEntryCount} טיולים עתידיים ו-{impact!.rulesAffected.length} סבבים
+                  ל{user.name} יש {futureWalkCount} טיולים עתידיים ו-{impact!.rulesAffected.length} סבבים
                   פעילים. כדי למחוק בבטחה, יש לבחור מי ימשיך את התורות שלו:
                 </RtlText>
                 {otherUsers.length === 0 ? (

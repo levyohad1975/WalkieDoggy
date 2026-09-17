@@ -190,4 +190,11 @@ export interface NewFamilyUserInput {
 export interface UserDeletionImpact {
   futureScheduleEntryCount: number; // future schedule_entries where this user is responsible
   rulesAffected: string[]; // schedule_rule ids whose rotation includes this user
+  // Pending, not-yet-past walks directly assigned to this user (e.g. via a
+  // one-off swap, or an unplanned walk) whose linked schedule entry, if any,
+  // is NOT also owned by this user. planUserRemoval() can only resolve these
+  // via the given replacement user — it has no rotation/entry fallback for
+  // them — so without a replacement they are silently left referencing a
+  // soft-deleted user forever.
+  directlyAssignedWalkCount: number;
 }

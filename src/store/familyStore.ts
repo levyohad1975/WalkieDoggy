@@ -230,11 +230,11 @@ if (!familyId) {
   },
 
   getUserDeletionImpact: (userId: string) => {
-    const { rules, entries } = useScheduleStore.getState();
+    const { rules, entries, walks } = useScheduleStore.getState();
     // Local calendar day, not UTC — see scheduleStore.ts's `today` doc
     // comment for why a UTC-anchored "today" is wrong here for anyone in a
     // timezone ahead of UTC (e.g. Israel) for a few hours after midnight.
-    return computeUserDeletionImpact(userId, rules, entries, localDateOnly(new Date()));
+    return computeUserDeletionImpact(userId, rules, entries, walks, localDateOnly(new Date()));
   },
 
   deleteUser: async (userId: string, replacementUserId: string | null) => {

@@ -201,7 +201,7 @@ describe('computeUserDeletionImpact', () => {
       entry({ id: 'past', date: '2026-09-14', responsibleUserId: 'u1' }),
       entry({ id: 'other-user', date: '2026-09-16', responsibleUserId: 'u2' }),
     ];
-    const impact = computeUserDeletionImpact('u1', [], entries, today);
+    const impact = computeUserDeletionImpact('u1', [], entries, [], today);
     expect(impact.futureScheduleEntryCount).toBe(2); // "future" and "today", not "past" or "other-user"
   });
 
@@ -211,8 +211,42 @@ describe('computeUserDeletionImpact', () => {
       rule({ id: 'r2', rotationUserIds: ['u1'], active: false }),
       rule({ id: 'r3', rotationUserIds: ['u2'], active: true }),
     ];
-    const impact = computeUserDeletionImpact('u1', rules, [], today);
+    const impact = computeUserDeletionImpact('u1', rules, [], [], today);
     expect(impact.rulesAffected).toEqual(['r1', 'r2']);
+  });
+
+  it('counts a swapped-to walk (responsibleUserId=user, but its linked entry belongs to someone else) as directly-assigned impact', () => {
+    // Mirrors a real swap: the rotation's own entry never changed owner, only
+    // the one-off walk did — see swapWalk()/swapWalksMutual() in walkActions.ts.
+    const entries = [entry({ id: 'e1', date: '2026-09-20', responsibleUserId: 'other-owner' })];
+    const walks = [walk({ id: 'w1', scheduleEntryId: 'e1', date: '2026-09-20', responsibleUserId: 'u1', status: 'pending' })];
+    const impact = computeUserDeletionImpact('u1', [], entries, walks, today);
+    expect(impact.directlyAssignedWalkCount).toBe(1);
+    expect(impact.futureScheduleEntryCount).toBe(0); // the entry itself is not owned by u1
+  });
+
+  it('does NOT double count a walk whose linked entry is also owned by the user — planUserRemoval reassigns it via the entry, no replacement required', () => {
+    const entries = [entry({ id: 'e1', date: '2026-09-20', responsibleUserId: 'u1' })];
+    const walks = [walk({ id: 'w1', scheduleEntryId: 'e1', date: '2026-09-20', responsibleUserId: 'u1', status: 'pending' })];
+    const impact = computeUserDeletionImpact('u1', [], entries, walks, today);
+    expect(impact.futureScheduleEntryCount).toBe(1);
+    expect(impact.directlyAssignedWalkCount).toBe(0);
+  });
+
+  it('counts an unplanned walk (no linked entry at all) directly assigned to the user', () => {
+    const walks = [walk({ id: 'w1', scheduleEntryId: undefined, responsibleUserId: 'u1', status: 'pending', date: '2026-09-20', isUnplanned: true })];
+    const impact = computeUserDeletionImpact('u1', [], [], walks, today);
+    expect(impact.directlyAssignedWalkCount).toBe(1);
+  });
+
+  it('ignores directly-assigned walks that are not pending, not for this user, or already in the past', () => {
+    const walks = [
+      walk({ id: 'done', status: 'done', responsibleUserId: 'u1', date: '2026-09-20' }),
+      walk({ id: 'other-user', status: 'pending', responsibleUserId: 'u2', date: '2026-09-20' }),
+      walk({ id: 'past', status: 'pending', responsibleUserId: 'u1', date: '2026-09-01' }),
+    ];
+    const impact = computeUserDeletionImpact('u1', [], [], walks, today);
+    expect(impact.directlyAssignedWalkCount).toBe(0);
   });
 });
 
