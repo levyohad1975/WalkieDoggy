@@ -18,24 +18,22 @@ env:
 jobs:
   staging-family-e2e:
     name: Real Staging Family E2E
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Windows, X64]
     environment: staging
     timeout-minutes: 25
 
     steps:
       - name: Guard staging-only target
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
-          if [ "$TARGET_BRANCH" = "main" ]; then
-            echo "::error::Refusing to associate live Staging family E2E with main."
-            exit 1
-          fi
-          git check-ref-format --branch "$TARGET_BRANCH" >/dev/null
-          case "$TARGET_BRANCH" in
-            feat/*|fix/*|chore/*|test/*|docs/*|rc/*) ;;
-            *) echo "::error::Target must be an approved non-main RC branch."; exit 1 ;;
-          esac
+          $ErrorActionPreference = 'Stop'
+          if ($env:TARGET_BRANCH -eq 'main') {
+            throw 'Refusing to associate live Staging family E2E with main.'
+          }
+          git check-ref-format --branch $env:TARGET_BRANCH | Out-Null
+          if ($env:TARGET_BRANCH -notmatch '^(feat|fix|chore|test|docs|rc)/') {
+            throw 'Target must be an approved non-main RC branch.'
+          }
 
       - name: Checkout trusted executor
         uses: actions/checkout@v4
@@ -48,11 +46,19 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Verify Windows prerequisites
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git --version
+          node --version
+          npm --version
+
       - name: Install dependencies
         run: npm ci
 
       - name: Verify required Staging secrets are present
-        shell: bash
+        shell: pwsh
         env:
           SUPABASE_STAGING_URL: ${{ secrets.SUPABASE_STAGING_URL }}
           SUPABASE_STAGING_ANON_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
@@ -61,32 +67,39 @@ jobs:
           STAGING_OTP_GMAIL_CLIENT_SECRET: ${{ secrets.STAGING_OTP_GMAIL_CLIENT_SECRET }}
           STAGING_OTP_GMAIL_REFRESH_TOKEN: ${{ secrets.STAGING_OTP_GMAIL_REFRESH_TOKEN }}
         run: |
-          set -euo pipefail
-          missing=0
-          for name in SUPABASE_STAGING_URL SUPABASE_STAGING_ANON_KEY STAGING_OTP_TEST_EMAIL STAGING_OTP_GMAIL_CLIENT_ID STAGING_OTP_GMAIL_CLIENT_SECRET STAGING_OTP_GMAIL_REFRESH_TOKEN; do
-            if [ -z "${!name:-}" ]; then
-              echo "::error::Missing required staging secret: $name"
-              missing=1
-            fi
-          done
-          exit "$missing"
+          $ErrorActionPreference = 'Stop'
+          $required = @(
+            'SUPABASE_STAGING_URL',
+            'SUPABASE_STAGING_ANON_KEY',
+            'STAGING_OTP_TEST_EMAIL',
+            'STAGING_OTP_GMAIL_CLIENT_ID',
+            'STAGING_OTP_GMAIL_CLIENT_SECRET',
+            'STAGING_OTP_GMAIL_REFRESH_TOKEN'
+          )
+          $missing = @()
+          foreach ($name in $required) {
+            $value = [Environment]::GetEnvironmentVariable($name)
+            if ([string]::IsNullOrWhiteSpace($value)) { $missing += $name }
+          }
+          if ($missing.Count -gt 0) {
+            throw "Missing required staging secret(s): $($missing -join ', ')"
+          }
 
       - name: Guard exact Staging project
-        shell: bash
+        shell: pwsh
         env:
           SUPABASE_STAGING_URL: ${{ secrets.SUPABASE_STAGING_URL }}
         run: |
-          set -euo pipefail
-          project_ref="${SUPABASE_STAGING_URL#https://}"
-          project_ref="${project_ref%%.*}"
-          if [ "$project_ref" != "$EXPECTED_STAGING_PROJECT_REF" ]; then
-            echo "::error::Refusing Family E2E outside the approved Staging project."
-            exit 1
-          fi
-          echo "Verified approved Staging project target."
+          $ErrorActionPreference = 'Stop'
+          $uri = [Uri]$env:SUPABASE_STAGING_URL
+          $projectRef = $uri.Host.Split('.')[0]
+          if ($projectRef -ne $env:EXPECTED_STAGING_PROJECT_REF) {
+            throw 'Refusing Family E2E outside the approved Staging project.'
+          }
+          Write-Host 'Verified approved Staging project target.'
 
       - name: Run verified family creation E2E against Staging
-        shell: bash
+        shell: pwsh
         env:
           SUPABASE_STAGING_URL: ${{ secrets.SUPABASE_STAGING_URL }}
           SUPABASE_STAGING_ANON_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
@@ -98,17 +111,18 @@ jobs:
 
       - name: Write evidence summary
         if: always()
-        shell: bash
+        shell: pwsh
         run: |
-          {
-            echo "## Staging Family E2E"
-            echo
-            echo "- Associated RC branch: \`$TARGET_BRANCH\`"
-            echo "- Environment: \`staging\`"
-            echo "- Flow: OTP → verified session → family persistence → invite lookup → second-device join when active"
-            echo "- Auth configuration mutation: none"
-            echo "- Service-role credential used: no"
-            echo "- Production credentials used: no"
-            echo "- Production deploy/migration performed: no"
-            echo "- Result: \`${{ job.status }}\`"
-          } >> "$GITHUB_STEP_SUMMARY"
+          @"
+          ## Staging Family E2E
+
+          - Associated RC branch: ``$env:TARGET_BRANCH``
+          - Environment: ``staging``
+          - Runner: ``self-hosted Windows X64``
+          - Flow: OTP → verified session → family persistence → invite lookup → second-device join when active
+          - Auth configuration mutation: none
+          - Service-role credential used: no
+          - Production credentials used: no
+          - Production deploy/migration performed: no
+          - Result: ``${{ job.status }}``
+          "@ | Add-Content $env:GITHUB_STEP_SUMMARY
