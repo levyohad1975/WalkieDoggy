@@ -189,6 +189,7 @@ jobs:
         env:
           CLAUDE_SUCCESS: ${{ steps.result.outputs.success }}
           CHECKPOINT: ${{ steps.result.outputs.checkpoint }}
+          GITHUB_PUSH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference='Stop'
           'published=false' | Add-Content $env:GITHUB_OUTPUT
@@ -202,7 +203,12 @@ jobs:
           & git diff --check; if ($LASTEXITCODE) { throw 'diff check failed' }
           & git config user.name 'walkie-agentic-worker[bot]'; & git config user.email 'walkie-agentic-worker[bot]@users.noreply.github.com'; & git add -A; & git diff --cached --check
           $m=if ($env:CHECKPOINT -eq 'true' -and $env:CLAUDE_SUCCESS -ne 'true') {'chore(agentic): checkpoint RC execution'} else {'chore(agentic): continue RC execution'}
-          & git commit -m $m; if ($LASTEXITCODE) { throw 'commit failed' }; & git push origin "HEAD:refs/heads/$env:TARGET_BRANCH"; if ($LASTEXITCODE) { throw 'push failed' }
+          & git commit -m $m; if ($LASTEXITCODE) { throw 'commit failed' }
+          if ([string]::IsNullOrWhiteSpace($env:GITHUB_PUSH_TOKEN)) { throw 'GitHub workflow push token is unavailable.' }
+          $basic = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:GITHUB_PUSH_TOKEN"))
+          & git config --local --unset-all http.https://github.com/.extraheader 2>$null
+          & git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $basic"
+          & git push origin "HEAD:refs/heads/$env:TARGET_BRANCH"; if ($LASTEXITCODE) { throw 'push failed' }
           'published=true' | Add-Content $env:GITHUB_OUTPUT
 
       - name: Enforce completion or checkpoint
