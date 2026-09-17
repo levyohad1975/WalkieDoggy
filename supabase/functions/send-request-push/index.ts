@@ -315,6 +315,14 @@ Deno.serve(async (req: Request) => {
     }
 
     // ---- Step 6: candidate recipients' family membership (Requirement 7, defense in depth) ----
+    // .is('removed_at', null) excludes a since-removed member from
+    // recipientFamilyIds entirely, so validateAndRoutePushEvent()'s filter
+    // below drops them even if the row that triggered this event still
+    // names them (e.g. a time-change request whose requester was removed
+    // from the family before an admin approved/rejected it) — a removed
+    // member's push_tokens/web_push_subscriptions are also deactivated at
+    // removal time (migration 0037), so this is belt-and-suspenders, not
+    // the only guard.
     const candidateIds = new Set<string>();
     if (row.targetUserId) candidateIds.add(row.targetUserId);
     candidateIds.add(row.requestedByUserId);
@@ -325,7 +333,8 @@ Deno.serve(async (req: Request) => {
       const { data: candidateRows } = await serviceClient
         .from('users')
         .select('id, family_id')
-        .in('id', [...candidateIds]);
+        .in('id', [...candidateIds])
+        .is('removed_at', null);
       recipientFamilyIds = Object.fromEntries((candidateRows ?? []).map((u: any) => [u.id, u.family_id]));
     }
 

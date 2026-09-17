@@ -50,10 +50,129 @@ anything else.
 ## Current Task
 
 **This cycle's reconciliation, done fresh via direct `git log`/`git show`,
-not trusted from this file's own prior narrative:** HEAD was `db72bb7`,
-clean working tree, **one** commit past `264dc88`, what this file's own
+not trusted from this file's own prior narrative:** HEAD was `1482345`,
+clean working tree, **one** commit past `db72bb7`, what this file's own
 prior text described as HEAD (and which that prior cycle itself had hedged
-its commit attempt under Blocker). `git show --stat db72bb7` and `git diff
+its commit attempt under Blocker). `git show --stat 1482345` and `git diff
+--name-status db72bb7 1482345` confirmed it contains exactly that prior
+cycle's own `directlyAssignedWalkCount` deletion-impact fix
+(`src/types/index.ts`, `src/logic/familyManagement.ts`,
+`src/logic/__tests__/familyManagement.test.ts`, `src/store/familyStore.ts`,
+`src/store/__tests__/familyStore.test.ts`, `src/components/DeleteUserModal.tsx`)
+plus that cycle's own `EXECUTION_STATE.md` rewrite — the standing
+self-reporting-drift pattern (see note at top of file) reconfirmed yet
+again (46th+ time running): the commit had already landed despite the
+prior cycle's own hedged "commit attempt outcome recorded under Blocker"
+self-report. Reconciled before starting new work, per protocol.
+`node_modules` was absent again at cycle start; `npm ci` restored it (906
+packages). `npx tsc --noEmit` at reconciled HEAD `1482345` — **PASS**. Full
+`npm test -- --runInBand` at reconciled HEAD — **PASS: 127/127 suites,
+1509/1509 tests** (the expected baseline, matching the prior cycle's own
+reported count), confirming a healthy baseline before starting new work.
+
+**This cycle's own task — dispatched a fresh Explore research agent**,
+explicitly instructed not to re-report any of the ~50+ already-exhausted
+defect classes documented in this file, steered toward RC Queue item 4
+("Settings / Roles / System Admin QA") and specifically-named unswept
+areas (push-token lifecycle, other Edge Functions, store race conditions,
+other migration/RPC logic bugs, other error-swallowing sites). It found a
+real, first-time-discovered, non-cosmetic data-boundary/privacy leak,
+verified directly by this cycle (not just trusted from the report) by
+reading `supabase/migrations/0006_qa_impersonation.sql` (`approve_time_change_request`/
+`reject_time_change_request`, lines 774-877), `supabase/migrations/0016_profile_pin_reclaim_and_qa_sandbox.sql`
+(the CURRENT applied `admin_delete_family_member()`, lines 574-702 — the
+research agent's own report cited 0007's definition, which this cycle
+confirmed via `grep -rln "create or replace function admin_delete_family_member"`
+is actually superseded by 0016; verified the 0016 version directly rather
+than trusting the report's citation), `supabase/migrations/0013_push_tokens.sql`
+and `0021_web_push_subscriptions.sql` (table schemas), and
+`supabase/functions/send-request-push/index.ts` in full:
+
+`admin_delete_family_member()` (0016's definition, the one actually
+applied) soft-deletes a member (`users.removed_at = now()`) but never
+touches `push_tokens`/`web_push_subscriptions` for that member — confirmed
+via `grep -rn "push_tokens|web_push_subscriptions" supabase/migrations/*.sql`
+that the only existing deactivation/deletion of either table anywhere in
+this schema is the whole-FAMILY QA-sandbox reset in 0016
+(`delete from push_tokens where family_id = ...`), never a per-member
+removal. This is concretely reachable through an ordinary two-step admin
+sequence, not a contrived edge case: member M creates a time-change
+request for their own walk (registering/refreshing their push token via
+`upsert_push_token`, 0013); before it's resolved, an admin removes M via
+the ordinary FamilyScreen delete flow; the admin later approves or rejects
+that still-pending request. Both `approve_time_change_request()` and
+`reject_time_change_request()` (0006) resolve the push recipient purely
+from `time_change_requests.requested_by_user_id`, with no check that user
+is still active. `send-request-push/index.ts`'s own "Requirement 7, defense
+in depth" `recipientFamilyIds` check (pre-fix, ~line 323-329) re-confirmed
+only `family_id`, never `removed_at`, so the removed M still passed it —
+and M's `push_tokens` row was still `is_active = true`, so the Expo push
+was actually delivered. A person the admin just removed from the family
+kept receiving real, content-bearing push notifications about that
+family's internal activity — the same gap applies to `walk_swap_requests`'
+`target_user_id` and to any future push channel resolving a recipient by
+`user_id` without separately re-checking `removed_at`.
+
+**Fixed, via a new migration (0016's `admin_delete_family_member()` left
+untouched as an applied migration, per rule 8 — a new 0037 supersedes it
+with the identical 4-argument signature via `CREATE OR REPLACE`, no drop
+needed since the signature is unchanged):** added
+`supabase/migrations/0037_deactivate_push_on_member_removal.sql` — copies
+0016's `admin_delete_family_member()` body verbatim (same last-admin guard,
+same replacement-id validation loops, same rotation/schedule/walk
+reassignment logic) and adds two new `UPDATE` statements right before
+`removed_at` is set: deactivates (`is_active = false`) every `push_tokens`
+and `web_push_subscriptions` row for `target_user_id`. This closes the leak
+at its root, independent of which push code path later resolves the
+(now-removed) user as a recipient — no active destination remains to
+deliver to. Deactivating (not deleting) mirrors the existing
+per-token `DeviceNotRegistered`-deactivation pattern already used in
+`send-request-push/index.ts`, and is harmless if the member is later
+reclaimed — the client's own token-registration flow re-activates a fresh
+row next time that device's app runs. Also hardened
+`send-request-push/index.ts`'s `recipientFamilyIds` defense-in-depth query
+with `.is('removed_at', null)`, so a removed member is excluded from that
+check directly too (belt-and-suspenders alongside the token-deactivation
+fix, not the only guard).
+
+Added a new `src/lib/__tests__/migration0037.pushDeactivationOnRemoval.test.ts`
+(5 tests, source-text-scan style matching `migration0036.timezoneFix.test.ts`'s
+own established convention since this sandbox has no live Postgres):
+confirms 0001-0036 are untouched and exactly one 0037 file exists; confirms
+the 4-argument signature is preserved (no `drop function`); confirms both
+new `UPDATE` statements are scoped to `target_user_id` and ordered before
+`removed_at` is set; confirms every pre-existing guard string is preserved
+unchanged; confirms the Edge Function's `recipientFamilyIds` query now
+contains `.is('removed_at', null)`.
+
+**Runner-up candidates the same research agent found, deliberately not
+folded into this bounded unit — recorded so a future cycle does not
+re-propose either:** none — the agent explicitly reported this as the one
+strong candidate and stated the Settings/Roles/System Admin/other-Edge-
+Function areas it also inspected (SettingsScreen.tsx, FamilyScreen.tsx,
+SystemAdminScreen.tsx/systemAdmin.ts migrations 0029/0035,
+send-walk-reminders, email-provider-webhook, scheduleStore/requestsStore/
+familyStore) were already extensively hardened by prior sweeps with no new
+reachable defect found.
+
+`npx tsc --noEmit` after this cycle's own change — **PASS**, zero errors.
+`npm test -- --runInBand` after this cycle's own change — **PASS: 128/128
+suites, 1514/1514 tests** (up from 127/127 · 1509/1509 immediately before
+the change, same HEAD — exactly 1 new suite + 5 new tests, matching the new
+`migration0037.pushDeactivationOnRemoval.test.ts` file one-for-one; every
+other suite's count unchanged). `git status --porcelain=v1 --untracked-files=all`
+confirmed the changeset is scoped to exactly
+`supabase/migrations/0037_deactivate_push_on_member_removal.sql` (new),
+`supabase/functions/send-request-push/index.ts`,
+`src/lib/__tests__/migration0037.pushDeactivationOnRemoval.test.ts` (new) —
+plus this `EXECUTION_STATE.md` update — no unrelated file touched, no user
+work at risk.
+
+### Prior cycles' own narratives (full detail preserved here; see also the further-condensed "Recent cycles" and "Completed This Cycle" sections below for the same events in shorter form)
+
+Prior cycle: reconciliation found HEAD had actually moved to `db72bb7`, one
+commit past `264dc88` (which that prior cycle itself had hedged its commit
+attempt under Blocker). `git show --stat db72bb7` and `git diff
 --name-status 264dc88 db72bb7` confirmed it contains exactly that prior
 cycle's own `isPermanentError()` SQLSTATE-`P0` offline-sync fix
 (`src/data/syncQueue.ts` + `src/data/__tests__/syncQueue.test.ts`) plus that
@@ -558,21 +677,22 @@ mount-recovery dead end, which was the unambiguous, no-judgment-call part.
 
 ## Current Task Status
 
-Prior cycle's `isPermanentError()` SQLSTATE-`P0` offline-sync fix
-(`src/data/syncQueue.ts`, `db72bb7`) is confirmed landed — closed, `DONE`.
+Prior cycle's `directlyAssignedWalkCount` deletion-impact fix
+(`src/logic/familyManagement.ts` + wiring, `1482345`) is confirmed
+landed — closed, `DONE`.
 
-This cycle's own task — adding a `directlyAssignedWalkCount` field to
-`computeUserDeletionImpact()` (`src/logic/familyManagement.ts`) so a member
-who had a walk swapped to them (with no rotation entry of their own) is no
-longer reported as "safe to delete" with no replacement offered, fixing a
-real data-integrity gap where such a walk was silently orphaned onto a
-soft-deleted user forever — is code-complete and validated (`tsc` PASS,
-`npm test` PASS **127/127 · 1509/1509**, up from **127/127 · 1505/1505** at
-cycle start HEAD before the fix). Commit attempt outcome recorded under
-Blocker/Last Evidence below; per the standing 44+-cycle pattern, even a
-"blocked" self-report this same cycle should not be assumed final — the
-next cycle's first action must still be its own independent `git log
---oneline -5` + `git status` check.
+This cycle's own task — deactivating a removed family member's
+`push_tokens`/`web_push_subscriptions` inside `admin_delete_family_member()`
+(new migration 0037) plus a `removed_at` defense-in-depth filter in
+`send-request-push/index.ts`, closing a real data-boundary/privacy leak
+where a removed member kept receiving push notifications about a pending
+request of theirs resolved after their removal — is code-complete and
+validated (`tsc` PASS, `npm test` PASS **128/128 · 1514/1514**, up from
+**127/127 · 1509/1509** at cycle start HEAD before the fix). Commit attempt
+outcome recorded under Blocker/Last Evidence below; per the standing
+46+-cycle pattern, even a "blocked" self-report this same cycle should not
+be assumed final — the next cycle's first action must still be its own
+independent `git log --oneline -5` + `git status` check.
 
 ## Current Branch / PR
 
@@ -586,109 +706,102 @@ next cycle's first action must still be its own independent `git log
 ## Last Evidence
 
 - This cycle start: `git log --oneline -10`/`git status` confirmed HEAD is
-  `db72bb7`, clean working tree — **one** commit past `264dc88`, what this
-  file's own prior narrative described as HEAD. `git show --stat db72bb7`
-  and `git diff --name-status 264dc88 db72bb7` confirmed it contains
-  exactly the prior cycle's own `isPermanentError()` SQLSTATE-`P0` fix
-  (`src/data/syncQueue.ts` + `src/data/__tests__/syncQueue.test.ts`) plus
-  that cycle's own `EXECUTION_STATE.md` rewrite — it had landed despite the
-  prior cycle's own hedged "commit attempt outcome recorded under Blocker"
-  self-report, consistent with the standing pattern (see note at top of
-  file).
+  `1482345`, clean working tree — **one** commit past `db72bb7`, what this
+  file's own prior narrative described as HEAD. `git show --stat 1482345`
+  and `git diff --name-status db72bb7 1482345` confirmed it contains
+  exactly the prior cycle's own `directlyAssignedWalkCount` deletion-impact
+  fix (`src/types/index.ts`, `src/logic/familyManagement.ts`,
+  `src/logic/__tests__/familyManagement.test.ts`, `src/store/familyStore.ts`,
+  `src/store/__tests__/familyStore.test.ts`, `src/components/DeleteUserModal.tsx`)
+  plus that cycle's own `EXECUTION_STATE.md` rewrite — it had landed despite
+  the prior cycle's own hedged "commit attempt outcome recorded under
+  Blocker" self-report, consistent with the standing pattern (see note at
+  top of file).
 - `node_modules` absent entirely at cycle start again; `npm ci` fixed it
-  (906 packages). `npx tsc --noEmit` at reconciled HEAD `db72bb7` —
+  (906 packages). `npx tsc --noEmit` at reconciled HEAD `1482345` —
   **PASS**, zero errors. Full `npm test -- --runInBand` at reconciled
-  HEAD — **PASS: 127/127 suites, 1505/1505 tests** (the expected
+  HEAD — **PASS: 127/127 suites, 1509/1509 tests** (the expected
   baseline), confirming a healthy baseline before new work.
-- Retried a standalone `gh auth status` as a fresh sandbox-permission
-  check — returned "This command requires approval" again this cycle,
-  genuinely still gated (not a fresh unblock).
 - Dispatched a fresh Explore research agent, explicitly instructed not to
-  re-report any of the ~45+ already-exhausted defect classes documented in
-  this file, steered toward previously-unswept areas (SyncQueue/offline
-  conflict-resolution logic, other Edge Functions, store race conditions,
-  other migration/RPC logic bugs, other error-swallowing sites, push-token
-  lifecycle). It found a real gap, verified directly by this cycle (not
-  just trusted from the report) by reading
-  `src/logic/familyManagement.ts` (`computeUserDeletionImpact`,
-  `planUserRemoval`), `src/components/DeleteUserModal.tsx`,
-  `src/store/familyStore.ts`, and `src/logic/walkActions.ts`
-  (`swapWalk`/`swapWalksMutual`): a swap only ever mutates a `Walk`'s own
-  `responsibleUserId`, never its linked `schedule_entries` row (by design,
-  a one-off swap must not alter the ongoing rotation) — but
-  `computeUserDeletionImpact` only scanned `entries`/`rules` for `userId`,
-  never `walks`, so a member who had a walk swapped to them (with no
-  rotation entry of their own) showed zero deletion impact.
-  `DeleteUserModal.tsx`'s `hasImpact` was derived solely from that object,
-  so deletion was reported as safe with no replacement offered, and
-  `planUserRemoval`'s walk-reassignment loop (unchanged, already correct)
-  could only fall back to a `replacementUserId` that was never collected —
-  silently orphaning the walk onto the now-soft-deleted user forever.
-- **This cycle's own fix:** `computeUserDeletionImpact`
-  (`src/logic/familyManagement.ts`) now also takes `walks` and computes a
-  new `directlyAssignedWalkCount` field (pending, not-yet-past walks
-  assigned to `userId` whose linked entry, if any, is not also owned by
-  `userId`). Added the field to `UserDeletionImpact`
-  (`src/types/index.ts`). Updated `familyStore.ts`'s
-  `getUserDeletionImpact` to pass `walks`. Updated `DeleteUserModal.tsx`'s
-  `hasImpact` to also trigger on this new count, folded into the existing
-  "future walks" number in the warning copy (no new Hebrew string needed).
-  Added 4 new regression tests to `familyManagement.test.ts`'s
-  `computeUserDeletionImpact` describe block; updated 2 existing call
-  sites for the new `walks` parameter; added one new assertion to
-  `familyStore.test.ts`'s delegation test.
+  re-report any of the ~50+ already-exhausted defect classes documented in
+  this file, steered toward RC Queue item 4 (Settings/Roles/System Admin
+  QA) and named unswept areas (push-token lifecycle, other Edge Functions,
+  store race conditions, other migration/RPC logic bugs, other
+  error-swallowing sites). It found a real gap, verified directly by this
+  cycle (not just trusted from the report, including correcting the
+  report's own citation of the superseded 0007 definition in favor of the
+  actually-applied 0016 one) by reading
+  `supabase/migrations/0006_qa_impersonation.sql` (`approve_time_change_request`/
+  `reject_time_change_request`), `supabase/migrations/0016_profile_pin_reclaim_and_qa_sandbox.sql`
+  (current `admin_delete_family_member()`), `supabase/migrations/0013_push_tokens.sql`,
+  `0021_web_push_subscriptions.sql`, and `supabase/functions/send-request-push/index.ts`
+  in full: `admin_delete_family_member()` soft-deletes a member but never
+  deactivated their `push_tokens`/`web_push_subscriptions` rows, and
+  `send-request-push`'s own defense-in-depth `recipientFamilyIds` check only
+  re-confirmed `family_id`, never `removed_at` — so a member removed while
+  they had a pending time-change request kept receiving a real push
+  notification when an admin later approved/rejected it.
+- **This cycle's own fix:** added
+  `supabase/migrations/0037_deactivate_push_on_member_removal.sql` —
+  redefines `admin_delete_family_member()` (same 4-argument signature, via
+  `CREATE OR REPLACE`) to deactivate (`is_active = false`) the removed
+  member's `push_tokens`/`web_push_subscriptions` rows immediately before
+  `removed_at` is set. Also added `.is('removed_at', null)` to
+  `send-request-push/index.ts`'s `recipientFamilyIds` query as a second,
+  independent guard. Added a new 5-test source-text-scan regression file
+  `src/lib/__tests__/migration0037.pushDeactivationOnRemoval.test.ts`.
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `npm test -- --runInBand` after this cycle's own change — **PASS:
-  127/127 suites, 1509/1509 tests** (up from 127/127 · 1505/1505
-  immediately before the change, same HEAD — exactly 4 new tests, matching
-  the new regression tests one-for-one; no new suite, every other suite's
-  count unchanged).
+  128/128 suites, 1514/1514 tests** (up from 127/127 · 1509/1509
+  immediately before the change, same HEAD — exactly 1 new suite + 5 new
+  tests, matching the new regression test file one-for-one; every other
+  suite's count unchanged).
 - `git status --porcelain=v1 --untracked-files=all` confirmed the
-  changeset is scoped to exactly `src/types/index.ts`,
-  `src/logic/familyManagement.ts`,
-  `src/logic/__tests__/familyManagement.test.ts`,
-  `src/store/familyStore.ts`, `src/store/__tests__/familyStore.test.ts`,
-  `src/components/DeleteUserModal.tsx`, plus this `EXECUTION_STATE.md`
-  update — no unrelated file touched, no user work at risk.
+  changeset is scoped to exactly
+  `supabase/migrations/0037_deactivate_push_on_member_removal.sql` (new),
+  `supabase/functions/send-request-push/index.ts`,
+  `src/lib/__tests__/migration0037.pushDeactivationOnRemoval.test.ts`
+  (new), plus this `EXECUTION_STATE.md` update — no unrelated file touched,
+  no user work at risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
   checked directly via `git log`/`git status` after the attempt.
 
 ## Last Evidence Timestamp
 
-2026-09-17T21:15:00Z (prior landed commit `db72bb7`); this cycle's own work
-validated at HEAD `db72bb7` + working tree as of this cycle's own run
+2026-09-17T21:15:00Z (prior landed commit `1482345`); this cycle's own work
+validated at HEAD `1482345` + working tree as of this cycle's own run
 (2026-09-17, this session), commit attempt outcome per Blocker below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
-self-reported:** a standalone `git add <the two changed files>` followed
-by a standalone `git commit -m ...` returned "This command requires
-approval" from the tool layer itself (not a git error), consistent with
-every standing blocked git-write command across every prior cycle. A `git
-status --porcelain` run immediately after confirmed the working tree diff
-was unchanged (still exactly the seven modified files, nothing staged). So
-*within this turn's own visibility*, this cycle's commit attempt is a
-genuine, directly-confirmed no-op, not merely a hedged self-report —
-consistent with the standing pattern (see note at top of file, now
-reconfirmed for at least the 45th time running). The working-tree change
-itself (the `directlyAssignedWalkCount` deletion-impact fix across
-`src/types/index.ts`, `src/logic/familyManagement.ts`,
-`src/store/familyStore.ts`, `src/components/DeleteUserModal.tsx`, their
-test files — plus this `EXECUTION_STATE.md` update) is real and validated
-(`tsc`/`npm test` both PASS, 127/127 suites, 1509/1509 tests) — per "never
-discard uncommitted work," it is NOT reverted regardless of this turn's own
+self-reported:** a standalone `git add` of the four changed/new files
+(the two 0037 fix files, `send-request-push/index.ts`, and this
+`EXECUTION_STATE.md`) returned "This command requires approval" from the
+tool layer itself (not a git error), consistent with every standing
+blocked git-write command across every prior cycle. A `git status
+--porcelain=v1 --untracked-files=all` run immediately after confirmed the
+working tree was unchanged (still exactly the four files listed, nothing
+staged). So *within this turn's own visibility*, this cycle's commit
+attempt is a genuine, directly-confirmed no-op, not merely a hedged
+self-report — consistent with the standing pattern (see note at top of
+file, now reconfirmed for at least the 47th time running). The
+working-tree change itself (the push-deactivation-on-removal fix across
+`supabase/migrations/0037_deactivate_push_on_member_removal.sql`,
+`supabase/functions/send-request-push/index.ts`, the new test file — plus
+this `EXECUTION_STATE.md` update) is real and validated (`tsc`/`npm test`
+both PASS, 128/128 suites, 1514/1514 tests) — per "never discard
+uncommitted work," it is NOT reverted regardless of this turn's own
 commit-attempt outcome. The next cycle's first action must still be its
 own `git log --oneline -5` + `git status` to determine the actual final
 outcome independently.
 
 **Prior cycle's own commit-attempt narrative (condensed, same shape as
-above — full text in git history of this file):** the prior cycle's own
-`isPermanentError()` SQLSTATE-`P0` fix hit the identical "requires
-approval" block, yet was independently confirmed landed as `db72bb7` by
-this cycle's own reconciliation above — the 45th+ instance of this exact
-pattern.
+below — full text in git history of this file):** the prior cycle's own
+`directlyAssignedWalkCount` fix hit the identical "requires approval"
+block, yet was independently confirmed landed as `1482345` by this cycle's
+own reconciliation above — the 46th+ instance of this exact pattern.
 
 **Standing question — mechanism already established with direct evidence
 in prior cycles' own history of this file:** an external supervising
@@ -813,30 +926,46 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the `directlyAssignedWalkCount` deletion-impact fix in
-`src/logic/familyManagement.ts` + its wiring in `familyStore.ts`/
-`DeleteUserModal.tsx`/`types/index.ts` + 4 new regression tests + this
+cycle's own commit (the push-deactivation-on-removal fix: new migration
+`0037_deactivate_push_on_member_removal.sql` + the `removed_at` filter in
+`supabase/functions/send-request-push/index.ts` + the new 5-test
+`migration0037.pushDeactivationOnRemoval.test.ts` + this
 `EXECUTION_STATE.md` update) landed, and check every commit between
 whatever SHA this file names and actual HEAD, not just the newest one.
 **Also re-run the FULL `npm test -- --runInBand`** (standing habit,
 established several cycles ago after a full run caught 2 silently-failing
-tests that per-change subset runs had missed) — expect **127/127 suites,
-1509/1509 tests** as the new baseline (up from 127/127 · 1505/1505,
-correctly, due to this cycle's own 4 new regression tests in the existing
-`familyManagement.test.ts` suite, not a fluke).
+tests that per-change subset runs had missed) — expect **128/128 suites,
+1514/1514 tests** as the new baseline (up from 127/127 · 1509/1509,
+correctly, due to this cycle's own new suite, not a fluke).
 
-**This cycle's own fix — adding `directlyAssignedWalkCount` to
+**This cycle's own fix — deactivating a removed family member's
+`push_tokens`/`web_push_subscriptions` inside `admin_delete_family_member()`
+(new migration 0037), plus a `removed_at` defense-in-depth filter in
+`send-request-push/index.ts` — is done and complete; do not re-propose
+it.** This closes a real data-boundary/privacy leak where a member removed
+while they had a pending time-change request still received a real push
+notification when an admin later approved/rejected it. Nothing was
+deliberately deferred on this specific finding — the research agent
+reported no second candidate close in confidence, and the areas it also
+inspected (SettingsScreen.tsx, FamilyScreen.tsx, SystemAdminScreen.tsx/
+systemAdmin.ts migrations 0029/0035, send-walk-reminders,
+email-provider-webhook, scheduleStore/requestsStore/familyStore) were
+already extensively hardened by prior sweeps with no new reachable defect
+found — RC Queue item 4's credential-free sub-task is likely nearing
+exhaustion too; a future cycle may need to widen scope back to Queue item
+7 (Supabase-regression, still tooling-blocked) or re-attempt the
+credential unblocks below.
+
+**Prior cycle's own fix — adding `directlyAssignedWalkCount` to
 `computeUserDeletionImpact()` (`src/logic/familyManagement.ts`) so a member
 who had a walk swapped to them (with no rotation entry of their own) is no
 longer reported as "safe to delete" with no replacement offered — is done
-and complete; do not re-propose it.** The fix is deliberately scoped to
-exactly the walks `planUserRemoval`'s existing reassignment loop cannot
-resolve on its own (no linked entry owned by the removed user); walks whose
-linked entry *is* owned by the removed user were already safely covered by
-`futureScheduleEntryCount` and are not double-counted. Nothing was
-deliberately deferred on this specific finding — it was a clean,
-no-judgment-call completion, unlike several other findings in this file
-that were left as product/UX decisions.
+and complete (landed as `1482345`); do not re-propose it.** The fix is
+deliberately scoped to exactly the walks `planUserRemoval`'s existing
+reassignment loop cannot resolve on its own (no linked entry owned by the
+removed user); walks whose linked entry *is* owned by the removed user
+were already safely covered by `futureScheduleEntryCount` and are not
+double-counted.
 
 **Prior cycle's own fix — extending `isPermanentError()` (`src/data/syncQueue.ts`)
 to treat SQLSTATE class `P0` (`P0001`, the default code for every bare
@@ -1200,58 +1329,68 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `db72bb7`, one commit
-  past `264dc88` — confirmed via `git show --stat` and `git diff
+- Reconciliation found HEAD had actually moved to `1482345`, one commit
+  past `db72bb7` — confirmed via `git show --stat` and `git diff
   --name-status` it contains exactly the prior cycle's own
-  `isPermanentError()` SQLSTATE-`P0` fix (`src/data/syncQueue.ts` +
-  `src/data/__tests__/syncQueue.test.ts`) + that cycle's own
-  `EXECUTION_STATE.md` rewrite, reconfirming the standing
-  self-reporting-drift pattern yet again. `node_modules` was absent
-  entirely; `npm ci` fixed it. `npx tsc --noEmit` and full `npm test --
-  --runInBand` at reconciled HEAD both PASS (127/127 suites, 1505/1505
-  tests), confirming a healthy baseline. Retried a standalone `gh auth
-  status` — still gated.
+  `directlyAssignedWalkCount` deletion-impact fix (`src/types/index.ts`,
+  `src/logic/familyManagement.ts`,
+  `src/logic/__tests__/familyManagement.test.ts`, `src/store/familyStore.ts`,
+  `src/store/__tests__/familyStore.test.ts`, `src/components/DeleteUserModal.tsx`)
+  + that cycle's own `EXECUTION_STATE.md` rewrite, reconfirming the
+  standing self-reporting-drift pattern yet again. `node_modules` was
+  absent entirely; `npm ci` fixed it. `npx tsc --noEmit` and full `npm
+  test -- --runInBand` at reconciled HEAD both PASS (127/127 suites,
+  1509/1509 tests), confirming a healthy baseline.
 - Dispatched a fresh Explore research agent (explicitly told not to
-  re-report any of the ~45+ already-exhausted defect classes), steered
-  toward previously-unswept areas (SyncQueue/offline conflict-resolution
-  logic, other Edge Functions, store race conditions, other migration/RPC
-  logic bugs, other error-swallowing sites, push-token lifecycle). It
-  found: `computeUserDeletionImpact()` (`src/logic/familyManagement.ts`)
-  only scanned `entries`/`rules` for the user being deleted, never
-  `walks`. A one-off swap (`swapWalk`/`swapWalksMutual`,
-  `src/logic/walkActions.ts`) only ever mutates a `Walk`'s own
-  `responsibleUserId`, never its linked `schedule_entries` row (by
-  design) — so a member who had a walk swapped to them, with no rotation
-  entry of their own, showed zero deletion impact.
-  `DeleteUserModal.tsx`'s `hasImpact` (derived solely from that impact
-  object) then reported deletion as safe with no replacement offered, and
-  `planUserRemoval`'s existing walk-reassignment loop — which can only
-  fall back to a `replacementUserId` that was never collected — silently
-  left the walk referencing the now-soft-deleted user forever. Verified
-  directly (read `computeUserDeletionImpact`/`planUserRemoval` in full,
-  `DeleteUserModal.tsx`, `familyStore.ts`, and `walkActions.ts`'s swap
-  functions) rather than trusting the report as-is.
-- **Fixed:** added a `directlyAssignedWalkCount` field to
-  `computeUserDeletionImpact()` (pending, not-yet-past walks assigned to
-  the user whose linked entry, if any, is not also owned by them — exactly
-  the walks `planUserRemoval` cannot resolve via its entry fallback).
-  Added the field to `UserDeletionImpact` (`src/types/index.ts`). Updated
-  `familyStore.ts`'s `getUserDeletionImpact` to pass `walks`. Updated
-  `DeleteUserModal.tsx`'s `hasImpact` to also trigger on this new count,
-  folded into the existing "future walks" number in the warning copy (no
-  new Hebrew string). Added 4 new regression tests to
-  `familyManagement.test.ts`; updated 2 existing call sites for the new
-  parameter; added one new assertion to `familyStore.test.ts`. `npx tsc
-  --noEmit` PASS. `npm test -- --runInBand` PASS: 127/127 suites,
-  1509/1509 tests (up from 127/127 · 1505/1505, exactly 4 new tests,
-  matching the new regression tests one-for-one). `git status`/diff scoped
-  to exactly `src/types/index.ts`, `src/logic/familyManagement.ts`,
-  `src/logic/__tests__/familyManagement.test.ts`,
-  `src/store/familyStore.ts`, `src/store/__tests__/familyStore.test.ts`,
-  `src/components/DeleteUserModal.tsx` + this `EXECUTION_STATE.md` update.
-  **Commit attempt outcome:** see Blocker above.
+  re-report any of the ~50+ already-exhausted defect classes), steered
+  toward RC Queue item 4 (Settings/Roles/System Admin QA) and named
+  unswept areas (push-token lifecycle, other Edge Functions, store race
+  conditions, other migration/RPC logic bugs, other error-swallowing
+  sites). It found: `admin_delete_family_member()` (0016's currently-
+  applied definition) soft-deletes a member but never deactivates their
+  `push_tokens`/`web_push_subscriptions` rows — the only prior
+  deactivation of either table anywhere in the schema is a whole-FAMILY
+  QA-sandbox reset (0016), never a per-member removal. A member removed
+  while they had a pending time-change request still got a real Expo push
+  when an admin later approved/rejected it: both
+  `approve_time_change_request()`/`reject_time_change_request()` (0006)
+  resolve the recipient purely from `requested_by_user_id` with no
+  active-membership check, and `send-request-push/index.ts`'s own
+  defense-in-depth `recipientFamilyIds` query only re-confirmed
+  `family_id`, never `removed_at`. Verified directly (read 0006, the
+  actually-applied 0016 definition of `admin_delete_family_member()` —
+  correcting the research agent's own citation of the superseded 0007
+  version — 0013/0021's table schemas, and the full Edge Function) rather
+  than trusting the report as-is.
+- **Fixed:** added `supabase/migrations/0037_deactivate_push_on_member_removal.sql`
+  — redefines `admin_delete_family_member()` (same 4-argument signature)
+  to deactivate (`is_active = false`) the removed member's
+  `push_tokens`/`web_push_subscriptions` rows immediately before
+  `removed_at` is set. Added `.is('removed_at', null)` to
+  `send-request-push/index.ts`'s `recipientFamilyIds` query as a second,
+  independent guard. Added a new 5-test source-text-scan regression file
+  `src/lib/__tests__/migration0037.pushDeactivationOnRemoval.test.ts`.
+  `npx tsc --noEmit` PASS. `npm test -- --runInBand` PASS: 128/128 suites,
+  1514/1514 tests (up from 127/127 · 1509/1509, exactly 1 new suite + 5
+  new tests, matching the new regression test file one-for-one). `git
+  status`/diff scoped to exactly
+  `supabase/migrations/0037_deactivate_push_on_member_removal.sql` (new),
+  `supabase/functions/send-request-push/index.ts`,
+  `src/lib/__tests__/migration0037.pushDeactivationOnRemoval.test.ts`
+  (new) + this `EXECUTION_STATE.md` update. **Commit attempt outcome:**
+  see Blocker above.
 
 ### Recent cycles (condensed — full detail in git history of this file)
+
+- Prior cycle: reconciliation found HEAD at `db72bb7` and fixed a real,
+  first-time-discovered data-integrity gap: `computeUserDeletionImpact()`
+  (`src/logic/familyManagement.ts`) never scanned `walks`, only
+  `entries`/`rules`, so a member who had a walk swapped to them (with no
+  rotation entry of their own) was reported "safe to delete" with no
+  replacement offered, silently orphaning the walk onto the now-soft-
+  deleted user forever. Added a `directlyAssignedWalkCount` field. Landed
+  as `1482345` despite that cycle's own hedged "commit attempt outcome
+  recorded under Blocker" self-report.
 
 - Prior cycle: reconciliation found HEAD at `264dc88` and fixed a real,
   first-time-discovered offline-sync correctness bug: `isPermanentError()`
