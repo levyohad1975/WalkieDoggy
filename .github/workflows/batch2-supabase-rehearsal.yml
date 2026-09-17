@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   local-supabase-rehearsal:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 20
     env:
       SUPABASE_TELEMETRY_DISABLED: "1"
@@ -22,149 +22,69 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Verify known duplicate 0019 state
-        shell: bash
+        shell: powershell
         run: |
-          set -euo pipefail
-          test -f supabase/migrations/0019_request_result_read_state.sql
-          test -f supabase/migrations/0019_request_result_seen_state.sql
-          test ! -s supabase/migrations/0019_request_result_read_state.sql
-          test -s supabase/migrations/0019_request_result_seen_state.sql
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path 'supabase/migrations/0019_request_result_read_state.sql')) { throw 'missing 0019_request_result_read_state.sql' }
+          if (-not (Test-Path 'supabase/migrations/0019_request_result_seen_state.sql')) { throw 'missing 0019_request_result_seen_state.sql' }
+          if ((Get-Item 'supabase/migrations/0019_request_result_read_state.sql').Length -ne 0) { throw 'read_state duplicate must remain empty' }
+          if ((Get-Item 'supabase/migrations/0019_request_result_seen_state.sql').Length -eq 0) { throw 'seen_state migration must be non-empty' }
 
       - name: Prepare ephemeral migration history
-        shell: bash
+        shell: powershell
         run: |
-          set -euo pipefail
-          # Local rehearsal only. The repository file is never changed or
-          # committed. Production applied-state verification is still required.
-          # schema.sql is the repository's documented current baseline.
-          # The historical migrations are incremental and are not a clean-room
-          # bootstrap chain, so rehearse only this Batch against that baseline.
-          rehearsal_dir="$(mktemp -d)"
-          cp supabase/migrations/0032_verified_family_onboarding.sql "$rehearsal_dir/"
-          cp supabase/migrations/0033_verified_family_onboarding_cutover.sql "$rehearsal_dir/"
-          cp supabase/migrations/0034_email_delivery_log.sql "$rehearsal_dir/"
-          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -delete
-          cp supabase/schema.sql supabase/migrations/0000_base_schema.sql
-          cp "$rehearsal_dir/"0032_verified_family_onboarding.sql supabase/migrations/
-          cp "$rehearsal_dir/"0033_verified_family_onboarding_cutover.sql supabase/migrations/
-          cp "$rehearsal_dir/"0034_email_delivery_log.sql supabase/migrations/
+          $ErrorActionPreference = 'Stop'
+          $rehearsalDir = Join-Path $env:RUNNER_TEMP ('batch2-rehearsal-' + [guid]::NewGuid())
+          New-Item -ItemType Directory -Path $rehearsalDir | Out-Null
+          Copy-Item 'supabase/migrations/0032_verified_family_onboarding.sql' $rehearsalDir
+          Copy-Item 'supabase/migrations/0033_verified_family_onboarding_cutover.sql' $rehearsalDir
+          Copy-Item 'supabase/migrations/0034_email_delivery_log.sql' $rehearsalDir
+          Get-ChildItem 'supabase/migrations' -Filter '*.sql' | Remove-Item -Force
+          Copy-Item 'supabase/schema.sql' 'supabase/migrations/0000_base_schema.sql'
+          Copy-Item (Join-Path $rehearsalDir '0032_verified_family_onboarding.sql') 'supabase/migrations/'
+          Copy-Item (Join-Path $rehearsalDir '0033_verified_family_onboarding_cutover.sql') 'supabase/migrations/'
+          Copy-Item (Join-Path $rehearsalDir '0034_email_delivery_log.sql') 'supabase/migrations/'
 
       - uses: supabase/setup-cli@v3
         with:
           version: 2.116.0
 
       - name: Start isolated Supabase stack
+        shell: powershell
         run: supabase start -x studio,imgproxy,storage-api,realtime,edge-runtime,logflare,vector,supavisor
 
       - name: Reapply all migrations from a clean database
+        shell: powershell
         run: supabase db reset --local
 
       - name: Verify Batch 2 schema and authorization cutover
+        shell: powershell
         env:
           PGPASSWORD: postgres
         run: |
-          psql "postgresql://postgres@127.0.0.1:54322/postgres"             -v ON_ERROR_STOP=1 <<'SQL'
-          select 1 / (
-            (select count(*) from information_schema.columns
-             where table_schema = 'public'
-               and table_name = 'families'
-               and column_name in ('approval_status', 'created_by_auth_user_id')) = 2
-          )::int;
-
-          select 1 / (to_regprocedure(
-            'public.create_verified_family(uuid,text,text,boolean)'
-          ) is not null)::int;
-
-          select 1 / (to_regprocedure(
-            'public.system_admin_set_family_approval(uuid,text)'
-          ) is not null)::int;
-
-          select 1 / (
-            not has_function_privilege(
-              'anon', 'public.create_family(text,text)', 'EXECUTE'
-            )
-          )::int;
-
-          select 1 / (
-            not has_function_privilege(
-              'authenticated', 'public.create_family(text,text)', 'EXECUTE'
-            )
-          )::int;
-
-          select 1 / (
-            has_function_privilege(
-              'service_role',
-              'public.create_verified_family(uuid,text,text,boolean)',
-              'EXECUTE'
-            )
-          )::int;
-
-          select 1 / (
-            position(
-              'approval_status' in pg_get_functiondef(
-                'public.current_family_id()'::regprocedure
-              )
-            ) > 0
-          )::int;
-
-          select 1 / (
-            (select count(*) from information_schema.tables
-             where table_schema = 'public'
-               and table_name = 'email_delivery_log') = 1
-          )::int;
-
-          select 1 / (
-            (select relrowsecurity from pg_class
-             where oid = 'public.email_delivery_log'::regclass) is true
-          )::int;
-
-          select 1 / (
-            (select count(*) from pg_policies
-             where schemaname = 'public'
-               and tablename = 'email_delivery_log') = 0
-          )::int;
-
-          select 1 / (to_regprocedure(
-            'public.record_email_delivery_attempt(uuid,uuid,text,text,text,text,text,text)'
-          ) is not null)::int;
-
-          select 1 / (to_regprocedure(
-            'public.update_email_delivery_status(text,text,text,text)'
-          ) is not null)::int;
-
-          select 1 / (
-            has_function_privilege(
-              'service_role',
-              'public.record_email_delivery_attempt(uuid,uuid,text,text,text,text,text,text)',
-              'EXECUTE'
-            )
-          )::int;
-
-          select 1 / (
-            not has_function_privilege(
-              'authenticated',
-              'public.record_email_delivery_attempt(uuid,uuid,text,text,text,text,text,text)',
-              'EXECUTE'
-            )
-          )::int;
-
-          select 1 / (
-            not has_function_privilege(
-              'anon',
-              'public.update_email_delivery_status(text,text,text,text)',
-              'EXECUTE'
-            )
-          )::int;
-
-          select 1 / (
-            has_function_privilege(
-              'authenticated',
-              'public.system_admin_list_email_delivery_log(integer)',
-              'EXECUTE'
-            )
-          )::int;
-          SQL
+          $ErrorActionPreference = 'Stop'
+          $sql = @'
+          select 1 / ((select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'families' and column_name in ('approval_status', 'created_by_auth_user_id')) = 2)::int;
+          select 1 / (to_regprocedure('public.create_verified_family(uuid,text,text,boolean)') is not null)::int;
+          select 1 / (to_regprocedure('public.system_admin_set_family_approval(uuid,text)') is not null)::int;
+          select 1 / (not has_function_privilege('anon', 'public.create_family(text,text)', 'EXECUTE'))::int;
+          select 1 / (not has_function_privilege('authenticated', 'public.create_family(text,text)', 'EXECUTE'))::int;
+          select 1 / (has_function_privilege('service_role', 'public.create_verified_family(uuid,text,text,boolean)', 'EXECUTE'))::int;
+          select 1 / (position('approval_status' in pg_get_functiondef('public.current_family_id()'::regprocedure)) > 0)::int;
+          select 1 / ((select count(*) from information_schema.tables where table_schema = 'public' and table_name = 'email_delivery_log') = 1)::int;
+          select 1 / ((select relrowsecurity from pg_class where oid = 'public.email_delivery_log'::regclass) is true)::int;
+          select 1 / ((select count(*) from pg_policies where schemaname = 'public' and tablename = 'email_delivery_log') = 0)::int;
+          select 1 / (to_regprocedure('public.record_email_delivery_attempt(uuid,uuid,text,text,text,text,text,text)') is not null)::int;
+          select 1 / (to_regprocedure('public.update_email_delivery_status(text,text,text,text)') is not null)::int;
+          select 1 / (has_function_privilege('service_role', 'public.record_email_delivery_attempt(uuid,uuid,text,text,text,text,text,text)', 'EXECUTE'))::int;
+          select 1 / (not has_function_privilege('authenticated', 'public.record_email_delivery_attempt(uuid,uuid,text,text,text,text,text,text)', 'EXECUTE'))::int;
+          select 1 / (not has_function_privilege('anon', 'public.update_email_delivery_status(text,text,text,text)', 'EXECUTE'))::int;
+          select 1 / (has_function_privilege('authenticated', 'public.system_admin_list_email_delivery_log(integer)', 'EXECUTE'))::int;
+          '@
+          $sql | docker exec -i supabase_db_WalkieDoggy psql -U postgres -d postgres -v ON_ERROR_STOP=1
+          if ($LASTEXITCODE -ne 0) { throw "Batch 2 schema verification failed with exit code $LASTEXITCODE" }
 
       - name: Stop isolated stack
         if: always()
+        shell: powershell
         run: supabase stop --no-backup
