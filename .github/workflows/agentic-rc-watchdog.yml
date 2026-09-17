@@ -54,8 +54,10 @@ jobs:
           $author = [string]$commit.commit.author.name
           $subject = ([string]$commit.commit.message -split "`n")[0].Trim()
           $committedAt = [DateTimeOffset]::Parse([string]$commit.commit.committer.date)
-          if ($author -ne 'walkie-agentic-worker[bot]') { 'No recovery: RC head is not Worker-authored.' | Add-Content $env:GITHUB_STEP_SUMMARY; exit 0 }
-          if ($subject -notin @('chore(agentic): continue RC execution', 'chore(agentic): checkpoint RC execution')) { 'No recovery: RC head is not an Agentic checkpoint.' | Add-Content $env:GITHUB_STEP_SUMMARY; exit 0 }
+          $isWorkerCheckpoint = $author -eq 'walkie-agentic-worker[bot]' -and $subject -in @('chore(agentic): continue RC execution', 'chore(agentic): checkpoint RC execution')
+          if (-not $isWorkerCheckpoint) {
+            "Bootstrap recovery: RC head $env:HEAD_SHA is not a Worker checkpoint; exact-head Validation will establish a trusted handoff." | Add-Content $env:GITHUB_STEP_SUMMARY
+          }
 
           $runsUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=100"
           $runs = Invoke-RestMethod -Uri $runsUrl -Headers $headers -Method Get
