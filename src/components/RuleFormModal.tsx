@@ -7,6 +7,7 @@ import { Avatar } from '../components/Avatar';
 import { Button } from './Button';
 import { TimePickerField } from './TimePickerField';
 import { is24HourTime } from '../logic/timeInput';
+import { previewRotation } from '../logic/rotation';
 
 const DAY_LABELS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
 // Round 6F: full spoken day names for the day chips' accessibilityLabel —
@@ -143,8 +144,10 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
             </View>
             {rotation.length > 0 ? (
               <RtlText style={styles.rotationPreview}>
-                {rotation.map((id) => usersById[id]?.name).join(' → ')}
-                {rotation.length > 1 ? ` → ${usersById[rotation[0]]?.name} ...` : ''}
+                {previewRotation(
+                  rotation.map((id) => usersById[id]?.name ?? '?'),
+                  rotation.length > 1 ? rotation.length + 1 : rotation.length
+                )}
               </RtlText>
             ) : null}
 

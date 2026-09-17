@@ -28,61 +28,69 @@ Claude Execution Worker → GitHub/CI/Staging → Evidence → Next Safe Task.
 ## ⚠️ Standing protocol note (read first, every cycle)
 
 A "commit/`git add` requires approval" sandbox message has been wrong
-27+ times in a row now across many prior cycles (see git history of this
+28+ times in a row now across many prior cycles (see git history of this
 file for the full run) — every one of those "could not commit"
 self-reports turned out to be incorrect; the commit had already landed
 and pushed by the time the next cycle checked. **Reconfirmed yet again
-this cycle**: this cycle's own start found HEAD already at `26329b6`, one
-commit past the `ed3cea0` the prior cycle's own file narrative described
-as HEAD, and `git show --stat 26329b6` confirmed it contains exactly the
-prior cycle's own `Avatar.tsx`/`DogPhoto.tsx` decorative-image fix + its
-new test file + that cycle's own `EXECUTION_STATE.md` update — the prior
-cycle's own "genuinely did NOT land, directly confirmed" self-report was,
-once again (27th time running now), wrong. The next cycle's **first
-action, before trusting anything else in this file**, must still be:
-`git log --oneline -5` + `git status` to see whether HEAD has moved past
-whatever SHA this file currently names as HEAD, and if so, `git show
---stat` on **every** commit between the old and new HEAD (not just the
-newest one — a prior cycle found two undocumented commits behind one
-stale SHA, not one) to confirm what actually landed before doing anything
-else.
+this cycle**: this cycle's own start found HEAD already at `bd375ea`, one
+commit past the `6e3f491` the prior cycle's own file narrative described
+as HEAD, and `git show --stat bd375ea` confirmed it contains exactly the
+prior cycle's own `package.json` `testPathIgnorePatterns` addition (8
+insertions) + that cycle's own `EXECUTION_STATE.md` rewrite — the prior
+cycle's own hedged "commit attempt outcome recorded under Blocker"
+self-report was, once again (28th time running now), wrong. The next
+cycle's **first action, before trusting anything else in this file**,
+must still be: `git log --oneline -5` + `git status` to see whether HEAD
+has moved past whatever SHA this file currently names as HEAD, and if so,
+`git show --stat` on **every** commit between the old and new HEAD (not
+just the newest one — a prior cycle found two undocumented commits behind
+one stale SHA, not one) to confirm what actually landed before doing
+anything else.
 
 ## Current Task
 
 **This cycle's reconciliation, done fresh via direct `git log`/`git show`,
-not trusted from this file's own prior narrative:** HEAD was `6e3f491`,
+not trusted from this file's own prior narrative:** HEAD was `bd375ea`,
 clean working tree, up to date with
 `origin/feat/verified-auth-onboarding-batch-2` — **one** commit past
-`f678758`, what this file's own prior text described as HEAD.
-`git show --stat 6e3f491` confirmed it contains exactly the prior cycle's
-own four-file CRLF-normalization test fix (`.replace(/\r\n/g, '\n')` in
-`MemberDetailsModal.resetPermissionAccessibility.test.ts`,
-`HomeScreen.lastWalkFallback.test.ts`,
-`FamilyOnboardingScreen.onboardingStatusRecovery.test.ts`,
-`SettingsScreen.switchUserFlow.test.ts`) plus that cycle's own
-`EXECUTION_STATE.md` rewrite — i.e. the prior cycle's own hedged "commit
-attempt outcome recorded under Blocker" self-report resolved the same way
-as the standing pattern (see note above): the commit had already landed
-and pushed. Reconciled before starting new work, per protocol.
+`6e3f491`, what this file's own prior text described as HEAD.
+`git show --stat bd375ea` confirmed it contains exactly the prior cycle's
+own `package.json` `testPathIgnorePatterns` addition (8 insertions) plus
+that cycle's own `EXECUTION_STATE.md` rewrite — i.e. the prior cycle's own
+hedged "commit attempt outcome recorded under Blocker" self-report
+resolved the same way as the standing pattern (see note above): the
+commit had already landed and pushed. Reconciled before starting new
+work, per protocol.
 
 `node_modules` was absent again at cycle start (confirmed via `test -d
 node_modules`); `npm ci` restored it (906 packages). `npx tsc --noEmit` at
-reconciled HEAD `6e3f491` — **PASS**. `npm test -- --runInBand` at
-reconciled HEAD, run in full — **PASS: 130/130 suites, 1487/1487 tests**,
-confirming a healthy baseline before starting new work.
+reconciled HEAD `bd375ea` — **PASS**. `npm test -- --runInBand` at
+reconciled HEAD, run in full — **PASS: 125/125 suites, 1482/1482 tests**
+(the expected post-`testPathIgnorePatterns` baseline), confirming a
+healthy baseline before starting new work.
 
 Rechecked every standing blocker directly this cycle, all unchanged from
 every prior cycle: `gh auth status` — gated ("This command requires
 approval"). `docker info` — gated. `which supabase` — exit 1, not
-installed. `git branch -r | grep batch` — only
-`origin/feat/settings-roles-batch-3` and this branch itself, still no
-`batch-4`-named branch. `git rm tmp_coverage_inspect.js` (one of the
+installed. `git log --oneline --all | grep -i batch` — only a historical
+`a2c969b Batch 4 production release...` commit already in this branch's
+own ancestry, still no separate `batch-4`-named branch or unmerged Batch
+4 work anywhere in the repo. `git rm tmp_coverage_inspect.js` (one of the
 seventeen dead scratch files) — still gated, reconfirming the
-file-deletion permission block.
+file-deletion permission block. `TZ=Pacific/Kiritimati node -e ...` —
+still gated too, reconfirming that blocker.
+
+**Dispatched a fresh research agent (Explore) to find one new,
+previously-undiscovered functional gap of the established "implemented
+and tested but never wired up" shape**, explicitly instructed not to
+re-report any already-exhausted defect class documented below
+(accessibility props, RTL alignment, keyboard avoidance, coverage,
+migration-vs-call-site sweep through migration 0035, etc.). It found one
+— see the new task below.
 
 **Two research-agent-proposed candidates were investigated and rejected
-this cycle, not acted on — recorded here so a future cycle does not
-re-propose either:**
+in an earlier cycle, not acted on — recorded here so a future cycle does
+not re-propose either:**
 1. `system_admin_set_family_approval()` (migration 0032, `authenticated`-
    granted, `is_system_admin()`-checked) has zero call sites on **this**
    branch. Before treating this as a gap, cross-checked
@@ -109,69 +117,61 @@ re-propose either:**
    test-only utility, not an unwired bug. Do not re-propose wiring it into
    `signOut()`.
 
-**This cycle's own task — the "testPathIgnorePatterns" interim mitigation
-a prior cycle had left open as an idea, not yet executed:** re-verified
-with fresh direct evidence rather than trusting the old claim. Read all
-six candidate scratch/debug test files
-(`src/lib/__tests__/__scratch_platform_probe.test.ts`,
-`src/lib/__tests__/__scratch_pushTokens_probe.test.ts`,
-`src/notifications/__tests__/__scratch_isolate_probe.test.ts`,
-`src/store/__tests__/__scratch_renderHook_probe.test.ts`,
-`src/notifications/__tests__/debugExpoConstants.test.ts`,
-`src/notifications/__tests__/debugExpoNotifications.test.ts`) in full.
-Confirmed **5 of the 6 have literally zero `expect()` calls** — pure
-`console.log` probes that report "passing" unconditionally, regardless of
-actual behavior:
-`__scratch_platform_probe`/`__scratch_pushTokens_probe`/`__scratch_isolate_probe`/
-`debugExpoConstants`/`debugExpoNotifications`.
-`__scratch_renderHook_probe.test.ts` was the exception — it has 2 real
-`expect()` assertions on `useEffectiveFamilyRole`/`useEffectiveUserId`, so
-it is a genuine (if possibly redundant with `authStore.test.ts`) test, not
-the same defect class — deliberately left running, not touched.
-Additionally confirmed via `grep -rn "Platform.OS\s*=" src --include=*.test.ts`
-that `__scratch_platform_probe.test.ts` is the **only** file in the repo
-that mutates the global `Platform.OS` in a test, with no `afterEach`
-restore — a latent risk, though narrower than a prior cycle's own
-narrative implied: Jest gives each test **file** its own module registry
-by default, so this mutation is contained to that one file's own realm,
-not a cross-file leak.
+**This cycle's own task — wired `previewRotation()`
+(`src/logic/rotation.ts:121-128`) into its two intended call sites,
+closing a real, first-time-discovered functional gap:** the helper was
+fully implemented and unit-tested (`rotation.test.ts:128-144`, covering
+empty list/wraparound/zero-turns/a worked Hebrew example matching its own
+doc comment) but had zero production call sites — confirmed via
+`grep -rn "previewRotation" src/` returning only the definition and its
+test file. Two call sites had each independently hand-rolled a worse
+substitute: `RuleFormModal.tsx`'s rotation-order picker
+(`rotation.map(...).join(' → ')` plus a bolted-on `→ ${first} ...`
+suffix that never produced a true multi-turn wraparound) and
+`ScheduleScreen.tsx`'s rule-summary row
+(`r.rotationUserIds.map(...).join(' → ')`, a plain single pass). Verified
+directly (read both files in full) before acting, not just trusted the
+research agent's report.
 
-Direct deletion of these files (the actual permanent fix) remains blocked
-this cycle by the same standing file-deletion permission gate (reconfirmed
-via `git rm tmp_coverage_inspect.js` — see Current Task reconciliation
-above), so this cycle executed the documented fallback instead: **added
-`testPathIgnorePatterns` to `package.json`'s `"jest"` config**, excluding
-exactly the 5 zero-assertion files by explicit path (not a broad glob, so
-no future genuine test is accidentally excluded by pattern-matching
-coincidence). Jest's own default `testPathIgnorePatterns` is
-`["/node_modules/"]`, which is fully replaced (not merged) by supplying
-this key at all, so `"/node_modules/"` was kept as the first entry
-alongside the 5 new ones to avoid accidentally collecting
-`node_modules/**/*.test.ts`.
+**Fixed:** both now call `previewRotation()` — `RuleFormModal.tsx` with
+`turns = rotation.length > 1 ? rotation.length + 1 : rotation.length`
+(reproduces the intended one-wraparound preview, dropping the redundant
+ad-hoc `"..."` suffix now that the repeated first name already conveys
+the wrap, matching `previewRotation`'s own canonical output format used
+by its test) and `ScheduleScreen.tsx` with
+`turns = r.rotationUserIds.length` (an exact behavior-preserving
+replacement of its existing single-pass display). Added
+`src/logic/__tests__/previewRotationWiring.test.ts` (4 sub-tests, this
+repo's established source-scan convention) asserting both files import
+and call `previewRotation` and no longer contain the ad-hoc
+`.join(' → ')` pattern. A confirming `grep -rn "join(' → ')" src/` after
+the fix returns only `rotation.ts`'s own implementation and this new
+test file's doc comment — no other unwired sibling of the same shape
+remains.
 
 `npx tsc --noEmit` after the change — **PASS**, zero errors. `npm test --
---runInBand` after the change — **PASS: 125/125 suites, 1482/1482 tests**
-(down from 130/130 · 1487/1487 immediately before the change, same HEAD —
-exactly 5 fewer suites and 5 fewer tests, matching the 5 excluded files
+--runInBand` after the change — **PASS: 126/126 suites, 1486/1486 tests**
+(up from 125/125 · 1482/1482 immediately before the change, same HEAD —
+exactly 1 new suite/4 new tests, matching the new regression file
 one-for-one; no other suite's count changed). `git status
---porcelain=v1 --untracked-files=all` confirmed the changeset is scoped to
-exactly `package.json` (8 insertions) — no unrelated file touched, no user
-work at risk.
+--porcelain=v1 --untracked-files=all` confirmed the changeset is scoped
+to exactly `RuleFormModal.tsx`, `ScheduleScreen.tsx` (10 insertions/3
+deletions combined) plus the new test file — no unrelated file touched,
+no user work at risk.
 
 ## Current Task Status
 
-Prior cycle's four-file CRLF-normalization test fix (`6e3f491`) is
-confirmed landed and pushed — closed, `DONE`.
+Prior cycle's `testPathIgnorePatterns` addition (`bd375ea`) is confirmed
+landed and pushed — closed, `DONE`.
 
-This cycle's own task — excluding the 5 zero-assertion scratch/debug test
-files from Jest collection via `testPathIgnorePatterns` in `package.json`
-— is code-complete and validated (`tsc` PASS, `npm test` PASS
-**125/125 · 1482/1482**, down from **130/130 · 1487/1487** at cycle start
-HEAD before the fix). Commit attempt outcome recorded under Blocker/Last
-Evidence below; per the standing 35-cycle pattern, even a "blocked"
-self-report this same cycle should not be assumed final — the next
-cycle's first action must still be its own independent
-`git log --oneline -5` + `git status` check.
+This cycle's own task — wiring `previewRotation()` into
+`RuleFormModal.tsx`/`ScheduleScreen.tsx` — is code-complete and validated
+(`tsc` PASS, `npm test` PASS **126/126 · 1486/1486**, up from
+**125/125 · 1482/1482** at cycle start HEAD before the fix). Commit
+attempt outcome recorded under Blocker/Last Evidence below; per the
+standing 38+-cycle pattern, even a "blocked" self-report this same cycle
+should not be assumed final — the next cycle's first action must still be
+its own independent `git log --oneline -5` + `git status` check.
 
 ## Current Branch / PR
 
@@ -184,57 +184,52 @@ cycle's first action must still be its own independent
 
 ## Last Evidence
 
-- This cycle start: `git log --oneline -10`/`git status` confirmed HEAD is
-  `6e3f491`, clean working tree, "up to date with
+- This cycle start: `git log --oneline -5`/`git status` confirmed HEAD is
+  `bd375ea`, clean working tree, "up to date with
   origin/feat/verified-auth-onboarding-batch-2" — **one** commit past
-  `f678758`, what this file's own prior narrative described as HEAD.
-  `git show --stat 6e3f491` confirmed it contains exactly the prior
-  cycle's own four-file CRLF-normalization test fix plus that cycle's own
-  `EXECUTION_STATE.md` rewrite (234 insertions/155 deletions) — it had
+  `6e3f491`, what this file's own prior narrative described as HEAD.
+  `git show --stat bd375ea` confirmed it contains exactly the prior
+  cycle's own `package.json` `testPathIgnorePatterns` addition (8
+  insertions) plus that cycle's own `EXECUTION_STATE.md` rewrite — it had
   landed and pushed despite the prior cycle's own hedged "commit attempt
   outcome recorded under Blocker" self-report, consistent with the
   standing pattern (see note at top of file).
 - `node_modules` absent entirely at cycle start again (`test -d
   node_modules` → absent); `npm ci` fixed it (906 packages). `npx tsc
-  --noEmit` at reconciled HEAD `6e3f491` — **PASS**, zero errors. Full
-  `npm test -- --runInBand` at reconciled HEAD — **PASS: 130/130 suites,
-  1487/1487 tests**, confirming a healthy baseline before new work.
-- Rechecked every standing blocker directly: `gh auth status` — gated.
-  `docker info` — gated. `which supabase` — exit 1, not installed.
-  `git branch -r | grep batch` — no `batch-4`-named branch. `git rm
-  tmp_coverage_inspect.js` — still gated (file-deletion permission block).
-  All unchanged from every prior cycle.
-- Investigated and rejected two research-agent-proposed candidates before
-  selecting this cycle's actual task — see Current Task above for full
-  detail: (1) `system_admin_set_family_approval()` — cross-branch
-  `git grep` against `origin/feat/system-admin-approval-controls`
-  confirmed it is already fully wired there (PR #11), correctly out of
-  scope for this branch; (2) `useSystemAdminStore.reset()` — read the
-  store's own doc comment plus `authStore.signOut()`'s doc comments and
-  confirmed `isSystemAdmin` is scoped to this device's persistent
-  `auth.uid()`, which `signOut()` (a local family-member switch, not a
-  real Supabase sign-out) never changes — no real bug, a legitimate
-  test-only utility.
-- **This cycle's own task:** re-verified with fresh evidence that 5 of 6
-  scratch/debug test files (`__scratch_platform_probe`,
-  `__scratch_pushTokens_probe`, `__scratch_isolate_probe`,
-  `debugExpoConstants`, `debugExpoNotifications`) have zero `expect()`
-  calls (confirmed by reading each file in full) — false-positive
-  "always green" tests inflating the suite-pass count.
-  `__scratch_renderHook_probe.test.ts` has 2 real assertions and was left
-  untouched. Direct file deletion remains gated (see above), so added
-  `testPathIgnorePatterns` to `package.json`'s `"jest"` config, excluding
-  the 5 zero-assertion files by explicit path (kept `"/node_modules/"` as
-  the first entry since supplying this key replaces Jest's own default,
-  not merges with it).
+  --noEmit` at reconciled HEAD `bd375ea` — **PASS**, zero errors. Full
+  `npm test -- --runInBand` at reconciled HEAD — **PASS: 125/125 suites,
+  1482/1482 tests** (the expected post-`testPathIgnorePatterns`
+  baseline), confirming a healthy baseline before new work.
+- Rechecked every standing blocker directly, standalone (not chained):
+  `gh auth status` — gated. `docker info` — gated. `which supabase` —
+  exit 1, not installed. `git log --oneline --all | grep -i batch` — no
+  separate `batch-4`-named branch. `git rm tmp_coverage_inspect.js` —
+  still gated (file-deletion permission block). `TZ=Pacific/Kiritimati
+  node -e ...` — still gated. All unchanged from every prior cycle.
+- Dispatched a fresh Explore research agent, explicitly instructed not to
+  re-report any already-exhausted defect class, to find one new
+  "implemented but never wired up" functional gap. It found
+  `previewRotation()` (`src/logic/rotation.ts:121-128`) — fully
+  implemented and unit-tested, zero production call sites, with two
+  screens/components each hand-rolling a worse inline substitute. Read
+  both files directly to verify before acting, not just trusted the
+  agent's report — see Current Task above for full detail.
+- **This cycle's own fix:** wired `previewRotation()` into
+  `RuleFormModal.tsx`'s rotation-order picker and `ScheduleScreen.tsx`'s
+  rule-summary row, replacing both ad-hoc `.join(' → ')` implementations.
+  Added `src/logic/__tests__/previewRotationWiring.test.ts` (4 sub-tests)
+  asserting the wiring and the absence of the old ad-hoc pattern. A
+  confirming `grep -rn "join(' → ')" src/` after the fix found no other
+  unwired sibling.
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `npm test -- --runInBand` after this cycle's own change — **PASS:
-  125/125 suites, 1482/1482 tests** (down from 130/130 · 1487/1487
-  immediately before the change, same HEAD — exactly 5 fewer suites/tests,
-  matching the 5 excluded files one-for-one).
+  126/126 suites, 1486/1486 tests** (up from 125/125 · 1482/1482
+  immediately before the change, same HEAD — exactly 1 new suite/4 new
+  tests, matching the new regression file one-for-one).
 - `git status --porcelain=v1 --untracked-files=all` confirmed the
-  changeset is scoped to exactly `package.json` (8 insertions) plus this
+  changeset is scoped to exactly `RuleFormModal.tsx`, `ScheduleScreen.tsx`
+  (10 insertions/3 deletions combined), the new test file, plus this
   `EXECUTION_STATE.md` update — no unrelated file touched, no user work at
   risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
@@ -242,24 +237,26 @@ cycle's first action must still be its own independent
 
 ## Last Evidence Timestamp
 
-2026-09-17T12:44:58Z (prior landed commit `6e3f491`); this cycle's own
-work validated at HEAD `6e3f491` + working tree as of this cycle's own
-run (2026-09-17T15:50:00Z approx.), commit attempt outcome per Blocker
-below.
+2026-09-17T12:44:58Z (prior landed commit `bd375ea`); this cycle's own
+work validated at HEAD `bd375ea` + working tree as of this cycle's own
+run (2026-09-17T13:51:07Z), commit attempt outcome per Blocker below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
 self-reported, using two independent attempts** (a standalone `git add
-package.json`, then a standalone `git commit -a -m ...`) — both returned
-"This command requires approval" from the tool layer itself (not a git
-error), and a `git log --oneline -3` + `git status --porcelain` run
-immediately after each confirmed HEAD stayed at `6e3f491` and the working
-tree diff was unchanged (still exactly `package.json` modified). So
+src/components/RuleFormModal.tsx src/screens/ScheduleScreen.tsx
+src/logic/__tests__/previewRotationWiring.test.ts`, then a standalone
+`git commit -a -m ...`) — both returned "This command requires approval"
+from the tool layer itself (not a git error), consistent with every
+standing blocked git-write command this same cycle (`git rm`, and the
+`TZ=...`-prefixed node command). A `git status --porcelain` run
+immediately after confirmed the working tree diff was unchanged (still
+exactly the two modified files plus the new untracked test file). So
 *within this turn's own visibility*, this cycle's commit attempt is a
 genuine, directly-confirmed no-op, not merely a hedged self-report —
 consistent with the standing pattern (see note at top of file, now
-reconfirmed for at least the 38th time running).
+reconfirmed for at least the 39th time running).
 
 **Standing question — mechanism already established with direct evidence
 in prior cycles' own history of this file:** an external supervising
@@ -271,13 +268,13 @@ own visibility. That means this turn's own direct "nothing changed"
 observation immediately after the attempt is real and correctly reported,
 but is **not** predictive of the final outcome once this turn ends —
 consistent with, not contradicting, the standing pattern. The
-working-tree change itself (`package.json`'s `testPathIgnorePatterns`
-addition + this `EXECUTION_STATE.md` update) is real, validated
-(`tsc`/`npm test` both PASS, 125/125 suites, 1482/1482 tests) — per
-"never discard uncommitted work," it is NOT reverted regardless of this
-turn's own commit-attempt outcome. The next cycle's first action must
-still be its own `git log --oneline -5` + `git status` to determine the
-actual final outcome independently.
+working-tree change itself (`RuleFormModal.tsx`/`ScheduleScreen.tsx`'s
+`previewRotation()` wiring + the new test file + this `EXECUTION_STATE.md`
+update) is real, validated (`tsc`/`npm test` both PASS, 126/126 suites,
+1486/1486 tests) — per "never discard uncommitted work," it is NOT
+reverted regardless of this turn's own commit-attempt outcome. The next
+cycle's first action must still be its own `git log --oneline -5` +
+`git status` to determine the actual final outcome independently.
 
 `gh auth status` and `docker info` were both reconfirmed gated this cycle
 as standalone commands. AGENTS.md rule 12 explicitly permits local commits
@@ -383,18 +380,22 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the `package.json` `testPathIgnorePatterns` addition +
-this `EXECUTION_STATE.md` update) landed, and check every commit between
-whatever SHA this file names and actual HEAD, not just the newest one.
-**Also re-run the FULL `npm test -- --runInBand`** (standing habit,
-established two cycles ago after a full run caught 2 silently-failing
-tests that per-change subset runs had missed) — expect **125/125 suites,
-1482/1482 tests** as the new baseline (down from 130/130 · 1487/1487,
-correctly, due to this cycle's own `testPathIgnorePatterns` exclusion of 5
-zero-assertion scratch/debug files, not a regression).
+cycle's own commit (the `previewRotation()` wiring in
+`RuleFormModal.tsx`/`ScheduleScreen.tsx` + the new
+`previewRotationWiring.test.ts` + this `EXECUTION_STATE.md` update)
+landed, and check every commit between whatever SHA this file names and
+actual HEAD, not just the newest one. **Also re-run the FULL
+`npm test -- --runInBand`** (standing habit, established several cycles
+ago after a full run caught 2 silently-failing tests that per-change
+subset runs had missed) — expect **126/126 suites, 1486/1486 tests** as
+the new baseline (up from 125/125 · 1482/1482, correctly, due to this
+cycle's own new regression test file, not a fluke).
 
 The `testPathIgnorePatterns` interim mitigation a prior cycle had left
-open as an idea is now done (this cycle) — do not re-propose it. The
+open as an idea is done (landed as `bd375ea`) — do not re-propose it.
+This cycle's own `previewRotation()` wiring fix is also done and complete
+— a confirming `grep -rn "join(' → ')" src/` after the fix found no other
+unwired sibling of the same shape, so do not re-propose that either. The
 seventeen scratch/debug/backup/dead files themselves are still gated on
 deletion; retry `git rm`/file deletion the moment the sandbox's permission
 mode allows it (see Blocker above for the current list). Also do not
@@ -703,55 +704,52 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `6e3f491`, one commit
-  past `f678758` — confirmed via `git show --stat` it contains exactly
-  the prior cycle's own four-file CRLF-normalization test fix + that
-  cycle's own `EXECUTION_STATE.md` rewrite, reconfirming the standing
+- Reconciliation found HEAD had actually moved to `bd375ea`, one commit
+  past `6e3f491` — confirmed via `git show --stat` it contains exactly
+  the prior cycle's own `package.json` `testPathIgnorePatterns` addition +
+  that cycle's own `EXECUTION_STATE.md` rewrite, reconfirming the standing
   self-reporting-drift pattern yet again. `node_modules` was absent
   entirely; `npm ci` fixed it. `npx tsc --noEmit` and full `npm test --
-  --runInBand` at reconciled HEAD both PASS (130/130 suites, 1487/1487
+  --runInBand` at reconciled HEAD both PASS (125/125 suites, 1482/1482
   tests), confirming a healthy baseline.
-- Rechecked every standing blocker directly (`gh auth status`, `docker
-  info`, `which supabase`, `git branch -r` for `batch-4`, `git rm` on a
-  scratch file) — all unchanged, still gated/absent exactly as every prior
-  cycle.
-- Dispatched two research passes to find the next unambiguous engineering
-  gap. Both proposed candidates were investigated directly and rejected,
-  not acted on: (1) `system_admin_set_family_approval()` — confirmed via
-  cross-branch `git grep` against
-  `origin/feat/system-admin-approval-controls` that it is already fully
-  wired there (PR #11), correctly out of scope for this branch, matching
-  the prior cycle's own documented judgment; (2)
-  `useSystemAdminStore.reset()` — confirmed via reading the store's own
-  doc comment and `authStore.signOut()`'s doc comments that
-  `isSystemAdmin` is scoped to this device's persistent `auth.uid()`,
-  which `signOut()` (a local family-member switch, not a real Supabase
-  sign-out) never changes, so there is no real bug to fix — a legitimate
-  test-only utility.
-- **Selected and executed a real, previously-identified-but-unexecuted
-  task instead:** a prior cycle's research had found 4 of the seventeen
-  known dead scratch/debug files have zero `expect()` calls (always
-  "passing" regardless of behavior) and left open, as an idea, adding
-  `testPathIgnorePatterns` as an interim mitigation since direct deletion
-  remains permission-gated. This cycle re-verified with fresh evidence
-  (read all six `__scratch_*`/`debug*` test files in full, not just
-  trusted the old claim) and found **5**, not 4, have zero `expect()`
-  calls (the prior count had missed `debugExpoConstants.test.ts` and
-  `debugExpoNotifications.test.ts` as being in the same class, and
-  slightly mis-scoped which file had real assertions —
-  `__scratch_renderHook_probe.test.ts` has 2 real `expect()` calls and was
-  correctly excluded from this fix). **Fixed:** added
-  `testPathIgnorePatterns` to `package.json`'s `"jest"` config excluding
-  those 5 files by explicit path. `npx tsc --noEmit` PASS. `npm test --
-  --runInBand` PASS: 125/125 suites, 1482/1482 tests (down from 130/130 ·
-  1487/1487, exactly 5 fewer, matching the 5 excluded files one-for-one).
-  `git status`/diff scoped to exactly `package.json` (8 insertions) + this
-  `EXECUTION_STATE.md` update. **Commit attempt outcome:** see Blocker
-  above.
+- Rechecked every standing blocker directly, standalone (`gh auth
+  status`, `docker info`, `which supabase`, `git log --all` for
+  `batch-4`, `git rm` on a scratch file, `TZ=...`-prefixed node) — all
+  unchanged, still gated/absent exactly as every prior cycle.
+- Dispatched a fresh Explore research agent (explicitly told not to
+  re-report any already-exhausted defect class) to find the next
+  unambiguous "implemented but never wired up" functional gap. It found
+  `previewRotation()` (`src/logic/rotation.ts:121-128`) — fully
+  implemented and unit-tested, zero production call sites, with
+  `RuleFormModal.tsx` and `ScheduleScreen.tsx` each hand-rolling a worse
+  inline `.join(' → ')` substitute instead. Verified directly (read both
+  files in full) before acting.
+- **Fixed:** wired `previewRotation()` into both call sites —
+  `RuleFormModal.tsx`'s rotation-order picker (now shows a true one-turn
+  wraparound via `previewRotation`'s own canonical format, dropping a
+  redundant ad-hoc `"..."` suffix) and `ScheduleScreen.tsx`'s rule-summary
+  row (an exact behavior-preserving replacement). Added
+  `src/logic/__tests__/previewRotationWiring.test.ts` (4 sub-tests, this
+  repo's established source-scan convention). A confirming
+  `grep -rn "join(' → ')" src/` after the fix found no other unwired
+  sibling of the same shape. `npx tsc --noEmit` PASS. `npm test --
+  --runInBand` PASS: 126/126 suites, 1486/1486 tests (up from 125/125 ·
+  1482/1482, exactly 1 new suite/4 new tests, matching the new regression
+  file one-for-one). `git status`/diff scoped to exactly
+  `RuleFormModal.tsx`, `ScheduleScreen.tsx` (10 insertions/3 deletions
+  combined) + the new test file + this `EXECUTION_STATE.md` update.
+  **Commit attempt outcome:** see Blocker above.
 
 ### Recent cycles (condensed — full detail in git history of this file)
 
-- Prior cycle: reconciliation found HEAD at `f678758` and fixed a real,
+- Prior cycle: reconciliation found HEAD at `6e3f491` and fixed a real,
+  first-time-discovered test-quality gap: 5 of 6 scratch/debug test files
+  had zero `expect()` calls (always-green regardless of behavior).
+  Added `testPathIgnorePatterns` to `package.json` to exclude them from
+  Jest collection (direct file deletion remains gated). Landed as
+  `bd375ea` despite that cycle's own hedged "commit attempt outcome
+  recorded under Blocker" self-report.
+- Two cycles ago: reconciliation found HEAD at `f678758` and fixed a real,
   reproducible, RC-blocking test-reliability bug: 2 of 130 suites failed
   under this sandbox's `core.autocrlf=true` CRLF checkout (no
   `.gitattributes` in this repo) because fixed-length `.slice(idx, idx +

@@ -21,6 +21,7 @@ import { DEMO_FAMILY } from '../data/demoData';
 import { generateId } from '../lib/id';
 import { localDateOnly } from '../logic/dateFormat';
 import { isOverdue } from '../logic/nextWalk';
+import { previewRotation } from '../logic/rotation';
 import { canRequestChangeForWalk } from '../logic/walkActions';
 import { computeWalkRequestStatusLine } from '../logic/walkRequestStatusLine';
 import { isSupabaseConfigured } from '../lib/supabase';
@@ -328,7 +329,10 @@ export function ScheduleScreen() {
           "bare dots". Wrapping instead of shrinking/truncating keeps every
           name fully readable at a consistent size. */}
       <RtlText style={styles.ruleRotation}>
-        {r.rotationUserIds.map((id) => usersById[id]?.name ?? '?').join(' → ')}
+        {previewRotation(
+          r.rotationUserIds.map((id) => usersById[id]?.name ?? '?'),
+          r.rotationUserIds.length
+        )}
       </RtlText>
     </View>
   </View>
