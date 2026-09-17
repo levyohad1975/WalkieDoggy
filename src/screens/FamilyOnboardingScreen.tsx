@@ -63,11 +63,19 @@ export function FamilyOnboardingScreen() {
   const [verifiedAdminEmail, setVerifiedAdminEmail] = useState<string | null>(null);
   const [verifyingEmail, setVerifyingEmail] = useState(false);
   const [pendingApprovalFamilyName, setPendingApprovalFamilyName] = useState<string | null>(null);
+  // Set when get_my_family_onboarding_status() reports 'rejected' -- a
+  // System Admin declined this device's family-creation request.
+  // create_verified_family() (migration 0032) is idempotent per
+  // auth_user_id: once family_onboarding_requests has a row, it always
+  // returns that same family regardless of approval_status, so without
+  // surfacing this the device would otherwise be stuck silently back on
+  // the plain "choose" screen with no way to understand what happened.
+  const [rejectedFamilyName, setRejectedFamilyName] = useState<string | null>(null);
 
-  // Recovers an already-verified device's pending/active family-creation
-  // request after an app restart (e.g. it closed while awaiting System
-  // Admin approval). A device only has one if it already completed OTP
-  // verification and submitted create at least once, so this is a safe,
+  // Recovers an already-verified device's pending/active/rejected family-
+  // creation request after an app restart (e.g. it closed while awaiting
+  // System Admin approval). A device only has one if it already completed
+  // OTP verification and submitted create at least once, so this is a safe,
   // side-effect-free no-op for every other case (demo/local mode, an
   // anonymous session, or a device that never tried creating a family) --
   // get_my_family_onboarding_status() simply returns no row.
@@ -80,6 +88,9 @@ export function FamilyOnboardingScreen() {
         } else if (status.approvalStatus === 'pending') {
           setMode('create');
           setPendingApprovalFamilyName(status.familyName);
+        } else if (status.approvalStatus === 'rejected') {
+          setMode('create');
+          setRejectedFamilyName(status.familyName);
         }
       })
       .catch(() => {
@@ -323,6 +334,19 @@ export function FamilyOnboardingScreen() {
   }
 
   if (mode === 'create') {
+    if (rejectedFamilyName) {
+      return (
+        <SafeAreaView style={styles.container}>
+          <RtlText style={styles.emoji}>❌</RtlText>
+          <RtlText style={styles.title} accessibilityRole="header">הבקשה נדחתה</RtlText>
+          <RtlText style={styles.subtitle}>
+            הבקשה ליצירת {rejectedFamilyName} נדחתה על ידי מנהל המערכת. לפרטים נוספים, פנו לתמיכה.
+          </RtlText>
+          <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
+        </SafeAreaView>
+      );
+    }
+
     if (pendingApprovalFamilyName) {
       return (
         <SafeAreaView style={styles.container}>

@@ -15,7 +15,13 @@ import fs from 'fs';
  * since approved or rejected the request -- even though the device already
  * held a persisted, verified (non-anonymous) Supabase session the whole
  * time. This proves the screen now checks get_my_family_onboarding_status()
- * on mount and recovers both the pending and the already-approved case.
+ * on mount and recovers the pending, already-approved, AND rejected cases.
+ * `approval_status`'s own check constraint (migration 0032) allows
+ * 'pending' | 'active' | 'rejected', and create_verified_family() is
+ * idempotent per auth_user_id (always returns the same existing family once
+ * a family_onboarding_requests row exists) -- so surfacing 'rejected' is the
+ * device's only way to learn what happened, not an edge case that can be
+ * routed around.
  * Source-scan convention: this repo has no render-test harness for screens.
  */
 describe('FamilyOnboardingScreen recovers onboarding status on mount (structural)', () => {
@@ -58,5 +64,35 @@ describe('FamilyOnboardingScreen recovers onboarding status on mount (structural
     const callIdx = source.indexOf('getMyFamilyOnboardingStatus()');
     const scope = source.slice(callIdx, callIdx + 1000);
     expect(scope).toMatch(/\.catch\(/);
+  });
+
+  it('recovers a rejected family by restoring the create mode with the rejection name set', () => {
+    const callIdx = source.indexOf('getMyFamilyOnboardingStatus()');
+    const scope = source.slice(callIdx, callIdx + 1000);
+    const rejectedIdx = scope.indexOf("status.approvalStatus === 'rejected'");
+    const setModeIdx = scope.indexOf("setMode('create')", rejectedIdx);
+    const setNameIdx = scope.indexOf('setRejectedFamilyName(status.familyName)', rejectedIdx);
+    expect(rejectedIdx).toBeGreaterThan(-1);
+    expect(setModeIdx).toBeGreaterThan(rejectedIdx);
+    expect(setNameIdx).toBeGreaterThan(rejectedIdx);
+  });
+
+  it('renders a dedicated rejected screen ahead of the pending screen in the create-mode branch', () => {
+    const createModeIdx = source.indexOf("mode === 'create'");
+    expect(createModeIdx).toBeGreaterThan(-1);
+    const rejectedBlockIdx = source.indexOf('rejectedFamilyName', createModeIdx);
+    const pendingBlockIdx = source.indexOf('pendingApprovalFamilyName', createModeIdx);
+    expect(rejectedBlockIdx).toBeGreaterThan(-1);
+    expect(pendingBlockIdx).toBeGreaterThan(-1);
+    expect(rejectedBlockIdx).toBeLessThan(pendingBlockIdx);
+  });
+
+  it('offers a way back to the choose screen from the rejected state, not a dead end', () => {
+    const blockStart = source.indexOf('if (rejectedFamilyName)');
+    const blockEnd = source.indexOf('if (pendingApprovalFamilyName)');
+    expect(blockStart).toBeGreaterThan(-1);
+    expect(blockEnd).toBeGreaterThan(blockStart);
+    const block = source.slice(blockStart, blockEnd);
+    expect(block).toMatch(/setMode\('choose'\)/);
   });
 });
