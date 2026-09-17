@@ -49,150 +49,124 @@ else.
 
 ## Current Task
 
-Reconciliation at cycle start: `git log --oneline -20`/`git status` showed
-HEAD at `f678758`, clean working tree, "up to date with
-origin/feat/verified-auth-onboarding-batch-2" — **one** commit past the
-`f30814b` the prior cycle's own file narrative described as HEAD.
-`git show --stat f678758` confirmed it contains exactly the prior cycle's
-own `StatisticsScreen.tsx` `computePeePoopStats` pee/poop-card wiring fix
-plus that cycle's own `EXECUTION_STATE.md` update — i.e. the prior cycle's
-own "commit attempt outcome recorded under Blocker/Last Evidence" hedge
-resolved the same way as the prior 34 documented instances (now 35): the
-commit had already landed and pushed. Reconciled before starting new work,
-per protocol.
+**This cycle's reconciliation, done fresh via direct `git log`/`git show`,
+not trusted from this file's own prior narrative:** HEAD was `6e3f491`,
+clean working tree, up to date with
+`origin/feat/verified-auth-onboarding-batch-2` — **one** commit past
+`f678758`, what this file's own prior text described as HEAD.
+`git show --stat 6e3f491` confirmed it contains exactly the prior cycle's
+own four-file CRLF-normalization test fix (`.replace(/\r\n/g, '\n')` in
+`MemberDetailsModal.resetPermissionAccessibility.test.ts`,
+`HomeScreen.lastWalkFallback.test.ts`,
+`FamilyOnboardingScreen.onboardingStatusRecovery.test.ts`,
+`SettingsScreen.switchUserFlow.test.ts`) plus that cycle's own
+`EXECUTION_STATE.md` rewrite — i.e. the prior cycle's own hedged "commit
+attempt outcome recorded under Blocker" self-report resolved the same way
+as the standing pattern (see note above): the commit had already landed
+and pushed. Reconciled before starting new work, per protocol.
 
-**This cycle's own task — a real, first-time-discovered, reproducible test
-bug, not a cosmetic one:** `node_modules` was absent again (`npm ci`
-restored it, 906 packages). `npx tsc --noEmit` at reconciled HEAD —
-**PASS**. But `npm test -- --runInBand` at reconciled HEAD, run in full for
-the first time in several cycles (not just after a single file's own
-change), surfaced **2 failing tests** that no recent cycle's own narrower
-per-change test run had caught:
-`src/components/__tests__/MemberDetailsModal.resetPermissionAccessibility.test.ts`
-and `src/screens/__tests__/HomeScreen.lastWalkFallback.test.ts`. Diagnosed
-the root cause directly, not assumed: both are source-text-scan tests
-(`fs.readFileSync(...).indexOf(...)` + a **fixed-length** `.slice(idx, idx
-+ 200)` window) reading `MemberDetailsModal.tsx`/`HomeScreen.tsx` — real
-production source files, unchanged themselves (confirmed via `git log
---oneline -- <file>`: last touched at `ed3cea0`/`d7470ee` respectively,
-long before this cycle). `git config --get core.autocrlf` on this sandbox
-returned `true`, and `file src/components/MemberDetailsModal.tsx
-src/screens/HomeScreen.tsx` confirmed both are checked out with **CRLF**
-line terminators on this runner (this repo has no `.gitattributes` at all,
-so line-ending behavior is left entirely to the checking-out
-environment's own git config) — the extra `\r` byte per line before the
-target text shifts the fixed 200-char slice window just past the closing
-`` `} `` of the `accessibilityLabel` attribute, so the regex
-`toMatch(/accessibilityLabel=\{`[^`]+`\}/)` never finds a match, purely as
-a checkout-line-ending artifact, not a real product defect — confirmed by
-reading the actual source at both line numbers (both files' JSX is
-byte-for-byte correct and already accessible). Critically, this sandbox's
-own path (`C:\actions-runner\_work\WalkieDoggy\WalkieDoggy`) **is itself a
-Windows self-hosted GitHub Actions runner**, so this is not a
-sandbox-only quirk — the identical failure would reproduce on any real CI
-run on a Windows runner with `core.autocrlf=true`, making this a genuine
-RC-blocking test-reliability bug, not a false alarm.
+`node_modules` was absent again at cycle start (confirmed via `test -d
+node_modules`); `npm ci` restored it (906 packages). `npx tsc --noEmit` at
+reconciled HEAD `6e3f491` — **PASS**. `npm test -- --runInBand` at
+reconciled HEAD, run in full — **PASS: 130/130 suites, 1487/1487 tests**,
+confirming a healthy baseline before starting new work.
 
-**Fixed, minimally, at the test layer (no production source file
-touched):** normalized each affected test's own `source` string
-(`.replace(/\r\n/g, '\n')` immediately after `fs.readFileSync(...,
-'utf8')`) in the two actually-failing files, so the fixed-offset slice is
-computed against LF-normalized content regardless of the checkout's own
-line-ending config. A follow-up `grep`-equivalent scan
-(`\.slice\(\w*[Ii]dx?\w*,\s*\w*[Ii]dx?\w*\s*\+\s*\d+\)` across
-`src/**/__tests__/**/*.test.ts`) found two more source-scan tests using
-the identical fixed-offset-slice shape that happened not to be failing
-yet (their windows were large enough relative to their target text not to
-overflow under CRLF, purely by luck of content length, not by design):
-`FamilyOnboardingScreen.onboardingStatusRecovery.test.ts` and
-`SettingsScreen.switchUserFlow.test.ts`. Applied the same one-line
-normalization to both, closing the whole latent-fragility bug class in one
-bounded unit rather than leaving two more time-bombs for a future source
-edit to trip. This is a no-behavior-change edit for tests that were
-already passing (stripping `\r` bytes that never appeared in any expected
-pattern cannot change a passing assertion's outcome), so this is a
-safe, additive hardening, not a risky one.
+Rechecked every standing blocker directly this cycle, all unchanged from
+every prior cycle: `gh auth status` — gated ("This command requires
+approval"). `docker info` — gated. `which supabase` — exit 1, not
+installed. `git branch -r | grep batch` — only
+`origin/feat/settings-roles-batch-3` and this branch itself, still no
+`batch-4`-named branch. `git rm tmp_coverage_inspect.js` (one of the
+seventeen dead scratch files) — still gated, reconfirming the
+file-deletion permission block.
 
-`node_modules` was absent entirely at cycle start again (a `head -1`
-pipeline false-positive masked this on the first check; a direct
-`ls node_modules` confirmed it was actually absent); `npm ci` fixed it
-(907 packages). Reconfirmed `gh auth status` still blocked ("requires
-approval"), `which supabase` still exit 1 (CLI not installed), and (via
-`git branch -r`) no `batch-4`-named branch on `origin` — same state as
-every prior cycle, Queue item 5 remains genuinely inapplicable.
-`npx tsc --noEmit` at reconciled HEAD — **PASS**, zero errors, confirming
-the baseline is healthy before starting new work.
+**Two research-agent-proposed candidates were investigated and rejected
+this cycle, not acted on — recorded here so a future cycle does not
+re-propose either:**
+1. `system_admin_set_family_approval()` (migration 0032, `authenticated`-
+   granted, `is_system_admin()`-checked) has zero call sites on **this**
+   branch. Before treating this as a gap, cross-checked
+   `git grep -n "setSystemAdminFamilyApproval" origin/feat/system-admin-approval-controls -- src/screens/` —
+   confirmed the stacked branch (PR #11) already has a full client wrapper
+   (`src/lib/systemAdmin.ts`) wired into `SystemAdminScreen.tsx:125`
+   (`commit: () => setSystemAdminFamilyApproval(selectedFamilyId,
+   decision)`) plus its own tests. This reconfirms, with direct fresh
+   evidence rather than trusting the old claim, the prior cycle's own
+   documented judgment that this RPC correctly belongs to the other
+   branch — genuinely out of scope here, not a live gap.
+2. `useSystemAdminStore.reset()` (`src/store/systemAdminStore.ts:52`) has
+   a dedicated passing unit test but zero production call sites
+   (`App.tsx` only calls `refresh()`). Investigated directly by reading
+   the store's own doc comment and `authStore.ts`'s `signOut()` doc
+   comments: `isSystemAdmin` is scoped to this device's persistent
+   Supabase `auth.uid()` (a platform identity, explicitly documented as
+   independent of `familyId`/`currentUserId`/`familyRole`), and
+   `authStore.signOut()` **only** switches which family-member profile is
+   locally active on this device — it "never touches the underlying
+   Supabase session" (its own doc comment, line ~295-296). So there is no
+   real production event on this branch where `auth.uid()` changes and a
+   stale cached `isSystemAdmin` could matter — `reset()` is a legitimate
+   test-only utility, not an unwired bug. Do not re-propose wiring it into
+   `signOut()`.
 
-Moved to a fresh independent safe task. Dispatched a research-only
-Explore subagent (constrained with the full list of already-closed and
-already-deliberately-deferred items from this file, to avoid rediscovering
-either, and primed with the same "implemented+unit-tested helper with zero
-real call sites" discovery method that found the prior cycle's own
-`walkMetadataLine`/`isCurrentlySwapped` gap) to search for one more
-concrete, unambiguous, first-time-discovered engineering gap. It found a
-real one, independently verified before fixing:
-**`src/logic/statistics.ts`'s `computePeePoopStats()` was fully
-implemented and unit-tested but never wired into `StatisticsScreen.tsx`**
-— the only one of the file's five exported stats helpers
-(`filterWalksByPeriod`, `computeCompletionStats`,
-`computeMemberDistribution`, `computePlannedVsSpontaneous`,
-`computePeePoopStats`) missing from the screen's import block and with no
-rendered card. `grep -rn "computePeePoopStats" src/` confirmed its only
-two references anywhere were its own definition and its own dedicated
-`describe('computePeePoopStats', ...)` block in
-`src/logic/__tests__/statistics.test.ts` (lines 101–116, two passing
-tests) — zero call sites from any screen/component/store. Confirmed this
-is live, reachable data, not dead code: `hadPee`/`hadPoop` are captured on
-every walk completion (`CompleteWalkModal.tsx`, `AddUnplannedWalkModal.tsx`,
-`EditDoneDetailsModal.tsx`), persisted to Supabase
-(`supabaseRepository.ts` `had_pee`/`had_poop` columns), and already
-displayed per-walk elsewhere (`HistoryScreen.tsx`'s own inline
-`dayWalks.filter(w => w.hadPee)` count, `HomeScreen.tsx`/`WalkRow.tsx`
-toggles) — only the aggregate percentage view
-(`PeePoopStats.peePercent`/`poopPercent`, directly analogous to the
-already-shown `donePercentOfResolved`) was missing. `git log
--S"computePeePoopStats"` showed it existed unchanged since the repo's
-first commit (`897fdfd`) — a long-standing gap, not a recent regression —
-and no design doc (`docs/design/PRODUCT_CONTEXT.md`) documents excluding
-pee/poop data from statistics; `PRODUCT_CONTEXT.md`'s completion-flow
-description explicitly names "duration, notes, and pee/poop toggles" as
-captured data with no note it's deliberately excluded from the stats
-screen.
+**This cycle's own task — the "testPathIgnorePatterns" interim mitigation
+a prior cycle had left open as an idea, not yet executed:** re-verified
+with fresh direct evidence rather than trusting the old claim. Read all
+six candidate scratch/debug test files
+(`src/lib/__tests__/__scratch_platform_probe.test.ts`,
+`src/lib/__tests__/__scratch_pushTokens_probe.test.ts`,
+`src/notifications/__tests__/__scratch_isolate_probe.test.ts`,
+`src/store/__tests__/__scratch_renderHook_probe.test.ts`,
+`src/notifications/__tests__/debugExpoConstants.test.ts`,
+`src/notifications/__tests__/debugExpoNotifications.test.ts`) in full.
+Confirmed **5 of the 6 have literally zero `expect()` calls** — pure
+`console.log` probes that report "passing" unconditionally, regardless of
+actual behavior:
+`__scratch_platform_probe`/`__scratch_pushTokens_probe`/`__scratch_isolate_probe`/
+`debugExpoConstants`/`debugExpoNotifications`.
+`__scratch_renderHook_probe.test.ts` was the exception — it has 2 real
+`expect()` assertions on `useEffectiveFamilyRole`/`useEffectiveUserId`, so
+it is a genuine (if possibly redundant with `authStore.test.ts`) test, not
+the same defect class — deliberately left running, not touched.
+Additionally confirmed via `grep -rn "Platform.OS\s*=" src --include=*.test.ts`
+that `__scratch_platform_probe.test.ts` is the **only** file in the repo
+that mutates the global `Platform.OS` in a test, with no `afterEach`
+restore — a latent risk, though narrower than a prior cycle's own
+narrative implied: Jest gives each test **file** its own module registry
+by default, so this mutation is contained to that one file's own realm,
+not a cross-file leak.
 
-**Fixed**: `StatisticsScreen.tsx` now imports `computePeePoopStats`,
-computes it via `useMemo(() => computePeePoopStats(periodWalks),
-[periodWalks])`, and renders one additional "פיפי וקקי" card (same visual
-pattern as the existing "מתוכנן לעומת ספונטני" card immediately above it —
-same `styles.card`/`styles.rowBetween`/`styles.metaText`/
-`styles.metaTextStrong` styles, same empty-state fallback text for
-`doneCount === 0`), with two `Bar` fills reusing the file's own already-
-established color mapping from `CompleteWalkModal.tsx`'s pee/poop toggles
-(`colors.primary` for pee, `colors.statusSkipped` for poop). Purely
-additive UI wiring — no existing card, style, or logic touched; the `Bar`
-component and all styles reused as-is. A 30-line, single-file change
-(`src/screens/StatisticsScreen.tsx` only).
+Direct deletion of these files (the actual permanent fix) remains blocked
+this cycle by the same standing file-deletion permission gate (reconfirmed
+via `git rm tmp_coverage_inspect.js` — see Current Task reconciliation
+above), so this cycle executed the documented fallback instead: **added
+`testPathIgnorePatterns` to `package.json`'s `"jest"` config**, excluding
+exactly the 5 zero-assertion files by explicit path (not a broad glob, so
+no future genuine test is accidentally excluded by pattern-matching
+coincidence). Jest's own default `testPathIgnorePatterns` is
+`["/node_modules/"]`, which is fully replaced (not merged) by supplying
+this key at all, so `"/node_modules/"` was kept as the first entry
+alongside the 5 new ones to avoid accidentally collecting
+`node_modules/**/*.test.ts`.
 
 `npx tsc --noEmit` after the change — **PASS**, zero errors. `npm test --
---runInBand` after the change — **PASS**: **130/130** suites, **1487/1487**
-tests (same total — no new test file; `computePeePoopStats()` itself
-already had full unit coverage, and this screen has no render-testing
-harness, consistent with every other screen in this codebase per this
-file's own established coverage-scope note). `git status --porcelain=v1
---untracked-files=all` confirmed the changeset is scoped to exactly:
-`src/screens/StatisticsScreen.tsx` (modified, +30/-0) plus this
-`EXECUTION_STATE.md` update — no unrelated file touched, no user work at
-risk.
+--runInBand` after the change — **PASS: 125/125 suites, 1482/1482 tests**
+(down from 130/130 · 1487/1487 immediately before the change, same HEAD —
+exactly 5 fewer suites and 5 fewer tests, matching the 5 excluded files
+one-for-one; no other suite's count changed). `git status
+--porcelain=v1 --untracked-files=all` confirmed the changeset is scoped to
+exactly `package.json` (8 insertions) — no unrelated file touched, no user
+work at risk.
 
 ## Current Task Status
 
-Prior cycle's `StatisticsScreen.tsx` `computePeePoopStats` pee/poop-card
-wiring fix (`f678758`) is confirmed landed and pushed — closed, `DONE`.
+Prior cycle's four-file CRLF-normalization test fix (`6e3f491`) is
+confirmed landed and pushed — closed, `DONE`.
 
-This cycle's own task — normalizing CRLF in the four source-text-scan
-tests' `readFileSync` output so fixed-offset-slice assertions are immune
-to the checkout environment's own `core.autocrlf` setting — is
-code-complete and validated (`tsc` PASS, `npm test` PASS **130/130 ·
-1487/1487**, up from **128/130 · 1485/1487** at cycle start on this same
+This cycle's own task — excluding the 5 zero-assertion scratch/debug test
+files from Jest collection via `testPathIgnorePatterns` in `package.json`
+— is code-complete and validated (`tsc` PASS, `npm test` PASS
+**125/125 · 1482/1482**, down from **130/130 · 1487/1487** at cycle start
 HEAD before the fix). Commit attempt outcome recorded under Blocker/Last
 Evidence below; per the standing 35-cycle pattern, even a "blocked"
 self-report this same cycle should not be assumed final — the next
@@ -210,96 +184,82 @@ cycle's first action must still be its own independent
 
 ## Last Evidence
 
-- This cycle start: `git log --oneline -20`/`git status` confirmed HEAD is
-  `f678758`, clean working tree, "up to date with
+- This cycle start: `git log --oneline -10`/`git status` confirmed HEAD is
+  `6e3f491`, clean working tree, "up to date with
   origin/feat/verified-auth-onboarding-batch-2" — **one** commit past
-  `f30814b`, what this file's own prior narrative described as HEAD.
-  `git show --stat f678758` confirmed it contains exactly the prior
-  cycle's own `StatisticsScreen.tsx` `computePeePoopStats` pee/poop-card
-  wiring fix (`EXECUTION_STATE.md`, `src/screens/StatisticsScreen.tsx`,
-  238 insertions/175 deletions total across the diff, mostly this file's
-  own rewrite) — it had landed and pushed despite the prior cycle's own
-  hedged "commit attempt outcome recorded under Blocker" self-report
-  (35th confirmed instance of the standing pattern).
-- `node_modules` absent entirely at cycle start again; `npm ci` succeeded,
-  which fixed it (906 packages). Reconfirmed `which supabase` still exit 1
-  (CLI not installed). `npx tsc --noEmit` at reconciled HEAD `f678758` —
-  **PASS**, zero errors, confirming a healthy TypeScript baseline before
-  new work.
-- **Ran the full test suite fresh at reconciled HEAD (not just a
-  per-change subset)** — `npm test -- --runInBand` returned **2 failed
-  suites, 128 passed, 130 total; 2 failed tests, 1485 passed, 1487
-  total**:
-  `src/components/__tests__/MemberDetailsModal.resetPermissionAccessibility.test.ts`
-  and `src/screens/__tests__/HomeScreen.lastWalkFallback.test.ts`.
-- **Root-caused directly, not assumed:** both are source-text-scan tests
-  using `fs.readFileSync(...).indexOf(...)` plus a **fixed-length**
-  `.slice(idx, idx + 200)` window into `MemberDetailsModal.tsx`/
-  `HomeScreen.tsx`. `git log --oneline -- <file>` confirmed neither
-  production source file changed this cycle (last touched at
-  `ed3cea0`/`d7470ee` respectively, many cycles ago) — reading both files
-  at the flagged lines confirmed the actual JSX is byte-for-byte correct
-  and already accessible. `git config --get core.autocrlf` on this
-  sandbox returned `true`, and `file src/components/MemberDetailsModal.tsx
-  src/screens/HomeScreen.tsx` confirmed both are checked out with **CRLF**
-  line terminators (this repo has no `.gitattributes`, so line-ending
-  behavior depends entirely on the checking-out environment's own git
-  config) — the extra `\r` per line shifts the fixed 200-char slice
-  window just past the closing `` `} `` of the target `accessibilityLabel`
-  attribute, so the `toMatch(/accessibilityLabel=\{`[^`]+`\}/)` assertion
-  never finds a match. This sandbox's own path
-  (`C:\actions-runner\_work\WalkieDoggy\WalkieDoggy`) **is itself a
-  Windows self-hosted GitHub Actions runner**, so this reproduces in real
-  CI on this runner type, not just locally — a genuine RC-blocking
-  test-reliability bug.
-- **Fixed, minimally, at the test layer only (zero production source
-  files touched):** added `.replace(/\r\n/g, '\n')` immediately after
-  `fs.readFileSync(..., 'utf8')` in both failing test files. A follow-up
-  scan (`\.slice\(\w*[Ii]dx?\w*,\s*\w*[Ii]dx?\w*\s*\+\s*\d+\)` across
-  `src/**/__tests__/**/*.test.ts`) found two more source-scan tests with
-  the identical fixed-offset-slice shape that were not yet failing (their
-  windows happened to be large enough relative to target-text length, not
-  by design):
-  `src/screens/__tests__/FamilyOnboardingScreen.onboardingStatusRecovery.test.ts`
-  and `src/screens/__tests__/SettingsScreen.switchUserFlow.test.ts`.
-  Applied the identical one-line normalization to both, closing the whole
-  latent-fragility bug class in one bounded unit. This cannot change the
-  outcome of an already-passing assertion (stripping `\r` bytes that never
-  appear in any expected pattern), so it is safe, additive hardening.
+  `f678758`, what this file's own prior narrative described as HEAD.
+  `git show --stat 6e3f491` confirmed it contains exactly the prior
+  cycle's own four-file CRLF-normalization test fix plus that cycle's own
+  `EXECUTION_STATE.md` rewrite (234 insertions/155 deletions) — it had
+  landed and pushed despite the prior cycle's own hedged "commit attempt
+  outcome recorded under Blocker" self-report, consistent with the
+  standing pattern (see note at top of file).
+- `node_modules` absent entirely at cycle start again (`test -d
+  node_modules` → absent); `npm ci` fixed it (906 packages). `npx tsc
+  --noEmit` at reconciled HEAD `6e3f491` — **PASS**, zero errors. Full
+  `npm test -- --runInBand` at reconciled HEAD — **PASS: 130/130 suites,
+  1487/1487 tests**, confirming a healthy baseline before new work.
+- Rechecked every standing blocker directly: `gh auth status` — gated.
+  `docker info` — gated. `which supabase` — exit 1, not installed.
+  `git branch -r | grep batch` — no `batch-4`-named branch. `git rm
+  tmp_coverage_inspect.js` — still gated (file-deletion permission block).
+  All unchanged from every prior cycle.
+- Investigated and rejected two research-agent-proposed candidates before
+  selecting this cycle's actual task — see Current Task above for full
+  detail: (1) `system_admin_set_family_approval()` — cross-branch
+  `git grep` against `origin/feat/system-admin-approval-controls`
+  confirmed it is already fully wired there (PR #11), correctly out of
+  scope for this branch; (2) `useSystemAdminStore.reset()` — read the
+  store's own doc comment plus `authStore.signOut()`'s doc comments and
+  confirmed `isSystemAdmin` is scoped to this device's persistent
+  `auth.uid()`, which `signOut()` (a local family-member switch, not a
+  real Supabase sign-out) never changes — no real bug, a legitimate
+  test-only utility.
+- **This cycle's own task:** re-verified with fresh evidence that 5 of 6
+  scratch/debug test files (`__scratch_platform_probe`,
+  `__scratch_pushTokens_probe`, `__scratch_isolate_probe`,
+  `debugExpoConstants`, `debugExpoNotifications`) have zero `expect()`
+  calls (confirmed by reading each file in full) — false-positive
+  "always green" tests inflating the suite-pass count.
+  `__scratch_renderHook_probe.test.ts` has 2 real assertions and was left
+  untouched. Direct file deletion remains gated (see above), so added
+  `testPathIgnorePatterns` to `package.json`'s `"jest"` config, excluding
+  the 5 zero-assertion files by explicit path (kept `"/node_modules/"` as
+  the first entry since supplying this key replaces Jest's own default,
+  not merges with it).
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
-- `npm test -- --runInBand` after this cycle's own change — **PASS**:
-  **130/130** suites, **1487/1487** tests (up from 128/130 · 1485/1487
-  immediately before the fix, same HEAD, same environment).
+- `npm test -- --runInBand` after this cycle's own change — **PASS:
+  125/125 suites, 1482/1482 tests** (down from 130/130 · 1487/1487
+  immediately before the change, same HEAD — exactly 5 fewer suites/tests,
+  matching the 5 excluded files one-for-one).
 - `git status --porcelain=v1 --untracked-files=all` confirmed the
-  changeset is scoped to exactly four test files:
-  `src/components/__tests__/MemberDetailsModal.resetPermissionAccessibility.test.ts`,
-  `src/screens/__tests__/HomeScreen.lastWalkFallback.test.ts`,
-  `src/screens/__tests__/FamilyOnboardingScreen.onboardingStatusRecovery.test.ts`,
-  `src/screens/__tests__/SettingsScreen.switchUserFlow.test.ts` (8
-  insertions/4 deletions total) plus this `EXECUTION_STATE.md` update — no
-  unrelated file touched, no user work at risk.
+  changeset is scoped to exactly `package.json` (8 insertions) plus this
+  `EXECUTION_STATE.md` update — no unrelated file touched, no user work at
+  risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
   checked directly via `git log`/`git status` after the attempt.
 
 ## Last Evidence Timestamp
 
-2026-09-16T14:58:35Z (prior landed commit `f678758`); this cycle's own
-work validated at HEAD `f678758` + working tree as of this cycle's own
-run (2026-09-17T12:44:58Z), commit attempt outcome per Blocker below.
+2026-09-17T12:44:58Z (prior landed commit `6e3f491`); this cycle's own
+work validated at HEAD `6e3f491` + working tree as of this cycle's own
+run (2026-09-17T15:50:00Z approx.), commit attempt outcome per Blocker
+below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
-self-reported, using two independent attempts** (a standalone `git add`
-on the five changed files, then a standalone `git commit -a -m ...`) —
-both returned "This command requires approval" from the tool layer itself
-(not a git error), and a `git log --oneline -5` + `git status --porcelain`
-run immediately after confirmed HEAD stayed at `f678758` and the working
-tree diff was unchanged (still exactly `EXECUTION_STATE.md`, the four
-CRLF-normalized test files modified). So *within this turn's own
-visibility*, this cycle's commit attempt is a genuine, directly-confirmed
-no-op, not merely a hedged self-report — the 36th such instance.
+self-reported, using two independent attempts** (a standalone `git add
+package.json`, then a standalone `git commit -a -m ...`) — both returned
+"This command requires approval" from the tool layer itself (not a git
+error), and a `git log --oneline -3` + `git status --porcelain` run
+immediately after each confirmed HEAD stayed at `6e3f491` and the working
+tree diff was unchanged (still exactly `package.json` modified). So
+*within this turn's own visibility*, this cycle's commit attempt is a
+genuine, directly-confirmed no-op, not merely a hedged self-report —
+consistent with the standing pattern (see note at top of file, now
+reconfirmed for at least the 38th time running).
 
 **Standing question — mechanism already established with direct evidence
 in prior cycles' own history of this file:** an external supervising
@@ -311,19 +271,16 @@ own visibility. That means this turn's own direct "nothing changed"
 observation immediately after the attempt is real and correctly reported,
 but is **not** predictive of the final outcome once this turn ends —
 consistent with, not contradicting, the standing pattern. The
-working-tree change itself (the four-file CRLF-normalization fix + this
-`EXECUTION_STATE.md` update) is real, validated (`tsc`/`npm test` both
-PASS, 130/130 suites, 1487/1487 tests) — per "never discard uncommitted
-work," it is NOT reverted regardless of this turn's own commit-attempt
-outcome. The next cycle's first action must still be its own
-`git log --oneline -5` + `git status` to determine the actual final
-outcome independently.
+working-tree change itself (`package.json`'s `testPathIgnorePatterns`
+addition + this `EXECUTION_STATE.md` update) is real, validated
+(`tsc`/`npm test` both PASS, 125/125 suites, 1482/1482 tests) — per
+"never discard uncommitted work," it is NOT reverted regardless of this
+turn's own commit-attempt outcome. The next cycle's first action must
+still be its own `git log --oneline -5` + `git status` to determine the
+actual final outcome independently.
 
-`which supabase` ran cleanly this cycle (still absent, no gate) — the
-external checkpoint mechanism above appears specific to this session's
-own working-tree diff via `git add`/`git commit`, not a general bypass of
-every gated command. `gh auth status` was not re-tested this cycle (no
-new need arose for it). AGENTS.md rule 12 explicitly permits local commits
+`gh auth status` and `docker info` were both reconfirmed gated this cycle
+as standalone commands. AGENTS.md rule 12 explicitly permits local commits
 without asking, so any block here is a sandbox permission-mode/timing
 artifact, not a policy
 one — no bypass (`--no-verify` or otherwise) has ever been attempted.
@@ -394,7 +351,15 @@ tracked `.before-*` backup files, one `.encoding-backup` file, and
 `src/components/HomeScreen.tsx` (an orphaned duplicate of
 `src/screens/HomeScreen.tsx`, discovered several cycles ago — see Next
 Safe Task for the full seventeen-file list) — all inert, dead, with no
-functional impact, left in place, not blocking any other work.
+functional impact, left in place, not blocking any other work. **Five of
+the six `__scratch_*`/`debug*` test files in this list** (all but
+`__scratch_renderHook_probe.test.ts`, which has real assertions) **are, as
+of this cycle, excluded from Jest collection via `package.json`'s new
+`testPathIgnorePatterns`** — this closes the "always green, zero-assertion
+test inflating suite-pass confidence" risk without requiring deletion; the
+files themselves remain on disk pending the deletion-permission unblock,
+which is the only remaining reason they're still on this seventeen-file
+list at all.
 
 **Still-open, independent of this branch:** the applicant-side navigation
 bug in `src/screens/FamilyOnboardingScreen.tsx`'s
@@ -418,24 +383,26 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the CRLF-normalization fix to the four source-text-
-scan tests + this `EXECUTION_STATE.md` update) landed, and check every
-commit between whatever SHA this file names and actual HEAD, not just the
-newest one. **Also re-run the FULL `npm test -- --runInBand` (not just a
-per-change subset)** — this cycle found that a full run had not been
-re-verified for several cycles and two tests were silently failing in the
-meantime purely due to this sandbox's own CRLF checkout config; make this
-a standing per-cycle habit, not a one-off.
+cycle's own commit (the `package.json` `testPathIgnorePatterns` addition +
+this `EXECUTION_STATE.md` update) landed, and check every commit between
+whatever SHA this file names and actual HEAD, not just the newest one.
+**Also re-run the FULL `npm test -- --runInBand`** (standing habit,
+established two cycles ago after a full run caught 2 silently-failing
+tests that per-change subset runs had missed) — expect **125/125 suites,
+1482/1482 tests** as the new baseline (down from 130/130 · 1487/1487,
+correctly, due to this cycle's own `testPathIgnorePatterns` exclusion of 5
+zero-assertion scratch/debug files, not a regression).
 
-A possible smaller follow-up, not required, left open as an idea rather
-than executed this cycle: if the seventeen-scratch-file deletion permission
-gate (see Blocker below) remains blocked for many more cycles, consider
-adding `testPathIgnorePatterns` entries to the Jest config for the four
-`__scratch_*_probe.test.ts` files (found by this cycle's own research
-subagent — three have zero `expect()` calls and would still report
-"passing" indefinitely; see Completed This Cycle above) as a lower-risk
-interim mitigation that doesn't require file deletion, while leaving the
-actual deletion as the eventual real fix once unblocked.
+The `testPathIgnorePatterns` interim mitigation a prior cycle had left
+open as an idea is now done (this cycle) — do not re-propose it. The
+seventeen scratch/debug/backup/dead files themselves are still gated on
+deletion; retry `git rm`/file deletion the moment the sandbox's permission
+mode allows it (see Blocker above for the current list). Also do not
+re-propose `system_admin_set_family_approval()` (belongs to stacked branch
+`feat/system-admin-approval-controls`/PR #11, reconfirmed with direct
+cross-branch evidence this cycle) or wiring `useSystemAdminStore.reset()`
+into `authStore.signOut()` (investigated and confirmed not a real bug this
+cycle — see Current Task above for both).
 
 **This cycle's own fix in `StatisticsScreen.tsx` closes a real,
 first-time-discovered functional/feature gap**, not a cosmetic one:
@@ -736,56 +703,64 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `f678758`, one commit
-  past the `f30814b` the prior cycle's own file narrative described as
-  HEAD — `git show --stat f678758` confirmed it contains exactly the
-  prior cycle's own `StatisticsScreen.tsx` `computePeePoopStats`
-  pee/poop-card wiring fix (+ that cycle's own `EXECUTION_STATE.md`
-  update), reconfirming the standing self-reporting-drift pattern yet
-  again (35th time). `node_modules` was absent entirely; `npm ci` fixed
-  it. Reconfirmed `which supabase` still absent. `npx tsc --noEmit` at
-  reconciled HEAD — PASS.
-- **Ran the full test suite fresh (not just a per-change subset) and found
-  a real, reproducible, RC-blocking test bug:** 2 of 130 suites failed
-  (`MemberDetailsModal.resetPermissionAccessibility.test.ts`,
-  `HomeScreen.lastWalkFallback.test.ts`) due to fixed-length
-  `.slice(idx, idx + 200)` windows in source-text-scan tests breaking under
-  this sandbox's `core.autocrlf=true` CRLF checkout (no `.gitattributes`
-  exists in this repo) — confirmed the actual production source
-  (`MemberDetailsModal.tsx`/`HomeScreen.tsx`, both unchanged this cycle)
-  is correct, and the failure is purely a checkout-line-ending artifact.
-  Since this sandbox's own path is itself a Windows self-hosted GitHub
-  Actions runner, this reproduces in real CI, not just locally. **Fixed**
-  by adding `.replace(/\r\n/g, '\n')` after `fs.readFileSync(...)` in both
-  failing tests, plus two more tests found via a follow-up grep sweep with
-  the identical fragile pattern that weren't failing yet
-  (`FamilyOnboardingScreen.onboardingStatusRecovery.test.ts`,
-  `SettingsScreen.switchUserFlow.test.ts`) — closing the whole latent bug
-  class in one bounded, test-only, zero-production-file-touched unit.
-  `npx tsc --noEmit` PASS and `npm test -- --runInBand` PASS (130/130
-  suites, 1487/1487 tests, up from 128/130 · 1485/1487 immediately before
-  the fix on the same HEAD) after the change. `git status`/diff scoped to
-  exactly the four modified test files (8 insertions/4 deletions) + this
+- Reconciliation found HEAD had actually moved to `6e3f491`, one commit
+  past `f678758` — confirmed via `git show --stat` it contains exactly
+  the prior cycle's own four-file CRLF-normalization test fix + that
+  cycle's own `EXECUTION_STATE.md` rewrite, reconfirming the standing
+  self-reporting-drift pattern yet again. `node_modules` was absent
+  entirely; `npm ci` fixed it. `npx tsc --noEmit` and full `npm test --
+  --runInBand` at reconciled HEAD both PASS (130/130 suites, 1487/1487
+  tests), confirming a healthy baseline.
+- Rechecked every standing blocker directly (`gh auth status`, `docker
+  info`, `which supabase`, `git branch -r` for `batch-4`, `git rm` on a
+  scratch file) — all unchanged, still gated/absent exactly as every prior
+  cycle.
+- Dispatched two research passes to find the next unambiguous engineering
+  gap. Both proposed candidates were investigated directly and rejected,
+  not acted on: (1) `system_admin_set_family_approval()` — confirmed via
+  cross-branch `git grep` against
+  `origin/feat/system-admin-approval-controls` that it is already fully
+  wired there (PR #11), correctly out of scope for this branch, matching
+  the prior cycle's own documented judgment; (2)
+  `useSystemAdminStore.reset()` — confirmed via reading the store's own
+  doc comment and `authStore.signOut()`'s doc comments that
+  `isSystemAdmin` is scoped to this device's persistent `auth.uid()`,
+  which `signOut()` (a local family-member switch, not a real Supabase
+  sign-out) never changes, so there is no real bug to fix — a legitimate
+  test-only utility.
+- **Selected and executed a real, previously-identified-but-unexecuted
+  task instead:** a prior cycle's research had found 4 of the seventeen
+  known dead scratch/debug files have zero `expect()` calls (always
+  "passing" regardless of behavior) and left open, as an idea, adding
+  `testPathIgnorePatterns` as an interim mitigation since direct deletion
+  remains permission-gated. This cycle re-verified with fresh evidence
+  (read all six `__scratch_*`/`debug*` test files in full, not just
+  trusted the old claim) and found **5**, not 4, have zero `expect()`
+  calls (the prior count had missed `debugExpoConstants.test.ts` and
+  `debugExpoNotifications.test.ts` as being in the same class, and
+  slightly mis-scoped which file had real assertions —
+  `__scratch_renderHook_probe.test.ts` has 2 real `expect()` calls and was
+  correctly excluded from this fix). **Fixed:** added
+  `testPathIgnorePatterns` to `package.json`'s `"jest"` config excluding
+  those 5 files by explicit path. `npx tsc --noEmit` PASS. `npm test --
+  --runInBand` PASS: 125/125 suites, 1482/1482 tests (down from 130/130 ·
+  1487/1487, exactly 5 fewer, matching the 5 excluded files one-for-one).
+  `git status`/diff scoped to exactly `package.json` (8 insertions) + this
   `EXECUTION_STATE.md` update. **Commit attempt outcome:** see Blocker
   above.
-- A research-only Explore subagent dispatched this cycle (before the test
-  failures were found) to search for the next unambiguous engineering gap
-  reported a secondary, not-yet-actioned finding: four committed
-  `__scratch_*_probe.test.ts`/debug files (already on this file's own
-  seventeen-file dead-file list, gated on the standing file-deletion
-  permission block — see Blocker below) are actively collected and run by
-  Jest (confirmed via `npx jest --listTests`), three with zero `expect()`
-  calls and one duplicating real coverage in `authStore.test.ts` — not a
-  new file-list item, but a new angle on why they matter (false-positive
-  "always green" tests inflating suite-pass confidence, plus one file
-  mutating global `Platform.OS` with no `afterEach` restore, a latent
-  test-order-dependent flakiness source). Left in place, unfixed, pending
-  the same deletion-permission unblock as the rest of the seventeen-file
-  list; worth revisiting as a possible `testPathIgnorePatterns` Jest-config
-  workaround if direct deletion remains gated for many more cycles.
 
 ### Recent cycles (condensed — full detail in git history of this file)
 
+- Prior cycle: reconciliation found HEAD at `f678758` and fixed a real,
+  reproducible, RC-blocking test-reliability bug: 2 of 130 suites failed
+  under this sandbox's `core.autocrlf=true` CRLF checkout (no
+  `.gitattributes` in this repo) because fixed-length `.slice(idx, idx +
+  200)` windows in source-text-scan tests shifted past their target text —
+  confirmed the underlying production source was correct in both cases.
+  Fixed via `.replace(/\r\n/g, '\n')` in the 2 failing tests plus 2 more
+  with the identical fragile pattern found via a follow-up grep sweep.
+  Landed as `6e3f491` despite that cycle's own hedged "commit attempt
+  outcome recorded under Blocker" self-report.
 - Prior cycle: reconciliation found HEAD at `49d4764` and fixed a real,
   first-time-discovered functional regression: `walkActions.ts`'s
   `walkMetadataLine()` never called the already-implemented
