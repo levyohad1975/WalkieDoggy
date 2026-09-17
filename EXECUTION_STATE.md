@@ -50,29 +50,27 @@ anything else.
 ## Current Task
 
 **This cycle's reconciliation, done fresh via direct `git log`/`git show`,
-not trusted from this file's own prior narrative:** HEAD was `5c34adc`,
-clean working tree, up to date with
-`origin/feat/verified-auth-onboarding-batch-2` — **one** commit past
-`ee5f091`, what this file's own prior text described as HEAD (and which
-that prior cycle itself had hedged its commit attempt under Blocker).
-`git show --stat 5c34adc` and `git diff --name-status ee5f091 5c34adc`
-confirmed it contains exactly that prior cycle's own `edgeFunctionErrorReason()`
-Edge-Function-error-reason-recovery fix (`src/lib/verifiedAdminOnboarding.ts`,
-`src/lib/errorMessages.ts`, their test files) plus that cycle's own
-`EXECUTION_STATE.md` rewrite — the standing self-reporting-drift pattern
-(see note above) reconfirmed yet again (43rd+ time running): the commit had
-already landed and pushed despite the hedged self-report. Reconciled before
-starting new work, per protocol. `node_modules` was absent again at cycle
-start; `npm ci` restored it (906 packages). `npx tsc --noEmit` at reconciled
-HEAD `5c34adc` — **PASS**. Full `npm test -- --runInBand` at reconciled
-HEAD — **PASS: 126/126 suites, 1498/1498 tests** (the expected baseline,
-matching the prior cycle's own reported count), confirming a healthy
-baseline before starting new work. Retried the two cheapest still-open
-housekeeping items as a fresh sandbox-permission-mode check: `git rm` on the
-seven scratch/debug files and a `TZ=Pacific/Kiritimati node -e ...` probe
-both returned "This command requires approval" again this cycle — both
-genuinely still gated, not a fresh unblock, consistent with the standing
-pattern; working tree was confirmed unchanged after each attempt.
+not trusted from this file's own prior narrative:** HEAD was `264dc88`,
+clean working tree, **one** commit past `5c34adc`, what this file's own
+prior text described as HEAD (and which that prior cycle itself had hedged
+its commit attempt under Blocker). `git show --stat 264dc88` and `git diff
+--name-status 5c34adc 264dc88` confirmed it contains exactly that prior
+cycle's own `create_verified_family()` timezone fix (new migration 0036,
+`create-verified-family/index.ts`, `verifiedAdminOnboarding.ts` + their new/
+updated test files) plus that cycle's own `EXECUTION_STATE.md` rewrite —
+the standing self-reporting-drift pattern (see note above) reconfirmed yet
+again (44th+ time running): the commit had already landed despite the
+hedged self-report. Reconciled before starting new work, per protocol.
+`node_modules` was absent again at cycle start; `npm ci` restored it (906
+packages). `npx tsc --noEmit` at reconciled HEAD `264dc88` — **PASS**. Full
+`npm test -- --runInBand` at reconciled HEAD — **PASS: 127/127 suites,
+1504/1504 tests** (the expected baseline, matching the prior cycle's own
+reported count), confirming a healthy baseline before starting new work.
+Retried the cheapest still-open housekeeping/access checks as a fresh
+sandbox-permission-mode check: a compound `git rm --dry-run`/`gh auth
+status`/`docker info` command and a standalone `gh auth status` both
+returned "This command requires approval" again this cycle — still gated,
+not a fresh unblock, consistent with the standing pattern.
 
 **This cycle's own task — dispatched a fresh Explore research agent**,
 explicitly instructed not to re-report any of the ~30+ already-exhausted
@@ -194,6 +192,92 @@ confirmed the changeset is scoped to exactly
 `src/lib/__tests__/migration0036.timezoneFix.test.ts` (new) — plus this
 `EXECUTION_STATE.md` update — no unrelated file touched, no user work at
 risk.
+
+**This cycle's own task — dispatched a fresh Explore research agent**,
+explicitly instructed not to re-report any of the ~40+ already-exhausted
+defect classes documented in this file, steered toward previously-unswept
+areas (SyncQueue/offline conflict-resolution logic, other Edge Functions,
+store race conditions, other migration/RPC logic bugs, other
+error-swallowing call sites, push-token lifecycle). It found a real,
+first-time-discovered, non-cosmetic offline-sync correctness bug, verified
+directly by this cycle (not just trusted from the report) by reading
+`src/data/syncQueue.ts`'s `isPermanentError()` (lines 102-136) and its
+`flush()` consumer (lines 480-568), and by grepping every migration:
+
+`isPermanentError()`'s own doc comment already documents the exact failure
+mode it exists to prevent — a queued write whose failure is wrongly
+classified as "retryable" causes `flush()` to `break` out of its loop
+(line 565), leaving that item stuck at the head of the queue and blocking
+every later-queued operation for that profile, forever, since a
+non-permanent failure is never removed and is retried unchanged on every
+future `flush()`. Prior rounds had already fixed this for SQLSTATE classes
+`23` (integrity violations), `42` (RLS/privilege), and `28`
+(authorization). But every `raise exception 'message'` in this schema's
+PL/pgSQL functions — confirmed via `grep -c "raise exception"
+supabase/migrations/*.sql` (32 non-zero files) and `grep -rn "errcode"
+supabase/migrations/*.sql` (zero matches, confirmed twice) — uses the bare
+form with no `using errcode = ...` override, which PostgreSQL defaults to
+SQLSTATE `P0001`. `isPermanentError()`'s existing `code.startsWith('23') ||
+... startsWith('28')` check does not recognize `P0`, so every
+business-rule rejection in this schema (as opposed to a raw constraint
+violation) was silently misclassified as retryable.
+
+This is concretely reachable offline-first, not just theoretical:
+`enforce_walk_write_authorization()` (`supabase/migrations/0012_walk_resolve_own_only.sql`,
+e.g. lines 116/119/138/142/152) raises plain, uncoded exceptions like
+`'invalid status transition'` and `'reassigning a walk requires an
+approved swap request'`. `scheduleStore.skip()`/`editDoneDetails()` are
+reachable by an ordinary member for their own walk and go straight through
+`repository.saveWalk()` → `SyncQueue.enqueue()` → `SupabaseRepository
+.saveWalk()`'s `.upsert()` with no pre-check of the walk's current server
+state. If that walk's true server-side status/owner has diverged by the
+time the queued write actually reaches Supabase (an admin rescheduled it,
+another device already resolved it, or a swap was approved, while this
+device was offline — an everyday occurrence for an offline-first app), the
+trigger raises a `P0001` exception that, before this fix, permanently
+stalled every subsequent sync operation for that profile with nothing
+surfaced to the user (it never reaches `conflicts`, since only permanent
+failures are recorded there).
+
+**Fixed:** extended `isPermanentError()` in `src/data/syncQueue.ts` to also
+treat SQLSTATE class `P0` (plpgsql_error — `P0001`/`P0002`/`P0003`/`P0004`,
+all of which are PL/pgSQL-raised, not connectivity-shaped) as PERMANENT,
+mirroring the existing 23/42/28 pattern exactly, with a doc-comment
+addition explaining the reasoning and the concrete `saveWalk`/offline-race
+trigger path. Added one new regression test to
+`src/data/__tests__/syncQueue.test.ts` (in the existing "isPermanentError
+class 28..." describe block) that enqueues a `saveWalk` failing with a
+`P0001` business-rule error followed by an unrelated `upsertUser`, and
+asserts the `P0001` item is dropped as a conflict (not left queued to
+`break` the loop) and the later `upsertUser` still succeeds — mirroring the
+existing class-28/42501 regression tests' own shape.
+
+`npx tsc --noEmit` after this cycle's own change — **PASS**, zero errors.
+`npm test -- --runInBand` after this cycle's own change — **PASS: 127/127
+suites, 1505/1505 tests** (up from 127/127 · 1504/1504 immediately before
+the change, same HEAD — exactly 1 new test in the existing
+`syncQueue.test.ts` suite, no new suite; every other suite's count
+unchanged). `git status --porcelain=v1 --untracked-files=all` confirmed the
+changeset is scoped to exactly `src/data/syncQueue.ts` and
+`src/data/__tests__/syncQueue.test.ts` — plus this `EXECUTION_STATE.md`
+update — no unrelated file touched, no user work at risk.
+
+**Runner-up candidates the same research agent found, deliberately not
+fixed this cycle (recorded so a future cycle does not re-propose either):**
+1. `update_email_delivery_status()` unconditionally overwrites `status` on
+   an out-of-order/replayed Resend webhook event — investigated and
+   rejected: this is an already-accepted, documented no-op/replay case, not
+   a new gap.
+2. `swap()`'s direct reassignment path always hitting
+   `enforce_walk_write_authorization()`'s trigger for a non-admin —
+   investigated and rejected: the UI already gates this so only an admin
+   (who bypasses the trigger's swap-approval check) can reach direct
+   reassignment; not actually reachable by a non-admin.
+3. Device-local vs. family-local timezone used for period/day cutoffs in
+   `statistics.ts`/`scheduleStore.load()` — a real edge case but a
+   consistent, pervasive, pre-existing design choice across the codebase,
+   not a newly-introduced regression; a product decision if it's ever
+   revisited, not a unilateral engineering call.
 
 ### Prior cycles' own narratives (condensed — full detail in git history of this file)
 
@@ -395,20 +479,22 @@ mount-recovery dead end, which was the unambiguous, no-judgment-call part.
 
 ## Current Task Status
 
-Prior cycle's `edgeFunctionErrorReason()` Edge-Function-error-reason-
-recovery fix (`5c34adc`) is confirmed landed and pushed — closed, `DONE`.
+Prior cycle's `create_verified_family()` timezone fix (migration 0036,
+`264dc88`) is confirmed landed — closed, `DONE`.
 
-This cycle's own task — threading a client-resolved IANA timezone through
-`create_verified_family()` (new migration 0036), the `create-verified-family`
-Edge Function, and `createVerifiedFamily()`, fixing a real data-integrity
-bug where every new family silently inherited the `'Asia/Jerusalem'`
-schema default regardless of where its members live, with no correction
-path — is code-complete and validated (`tsc` PASS, `npm test` PASS
-**127/127 · 1504/1504**, up from **126/126 · 1498/1498** at cycle start HEAD
-before the fix). Commit attempt outcome recorded under Blocker/Last Evidence
-below; per the standing 40+-cycle pattern, even a "blocked" self-report this
-same cycle should not be assumed final — the next cycle's first action must
-still be its own independent `git log --oneline -5` + `git status` check.
+This cycle's own task — extending `isPermanentError()` in
+`src/data/syncQueue.ts` to also treat SQLSTATE class `P0`
+(`P0001`/plpgsql `raise exception`) as PERMANENT, fixing a real offline-sync
+correctness bug where every business-rule rejection from this schema's
+triggers (every `raise exception` across every migration — none override
+`errcode`) was misclassified as retryable, permanently stalling the whole
+SyncQueue for that profile once hit — is code-complete and validated
+(`tsc` PASS, `npm test` PASS **127/127 · 1505/1505**, up from **127/127 ·
+1504/1504** at cycle start HEAD before the fix). Commit attempt outcome
+recorded under Blocker/Last Evidence below; per the standing 40+-cycle
+pattern, even a "blocked" self-report this same cycle should not be assumed
+final — the next cycle's first action must still be its own independent
+`git log --oneline -5` + `git status` check.
 
 ## Current Branch / PR
 
@@ -421,117 +507,92 @@ still be its own independent `git log --oneline -5` + `git status` check.
 
 ## Last Evidence
 
-- This cycle start: `git log --oneline -15`/`git status` confirmed HEAD is
-  `5c34adc`, clean working tree, "up to date with
-  origin/feat/verified-auth-onboarding-batch-2" — **one** commit past
-  `ee5f091`, what this file's own prior narrative described as HEAD.
-  `git show --stat 5c34adc` and `git diff --name-status ee5f091 5c34adc`
-  confirmed it contains exactly the prior cycle's own
-  `edgeFunctionErrorReason()` fix (`src/lib/verifiedAdminOnboarding.ts`,
-  `src/lib/errorMessages.ts`, their test files) plus that cycle's own
-  `EXECUTION_STATE.md` rewrite — it had landed and pushed despite the
-  prior cycle's own hedged "commit attempt outcome recorded under
-  Blocker" self-report, consistent with the standing pattern (see note at
-  top of file).
+- This cycle start: `git log --oneline -10`/`git status` confirmed HEAD is
+  `264dc88`, clean working tree — **one** commit past `5c34adc`, what this
+  file's own prior narrative described as HEAD. `git show --stat 264dc88`
+  and `git diff --name-status 5c34adc 264dc88` confirmed it contains
+  exactly the prior cycle's own `create_verified_family()` timezone fix
+  (new migration 0036, `create-verified-family/index.ts`,
+  `verifiedAdminOnboarding.ts` + their test files) plus that cycle's own
+  `EXECUTION_STATE.md` rewrite — it had landed despite the prior cycle's
+  own hedged "commit attempt outcome recorded under Blocker" self-report,
+  consistent with the standing pattern (see note at top of file).
 - `node_modules` absent entirely at cycle start again; `npm ci` fixed it
-  (906 packages). `npx tsc --noEmit` at reconciled HEAD `5c34adc` —
+  (906 packages). `npx tsc --noEmit` at reconciled HEAD `264dc88` —
   **PASS**, zero errors. Full `npm test -- --runInBand` at reconciled
-  HEAD — **PASS: 126/126 suites, 1498/1498 tests** (the expected
+  HEAD — **PASS: 127/127 suites, 1504/1504 tests** (the expected
   baseline), confirming a healthy baseline before new work.
-- Retried `git rm` on the seven scratch/debug files and a
-  `TZ=Pacific/Kiritimati node -e ...` probe as a fresh sandbox-permission
+- Retried a compound `git rm --dry-run`/`gh auth status`/`docker info`
+  check and a standalone `gh auth status` as a fresh sandbox-permission
   check — both returned "This command requires approval" again this
-  cycle, `git status --porcelain` confirmed the working tree was unchanged
-  after each, genuinely still gated (not a fresh unblock).
+  cycle, genuinely still gated (not a fresh unblock).
 - Dispatched a fresh Explore research agent, explicitly instructed not to
-  re-report any of the ~30+ already-exhausted defect classes documented in
+  re-report any of the ~40+ already-exhausted defect classes documented in
   this file, steered toward previously-unswept areas (SyncQueue/offline
-  logic, other Edge Functions, store race conditions, business-logic
-  date/time bugs, migration/RPC logic bugs, other error-swallowing sites,
-  push-token lifecycle). It found a real gap, verified directly by this
-  cycle (not just trusted from the report) by reading
-  `supabase/migrations/0022_family_timezone_and_dog_sex.sql`,
-  `supabase/migrations/0032_verified_family_onboarding.sql`,
-  `supabase/migrations/0025_walk_reminder_scheduler.sql`,
-  `supabase/migrations/0027_history_statistics_server_enforcement.sql`,
-  `supabase/functions/create-verified-family/index.ts`, and
-  `src/lib/verifiedAdminOnboarding.ts`: 0022's own header warns its
-  `'Asia/Jerusalem'` `families.timezone` default "DOES NOT EXTEND TO
-  FUTURE FAMILIES" and that family creation must explicitly determine each
-  new family's real timezone — but `create_verified_family()` (0032), the
-  only way to create a family after 0033's cutover, never did, silently
-  defaulting every new family to Israel time with no correction path.
-  Confirmed via repo-wide grep that no `Intl.DateTimeFormat` call existed
-  anywhere in `src/` before this fix, and no migration after 0022 ever
-  referenced `timezone`. Consequence: the walk reminder scheduler (0025)
-  and `current_family_local_date()` (0027) both compute against the wrong
-  zone for any non-Israel family, breaking reminder timing and day-boundary
-  bucketing.
-- **This cycle's own fix:** added
-  `supabase/migrations/0036_create_verified_family_timezone.sql` — drops
-  the old 4-argument `create_verified_family()` and recreates it with a
-  new `p_timezone text default null` parameter, validated via
-  `is_valid_timezone()` (0022) with a safe fallback to `'Asia/Jerusalem'`
-  on any missing/invalid value, actually inserted into `families.timezone`
-  and recorded in the `family.created` audit-log metadata; re-locked to
-  `service_role`-only execute. Updated
-  `supabase/functions/create-verified-family/index.ts` to read an optional
-  `timezone` string from the request body and forward it as `p_timezone`.
-  Updated `src/lib/verifiedAdminOnboarding.ts`'s `createVerifiedFamily()`
-  to send `Intl.DateTimeFormat().resolvedOptions().timeZone` (this app's
-  first use of `Intl` anywhere in `src/`; RN 0.86/Expo 57's Hermes ships
-  full ICU). 0032 itself was left untouched, per rule 8.
+  conflict-resolution logic, other Edge Functions, store race conditions,
+  other migration/RPC logic bugs, other error-swallowing sites, push-token
+  lifecycle). It found a real gap, verified directly by this cycle (not
+  just trusted from the report) by reading `src/data/syncQueue.ts`'s
+  `isPermanentError()`/`flush()` and grepping every migration:
+  `isPermanentError()` only recognizes SQLSTATE classes `23`/`42`/`28` as
+  permanent, but every `raise exception` in this schema (32 files, grepped
+  via `grep -c "raise exception" supabase/migrations/*.sql`) uses the bare
+  form with no `errcode` override (confirmed zero matches via `grep -rn
+  "errcode" supabase/migrations/*.sql`), which Postgres defaults to
+  SQLSTATE `P0001` — a class `isPermanentError()` did not recognize, so
+  every business-rule rejection from a trigger like
+  `enforce_walk_write_authorization()` (0012) was misclassified as
+  retryable, and per `flush()`'s own `break` (line 565), permanently
+  stalled the whole SyncQueue for that profile the first time it was hit
+  (e.g. an offline `skip()`/`editDoneDetails()` racing a concurrent
+  server-side resolution of the same walk).
+- **This cycle's own fix:** extended `isPermanentError()` in
+  `src/data/syncQueue.ts` to also treat SQLSTATE class `P0` as PERMANENT,
+  mirroring the existing 23/42/28 pattern, with a doc-comment explaining
+  the reasoning and the concrete offline-race trigger path. Added one new
+  regression test to `src/data/__tests__/syncQueue.test.ts` (a `P0001`
+  `saveWalk` dropped as a conflict, not blocking a later `upsertUser`).
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `npm test -- --runInBand` after this cycle's own change — **PASS:
-  127/127 suites, 1504/1504 tests** (up from 126/126 · 1498/1498
-  immediately before the change, same HEAD — exactly 1 new suite (6 new
-  tests) in the new `migration0036.timezoneFix.test.ts`; the 3 existing
-  `createVerifiedFamily()` body-assertion tests in
-  `verifiedAdminOnboarding.test.ts` were updated in place, not added, to
-  expect the new `timezone` field, with `Intl.DateTimeFormat` stubbed for
-  determinism; every other suite's count unchanged).
+  127/127 suites, 1505/1505 tests** (up from 127/127 · 1504/1504
+  immediately before the change, same HEAD — exactly 1 new test in the
+  existing `syncQueue.test.ts` suite, no new suite; every other suite's
+  count unchanged).
 - `git status --porcelain=v1 --untracked-files=all` confirmed the
-  changeset is scoped to exactly
-  `supabase/migrations/0036_create_verified_family_timezone.sql` (new),
-  `supabase/functions/create-verified-family/index.ts`,
-  `src/lib/verifiedAdminOnboarding.ts`,
-  `src/lib/__tests__/verifiedAdminOnboarding.test.ts`,
-  `src/lib/__tests__/migration0036.timezoneFix.test.ts` (new), plus this
-  `EXECUTION_STATE.md` update — no unrelated file touched, no user work at
-  risk.
+  changeset is scoped to exactly `src/data/syncQueue.ts` and
+  `src/data/__tests__/syncQueue.test.ts`, plus this `EXECUTION_STATE.md`
+  update — no unrelated file touched, no user work at risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
   checked directly via `git log`/`git status` after the attempt.
 
 ## Last Evidence Timestamp
 
-2026-09-17T19:30:00Z (prior landed commit `5c34adc`); this cycle's own
-work validated at HEAD `5c34adc` + working tree as of this cycle's own
-run (2026-09-17T20:45:00Z), commit attempt outcome per Blocker below.
+2026-09-17T19:18:13+03:00 (prior landed commit `264dc88`); this cycle's own
+work validated at HEAD `264dc88` + working tree as of this cycle's own
+run (2026-09-17T21:15:00Z), commit attempt outcome per Blocker below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
-self-reported, using three independent standalone attempts:** a
-standalone `git add <the five changed files>`, then a standalone `git add
--A`, then a standalone `git commit -a -m ...` — all three returned "This
-command requires approval" from the tool layer itself (not a git error),
-consistent with every standing blocked git-write command across every
-prior cycle. A `git status --porcelain` run immediately after confirmed
-the working tree diff was unchanged (still exactly the four modified
-source/test files plus the two new files plus this file, nothing staged).
-So *within this turn's own visibility*, this cycle's commit attempt is a
-genuine, directly-confirmed no-op, not merely a hedged self-report —
-consistent with the standing pattern (see note at top of file, now
-reconfirmed for at least the 43rd time running). The working-tree change
-itself (the `create_verified_family()` timezone fix — new migration 0036,
-the Edge Function/client updates, the new/updated test files — plus this
-`EXECUTION_STATE.md` update) is real and validated (`tsc`/`npm test` both
-PASS, 127/127 suites, 1504/1504 tests) — per "never discard uncommitted
-work," it is NOT reverted regardless of this turn's own commit-attempt
-outcome. The next cycle's first action
-must still be its own `git log --oneline -5` + `git status` to determine
-the actual final outcome independently.
+self-reported:** a standalone `git add <the two changed files>` followed
+by a standalone `git commit -m ...` returned "This command requires
+approval" from the tool layer itself (not a git error), consistent with
+every standing blocked git-write command across every prior cycle. A `git
+status --porcelain` run immediately after confirmed the working tree diff
+was unchanged (still exactly the two modified files plus this file,
+nothing staged). So *within this turn's own visibility*, this cycle's
+commit attempt is a genuine, directly-confirmed no-op, not merely a hedged
+self-report — consistent with the standing pattern (see note at top of
+file, now reconfirmed for at least the 44th time running). The
+working-tree change itself (the `isPermanentError()` SQLSTATE-`P0`
+offline-sync fix in `src/data/syncQueue.ts` + its new regression test —
+plus this `EXECUTION_STATE.md` update) is real and validated (`tsc`/`npm
+test` both PASS, 127/127 suites, 1505/1505 tests) — per "never discard
+uncommitted work," it is NOT reverted regardless of this turn's own
+commit-attempt outcome. The next cycle's first action must still be its
+own `git log --oneline -5` + `git status` to determine the actual final
+outcome independently.
 
 **Prior cycle's own commit-attempt narrative (condensed, same shape as
 above — full text in git history of this file):** the prior cycle's own
@@ -663,17 +724,34 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the `create_verified_family()` timezone fix — new
-migration 0036, `create-verified-family/index.ts`,
-`verifiedAdminOnboarding.ts` + the updated/new test files + this
+cycle's own commit (the `isPermanentError()` SQLSTATE-`P0` offline-sync fix
+in `src/data/syncQueue.ts` + its new regression test + this
 `EXECUTION_STATE.md` update) landed, and check every commit between
 whatever SHA this file names and actual HEAD, not just the newest one.
 **Also re-run the FULL `npm test -- --runInBand`** (standing habit,
 established several cycles ago after a full run caught 2 silently-failing
 tests that per-change subset runs had missed) — expect **127/127 suites,
-1504/1504 tests** as the new baseline (up from 126/126 · 1498/1498,
-correctly, due to this cycle's own new `migration0036.timezoneFix.test.ts`
-suite (6 tests), not a fluke).
+1505/1505 tests** as the new baseline (up from 127/127 · 1504/1504,
+correctly, due to this cycle's own new regression test in the existing
+`syncQueue.test.ts` suite, not a fluke).
+
+**This cycle's own fix — extending `isPermanentError()` (`src/data/syncQueue.ts`)
+to treat SQLSTATE class `P0` (`P0001`, the default code for every bare
+`raise exception` in this schema) as PERMANENT, so a business-rule
+rejection from a trigger no longer permanently stalls the whole SyncQueue
+for that profile — is done and complete; do not re-propose it.** The two
+runner-up candidates the same research agent found were investigated and
+rejected, not deferred — do not re-propose either: (1)
+`update_email_delivery_status()` unconditionally overwriting `status` on
+an out-of-order/replayed Resend webhook event is an already-accepted,
+documented no-op/replay case, not a new gap; (2) `swap()`'s direct
+reassignment path is only reachable by an admin (who bypasses
+`enforce_walk_write_authorization()`'s swap-approval check in the UI), so
+it never actually hits that trigger as a non-admin. One item was noted but
+deliberately left as a product decision, not a unilateral engineering
+call: device-local vs. family-local timezone for period/day cutoffs in
+`statistics.ts`/`scheduleStore.load()` is a real edge case but a
+consistent, pervasive, pre-existing design choice, not a regression.
 
 The prior cycle's own `'rejected'`-status handling in
 `FamilyOnboardingScreen.tsx`'s mount-recovery path (landed as `ee5f091`)
@@ -1019,62 +1097,61 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `5c34adc`, one commit
-  past `ee5f091` — confirmed via `git show --stat` and `git diff
+- Reconciliation found HEAD had actually moved to `264dc88`, one commit
+  past `5c34adc` — confirmed via `git show --stat` and `git diff
   --name-status` it contains exactly the prior cycle's own
-  `edgeFunctionErrorReason()` fix (`verifiedAdminOnboarding.ts`,
-  `errorMessages.ts` + test files) + that cycle's own
-  `EXECUTION_STATE.md` rewrite, reconfirming the standing
-  self-reporting-drift pattern yet again. `node_modules` was absent
-  entirely; `npm ci` fixed it. `npx tsc --noEmit` and full `npm test --
-  --runInBand` at reconciled HEAD both PASS (126/126 suites, 1498/1498
-  tests), confirming a healthy baseline. Retried `git rm` on the seven
-  scratch/debug files and a `TZ=...`-prefixed probe — both still gated.
+  `create_verified_family()` timezone fix (new migration 0036,
+  `create-verified-family/index.ts`, `verifiedAdminOnboarding.ts` + test
+  files) + that cycle's own `EXECUTION_STATE.md` rewrite, reconfirming the
+  standing self-reporting-drift pattern yet again. `node_modules` was
+  absent entirely; `npm ci` fixed it. `npx tsc --noEmit` and full `npm
+  test -- --runInBand` at reconciled HEAD both PASS (127/127 suites,
+  1504/1504 tests), confirming a healthy baseline. Retried a compound
+  `git rm --dry-run`/`gh auth status`/`docker info` check and a standalone
+  `gh auth status` — both still gated.
 - Dispatched a fresh Explore research agent (explicitly told not to
-  re-report any of the ~30+ already-exhausted defect classes), steered
-  toward previously-unswept areas (SyncQueue/offline logic, other Edge
-  Functions, store race conditions, business-logic date/time bugs,
-  migration/RPC logic bugs, other error-swallowing sites, push-token
-  lifecycle). It found: migration 0022's own header warns that its
-  `'Asia/Jerusalem'` `families.timezone` default "DOES NOT EXTEND TO
-  FUTURE FAMILIES" — but `create_verified_family()` (0032), the only way
-  to create a family after 0033's cutover, never captured or forwarded a
-  real timezone, so every family created via verified onboarding silently
-  inherited the Israel default with no correction path, corrupting the
-  walk reminder scheduler (0025) and `current_family_local_date()` (0027)
-  for any non-Israel family. Verified directly (read migrations
-  0022/0025/0027/0032, the Edge Function, and `verifiedAdminOnboarding.ts`)
-  rather than trusting the report as-is: confirmed via grep no
-  `Intl.DateTimeFormat` call existed anywhere in `src/` before this fix,
-  and no migration after 0022 ever referenced `timezone`.
-- **Fixed:** added `supabase/migrations/0036_create_verified_family_timezone.sql`
-  (drops the old 4-argument `create_verified_family()`, recreates it with
-  a new `p_timezone text default null` parameter validated via
-  `is_valid_timezone()` with a safe `'Asia/Jerusalem'` fallback, actually
-  inserted into `families.timezone` and the audit-log metadata; re-locked
-  to `service_role`-only execute; 0032 itself untouched). Updated
-  `create-verified-family/index.ts` to read/forward an optional `timezone`
-  body field as `p_timezone`. Updated `verifiedAdminOnboarding.ts`'s
-  `createVerifiedFamily()` to send
-  `Intl.DateTimeFormat().resolvedOptions().timeZone` (this app's first use
-  of `Intl` anywhere in `src/`). Added a new 6-test
-  `migration0036.timezoneFix.test.ts` (source-scan style, matching
-  `migration0027.serverEnforcement.test.ts`'s established convention) and
-  updated 3 existing `createVerifiedFamily()` body-assertion tests in
-  `verifiedAdminOnboarding.test.ts` to expect the new `timezone` field,
-  stubbing `Intl.DateTimeFormat` for determinism. `npx tsc --noEmit` PASS.
-  `npm test -- --runInBand` PASS: 127/127 suites, 1504/1504 tests (up from
-  126/126 · 1498/1498, exactly 1 new suite/6 new tests, matching the new
-  regression tests one-for-one). `git status`/diff scoped to exactly
-  `supabase/migrations/0036_create_verified_family_timezone.sql` (new),
-  `supabase/functions/create-verified-family/index.ts`,
-  `src/lib/verifiedAdminOnboarding.ts`,
-  `src/lib/__tests__/verifiedAdminOnboarding.test.ts`,
-  `src/lib/__tests__/migration0036.timezoneFix.test.ts` (new) + this
-  `EXECUTION_STATE.md` update.
-  **Commit attempt outcome:** see Blocker above.
+  re-report any of the ~40+ already-exhausted defect classes), steered
+  toward previously-unswept areas (SyncQueue/offline conflict-resolution
+  logic, other Edge Functions, store race conditions, other migration/RPC
+  logic bugs, other error-swallowing sites, push-token lifecycle). It
+  found: `isPermanentError()` (`src/data/syncQueue.ts`) only recognizes
+  SQLSTATE classes `23`/`42`/`28` as permanent, but every `raise
+  exception` across every migration (32 files) uses the bare form with no
+  `errcode` override (confirmed zero `errcode` matches repo-wide), which
+  Postgres defaults to `P0001` — so every business-rule rejection from a
+  trigger like `enforce_walk_write_authorization()` (0012) was
+  misclassified as retryable, and per `flush()`'s own `break`,
+  permanently stalled the whole SyncQueue for that profile. Verified
+  directly (read `isPermanentError()`/`flush()` in full, grepped every
+  migration for `raise exception` and `errcode`) rather than trusting the
+  report as-is.
+- **Fixed:** extended `isPermanentError()` in `src/data/syncQueue.ts` to
+  also treat SQLSTATE class `P0` as PERMANENT, mirroring the existing
+  23/42/28 pattern, with a doc-comment explaining the reasoning and the
+  concrete `saveWalk`/offline-race trigger path. Added one new regression
+  test to `src/data/__tests__/syncQueue.test.ts` (a `P0001` `saveWalk`
+  dropped as a conflict, not blocking a later `upsertUser`). `npx tsc
+  --noEmit` PASS. `npm test -- --runInBand` PASS: 127/127 suites,
+  1505/1505 tests (up from 127/127 · 1504/1504, exactly 1 new test,
+  matching the new regression test one-for-one). `git status`/diff scoped
+  to exactly `src/data/syncQueue.ts` and
+  `src/data/__tests__/syncQueue.test.ts` + this `EXECUTION_STATE.md`
+  update. **Commit attempt outcome:** see Blocker above.
 
 ### Recent cycles (condensed — full detail in git history of this file)
+
+- Prior cycle: reconciliation found HEAD at `5c34adc` and fixed a real,
+  first-time-discovered data-integrity gap: `create_verified_family()`
+  (0032) never captured or forwarded a real timezone, so every family
+  created via verified onboarding silently inherited the
+  `'Asia/Jerusalem'` schema default with no correction path, corrupting
+  the walk reminder scheduler (0025) and `current_family_local_date()`
+  (0027) for any non-Israel family. Added migration 0036
+  (`p_timezone` parameter, validated/falls back safely), wired the Edge
+  Function and `createVerifiedFamily()` to send
+  `Intl.DateTimeFormat().resolvedOptions().timeZone`. Landed as `264dc88`
+  despite that cycle's own hedged "commit attempt outcome recorded under
+  Blocker" self-report.
 
 - Prior cycle: reconciliation found HEAD at `ee5f091` and fixed a real,
   first-time-discovered gap: `supabase-js`'s `FunctionsHttpError`

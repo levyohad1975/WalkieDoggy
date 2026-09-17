@@ -854,6 +854,26 @@ describe('SyncQueue — isPermanentError class 28, non-Error thrown values, and 
     expect(conflicts[0].code).toBe('28000');
   });
 
+  it('treats a class-P0 (P0001, a bare plpgsql "raise exception") Postgres code as a permanent conflict, not a retryable failure', async () => {
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'saveWalk', payload: fakeWalk('w1') });
+    await queue.enqueue({ type: 'upsertUser', payload: fakeUser('a') });
+
+    const businessRuleError = Object.assign(new Error('invalid status transition'), { code: 'P0001' });
+    const result = await queue.flush(
+      stubRemote({
+        saveWalk: jest.fn().mockRejectedValue(businessRuleError),
+        upsertUser: jest.fn().mockResolvedValue(undefined),
+      })
+    );
+
+    // the P0001 saveWalk is dropped as a permanent conflict, not left queued
+    // to `break` the loop and block the later upsertUser behind it.
+    expect(result).toEqual({ succeeded: 1, remaining: 0, conflicted: 1, quarantined: 0 });
+    const conflicts = await queue.getConflicts();
+    expect(conflicts[0].code).toBe('P0001');
+  });
+
   it('records a conflict message via String(error) when the thrown value is not an Error instance', async () => {
     const queue = new SyncQueue();
     await queue.enqueue({ type: 'upsertUser', payload: fakeUser('a') });
