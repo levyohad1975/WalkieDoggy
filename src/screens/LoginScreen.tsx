@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFamilyStore } from '../store/familyStore';
 import { useAuthStore } from '../store/authStore';
 import { colors } from '../theme/colors';
-import { breakpoints } from '../theme/tokens';
+import { breakpoints, spacing, typography } from '../theme/tokens';
 import { Button } from '../components/Button';
 import { EmptyState, ErrorState } from '../components/EmptyState';
 import { UserFormModal } from '../components/UserFormModal';
@@ -285,21 +285,21 @@ const styles = StyleSheet.create({
   // full-bleed background.
   contentWrap: { width: '100%', alignItems: 'center' },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center' },
-  emoji: { fontSize: 64, marginBottom: 8 },
-  title: { fontSize: 26, fontWeight: '800', color: colors.textPrimary },
-  subtitle: { fontSize: 16, color: colors.textSecondary, marginTop: 4, marginBottom: 32 },
+  emoji: { fontSize: 64, marginBottom: spacing.sm },
+  title: { ...typography.screenTitle, fontSize: 26, color: colors.textPrimary },
+  subtitle: { ...typography.body, fontWeight: 'normal', color: colors.textSecondary, marginTop: spacing.xs, marginBottom: 32 },
   grid: { width: '100%', gap: 14 },
   userButton: { width: '100%' },
-  addButton: { width: '100%', marginTop: 20 },
+  addButton: { width: '100%', marginTop: spacing.xl },
   errorBanner: {
     width: '100%',
-    marginTop: 20,
+    marginTop: spacing.xl,
     backgroundColor: colors.statusOverdueBg,
     borderRadius: 16,
-    padding: 16,
+    padding: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.md,
   },
   errorText: { flex: 1, color: colors.statusOverdue, fontWeight: '600', textAlign: 'right' },
   errorDismiss: { color: colors.statusOverdue, fontWeight: '800' },
