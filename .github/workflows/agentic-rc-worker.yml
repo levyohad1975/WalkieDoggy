@@ -72,7 +72,11 @@ jobs:
             "${env:ProgramFiles(x86)}\Git\usr\bin\bash.exe"
           )
           $onPath = Get-Command bash.exe -ErrorAction SilentlyContinue
-          if ($onPath -and $onPath.Source -notmatch '(?i)\\Windows\\System32\\bash\.exe
+          if ($onPath -and $onPath.Source -notmatch '(?i)\\Windows\\System32\\bash\.exe$') {
+            $candidates += $onPath.Source
+          }
+          $bash = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+          if (-not $bash) { throw 'Git Bash was not found on PATH or in supported system-wide Git for Windows locations.' }
           "CLAUDE_CODE_GIT_BASH_PATH=$bash" | Add-Content $env:GITHUB_ENV
           (Split-Path $bash -Parent) | Add-Content $env:GITHUB_PATH
           "Windows runner prerequisites ready. Node: $($node.Source); npm: $($npm.Source); Git Bash: $bash" | Add-Content $env:GITHUB_STEP_SUMMARY
