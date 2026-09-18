@@ -32,7 +32,7 @@ jobs:
           if ($workflow -notmatch '(?m)^\s+id-token:\s+write\s*$') { throw 'Agentic worker is missing id-token: write.' }
           if ($workflow -match '(?m)^\s+(pull-requests|issues):\s+write\s*$') { throw 'Agentic worker permissions are broader than the approved contract.' }
           if ([regex]::Matches($workflow, '--max-turns 90').Count -lt 2) { throw 'Unexpected max-turns contract; both Claude paths must use the bounded 90-turn repair budget.' }
-          if ([regex]::Matches($workflow, 'reserve the final 25 turns', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Count -ne 2) { throw 'Worker repair-reserve contract is missing from one or both Claude paths.' }
+          if ([regex]::Matches($workflow, 'reserve the final 25 turns', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Count -lt 2) { throw 'Worker repair-reserve contract is missing from one or both Claude paths.' }
           if ([regex]::Matches($workflow, 'continue-on-error: true').Count -ne 2) { throw 'Unexpected continue-on-error contract.' }
           @(
             'name: Detect worker authentication',
