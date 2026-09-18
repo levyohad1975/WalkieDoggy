@@ -1,0 +1,227 @@
+name: Agentic Autonomy V2 Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: "Autonomy V2 branch to continue"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+  id-token: write
+
+concurrency:
+  group: agentic-autonomy-v2-worker-${{ inputs.target_branch || vars.AUTONOMY_V2_TARGET_BRANCH || 'chore/autonomy-v2-state-policy' }}
+  cancel-in-progress: false
+
+env:
+  TARGET_BRANCH: ${{ inputs.target_branch || vars.AUTONOMY_V2_TARGET_BRANCH || 'chore/autonomy-v2-state-policy' }}
+
+jobs:
+  execute:
+    name: Autonomy V2 continuation
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 45
+    env:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - name: Guard autonomous target
+        id: guard
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          if ([string]::IsNullOrWhiteSpace($env:TARGET_BRANCH) -or $env:TARGET_BRANCH -eq 'main') { throw 'Worker requires an explicit non-main Autonomy V2 branch.' }
+          if ($env:TARGET_BRANCH -notmatch '^(feat|fix|chore|test|docs|rc)/[A-Za-z0-9._/-]+$') { throw 'Unapproved Autonomy V2 branch.' }
+          if ($env:TARGET_BRANCH.Contains('..') -or $env:TARGET_BRANCH.Contains('//') -or $env:TARGET_BRANCH.Contains('@{') -or $env:TARGET_BRANCH.EndsWith('/')) { throw 'Unsafe Autonomy V2 branch syntax.' }
+          'mode=write' | Add-Content $env:GITHUB_OUTPUT
+
+      - name: Checkout target ref
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.TARGET_BRANCH }}
+          persist-credentials: true
+
+      - name: Provision Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Verify Windows prerequisites
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Get-Command git -ErrorAction Stop | Out-Null
+          $node = Get-Command node.exe -ErrorAction Stop
+          $npm = Get-Command npm.cmd -ErrorAction Stop
+          & $node.Source --version
+          if ($LASTEXITCODE) { throw 'node executable validation failed' }
+          & $npm.Source --version
+          if ($LASTEXITCODE) { throw 'npm executable validation failed' }
+          # Never trust Windows system32\\bash.exe here: on modern Windows it is the WSL launcher,
+          # not Git Bash. Prefer explicit Git-for-Windows locations before PATH discovery.
+          $candidates = @(
+            "$env:ProgramFiles\Git\bin\bash.exe",
+            "$env:ProgramFiles\Git\usr\bin\bash.exe",
+            "${env:ProgramFiles(x86)}\Git\bin\bash.exe",
+            "${env:ProgramFiles(x86)}\Git\usr\bin\bash.exe"
+          )
+          $onPath = Get-Command bash.exe -ErrorAction SilentlyContinue
+          if ($onPath -and $onPath.Source -notmatch '(?i)\\Windows\\System32\\bash\.exe$') {
+            $candidates += $onPath.Source
+          }
+          $bash = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+          if (-not $bash) { throw 'Git Bash was not found on PATH or in supported system-wide Git for Windows locations.' }
+          "CLAUDE_CODE_GIT_BASH_PATH=$bash" | Add-Content $env:GITHUB_ENV
+          (Split-Path $bash -Parent) | Add-Content $env:GITHUB_PATH
+          "Windows runner prerequisites ready. Node: $($node.Source); npm: $($npm.Source); Git Bash: $bash" | Add-Content $env:GITHUB_STEP_SUMMARY
+
+      - name: Provision Bun without service-account symlinks
+        id: bun
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $bunRoot = Join-Path $env:RUNNER_TEMP 'walkie-bun-1.3.14'
+          $bunExe = Join-Path $bunRoot 'bun.exe'
+          if (-not (Test-Path $bunExe)) {
+            $zip = Join-Path $env:RUNNER_TEMP 'bun-windows-x64.zip'
+            $extract = Join-Path $env:RUNNER_TEMP 'bun-windows-x64-extract'
+            Remove-Item $zip -Force -ErrorAction SilentlyContinue
+            Remove-Item $extract -Recurse -Force -ErrorAction SilentlyContinue
+            Invoke-WebRequest -Uri 'https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/bun-windows-x64.zip' -OutFile $zip
+            Expand-Archive -Path $zip -DestinationPath $extract -Force
+            $downloaded = Get-ChildItem $extract -Recurse -Filter bun.exe | Select-Object -First 1
+            if (-not $downloaded) { throw 'Downloaded Bun archive did not contain bun.exe.' }
+            New-Item -ItemType Directory -Path $bunRoot -Force | Out-Null
+            Copy-Item $downloaded.FullName $bunExe -Force
+          }
+          & $bunExe --version
+          if ($LASTEXITCODE) { throw 'Bun executable validation failed.' }
+          "path=$bunExe" | Add-Content $env:GITHUB_OUTPUT
+          "Custom Bun ready at $bunExe; avoids setup-bun symlink creation under NETWORK SERVICE." | Add-Content $env:GITHUB_STEP_SUMMARY
+
+      - name: Provision native Claude Code for Windows
+        id: claude_cli
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $version = '2.1.274'
+          $claudeExe = Join-Path $env:USERPROFILE '.local\bin\claude.exe'
+          $valid = $false
+          if (Test-Path $claudeExe) { & $claudeExe --version; if ($LASTEXITCODE -eq 0) { $valid = $true } }
+          if (-not $valid) {
+            $installer = Invoke-RestMethod -Uri 'https://claude.ai/install.ps1'
+            & ([scriptblock]::Create($installer)) $version
+            if ($LASTEXITCODE) { throw "Claude Code Windows installer failed with exit code $LASTEXITCODE." }
+          }
+          $candidates = @($claudeExe,(Join-Path $env:USERPROFILE '.local\bin\claude'),(Join-Path $env:LOCALAPPDATA 'Programs\Claude\claude.exe'))
+          $cmd = Get-Command claude.exe -ErrorAction SilentlyContinue
+          if ($cmd) { $candidates += $cmd.Source }
+          $resolved = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+          if (-not $resolved) { throw 'Claude Code Windows installer completed but claude.exe was not found.' }
+          & $resolved --version
+          if ($LASTEXITCODE) { throw 'Claude Code executable validation failed.' }
+          "path=$resolved" | Add-Content $env:GITHUB_OUTPUT
+          (Split-Path $resolved -Parent) | Add-Content $env:GITHUB_PATH
+          "Native Claude Code $version ready at $resolved; the action will skip its Linux-only install.sh path." | Add-Content $env:GITHUB_STEP_SUMMARY
+
+      - name: Detect worker authentication
+        id: auth
+        shell: powershell
+        run: |
+          if (-not [string]::IsNullOrWhiteSpace($env:CLAUDE_CODE_OAUTH_TOKEN)) { 'mode=oauth' | Add-Content $env:GITHUB_OUTPUT }
+          elseif (-not [string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) { 'mode=api' | Add-Content $env:GITHUB_OUTPUT }
+          else { throw 'No Claude worker credential configured.' }
+
+      - name: Run Claude worker with OAuth token
+        id: claude_oauth
+        if: steps.auth.outputs.mode == 'oauth'
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          path_to_bun_executable: ${{ steps.bun.outputs.path }}
+          path_to_claude_code_executable: ${{ steps.claude_cli.outputs.path }}
+          additional_permissions: |
+            actions: read
+          allowed_bots: "github-actions[bot]"
+          prompt: |
+            Act as the Walkie Doggy Release Candidate autonomous execution worker. Read AGENTS.md, EXECUTION_STATE.md, and docs/engineering/AGENTIC_EXECUTION_V1.md first. Reconstruct state from fresh evidence. Target branch: ${{ env.TARGET_BRANCH }}. Execute exactly one bounded coherent unit from the highest-priority safe Autonomy V2 task. If blocked, select the next independent safe task. A successful run must leave durable repository evidence. You may edit files and run approved tests on this Autonomy V2 branch only. Do not edit .github/workflows/**. Never merge, push main, deploy Production, run Production migrations, modify Production data/RLS/secrets, perform destructive actions, purchases, or public publishing. No evidence = not completed. Budget execution deliberately: reserve the final 25 turns for focused tests, diagnosis, repair, and re-validation. Before finishing, run targeted tests for changed behavior and repair any failures you introduced; do not spend the full turn budget only exploring or implementing.
+          claude_args: |
+            --max-turns 90
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test:*),Bash(npx jest:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git branch:*),Bash(git rev-parse:*),Bash(git show:*),Bash(git ls-files:*),Bash(ls:*),Bash(pwd)"
+
+      - name: Run Claude worker with API key
+        id: claude_api
+        if: steps.auth.outputs.mode == 'api'
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          path_to_bun_executable: ${{ steps.bun.outputs.path }}
+          path_to_claude_code_executable: ${{ steps.claude_cli.outputs.path }}
+          additional_permissions: |
+            actions: read
+          allowed_bots: "github-actions[bot]"
+          prompt: |
+            Act as the Walkie Doggy Release Candidate autonomous execution worker. Read AGENTS.md, EXECUTION_STATE.md, and docs/engineering/AGENTIC_EXECUTION_V1.md first. Target branch: ${{ env.TARGET_BRANCH }}. Execute one bounded safe Autonomy V2 unit and leave durable repository evidence. Do not edit .github/workflows/**. Never merge, push main, touch Production/data/migrations/secrets, purchase, publish publicly, or perform destructive actions. No evidence = not completed. Budget execution deliberately: reserve the final 25 turns for focused tests, diagnosis, repair, and re-validation. Before finishing, run targeted tests for changed behavior and repair any failures you introduced.
+          claude_args: |
+            --max-turns 90
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm ci),Bash(npm run typecheck),Bash(npx tsc --noEmit),Bash(npm test:*),Bash(npx jest:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git branch:*),Bash(git rev-parse:*),Bash(git show:*),Bash(git ls-files:*),Bash(ls:*),Bash(pwd)"
+
+      - name: Classify Claude result
+        id: result
+        if: always()
+        shell: powershell
+        env:
+          OAUTH_OUTCOME: ${{ steps.claude_oauth.outcome }}
+          API_OUTCOME: ${{ steps.claude_api.outcome }}
+        run: |
+          'success=false' | Add-Content $env:GITHUB_OUTPUT
+          'checkpoint=false' | Add-Content $env:GITHUB_OUTPUT
+          if ($env:OAUTH_OUTCOME -eq 'success' -or $env:API_OUTCOME -eq 'success') { 'success=true' | Add-Content $env:GITHUB_OUTPUT; exit 0 }
+          $f=Join-Path $env:RUNNER_TEMP 'claude-execution-output.json'
+          if (Test-Path $f) {
+            try { $r=Get-Content $f -Raw | ConvertFrom-Json; if ($r.subtype -eq 'success' -and $r.is_error -eq $false) { 'success=true' | Add-Content $env:GITHUB_OUTPUT }; if ($r.subtype -eq 'error_max_turns') { 'checkpoint=true' | Add-Content $env:GITHUB_OUTPUT } } catch { Write-Warning 'Could not parse Claude result.' }
+          }
+
+      - name: Validate and publish Autonomy V2 progress
+        id: publish
+        if: always() && (steps.result.outputs.success == 'true' || steps.result.outputs.checkpoint == 'true')
+        shell: powershell
+        env:
+          CLAUDE_SUCCESS: ${{ steps.result.outputs.success }}
+          CHECKPOINT: ${{ steps.result.outputs.checkpoint }}
+          GITHUB_PUSH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          'published=false' | Add-Content $env:GITHUB_OUTPUT
+          if ((& git branch --show-current).Trim() -ne $env:TARGET_BRANCH) { throw 'Checked-out branch mismatch.' }
+          $wf=(& git status --porcelain -- .github/workflows)-join "`n"; if ($wf) { & git restore --staged --worktree -- .github/workflows; & git clean -fd -- .github/workflows }
+          & git diff --check; if ($LASTEXITCODE) { throw 'diff check failed' }
+          $changes=(& git status --porcelain)-join "`n"; if (-not $changes) { throw 'NO_PROGRESS: no durable Autonomy V2 evidence produced.' }
+          & npm.cmd ci; if ($LASTEXITCODE) { throw 'npm ci failed' }
+          & npm.cmd run typecheck; if ($LASTEXITCODE) { throw 'typecheck failed' }
+          & npm.cmd test -- --runInBand; if ($LASTEXITCODE) { throw 'tests failed' }
+          & git diff --check; if ($LASTEXITCODE) { throw 'diff check failed' }
+          & git config user.name 'walkie-agentic-worker[bot]'; & git config user.email 'walkie-agentic-worker[bot]@users.noreply.github.com'; & git add -A; & git diff --cached --check
+          $m=if ($env:CHECKPOINT -eq 'true' -and $env:CLAUDE_SUCCESS -ne 'true') {'chore(agentic): checkpoint Autonomy V2 execution'} else {'chore(agentic): continue Autonomy V2 execution'}
+          & git commit -m $m; if ($LASTEXITCODE) { throw 'commit failed' }
+          if ([string]::IsNullOrWhiteSpace($env:GITHUB_PUSH_TOKEN)) { throw 'GitHub workflow push token is unavailable.' }
+          $basic = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$env:GITHUB_PUSH_TOKEN"))
+          & git config --local --unset-all http.https://github.com/.extraheader 2>$null
+          & git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $basic"
+          & git push origin "HEAD:refs/heads/$env:TARGET_BRANCH"; if ($LASTEXITCODE) { throw 'push failed' }
+          'published=true' | Add-Content $env:GITHUB_OUTPUT
+
+      - name: Enforce completion or checkpoint
+        if: always() && steps.result.outputs.success != 'true' && steps.publish.outputs.published != 'true'
+        shell: powershell
+        run: |
+          Write-Error 'Claude did not complete and no validated checkpoint was published.'
+          exit 1
