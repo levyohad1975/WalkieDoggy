@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AccessibilityInfo, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { colors } from '../theme/colors';
+import { radii, spacing } from '../theme/tokens';
 import { RtlText } from './RtlText';
 import { MascotFrameAnimation } from './MascotFrameAnimation';
 
@@ -45,7 +46,7 @@ export function ReminderMascotPrompt({ visible, message, onDismiss }: ReminderMa
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(11, 39, 48, 0.28)', alignItems: 'center', justifyContent: 'center', padding: 24 },
   moment: { alignItems: 'center', maxWidth: 340 },
-  bubble: { backgroundColor: colors.surface, borderRadius: 24, paddingHorizontal: 18, paddingVertical: 12 },
+  bubble: { backgroundColor: colors.surface, borderRadius: radii.xl, paddingHorizontal: 18, paddingVertical: spacing.md },
   message: { color: colors.textPrimary, fontSize: 19, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
   tail: { width: 18, height: 18, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }, { translateY: -9 }], marginBottom: -10 },
 });
