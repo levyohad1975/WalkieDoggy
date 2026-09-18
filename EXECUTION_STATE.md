@@ -50,6 +50,99 @@ anything else.
 ## Current Task
 
 **This cycle's reconciliation, done fresh via direct `git log`/`git
+show`/`git status`:** HEAD was `b090ecf` ("chore(agentic): checkpoint RC
+execution"), one commit past `6392d6f`. `git show --stat b090ecf` confirmed
+it contains exactly the prior cycle's own `walkHasActiveSwapRequest()`/
+`walkHasActiveTimeChangeRequest()` fix (`src/logic/requestLifecycle.ts` +
+test, `HomeScreen.tsx`, `ScheduleScreen.tsx`) plus an `EXECUTION_STATE.md`
+rewrite plus the untracked `_new_current_task.md` scratch file that cycle's
+own narrative had flagged — confirming, yet again (75th+ time running),
+that the prior cycle's own hedged "commit attempt outcome recorded under
+Blocker" self-report was wrong: the commit had already landed and been
+pushed. `node_modules/typescript` was again missing; `npm ci` restored it
+(906 packages, matching baseline). `npx tsc --noEmit` at reconciled HEAD
+`b090ecf` — **PASS**, zero errors. Full `npm test -- --runInBand` —
+**PASS: 137/137 suites, 1625/1625 tests**, matching the expected baseline
+exactly, confirming a healthy baseline before starting new work.
+
+**PRIORITY OVERRIDE received this cycle:** the run instruction named
+GitHub Issue #63 ("full app redesign") as the active P0 product objective,
+superseding this file's own legacy Queue ordering for this cycle, with the
+requirement to execute exactly one bounded coherent redesign unit from #63
+unless #63 is genuinely blocked by missing approved design context.
+
+**Durable blocker on reading Issue #63's own text:** this session's tool
+layer blocked every attempt to read the issue itself — `gh issue view 63`,
+`gh auth status`, and `WebFetch` on the issue's GitHub URL each
+independently returned "This command requires approval" / a permission
+denial, with no owner present in this headless run to grant it. This is a
+hard tool-allowlist restriction (three separate tools each individually
+blocked), not a hedged self-report — the issue's own acceptance criteria
+and specifics are genuinely unavailable to this cycle and must not be
+assumed or invented.
+
+**Why this did not stop execution, and what was substituted (per the
+override's own "if blocked... select the next independent safe task"
+clause):** the repository already contains substantial, self-documenting,
+in-progress "full app redesign" context independent of issue #63's own
+text: `src/theme/tokens.ts`'s own header comment ("Deliverable 3A (design
+tokens)... Applied THIS pass to: StatisticsScreen (full redesign),
+SettingsScreen (hybrid redesign)... NOT yet swept across every existing
+screen"), corroborated by `MANIFEST.txt` (`#14-21`, "DESIGN-SYSTEM CHANGES
+(Deliverable 3A)" through "CLIPPED-TEXT / RTL AUDIT (Deliverable 3H)") and
+`docs/design/{CREATIVE_AGENT_CHARTER,PRODUCT_CONTEXT,BRAND_BIBLE}.md`.
+Grepping actual current adoption (`radii\.|typography\.|layout\.|spacing\.`
+across `src/screens/*.tsx`) confirmed real token adoption in
+StatisticsScreen/SettingsScreen/HomeScreen (and partial `breakpoints`-only
+use in five more screens), but **zero** adoption in
+`SystemAdminScreen.tsx` — the newest screen (BATCH 4, System Admin V1),
+added after `tokens.ts` already existed, built entirely on ad-hoc
+hardcoded `fontSize`/`borderRadius`/`padding`/`gap` numbers. This is a
+real, first-time-discovered redesign gap squarely on the documented
+Deliverable-3 design-system track, bounded to one self-contained Modal
+screen with nothing else depending on its internals.
+
+**Fixed:** `src/screens/SystemAdminScreen.tsx` — added a `radii`/
+`spacing`/`typography` import from `../theme/tokens`, then converted its
+entire `StyleSheet.create({...})` block to use those tokens wherever they
+map to the values the screen already used (screen/section padding →
+`spacing.xl`/`spacing.md`/`spacing.sm`/`spacing.xs`, input/card radii →
+`radii.sm`/`radii.lg`, heading/body/meta text → `typography.screenTitle`/
+`typography.cardTitle`/`typography.body`/`typography.meta`/
+`typography.caption` spread with a small `fontSize`/`fontWeight` override
+where the screen's own number didn't exactly match a token) — the same
+"spread a typography token, override the one differing property" pattern
+already established in `SettingsScreen.tsx`/`StatisticsScreen.tsx`. No
+component structure, prop, RPC call, string, or accessibility label was
+touched — a pure visual/style-layer change, no behavior change.
+
+`npx tsc --noEmit` after this change — **PASS**, zero errors. Full `npm
+test -- --runInBand` after this change — **PASS: 137/137 suites,
+1625/1625 tests** — identical counts to the pre-change baseline (expected:
+this screen has no dedicated component test, and no test asserts literal
+style values), confirming no regression. `git status --porcelain=v1
+--untracked-files=all` confirmed the changeset is scoped to exactly
+`src/screens/SystemAdminScreen.tsx` (plus this `EXECUTION_STATE.md`
+update) — no unrelated file touched, no user work at risk.
+
+**What #63's broader scope still needs, precisely, for a future cycle:**
+the issue's own body/acceptance-criteria text is still unread (see blocker
+above) — a future cycle with working `gh`/network access should read it
+before assuming the design-token sweep above is issue #63's full intended
+scope; it may specify a different or larger direction. Independent of
+that, the same token-adoption gap still exists, less completely, in
+`ScheduleScreen.tsx`, `HistoryScreen.tsx`, `FamilyScreen.tsx`,
+`FamilyOnboardingScreen.tsx`, and `LoginScreen.tsx` (each imports only
+`breakpoints`/`nativeDirection` from `tokens.ts`, not `spacing`/`radii`/
+`typography`) — each is a larger, higher-risk bounded unit than this
+cycle's (more call sites, some with complex conditional styling) and is
+the natural next redesign unit once #63's own text can confirm it's still
+in scope.
+
+### Prior cycle's own task (full detail preserved here; now historical —
+its own task since landed as `b090ecf` and is reconciled above)
+
+**This cycle's reconciliation, done fresh via direct `git log`/`git
 show`/`git status`, not trusted from this file's own prior narrative:**
 HEAD was `6392d6f` ("chore(agentic): checkpoint RC execution"), one commit
 past `76b5091`. `git show --stat 6392d6f` confirmed it contains exactly
@@ -2926,28 +3019,29 @@ mount-recovery dead end, which was the unambiguous, no-judgment-call part.
 
 ## Current Task Status
 
-Prior cycle's `computeRequestLifecycle()` `expected_*`/`expected_target_*`
-staleness re-check fix (`6392d6f`) is confirmed landed and pushed — closed,
-`DONE`.
+Prior cycle's swap/time-change button-gating fix (`b090ecf`) is confirmed
+landed and pushed — closed, `DONE`.
 
-**This cycle's own task — gating the "בקש החלפה"/"בקש שינוי שעה" request
-buttons (HomeScreen top card + upcoming list, ScheduleScreen list) and both
-screens' `SwapWalkPickerModal` target-walk `options` lists against the
-server's own single-table pending-conflict guards
-(`create_swap_request()`/`create_time_change_request()`, migrations
-0018/0006) via two new `requestLifecycle.ts` helpers,
-`walkHasActiveSwapRequest()`/`walkHasActiveTimeChangeRequest()` — is
-code-complete and validated** (`tsc` PASS zero errors; targeted
-`requestLifecycle.test.ts` PASS **42/42** (up from 33/33 — 8 new regression
-tests); full `npm test` PASS **137/137 suites, 1625/1625 tests**, up from
-137/137 · 1617/1617 immediately before the change, same HEAD). See Current
-Task above for the full reachable-defect reasoning. Commit attempt outcome
-recorded under Blocker/Last Evidence below; per the standing 70+-cycle
-pattern, even a "blocked" self-report this same cycle should not be
-assumed final — the next cycle's first action must still be its own
-independent `git log --oneline -5` + `git status` check, and should
-re-verify `requestLifecycle.test.ts`'s 42/42 still pass at whatever HEAD
-it finds before trusting this narrative.
+**This cycle's own task — under the PRIORITY OVERRIDE naming GitHub Issue
+#63 ("full app redesign") as P0, converting `src/screens/SystemAdminScreen.tsx`'s
+`StyleSheet` from ad-hoc hardcoded numbers to the shared `spacing`/`radii`/
+`typography` design tokens (`src/theme/tokens.ts`), the one screen with
+zero token adoption while every other main screen has at least partial
+adoption — is code-complete and validated** (`tsc --noEmit` PASS zero
+errors; full `npm test -- --runInBand` PASS **137/137 suites, 1625/1625
+tests**, identical counts to the pre-change baseline — expected, since no
+test asserts literal style values). Issue #63's own body/acceptance
+criteria remain unread this cycle — see Current Task above for the precise,
+durable blocker evidence (`gh`/`WebFetch` both denied, headless run, no
+owner to approve) — so this unit was selected from strong in-repo design-
+system evidence (`tokens.ts`'s own header comment + `MANIFEST.txt`'s
+Deliverable 3A-3H sections), not from the issue text itself. A future
+cycle with working `gh`/network access should read #63 directly before
+assuming this is its full intended scope. Commit attempt outcome recorded
+under Blocker/Last Evidence below; per the standing 75+-cycle pattern, even
+a "blocked" self-report this same cycle should not be assumed final — the
+next cycle's first action must still be its own independent `git log
+--oneline -5` + `git status` check before trusting this narrative.
 
 ## Current Branch / PR
 
@@ -2959,6 +3053,54 @@ it finds before trusting this narrative.
   against `main`, never merged into either feature branch.
 
 ## Last Evidence
+
+- This cycle start: `git log --oneline -5`/`git status` confirmed HEAD is
+  `b090ecf`, clean working tree, up to date with
+  `origin/feat/verified-auth-onboarding-batch-2` — one commit past
+  `6392d6f`. `git show --stat b090ecf` confirmed it contains exactly the
+  prior cycle's own swap/time-change button-gating fix + the
+  `_new_current_task.md` scratch file + that cycle's own `EXECUTION_STATE.md`
+  rewrite — already landed and pushed despite that cycle's own hedged
+  "commit attempt outcome recorded under Blocker" self-report (75th+ time).
+- `node_modules/typescript` was missing at cycle start; `npm ci` restored
+  it (906 packages, matching baseline). `npx tsc --noEmit` at reconciled
+  HEAD `b090ecf` — **PASS**, zero errors. Full `npm test -- --runInBand` at
+  reconciled HEAD — **PASS: 137/137 suites, 1625/1625 tests** (the expected
+  baseline, matching it exactly), confirming a healthy baseline before
+  starting new work.
+- `gh issue view 63`, `gh auth status`, and `WebFetch` on the issue's
+  GitHub URL were each attempted to read Issue #63's own body/acceptance
+  criteria per this cycle's PRIORITY OVERRIDE instruction — each
+  independently returned "This command requires approval" / a permission
+  denial from the tool layer, with no owner present in this headless run to
+  grant it. Confirmed as a hard tool-allowlist restriction, not a hedged
+  self-report — three separate tools each individually blocked. See
+  Current Task above for the full reasoning on what was substituted instead.
+- **This cycle's own fix:** converted `src/screens/SystemAdminScreen.tsx`'s
+  `StyleSheet` to use `spacing`/`radii`/`typography` from
+  `src/theme/tokens.ts` in place of ad-hoc hardcoded numbers — see Current
+  Task above for the full reasoning (this was the one main screen with zero
+  design-token adoption, on the same documented Deliverable-3 design-system
+  track `tokens.ts`'s own header comment and `MANIFEST.txt` describe).
+- `npx tsc --noEmit` after this cycle's own change — **PASS**, zero errors.
+- Full `npm test -- --runInBand` after this cycle's own change — **PASS:
+  137/137 suites, 1625/1625 tests** — identical counts to the pre-change
+  baseline (expected: no dedicated component test exists for this screen,
+  and no test asserts literal style values), confirming no regression.
+- `git status --porcelain=v1 --untracked-files=all` confirmed the
+  changeset is scoped to exactly `src/screens/SystemAdminScreen.tsx`
+  (modified) — plus this `EXECUTION_STATE.md` update — no unrelated file
+  touched, no user work at risk.
+- **Commit attempt this cycle:** `git add src/screens/SystemAdminScreen.tsx`
+  returned "This command requires approval" from the tool layer itself
+  (not a git error) — the identical standing block documented at the top of
+  this file, now reconfirmed for at least the 76th time running. Per "never
+  discard uncommitted work," the working-tree change is NOT reverted
+  regardless of this outcome. The next cycle's first action must still be
+  its own independent `git log --oneline -5` + `git status` check, per the
+  standing protocol note.
+
+### Prior cycle's own evidence (full detail preserved here; now historical — its own task since landed as `b090ecf`)
 
 - This cycle start: `git log --oneline -5`/`git status` confirmed HEAD is
   `6392d6f`, clean working tree, up to date with
@@ -3022,40 +3164,52 @@ it finds before trusting this narrative.
 
 ## Last Evidence Timestamp
 
-2026-09-18 (this cycle's own run, this session); reconciled HEAD `6392d6f`
-+ this cycle's own working-tree change
-(`walkHasActiveSwapRequest()`/`walkHasActiveTimeChangeRequest()` +
-HomeScreen/ScheduleScreen wiring), commit attempt outcome per Blocker
-below.
+2026-09-18 (this cycle's own run, this session); reconciled HEAD `b090ecf`
++ this cycle's own working-tree change (`SystemAdminScreen.tsx` converted
+to `spacing`/`radii`/`typography` design tokens, under the Issue #63
+PRIORITY OVERRIDE), commit attempt outcome per Blocker below.
 
 ## Blocker
 
-**This cycle's commit attempt outcome, checked directly, not just
-self-reported:** `git add` of the five changed files (individually, as
-`-u`, and as a compound list) each returned "This command requires
-approval" from the tool layer itself (not a git error), consistent with
-every standing blocked git-write command across every prior cycle. A
-standalone `git commit -am` retry hit the identical block. A `git status
---porcelain=v1 --untracked-files=all` run immediately after each attempt
-confirmed the working tree was unchanged (all five tracked files still
-shown modified, nothing staged). So *within this turn's own visibility*,
-this cycle's commit attempt is a genuine, directly-confirmed no-op, not
-merely a hedged self-report — consistent with the standing pattern (see
-note at top of file, now reconfirmed for at least the 74th time running).
-The working-tree change itself (the
-`walkHasActiveSwapRequest()`/`walkHasActiveTimeChangeRequest()` fix +
-`HomeScreen.tsx`/`ScheduleScreen.tsx` wiring + 8 new regression tests —
-plus this `EXECUTION_STATE.md` update) is real and validated (`tsc`/`npm
-test` both PASS, 137/137 suites, 1625/1625 tests) — per "never discard
-uncommitted work," it is NOT reverted regardless of this turn's own
-commit-attempt outcome. The next cycle's first action must still be its
-own independent `git log --oneline -5` + `git status` check, per the
-standing protocol note.
+**This cycle's two distinct blockers, each checked directly, not just
+self-reported:**
 
-**Prior cycle's own commit-attempt outcome (condensed):** the
+1. **Issue #63's own text is unreadable in this sandbox.** `gh issue view
+   63`, `gh auth status`, and `WebFetch` on the issue's GitHub URL each
+   independently returned "This command requires approval" / a permission
+   denial from the tool layer — a hard tool-allowlist restriction in this
+   headless run, with no owner present to grant approval. This blocks
+   confirming issue #63's own acceptance criteria/scope, but per the
+   override's own instructions did not block execution — see Current Task
+   above for what in-repo evidence was substituted and why it's a
+   legitimate, bounded redesign unit on the same documented track.
+2. **Commit attempt outcome:** `git add src/screens/SystemAdminScreen.tsx`
+   returned "This command requires approval" from the tool layer itself
+   (not a git error), consistent with every standing blocked git-write
+   command across every prior cycle. A `git status --porcelain=v1
+   --untracked-files=all` run immediately after confirmed the working tree
+   was unchanged (file still shown modified, nothing staged). So *within
+   this turn's own visibility*, this cycle's commit attempt is a genuine,
+   directly-confirmed no-op, not merely a hedged self-report — consistent
+   with the standing pattern (see note at top of file, now reconfirmed for
+   at least the 76th time running). The working-tree change itself (the
+   `SystemAdminScreen.tsx` design-token conversion — plus this
+   `EXECUTION_STATE.md` update) is real and validated (`tsc`/`npm test`
+   both PASS, 137/137 suites, 1625/1625 tests) — per "never discard
+   uncommitted work," it is NOT reverted regardless of this turn's own
+   commit-attempt outcome. The next cycle's first action must still be its
+   own independent `git log --oneline -5` + `git status` check, per the
+   standing protocol note.
+
+**Prior cycle's own commit-attempt outcome (condensed):** the swap/
+time-change button-gating fix hit the identical "requires approval" block,
+yet was independently confirmed landed AND pushed as `b090ecf` by this
+cycle's own reconciliation above — the pattern's own 75th+ instance.
+
+**Prior-prior cycle's own commit-attempt outcome (condensed):** the
 `computeRequestLifecycle()` `expected_*` staleness re-check fix hit the
 identical "requires approval" block, yet was independently confirmed
-landed AND pushed as `6392d6f` by this cycle's own reconciliation above —
+landed AND pushed as `6392d6f` by an earlier cycle's own reconciliation —
 the pattern's own 73rd+ instance.
 
 **Prior-prior cycle's own commit-attempt outcome (condensed):** the
@@ -3890,15 +4044,42 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `6392d6f`, one commit
-  past `76b5091` — confirmed via `git show --stat` it contains exactly the
-  prior cycle's own `computeRequestLifecycle()` `expected_*`/
-  `expected_target_*` staleness re-check fix + its own 9 regression tests —
-  and was already pushed to origin — reconfirming the standing
-  self-reporting-drift pattern yet again (73rd+ time). `node_modules/
-  typescript` was missing; `npm ci` restored it. `npx tsc --noEmit` —
-  PASS. Full `npm test` at reconciled HEAD `6392d6f` — PASS 137/137
-  suites, 1617/1617 tests (expected baseline).
+- Reconciliation found HEAD had actually moved to `b090ecf`, one commit
+  past `6392d6f` — confirmed via `git show --stat` it contains exactly the
+  prior cycle's own swap/time-change button-gating fix + the
+  `_new_current_task.md` scratch file — and was already pushed to origin —
+  reconfirming the standing self-reporting-drift pattern yet again (75th+
+  time). `node_modules/typescript` was missing; `npm ci` restored it. `npx
+  tsc --noEmit` — PASS. Full `npm test` at reconciled HEAD `b090ecf` — PASS
+  137/137 suites, 1625/1625 tests (expected baseline).
+- **PRIORITY OVERRIDE this cycle:** GitHub Issue #63 ("full app redesign")
+  named as P0. Its own body/acceptance criteria could not be read — `gh
+  issue view 63`, `gh auth status`, and `WebFetch` on its URL were each
+  independently blocked by the tool layer with no owner present to approve
+  (durable, reproducible blocker — see Current Task/Blocker above). Did not
+  stop execution: substituted strong in-repo design-system evidence
+  (`src/theme/tokens.ts`'s own "Deliverable 3A" header comment +
+  `MANIFEST.txt`'s Deliverable 3A-3H sections) documenting an in-progress,
+  only-partially-swept app-wide redesign, and found `SystemAdminScreen.tsx`
+  was the one main screen with zero token adoption (confirmed by grepping
+  `radii\.|typography\.|layout\.|spacing\.` across every screen).
+- **This cycle's own fix:** converted `SystemAdminScreen.tsx`'s
+  `StyleSheet` to use `spacing`/`radii`/`typography` from `theme/tokens.ts`
+  in place of hardcoded numbers, mirroring the established
+  `SettingsScreen.tsx`/`StatisticsScreen.tsx` conversion pattern. Pure
+  visual/style change — no structure, props, RPCs, strings, or
+  accessibility labels touched. `npx tsc --noEmit` — PASS, zero errors.
+  Full `npm test -- --runInBand` — PASS 137/137 suites, 1625/1625 tests,
+  identical counts to the pre-change baseline (no regression). `git status
+  --porcelain=v1 --untracked-files=all` confirmed the changeset is scoped
+  to exactly `src/screens/SystemAdminScreen.tsx` — plus this
+  `EXECUTION_STATE.md` update.
+- **Commit attempt this cycle:** `git add
+  src/screens/SystemAdminScreen.tsx` blocked with "This command requires
+  approval" from the tool layer, confirmed via an immediate `git status`
+  showing nothing staged — the standing pattern's 76th+ instance. Working-
+  tree change preserved, not reverted, per "never discard uncommitted
+  work."
 - **This cycle's own task:** found and fixed a real, first-time-discovered
   client/server mismatch in the member-request swap/time-change creation
   flow — `WalkRow`'s "בקש החלפה"/"בקש שינוי שעה" links (HomeScreen top
