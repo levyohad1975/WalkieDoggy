@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, View, Pressable } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -72,6 +72,16 @@ export function StatisticsScreen() {
   const [statisticsAccessStatus, setStatisticsAccessStatus] = useState<'checking' | 'granted' | 'denied'>(
     isSupabaseConfigured ? 'checking' : 'granted'
   );
+  // Tracks whether a prior refreshStatisticsDataset() call already landed
+  // 'granted' at least once. useFocusEffect below re-runs
+  // refreshStatisticsDataset() (and thus resets statisticsAccessStatus to
+  // 'checking') on EVERY return to this tab, not just first mount — without
+  // this, a background revalidation of an already-authorized user would
+  // transiently render the "no access" EmptyState over their already-loaded,
+  // still-valid statisticsDataset on every single refocus. Reset to false on
+  // a genuine 'denied' so a subsequent refocus is treated as an unverified
+  // first check again, not a trusted background refresh.
+  const hasEverGrantedRef = useRef(false);
 
   const refreshStatisticsDataset = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -79,6 +89,7 @@ export function StatisticsScreen() {
       // call — scheduleStore.walks (unrestricted there) remains the
       // dataset, exactly as before this correction.
       setStatisticsAccessStatus('granted');
+      hasEverGrantedRef.current = true;
       return;
     }
     setStatisticsAccessStatus('checking');
@@ -86,9 +97,11 @@ export function StatisticsScreen() {
       const rows = await fetchStatisticsWalks();
       setStatisticsDataset(rows);
       setStatisticsAccessStatus('granted');
+      hasEverGrantedRef.current = true;
     } catch (e) {
       setStatisticsDataset([]);
       setStatisticsAccessStatus('denied');
+      hasEverGrantedRef.current = false;
     }
   }, []);
 
@@ -142,9 +155,13 @@ export function StatisticsScreen() {
   // list_statistics_walks() (migration 0027) response. CORRECTED FURTHER
   // (review #2): statisticsAccessStatus also gates whether statisticsDataset
   // (this screen's actual data source above) is trustworthy to render from.
+  // CORRECTED FURTHER (review #3): a background refocus revalidation
+  // ('checking' after a prior 'granted') must not blank an already-verified
+  // user's real data with this gate — only a genuine 'denied', or a
+  // never-yet-granted 'checking' (the real first-load case), should block.
   if (
     !canAccessStatisticsScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus) ||
-    statisticsAccessStatus !== 'granted'
+    (statisticsAccessStatus !== 'granted' && !(statisticsAccessStatus === 'checking' && hasEverGrantedRef.current))
   ) {
     return (
       <SafeAreaView style={styles.center}>
