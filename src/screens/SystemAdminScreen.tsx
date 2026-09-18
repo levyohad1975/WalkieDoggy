@@ -9,6 +9,7 @@ import {
   getSystemAdminEmailDeliveryLog,
   getSystemAdminFamilyDetail,
   listSystemAdminFamilies,
+  setSystemAdminFamilyApproval,
   type SystemAdminEmailDeliveryLogEntry,
   type SystemAdminFamilyDetail,
   type SystemAdminFamilyListItem,
@@ -77,6 +78,8 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
   const [detail, setDetail] = useState<SystemAdminFamilyDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [approvalActionLoading, setApprovalActionLoading] = useState(false);
+  const [approvalActionError, setApprovalActionError] = useState<string | null>(null);
 
   const [emailLogVisible, setEmailLogVisible] = useState(false);
   const [emailLog, setEmailLog] = useState<SystemAdminEmailDeliveryLogEntry[]>([]);
@@ -124,6 +127,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
     setDetail(null);
     setDetailLoading(true);
     setDetailError(null);
+    setApprovalActionError(null);
     try {
       const result = await getSystemAdminFamilyDetail(familyId);
       setDetail(result);
@@ -138,6 +142,22 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
     setSelectedFamilyId(null);
     setDetail(null);
     setDetailError(null);
+    setApprovalActionError(null);
+  };
+
+  const handleSetApproval = async (approvalStatus: 'active' | 'rejected') => {
+    if (!selectedFamilyId) return;
+    setApprovalActionLoading(true);
+    setApprovalActionError(null);
+    try {
+      await setSystemAdminFamilyApproval(selectedFamilyId, approvalStatus);
+      await openFamily(selectedFamilyId);
+      await loadFamilies(search);
+    } catch (e) {
+      setApprovalActionError(friendlyErrorMessage(e));
+    } finally {
+      setApprovalActionLoading(false);
+    }
   };
 
   return (
@@ -214,6 +234,35 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                   <RtlText style={styles.cardLine}>
                     סטטוס אישור: {detail.family?.approvalStatus ? approvalStatusLabel(detail.family.approvalStatus) : '—'}
                   </RtlText>
+                  {detail.family && detail.family.approvalStatus !== 'active' ? (
+                    <View style={styles.approvalActions}>
+                      {approvalActionError ? (
+                        <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                          {approvalActionError}
+                        </RtlText>
+                      ) : null}
+                      {approvalActionLoading ? (
+                        <ActivityIndicator color={colors.primary} style={styles.spinner} accessibilityLabel="טוען…" />
+                      ) : (
+                        <>
+                          <Button
+                            label="אישור המשפחה"
+                            onPress={() => handleSetApproval('active')}
+                            compact
+                          />
+                          {detail.family.approvalStatus === 'pending' ? (
+                            <Button
+                              label="דחיית הבקשה"
+                              onPress={() => handleSetApproval('rejected')}
+                              variant="danger"
+                              compact
+                              accessibilityHint="הפעולה תעדכן מיידית את סטטוס המשפחה לנדחתה, ללא אישור נוסף"
+                            />
+                          ) : null}
+                        </>
+                      )}
+                    </View>
+                  ) : null}
                 </View>
 
                 <RtlText style={styles.sectionTitle}>כלב/ה</RtlText>
@@ -380,5 +429,6 @@ const styles = StyleSheet.create({
   familyMeta: { fontSize: 12, color: colors.textSecondary, textAlign: 'right' },
   sectionTitle: { fontSize: 14, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', marginTop: 14, marginBottom: 6 },
   card: { backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 12, gap: 4 },
+  approvalActions: { flexDirection: 'row-reverse', gap: 8, marginTop: 8, flexWrap: 'wrap' },
   cardLine: { fontSize: 13, color: colors.textPrimary, textAlign: 'right' },
 });

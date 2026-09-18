@@ -121,6 +121,27 @@ export async function listSystemAdminFamilies(search?: string): Promise<SystemAd
   }));
 }
 
+/**
+ * Wraps migration 0032's system_admin_set_family_approval(), the only
+ * server-side way to move a family out of 'pending'/'rejected' into 'active'
+ * (or vice versa into 'rejected'). Until this wrapper + its SystemAdminScreen
+ * call site, this RPC was defined and granted but never called from any
+ * client code — with AUTO_APPROVE_NEW_FAMILIES=false a pending family had no
+ * in-app path to ever become active. Throws (never silently no-ops) on a
+ * denial or an invalid target status, matching every other RPC wrapper here.
+ */
+export async function setSystemAdminFamilyApproval(
+  familyId: string,
+  approvalStatus: 'active' | 'rejected'
+): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.rpc('system_admin_set_family_approval', {
+    p_family_id: familyId,
+    p_approval_status: approvalStatus,
+  });
+  if (error) throw error;
+}
+
 export async function getSystemAdminFamilyDetail(familyId: string): Promise<SystemAdminFamilyDetail> {
   const client = requireSupabase();
   const { data, error } = await client.rpc('system_admin_get_family_detail', { p_family_id: familyId });

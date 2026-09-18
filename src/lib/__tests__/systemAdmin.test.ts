@@ -174,6 +174,38 @@ describe('lib/systemAdmin — Supabase mode', () => {
     expect(result[0].adminNames).toEqual([]);
   });
 
+  it('setSystemAdminFamilyApproval calls system_admin_set_family_approval with p_family_id/p_approval_status and resolves with no return value on success', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    mockSupabaseClient(rpc);
+    const { setSystemAdminFamilyApproval } = require('../systemAdmin');
+
+    await expect(setSystemAdminFamilyApproval('fam-1', 'active')).resolves.toBeUndefined();
+    expect(rpc).toHaveBeenCalledWith('system_admin_set_family_approval', {
+      p_family_id: 'fam-1',
+      p_approval_status: 'active',
+    });
+  });
+
+  it('setSystemAdminFamilyApproval passes through the rejected status verbatim', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    mockSupabaseClient(rpc);
+    const { setSystemAdminFamilyApproval } = require('../systemAdmin');
+
+    await setSystemAdminFamilyApproval('fam-2', 'rejected');
+    expect(rpc).toHaveBeenCalledWith('system_admin_set_family_approval', {
+      p_family_id: 'fam-2',
+      p_approval_status: 'rejected',
+    });
+  });
+
+  it('setSystemAdminFamilyApproval surfaces "system admin permission required" rather than swallowing it', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'system admin permission required' } });
+    mockSupabaseClient(rpc);
+    const { setSystemAdminFamilyApproval } = require('../systemAdmin');
+
+    await expect(setSystemAdminFamilyApproval('fam-1', 'active')).rejects.toBeTruthy();
+  });
+
   it('getSystemAdminFamilyDetail calls system_admin_get_family_detail with p_family_id and returns the jsonb bundle with safe array defaults', async () => {
     const rpc = jest.fn().mockResolvedValue({
       data: {
@@ -301,6 +333,7 @@ describe('lib/systemAdmin — Supabase mode', () => {
       listSystemAdminFamilies,
       getSystemAdminFamilyDetail,
       getSystemAdminEmailDeliveryLog,
+      setSystemAdminFamilyApproval,
     } = require('../systemAdmin');
     const { SupabaseNotConfiguredError } = require('../supabase');
 
@@ -308,5 +341,6 @@ describe('lib/systemAdmin — Supabase mode', () => {
     await expect(listSystemAdminFamilies()).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
     await expect(getSystemAdminFamilyDetail('fam-1')).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
     await expect(getSystemAdminEmailDeliveryLog()).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
+    await expect(setSystemAdminFamilyApproval('fam-1', 'active')).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
   });
 });

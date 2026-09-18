@@ -50,6 +50,145 @@ anything else.
 ## Current Task
 
 **This cycle's reconciliation, done fresh via direct `git log`/`git show`,
+not trusted from this file's own prior narrative:** HEAD was `f0927d5`, one
+commit past `1cd3c07` (what this file's own prior text named as HEAD, and
+whose own commit attempt that prior cycle had hedged under Blocker as
+possibly not landed). `git show --stat f0927d5` and `git diff --name-status
+1cd3c07 f0927d5` confirmed it contains exactly that prior cycle's own
+`computeUserDeletionImpact()`/`planUserRemoval()` overdue-pending-walk fix
+(`src/logic/familyManagement.ts`, `src/logic/__tests__/familyManagement.test.ts`)
+plus that cycle's own `EXECUTION_STATE.md` rewrite — the standing
+self-reporting-drift pattern (see note at top of file) reconfirmed yet again
+(56th+ time running): the commit had already landed despite the prior
+cycle's own hedged "commit attempt outcome recorded under Blocker"
+self-report. `node_modules` was present at cycle start but a standalone
+`npx tsc --noEmit` failed with the same unrelated `npx`-package-resolution
+error documented before (`npx` tried to fetch a stray unscoped `tsc`
+package instead of resolving the workspace's own `typescript` binary,
+because `node_modules/typescript` was missing); `npm ci` restored it (906
+packages) and `npx tsc --noEmit` then ran clean with zero output. Full `npm
+test -- --runInBand` at reconciled HEAD `f0927d5` — **PASS: 131/131 suites,
+1534/1534 tests** (the expected baseline, matching the prior cycle's own
+reported count exactly), confirming a healthy baseline before starting new
+work.
+
+**This cycle's own task — a real, first-time-discovered, release-blocking
+functional gap, found by a fresh Explore research agent (steered away from
+the ~56+ already-exhausted defect classes documented in this file, toward
+previously-unswept areas: `send-walk-reminders`/`email-provider-webhook`/
+`create-verified-family` Edge Functions, migration 0031's mutual-walk-swap
+RPC, requestsStore/scheduleStore race conditions, non-SELECT RLS policies,
+syncQueue.ts beyond the already-fixed `isPermanentError()`, and System Admin
+RPCs/screens beyond the already-fixed 0035 status-hardcoding) and verified
+directly by this cycle (not just trusted from the report) by reading
+`supabase/migrations/0032_verified_family_onboarding.sql:172-211`
+(`system_admin_set_family_approval()`, the only server-side way to move a
+family out of `pending`/`rejected`), confirming via
+`grep -rn "system_admin_set_family_approval" supabase/migrations src` that
+it is granted to `authenticated` but has **zero** call sites anywhere in
+`src/`, and reading `src/lib/systemAdmin.ts` (only 3 read-only RPC wrappers:
+`checkIsSystemAdmin`/`listSystemAdminFamilies`/`getSystemAdminFamilyDetail`/
+`getSystemAdminEmailDeliveryLog`, none of them this one) and
+`src/screens/SystemAdminScreen.tsx` in full (renders
+`detail.family?.approvalStatus` via `approvalStatusLabel()` purely as
+display text — no button, no action, anywhere in the file that changes it):**
+
+With `AUTO_APPROVE_NEW_FAMILIES=false` (an explicitly supported env mode in
+`create-verified-family/index.ts`), a newly created family gets
+`approval_status = 'pending'`. `FamilyOnboardingScreen.tsx` tells the
+creator an update will be sent once the System Admin approves it, and the
+"🛡️ ניהול מערכת" screen correctly shows the pending status to a real System
+Admin — but there was **no in-app way to ever approve or reject it**. Since
+`current_family_id()`/`join_family()`/`find_family_by_invite_code()` (0033)
+all hard-require `approval_status = 'active'`, the family and its creator
+were permanently stuck with no product-level remedy, only manual SQL
+against a live database — a release-blocking gap in the verified-admin
+onboarding flow this whole branch exists to deliver (Issue #3's own stated
+goal), not a cosmetic one.
+
+**Fixed (client-side wiring only, no migration needed — the RPC itself,
+already applied in 0032, was already correct and unchanged):** added
+`setSystemAdminFamilyApproval(familyId, approvalStatus: 'active' |
+'rejected')` to `src/lib/systemAdmin.ts`, wrapping
+`system_admin_set_family_approval` exactly like every sibling RPC wrapper in
+that file (throws on `error`, never silently no-ops). Wired it into
+`src/screens/SystemAdminScreen.tsx`'s family-detail view: whenever
+`detail.family.approvalStatus !== 'active'`, an "אישור המשפחה" (approve)
+button is shown (covers both `pending` and `rejected` — a wrongly-rejected
+family can also be reconsidered, symmetric with the RPC's own
+`p_approval_status in ('active', 'rejected')` contract); a "דחיית הבקשה"
+(reject) button is additionally shown only for `pending` (rejecting an
+already-rejected family is a no-op the UI doesn't need to offer). Added
+`approvalActionLoading`/`approvalActionError` state; on success the handler
+re-fetches both the open family's detail and the family list (so the status
+change is visible immediately in both views without closing the screen); on
+failure it surfaces `friendlyErrorMessage(e)` via the same
+`accessibilityRole="alert"`/`accessibilityLiveRegion="polite"` pattern every
+other error banner in this screen already uses. The action buttons use the
+existing shared `Button` component (`compact`, `variant="danger"` for
+reject) — no new UI primitive introduced.
+
+Repaired two accessibility-sweep regression tests this change would
+otherwise have broken (both pre-existing, unrelated to this fix's own
+correctness): `activityIndicatorAccessibilityLabel.test.ts` expects every
+bare `<ActivityIndicator>` in `SystemAdminScreen.tsx` to carry
+`accessibilityLabel="טוען…"` — the new loading spinner had used a
+more-specific `"מעדכן סטטוס…"` label, changed to match the established
+convention instead (this repo's precedent is one shared loading label per
+file, not a per-action one). `errorBannerLiveRegionAccessibility.test.ts`
+hardcodes the expected count of `styles.error` `<RtlText>` tags per file
+(previously 3 for this screen); updated to 4 to account for the new
+approval-action error banner, which already carries both required
+attributes.
+
+Added `src/screens/__tests__/systemAdminScreenApprovalAction.test.ts` (6
+tests, source-text-scan style matching `systemAdminScreenApprovalStatus
+.test.ts`'s established convention since this repo has no screen
+render-test harness): confirms the wrapper is imported; confirms
+`handleSetApproval` calls it with `selectedFamilyId`; confirms the approve
+action is offered whenever not already active; confirms the reject action
+is offered specifically for `pending`; confirms the handler refreshes both
+`openFamily`/`loadFamilies` on success; confirms a genuine error is
+surfaced via `friendlyErrorMessage`, never swallowed. Added 3 new tests to
+`src/lib/__tests__/systemAdmin.test.ts` (call-shape/error-propagation for
+the new wrapper, including the local/demo-mode `SupabaseNotConfiguredError`
+case, mirroring every sibling RPC wrapper's own test coverage).
+
+`npx tsc --noEmit` after this cycle's own change — **PASS**, zero errors.
+Full `npm test -- --runInBand` after this cycle's own change — **PASS:
+132/132 suites, 1543/1543 tests** (up from 131/131 · 1534/1534 immediately
+before the change, same HEAD — exactly 1 new suite +
+`systemAdminScreenApprovalAction.test.ts`'s own 6 tests + 3 new
+`systemAdmin.test.ts` tests, net of the two pre-existing tests' assertions
+staying the same shape just repointed at the corrected label/count; every
+other suite's count unchanged). `git status --porcelain=v1
+--untracked-files=all` confirmed the changeset is scoped to exactly
+`src/lib/systemAdmin.ts`, `src/lib/__tests__/systemAdmin.test.ts`,
+`src/screens/SystemAdminScreen.tsx`,
+`src/components/__tests__/errorBannerLiveRegionAccessibility.test.ts`
+(the count-fix), and the new
+`src/screens/__tests__/systemAdminScreenApprovalAction.test.ts` — plus this
+`EXECUTION_STATE.md` update — no unrelated file touched, no user work at
+risk.
+
+**Runner-up angles the same investigation surfaced, deliberately not folded
+into this bounded unit (recorded so a future cycle does not re-propose them
+as new):** whether a `reject` action should also be offered for an already-
+`active` family (i.e. revoking access after the fact) — investigated and
+deliberately not added: the RPC contract supports it mechanically, but
+revoking an already-active, presumably-operating family is a materially
+different, higher-blast-radius product decision than approving/reconsidering
+a still-pending or wrongly-rejected one, not a unilateral engineering call
+for this bounded unit. Also not pursued: a confirmation step before the
+reject action fires — matches this repo's own established pattern of
+irreversible admin actions firing immediately with only an
+`accessibilityHint` (see `Button.tsx`'s own doc comment on this), not a
+`ConfirmModal`, so left consistent with sibling danger-variant buttons
+rather than introducing a new interaction pattern unilaterally.
+
+### Prior cycles' own narratives (full detail preserved here; see also the further-condensed "Recent cycles" and "Completed This Cycle" sections below for the same events in shorter form)
+
+**This cycle's reconciliation, done fresh via direct `git log`/`git show`,
 not trusted from this file's own prior narrative:** HEAD was `1cd3c07`, one
 commit past `5138bde` (what this file's own prior text named as HEAD).
 `git show --stat 1cd3c07` and `git diff --name-status 5138bde 1cd3c07`
@@ -1341,36 +1480,33 @@ mount-recovery dead end, which was the unambiguous, no-judgment-call part.
 
 ## Current Task Status
 
-Prior cycle's new migration 0040 (`join_family()`/`redeem_family_invite()`
-cross-family `family_auth_members` overwrite guard) (`1cd3c07`) is
-confirmed landed — closed, `DONE`.
+Prior cycle's overdue-pending-walk deletion-impact fix
+(`src/logic/familyManagement.ts`) (`f0927d5`) is confirmed landed — closed,
+`DONE`.
 
-**This cycle's own task — removing the incorrect `date >= today` /
-`date < today` exclusions on `pending` walks from
-`computeUserDeletionImpact()`/`planUserRemoval()`
-(`src/logic/familyManagement.ts`), so an overdue-but-unresolved walk
-assigned to a member being deleted is correctly counted as impact
-requiring a replacement, instead of the deletion flow reporting "safe to
-delete" and leaving the walk permanently orphaned on a now-unreclaimable
-soft-deleted user — is code-complete and validated** (`tsc` PASS zero
-errors; targeted `familyManagement.test.ts`/`familyStore.test.ts` PASS
-**53/53**; full `npm test` PASS **131/131 suites, 1534/1534 tests**, up
-from 131/131 · 1531/1531 immediately before the change, same HEAD). This is
-a **data-integrity-relevant fix** (rule 7 territory — the deletion flow
-touches family membership/schedule state) — see Current Task above for the
-full reachable-defect reasoning: an admin deleting a member whose only
-outstanding item is an overdue pending walk saw the app's own safety check
-claim it was safe, when in fact the walk's `responsible_user_id` would
-permanently point at an identity that can never again be reclaimed
-(`claim_family_profile()` rejects a removed persona), and — via
-`computeNextWalk()`'s oldest-overdue-wins rule — would then permanently
-hijack the whole family's Home-screen "next walk" card. Commit attempt
-outcome recorded under Blocker/Last Evidence below; per the standing
-50+-cycle pattern, even a "blocked" self-report this same cycle should not
-be assumed final — the next cycle's first action must still be its own
-independent `git log --oneline -5` + `git status` check, and should
-re-verify `familyManagement.test.ts`'s new overdue-walk regression tests
-still pass at whatever HEAD it finds before trusting this narrative.
+**This cycle's own task — wiring `system_admin_set_family_approval()`
+(migration 0032, previously defined/granted but never called from any
+client code) into `src/lib/systemAdmin.ts` and
+`src/screens/SystemAdminScreen.tsx`, so a real System Admin can actually
+approve or reject a `pending`/`rejected` family from the app instead of
+that action being unreachable — is code-complete and validated** (`tsc`
+PASS zero errors; targeted `systemAdmin.test.ts` +
+`systemAdminScreenApprovalAction.test.ts` +
+`systemAdminScreenApprovalStatus.test.ts` PASS **30/30**; full `npm test`
+PASS **132/132 suites, 1543/1543 tests**, up from 131/131 · 1534/1534
+immediately before the change, same HEAD). This is a **release-blocking
+functional gap** in the verified-admin onboarding flow this branch exists
+to deliver (Issue #3) — see Current Task above for the full
+reachable-defect reasoning: with `AUTO_APPROVE_NEW_FAMILIES=false`, a
+`pending` family had no in-app path to ever become `active` (or a wrongly-
+`rejected` one to be reconsidered), only manual SQL against a live
+database. Commit attempt outcome recorded under Blocker/Last Evidence
+below; per the standing 55+-cycle pattern, even a "blocked" self-report
+this same cycle should not be assumed final — the next cycle's first
+action must still be its own independent `git log --oneline -5` + `git
+status` check, and should re-verify
+`systemAdminScreenApprovalAction.test.ts`'s new tests still pass at
+whatever HEAD it finds before trusting this narrative.
 
 ## Current Branch / PR
 
@@ -1384,86 +1520,97 @@ still pass at whatever HEAD it finds before trusting this narrative.
 ## Last Evidence
 
 - This cycle start: `git log --oneline -5`/`git status` confirmed HEAD is
-  `1cd3c07`, clean working tree — **one** commit past `5138bde`, what this
-  file's own prior narrative described as HEAD. `git show --stat 1cd3c07`
-  confirmed it contains exactly the prior cycle's own new migration 0040 +
-  its own regression test + that cycle's own `EXECUTION_STATE.md` rewrite —
-  it had landed despite the prior cycle's own hedged "commit attempt
-  outcome recorded under Blocker" self-report, consistent with the
-  standing pattern (see note at top of file).
-- `npm ci` restored `node_modules` (906 packages, matching the expected
-  baseline). `npx tsc --noEmit` at reconciled HEAD `1cd3c07` — **PASS**,
-  zero errors. Full `npm test -- --runInBand` at reconciled HEAD —
-  **PASS: 131/131 suites, 1531/1531 tests** (the expected baseline,
-  matching it exactly), confirming a healthy baseline before starting new
-  work — this run also covers the prior cycle's own requested priority
-  re-verification of
-  `migration0040.preventCrossFamilyMembershipOverwrite.test.ts` (included
-  in the full suite, passed).
-- **This cycle's own fix:** edited `src/logic/familyManagement.ts` —
-  removed the `w.date >= today` condition from
-  `computeUserDeletionImpact()`'s `directlyAssignedWalkCount` filter and
-  the `walk.date < today` exclusion from `planUserRemoval()`'s walks loop,
-  so an overdue-but-still-`pending` walk assigned to a member being deleted
-  is correctly counted as impact requiring a replacement and reassigned
-  when one is given, instead of being silently left pointing at a
-  now-unreclaimable soft-deleted user (see Current Task above for the full
-  reachable-defect reasoning). Updated
-  `src/logic/__tests__/familyManagement.test.ts`: narrowed the two
-  pre-fix tests that had asserted the buggy "past walks are ignored"
-  behavior as intended (dropping only the now-incorrect "past" case, kept
-  the still-correct "not pending"/"not for this user" exclusions), and
-  added 3 new regression tests for the overdue-pending-walk case.
-- Targeted `npx jest src/logic/__tests__/familyManagement.test.ts
-  src/store/__tests__/familyStore.test.ts --runInBand` — **PASS: 53/53
-  tests**.
-- Full `npm test -- --runInBand` after the fix — **PASS: 131/131 suites,
-  1534/1534 tests** (up from 131/131 · 1531/1531 immediately before the
-  change, same HEAD — no new suite, net +3 tests: 2 pre-fix tests
-  narrowed/replaced and 5 new tests added across the two describe blocks,
-  every other suite's count unchanged).
+  `f0927d5`, clean working tree — **one** commit past `1cd3c07`, what this
+  file's own prior narrative described as HEAD. `git show --stat f0927d5`
+  confirmed it contains exactly the prior cycle's own
+  `familyManagement.ts` overdue-pending-walk fix + its own regression
+  tests + that cycle's own `EXECUTION_STATE.md` rewrite — it had landed
+  despite the prior cycle's own hedged "commit attempt outcome recorded
+  under Blocker" self-report, consistent with the standing pattern (see
+  note at top of file).
+- A standalone `npx tsc --noEmit` initially failed with the same
+  `npx`-package-resolution error documented before (`node_modules` present
+  but `node_modules/typescript` missing); `npm ci` restored it (906
+  packages, matching the expected baseline) and `npx tsc --noEmit` at
+  reconciled HEAD `f0927d5` then ran **PASS**, zero errors. Full `npm test
+  -- --runInBand` at reconciled HEAD — **PASS: 131/131 suites, 1534/1534
+  tests** (the expected baseline, matching it exactly), confirming a
+  healthy baseline before starting new work.
+- **This cycle's own fix:** added `setSystemAdminFamilyApproval()` to
+  `src/lib/systemAdmin.ts` (wraps migration 0032's
+  `system_admin_set_family_approval`, previously never called from any
+  client code) and wired it into `src/screens/SystemAdminScreen.tsx`'s
+  family-detail view (approve button whenever not already `active`,
+  reject button additionally for `pending`; refreshes both detail and list
+  on success; surfaces errors via the screen's existing alert-banner
+  pattern) — see Current Task above for the full reachable-defect
+  reasoning. Also repaired two pre-existing accessibility-sweep regression
+  tests this change would otherwise have broken: reused the shared
+  `"טוען…"` `ActivityIndicator` label instead of a bespoke one
+  (`activityIndicatorAccessibilityLabel.test.ts`), and updated
+  `errorBannerLiveRegionAccessibility.test.ts`'s hardcoded
+  `SystemAdminScreen.tsx` error-banner count from 3 to 4 for the new
+  approval-action error banner (which already carries both required
+  accessibility attributes).
+- Targeted `npx jest src/lib/__tests__/systemAdmin.test.ts
+  src/screens/__tests__/systemAdminScreenApprovalAction.test.ts
+  src/screens/__tests__/systemAdminScreenApprovalStatus.test.ts
+  --runInBand` — **PASS: 30/30 tests**.
+- Full `npm test -- --runInBand` after the fix — **PASS: 132/132 suites,
+  1543/1543 tests** (up from 131/131 · 1534/1534 immediately before the
+  change, same HEAD — exactly 1 new suite +
+  `systemAdminScreenApprovalAction.test.ts`'s own 6 tests + 3 new
+  `systemAdmin.test.ts` tests, every other suite's count unchanged except
+  the two repaired accessibility-sweep tests whose assertions now target
+  the corrected label/count).
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `git status --porcelain=v1 --untracked-files=all` confirmed the tracked
-  changeset is scoped to exactly `src/logic/familyManagement.ts` and
-  `src/logic/__tests__/familyManagement.test.ts` — plus this
-  `EXECUTION_STATE.md` update — no unrelated file touched, no user work at
-  risk.
+  changeset is scoped to exactly `src/lib/systemAdmin.ts`,
+  `src/lib/__tests__/systemAdmin.test.ts`,
+  `src/screens/SystemAdminScreen.tsx`,
+  `src/components/__tests__/errorBannerLiveRegionAccessibility.test.ts`,
+  and the new `src/screens/__tests__/systemAdminScreenApprovalAction.test.ts`
+  — plus this `EXECUTION_STATE.md` update — no unrelated file touched, no
+  user work at risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
   checked directly via `git status` immediately after the attempt.
 
 ## Last Evidence Timestamp
 
-2026-09-18T05:09:51Z (prior landed commit `1cd3c07`); this cycle's own work
-validated at HEAD `1cd3c07` + working tree as of this cycle's own run
+2026-09-18T08:54:57Z (prior landed commit `f0927d5`); this cycle's own work
+validated at HEAD `f0927d5` + working tree as of this cycle's own run
 (2026-09-18, this session), commit attempt outcome per Blocker below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
-self-reported:** a standalone `git add` of the two changed
-`src/logic/familyManagement.ts`/`familyManagement.test.ts` files and this
+self-reported:** a compound `git add` of the five changed/new files
+(`src/lib/systemAdmin.ts`, `src/lib/__tests__/systemAdmin.test.ts`,
+`src/screens/SystemAdminScreen.tsx`,
+`src/components/__tests__/errorBannerLiveRegionAccessibility.test.ts`,
+`src/screens/__tests__/systemAdminScreenApprovalAction.test.ts`) plus this
 `EXECUTION_STATE.md` returned "This command requires approval" from the
 tool layer itself (not a git error), consistent with every standing
 blocked git-write command across every prior cycle. A `git status
 --porcelain=v1 --untracked-files=all` run immediately after confirmed the
-working tree was unchanged (all three files still shown modified, nothing
-staged). So *within this turn's own visibility*, this cycle's commit
-attempt is a genuine, directly-confirmed no-op, not merely a hedged
+working tree was unchanged (all six files still shown modified/untracked,
+nothing staged). So *within this turn's own visibility*, this cycle's
+commit attempt is a genuine, directly-confirmed no-op, not merely a hedged
 self-report — consistent with the standing pattern (see note at top of
-file, now reconfirmed for at least the 55th time running). The
-working-tree change itself (the `familyManagement.ts` overdue-pending-walk
-deletion-impact fix + its own regression tests — plus this
-`EXECUTION_STATE.md` update) is real and validated (`tsc`/`npm test` both
-PASS, 131/131 suites, 1534/1534 tests) — per "never discard uncommitted
-work," it is NOT reverted regardless of this turn's own commit-attempt
-outcome.
+file, now reconfirmed for at least the 56th time running). The
+working-tree change itself (the System Admin family-approval wiring fix +
+its own regression tests + two repaired accessibility-sweep tests — plus
+this `EXECUTION_STATE.md` update) is real and validated (`tsc`/`npm test`
+both PASS, 132/132 suites, 1543/1543 tests) — per "never discard
+uncommitted work," it is NOT reverted regardless of this turn's own
+commit-attempt outcome.
 
 **Prior cycle's own commit-attempt outcome (condensed):** the
-cross-family `family_auth_members` overwrite guard (migration 0040) hit
-the identical "requires approval" block, yet was independently confirmed
-landed as `1cd3c07` by this cycle's own reconciliation above — the
-pattern's own 54th+ instance.
+overdue-pending-walk deletion-impact fix (`src/logic/familyManagement.ts`)
+hit the identical "requires approval" block, yet was independently
+confirmed landed as `f0927d5` by this cycle's own reconciliation above —
+the pattern's own 55th+ instance.
 
 **Standing question — mechanism already established with direct evidence
 in prior cycles' own history of this file, per the note at the top:** an
@@ -1631,31 +1778,48 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the `familyManagement.ts`/`familyManagement.test.ts`
-overdue-pending-walk deletion-impact fix + this `EXECUTION_STATE.md`
-update) landed, and check every commit between whatever SHA this file
-names and actual HEAD, not just the newest one. Re-run
-`npx jest src/logic/__tests__/familyManagement.test.ts
-src/store/__tests__/familyStore.test.ts --runInBand` (expect 53/53) as a
-targeted check before trusting this file's narrative. **Also re-run the
-FULL `npm test -- --runInBand`** (standing habit, established several
-cycles ago after a full run caught 2 silently-failing tests that
-per-change subset runs had missed) — expect **131/131 suites, 1534/1534
-tests** as the new baseline (up from 131/131 · 1531/1531 before this
-cycle's own fix).
+cycle's own commit (the System Admin family-approval wiring fix +
+`systemAdmin.ts`/`SystemAdminScreen.tsx`/their tests + this
+`EXECUTION_STATE.md` update) landed, and check every commit between
+whatever SHA this file names and actual HEAD, not just the newest one.
+Re-run `npx jest src/lib/__tests__/systemAdmin.test.ts
+src/screens/__tests__/systemAdminScreenApprovalAction.test.ts
+src/screens/__tests__/systemAdminScreenApprovalStatus.test.ts --runInBand`
+(expect 30/30) as a targeted check before trusting this file's narrative.
+**Also re-run the FULL `npm test -- --runInBand`** (standing habit,
+established several cycles ago after a full run caught 2 silently-failing
+tests that per-change subset runs had missed) — expect **132/132 suites,
+1543/1543 tests** as the new baseline (up from 131/131 · 1534/1534 before
+this cycle's own fix).
 
-**This cycle's own fix — removing the `date >= today`/`date < today`
+**This cycle's own fix — wiring migration 0032's
+`system_admin_set_family_approval()` RPC (previously defined/granted but
+never called from any client code) into `src/lib/systemAdmin.ts` and
+`src/screens/SystemAdminScreen.tsx`, so a real System Admin can actually
+approve a `pending`/`rejected` family or reject a `pending` one from the
+app — is done and complete; do not re-propose it.** See Current Task above
+for the full reachable-defect reasoning (with
+`AUTO_APPROVE_NEW_FAMILIES=false`, a `pending` family previously had no
+in-app path to ever become `active`, only manual SQL against a live
+database — a release-blocking gap in the verified-admin onboarding flow
+this branch exists to deliver). Its own runner-up angles (offering a
+`reject` action against an already-`active` family; adding a confirmation
+step before reject fires) were investigated and deliberately not pursued —
+see Current Task above; do not re-propose either.
+
+**Prior cycle's own fix — removing the `date >= today`/`date < today`
 exclusions on `pending` walks from `computeUserDeletionImpact()`/
 `planUserRemoval()` (`src/logic/familyManagement.ts`), so an
 overdue-but-unresolved walk assigned to a member being deleted is
 correctly counted as impact requiring a replacement instead of being
 silently orphaned on a now-unreclaimable soft-deleted user — is done and
-complete; do not re-propose it.** See Current Task above for the full
-reachable-defect reasoning (a `pending` walk is a live, unresolved item
-regardless of date, unlike a `schedule_entries` row; the deletion-impact
-check previously told the admin it was safe to delete when it was not,
-and the orphaned walk would permanently hijack `computeNextWalk()`'s
-family-wide "next walk" Home card since it can never again be resolved by
+complete (landed as `f0927d5`); do not re-propose it.** See git history of
+this file for the full reachable-defect reasoning (a `pending` walk is a
+live, unresolved item regardless of date, unlike a `schedule_entries` row;
+the deletion-impact check previously told the admin it was safe to delete
+when it was not, and the orphaned walk would permanently hijack
+`computeNextWalk()`'s family-wide "next walk" Home card since it can never
+again be resolved by
 its removed, unreclaimable responsible user).
 
 **Runner-up angles from this cycle's own investigation, deliberately not
@@ -2102,16 +2266,32 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `1cd3c07`, one commit
-  past `5138bde` — confirmed via `git show --stat` it contains exactly the
-  prior cycle's own new migration 0040 + its own regression test + that
-  cycle's own `EXECUTION_STATE.md` rewrite — reconfirming the standing
-  self-reporting-drift pattern yet again. `npm ci` restored `node_modules`
-  (906 packages). `npx tsc --noEmit` PASS; full `npm test -- --runInBand`
-  PASS **131/131 suites, 1531/1531 tests** (the expected baseline, matched
-  exactly), which also covers the prior cycle's own requested priority
-  re-verification of
-  `migration0040.preventCrossFamilyMembershipOverwrite.test.ts`.
+- Reconciliation found HEAD had actually moved to `f0927d5`, one commit
+  past `1cd3c07` — confirmed via `git show --stat` it contains exactly the
+  prior cycle's own `familyManagement.ts` overdue-pending-walk fix + its
+  own regression tests + that cycle's own `EXECUTION_STATE.md` rewrite —
+  reconfirming the standing self-reporting-drift pattern yet again. `npm
+  ci` restored `node_modules` (906 packages) after a stray `npx`
+  package-resolution error. `npx tsc --noEmit` PASS; full `npm test --
+  runInBand` PASS **131/131 suites, 1534/1534 tests** (the expected
+  baseline, matched exactly).
+- **This cycle's own fix — a real, first-time-discovered, release-blocking
+  functional gap:** migration 0032's `system_admin_set_family_approval()`
+  RPC was defined and granted but had zero call sites anywhere in `src/` —
+  with `AUTO_APPROVE_NEW_FAMILIES=false`, a `pending` family had no in-app
+  path to ever become `active` (or a wrongly-`rejected` one to be
+  reconsidered), only manual SQL. Added `setSystemAdminFamilyApproval()`
+  to `src/lib/systemAdmin.ts` and wired approve/reject buttons into
+  `src/screens/SystemAdminScreen.tsx`'s family-detail view. Repaired two
+  pre-existing accessibility-sweep tests the new UI would otherwise have
+  broken (shared `"טוען…"` spinner label; updated error-banner count from
+  3 to 4). Added `systemAdminScreenApprovalAction.test.ts` (6 tests) and 3
+  new tests to `systemAdmin.test.ts`. `tsc` PASS; full suite PASS
+  **132/132 suites, 1543/1543 tests** (up from 131/131 · 1534/1534).
+  `git status` confirmed the changeset is scoped to exactly the five
+  files named above plus this `EXECUTION_STATE.md` update. Commit attempt
+  hit the standing "requires approval" block (56th+ instance) — working
+  tree not reverted per "never discard uncommitted work."
 - **This cycle's own fix — a real, first-time-discovered,
   data-integrity-relevant defect:** `computeUserDeletionImpact()`/
   `planUserRemoval()` (`src/logic/familyManagement.ts`) excluded any
