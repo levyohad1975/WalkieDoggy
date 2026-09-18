@@ -317,7 +317,7 @@ export function FamilyOnboardingScreen() {
         <View style={styles.chooseCard}>
           <WalkieMascot state="idle" size={128} accessibilityLabel="הקמע של Walkie Doggy Link" testID="onboarding-mascot" />
           <RtlText style={styles.brand}>Walkie Doggy Link</RtlText>
-          <RtlText style={[styles.title, styles.heroTitle]} accessibilityRole="header">ברוכים הבאים</RtlText>
+          <RtlText style={styles.title} accessibilityRole="header"><RtlText style={styles.heroTitle}>ברוכים הבאים</RtlText></RtlText>
           <RtlText style={styles.subtitle}>כל המשפחה מתאמת את הטיולים של הכלב במקום אחד</RtlText>
 
           <View style={styles.chooseActions}>
