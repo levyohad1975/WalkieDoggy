@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -73,6 +73,16 @@ export function HistoryScreen() {
   const [historyAccessStatus, setHistoryAccessStatus] = useState<'checking' | 'granted' | 'denied'>(
     isSupabaseConfigured ? 'checking' : 'granted'
   );
+  // Tracks whether a prior refreshHistoryDataset() call already landed
+  // 'granted' at least once. useFocusEffect below re-runs
+  // refreshHistoryDataset() (and thus resets historyAccessStatus to
+  // 'checking') on EVERY return to this tab, not just first mount — without
+  // this, a background revalidation of an already-authorized user would
+  // transiently render the "no access" EmptyState over their already-loaded,
+  // still-valid historyDataset on every single refocus. Reset to false on a
+  // genuine 'denied' so a subsequent refocus is treated as an unverified
+  // first check again, not a trusted background refresh.
+  const hasEverGrantedRef = useRef(false);
 
   const refreshHistoryDataset = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -80,6 +90,7 @@ export function HistoryScreen() {
       // call — scheduleStore.walks (unrestricted there) remains the
       // dataset, exactly as before this correction.
       setHistoryAccessStatus('granted');
+      hasEverGrantedRef.current = true;
       return;
     }
     setHistoryAccessStatus('checking');
@@ -87,9 +98,11 @@ export function HistoryScreen() {
       const rows = await fetchHistoryWalks();
       setHistoryDataset(rows);
       setHistoryAccessStatus('granted');
+      hasEverGrantedRef.current = true;
     } catch (e) {
       setHistoryDataset([]);
       setHistoryAccessStatus('denied');
+      hasEverGrantedRef.current = false;
     }
   }, []);
 
@@ -221,7 +234,14 @@ export function HistoryScreen() {
   // CORRECTED FURTHER (review #2): historyAccessStatus is no longer just a
   // probe result — it also gates whether historyDataset (this screen's
   // actual data source below) is trustworthy to render from at all.
-  if (!canAccessHistoryScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus) || historyAccessStatus !== 'granted') {
+  // CORRECTED FURTHER (review #3): a background refocus revalidation
+  // ('checking' after a prior 'granted') must not blank an already-verified
+  // user's real data with this gate — only a genuine 'denied', or a
+  // never-yet-granted 'checking' (the real first-load case), should block.
+  if (
+    !canAccessHistoryScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus) ||
+    (historyAccessStatus !== 'granted' && !(historyAccessStatus === 'checking' && hasEverGrantedRef.current))
+  ) {
     return (
       <SafeAreaView style={styles.center}>
         <EmptyState emoji="🔒" title="אין לך גישה להיסטוריה" subtitle="פנו למנהל/ת המשפחה אם לדעתכם זו טעות" />
