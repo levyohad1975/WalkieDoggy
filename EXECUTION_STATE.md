@@ -50,6 +50,136 @@ anything else.
 ## Current Task
 
 **This cycle's reconciliation, done fresh via direct `git log`/`git show`,
+not trusted from this file's own prior narrative:** HEAD was `04f5e4e`, one
+commit past `927da51` (what this file's own prior text named as HEAD).
+`git show --stat 04f5e4e` confirmed it contains exactly the prior cycle's
+own new migration `0038_restore_persona_authorization_with_active_family_
+gate.sql` + its own regression test + that cycle's own `EXECUTION_STATE.md`
+rewrite — the standing self-reporting-drift pattern (see note at top of
+file) reconfirmed yet again (50th+ time running): the commit had already
+landed despite that cycle's own hedged "commit attempt outcome recorded
+under Blocker" self-report. `npm ci` restored `node_modules` (906
+packages). `npx tsc --noEmit` at reconciled HEAD `04f5e4e` — **PASS**, zero
+errors. Full `npm test -- --runInBand` at reconciled HEAD — **PASS:
+129/129 suites, 1519/1519 tests** (the expected baseline, matching the
+prior cycle's own reported count exactly), confirming a healthy baseline
+before starting new work. Re-ran
+`npx jest src/lib/__tests__/migration0038.restorePersonaAuthorization.test.ts
+--runInBand` specifically as this file's own prior cycle asked, given that
+fix's security-sensitivity — **PASS: 5/5**, and re-read the landed 0038
+migration's three function bodies directly: confirmed unchanged from what
+that cycle described.
+
+**This cycle's own task — a real, first-time-discovered, security-relevant
+read-access leak, found by following up directly (not re-delegating) on
+the runner-up candidate the prior cycle's own research agent recorded (see
+below) about `admin_delete_family_member()` never touching
+`family_auth_members`.** Verified directly by reading
+`supabase/migrations/0002_invite_codes_and_family_membership.sql` (the
+`family_auth_members` table definition — `auth_user_id uuid primary key` —
+and `current_family_id()`), `0033_verified_family_onboarding_cutover.sql`
+(the current applied `current_family_id()` — a bare device-level
+`family_auth_members` lookup gated only on `families.approval_status =
+'active'`, never on `removed_at`), `0020_multi_device_profile_sessions.sql`
+in full (`profile_auth_sessions`, `real_current_profile_id()`), and every
+currently-active `select`-policy definition across
+`0001/0002/0004/0005/0027` (cross-checked which definition is current via
+`grep -n "drop policy"` against every `create policy` site, not assumed):
+
+`current_family_id()` resolves purely from `family_auth_members.auth_user_id
+= auth.uid()` — it has no `removed_at`/persona check of its own, by design
+(0016: it must keep working for a brand-new device before any persona is
+claimed). But `admin_delete_family_member()` (0004/0007/0016/0037, the
+current applied definition) has **never** touched `family_auth_members` for
+the member it removes. Meanwhile several currently-active RLS `select`
+policies gate purely on `family_id = current_family_id()`, with **no**
+`is_family_admin()`/`removed_at` check layered on top at all: `"select users
+in own family"` (0002, the entire member roster), `"select rules in own
+family"` (0004, the entire rotation plan), `"select entries in own family"`
+(0005, every `schedule_entries` row), and `"select own family"` (0002,
+family metadata). (`"select walks in own family"`, 0027, is narrower for a
+non-admin — pending walks and today's resolved walks only — but is not
+`removed_at`-gated either.) Since a removed member's Supabase auth session is
+never invalidated by this soft-delete-only removal, and their device's
+`family_auth_members` row was never cleared, `current_family_id()` kept
+resolving to this family for that device **indefinitely** — a member an
+admin just removed could keep reading the full family roster and the entire
+recurring schedule/rotation plan forever from the same device, a genuine,
+reachable data-boundary leak (the same class already fixed for push
+notifications in 0037), not cosmetic.
+
+Also confirmed via `0020_multi_device_profile_sessions.sql`: since that
+migration, a persona can be actively signed in on **more than one device at
+once** via `profile_auth_sessions` (`auth_user_id primary key`, `unique
+(auth_user_id, family_id)`) — the legacy single-device `users.auth_user_id`
+column alone is no longer a complete list of which devices currently
+represent a given persona, so a fix keyed only off `users.auth_user_id`
+would miss any additional signed-in device.
+
+**Fixed, via a new migration (0037's definition left untouched as applied,
+per rule 8 — 0039 supersedes it with the identical 4-argument signature via
+`CREATE OR REPLACE`, no drop needed):** added
+`supabase/migrations/0039_clear_family_auth_membership_on_member_removal.sql`
+— copies 0037's `admin_delete_family_member()` body verbatim (same
+last-admin guard, same replacement-id validation loops, same
+rotation/schedule/walk reassignment logic, same push/web-push
+deactivation) and adds two new statements right before `removed_at` is
+set: deletes every `family_auth_members` row, scoped to `target_family`
+only, for every `auth_user_id` currently representing `target_user_id` —
+sourced from **both** `profile_auth_sessions` (the multi-device source of
+truth since 0020) and the legacy `users.auth_user_id` column, unioned for
+completeness — then deletes the removed persona's own now-stale
+`profile_auth_sessions` rows. This immediately makes `current_family_id()`
+— and therefore every policy/RPC built on it — resolve to `null` for every
+device that represented the removed persona, closing the leak at its root
+for every affected table in one place, without needing to add a
+`removed_at` check to each policy individually. Scoping the delete to
+`target_family` means a device that has since moved on to a different
+family is never touched; the fix is harmless if the member is later
+re-invited, since `join_family()` already upserts `family_auth_members` for
+a fresh join.
+
+Added a new
+`src/lib/__tests__/migration0039.clearFamilyAuthMembershipOnRemoval.test.ts`
+(6 tests, source-text-scan style matching `migration0037`/`migration0038`'s
+own established convention): confirms 0001-0038 are untouched and exactly
+one 0039 file exists; confirms the 4-argument signature is preserved (no
+`drop function`); confirms every pre-existing guard/push-deactivation
+statement is preserved unchanged; confirms the new `family_auth_members`
+delete is scoped to `target_family` and sourced from both
+`profile_auth_sessions` and the legacy `users.auth_user_id` column; confirms
+the new `profile_auth_sessions` cleanup; confirms both new statements are
+ordered after the push-deactivation block and before `removed_at` is set.
+
+`npx tsc --noEmit` after this cycle's own change — **PASS**, zero errors.
+`npm test -- --runInBand` after this cycle's own change — **PASS: 130/130
+suites, 1525/1525 tests** (up from 129/129 · 1519/1519 immediately before
+the change, same HEAD — exactly 1 new suite + 6 new tests, matching the new
+`migration0039.clearFamilyAuthMembershipOnRemoval.test.ts` file one-for-one;
+every other suite's count unchanged). `git status --porcelain=v1
+--untracked-files=all` confirmed the changeset is scoped to exactly
+`supabase/migrations/0039_clear_family_auth_membership_on_member_removal.sql`
+(new) and
+`src/lib/__tests__/migration0039.clearFamilyAuthMembershipOnRemoval.test.ts`
+(new) — plus this `EXECUTION_STATE.md` update — no unrelated file touched,
+no user work at risk.
+
+**Runner-up angle the same investigation surfaced, deliberately not folded
+into this bounded unit (recorded so a future cycle does not re-propose it as
+new):** this fix does not add `.gitattributes`/normalize this sandbox's own
+CRLF checkout behavior — unrelated to this fix, already tracked separately
+by this file's own standing CRLF-test-fragility note elsewhere. Also
+deliberately not pursued: proactively hardening every `current_family_id()`-
+gated policy individually with its own `removed_at` re-check as defense in
+depth on top of this fix — investigated and rejected for this bounded unit
+because the device-membership-level fix above already closes the leak at
+its actual root for every current and future such policy in one place;
+revisit only if a future cycle finds a read path that resolves family
+membership some other way than `current_family_id()`.
+
+### Prior cycles' own narratives (full detail preserved here; see also the further-condensed "Recent cycles" and "Completed This Cycle" sections below for the same events in shorter form)
+
+**This cycle's reconciliation, done fresh via direct `git log`/`git show`,
 not trusted from this file's own prior narrative:** HEAD was `927da51`, one
 commit past `891feca` (what this file's own prior text named as HEAD).
 `git show --stat 927da51` and `git diff --name-status 891feca 927da51`
@@ -930,32 +1060,29 @@ mount-recovery dead end, which was the unambiguous, no-judgment-call part.
 
 ## Current Task Status
 
-Prior cycle's CRLF-tolerance repair to
-`migration0037.pushDeactivationOnRemoval.test.ts` (`927da51`) is confirmed
-landed — closed, `DONE`. (It also swept in two previously-untracked scratch
-probe files, `_scratch_check0037.js`/`_scratch_check0037.ps1` — now added to
-the dead-file backlog under Blocker, not a functional concern.)
+Prior cycle's new migration 0038 (persona-anchored authorization restore)
+(`04f5e4e`) is confirmed landed — closed, `DONE`.
 
-**This cycle's own task — restoring persona-anchored `is_family_admin()`/
-`current_family_role()` (new migration `0038`), which migration 0033 had
-silently reverted to a stale device-level `family_auth_members.role`
-model, decoupling them entirely from `set_member_role()`'s persona-level
-writes — is code-complete and validated** (`tsc` PASS zero errors; new
-targeted test PASS **5/5**; full `npm test` PASS **129/129 suites,
-1519/1519 tests**, up from 128/128 · 1514/1514 immediately before the
-change, same HEAD). This is a **security-relevant authorization
-regression fix** (rule 7: auth/RLS/SECURITY DEFINER functions are
-security-sensitive) — see Current Task above for the full reachable-defect
-reasoning: a demoted admin whose device's stale `family_auth_members.role`
-was still `'admin'` kept full admin authority indefinitely, and a promoted
-member was never actually granted admin authority server-side despite the
-UI showing them as Admin. Commit attempt outcome recorded under
-Blocker/Last Evidence below; per the standing 49+-cycle pattern, even a
+**This cycle's own task — clearing `family_auth_members` for a removed
+member's device(s) on `admin_delete_family_member()` (new migration
+`0039`), closing the read-access leak recorded as 0038's own cycle's
+runner-up candidate — is code-complete and validated** (`tsc` PASS zero
+errors; new targeted test PASS **6/6**; full `npm test` PASS **130/130
+suites, 1525/1525 tests**, up from 129/129 · 1519/1519 immediately before
+the change, same HEAD). This is a **security-relevant read-access-leak
+fix** (rule 7) — see Current Task above for the full reachable-defect
+reasoning: `current_family_id()` has no `removed_at` check of its own, and
+`admin_delete_family_member()` never cleared the removed member's
+`family_auth_members` row, so several `select`-only RLS policies gated
+purely on `family_id = current_family_id()` (the member roster, the whole
+rotation plan, every `schedule_entries` row) stayed readable forever from a
+removed member's device. Commit attempt outcome recorded under
+Blocker/Last Evidence below; per the standing 50+-cycle pattern, even a
 "blocked" self-report this same cycle should not be assumed final — the
 next cycle's first action must still be its own independent `git log
 --oneline -5` + `git status` check, and — given this fix's
 security-sensitivity — should re-verify the new
-`migration0038.restorePersonaAuthorization.test.ts` still passes at
+`migration0039.clearFamilyAuthMembershipOnRemoval.test.ts` still passes at
 whatever HEAD it finds before trusting this narrative.
 
 ## Current Branch / PR
@@ -969,53 +1096,45 @@ whatever HEAD it finds before trusting this narrative.
 
 ## Last Evidence
 
-- This cycle start: `git log --oneline -20`/`git status` confirmed HEAD is
-  `927da51`, clean working tree — **one** commit past `891feca`, what this
-  file's own prior narrative described as HEAD. `git show --stat 927da51`
-  and `git diff --name-status 891feca 927da51` confirmed it contains
-  exactly the prior cycle's own CRLF-tolerance fix to
-  `migration0037.pushDeactivationOnRemoval.test.ts` plus that cycle's own
-  `EXECUTION_STATE.md` rewrite, PLUS the two previously-untracked scratch
-  probe files (`_scratch_check0037.js`/`_scratch_check0037.ps1`) now
-  tracked — it had landed despite the prior cycle's own hedged "commit
-  attempt outcome recorded under Blocker" self-report, consistent with the
+- This cycle start: `git log --oneline -5`/`git status` confirmed HEAD is
+  `04f5e4e`, clean working tree — **one** commit past `927da51`, what this
+  file's own prior narrative described as HEAD. `git show --stat 04f5e4e`
+  confirmed it contains exactly the prior cycle's own new migration 0038 +
+  its own regression test + that cycle's own `EXECUTION_STATE.md` rewrite —
+  it had landed despite the prior cycle's own hedged "commit attempt
+  outcome recorded under Blocker" self-report, consistent with the
   standing pattern (see note at top of file).
-- `node_modules` was empty at cycle start; `npm ci` restored it (906
-  packages, matching the expected baseline). `npx tsc --noEmit` at
-  reconciled HEAD `927da51` — **PASS**, zero errors. Full `npm test --
-  --runInBand` at reconciled HEAD — **PASS: 128/128 suites, 1514/1514
-  tests** (the expected baseline, matching it exactly this time),
-  confirming a healthy baseline before starting new work.
-- This cycle retried deleting the two now-tracked scratch files via
-  `git rm`, plain `rm -f`, and the harness's own file-delete path directly
-  — all three blocked with the same "may only remove files from the
-  allowed working directories" message (even though that message names
-  this session's own working directory as the allowed one), reconfirming
-  the standing file-deletion gate is general, not tool-specific. Left in
-  place, joining the existing dead-file backlog under Blocker.
+- `npm ci` restored `node_modules` (906 packages, matching the expected
+  baseline). `npx tsc --noEmit` at reconciled HEAD `04f5e4e` — **PASS**,
+  zero errors. Full `npm test -- --runInBand` at reconciled HEAD —
+  **PASS: 129/129 suites, 1519/1519 tests** (the expected baseline,
+  matching it exactly), confirming a healthy baseline before starting new
+  work. Also re-ran
+  `npx jest src/lib/__tests__/migration0038.restorePersonaAuthorization.test.ts
+  --runInBand` specifically given that fix's security-sensitivity —
+  **PASS: 5/5**.
 - **This cycle's own fix:** added
-  `supabase/migrations/0038_restore_persona_authorization_with_active_family_gate.sql`
-  (restores 0016's persona-anchored `current_family_role()`/
-  `is_real_family_admin()` and 0006's impersonation-aware
-  `is_family_admin()` wrapper, layering the `approval_status = 'active'`
-  gate migration 0033 actually intended on top instead of migration 0033's
-  wholesale revert to a stale `family_auth_members`-only model — see
-  Current Task above for the full reachable-defect reasoning) and
-  `src/lib/__tests__/migration0038.restorePersonaAuthorization.test.ts` (5
-  new source-text-scan tests).
-- `npx jest src/lib/__tests__/migration0038.restorePersonaAuthorization.test.ts
-  --runInBand` — **PASS: 5/5 tests**.
-- Full `npm test -- --runInBand` after the fix — **PASS: 129/129 suites,
-  1519/1519 tests** (up from 128/128 · 1514/1514 immediately before the
-  change, same HEAD — exactly 1 new suite + 5 new tests, every other
+  `supabase/migrations/0039_clear_family_auth_membership_on_member_removal.sql`
+  (has `admin_delete_family_member()` also delete the removed persona's
+  `family_auth_members` row(s) — sourced from `profile_auth_sessions` and
+  the legacy `users.auth_user_id` column, scoped to `target_family` — plus
+  the persona's own stale `profile_auth_sessions` rows, closing the
+  read-access leak described in Current Task above) and
+  `src/lib/__tests__/migration0039.clearFamilyAuthMembershipOnRemoval.test.ts`
+  (6 new source-text-scan tests).
+- `npx jest src/lib/__tests__/migration0039.clearFamilyAuthMembershipOnRemoval.test.ts
+  --runInBand` — **PASS: 6/6 tests**.
+- Full `npm test -- --runInBand` after the fix — **PASS: 130/130 suites,
+  1525/1525 tests** (up from 129/129 · 1519/1519 immediately before the
+  change, same HEAD — exactly 1 new suite + 6 new tests, every other
   suite's count unchanged).
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `git status --porcelain=v1 --untracked-files=all` confirmed the tracked
   changeset is scoped to exactly
-  `supabase/migrations/0038_restore_persona_authorization_with_active_family_gate.sql`
+  `supabase/migrations/0039_clear_family_auth_membership_on_member_removal.sql`
   (new) and
-  `src/lib/__tests__/migration0038.restorePersonaAuthorization.test.ts`
+  `src/lib/__tests__/migration0039.clearFamilyAuthMembershipOnRemoval.test.ts`
   (new) — plus this `EXECUTION_STATE.md` update — no unrelated file
   touched, no user work at risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
@@ -1023,51 +1142,36 @@ whatever HEAD it finds before trusting this narrative.
 
 ## Last Evidence Timestamp
 
-2026-09-17T21:26:27Z (prior landed commit `927da51`); this cycle's own work
-validated at HEAD `927da51` + working tree as of this cycle's own run
-(2026-09-17, this session), commit attempt outcome per Blocker below.
+2026-09-17T22:40:04Z (prior landed commit `04f5e4e`); this cycle's own work
+validated at HEAD `04f5e4e` + working tree as of this cycle's own run
+(2026-09-18, this session), commit attempt outcome per Blocker below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
-self-reported:** a standalone `git add` of the two new migration-0038 files
+self-reported:** a standalone `git add` of the two new migration-0039 files
 and this `EXECUTION_STATE.md` returned "This command requires approval"
 from the tool layer itself (not a git error), consistent with every
 standing blocked git-write command across every prior cycle. A `git status
 --porcelain=v1 --untracked-files=all` run immediately after confirmed the
 working tree was unchanged (the two new files still shown as untracked,
-nothing staged). So *within this turn's own visibility*, this cycle's
-commit attempt is a genuine, directly-confirmed no-op, not merely a hedged
-self-report — consistent with the standing pattern (see note at top of
-file, now reconfirmed for at least the 50th time running, and this time on
-a security-relevant fix — the next cycle should treat verifying this
-landed, not just assuming it, as a priority given the sensitivity). The
-working-tree change itself (new migration `0038` restoring persona-anchored
-`is_family_admin()`/`current_family_role()` + its own regression test —
-plus this `EXECUTION_STATE.md` update) is real and validated (`tsc`/`npm
-test` both PASS, 129/129 suites, 1519/1519 tests) — per "never discard
-uncommitted work," it is NOT reverted regardless of this turn's own
-commit-attempt outcome.
+`EXECUTION_STATE.md` shown modified, nothing staged). So *within this
+turn's own visibility*, this cycle's commit attempt is a genuine,
+directly-confirmed no-op, not merely a hedged self-report — consistent
+with the standing pattern (see note at top of file, now reconfirmed for at
+least the 51st time running, and this time on a security-relevant fix —
+the next cycle should treat verifying this landed, not just assuming it,
+as a priority given the sensitivity). The working-tree change itself (new
+migration `0039` clearing a removed member's `family_auth_members` row(s)
++ its own regression test — plus this `EXECUTION_STATE.md` update) is real
+and validated (`tsc`/`npm test` both PASS, 130/130 suites, 1525/1525
+tests) — per "never discard uncommitted work," it is NOT reverted
+regardless of this turn's own commit-attempt outcome.
 
-**Also this cycle:** retried deleting the two now-tracked scratch files
-(`_scratch_check0037.js`/`_scratch_check0037.ps1`, swept into `927da51` by
-whatever external process produces these commits) via three different
-mechanisms — `git rm`, plain `rm -f`, and the harness's own dedicated
-file-delete path — all three blocked with the identical "may only remove
-files from the allowed working directories for this session" message, even
-though that message itself names this session's own working directory
-(`C:\actions-runner\_work\WalkieDoggy\WalkieDoggy`) as an allowed one. This
-reconfirms the standing file-deletion gate is a general sandbox
-restriction, not specific to `git`/`rm`/any one tool, and not something a
-different execution worker or tool-call shape can route around — these two
-files join the existing seventeen-file dead-file backlog below, now
-tracked (not just untracked) but otherwise the same inert, non-blocking
-housekeeping item.
-
-**Prior cycle's own commit-attempt outcome (condensed):** the CRLF-
-tolerance test fix hit the identical "requires approval" block, yet was
-independently confirmed landed as `927da51` by this cycle's own
-reconciliation above — the pattern's own 49th+ instance.
+**Prior cycle's own commit-attempt outcome (condensed):** the persona-
+authorization-restore fix (migration 0038) hit the identical "requires
+approval" block, yet was independently confirmed landed as `04f5e4e` by
+this cycle's own reconciliation above — the pattern's own 50th+ instance.
 
 **Standing question — mechanism already established with direct evidence
 in prior cycles' own history of this file, per the note at the top:** an
@@ -1235,45 +1339,47 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (new migration `0038_restore_persona_authorization_
-with_active_family_gate.sql` + its own regression test + this
-`EXECUTION_STATE.md` update) landed, and check every commit between
-whatever SHA this file names and actual HEAD, not just the newest one.
-**Given this cycle's fix is security-relevant (restores real admin/member
-authorization enforcement that migration 0033 had silently broken), the
-next cycle should treat re-running
-`npx jest src/lib/__tests__/migration0038.restorePersonaAuthorization.test.ts`
-and re-reading the landed `0038` migration's own three function bodies as
+cycle's own commit (new migration
+`0039_clear_family_auth_membership_on_member_removal.sql` + its own
+regression test + this `EXECUTION_STATE.md` update) landed, and check
+every commit between whatever SHA this file names and actual HEAD, not
+just the newest one. **Given this cycle's fix is security-relevant
+(closes a real read-access leak for removed family members), the next
+cycle should treat re-running
+`npx jest src/lib/__tests__/migration0039.clearFamilyAuthMembershipOnRemoval.test.ts`
+and re-reading the landed `0039` migration's own new `delete` statements as
 a priority verification step, not just trusting this file's narrative.**
 **Also re-run the FULL `npm test -- --runInBand`** (standing habit,
 established several cycles ago after a full run caught 2 silently-failing
-tests that per-change subset runs had missed) — expect **129/129 suites,
-1519/1519 tests** as the new baseline (up from 128/128 · 1514/1514 before
+tests that per-change subset runs had missed) — expect **130/130 suites,
+1525/1525 tests** as the new baseline (up from 129/129 · 1519/1519 before
 this cycle's own fix).
 
-**This cycle's own fix — restoring 0016's persona-anchored
-`current_family_role()`/`is_real_family_admin()` and 0006's
-impersonation-aware `is_family_admin()` wrapper (new migration `0038`),
-after migration 0033 had silently reverted both to a stale device-level
-`family_auth_members.role` model that `set_member_role()` never writes to
-— is done and complete; do not re-propose it.** See Current Task above for
-the full reachable-defect reasoning (demotion was a server-side no-op for
-anyone whose device still held a stale `family_auth_members.role =
-'admin'`; promotion never actually granted server-side admin authority for
-anyone who joined via invite code). **One runner-up candidate the same
-research agent found, deliberately not folded into this bounded unit
-(recorded so a future cycle does not re-propose it as new):**
-`admin_delete_family_member()` (0037, unchanged) never clears a removed
-member's `family_auth_members` row — this cycle's own fix already closes
-the *write*-authorization exposure via the persona branch's `removed_at is
-null` check, but read-only RLS policies gating purely on
-`is_family_admin(family_id)`/`current_family_id()` without their own
-`removed_at` filter (e.g. `"admin reads audit log"`,
-`0005_requests_audit_presence.sql:469-470`) may still let a removed
-admin's still-authenticated device read family-internal data after
-removal — worth a future cycle's own bounded unit auditing every such
-policy specifically for that gap, not assumed fixed by this cycle's write-
-path fix alone.
+**This cycle's own fix — having `admin_delete_family_member()` also delete
+the removed persona's `family_auth_members` row(s) (sourced from
+`profile_auth_sessions` and the legacy `users.auth_user_id` column, scoped
+to `target_family`) and its own stale `profile_auth_sessions` rows (new
+migration `0039`), closing the read-access leak where a removed member's
+device kept resolving `current_family_id()` to the family forever — is
+done and complete; do not re-propose it.** See Current Task above for the
+full reachable-defect reasoning (several `select`-only RLS policies gate
+purely on `family_id = current_family_id()`, with no `removed_at` check of
+their own, so a removed member's device could keep reading the full member
+roster and the entire rotation plan indefinitely). This also fully closes
+the prior cycle's own recorded runner-up candidate (`admin_delete_family_
+member()` never clearing `family_auth_members`) — do not re-propose that
+either.
+
+**Runner-up angle from this cycle's own investigation, deliberately not
+pursued (recorded so a future cycle does not re-propose it as new):**
+individually hardening every `current_family_id()`-gated policy with its
+own extra `removed_at` re-check, as defense in depth on top of this fix —
+investigated and rejected for this bounded unit because the
+device-membership-level fix above already closes the leak at its actual
+root for every current (and future) such policy in one place; only worth
+revisiting if a future cycle finds some read path that resolves family
+membership a different way than `current_family_id()`/`family_auth_members`
+(none found this cycle).
 
 If this same CRLF-vs-LF discrepancy between this file's own predicted
 baseline and an actual full-suite run recurs on any *other*
@@ -1676,6 +1782,37 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
+- Reconciliation found HEAD had actually moved to `04f5e4e`, one commit
+  past `927da51` — confirmed via `git show --stat` it contains exactly the
+  prior cycle's own new migration 0038 + its own regression test + that
+  cycle's own `EXECUTION_STATE.md` rewrite — reconfirming the standing
+  self-reporting-drift pattern yet again. `npm ci` restored `node_modules`
+  (906 packages). `npx tsc --noEmit` PASS; full `npm test -- --runInBand`
+  PASS **129/129 suites, 1519/1519 tests** (the expected baseline, matched
+  exactly), plus a targeted re-run of
+  `migration0038.restorePersonaAuthorization.test.ts` (5/5) given that
+  fix's security-sensitivity.
+- **This cycle's own fix — a real, first-time-discovered, security-relevant
+  read-access leak:** `admin_delete_family_member()` never cleared the
+  removed member's `family_auth_members` row(s), so `current_family_id()`
+  (which has no `removed_at` check of its own) kept resolving to the family
+  for that device forever, and several `select`-only RLS policies gated
+  purely on `family_id = current_family_id()` (member roster, rotation
+  plan, `schedule_entries`) stayed readable indefinitely from a removed
+  member's device. Added
+  `supabase/migrations/0039_clear_family_auth_membership_on_member_removal.sql`
+  (deletes `family_auth_members` sourced from `profile_auth_sessions` +
+  the legacy `users.auth_user_id` column, scoped to `target_family`, plus
+  the persona's own stale `profile_auth_sessions` rows) and
+  `src/lib/__tests__/migration0039.clearFamilyAuthMembershipOnRemoval.test.ts`
+  (6 new tests). `npx tsc --noEmit` PASS; full `npm test -- --runInBand`
+  PASS **130/130 suites, 1525/1525 tests** (up from 129/129 · 1519/1519).
+  `git status` confirmed the changeset is scoped to exactly those two new
+  files plus this `EXECUTION_STATE.md` update. Commit attempt blocked (see
+  Blocker) — same standing pattern as every prior cycle. This closes the
+  prior cycle's own recorded runner-up candidate; do not re-propose it.
+- Prior cycles' own completed-this-cycle entries below, preserved for
+  history:
 - Reconciliation found HEAD had actually moved to `927da51`, one commit
   past `891feca` — confirmed via `git show --stat`/`git diff --name-status`
   it contains exactly the prior cycle's own CRLF-tolerance fix to
