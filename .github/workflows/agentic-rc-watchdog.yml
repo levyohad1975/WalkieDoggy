@@ -89,7 +89,15 @@ jobs:
               $workerDispatchUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/workflows/agentic-rc-worker.yml/dispatches"
               $workerBody = @{ ref = 'main'; inputs = @{ target_branch = $env:TARGET_BRANCH } } | ConvertTo-Json -Depth 4
               $dispatchStartedAt = [DateTimeOffset]::UtcNow
-              Invoke-RestMethod -Uri $workerDispatchUrl -Headers $headers -Method Post -ContentType 'application/json' -Body $workerBody
+              try {
+                Invoke-RestMethod -Uri $workerDispatchUrl -Headers $headers -Method Post -ContentType 'application/json' -Body $workerBody
+              } catch {
+                if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 422) {
+                  'Worker dispatch is temporarily unavailable on the current workflow revision (HTTP 422). Recording recoverable handoff state instead of failing the scheduled Watchdog; a later revision/run will retry.' | Add-Content $env:GITHUB_STEP_SUMMARY
+                  exit 0
+                }
+                throw
+              }
               $workerFound = $false
               for ($attempt = 1; $attempt -le 6; $attempt++) {
                 Start-Sleep -Seconds 5
