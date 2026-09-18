@@ -23,6 +23,7 @@ import { localDateOnly } from '../logic/dateFormat';
 import { isOverdue } from '../logic/nextWalk';
 import { previewRotation } from '../logic/rotation';
 import { canRequestChangeForWalk } from '../logic/walkActions';
+import { walkHasActiveSwapRequest, walkHasActiveTimeChangeRequest } from '../logic/requestLifecycle';
 import { computeWalkRequestStatusLine } from '../logic/walkRequestStatusLine';
 import { isSupabaseConfigured } from '../lib/supabase';
 import type { ScheduleRule, Walk } from '../types';
@@ -188,6 +189,16 @@ export function ScheduleScreen() {
   const canRequestForWalk = (w: Walk): boolean =>
     canRequestChangeForWalk(w, effectiveUserId, familyRole, isSupabaseConfigured);
 
+  // Both create_swap_request() and create_time_change_request() (migrations
+  // 0018/0006) reject a second pending request naming a walk that already
+  // has one outstanding (see requestLifecycle.ts's own doc comment) — these
+  // add that check on top of canRequestForWalk's base eligibility rule, so
+  // the request links aren't shown for a walk that would always be rejected.
+  const canRequestSwapForWalk = (w: Walk): boolean =>
+    canRequestForWalk(w) && !walkHasActiveSwapRequest(w.id, swapRequests, walksById);
+  const canRequestTimeChangeForWalk = (w: Walk): boolean =>
+    canRequestForWalk(w) && !walkHasActiveTimeChangeRequest(w.id, timeChangeRequests, walksById);
+
   // QA pass v3, issue 11 fix: same authorization as NextWalkCard's
   // `canResolve` (admin, or the currently-responsible member — migration
   // 0012), but applied to EVERY overdue+pending walk in this list, not just
@@ -243,8 +254,8 @@ export function ScheduleScreen() {
                       // ROUND-5, Part 2: request actions for ANY eligible
                       // future walk, not just Home's "next walk" — see
                       // canRequestForWalk() above for the exact filter.
-                      onRequestSwap={canRequestForWalk(w) ? () => setRequestSwapWalkId(w.id) : undefined}
-                      onRequestTimeChange={canRequestForWalk(w) ? () => setRequestTimeChangeWalkId(w.id) : undefined}
+                      onRequestSwap={canRequestSwapForWalk(w) ? () => setRequestSwapWalkId(w.id) : undefined}
+                      onRequestTimeChange={canRequestTimeChangeForWalk(w) ? () => setRequestTimeChangeWalkId(w.id) : undefined}
                       onMarkDone={canResolveWalk(w) ? () => setResolveWalkId(w.id) : undefined}
                       onMarkNotDone={canResolveWalk(w) ? () => skip(w.id) : undefined}
                       requestStatusLine={
@@ -473,7 +484,8 @@ export function ScheduleScreen() {
             w.status === 'pending' &&
             w.responsibleUserId === requestSwapTargetUserId &&
             (!requestSwapWalk || w.dogId === requestSwapWalk.dogId) &&
-            new Date(`${w.date}T${w.scheduledTime}:00`).getTime() > Date.now()
+            new Date(`${w.date}T${w.scheduledTime}:00`).getTime() > Date.now() &&
+            !walkHasActiveSwapRequest(w.id, swapRequests, walksById)
           )
           .sort((a, b) => `${a.date}T${a.scheduledTime}`.localeCompare(`${b.date}T${b.scheduledTime}`))
           .slice(0, 20)

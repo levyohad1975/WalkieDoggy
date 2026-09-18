@@ -171,6 +171,50 @@ export function countUnreadRequestResults<T extends RequestLike>(
 }
 
 /**
+ * True when `walkId` already appears — as either the source or the
+ * reciprocal target — in an active pending swap request. `create_swap_request()`
+ * (migration 0018) rejects naming either walk on EITHER side of a NEW request
+ * whenever it already appears on either side of any existing pending row in
+ * the same `walk_swap_requests` table: `r.walk_id in (p_walk_id,
+ * p_target_walk_id) or r.target_walk_id in (p_walk_id, p_target_walk_id)`.
+ * Without this check, a "בקש החלפה" affordance (or a target-walk picker
+ * option) could be shown for a walk that would always be rejected by that
+ * guard — the requester's OWN still-pending walk offering a second "בקש
+ * החלפה" while the first is outstanding, or the picker still listing a
+ * target member's walk that already carries a pending request against it.
+ */
+export function walkHasActiveSwapRequest<T extends RequestLike>(
+  walkId: string,
+  swapRequests: T[],
+  walksById: Record<string, LifecycleWalk | undefined>,
+  now: Date = new Date()
+): boolean {
+  return swapRequests.some(
+    (r) =>
+      (r.walk_id === walkId || r.target_walk_id === walkId) &&
+      isRequestActive(computeRequestLifecycle(r, walksById, now))
+  );
+}
+
+/**
+ * True when `walkId` already has an active pending time-change request.
+ * `create_time_change_request()` (migration 0006) rejects a second request
+ * for the same `walk_id` while one is already pending (its own single-table
+ * `time_change_requests` guard) — mirrored here so the "בקש שינוי שעה"
+ * affordance isn't shown for a walk that would always be rejected by it.
+ */
+export function walkHasActiveTimeChangeRequest<T extends RequestLike>(
+  walkId: string,
+  timeChangeRequests: T[],
+  walksById: Record<string, LifecycleWalk | undefined>,
+  now: Date = new Date()
+): boolean {
+  return timeChangeRequests.some(
+    (r) => r.walk_id === walkId && isRequestActive(computeRequestLifecycle(r, walksById, now))
+  );
+}
+
+/**
  * Combined "בקשות ממתינות (N)" bell-badge count (HomeScreen). A swap
  * request's target can be ANY active family member the requester picks —
  * including one who also holds the Admin role (UserPickerModal doesn't

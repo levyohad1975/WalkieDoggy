@@ -32,7 +32,12 @@ import { DEMO_FAMILY } from '../data/demoData';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { fetchLastResolvedWalk } from '../lib/permissionedWalks';
 import { useRequestsStore } from '../store/requestsStore';
-import { countPendingRequestsForViewer, countUnreadRequestResults } from '../logic/requestLifecycle';
+import {
+  countPendingRequestsForViewer,
+  countUnreadRequestResults,
+  walkHasActiveSwapRequest,
+  walkHasActiveTimeChangeRequest,
+} from '../logic/requestLifecycle';
 import { computeWalkRequestStatusLine } from '../logic/walkRequestStatusLine';
 import type { Walk } from '../types';
 import { renderMessageTemplate } from '../mascot/messageEngine';
@@ -521,9 +526,16 @@ export function HomeScreen() {
             // non-responsible admin" rule and its own unit tests.
             onSwap={nextWalkCardActions?.canSwapDirect ? () => setSwapWalkId(nextWalk.id) : undefined}
             onEdit={nextWalkCardActions?.canEditDirect ? () => setEditWalkId(nextWalk.id) : undefined}
-            onRequestSwap={nextWalkCardActions?.canRequestSwap ? () => setRequestSwapWalkId(nextWalk.id) : undefined}
+            onRequestSwap={
+              nextWalkCardActions?.canRequestSwap && !walkHasActiveSwapRequest(nextWalk.id, swapRequests, walksById)
+                ? () => setRequestSwapWalkId(nextWalk.id)
+                : undefined
+            }
             onRequestTimeChange={
-              nextWalkCardActions?.canRequestTimeChange ? () => setRequestTimeChangeWalkId(nextWalk.id) : undefined
+              nextWalkCardActions?.canRequestTimeChange &&
+              !walkHasActiveTimeChangeRequest(nextWalk.id, timeChangeRequests, walksById)
+                ? () => setRequestTimeChangeWalkId(nextWalk.id)
+                : undefined
             }
           />
         ) : (
@@ -688,12 +700,14 @@ export function HomeScreen() {
                   // predicate ScheduleScreen uses (logic/walkActions.ts),
                   // so eligibility is identical on both screens.
                   onRequestSwap={
-                    canRequestChangeForWalk(w, effectiveUserId, effectiveRole, isSupabaseConfigured)
+                    canRequestChangeForWalk(w, effectiveUserId, effectiveRole, isSupabaseConfigured) &&
+                    !walkHasActiveSwapRequest(w.id, swapRequests, walksById)
                       ? () => setRequestSwapWalkId(w.id)
                       : undefined
                   }
                   onRequestTimeChange={
-                    canRequestChangeForWalk(w, effectiveUserId, effectiveRole, isSupabaseConfigured)
+                    canRequestChangeForWalk(w, effectiveUserId, effectiveRole, isSupabaseConfigured) &&
+                    !walkHasActiveTimeChangeRequest(w.id, timeChangeRequests, walksById)
                       ? () => setRequestTimeChangeWalkId(w.id)
                       : undefined
                   }
@@ -918,7 +932,8 @@ export function HomeScreen() {
             w.status === 'pending' &&
             w.responsibleUserId === requestSwapTargetUserId &&
             (!requestSwapWalk || w.dogId === requestSwapWalk.dogId) &&
-            new Date(`${w.date}T${w.scheduledTime}:00`).getTime() > Date.now()
+            new Date(`${w.date}T${w.scheduledTime}:00`).getTime() > Date.now() &&
+            !walkHasActiveSwapRequest(w.id, swapRequests, walksById)
           )
           .sort((a, b) => `${a.date}T${a.scheduledTime}`.localeCompare(`${b.date}T${b.scheduledTime}`))
           .slice(0, 20)

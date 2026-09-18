@@ -5,6 +5,8 @@ import {
   countUnreadRequestResults,
   isRequestActive,
   isRequestVisible,
+  walkHasActiveSwapRequest,
+  walkHasActiveTimeChangeRequest,
   type RequestLike,
 } from '../requestLifecycle';
 
@@ -318,5 +320,61 @@ describe('countPendingRequestsForViewer', () => {
   it('defaults now to the current time when omitted', () => {
     const swaps: RequestLike[] = [makeRequest({ id: 's1', walk_id: 'w1', target_user_id: 'viewer' })];
     expect(countPendingRequestsForViewer(swaps, [], walks, 'viewer', false)).toBe(1);
+  });
+});
+
+describe('walkHasActiveSwapRequest', () => {
+  const walks = { w1: { status: 'pending' as const }, w2: { status: 'pending' as const }, w3: { status: 'pending' as const } };
+
+  it('is true when the walk is the SOURCE of an active pending swap request', () => {
+    const swaps: RequestLike[] = [makeRequest({ id: 's1', walk_id: 'w1', target_walk_id: 'w2' })];
+    expect(walkHasActiveSwapRequest('w1', swaps, walks, NOW)).toBe(true);
+  });
+
+  it('is true when the walk is the TARGET of an active pending swap request', () => {
+    const swaps: RequestLike[] = [makeRequest({ id: 's1', walk_id: 'w1', target_walk_id: 'w2' })];
+    expect(walkHasActiveSwapRequest('w2', swaps, walks, NOW)).toBe(true);
+  });
+
+  it('is false for a walk not referenced by any swap request', () => {
+    const swaps: RequestLike[] = [makeRequest({ id: 's1', walk_id: 'w1', target_walk_id: 'w2' })];
+    expect(walkHasActiveSwapRequest('w3', swaps, walks, NOW)).toBe(false);
+  });
+
+  it('is false once the referencing request is no longer active (resolved, expired, or gone)', () => {
+    const resolved: RequestLike[] = [
+      makeRequest({ id: 's1', walk_id: 'w1', target_walk_id: 'w2', status: 'approved', resolved_at: NOW.toISOString() }),
+    ];
+    expect(walkHasActiveSwapRequest('w1', resolved, walks, NOW)).toBe(false);
+
+    const expired: RequestLike[] = [makeRequest({ id: 's2', walk_id: 'w1', target_walk_id: 'w2' })];
+    const walksWithGoneTarget = { w1: { status: 'pending' as const } }; // w2 missing -> expired
+    expect(walkHasActiveSwapRequest('w1', expired, walksWithGoneTarget, NOW)).toBe(false);
+  });
+});
+
+describe('walkHasActiveTimeChangeRequest', () => {
+  const walks = { w1: { status: 'pending' as const } };
+
+  it('is true when the walk has an active pending time-change request', () => {
+    const timeChanges: RequestLike[] = [makeRequest({ id: 't1', walk_id: 'w1' })];
+    expect(walkHasActiveTimeChangeRequest('w1', timeChanges, walks, NOW)).toBe(true);
+  });
+
+  it('is false for a different walk_id', () => {
+    const timeChanges: RequestLike[] = [makeRequest({ id: 't1', walk_id: 'w1' })];
+    expect(walkHasActiveTimeChangeRequest('w2', timeChanges, walks, NOW)).toBe(false);
+  });
+
+  it('is false once the request is resolved (no longer active)', () => {
+    const timeChanges: RequestLike[] = [
+      makeRequest({ id: 't1', walk_id: 'w1', status: 'rejected', resolved_at: NOW.toISOString() }),
+    ];
+    expect(walkHasActiveTimeChangeRequest('w1', timeChanges, walks, NOW)).toBe(false);
+  });
+
+  it('defaults now to the current time when omitted', () => {
+    const timeChanges: RequestLike[] = [makeRequest({ id: 't1', walk_id: 'w1' })];
+    expect(walkHasActiveTimeChangeRequest('w1', timeChanges, walks)).toBe(true);
   });
 });
