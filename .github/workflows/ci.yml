@@ -6,12 +6,21 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'Non-production branch to validate'
+        required: false
+        type: string
+      expected_sha:
+        description: 'Exact commit SHA to validate'
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ inputs.expected_sha || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -21,8 +30,27 @@ jobs:
     timeout-minutes: 20
 
     steps:
+      - name: Guard exact-head dispatch
+        if: github.event_name == 'workflow_dispatch' && inputs.expected_sha != ''
+        shell: powershell
+        env:
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:TARGET_BRANCH -eq 'main') { throw 'Refusing main as an exact-head validation target.' }
+          if ($env:TARGET_BRANCH -notmatch '^(feat|fix|chore|test|docs|rc)/[A-Za-z0-9._/-]+$') { throw 'Invalid exact-head validation target.' }
+          if ($env:EXPECTED_SHA -notmatch '^[0-9a-f]{40}$') { throw 'Invalid expected SHA.' }
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
+          $encodedBranch = [System.Uri]::EscapeDataString($env:TARGET_BRANCH)
+          $branch = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/branches/$encodedBranch" -Headers $headers -Method Get
+          if ([string]$branch.commit.sha -ne $env:EXPECTED_SHA) { throw "Target branch head no longer matches expected SHA $env:EXPECTED_SHA." }
+
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_sha || github.sha }}
 
       - name: Validate Agentic worker contract
         shell: powershell
