@@ -62,6 +62,20 @@ jobs:
           & $exe.FullName --version
           if ($LASTEXITCODE -ne 0) { throw 'Supabase CLI version check failed' }
 
+      - name: Configure and verify Docker for Windows runner
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dockerBin = 'C:\Program Files\Docker\Docker\resources\bin'
+          $dockerExe = Join-Path $dockerBin 'docker.exe'
+          if (-not (Test-Path $dockerExe)) { throw "docker.exe not found at $dockerExe" }
+          $dockerBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $env:PATH = "$dockerBin;$env:PATH"
+          & $dockerExe --version
+          if ($LASTEXITCODE -ne 0) { throw 'Docker CLI version check failed' }
+          & $dockerExe info
+          if ($LASTEXITCODE -ne 0) { throw 'Docker Engine is not accessible from the GitHub runner service account' }
+
       - name: Start isolated Supabase stack
         shell: powershell
         run: supabase start -x studio,imgproxy,storage-api,realtime,edge-runtime,logflare,vector,supavisor
