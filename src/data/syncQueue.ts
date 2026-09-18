@@ -146,11 +146,27 @@ export interface QuarantinedItem {
  * the flush loop and block every later queued operation for this profile
  * forever, exactly like the 23xxx/42xxx bugs above did before their own
  * fixes.
+ *
+ * RC FIX: also treat SQLSTATE class "22" (data_exception — in practice from
+ * this client this is `22P02` invalid_text_representation or `22003`
+ * numeric_value_out_of_range) as PERMANENT. Concretely reachable via
+ * `AddUnplannedWalkModal.tsx`'s free-text duration field (no
+ * keyboard-type enforcement against clipboard paste, unlike the time/date
+ * fields which already gate submission on a format check): a queued
+ * `saveWalk`/`addScheduleEntries` carrying a non-integer duration (e.g.
+ * `20.5`) fails `walks.duration_minutes int`'s implicit cast with a class-22
+ * code every single retry, since the payload itself is malformed, not the
+ * connection. Before this fix that would `break` the flush loop and block
+ * every later queued operation for every user and every feature behind it
+ * forever, exactly like the 23xxx/42xxx/28xxx/P0xxx bugs above did before
+ * their own fixes.
  */
 function isPermanentError(error: unknown): boolean {
   const code = (error as { code?: string } | null | undefined)?.code;
   if (typeof code !== 'string') return false;
-  return code.startsWith('23') || code.startsWith('42') || code.startsWith('28') || code.startsWith('P0');
+  return (
+    code.startsWith('23') || code.startsWith('42') || code.startsWith('28') || code.startsWith('P0') || code.startsWith('22')
+  );
 }
 
 export type SyncOperation =

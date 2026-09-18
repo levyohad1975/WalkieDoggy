@@ -122,7 +122,14 @@ export function AddUnplannedWalkModal({
     }
   }, [visible, defaultUserId, editingWalk]);
 
-  const valid = timeIsValid(time) && /^\d{4}-\d{2}-\d{2}$/.test(date);
+  // Round RC-duration: the underlying `walks.duration_minutes` column is a
+  // Postgres `int` — a non-integer value (reachable via clipboard paste,
+  // since `keyboardType="number-pad"` is only an on-screen-keyboard hint,
+  // not an input filter) would otherwise sync-queue-fail with a permanent
+  // class-22 Postgres error (see syncQueue.ts's `isPermanentError`) with no
+  // clear feedback to the user. Empty stays valid (duration is optional).
+  const durationValid = duration.trim() === '' || /^\d+$/.test(duration.trim());
+  const valid = timeIsValid(time) && /^\d{4}-\d{2}-\d{2}$/.test(date) && durationValid;
 
   // Round 6C-time: native picker selection can't produce an invalid value,
   // so this just converts and stores it — the existing timeIsValid() gate

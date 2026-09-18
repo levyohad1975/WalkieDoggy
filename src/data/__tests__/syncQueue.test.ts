@@ -874,6 +874,27 @@ describe('SyncQueue — isPermanentError class 28, non-Error thrown values, and 
     expect(conflicts[0].code).toBe('P0001');
   });
 
+  it('treats a class-22 (22P02 invalid_text_representation) Postgres code as a permanent conflict, not a retryable failure', async () => {
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'saveWalk', payload: fakeWalk('w1', { durationMinutes: 20.5 }) });
+    await queue.enqueue({ type: 'upsertUser', payload: fakeUser('a') });
+
+    const invalidIntError = Object.assign(new Error('invalid input syntax for type integer: "20.5"'), { code: '22P02' });
+    const result = await queue.flush(
+      stubRemote({
+        saveWalk: jest.fn().mockRejectedValue(invalidIntError),
+        upsertUser: jest.fn().mockResolvedValue(undefined),
+      })
+    );
+
+    // the 22P02 saveWalk (e.g. a non-integer duration reaching
+    // walks.duration_minutes) is dropped as a permanent conflict, not left
+    // queued to `break` the loop and block the later upsertUser behind it.
+    expect(result).toEqual({ succeeded: 1, remaining: 0, conflicted: 1, quarantined: 0 });
+    const conflicts = await queue.getConflicts();
+    expect(conflicts[0].code).toBe('22P02');
+  });
+
   it('records a conflict message via String(error) when the thrown value is not an Error instance', async () => {
     const queue = new SyncQueue();
     await queue.enqueue({ type: 'upsertUser', payload: fakeUser('a') });

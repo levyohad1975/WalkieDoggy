@@ -50,123 +50,118 @@ anything else.
 ## Current Task
 
 **This cycle's reconciliation, done fresh via direct `git log`/`git show`,
-not trusted from this file's own prior narrative:** HEAD was `c2a2f26`, one
-commit past `f0fd847` (what this file's own prior text named as HEAD).
-`git show --stat c2a2f26` confirmed it contains exactly the prior cycle's
-own `EditWalkModal.tsx` deferred-time-commit fix
-(`src/components/EditWalkModal.tsx`,
-`src/components/__tests__/EditWalkModal.deferredTimeCommit.test.ts`,
-`src/components/__tests__/TimePickerField.integration.test.ts`) plus that
+not trusted from this file's own prior narrative:** HEAD was `49322cf`, one
+commit past `c2a2f26` (what this file's own prior text named as HEAD).
+`git show --stat 49322cf` confirmed it contains exactly the prior cycle's
+own `StatisticsScreen.tsx` refocus false-access-denial fix
+(`src/screens/StatisticsScreen.tsx`,
+`src/screens/__tests__/StatisticsScreen.permissionGate.test.ts`) plus that
 cycle's own `EXECUTION_STATE.md` rewrite — the standing self-reporting-drift
-pattern (see note at top of file) reconfirmed yet again (66th+ time
+pattern (see note at top of file) reconfirmed yet again (67th+ time
 running): the commit had already landed despite the prior cycle's own
 hedged "commit attempt outcome recorded under Blocker" self-report.
 `node_modules/typescript` was missing at cycle start (the documented `npx
 tsc` package-resolution symptom); `npm ci` restored it (906 packages,
 matching the expected baseline). `npx tsc --noEmit` at reconciled HEAD
-`c2a2f26` — **PASS**, zero errors. Full `npm test -- --runInBand` at
-reconciled HEAD — **PASS: 136/136 suites, 1587/1587 tests** (the expected
+`49322cf` — **PASS**, zero errors. Full `npm test -- --runInBand` at
+reconciled HEAD — **PASS: 136/136 suites, 1589/1589 tests** (the expected
 baseline, matching the prior cycle's own reported count exactly),
-confirming a healthy baseline before starting new work.
+confirming a healthy baseline before starting new work. `gh auth status`
+and `docker info` were both re-checked and are still gated ("This command
+requires approval") — Queue items 1–3/6's live-Staging half remains
+blocked; proceeded with a credential-free sub-task per Queue items 4/5/7.
 
-**This cycle's own task — a real, first-time-discovered, user-facing
-correctness bug, found by a fresh Explore research agent (steered away from
-the 66+ already-exhausted defect classes documented in this file, toward
-previously-unswept areas: `StatisticsScreen.tsx`/`SettingsScreen.tsx`/
-`SystemAdminScreen.tsx` business logic beyond what's listed,
-`requestsStore.ts` business logic, `familyManagement.ts`, `demoData.ts`,
-remaining migrations, and other screens/modals not yet named) and verified
-directly by this cycle (not just trusted from the report) by reading
-`src/screens/StatisticsScreen.tsx` in full and
-`src/screens/__tests__/StatisticsScreen.permissionGate.test.ts` in full,
-and confirming via `grep` that `src/screens/HistoryScreen.tsx` has the
-identical `'checking' | 'granted' | 'denied'` + `useFocusEffect` shape (a
-runner-up angle, not folded into this bounded unit — see below):**
+**This cycle's own task — a real, first-time-discovered offline-sync
+reliability bug, found by direct inspection (not a subagent this cycle) of
+the flagged-but-unswept `RuleFormModal`/`AddUnplannedWalkModal`/
+`EditDoneDetailsModal`/`RequestTimeChangeModal`/`RequestsInboxModal`
+business-logic angle noted by the prior cycle's own "Next Safe Task", and
+verified directly by reading `src/components/AddUnplannedWalkModal.tsx`,
+`src/data/syncQueue.ts`'s `isPermanentError()`, and
+`supabase/migrations/0001_family_management_and_walk_details.sql`'s
+`walks.duration_minutes int` column definition:**
 
-`StatisticsScreen.tsx`'s `statisticsAccessStatus` state (`'checking' |
-'granted' | 'denied'`) doubles as both the fetch-in-flight signal and the
-server-authoritative access gate for its `list_statistics_walks()`
-(migration 0027) result. `useFocusEffect` (lines 100-104, pre-fix) calls
-`refreshStatisticsDataset()` on **every** return to this tab, not just
-first mount — matching this screen's own doc comment's stated intent
-(staying live without falling back to unrestricted raw historical data).
-But `refreshStatisticsDataset()` (pre-fix) unconditionally set
-`statisticsAccessStatus` back to `'checking'` *before* awaiting the RPC
-(line 84), and the render gate (line 145-148, pre-fix) was `!
-canAccessStatisticsScreen(...) || statisticsAccessStatus !== 'granted'` —
-which is true for `'checking'` exactly like `'denied'`. The loading spinner
-above it only fires when `sourceWalks.length === 0` (line 120), which is
-false once real data has loaded at least once. So for any already-verified,
-fully-permitted family member, every single return to the Statistics tab
-after the first successful load replaced their real KPI/chart content with
-the "🔒 אין לך גישה לסטטיסטיקה — פנו למנהל/ת המשפחה אם לדעתכם זו טעות" ("you
-don't have access to statistics, contact your family admin if you think
-this is a mistake") EmptyState for the duration of the network round trip —
-a false, alarming permission-denial flash on ordinary, fully-authorized
-navigation, not a contrived corner case, and worse on a slow connection.
-Confirmed via the existing test file that only the very-first-mount default
-was ever asserted (`'checking' is the correct default on first mount`) —
-the refocus-revalidation case was never covered, so this was never caught.
-Confirmed via `src/store/requestsStore.ts`'s `load()` (lines ~103-123) that
-this codebase already has an established sibling precedent for the correct
-principle: a reload in flight (or one that fails) must never blank out
-already-successfully-loaded data out from under someone looking at it.
+`AddUnplannedWalkModal.tsx`'s "משך (דקות, אופציונלי)" (duration) `TextInput`
+had `keyboardType="number-pad"` but no actual input validation — unlike its
+sibling `date`/`time` fields, which both already gate the "שמור" button on
+a format check via the existing `valid` computation. `keyboardType` is only
+an on-screen-keyboard hint; it does not block clipboard paste on either
+platform, so a non-integer string (e.g. `"20.5"`, a very plausible
+fractional-minutes entry) reaches
+`durationMinutes: duration ? Number(duration) : undefined` as a valid,
+non-NaN JS number and is queued straight through
+`scheduleStore.addUnplannedWalk()`/`editUnplannedWalk()` into
+`walks.duration_minutes`, a Postgres `int` column. Postgres rejects that
+cast with a class-22 (`data_exception`, concretely `22P02
+invalid_text_representation`) error on every retry, since the payload
+itself — not the connection — is malformed. Confirmed via
+`src/data/syncQueue.ts`'s `isPermanentError()` (already fixed three times
+before for exactly this "queued write blocks the whole flush loop forever"
+defect class: SQLSTATE 23/42/28/P0 in that order, per this file's own
+history) that class `22` was **not** in the allowlist — so this
+non-integer-duration write would silently and permanently `break` the
+flush loop and block every later queued operation, for every user and
+every feature, behind it forever, exactly like the three already-fixed
+classes did before their own fixes.
 
-**Fixed (client-side screen logic only, no migration/store change needed),
-following `requestsStore.ts`'s own established "don't blank good data on a
-background reload" principle:** added a `hasEverGrantedRef` (a `useRef`,
-deliberately not state, since it must not itself trigger a re-render) to
-`StatisticsScreen.tsx`, set to `true` on every path that lands `'granted'`
-(both the local/demo-mode path and the Supabase success path) and reset to
-`false` on a genuine `'denied'` (so a subsequent refocus after a real denial
-is correctly treated as an unverified first check again, not a trusted
-background refresh). Changed the render gate to additionally allow through
-a `'checking'` status when `hasEverGrantedRef.current` is `true` — i.e. only
-a genuine `'denied'`, or a `'checking'` that has never yet been granted (the
-real first-load case the existing test already pins), now blocks rendering;
-an in-flight background revalidation of an already-authorized user's tab no
-longer does. The `!canAccessStatisticsScreen(...) ||` clause (the
-independent, still-synchronous `permissionOverrides`/role check) and the
-initial `'checking'`-when-Supabase-configured default are both left exactly
-as they were — this fix only changes what a *subsequent* `'checking'` means
-once the screen has already proven access once.
+**Fixed with two coordinated, minimal changes (client-side prevention +
+sync-layer defense-in-depth, matching this exact codebase's own established
+precedent for extending `isPermanentError`'s allowlist):**
+1. `src/components/AddUnplannedWalkModal.tsx`: added a `durationValid`
+   check (`duration.trim() === '' || /^\d+$/.test(duration.trim())` — empty
+   stays valid since duration is optional; otherwise digits-only, so no
+   decimal point and no leading `-`) folded into the existing `valid` gate
+   alongside `timeIsValid(time)` and the date-format check. No visible
+   inline error text added, matching this modal's existing silent-disable
+   convention for its date/time fields (neither has one either).
+2. `src/data/syncQueue.ts`: extended `isPermanentError()` to also treat
+   SQLSTATE class `22` (`data_exception`) as PERMANENT, with a doc-comment
+   paragraph following the exact same reasoning template already used for
+   classes 23/42/28/P0 — this closes the gap for any other path that might
+   reach this class, not just this one call site, matching why the
+   allowlist has been extended incrementally before.
 
-Added 2 new tests to
-`src/screens/__tests__/StatisticsScreen.permissionGate.test.ts`
-(source-text-scan style, matching this file's own established convention
-since this repo has no React Native screen-rendering test harness):
-confirms `hasEverGrantedRef` exists and is set `true`/reset `false` on the
-correct paths; confirms the render-gate clause itself contains both the
-original `statisticsAccessStatus !== 'granted'` check and the new
-`hasEverGrantedRef.current` allowance, still positioned before the main
-return.
+Added `src/components/__tests__/AddUnplannedWalkModal.durationValidation.test.ts`
+(7 tests, source-text-scan + pure-logic style matching
+`RequestTimeChangeModal.suggestedTime.test.ts`'s own established
+convention) and one new test to `src/data/__tests__/syncQueue.test.ts`
+(mirroring the existing class-28/class-P0 tests in the same describe
+block): a queued `saveWalk` with a fractional `durationMinutes` rejected by
+the stub remote with a `22P02`-coded error is dropped as a permanent
+conflict, not left queued to `break` the loop and block a later queued
+`upsertUser` behind it.
 
 `npx tsc --noEmit` after this cycle's own change — **PASS**, zero errors.
-Targeted `npx jest src/screens/__tests__/StatisticsScreen.permissionGate.test.ts
---runInBand` — **PASS: 10/10 tests** (up from 8/8). Full `npm test --
-runInBand` after this cycle's own change — **PASS: 136/136 suites,
-1589/1589 tests** (up from 136/136 · 1587/1587 immediately before the
-change, same HEAD — no new suite, exactly +2 tests, matching the two new
-regression tests added; every other suite's count unchanged). `git status
+Targeted `npx jest src/components/__tests__/AddUnplannedWalkModal.durationValidation.test.ts
+src/data/__tests__/syncQueue.test.ts --runInBand` — **PASS: 48/48 tests**.
+Full `npm test -- --runInBand` after this cycle's own change — **PASS:
+137/137 suites, 1597/1597 tests** (up from 136/136 · 1589/1589 immediately
+before the change, same HEAD — exactly 1 new suite + its own 7 tests, plus
+1 new test in the existing `syncQueue.test.ts` suite, matching 7+1=8 new
+tests exactly; every other suite's count unchanged). `git status
 --porcelain=v1 --untracked-files=all` confirmed the changeset is scoped to
-exactly `src/screens/StatisticsScreen.tsx` (modified) and
-`src/screens/__tests__/StatisticsScreen.permissionGate.test.ts` (modified)
-— plus this `EXECUTION_STATE.md` update — no unrelated file touched, no
-user work at risk.
+exactly `src/components/AddUnplannedWalkModal.tsx` (modified),
+`src/data/syncQueue.ts` (modified), `src/data/__tests__/syncQueue.test.ts`
+(modified), and
+`src/components/__tests__/AddUnplannedWalkModal.durationValidation.test.ts`
+(new) — plus this `EXECUTION_STATE.md` update — no unrelated file touched,
+no user work at risk.
 
-**Runner-up angle the same investigation surfaced, deliberately not folded
-into this bounded unit (recorded so a future cycle does not re-propose
-it as new):** `src/screens/HistoryScreen.tsx` has the byte-for-byte
-identical `historyAccessStatus: 'checking' | 'granted' | 'denied'` +
-`useFocusEffect`-refetch-on-every-return shape (confirmed via `grep`:
-`historyAccessStatus`, its own `useState` default, and its own
-`useFocusEffect` call all mirror `StatisticsScreen.tsx`'s pre-fix
-structure exactly) — the identical false-access-denied-flash-on-refocus bug
-almost certainly exists there too. Deliberately not fixed in this same
-bounded unit (a second, independent file with its own test file deserves
-its own bounded change and its own review of that file's specific
-call-site details), but flagged here as the clear next candidate for a
-follow-up cycle, using the exact same `hasEverGrantedRef` pattern.
+**Runner-up angle from this cycle's own investigation, deliberately not
+folded in (recorded so a future cycle does not re-propose it as new):**
+`RuleFormModal.tsx`/`EditDoneDetailsModal.tsx` were also read in full this
+cycle — no equivalent unvalidated-numeric-input gap found in either (neither
+has a free-text numeric field at all). `RequestTimeChangeModal.tsx`/
+`RequestsInboxModal.tsx` were not yet read this cycle; still an open angle
+for a future cycle. The prior cycle's own flagged next candidate —
+`HistoryScreen.tsx`'s byte-for-byte identical `historyAccessStatus:
+'checking' | 'granted' | 'denied'` + `useFocusEffect`-refetch-on-every-
+return shape as `StatisticsScreen.tsx`'s pre-fix structure, almost
+certainly carrying the identical false-access-denied-flash-on-refocus bug —
+was **not** picked up this cycle (a different, independent angle was
+pursued instead) and remains open; still the clear next candidate for a
+follow-up cycle, using the exact same `hasEverGrantedRef` pattern from
+`49322cf`.
 
 ### Prior cycles' own narratives (full detail preserved here; see also the further-condensed "Recent cycles" and "Completed This Cycle" sections below for the same events in shorter form)
 
@@ -2366,6 +2361,22 @@ fixed this cycle (recorded so a future cycle does not re-propose either):**
 
 ### Prior cycles' own narratives (condensed — full detail in git history of this file)
 
+Prior cycle: reconciliation found HEAD at `c2a2f26` and fixed a real,
+first-time-discovered correctness bug: `StatisticsScreen.tsx`'s
+`statisticsAccessStatus` reset to `'checking'` on every `useFocusEffect`
+refetch (not just first mount), and the render gate treated `'checking'`
+identically to `'denied'`, so every return to the Statistics tab after a
+successful first load flashed the "no access" EmptyState over real content
+for the duration of the background refetch. Fixed with a `hasEverGrantedRef`
+that lets a `'checking'` through once access has already been granted once,
+following `requestsStore.ts`'s own established "don't blank good data on a
+background reload" precedent. Added 2 tests. Landed as `49322cf` despite
+that cycle's own hedged "commit attempt outcome recorded under Blocker"
+self-report. Flagged `HistoryScreen.tsx` as carrying the byte-for-byte
+identical pre-fix shape (`historyAccessStatus` + `useFocusEffect`) as the
+clear next candidate for the same fix — still open, not yet picked up by
+this cycle's own successor either (see Current Task above).
+
 Prior cycle: reconciliation found HEAD had actually moved to `ee5f091`, one
 commit past `e3462eb` (which that prior cycle itself had hedged its commit
 attempt under Blocker).
@@ -2564,25 +2575,24 @@ mount-recovery dead end, which was the unambiguous, no-judgment-call part.
 
 ## Current Task Status
 
-Prior cycle's `updateRule()`/`daysOfWeek` reconciliation fix (`f0fd847`) is
-confirmed landed — closed, `DONE`.
+Prior cycle's `StatisticsScreen.tsx` refocus false-access-denial fix
+(`49322cf`) is confirmed landed — closed, `DONE`.
 
-**This cycle's own task — deferring `EditWalkModal.tsx`'s time-picker commit
-to an explicit "עדכן שעה" button instead of committing on every
-`TimePickerField` `onChange` tick (iOS `display="spinner"` fires `onChange`
-continuously mid-scroll, so a partial value was previously reschedule-written
-and closed the sheet before the user reached their intended time) — is
-code-complete and validated** (`tsc` PASS zero errors; targeted
-`EditWalkModal.deferredTimeCommit.test.ts`+`TimePickerField.integration.test.ts`
-PASS **9/9**; full `npm test` PASS **136/136 suites, 1587/1587 tests**, up
-from 135/135 · 1580/1580 immediately before the change, same HEAD). See
+**This cycle's own task — closing the `AddUnplannedWalkModal.tsx` duration
+field's unvalidated-input gap plus extending `syncQueue.ts`'s
+`isPermanentError()` to cover SQLSTATE class 22 — is code-complete and
+validated** (`tsc` PASS zero errors; targeted
+`AddUnplannedWalkModal.durationValidation.test.ts`+`syncQueue.test.ts` PASS
+**48/48**; full `npm test` PASS **137/137 suites, 1597/1597 tests**, up
+from 136/136 · 1589/1589 immediately before the change, same HEAD). See
 Current Task above for the full reachable-defect reasoning. Commit attempt
 outcome recorded under Blocker/Last Evidence below; per the standing
-65+-cycle pattern, even a "blocked" self-report this same cycle should not
+67+-cycle pattern, even a "blocked" self-report this same cycle should not
 be assumed final — the next cycle's first action must still be its own
 independent `git log --oneline -5` + `git status` check, and should
-re-verify `EditWalkModal.deferredTimeCommit.test.ts`'s assertions still
-pass at whatever HEAD it finds before trusting this narrative.
+re-verify `AddUnplannedWalkModal.durationValidation.test.ts`'s and the new
+`syncQueue.test.ts` class-22 assertion's still pass at whatever HEAD it
+finds before trusting this narrative.
 
 ## Current Branch / PR
 
@@ -2596,53 +2606,55 @@ pass at whatever HEAD it finds before trusting this narrative.
 ## Last Evidence
 
 - This cycle start: `git log --oneline -8`/`git status` confirmed HEAD is
-  `f0fd847`, clean working tree — **one** commit past `7e13e4f`, what this
-  file's own prior narrative described as HEAD. `git show --stat f0fd847`
-  confirmed it contains exactly the prior cycle's own `updateRule()`/
-  `daysOfWeek` reconciliation fix (`src/logic/rotation.ts`,
-  `src/logic/__tests__/rotation.test.ts`, `src/store/scheduleStore.ts`,
-  `src/store/__tests__/scheduleStore.test.ts`) + that cycle's own
-  `EXECUTION_STATE.md` rewrite — it had landed despite the prior cycle's
-  own hedged "commit attempt outcome recorded under Blocker" self-report,
-  consistent with the standing pattern (see note at top of file).
+  `49322cf`, clean working tree — **one** commit past `c2a2f26`, what this
+  file's own prior narrative described as HEAD. `git show --stat 49322cf`
+  confirmed it contains exactly the prior cycle's own `StatisticsScreen.tsx`
+  refocus false-access-denial fix (`src/screens/StatisticsScreen.tsx`,
+  `src/screens/__tests__/StatisticsScreen.permissionGate.test.ts`) + that
+  cycle's own `EXECUTION_STATE.md` rewrite — it had landed despite the prior
+  cycle's own hedged "commit attempt outcome recorded under Blocker"
+  self-report, consistent with the standing pattern (see note at top of
+  file).
 - `node_modules/typescript` was missing at cycle start (the documented
   `npx tsc` package-resolution symptom); `npm ci` restored it (906
   packages, matching the expected baseline). `npx tsc --noEmit` at
-  reconciled HEAD `f0fd847` — **PASS**, zero errors. Targeted
-  `npx jest src/logic/__tests__/rotation.test.ts
-  src/store/__tests__/scheduleStore.test.ts --runInBand` — **PASS: 65/65**.
-  Full `npm test -- --runInBand` at reconciled HEAD — **PASS: 135/135
-  suites, 1580/1580 tests** (the expected baseline, matching it exactly),
-  confirming a healthy baseline before starting new work.
-- **This cycle's own fix:** changed `handleTimeChange` in
-  `src/components/EditWalkModal.tsx` to only update local `time` state,
-  never call `onChangeTime` directly — see Current Task above for the full
-  reachable-defect reasoning (iOS `display="spinner"` fires `onChange`
-  continuously mid-scroll; the pre-fix code committed the first
-  intermediate value straight to `rescheduleWalk` and closed the sheet).
-  Added a `timeChanged` gate and a dedicated `"עדכן שעה"` button that calls
-  `onChangeTime(time)` only on an explicit tap, matching
-  `RequestTimeChangeModal`/`AddUnplannedWalkModal`'s own established
-  explicit-submit convention for the identical spinner picker.
-- Added `src/components/__tests__/EditWalkModal.deferredTimeCommit.test.ts`
+  reconciled HEAD `49322cf` — **PASS**, zero errors. Full `npm test --
+  runInBand` at reconciled HEAD — **PASS: 136/136 suites, 1589/1589 tests**
+  (the expected baseline, matching it exactly), confirming a healthy
+  baseline before starting new work.
+- `gh auth status` and `docker info` re-checked this cycle — both still
+  return "This command requires approval" from the tool layer itself; Queue
+  items 1–3/6's live-Staging half remains blocked, unchanged from every
+  prior cycle.
+- **This cycle's own fix:** added a `durationValid` check to
+  `src/components/AddUnplannedWalkModal.tsx`'s existing `valid` gate (empty
+  duration stays valid; otherwise digits-only, no decimal point) — see
+  Current Task above for the full reachable-defect reasoning (a pasted
+  non-integer duration reaches `walks.duration_minutes`, a Postgres `int`
+  column, and fails every retry with a class-22 Postgres error). Also
+  extended `src/data/syncQueue.ts`'s `isPermanentError()` to treat SQLSTATE
+  class `22` as PERMANENT, matching the exact reasoning template already
+  used for classes 23/42/28/P0.
+- Added `src/components/__tests__/AddUnplannedWalkModal.durationValidation.test.ts`
   (7 tests, source-text-scan + pure-logic style matching
-  `RequestTimeChangeModal.suggestedTime.test.ts`'s own convention) and
-  repaired `src/components/__tests__/TimePickerField.integration.test.ts`,
-  which had pinned the buggy immediate-commit source text as intended
-  behavior.
-- Targeted `npx jest src/components/__tests__/EditWalkModal.deferredTimeCommit.test.ts
-  src/components/__tests__/TimePickerField.integration.test.ts --runInBand`
-  — **PASS: 9/9 tests**.
-- Full `npm test -- --runInBand` after the fix — **PASS: 136/136 suites,
-  1587/1587 tests** (up from 135/135 · 1580/1580 immediately before the
-  change, same HEAD — exactly 1 new suite + its own 7 tests, every other
-  suite's count unchanged).
+  `RequestTimeChangeModal.suggestedTime.test.ts`'s own convention) and one
+  new test in `src/data/__tests__/syncQueue.test.ts` (mirroring the
+  existing class-28/class-P0 tests in the same describe block).
+- Targeted `npx jest src/components/__tests__/AddUnplannedWalkModal.durationValidation.test.ts
+  src/data/__tests__/syncQueue.test.ts --runInBand` — **PASS: 48/48
+  tests**.
+- Full `npm test -- --runInBand` after the fix — **PASS: 137/137 suites,
+  1597/1597 tests** (up from 136/136 · 1589/1589 immediately before the
+  change, same HEAD — exactly 1 new suite + its own 7 tests, plus 1 new
+  test in the existing `syncQueue.test.ts` suite; every other suite's count
+  unchanged).
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `git status --porcelain=v1 --untracked-files=all` confirmed the tracked
-  changeset is scoped to exactly `src/components/EditWalkModal.tsx`
-  (modified), `src/components/__tests__/TimePickerField.integration.test.ts`
-  (modified), and `src/components/__tests__/EditWalkModal.deferredTimeCommit.test.ts`
+  changeset is scoped to exactly `src/components/AddUnplannedWalkModal.tsx`
+  (modified), `src/data/syncQueue.ts` (modified),
+  `src/data/__tests__/syncQueue.test.ts` (modified), and
+  `src/components/__tests__/AddUnplannedWalkModal.durationValidation.test.ts`
   (new) — plus this `EXECUTION_STATE.md` update — no unrelated file
   touched, no user work at risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
@@ -2650,37 +2662,41 @@ pass at whatever HEAD it finds before trusting this narrative.
 
 ## Last Evidence Timestamp
 
-2026-09-18 (this cycle's own run, this session); reconciled HEAD `c2a2f26`
-+ this cycle's own working-tree change (`StatisticsScreen.tsx` refocus-gate
-fix), commit attempt outcome per Blocker below.
+2026-09-18 (this cycle's own run, this session); reconciled HEAD `49322cf`
++ this cycle's own working-tree change (`AddUnplannedWalkModal.tsx`
+duration validation + `syncQueue.ts` class-22 fix), commit attempt outcome
+per Blocker below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
-self-reported:** a compound `git add` of the three changed files
-(`src/screens/StatisticsScreen.tsx`,
-`src/screens/__tests__/StatisticsScreen.permissionGate.test.ts`,
-`EXECUTION_STATE.md`) returned "This command requires approval" from the
-tool layer itself (not a git error), consistent with every standing
-blocked git-write command across every prior cycle. Two standalone `git
-add` retries (same three files) each hit the identical block. A `git
-status --porcelain=v1 --untracked-files=all` run immediately after
-confirmed the working tree was unchanged (all three files still shown
-modified, nothing staged). So *within this turn's own visibility*, this
-cycle's commit attempt is a genuine, directly-confirmed no-op, not merely a
-hedged self-report — consistent with the standing pattern (see note at top
-of file, now reconfirmed for at least the 67th time running). The
-working-tree change itself (the `StatisticsScreen.tsx` refocus
-false-access-denial fix + its own 2 new regression tests — plus this
-`EXECUTION_STATE.md` update) is real and validated (`tsc`/`npm test` both
-PASS, 136/136 suites, 1589/1589 tests) — per "never discard uncommitted
-work," it is NOT reverted regardless of this turn's own commit-attempt
-outcome.
+self-reported:** a compound `git add` of the four changed files
+(`src/components/AddUnplannedWalkModal.tsx`, `src/data/syncQueue.ts`,
+`src/data/__tests__/syncQueue.test.ts`, `EXECUTION_STATE.md`) plus the one
+new file
+(`src/components/__tests__/AddUnplannedWalkModal.durationValidation.test.ts`)
+returned "This command requires approval" from the tool layer itself (not a
+git error), consistent with every standing blocked git-write command across
+every prior cycle. A standalone `git add` retry (same five files) hit the
+identical block. A `git status --porcelain=v1 --untracked-files=all` run
+immediately after confirmed the working tree was unchanged (all five files
+still shown modified/untracked, nothing staged). So *within this turn's own
+visibility*, this cycle's commit attempt is a genuine, directly-confirmed
+no-op, not merely a hedged self-report — consistent with the standing
+pattern (see note at top of file, now reconfirmed for at least the 68th
+time running). The working-tree change itself (the
+`AddUnplannedWalkModal.tsx` duration-validation fix + the `syncQueue.ts`
+class-22 `isPermanentError` extension + their 8 new regression tests — plus
+this `EXECUTION_STATE.md` update) is real and validated (`tsc`/`npm test`
+both PASS, 137/137 suites, 1597/1597 tests) — per "never discard
+uncommitted work," it is NOT reverted regardless of this turn's own
+commit-attempt outcome.
 
 **Prior cycle's own commit-attempt outcome (condensed):** the
-`EditWalkModal.tsx` deferred-time-commit fix hit the identical "requires
-approval" block, yet was independently confirmed landed as `c2a2f26` by
-this cycle's own reconciliation above — the pattern's own 66th+ instance.
+`StatisticsScreen.tsx` refocus false-access-denial fix hit the identical
+"requires approval" block, yet was independently confirmed landed as
+`49322cf` by this cycle's own reconciliation above — the pattern's own
+67th+ instance.
 
 ### Prior cycle's own commit-attempt narrative (full detail preserved for history)
 
@@ -2906,23 +2922,32 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the `EditWalkModal.tsx` deferred-time-commit fix + new
-`EditWalkModal.deferredTimeCommit.test.ts` + the repaired
-`TimePickerField.integration.test.ts` + this `EXECUTION_STATE.md` update)
-landed, and check every commit between whatever SHA this file names and
-actual HEAD, not just the newest one. Re-run `npx jest
-src/components/__tests__/EditWalkModal.deferredTimeCommit.test.ts
-src/components/__tests__/TimePickerField.integration.test.ts --runInBand`
-(expect 9/9) as a targeted check before trusting this file's narrative.
-Also re-run the FULL `npm test -- --runInBand` — expect **136/136 suites,
-1587/1587 tests** as the new baseline (up from 135/135 · 1580/1580 before
-this cycle's own fix). Do not re-propose this `EditWalkModal` deferred-time
--commit fix itself, nor the already-dismissed `src/components/HomeScreen.tsx`
+cycle's own commit (the `AddUnplannedWalkModal.tsx` duration-validation fix
++ the `syncQueue.ts` class-22 `isPermanentError` extension + new
+`AddUnplannedWalkModal.durationValidation.test.ts` + the extended
+`syncQueue.test.ts` + this `EXECUTION_STATE.md` update) landed, and check
+every commit between whatever SHA this file names and actual HEAD, not just
+the newest one. Re-run `npx jest
+src/components/__tests__/AddUnplannedWalkModal.durationValidation.test.ts
+src/data/__tests__/syncQueue.test.ts --runInBand` (expect 48/48) as a
+targeted check before trusting this file's narrative. Also re-run the FULL
+`npm test -- --runInBand` — expect **137/137 suites, 1597/1597 tests** as
+the new baseline (up from 136/136 · 1589/1589 before this cycle's own fix).
+**Strong recommended next pick (flagged, not yet picked up, by two
+consecutive prior cycles now):** `HistoryScreen.tsx` almost certainly
+carries the byte-for-byte identical pre-fix `historyAccessStatus:
+'checking' | 'granted' | 'denied'` + `useFocusEffect`-refetch-on-every-
+return false-access-denial-flash bug that `StatisticsScreen.tsx` had before
+`49322cf`'s `hasEverGrantedRef` fix — apply the identical pattern there,
+with its own dedicated test additions. Do not re-propose this cycle's own
+`AddUnplannedWalkModal.tsx` duration-validation fix or the `syncQueue.ts`
+class-22 extension, nor the already-dismissed `src/components/HomeScreen.tsx`
 orphaned-duplicate angle (dead file, no runtime effect, stays on the
 existing deletion-gated list), nor re-check `updateRule()`/`daysOfWeek`
-reconciliation or `reorderRules`/`deleteRule` for the same gap (all already
-confirmed fixed/unaffected — see Current Task above), nor any of the
-runner-up angles already checked with no defect found across prior cycles:
+reconciliation, `reorderRules`/`deleteRule`, or the `EditWalkModal.tsx`
+deferred-time-commit fix for the same gaps (all already confirmed
+fixed/unaffected — see Current Task above), nor any of the runner-up angles
+already checked with no defect found across prior cycles:
 `src/notifications/notificationService.ts`/`reminderEntry.ts`,
 `PinEntryModal.tsx`/`PinSetupModal.tsx`, `InviteShareModal.tsx`/QR
 rendering, `src/logic/familyInvites.ts`, `src/lib/verifiedAdminOnboarding.ts`
@@ -2937,18 +2962,17 @@ idempotent), the full systematic non-SELECT RLS sweep (CLOSED across all
 42 migrations), `realtime.ts`, `syncQueue.ts` ordering/retry,
 rotation/backfill window, push-token/web-push lifecycle, the invite system,
 remaining Edge Functions, `admin_swap_walks`/`create_swap_request`/
-`approve_swap_request`, `statistics.ts`/`StatisticsScreen.tsx`,
-Settings/roles logic, Web Push service-worker/VAPID paths,
+`approve_swap_request`, `statistics.ts`/`StatisticsScreen.tsx`'s own access
+gate (fixed), Settings/roles logic, Web Push service-worker/VAPID paths,
 `reminderMessages.ts` beyond `due_walk_reminders()`, remaining System Admin
-screens/RPCs, `nextWalk.ts` edge cases, and the claim-profile flow on
-non-removed profiles. A fresh angle worth a future cycle's own bounded unit
-if pursued: `ScheduleScreen.tsx`'s `RuleFormModal`/`AddUnplannedWalkModal`/
-`EditDoneDetailsModal`/`RequestTimeChangeModal`/`RequestsInboxModal`
-business logic (validation, edge cases, state transitions) beyond
-accessibility was flagged by this cycle's own research agent as an area to
-look at further but was not itself investigated in depth this cycle (only
-`EditWalkModal.tsx`/`TimePickerField.tsx` were read in full) — worth a
-fresh, focused look rather than assuming it's exhausted.
+screens/RPCs, `nextWalk.ts` edge cases, `RuleFormModal.tsx`/
+`EditDoneDetailsModal.tsx` business logic (read in full this cycle, no
+unvalidated-numeric-input gap found in either), and the claim-profile flow
+on non-removed profiles. Two fresh angles worth a future cycle's own bounded
+unit if the `HistoryScreen.tsx` fix above is picked up first:
+`RequestTimeChangeModal.tsx`/`RequestsInboxModal.tsx` business logic
+(validation, edge cases, state transitions) — flagged by this cycle's own
+investigation but not yet read in full.
 
 **Prior cycle's own next-step note (condensed, now itself historical —
 its own task since landed as `17d3dfc` and is reconciled above; retained
@@ -3470,41 +3494,53 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `c2a2f26`, one commit
-  past `f0fd847` — confirmed via `git show --stat` it contains exactly the
-  prior cycle's own `EditWalkModal.tsx` deferred-time-commit fix + its own
-  7 regression tests — reconfirming the standing self-reporting-drift
-  pattern yet again (66th+ time). `node_modules/typescript` was missing;
-  `npm ci` restored it. `npx tsc --noEmit` — PASS. Full `npm test` at
-  reconciled HEAD `c2a2f26` — PASS 136/136 suites, 1587/1587 tests
-  (expected baseline).
-- **This cycle's own task:** fixed `StatisticsScreen.tsx` rendering a false
+- Reconciliation found HEAD had actually moved to `49322cf`, one commit
+  past `c2a2f26` — confirmed via `git show --stat` it contains exactly the
+  prior cycle's own `StatisticsScreen.tsx` refocus false-access-denial fix
+  + its own 2 regression tests — reconfirming the standing
+  self-reporting-drift pattern yet again (67th+ time). `node_modules/typescript`
+  was missing; `npm ci` restored it. `npx tsc --noEmit` — PASS. Full
+  `npm test` at reconciled HEAD `49322cf` — PASS 136/136 suites, 1589/1589
+  tests (expected baseline). `gh auth status`/`docker info` re-checked,
+  still gated.
+- **This cycle's own task:** fixed `AddUnplannedWalkModal.tsx`'s duration
+  field accepting an unvalidated free-text value (`keyboardType="number-pad"`
+  is only an on-screen-keyboard hint, not a paste filter) that could reach
+  `walks.duration_minutes`, a Postgres `int` column, as a non-integer (e.g.
+  `"20.5"`) — this fails every retry with a class-22 Postgres error, which
+  was not yet in `syncQueue.ts`'s `isPermanentError()` allowlist, so it
+  would permanently `break` the flush loop and block every later queued
+  operation for every user/feature behind it forever, exactly like the
+  already-fixed 23xxx/42xxx/28xxx/P0xxx classes did before their own fixes.
+  Fixed with two coordinated changes: a `durationValid` (empty-or-digits-only)
+  check folded into the modal's existing `valid` Save-button gate, plus
+  extending `isPermanentError()` to also treat SQLSTATE class `22` as
+  permanent (defense-in-depth, matching the exact precedent already used
+  for the other four classes). Added 7 new tests to a new
+  `AddUnplannedWalkModal.durationValidation.test.ts` (source-text-scan +
+  pure-logic style) and 1 new test to the existing `syncQueue.test.ts`
+  (mirroring its own class-28/P0 test style). `tsc` PASS zero errors;
+  targeted tests PASS 48/48; full `npm test` PASS **137/137 suites,
+  1597/1597 tests** (up from 136/136 · 1589/1589). `git status` confirmed
+  the changeset is scoped to exactly `src/components/AddUnplannedWalkModal.tsx`,
+  `src/data/syncQueue.ts`, `src/data/__tests__/syncQueue.test.ts` (all
+  modified), and the one new test file, plus this `EXECUTION_STATE.md`
+  update. Commit attempt (`git add` on the five changed/new files) hit the
+  same standing "requires approval" tool-layer block as every prior cycle —
+  see Blocker for the directly-confirmed outcome; the working-tree change
+  itself is real, validated, and not reverted. Runner-up (not fixed in this
+  bounded unit): the prior two cycles' flagged `HistoryScreen.tsx`
+  refocus-false-denial fix remains open and is the recommended next pick
+  (see Next Safe Task); `RuleFormModal.tsx`/`EditDoneDetailsModal.tsx` were
+  read in full and have no equivalent gap; `RequestTimeChangeModal.tsx`/
+  `RequestsInboxModal.tsx` remain unread.
+- Prior cycle's own task: fixed `StatisticsScreen.tsx` rendering a false
   "אין לך גישה לסטטיסטיקה" (no access to statistics) EmptyState over an
   already-authorized user's real, already-loaded data on every ordinary
-  refocus of the tab — `useFocusEffect` re-runs `refreshStatisticsDataset()`
-  on every return to the tab, which set `statisticsAccessStatus` back to
-  `'checking'` before the RPC resolved, and the render gate treated
-  `'checking'` identically to `'denied'`; the loading spinner didn't cover
-  this case since `sourceWalks` was already non-empty — a real, reachable,
-  alarming correctness bug on ordinary navigation for any fully-permitted
-  family member, not cosmetic. Added a `hasEverGrantedRef` (set on every
-  `'granted'` path, reset on a genuine `'denied'`) so a background
-  revalidation of an already-authorized user no longer blanks their view,
-  following `requestsStore.ts`'s own established "don't blank good data on
-  a background reload" precedent. Added 2 new tests to
-  `StatisticsScreen.permissionGate.test.ts` (source-text-scan style,
-  matching this file's own convention). `tsc` PASS zero errors; targeted
-  test PASS 10/10 (up from 8/8); full `npm test` PASS **136/136 suites,
-  1589/1589 tests** (up from 136/136 · 1587/1587). `git status` confirmed
-  the changeset is scoped to exactly `src/screens/StatisticsScreen.tsx` and
-  `src/screens/__tests__/StatisticsScreen.permissionGate.test.ts` plus this
-  `EXECUTION_STATE.md` update. Commit attempt (`git add` on the three
-  changed files) hit the same standing "requires approval" tool-layer block
-  as every prior cycle — see Blocker for the directly-confirmed outcome;
-  the working-tree change itself is real, validated, and not reverted.
-  Runner-up (not fixed in this bounded unit): `HistoryScreen.tsx` has the
-  byte-for-byte identical pattern and almost certainly shares this bug —
-  flagged for a follow-up cycle.
+  refocus of the tab, via a `hasEverGrantedRef` following `requestsStore.ts`'s
+  own "don't blank good data on a background reload" precedent. Added 2
+  tests. Landed as `49322cf` despite that cycle's own hedged commit
+  self-report.
 - Prior cycle's own task: fixed `EditWalkModal.tsx`'s time picker
   committing and closing the sheet on the first iOS spinner tick instead of
   a deliberate final selection — `handleTimeChange` called the parent
