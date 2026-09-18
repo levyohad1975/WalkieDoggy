@@ -50,23 +50,102 @@ anything else.
 ## Current Task
 
 **This cycle's reconciliation, done fresh via direct `git log`/`git
-show`/`git status`:** HEAD was `9c8c9df` ("chore(agentic): continue RC
-execution"), one commit past `b090ecf`. `git show --stat 9c8c9df` confirmed
-it contains exactly the prior cycle's own `SystemAdminScreen.tsx`
-design-token conversion (`radii`/`spacing`/`typography` from
-`src/theme/tokens.ts`, 41 lines changed) plus an `EXECUTION_STATE.md`
-rewrite — confirming, yet again (77th+ time running), that the prior
+show`/`git status` (Claude execution worker):** HEAD was `88474d5`
+("chore(agentic): continue RC execution"), one commit past `9c8c9df`. `git
+show --stat 88474d5` confirmed it contains exactly the prior cycle's own
+`LoginScreen.tsx` design-token conversion (`spacing`/`typography` from
+`src/theme/tokens.ts`, 16 lines changed) plus an `EXECUTION_STATE.md`
+rewrite — confirming, yet again (78th+ time running), that the prior
 cycle's own hedged "commit attempt outcome recorded under Blocker"
 self-report was wrong: the commit had already landed and been pushed.
-Working tree was clean this time (no leftover untracked scratch file).
-`npm ci` restored `node_modules/typescript` (906 packages, matching
-baseline). `npx tsc --noEmit` at reconciled HEAD `9c8c9df` — **PASS**, zero
-errors. Full `npm test -- --runInBand` — **PASS: 137/137 suites, 1625/1625
-tests**, matching the expected baseline exactly, confirming a healthy
-baseline before starting new work.
+Working tree was clean. `npm ci` restored `node_modules/typescript` (906
+packages, matching baseline). `npx tsc --noEmit` at reconciled HEAD
+`88474d5` — **PASS**, zero errors. Full `npm test -- --runInBand` —
+**PASS: 137/137 suites, 1625/1625 tests**, matching the expected baseline
+exactly, confirming a healthy baseline before starting new work.
 
 **PRIORITY OVERRIDE reconfirmed this cycle:** the same instruction naming
 GitHub Issue #63 ("full app redesign") as P0 was received again.
+
+**Issue #63's own text remains unreadable this cycle too:** `gh issue view
+63 --repo levyohad1975/WalkieDoggy` was attempted standalone and returned
+"This command requires approval" from the tool layer itself, with no owner
+present in this headless run to grant it — the identical shape as every
+prior cycle's denial (now the sixth+ independent tool-layer block across
+three cycles). Not re-attempted via `gh auth status`/`WebFetch` again this
+cycle since the blocker is already conclusively established; further
+identical attempts would not add new evidence. This remains a hard
+sandbox/tool-allowlist restriction, not a hedged self-report — see Blocker
+below.
+
+**This cycle's own bounded redesign unit — continuing the same in-repo
+substitute pattern the prior two cycles established (`SystemAdminScreen.tsx`,
+then `LoginScreen.tsx`), per the prior cycle's own explicit recommendation:**
+`src/screens/FamilyOnboardingScreen.tsx` (697 lines) — the one remaining
+screen in the "predates `tokens.ts`, not named in the Deliverable-3
+exclusion list" category (present since the repo's first commit `897fdfd`,
+2026-09-06, same as `LoginScreen.tsx`), and, like `LoginScreen.tsx`, part of
+this branch's own auth/onboarding subject matter
+(`feat/verified-auth-onboarding-batch-2`) rather than an arbitrary pick.
+Per the prior cycle's own durable finding (`MANIFEST.txt` "KNOWN
+LIMITATIONS" #24), `ScheduleScreen.tsx`/`HistoryScreen.tsx`/
+`FamilyScreen.tsx` (and the 18 modals) were deliberately excluded from the
+original design-token pass and were NOT touched this cycle either.
+
+**Fixed:** converted only the `StyleSheet.create({...})` spacing/radius
+properties whose existing hardcoded number exactly matches a
+`spacing`/`radii` token value from `src/theme/tokens.ts` — the same
+zero-visual-change discipline as the prior two cycles, but narrower: this
+cycle deliberately did NOT spread any `typography` preset (unlike
+`LoginScreen.tsx`'s `title`/`subtitle`), because no `typography` preset's
+`fontSize` exactly matches this screen's `title` (24) or `subtitle` (15),
+and spreading a mismatched preset would add a new `lineHeight` the original
+never had for no exact-match payoff. Converted: `emoji.marginBottom: 8` →
+`spacing.sm`; `subtitle.marginTop: 8` → `spacing.sm`;
+`subtitle.marginBottom: 28` → `spacing.xxl`; `wideButton.marginTop: 12` →
+`spacing.md`; `label.marginBottom: 8` → `spacing.sm`; `input.borderRadius:
+14` → `radii.md`; `foundCard.padding: 16` → `spacing.lg`;
+`foundSubtitle.marginTop: 4` → `spacing.xs`; `previewMembersRow.gap: 12`
+and `.marginTop: 12` → `spacing.md`; `previewMember.gap: 4` → `spacing.xs`.
+Left unconverted (no exact token match): `container`/`formScrollContent`
+`paddingTop: 80`/`paddingHorizontal: 24`; `emoji.fontSize: 64`;
+`title`/`subtitle`/`label`/`error`/`foundTitle`/`foundSubtitle`/
+`previewDogName`/`previewMemberName` typography (`fontSize`/`fontWeight`);
+`label.marginTop: 14`; `input.padding: 14`; `error.marginTop: 10`;
+`foundCard.borderRadius: 16`/`.marginTop: 14`; `previewDogRow.gap: 10`/
+`.marginBottom: 10`. No component structure, prop, RPC call, string, or
+accessibility label was touched — a pure visual/style-layer change, no
+behavior change.
+
+`npx tsc --noEmit` after this change — **PASS**, zero errors. Targeted
+`npx jest src/screens/__tests__/FamilyOnboardingScreen --runInBand` —
+**PASS: 5/5 suites, 16/16 tests**. Full `npm test -- --runInBand` after
+this change — **PASS: 137/137 suites, 1625/1625 tests** — identical counts
+to the pre-change baseline (expected: no test asserts literal style
+values), confirming no regression. `git status --porcelain=v1
+--untracked-files=all` confirmed the changeset is scoped to exactly
+`src/screens/FamilyOnboardingScreen.tsx` (plus this `EXECUTION_STATE.md`
+update) — no unrelated file touched, no user work at risk.
+
+**What #63's broader scope still needs, precisely, for a future cycle:**
+unchanged from the prior cycle — the issue's own body/acceptance-criteria
+text is still unread (six independent tool-layer denials across three
+cycles now). With `FamilyOnboardingScreen.tsx` now also done, both
+"predates-tokens.ts, not excluded" screens (`LoginScreen.tsx` and this one)
+are exhausted. A future cycle with working `gh`/network access should read
+issue #63's own text before assuming any further token-sweep unit is
+still in scope — #63 may specify something unrelated to `tokens.ts`
+adoption entirely (navigation, visual identity, a specific screen list). If
+#63 remains unreadable, a future cycle should NOT default to
+`ScheduleScreen.tsx`/`HistoryScreen.tsx`/`FamilyScreen.tsx`/the 18 modals
+(documented deliberate exclusion, see above) — the next legitimate
+credential-free "next redesign unit" candidate, if any, should be found by
+re-auditing for screens/components added after `tokens.ts` landed
+(2026-09-06) that still don't import it, the same check that correctly
+found `SystemAdminScreen.tsx` two cycles ago.
+
+### Prior cycle's own task (full detail preserved here; now historical —
+its own task since landed as `88474d5` and is reconciled above)
 
 **Issue #63's own text remains unreadable — reconfirmed independently this
 cycle with two MORE distinct attempts beyond the prior cycle's own two:**
@@ -3180,36 +3259,36 @@ mount-recovery dead end, which was the unambiguous, no-judgment-call part.
 
 ## Current Task Status
 
-Prior cycle's `SystemAdminScreen.tsx` design-token conversion (`9c8c9df`)
-is confirmed landed and pushed — closed, `DONE`.
+Prior cycle's `LoginScreen.tsx` design-token conversion (`88474d5`) is
+confirmed landed and pushed — closed, `DONE`.
 
-**This cycle's own task — still under the PRIORITY OVERRIDE naming GitHub
-Issue #63 ("full app redesign") as P0, converting `src/screens/LoginScreen.tsx`'s
-`StyleSheet` from hardcoded numbers to the shared `spacing`/`typography`
-design tokens wherever an existing number exactly matches a token value —
-is code-complete and validated** (`tsc --noEmit` PASS zero errors; full
-`npm test -- --runInBand` PASS **137/137 suites, 1625/1625 tests**,
-identical counts to the pre-change baseline). Issue #63's own body/
-acceptance criteria remain unread this cycle too — four independent
-tool-layer denials across two cycles now (`gh issue view 63` with and
-without an explicit `--repo`, `gh auth status`, `WebFetch`) — see Current
-Task above for the precise blocker evidence. **New this cycle:** re-reading
-`MANIFEST.txt`'s own "Known Limitations" section revealed that the
-obvious-looking next candidates (`ScheduleScreen.tsx`/`HistoryScreen.tsx`/
-`FamilyScreen.tsx`, queued by the prior two cycles) were a **documented,
-deliberate exclusion** from the original design-token pass, not an
-oversight — sweeping them next would contradict recorded product intent.
-`LoginScreen.tsx` was chosen instead: not covered by that exclusion, small
-and self-contained, and directly part of this branch's own auth/onboarding
-subject matter. See Current Task above for the full reasoning, plus two
-negative-but-durable investigation results (admin-swap vs. pending
-time-change requests; reminder-message Edge Function/canonical-copy sync)
-that ruled out two previously-flagged angles with no code change needed.
-Commit attempt outcome recorded under Blocker/Last Evidence below; per the
-standing 75+-cycle pattern, even a "blocked" self-report this same cycle
-should not be assumed final — the next cycle's first action must still be
-its own independent `git log --oneline -5` + `git status` check before
-trusting this narrative.
+**This cycle's own task (Claude execution worker) — still under the
+PRIORITY OVERRIDE naming GitHub Issue #63 ("full app redesign") as P0,
+converting `src/screens/FamilyOnboardingScreen.tsx`'s `StyleSheet` from
+hardcoded numbers to the shared `spacing`/`radii` design tokens wherever an
+existing number exactly matches a token value — is code-complete and
+validated** (`tsc --noEmit` PASS zero errors; targeted
+`FamilyOnboardingScreen` suite PASS 5/5 suites, 16/16 tests; full `npm test
+-- --runInBand` PASS **137/137 suites, 1625/1625 tests**, identical counts
+to the pre-change baseline). Issue #63's own body/acceptance criteria
+remain unread this cycle too — a sixth independent tool-layer denial
+(`gh issue view 63 --repo levyohad1975/WalkieDoggy`) across three cycles
+now — see Current Task above for the precise blocker evidence. This cycle
+deliberately narrowed scope versus the prior cycle: no `typography` preset
+was spread (none of this screen's `fontSize` values exactly match a
+preset), only unambiguous `spacing`/`radii` numeric matches were converted,
+to avoid introducing any new `lineHeight` with no exact-match payoff. With
+`LoginScreen.tsx` and `FamilyOnboardingScreen.tsx` both now done, the two
+screens the prior cycle identified as "predates `tokens.ts`, not in the
+Deliverable-3 exclusion list" are exhausted — see Current Task above for
+what a future cycle should check next if #63 remains unreadable (screens
+added after `tokens.ts` landed that still don't import it, not the
+documented-exclusion `Schedule`/`History`/`Family`/modals). Commit attempt
+outcome recorded under Blocker/Last Evidence below; per the standing
+75+-cycle pattern, even a "blocked" self-report this same cycle should not
+be assumed final — the next cycle's first action must still be its own
+independent `git log --oneline -5` + `git status` check before trusting
+this narrative.
 
 ## Current Branch / PR
 
@@ -3221,6 +3300,52 @@ trusting this narrative.
   against `main`, never merged into either feature branch.
 
 ## Last Evidence
+
+- This cycle start (Claude execution worker): `git log --oneline -20` /
+  `git status` confirmed HEAD is `88474d5`, clean working tree, up to date
+  with `origin/feat/verified-auth-onboarding-batch-2` — one commit past
+  `9c8c9df`. `git show --stat 88474d5` plus a full diff on
+  `src/screens/LoginScreen.tsx` within it confirmed it contains exactly
+  the prior cycle's own `spacing`/`typography` token conversion for that
+  file (16 lines changed) + that cycle's own `EXECUTION_STATE.md` rewrite —
+  already landed and pushed despite that cycle's own hedged "commit
+  attempt outcome recorded under Blocker" self-report (78th+ time).
+- `npm ci` restored `node_modules` (906 packages, matching baseline; a
+  bare `npx tsc --noEmit` failed first with the documented "not the tsc
+  command you are looking for" symptom until `npm ci` ran). `npx tsc
+  --noEmit` at reconciled HEAD `88474d5` — **PASS**, zero errors. Full
+  `npm test -- --runInBand` at reconciled HEAD — **PASS: 137/137 suites,
+  1625/1625 tests** (the expected baseline, matching it exactly),
+  confirming a healthy baseline before starting new work.
+- `gh issue view 63 --repo levyohad1975/WalkieDoggy` (standalone) was
+  attempted this cycle to read Issue #63's own body/acceptance criteria —
+  returned "This command requires approval" from the tool layer itself,
+  with no owner present in this headless run to grant it — the sixth
+  independent tool-layer denial of this exact shape across three cycles
+  now. Not re-attempted via other tools this cycle (the blocker is already
+  conclusively established; see Blocker below).
+- **This cycle's own fix:** converted `src/screens/FamilyOnboardingScreen.tsx`'s
+  `StyleSheet` to use `spacing`/`radii` from `src/theme/tokens.ts` in place
+  of hardcoded numbers, wherever an existing number exactly matches a
+  token value (no `typography` spread this cycle — see Current Task above
+  for why) — see Current Task above for the full reasoning and the precise
+  per-property mapping.
+- `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
+  errors. Targeted `npx jest
+  src/screens/__tests__/FamilyOnboardingScreen --runInBand` — **PASS: 5/5
+  suites, 16/16 tests**. Full `npm test -- --runInBand` after this cycle's
+  own change — **PASS: 137/137 suites, 1625/1625 tests** — identical
+  counts to the pre-change baseline (expected: no test asserts literal
+  style values), confirming no regression.
+- `git status --porcelain=v1 --untracked-files=all` / `git diff --stat`
+  confirmed the changeset is scoped to exactly
+  `src/screens/FamilyOnboardingScreen.tsx` (modified, 10 insertions/10
+  deletions) — plus this `EXECUTION_STATE.md` update — no unrelated file
+  touched, no user work at risk.
+- **Commit attempt this cycle:** see Blocker below for the outcome,
+  checked directly via `git status` immediately after the attempt.
+
+### Prior cycle's own evidence (full detail preserved here; now historical — its own task since landed as `88474d5`)
 
 - This cycle start: `git log --oneline -5`/`git status` confirmed HEAD is
   `9c8c9df`, clean working tree, up to date with
@@ -3336,10 +3461,11 @@ trusting this narrative.
 
 ## Last Evidence Timestamp
 
-2026-09-18 (this cycle's own run, this session); reconciled HEAD `9c8c9df`
-+ this cycle's own working-tree change (`LoginScreen.tsx` converted to
-`spacing`/`typography` design tokens, under the Issue #63 PRIORITY
-OVERRIDE), commit attempt outcome per Blocker below.
+2026-09-18 (this cycle's own run, this session, Claude execution worker);
+reconciled HEAD `88474d5` + this cycle's own working-tree change
+(`FamilyOnboardingScreen.tsx` converted to `spacing`/`radii` design
+tokens, under the Issue #63 PRIORITY OVERRIDE), commit attempt outcome per
+Blocker below.
 
 ## Blocker
 
@@ -3347,58 +3473,61 @@ OVERRIDE), commit attempt outcome per Blocker below.
 self-reported:**
 
 1. **Issue #63's own text is unreadable in this sandbox — now confirmed
-   with a fourth and fifth independent tool-layer denial.** `gh issue view
-   63 --repo levyohad1975/WalkieDoggy` (standalone, explicit repo) and
-   `WebFetch` on the issue's GitHub URL each independently returned a
-   tool-layer permission denial, with no owner present to grant approval —
-   matching the prior cycle's own two independent denials exactly. This
-   blocks confirming issue #63's own acceptance criteria/scope, but per the
-   override's own instructions did not block execution — see Current Task
-   above for what in-repo evidence was substituted, the important caveat
-   discovered this cycle about which substitute screens are safe (NOT
-   `Schedule`/`History`/`Family` — see below), and why `LoginScreen.tsx` is
-   a legitimate, bounded redesign unit distinct from the documented
-   exclusion.
-2. **Commit attempt outcome:** `git add src/screens/LoginScreen.tsx`
-   returned "This command requires approval" from the tool layer itself
-   (not a git error), consistent with every standing blocked git-write
-   command across every prior cycle. A `git status --porcelain=v1
-   --untracked-files=all` run immediately after confirmed the working tree
-   was unchanged (file still shown modified, nothing staged). So *within
-   this turn's own visibility*, this cycle's commit attempt is a genuine,
-   directly-confirmed no-op, not merely a hedged self-report — consistent
-   with the standing pattern (see note at top of file, now reconfirmed for
-   at least the 77th time running). The working-tree change itself (the
-   `LoginScreen.tsx` design-token conversion — plus this
-   `EXECUTION_STATE.md` update) is real and validated (`tsc`/`npm test`
-   both PASS, 137/137 suites, 1625/1625 tests) — per "never discard
-   uncommitted work," it is NOT reverted regardless of this turn's own
-   commit-attempt outcome. The next cycle's first action must still be its
-   own independent `git log --oneline -5` + `git status` check, per the
-   standing protocol note.
+   with a sixth independent tool-layer denial.** `gh issue view 63 --repo
+   levyohad1975/WalkieDoggy` (standalone, explicit repo) returned "This
+   command requires approval" from the tool layer itself, with no owner
+   present to grant approval — matching every prior cycle's denials
+   exactly. This blocks confirming issue #63's own acceptance
+   criteria/scope, but per the override's own instructions did not block
+   execution — see Current Task above for what in-repo evidence was
+   substituted (continuing the established `LoginScreen.tsx`/
+   `SystemAdminScreen.tsx` substitute pattern with `FamilyOnboardingScreen.tsx`)
+   and why it is a legitimate, bounded redesign unit distinct from the
+   documented `Schedule`/`History`/`Family`/modals exclusion.
+2. **Commit attempt outcome:** see below — this cycle's own attempt was
+   made directly rather than assumed blocked; outcome recorded via
+   `git status` immediately after.
 
-**New durable finding this cycle, kept here for high visibility (full
-reasoning under Current Task above):** `MANIFEST.txt`'s own "KNOWN
-LIMITATIONS" section (#24) documents that `ScheduleScreen.tsx`/
-`HistoryScreen.tsx`/`FamilyScreen.tsx` (and all 18 modals) were
-**deliberately, not accidentally** left un-reskinned to `tokens.ts` — "a
-shallow sweep across everything" was explicitly considered and rejected as
-lower value than the Statistics/Settings work that shipped instead. The
-prior two cycles' own "Suggested next angle" (sweep those three screens
-next) was written without having read this section and would contradict
-documented product intent if executed as-is. A future cycle should treat
-those three screens as **out of bounds for a token-only sweep** unless
-Issue #63's own (still-unread) text explicitly reopens that decision.
-`FamilyOnboardingScreen.tsx` remains the one still-untouched screen in the
-same category as this cycle's `LoginScreen.tsx` (predates `tokens.ts`, not
-named in the Deliverable-3 exclusion, part of this branch's own
-auth/onboarding scope) and is the natural next unit in this vein.
+**This cycle's own commit attempt, made directly (not assumed):**
+`git add src/screens/FamilyOnboardingScreen.tsx EXECUTION_STATE.md`
+returned "This command requires approval" from the tool layer itself (not
+a git error) — attempted both chained with a follow-up `git status` and
+standalone, same result each time. A `git status --porcelain=v1
+--untracked-files=all` run immediately after confirmed the working tree
+was unchanged (`EXECUTION_STATE.md`/`FamilyOnboardingScreen.tsx` both
+still shown modified, nothing staged). So *within this turn's own
+visibility*, this cycle's commit attempt is a genuine, directly-confirmed
+no-op — consistent with the standing pattern (see top-of-file note, now
+the 79th time running). The working-tree change itself (the
+`FamilyOnboardingScreen.tsx` design-token conversion — plus this
+`EXECUTION_STATE.md` update) is real and validated (`tsc`/`npm test` both
+PASS, 137/137 suites, 1625/1625 tests) — per "never discard uncommitted
+work," it is NOT reverted regardless of this turn's own commit-attempt
+outcome. The next cycle's first action must still be its own independent
+`git log --oneline -5` + `git status` check before trusting this
+narrative, since roughly every one of the last 78 such self-reported
+blocks turned out to have actually landed and pushed by the following
+cycle's own check.
 
-**Prior cycle's own commit-attempt outcome (condensed):** the
-`SystemAdminScreen.tsx` design-token conversion hit the identical "requires
-approval" block, yet was independently confirmed landed AND pushed as
-`9c8c9df` by this cycle's own reconciliation above — the pattern's own
-77th+ instance.
+**Durable finding carried forward (full reasoning under Current Task
+above):** `MANIFEST.txt`'s own "KNOWN LIMITATIONS" section (#24) documents
+that `ScheduleScreen.tsx`/`HistoryScreen.tsx`/`FamilyScreen.tsx` (and all
+18 modals) were **deliberately, not accidentally** left un-reskinned to
+`tokens.ts`. A future cycle should treat those three screens (and the
+modals) as **out of bounds for a token-only sweep** unless Issue #63's own
+(still-unread) text explicitly reopens that decision. With
+`LoginScreen.tsx` and `FamilyOnboardingScreen.tsx` both now converted, no
+further "predates `tokens.ts`, not in the exclusion list" screen remains —
+a future cycle should re-audit for screens/components added after
+`tokens.ts` landed (2026-09-06) that still don't import it (the check that
+correctly found `SystemAdminScreen.tsx`), not default back to the excluded
+three.
+
+**Prior cycles' own commit-attempt outcomes (condensed):** both the
+`SystemAdminScreen.tsx` and `LoginScreen.tsx` design-token conversions hit
+an identical self-reported "requires approval" block, yet were each
+independently confirmed landed AND pushed (`9c8c9df`, `88474d5`) by the
+following cycle's own reconciliation — the pattern's own 78th+ instance.
 
 **Prior-prior cycle's own commit-attempt outcome (condensed):** the swap/
 time-change button-gating fix hit the identical "requires approval" block,
@@ -3641,26 +3770,27 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the `LoginScreen.tsx` design-token conversion + this
-`EXECUTION_STATE.md` update) landed, and check every commit between
-whatever SHA this file names and actual HEAD, not just the newest one.
-Re-run the FULL `npm test -- --runInBand` — expect **137/137 suites,
-1625/1625 tests** (unchanged from this cycle's own baseline, since no test
-covers `LoginScreen.tsx`'s literal style values).
+cycle's own commit (the `FamilyOnboardingScreen.tsx` design-token
+conversion + this `EXECUTION_STATE.md` update) landed, and check every
+commit between whatever SHA this file names and actual HEAD, not just the
+newest one. Re-run the FULL `npm test -- --runInBand` — expect **137/137
+suites, 1625/1625 tests** (unchanged from this cycle's own baseline, since
+no test covers `FamilyOnboardingScreen.tsx`'s literal style values).
 
-**If continuing the #63 substitution track:** `FamilyOnboardingScreen.tsx`
-(697 lines) is the next same-category candidate (predates `tokens.ts`, not
-named in the Deliverable-3 exclusion, part of this branch's own
-auth/onboarding scope) — larger and more form-heavy than `LoginScreen.tsx`
-so budget more care, but the same "only convert values that exactly match a
-token, spread+override typography where one property differs" discipline
-should carry over directly. Do **NOT** default to `ScheduleScreen.tsx`/
-`HistoryScreen.tsx`/`FamilyScreen.tsx` — see Blocker above for the
-documented-exclusion finding from this cycle. A future cycle with working
-`gh`/network access should still try to read Issue #63 directly first
-(`gh issue view 63 --repo levyohad1975/WalkieDoggy`, `WebFetch` on the
-issue URL) — five independent denials across two cycles is strong but not
-infinite evidence that the sandbox will never allow it.
+**If continuing the #63 substitution track:** both same-category
+candidates this track identified (`LoginScreen.tsx`, then
+`FamilyOnboardingScreen.tsx` — screens that predate `tokens.ts` and are not
+named in the Deliverable-3 exclusion) are now done. Do **NOT** default to
+`ScheduleScreen.tsx`/`HistoryScreen.tsx`/`FamilyScreen.tsx`/the 18 modals —
+see Blocker above for the documented-exclusion finding. The next
+legitimate candidate, if #63 remains unreadable, should be found by
+re-auditing for screens/components added after `tokens.ts` landed
+(2026-09-06, commit `897fdfd`) that still don't import it — the same check
+that correctly found `SystemAdminScreen.tsx` (added in Batch 4, three days
+after `tokens.ts`). A future cycle with working `gh`/network access should
+still try to read Issue #63 directly first (`gh issue view 63 --repo
+levyohad1975/WalkieDoggy`) — six independent denials across three cycles
+is strong but not infinite evidence that the sandbox will never allow it.
 
 **Suggested next angle (not yet investigated):** the Admin-only DIRECT
 swap flow's own target-walk picker — `otherPendingWalks` in
@@ -4249,6 +4379,36 @@ sub-tasks (repository-level QA, regression sweeps, CI runs) that can
 proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
+
+- Reconciliation (Claude execution worker) found HEAD had actually moved
+  to `88474d5`, one commit past `9c8c9df` — confirmed via `git show
+  --stat` plus a full diff on `LoginScreen.tsx` that it contains exactly
+  the prior cycle's own `spacing`/`typography` token conversion for that
+  file, already landed and pushed despite that cycle's own hedged "commit
+  attempt outcome recorded under Blocker" self-report (78th+ time).
+- Reconfirmed Issue #63's own text is unreadable in this sandbox with one
+  more independent tool-layer denial (`gh issue view 63 --repo
+  levyohad1975/WalkieDoggy`) — sixth independent denial across three
+  cycles now.
+- Converted `src/screens/FamilyOnboardingScreen.tsx`'s `StyleSheet` to use
+  `spacing`/`radii` tokens wherever an existing hardcoded number exactly
+  matches a token value — continuing the same in-repo #63 substitute
+  pattern as `SystemAdminScreen.tsx`/`LoginScreen.tsx`. Chosen because it
+  is the other screen (besides now-done `LoginScreen.tsx`) that predates
+  `tokens.ts` without being named in the documented
+  Schedule/History/Family/modals exclusion, and is part of this branch's
+  own auth/onboarding subject matter. Deliberately did NOT spread any
+  `typography` preset this cycle (no exact `fontSize` match, would have
+  added an unmatched `lineHeight`). `tsc --noEmit` PASS zero errors;
+  targeted `FamilyOnboardingScreen` suite PASS 5/5 suites, 16/16 tests;
+  full `npm test -- --runInBand` PASS 137/137 suites, 1625/1625 tests
+  (unchanged from baseline).
+- Attempted the commit directly this cycle (not assumed blocked) per
+  `AGENTS.md` working rule 12; outcome recorded under Blocker above via a
+  direct post-attempt `git status`/`git log` check, consistent with the
+  standing reconciliation protocol.
+
+### Prior cycle (condensed)
 
 - Reconciliation found HEAD had actually moved to `9c8c9df`, one commit
   past `b090ecf` — confirmed via `git show --stat` it contains exactly the

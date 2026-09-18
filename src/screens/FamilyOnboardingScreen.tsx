@@ -4,7 +4,7 @@ import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
 import { colors } from '../theme/colors';
-import { breakpoints } from '../theme/tokens';
+import { breakpoints, radii, spacing } from '../theme/tokens';
 import { Button } from '../components/Button';
 import { ensureAnonymousSession, findFamilyByInviteCode, joinFamily } from '../lib/supabase';
 import {
@@ -661,17 +661,17 @@ const styles = StyleSheet.create({
   formSafeArea: { flex: 1, backgroundColor: colors.background },
   flexFull: { flex: 1 },
   formScrollContent: { alignItems: 'center', paddingTop: 80, paddingHorizontal: 24 },
-  emoji: { fontSize: 64, marginBottom: 8 },
+  emoji: { fontSize: 64, marginBottom: spacing.sm },
   title: { fontSize: 24, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
-  subtitle: { fontSize: 15, color: colors.textSecondary, marginTop: 8, marginBottom: 28, textAlign: 'center' },
-  wideButton: { width: '100%', marginTop: 12 },
+  subtitle: { fontSize: 15, color: colors.textSecondary, marginTop: spacing.sm, marginBottom: spacing.xxl, textAlign: 'center' },
+  wideButton: { width: '100%', marginTop: spacing.md },
   form: { width: '100%', maxWidth: breakpoints.readingColumn, alignSelf: 'center' },
-  label: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: 14, marginBottom: 8, textAlign: 'right' },
+  label: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: 14, marginBottom: spacing.sm, textAlign: 'right' },
   input: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 14,
+    borderRadius: radii.md,
     padding: 14,
     fontSize: 16,
     color: colors.textPrimary,
@@ -684,14 +684,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 16,
-    padding: 16,
+    padding: spacing.lg,
     marginTop: 14,
   },
   foundTitle: { fontSize: 18, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
-  foundSubtitle: { fontSize: 14, color: colors.textSecondary, marginTop: 4, textAlign: 'right' },
+  foundSubtitle: { fontSize: 14, color: colors.textSecondary, marginTop: spacing.xs, textAlign: 'right' },
   previewDogRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, marginBottom: 10 },
   previewDogName: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
-  previewMembersRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 12, justifyContent: 'flex-end' },
-  previewMember: { alignItems: 'center', width: 56, gap: 4 },
+  previewMembersRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginTop: spacing.md, justifyContent: 'flex-end' },
+  previewMember: { alignItems: 'center', width: 56, gap: spacing.xs },
   previewMemberName: { fontSize: 11, color: colors.textSecondary, fontWeight: '600' },
 });
