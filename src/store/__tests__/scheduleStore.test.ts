@@ -651,6 +651,71 @@ it('updateRule surfaces a visible actionError instead of silently doing nothing 
   spy.mockRestore();
 });
 
+it('updateRule with a changed daysOfWeek removes a still-pending entry/walk for a day just dropped from the rule', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const before = useScheduleStore.getState();
+  const todaysEntry = before.entries.find((e) => e.ruleId === 'rule-1230');
+  expect(todaysEntry).toBeTruthy();
+  const todaysWalk = before.walks.find((w) => w.scheduleEntryId === todaysEntry!.id);
+  expect(todaysWalk?.status).toBe('pending');
+  const todaysDayOfWeek = new Date(`${todaysEntry!.date}T00:00:00Z`).getUTCDay();
+
+  // Drop today's own weekday from the rule — this is the exact "turn off
+  // Saturday for Shabbat" scenario: an already-generated future occurrence
+  // for a day just disabled must stop showing/reminding, not linger for up
+  // to GENERATE_DAYS_AHEAD days.
+  const remainingDays = [0, 1, 2, 3, 4, 5, 6].filter((d) => d !== todaysDayOfWeek);
+  await useScheduleStore.getState().updateRule('rule-1230', { daysOfWeek: remainingDays });
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeNull();
+  expect(state.rules.find((r) => r.id === 'rule-1230')?.daysOfWeek).toEqual(remainingDays);
+  expect(state.entries.some((e) => e.id === todaysEntry!.id)).toBe(false);
+  expect(state.walks.some((w) => w.id === todaysWalk!.id)).toBe(false);
+});
+
+it('updateRule with a changed daysOfWeek generates a new entry/walk for a day just added to the rule', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const todaysEntry = useScheduleStore.getState().entries.find((e) => e.ruleId === 'rule-1230');
+  const todaysDayOfWeek = new Date(`${todaysEntry!.date}T00:00:00Z`).getUTCDay();
+
+  // First narrow the rule to exclude today's weekday (removes today's entry/walk).
+  const withoutToday = [0, 1, 2, 3, 4, 5, 6].filter((d) => d !== todaysDayOfWeek);
+  await useScheduleStore.getState().updateRule('rule-1230', { daysOfWeek: withoutToday });
+  expect(useScheduleStore.getState().entries.some((e) => e.ruleId === 'rule-1230' && e.date === todaysEntry!.date)).toBe(false);
+
+  // Now add today's weekday back — this is the exact "newly active day"
+  // case: it must regenerate an entry/walk right away, not wait for the
+  // rule's whole window to empty out via the unrelated backfill-on-load path.
+  await useScheduleStore.getState().updateRule('rule-1230', { daysOfWeek: [0, 1, 2, 3, 4, 5, 6] });
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeNull();
+  const regeneratedEntry = state.entries.find((e) => e.ruleId === 'rule-1230' && e.date === todaysEntry!.date);
+  expect(regeneratedEntry).toBeTruthy();
+  expect(regeneratedEntry!.id).not.toBe(todaysEntry!.id); // a genuinely new entry, not the deleted one resurrected by id
+  const regeneratedWalk = state.walks.find((w) => w.scheduleEntryId === regeneratedEntry!.id);
+  expect(regeneratedWalk?.status).toBe('pending');
+});
+
+it('updateRule with a time-only change (daysOfWeek untouched) does not resurrect a manually-deleted single occurrence on the same rule', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const entryFor1700 = useScheduleStore.getState().entries.find((e) => e.ruleId === 'rule-1700');
+  expect(entryFor1700).toBeTruthy();
+
+  // Admin deletes just today's occurrence for rule-1700 (e.g. "skip this one walk today").
+  await useScheduleStore.getState().deleteEntry(entryFor1700!.id);
+  expect(useScheduleStore.getState().entries.some((e) => e.id === entryFor1700!.id)).toBe(false);
+
+  // An unrelated time-only edit to the SAME rule (daysOfWeek untouched) must
+  // not silently regenerate the occurrence the admin just deleted.
+  await useScheduleStore.getState().updateRule('rule-1700', { time: '17:15' });
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeNull();
+  expect(state.entries.some((e) => e.ruleId === 'rule-1700' && e.date === entryFor1700!.date)).toBe(false);
+});
+
 it('skip refuses (visible actionError) for a walk that is not pending', async () => {
   await useScheduleStore.getState().load(FAMILY_ID);
   expect(useScheduleStore.getState().walks.find((w) => w.id === 'walk-0700')?.status).toBe('done');

@@ -1,5 +1,6 @@
 import {
   generateRotationSchedule,
+  planRuleDaysReconciliation,
   previewRotation,
   resolveResponsibleForDate,
   ruleNeedsEntryBackfill,
@@ -187,5 +188,130 @@ describe('ruleNeedsEntryBackfill', () => {
 
   it('only counts entries belonging to the same rule', () => {
     expect(ruleNeedsEntryBackfill(rule, [makeEntry({ ruleId: 'some-other-rule', date: today })], today)).toBe(true);
+  });
+});
+
+/**
+ * Regression coverage for a real, first-discovered bug: updateRule() in
+ * scheduleStore.ts previously recomputed time/responsibleUserId for every
+ * already-generated future entry on a daysOfWeek edit, but never removed an
+ * entry whose day was just disabled nor generated one for a day just
+ * enabled — a day dropped from the rule (e.g. an admin turning off
+ * Saturday for Shabbat) kept its already-generated future walk/reminder
+ * alive for up to GENERATE_DAYS_AHEAD days, and a day added to the rule got
+ * no entries until the rule's entire window emptied out and the unrelated
+ * ruleNeedsEntryBackfill()-driven regen eventually caught up.
+ */
+describe('planRuleDaysReconciliation', () => {
+  const today = '2026-08-24'; // Monday
+  const endDate = '2026-08-30'; // following Sunday
+
+  function makeEntry(overrides: Partial<ScheduleEntry> = {}): ScheduleEntry {
+    return {
+      id: `entry-${overrides.date ?? today}`,
+      familyId: 'family-1',
+      ruleId: 'rule-1',
+      dogId: 'dog-1',
+      date: today,
+      time: '20:00',
+      responsibleUserId: 'danny',
+      createdAt: new Date().toISOString(),
+      ...overrides,
+    };
+  }
+
+  it('is a no-op when daysOfWeek is unchanged: entries just get their time/responsibleUserId recomputed', () => {
+    const previousRule = makeRule({ daysOfWeek: [0, 1, 2, 3, 4, 5, 6] });
+    const updatedRule = makeRule({ daysOfWeek: [0, 1, 2, 3, 4, 5, 6], time: '21:00' });
+    const entries = [makeEntry({ date: '2026-08-24', time: '20:00' }), makeEntry({ id: 'entry-2', date: '2026-08-25', time: '20:00' })];
+
+    const plan = planRuleDaysReconciliation(previousRule, updatedRule, entries, today, endDate);
+
+    expect(plan.toRemove).toEqual([]);
+    expect(plan.toAdd).toEqual([]);
+    expect(plan.toUpdate.map((e) => e.date).sort()).toEqual(['2026-08-24', '2026-08-25']);
+    expect(plan.toUpdate.every((e) => e.time === '21:00')).toBe(true);
+  });
+
+  it('removes a future entry whose day was just dropped from the rule (Saturday turned off), keeps the rest in toUpdate', () => {
+    const previousRule = makeRule({ daysOfWeek: [0, 1, 2, 3, 4, 5, 6] });
+    const updatedRule = makeRule({ daysOfWeek: [0, 1, 2, 3, 4, 5] }); // Saturday (6) dropped
+    const entries = [
+      makeEntry({ id: 'entry-mon', date: '2026-08-24' }), // Monday, stays active
+      makeEntry({ id: 'entry-sat', date: '2026-08-29' }), // Saturday, just disabled
+    ];
+
+    const plan = planRuleDaysReconciliation(previousRule, updatedRule, entries, today, endDate);
+
+    expect(plan.toRemove.map((e) => e.id)).toEqual(['entry-sat']);
+    expect(plan.toUpdate.map((e) => e.id)).toEqual(['entry-mon']);
+    expect(plan.toAdd).toEqual([]);
+  });
+
+  it('generates entries for a day just added to the rule, within the window', () => {
+    const previousRule = makeRule({ daysOfWeek: [1, 3, 5] }); // Mon/Wed/Fri
+    const updatedRule = makeRule({ daysOfWeek: [0, 1, 2, 3, 4, 5, 6] }); // every day
+    const entries = [
+      makeEntry({ id: 'entry-mon', date: '2026-08-24' }),
+      makeEntry({ id: 'entry-wed', date: '2026-08-26' }),
+      makeEntry({ id: 'entry-fri', date: '2026-08-28' }),
+    ];
+
+    const plan = planRuleDaysReconciliation(previousRule, updatedRule, entries, today, endDate, () => 'id');
+
+    expect(plan.toRemove).toEqual([]);
+    // Mon/Wed/Fri already existed and still match -> updated in place, not duplicated.
+    expect(plan.toUpdate.map((e) => e.id).sort()).toEqual(['entry-fri', 'entry-mon', 'entry-wed']);
+    // Tue/Thu/Sat/Sun are newly active and had no entry yet.
+    expect(plan.toAdd.map((e) => e.date).sort()).toEqual(['2026-08-25', '2026-08-27', '2026-08-29', '2026-08-30']);
+  });
+
+  it('does NOT resurrect a deliberately-deleted single occurrence on a day active both before and after the edit', () => {
+    // Monday was already active before this edit; its one entry was
+    // presumably deleted on purpose (scheduleStore.ts's deleteEntry).
+    // Adding Wednesday to the rule must only create the Wednesday entry.
+    const previousRule = makeRule({ daysOfWeek: [1] }); // Monday only
+    const updatedRule = makeRule({ daysOfWeek: [1, 3] }); // Monday + Wednesday
+    const entries: ScheduleEntry[] = []; // Monday's entry is gone
+
+    const plan = planRuleDaysReconciliation(previousRule, updatedRule, entries, today, endDate, () => 'id');
+
+    expect(plan.toRemove).toEqual([]);
+    expect(plan.toUpdate).toEqual([]);
+    expect(plan.toAdd.map((e) => e.date)).toEqual(['2026-08-26']); // Wednesday only, not Monday
+  });
+
+  it('does not add a newly-active day that already has an entry (defensive dedup)', () => {
+    const previousRule = makeRule({ daysOfWeek: [1] }); // Monday only
+    const updatedRule = makeRule({ daysOfWeek: [1, 3] }); // Monday + Wednesday
+    const entries = [makeEntry({ id: 'entry-wed', ruleId: 'rule-1', date: '2026-08-26' })]; // already has a Wednesday entry
+
+    const plan = planRuleDaysReconciliation(previousRule, updatedRule, entries, today, endDate, () => 'id');
+
+    expect(plan.toAdd).toEqual([]);
+    expect(plan.toUpdate.map((e) => e.id)).toEqual(['entry-wed']);
+  });
+
+  it('only reconciles entries belonging to the same rule', () => {
+    const previousRule = makeRule({ daysOfWeek: [0, 1, 2, 3, 4, 5, 6] });
+    const updatedRule = makeRule({ daysOfWeek: [0, 1, 2, 3, 4, 5] }); // Saturday dropped
+    const entries = [makeEntry({ id: 'other-rule-sat', ruleId: 'some-other-rule', date: '2026-08-29' })];
+
+    const plan = planRuleDaysReconciliation(previousRule, updatedRule, entries, today, endDate);
+
+    expect(plan.toRemove).toEqual([]);
+    expect(plan.toUpdate).toEqual([]);
+    expect(plan.toAdd).toEqual([]);
+  });
+
+  it('ignores past entries (date before today)', () => {
+    const previousRule = makeRule({ daysOfWeek: [0, 1, 2, 3, 4, 5, 6] });
+    const updatedRule = makeRule({ daysOfWeek: [0, 1, 2, 3, 4, 5] }); // Saturday dropped
+    const entries = [makeEntry({ id: 'past-sat', date: '2026-08-22' })]; // a past Saturday
+
+    const plan = planRuleDaysReconciliation(previousRule, updatedRule, entries, today, endDate);
+
+    expect(plan.toRemove).toEqual([]);
+    expect(plan.toUpdate).toEqual([]);
   });
 });

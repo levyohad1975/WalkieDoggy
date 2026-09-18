@@ -50,6 +50,172 @@ anything else.
 ## Current Task
 
 **This cycle's reconciliation, done fresh via direct `git log`/`git show`,
+not trusted from this file's own prior narrative:** HEAD was `7e13e4f`, one
+commit past `8da3cff` (what this file's own prior text named as HEAD, and
+whose own commit attempt that prior cycle had hedged under Blocker as
+possibly not landed). `git show --stat 7e13e4f` and `git diff --name-status
+8da3cff 7e13e4f` confirmed it contains exactly the prior cycle's own
+`DeleteUserModal.tsx` replacement-picker persistence fix
+(`src/components/DeleteUserModal.tsx`,
+`src/logic/deleteUserModalTransitions.ts`,
+`src/logic/__tests__/deleteUserModalTransitions.test.ts`) plus that cycle's
+own `EXECUTION_STATE.md` rewrite — the standing self-reporting-drift pattern
+(see note at top of file) reconfirmed yet again (63rd+ time running): the
+commit had already landed despite the prior cycle's own hedged "commit
+attempt outcome recorded under Blocker" self-report. `node_modules/typescript`
+was missing at cycle start (the documented `npx tsc` package-resolution
+symptom); `npm ci` restored it (906 packages, matching the expected
+baseline). `npx tsc --noEmit` at reconciled HEAD `7e13e4f` — **PASS**, zero
+errors. Targeted `npx jest src/logic/__tests__/deleteUserModalTransitions.test.ts
+--runInBand` — **PASS: 7/7**, reconfirming the prior cycle's own regression
+assertion still holds. Full `npm test -- --runInBand` at reconciled HEAD —
+**PASS: 135/135 suites, 1570/1570 tests** (the expected baseline, matching
+the prior cycle's own reported count exactly), confirming a healthy baseline
+before starting new work.
+
+**This cycle's own task — a real, first-time-discovered, user-facing
+data-integrity bug, found by a fresh Explore research agent (steered away
+from the ~65+ already-exhausted defect classes documented in this file,
+toward previously-unswept areas: `src/notifications/*.ts` beyond push-token
+lifecycle, QR/deep-link handling, `PinEntryModal`/`PinSetupModal`
+validation, `src/logic/rotation.ts`'s actual rotation-assignment algorithm,
+`HistoryScreen.tsx` beyond the weekly-summary card, `Countdown.tsx`/
+`walkAttention.ts`, `scheduleStore.ts` actions not yet covered, invite/PIN
+input validation, `errorMessages.ts` completeness, and remaining
+timezone/DST handling) and verified directly by this cycle (not just
+trusted from the report) by reading `src/store/scheduleStore.ts`'s
+`updateRule` (pre-fix, lines 267-314), `addRule`/`deleteRule`/`walkFromEntry`
+in full, `src/logic/rotation.ts` in full, and confirming via `grep` that
+`walks.schedule_entry_id references schedule_entries(id) on delete cascade`
+in `supabase/schema.sql:125`:**
+
+`updateRule()` let an admin patch a schedule rule's `daysOfWeek` (the
+type signature at `scheduleStore.ts:48` explicitly allows it, and
+`RuleFormModal.tsx`'s day-chip row feeds it straight through via
+`ScheduleScreen.tsx`), but the function's entry-reconciliation loop
+(`affectedEntries = get().entries.filter((e) => e.ruleId === ruleId &&
+e.date >= today)`, pre-fix) filtered only by `ruleId` and `date >= today` —
+never by whether each entry's own weekday still matched the *new*
+`daysOfWeek` — then unconditionally recomputed `responsibleUserId`/`time`
+for every one of those entries and re-armed its notification. This directly
+contradicts the function's own doc comment ("only still-pending future
+occurrences... are regenerated **against the new rule**"). Concrete
+reachable scenario, plausible for this app's Hebrew/Israeli audience: a
+family has an all-week walk rule with ~14 days of entries/walks already
+generated (`GENERATE_DAYS_AHEAD`); an admin edits the rule to turn off
+Saturday for Shabbat. The already-generated next Saturday's walk was NOT
+removed — it stayed `pending`, kept showing on Home/Schedule, and the
+assigned member still got a reminder notification for a day the admin just
+explicitly disabled, persisting for up to ~14 days until the stale entries
+aged out. Symmetrically, adding a new weekday created no entries for it
+until the rule's entire future window emptied and the unrelated
+`ruleNeedsEntryBackfill()`-driven regen eventually caught up — also up to
+14 days of silent no-op. Confirmed via `scheduleStore.test.ts` that no
+existing test ever patched `daysOfWeek` on a rule with pre-existing future
+entries (the only `updateRule` coverage patched `time` alone or asserted a
+repository-failure `actionError`) — the already-checked "backfill window"
+logic (`ruleNeedsEntryBackfill`) governs `load()`'s from-scratch
+regeneration only when a rule has ZERO future entries, a completely
+different code path from `updateRule`'s per-entry sync, so that prior sweep
+would not have surfaced this.
+
+**Fixed (client-side logic only, no migration needed), following this
+repo's own established pattern of extracting a pure "what should happen"
+decision out of the store so it is directly unit-testable — the same
+pattern `ruleNeedsEntryBackfill()` already uses for the sibling
+backfill-on-load decision:** added `src/logic/rotation.ts`'s
+`planRuleDaysReconciliation(previousRule, updatedRule, currentEntries,
+today, endDate, idFactory)`, which computes `toRemove` (future entries whose
+date's weekday no longer matches the new `daysOfWeek` — deliberately
+computed against the NEW pattern only, no walk-status awareness, since that
+is a store-level/I-O concern), `toUpdate` (future entries that still match,
+with `time`/`responsibleUserId` recomputed exactly like before), and `toAdd`
+(entries generated via the existing `generateRotationSchedule()` for days
+newly added compared to `previousRule.daysOfWeek` — deliberately scoped to
+just-added days, not every day matching the new pattern, so a day active
+both before and after the edit can never resurrect a single occurrence the
+admin deliberately deleted via `deleteEntry`, mirroring
+`ruleNeedsEntryBackfill()`'s own entry-existence-only philosophy). Also
+exported `dayOfWeekUTC()` (previously private) for reuse. Wired it into
+`updateRule()`: `toRemove` entries only actually get deleted (cascading to
+their walk row per the FK above) when their walk is still `pending` —
+matching `deleteRule()`'s own history-preserving behavior for a
+done/skipped walk's entry; `toAdd` entries get walks created via the
+existing `walkFromEntry()` helper, exactly like `addRule()` already does;
+notifications are cancelled for removed pending walks and (re)scheduled for
+updated/added ones via the existing `scheduleNotificationsForWalk()`
+helper already used elsewhere in this function. When `daysOfWeek` is not
+part of the patch (or the patch is unchanged), `previousRule.daysOfWeek ===
+updatedRule.daysOfWeek` so `toAdd` is always empty and `toRemove` is always
+empty (every existing future entry still matches, by invariant) — a
+provable no-op for every pre-existing `updateRule` call site/test that
+never touched `daysOfWeek`.
+
+Added 7 new tests to `src/logic/__tests__/rotation.test.ts`
+(`planRuleDaysReconciliation` describe block, pure-function style matching
+`ruleNeedsEntryBackfill`'s own established convention): no-op when
+`daysOfWeek` unchanged; removes a dropped day's entry while keeping the
+rest in `toUpdate`; generates entries for a newly-added day within the
+window; **the core regression case** — does NOT resurrect a
+deliberately-deleted single occurrence on a day active both before and
+after the edit; defensive dedup when a newly-active day already has an
+entry; only reconciles entries belonging to the same rule; ignores past
+entries. Added 3 new integration tests to
+`src/store/__tests__/scheduleStore.test.ts` against the demo-seeded store
+(matching its own established `updateRule`-coverage convention): dropping
+today's own weekday from `rule-1230` removes today's still-pending
+entry/walk; re-adding it afterward regenerates a genuinely new entry/walk
+(new id, not the deleted one resurrected); a time-only edit to `rule-1700`
+(after manually deleting its one occurrence via `deleteEntry`) does not
+resurrect it.
+
+`npx tsc --noEmit` after this cycle's own change — **PASS**, zero errors.
+Targeted `npx jest src/logic/__tests__/rotation.test.ts
+src/store/__tests__/scheduleStore.test.ts --runInBand` — **PASS: 65/65
+tests**. Full `npm test -- --runInBand` after this cycle's own change —
+**PASS: 135/135 suites, 1580/1580 tests** (up from 135/135 · 1570/1570
+immediately before the change, same HEAD — no new suite, exactly +10 tests,
+matching the 7 new `rotation.test.ts` tests + 3 new `scheduleStore.test.ts`
+tests; every other suite's count unchanged). `git status --porcelain=v1
+--untracked-files=all` confirmed the changeset is scoped to exactly
+`src/logic/rotation.ts`, `src/logic/__tests__/rotation.test.ts`,
+`src/store/scheduleStore.ts`, and `src/store/__tests__/scheduleStore.test.ts`
+— plus this `EXECUTION_STATE.md` update — no unrelated file touched, no
+user work at risk.
+
+**Runner-up angles the same investigation surfaced, deliberately not folded
+into this bounded unit (recorded so a future cycle does not re-propose them
+as new):** whether `reorderRules`/`deleteRule` have any analogous
+reconciliation gap — checked directly, both are unaffected (`reorderRules`
+never touches `daysOfWeek`; `deleteRule` already correctly removes every
+future pending entry/walk for the rule regardless of day pattern, so there
+is no "which days" distinction for it to get wrong). The research agent
+also checked `src/notifications/notificationService.ts` + `reminderEntry.ts`
+(deterministic notification IDs, orphan reconciliation — solid),
+`PinEntryModal.tsx`/`PinSetupModal.tsx` (validation/privacy handling
+correct), `InviteShareModal.tsx`/QR rendering (display-only, no deep-link
+claims), `src/logic/familyInvites.ts` (pure UI-decision helpers, correct),
+`src/lib/verifiedAdminOnboarding.ts` + `create-verified-family` Edge
+Function + migrations 0032/0033/0035/0036/0038/0040 (approval-status
+gating, timezone handling, cross-family-membership-overwrite fix all
+correctly wired), `src/lib/errorMessages.ts` (mapping thorough, covers
+every reachable server/Edge-Function string found), `Countdown.tsx`
+(UI-only, no data bug), and every other `scheduleStore.ts` action
+(`addRule`, `deleteRule`, `reorderRules`, `rescheduleWalk`, `deleteEntry`,
+`markDone`, `editDoneDetails`, `skip`, `swap`, `swapTwoWalks`,
+`addUnplannedWalk`, `editUnplannedWalk`, `deleteUnplannedWalk`,
+`deleteScheduledWalkOccurrence` — all correctly gated/reverted on failure,
+no further defect found). Also noted but not pursued: `FamilyOnboardingScreen.tsx`'s
+`rejectedFamilyName`/`pendingApprovalFamilyName` staying set after
+mount even once the "back" button is used — investigated and judged not a
+bug, since `create_verified_family()` is genuinely idempotent per
+`auth_user_id` server-side, so the permanent block matches real server
+state; a discoverability/UX nit at most, not a data-integrity or security
+defect.
+
+### Prior cycles' own narratives (full detail preserved here; see also the further-condensed "Recent cycles" and "Completed This Cycle" sections below for the same events in shorter form)
+
+**This cycle's reconciliation, done fresh via direct `git log`/`git show`,
 not trusted from this file's own prior narrative:** HEAD was `8da3cff`, one
 commit past `7a0c24d` (what this file's own prior text named as HEAD, and
 whose own commit attempt that prior cycle had hedged under Blocker as
@@ -2155,26 +2321,28 @@ mount-recovery dead end, which was the unambiguous, no-judgment-call part.
 
 ## Current Task Status
 
-Prior cycle's `dogs`-table DELETE-policy-closing migration `0042`
-(`8da3cff`) is confirmed landed — closed, `DONE`.
+Prior cycle's `DeleteUserModal.tsx` replacement-picker persistence fix
+(`7e13e4f`) is confirmed landed — closed, `DONE`.
 
-**This cycle's own task — fixing `DeleteUserModal.tsx`'s replacement-picker
-selection being silently reset by unrelated `FamilyScreen` re-renders
-(presence-refresh interval / AppState foreground reload), via an extracted
-pure decision function `nextDeleteReplacementSelection()` in new file
-`src/logic/deleteUserModalTransitions.ts` — is code-complete and
-validated** (`tsc` PASS zero errors; targeted
-`deleteUserModalTransitions.test.ts` PASS **7/7**; full `npm test` PASS
-**135/135 suites, 1570/1570 tests**, up from 134/134 · 1563/1563
+**This cycle's own task — fixing `updateRule()`'s `daysOfWeek` reconciliation
+gap in `src/store/scheduleStore.ts` (a day dropped from a rule kept its
+already-generated future entry/walk/reminder alive for up to
+`GENERATE_DAYS_AHEAD` days; a day added got no entries until the rule's
+whole window emptied), via a new pure planner
+`planRuleDaysReconciliation()` in `src/logic/rotation.ts` — is code-complete
+and validated** (`tsc` PASS zero errors; targeted
+`rotation.test.ts`+`scheduleStore.test.ts` PASS **65/65**; full `npm test`
+PASS **135/135 suites, 1580/1580 tests**, up from 135/135 · 1570/1570
 immediately before the change, same HEAD). See Current Task above for the
-full reachable-defect reasoning (an admin's deliberate replacement pick
-for a departing member could be silently reverted mid-decision, causing
-the family's future schedule to be misassigned on an irreversible action).
-Commit attempt outcome recorded under Blocker/Last Evidence below; per the
-standing 60+-cycle pattern, even a "blocked" self-report this same cycle
-should not be assumed final — the next cycle's first action must still be
-its own independent `git log --oneline -5` + `git status` check, and
-should re-verify `deleteUserModalTransitions.test.ts`'s assertions still
+full reachable-defect reasoning (an admin turning off Saturday for Shabbat
+left that Saturday's walk/reminder live for up to two weeks; the symmetric
+add-a-day case silently no-opped for just as long). Commit attempt outcome
+recorded under Blocker/Last Evidence below; per the standing 60+-cycle
+pattern, even a "blocked" self-report this same cycle should not be assumed
+final — the next cycle's first action must still be its own independent
+`git log --oneline -5` + `git status` check, and should re-verify
+`rotation.test.ts`'s `planRuleDaysReconciliation` assertions and
+`scheduleStore.test.ts`'s new `updateRule`/`daysOfWeek` assertions still
 pass at whatever HEAD it finds before trusting this narrative.
 
 ## Current Branch / PR
@@ -2188,50 +2356,65 @@ pass at whatever HEAD it finds before trusting this narrative.
 
 ## Last Evidence
 
-- This cycle start: `git log --oneline -5`/`git status` confirmed HEAD is
-  `8da3cff`, clean working tree — **one** commit past `7a0c24d`, what this
-  file's own prior narrative described as HEAD. `git show --stat 8da3cff`
-  confirmed it contains exactly the prior cycle's own `dogs`-table
-  DELETE-policy-closing migration
-  (`supabase/migrations/0042_dogs_no_client_delete.sql` +
-  `migration0042.dogsNoClientDelete.test.ts`) + that cycle's own
-  `EXECUTION_STATE.md` rewrite — it had landed despite the prior cycle's own
-  hedged "commit attempt outcome recorded under Blocker" self-report,
-  consistent with the standing pattern (see note at top of file).
+- This cycle start: `git log --oneline -8`/`git status` confirmed HEAD is
+  `7e13e4f`, clean working tree — **one** commit past `8da3cff`, what this
+  file's own prior narrative described as HEAD. `git show --stat 7e13e4f`
+  confirmed it contains exactly the prior cycle's own `DeleteUserModal.tsx`
+  replacement-picker persistence fix
+  (`src/components/DeleteUserModal.tsx`,
+  `src/logic/deleteUserModalTransitions.ts`,
+  `src/logic/__tests__/deleteUserModalTransitions.test.ts`) + that cycle's
+  own `EXECUTION_STATE.md` rewrite — it had landed despite the prior
+  cycle's own hedged "commit attempt outcome recorded under Blocker"
+  self-report, consistent with the standing pattern (see note at top of
+  file).
 - `node_modules/typescript` was missing at cycle start (the documented
   `npx tsc` package-resolution symptom); `npm ci` restored it (906
   packages, matching the expected baseline). `npx tsc --noEmit` at
-  reconciled HEAD `8da3cff` — **PASS**, zero errors. Targeted
-  `npx jest src/lib/__tests__/migration0042.dogsNoClientDelete.test.ts
-  --runInBand` — **PASS: 5/5**. Full `npm test -- --runInBand` at
-  reconciled HEAD — **PASS: 134/134 suites, 1563/1563 tests** (the expected
+  reconciled HEAD `7e13e4f` — **PASS**, zero errors. Targeted
+  `npx jest src/logic/__tests__/deleteUserModalTransitions.test.ts
+  --runInBand` — **PASS: 7/7**. Full `npm test -- --runInBand` at
+  reconciled HEAD — **PASS: 135/135 suites, 1570/1570 tests** (the expected
   baseline, matching it exactly), confirming a healthy baseline before
   starting new work.
-- **This cycle's own fix:** added `src/logic/deleteUserModalTransitions.ts`'s
-  `nextDeleteReplacementSelection()`, closing the gap where
-  `DeleteUserModal.tsx`'s replacement-picker reset its selection on any
-  `otherUsers` array-reference change (not just an actual open transition
-  or a genuine membership change), letting an unrelated `FamilyScreen`
-  re-render (its 2-minute presence-refresh interval or AppState foreground
-  listener) silently discard an admin's deliberate replacement pick — see
-  Current Task above for the full reachable-defect reasoning. Wired the new
-  pure function into `DeleteUserModal.tsx`'s `useEffect` via a
-  `wasVisibleRef`, replacing the old reference-keyed reset logic.
-- Added `src/logic/__tests__/deleteUserModalTransitions.test.ts` (7 tests,
-  a genuine unit test of the extracted pure function, matching
-  `settingsModalTransitions.test.ts`'s own established convention).
-- Targeted `npx jest src/logic/__tests__/deleteUserModalTransitions.test.ts
-  --runInBand` — **PASS: 7/7 tests**.
+- **This cycle's own fix:** added `src/logic/rotation.ts`'s
+  `planRuleDaysReconciliation()` (and exported the previously-private
+  `dayOfWeekUTC()`), closing the gap where `scheduleStore.ts`'s
+  `updateRule()` recomputed every future entry's `time`/`responsibleUserId`
+  on a `daysOfWeek` edit but never removed an entry for a day just dropped
+  from the rule, nor generated one for a day just added — see Current Task
+  above for the full reachable-defect reasoning (Saturday turned off for
+  Shabbat kept its already-generated walk/reminder alive for up to 14
+  days; the symmetric add-a-day case silently no-opped for just as long).
+  Wired the new pure planner into `updateRule()` in
+  `src/store/scheduleStore.ts`: dropped-day entries are deleted (cascading
+  to their walk) only when still `pending`, matching `deleteRule()`'s own
+  history-preserving behavior; newly-added-day entries get walks created
+  via the existing `walkFromEntry()` helper exactly like `addRule()`
+  already does; a day active both before and after an edit can never have
+  an entry resurrected, so a deliberately-deleted single occurrence
+  (`deleteEntry()`) stays deleted.
+- Added 7 new tests to `src/logic/__tests__/rotation.test.ts`
+  (`planRuleDaysReconciliation` describe block, matching
+  `ruleNeedsEntryBackfill`'s own established pure-function-test
+  convention) and 3 new integration tests to
+  `src/store/__tests__/scheduleStore.test.ts` against the demo-seeded
+  store (matching its own established `updateRule` coverage convention).
+- Targeted `npx jest src/logic/__tests__/rotation.test.ts
+  src/store/__tests__/scheduleStore.test.ts --runInBand` — **PASS: 65/65
+  tests**.
 - Full `npm test -- --runInBand` after the fix — **PASS: 135/135 suites,
-  1570/1570 tests** (up from 134/134 · 1563/1563 immediately before the
-  change, same HEAD — exactly 1 new suite + its own 7 tests, every other
-  suite's count unchanged).
+  1580/1580 tests** (up from 135/135 · 1570/1570 immediately before the
+  change, same HEAD — no new suite, exactly +10 tests, matching the 7 new
+  `rotation.test.ts` tests + 3 new `scheduleStore.test.ts` tests; every
+  other suite's count unchanged).
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `git status --porcelain=v1 --untracked-files=all` confirmed the tracked
-  changeset is scoped to exactly `src/components/DeleteUserModal.tsx`
-  (modified), `src/logic/deleteUserModalTransitions.ts` (new), and
-  `src/logic/__tests__/deleteUserModalTransitions.test.ts` (new) — plus this
+  changeset is scoped to exactly `src/logic/rotation.ts` (modified),
+  `src/logic/__tests__/rotation.test.ts` (modified),
+  `src/store/scheduleStore.ts` (modified), and
+  `src/store/__tests__/scheduleStore.test.ts` (modified) — plus this
   `EXECUTION_STATE.md` update — no unrelated file touched, no user work at
   risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
@@ -2239,40 +2422,38 @@ pass at whatever HEAD it finds before trusting this narrative.
 
 ## Last Evidence Timestamp
 
-2026-09-18T15:35:19+03:00 (prior landed commit `8da3cff`); this cycle's own
-work validated at HEAD `8da3cff` + working tree as of this cycle's own run
-(2026-09-18T15:56:32+03:00, this session), commit attempt outcome per
-Blocker below.
+2026-09-18T16:01:27+03:00 (prior landed commit `7e13e4f`); this cycle's own
+work validated at HEAD `7e13e4f` + working tree as of this cycle's own run
+(2026-09-18, this session), commit attempt outcome per Blocker below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
-self-reported:** a compound `git add` of the four changed files
-(`src/components/DeleteUserModal.tsx`,
-`src/logic/deleteUserModalTransitions.ts`,
-`src/logic/__tests__/deleteUserModalTransitions.test.ts`,
+self-reported:** a compound `git add` of the five changed files
+(`src/logic/rotation.ts`, `src/logic/__tests__/rotation.test.ts`,
+`src/store/scheduleStore.ts`, `src/store/__tests__/scheduleStore.test.ts`,
 `EXECUTION_STATE.md`) returned "This command requires approval" from the
 tool layer itself (not a git error), consistent with every standing
 blocked git-write command across every prior cycle. A standalone `git add`
-retry (same four files) hit the identical block. A `git status
+retry (same five files) hit the identical block. A `git status
 --porcelain=v1 --untracked-files=all` run immediately after confirmed the
-working tree was unchanged (`EXECUTION_STATE.md` and `DeleteUserModal.tsx`
-still shown modified, the new logic file and test file still untracked,
-nothing staged). So *within this turn's own visibility*, this cycle's
-commit attempt is a genuine, directly-confirmed no-op, not merely a hedged
+working tree was unchanged (all five files still shown modified, nothing
+staged). So *within this turn's own visibility*, this cycle's commit
+attempt is a genuine, directly-confirmed no-op, not merely a hedged
 self-report — consistent with the standing pattern (see note at top of
-file, now reconfirmed for at least the 62nd time running). The
-working-tree change itself (the `DeleteUserModal.tsx` replacement-selection
-persistence fix + its own extracted pure-function module + regression test
-— plus this `EXECUTION_STATE.md` update) is real and validated
-(`tsc`/`npm test` both PASS, 135/135 suites, 1570/1570 tests) — per "never
-discard uncommitted work," it is NOT reverted regardless of this turn's own
-commit-attempt outcome.
+file, now reconfirmed for at least the 64th time running). The
+working-tree change itself (the `updateRule()`/`daysOfWeek` reconciliation
+fix + its own new pure planner + 10 new regression tests — plus this
+`EXECUTION_STATE.md` update) is real and validated (`tsc`/`npm test` both
+PASS, 135/135 suites, 1580/1580 tests) — per "never discard uncommitted
+work," it is NOT reverted regardless of this turn's own commit-attempt
+outcome.
 
-**Prior cycle's own commit-attempt outcome (condensed):** the `dogs`-table
-DELETE-policy-closing migration hit the identical "requires approval"
-block, yet was independently confirmed landed as `8da3cff` by this cycle's
-own reconciliation above — the pattern's own 61st+ instance.
+**Prior cycle's own commit-attempt outcome (condensed):** the
+`DeleteUserModal.tsx` replacement-picker persistence fix hit the identical
+"requires approval" block, yet was independently confirmed landed as
+`7e13e4f` by this cycle's own reconciliation above — the pattern's own
+63rd+ instance.
 
 **Standing question — mechanism already established with direct evidence
 in prior cycles' own history of this file, per the note at the top:** an
@@ -2440,26 +2621,35 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the `DeleteUserModal.tsx` fix + new
-`src/logic/deleteUserModalTransitions.ts` + its own regression test + this
-`EXECUTION_STATE.md` update) landed, and check every commit between
-whatever SHA this file names and actual HEAD, not just the newest one.
-Re-run `npx jest src/logic/__tests__/deleteUserModalTransitions.test.ts
---runInBand` (expect 7/7) as a targeted check before trusting this file's
-narrative. Also re-run the FULL `npm test -- --runInBand` — expect
-**135/135 suites, 1570/1570 tests** as the new baseline (up from 134/134 ·
-1563/1563 before this cycle's own fix). Do not re-propose this
-`DeleteUserModal` replacement-persistence fix itself, the deliberately-
-rejected `FamilyScreen`-side `useMemo(otherUsers)` alternative (a
-perf-only nicety, not a correctness fix — the content-comparison fix in
-the modal is the actual fix), nor any of the runner-up angles already
-checked with no defect found across prior cycles: the full systematic
-non-SELECT RLS sweep is CLOSED across all 42 migrations, `realtime.ts`,
-`syncQueue.ts` ordering/retry, rotation/backfill window, push-token/web-push
-lifecycle, the invite system, remaining Edge Functions,
-`admin_swap_walks`/`create_swap_request`/`approve_swap_request`,
-`statistics.ts`/`StatisticsScreen.tsx` (checked deeper this cycle, no
-defect), Settings/roles logic, Web Push service-worker/VAPID paths,
+cycle's own commit (the `updateRule()`/`daysOfWeek` reconciliation fix +
+new `planRuleDaysReconciliation()` in `src/logic/rotation.ts` + 10 new
+regression tests + this `EXECUTION_STATE.md` update) landed, and check
+every commit between whatever SHA this file names and actual HEAD, not
+just the newest one. Re-run `npx jest src/logic/__tests__/rotation.test.ts
+src/store/__tests__/scheduleStore.test.ts --runInBand` (expect 65/65) as a
+targeted check before trusting this file's narrative. Also re-run the FULL
+`npm test -- --runInBand` — expect **135/135 suites, 1580/1580 tests** as
+the new baseline (up from 135/135 · 1570/1570 before this cycle's own fix).
+Do not re-propose this `updateRule`/`daysOfWeek` reconciliation fix itself,
+nor re-check `reorderRules`/`deleteRule` for the same gap (both already
+confirmed unaffected — see Current Task above), nor any of the runner-up
+angles already checked with no defect found across prior cycles:
+`src/notifications/notificationService.ts`/`reminderEntry.ts`,
+`PinEntryModal.tsx`/`PinSetupModal.tsx`, `InviteShareModal.tsx`/QR
+rendering, `src/logic/familyInvites.ts`, `src/lib/verifiedAdminOnboarding.ts`
++ `create-verified-family` + migrations 0032/0033/0035/0036/0038/0040,
+`src/lib/errorMessages.ts` mapping completeness, `Countdown.tsx`, every
+other `scheduleStore.ts` action, the `DeleteUserModal.tsx`
+replacement-persistence fix, the deliberately-rejected `FamilyScreen`-side
+`useMemo(otherUsers)` alternative, `FamilyOnboardingScreen.tsx`'s
+`rejectedFamilyName`/`pendingApprovalFamilyName` staying set after "back"
+(investigated, judged UX-only not a defect — server state is genuinely
+idempotent), the full systematic non-SELECT RLS sweep (CLOSED across all
+42 migrations), `realtime.ts`, `syncQueue.ts` ordering/retry,
+rotation/backfill window, push-token/web-push lifecycle, the invite system,
+remaining Edge Functions, `admin_swap_walks`/`create_swap_request`/
+`approve_swap_request`, `statistics.ts`/`StatisticsScreen.tsx`,
+Settings/roles logic, Web Push service-worker/VAPID paths,
 `reminderMessages.ts` beyond `due_walk_reminders()`, remaining System Admin
 screens/RPCs, `nextWalk.ts` edge cases, and the claim-profile flow on
 non-removed profiles.
@@ -2984,14 +3174,39 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `8da3cff`, one commit
-  past `7a0c24d` — confirmed via `git show --stat` it contains exactly the
-  prior cycle's own `dogs`-table DELETE-policy-closing migration `0042` +
-  its own regression test — reconfirming the standing self-reporting-drift
-  pattern yet again (62nd+ time). `node_modules/typescript` was missing;
-  `npm ci` restored it. `npx tsc --noEmit` — PASS. Full `npm test` at
-  reconciled HEAD `8da3cff` — PASS 134/134 suites, 1563/1563 tests
+- Reconciliation found HEAD had actually moved to `7e13e4f`, one commit
+  past `8da3cff` — confirmed via `git show --stat` it contains exactly the
+  prior cycle's own `DeleteUserModal.tsx` replacement-picker persistence
+  fix + its own regression test — reconfirming the standing
+  self-reporting-drift pattern yet again (63rd+ time). `node_modules/typescript`
+  was missing; `npm ci` restored it. `npx tsc --noEmit` — PASS. Full `npm
+  test` at reconciled HEAD `7e13e4f` — PASS 135/135 suites, 1570/1570 tests
   (expected baseline).
+- This cycle's own task: fixed `updateRule()` in `src/store/scheduleStore.ts`
+  never reconciling a rule's future entries against a *changed*
+  `daysOfWeek` — a day dropped from the rule (e.g. an admin turning off
+  Saturday for Shabbat) kept its already-generated future walk/reminder
+  alive for up to `GENERATE_DAYS_AHEAD` (14) days, and a day added got no
+  entries until the rule's entire future window emptied out — a real
+  data-integrity/user-facing-correctness bug affecting this app's core
+  scheduling feature, not cosmetic. Added a pure planner
+  `planRuleDaysReconciliation()` in `src/logic/rotation.ts` (exported the
+  previously-private `dayOfWeekUTC()` too), scoped so a day active both
+  before and after an edit can never resurrect a single occurrence the
+  admin deliberately deleted via `deleteEntry()`. Wired it into
+  `updateRule()`: dropped-day entries are removed only while still
+  `pending` (matching `deleteRule()`'s own history-preserving convention);
+  newly-added-day entries get walks created via the existing
+  `walkFromEntry()` helper, matching `addRule()`. Added 7 new tests to
+  `src/logic/__tests__/rotation.test.ts` (pure-function coverage, including
+  the core "does not resurrect a deleted occurrence" regression case) and 3
+  new integration tests to `src/store/__tests__/scheduleStore.test.ts`
+  against the demo-seeded store. `tsc` PASS zero errors; targeted tests
+  PASS 65/65; full `npm test` PASS 135/135 suites, 1580/1580 tests (up from
+  135/135 · 1570/1570). Commit attempt (`git add` on the 5 changed files)
+  hit the same standing "requires approval" tool-layer block as every prior
+  cycle — see Blocker for the directly-confirmed outcome; the working-tree
+  change itself is real, validated, and not reverted.
 - This cycle's own task: fixed `DeleteUserModal.tsx`'s replacement-picker
   selection being silently reset by unrelated `FamilyScreen` re-renders
   (its 2-minute presence-refresh interval / AppState foreground listener
