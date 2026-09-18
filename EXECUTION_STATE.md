@@ -50,25 +50,124 @@ anything else.
 ## Current Task
 
 **This cycle's reconciliation, done fresh via direct `git log`/`git show`,
-not trusted from this file's own prior narrative:** HEAD was `17d3dfc`, one
-commit past `c85c503` (what this file's own prior text named as HEAD, and
+not trusted from this file's own prior narrative:** HEAD was `7a0c24d`, one
+commit past `17d3dfc` (what this file's own prior text named as HEAD, and
 whose own commit attempt that prior cycle had hedged under Blocker as
-possibly not landed). `git show --stat 17d3dfc` and `git diff --name-status
-c85c503 17d3dfc` confirmed it contains exactly the prior cycle's own
-`setReminderEnabled`/`updateUser`/`deleteUser` functional-merge fix
-(`src/store/familyStore.ts` + `familyStore.test.ts`) plus that cycle's own
+possibly not landed). `git show --stat 7a0c24d` and `git diff --name-status
+17d3dfc 7a0c24d` confirmed it contains exactly the prior cycle's own
+`HistoryScreen.tsx` weekly-summary `weekAgo` off-by-one fix
+(`src/screens/HistoryScreen.tsx` +
+`HistoryScreen.permissionGate.test.ts`) plus that cycle's own
 `EXECUTION_STATE.md` rewrite — the standing self-reporting-drift pattern
-(see note at top of file) reconfirmed yet again (60th+ time running): the
+(see note at top of file) reconfirmed yet again (61st+ time running): the
 commit had already landed despite the prior cycle's own hedged "commit
 attempt outcome recorded under Blocker" self-report. `node_modules` was
 present but incomplete at cycle start (`node_modules/typescript` missing,
 matching the documented `npx tsc` package-resolution symptom); `npm ci`
 restored it (906 packages, matching the expected baseline). `npx tsc
---noEmit` at reconciled HEAD `17d3dfc` — **PASS**, zero errors. Full `npm
-test -- --runInBand` at reconciled HEAD — **PASS: 133/133 suites,
-1557/1557 tests** (the expected baseline, matching the prior cycle's own
-reported count exactly), confirming a healthy baseline before starting new
-work.
+--noEmit` at reconciled HEAD `7a0c24d` — **PASS**, zero errors. Targeted
+`npx jest src/screens/__tests__/HistoryScreen.permissionGate.test.ts
+--runInBand` — **PASS: 9/9**, reconfirming the prior cycle's own regression
+assertion still holds. Full `npm test -- --runInBand` at reconciled HEAD —
+**PASS: 133/133 suites, 1558/1558 tests** (the expected baseline, matching
+the prior cycle's own reported count exactly), confirming a healthy
+baseline before starting new work.
+
+**This cycle's own task — a real, first-time-discovered, security-relevant
+RLS gap, found by a fresh Explore research agent (instructed to do a
+systematic sweep of every non-SELECT RLS policy across all 42 migration
+files, steered away from every already-exhausted defect class documented in
+this file — this exact sweep had been flagged as still-open by two separate
+prior cycles' own "Runner-up angles" notes) and verified directly by this
+cycle (not just trusted from the report) by reading `supabase/schema.sql`
+lines 520-530 and every `dog_id ... on delete cascade` FK declaration
+directly, confirming via `grep -rn "on dogs\|policy.*dogs"
+supabase/migrations/*.sql` that zero migrations 0001-0041 ever touch a
+policy on `dogs`, reading `supabase/migrations/0004_admin_permissions_and_
+member_deletion.sql` in full for the established admin-gating/
+no-delete-policy conventions this fix follows, confirming via `grep` that
+`src/data/supabaseRepository.ts` only ever calls `.select()`/`.upsert()` on
+`dogs` (never `.delete()`), and confirming via `grep` for `deleteDog`/
+`removeDog` across `src/` that no delete-a-dog feature exists anywhere in
+the app:**
+
+`dogs`' `"modify dogs in own family"` policy (`supabase/schema.sql:528-529`,
+still the live applied definition) is a single `for all using (family_id =
+current_family_id())` — no admin check at all, unlike `schedule_rules`
+(0004, the very migration that established "permanent schedule
+configuration... must now be admin-only" for exactly this reason) — and
+critically, it folds DELETE into that same permissive check. `schedule_
+rules.dog_id`, `schedule_entries.dog_id`, and `walks.dog_id` are all
+declared `on delete cascade` (never `restrict`, unlike `users.*_user_id`),
+and Postgres's row-security model always lets an FK cascade bypass RLS on
+the referencing table to preserve referential integrity — so once a `dogs`
+row is deleted, `schedule_rules`'s own admin-only policies and `walks`'
+history-window policy are irrelevant: the cascade deletes every row
+unconditionally. Concrete reachable scenario: any ordinary, non-admin,
+legitimately-claimed family Member — no exotic race, just their own
+already-valid session — can call `supabase.from('dogs').delete().eq('id',
+dogId)` (or an equivalent raw PostgREST call) directly. The RN app's UI
+never exposes such a button, but per this schema's own repeatedly-stated
+threat model (UI gating is a convenience, RLS is the only real boundary),
+that's irrelevant: the policy has no admin gate and would allow it,
+permanently wiping the entire family's schedule and walk history with one
+REST call, with no confirmation, no undo (dogs has no soft-delete unlike
+`users.removed_at`), and no way for even an admin to recover it.
+
+**Fixed, via a new migration (schema.sql's base policy left untouched, per
+rule 8 — a migration cannot edit an already-shipped baseline file, only
+layer a `drop policy`/`create policy` on top, exactly like every 0037-0041
+migration already does for other tables):** added
+`supabase/migrations/0042_dogs_no_client_delete.sql` — drops `"modify dogs
+in own family"` and replaces it with separate `"insert dogs in own
+family"`/`"update dogs in own family"` policies (identical `family_id =
+current_family_id()` check, preserving today's actual any-member-can-edit
+behavior exactly) and **no DELETE policy at all** — the same treatment
+`users` already received in 0003 ("Intentionally no DELETE policy... blocked
+by RLS"), appropriate here since no client feature ever deletes a dog and a
+family has exactly one dog row, created only via `create_verified_family()`/
+`create_family()` (both `SECURITY DEFINER`, unaffected by this table's
+client-facing RLS).
+
+Added `src/lib/__tests__/migration0042.dogsNoClientDelete.test.ts` (5 tests,
+source-text-scan style matching `migration0037`/.../`migration0041`'s own
+established convention): confirms 0001-0041 are untouched and exactly one
+0042 file exists; confirms the old permissive policy is dropped; confirms
+INSERT/UPDATE are preserved with the identical family-scoping check;
+confirms no `for delete`/`for all` policy is ever created on `dogs`;
+confirms every policy touched by this migration targets `dogs` only, no
+other table.
+
+`npx tsc --noEmit` after this cycle's own change — **PASS**, zero errors.
+Targeted `npx jest src/lib/__tests__/migration0042.dogsNoClientDelete.test.ts
+--runInBand` — **PASS: 5/5 tests**. Full `npm test -- --runInBand` after
+this cycle's own change — **PASS: 134/134 suites, 1563/1563 tests** (up
+from 133/133 · 1558/1558 immediately before the change, same HEAD — exactly
+1 new suite + its own 5 tests, every other suite's count unchanged). `git
+status --porcelain=v1 --untracked-files=all` confirmed the changeset is
+scoped to exactly `supabase/migrations/0042_dogs_no_client_delete.sql`
+(new) and `src/lib/__tests__/migration0042.dogsNoClientDelete.test.ts` (new)
+— plus this `EXECUTION_STATE.md` update — no unrelated file touched, no
+user work at risk.
+
+**Runner-up/rejected angle the same investigation surfaced, deliberately
+not folded into this bounded unit (recorded so a future cycle does not
+re-propose it):** `notifications`' `"modify notifications in own family"`
+policy has the identical missing-admin-gate `for all` shape and was also
+never touched by any migration — rejected as lower priority than `dogs`
+because (a) no table has a foreign key referencing `notifications.id`, so
+there is no cascade blast radius, and (b) `grep -rn "from('notifications')"
+src/` returns zero matches — the table is not read or written anywhere in
+the current app, appearing to be dead/legacy from the original base schema.
+Still technically the same pattern; worth a future cycle's own bounded unit
+if `notifications` is ever wired up, but not reachable to any real effect
+today. The full non-SELECT RLS sweep that surfaced both of these is now
+complete across all 42 migrations — every other table was confirmed either
+correctly admin-gated, correctly self-scoped, or intentionally
+RPC-only-write with no client policy at all (see the research agent's full
+per-table sweep notes, condensed here rather than repeated in full).
+
+### Prior cycles' own narratives (full detail preserved here; see also the further-condensed "Recent cycles" and "Completed This Cycle" sections below for the same events in shorter form)
 
 **This cycle's own task — a real, first-time-discovered, user-facing
 data-correctness bug, found by a fresh Explore research agent (steered
@@ -1923,27 +2022,27 @@ mount-recovery dead end, which was the unambiguous, no-judgment-call part.
 
 ## Current Task Status
 
-Prior cycle's `setReminderEnabled`/`updateUser`/`deleteUser` functional-merge
-fix (`17d3dfc`) is confirmed landed — closed, `DONE`.
+Prior cycle's `HistoryScreen.tsx` weekly-summary `weekAgo` off-by-one fix
+(`7a0c24d`) is confirmed landed — closed, `DONE`.
 
-**This cycle's own task — fixing `HistoryScreen.tsx`'s "סיכום שבועי" weekly
-summary card's `weekAgo` cutoff from an 8-day window (`7 * 86400000`) to
-the correct inclusive-of-today 7-day window (`6 * 86400000`), matching
-`statistics.ts`'s own established convention — is code-complete and
+**This cycle's own task — closing a security-relevant RLS gap on `dogs`
+(no admin gate, and critically no protection at all against a non-admin
+DELETE that cascades to wipe the family's entire schedule_rules/
+schedule_entries/walks history via FK cascade) via new migration
+`supabase/migrations/0042_dogs_no_client_delete.sql` — is code-complete and
 validated** (`tsc` PASS zero errors; targeted
-`HistoryScreen.permissionGate.test.ts` PASS **9/9**; full `npm test` PASS
-**133/133 suites, 1558/1558 tests**, up from 133/133 · 1557/1557
-immediately before the change, same HEAD). This is a **user-facing
-data-correctness bug**, not cosmetic — see Current Task above for the full
-reachable-defect reasoning: every family's weekly member-comparison card
-silently over-counted by one extra calendar day on every render, which can
-change who ranks first in a feature whose own subtitle states its purpose
-is fair family transparency. Commit attempt outcome recorded under
-Blocker/Last Evidence below; per the standing 60+-cycle pattern, even a
-"blocked" self-report this same cycle should not be assumed final — the
-next cycle's first action must still be its own independent `git log
---oneline -5` + `git status` check, and should re-verify
-`HistoryScreen.permissionGate.test.ts`'s new assertion still passes at
+`migration0042.dogsNoClientDelete.test.ts` PASS **5/5**; full `npm test`
+PASS **134/134 suites, 1563/1563 tests**, up from 133/133 · 1558/1558
+immediately before the change, same HEAD). This closes the "systematic
+non-SELECT RLS sweep" angle two separate prior cycles' own "Runner-up
+angles" notes had flagged as still open — see Current Task above for the
+full reachable-defect reasoning and the rejected `notifications`-table
+counterpart. Commit attempt outcome recorded under Blocker/Last Evidence
+below; per the standing 60+-cycle pattern, even a "blocked" self-report
+this same cycle should not be assumed final — the next cycle's first
+action must still be its own independent `git log --oneline -5` + `git
+status` check, and should re-verify
+`migration0042.dogsNoClientDelete.test.ts`'s assertions still pass at
 whatever HEAD it finds before trusting this narrative.
 
 ## Current Branch / PR
@@ -1958,42 +2057,50 @@ whatever HEAD it finds before trusting this narrative.
 ## Last Evidence
 
 - This cycle start: `git log --oneline -5`/`git status` confirmed HEAD is
-  `17d3dfc`, clean working tree — **one** commit past `c85c503`, what this
-  file's own prior narrative described as HEAD. `git show --stat 17d3dfc`
-  confirmed it contains exactly the prior cycle's own
-  `setReminderEnabled`/`updateUser`/`deleteUser` functional-merge fix
-  (`src/store/familyStore.ts` + `familyStore.test.ts`) + that cycle's own
+  `7a0c24d`, clean working tree — **one** commit past `17d3dfc`, what this
+  file's own prior narrative described as HEAD. `git show --stat 7a0c24d`
+  confirmed it contains exactly the prior cycle's own `HistoryScreen.tsx`
+  weekly-summary `weekAgo` off-by-one fix (`src/screens/HistoryScreen.tsx` +
+  `HistoryScreen.permissionGate.test.ts`) + that cycle's own
   `EXECUTION_STATE.md` rewrite — it had landed despite the prior cycle's own
   hedged "commit attempt outcome recorded under Blocker" self-report,
   consistent with the standing pattern (see note at top of file).
 - `node_modules` was present but incomplete at cycle start
   (`node_modules/typescript` missing, the documented `npx tsc`
   package-resolution symptom); `npm ci` restored it (906 packages, matching
-  the expected baseline). `npx tsc --noEmit` at reconciled HEAD `17d3dfc` —
-  **PASS**, zero errors. Full `npm test -- runInBand` at reconciled HEAD —
-  **PASS: 133/133 suites, 1557/1557 tests** (the expected baseline, matching
-  it exactly), confirming a healthy baseline before starting new work.
-- **This cycle's own fix:** changed `HistoryScreen.tsx`'s `weekAgo` cutoff
-  used by the "סיכום שבועי" weekly-summary card from `Date.now() - 7 *
-  86400000` (an 8-calendar-day window) to `Date.now() - 6 * 86400000` (the
-  correct inclusive-of-today 7-day window) — see Current Task above for the
-  full reachable-defect reasoning (provably inconsistent with
-  `statistics.ts`'s own `days = period === '7d' ? 6 : 29` convention, and
-  with this same file's own `rangeFilter === '7d'` cutoff 25 lines below).
-- Added a regression assertion to
-  `src/screens/__tests__/HistoryScreen.permissionGate.test.ts` pinning the
-  exact `weekAgo` literal to `6 * 86400000`.
-- Targeted `npx jest src/screens/__tests__/HistoryScreen.permissionGate.test.ts
-  --runInBand` — **PASS: 9/9 tests** (up from 8/8).
-- Full `npm test -- --runInBand` after the fix — **PASS: 133/133 suites,
-  1558/1558 tests** (up from 133/133 · 1557/1557 immediately before the
-  change, same HEAD — no new suite, exactly +1 test, matching the single new
-  regression assertion added; every other suite's count unchanged).
+  the expected baseline). `npx tsc --noEmit` at reconciled HEAD `7a0c24d` —
+  **PASS**, zero errors. Targeted
+  `npx jest src/screens/__tests__/HistoryScreen.permissionGate.test.ts
+  --runInBand` — **PASS: 9/9**. Full `npm test -- --runInBand` at
+  reconciled HEAD — **PASS: 133/133 suites, 1558/1558 tests** (the expected
+  baseline, matching it exactly), confirming a healthy baseline before
+  starting new work.
+- **This cycle's own fix:** added
+  `supabase/migrations/0042_dogs_no_client_delete.sql`, closing the gap
+  where `dogs`' `"modify dogs in own family"` policy (`for all`, no admin
+  check) allowed any non-admin family member to DELETE the family's dog
+  row, which cascades via FK (`on delete cascade`) to permanently wipe
+  every `schedule_rules`/`schedule_entries`/`walks` row for that dog,
+  bypassing those tables' own RLS policies entirely (FK cascades bypass
+  RLS by design) — see Current Task above for the full reachable-defect
+  reasoning. The new migration drops the old policy and replaces it with
+  separate INSERT/UPDATE policies (identical scoping, preserving current
+  behavior) and deliberately no DELETE policy, matching `users`' own 0003
+  precedent.
+- Added `src/lib/__tests__/migration0042.dogsNoClientDelete.test.ts` (5
+  tests, source-text-scan style matching migration0037-0041's convention).
+- Targeted `npx jest src/lib/__tests__/migration0042.dogsNoClientDelete.test.ts
+  --runInBand` — **PASS: 5/5 tests**.
+- Full `npm test -- --runInBand` after the fix — **PASS: 134/134 suites,
+  1563/1563 tests** (up from 133/133 · 1558/1558 immediately before the
+  change, same HEAD — exactly 1 new suite + its own 5 tests, every other
+  suite's count unchanged).
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `git status --porcelain=v1 --untracked-files=all` confirmed the tracked
-  changeset is scoped to exactly `src/screens/HistoryScreen.tsx` and
-  `src/screens/__tests__/HistoryScreen.permissionGate.test.ts` — plus this
+  changeset is scoped to exactly
+  `supabase/migrations/0042_dogs_no_client_delete.sql` and
+  `src/lib/__tests__/migration0042.dogsNoClientDelete.test.ts` — plus this
   `EXECUTION_STATE.md` update — no unrelated file touched, no user work at
   risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
@@ -2001,38 +2108,38 @@ whatever HEAD it finds before trusting this narrative.
 
 ## Last Evidence Timestamp
 
-2026-09-18T11:28:21+03:00 (prior landed commit `17d3dfc`); this cycle's own
-work validated at HEAD `17d3dfc` + working tree as of this cycle's own run
+2026-09-18T14:18:42+03:00 (prior landed commit `7a0c24d`); this cycle's own
+work validated at HEAD `7a0c24d` + working tree as of this cycle's own run
 (2026-09-18, this session), commit attempt outcome per Blocker below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
 self-reported:** a compound `git add` of the three changed files
-(`src/screens/HistoryScreen.tsx`,
-`src/screens/__tests__/HistoryScreen.permissionGate.test.ts`,
+(`supabase/migrations/0042_dogs_no_client_delete.sql`,
+`src/lib/__tests__/migration0042.dogsNoClientDelete.test.ts`,
 `EXECUTION_STATE.md`) returned "This command requires approval" from the
 tool layer itself (not a git error), consistent with every standing
 blocked git-write command across every prior cycle. A standalone `git add`
 retry (same three files) hit the identical block. A `git status
 --porcelain=v1 --untracked-files=all` run immediately after confirmed the
-working tree was unchanged (all three files still shown modified, nothing
-staged). So *within this turn's own visibility*, this cycle's commit
-attempt is a genuine, directly-confirmed no-op, not merely a hedged
-self-report — consistent with the standing pattern (see note at top of
-file, now reconfirmed for at least the 60th time running). The
-working-tree change itself (the `HistoryScreen.tsx` weekly-summary
-off-by-one fix + its own regression assertion — plus this
-`EXECUTION_STATE.md` update) is real and validated (`tsc`/`npm test` both
-PASS, 133/133 suites, 1558/1558 tests) — per "never discard uncommitted
-work," it is NOT reverted regardless of this turn's own commit-attempt
-outcome.
+working tree was unchanged (`EXECUTION_STATE.md` still shown modified, the
+migration and test file still untracked, nothing staged). So *within this
+turn's own visibility*, this cycle's commit attempt is a genuine,
+directly-confirmed no-op, not merely a hedged self-report — consistent
+with the standing pattern (see note at top of file, now reconfirmed for at
+least the 61st time running). The working-tree change itself (the new
+`dogs` DELETE-policy-closing migration + its own regression test — plus
+this `EXECUTION_STATE.md` update) is real and validated (`tsc`/`npm test`
+both PASS, 134/134 suites, 1563/1563 tests) — per "never discard
+uncommitted work," it is NOT reverted regardless of this turn's own
+commit-attempt outcome.
 
 **Prior cycle's own commit-attempt outcome (condensed):** the
-`setReminderEnabled`/`updateUser`/`deleteUser` functional-merge fix hit the
+`HistoryScreen.tsx` weekly-summary `weekAgo` off-by-one fix hit the
 identical "requires approval" block, yet was independently confirmed landed
-as `17d3dfc` by this cycle's own reconciliation above — the pattern's own
-59th+ instance.
+as `7a0c24d` by this cycle's own reconciliation above — the pattern's own
+60th+ instance.
 
 **Standing question — mechanism already established with direct evidence
 in prior cycles' own history of this file, per the note at the top:** an
@@ -2200,20 +2307,26 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the `HistoryScreen.tsx` weekly-summary `weekAgo`
-off-by-one fix + its own regression assertion + this `EXECUTION_STATE.md`
-update) landed, and check every commit between whatever SHA this file
-names and actual HEAD, not just the newest one. Re-run `npx jest
-src/screens/__tests__/HistoryScreen.permissionGate.test.ts --runInBand`
-(expect 9/9) as a targeted check before trusting this file's narrative.
-Also re-run the FULL `npm test -- --runInBand` — expect **133/133 suites,
-1558/1558 tests** as the new baseline (up from 133/133 · 1557/1557 before
-this cycle's own fix). Do not re-propose the `weekAgo` fix itself, nor any
-of the runner-up angles this cycle's own investigation recorded above as
-already checked with no defect found (`realtime.ts`, `syncQueue.ts`
-ordering/retry, rotation/backfill window, push-token/web-push lifecycle,
-the invite system, remaining Edge Functions,
-`admin_swap_walks`/`create_swap_request`/`approve_swap_request`).
+cycle's own commit (the new `supabase/migrations/0042_dogs_no_client_
+delete.sql` + its own regression test + this `EXECUTION_STATE.md` update)
+landed, and check every commit between whatever SHA this file names and
+actual HEAD, not just the newest one. Re-run `npx jest
+src/lib/__tests__/migration0042.dogsNoClientDelete.test.ts --runInBand`
+(expect 5/5) as a targeted check before trusting this file's narrative.
+Also re-run the FULL `npm test -- --runInBand` — expect **134/134 suites,
+1563/1563 tests** as the new baseline (up from 133/133 · 1558/1558 before
+this cycle's own fix). Do not re-propose this `dogs` DELETE-policy fix
+itself, the rejected `notifications`-table counterpart (deliberately not
+pursued — no cascade blast radius, zero live call sites), nor any of the
+runner-up angles already checked with no defect found across prior cycles:
+the full systematic non-SELECT RLS sweep is now CLOSED across all 42
+migrations (this was its own explicitly-flagged open item, now resolved —
+do not re-run it from scratch; if a fresh RLS angle is ever needed, start
+from `dogs`/`notifications` already being checked rather than re-sweeping
+every table), `realtime.ts`, `syncQueue.ts` ordering/retry, rotation/
+backfill window, push-token/web-push lifecycle, the invite system,
+remaining Edge Functions,
+`admin_swap_walks`/`create_swap_request`/`approve_swap_request`.
 
 **Prior cycle's own next-step note (condensed, now itself historical —
 its own task since landed as `17d3dfc` and is reconciled above; retained
@@ -2735,35 +2848,48 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `17d3dfc`, one commit
-  past `c85c503` — confirmed via `git show --stat` it contains exactly the
-  prior cycle's own `setReminderEnabled`/`updateUser`/`deleteUser`
-  functional-merge fix (`src/store/familyStore.ts` +
-  `familyStore.test.ts`) + that cycle's own `EXECUTION_STATE.md` rewrite —
-  reconfirming the standing self-reporting-drift pattern yet again (60th+
-  time). `node_modules` was present but missing `typescript` at cycle
-  start; `npm ci` restored it (906 packages). `npx tsc --noEmit` PASS; full
-  `npm test -- --runInBand` PASS **133/133 suites, 1557/1557 tests** (the
-  expected baseline, matched exactly).
-- **This cycle's own fix — a real, first-time-discovered user-facing
-  data-correctness bug, found by a fresh Explore research agent (steered
-  toward previously-unswept territory: `realtime.ts`, `syncQueue.ts`,
-  rotation/backfill, push-token lifecycle, invites, remaining Edge
-  Functions, `statistics.ts`/`history.ts`):** `HistoryScreen.tsx`'s "סיכום
-  שבועי" weekly-summary card computed its `weekAgo` cutoff as `Date.now() -
-  7 * 86400000` — an 8-calendar-day window, not 7 — provably inconsistent
-  with `statistics.ts`'s own established `days = period === '7d' ? 6 : 29`
-  convention and with this same file's own correct `rangeFilter === '7d'`
-  cutoff 25 lines below. Fixed the multiplier to `6 * 86400000`. Added a
-  regression assertion to
-  `HistoryScreen.permissionGate.test.ts` pinning the exact literal. `tsc`
-  PASS; targeted test PASS 9/9 (up from 8/8); full suite PASS **133/133
-  suites, 1558/1558 tests** (up from 133/133 · 1557/1557). `git status`
-  confirmed the changeset is scoped to exactly `src/screens/HistoryScreen.tsx`
-  and `src/screens/__tests__/HistoryScreen.permissionGate.test.ts` plus this
+- Reconciliation found HEAD had actually moved to `7a0c24d`, one commit
+  past `17d3dfc` — confirmed via `git show --stat` it contains exactly the
+  prior cycle's own `HistoryScreen.tsx` weekly-summary `weekAgo`
+  off-by-one fix (`src/screens/HistoryScreen.tsx` +
+  `HistoryScreen.permissionGate.test.ts`) + that cycle's own
+  `EXECUTION_STATE.md` rewrite — reconfirming the standing
+  self-reporting-drift pattern yet again (61st+ time). `node_modules` was
+  present but missing `typescript` at cycle start; `npm ci` restored it
+  (906 packages). `npx tsc --noEmit` PASS; targeted
+  `HistoryScreen.permissionGate.test.ts` PASS 9/9; full `npm test --
+  runInBand` PASS **133/133 suites, 1558/1558 tests** (the expected
+  baseline, matched exactly).
+- **This cycle's own fix — a real, first-time-discovered security-relevant
+  RLS gap, found by a fresh Explore research agent instructed to do a
+  systematic sweep of every non-SELECT policy across all 42 migrations (an
+  angle two separate prior cycles' own "Runner-up angles" notes had
+  flagged as still open):** `dogs`' `"modify dogs in own family"` policy
+  (`supabase/schema.sql`, never touched by any of migrations 0001-0041) was
+  a single `for all using (family_id = current_family_id())` — no admin
+  gate, and critically no protection against a non-admin DELETE. Since
+  `schedule_rules.dog_id`/`schedule_entries.dog_id`/`walks.dog_id` are all
+  `on delete cascade` and FK cascades bypass RLS by design, any ordinary
+  family member could DELETE the family's dog row via a raw PostgREST call
+  and permanently wipe the entire family's schedule and walk history in
+  one request — the app's UI never exposes this, but per this codebase's
+  own threat model that's not the security boundary. Fixed via new
+  migration `supabase/migrations/0042_dogs_no_client_delete.sql`: split the
+  policy into INSERT/UPDATE (unchanged behavior) and added no DELETE
+  policy at all, matching `users`' own 0003 "intentionally no DELETE
+  policy" precedent. Added
+  `src/lib/__tests__/migration0042.dogsNoClientDelete.test.ts` (5 tests,
+  source-text-scan style matching migration0037-0041's convention). `tsc`
+  PASS; targeted test PASS 5/5; full suite PASS **134/134 suites,
+  1563/1563 tests** (up from 133/133 · 1558/1558). `git status` confirmed
+  the changeset is scoped to exactly
+  `supabase/migrations/0042_dogs_no_client_delete.sql` and
+  `src/lib/__tests__/migration0042.dogsNoClientDelete.test.ts` plus this
   `EXECUTION_STATE.md` update. Commit attempt hit the standing "requires
-  approval" block (60th+ instance) — working tree not reverted per "never
-  discard uncommitted work."
+  approval" block (61st+ instance) — working tree not reverted per "never
+  discard uncommitted work." (Rejected counterpart: `notifications`' same
+  `for all` shape — no cascade blast radius, zero live call sites in
+  `src/`, not pursued.)
 - Prior cycles' own completed-this-cycle entries below, preserved for
   history:
 - Reconciliation found HEAD had actually moved to `c85c503`, one commit
