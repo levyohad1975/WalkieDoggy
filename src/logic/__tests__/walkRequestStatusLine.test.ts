@@ -151,6 +151,59 @@ describe('computeWalkRequestStatusLine', () => {
     const result = computeWalkRequestStatusLine({ id: 'walk-1' }, [newer], [older], walksById, NOW);
     expect(result).toEqual({ text: '🔁 ממתין', kind: 'swap', status: 'pending' });
   });
+
+  it('never hides a still-active request behind a MORE RECENTLY created but already-resolved one for the same walk', () => {
+    // Neither create_swap_request() nor create_time_change_request() blocks
+    // against the other request table (each only guards its own kind), so a
+    // walk's responsible member can end up with both a still-pending swap
+    // request AND a later, already-rejected time-change request at once. The
+    // rejected one alone would win a pure created_at tie-break despite the
+    // swap still being fully actionable — this must not happen.
+    const olderActiveSwap = swap({
+      id: 'swap-old-active',
+      status: 'pending',
+      created_at: '2026-09-04T07:00:00.000Z',
+    });
+    const newerResolvedTimeChange = timeChange({
+      id: 'tc-new-rejected',
+      status: 'rejected',
+      created_at: '2026-09-04T09:00:00.000Z',
+      resolved_at: '2026-09-04T09:05:00.000Z',
+    });
+    const result = computeWalkRequestStatusLine(
+      { id: 'walk-1' },
+      [olderActiveSwap],
+      [newerResolvedTimeChange],
+      walksById,
+      NOW,
+      'u1'
+    );
+    expect(result).toEqual({ text: '🔁 ממתין', kind: 'swap', status: 'pending' });
+  });
+
+  it('still prefers the more recent request when both candidates are resolved', () => {
+    const olderRejected = swap({
+      id: 'swap-older-rejected',
+      status: 'rejected',
+      created_at: '2026-09-04T07:00:00.000Z',
+      resolved_at: '2026-09-04T07:05:00.000Z',
+    });
+    const newerApproved = timeChange({
+      id: 'tc-newer-approved',
+      status: 'approved',
+      created_at: '2026-09-04T08:00:00.000Z',
+      resolved_at: '2026-09-04T08:05:00.000Z',
+    });
+    const result = computeWalkRequestStatusLine(
+      { id: 'walk-1' },
+      [olderRejected],
+      [newerApproved],
+      walksById,
+      NOW,
+      'u1'
+    );
+    expect(result).toEqual({ text: '✓ 19:30 אושר', kind: 'timeChange', status: 'approved' });
+  });
 });
 
 describe('time-change resolved status is personal to requester', () => {

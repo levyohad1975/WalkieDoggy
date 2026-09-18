@@ -1,6 +1,6 @@
 import type { Walk } from '../types';
 import type { SwapRequestRow, TimeChangeRequestRow } from '../lib/requests';
-import { computeRequestLifecycle, isRequestVisible, type RequestLike } from './requestLifecycle';
+import { computeRequestLifecycle, isRequestVisible, type RequestLifecycleState, type RequestLike } from './requestLifecycle';
 
 /**
  * P1 — compact request-status line on walk cards.
@@ -73,24 +73,42 @@ export function computeWalkRequestStatusLine(
   ];
   if (candidates.length === 0) return null;
 
-  const visible = candidates.filter((row) => {
+  const visible: Array<{ row: AnyRequestRow; lifecycle: RequestLifecycleState }> = [];
+  for (const row of candidates) {
     // A resolved time-change badge is personal feedback for the member who
     // requested it. Everyone still sees the walk's authoritative updated
     // scheduledTime; only the requester sees ✓/✕ + proposed time for 24h.
     if (row.kind === 'timeChange' && row.status !== 'pending' && viewerUserId && row.requested_by_user_id !== viewerUserId) {
-      return false;
+      continue;
     }
     const lifecycle = computeRequestLifecycle(toRequestLike(row), walksById, now);
     // 'expired' (a pending request whose walk moved on) is deliberately
     // excluded here too — nothing useful to show on a card for a request
     // that can no longer be acted on.
-    return isRequestVisible(lifecycle);
-  });
+    if (!isRequestVisible(lifecycle)) continue;
+    visible.push({ row, lifecycle });
+  }
   if (visible.length === 0) return null;
 
-  // Most recent relevant request wins — deterministic tie-break by created_at.
-  visible.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  const winner = visible[0];
+  // A swap request and a time-change request can both end up pending on the
+  // SAME walk at once — neither create_swap_request() nor
+  // create_time_change_request() checks the other table (confirmed in
+  // supabase/migrations/0005/0018/0031: each only guards against a pending
+  // row of its OWN kind). If one of them then gets resolved, a plain
+  // created_at tie-break could rank that now-terminal request above the
+  // other one that is still 'active' and awaiting approval, just because it
+  // happens to have been created more recently — falsely showing "✕ rejected"
+  // (or "✓ approved") on a card that actually still has something pending.
+  // A still-'active' request must always outrank an already-resolved one;
+  // created_at only breaks ties within the same lifecycle tier.
+  visible.sort((a, b) => {
+    if (a.lifecycle !== b.lifecycle) {
+      if (a.lifecycle === 'active') return -1;
+      if (b.lifecycle === 'active') return 1;
+    }
+    return new Date(b.row.created_at).getTime() - new Date(a.row.created_at).getTime();
+  });
+  const winner = visible[0].row;
 
   return { text: lineFor(winner), kind: winner.kind, status: winner.status };
 }
