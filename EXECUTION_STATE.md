@@ -50,6 +50,149 @@ anything else.
 ## Current Task
 
 **This cycle's reconciliation, done fresh via direct `git log`/`git show`,
+not trusted from this file's own prior narrative:** HEAD was `5138bde`, one
+commit past `04f5e4e` (what this file's own prior text named as HEAD).
+`git show --stat 5138bde` and `git diff --name-status 04f5e4e 5138bde`
+confirmed it contains exactly the prior cycle's own new migration `0039`
+(`family_auth_members`/`profile_auth_sessions` cleanup on member removal) +
+its own regression test + that cycle's own `EXECUTION_STATE.md` rewrite —
+the standing self-reporting-drift pattern (see note at top of file)
+reconfirmed yet again (52nd+ time running): the commit had already landed
+despite the prior cycle's own hedged "commit attempt outcome recorded under
+Blocker" self-report. `npm ci` restored `node_modules` (906 packages). `npx
+tsc --noEmit` at reconciled HEAD `5138bde` — **PASS**, zero errors. Full
+`npm test -- --runInBand` at reconciled HEAD — **PASS: 130/130 suites,
+1525/1525 tests** (the expected baseline, matching the prior cycle's own
+reported count exactly), confirming a healthy baseline before starting new
+work. Re-ran
+`npx jest src/lib/__tests__/migration0039.clearFamilyAuthMembershipOnRemoval.test.ts
+--runInBand` specifically given that fix's security-sensitivity, per the
+prior cycle's own request — **PASS: 6/6**, and re-read the landed `0039`
+migration's own new `delete` statements directly: confirmed unchanged from
+what that cycle described (scoped to `target_family`, sourced from both
+`profile_auth_sessions` and the legacy `users.auth_user_id` column).
+
+**This cycle's own task — a real, first-time-discovered, security/
+data-integrity-relevant defect, found by a fresh Explore research agent
+(explicitly steered away from ~55+ already-exhausted defect classes listed
+in this file) and verified directly by this cycle (not just trusted from
+the report) by reading `supabase/migrations/0033_verified_family_onboarding_cutover.sql`
+(`current_family_id()` and the current applied `join_family()`),
+`supabase/migrations/0008_family_invites.sql`/`0009_family_invites_pgcrypto_fix.sql`
+(the current applied `redeem_family_invite()`, confirmed via
+`grep -rln "create or replace function join_family\|create or replace function redeem_family_invite"`
+that no migration after 0033/0009 respectively redefines either function),
+`supabase/migrations/0002_invite_codes_and_family_membership.sql`
+(`family_auth_members` table definition — `auth_user_id uuid primary key` —
+one row per auth identity), and `src/screens/FamilyOnboardingScreen.tsx` in
+full (the pending/rejected recovery mount effect and the `confirmJoin()`
+flow):**
+
+`current_family_id()` (0033) resolves only families with `approval_status =
+'active'` — deliberate, so a pending/rejected family's own creator is not
+treated as a full member anywhere gated on it. But `redeem_family_invite()`'s
+own "account already belongs to a different family" collision guard
+(0008/0009, its own "CORRECTION ROUND 2" comment) resolves the caller's
+existing membership via `v_caller_family := current_family_id();` — so for a
+caller whose real `family_auth_members` row points at a still-pending or
+already-rejected family, that guard silently reads `null` and never fires.
+`join_family()` (0002/0003/0033, current applied definition) never had an
+equivalent guard at all.
+
+**Concrete reachable scenario, confirmed end-to-end by reading
+`FamilyOnboardingScreen.tsx` directly:** a prospective admin completes
+email-OTP verification and calls `createVerifiedFamily()`, which inserts
+this device's `family_auth_members` row as `(auth_user_id, family_id = A,
+role = 'admin')` immediately, before any System Admin approval
+(`create_verified_family()`, 0032). The screen's mount effect
+(`getMyFamilyOnboardingStatus()`) shows a "ממתינה לאישור"/"הבקשה נדחתה"
+screen whose "חזרה" button (lines 345 and 358, confirmed directly) calls
+`setMode('choose')` — from there the same still-signed-in device can pick
+"הצטרפות למשפחה קיימת" and enter a **different**, already-active family B's
+invite code. `confirmJoin()` → `joinFamily(code)` → `join_family()`'s own
+`insert ... on conflict (auth_user_id) do update set family_id =
+excluded.family_id, role = ...` (the table's primary key is `auth_user_id`,
+one row per identity) then silently **overwrites** the device's row: `family_id`
+flips from A to B, `role` drops to `'member'`. The device's only link to
+family A — the family it created, whose onboarding request/dog/settings
+already exist — is permanently destroyed with zero confirmation, warning, or
+audit trail. If family A is later approved by a System Admin, it becomes a
+fully orphaned family with no members at all, with no way for the original
+creator back in. The same `current_family_id()`-blind-spot reachability
+applies to `redeem_family_invite()`'s "יש לי הזמנה" flow for a
+member-specific invite into a different family.
+
+**Why this is real and reachable, not cosmetic:** under the pre-verified-auth
+device model this upsert was low-stakes (a device's own local membership row
+was disposable). Under the verified-auth model an `auth_user_id` is a
+persistent identity, and losing family membership is real, irreversible data
+loss — exactly the risk `redeem_family_invite()`'s own guard was written to
+prevent (its own comment: "onboarding for a fresh device only — never a
+family-switching or account-merging operation"), just undermined by 0033's
+`current_family_id()` redefinition for the pending/rejected case. Confirmed
+this does not collide with `enter_qa_sandbox()`/`exit_qa_sandbox()` (0016),
+which deliberately implement snapshot-based family switching directly
+against `family_auth_members`, not through `join_family()` — this fix does
+not touch either.
+
+**Fixed, via a new migration (0033's `join_family()` and 0009's
+`redeem_family_invite()` both left untouched as applied, per rule 8 — 0040
+supersedes both with `CREATE OR REPLACE`, identical signatures, no drop
+needed):** added
+`supabase/migrations/0040_prevent_cross_family_membership_overwrite.sql` —
+both functions now resolve the caller's existing membership via a **direct**
+`select family_id from family_auth_members where auth_user_id = auth.uid()`
+— never through `current_family_id()`, which hides pending/rejected
+memberships by design — and reject the call (`'account already belongs to a
+different family'`) whenever that existing `family_id` differs from the
+target family, regardless of the existing family's `approval_status`.
+Joining/redeeming again for the *same* family (the ordinary re-scan/
+already-a-member case both functions already supported, including
+`join_family()`'s "keep admin if already admin of the same family" upsert
+shape) is unaffected. Every other guard/behavior in both functions is
+otherwise unchanged, copied verbatim.
+
+Added a new
+`src/lib/__tests__/migration0040.preventCrossFamilyMembershipOverwrite.test.ts`
+(6 tests, source-text-scan style matching `migration0037`/`migration0038`/
+`migration0039`'s own established convention): confirms 0001-0039 are
+untouched and exactly one 0040 file exists; confirms both signatures are
+preserved (no `drop function`); confirms `join_family()` resolves the
+caller's existing membership directly against `family_auth_members` (not via
+`current_family_id()`) and rejects a cross-family call before the insert;
+confirms `redeem_family_invite()` does the same in place of its old
+`current_family_id()` call; confirms every other pre-existing guard in
+`redeem_family_invite()` is preserved; confirms `join_family()`'s existing
+admin-preservation upsert shape is preserved.
+
+`npx tsc --noEmit` after this cycle's own change — **PASS**, zero errors.
+`npm test -- --runInBand` after this cycle's own change — **PASS: 131/131
+suites, 1531/1531 tests** (up from 130/130 · 1525/1525 immediately before
+the change, same HEAD — exactly 1 new suite + 6 new tests, matching the new
+`migration0040.preventCrossFamilyMembershipOverwrite.test.ts` file
+one-for-one; every other suite's count unchanged). `git status
+--porcelain=v1 --untracked-files=all` confirmed the changeset is scoped to
+exactly
+`supabase/migrations/0040_prevent_cross_family_membership_overwrite.sql`
+(new) and
+`src/lib/__tests__/migration0040.preventCrossFamilyMembershipOverwrite.test.ts`
+(new) — plus this `EXECUTION_STATE.md` update — no unrelated file touched,
+no user work at risk.
+
+**Runner-up angle the same investigation surfaced, deliberately not folded
+into this bounded unit (recorded so a future cycle does not re-propose it as
+new):** the research agent's own report also flagged that neither
+`join_family()` nor `redeem_family_invite()` gives a legitimate,
+product-supported way for an admin stuck on a pending/rejected family to
+*intentionally* abandon it and join a different one instead — this fix's
+"reject unconditionally" behavior is the safe default (matching the
+system's existing "never a family-switching operation" design intent), but
+whether such an abandon/retry flow should exist is a product/UX decision,
+not a unilateral engineering call; not pursued here.
+
+### Prior cycles' own narratives (full detail preserved here; see also the further-condensed "Recent cycles" and "Completed This Cycle" sections below for the same events in shorter form)
+
+**This cycle's reconciliation, done fresh via direct `git log`/`git show`,
 not trusted from this file's own prior narrative:** HEAD was `04f5e4e`, one
 commit past `927da51` (what this file's own prior text named as HEAD).
 `git show --stat 04f5e4e` confirmed it contains exactly the prior cycle's
@@ -1060,30 +1203,32 @@ mount-recovery dead end, which was the unambiguous, no-judgment-call part.
 
 ## Current Task Status
 
-Prior cycle's new migration 0038 (persona-anchored authorization restore)
-(`04f5e4e`) is confirmed landed — closed, `DONE`.
+Prior cycle's new migration 0039 (`family_auth_members`/
+`profile_auth_sessions` cleanup on member removal) (`5138bde`) is confirmed
+landed — closed, `DONE`.
 
-**This cycle's own task — clearing `family_auth_members` for a removed
-member's device(s) on `admin_delete_family_member()` (new migration
-`0039`), closing the read-access leak recorded as 0038's own cycle's
-runner-up candidate — is code-complete and validated** (`tsc` PASS zero
-errors; new targeted test PASS **6/6**; full `npm test` PASS **130/130
-suites, 1525/1525 tests**, up from 129/129 · 1519/1519 immediately before
-the change, same HEAD). This is a **security-relevant read-access-leak
-fix** (rule 7) — see Current Task above for the full reachable-defect
-reasoning: `current_family_id()` has no `removed_at` check of its own, and
-`admin_delete_family_member()` never cleared the removed member's
-`family_auth_members` row, so several `select`-only RLS policies gated
-purely on `family_id = current_family_id()` (the member roster, the whole
-rotation plan, every `schedule_entries` row) stayed readable forever from a
-removed member's device. Commit attempt outcome recorded under
-Blocker/Last Evidence below; per the standing 50+-cycle pattern, even a
-"blocked" self-report this same cycle should not be assumed final — the
-next cycle's first action must still be its own independent `git log
---oneline -5` + `git status` check, and — given this fix's
-security-sensitivity — should re-verify the new
-`migration0039.clearFamilyAuthMembershipOnRemoval.test.ts` still passes at
-whatever HEAD it finds before trusting this narrative.
+**This cycle's own task — rejecting cross-family `join_family()`/
+`redeem_family_invite()` calls for a caller whose real `family_auth_members`
+membership is in a different (possibly pending/rejected) family, resolved
+directly rather than via `current_family_id()` (new migration `0040`) — is
+code-complete and validated** (`tsc` PASS zero errors; new targeted test
+PASS **6/6**; full `npm test` PASS **131/131 suites, 1531/1531 tests**, up
+from 130/130 · 1525/1525 immediately before the change, same HEAD). This is
+a **security/data-integrity-relevant fix** (rule 7) — see Current Task above
+for the full reachable-defect reasoning: a verified admin whose newly
+created family is still pending or was rejected could reach the ordinary
+join-a-different-family flow from the "חזרה" button on
+`FamilyOnboardingScreen.tsx`'s recovery screens, and `join_family()`'s
+`on conflict (auth_user_id) do update` would silently overwrite their real
+`family_auth_members` row, permanently orphaning the family they created
+with zero warning. Commit attempt outcome recorded under Blocker/Last
+Evidence below; per the standing 50+-cycle pattern, even a "blocked"
+self-report this same cycle should not be assumed final — the next cycle's
+first action must still be its own independent `git log --oneline -5` +
+`git status` check, and — given this fix's security-sensitivity — should
+re-verify the new
+`migration0040.preventCrossFamilyMembershipOverwrite.test.ts` still passes
+at whatever HEAD it finds before trusting this narrative.
 
 ## Current Branch / PR
 
@@ -1097,44 +1242,45 @@ whatever HEAD it finds before trusting this narrative.
 ## Last Evidence
 
 - This cycle start: `git log --oneline -5`/`git status` confirmed HEAD is
-  `04f5e4e`, clean working tree — **one** commit past `927da51`, what this
-  file's own prior narrative described as HEAD. `git show --stat 04f5e4e`
-  confirmed it contains exactly the prior cycle's own new migration 0038 +
+  `5138bde`, clean working tree — **one** commit past `04f5e4e`, what this
+  file's own prior narrative described as HEAD. `git show --stat 5138bde`
+  confirmed it contains exactly the prior cycle's own new migration 0039 +
   its own regression test + that cycle's own `EXECUTION_STATE.md` rewrite —
   it had landed despite the prior cycle's own hedged "commit attempt
   outcome recorded under Blocker" self-report, consistent with the
   standing pattern (see note at top of file).
 - `npm ci` restored `node_modules` (906 packages, matching the expected
-  baseline). `npx tsc --noEmit` at reconciled HEAD `04f5e4e` — **PASS**,
+  baseline). `npx tsc --noEmit` at reconciled HEAD `5138bde` — **PASS**,
   zero errors. Full `npm test -- --runInBand` at reconciled HEAD —
-  **PASS: 129/129 suites, 1519/1519 tests** (the expected baseline,
+  **PASS: 130/130 suites, 1525/1525 tests** (the expected baseline,
   matching it exactly), confirming a healthy baseline before starting new
   work. Also re-ran
-  `npx jest src/lib/__tests__/migration0038.restorePersonaAuthorization.test.ts
+  `npx jest src/lib/__tests__/migration0039.clearFamilyAuthMembershipOnRemoval.test.ts
   --runInBand` specifically given that fix's security-sensitivity —
-  **PASS: 5/5**.
+  **PASS: 6/6**.
 - **This cycle's own fix:** added
-  `supabase/migrations/0039_clear_family_auth_membership_on_member_removal.sql`
-  (has `admin_delete_family_member()` also delete the removed persona's
-  `family_auth_members` row(s) — sourced from `profile_auth_sessions` and
-  the legacy `users.auth_user_id` column, scoped to `target_family` — plus
-  the persona's own stale `profile_auth_sessions` rows, closing the
-  read-access leak described in Current Task above) and
-  `src/lib/__tests__/migration0039.clearFamilyAuthMembershipOnRemoval.test.ts`
+  `supabase/migrations/0040_prevent_cross_family_membership_overwrite.sql`
+  (has `join_family()` and `redeem_family_invite()` both resolve the
+  caller's existing `family_auth_members` membership directly rather than
+  via `current_family_id()`, and reject the call when it points at a
+  different family regardless of that family's `approval_status`, closing
+  the cross-family-membership-overwrite leak described in Current Task
+  above) and
+  `src/lib/__tests__/migration0040.preventCrossFamilyMembershipOverwrite.test.ts`
   (6 new source-text-scan tests).
-- `npx jest src/lib/__tests__/migration0039.clearFamilyAuthMembershipOnRemoval.test.ts
+- `npx jest src/lib/__tests__/migration0040.preventCrossFamilyMembershipOverwrite.test.ts
   --runInBand` — **PASS: 6/6 tests**.
-- Full `npm test -- --runInBand` after the fix — **PASS: 130/130 suites,
-  1525/1525 tests** (up from 129/129 · 1519/1519 immediately before the
+- Full `npm test -- --runInBand` after the fix — **PASS: 131/131 suites,
+  1531/1531 tests** (up from 130/130 · 1525/1525 immediately before the
   change, same HEAD — exactly 1 new suite + 6 new tests, every other
   suite's count unchanged).
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `git status --porcelain=v1 --untracked-files=all` confirmed the tracked
   changeset is scoped to exactly
-  `supabase/migrations/0039_clear_family_auth_membership_on_member_removal.sql`
+  `supabase/migrations/0040_prevent_cross_family_membership_overwrite.sql`
   (new) and
-  `src/lib/__tests__/migration0039.clearFamilyAuthMembershipOnRemoval.test.ts`
+  `src/lib/__tests__/migration0040.preventCrossFamilyMembershipOverwrite.test.ts`
   (new) — plus this `EXECUTION_STATE.md` update — no unrelated file
   touched, no user work at risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
@@ -1142,14 +1288,14 @@ whatever HEAD it finds before trusting this narrative.
 
 ## Last Evidence Timestamp
 
-2026-09-17T22:40:04Z (prior landed commit `04f5e4e`); this cycle's own work
-validated at HEAD `04f5e4e` + working tree as of this cycle's own run
+2026-09-18T04:42:03Z (prior landed commit `5138bde`); this cycle's own work
+validated at HEAD `5138bde` + working tree as of this cycle's own run
 (2026-09-18, this session), commit attempt outcome per Blocker below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
-self-reported:** a standalone `git add` of the two new migration-0039 files
+self-reported:** a standalone `git add` of the two new migration-0040 files
 and this `EXECUTION_STATE.md` returned "This command requires approval"
 from the tool layer itself (not a git error), consistent with every
 standing blocked git-write command across every prior cycle. A `git status
@@ -1159,19 +1305,20 @@ working tree was unchanged (the two new files still shown as untracked,
 turn's own visibility*, this cycle's commit attempt is a genuine,
 directly-confirmed no-op, not merely a hedged self-report — consistent
 with the standing pattern (see note at top of file, now reconfirmed for at
-least the 51st time running, and this time on a security-relevant fix —
+least the 53rd time running, and this time on a security-relevant fix —
 the next cycle should treat verifying this landed, not just assuming it,
 as a priority given the sensitivity). The working-tree change itself (new
-migration `0039` clearing a removed member's `family_auth_members` row(s)
+migration `0040` preventing cross-family `family_auth_members` overwrite
 + its own regression test — plus this `EXECUTION_STATE.md` update) is real
-and validated (`tsc`/`npm test` both PASS, 130/130 suites, 1525/1525
+and validated (`tsc`/`npm test` both PASS, 131/131 suites, 1531/1531
 tests) — per "never discard uncommitted work," it is NOT reverted
 regardless of this turn's own commit-attempt outcome.
 
-**Prior cycle's own commit-attempt outcome (condensed):** the persona-
-authorization-restore fix (migration 0038) hit the identical "requires
-approval" block, yet was independently confirmed landed as `04f5e4e` by
-this cycle's own reconciliation above — the pattern's own 50th+ instance.
+**Prior cycle's own commit-attempt outcome (condensed):** the
+`family_auth_members` cleanup-on-removal fix (migration 0039) hit the
+identical "requires approval" block, yet was independently confirmed
+landed as `5138bde` by this cycle's own reconciliation above — the
+pattern's own 52nd+ instance.
 
 **Standing question — mechanism already established with direct evidence
 in prior cycles' own history of this file, per the note at the top:** an
@@ -1340,46 +1487,58 @@ safe tasks that do not depend on them.
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
 cycle's own commit (new migration
-`0039_clear_family_auth_membership_on_member_removal.sql` + its own
+`0040_prevent_cross_family_membership_overwrite.sql` + its own
 regression test + this `EXECUTION_STATE.md` update) landed, and check
 every commit between whatever SHA this file names and actual HEAD, not
 just the newest one. **Given this cycle's fix is security-relevant
-(closes a real read-access leak for removed family members), the next
+(closes a real cross-family `family_auth_members` overwrite that could
+orphan a verified admin's own pending/rejected family), the next
 cycle should treat re-running
-`npx jest src/lib/__tests__/migration0039.clearFamilyAuthMembershipOnRemoval.test.ts`
-and re-reading the landed `0039` migration's own new `delete` statements as
+`npx jest src/lib/__tests__/migration0040.preventCrossFamilyMembershipOverwrite.test.ts`
+and re-reading the landed `0040` migration's own guard clauses as
 a priority verification step, not just trusting this file's narrative.**
 **Also re-run the FULL `npm test -- --runInBand`** (standing habit,
 established several cycles ago after a full run caught 2 silently-failing
-tests that per-change subset runs had missed) — expect **130/130 suites,
-1525/1525 tests** as the new baseline (up from 129/129 · 1519/1519 before
+tests that per-change subset runs had missed) — expect **131/131 suites,
+1531/1531 tests** as the new baseline (up from 130/130 · 1525/1525 before
 this cycle's own fix).
 
-**This cycle's own fix — having `admin_delete_family_member()` also delete
-the removed persona's `family_auth_members` row(s) (sourced from
-`profile_auth_sessions` and the legacy `users.auth_user_id` column, scoped
-to `target_family`) and its own stale `profile_auth_sessions` rows (new
-migration `0039`), closing the read-access leak where a removed member's
-device kept resolving `current_family_id()` to the family forever — is
-done and complete; do not re-propose it.** See Current Task above for the
-full reachable-defect reasoning (several `select`-only RLS policies gate
-purely on `family_id = current_family_id()`, with no `removed_at` check of
-their own, so a removed member's device could keep reading the full member
-roster and the entire rotation plan indefinitely). This also fully closes
-the prior cycle's own recorded runner-up candidate (`admin_delete_family_
-member()` never clearing `family_auth_members`) — do not re-propose that
-either.
+**This cycle's own fix — having `join_family()` and `redeem_family_invite()`
+both resolve the caller's existing `family_auth_members` membership directly
+rather than via `current_family_id()`, and reject the call when it points at
+a different family regardless of approval_status (new migration `0040`),
+closing the leak where a verified admin stuck on a pending/rejected family
+could silently lose their own family_auth_members row by joining a different
+family — is done and complete; do not re-propose it.** See Current Task
+above for the full reachable-defect reasoning (`current_family_id()` (0033)
+only resolves active families, so `redeem_family_invite()`'s existing
+collision guard silently no-opped for a pending/rejected caller, and
+`join_family()` never had an equivalent guard at all; reachable via
+`FamilyOnboardingScreen.tsx`'s pending/rejected "חזרה" button →
+choose → join flow).
 
 **Runner-up angle from this cycle's own investigation, deliberately not
 pursued (recorded so a future cycle does not re-propose it as new):**
-individually hardening every `current_family_id()`-gated policy with its
-own extra `removed_at` re-check, as defense in depth on top of this fix —
-investigated and rejected for this bounded unit because the
-device-membership-level fix above already closes the leak at its actual
-root for every current (and future) such policy in one place; only worth
-revisiting if a future cycle finds some read path that resolves family
-membership a different way than `current_family_id()`/`family_auth_members`
-(none found this cycle).
+neither function gives an admin stuck on a pending/rejected family a
+legitimate, product-supported way to *intentionally* abandon it and join a
+different one instead — this fix's "reject unconditionally" behavior is the
+safe default, but whether an abandon/retry flow should exist is a
+product/UX decision, not a unilateral engineering call.
+
+**Prior cycle's own fix — having `admin_delete_family_member()` also delete
+the removed persona's `family_auth_members` row(s) (sourced from
+`profile_auth_sessions` and the legacy `users.auth_user_id` column, scoped
+to `target_family`) and its own stale `profile_auth_sessions` rows (migration
+`0039`), closing the read-access leak where a removed member's device kept
+resolving `current_family_id()` to the family forever — is done and complete
+(landed as `5138bde`); do not re-propose it.** See git history of this file
+for the full reachable-defect reasoning (several `select`-only RLS policies
+gate purely on `family_id = current_family_id()`, with no `removed_at` check
+of their own, so a removed member's device could keep reading the full
+member roster and the entire rotation plan indefinitely). Its own runner-up
+angle (individually hardening every `current_family_id()`-gated policy with
+its own extra `removed_at` re-check) was investigated and rejected as
+redundant with that fix — do not re-propose it either.
 
 If this same CRLF-vs-LF discrepancy between this file's own predicted
 baseline and an actual full-suite run recurs on any *other*
@@ -1782,35 +1941,40 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `04f5e4e`, one commit
-  past `927da51` — confirmed via `git show --stat` it contains exactly the
-  prior cycle's own new migration 0038 + its own regression test + that
+- Reconciliation found HEAD had actually moved to `5138bde`, one commit
+  past `04f5e4e` — confirmed via `git show --stat` it contains exactly the
+  prior cycle's own new migration 0039 + its own regression test + that
   cycle's own `EXECUTION_STATE.md` rewrite — reconfirming the standing
   self-reporting-drift pattern yet again. `npm ci` restored `node_modules`
   (906 packages). `npx tsc --noEmit` PASS; full `npm test -- --runInBand`
-  PASS **129/129 suites, 1519/1519 tests** (the expected baseline, matched
+  PASS **130/130 suites, 1525/1525 tests** (the expected baseline, matched
   exactly), plus a targeted re-run of
-  `migration0038.restorePersonaAuthorization.test.ts` (5/5) given that
-  fix's security-sensitivity.
-- **This cycle's own fix — a real, first-time-discovered, security-relevant
-  read-access leak:** `admin_delete_family_member()` never cleared the
-  removed member's `family_auth_members` row(s), so `current_family_id()`
-  (which has no `removed_at` check of its own) kept resolving to the family
-  for that device forever, and several `select`-only RLS policies gated
-  purely on `family_id = current_family_id()` (member roster, rotation
-  plan, `schedule_entries`) stayed readable indefinitely from a removed
-  member's device. Added
-  `supabase/migrations/0039_clear_family_auth_membership_on_member_removal.sql`
-  (deletes `family_auth_members` sourced from `profile_auth_sessions` +
-  the legacy `users.auth_user_id` column, scoped to `target_family`, plus
-  the persona's own stale `profile_auth_sessions` rows) and
-  `src/lib/__tests__/migration0039.clearFamilyAuthMembershipOnRemoval.test.ts`
+  `migration0039.clearFamilyAuthMembershipOnRemoval.test.ts` (6/6) given
+  that fix's security-sensitivity.
+- **This cycle's own fix — a real, first-time-discovered, security/
+  data-integrity-relevant defect:** `join_family()` had no guard against
+  overwriting a caller's existing `family_auth_members` row for a
+  *different* family, and `redeem_family_invite()`'s own equivalent guard
+  resolved the caller's existing family via `current_family_id()`, which
+  (since migration 0033) only resolves *active* families — so for a caller
+  whose real membership was in a still-pending or already-rejected family,
+  that guard silently read `null` and never fired. Reachable via
+  `FamilyOnboardingScreen.tsx`'s pending/rejected "חזרה" button → choose →
+  join flow: a verified admin stuck awaiting/denied approval on the family
+  they created could silently overwrite their own `family_auth_members` row
+  by joining a different, already-active family, permanently orphaning the
+  family they created with zero warning. Added
+  `supabase/migrations/0040_prevent_cross_family_membership_overwrite.sql`
+  (both functions now resolve the caller's existing membership directly
+  against `family_auth_members`, never via `current_family_id()`, and
+  reject a cross-family call regardless of the existing family's
+  `approval_status`) and
+  `src/lib/__tests__/migration0040.preventCrossFamilyMembershipOverwrite.test.ts`
   (6 new tests). `npx tsc --noEmit` PASS; full `npm test -- --runInBand`
-  PASS **130/130 suites, 1525/1525 tests** (up from 129/129 · 1519/1519).
+  PASS **131/131 suites, 1531/1531 tests** (up from 130/130 · 1525/1525).
   `git status` confirmed the changeset is scoped to exactly those two new
   files plus this `EXECUTION_STATE.md` update. Commit attempt blocked (see
-  Blocker) — same standing pattern as every prior cycle. This closes the
-  prior cycle's own recorded runner-up candidate; do not re-propose it.
+  Blocker) — same standing pattern as every prior cycle.
 - Prior cycles' own completed-this-cycle entries below, preserved for
   history:
 - Reconciliation found HEAD had actually moved to `927da51`, one commit
