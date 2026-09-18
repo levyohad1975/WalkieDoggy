@@ -54,12 +54,20 @@ export function EditWalkModal({
 
   if (!walk) return null;
 
-  // This sheet applies a valid selected time immediately, preserving its
-  // existing one-off edit contract.
+  // Only track the picker's local value here — do NOT commit on every
+  // onChange. On iOS, DateTimePicker's `display="spinner"` fires onChange
+  // continuously as the wheel scrolls (there is no "Done" tap in that mode),
+  // so committing immediately used to reschedule the walk to whatever
+  // intermediate value the wheel passed through first, then close the sheet
+  // out from under the user before they reached their intended time. The
+  // explicit "עדכן שעה" button below is the one place the change is
+  // actually applied, matching RequestTimeChangeModal/AddUnplannedWalkModal's
+  // own explicit-submit pattern for the identical spinner picker.
   const handleTimeChange = (newTime: string) => {
     setTime(newTime);
-    if (is24HourTime(newTime) && newTime !== walk.scheduledTime) onChangeTime(newTime);
   };
+
+  const timeChanged = is24HourTime(time) && time !== walk.scheduledTime;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -90,6 +98,13 @@ export function EditWalkModal({
 
             <RtlText style={styles.label}>שעה</RtlText>
             <TimePickerField value={time} onChange={handleTimeChange} webLabel="בחירת שעת הטיול" />
+            <Button
+              label="עדכן שעה"
+              variant="secondary"
+              disabled={!timeChanged}
+              onPress={() => onChangeTime(time)}
+              style={styles.updateTimeButton}
+            />
 
             <RtlText style={styles.label}>אחראי לטיול הזה</RtlText>
             <View style={styles.userRow}>
@@ -194,6 +209,7 @@ const styles = StyleSheet.create({
   userChip: { alignItems: 'center', minWidth: 68, gap: 4, opacity: 0.55 },
   userChipActive: { opacity: 1 },
   userChipName: { fontSize: 12, color: colors.textPrimary, fontWeight: '600' },
+  updateTimeButton: { marginTop: 10 },
   cancelButton: { marginTop: 22 },
   closeButton: { marginTop: 10 },
 });

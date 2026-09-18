@@ -50,6 +50,128 @@ anything else.
 ## Current Task
 
 **This cycle's reconciliation, done fresh via direct `git log`/`git show`,
+not trusted from this file's own prior narrative:** HEAD was `f0fd847`, one
+commit past `7e13e4f` (what this file's own prior text named as HEAD, and
+whose own commit attempt that prior cycle had hedged under Blocker as
+possibly not landed). `git show --stat f0fd847` and `git diff --name-status
+7e13e4f f0fd847` confirmed it contains exactly the prior cycle's own
+`updateRule()`/`daysOfWeek` reconciliation fix (`src/logic/rotation.ts`,
+`src/logic/__tests__/rotation.test.ts`, `src/store/scheduleStore.ts`,
+`src/store/__tests__/scheduleStore.test.ts`) plus that cycle's own
+`EXECUTION_STATE.md` rewrite — the standing self-reporting-drift pattern
+(see note at top of file) reconfirmed yet again (65th+ time running): the
+commit had already landed despite the prior cycle's own hedged "commit
+attempt outcome recorded under Blocker" self-report. `node_modules` was
+present but missing `typescript` at cycle start (the documented `npx tsc`
+package-resolution symptom); `npm ci` restored it (906 packages, matching
+the expected baseline). `npx tsc --noEmit` at reconciled HEAD `f0fd847` —
+**PASS**, zero errors. Targeted `npx jest
+src/logic/__tests__/rotation.test.ts
+src/store/__tests__/scheduleStore.test.ts --runInBand` — **PASS: 65/65**,
+reconfirming the prior cycle's own regression assertion still holds. Full
+`npm test -- --runInBand` at reconciled HEAD — **PASS: 135/135 suites,
+1580/1580 tests** (the expected baseline, matching the prior cycle's own
+reported count exactly), confirming a healthy baseline before starting new
+work.
+
+**This cycle's own task — a real, first-time-discovered, user-facing
+data-integrity bug, found by a fresh Explore research agent (steered away
+from the 65+ already-exhausted defect classes documented in this file,
+toward previously-unswept areas: `src/data/supabaseRepository.ts`/
+`localRepository.ts`, business logic in `ScheduleScreen.tsx`/modal call
+sites beyond accessibility, `HomeScreen.tsx` beyond what's listed, remaining
+migrations, timezone/DST edge cases, and `authStore.ts`/`requestsStore.ts`
+logic) and verified directly by this cycle (not just trusted from the
+report) by reading `src/components/EditWalkModal.tsx` and
+`src/components/TimePickerField.tsx` in full, confirming both call sites in
+`src/screens/ScheduleScreen.tsx:345-353` and `src/screens/HomeScreen.tsx:
+760-768`, and cross-checking `src/components/RequestTimeChangeModal.tsx`
+and `src/components/AddUnplannedWalkModal.tsx` to confirm their own
+established explicit-submit convention for the identical picker:**
+
+`EditWalkModal.tsx`'s `handleTimeChange` (pre-fix) called the parent
+`onChangeTime` prop immediately on every single `TimePickerField` `onChange`
+event (`setTime(newTime); if (is24HourTime(newTime) && newTime !==
+walk.scheduledTime) onChangeTime(newTime);`), and both call sites
+(`ScheduleScreen.tsx`, `HomeScreen.tsx`) immediately `await rescheduleWalk(...)`
+— a real, family-synced write — and close the sheet in response. On iOS,
+`TimePickerField` renders the native picker with `display="spinner"`
+(`TimePickerField.tsx:50`) — well-established behavior of
+`@react-native-community/datetimepicker`: spinner mode fires `onChange`
+continuously as the wheel scrolls, with no "Done" button and no final-value
+semantics at all, unlike Android's `display="default"` dialog. So the very
+first intermediate value the wheel passed through while scrolling toward
+the user's intended time was immediately committed to the backend and the
+sheet was torn down before the user could finish their selection. Concrete
+reachable scenario: an admin (iOS) taps a pending walk to change its time
+from 08:00 to 08:30; as soon as the minute wheel passes 08:01, `onChange`
+fires with `08:01` (`!== walk.scheduledTime`), `rescheduleWalk` is called,
+and the sheet closes — the walk is now synced to every family member's
+device at the wrong time, and the admin must reopen and repeat, effectively
+one minute per attempt, to reach their actual target. Confirmed
+`RequestTimeChangeModal.tsx`/`AddUnplannedWalkModal.tsx` use the identical
+spinner picker but only call `setTime` from `onChange`, gating any real
+commit behind an explicit submit button (`"שלח בקשה"`/`"שמור טיול"`) —
+`EditWalkModal.tsx` was the one outlier skipping that step.
+
+**Fixed (component-level only, no store/logic change needed — `rescheduleWalk`
+itself, already checked/correct, needed no changes), following this
+codebase's own established explicit-submit pattern for this exact spinner
+picker:** changed `handleTimeChange` in `src/components/EditWalkModal.tsx`
+to only call `setTime(newTime)`, never `onChangeTime`. Added a new
+`timeChanged = is24HourTime(time) && time !== walk.scheduledTime` gate and a
+dedicated `"עדכן שעה"` (Update time) `Button` directly under
+`TimePickerField`, `disabled={!timeChanged}`, calling `onChangeTime(time)`
+only on an explicit tap — matching `RequestTimeChangeModal`'s/
+`AddUnplannedWalkModal`'s own convention exactly. The pre-existing
+`onChangeResponsible` chip-tap flow (a discrete, deliberate tap, not a
+continuous gesture) was left unchanged — it was never part of this defect.
+
+Added `src/components/__tests__/EditWalkModal.deferredTimeCommit.test.ts`
+(7 tests, source-text-scan + pure-logic style matching
+`RequestTimeChangeModal.suggestedTime.test.ts`'s own established convention
+for this class of fix, since this repo has no React Native
+component-rendering test harness): confirms `handleTimeChange` no longer
+calls `onChangeTime`; confirms `TimePickerField` is still wired to
+`handleTimeChange`; confirms the new button is wired to
+`onChangeTime(time)` and gated on `timeChanged`; confirms the `timeChanged`
+gate's exact source text; and three pure-logic cases (unchanged time is not
+a pending commit, a genuinely different valid time is, a mid-scroll invalid
+intermediate value is not). Also repaired one pre-existing test,
+`src/components/__tests__/TimePickerField.integration.test.ts`, which had
+pinned the buggy immediate-commit source text
+(`expect(source).toContain('onChangeTime(newTime)')`) as if it were the
+intended behavior — updated its assertion to the new explicit-button wiring
+instead, with a comment pointing to the new regression test file for why.
+
+`npx tsc --noEmit` after this cycle's own change — **PASS**, zero errors.
+Targeted `npx jest src/components/__tests__/EditWalkModal.deferredTimeCommit.test.ts
+src/components/__tests__/TimePickerField.integration.test.ts --runInBand` —
+**PASS: 9/9 tests**. Full `npm test -- --runInBand` after this cycle's own
+change — **PASS: 136/136 suites, 1587/1587 tests** (up from 135/135 ·
+1580/1580 immediately before the change, same HEAD — exactly 1 new suite +
+its own 7 tests, every other suite's count unchanged including the repaired
+`TimePickerField.integration.test.ts`, which still has its original 2
+tests). `git status --porcelain=v1 --untracked-files=all` confirmed the
+changeset is scoped to exactly `src/components/EditWalkModal.tsx`
+(modified), `src/components/__tests__/TimePickerField.integration.test.ts`
+(modified), and `src/components/__tests__/EditWalkModal.deferredTimeCommit.test.ts`
+(new) — plus this `EXECUTION_STATE.md` update — no unrelated file touched,
+no user work at risk.
+
+**Runner-up angle the same investigation surfaced, deliberately not folded
+into this bounded unit (recorded so a future cycle does not re-propose it):**
+the research agent also flagged `src/components/HomeScreen.tsx` (the
+already-known orphaned duplicate of `src/screens/HomeScreen.tsx`, on the
+standing seventeen-scratch-file deletion-gated list) as containing a similar
+`EditWalkModal` call site around its own line 416 — confirmed this file is
+dead/unreferenced (not imported by any navigator), so it has no runtime
+effect and was correctly left untouched; it stays on the existing
+deletion-gated list, not treated as a second instance of this bug.
+
+### Prior cycles' own narratives (full detail preserved here; see also the further-condensed "Recent cycles" and "Completed This Cycle" sections below for the same events in shorter form)
+
+**This cycle's reconciliation, done fresh via direct `git log`/`git show`,
 not trusted from this file's own prior narrative:** HEAD was `7e13e4f`, one
 commit past `8da3cff` (what this file's own prior text named as HEAD, and
 whose own commit attempt that prior cycle had hedged under Blocker as
@@ -2321,28 +2443,24 @@ mount-recovery dead end, which was the unambiguous, no-judgment-call part.
 
 ## Current Task Status
 
-Prior cycle's `DeleteUserModal.tsx` replacement-picker persistence fix
-(`7e13e4f`) is confirmed landed — closed, `DONE`.
+Prior cycle's `updateRule()`/`daysOfWeek` reconciliation fix (`f0fd847`) is
+confirmed landed — closed, `DONE`.
 
-**This cycle's own task — fixing `updateRule()`'s `daysOfWeek` reconciliation
-gap in `src/store/scheduleStore.ts` (a day dropped from a rule kept its
-already-generated future entry/walk/reminder alive for up to
-`GENERATE_DAYS_AHEAD` days; a day added got no entries until the rule's
-whole window emptied), via a new pure planner
-`planRuleDaysReconciliation()` in `src/logic/rotation.ts` — is code-complete
-and validated** (`tsc` PASS zero errors; targeted
-`rotation.test.ts`+`scheduleStore.test.ts` PASS **65/65**; full `npm test`
-PASS **135/135 suites, 1580/1580 tests**, up from 135/135 · 1570/1570
-immediately before the change, same HEAD). See Current Task above for the
-full reachable-defect reasoning (an admin turning off Saturday for Shabbat
-left that Saturday's walk/reminder live for up to two weeks; the symmetric
-add-a-day case silently no-opped for just as long). Commit attempt outcome
-recorded under Blocker/Last Evidence below; per the standing 60+-cycle
-pattern, even a "blocked" self-report this same cycle should not be assumed
-final — the next cycle's first action must still be its own independent
-`git log --oneline -5` + `git status` check, and should re-verify
-`rotation.test.ts`'s `planRuleDaysReconciliation` assertions and
-`scheduleStore.test.ts`'s new `updateRule`/`daysOfWeek` assertions still
+**This cycle's own task — deferring `EditWalkModal.tsx`'s time-picker commit
+to an explicit "עדכן שעה" button instead of committing on every
+`TimePickerField` `onChange` tick (iOS `display="spinner"` fires `onChange`
+continuously mid-scroll, so a partial value was previously reschedule-written
+and closed the sheet before the user reached their intended time) — is
+code-complete and validated** (`tsc` PASS zero errors; targeted
+`EditWalkModal.deferredTimeCommit.test.ts`+`TimePickerField.integration.test.ts`
+PASS **9/9**; full `npm test` PASS **136/136 suites, 1587/1587 tests**, up
+from 135/135 · 1580/1580 immediately before the change, same HEAD). See
+Current Task above for the full reachable-defect reasoning. Commit attempt
+outcome recorded under Blocker/Last Evidence below; per the standing
+65+-cycle pattern, even a "blocked" self-report this same cycle should not
+be assumed final — the next cycle's first action must still be its own
+independent `git log --oneline -5` + `git status` check, and should
+re-verify `EditWalkModal.deferredTimeCommit.test.ts`'s assertions still
 pass at whatever HEAD it finds before trusting this narrative.
 
 ## Current Branch / PR
@@ -2357,76 +2475,94 @@ pass at whatever HEAD it finds before trusting this narrative.
 ## Last Evidence
 
 - This cycle start: `git log --oneline -8`/`git status` confirmed HEAD is
-  `7e13e4f`, clean working tree — **one** commit past `8da3cff`, what this
-  file's own prior narrative described as HEAD. `git show --stat 7e13e4f`
-  confirmed it contains exactly the prior cycle's own `DeleteUserModal.tsx`
-  replacement-picker persistence fix
-  (`src/components/DeleteUserModal.tsx`,
-  `src/logic/deleteUserModalTransitions.ts`,
-  `src/logic/__tests__/deleteUserModalTransitions.test.ts`) + that cycle's
-  own `EXECUTION_STATE.md` rewrite — it had landed despite the prior
-  cycle's own hedged "commit attempt outcome recorded under Blocker"
-  self-report, consistent with the standing pattern (see note at top of
-  file).
+  `f0fd847`, clean working tree — **one** commit past `7e13e4f`, what this
+  file's own prior narrative described as HEAD. `git show --stat f0fd847`
+  confirmed it contains exactly the prior cycle's own `updateRule()`/
+  `daysOfWeek` reconciliation fix (`src/logic/rotation.ts`,
+  `src/logic/__tests__/rotation.test.ts`, `src/store/scheduleStore.ts`,
+  `src/store/__tests__/scheduleStore.test.ts`) + that cycle's own
+  `EXECUTION_STATE.md` rewrite — it had landed despite the prior cycle's
+  own hedged "commit attempt outcome recorded under Blocker" self-report,
+  consistent with the standing pattern (see note at top of file).
 - `node_modules/typescript` was missing at cycle start (the documented
   `npx tsc` package-resolution symptom); `npm ci` restored it (906
   packages, matching the expected baseline). `npx tsc --noEmit` at
-  reconciled HEAD `7e13e4f` — **PASS**, zero errors. Targeted
-  `npx jest src/logic/__tests__/deleteUserModalTransitions.test.ts
-  --runInBand` — **PASS: 7/7**. Full `npm test -- --runInBand` at
-  reconciled HEAD — **PASS: 135/135 suites, 1570/1570 tests** (the expected
-  baseline, matching it exactly), confirming a healthy baseline before
-  starting new work.
-- **This cycle's own fix:** added `src/logic/rotation.ts`'s
-  `planRuleDaysReconciliation()` (and exported the previously-private
-  `dayOfWeekUTC()`), closing the gap where `scheduleStore.ts`'s
-  `updateRule()` recomputed every future entry's `time`/`responsibleUserId`
-  on a `daysOfWeek` edit but never removed an entry for a day just dropped
-  from the rule, nor generated one for a day just added — see Current Task
-  above for the full reachable-defect reasoning (Saturday turned off for
-  Shabbat kept its already-generated walk/reminder alive for up to 14
-  days; the symmetric add-a-day case silently no-opped for just as long).
-  Wired the new pure planner into `updateRule()` in
-  `src/store/scheduleStore.ts`: dropped-day entries are deleted (cascading
-  to their walk) only when still `pending`, matching `deleteRule()`'s own
-  history-preserving behavior; newly-added-day entries get walks created
-  via the existing `walkFromEntry()` helper exactly like `addRule()`
-  already does; a day active both before and after an edit can never have
-  an entry resurrected, so a deliberately-deleted single occurrence
-  (`deleteEntry()`) stays deleted.
-- Added 7 new tests to `src/logic/__tests__/rotation.test.ts`
-  (`planRuleDaysReconciliation` describe block, matching
-  `ruleNeedsEntryBackfill`'s own established pure-function-test
-  convention) and 3 new integration tests to
-  `src/store/__tests__/scheduleStore.test.ts` against the demo-seeded
-  store (matching its own established `updateRule` coverage convention).
-- Targeted `npx jest src/logic/__tests__/rotation.test.ts
-  src/store/__tests__/scheduleStore.test.ts --runInBand` — **PASS: 65/65
-  tests**.
-- Full `npm test -- --runInBand` after the fix — **PASS: 135/135 suites,
-  1580/1580 tests** (up from 135/135 · 1570/1570 immediately before the
-  change, same HEAD — no new suite, exactly +10 tests, matching the 7 new
-  `rotation.test.ts` tests + 3 new `scheduleStore.test.ts` tests; every
-  other suite's count unchanged).
+  reconciled HEAD `f0fd847` — **PASS**, zero errors. Targeted
+  `npx jest src/logic/__tests__/rotation.test.ts
+  src/store/__tests__/scheduleStore.test.ts --runInBand` — **PASS: 65/65**.
+  Full `npm test -- --runInBand` at reconciled HEAD — **PASS: 135/135
+  suites, 1580/1580 tests** (the expected baseline, matching it exactly),
+  confirming a healthy baseline before starting new work.
+- **This cycle's own fix:** changed `handleTimeChange` in
+  `src/components/EditWalkModal.tsx` to only update local `time` state,
+  never call `onChangeTime` directly — see Current Task above for the full
+  reachable-defect reasoning (iOS `display="spinner"` fires `onChange`
+  continuously mid-scroll; the pre-fix code committed the first
+  intermediate value straight to `rescheduleWalk` and closed the sheet).
+  Added a `timeChanged` gate and a dedicated `"עדכן שעה"` button that calls
+  `onChangeTime(time)` only on an explicit tap, matching
+  `RequestTimeChangeModal`/`AddUnplannedWalkModal`'s own established
+  explicit-submit convention for the identical spinner picker.
+- Added `src/components/__tests__/EditWalkModal.deferredTimeCommit.test.ts`
+  (7 tests, source-text-scan + pure-logic style matching
+  `RequestTimeChangeModal.suggestedTime.test.ts`'s own convention) and
+  repaired `src/components/__tests__/TimePickerField.integration.test.ts`,
+  which had pinned the buggy immediate-commit source text as intended
+  behavior.
+- Targeted `npx jest src/components/__tests__/EditWalkModal.deferredTimeCommit.test.ts
+  src/components/__tests__/TimePickerField.integration.test.ts --runInBand`
+  — **PASS: 9/9 tests**.
+- Full `npm test -- --runInBand` after the fix — **PASS: 136/136 suites,
+  1587/1587 tests** (up from 135/135 · 1580/1580 immediately before the
+  change, same HEAD — exactly 1 new suite + its own 7 tests, every other
+  suite's count unchanged).
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `git status --porcelain=v1 --untracked-files=all` confirmed the tracked
-  changeset is scoped to exactly `src/logic/rotation.ts` (modified),
-  `src/logic/__tests__/rotation.test.ts` (modified),
-  `src/store/scheduleStore.ts` (modified), and
-  `src/store/__tests__/scheduleStore.test.ts` (modified) — plus this
-  `EXECUTION_STATE.md` update — no unrelated file touched, no user work at
-  risk.
+  changeset is scoped to exactly `src/components/EditWalkModal.tsx`
+  (modified), `src/components/__tests__/TimePickerField.integration.test.ts`
+  (modified), and `src/components/__tests__/EditWalkModal.deferredTimeCommit.test.ts`
+  (new) — plus this `EXECUTION_STATE.md` update — no unrelated file
+  touched, no user work at risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
   checked directly via `git status` immediately after the attempt.
 
 ## Last Evidence Timestamp
 
-2026-09-18T16:01:27+03:00 (prior landed commit `7e13e4f`); this cycle's own
-work validated at HEAD `7e13e4f` + working tree as of this cycle's own run
+2026-09-18T16:46:37+03:00 (prior landed commit `f0fd847`); this cycle's own
+work validated at HEAD `f0fd847` + working tree as of this cycle's own run
 (2026-09-18, this session), commit attempt outcome per Blocker below.
 
 ## Blocker
+
+**This cycle's commit attempt was checked directly, not just
+self-reported:** a compound `git add` of the four changed files
+(`src/components/EditWalkModal.tsx`,
+`src/components/__tests__/TimePickerField.integration.test.ts`,
+`src/components/__tests__/EditWalkModal.deferredTimeCommit.test.ts`,
+`EXECUTION_STATE.md`) returned "This command requires approval" from the
+tool layer itself (not a git error), consistent with every standing
+blocked git-write command across every prior cycle. A standalone `git add`
+retry (same four files) hit the identical block. A `git status
+--porcelain=v1 --untracked-files=all` run immediately after confirmed the
+working tree was unchanged (all files still shown modified/untracked,
+nothing staged). So *within this turn's own visibility*, this cycle's
+commit attempt is a genuine, directly-confirmed no-op, not merely a hedged
+self-report — consistent with the standing pattern (see note at top of
+file, now reconfirmed for at least the 66th time running). The
+working-tree change itself (the `EditWalkModal.tsx` deferred-time-commit
+fix + its own new regression test + the repaired
+`TimePickerField.integration.test.ts` — plus this `EXECUTION_STATE.md`
+update) is real and validated (`tsc`/`npm test` both PASS, 136/136 suites,
+1587/1587 tests) — per "never discard uncommitted work," it is NOT
+reverted regardless of this turn's own commit-attempt outcome.
+
+**Prior cycle's own commit-attempt outcome (condensed):** the
+`updateRule()`/`daysOfWeek` reconciliation fix hit the identical "requires
+approval" block, yet was independently confirmed landed as `f0fd847` by
+this cycle's own reconciliation above — the pattern's own 65th+ instance.
+
+### Prior cycle's own commit-attempt narrative (full detail preserved for history)
 
 **This cycle's commit attempt was checked directly, not just
 self-reported:** a compound `git add` of the five changed files
@@ -2621,19 +2757,23 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the `updateRule()`/`daysOfWeek` reconciliation fix +
-new `planRuleDaysReconciliation()` in `src/logic/rotation.ts` + 10 new
-regression tests + this `EXECUTION_STATE.md` update) landed, and check
-every commit between whatever SHA this file names and actual HEAD, not
-just the newest one. Re-run `npx jest src/logic/__tests__/rotation.test.ts
-src/store/__tests__/scheduleStore.test.ts --runInBand` (expect 65/65) as a
-targeted check before trusting this file's narrative. Also re-run the FULL
-`npm test -- --runInBand` — expect **135/135 suites, 1580/1580 tests** as
-the new baseline (up from 135/135 · 1570/1570 before this cycle's own fix).
-Do not re-propose this `updateRule`/`daysOfWeek` reconciliation fix itself,
-nor re-check `reorderRules`/`deleteRule` for the same gap (both already
-confirmed unaffected — see Current Task above), nor any of the runner-up
-angles already checked with no defect found across prior cycles:
+cycle's own commit (the `EditWalkModal.tsx` deferred-time-commit fix + new
+`EditWalkModal.deferredTimeCommit.test.ts` + the repaired
+`TimePickerField.integration.test.ts` + this `EXECUTION_STATE.md` update)
+landed, and check every commit between whatever SHA this file names and
+actual HEAD, not just the newest one. Re-run `npx jest
+src/components/__tests__/EditWalkModal.deferredTimeCommit.test.ts
+src/components/__tests__/TimePickerField.integration.test.ts --runInBand`
+(expect 9/9) as a targeted check before trusting this file's narrative.
+Also re-run the FULL `npm test -- --runInBand` — expect **136/136 suites,
+1587/1587 tests** as the new baseline (up from 135/135 · 1580/1580 before
+this cycle's own fix). Do not re-propose this `EditWalkModal` deferred-time
+-commit fix itself, nor the already-dismissed `src/components/HomeScreen.tsx`
+orphaned-duplicate angle (dead file, no runtime effect, stays on the
+existing deletion-gated list), nor re-check `updateRule()`/`daysOfWeek`
+reconciliation or `reorderRules`/`deleteRule` for the same gap (all already
+confirmed fixed/unaffected — see Current Task above), nor any of the
+runner-up angles already checked with no defect found across prior cycles:
 `src/notifications/notificationService.ts`/`reminderEntry.ts`,
 `PinEntryModal.tsx`/`PinSetupModal.tsx`, `InviteShareModal.tsx`/QR
 rendering, `src/logic/familyInvites.ts`, `src/lib/verifiedAdminOnboarding.ts`
@@ -2652,7 +2792,14 @@ remaining Edge Functions, `admin_swap_walks`/`create_swap_request`/
 Settings/roles logic, Web Push service-worker/VAPID paths,
 `reminderMessages.ts` beyond `due_walk_reminders()`, remaining System Admin
 screens/RPCs, `nextWalk.ts` edge cases, and the claim-profile flow on
-non-removed profiles.
+non-removed profiles. A fresh angle worth a future cycle's own bounded unit
+if pursued: `ScheduleScreen.tsx`'s `RuleFormModal`/`AddUnplannedWalkModal`/
+`EditDoneDetailsModal`/`RequestTimeChangeModal`/`RequestsInboxModal`
+business logic (validation, edge cases, state transitions) beyond
+accessibility was flagged by this cycle's own research agent as an area to
+look at further but was not itself investigated in depth this cycle (only
+`EditWalkModal.tsx`/`TimePickerField.tsx` were read in full) — worth a
+fresh, focused look rather than assuming it's exhausted.
 
 **Prior cycle's own next-step note (condensed, now itself historical —
 its own task since landed as `17d3dfc` and is reconciled above; retained
@@ -3174,15 +3321,41 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `7e13e4f`, one commit
-  past `8da3cff` — confirmed via `git show --stat` it contains exactly the
-  prior cycle's own `DeleteUserModal.tsx` replacement-picker persistence
-  fix + its own regression test — reconfirming the standing
-  self-reporting-drift pattern yet again (63rd+ time). `node_modules/typescript`
-  was missing; `npm ci` restored it. `npx tsc --noEmit` — PASS. Full `npm
-  test` at reconciled HEAD `7e13e4f` — PASS 135/135 suites, 1570/1570 tests
+- Reconciliation found HEAD had actually moved to `f0fd847`, one commit
+  past `7e13e4f` — confirmed via `git show --stat` it contains exactly the
+  prior cycle's own `updateRule()`/`daysOfWeek` reconciliation fix + its
+  own 10 regression tests — reconfirming the standing self-reporting-drift
+  pattern yet again (65th+ time). `node_modules/typescript` was missing;
+  `npm ci` restored it. `npx tsc --noEmit` — PASS. Full `npm test` at
+  reconciled HEAD `f0fd847` — PASS 135/135 suites, 1580/1580 tests
   (expected baseline).
-- This cycle's own task: fixed `updateRule()` in `src/store/scheduleStore.ts`
+- **This cycle's own task:** fixed `EditWalkModal.tsx`'s time picker
+  committing and closing the sheet on the first iOS spinner tick instead of
+  a deliberate final selection — `handleTimeChange` called the parent
+  `onChangeTime` (which immediately `rescheduleWalk`s and closes the sheet)
+  on every single `TimePickerField` `onChange` event, but iOS's
+  `display="spinner"` mode fires `onChange` continuously as the wheel
+  scrolls with no "Done" tap at all, so the first intermediate value
+  passed through was committed as a real, family-synced schedule change —
+  a genuine user-facing data-integrity bug, not cosmetic. Changed
+  `handleTimeChange` to only update local state; added a `timeChanged` gate
+  and an explicit `"עדכן שעה"` button to actually commit, matching
+  `RequestTimeChangeModal`/`AddUnplannedWalkModal`'s own established
+  explicit-submit convention for the identical picker. Added
+  `EditWalkModal.deferredTimeCommit.test.ts` (7 tests) and repaired
+  `TimePickerField.integration.test.ts`, which had pinned the buggy
+  immediate-commit behavior as intended. `tsc` PASS zero errors; targeted
+  tests PASS 9/9; full `npm test` PASS **136/136 suites, 1587/1587 tests**
+  (up from 135/135 · 1580/1580). `git status` confirmed the changeset is
+  scoped to exactly `src/components/EditWalkModal.tsx`,
+  `src/components/__tests__/TimePickerField.integration.test.ts`, and
+  `src/components/__tests__/EditWalkModal.deferredTimeCommit.test.ts` plus
+  this `EXECUTION_STATE.md` update. Commit attempt (`git add` on the four
+  changed files) hit the same standing "requires approval" tool-layer
+  block as every prior cycle — see Blocker for the directly-confirmed
+  outcome; the working-tree change itself is real, validated, and not
+  reverted.
+- Prior cycle's own task: fixed `updateRule()` in `src/store/scheduleStore.ts`
   never reconciling a rule's future entries against a *changed*
   `daysOfWeek` — a day dropped from the rule (e.g. an admin turning off
   Saturday for Shabbat) kept its already-generated future walk/reminder
