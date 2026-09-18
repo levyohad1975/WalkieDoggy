@@ -76,6 +76,13 @@ export const SHARED_ERROR_RULES: ErrorRule[] = [
   { includes: 'cannot change the role of a removed member', message: 'לא ניתן לשנות תפקיד לבן משפחה שהוסר.' },
   { includes: 'target member has no linked auth session', message: 'לא ניתן לשנות תפקיד לבן המשפחה הזה כרגע.' },
   { includes: 'invalid role', message: 'תפקיד לא תקין.' },
+  // admin_delete_family_member() (migrations/0041_*.sql) — fail-closed
+  // completeness check: the caller's own cached rotation/schedule/walk data
+  // was stale (missed a row still assigned to the member being removed), so
+  // the server rejected the removal rather than silently orphaning that row
+  // on an unreclaimable soft-deleted user. All three checks (rotation,
+  // schedule, walk) share this one substring so a single rule covers them.
+  { includes: 'refresh and retry the deletion', message: 'המידע במסך אינו מעודכן. רעננו את המסך ונסו למחוק שוב.' },
   // set_member_role()/admin_delete_family_member() both raise this exact
   // text when the target user id doesn't resolve within the caller's own
   // family (not found at all, or found but in a different family) — see

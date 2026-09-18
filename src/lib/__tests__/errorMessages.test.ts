@@ -60,6 +60,33 @@ describe('friendlyErrorMessage — role management (0007)', () => {
 });
 
 /**
+ * admin_delete_family_member()'s new fail-closed completeness check
+ * (migrations/0041_fail_closed_member_removal_completeness_check.sql) raises
+ * one of three distinct messages (rotation/schedule/walk) that all share the
+ * same "refresh and retry the deletion" substring, so one shared rule maps
+ * all three to the same friendly Hebrew message.
+ */
+describe('friendlyErrorMessage — member-removal completeness check (0041)', () => {
+  it('maps the stale-rotation-data rejection', () => {
+    expect(friendlyErrorMessage(new Error('stale rotation data — refresh and retry the deletion'))).toBe(
+      'המידע במסך אינו מעודכן. רעננו את המסך ונסו למחוק שוב.'
+    );
+  });
+
+  it('maps the stale-schedule-data rejection', () => {
+    expect(friendlyErrorMessage(new Error('stale schedule data — refresh and retry the deletion'))).toBe(
+      'המידע במסך אינו מעודכן. רעננו את המסך ונסו למחוק שוב.'
+    );
+  });
+
+  it('maps the stale-walk-data rejection', () => {
+    expect(friendlyErrorMessage(new Error('stale walk data — refresh and retry the deletion'))).toBe(
+      'המידע במסך אינו מעודכן. רעננו את המסך ונסו למחוק שוב.'
+    );
+  });
+});
+
+/**
  * Round 2. Covers the new family-invite rules added for lib/invites.ts
  * (migrations/0008_family_invites.sql). Every rejection text asserted here
  * is copied verbatim from 0008's own `raise exception` messages (see the
