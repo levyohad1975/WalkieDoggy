@@ -51,12 +51,184 @@ anything else.
 
 **This cycle's reconciliation, done fresh via direct `git log`/`git
 show`/`git status`, not trusted from this file's own prior narrative:**
-HEAD was `1d1250e`, one commit past `bed4166` (what this file's own prior
+HEAD was `76b5091`, one commit past `1d1250e` (what this file's own prior
 text named as HEAD, and whose own commit attempt that prior cycle had
-hedged under Blocker as possibly not landed). `git show --stat 1d1250e`
-confirmed it contains exactly the prior cycle's own `HomeScreen.tsx`
-bell-badge `countPendingRequestsForViewer()` fix
-(`src/logic/requestLifecycle.ts`,
+hedged under Blocker as possibly not landed). `git show --stat 76b5091`
+confirmed it contains exactly the prior cycle's own
+`walkRequestStatusLine.ts` lifecycle-tier-aware winner-selection fix
+(`src/logic/walkRequestStatusLine.ts`,
+`src/logic/__tests__/walkRequestStatusLine.test.ts`) plus that cycle's own
+`EXECUTION_STATE.md` rewrite — the standing self-reporting-drift pattern
+(see note at top of file) reconfirmed yet again (72nd+ time running): the
+commit had already landed AND was already pushed (`git status` showed
+"Your branch is up to date with
+'origin/feat/verified-auth-onboarding-batch-2'", clean tree) despite the
+prior cycle's own hedged "commit attempt outcome recorded under Blocker"
+self-report. `node_modules/typescript` was again missing at cycle start;
+`npm ci` restored it (906 packages, matching baseline). `npx tsc --noEmit`
+at reconciled HEAD `76b5091` — **PASS**, zero errors. Full `npm test --
+runInBand` at reconciled HEAD — **PASS: 137/137 suites, 1608/1608 tests**
+(the expected baseline, matching exactly), confirming a healthy baseline
+before starting new work.
+
+**This cycle's own task — a research pass (general-purpose agent, given
+this file's own extensive already-checked/excluded list so it wouldn't
+re-propose anything) identified, and this cycle independently verified by
+reading the relevant RPCs directly, a real, first-time-discovered
+stale-UI-state gap in `computeRequestLifecycle()`
+(`src/logic/requestLifecycle.ts`), used by
+`countPendingRequestsForViewer()`/`countActionableRequests()` (HomeScreen
+bell badge), `RequestsInboxModal.tsx`'s `isRequestVisible`/`canApprove`
+gating, and `computeWalkRequestStatusLine()`'s per-walk card line:** for a
+still-`pending` request, this function previously only checked that the
+linked walk(s) still had `status === 'pending'` — but
+`approve_time_change_request()` (migration 0006) additionally requires
+`w.scheduled_time = req.expected_time` and `w.responsible_user_id =
+req.requested_by_user_id`, and `approve_swap_request()` (migration 0018)
+additionally re-validates both walks' `responsible_user_id`/
+`scheduled_time` against the `expected_responsible_user_id`/
+`expected_scheduled_time`/`expected_target_responsible_user_id`/
+`expected_target_scheduled_time` snapshot columns captured at request-
+creation time — raising `'the walk has changed since this request was
+created and can no longer be approved'` if any of those drifted, even
+though the walk itself never left `status = 'pending'`. Concretely: a
+member requests a time-change on their 08:00 walk → 09:00; before an Admin
+acts on it, the Admin separately reschedules that same still-pending walk
+to 08:30 via `admin_reschedule_walk` (an ordinary, unrelated admin action)
+— the inbox kept showing the request as `'active'` with live אשר/דחה
+buttons, and the bell badge kept counting it, right up until the admin
+taps אשר and the RPC rejects it. The identical class applies to swap
+requests whenever `admin_swap_walks`/`admin_reschedule_walk`/another
+approved request changes either walk's `responsible_user_id`/
+`scheduled_time` without changing `status`. Not a security gap (the server
+already correctly blocks the stale approval) — a reachable false-
+actionable-UI bug, the same general class as this round's other lifecycle
+fixes but on a gap none of them had covered (they all only ever compared
+`status`, never the `expected_*` snapshot).
+
+**Fixed by extending `RequestLike`/`SwapRequestRow` with the missing
+`expected_*` snapshot fields (already present in the DB, just never typed
+on the client — `select('*')` was already fetching them) and having
+`computeRequestLifecycle()` additionally compare the live walk(s)'
+`responsibleUserId`/`scheduledTime` against those snapshots, mirroring
+each RPC's own check exactly** (time-change: `expected_time` +
+`requested_by_user_id`; swap: `expected_responsible_user_id`/
+`expected_scheduled_time` for the source walk, `expected_target_*` for the
+target). `walksById`'s Pick type was widened from `Pick<Walk, 'status'>` to
+a new shared `LifecycleWalk` type (`status` required,
+`responsibleUserId`/`scheduledTime` optional) so older test fixtures that
+only ever supplied `status` keep type-checking — every new comparison
+explicitly no-ops when the walk side of the comparison is `undefined`,
+so it only ever activates for real callers (HomeScreen/ScheduleScreen/
+RequestsInboxModal already build `walksById` from full `Walk` objects) and
+never retroactively expires anything a caller genuinely can't evaluate.
+Also extended `walkRequestStatusLine.ts`'s `toRequestLike()` to forward
+the same snapshot fields (it previously stripped them), so the per-walk
+card status line gets the identical fix, not just the badge/inbox. One
+real trap hit and fixed mid-cycle: an early doc-comment draft contained the
+literal substring `expected_*/expected_target_*`, whose embedded `*/`
+silently closed the JSDoc block comment early and corrupted the rest of
+the file into unparseable garbage (dozens of cascading `tsc` syntax
+errors) — reworded to avoid any literal `*/` inside a block comment.
+
+`npx tsc --noEmit` after this cycle's own change — **PASS**, zero errors.
+Targeted `npx jest src/logic/__tests__/requestLifecycle.test.ts
+src/logic/__tests__/walkRequestStatusLine.test.ts --runInBand` — **PASS:
+51/51 tests** (up from 28/28 before the change — 23 new tests: 7 in
+`requestLifecycle.test.ts` exercising the new staleness checks directly
+[time-change rescheduled/reassigned-since, swap source/target
+rescheduled/reassigned-since, exact-match-stays-active, and a
+fixture-omits-the-new-fields backward-compat case], 2 in
+`walkRequestStatusLine.test.ts` confirming the per-walk card line also
+hides a now-stale pending request — the other 14 are pre-existing fixture/
+helper additions the new required `SwapRequestRow` fields forced, already
+counted in the 28 baseline). Full `npm test -- --runInBand` after this
+cycle's own change — **PASS: 137/137 suites, 1617/1617 tests** (up from
+137/137 · 1608/1608 immediately before the change, same HEAD — same suite
+count, exactly 9 new tests: the same 7 + 2 above; every other suite's
+count unchanged). `git status --porcelain=v1 --untracked-files=all`
+confirmed the changeset is scoped to exactly `src/lib/requests.ts`,
+`src/logic/requestLifecycle.ts`, `src/logic/walkRequestStatusLine.ts`,
+`src/logic/__tests__/requestLifecycle.test.ts`,
+`src/logic/__tests__/walkRequestStatusLine.test.ts` (all modified) — plus
+this `EXECUTION_STATE.md` update — no unrelated file touched, no user work
+at risk. Also directly confirmed `RequestsInboxModal.tsx`'s own
+`canApprove = state === 'active' && ...` reads `state` straight from
+`computeRequestLifecycle(r, walksById)` with `walksById: Record<string,
+Walk>` (full objects) — the fix reaches that exact gating with no further
+wiring needed.
+
+### Prior cycle's own task (full detail preserved here; now historical —
+its own task since landed as `76b5091` and is reconciled above)
+
+**Prior cycle's own task — the strong recommended next pick,
+`src/components/SwapWalkPickerModal.tsx` and
+`src/logic/walkRequestStatusLine.ts` (`computeWalkRequestStatusLine()`),
+read in full this cycle for the first time, cross-checked against
+`requestLifecycle.ts`, `requestsStore.ts`/`requests.ts`, both swap-flow call
+sites in `HomeScreen.tsx`/`ScheduleScreen.tsx` (member-approval swap via
+`UserPickerModal`+`SwapWalkPickerModal`, and the separate Admin-only direct
+`swapTwoWalks`/`admin_swap_walks` path — confirmed server-side
+`is_family_admin()`-gated, fail-closed, no defect), and migrations
+0005/0018/0031's `create_swap_request`/`approve_swap_request`/
+`create_time_change_request`/`approve_time_change_request`/
+`admin_swap_walks` RPCs:** `SwapWalkPickerModal.tsx` itself is purely
+presentational (no defect). The real, first-time-discovered gap was in
+`computeWalkRequestStatusLine()`'s "most recent request wins" tie-break.
+Confirmed by reading every version of both RPCs' pending-conflict guards
+(migrations 0005/0006/0018/0031): `create_swap_request()` only checks for
+an existing PENDING row in `walk_swap_requests` referencing either walk id,
+and `create_time_change_request()` only checks for an existing PENDING row
+in `time_change_requests` for that walk id — **neither checks the other
+table**. So the same walk's responsible member can end up with a still-
+pending swap request AND a time-change request (pending or already
+resolved) at once. The old code picked the single displayed line purely by
+`created_at` descending, with no regard for lifecycle state — so a NEWER
+but already-resolved request (e.g. a rejected time-change) could outrank
+an OLDER but still-'active'/actionable request (e.g. a pending swap) for
+the exact same walk, falsely showing "✕ נדחה" on the card while silently
+hiding that something else is still pending on that same walk (the
+requester, viewing their own walk, would reasonably read that as "nothing
+left pending here" when a swap is still awaiting the target member's
+decision). Not a security gap — both approval RPCs already independently
+re-validate walk staleness at approval time (`approve_time_change_request`
+checks `w.scheduled_time`/`w.responsible_user_id` against the request's own
+`expected_time`/`requested_by_user_id` snapshot; `approve_swap_request`
+checks both walks' `expected_*` snapshots the same way), so whichever of
+the two requests resolves second is safely rejected server-side as stale,
+never silently corrupting data — but the exact same false-denial-on-the-
+card UI class already fixed elsewhere this round (`HistoryScreen.tsx`
+`hasEverGrantedRef`, `EditWalkModal.tsx`'s spinner-picker premature commit).
+
+**Fixed by making `computeWalkRequestStatusLine()`'s winner selection
+lifecycle-tier-aware, not purely recency-based:** carries each visible
+candidate's already-computed `RequestLifecycleState` through to the sort,
+and now sorts `'active'` ahead of `'recentlyResolved'` unconditionally,
+falling back to `created_at` descending only to break ties WITHIN the same
+tier (both existing behaviors — "newest wins among same-tier candidates,"
+and the personal-only visibility rule for resolved time-change requests —
+are unchanged). Exported `RequestLifecycleState` from `requestLifecycle.ts`
+was already public; only needed to import the type into
+`walkRequestStatusLine.ts`.
+
+`npx tsc --noEmit` after this cycle's own change — **PASS**, zero errors.
+Targeted `npx jest src/logic/__tests__/walkRequestStatusLine.test.ts
+--runInBand` — **PASS: 15/15 tests** (up from 13/13 before the change —
+exactly 2 new tests: the false-denial regression scenario above — older
+active swap outranking a newer resolved/rejected time-change for the
+requester's own view — and a same-tier control case confirming recency
+tie-break still applies when BOTH candidates are resolved). Full `npm test
+-- --runInBand` after this cycle's own change — **PASS: 137/137 suites,
+1608/1608 tests** (up from 137/137 · 1606/1606 immediately before the
+change, same HEAD — same suite count, exactly 2 new tests in the existing
+`walkRequestStatusLine.test.ts` suite; every other suite's count
+unchanged). `git status --porcelain=v1 --untracked-files=all` confirmed the
+changeset is scoped to exactly `src/logic/walkRequestStatusLine.ts`
+(modified) and `src/logic/__tests__/walkRequestStatusLine.test.ts`
+(modified) — plus this `EXECUTION_STATE.md` update — no unrelated file
+touched, no user work at risk.
+
+### Prior cycles' own narratives (full detail preserved here; see also the further-condensed "Recent cycles" and "Completed This Cycle" sections below for the same events in shorter form)
 `src/logic/__tests__/requestLifecycle.test.ts`, `src/screens/HomeScreen.tsx`)
 plus that cycle's own `EXECUTION_STATE.md` rewrite — the standing
 self-reporting-drift pattern (see note at top of file) reconfirmed yet
@@ -2681,24 +2853,27 @@ mount-recovery dead end, which was the unambiguous, no-judgment-call part.
 
 ## Current Task Status
 
-Prior cycle's `HomeScreen.tsx` bell-badge `countPendingRequestsForViewer()`
-fix (`1d1250e`) is confirmed landed and pushed — closed, `DONE`.
+Prior cycle's `walkRequestStatusLine.ts` lifecycle-tier-aware winner-
+selection fix (`76b5091`) is confirmed landed and pushed — closed, `DONE`.
 
-**This cycle's own task — making `computeWalkRequestStatusLine()`'s winner
-selection lifecycle-tier-aware (`'active'` always outranks
-`'recentlyResolved'`, `created_at` only breaks ties within a tier) in
-`src/logic/walkRequestStatusLine.ts` — is code-complete and validated**
-(`tsc` PASS zero errors; targeted `walkRequestStatusLine.test.ts` PASS
-**15/15** (up from 13/13 — 2 new tests); full `npm test` PASS **137/137
-suites, 1608/1608 tests**, up from 137/137 · 1606/1606 immediately before
+**This cycle's own task — adding the missing `expected_*`/
+`expected_target_*` staleness re-check to `computeRequestLifecycle()`
+(`src/logic/requestLifecycle.ts`), so a still-`pending` request whose
+underlying walk was reassigned/rescheduled by an unrelated action (while
+staying `status = 'pending'`) stops showing as `'active'`/actionable in the
+bell badge, the Requests inbox's אשר/דחה buttons, and the per-walk card
+line — is code-complete and validated** (`tsc` PASS zero errors; targeted
+`requestLifecycle.test.ts` + `walkRequestStatusLine.test.ts` PASS **51/51**
+(up from 28/28 — 9 new regression tests); full `npm test` PASS **137/137
+suites, 1617/1617 tests**, up from 137/137 · 1608/1608 immediately before
 the change, same HEAD). See Current Task above for the full
 reachable-defect reasoning. Commit attempt outcome recorded under
 Blocker/Last Evidence below; per the standing 70+-cycle pattern, even a
 "blocked" self-report this same cycle should not be assumed final — the
 next cycle's first action must still be its own independent `git log
 --oneline -5` + `git status` check, and should re-verify
-`walkRequestStatusLine.test.ts`'s 15/15 still pass at whatever HEAD it
-finds before trusting this narrative.
+`requestLifecycle.test.ts`/`walkRequestStatusLine.test.ts`'s 51/51 still
+pass at whatever HEAD it finds before trusting this narrative.
 
 ## Current Branch / PR
 

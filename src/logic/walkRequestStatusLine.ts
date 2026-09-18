@@ -1,6 +1,6 @@
 import type { Walk } from '../types';
 import type { SwapRequestRow, TimeChangeRequestRow } from '../lib/requests';
-import { computeRequestLifecycle, isRequestVisible, type RequestLifecycleState, type RequestLike } from './requestLifecycle';
+import { computeRequestLifecycle, isRequestVisible, type LifecycleWalk, type RequestLifecycleState, type RequestLike } from './requestLifecycle';
 
 /**
  * P1 — compact request-status line on walk cards.
@@ -37,7 +37,23 @@ export interface WalkRequestStatusLine {
 type AnyRequestRow = (SwapRequestRow & { kind: 'swap' }) | (TimeChangeRequestRow & { kind: 'timeChange' });
 
 function toRequestLike(row: AnyRequestRow): RequestLike {
-  return { id: row.id, walk_id: row.walk_id, target_walk_id: 'target_walk_id' in row ? row.target_walk_id : undefined, status: row.status, created_at: row.created_at, resolved_at: row.resolved_at };
+  return {
+    id: row.id,
+    walk_id: row.walk_id,
+    target_walk_id: 'target_walk_id' in row ? row.target_walk_id : undefined,
+    status: row.status,
+    created_at: row.created_at,
+    resolved_at: row.resolved_at,
+    requested_by_user_id: row.requested_by_user_id,
+    // Snapshot fields (see requestLifecycle.ts's computeRequestLifecycle doc
+    // comment) so a card's status line stops showing a stale pending request
+    // as still-actionable the same way the inbox/badge do, not just status.
+    expected_time: row.kind === 'timeChange' ? row.expected_time : undefined,
+    expected_responsible_user_id: row.kind === 'swap' ? row.expected_responsible_user_id : undefined,
+    expected_scheduled_time: row.kind === 'swap' ? row.expected_scheduled_time : undefined,
+    expected_target_responsible_user_id: row.kind === 'swap' ? row.expected_target_responsible_user_id : undefined,
+    expected_target_scheduled_time: row.kind === 'swap' ? row.expected_target_scheduled_time : undefined,
+  };
 }
 
 function lineFor(row: AnyRequestRow): string {
@@ -63,7 +79,7 @@ export function computeWalkRequestStatusLine(
   walk: Pick<Walk, 'id'>,
   swapRequests: SwapRequestRow[],
   timeChangeRequests: TimeChangeRequestRow[],
-  walksById: Record<string, Pick<Walk, 'status'> | undefined>,
+  walksById: Record<string, LifecycleWalk | undefined>,
   now: Date = new Date(),
   viewerUserId?: string | null
 ): WalkRequestStatusLine | null {

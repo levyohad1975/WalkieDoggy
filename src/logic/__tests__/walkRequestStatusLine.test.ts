@@ -13,6 +13,10 @@ function swap(overrides: Partial<SwapRequestRow> = {}): SwapRequestRow {
     created_at: '2026-09-04T08:00:00.000Z',
     resolved_at: null,
     requester_seen_at: null,
+    expected_responsible_user_id: 'u1',
+    expected_scheduled_time: '08:00',
+    expected_target_responsible_user_id: null,
+    expected_target_scheduled_time: null,
     ...overrides,
   };
 }
@@ -126,6 +130,40 @@ describe('computeWalkRequestStatusLine', () => {
       [],
       [timeChange()],
       { 'walk-1': { status: 'done' } },
+      NOW
+    );
+    expect(result).toBeNull();
+  });
+
+  it('hides a pending time-change request whose walk was rescheduled to a different time since (still pending, so status alone would not catch it)', () => {
+    const result = computeWalkRequestStatusLine(
+      { id: 'walk-1' },
+      [],
+      [timeChange()], // expected_time: '18:00', requested_by_user_id: 'u1'
+      { 'walk-1': { status: 'pending', responsibleUserId: 'u1', scheduledTime: '18:30' } },
+      NOW
+    );
+    expect(result).toBeNull();
+  });
+
+  it('hides a pending swap request whose target walk was reassigned to someone else since (still pending, so status alone would not catch it)', () => {
+    const result = computeWalkRequestStatusLine(
+      { id: 'walk-2' },
+      [
+        swap({
+          walk_id: 'walk-1',
+          target_walk_id: 'walk-2',
+          expected_responsible_user_id: 'u1',
+          expected_scheduled_time: '08:00',
+          expected_target_responsible_user_id: 'u2',
+          expected_target_scheduled_time: '09:00',
+        }),
+      ],
+      [],
+      {
+        'walk-1': { status: 'pending', responsibleUserId: 'u1', scheduledTime: '08:00' },
+        'walk-2': { status: 'pending', responsibleUserId: 'u3', scheduledTime: '09:00' },
+      },
       NOW
     );
     expect(result).toBeNull();

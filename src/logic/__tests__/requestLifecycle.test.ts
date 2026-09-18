@@ -85,6 +85,76 @@ describe('computeRequestLifecycle', () => {
     const walks = { w1: { status: 'pending' as const } };
     expect(computeRequestLifecycle(r, walks)).toBe('active');
   });
+
+  it('is expired for a pending time-change request whose walk was rescheduled to a different time since (still pending, admin_reschedule_walk-style)', () => {
+    const r = makeRequest({ status: 'pending', requested_by_user_id: 'u1', expected_time: '08:00' });
+    const walks = { w1: { status: 'pending' as const, responsibleUserId: 'u1', scheduledTime: '08:30' } };
+    expect(computeRequestLifecycle(r, walks, NOW)).toBe('expired');
+  });
+
+  it('is expired for a pending time-change request whose walk was reassigned to someone else since', () => {
+    const r = makeRequest({ status: 'pending', requested_by_user_id: 'u1', expected_time: '08:00' });
+    const walks = { w1: { status: 'pending' as const, responsibleUserId: 'u2', scheduledTime: '08:00' } };
+    expect(computeRequestLifecycle(r, walks, NOW)).toBe('expired');
+  });
+
+  it('is active for a pending time-change request whose walk still exactly matches the expected snapshot', () => {
+    const r = makeRequest({ status: 'pending', requested_by_user_id: 'u1', expected_time: '08:00' });
+    const walks = { w1: { status: 'pending' as const, responsibleUserId: 'u1', scheduledTime: '08:00' } };
+    expect(computeRequestLifecycle(r, walks, NOW)).toBe('active');
+  });
+
+  it('is expired for a pending swap request whose source walk was reassigned/rescheduled since by another action', () => {
+    const r = makeRequest({
+      status: 'pending',
+      target_walk_id: 'w2',
+      expected_responsible_user_id: 'u1',
+      expected_scheduled_time: '08:00',
+    });
+    const walks = {
+      w1: { status: 'pending' as const, responsibleUserId: 'u3', scheduledTime: '08:00' },
+      w2: { status: 'pending' as const, responsibleUserId: 'u2', scheduledTime: '09:00' },
+    };
+    expect(computeRequestLifecycle(r, walks, NOW)).toBe('expired');
+  });
+
+  it('is expired for a pending swap request whose target walk was reassigned/rescheduled since by another action', () => {
+    const r = makeRequest({
+      status: 'pending',
+      target_walk_id: 'w2',
+      expected_responsible_user_id: 'u1',
+      expected_scheduled_time: '08:00',
+      expected_target_responsible_user_id: 'u2',
+      expected_target_scheduled_time: '09:00',
+    });
+    const walks = {
+      w1: { status: 'pending' as const, responsibleUserId: 'u1', scheduledTime: '08:00' },
+      w2: { status: 'pending' as const, responsibleUserId: 'u3', scheduledTime: '09:00' },
+    };
+    expect(computeRequestLifecycle(r, walks, NOW)).toBe('expired');
+  });
+
+  it('is active for a pending swap request whose source and target walks still exactly match the expected snapshot', () => {
+    const r = makeRequest({
+      status: 'pending',
+      target_walk_id: 'w2',
+      expected_responsible_user_id: 'u1',
+      expected_scheduled_time: '08:00',
+      expected_target_responsible_user_id: 'u2',
+      expected_target_scheduled_time: '09:00',
+    });
+    const walks = {
+      w1: { status: 'pending' as const, responsibleUserId: 'u1', scheduledTime: '08:00' },
+      w2: { status: 'pending' as const, responsibleUserId: 'u2', scheduledTime: '09:00' },
+    };
+    expect(computeRequestLifecycle(r, walks, NOW)).toBe('active');
+  });
+
+  it('stays active (does not spuriously expire) when the walksById fixture omits responsibleUserId/scheduledTime, even though expected_* fields are present', () => {
+    const r = makeRequest({ status: 'pending', requested_by_user_id: 'u1', expected_time: '08:00' });
+    const walks = { w1: { status: 'pending' as const } };
+    expect(computeRequestLifecycle(r, walks, NOW)).toBe('active');
+  });
 });
 
 describe('isRequestActive / isRequestVisible', () => {
