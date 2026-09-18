@@ -4,7 +4,7 @@ import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
 import { colors } from '../theme/colors';
-import { breakpoints } from '../theme/tokens';
+import { breakpoints, radii, spacing, typography } from '../theme/tokens';
 import { Button } from '../components/Button';
 import { ensureAnonymousSession, findFamilyByInviteCode, joinFamily } from '../lib/supabase';
 import {
@@ -314,21 +314,26 @@ export function FamilyOnboardingScreen() {
             was here before. Given an explicit accessibilityLabel since this
             IS the meaningful content on this screen, not a decorative
             corner badge. */}
-        <WalkieMascot state="idle" size={128} accessibilityLabel="הקמע של Walkie Doggy Link" testID="onboarding-mascot" />
-        <RtlText style={styles.title} accessibilityRole="header">ברוכים הבאים</RtlText>
-        <RtlText style={styles.subtitle}>יצירת משפחה חדשה, או הצטרפות למשפחה קיימת עם קוד הזמנה</RtlText>
+        <View style={styles.chooseCard}>
+          <WalkieMascot state="idle" size={128} accessibilityLabel="הקמע של Walkie Doggy Link" testID="onboarding-mascot" />
+          <RtlText style={styles.brand}>Walkie Doggy Link</RtlText>
+          <RtlText style={[styles.title, styles.heroTitle]} accessibilityRole="header">ברוכים הבאים</RtlText>
+          <RtlText style={styles.subtitle}>כל המשפחה מתאמת את הטיולים של הכלב במקום אחד</RtlText>
 
-        <Button label="יצירת משפחה חדשה" onPress={() => setMode('create')} style={styles.wideButton} />
-        <Button label="הצטרפות למשפחה קיימת" variant="secondary" onPress={() => setMode('join')} style={styles.wideButton} />
-        <Button
-          label="יש לי הזמנה"
-          variant="secondary"
-          onPress={() => {
-            resetRedeemMode();
-            setMode('redeem');
-          }}
-          style={styles.wideButton}
-        />
+          <View style={styles.chooseActions}>
+            <Button label="יצירת משפחה חדשה" onPress={() => setMode('create')} style={styles.wideButton} />
+            <Button label="הצטרפות למשפחה קיימת" variant="secondary" onPress={() => setMode('join')} style={styles.wideButton} />
+            <Button
+              label="יש לי הזמנה"
+              variant="secondary"
+              onPress={() => {
+                resetRedeemMode();
+                setMode('redeem');
+              }}
+              style={styles.wideButton}
+            />
+          </View>
+        </View>
       </SafeAreaView>
     );
   }
@@ -657,7 +662,22 @@ export function FamilyOnboardingScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, alignItems: 'center', paddingTop: 80, paddingHorizontal: 24 },
+  container: { flex: 1, backgroundColor: colors.background, alignItems: 'center', paddingTop: 56, paddingHorizontal: 24 },
+  chooseCard: {
+    width: '100%',
+    maxWidth: breakpoints.readingColumn,
+    alignSelf: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.xl,
+    paddingHorizontal: spacing.xxl,
+    paddingVertical: spacing.xxxl,
+  },
+  chooseActions: { width: '100%', marginTop: spacing.sm },
+  brand: { ...typography.meta, color: colors.primaryDark, marginTop: spacing.sm, marginBottom: spacing.md },
+  heroTitle: { ...typography.display },
   formSafeArea: { flex: 1, backgroundColor: colors.background },
   flexFull: { flex: 1 },
   formScrollContent: { alignItems: 'center', paddingTop: 80, paddingHorizontal: 24 },
