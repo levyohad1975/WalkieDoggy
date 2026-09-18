@@ -125,7 +125,12 @@ export function HistoryScreen() {
   // Local calendar day, not UTC — see dateFormat.ts's doc comment; a
   // UTC-anchored cutoff would shift this boundary by a day for anyone
   // ahead of UTC (e.g. Israel) for a few hours after local midnight.
-  const weekAgo = useMemo(() => localDateOnly(new Date(Date.now() - 7 * 86400000)), []);
+  // `6 * 86400000` (not 7), matching statistics.ts's filterWalksByPeriod()
+  // convention exactly: an inclusive-of-today 7-day window is TODAY minus 6
+  // days, not 7 — `Date.now() - 7 * 86400000` here previously produced an
+  // 8-calendar-day window, silently over-counting the "weekly summary" card
+  // by one extra day every time it rendered.
+  const weekAgo = useMemo(() => localDateOnly(new Date(Date.now() - 6 * 86400000)), []);
   const weeklyWalks = useMemo(
     () => sourceWalks.filter((w) => w.date >= weekAgo && isWalkEligibleForHistory(w)),
     [sourceWalks, weekAgo]

@@ -100,4 +100,8 @@ describe('HistoryScreen — enforces view_history itself, not just via hidden na
   it('the server check defaults to blocking (\'checking\', not \'granted\') in Supabase mode, so an in-flight verification never transiently allows access', () => {
     expect(source).toMatch(/useState<'checking' \| 'granted' \| 'denied'>\(\s*isSupabaseConfigured \? 'checking' : 'granted'\s*\)/);
   });
+
+  it('"סיכום שבועי" (weekly summary) uses a 6-day-back cutoff, matching statistics.ts\'s filterWalksByPeriod() inclusive-of-today convention (start of day 6 ago through today = 7 calendar days) — not 7-day-back, which would silently widen it to an 8-day window', () => {
+    expect(source).toMatch(/const weekAgo = useMemo\(\(\) => localDateOnly\(new Date\(Date\.now\(\) - 6 \* 86400000\)\), \[\]\);/);
+  });
 });

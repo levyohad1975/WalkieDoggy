@@ -50,6 +50,118 @@ anything else.
 ## Current Task
 
 **This cycle's reconciliation, done fresh via direct `git log`/`git show`,
+not trusted from this file's own prior narrative:** HEAD was `17d3dfc`, one
+commit past `c85c503` (what this file's own prior text named as HEAD, and
+whose own commit attempt that prior cycle had hedged under Blocker as
+possibly not landed). `git show --stat 17d3dfc` and `git diff --name-status
+c85c503 17d3dfc` confirmed it contains exactly the prior cycle's own
+`setReminderEnabled`/`updateUser`/`deleteUser` functional-merge fix
+(`src/store/familyStore.ts` + `familyStore.test.ts`) plus that cycle's own
+`EXECUTION_STATE.md` rewrite — the standing self-reporting-drift pattern
+(see note at top of file) reconfirmed yet again (60th+ time running): the
+commit had already landed despite the prior cycle's own hedged "commit
+attempt outcome recorded under Blocker" self-report. `node_modules` was
+present but incomplete at cycle start (`node_modules/typescript` missing,
+matching the documented `npx tsc` package-resolution symptom); `npm ci`
+restored it (906 packages, matching the expected baseline). `npx tsc
+--noEmit` at reconciled HEAD `17d3dfc` — **PASS**, zero errors. Full `npm
+test -- --runInBand` at reconciled HEAD — **PASS: 133/133 suites,
+1557/1557 tests** (the expected baseline, matching the prior cycle's own
+reported count exactly), confirming a healthy baseline before starting new
+work.
+
+**This cycle's own task — a real, first-time-discovered, user-facing
+data-correctness bug, found by a fresh Explore research agent (steered
+away from the 60+ already-exhausted defect classes documented in this
+file, toward previously-unswept areas: `src/lib/realtime.ts` itself,
+`syncQueue.ts` beyond `isPermanentError()`, rotation/backfill logic,
+push-token lifecycle, the invite system end-to-end, remaining Edge
+Functions, and `statistics.ts`/`history.ts`/`HistoryScreen.tsx`/
+`StatisticsScreen.tsx`) and verified directly by this cycle (not just
+trusted from the report) by reading `src/screens/HistoryScreen.tsx` lines
+100-170 in full and `src/logic/statistics.ts` lines 1-17 in full:**
+
+`HistoryScreen.tsx`'s "סיכום שבועי" ("Weekly Summary" — subtitled "שקיפות
+משפחתית, לא תחרות 💛", "family transparency, not a competition") card —
+the first thing rendered on the History screen, ranking family members by
+completed-walk count over the trailing week — computed its cutoff as
+`weekAgo = localDateOnly(new Date(Date.now() - 7 * 86400000))`, then
+filtered with an inclusive `w.date >= weekAgo` and no upper bound (today
+always included). That is an **8-calendar-day window** (today plus the
+previous 7 days), not 7. Confirmed this is a real, provable off-by-one
+against this codebase's own established convention, not a style choice:
+`src/logic/statistics.ts`'s `filterWalksByPeriod()` computes the identical
+"inclusive-of-today 7-day window" concept as `days = period === '7d' ? 6 :
+29`, with its own doc comment explaining why 6 (not 7) is correct — and
+`HistoryScreen.tsx` itself gets this right 25 lines later, for its
+separate `rangeFilter === '7d'` filter chip:
+`localDateOnly(new Date(Date.now() - 6 * 86400000))`. The `weekAgo`
+constant for the weekly-summary card was the one place in the file that
+didn't follow its own sibling convention. Read `src/logic/history.ts`
+(`isWalkEligibleForHistory`) and `src/logic/walkActions.ts`
+(`summarizeWalksByUser`) directly to confirm neither re-applies any
+day-window narrowing of its own — the 7-vs-8-day boundary is decided
+entirely by this one `weekAgo` line, so every family's weekly comparison
+silently over-counted by one extra day on every render, which can change
+who ranks first in the per-member comparison the card exists to show —
+not cosmetic in a feature whose whole stated purpose is fair, accurate
+family transparency.
+
+**Fixed (client-side logic only, no migration needed):** changed
+`weekAgo`'s multiplier from `7 * 86400000` to `6 * 86400000` in
+`src/screens/HistoryScreen.tsx`, matching `statistics.ts`'s own convention
+exactly, with a comment explaining why. Added a regression assertion to
+the existing `src/screens/__tests__/HistoryScreen.permissionGate.test.ts`
+(source-text-scan style, matching that file's own established convention
+since this repo has no screen render-test harness) pinning the exact
+`weekAgo` literal to `6 * 86400000`, so a future accidental reintroduction
+of the 7-day version is caught immediately.
+
+`npx tsc --noEmit` after this cycle's own change — **PASS**, zero errors.
+Targeted `npx jest src/screens/__tests__/HistoryScreen.permissionGate.test.ts
+--runInBand` — **PASS: 9/9 tests** (up from 8/8). Full `npm test --
+runInBand` after this cycle's own change — **PASS: 133/133 suites,
+1558/1558 tests** (up from 133/133 · 1557/1557 immediately before the
+change, same HEAD — no new suite, exactly +1 test, matching the single new
+regression assertion added; every other suite's count unchanged). `git
+status --porcelain=v1 --untracked-files=all` confirmed the changeset is
+scoped to exactly `src/screens/HistoryScreen.tsx` and
+`src/screens/__tests__/HistoryScreen.permissionGate.test.ts` — plus this
+`EXECUTION_STATE.md` update — no unrelated file touched, no user work at
+risk.
+
+**Runner-up angles the same investigation surfaced, deliberately not
+folded into this bounded unit (recorded so a future cycle does not
+re-propose them as new):** `src/lib/realtime.ts` (debounce timer,
+unsubscribe ordering, `WATCHED_TABLES` vs. migration 0017's publication
+list, stale-closure risk over `familyId`) — read fully, cross-checked
+against its own 7-case test suite, no defect. `src/data/syncQueue.ts`'s
+`flush()` loop ordering/retry/permanent-vs-retryable/quarantine logic
+beyond `isPermanentError()` — read fully, correct and intentional
+(retryable failures deliberately `break` the whole pass; permanent ones
+`continue`). Rotation/backfill window (`src/logic/rotation.ts`,
+`scheduleStore.ts`'s `GENERATE_DAYS_AHEAD`/`ruleNeedsEntryBackfill`/dedup
+keys) — no defect found. Push-token/web-push lifecycle (registration,
+`upsert_push_token`/`upsert_web_push_subscription`, multi-device
+reassignment via `on conflict (token)`) — no defect found; an Expo
+token-refresh listener gap was noted as low-impact and not reachable
+enough to pursue. Invite system end-to-end (migrations 0008/0028/0040) —
+extremely hardened already, no defect found. Remaining Edge Functions
+(`send-walk-reminders`, `send-request-push`, `email-provider-webhook`,
+`create-verified-family`) — their inlined copies of
+`pushRouting.ts`/`reminderMessages.ts` do not show drift from canonical
+source. `admin_swap_walks`/`create_swap_request`/`approve_swap_request`
+(migrations 0018/0031) — thorough staleness re-validation confirmed on
+both walks. A weaker candidate was investigated and deliberately rejected
+as not worth reporting: `supabaseRepository.ts`'s `upsertUser()`
+update-then-insert fallback can surface a raw Postgres `23505`
+duplicate-key error via a rare stale-queued-offline-edit race, but it is
+already correctly caught by `isPermanentError()`/`SyncConflict` and never
+corrupts data — a diagnostics/UX nit, not a data-integrity defect.
+
+### Prior cycles' own narratives (full detail preserved here; see also the further-condensed "Recent cycles" and "Completed This Cycle" sections below for the same events in shorter form)
+
+**This cycle's reconciliation, done fresh via direct `git log`/`git show`,
 not trusted from this file's own prior narrative:** HEAD was `c85c503`, one
 commit past `e07314e` (what this file's own prior text named as HEAD, and
 whose own commit attempt that prior cycle had hedged under Blocker as
@@ -1811,28 +1923,28 @@ mount-recovery dead end, which was the unambiguous, no-judgment-call part.
 
 ## Current Task Status
 
-Prior cycle's `swapTwoWalks()` functional-merge fix (`c85c503`) is confirmed
-landed — closed, `DONE`.
+Prior cycle's `setReminderEnabled`/`updateUser`/`deleteUser` functional-merge
+fix (`17d3dfc`) is confirmed landed — closed, `DONE`.
 
-**This cycle's own task — converting `setReminderEnabled`/`updateUser`/
-`deleteUser`'s stale-pre-await-snapshot `set({...})` calls in
-`src/store/familyStore.ts` to functional `set((s) => ...)` merges — is
-code-complete and validated** (`tsc` PASS zero errors; targeted
-`familyStore.test.ts` PASS **24/24**; full `npm test` PASS **133/133
-suites, 1557/1557 tests**, up from 133/133 · 1554/1554 immediately before
-the change, same HEAD). This is a **data-integrity race**, not cosmetic —
-see Current Task above for the full reachable-defect reasoning: a realtime
-reload from another family member's concurrent, unrelated edit can land on
-this device while any of these three RPCs is still in flight, and the
-pre-fix code silently discarded that legitimate update (on failure for the
-first two; on every ordinary success for `deleteUser`) by overwriting the
-ENTIRE `users` array from a snapshot captured before the `await`. Commit
-attempt outcome recorded under Blocker/Last Evidence below; per the
-standing 59+-cycle pattern, even a "blocked" self-report this same cycle
-should not be assumed final — the next cycle's first action must still be
-its own independent `git log --oneline -5` + `git status` check, and should
-re-verify `familyStore.test.ts`'s three new tests still pass at whatever
-HEAD it finds before trusting this narrative.
+**This cycle's own task — fixing `HistoryScreen.tsx`'s "סיכום שבועי" weekly
+summary card's `weekAgo` cutoff from an 8-day window (`7 * 86400000`) to
+the correct inclusive-of-today 7-day window (`6 * 86400000`), matching
+`statistics.ts`'s own established convention — is code-complete and
+validated** (`tsc` PASS zero errors; targeted
+`HistoryScreen.permissionGate.test.ts` PASS **9/9**; full `npm test` PASS
+**133/133 suites, 1558/1558 tests**, up from 133/133 · 1557/1557
+immediately before the change, same HEAD). This is a **user-facing
+data-correctness bug**, not cosmetic — see Current Task above for the full
+reachable-defect reasoning: every family's weekly member-comparison card
+silently over-counted by one extra calendar day on every render, which can
+change who ranks first in a feature whose own subtitle states its purpose
+is fair family transparency. Commit attempt outcome recorded under
+Blocker/Last Evidence below; per the standing 60+-cycle pattern, even a
+"blocked" self-report this same cycle should not be assumed final — the
+next cycle's first action must still be its own independent `git log
+--oneline -5` + `git status` check, and should re-verify
+`HistoryScreen.permissionGate.test.ts`'s new assertion still passes at
+whatever HEAD it finds before trusting this narrative.
 
 ## Current Branch / PR
 
@@ -1846,58 +1958,59 @@ HEAD it finds before trusting this narrative.
 ## Last Evidence
 
 - This cycle start: `git log --oneline -5`/`git status` confirmed HEAD is
-  `c85c503`, clean working tree — **one** commit past `e07314e`, what this
-  file's own prior narrative described as HEAD. `git show --stat c85c503`
-  confirmed it contains exactly the prior cycle's own `swapTwoWalks()`
-  functional-merge fix (`src/store/scheduleStore.ts` +
-  `scheduleStore.adminSwap.test.ts`) + that cycle's own `EXECUTION_STATE.md`
-  rewrite — it had landed despite the prior cycle's own hedged "commit
-  attempt outcome recorded under Blocker" self-report, consistent with the
-  standing pattern (see note at top of file).
-- `node_modules` was absent at cycle start; `npm ci` restored it (906
-  packages, matching the expected baseline). `npx tsc --noEmit` at
-  reconciled HEAD `c85c503` — **PASS**, zero errors. Full `npm test --
-  runInBand` at reconciled HEAD — **PASS: 133/133 suites, 1554/1554
-  tests** (the expected baseline, matching it exactly), confirming a
-  healthy baseline before starting new work.
-- **This cycle's own fix:** changed `setReminderEnabled`/`updateUser`/
-  `deleteUser` in `src/store/familyStore.ts` from raw `set({ users:
-  <pre-await-snapshot>.map(...) })` whole-array overwrites to functional
-  `set((s) => ...)` merges against current state — see Current Task above
-  for the full reachable-defect reasoning (a concurrent realtime update to
-  an unrelated family member landing on this device while any of these
-  three RPCs is in flight was being silently discarded).
-- Added 3 new regression tests to `src/store/__tests__/familyStore.test.ts`
-  (one per action) that model a concurrent store mutation to an UNRELATED
-  member landing mid-RPC (via the mocked `repository.*` call itself calling
-  `useFamilyStore.setState()` before resolving/rejecting) and confirm it
-  survives each action's own revert/success update.
-- Targeted `npx jest src/store/__tests__/familyStore.test.ts --runInBand` —
-  **PASS: 24/24 tests** (up from 21/21).
+  `17d3dfc`, clean working tree — **one** commit past `c85c503`, what this
+  file's own prior narrative described as HEAD. `git show --stat 17d3dfc`
+  confirmed it contains exactly the prior cycle's own
+  `setReminderEnabled`/`updateUser`/`deleteUser` functional-merge fix
+  (`src/store/familyStore.ts` + `familyStore.test.ts`) + that cycle's own
+  `EXECUTION_STATE.md` rewrite — it had landed despite the prior cycle's own
+  hedged "commit attempt outcome recorded under Blocker" self-report,
+  consistent with the standing pattern (see note at top of file).
+- `node_modules` was present but incomplete at cycle start
+  (`node_modules/typescript` missing, the documented `npx tsc`
+  package-resolution symptom); `npm ci` restored it (906 packages, matching
+  the expected baseline). `npx tsc --noEmit` at reconciled HEAD `17d3dfc` —
+  **PASS**, zero errors. Full `npm test -- runInBand` at reconciled HEAD —
+  **PASS: 133/133 suites, 1557/1557 tests** (the expected baseline, matching
+  it exactly), confirming a healthy baseline before starting new work.
+- **This cycle's own fix:** changed `HistoryScreen.tsx`'s `weekAgo` cutoff
+  used by the "סיכום שבועי" weekly-summary card from `Date.now() - 7 *
+  86400000` (an 8-calendar-day window) to `Date.now() - 6 * 86400000` (the
+  correct inclusive-of-today 7-day window) — see Current Task above for the
+  full reachable-defect reasoning (provably inconsistent with
+  `statistics.ts`'s own `days = period === '7d' ? 6 : 29` convention, and
+  with this same file's own `rangeFilter === '7d'` cutoff 25 lines below).
+- Added a regression assertion to
+  `src/screens/__tests__/HistoryScreen.permissionGate.test.ts` pinning the
+  exact `weekAgo` literal to `6 * 86400000`.
+- Targeted `npx jest src/screens/__tests__/HistoryScreen.permissionGate.test.ts
+  --runInBand` — **PASS: 9/9 tests** (up from 8/8).
 - Full `npm test -- --runInBand` after the fix — **PASS: 133/133 suites,
-  1557/1557 tests** (up from 133/133 · 1554/1554 immediately before the
-  change, same HEAD — no new suite, exactly +3 tests, matching the three
-  new regression tests added; every other suite's count unchanged).
+  1558/1558 tests** (up from 133/133 · 1557/1557 immediately before the
+  change, same HEAD — no new suite, exactly +1 test, matching the single new
+  regression assertion added; every other suite's count unchanged).
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `git status --porcelain=v1 --untracked-files=all` confirmed the tracked
-  changeset is scoped to exactly `src/store/familyStore.ts` and
-  `src/store/__tests__/familyStore.test.ts` — plus this `EXECUTION_STATE.md`
-  update — no unrelated file touched, no user work at risk.
+  changeset is scoped to exactly `src/screens/HistoryScreen.tsx` and
+  `src/screens/__tests__/HistoryScreen.permissionGate.test.ts` — plus this
+  `EXECUTION_STATE.md` update — no unrelated file touched, no user work at
+  risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
   checked directly via `git status` immediately after the attempt.
 
 ## Last Evidence Timestamp
 
-2026-09-18T10:31:52+03:00 (prior landed commit `c85c503`); this cycle's own
-work validated at HEAD `c85c503` + working tree as of this cycle's own run
+2026-09-18T11:28:21+03:00 (prior landed commit `17d3dfc`); this cycle's own
+work validated at HEAD `17d3dfc` + working tree as of this cycle's own run
 (2026-09-18, this session), commit attempt outcome per Blocker below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
 self-reported:** a compound `git add` of the three changed files
-(`src/store/familyStore.ts`, `src/store/__tests__/familyStore.test.ts`,
+(`src/screens/HistoryScreen.tsx`,
+`src/screens/__tests__/HistoryScreen.permissionGate.test.ts`,
 `EXECUTION_STATE.md`) returned "This command requires approval" from the
 tool layer itself (not a git error), consistent with every standing
 blocked git-write command across every prior cycle. A standalone `git add`
@@ -1907,17 +2020,19 @@ working tree was unchanged (all three files still shown modified, nothing
 staged). So *within this turn's own visibility*, this cycle's commit
 attempt is a genuine, directly-confirmed no-op, not merely a hedged
 self-report — consistent with the standing pattern (see note at top of
-file, now reconfirmed for at least the 59th time running). The
-working-tree change itself (the `familyStore.ts` stale-snapshot lost-update
-race fix + its own 3 regression tests — plus this `EXECUTION_STATE.md`
-update) is real and validated (`tsc`/`npm test` both PASS, 133/133 suites,
-1557/1557 tests) — per "never discard uncommitted work," it is NOT reverted
-regardless of this turn's own commit-attempt outcome.
+file, now reconfirmed for at least the 60th time running). The
+working-tree change itself (the `HistoryScreen.tsx` weekly-summary
+off-by-one fix + its own regression assertion — plus this
+`EXECUTION_STATE.md` update) is real and validated (`tsc`/`npm test` both
+PASS, 133/133 suites, 1558/1558 tests) — per "never discard uncommitted
+work," it is NOT reverted regardless of this turn's own commit-attempt
+outcome.
 
 **Prior cycle's own commit-attempt outcome (condensed):** the
-`swapTwoWalks()` functional-merge fix hit the identical "requires approval"
-block, yet was independently confirmed landed as `c85c503` by this cycle's
-own reconciliation above — the pattern's own 58th+ instance.
+`setReminderEnabled`/`updateUser`/`deleteUser` functional-merge fix hit the
+identical "requires approval" block, yet was independently confirmed landed
+as `17d3dfc` by this cycle's own reconciliation above — the pattern's own
+59th+ instance.
 
 **Standing question — mechanism already established with direct evidence
 in prior cycles' own history of this file, per the note at the top:** an
@@ -2085,11 +2200,25 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the `swapTwoWalks()` lost-update race fix in
-`src/store/scheduleStore.ts` + its own regression test + this
-`EXECUTION_STATE.md` update) landed, and check every commit between
-whatever SHA this file names and actual HEAD, not just the newest one.
-Re-run `npx jest src/store/__tests__/scheduleStore.adminSwap.test.ts
+cycle's own commit (the `HistoryScreen.tsx` weekly-summary `weekAgo`
+off-by-one fix + its own regression assertion + this `EXECUTION_STATE.md`
+update) landed, and check every commit between whatever SHA this file
+names and actual HEAD, not just the newest one. Re-run `npx jest
+src/screens/__tests__/HistoryScreen.permissionGate.test.ts --runInBand`
+(expect 9/9) as a targeted check before trusting this file's narrative.
+Also re-run the FULL `npm test -- --runInBand` — expect **133/133 suites,
+1558/1558 tests** as the new baseline (up from 133/133 · 1557/1557 before
+this cycle's own fix). Do not re-propose the `weekAgo` fix itself, nor any
+of the runner-up angles this cycle's own investigation recorded above as
+already checked with no defect found (`realtime.ts`, `syncQueue.ts`
+ordering/retry, rotation/backfill window, push-token/web-push lifecycle,
+the invite system, remaining Edge Functions,
+`admin_swap_walks`/`create_swap_request`/`approve_swap_request`).
+
+**Prior cycle's own next-step note (condensed, now itself historical —
+its own task since landed as `17d3dfc` and is reconciled above; retained
+for continuity):** re-run
+`npx jest src/store/__tests__/scheduleStore.adminSwap.test.ts
 src/store/__tests__/scheduleStore.test.ts --runInBand` (expect 38/38) as a
 targeted check before trusting this file's narrative. **Also re-run the
 FULL `npm test -- --runInBand`** (standing habit, established several
@@ -2606,6 +2735,37 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
+- Reconciliation found HEAD had actually moved to `17d3dfc`, one commit
+  past `c85c503` — confirmed via `git show --stat` it contains exactly the
+  prior cycle's own `setReminderEnabled`/`updateUser`/`deleteUser`
+  functional-merge fix (`src/store/familyStore.ts` +
+  `familyStore.test.ts`) + that cycle's own `EXECUTION_STATE.md` rewrite —
+  reconfirming the standing self-reporting-drift pattern yet again (60th+
+  time). `node_modules` was present but missing `typescript` at cycle
+  start; `npm ci` restored it (906 packages). `npx tsc --noEmit` PASS; full
+  `npm test -- --runInBand` PASS **133/133 suites, 1557/1557 tests** (the
+  expected baseline, matched exactly).
+- **This cycle's own fix — a real, first-time-discovered user-facing
+  data-correctness bug, found by a fresh Explore research agent (steered
+  toward previously-unswept territory: `realtime.ts`, `syncQueue.ts`,
+  rotation/backfill, push-token lifecycle, invites, remaining Edge
+  Functions, `statistics.ts`/`history.ts`):** `HistoryScreen.tsx`'s "סיכום
+  שבועי" weekly-summary card computed its `weekAgo` cutoff as `Date.now() -
+  7 * 86400000` — an 8-calendar-day window, not 7 — provably inconsistent
+  with `statistics.ts`'s own established `days = period === '7d' ? 6 : 29`
+  convention and with this same file's own correct `rangeFilter === '7d'`
+  cutoff 25 lines below. Fixed the multiplier to `6 * 86400000`. Added a
+  regression assertion to
+  `HistoryScreen.permissionGate.test.ts` pinning the exact literal. `tsc`
+  PASS; targeted test PASS 9/9 (up from 8/8); full suite PASS **133/133
+  suites, 1558/1558 tests** (up from 133/133 · 1557/1557). `git status`
+  confirmed the changeset is scoped to exactly `src/screens/HistoryScreen.tsx`
+  and `src/screens/__tests__/HistoryScreen.permissionGate.test.ts` plus this
+  `EXECUTION_STATE.md` update. Commit attempt hit the standing "requires
+  approval" block (60th+ instance) — working tree not reverted per "never
+  discard uncommitted work."
+- Prior cycles' own completed-this-cycle entries below, preserved for
+  history:
 - Reconciliation found HEAD had actually moved to `c85c503`, one commit
   past `e07314e` — confirmed via `git show --stat` it contains exactly the
   prior cycle's own `swapTwoWalks()` functional-merge fix
