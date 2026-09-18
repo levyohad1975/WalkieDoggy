@@ -239,14 +239,19 @@ describe('computeUserDeletionImpact', () => {
     expect(impact.directlyAssignedWalkCount).toBe(1);
   });
 
-  it('ignores directly-assigned walks that are not pending, not for this user, or already in the past', () => {
+  it('ignores directly-assigned walks that are not pending or not for this user', () => {
     const walks = [
       walk({ id: 'done', status: 'done', responsibleUserId: 'u1', date: '2026-09-20' }),
       walk({ id: 'other-user', status: 'pending', responsibleUserId: 'u2', date: '2026-09-20' }),
-      walk({ id: 'past', status: 'pending', responsibleUserId: 'u1', date: '2026-09-01' }),
     ];
     const impact = computeUserDeletionImpact('u1', [], [], walks, today);
     expect(impact.directlyAssignedWalkCount).toBe(0);
+  });
+
+  it('counts an overdue-but-still-pending walk assigned to the user — the user can never be reclaimed to resolve it once deleted, so "safe to delete" must not be reported', () => {
+    const walks = [walk({ id: 'overdue', status: 'pending', responsibleUserId: 'u1', date: '2026-09-01' })];
+    const impact = computeUserDeletionImpact('u1', [], [], walks, today);
+    expect(impact.directlyAssignedWalkCount).toBe(1);
   });
 });
 
@@ -327,13 +332,24 @@ describe('planUserRemoval', () => {
     expect(result.updatedEntries).toHaveLength(0);
   });
 
-  it('ignores walks that are not pending, not for this user, or in the past', () => {
+  it('ignores walks that are not pending or not for this user', () => {
     const walks = [
       walk({ id: 'done', status: 'done', responsibleUserId: 'u1', date: '2026-09-20' }),
       walk({ id: 'other-user', status: 'pending', responsibleUserId: 'u2', date: '2026-09-20' }),
-      walk({ id: 'past', status: 'pending', responsibleUserId: 'u1', date: '2026-09-01' }),
     ];
     const result = planUserRemoval('u1', 'u3', [], [], walks, today, noResolve);
+    expect(result.updatedWalks).toHaveLength(0);
+  });
+
+  it('reassigns an overdue-but-still-pending walk to the replacement user, not just future ones — left behind it could never be resolved again once the user is deleted', () => {
+    const walks = [walk({ id: 'overdue', status: 'pending', responsibleUserId: 'u1', date: '2026-09-01' })];
+    const result = planUserRemoval('u1', 'u3', [], [], walks, today, noResolve);
+    expect(result.updatedWalks).toEqual([expect.objectContaining({ id: 'overdue', responsibleUserId: 'u3' })]);
+  });
+
+  it('with no replacement, an overdue pending walk with no linked entry to fall back on is left out of updatedWalks entirely (same as an unresolved future one)', () => {
+    const walks = [walk({ id: 'overdue', status: 'pending', responsibleUserId: 'u1', date: '2026-09-01', scheduleEntryId: undefined })];
+    const result = planUserRemoval('u1', null, [], [], walks, today, noResolve);
     expect(result.updatedWalks).toHaveLength(0);
   });
 });

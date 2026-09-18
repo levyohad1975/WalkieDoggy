@@ -50,6 +50,144 @@ anything else.
 ## Current Task
 
 **This cycle's reconciliation, done fresh via direct `git log`/`git show`,
+not trusted from this file's own prior narrative:** HEAD was `1cd3c07`, one
+commit past `5138bde` (what this file's own prior text named as HEAD).
+`git show --stat 1cd3c07` and `git diff --name-status 5138bde 1cd3c07`
+confirmed it contains exactly the prior cycle's own new migration `0040`
+(`join_family()`/`redeem_family_invite()` cross-family `family_auth_members`
+overwrite guard) + its own regression test + that cycle's own
+`EXECUTION_STATE.md` rewrite — the standing self-reporting-drift pattern
+(see note at top of file) reconfirmed yet again (54th+ time running): the
+commit had already landed despite the prior cycle's own hedged "commit
+attempt outcome recorded under Blocker" self-report. `node_modules` was
+absent at cycle start; `npm ci` restored it (906 packages). `npx tsc
+--noEmit` at reconciled HEAD `1cd3c07` — **PASS**, zero errors. Full `npm
+test -- --runInBand` at reconciled HEAD — **PASS: 131/131 suites,
+1531/1531 tests** (the expected baseline, matching the prior cycle's own
+reported count exactly), confirming a healthy baseline before starting new
+work. The prior cycle's own priority verification step (re-reading the
+landed `0040` migration's guard clauses and re-running
+`migration0040.preventCrossFamilyMembershipOverwrite.test.ts` given the
+fix's security-sensitivity) was folded into this same full-suite run,
+which includes that file and passed.
+
+**This cycle's own task — a real, first-time-discovered, data-integrity
+defect, found by a fresh Explore research agent (steered away from the
+~55+ already-exhausted defect classes documented in this file, toward RC
+Queue item 4/5 territory: Settings/Roles/System Admin QA, store race
+conditions, other migration/RPC logic bugs) and verified directly by this
+cycle (not just trusted from the report) by reading
+`src/logic/familyManagement.ts` in full,
+`src/logic/__tests__/familyManagement.test.ts` in full (confirming the
+pre-fix tests literally asserted the buggy exclusion as intended
+behavior), `src/logic/nextWalk.ts` (`computeNextWalk`),
+`src/components/DeleteUserModal.tsx`, `supabase/migrations/0020_multi_device_profile_sessions.sql`
+(`claim_family_profile()`/`claim_family_profile_with_pin()`'s "cannot claim
+a removed profile" rejection, and `real_current_profile_id()`'s
+`removed_at is null` requirement), and
+`supabase/migrations/0015_scheduled_walk_occurrence_delete.sql`
+(`enforce_walk_write_authorization()`'s non-admin
+`old.responsible_user_id = actor` requirement):**
+
+`computeUserDeletionImpact()` and `planUserRemoval()`
+(`src/logic/familyManagement.ts`, pre-fix) both excluded any walk with
+`date < today` from `directlyAssignedWalkCount`/`updatedWalks` — the same
+"don't touch past rows" rule correctly applied to `schedule_entries` (a
+past scheduling slot has nothing left to reassign), but wrongly copied over
+to `walks`: a `status = 'pending'` walk is a live, unresolved item
+regardless of its date — "pending" means nobody has marked it done/skipped
+yet, not "in the future." `DeleteUserModal.tsx`'s `hasImpact` (pre-fix) is
+derived solely from that undercounted impact, so an admin deleting a member
+who had ONLY an overdue-but-unresolved pending walk (an everyday
+occurrence — a walk nobody got around to marking resolved) saw "אין ל{name}
+טיולים עתידיים או סבבים פעילים — אפשר למחוק בבטחה" (no future
+walks/rotations — safe to delete) and could delete with no replacement
+offered. `planUserRemoval`'s own walks loop then also skipped the same
+walk, so it was never included in the `walk_updates` sent to
+`admin_delete_family_member()` (0039, the current applied definition,
+confirmed unchanged by this fix), which only reassigns whatever rows the
+client supplies — the walk's `responsible_user_id` permanently keeps
+pointing at the now-soft-deleted user.
+
+**Why this is real and reachable, not cosmetic:** confirmed via
+`0020_multi_device_profile_sessions.sql` that a removed persona's identity
+can never be reclaimed again (`claim_family_profile()`/
+`claim_family_profile_with_pin()` both explicitly `raise exception 'cannot
+claim a removed profile'`; `real_current_profile_id()` requires
+`removed_at is null`), and via `0015_scheduled_walk_occurrence_delete.sql`
+that only a Family Admin can resolve/reassign a walk whose
+`responsible_user_id` no longer matches any live session — so the orphaned
+walk can never again be resolved by an ordinary member, only by an admin
+who happens to notice it. Confirmed via `src/logic/nextWalk.ts`'s
+`computeNextWalk()` (oldest-overdue-wins sort, unconditional) and
+`src/screens/HomeScreen.tsx`'s unconditional `NextWalkCard` rendering for
+every family member that this single orphaned walk permanently takes over
+the primary Home-screen "next walk" card for the ENTIRE family (not just
+the admin) — it will always be at least as old as any other overdue walk,
+since its own responsible user can never resolve it — until an admin
+happens to notice and manually fixes it via `EditWalkModal`. The app's own
+safety mechanism actively told the admin the deletion was safe when it
+was not.
+
+**Fixed (client-side logic only, no migration needed):** removed the
+`w.date >= today` condition from `computeUserDeletionImpact()`'s
+`directlyAssignedWalkCount` filter and the `walk.date < today` exclusion
+from `planUserRemoval()`'s walks loop, in
+`src/logic/familyManagement.ts` — both now treat every `status ===
+'pending'` walk assigned to the removed user as impact requiring a
+replacement, regardless of date. The `entries` loop's own past-date
+exclusion (correct — a past rotation slot has nothing to reassign) is
+deliberately left untouched; only the walks loop's mirrored copy of that
+exclusion, which was wrong for a live `pending` item, was removed. Updated
+both doc comments to explain why. Confirmed `familyStore.ts`'s
+`getUserDeletionImpact`/`deleteUser` already pass the full, unfiltered
+`walks` array from `useScheduleStore.getState()` (not pre-filtered by
+date), so the fix propagates end-to-end with no caller change needed.
+
+Updated `src/logic/__tests__/familyManagement.test.ts`: the two pre-fix
+tests that literally asserted the buggy exclusion as intended behavior
+("ignores directly-assigned walks that are not pending, not for this user,
+or already in the past" / "ignores walks that are not pending, not for
+this user, or in the past") were narrowed to drop only the now-incorrect
+"past" case, keeping the still-correct "not pending"/"not for this user"
+exclusions. Added 3 new regression tests: an overdue-but-pending walk now
+counts as `directlyAssignedWalkCount`; `planUserRemoval` now reassigns an
+overdue pending walk to the replacement user; with no replacement AND no
+linked entry, an overdue pending walk is still correctly left out of
+`updatedWalks` (same as the existing unplanned/no-replacement case, just
+also exercised for a past date).
+
+`npx tsc --noEmit` after this cycle's own change — **PASS**, zero errors.
+Targeted `npx jest src/logic/__tests__/familyManagement.test.ts
+src/store/__tests__/familyStore.test.ts --runInBand` — **PASS: 53/53
+tests**. Full `npm test -- --runInBand` after this cycle's own change —
+**PASS: 131/131 suites, 1534/1534 tests** (up from 131/131 · 1531/1531
+immediately before the change, same HEAD — no new suite, exactly +3 tests
+net: 2 pre-fix tests narrowed/replaced and 5 new tests added across the two
+describe blocks, every other suite's count unchanged). `git status
+--porcelain=v1 --untracked-files=all` confirmed the changeset is scoped to
+exactly `src/logic/familyManagement.ts` and
+`src/logic/__tests__/familyManagement.test.ts` — plus this
+`EXECUTION_STATE.md` update — no unrelated file touched, no user work at
+risk.
+
+**Runner-up angles the same investigation surfaced, deliberately not
+folded into this bounded unit (recorded so a future cycle does not
+re-propose them as new):** `due_walk_reminders()` (migration 0025) not
+filtering `responsible_user_id` by `removed_at` — investigated and
+rejected as a live gap: migrations 0037/0039 already deactivate every push
+channel and clear `family_auth_members`/`profile_auth_sessions` for a
+removed member, so this reminder is a harmless no-op, not a delivery leak.
+Also considered but not pursued: adjusting `DeleteUserModal.tsx`'s Hebrew
+"טיולים עתידיים" (future walks) wording, since an overdue walk is no longer
+strictly "future" — left as-is since the combined count is still accurate
+and truthful about impact requiring a replacement; a wording tweak is a
+minor copy decision, not core to closing the data-integrity gap, and
+out of scope for this bounded unit.
+
+### Prior cycles' own narratives (full detail preserved here; see also the further-condensed "Recent cycles" and "Completed This Cycle" sections below for the same events in shorter form)
+
+**This cycle's reconciliation, done fresh via direct `git log`/`git show`,
 not trusted from this file's own prior narrative:** HEAD was `5138bde`, one
 commit past `04f5e4e` (what this file's own prior text named as HEAD).
 `git show --stat 5138bde` and `git diff --name-status 04f5e4e 5138bde`
@@ -1203,32 +1341,36 @@ mount-recovery dead end, which was the unambiguous, no-judgment-call part.
 
 ## Current Task Status
 
-Prior cycle's new migration 0039 (`family_auth_members`/
-`profile_auth_sessions` cleanup on member removal) (`5138bde`) is confirmed
-landed — closed, `DONE`.
+Prior cycle's new migration 0040 (`join_family()`/`redeem_family_invite()`
+cross-family `family_auth_members` overwrite guard) (`1cd3c07`) is
+confirmed landed — closed, `DONE`.
 
-**This cycle's own task — rejecting cross-family `join_family()`/
-`redeem_family_invite()` calls for a caller whose real `family_auth_members`
-membership is in a different (possibly pending/rejected) family, resolved
-directly rather than via `current_family_id()` (new migration `0040`) — is
-code-complete and validated** (`tsc` PASS zero errors; new targeted test
-PASS **6/6**; full `npm test` PASS **131/131 suites, 1531/1531 tests**, up
-from 130/130 · 1525/1525 immediately before the change, same HEAD). This is
-a **security/data-integrity-relevant fix** (rule 7) — see Current Task above
-for the full reachable-defect reasoning: a verified admin whose newly
-created family is still pending or was rejected could reach the ordinary
-join-a-different-family flow from the "חזרה" button on
-`FamilyOnboardingScreen.tsx`'s recovery screens, and `join_family()`'s
-`on conflict (auth_user_id) do update` would silently overwrite their real
-`family_auth_members` row, permanently orphaning the family they created
-with zero warning. Commit attempt outcome recorded under Blocker/Last
-Evidence below; per the standing 50+-cycle pattern, even a "blocked"
-self-report this same cycle should not be assumed final — the next cycle's
-first action must still be its own independent `git log --oneline -5` +
-`git status` check, and — given this fix's security-sensitivity — should
-re-verify the new
-`migration0040.preventCrossFamilyMembershipOverwrite.test.ts` still passes
-at whatever HEAD it finds before trusting this narrative.
+**This cycle's own task — removing the incorrect `date >= today` /
+`date < today` exclusions on `pending` walks from
+`computeUserDeletionImpact()`/`planUserRemoval()`
+(`src/logic/familyManagement.ts`), so an overdue-but-unresolved walk
+assigned to a member being deleted is correctly counted as impact
+requiring a replacement, instead of the deletion flow reporting "safe to
+delete" and leaving the walk permanently orphaned on a now-unreclaimable
+soft-deleted user — is code-complete and validated** (`tsc` PASS zero
+errors; targeted `familyManagement.test.ts`/`familyStore.test.ts` PASS
+**53/53**; full `npm test` PASS **131/131 suites, 1534/1534 tests**, up
+from 131/131 · 1531/1531 immediately before the change, same HEAD). This is
+a **data-integrity-relevant fix** (rule 7 territory — the deletion flow
+touches family membership/schedule state) — see Current Task above for the
+full reachable-defect reasoning: an admin deleting a member whose only
+outstanding item is an overdue pending walk saw the app's own safety check
+claim it was safe, when in fact the walk's `responsible_user_id` would
+permanently point at an identity that can never again be reclaimed
+(`claim_family_profile()` rejects a removed persona), and — via
+`computeNextWalk()`'s oldest-overdue-wins rule — would then permanently
+hijack the whole family's Home-screen "next walk" card. Commit attempt
+outcome recorded under Blocker/Last Evidence below; per the standing
+50+-cycle pattern, even a "blocked" self-report this same cycle should not
+be assumed final — the next cycle's first action must still be its own
+independent `git log --oneline -5` + `git status` check, and should
+re-verify `familyManagement.test.ts`'s new overdue-walk regression tests
+still pass at whatever HEAD it finds before trusting this narrative.
 
 ## Current Branch / PR
 
@@ -1242,83 +1384,86 @@ at whatever HEAD it finds before trusting this narrative.
 ## Last Evidence
 
 - This cycle start: `git log --oneline -5`/`git status` confirmed HEAD is
-  `5138bde`, clean working tree — **one** commit past `04f5e4e`, what this
-  file's own prior narrative described as HEAD. `git show --stat 5138bde`
-  confirmed it contains exactly the prior cycle's own new migration 0039 +
+  `1cd3c07`, clean working tree — **one** commit past `5138bde`, what this
+  file's own prior narrative described as HEAD. `git show --stat 1cd3c07`
+  confirmed it contains exactly the prior cycle's own new migration 0040 +
   its own regression test + that cycle's own `EXECUTION_STATE.md` rewrite —
   it had landed despite the prior cycle's own hedged "commit attempt
   outcome recorded under Blocker" self-report, consistent with the
   standing pattern (see note at top of file).
 - `npm ci` restored `node_modules` (906 packages, matching the expected
-  baseline). `npx tsc --noEmit` at reconciled HEAD `5138bde` — **PASS**,
+  baseline). `npx tsc --noEmit` at reconciled HEAD `1cd3c07` — **PASS**,
   zero errors. Full `npm test -- --runInBand` at reconciled HEAD —
-  **PASS: 130/130 suites, 1525/1525 tests** (the expected baseline,
+  **PASS: 131/131 suites, 1531/1531 tests** (the expected baseline,
   matching it exactly), confirming a healthy baseline before starting new
-  work. Also re-ran
-  `npx jest src/lib/__tests__/migration0039.clearFamilyAuthMembershipOnRemoval.test.ts
-  --runInBand` specifically given that fix's security-sensitivity —
-  **PASS: 6/6**.
-- **This cycle's own fix:** added
-  `supabase/migrations/0040_prevent_cross_family_membership_overwrite.sql`
-  (has `join_family()` and `redeem_family_invite()` both resolve the
-  caller's existing `family_auth_members` membership directly rather than
-  via `current_family_id()`, and reject the call when it points at a
-  different family regardless of that family's `approval_status`, closing
-  the cross-family-membership-overwrite leak described in Current Task
-  above) and
-  `src/lib/__tests__/migration0040.preventCrossFamilyMembershipOverwrite.test.ts`
-  (6 new source-text-scan tests).
-- `npx jest src/lib/__tests__/migration0040.preventCrossFamilyMembershipOverwrite.test.ts
-  --runInBand` — **PASS: 6/6 tests**.
+  work — this run also covers the prior cycle's own requested priority
+  re-verification of
+  `migration0040.preventCrossFamilyMembershipOverwrite.test.ts` (included
+  in the full suite, passed).
+- **This cycle's own fix:** edited `src/logic/familyManagement.ts` —
+  removed the `w.date >= today` condition from
+  `computeUserDeletionImpact()`'s `directlyAssignedWalkCount` filter and
+  the `walk.date < today` exclusion from `planUserRemoval()`'s walks loop,
+  so an overdue-but-still-`pending` walk assigned to a member being deleted
+  is correctly counted as impact requiring a replacement and reassigned
+  when one is given, instead of being silently left pointing at a
+  now-unreclaimable soft-deleted user (see Current Task above for the full
+  reachable-defect reasoning). Updated
+  `src/logic/__tests__/familyManagement.test.ts`: narrowed the two
+  pre-fix tests that had asserted the buggy "past walks are ignored"
+  behavior as intended (dropping only the now-incorrect "past" case, kept
+  the still-correct "not pending"/"not for this user" exclusions), and
+  added 3 new regression tests for the overdue-pending-walk case.
+- Targeted `npx jest src/logic/__tests__/familyManagement.test.ts
+  src/store/__tests__/familyStore.test.ts --runInBand` — **PASS: 53/53
+  tests**.
 - Full `npm test -- --runInBand` after the fix — **PASS: 131/131 suites,
-  1531/1531 tests** (up from 130/130 · 1525/1525 immediately before the
-  change, same HEAD — exactly 1 new suite + 6 new tests, every other
-  suite's count unchanged).
+  1534/1534 tests** (up from 131/131 · 1531/1531 immediately before the
+  change, same HEAD — no new suite, net +3 tests: 2 pre-fix tests
+  narrowed/replaced and 5 new tests added across the two describe blocks,
+  every other suite's count unchanged).
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `git status --porcelain=v1 --untracked-files=all` confirmed the tracked
-  changeset is scoped to exactly
-  `supabase/migrations/0040_prevent_cross_family_membership_overwrite.sql`
-  (new) and
-  `src/lib/__tests__/migration0040.preventCrossFamilyMembershipOverwrite.test.ts`
-  (new) — plus this `EXECUTION_STATE.md` update — no unrelated file
-  touched, no user work at risk.
+  changeset is scoped to exactly `src/logic/familyManagement.ts` and
+  `src/logic/__tests__/familyManagement.test.ts` — plus this
+  `EXECUTION_STATE.md` update — no unrelated file touched, no user work at
+  risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
   checked directly via `git status` immediately after the attempt.
 
 ## Last Evidence Timestamp
 
-2026-09-18T04:42:03Z (prior landed commit `5138bde`); this cycle's own work
-validated at HEAD `5138bde` + working tree as of this cycle's own run
+2026-09-18T05:09:51Z (prior landed commit `1cd3c07`); this cycle's own work
+validated at HEAD `1cd3c07` + working tree as of this cycle's own run
 (2026-09-18, this session), commit attempt outcome per Blocker below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
-self-reported:** a standalone `git add` of the two new migration-0040 files
-and this `EXECUTION_STATE.md` returned "This command requires approval"
-from the tool layer itself (not a git error), consistent with every
-standing blocked git-write command across every prior cycle. A `git status
+self-reported:** a standalone `git add` of the two changed
+`src/logic/familyManagement.ts`/`familyManagement.test.ts` files and this
+`EXECUTION_STATE.md` returned "This command requires approval" from the
+tool layer itself (not a git error), consistent with every standing
+blocked git-write command across every prior cycle. A `git status
 --porcelain=v1 --untracked-files=all` run immediately after confirmed the
-working tree was unchanged (the two new files still shown as untracked,
-`EXECUTION_STATE.md` shown modified, nothing staged). So *within this
-turn's own visibility*, this cycle's commit attempt is a genuine,
-directly-confirmed no-op, not merely a hedged self-report — consistent
-with the standing pattern (see note at top of file, now reconfirmed for at
-least the 53rd time running, and this time on a security-relevant fix —
-the next cycle should treat verifying this landed, not just assuming it,
-as a priority given the sensitivity). The working-tree change itself (new
-migration `0040` preventing cross-family `family_auth_members` overwrite
-+ its own regression test — plus this `EXECUTION_STATE.md` update) is real
-and validated (`tsc`/`npm test` both PASS, 131/131 suites, 1531/1531
-tests) — per "never discard uncommitted work," it is NOT reverted
-regardless of this turn's own commit-attempt outcome.
+working tree was unchanged (all three files still shown modified, nothing
+staged). So *within this turn's own visibility*, this cycle's commit
+attempt is a genuine, directly-confirmed no-op, not merely a hedged
+self-report — consistent with the standing pattern (see note at top of
+file, now reconfirmed for at least the 55th time running). The
+working-tree change itself (the `familyManagement.ts` overdue-pending-walk
+deletion-impact fix + its own regression tests — plus this
+`EXECUTION_STATE.md` update) is real and validated (`tsc`/`npm test` both
+PASS, 131/131 suites, 1534/1534 tests) — per "never discard uncommitted
+work," it is NOT reverted regardless of this turn's own commit-attempt
+outcome.
 
 **Prior cycle's own commit-attempt outcome (condensed):** the
-`family_auth_members` cleanup-on-removal fix (migration 0039) hit the
-identical "requires approval" block, yet was independently confirmed
-landed as `5138bde` by this cycle's own reconciliation above — the
-pattern's own 52nd+ instance.
+cross-family `family_auth_members` overwrite guard (migration 0040) hit
+the identical "requires approval" block, yet was independently confirmed
+landed as `1cd3c07` by this cycle's own reconciliation above — the
+pattern's own 54th+ instance.
 
 **Standing question — mechanism already established with direct evidence
 in prior cycles' own history of this file, per the note at the top:** an
@@ -1486,44 +1631,60 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (new migration
-`0040_prevent_cross_family_membership_overwrite.sql` + its own
-regression test + this `EXECUTION_STATE.md` update) landed, and check
-every commit between whatever SHA this file names and actual HEAD, not
-just the newest one. **Given this cycle's fix is security-relevant
-(closes a real cross-family `family_auth_members` overwrite that could
-orphan a verified admin's own pending/rejected family), the next
-cycle should treat re-running
-`npx jest src/lib/__tests__/migration0040.preventCrossFamilyMembershipOverwrite.test.ts`
-and re-reading the landed `0040` migration's own guard clauses as
-a priority verification step, not just trusting this file's narrative.**
-**Also re-run the FULL `npm test -- --runInBand`** (standing habit,
-established several cycles ago after a full run caught 2 silently-failing
-tests that per-change subset runs had missed) — expect **131/131 suites,
-1531/1531 tests** as the new baseline (up from 130/130 · 1525/1525 before
-this cycle's own fix).
+cycle's own commit (the `familyManagement.ts`/`familyManagement.test.ts`
+overdue-pending-walk deletion-impact fix + this `EXECUTION_STATE.md`
+update) landed, and check every commit between whatever SHA this file
+names and actual HEAD, not just the newest one. Re-run
+`npx jest src/logic/__tests__/familyManagement.test.ts
+src/store/__tests__/familyStore.test.ts --runInBand` (expect 53/53) as a
+targeted check before trusting this file's narrative. **Also re-run the
+FULL `npm test -- --runInBand`** (standing habit, established several
+cycles ago after a full run caught 2 silently-failing tests that
+per-change subset runs had missed) — expect **131/131 suites, 1534/1534
+tests** as the new baseline (up from 131/131 · 1531/1531 before this
+cycle's own fix).
 
-**This cycle's own fix — having `join_family()` and `redeem_family_invite()`
+**This cycle's own fix — removing the `date >= today`/`date < today`
+exclusions on `pending` walks from `computeUserDeletionImpact()`/
+`planUserRemoval()` (`src/logic/familyManagement.ts`), so an
+overdue-but-unresolved walk assigned to a member being deleted is
+correctly counted as impact requiring a replacement instead of being
+silently orphaned on a now-unreclaimable soft-deleted user — is done and
+complete; do not re-propose it.** See Current Task above for the full
+reachable-defect reasoning (a `pending` walk is a live, unresolved item
+regardless of date, unlike a `schedule_entries` row; the deletion-impact
+check previously told the admin it was safe to delete when it was not,
+and the orphaned walk would permanently hijack `computeNextWalk()`'s
+family-wide "next walk" Home card since it can never again be resolved by
+its removed, unreclaimable responsible user).
+
+**Runner-up angles from this cycle's own investigation, deliberately not
+pursued (recorded so a future cycle does not re-propose them as new):**
+`due_walk_reminders()` (migration 0025) not filtering
+`responsible_user_id` by `removed_at` — investigated and rejected as a
+live gap since migrations 0037/0039 already deactivate every push channel
+and clear membership for a removed member, so it's a harmless no-op, not a
+delivery leak. Also considered but not pursued: adjusting
+`DeleteUserModal.tsx`'s Hebrew "טיולים עתידיים" (future walks) wording
+since an overdue walk is no longer strictly "future" — left as-is, a minor
+copy decision not core to the fix.
+
+**Prior cycle's own fix — having `join_family()` and `redeem_family_invite()`
 both resolve the caller's existing `family_auth_members` membership directly
 rather than via `current_family_id()`, and reject the call when it points at
-a different family regardless of approval_status (new migration `0040`),
+a different family regardless of approval_status (migration `0040`),
 closing the leak where a verified admin stuck on a pending/rejected family
 could silently lose their own family_auth_members row by joining a different
-family — is done and complete; do not re-propose it.** See Current Task
-above for the full reachable-defect reasoning (`current_family_id()` (0033)
-only resolves active families, so `redeem_family_invite()`'s existing
-collision guard silently no-opped for a pending/rejected caller, and
-`join_family()` never had an equivalent guard at all; reachable via
-`FamilyOnboardingScreen.tsx`'s pending/rejected "חזרה" button →
-choose → join flow).
-
-**Runner-up angle from this cycle's own investigation, deliberately not
-pursued (recorded so a future cycle does not re-propose it as new):**
-neither function gives an admin stuck on a pending/rejected family a
-legitimate, product-supported way to *intentionally* abandon it and join a
-different one instead — this fix's "reject unconditionally" behavior is the
-safe default, but whether an abandon/retry flow should exist is a
-product/UX decision, not a unilateral engineering call.
+family — is done and complete (landed as `1cd3c07`); do not re-propose
+it.** See git history of this file for the full reachable-defect reasoning
+(`current_family_id()` (0033) only resolves active families, so
+`redeem_family_invite()`'s existing collision guard silently no-opped for
+a pending/rejected caller, and `join_family()` never had an equivalent
+guard at all; reachable via `FamilyOnboardingScreen.tsx`'s
+pending/rejected "חזרה" button → choose → join flow). Its own runner-up
+angle (no legitimate abandon/retry flow for a pending/rejected family) was
+investigated and deliberately not pursued as a product/UX decision, not a
+unilateral engineering call — do not re-propose it either.
 
 **Prior cycle's own fix — having `admin_delete_family_member()` also delete
 the removed persona's `family_auth_members` row(s) (sourced from
@@ -1941,40 +2102,44 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `5138bde`, one commit
-  past `04f5e4e` — confirmed via `git show --stat` it contains exactly the
-  prior cycle's own new migration 0039 + its own regression test + that
+- Reconciliation found HEAD had actually moved to `1cd3c07`, one commit
+  past `5138bde` — confirmed via `git show --stat` it contains exactly the
+  prior cycle's own new migration 0040 + its own regression test + that
   cycle's own `EXECUTION_STATE.md` rewrite — reconfirming the standing
   self-reporting-drift pattern yet again. `npm ci` restored `node_modules`
   (906 packages). `npx tsc --noEmit` PASS; full `npm test -- --runInBand`
-  PASS **130/130 suites, 1525/1525 tests** (the expected baseline, matched
-  exactly), plus a targeted re-run of
-  `migration0039.clearFamilyAuthMembershipOnRemoval.test.ts` (6/6) given
-  that fix's security-sensitivity.
-- **This cycle's own fix — a real, first-time-discovered, security/
-  data-integrity-relevant defect:** `join_family()` had no guard against
-  overwriting a caller's existing `family_auth_members` row for a
-  *different* family, and `redeem_family_invite()`'s own equivalent guard
-  resolved the caller's existing family via `current_family_id()`, which
-  (since migration 0033) only resolves *active* families — so for a caller
-  whose real membership was in a still-pending or already-rejected family,
-  that guard silently read `null` and never fired. Reachable via
-  `FamilyOnboardingScreen.tsx`'s pending/rejected "חזרה" button → choose →
-  join flow: a verified admin stuck awaiting/denied approval on the family
-  they created could silently overwrite their own `family_auth_members` row
-  by joining a different, already-active family, permanently orphaning the
-  family they created with zero warning. Added
-  `supabase/migrations/0040_prevent_cross_family_membership_overwrite.sql`
-  (both functions now resolve the caller's existing membership directly
-  against `family_auth_members`, never via `current_family_id()`, and
-  reject a cross-family call regardless of the existing family's
-  `approval_status`) and
-  `src/lib/__tests__/migration0040.preventCrossFamilyMembershipOverwrite.test.ts`
-  (6 new tests). `npx tsc --noEmit` PASS; full `npm test -- --runInBand`
-  PASS **131/131 suites, 1531/1531 tests** (up from 130/130 · 1525/1525).
-  `git status` confirmed the changeset is scoped to exactly those two new
-  files plus this `EXECUTION_STATE.md` update. Commit attempt blocked (see
-  Blocker) — same standing pattern as every prior cycle.
+  PASS **131/131 suites, 1531/1531 tests** (the expected baseline, matched
+  exactly), which also covers the prior cycle's own requested priority
+  re-verification of
+  `migration0040.preventCrossFamilyMembershipOverwrite.test.ts`.
+- **This cycle's own fix — a real, first-time-discovered,
+  data-integrity-relevant defect:** `computeUserDeletionImpact()`/
+  `planUserRemoval()` (`src/logic/familyManagement.ts`) excluded any
+  `pending` walk with `date < today` from deletion impact/reassignment —
+  correct for `schedule_entries` (a past slot has nothing to reassign) but
+  wrong for `walks`, since `status === 'pending'` means unresolved
+  regardless of date. Reachable via the ordinary admin-deletion flow: an
+  admin deleting a member whose only outstanding item was an
+  overdue-but-unresolved walk saw `DeleteUserModal`'s "אין ל{name} טיולים
+  עתידיים או סבבים פעילים — אפשר למחוק בבטחה" (safe to delete) and could
+  delete with no replacement, permanently leaving the walk's
+  `responsible_user_id` pointing at a now-soft-deleted, unreclaimable user
+  (`claim_family_profile()` rejects reclaiming a removed persona) — and via
+  `computeNextWalk()`'s oldest-overdue-wins rule, that single orphaned walk
+  would permanently hijack the whole family's Home-screen "next walk" card.
+  Fixed by removing the `date >= today`/`date < today` exclusions on
+  `pending` walks in both functions (the `entries` loop's own past-date
+  exclusion is correct and untouched). Updated
+  `src/logic/__tests__/familyManagement.test.ts`: narrowed the two pre-fix
+  tests that had asserted the buggy exclusion as intended behavior, added 3
+  new regression tests. `npx tsc --noEmit` PASS; targeted
+  `familyManagement.test.ts`/`familyStore.test.ts` PASS 53/53; full `npm
+  test -- --runInBand` PASS **131/131 suites, 1534/1534 tests** (up from
+  131/131 · 1531/1531). `git status` confirmed the changeset is scoped to
+  exactly `src/logic/familyManagement.ts` and
+  `src/logic/__tests__/familyManagement.test.ts` plus this
+  `EXECUTION_STATE.md` update. Commit attempt blocked (see Blocker) — same
+  standing pattern as every prior cycle.
 - Prior cycles' own completed-this-cycle entries below, preserved for
   history:
 - Reconciliation found HEAD had actually moved to `927da51`, one commit

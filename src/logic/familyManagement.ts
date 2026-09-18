@@ -112,6 +112,14 @@ export class FamilyManagementError extends Error {}
  * `replacementUserId` (it has no rotation/entry fallback for a walk whose
  * entry it isn't also reassigning) — so it must count as impact requiring a
  * replacement, exactly like an owned entry does.
+ *
+ * Unlike `entries` (a scheduling template — a past slot has nothing left to
+ * reassign), a `pending` walk is a live, unresolved item regardless of its
+ * date: an overdue walk nobody ever marked done/skipped still needs someone
+ * able to resolve it. It is deliberately NOT filtered by `date >= today`
+ * here — a past-but-pending walk left on a deleted user can never be
+ * resolved again (their identity can't be reclaimed once removed), so it
+ * must count as impact requiring a replacement just like a future one.
  */
 export function computeUserDeletionImpact(
   userId: string,
@@ -132,7 +140,6 @@ export function computeUserDeletionImpact(
       (w) =>
         w.responsibleUserId === userId &&
         w.status === 'pending' &&
-        w.date >= today &&
         !(w.scheduleEntryId && ownedFutureEntryIds.has(w.scheduleEntryId))
     ).length,
   };
@@ -187,7 +194,12 @@ export function planUserRemoval(
 
   const updatedWalks: Walk[] = [];
   for (const walk of walks) {
-    if (walk.responsibleUserId !== userId || walk.status !== 'pending' || walk.date < today) continue;
+    // No `walk.date < today` exclusion here (unlike the entries loop above):
+    // a `pending` walk is unresolved regardless of date, and once its
+    // responsible user is deleted nobody can ever resolve it again — an
+    // overdue one left behind must still be reassigned, exactly like a
+    // future one. See computeUserDeletionImpact's doc comment.
+    if (walk.responsibleUserId !== userId || walk.status !== 'pending') continue;
     const linkedEntry = walk.scheduleEntryId ? updatedEntries.find((e) => e.id === walk.scheduleEntryId) : undefined;
     const newResponsible = linkedEntry?.responsibleUserId ?? replacementUserId;
     if (!newResponsible) continue;
