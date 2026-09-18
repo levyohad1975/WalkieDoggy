@@ -50,6 +50,139 @@ anything else.
 ## Current Task
 
 **This cycle's reconciliation, done fresh via direct `git log`/`git show`,
+not trusted from this file's own prior narrative:** HEAD was `8da3cff`, one
+commit past `7a0c24d` (what this file's own prior text named as HEAD, and
+whose own commit attempt that prior cycle had hedged under Blocker as
+possibly not landed). `git show --stat 8da3cff` and `git diff --name-status
+7a0c24d 8da3cff` confirmed it contains exactly the prior cycle's own new
+`dogs`-table DELETE-policy-closing migration
+(`supabase/migrations/0042_dogs_no_client_delete.sql` +
+`src/lib/__tests__/migration0042.dogsNoClientDelete.test.ts`) plus that
+cycle's own `EXECUTION_STATE.md` rewrite — the standing
+self-reporting-drift pattern (see note at top of file) reconfirmed yet
+again (62nd+ time running): the commit had already landed despite the
+prior cycle's own hedged "commit attempt outcome recorded under Blocker"
+self-report. `node_modules/typescript` was missing at cycle start (the
+documented `npx tsc` package-resolution symptom); `npm ci` restored it
+(906 packages, matching the expected baseline). `npx tsc --noEmit` at
+reconciled HEAD `8da3cff` — **PASS**, zero errors. Targeted `npx jest
+src/lib/__tests__/migration0042.dogsNoClientDelete.test.ts --runInBand` —
+**PASS: 5/5**, reconfirming the prior cycle's own regression assertion
+still holds. Full `npm test -- --runInBand` at reconciled HEAD — **PASS:
+134/134 suites, 1563/1563 tests** (the expected baseline, matching the
+prior cycle's own reported count exactly), confirming a healthy baseline
+before starting new work.
+
+**This cycle's own task — a real, first-time-discovered, user-facing
+data-integrity bug, found by a fresh Explore research agent (steered away
+from every already-exhausted defect class documented in this file, toward
+previously-unswept areas: `statistics.ts`/`StatisticsScreen.tsx` in more
+depth, Settings/roles logic, Web Push-specific paths, reminder-message
+logic, remaining System Admin screens, `nextWalk.ts` edge cases,
+timezone/date-boundary handling elsewhere, remaining client-trusts-payload
+RPC patterns, the claim-profile flow, and modal logic bugs beyond
+accessibility) and verified directly by this cycle (not just trusted from
+the report) by reading `src/components/DeleteUserModal.tsx` in full and
+`src/screens/FamilyScreen.tsx` lines 91-173, 215-263, and 435-457 in full,
+confirming both the exact pre-fix effect and the two independent
+re-render triggers by grepping `src/screens/FamilyScreen.tsx` for
+`otherUsers`/`DeleteUserModal`/`touchLastSeen`/`AppState`:**
+
+`DeleteUserModal.tsx`'s replacement-picker selection was silently reset
+while the admin was still using it. Its `useEffect(() => { if (visible)
+setReplacement(otherUsers[0]?.id ?? null); }, [visible, otherUsers])`
+(pre-fix) re-ran on ANY `otherUsers` reference change, not just an actual
+open transition — and `FamilyScreen.tsx:447` computes `otherUsers` inline
+(`users.filter((u) => u.id !== deleteTarget?.id && !u.removedAt)`), a
+brand-new array on every render regardless of whether membership actually
+changed. `FamilyScreen.tsx` re-renders for reasons wholly unrelated to the
+open modal, confirmed at two independent call sites: a `setInterval`
+(`FamilyScreen.tsx:253-263`) calls `touchLastSeen().then(loadActivity)`
+every 2 minutes for any real admin while the screen is mounted — exactly
+the role that can open this modal — and an `AppState` "active" listener
+(`FamilyScreen.tsx:236-248`) does the same on every foreground transition;
+both flow into `setActivity(rows)` (`FamilyScreen.tsx:108-113`), a genuine
+state update that re-renders the whole screen. Concrete reachable
+scenario: an admin opens the delete-member modal, deliberately picks a
+non-default replacement (e.g. "Mom" instead of whoever happens to be first
+in the list) to take over the departing member's future rotation/walks,
+then pauses for even a couple of minutes mid-decision (plausible during a
+real "remove a family member" conversation) — the interval or a
+foreground/background app-switch fires, `otherUsers`' reference changes
+with identical content, and the effect silently reverts `replacement` back
+to the default first candidate with no visual indication anything
+changed. The admin then taps "מחק" believing their original choice is
+still selected. `replacement` flows directly into `deleteUser(deleteTarget.id,
+replacementUserId)` → `planUserRemoval()` (`src/store/familyStore.ts:259-271`),
+which reassigns the deleted member's future rotation rules and
+directly-assigned walks to whichever id ended up selected — a real,
+silent misassignment of the family's future dog-walking schedule, on an
+action the modal's own `accessibilityHint="המחיקה מיידית ואינה ניתנת
+לביטול"` (immediate, no undo) already establishes has no recovery path.
+
+**Fixed (client-side logic only, no migration needed), following this
+repo's own established pattern of extracting a pure "what should happen"
+decision out of a component so it is directly unit-testable — the exact
+same pattern `settingsModalTransitions.ts`/`decideChildModalToOpen()`
+already uses for an analogous modal-lifecycle decision:** added
+`src/logic/deleteUserModalTransitions.ts`'s
+`nextDeleteReplacementSelection(visible, wasVisible, replacement,
+otherUserIds)`, which resets the selection only on an actual open
+transition (`visible` going `false -> true`, tracked via a `wasVisibleRef`
+in the component) or when the currently-selected replacement id is no
+longer present among the candidates BY CONTENT
+(`otherUserIds.includes(replacement)`), never by array reference — an
+unrelated re-render with the same membership is now correctly a no-op.
+Wired it into `DeleteUserModal.tsx`'s `useEffect`, replacing the old
+reference-keyed reset logic; `otherUsers` is still passed as a dependency
+(needed for the content check) but no longer drives a reset by itself.
+
+Added `src/logic/__tests__/deleteUserModalTransitions.test.ts` (7 tests, a
+genuine unit test of the extracted pure function — not a source-text scan
+— matching `settingsModalTransitions.test.ts`'s own established
+convention for this class of modal-lifecycle decision): confirms no-op
+while closed; confirms default-first-candidate on an actual open
+transition, including the empty-candidates → `null` case; **the core
+regression case** — an unrelated re-render (new array, identical ids,
+modal already open) with a deliberately-non-default selection must NOT be
+clobbered; falls back to the first candidate (or `null`) when the selected
+id is genuinely no longer present; stays a no-op across repeated unrelated
+re-renders as long as the selection remains valid.
+
+`npx tsc --noEmit` after this cycle's own change — **PASS**, zero errors.
+Targeted `npx jest src/logic/__tests__/deleteUserModalTransitions.test.ts
+--runInBand` — **PASS: 7/7 tests**. Full `npm test -- --runInBand` after
+this cycle's own change — **PASS: 135/135 suites, 1570/1570 tests** (up
+from 134/134 · 1563/1563 immediately before the change, same HEAD —
+exactly 1 new suite + its own 7 tests, every other suite's count
+unchanged). `git status --porcelain=v1 --untracked-files=all` confirmed
+the changeset is scoped to exactly `src/components/DeleteUserModal.tsx`
+(modified), `src/logic/deleteUserModalTransitions.ts` (new), and
+`src/logic/__tests__/deleteUserModalTransitions.test.ts` (new) — plus this
+`EXECUTION_STATE.md` update — no unrelated file touched, no user work at
+risk.
+
+**Runner-up angles the same investigation surfaced, deliberately not
+folded into this bounded unit (recorded so a future cycle does not
+re-propose them as new):** whether `FamilyScreen.tsx` should also
+`useMemo` its `otherUsers` computation — considered and deliberately not
+done: it would reduce how often the reference changes but is not a
+correctness fix by itself (the modal must still be robust to a changing
+reference on genuine membership changes, e.g. another admin removing a
+different member concurrently), so the modal-side content-comparison fix
+is the actual correctness fix and the memoization would only be a minor,
+optional perf/no-op-render nicety layered on top — not bundled into this
+bounded unit. The research agent also checked `statistics.ts`/
+`StatisticsScreen.tsx` beyond the previously-read lines, Settings/roles
+logic, Web Push-specific paths (service worker/VAPID) separate from the
+already-checked token lifecycle, `reminderMessages.ts` beyond
+`due_walk_reminders()`, remaining System Admin screens/RPCs, `nextWalk.ts`
+edge cases, and the claim-profile flow on non-removed profiles — no
+further defect found in the time available.
+
+### Prior cycles' own narratives (full detail preserved here; see also the further-condensed "Recent cycles" and "Completed This Cycle" sections below for the same events in shorter form)
+
+**This cycle's reconciliation, done fresh via direct `git log`/`git show`,
 not trusted from this file's own prior narrative:** HEAD was `7a0c24d`, one
 commit past `17d3dfc` (what this file's own prior text named as HEAD, and
 whose own commit attempt that prior cycle had hedged under Blocker as
@@ -2022,28 +2155,27 @@ mount-recovery dead end, which was the unambiguous, no-judgment-call part.
 
 ## Current Task Status
 
-Prior cycle's `HistoryScreen.tsx` weekly-summary `weekAgo` off-by-one fix
-(`7a0c24d`) is confirmed landed — closed, `DONE`.
+Prior cycle's `dogs`-table DELETE-policy-closing migration `0042`
+(`8da3cff`) is confirmed landed — closed, `DONE`.
 
-**This cycle's own task — closing a security-relevant RLS gap on `dogs`
-(no admin gate, and critically no protection at all against a non-admin
-DELETE that cascades to wipe the family's entire schedule_rules/
-schedule_entries/walks history via FK cascade) via new migration
-`supabase/migrations/0042_dogs_no_client_delete.sql` — is code-complete and
+**This cycle's own task — fixing `DeleteUserModal.tsx`'s replacement-picker
+selection being silently reset by unrelated `FamilyScreen` re-renders
+(presence-refresh interval / AppState foreground reload), via an extracted
+pure decision function `nextDeleteReplacementSelection()` in new file
+`src/logic/deleteUserModalTransitions.ts` — is code-complete and
 validated** (`tsc` PASS zero errors; targeted
-`migration0042.dogsNoClientDelete.test.ts` PASS **5/5**; full `npm test`
-PASS **134/134 suites, 1563/1563 tests**, up from 133/133 · 1558/1558
-immediately before the change, same HEAD). This closes the "systematic
-non-SELECT RLS sweep" angle two separate prior cycles' own "Runner-up
-angles" notes had flagged as still open — see Current Task above for the
-full reachable-defect reasoning and the rejected `notifications`-table
-counterpart. Commit attempt outcome recorded under Blocker/Last Evidence
-below; per the standing 60+-cycle pattern, even a "blocked" self-report
-this same cycle should not be assumed final — the next cycle's first
-action must still be its own independent `git log --oneline -5` + `git
-status` check, and should re-verify
-`migration0042.dogsNoClientDelete.test.ts`'s assertions still pass at
-whatever HEAD it finds before trusting this narrative.
+`deleteUserModalTransitions.test.ts` PASS **7/7**; full `npm test` PASS
+**135/135 suites, 1570/1570 tests**, up from 134/134 · 1563/1563
+immediately before the change, same HEAD). See Current Task above for the
+full reachable-defect reasoning (an admin's deliberate replacement pick
+for a departing member could be silently reverted mid-decision, causing
+the family's future schedule to be misassigned on an irreversible action).
+Commit attempt outcome recorded under Blocker/Last Evidence below; per the
+standing 60+-cycle pattern, even a "blocked" self-report this same cycle
+should not be assumed final — the next cycle's first action must still be
+its own independent `git log --oneline -5` + `git status` check, and
+should re-verify `deleteUserModalTransitions.test.ts`'s assertions still
+pass at whatever HEAD it finds before trusting this narrative.
 
 ## Current Branch / PR
 
@@ -2057,50 +2189,49 @@ whatever HEAD it finds before trusting this narrative.
 ## Last Evidence
 
 - This cycle start: `git log --oneline -5`/`git status` confirmed HEAD is
-  `7a0c24d`, clean working tree — **one** commit past `17d3dfc`, what this
-  file's own prior narrative described as HEAD. `git show --stat 7a0c24d`
-  confirmed it contains exactly the prior cycle's own `HistoryScreen.tsx`
-  weekly-summary `weekAgo` off-by-one fix (`src/screens/HistoryScreen.tsx` +
-  `HistoryScreen.permissionGate.test.ts`) + that cycle's own
+  `8da3cff`, clean working tree — **one** commit past `7a0c24d`, what this
+  file's own prior narrative described as HEAD. `git show --stat 8da3cff`
+  confirmed it contains exactly the prior cycle's own `dogs`-table
+  DELETE-policy-closing migration
+  (`supabase/migrations/0042_dogs_no_client_delete.sql` +
+  `migration0042.dogsNoClientDelete.test.ts`) + that cycle's own
   `EXECUTION_STATE.md` rewrite — it had landed despite the prior cycle's own
   hedged "commit attempt outcome recorded under Blocker" self-report,
   consistent with the standing pattern (see note at top of file).
-- `node_modules` was present but incomplete at cycle start
-  (`node_modules/typescript` missing, the documented `npx tsc`
-  package-resolution symptom); `npm ci` restored it (906 packages, matching
-  the expected baseline). `npx tsc --noEmit` at reconciled HEAD `7a0c24d` —
-  **PASS**, zero errors. Targeted
-  `npx jest src/screens/__tests__/HistoryScreen.permissionGate.test.ts
-  --runInBand` — **PASS: 9/9**. Full `npm test -- --runInBand` at
-  reconciled HEAD — **PASS: 133/133 suites, 1558/1558 tests** (the expected
+- `node_modules/typescript` was missing at cycle start (the documented
+  `npx tsc` package-resolution symptom); `npm ci` restored it (906
+  packages, matching the expected baseline). `npx tsc --noEmit` at
+  reconciled HEAD `8da3cff` — **PASS**, zero errors. Targeted
+  `npx jest src/lib/__tests__/migration0042.dogsNoClientDelete.test.ts
+  --runInBand` — **PASS: 5/5**. Full `npm test -- --runInBand` at
+  reconciled HEAD — **PASS: 134/134 suites, 1563/1563 tests** (the expected
   baseline, matching it exactly), confirming a healthy baseline before
   starting new work.
-- **This cycle's own fix:** added
-  `supabase/migrations/0042_dogs_no_client_delete.sql`, closing the gap
-  where `dogs`' `"modify dogs in own family"` policy (`for all`, no admin
-  check) allowed any non-admin family member to DELETE the family's dog
-  row, which cascades via FK (`on delete cascade`) to permanently wipe
-  every `schedule_rules`/`schedule_entries`/`walks` row for that dog,
-  bypassing those tables' own RLS policies entirely (FK cascades bypass
-  RLS by design) — see Current Task above for the full reachable-defect
-  reasoning. The new migration drops the old policy and replaces it with
-  separate INSERT/UPDATE policies (identical scoping, preserving current
-  behavior) and deliberately no DELETE policy, matching `users`' own 0003
-  precedent.
-- Added `src/lib/__tests__/migration0042.dogsNoClientDelete.test.ts` (5
-  tests, source-text-scan style matching migration0037-0041's convention).
-- Targeted `npx jest src/lib/__tests__/migration0042.dogsNoClientDelete.test.ts
-  --runInBand` — **PASS: 5/5 tests**.
-- Full `npm test -- --runInBand` after the fix — **PASS: 134/134 suites,
-  1563/1563 tests** (up from 133/133 · 1558/1558 immediately before the
-  change, same HEAD — exactly 1 new suite + its own 5 tests, every other
+- **This cycle's own fix:** added `src/logic/deleteUserModalTransitions.ts`'s
+  `nextDeleteReplacementSelection()`, closing the gap where
+  `DeleteUserModal.tsx`'s replacement-picker reset its selection on any
+  `otherUsers` array-reference change (not just an actual open transition
+  or a genuine membership change), letting an unrelated `FamilyScreen`
+  re-render (its 2-minute presence-refresh interval or AppState foreground
+  listener) silently discard an admin's deliberate replacement pick — see
+  Current Task above for the full reachable-defect reasoning. Wired the new
+  pure function into `DeleteUserModal.tsx`'s `useEffect` via a
+  `wasVisibleRef`, replacing the old reference-keyed reset logic.
+- Added `src/logic/__tests__/deleteUserModalTransitions.test.ts` (7 tests,
+  a genuine unit test of the extracted pure function, matching
+  `settingsModalTransitions.test.ts`'s own established convention).
+- Targeted `npx jest src/logic/__tests__/deleteUserModalTransitions.test.ts
+  --runInBand` — **PASS: 7/7 tests**.
+- Full `npm test -- --runInBand` after the fix — **PASS: 135/135 suites,
+  1570/1570 tests** (up from 134/134 · 1563/1563 immediately before the
+  change, same HEAD — exactly 1 new suite + its own 7 tests, every other
   suite's count unchanged).
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `git status --porcelain=v1 --untracked-files=all` confirmed the tracked
-  changeset is scoped to exactly
-  `supabase/migrations/0042_dogs_no_client_delete.sql` and
-  `src/lib/__tests__/migration0042.dogsNoClientDelete.test.ts` — plus this
+  changeset is scoped to exactly `src/components/DeleteUserModal.tsx`
+  (modified), `src/logic/deleteUserModalTransitions.ts` (new), and
+  `src/logic/__tests__/deleteUserModalTransitions.test.ts` (new) — plus this
   `EXECUTION_STATE.md` update — no unrelated file touched, no user work at
   risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
@@ -2108,38 +2239,40 @@ whatever HEAD it finds before trusting this narrative.
 
 ## Last Evidence Timestamp
 
-2026-09-18T14:18:42+03:00 (prior landed commit `7a0c24d`); this cycle's own
-work validated at HEAD `7a0c24d` + working tree as of this cycle's own run
-(2026-09-18, this session), commit attempt outcome per Blocker below.
+2026-09-18T15:35:19+03:00 (prior landed commit `8da3cff`); this cycle's own
+work validated at HEAD `8da3cff` + working tree as of this cycle's own run
+(2026-09-18T15:56:32+03:00, this session), commit attempt outcome per
+Blocker below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
-self-reported:** a compound `git add` of the three changed files
-(`supabase/migrations/0042_dogs_no_client_delete.sql`,
-`src/lib/__tests__/migration0042.dogsNoClientDelete.test.ts`,
+self-reported:** a compound `git add` of the four changed files
+(`src/components/DeleteUserModal.tsx`,
+`src/logic/deleteUserModalTransitions.ts`,
+`src/logic/__tests__/deleteUserModalTransitions.test.ts`,
 `EXECUTION_STATE.md`) returned "This command requires approval" from the
 tool layer itself (not a git error), consistent with every standing
 blocked git-write command across every prior cycle. A standalone `git add`
-retry (same three files) hit the identical block. A `git status
+retry (same four files) hit the identical block. A `git status
 --porcelain=v1 --untracked-files=all` run immediately after confirmed the
-working tree was unchanged (`EXECUTION_STATE.md` still shown modified, the
-migration and test file still untracked, nothing staged). So *within this
-turn's own visibility*, this cycle's commit attempt is a genuine,
-directly-confirmed no-op, not merely a hedged self-report — consistent
-with the standing pattern (see note at top of file, now reconfirmed for at
-least the 61st time running). The working-tree change itself (the new
-`dogs` DELETE-policy-closing migration + its own regression test — plus
-this `EXECUTION_STATE.md` update) is real and validated (`tsc`/`npm test`
-both PASS, 134/134 suites, 1563/1563 tests) — per "never discard
-uncommitted work," it is NOT reverted regardless of this turn's own
+working tree was unchanged (`EXECUTION_STATE.md` and `DeleteUserModal.tsx`
+still shown modified, the new logic file and test file still untracked,
+nothing staged). So *within this turn's own visibility*, this cycle's
+commit attempt is a genuine, directly-confirmed no-op, not merely a hedged
+self-report — consistent with the standing pattern (see note at top of
+file, now reconfirmed for at least the 62nd time running). The
+working-tree change itself (the `DeleteUserModal.tsx` replacement-selection
+persistence fix + its own extracted pure-function module + regression test
+— plus this `EXECUTION_STATE.md` update) is real and validated
+(`tsc`/`npm test` both PASS, 135/135 suites, 1570/1570 tests) — per "never
+discard uncommitted work," it is NOT reverted regardless of this turn's own
 commit-attempt outcome.
 
-**Prior cycle's own commit-attempt outcome (condensed):** the
-`HistoryScreen.tsx` weekly-summary `weekAgo` off-by-one fix hit the
-identical "requires approval" block, yet was independently confirmed landed
-as `7a0c24d` by this cycle's own reconciliation above — the pattern's own
-60th+ instance.
+**Prior cycle's own commit-attempt outcome (condensed):** the `dogs`-table
+DELETE-policy-closing migration hit the identical "requires approval"
+block, yet was independently confirmed landed as `8da3cff` by this cycle's
+own reconciliation above — the pattern's own 61st+ instance.
 
 **Standing question — mechanism already established with direct evidence
 in prior cycles' own history of this file, per the note at the top:** an
@@ -2307,26 +2440,29 @@ safe tasks that do not depend on them.
 **First step for the next cycle:** re-derive state from `git log`/`git
 show`/`git diff` before trusting this file's own narrative (see the
 standing protocol note at the top of this file) — check whether this
-cycle's own commit (the new `supabase/migrations/0042_dogs_no_client_
-delete.sql` + its own regression test + this `EXECUTION_STATE.md` update)
-landed, and check every commit between whatever SHA this file names and
-actual HEAD, not just the newest one. Re-run `npx jest
-src/lib/__tests__/migration0042.dogsNoClientDelete.test.ts --runInBand`
-(expect 5/5) as a targeted check before trusting this file's narrative.
-Also re-run the FULL `npm test -- --runInBand` — expect **134/134 suites,
-1563/1563 tests** as the new baseline (up from 133/133 · 1558/1558 before
-this cycle's own fix). Do not re-propose this `dogs` DELETE-policy fix
-itself, the rejected `notifications`-table counterpart (deliberately not
-pursued — no cascade blast radius, zero live call sites), nor any of the
-runner-up angles already checked with no defect found across prior cycles:
-the full systematic non-SELECT RLS sweep is now CLOSED across all 42
-migrations (this was its own explicitly-flagged open item, now resolved —
-do not re-run it from scratch; if a fresh RLS angle is ever needed, start
-from `dogs`/`notifications` already being checked rather than re-sweeping
-every table), `realtime.ts`, `syncQueue.ts` ordering/retry, rotation/
-backfill window, push-token/web-push lifecycle, the invite system,
-remaining Edge Functions,
-`admin_swap_walks`/`create_swap_request`/`approve_swap_request`.
+cycle's own commit (the `DeleteUserModal.tsx` fix + new
+`src/logic/deleteUserModalTransitions.ts` + its own regression test + this
+`EXECUTION_STATE.md` update) landed, and check every commit between
+whatever SHA this file names and actual HEAD, not just the newest one.
+Re-run `npx jest src/logic/__tests__/deleteUserModalTransitions.test.ts
+--runInBand` (expect 7/7) as a targeted check before trusting this file's
+narrative. Also re-run the FULL `npm test -- --runInBand` — expect
+**135/135 suites, 1570/1570 tests** as the new baseline (up from 134/134 ·
+1563/1563 before this cycle's own fix). Do not re-propose this
+`DeleteUserModal` replacement-persistence fix itself, the deliberately-
+rejected `FamilyScreen`-side `useMemo(otherUsers)` alternative (a
+perf-only nicety, not a correctness fix — the content-comparison fix in
+the modal is the actual fix), nor any of the runner-up angles already
+checked with no defect found across prior cycles: the full systematic
+non-SELECT RLS sweep is CLOSED across all 42 migrations, `realtime.ts`,
+`syncQueue.ts` ordering/retry, rotation/backfill window, push-token/web-push
+lifecycle, the invite system, remaining Edge Functions,
+`admin_swap_walks`/`create_swap_request`/`approve_swap_request`,
+`statistics.ts`/`StatisticsScreen.tsx` (checked deeper this cycle, no
+defect), Settings/roles logic, Web Push service-worker/VAPID paths,
+`reminderMessages.ts` beyond `due_walk_reminders()`, remaining System Admin
+screens/RPCs, `nextWalk.ts` edge cases, and the claim-profile flow on
+non-removed profiles.
 
 **Prior cycle's own next-step note (condensed, now itself historical —
 its own task since landed as `17d3dfc` and is reconciled above; retained
@@ -2848,6 +2984,34 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
+- Reconciliation found HEAD had actually moved to `8da3cff`, one commit
+  past `7a0c24d` — confirmed via `git show --stat` it contains exactly the
+  prior cycle's own `dogs`-table DELETE-policy-closing migration `0042` +
+  its own regression test — reconfirming the standing self-reporting-drift
+  pattern yet again (62nd+ time). `node_modules/typescript` was missing;
+  `npm ci` restored it. `npx tsc --noEmit` — PASS. Full `npm test` at
+  reconciled HEAD `8da3cff` — PASS 134/134 suites, 1563/1563 tests
+  (expected baseline).
+- This cycle's own task: fixed `DeleteUserModal.tsx`'s replacement-picker
+  selection being silently reset by unrelated `FamilyScreen` re-renders
+  (its 2-minute presence-refresh interval / AppState foreground listener
+  recreating the `otherUsers` array reference on every render), which could
+  cause an admin's deliberate replacement pick for a departing member to be
+  silently reverted mid-decision before an irreversible delete — a real
+  data-integrity/user-facing-correctness bug, not cosmetic. Extracted a
+  pure decision function `nextDeleteReplacementSelection()` into new file
+  `src/logic/deleteUserModalTransitions.ts` (resets only on an actual open
+  transition or genuine content-based membership loss, never on a bare
+  reference change), matching this repo's own established
+  `settingsModalTransitions.ts` pattern for modal-lifecycle decisions.
+  Added `src/logic/__tests__/deleteUserModalTransitions.test.ts` (7 tests,
+  a genuine unit test of the pure function, including the core regression
+  scenario). `tsc` PASS zero errors; targeted test PASS 7/7; full `npm
+  test` PASS 135/135 suites, 1570/1570 tests (up from 134/134 · 1563/1563).
+  Commit attempt (`git add` on the 4 changed files) hit the same standing
+  "requires approval" tool-layer block as every prior cycle — see Blocker
+  for the directly-confirmed outcome; the working-tree change itself is
+  real, validated, and not reverted.
 - Reconciliation found HEAD had actually moved to `7a0c24d`, one commit
   past `17d3dfc` — confirmed via `git show --stat` it contains exactly the
   prior cycle's own `HistoryScreen.tsx` weekly-summary `weekAgo`

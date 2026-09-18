@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import type { FamilyUser, UserDeletionImpact } from '../types';
 import { colors } from '../theme/colors';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
+import { nextDeleteReplacementSelection } from '../logic/deleteUserModalTransitions';
 
 interface DeleteUserModalProps {
   visible: boolean;
@@ -22,10 +23,23 @@ interface DeleteUserModalProps {
  */
 export function DeleteUserModal({ visible, user, impact, otherUsers, onConfirm, onClose }: DeleteUserModalProps) {
   const [replacement, setReplacement] = useState<string | null>(null);
+  // See deleteUserModalTransitions.ts's own doc comment: `otherUsers` is a
+  // new array reference on almost every FamilyScreen render, not just when
+  // its membership actually changes, so the reset decision must be driven
+  // by the pure helper (open-transition / content-membership) rather than a
+  // bare `otherUsers` reference dependency.
+  const wasVisibleRef = useRef(false);
 
   useEffect(() => {
-    if (visible) setReplacement(otherUsers[0]?.id ?? null);
-  }, [visible, otherUsers]);
+    const next = nextDeleteReplacementSelection(
+      visible,
+      wasVisibleRef.current,
+      replacement,
+      otherUsers.map((u) => u.id)
+    );
+    wasVisibleRef.current = visible;
+    if (next !== undefined) setReplacement(next);
+  }, [visible, otherUsers, replacement]);
 
   if (!user) return null;
   const hasImpact = Boolean(
