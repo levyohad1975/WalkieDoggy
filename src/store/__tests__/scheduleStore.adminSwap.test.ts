@@ -126,4 +126,44 @@ describe('scheduleStore.swapTwoWalks — Supabase mode: admin_swap_walks is the 
     expect(state.walks.find((w) => w.id === 'walk-b')?.responsibleUserId).toBe('dana');
     expect(state.actionError).toBe('רק מנהל/ת יכולים לבצע פעולה זו.');
   });
+
+  it('a server-side rejection reverts only the two swapped walks/entries — a concurrent realtime update to an UNRELATED walk landing during the RPC is preserved, not clobbered by a stale pre-swap snapshot', async () => {
+    // Simulate a realtime reload (src/lib/realtime.ts -> RootNavigator's
+    // debounced useScheduleStore.getState().load(familyId)) landing on this
+    // device WHILE admin_swap_walks is still in flight — e.g. another family
+    // member marks an unrelated third walk done on their own device. The
+    // mock RPC itself performs this mutation-then-reject to model the actual
+    // race: the state changes strictly between the initial snapshot inside
+    // swapTwoWalks and the catch block running.
+    const WALK_C: Walk = {
+      id: 'walk-c',
+      familyId: 'family-1',
+      dogId: 'dog-1',
+      date: '2026-09-11',
+      scheduledTime: '12:00',
+      responsibleUserId: 'noam',
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    useScheduleStore.setState({ walks: [WALK_A, WALK_B, WALK_C], entries: [ENTRY_A, ENTRY_B], actionError: null });
+
+    adminSwapWalks.mockImplementation(async () => {
+      useScheduleStore.setState((s) => ({
+        walks: s.walks.map((w) => (w.id === 'walk-c' ? { ...w, status: 'done' as const } : w)),
+      }));
+      throw new Error('admin permission required');
+    });
+
+    await useScheduleStore.getState().swapTwoWalks('walk-a', 'walk-b', 'noam');
+
+    const state = useScheduleStore.getState();
+    // The swap itself is correctly reverted...
+    expect(state.walks.find((w) => w.id === 'walk-a')?.responsibleUserId).toBe('noam');
+    expect(state.walks.find((w) => w.id === 'walk-b')?.responsibleUserId).toBe('dana');
+    // ...but the concurrent, unrelated update to walk-c must survive, not be
+    // clobbered by reverting to the whole pre-swap `walks` array.
+    expect(state.walks.find((w) => w.id === 'walk-c')?.status).toBe('done');
+    expect(state.actionError).toBe('רק מנהל/ת יכולים לבצע פעולה זו.');
+  });
 });

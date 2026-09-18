@@ -612,16 +612,28 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       await scheduleNotificationsForWalk(updatedA);
       await scheduleNotificationsForWalk(updatedB);
     } catch (e) {
-      set({
-        walks: before.walks,
-        entries: before.entries,
+      // Revert only the two specific walks/entries back to their pre-swap
+      // values, merged against whatever the CURRENT state is — never a raw
+      // overwrite of the whole `walks`/`entries` arrays from the `before`
+      // closure. A realtime reload (see src/lib/realtime.ts) can land
+      // between the snapshot above and this catch firing (e.g. another
+      // family member's device marks an unrelated walk done while this
+      // RPC is in flight), and that legitimate concurrent update must not
+      // be silently discarded. Every sibling action in this file (markDone,
+      // skip, swap, editDoneDetails) already reverts this way; this was the
+      // one outlier.
+      set((s) => ({
+        walks: s.walks.map((w) => (w.id === walkAId ? walkA : w.id === walkBId ? walkB : w)),
+        entries: s.entries.map((e) =>
+          entryA && e.id === entryA.id ? entryA : entryB && e.id === entryB.id ? entryB : e
+        ),
         actionError:
           e instanceof WalkActionError
             ? e.message
             : e instanceof Error
               ? friendlyErrorMessage(e)
               : 'לא הצלחנו להחליף בין הטיולים',
-      });
+      }));
     }
   },
 
