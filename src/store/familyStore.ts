@@ -159,12 +159,23 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
 
   setReminderEnabled: async (userId: string, enabled: boolean) => {
     if (!guardTestModeMutation()) return;
-    const prev = get().users;
-    set({ users: prev.map((u) => (u.id === userId ? { ...u, remindersEnabled: enabled } : u)) });
+    const before = get().users.find((u) => u.id === userId);
+    set((s) => ({ users: s.users.map((u) => (u.id === userId ? { ...u, remindersEnabled: enabled } : u)) }));
     try {
       await repository.updateUserReminderSetting(userId, enabled);
     } catch (e) {
-      set({ users: prev, error: 'לא הצלחנו לעדכן את הגדרות התזכורות' });
+      // Functional merge against CURRENT state, not a raw overwrite from the
+      // pre-await `before` snapshot: a realtime reload (subscribeToFamilyChanges
+      // watches `users`, see lib/realtime.ts) triggered by another family
+      // member's unrelated concurrent edit can land on this device while this
+      // RPC is in flight, and a raw `set({ users: prev, ... })` here would
+      // silently discard that legitimate update along with reverting this
+      // one field — same defect class as scheduleStore.swapTwoWalks's own
+      // catch block, fixed for the same reason.
+      set((s) => ({
+        users: before ? s.users.map((u) => (u.id === userId ? { ...u, remindersEnabled: before.remindersEnabled } : u)) : s.users,
+        error: 'לא הצלחנו לעדכן את הגדרות התזכורות',
+      }));
     }
   },
 
@@ -220,12 +231,20 @@ if (!familyId) {
 
   updateUser: async (user: FamilyUser) => {
     if (!guardTestModeMutation()) return;
-    const prev = get().users;
-    set({ users: prev.map((u) => (u.id === user.id ? user : u)) });
+    const before = get().users.find((u) => u.id === user.id);
+    set((s) => ({ users: s.users.map((u) => (u.id === user.id ? user : u)) }));
     try {
       await repository.upsertUser(user);
     } catch (e) {
-      set({ users: prev, actionError: 'לא הצלחנו לעדכן את בן המשפחה' });
+      // Functional merge against CURRENT state — see setReminderEnabled's
+      // catch block above for why a raw `set({ users: prev, ... })` from a
+      // pre-await snapshot is unsafe here (a concurrent realtime reload of
+      // an unrelated member could land mid-RPC and would otherwise be
+      // silently discarded).
+      set((s) => ({
+        users: before ? s.users.map((u) => (u.id === user.id ? before : u)) : s.users,
+        actionError: 'לא הצלחנו לעדכן את בן המשפחה',
+      }));
     }
   },
 
@@ -239,7 +258,6 @@ if (!familyId) {
 
   deleteUser: async (userId: string, replacementUserId: string | null) => {
     if (!guardTestModeMutation()) return;
-    const prevUsers = get().users;
     const { rules, entries, walks } = useScheduleStore.getState();
     try {
       const { updatedRules, updatedEntries, updatedWalks } = planUserRemoval(
@@ -265,11 +283,20 @@ if (!familyId) {
       // FamilyUser.removedAt's doc comment. FamilyScreen/SettingsScreen/
       // RuleFormModal/EditWalkModal filter removedAt out of their own
       // active-member pickers instead.
+      // Functional merge against CURRENT state, not a raw overwrite from a
+      // pre-await snapshot: `users` is a realtime-watched table (see
+      // lib/realtime.ts's subscribeToFamilyChanges, wired in RootNavigator
+      // to useFamilyStore.getState().load()) — a concurrent, unrelated edit
+      // to another member landing on this device while
+      // repository.deleteFamilyMember's RPC is in flight must survive this
+      // update, not be silently discarded. Same defect class as
+      // scheduleStore.swapTwoWalks's own catch block, fixed for the same
+      // reason.
       const removedAt = new Date().toISOString();
-      set({
-        users: prevUsers.map((u) => (u.id === userId ? { ...u, removedAt } : u)),
+      set((s) => ({
+        users: s.users.map((u) => (u.id === userId ? { ...u, removedAt } : u)),
         actionError: null,
-      });
+      }));
       useScheduleStore.setState((s) => ({
         rules: s.rules.map((r) => updatedRules.find((ur) => ur.id === r.id) ?? r),
         entries: s.entries.map((e) => updatedEntries.find((ue) => ue.id === e.id) ?? e),

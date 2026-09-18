@@ -154,6 +154,38 @@ describe('familyStore — setReminderEnabled', () => {
 
     spy.mockRestore();
   });
+
+  it('a rejection reverts only the affected member — a concurrent realtime update to an UNRELATED member landing during the RPC is preserved, not clobbered by a stale pre-await snapshot', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { repository } = require('../../data');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    const users = useFamilyStore.getState().users;
+    expect(users.length).toBeGreaterThan(1);
+    const [target, other] = users;
+
+    const spy = jest.spyOn(repository, 'updateUserReminderSetting').mockImplementationOnce(async () => {
+      // Models a realtime reload from another family member's unrelated
+      // concurrent edit landing on this device while this RPC is in flight
+      // (see lib/realtime.ts's subscribeToFamilyChanges, wired to
+      // useFamilyStore.load() in RootNavigator.tsx).
+      useFamilyStore.setState((s: any) => ({
+        users: s.users.map((u: any) => (u.id === other.id ? { ...u, name: 'שם עודכן במקביל' } : u)),
+      }));
+      throw new Error('boom');
+    });
+
+    await useFamilyStore.getState().setReminderEnabled(target.id, false);
+
+    expect(useFamilyStore.getState().users.find((u: any) => u.id === target.id)?.remindersEnabled).toBe(
+      target.remindersEnabled
+    );
+    expect(useFamilyStore.getState().users.find((u: any) => u.id === other.id)?.name).toBe('שם עודכן במקביל');
+
+    spy.mockRestore();
+  });
 });
 
 describe('familyStore — updateUser', () => {
@@ -195,6 +227,34 @@ describe('familyStore — updateUser', () => {
 
     expect(useFamilyStore.getState().users).toEqual(usersBefore);
     expect(useFamilyStore.getState().actionError).toBe('לא הצלחנו לעדכן את בן המשפחה');
+
+    spy.mockRestore();
+  });
+
+  it('a rejection reverts only the edited member — a concurrent realtime update to an UNRELATED member landing during the RPC is preserved, not clobbered by a stale pre-await snapshot', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { repository } = require('../../data');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    const users = useFamilyStore.getState().users;
+    expect(users.length).toBeGreaterThan(1);
+    const [target, other] = users;
+
+    const spy = jest.spyOn(repository, 'upsertUser').mockImplementationOnce(async () => {
+      // Models a realtime reload from another family member's unrelated
+      // concurrent edit landing on this device while this RPC is in flight.
+      useFamilyStore.setState((s: any) => ({
+        users: s.users.map((u: any) => (u.id === other.id ? { ...u, name: 'שם עודכן במקביל' } : u)),
+      }));
+      throw new Error('boom');
+    });
+
+    await useFamilyStore.getState().updateUser({ ...target, name: 'שם חדש' });
+
+    expect(useFamilyStore.getState().users.find((u: any) => u.id === target.id)?.name).toBe(target.name);
+    expect(useFamilyStore.getState().users.find((u: any) => u.id === other.id)?.name).toBe('שם עודכן במקביל');
 
     spy.mockRestore();
   });
@@ -529,6 +589,43 @@ describe('familyStore — deleteUser (soft delete, preserving history)', () => {
     expect(useFamilyStore.getState().users.find((u: any) => u.id === solo.id)?.removedAt).toBeFalsy();
 
     deleteFamilyMemberSpy.mockRestore();
+  });
+
+  it('a concurrent realtime update to an UNRELATED member landing while repository.deleteFamilyMember is in flight is preserved, not clobbered by a stale pre-await snapshot', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { useScheduleStore } = require('../scheduleStore');
+    const { DEMO_FAMILY } = require('../../data/demoData');
+    const { repository } = require('../../data');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    await useScheduleStore.getState().load(DEMO_FAMILY.id);
+
+    const users = useFamilyStore.getState().users;
+    expect(users.length).toBeGreaterThan(2);
+    const [victim, replacement, bystander] = users;
+
+    const spy = jest.spyOn(repository, 'deleteFamilyMember').mockImplementationOnce(async () => {
+      // Models a realtime reload from another family member's unrelated
+      // concurrent edit (e.g. another admin's device editing `bystander`)
+      // landing on THIS device while this admin-only RPC is still in
+      // flight — see lib/realtime.ts's subscribeToFamilyChanges, wired to
+      // useFamilyStore.load() in RootNavigator.tsx.
+      useFamilyStore.setState((s: any) => ({
+        users: s.users.map((u: any) => (u.id === bystander.id ? { ...u, name: 'שם עודכן במקביל' } : u)),
+      }));
+    });
+
+    await useFamilyStore.getState().deleteUser(victim.id, replacement.id);
+
+    // The deleted member is correctly soft-deleted...
+    expect(useFamilyStore.getState().users.find((u: any) => u.id === victim.id)?.removedAt).toBeTruthy();
+    // ...and the concurrent, unrelated update survives, not clobbered by a
+    // stale whole-array snapshot captured before the RPC's await.
+    expect(useFamilyStore.getState().users.find((u: any) => u.id === bystander.id)?.name).toBe('שם עודכן במקביל');
+
+    spy.mockRestore();
   });
 });
 

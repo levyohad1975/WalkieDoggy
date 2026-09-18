@@ -50,25 +50,101 @@ anything else.
 ## Current Task
 
 **This cycle's reconciliation, done fresh via direct `git log`/`git show`,
-not trusted from this file's own prior narrative:** HEAD was `e07314e`, one
-commit past `9f8d498` (what this file's own prior text named as HEAD, and
+not trusted from this file's own prior narrative:** HEAD was `c85c503`, one
+commit past `e07314e` (what this file's own prior text named as HEAD, and
 whose own commit attempt that prior cycle had hedged under Blocker as
-possibly not landed). `git show --stat e07314e` and `git diff --name-status
-9f8d498 e07314e` confirmed it contains exactly that prior cycle's own
-`admin_delete_family_member()` fail-closed completeness check (new
-migration `0041`, `src/lib/__tests__/migration0041.
-failClosedMemberRemovalCompletenessCheck.test.ts`, `src/lib/errorMessages.ts`,
-`src/lib/__tests__/errorMessages.test.ts`) plus that cycle's own
+possibly not landed). `git show --stat c85c503` confirmed it contains
+exactly that prior cycle's own `swapTwoWalks()` functional-merge fix
+(`src/store/scheduleStore.ts`,
+`src/store/__tests__/scheduleStore.adminSwap.test.ts`) plus that cycle's own
 `EXECUTION_STATE.md` rewrite — the standing self-reporting-drift pattern
-(see note at top of file) reconfirmed yet again (58th+ time running): the
+(see note at top of file) reconfirmed yet again (59th+ time running): the
 commit had already landed despite the prior cycle's own hedged "commit
 attempt outcome recorded under Blocker" self-report. `node_modules` was
 absent at cycle start; `npm ci` restored it (906 packages). `npx tsc
---noEmit` at reconciled HEAD `e07314e` — **PASS**, zero errors. Full `npm
+--noEmit` at reconciled HEAD `c85c503` — **PASS**, zero errors. Full `npm
 test -- --runInBand` at reconciled HEAD — **PASS: 133/133 suites,
-1553/1553 tests** (the expected baseline, matching the prior cycle's own
+1554/1554 tests** (the expected baseline, matching the prior cycle's own
 reported count exactly), confirming a healthy baseline before starting new
 work.
+
+**This cycle's own task — a real, first-time-discovered, data-integrity
+race, found by a fresh Explore research agent (steered away from the full
+list of 60+ already-exhausted defect classes documented in this file, and
+specifically toward angle 4 it flagged as unswept: "any other raw
+`set({...})` full-object-replace pattern following an awaited RPC,
+mirroring the `swapTwoWalks` bug shape, in a sibling store") and verified
+directly by this cycle (not just trusted from the report) by reading
+`src/store/familyStore.ts` in full and confirming the exact line numbers
+and behavior described:**
+
+Three actions in `familyStore.ts` — `setReminderEnabled`, `updateUser`, and
+`deleteUser` — each captured a `users` (or single-user) snapshot *before* an
+`await repository.*(...)` network round-trip, then afterward called a raw
+`set({ users: <snapshot>.map(...) })`, overwriting the ENTIRE `users` array
+from that pre-await snapshot rather than a functional `set((s) => ...)`
+merge against whatever `users` currently holds. `users` is a
+realtime-watched table (`src/lib/realtime.ts`'s `WATCHED_TABLES` includes
+`'users'`; `subscribeToFamilyChanges`'s `onChange` is wired in
+`RootNavigator.tsx:194` to `void useFamilyStore.getState().load(familyId)`,
+which does an authoritative `set({ family, users, dog, loading: false })` —
+confirmed directly at both sites), so an ordinary concurrent event — another
+family member's device editing a different member, or another admin action
+on this same device — landing between the snapshot and the raw `set()` is
+silently discarded: `setReminderEnabled`/`updateUser`'s catch-path revert
+(`set({ users: prev, ... })`) wiped out any concurrent change on failure, and
+`deleteUser`'s SUCCESS path (`set({ users: prevUsers.map(...), actionError:
+null })`, unconditional — not just its catch) did the same on every single
+ordinary member removal, not only on failure. This is the identical bug
+shape to the just-landed `swapTwoWalks` fix (`c85c503`), in a different
+store that sweep didn't cover — confirmed no other raw `set({...})` referencing
+a pre-await local variable remains in either `familyStore.ts` or
+`scheduleStore.ts` after this fix (only functional `set((s) => ...)` forms
+remain in both files' async actions).
+
+**Fixed (client-side logic only, no migration needed):** changed all three
+call sites in `src/store/familyStore.ts` to functional `set((s) => ...)`
+merges against current state — `setReminderEnabled`'s and `updateUser`'s
+catch-path reverts now restore only the one affected user's prior field
+value (captured as `before`, a single user snapshot) merged against
+`s.users`, and `deleteUser`'s success path now sets `removedAt` on only the
+target user merged against `s.users`, matching the pattern its own
+`useScheduleStore.setState((s) => ...)` call three lines below it already
+used. Added a doc comment at each site explaining why (the realtime-race
+reasoning above, cross-referencing `swapTwoWalks`).
+
+Added 3 new regression tests to
+`src/store/__tests__/familyStore.test.ts` (one per action): each mocks the
+relevant `repository.*` call to itself call `useFamilyStore.setState()`
+mutating an UNRELATED member (modeling a realtime reload landing mid-RPC)
+before resolving/rejecting, then confirms the affected member's own
+field is correctly reverted/set while the concurrent unrelated update
+survives instead of being clobbered.
+
+`npx tsc --noEmit` after this cycle's own change — **PASS**, zero errors.
+Targeted `npx jest src/store/__tests__/familyStore.test.ts --runInBand` —
+**PASS: 24/24 tests** (up from 21/21). Full `npm test -- --runInBand` after
+this cycle's own change — **PASS: 133/133 suites, 1557/1557 tests** (up
+from 133/133 · 1554/1554 immediately before the change, same HEAD — no new
+suite, exactly +3 tests, matching the three new regression tests added;
+every other suite's count unchanged). `git status --porcelain=v1
+--untracked-files=all` confirmed the changeset is scoped to exactly
+`src/store/familyStore.ts` and
+`src/store/__tests__/familyStore.test.ts` — plus this `EXECUTION_STATE.md`
+update — no unrelated file touched, no user work at risk.
+
+**Runner-up angles the same investigation surfaced, deliberately not folded
+into this bounded unit (recorded so a future cycle does not re-propose them
+as new):** the research agent also checked a full systematic non-SELECT RLS
+policy sweep (0001-0041 `users`/`families` policies all correctly
+drop-then-recreated, no gap found beyond the single 0005 spot-check already
+on record), an orphan-RPC sweep (every migration-defined RPC has a live
+`src/` call site, no new orphan found), and `admin_reschedule_walk`/
+`admin_swap_walks` for the same client-trusts-payload pattern as 0041 (both
+already re-validate admin status/membership/pending status server-side —
+not the source of a similar gap). A full systematic non-SELECT-RLS sweep
+across every migration remains open for a future cycle if a fresh angle is
+needed.
 
 **This cycle's own task — a real, first-time-discovered, data-integrity
 race, found by a fresh Explore research agent (steered away from every
@@ -1735,29 +1811,28 @@ mount-recovery dead end, which was the unambiguous, no-judgment-call part.
 
 ## Current Task Status
 
-Prior cycle's `admin_delete_family_member()` fail-closed completeness check
-(new migration `0041`) (`e07314e`) is confirmed landed — closed, `DONE`.
+Prior cycle's `swapTwoWalks()` functional-merge fix (`c85c503`) is confirmed
+landed — closed, `DONE`.
 
-**This cycle's own task — reverting `swapTwoWalks()`'s failure path to a
-functional, single-item `set((s) => ...)` merge instead of a raw whole-array
-overwrite from a stale pre-RPC snapshot, in `src/store/scheduleStore.ts` —
-is code-complete and validated** (`tsc` PASS zero errors; targeted
-`scheduleStore.adminSwap.test.ts` + `scheduleStore.test.ts` PASS **38/38**;
-full `npm test` PASS **133/133 suites, 1554/1554 tests**, up from 133/133 ·
-1553/1553 immediately before the change, same HEAD). This is a
-**data-integrity race**, not cosmetic — see Current Task above for the full
-reachable-defect reasoning: a realtime reload from another family member's
-concurrent, unrelated schedule change can land on this device while
-`admin_swap_walks` is still in flight, and the pre-fix catch block silently
-discarded that legitimate update by reverting the ENTIRE `walks`/`entries`
-arrays to the pre-swap snapshot whenever the RPC then failed for any of
-several ordinary reasons. Commit attempt outcome recorded under
-Blocker/Last Evidence below; per the standing 58+-cycle pattern, even a
-"blocked" self-report this same cycle should not be assumed final — the
-next cycle's first action must still be its own independent `git log
---oneline -5` + `git status` check, and should re-verify
-`scheduleStore.adminSwap.test.ts`'s new test still passes at whatever HEAD
-it finds before trusting this narrative.
+**This cycle's own task — converting `setReminderEnabled`/`updateUser`/
+`deleteUser`'s stale-pre-await-snapshot `set({...})` calls in
+`src/store/familyStore.ts` to functional `set((s) => ...)` merges — is
+code-complete and validated** (`tsc` PASS zero errors; targeted
+`familyStore.test.ts` PASS **24/24**; full `npm test` PASS **133/133
+suites, 1557/1557 tests**, up from 133/133 · 1554/1554 immediately before
+the change, same HEAD). This is a **data-integrity race**, not cosmetic —
+see Current Task above for the full reachable-defect reasoning: a realtime
+reload from another family member's concurrent, unrelated edit can land on
+this device while any of these three RPCs is still in flight, and the
+pre-fix code silently discarded that legitimate update (on failure for the
+first two; on every ordinary success for `deleteUser`) by overwriting the
+ENTIRE `users` array from a snapshot captured before the `await`. Commit
+attempt outcome recorded under Blocker/Last Evidence below; per the
+standing 59+-cycle pattern, even a "blocked" self-report this same cycle
+should not be assumed final — the next cycle's first action must still be
+its own independent `git log --oneline -5` + `git status` check, and should
+re-verify `familyStore.test.ts`'s three new tests still pass at whatever
+HEAD it finds before trusting this narrative.
 
 ## Current Branch / PR
 
@@ -1771,63 +1846,59 @@ it finds before trusting this narrative.
 ## Last Evidence
 
 - This cycle start: `git log --oneline -5`/`git status` confirmed HEAD is
-  `e07314e`, clean working tree — **one** commit past `9f8d498`, what this
-  file's own prior narrative described as HEAD. `git show --stat e07314e`
-  confirmed it contains exactly the prior cycle's own `admin_delete_family_
-  member()` fail-closed completeness check (migration `0041`) + its own
-  regression tests + that cycle's own `EXECUTION_STATE.md` rewrite — it had
-  landed despite the prior cycle's own hedged "commit attempt outcome
-  recorded under Blocker" self-report, consistent with the standing
-  pattern (see note at top of file).
+  `c85c503`, clean working tree — **one** commit past `e07314e`, what this
+  file's own prior narrative described as HEAD. `git show --stat c85c503`
+  confirmed it contains exactly the prior cycle's own `swapTwoWalks()`
+  functional-merge fix (`src/store/scheduleStore.ts` +
+  `scheduleStore.adminSwap.test.ts`) + that cycle's own `EXECUTION_STATE.md`
+  rewrite — it had landed despite the prior cycle's own hedged "commit
+  attempt outcome recorded under Blocker" self-report, consistent with the
+  standing pattern (see note at top of file).
 - `node_modules` was absent at cycle start; `npm ci` restored it (906
   packages, matching the expected baseline). `npx tsc --noEmit` at
-  reconciled HEAD `e07314e` — **PASS**, zero errors. Full `npm test --
-  runInBand` at reconciled HEAD — **PASS: 133/133 suites, 1553/1553
+  reconciled HEAD `c85c503` — **PASS**, zero errors. Full `npm test --
+  runInBand` at reconciled HEAD — **PASS: 133/133 suites, 1554/1554
   tests** (the expected baseline, matching it exactly), confirming a
   healthy baseline before starting new work.
-- **This cycle's own fix:** changed `swapTwoWalks()`'s catch block in
-  `src/store/scheduleStore.ts` from a raw `set({ walks: before.walks,
-  entries: before.entries })` whole-array overwrite to a functional
-  `set((s) => ...)` merge that reverts only the two specific walks/entries
-  involved in the swap — see Current Task above for the full
-  reachable-defect reasoning (a concurrent realtime update to an unrelated
-  walk landing on this device while `admin_swap_walks` is in flight was
-  being silently discarded whenever the RPC then failed).
-- Added a new regression test to
-  `src/store/__tests__/scheduleStore.adminSwap.test.ts` that models a
-  concurrent store mutation to an unrelated walk landing mid-RPC (via the
-  mock `adminSwapWalks` itself calling `useScheduleStore.setState()` before
-  rejecting) and confirms it survives the swap's own revert.
-- Targeted `npx jest src/store/__tests__/scheduleStore.adminSwap.test.ts
-  src/store/__tests__/scheduleStore.test.ts --runInBand` — **PASS: 38/38
-  tests**.
+- **This cycle's own fix:** changed `setReminderEnabled`/`updateUser`/
+  `deleteUser` in `src/store/familyStore.ts` from raw `set({ users:
+  <pre-await-snapshot>.map(...) })` whole-array overwrites to functional
+  `set((s) => ...)` merges against current state — see Current Task above
+  for the full reachable-defect reasoning (a concurrent realtime update to
+  an unrelated family member landing on this device while any of these
+  three RPCs is in flight was being silently discarded).
+- Added 3 new regression tests to `src/store/__tests__/familyStore.test.ts`
+  (one per action) that model a concurrent store mutation to an UNRELATED
+  member landing mid-RPC (via the mocked `repository.*` call itself calling
+  `useFamilyStore.setState()` before resolving/rejecting) and confirm it
+  survives each action's own revert/success update.
+- Targeted `npx jest src/store/__tests__/familyStore.test.ts --runInBand` —
+  **PASS: 24/24 tests** (up from 21/21).
 - Full `npm test -- --runInBand` after the fix — **PASS: 133/133 suites,
-  1554/1554 tests** (up from 133/133 · 1553/1553 immediately before the
-  change, same HEAD — no new suite, exactly +1 test, matching the single
-  new regression test added; every other suite's count unchanged).
+  1557/1557 tests** (up from 133/133 · 1554/1554 immediately before the
+  change, same HEAD — no new suite, exactly +3 tests, matching the three
+  new regression tests added; every other suite's count unchanged).
 - `npx tsc --noEmit` after this cycle's own change — **PASS**, zero
   errors.
 - `git status --porcelain=v1 --untracked-files=all` confirmed the tracked
-  changeset is scoped to exactly `src/store/scheduleStore.ts` and
-  `src/store/__tests__/scheduleStore.adminSwap.test.ts` — plus this
-  `EXECUTION_STATE.md` update — no unrelated file touched, no user work at
-  risk.
+  changeset is scoped to exactly `src/store/familyStore.ts` and
+  `src/store/__tests__/familyStore.test.ts` — plus this `EXECUTION_STATE.md`
+  update — no unrelated file touched, no user work at risk.
 - **Commit attempt this cycle:** see Blocker below for the outcome,
   checked directly via `git status` immediately after the attempt.
 
 ## Last Evidence Timestamp
 
-2026-09-18T10:07:10Z (prior landed commit `e07314e`); this cycle's own work
-validated at HEAD `e07314e` + working tree as of this cycle's own run
+2026-09-18T10:31:52+03:00 (prior landed commit `c85c503`); this cycle's own
+work validated at HEAD `c85c503` + working tree as of this cycle's own run
 (2026-09-18, this session), commit attempt outcome per Blocker below.
 
 ## Blocker
 
 **This cycle's commit attempt was checked directly, not just
-self-reported:** a compound `git add` of the two changed files
-(`src/store/scheduleStore.ts`,
-`src/store/__tests__/scheduleStore.adminSwap.test.ts`) plus this
-`EXECUTION_STATE.md` returned "This command requires approval" from the
+self-reported:** a compound `git add` of the three changed files
+(`src/store/familyStore.ts`, `src/store/__tests__/familyStore.test.ts`,
+`EXECUTION_STATE.md`) returned "This command requires approval" from the
 tool layer itself (not a git error), consistent with every standing
 blocked git-write command across every prior cycle. A standalone `git add`
 retry (same three files) hit the identical block. A `git status
@@ -1836,18 +1907,17 @@ working tree was unchanged (all three files still shown modified, nothing
 staged). So *within this turn's own visibility*, this cycle's commit
 attempt is a genuine, directly-confirmed no-op, not merely a hedged
 self-report — consistent with the standing pattern (see note at top of
-file, now reconfirmed for at least the 58th time running). The
-working-tree change itself (the `swapTwoWalks()` lost-update race fix + its
-own regression test — plus this `EXECUTION_STATE.md` update) is real and
-validated (`tsc`/`npm test` both PASS, 133/133 suites, 1554/1554 tests) —
-per "never discard uncommitted work," it is NOT reverted regardless of this
-turn's own commit-attempt outcome.
+file, now reconfirmed for at least the 59th time running). The
+working-tree change itself (the `familyStore.ts` stale-snapshot lost-update
+race fix + its own 3 regression tests — plus this `EXECUTION_STATE.md`
+update) is real and validated (`tsc`/`npm test` both PASS, 133/133 suites,
+1557/1557 tests) — per "never discard uncommitted work," it is NOT reverted
+regardless of this turn's own commit-attempt outcome.
 
 **Prior cycle's own commit-attempt outcome (condensed):** the
-`admin_delete_family_member()` fail-closed completeness check (migration
-`0041`) hit the identical "requires approval" block, yet was independently
-confirmed landed as `e07314e` by this cycle's own reconciliation above —
-the pattern's own 57th+ instance.
+`swapTwoWalks()` functional-merge fix hit the identical "requires approval"
+block, yet was independently confirmed landed as `c85c503` by this cycle's
+own reconciliation above — the pattern's own 58th+ instance.
 
 **Standing question — mechanism already established with direct evidence
 in prior cycles' own history of this file, per the note at the top:** an
@@ -2536,15 +2606,40 @@ proceed even while 1–3/6 are blocked.
 
 ## Completed This Cycle
 
-- Reconciliation found HEAD had actually moved to `e07314e`, one commit
-  past `9f8d498` — confirmed via `git show --stat`/`git diff --name-status`
-  it contains exactly the prior cycle's own `admin_delete_family_member()`
-  fail-closed completeness check (migration 0041) + its own regression
-  tests + that cycle's own `EXECUTION_STATE.md` rewrite — reconfirming the
-  standing self-reporting-drift pattern yet again (58th+ time). `npm ci`
-  restored `node_modules` (906 packages, absent at cycle start). `npx tsc
-  --noEmit` PASS; full `npm test -- --runInBand` PASS **133/133 suites,
-  1553/1553 tests** (the expected baseline, matched exactly).
+- Reconciliation found HEAD had actually moved to `c85c503`, one commit
+  past `e07314e` — confirmed via `git show --stat` it contains exactly the
+  prior cycle's own `swapTwoWalks()` functional-merge fix
+  (`src/store/scheduleStore.ts` + `scheduleStore.adminSwap.test.ts`) + that
+  cycle's own `EXECUTION_STATE.md` rewrite — reconfirming the standing
+  self-reporting-drift pattern yet again (59th+ time). `npm ci` restored
+  `node_modules` (906 packages, absent at cycle start). `npx tsc --noEmit`
+  PASS; full `npm test -- --runInBand` PASS **133/133 suites, 1554/1554
+  tests** (the expected baseline, matched exactly).
+- **This cycle's own fix — a real, first-time-discovered data-integrity
+  race, found by a fresh Explore research agent (same bug shape as the
+  just-landed `swapTwoWalks` fix, in a sibling store that sweep didn't
+  cover):** `setReminderEnabled`/`updateUser`/`deleteUser` in
+  `src/store/familyStore.ts` each captured a `users` snapshot before an
+  `await repository.*(...)` call, then afterward did a raw `set({ users:
+  <snapshot>.map(...) })` — overwriting the ENTIRE array from the stale
+  pre-await snapshot instead of a functional `set((s) => ...)` merge.
+  Since `users` is a realtime-watched table (`lib/realtime.ts`, wired to
+  `useFamilyStore.load()` in `RootNavigator.tsx`), a concurrent, unrelated
+  edit to a different family member landing on this device mid-RPC was
+  silently discarded — on failure for the first two, and on every ordinary
+  SUCCESS for `deleteUser` (not just its catch path). Changed all three
+  call sites to functional merges reverting/setting only the one affected
+  member. Added 3 regression tests to `familyStore.test.ts` (one per
+  action) modeling a concurrent unrelated-member mutation landing mid-RPC.
+  `tsc` PASS; targeted `familyStore.test.ts` PASS 24/24; full suite PASS
+  **133/133 suites, 1557/1557 tests** (up from 133/133 · 1554/1554). `git
+  status` confirmed the changeset is scoped to exactly
+  `src/store/familyStore.ts` and `src/store/__tests__/familyStore.test.ts`
+  plus this `EXECUTION_STATE.md` update. Commit attempt hit the standing
+  "requires approval" block (59th+ instance) — working tree not reverted
+  per "never discard uncommitted work."
+- Prior cycles' own completed-this-cycle entries below, preserved for
+  history:
 - **This cycle's own fix — a real, first-time-discovered data-integrity
   race, found by a fresh Explore research agent:** `swapTwoWalks()`'s catch
   block reverted a failed `admin_swap_walks` (0031) RPC with a raw
