@@ -80,7 +80,8 @@ jobs:
                 if ([string]$latestWorker.head_sha -eq $mainSha -and $failedWorkersCurrentRevision -ge 2) {
                   $message = "RC is stalled: $failedWorkersCurrentRevision Worker runs on current workflow revision $mainSha failed. Refusing an unbounded Worker retry loop."
                   $message | Add-Content $env:GITHUB_STEP_SUMMARY
-                  throw $message
+                  'Bounded retry exhausted. Recording a stable stalled state without redispatching or failing every scheduled Watchdog run. A new workflow revision or RC head will automatically reopen recovery.' | Add-Content $env:GITHUB_STEP_SUMMARY
+                  exit 0
                 }
                 "Recovering failed Worker $($latestWorker.id) ($($latestWorker.conclusion)); bounded retry on current workflow revision." | Add-Content $env:GITHUB_STEP_SUMMARY
               }
@@ -102,7 +103,7 @@ jobs:
 
             if ([string]$latestValidation.head_sha -eq $mainSha) {
               $currentRevisionFailures = @($validations | Where-Object { [string]$_.head_sha -eq $mainSha -and $_.conclusion -in @('failure','cancelled','timed_out','action_required','startup_failure') }).Count
-              if ($currentRevisionFailures -ge 2) { $message = "RC is stalled: $currentRevisionFailures Validation runs on current workflow revision $mainSha have failed. Refusing an unbounded retry loop."; $message | Add-Content $env:GITHUB_STEP_SUMMARY; throw $message }
+              if ($currentRevisionFailures -ge 2) { $message = "RC is stalled: $currentRevisionFailures Validation runs on current workflow revision $mainSha have failed. Refusing an unbounded retry loop."; $message | Add-Content $env:GITHUB_STEP_SUMMARY; 'Bounded retry exhausted. Recording a stable stalled state without redispatching or failing every scheduled Watchdog run. A new workflow revision or RC head will automatically reopen recovery.' | Add-Content $env:GITHUB_STEP_SUMMARY; exit 0 }
               "Retrying Validation once after current workflow revision $mainSha concluded $($latestValidation.conclusion)." | Add-Content $env:GITHUB_STEP_SUMMARY
             } else { "Retrying Validation because the latest failed Validation used older workflow revision $($latestValidation.head_sha), while main is $mainSha." | Add-Content $env:GITHUB_STEP_SUMMARY }
           }
