@@ -1,6 +1,7 @@
 import {
   computeRequestLifecycle,
   countActionableRequests,
+  countPendingRequestsForViewer,
   countUnreadRequestResults,
   isRequestActive,
   isRequestVisible,
@@ -204,5 +205,48 @@ describe('countUnreadRequestResults', () => {
       }),
     ];
     expect(countUnreadRequestResults(requests, {}, 'viewer')).toBe(1);
+  });
+});
+
+describe('countPendingRequestsForViewer', () => {
+  const walks = { w1: { status: 'pending' as const } };
+
+  it('counts a pending swap addressed to a non-admin viewer', () => {
+    const swaps: RequestLike[] = [makeRequest({ id: 's1', walk_id: 'w1', target_user_id: 'viewer' })];
+    expect(countPendingRequestsForViewer(swaps, [], walks, 'viewer', false, NOW)).toBe(1);
+  });
+
+  it('ignores a pending swap addressed to someone else', () => {
+    const swaps: RequestLike[] = [makeRequest({ id: 's1', walk_id: 'w1', target_user_id: 'someoneElse' })];
+    expect(countPendingRequestsForViewer(swaps, [], walks, 'viewer', false, NOW)).toBe(0);
+  });
+
+  it('ignores every time-change request for a non-admin viewer, even one they created', () => {
+    const timeChanges: RequestLike[] = [makeRequest({ id: 't1', walk_id: 'w1', requested_by_user_id: 'viewer' })];
+    expect(countPendingRequestsForViewer([], timeChanges, walks, 'viewer', false, NOW)).toBe(0);
+  });
+
+  it('counts every pending time-change request for an admin viewer, regardless of requester', () => {
+    const timeChanges: RequestLike[] = [makeRequest({ id: 't1', walk_id: 'w1', requested_by_user_id: 'someoneElse' })];
+    expect(countPendingRequestsForViewer([], timeChanges, walks, 'admin', true, NOW)).toBe(1);
+  });
+
+  it('also counts a pending swap targeting an admin viewer, alongside time-change requests', () => {
+    const swaps: RequestLike[] = [makeRequest({ id: 's1', walk_id: 'w1', target_user_id: 'admin' })];
+    const timeChanges: RequestLike[] = [makeRequest({ id: 't1', walk_id: 'w1', requested_by_user_id: 'someoneElse' })];
+    expect(countPendingRequestsForViewer(swaps, timeChanges, walks, 'admin', true, NOW)).toBe(2);
+  });
+
+  it('excludes expired/resolved requests from either category', () => {
+    const swaps: RequestLike[] = [makeRequest({ id: 's1', walk_id: 'missing', target_user_id: 'admin' })];
+    const timeChanges: RequestLike[] = [
+      makeRequest({ id: 't1', walk_id: 'w1', status: 'approved', resolved_at: NOW.toISOString() }),
+    ];
+    expect(countPendingRequestsForViewer(swaps, timeChanges, walks, 'admin', true, NOW)).toBe(0);
+  });
+
+  it('defaults now to the current time when omitted', () => {
+    const swaps: RequestLike[] = [makeRequest({ id: 's1', walk_id: 'w1', target_user_id: 'viewer' })];
+    expect(countPendingRequestsForViewer(swaps, [], walks, 'viewer', false)).toBe(1);
   });
 });

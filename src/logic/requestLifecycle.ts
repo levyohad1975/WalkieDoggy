@@ -10,6 +10,7 @@ export interface RequestLike {
   resolved_at: string | null;
   requester_seen_at?: string | null;
   requested_by_user_id?: string;
+  target_user_id?: string;
 }
 
 export type RequestLifecycleState =
@@ -102,4 +103,28 @@ export function countUnreadRequestResults<T extends RequestLike>(
       r.requester_seen_at == null &&
       computeRequestLifecycle(r, walksById, now) === 'recentlyResolved'
   ).length;
+}
+
+/**
+ * Combined "בקשות ממתינות (N)" bell-badge count (HomeScreen). A swap
+ * request's target can be ANY active family member the requester picks —
+ * including one who also holds the Admin role (UserPickerModal doesn't
+ * exclude admins, and RequestsInboxModal's own canApprove check for a swap
+ * is target_user_id-only, never role-gated) — so an Admin viewer must still
+ * be counted whenever a pending swap names them as target, in addition to
+ * every pending time-change request any Admin may approve. A non-admin
+ * viewer only ever sees swap requests addressed to them, since they can
+ * never approve a time-change request.
+ */
+export function countPendingRequestsForViewer(
+  swapRequests: RequestLike[],
+  timeChangeRequests: RequestLike[],
+  walksById: Record<string, Pick<Walk, 'status'> | undefined>,
+  viewerUserId: string,
+  isAdmin: boolean,
+  now: Date = new Date()
+): number {
+  const swapCount = countActionableRequests(swapRequests, walksById, (r) => r.target_user_id === viewerUserId, now);
+  const timeChangeCount = isAdmin ? countActionableRequests(timeChangeRequests, walksById, () => true, now) : 0;
+  return swapCount + timeChangeCount;
 }

@@ -32,7 +32,7 @@ import { DEMO_FAMILY } from '../data/demoData';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { fetchLastResolvedWalk } from '../lib/permissionedWalks';
 import { useRequestsStore } from '../store/requestsStore';
-import { countActionableRequests, countUnreadRequestResults } from '../logic/requestLifecycle';
+import { countPendingRequestsForViewer, countUnreadRequestResults } from '../logic/requestLifecycle';
 import { computeWalkRequestStatusLine } from '../logic/walkRequestStatusLine';
 import type { Walk } from '../types';
 import { renderMessageTemplate } from '../mascot/messageEngine';
@@ -367,16 +367,21 @@ export function HomeScreen() {
     });
   }, [dog, reminderPrompt, usersById, walksById]);
 
-  // Badge counts: for a Member, swap requests addressed to them awaiting
-  // their approval; for an Admin, time-change requests awaiting theirs
+  // Badge counts: swap requests addressed to the viewer (a swap target can
+  // be ANY active member, including one who also holds the Admin role —
+  // see countPendingRequestsForViewer's own doc comment), plus, for an
+  // Admin, every pending time-change request awaiting their approval
   // (requirement 4's "בקשות ממתינות (N)").
   // Section 9: badge = ONLY actionable (pending, non-expired) requests —
   // an "expired" pending request (its walk already resolved another way)
   // no longer inflates the badge, even though the row itself isn't deleted.
-  const pendingForMe =
+  const pendingForMe = countPendingRequestsForViewer(
+    swapRequests,
+    timeChangeRequests,
+    walksById,
+    effectiveUserId,
     effectiveRole === 'admin'
-      ? countActionableRequests(timeChangeRequests, walksById, () => true)
-      : countActionableRequests(swapRequests, walksById, (r) => r.target_user_id === effectiveUserId);
+  );
 
   const unreadResultsForMe =
     countUnreadRequestResults(swapRequests, walksById, effectiveUserId) +
