@@ -108,7 +108,9 @@ Follow [MASCOT_SPEC.md](C:\Users\ohadl\Downloads\dogwalkfamilyround5a\docs\desig
 
 Current navigation uses a small, consistent emoji vocabulary for tabs: home, schedule, family, history, statistics, and settings. Current components also use emoji for compact actions, status/delight cues, and empty/error states; standard React Native controls and text links are used alongside them.
 
-Keep an icon’s meaning stable, its visual size appropriate to the control, and its direction appropriate for RTL. Use decorative emoji as decoration, not the only communication of critical status or action. The repository does not establish a dedicated vector-icon library or a formal stroke-icon system; do not mandate one without approval.
+Keep an icon’s meaning stable, its visual size appropriate to the control, and its direction appropriate for RTL. Use decorative emoji as decoration, not the only communication of critical status or action.
+
+**Owner approval (2026-09-19):** the owner approved adopting `@expo/vector-icons` (bundled with Expo SDK 54, no new dependency required) as the repository's formal icon library. This unblocks replacing the emoji-based bottom-tab navigation icons (and other emoji-as-icon usage where a coherent production-quality visual language is called for, per Issue #63) with `@expo/vector-icons` glyphs. Keep icon meaning, sizing, and RTL direction as described above; decorative emoji elsewhere (status/delight cues, empty/error states) are unaffected unless a specific redesign unit says otherwise.
 
 ## UI visual language
 
