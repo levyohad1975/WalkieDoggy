@@ -80,7 +80,8 @@ jobs:
                 if ([string]$latestWorker.head_sha -eq $mainSha -and $failedWorkersCurrentRevision -ge 2) {
                   $message = "RC is stalled: $failedWorkersCurrentRevision Worker runs on current workflow revision $mainSha failed."
                   $message | Add-Content $env:GITHUB_STEP_SUMMARY
-                  'Bounded retry on the same revision is exhausted. Re-opening recovery because the Watchdog workflow revision itself is now healthy; dispatching one fresh Worker under the current main revision rather than remaining idle.' | Add-Content $env:GITHUB_STEP_SUMMARY
+                  'Bounded retry on the same workflow revision is exhausted. Recording a stable stalled state without another Worker dispatch. A new main workflow revision or RC head will automatically reopen recovery.' | Add-Content $env:GITHUB_STEP_SUMMARY
+                  exit 0
                 }
                 "Recovering failed Worker $($latestWorker.id) ($($latestWorker.conclusion)); bounded retry on current workflow revision." | Add-Content $env:GITHUB_STEP_SUMMARY
               }
