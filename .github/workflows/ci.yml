@@ -32,7 +32,7 @@ jobs:
     steps:
       - name: Guard exact-head dispatch
         if: github.event_name == 'workflow_dispatch' && inputs.expected_sha != ''
-        shell: powershell
+        shell: pwsh
         env:
           TARGET_BRANCH: ${{ inputs.target_branch }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
@@ -53,7 +53,7 @@ jobs:
           ref: ${{ inputs.expected_sha || github.sha }}
 
       - name: Validate Agentic worker contract
-        shell: powershell
+        shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $workflow = Get-Content '.github/workflows/agentic-rc-worker.yml' -Raw
@@ -79,7 +79,7 @@ jobs:
           if ($workflow -notmatch '(?m)^\s+ANTHROPIC_API_KEY:\s+') { throw 'Agentic worker is missing API-key fallback wiring.' }
 
       - name: Validate isolated Staging readiness contract
-        shell: powershell
+        shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $workflow = Get-Content '.github/workflows/agentic-staging-readiness.yml' -Raw

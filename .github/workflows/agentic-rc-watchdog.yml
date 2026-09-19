@@ -23,7 +23,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Guard RC target
-        shell: powershell
+        shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           if ([string]::IsNullOrWhiteSpace($env:TARGET_BRANCH)) { throw 'Missing RC target.' }
@@ -33,7 +33,7 @@ jobs:
 
       - name: Resolve RC head through GitHub API
         id: rc
-        shell: powershell
+        shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
@@ -44,7 +44,7 @@ jobs:
           "head_sha=$headSha" | Add-Content $env:GITHUB_OUTPUT
 
       - name: Recover stalled validation or worker handoff
-        shell: powershell
+        shell: pwsh
         env:
           HEAD_SHA: ${{ steps.rc.outputs.head_sha }}
         run: |

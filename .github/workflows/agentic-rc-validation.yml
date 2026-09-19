@@ -44,7 +44,7 @@ jobs:
     steps:
       - name: Guard RC target
         id: guard
-        shell: powershell
+        shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           if ([string]::IsNullOrWhiteSpace($env:TARGET_BRANCH)) { throw 'Missing RC target.' }
@@ -55,7 +55,7 @@ jobs:
 
       - name: Verify fresh Agentic RC commit through GitHub API
         id: fresh
-        shell: powershell
+        shell: pwsh
         env:
           EVENT_NAME: ${{ github.event_name }}
           RUN_STARTED_AT: ${{ github.event.workflow_run.run_started_at }}
@@ -138,7 +138,7 @@ jobs:
       contents: read
     steps:
       - name: Dispatch Agentic RC Worker through GitHub API
-        shell: powershell
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_BRANCH: ${{ needs.guard.outputs.target_branch }}
