@@ -16,7 +16,7 @@ concurrency:
 jobs:
   recover:
     name: RC anti-stall fallback
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
       TARGET_BRANCH: ${{ vars.AGENTIC_RC_TARGET_BRANCH || 'feat/verified-auth-onboarding-batch-2' }}
