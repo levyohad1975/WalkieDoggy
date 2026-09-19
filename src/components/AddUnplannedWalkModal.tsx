@@ -4,6 +4,7 @@ import { RtlText } from './RtlText';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import type { FamilyUser, Walk } from '../types';
 import { colors } from '../theme/colors';
+import { radii, spacing } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 import { localDateOnly } from '../logic/dateFormat';
@@ -329,30 +330,30 @@ export function AddUnplannedWalkModal({
 const styles = StyleSheet.create({
   flexFull: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '90%' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, maxHeight: '90%' },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
-  subtitle: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: 4, marginBottom: 8 },
-  label: { width: '100%', fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: 14, marginBottom: 8, textAlign: 'right', writingDirection: 'rtl' },
-  row: { flexDirection: 'row', gap: 12 },
+  subtitle: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xs, marginBottom: spacing.sm },
+  label: { width: '100%', fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: 14, marginBottom: spacing.sm, textAlign: 'right', writingDirection: 'rtl' },
+  row: { flexDirection: 'row', gap: spacing.md },
   flex: { flex: 1 },
-  input: { backgroundColor: colors.surfaceMuted, borderRadius: 14, padding: 14, fontSize: 16, color: colors.textPrimary },
+  input: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, padding: 14, fontSize: 16, color: colors.textPrimary },
   timeDisplay: { textAlign: 'center', fontWeight: '700' },
-  timeButton: { marginTop: 12 },
-  userRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  userChip: { alignItems: 'center', minWidth: 68, gap: 4, opacity: 0.55 },
+  timeButton: { marginTop: spacing.md },
+  userRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  userChip: { alignItems: 'center', minWidth: 68, gap: spacing.xs, opacity: 0.55 },
   userChipActive: { opacity: 1 },
   userChipName: { fontSize: 12, color: colors.textPrimary, fontWeight: '600' },
   selfRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   selfRowName: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
-  toggleRow: { width: '100%', flexDirection: 'row', gap: 12, marginTop: 4 },
+  toggleRow: { width: '100%', flexDirection: 'row', gap: spacing.md, marginTop: spacing.xs },
   toggle: {
     flex: 1,
     minHeight: 64,
-    borderRadius: 18,
+    borderRadius: radii.lg,
     backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: spacing.xs,
     borderWidth: 2,
     borderColor: 'transparent',
   },
@@ -363,13 +364,13 @@ const styles = StyleSheet.create({
   toggleLabelActive: { color: colors.textPrimary },
   noteInput: {
     backgroundColor: colors.surfaceMuted,
-    borderRadius: 14,
+    borderRadius: radii.md,
     padding: 14,
     fontSize: 15,
     color: colors.textPrimary,
     minHeight: 56,
     textAlignVertical: 'top',
   },
-  actions: { flexDirection: 'row', gap: 12, marginTop: 20 },
-  deleteButton: { marginTop: 12 },
+  actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xl },
+  deleteButton: { marginTop: spacing.md },
 });
