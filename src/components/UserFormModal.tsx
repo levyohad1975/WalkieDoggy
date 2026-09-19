@@ -3,6 +3,7 @@ import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, St
 import { RtlText } from './RtlText';
 import type { FamilyUser } from '../types';
 import { colors, userPalette } from '../theme/colors';
+import { radii, spacing, typography } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 import { pickAndUploadImage } from '../lib/uploadImage';
@@ -136,18 +137,18 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
 const styles = StyleSheet.create({
   flexFull: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '88%' },
-  title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 16 },
-  photoRow: { alignItems: 'center', gap: 8, marginBottom: 8 },
-  photoButton: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 12, backgroundColor: colors.surfaceMuted },
-  photoLink: { color: colors.primaryDark, fontWeight: '600', fontSize: 14 },
-  label: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: 16, marginBottom: 8, textAlign: 'right' },
-  input: { backgroundColor: colors.surfaceMuted, borderRadius: 14, padding: 14, fontSize: 16, color: colors.textPrimary },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, maxHeight: '88%' },
+  title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: spacing.lg },
+  photoRow: { alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
+  photoButton: { paddingVertical: 10, paddingHorizontal: spacing.lg, borderRadius: 12, backgroundColor: colors.surfaceMuted },
+  photoLink: { color: colors.primaryDark, fontWeight: '600', fontSize: typography.cardTitle.fontSize },
+  label: { fontSize: typography.meta.fontSize, fontWeight: '700', color: colors.textSecondary, marginTop: spacing.lg, marginBottom: spacing.sm, textAlign: 'right' },
+  input: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, padding: 14, fontSize: typography.body.fontSize, color: colors.textPrimary },
   optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   emojiChip: {
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: radii.xl,
     backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
@@ -155,9 +156,9 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   emojiChipActive: { borderColor: colors.primary },
-  emojiText: { fontSize: 22 },
-  colorChip: { width: 36, height: 36, borderRadius: 18, borderWidth: 2, borderColor: 'transparent' },
+  emojiText: { fontSize: typography.screenTitle.fontSize },
+  colorChip: { width: 36, height: 36, borderRadius: radii.lg, borderWidth: 2, borderColor: 'transparent' },
   colorChipActive: { borderColor: colors.textPrimary },
-  actions: { flexDirection: 'row', gap: 12, marginTop: 22 },
+  actions: { flexDirection: 'row', gap: spacing.md, marginTop: 22 },
   flex: { flex: 1 },
 });
