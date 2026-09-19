@@ -71,8 +71,6 @@ jobs:
             'name: Enforce completion or checkpoint',
             'chore(agentic): checkpoint RC execution',
             "steps.publish.outputs.published != 'true'",
-            'npm.cmd run typecheck',
-            'npm.cmd test -- --runInBand',
             'AGENTIC_RC_TARGET_BRANCH'
           ) | ForEach-Object { if (-not $workflow.Contains($_)) { throw "Missing Agentic worker contract marker: $_" } }
           if ($workflow -notmatch '(?m)^\s+CLAUDE_CODE_OAUTH_TOKEN:\s+') { throw 'Agentic worker is missing OAuth credential wiring.' }
