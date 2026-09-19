@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
+import { radii, spacing, typography } from '../theme/tokens';
 import { Button } from './Button';
 
 interface PinEntryModalProps {
@@ -115,21 +116,21 @@ export function PinEntryModal({ visible, userName, subtitle, onSubmit, onCancel 
 const styles = StyleSheet.create({
   flexFull: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: '#00000055', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  card: { backgroundColor: colors.surface, borderRadius: 24, padding: 24, width: '100%', maxWidth: 400 },
+  card: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: 24, width: '100%', maxWidth: 400 },
   title: { fontSize: 19, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
-  subtitle: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', marginTop: 8, lineHeight: 20 },
+  subtitle: { fontSize: typography.cardTitle.fontSize, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.sm, lineHeight: 20 },
   input: {
-    marginTop: 20,
+    marginTop: spacing.xl,
     borderWidth: 1.5,
     borderColor: colors.border,
-    borderRadius: 14,
+    borderRadius: radii.md,
     paddingVertical: 14,
     fontSize: 24,
     letterSpacing: 8,
     color: colors.textPrimary,
     fontWeight: '700',
   },
-  error: { color: colors.statusOverdue, fontSize: 13, textAlign: 'center', marginTop: 10, fontWeight: '600' },
-  actions: { flexDirection: 'row', gap: 12, marginTop: 20 },
+  error: { color: colors.statusOverdue, fontSize: typography.meta.fontSize, textAlign: 'center', marginTop: 10, fontWeight: '600' },
+  actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xl },
   flex: { flex: 1 },
 });
