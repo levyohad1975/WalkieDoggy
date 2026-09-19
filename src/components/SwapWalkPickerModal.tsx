@@ -3,6 +3,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import type { Walk } from '../types';
 import { colors } from '../theme/colors';
+import { radii, spacing, typography } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 import type { SwappableWalkOption } from './EditWalkModal';
@@ -105,26 +106,26 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
     padding: 24,
     height: '80%',
   },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
-  subtitle: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: 6, marginBottom: 12 },
-  list: { flex: 1, marginTop: 4 },
-  emptyText: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', marginTop: 24 },
+  subtitle: { fontSize: typography.meta.fontSize, color: colors.textSecondary, textAlign: 'center', marginTop: 6, marginBottom: spacing.md },
+  list: { flex: 1, marginTop: spacing.xs },
+  emptyText: { fontSize: typography.cardTitle.fontSize, color: colors.textSecondary, textAlign: 'center', marginTop: 24 },
   option: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.md,
     backgroundColor: colors.surfaceMuted,
     borderRadius: 16,
-    padding: 12,
+    padding: spacing.md,
     marginBottom: 10,
   },
   optionText: { flex: 1, alignItems: 'flex-end', gap: 2 },
   optionName: { fontSize: 15, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
   optionMeta: { fontSize: 12, color: colors.textSecondary, textAlign: 'right' },
-  closeButton: { marginTop: 12 },
+  closeButton: { marginTop: spacing.md },
 });
