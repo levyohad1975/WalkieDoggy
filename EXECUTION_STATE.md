@@ -87,11 +87,10 @@ modal sweep.
 
 ## Current Task Status
 
-`VERIFYING` — direct safe recovery completed the modal token sweep:
-21/21 modal components now use existing shared design tokens wherever the
-previous literal exactly matched a token value. No visual values or behavior
-were changed. Exact-head TypeScript/Jest/CI evidence is still required before
-this deliverable can be marked `DONE`.
+`DONE` — the modal token sweep is 21/21 complete and locally verified at the
+exact product-code head `5a7764b`. Shared-token substitutions preserved all
+numeric values and product behavior. `npm run typecheck` passed; the full Jest
+suite passed 137/137 suites and 1625/1625 tests.
 
 Claude is now on-demand only after owner-approved PR #69 merged to `main`
 (`0cf1a8e`). The Watchdog cannot automatically spend Claude quota and no
@@ -118,10 +117,12 @@ automatic Claude retry is allowed.
   (`cd1c2a6`), `SwapWalkPickerModal.tsx` (`4144c6b`), and
   `UserFormModal.tsx` (`a8448ee`).
 - Modal design-token sweep is now 21/21 complete.
-- Exact-head TypeScript/Jest/CI evidence is pending; do not treat commits
-  alone as verification.
-- Previous verified baseline: `tsc --noEmit` PASS and full suite PASS
-  137/137 suites, 1625/1625 tests before the direct recovery commits.
+- First exact-head full-suite attempt found one source-format contract failure
+  in `DogDetailsModal.sexPicker.test.ts` (136/137 suites; 1624/1625 tests).
+- `5a7764b` restored the explicit multiline accessibility props without any
+  behavior change. Targeted test passed 3/3.
+- Exact product-code head `5a7764b`: `npm run typecheck` PASS and full suite
+  PASS — 137/137 suites, 1625/1625 tests.
 
 ## Last Evidence Timestamp
 
@@ -129,9 +130,9 @@ automatic Claude retry is allowed.
 
 ## Blocker
 
-**Verification:** the 21/21 modal sweep is committed, but no exact-head
-TypeScript/Jest/CI result exists yet. This blocks declaring that redesign
-deliverable DONE, not further safe redesign work.
+**Verification:** no modal-sweep blocker remains. Local exact-head TypeScript
+and Jest evidence is green. GitHub CI did not auto-start for the connector-authored
+commits; Vercel preview reached Ready, but that is not substituted for CI.
 
 **Live Staging E2E** remains dependent on the configured non-Production
 Supabase/Resend environment and real-device evidence. It does not block
@@ -139,12 +140,12 @@ repository-only Issue #63 redesign batches.
 
 ## Next Safe Task
 
-Obtain exact-head TypeScript/Jest/CI evidence for the completed 21/21 modal
-sweep. In parallel, inspect the now-owner-approved tab-bar icon conversion
-(`RootNavigator.tsx` `TAB_ICON` → `@expo/vector-icons`) and implement it
-only with dependency/lockfile and test coverage kept consistent. Then continue
-Issue #63 into remaining screen/state/RTL/accessibility evidence; the issue is
-not complete merely because the modal sweep finished.
+Advance the now-owner-approved tab-bar icon conversion (`RootNavigator.tsx`
+`TAB_ICON` → `@expo/vector-icons`) only after the Expo-compatible dependency
+version can be installed with a matching lockfile. The first safe install probe
+was blocked by an HTTP proxy timeout and made no repository changes. Continue
+Issue #63 into remaining screen/state/RTL/accessibility evidence independently;
+the issue is not complete merely because the modal sweep finished.
 
 **Do not re-investigate (confirmed exhausted / no defect, do not re-open
 without new evidence):**
@@ -224,8 +225,10 @@ Task above) is independent of this Queue and proceeds in parallel.
 
 - Merged owner-approved PR #69 to `main` (`0cf1a8e`), activating the
   Claude on-demand budget guard.
-- Completed the final seven modal token batches (21/21 total), through branch
-  head `a8448ee`.
+- Completed the final seven modal token batches (21/21 total).
+- Ran TypeScript and the full Jest suite, repaired the single accessibility
+  source-contract regression in `5a7764b`, and re-ran to 137/137 suites and
+  1625/1625 tests passing.
 - Did not invoke Claude, merge product code, or touch Production/secrets/data.
 
 ## Explicitly Out of Scope
