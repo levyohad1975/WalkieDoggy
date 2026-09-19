@@ -288,7 +288,7 @@ export function FamilyOnboardingScreen() {
     // "ההזמנה הזו כבר נוצלה". Only whoami() verification is retried.
     return (
       <SafeAreaView style={styles.container}>
-        <RtlText style={styles.emoji}>⏳</RtlText>
+        <WalkieMascot state="waiting" size={128} testID="onboarding-mascot-verifying" />
         <RtlText style={styles.title} accessibilityRole="header">ממתין לאימות</RtlText>
         <RtlText style={styles.subtitle}>
           ההצטרפות למשפחה כבר בוצעה בהצלחה, אך לא הצלחנו לאמת זאת במכשיר הזה כרגע — כנראה בעיית חיבור. אין
@@ -337,7 +337,7 @@ export function FamilyOnboardingScreen() {
     if (rejectedFamilyName) {
       return (
         <SafeAreaView style={styles.container}>
-          <RtlText style={styles.emoji}>❌</RtlText>
+          <WalkieMascot state="concerned" size={128} testID="onboarding-mascot-rejected" />
           <RtlText style={styles.title} accessibilityRole="header">הבקשה נדחתה</RtlText>
           <RtlText style={styles.subtitle}>
             הבקשה ליצירת {rejectedFamilyName} נדחתה על ידי מנהל המערכת. לפרטים נוספים, פנו לתמיכה.
@@ -350,7 +350,7 @@ export function FamilyOnboardingScreen() {
     if (pendingApprovalFamilyName) {
       return (
         <SafeAreaView style={styles.container}>
-          <RtlText style={styles.emoji}>⏳</RtlText>
+          <WalkieMascot state="waiting" size={128} testID="onboarding-mascot-pending" />
           <RtlText style={styles.title} accessibilityRole="header">המשפחה ממתינה לאישור</RtlText>
           <RtlText style={styles.subtitle}>
             הבקשה ליצירת {pendingApprovalFamilyName} התקבלה. נשלח עדכון לאחר אישור מנהל המערכת.
@@ -661,7 +661,6 @@ const styles = StyleSheet.create({
   formSafeArea: { flex: 1, backgroundColor: colors.background },
   flexFull: { flex: 1 },
   formScrollContent: { alignItems: 'center', paddingTop: 80, paddingHorizontal: 24 },
-  emoji: { fontSize: 64, marginBottom: spacing.sm },
   title: { fontSize: 24, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
   subtitle: { fontSize: 15, color: colors.textSecondary, marginTop: spacing.sm, marginBottom: spacing.xxl, textAlign: 'center' },
   wideButton: { width: '100%', marginTop: spacing.md },
