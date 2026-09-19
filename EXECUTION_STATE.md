@@ -62,18 +62,18 @@ introduced). One bounded unit per cycle: convert one `src/components/
 `radii`/`typography` tokens wherever an existing number exactly matches a
 token value. Zero visual change; add no new values.
 
-**Done (14/21):** `ConfirmModal.tsx`, `AddUnplannedWalkModal.tsx`,
+**Done (21/21):** `ConfirmModal.tsx`, `AddUnplannedWalkModal.tsx`,
 `AdminActivityModal.tsx`, `AdminAuditLogModal.tsx`,
 `CompleteWalkModal.tsx`, `DeleteUserModal.tsx`,
 `RequestsInboxModal.tsx`, `RuleFormModal.tsx`, `UserPickerModal.tsx`,
 `DogDetailsModal.tsx`, `EditDoneDetailsModal.tsx`,
 `InviteShareModal.tsx`, `RequestTimeChangeModal.tsx`,
-`RemindersModal.tsx`.
-
-**Remaining (7/21):** `EditWalkModal.tsx`,
+`RemindersModal.tsx`, `EditWalkModal.tsx`,
 `FamilySharingModal.tsx`, `MemberDetailsModal.tsx`,
 `PinEntryModal.tsx`, `PinSetupModal.tsx`,
-`SwapWalkPickerModal.tsx`, `UserFormModal.tsx`.
+`SwapWalkPickerModal.tsx`, and `UserFormModal.tsx`.
+
+**Remaining (0/21):** modal token sweep complete; exact-head verification is pending.
 
 **Icon-system blocker RESOLVED (2026-09-19) — this reopens the most
 literal #63 angle:** the owner approved `@expo/vector-icons` (see
@@ -87,14 +87,15 @@ modal sweep.
 
 ## Current Task Status
 
-`VERIFYING` — direct safe recovery has now completed eight bounded modal
-units after repeated immediate Claude `is_error:true` failures. The modal
-token sweep is 14/21 complete. Exact-value substitutions only were used;
-no new visual values or behavior changes were introduced.
+`VERIFYING` — direct safe recovery completed the modal token sweep:
+21/21 modal components now use existing shared design tokens wherever the
+previous literal exactly matched a token value. No visual values or behavior
+were changed. Exact-head TypeScript/Jest/CI evidence is still required before
+this deliverable can be marked `DONE`.
 
-GitHub Agentic Validation #201 passed only its freshness guard; its local
-TypeScript/test job was skipped. Therefore the new head is not yet claimed
-green and full verification remains pending.
+Claude is now on-demand only after owner-approved PR #69 merged to `main`
+(`0cf1a8e`). The Watchdog cannot automatically spend Claude quota and no
+automatic Claude retry is allowed.
 
 ## Current Branch / PR
 
@@ -107,17 +108,18 @@ green and full verification remains pending.
 
 ## Last Evidence
 
-- 2026-09-19: `DogDetailsModal.tsx` commit `daa5c92`.
-- 2026-09-19: direct recovery added four further Issue #63 batches:
-  `EditDoneDetailsModal.tsx` (`9037d00`), `InviteShareModal.tsx`
-  (`1ebcda0`), `RequestTimeChangeModal.tsx` (`3f5cda0`), and
-  `RemindersModal.tsx` (`0311b3d`).
-- Agentic RC Validation #201 concluded success, but only the freshness guard
-  ran; local validation gates were skipped. Do not treat that run as
-  TypeScript/test evidence.
-- Workers #293 through #299 repeatedly failed on unchanged workflow revision
-  `ba300246` without a checkpoint. Draft PR #68 fixes the Watchdog fall-through
-  that kept dispatching beyond its two-failure threshold.
+- 2026-09-19: owner-approved PR #69 merged to `main` at `0cf1a8e`;
+  automatic Claude dispatch/retries are disabled, explicit `RUN_CLAUDE`
+  authorization is required, and the per-run cap is 45 turns.
+- 2026-09-19: final seven modal token batches landed:
+  `EditWalkModal.tsx` (`6687e84`), `FamilySharingModal.tsx`
+  (`b97f846`), `MemberDetailsModal.tsx` (`71e78e6`),
+  `PinEntryModal.tsx` (`c814d06`), `PinSetupModal.tsx`
+  (`cd1c2a6`), `SwapWalkPickerModal.tsx` (`4144c6b`), and
+  `UserFormModal.tsx` (`a8448ee`).
+- Modal design-token sweep is now 21/21 complete.
+- Exact-head TypeScript/Jest/CI evidence is pending; do not treat commits
+  alone as verification.
 - Previous verified baseline: `tsc --noEmit` PASS and full suite PASS
   137/137 suites, 1625/1625 tests before the direct recovery commits.
 
@@ -127,31 +129,22 @@ green and full verification remains pending.
 
 ## Blocker
 
-**Automation:** repeated Workers on unchanged workflow revision are failing
-without model usage/checkpoints. Draft PR #68 stops the Watchdog after the
-bounded retry threshold; it is not active until reviewed and merged with
-owner approval. Direct safe Issue #63 batches continue independently.
+**Verification:** the 21/21 modal sweep is committed, but no exact-head
+TypeScript/Jest/CI result exists yet. This blocks declaring that redesign
+deliverable DONE, not further safe redesign work.
 
-**Live Staging E2E** (family creation persistence, invite/join code/link/
-QR, second-member join, real OTP/email delivery, System Admin live
-approve/reject) requires a real non-Production Supabase project and a
-Resend account with a verified sending domain. Two unblock options
-remain open, owner's call: (A) owner runs the non-Production deployment/
-config steps themselves and shares evidence to verify, or (B) owner
-grants the execution session the credentials directly. This blocks Queue
-items 1–3 and 6 only — does not stop execution; independent safe tasks
-(Queue items 4/5/7 sub-tasks, and the #63 redesign track) proceed
-regardless.
+**Live Staging E2E** remains dependent on the configured non-Production
+Supabase/Resend environment and real-device evidence. It does not block
+repository-only Issue #63 redesign batches.
 
 ## Next Safe Task
 
-Continue the modal-sweep track (pick one file from the 7 remaining,
-listed under Current Task) **or** start the now-unblocked tab-bar icon
-conversion (`RootNavigator.tsx` `TAB_ICON` → `@expo/vector-icons`) —
-either is a valid bounded unit. Re-run `npx tsc --noEmit` + `npm test --
-runInBand` after either; expect 137/137 suites / 1625/1625 tests for a
-modal conversion (no literal-style assertions), or investigate/update
-any icon-snapshot-style test directly touching `TAB_ICON` if one exists.
+Obtain exact-head TypeScript/Jest/CI evidence for the completed 21/21 modal
+sweep. In parallel, inspect the now-owner-approved tab-bar icon conversion
+(`RootNavigator.tsx` `TAB_ICON` → `@expo/vector-icons`) and implement it
+only with dependency/lockfile and test coverage kept consistent. Then continue
+Issue #63 into remaining screen/state/RTL/accessibility evidence; the issue is
+not complete merely because the modal sweep finished.
 
 **Do not re-investigate (confirmed exhausted / no defect, do not re-open
 without new evidence):**
@@ -188,10 +181,9 @@ checked for its own pending-conflict guard).
 
 ## Approval Required
 
-None currently pending. Will be set to a specific action (merge, deploy,
-migration, secrets/data change, or another irreversible/high-impact
-action) the moment one is reached, and execution stops at
-`WAITING_APPROVAL` until the owner responds.
+None currently pending. PR #69's approved merge is complete. Claude execution
+requires a new explicit `RUN_CLAUDE` authorization and must not be started by
+automation.
 
 ## Active Worker
 
@@ -230,8 +222,11 @@ Task above) is independent of this Queue and proceeds in parallel.
 
 ## Completed This Cycle
 
-_(worker appends each DONE task with its evidence reference — commit SHA,
-CI run URL, or equivalent — cleared at the start of a new cycle)_
+- Merged owner-approved PR #69 to `main` (`0cf1a8e`), activating the
+  Claude on-demand budget guard.
+- Completed the final seven modal token batches (21/21 total), through branch
+  head `a8448ee`.
+- Did not invoke Claude, merge product code, or touch Production/secrets/data.
 
 ## Explicitly Out of Scope
 
