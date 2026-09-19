@@ -205,8 +205,10 @@ jobs:
     if: >-
       always() &&
       needs.guard.outputs.fresh == 'true' &&
-      needs.local-gates.result == 'success' &&
-      needs.local-gates.outputs.passed == 'true'
+      (
+        (needs.local-gates.result == 'success' && needs.local-gates.outputs.passed == 'true') ||
+        needs.local-gates.result == 'failure'
+      )
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 5
     permissions:
@@ -224,4 +226,4 @@ jobs:
           $dispatchUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/workflows/agentic-rc-worker.yml/dispatches"
           $body = @{ ref = 'main'; inputs = @{ target_branch = $env:TARGET_BRANCH } } | ConvertTo-Json -Depth 4
           Invoke-RestMethod -Uri $dispatchUrl -Headers $headers -Method Post -ContentType 'application/json' -Body $body
-          "Local gates passed; dispatched next bounded Agentic RC unit for $env:TARGET_BRANCH." | Add-Content $env:GITHUB_STEP_SUMMARY
+          "Validation completed (pass or repairable failure); dispatched next bounded Agentic RC unit for $env:TARGET_BRANCH. The Worker must repair failing gates before unrelated work." | Add-Content $env:GITHUB_STEP_SUMMARY
