@@ -86,26 +86,10 @@ jobs:
                 "Recovering failed Worker $($latestWorker.id) ($($latestWorker.conclusion)); bounded retry on current workflow revision." | Add-Content $env:GITHUB_STEP_SUMMARY
               }
 
-              $workerDispatchUrl = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/workflows/agentic-rc-worker.yml/dispatches"
-              $workerBody = @{ ref = 'main'; inputs = @{ target_branch = $env:TARGET_BRANCH } } | ConvertTo-Json -Depth 4
-              $dispatchStartedAt = [DateTimeOffset]::UtcNow
-              try {
-                Invoke-RestMethod -Uri $workerDispatchUrl -Headers $headers -Method Post -ContentType 'application/json' -Body $workerBody
-              } catch {
-                if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 422) {
-                  'Worker dispatch is temporarily unavailable on the current workflow revision (HTTP 422). Recording recoverable handoff state instead of failing the scheduled Watchdog; a later revision/run will retry.' | Add-Content $env:GITHUB_STEP_SUMMARY
-                  exit 0
-                }
-                throw
-              }
-              $workerFound = $false
-              for ($attempt = 1; $attempt -le 6; $attempt++) {
-                Start-Sleep -Seconds 5
-                $freshRuns = Invoke-RestMethod -Uri $runsUrl -Headers $headers -Method Get
-                $newWorker = @($freshRuns.workflow_runs | Where-Object { $_.name -eq 'Agentic RC Worker' -and $_.event -eq 'workflow_dispatch' -and [DateTimeOffset]::Parse($_.created_at) -ge $dispatchStartedAt.AddSeconds(-2) } | Sort-Object { [DateTimeOffset]::Parse($_.created_at) } -Descending | Select-Object -First 1)
-                if ($newWorker.Count -gt 0) { $workerFound = $true; "Recovered Validation-to-Worker handoff; Worker run $($newWorker[0].id) is $($newWorker[0].status)." | Add-Content $env:GITHUB_STEP_SUMMARY; break }
-              }
-              if (-not $workerFound) { throw 'Worker dispatch returned successfully but no Worker run appeared within 30 seconds.' }
+              # Claude is intentionally on-demand only. The Watchdog may validate
+              # and report RC state, but it must never spend Claude quota by
+              # dispatching Agentic RC Worker automatically.
+              'Validation is green. Claude Worker is on-demand only; Watchdog will not dispatch it automatically.' | Add-Content $env:GITHUB_STEP_SUMMARY
               exit 0
             }
 
