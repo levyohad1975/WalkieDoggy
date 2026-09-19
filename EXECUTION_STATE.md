@@ -62,17 +62,18 @@ introduced). One bounded unit per cycle: convert one `src/components/
 `radii`/`typography` tokens wherever an existing number exactly matches a
 token value. Zero visual change; add no new values.
 
-**Done (9/21):** `ConfirmModal.tsx`, `AddUnplannedWalkModal.tsx`,
+**Done (14/21):** `ConfirmModal.tsx`, `AddUnplannedWalkModal.tsx`,
 `AdminActivityModal.tsx`, `AdminAuditLogModal.tsx`,
 `CompleteWalkModal.tsx`, `DeleteUserModal.tsx`,
-`RequestsInboxModal.tsx`, `RuleFormModal.tsx`, `UserPickerModal.tsx`.
+`RequestsInboxModal.tsx`, `RuleFormModal.tsx`, `UserPickerModal.tsx`,
+`DogDetailsModal.tsx`, `EditDoneDetailsModal.tsx`,
+`InviteShareModal.tsx`, `RequestTimeChangeModal.tsx`,
+`RemindersModal.tsx`.
 
-**Remaining (12/21):** `DogDetailsModal.tsx`, `EditDoneDetailsModal.tsx`,
-`EditWalkModal.tsx`, `FamilySharingModal.tsx`, `InviteShareModal.tsx`,
-`MemberDetailsModal.tsx`, `PinEntryModal.tsx`, `PinSetupModal.tsx`,
-`RemindersModal.tsx`, `RequestTimeChangeModal.tsx`,
-`SwapWalkPickerModal.tsx`,
-`UserFormModal.tsx`.
+**Remaining (7/21):** `EditWalkModal.tsx`,
+`FamilySharingModal.tsx`, `MemberDetailsModal.tsx`,
+`PinEntryModal.tsx`, `PinSetupModal.tsx`,
+`SwapWalkPickerModal.tsx`, `UserFormModal.tsx`.
 
 **Icon-system blocker RESOLVED (2026-09-19) — this reopens the most
 literal #63 angle:** the owner approved `@expo/vector-icons` (see
@@ -86,12 +87,14 @@ modal sweep.
 
 ## Current Task Status
 
-`VERIFYING` — direct safe recovery completed two bounded units after the
-Claude Worker returned repeated immediate `is_error:true` results with zero
-model usage: `RequestsInboxModal.tsx`, `RuleFormModal.tsx`, and `UserPickerModal.tsx` now use the
-approved `radii`/`spacing`/`typography` tokens for exact-value matches.
-GitHub CI evidence on commits `077613c`, `07e9f2e`, and the subsequent `UserPickerModal` commit is pending; do not mark
-these units fully verified until the checks are green.
+`VERIFYING` — direct safe recovery has now completed eight bounded modal
+units after repeated immediate Claude `is_error:true` failures. The modal
+token sweep is 14/21 complete. Exact-value substitutions only were used;
+no new visual values or behavior changes were introduced.
+
+GitHub Agentic Validation #201 passed only its freshness guard; its local
+TypeScript/test job was skipped. Therefore the new head is not yet claimed
+green and full verification remains pending.
 
 ## Current Branch / PR
 
@@ -104,31 +107,30 @@ these units fully verified until the checks are green.
 
 ## Last Evidence
 
-- 2026-09-19: safe direct recovery advanced Issue #63 despite the Worker
-  startup failure: `RequestsInboxModal.tsx` commit `077613c` and
-  `RuleFormModal.tsx` commit `07e9f2e`, plus the subsequent `UserPickerModal.tsx` commit, converted exact hardcoded values to
-  the approved design tokens without changing behavior or introducing new
-  visual values. CI verification is pending.
-- Previous verified baseline: `DeleteUserModal.tsx` token conversion;
-  `tsc --noEmit` PASS and full suite PASS 137/137 suites, 1625/1625 tests.
-- GitHub Actions CI/Watchdog/Validation pipeline was broken (shell
-  syntax + a missing checkout step + a stale contract-check) from
-  ~2026-09-16 through 2026-09-19; fixed and verified green as of
-  2026-09-19 (see `.github/workflows/ci.yml`,
-  `agentic-rc-watchdog.yml`, `agentic-rc-validation.yml` git history).
-  `agentic-post-publish-validation.yml` and `agentic-staging-readiness.yml`'s
-  native `workflow_run` triggers have not been observed firing since
-  2026-09-16 despite the Worker completing successfully multiple times
-  since — root cause not fully identified (see PR/commit history around
-  2026-09-19 for what was investigated); the Watchdog's own manual
-  API-dispatch fallback is confirmed working and is what's actually
-  driving Worker→Validation continuation right now.
+- 2026-09-19: `DogDetailsModal.tsx` commit `daa5c92`.
+- 2026-09-19: direct recovery added four further Issue #63 batches:
+  `EditDoneDetailsModal.tsx` (`9037d00`), `InviteShareModal.tsx`
+  (`1ebcda0`), `RequestTimeChangeModal.tsx` (`3f5cda0`), and
+  `RemindersModal.tsx` (`0311b3d`).
+- Agentic RC Validation #201 concluded success, but only the freshness guard
+  ran; local validation gates were skipped. Do not treat that run as
+  TypeScript/test evidence.
+- Workers #293 through #299 repeatedly failed on unchanged workflow revision
+  `ba300246` without a checkpoint. Draft PR #68 fixes the Watchdog fall-through
+  that kept dispatching beyond its two-failure threshold.
+- Previous verified baseline: `tsc --noEmit` PASS and full suite PASS
+  137/137 suites, 1625/1625 tests before the direct recovery commits.
 
 ## Last Evidence Timestamp
 
 2026-09-19
 
 ## Blocker
+
+**Automation:** repeated Workers on unchanged workflow revision are failing
+without model usage/checkpoints. Draft PR #68 stops the Watchdog after the
+bounded retry threshold; it is not active until reviewed and merged with
+owner approval. Direct safe Issue #63 batches continue independently.
 
 **Live Staging E2E** (family creation persistence, invite/join code/link/
 QR, second-member join, real OTP/email delivery, System Admin live
@@ -143,7 +145,7 @@ regardless.
 
 ## Next Safe Task
 
-Continue the modal-sweep track (pick one file from the 12 remaining,
+Continue the modal-sweep track (pick one file from the 7 remaining,
 listed under Current Task) **or** start the now-unblocked tab-bar icon
 conversion (`RootNavigator.tsx` `TAB_ICON` → `@expo/vector-icons`) —
 either is a valid bounded unit. Re-run `npx tsc --noEmit` + `npm test --
