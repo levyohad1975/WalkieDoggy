@@ -205,9 +205,8 @@ jobs:
           $wf=(& git status --porcelain -- .github/workflows)-join "`n"; if ($wf) { & git restore --staged --worktree -- .github/workflows; & git clean -fd -- .github/workflows }
           & git diff --check; if ($LASTEXITCODE) { throw 'diff check failed' }
           $changes=(& git status --porcelain)-join "`n"; if (-not $changes) { throw 'NO_PROGRESS: no durable RC evidence produced.' }
-          & npm.cmd ci; if ($LASTEXITCODE) { throw 'npm ci failed' }
-          & npm.cmd run typecheck; if ($LASTEXITCODE) { throw 'typecheck failed' }
-          & npm.cmd test -- --runInBand; if ($LASTEXITCODE) { throw 'tests failed' }
+          # Keep the Worker fast: Claude already runs focused tests for changed behavior.
+          # The exact-head Agentic RC Validation workflow owns the full npm ci + typecheck + Jest gate.
           & git diff --check; if ($LASTEXITCODE) { throw 'diff check failed' }
           & git config user.name 'walkie-agentic-worker[bot]'; & git config user.email 'walkie-agentic-worker[bot]@users.noreply.github.com'; & git add -A; & git diff --cached --check
           $m=if ($env:CHECKPOINT -eq 'true' -and $env:CLAUDE_SUCCESS -ne 'true') {'chore(agentic): checkpoint RC execution'} else {'chore(agentic): continue RC execution'}
