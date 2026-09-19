@@ -113,13 +113,13 @@ async function readOtpFromGmail(startedAt) {
       if (!receivedMs || receivedMs < startedMs - 5000) continue;
       const headers = Object.fromEntries((message?.payload?.headers || []).map(h => [String(h.name || '').toLowerCase(), h.value || '']));
       const text = [headers.subject, headers.from, collectMessageText(message?.payload)].filter(Boolean).join('\n');
-      const matches = text.match(/\b\d{6}\b/g) || [];
+      const matches = text.match(/\b\d{8}\b/g) || [];
       if (matches.length) return matches[matches.length - 1];
     }
 
     await new Promise(r => setTimeout(r, 3000));
   }
-  throw new Error('Timed out waiting for a 6-digit OTP in the Gmail staging test inbox.');
+  throw new Error('Timed out waiting for an 8-digit OTP in the Gmail staging test inbox.');
 }
 
 async function verifyOtp(token) {
