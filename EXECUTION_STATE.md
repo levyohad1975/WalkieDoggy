@@ -62,15 +62,16 @@ introduced). One bounded unit per cycle: convert one `src/components/
 `radii`/`typography` tokens wherever an existing number exactly matches a
 token value. Zero visual change; add no new values.
 
-**Done (6/21):** `ConfirmModal.tsx`, `AddUnplannedWalkModal.tsx`,
+**Done (8/21):** `ConfirmModal.tsx`, `AddUnplannedWalkModal.tsx`,
 `AdminActivityModal.tsx`, `AdminAuditLogModal.tsx`,
-`CompleteWalkModal.tsx`, `DeleteUserModal.tsx`.
+`CompleteWalkModal.tsx`, `DeleteUserModal.tsx`,
+`RequestsInboxModal.tsx`, `RuleFormModal.tsx`.
 
-**Remaining (15/21):** `DogDetailsModal.tsx`, `EditDoneDetailsModal.tsx`,
+**Remaining (13/21):** `DogDetailsModal.tsx`, `EditDoneDetailsModal.tsx`,
 `EditWalkModal.tsx`, `FamilySharingModal.tsx`, `InviteShareModal.tsx`,
 `MemberDetailsModal.tsx`, `PinEntryModal.tsx`, `PinSetupModal.tsx`,
 `RemindersModal.tsx`, `RequestTimeChangeModal.tsx`,
-`RequestsInboxModal.tsx`, `RuleFormModal.tsx`, `SwapWalkPickerModal.tsx`,
+`SwapWalkPickerModal.tsx`,
 `UserFormModal.tsx`, `UserPickerModal.tsx`.
 
 **Icon-system blocker RESOLVED (2026-09-19) — this reopens the most
@@ -85,9 +86,12 @@ modal sweep.
 
 ## Current Task Status
 
-`DONE` — last completed unit: `DeleteUserModal.tsx` token conversion.
-Baseline at last check: `npx tsc --noEmit` clean, `npm test --
-runInBand` **137/137 suites, 1625/1625 tests**.
+`VERIFYING` — direct safe recovery completed two bounded units after the
+Claude Worker returned repeated immediate `is_error:true` results with zero
+model usage: `RequestsInboxModal.tsx` and `RuleFormModal.tsx` now use the
+approved `radii`/`spacing`/`typography` tokens for exact-value matches.
+GitHub CI evidence on commits `077613c` and `07e9f2e` is pending; do not mark
+these units fully verified until the checks are green.
 
 ## Current Branch / PR
 
@@ -100,10 +104,13 @@ runInBand` **137/137 suites, 1625/1625 tests**.
 
 ## Last Evidence
 
-- 2026-09-19: `DeleteUserModal.tsx` converted to `radii`/`spacing`
-  tokens. `tsc --noEmit` PASS zero errors; full suite PASS 137/137
-  suites, 1625/1625 tests (unchanged from baseline — no test asserts
-  literal style values on this component).
+- 2026-09-19: safe direct recovery advanced Issue #63 despite the Worker
+  startup failure: `RequestsInboxModal.tsx` commit `077613c` and
+  `RuleFormModal.tsx` commit `07e9f2e` converted exact hardcoded values to
+  the approved design tokens without changing behavior or introducing new
+  visual values. CI verification is pending.
+- Previous verified baseline: `DeleteUserModal.tsx` token conversion;
+  `tsc --noEmit` PASS and full suite PASS 137/137 suites, 1625/1625 tests.
 - GitHub Actions CI/Watchdog/Validation pipeline was broken (shell
   syntax + a missing checkout step + a stale contract-check) from
   ~2026-09-16 through 2026-09-19; fixed and verified green as of
@@ -136,7 +143,7 @@ regardless.
 
 ## Next Safe Task
 
-Continue the modal-sweep track (pick one file from the 15 remaining,
+Continue the modal-sweep track (pick one file from the 13 remaining,
 listed under Current Task) **or** start the now-unblocked tab-bar icon
 conversion (`RootNavigator.tsx` `TAB_ICON` → `@expo/vector-icons`) —
 either is a valid bounded unit. Re-run `npx tsc --noEmit` + `npm test --
