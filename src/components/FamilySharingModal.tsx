@@ -2,6 +2,7 @@ import React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
+import { radii, spacing, typography } from '../theme/tokens';
 import { Button } from './Button';
 
 interface FamilySharingModalProps {
@@ -94,7 +95,7 @@ export function FamilySharingModal({
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '80%' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, maxHeight: '80%' },
   // BUG FIX (real-device regression) — see DogDetailsModal.tsx's matching
   // comment for the full mechanism: `flex: 1` forced the ScrollView's
   // flex-basis to 0 inside a `sheet` whose height is auto (capped only by
@@ -103,18 +104,18 @@ const styles = StyleSheet.create({
   // still letting it scroll/shrink down to the maxHeight cap for longer
   // content (e.g. once the invite-code card + admin actions are showing).
   scroll: { flexGrow: 0, flexShrink: 1 },
-  title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 8 },
-  meta: { fontSize: 14, color: colors.textSecondary, textAlign: 'right', marginTop: 8 },
-  codeCard: { backgroundColor: colors.surfaceMuted, borderRadius: 16, paddingVertical: 18, alignItems: 'center', marginTop: 12 },
+  title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: spacing.sm },
+  meta: { fontSize: typography.cardTitle.fontSize, color: colors.textSecondary, textAlign: 'right', marginTop: spacing.sm },
+  codeCard: { backgroundColor: colors.surfaceMuted, borderRadius: 16, paddingVertical: 18, alignItems: 'center', marginTop: spacing.md },
   codeText: { fontSize: 32, fontWeight: '800', color: colors.textPrimary, letterSpacing: 6 },
   // The invite code (generate_invite_code()) is always drawn from a plain
   // Latin-letter/digit alphabet — inherently LTR content, same convention
   // as InviteShareModal's `linkText` — so it must not inherit RtlText's
   // default `textAlign: 'right', writingDirection: 'rtl'`.
   ltrText: { textAlign: 'center', writingDirection: 'ltr' },
-  copyFeedback: { fontSize: 13, fontWeight: '700', color: colors.statusDone, textAlign: 'center', marginTop: 8 },
+  copyFeedback: { fontSize: typography.meta.fontSize, fontWeight: '700', color: colors.statusDone, textAlign: 'center', marginTop: spacing.sm },
   copyFeedbackError: { color: colors.statusOverdue },
-  actionsRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  actionsRow: { flexDirection: 'row', gap: 10, marginTop: spacing.md },
   flex: { flex: 1 },
   regenButton: { marginTop: 10 },
   closeButton: { marginTop: 14 },
