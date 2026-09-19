@@ -5,6 +5,7 @@ import type { FamilyRole } from '../lib/supabase';
 import type { SwapRequestRow, TimeChangeRequestRow } from '../lib/requests';
 import type { FamilyUser, Walk } from '../types';
 import { colors } from '../theme/colors';
+import { radii, spacing, typography } from '../theme/tokens';
 import { Button } from './Button';
 import { computeRequestLifecycle, isRequestVisible } from '../logic/requestLifecycle';
 
@@ -174,20 +175,20 @@ export function RequestsInboxModal({
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '85%' },
-  title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 8 },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, maxHeight: '85%' },
+  title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: spacing.sm },
   list: { maxHeight: '85%' },
-  sectionTitle: { fontSize: 14, fontWeight: '700', color: colors.textSecondary, textAlign: 'right', marginBottom: 8 },
+  sectionTitle: { fontSize: typography.cardTitle.fontSize, fontWeight: typography.cardTitle.fontWeight, color: colors.textSecondary, textAlign: 'right', marginBottom: spacing.sm },
   sectionTitleSpaced: { marginTop: 18 },
-  empty: { textAlign: 'center', color: colors.textSecondary, paddingVertical: 10, fontSize: 13 },
-  row: { backgroundColor: colors.surfaceMuted, borderRadius: 14, padding: 12, marginBottom: 8, gap: 8 },
-  rowHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  rowText: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.textPrimary, textAlign: 'right' },
-  rowActions: { flexDirection: 'row', gap: 8 },
+  empty: { textAlign: 'center', color: colors.textSecondary, paddingVertical: 10, fontSize: typography.meta.fontSize },
+  row: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, padding: spacing.md, marginBottom: spacing.sm, gap: spacing.sm },
+  rowHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm },
+  rowText: { flex: 1, fontSize: typography.meta.fontSize, fontWeight: '600', color: colors.textPrimary, textAlign: 'right' },
+  rowActions: { flexDirection: 'row', gap: spacing.sm },
   flex: { flex: 1 },
-  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, backgroundColor: colors.statusCurrentBg },
+  badge: { paddingHorizontal: 10, paddingVertical: spacing.xs, borderRadius: radii.sm, backgroundColor: colors.statusCurrentBg },
   badgeApproved: { backgroundColor: '#E8F7F1' },
   badgeRejected: { backgroundColor: colors.statusSkippedBg },
-  badgeText: { fontSize: 11, fontWeight: '700', color: colors.textPrimary },
+  badgeText: { fontSize: typography.caption.fontSize, fontWeight: typography.caption.fontWeight, color: colors.textPrimary },
   closeButton: { marginTop: 14 },
 });
