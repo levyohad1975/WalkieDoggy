@@ -55,7 +55,14 @@ export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, o
                 {SEX_OPTIONS.map((opt) => {
                   const selected = (dog.sex ?? undefined) === opt.value;
                   return (
-                    <Pressable key={opt.value ?? 'unset'} onPress={() => onSave({ sex: opt.value })} style={[styles.sexChip, selected && styles.sexChipActive]} accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={opt.label}>
+                    <Pressable
+                      key={opt.value ?? 'unset'}
+                      onPress={() => onSave({ sex: opt.value })}
+                      style={[styles.sexChip, selected && styles.sexChipActive]}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={opt.label}
+                    >
                       <RtlText style={[styles.sexChipText, selected && styles.sexChipTextActive]}>{opt.label}</RtlText>
                     </Pressable>
                   );
