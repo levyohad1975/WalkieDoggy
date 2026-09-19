@@ -3,6 +3,7 @@ import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleShee
 import { RtlText } from './RtlText';
 import type { FamilyUser, ScheduleRule } from '../types';
 import { colors } from '../theme/colors';
+import { radii, spacing, typography } from '../theme/tokens';
 import { Avatar } from '../components/Avatar';
 import { Button } from './Button';
 import { TimePickerField } from './TimePickerField';
@@ -172,14 +173,14 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
 const styles = StyleSheet.create({
   flexFull: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '90%' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, maxHeight: '90%' },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
-  label: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: 14, marginBottom: 8, textAlign: 'right' },
+  label: { fontSize: typography.meta.fontSize, fontWeight: '700', color: colors.textSecondary, marginTop: 14, marginBottom: spacing.sm, textAlign: 'right' },
   input: {
     backgroundColor: colors.surfaceMuted,
-    borderRadius: 14,
+    borderRadius: radii.md,
     padding: 14,
-    fontSize: 16,
+    fontSize: typography.body.fontSize,
     color: colors.textPrimary,
   },
   dayRow: { flexDirection: 'row', gap: 6 },
@@ -187,16 +188,16 @@ const styles = StyleSheet.create({
   dayChipActive: { backgroundColor: colors.primary },
   dayChipText: { fontWeight: '700', color: colors.textSecondary },
   dayChipTextActive: { color: colors.textInverse },
-  rotationRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
+  rotationRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.lg },
   rotationChip: { alignItems: 'center', minWidth: 64 },
-  rotationName: { fontSize: 12, color: colors.textPrimary, marginTop: 4 },
+  rotationName: { fontSize: 12, color: colors.textPrimary, marginTop: spacing.xs },
   rotationBadge: {
     position: 'absolute',
     top: -4,
     end: -4,
     backgroundColor: colors.primary,
     color: colors.textInverse,
-    fontSize: 11,
+    fontSize: typography.caption.fontSize,
     fontWeight: '800',
     width: 18,
     height: 18,
@@ -205,8 +206,8 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     overflow: 'hidden',
   },
-  rotationPreview: { fontSize: 13, color: colors.primaryDark, fontWeight: '600', marginTop: 8, textAlign: 'right' },
-  error: { fontSize: 13, color: colors.statusOverdue, fontWeight: '600', marginTop: 10, textAlign: 'right' },
-  actions: { flexDirection: 'row', gap: 12, marginTop: 20 },
+  rotationPreview: { fontSize: typography.meta.fontSize, color: colors.primaryDark, fontWeight: '600', marginTop: spacing.sm, textAlign: 'right' },
+  error: { fontSize: typography.meta.fontSize, color: colors.statusOverdue, fontWeight: '600', marginTop: 10, textAlign: 'right' },
+  actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xl },
   flex: { flex: 1 },
 });
