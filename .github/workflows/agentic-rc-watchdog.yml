@@ -2,7 +2,7 @@ name: Agentic RC Watchdog
 
 on:
   schedule:
-    - cron: '2-57/5 * * * *'
+    - cron: '2,32 * * * *'
   workflow_dispatch:
 
 permissions:
