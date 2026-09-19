@@ -3,6 +3,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import type { FamilyUser, UserDeletionImpact } from '../types';
 import { colors } from '../theme/colors';
+import { radii, spacing } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 import { nextDeleteReplacementSelection } from '../logic/deleteUserModalTransitions';
@@ -122,25 +123,25 @@ export function DeleteUserModal({ visible, user, impact, otherUsers, onConfirm, 
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: '#00000055', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  card: { backgroundColor: colors.surface, borderRadius: 24, padding: 24, width: '100%', maxWidth: 420, maxHeight: '80%' },
+  card: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: 24, width: '100%', maxWidth: 420, maxHeight: '80%' },
   title: { fontSize: 19, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
-  message: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', marginTop: 12 },
-  warning: { fontSize: 14, color: colors.textPrimary, textAlign: 'right', marginTop: 12, lineHeight: 20 },
+  message: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.md },
+  warning: { fontSize: 14, color: colors.textPrimary, textAlign: 'right', marginTop: spacing.md, lineHeight: 20 },
   blocked: { fontSize: 14, color: colors.statusOverdue, textAlign: 'right', marginTop: 10, fontWeight: '600' },
   // Round 8, Fix 4: replaced the cramped wrapping avatar-only chip grid with
   // a plain vertical list — one full-width row per candidate, each with a
   // comfortable minimum touch target (52px, matching Button's own minimum)
   // and clear spacing between rows. Stays readable/scrollable at 4-5
   // members without the card needing to grow past its existing maxHeight.
-  userList: { gap: 8, marginTop: 12 },
+  userList: { gap: spacing.sm, marginTop: spacing.md },
   userChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.md,
     minHeight: 52,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 14,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
     borderWidth: 1.5,
     borderColor: colors.border,
     backgroundColor: colors.surfaceMuted,
@@ -151,13 +152,13 @@ const styles = StyleSheet.create({
   radioDot: {
     width: 20,
     height: 20,
-    borderRadius: 10,
+    borderRadius: radii.sm,
     borderWidth: 1.5,
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
   radioDotActive: { borderColor: colors.primary, backgroundColor: colors.primary },
-  divider: { height: 1, backgroundColor: colors.border, marginTop: 20 },
-  actions: { flexDirection: 'row', gap: 12, marginTop: 16 },
+  divider: { height: 1, backgroundColor: colors.border, marginTop: spacing.xl },
+  actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg },
   flex: { flex: 1 },
 });
