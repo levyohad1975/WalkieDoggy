@@ -15,7 +15,7 @@ import { canAccessHistoryScreen } from '../logic/permissions';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { fetchHistoryWalks } from '../lib/permissionedWalks';
 import { colors } from '../theme/colors';
-import { breakpoints, nativeDirection } from '../theme/tokens';
+import { breakpoints, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { WalkRow } from '../components/WalkRow';
 import { EmptyState, ErrorState } from '../components/EmptyState';
 import { Avatar } from '../components/Avatar';
@@ -525,18 +525,18 @@ const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   // Bottom padding increased (final QA round, item F: bottom safe-area/
   // list padding so the last history item isn't hidden behind the tab bar).
-  content: { padding: 20, gap: 28, paddingBottom: 64 },
+  content: { padding: spacing.xl, gap: spacing.xxl, paddingBottom: spacing.xxxl },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
-  header: { width: '100%', fontSize: 22, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
-  sectionTitle: { width: '100%', fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  sectionTitle: { width: '100%', ...typography.sectionTitle, fontSize: 18, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   sectionSubtitle: { width: '100%', fontSize: 13, color: colors.textSecondary, marginTop: 2, marginBottom: 12, textAlign: 'right', writingDirection: 'rtl' },
-  summaryCard: { backgroundColor: colors.surface, borderRadius: 20, borderWidth: 1, borderColor: colors.border, padding: 8 },
+  summaryCard: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.sm },
   summaryRow: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 8 },
   // RTL fix (final QA round, item F): member names had no explicit
   // textAlign at all.
   summaryName: { flex: 1, fontSize: 15, fontWeight: '600', color: colors.textPrimary, textAlign: 'right' },
   summaryCount: { fontSize: 14, fontWeight: '700', color: colors.primary },
-  section: { gap: 10 },
+  section: { gap: spacing.sm },
   filterLabel: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, textAlign: 'right', marginTop: 6 },
   // RTL/visual polish (final QA round): the toggle now sits directly above
   // the collapsible content it controls (see the JSX comment above its
@@ -544,18 +544,18 @@ const styles = StyleSheet.create({
   // instead of pinned to the opposite end of a header row far from it.
   filterToggleRow: { width: '100%', marginTop: 4 },
   filterToggle: { width: '100%', fontSize: 13, fontWeight: '700', color: colors.primaryDark, textAlign: 'right', writingDirection: 'rtl' },
-  chipRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), flexWrap: 'wrap', gap: 8, marginTop: 8 },
-  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14, backgroundColor: colors.surfaceMuted },
+  chipRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
+  chip: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radii.md, backgroundColor: colors.surfaceMuted },
   chipActive: { backgroundColor: colors.primary },
   chipText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
   chipTextActive: { color: colors.textInverse },
-  list: { gap: 20 },
-  dayGroup: { gap: 8 },
+  list: { gap: spacing.xl },
+  dayGroup: { gap: spacing.sm },
   dayLabel: { width: '100%', fontSize: 12, color: colors.textSecondary, fontWeight: '500', textAlign: 'right' },
   historyItem: { gap: 4 },
   note: { fontSize: 12, fontWeight: '400', color: colors.textSecondary, textAlign: 'right', paddingHorizontal: 8 },
   dateModalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.38)', alignItems: 'center', justifyContent: 'center', padding: 20 },
-  dateModalCard: { width: '100%', maxWidth: 380, backgroundColor: colors.surface, borderRadius: 24, padding: 18, gap: 12 },
+  dateModalCard: { width: '100%', maxWidth: 380, backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing.lg, gap: spacing.md },
   dateModalTitle: { fontSize: 22, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
   dateModalActions: { flexDirection: 'row', gap: 10 },
   dateModalButton: { flex: 1, minHeight: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
