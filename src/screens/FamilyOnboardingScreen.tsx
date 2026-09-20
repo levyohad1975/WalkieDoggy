@@ -301,7 +301,6 @@ export function FamilyOnboardingScreen() {
           loading={verifying}
           style={styles.wideButton}
           />
-        </View>
       </SafeAreaView>
     );
   }
@@ -338,6 +337,7 @@ export function FamilyOnboardingScreen() {
           }}
           style={styles.wideButton}
         />
+        </View>
       </SafeAreaView>
     );
   }
