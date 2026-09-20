@@ -20,6 +20,7 @@ import { friendlyErrorMessage } from '../lib/errorMessages';
 import { Avatar } from '../components/Avatar';
 import { DogPhoto } from '../components/DogPhoto';
 import { WalkieMascot } from '../components/WalkieMascot';
+import { OnboardingMascotWink } from '../components/OnboardingMascotWink';
 import type { FamilyLookupResult } from '../types';
 
 type Mode = 'choose' | 'create' | 'join' | 'redeem';
@@ -325,6 +326,7 @@ export function FamilyOnboardingScreen() {
             </ImageBackground>
           </View>
           <View style={[styles.heroContentColumn, isDesktop && styles.heroContentColumnDesktop]}>
+            <OnboardingMascotWink size={isDesktop ? 116 : 88} />
             <RtlText style={[styles.eyebrow, isDesktop && styles.textRight]}>WALKIE DOGGY LINK</RtlText>
             <RtlText style={[styles.title, isDesktop && styles.heroTitleDesktop]} accessibilityRole="header">כל המשפחה.{`\n`}טיול אחד מסודר.</RtlText>
             <RtlText style={[styles.heroSubtitle, isDesktop && styles.heroSubtitleDesktop]}>Walkie Doggy מרכז את התורנויות, העדכונים והטיולים במקום אחד — פשוט, ברור ומשפחתי.</RtlText>
