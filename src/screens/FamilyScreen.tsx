@@ -38,6 +38,7 @@ export function FamilyScreen() {
     permissionOverrides,
     setPermissionOverride,
     clearPermissionOverride,
+    saveDog,
   } = useFamilyStore();
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   // Single source of truth for admin/member permissions — see authStore.
