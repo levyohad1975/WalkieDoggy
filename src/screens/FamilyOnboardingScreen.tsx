@@ -317,38 +317,40 @@ export function FamilyOnboardingScreen() {
             was here before. Given an explicit accessibilityLabel since this
             IS the meaningful content on this screen, not a decorative
             corner badge. */}
-        <View style={styles.heroGlow} accessibilityElementsHidden />
-        <View style={styles.sunsetBand} accessibilityElementsHidden />
-        <View style={[styles.landingShell, isDesktop && styles.landingShellDesktop]}>
-          <View style={[styles.heroMediaColumn, isDesktop && styles.heroMediaColumnDesktop]}>
-            <ImageBackground source={require("../../assets/onboarding-hero.png")} style={[styles.heroPhoto, isDesktop && styles.heroPhotoDesktop]} imageStyle={styles.heroPhotoImage} accessibilityLabel="כלב ומשפחה בטיול בטבע">
-              <View style={styles.photoCaption}><RtlText style={styles.photoCaptionText}>יוצאים יחד. חוזרים שמחים.</RtlText></View>
-            </ImageBackground>
-          </View>
-          <View style={[styles.heroContentColumn, isDesktop && styles.heroContentColumnDesktop]}>
-            <OnboardingMascotWink size={isDesktop ? 116 : 88} />
-            <RtlText style={[styles.eyebrow, isDesktop && styles.textRight]}>WALKIE DOGGY LINK</RtlText>
-            <RtlText style={[styles.title, isDesktop && styles.heroTitleDesktop]} accessibilityRole="header">כל המשפחה.{`\n`}טיול אחד מסודר.</RtlText>
-            <RtlText style={[styles.heroSubtitle, isDesktop && styles.heroSubtitleDesktop]}>Walkie Doggy מרכז את התורנויות, העדכונים והטיולים במקום אחד — פשוט, ברור ומשפחתי.</RtlText>
-            <View style={styles.benefitRow}>
-              <View style={styles.benefitPill}><RtlText style={styles.benefitText}>מי יוצא? תמיד ברור</RtlText></View>
-              <View style={styles.benefitPill}><RtlText style={styles.benefitText}>הכול מתעדכן בזמן אמת</RtlText></View>
+        <ImageBackground
+          source={require("../../assets/onboarding-hero.png")}
+          style={styles.fullBleedHero}
+          imageStyle={styles.fullBleedHeroImage}
+          resizeMode="cover"
+          accessibilityLabel="כלב ומשפחה בטיול בטבע"
+        >
+          <View style={styles.heroScrim} accessibilityElementsHidden />
+          <View style={[styles.landingShell, isDesktop && styles.landingShellDesktop]}>
+            <View style={[styles.heroContentColumn, isDesktop && styles.heroContentColumnDesktop]}>
+              <OnboardingMascotWink size={isDesktop ? 116 : 88} />
+              <RtlText style={[styles.eyebrow, isDesktop && styles.textRight]}>WALKIE DOGGY LINK</RtlText>
+              <RtlText style={[styles.title, styles.heroTitleOnPhoto, isDesktop && styles.heroTitleDesktop]} accessibilityRole="header">כל המשפחה.{`\n`}טיול אחד מסודר.</RtlText>
+              <RtlText style={[styles.heroSubtitle, styles.heroSubtitleOnPhoto, isDesktop && styles.heroSubtitleDesktop]}>Walkie Doggy מרכז את התורנויות, העדכונים והטיולים במקום אחד — פשוט, ברור ומשפחתי.</RtlText>
+              <View style={styles.benefitRow}>
+                <View style={styles.benefitPill}><RtlText style={styles.benefitText}>מי יוצא? תמיד ברור</RtlText></View>
+                <View style={styles.benefitPill}><RtlText style={styles.benefitText}>הכול מתעדכן בזמן אמת</RtlText></View>
+              </View>
+              <View style={styles.actionCard}>
+                <Button label="יצירת המשפחה שלי" onPress={() => setMode('create')} style={styles.wideButton} />
+                <Button label="הצטרפות למשפחה קיימת" variant="secondary" onPress={() => setMode('join')} style={styles.wideButton} />
+                <Button
+                  label="יש לי קישור או קוד הזמנה"
+                  variant="secondary"
+                  onPress={() => {
+                    resetRedeemMode();
+                    setMode('redeem');
+                  }}
+                  style={styles.wideButton}
+                />
+              </View>
             </View>
-            <View style={styles.actionCard}>
-              <Button label="יצירת המשפחה שלי" onPress={() => setMode('create')} style={styles.wideButton} />
-              <Button label="הצטרפות למשפחה קיימת" variant="secondary" onPress={() => setMode('join')} style={styles.wideButton} />
-              <Button
-                label="יש לי קישור או קוד הזמנה"
-                variant="secondary"
-                onPress={() => {
-                  resetRedeemMode();
-                  setMode('redeem');
-                }}
-                style={styles.wideButton}
-              />
-            </View>
           </View>
-        </View>
+        </ImageBackground>
       </SafeAreaView>
     );
   }
@@ -677,26 +679,23 @@ export function FamilyOnboardingScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F4FBFA', alignItems: 'center', justifyContent: 'center', paddingTop: spacing.xl, paddingHorizontal: spacing.xl, overflow: 'hidden' },
-  landingShell: { width: '100%', maxWidth: 1180, alignItems: 'center', justifyContent: 'center', zIndex: 1 },
-  landingShellDesktop: { flexDirection: 'row', gap: 64, paddingHorizontal: spacing.xl },
-  heroMediaColumn: { width: '100%', alignItems: 'center' },
-  heroMediaColumnDesktop: { flex: 1.15, minWidth: 0 },
-  heroContentColumn: { width: '100%', maxWidth: breakpoints.readingColumn, alignItems: 'center' },
-  heroContentColumnDesktop: { flex: 0.85, maxWidth: 480, alignItems: 'stretch' },
+  container: { flex: 1, backgroundColor: '#173A36', overflow: 'hidden' },
+  fullBleedHero: { flex: 1, width: '100%', minHeight: '100%', alignItems: 'center', justifyContent: 'center' },
+  fullBleedHeroImage: { width: '100%', height: '100%' },
+  heroScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(10, 34, 31, 0.34)' },
+  landingShell: { flex: 1, width: '100%', maxWidth: 1180, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg, paddingVertical: spacing.xxl, zIndex: 1 },
+  landingShellDesktop: { alignItems: 'flex-end', paddingHorizontal: spacing.xxxl },
+  heroContentColumn: { width: '100%', maxWidth: breakpoints.readingColumn, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.88)', borderRadius: 30, padding: spacing.lg },
+  heroContentColumnDesktop: { width: 480, maxWidth: 480, alignItems: 'stretch', padding: spacing.xl },
   formSafeArea: { flex: 1, backgroundColor: '#FFF9F1' },
   flexFull: { flex: 1 },
   formScrollContent: { alignItems: 'center', paddingTop: spacing.xxxl, paddingHorizontal: spacing.xl, paddingBottom: spacing.xxxl, minHeight: '100%' },
-  heroGlow: { position: 'absolute', width: 620, height: 620, borderRadius: 310, backgroundColor: '#FFE5BE', top: -350, right: -210, opacity: 0.95 },
-  sunsetBand: { position: 'absolute', width: '130%', height: 260, backgroundColor: '#DDF4EC', bottom: -130, transform: [{ rotate: '-5deg' }] },
-  heroPhoto: { width: '100%', maxWidth: breakpoints.readingColumn, height: 300, borderRadius: 32, marginBottom: spacing.lg, borderWidth: 1, borderColor: '#E9C68E', shadowColor: '#513A1E', shadowOpacity: 0.18, shadowRadius: 28, shadowOffset: { width: 0, height: 14 }, elevation: 5, overflow: 'hidden', justifyContent: 'flex-end' },
-  heroPhotoDesktop: { maxWidth: 650, height: 500, marginBottom: 0 },
-  heroPhotoImage: { borderRadius: 32, resizeMode: 'cover' },
-  photoCaption: { position: 'absolute', bottom: 14, right: 14, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: radii.round, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  photoCaptionText: { ...typography.meta, color: '#214C46', fontWeight: '900' },
+
   eyebrow: { ...typography.caption, letterSpacing: 3.2, color: colors.primaryDark, fontWeight: '900', textAlign: 'center', marginBottom: spacing.md },
   heroTitle: { fontSize: 34, lineHeight: 42, fontWeight: '900', color: colors.textPrimary, textAlign: 'center', maxWidth: 360 },
+  heroTitleOnPhoto: { textShadowColor: 'rgba(255,255,255,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8 },
   heroSubtitle: { ...typography.body, color: '#55706C', textAlign: 'center', maxWidth: 430, marginTop: spacing.md, marginBottom: spacing.xl, fontSize: 17, lineHeight: 26 },
+  heroSubtitleOnPhoto: { color: '#284D48' },
   heroTitleDesktop: { textAlign: 'right', alignSelf: 'stretch', maxWidth: 480, fontSize: 52, lineHeight: 60 },
   heroSubtitleDesktop: { textAlign: 'right', alignSelf: 'stretch', maxWidth: 480, fontSize: 18, lineHeight: 29 },
   textRight: { textAlign: 'right', alignSelf: 'stretch' },
