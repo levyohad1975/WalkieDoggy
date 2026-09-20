@@ -319,7 +319,7 @@ export function FamilyOnboardingScreen() {
           <WalkieMascot state="idle" size={148} accessibilityLabel="הקמע של Walkie Doggy Link" testID="onboarding-mascot" />
         </View>
         <RtlText style={styles.eyebrow}>WALKIE DOGGY LINK</RtlText>
-        <RtlText style={[styles.title, styles.chooseTitle]} accessibilityRole="header">הטיולים של המשפחה.{`\n`}ביחד.</RtlText>
+        <RtlText style={styles.title} accessibilityRole="header">הטיולים של המשפחה.{`\n`}ביחד.</RtlText>
         <RtlText style={styles.heroSubtitle}>פחות תיאומים, יותר זמן לטיולים ולרגעים הטובים עם הכלב שלכם.</RtlText>
         <View style={styles.benefitRow}>
           <View style={styles.benefitPill}><RtlText style={styles.benefitText}>✓ תורנויות ברורות</RtlText></View>
@@ -679,8 +679,7 @@ const styles = StyleSheet.create({
   benefitPill: { flex: 1, minHeight: 42, borderRadius: radii.round, backgroundColor: '#E4F7F4', alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.sm },
   benefitText: { ...typography.meta, color: colors.primaryDark, fontWeight: '800', textAlign: 'center' },
   actionCard: { width: '100%', maxWidth: breakpoints.readingColumn, backgroundColor: '#FFFEFC', borderRadius: radii.xl, padding: spacing.lg, borderWidth: 1, borderColor: '#EEE3D4' },
-  title: { ...typography.screenTitle, color: colors.textPrimary, textAlign: 'center' },
-  chooseTitle: { fontSize: 34, lineHeight: 42, fontWeight: '900', color: colors.textPrimary, textAlign: 'center', maxWidth: 360 },
+  title: { ...typography.screenTitle, color: colors.textPrimary, textAlign: 'center', fontSize: 34, lineHeight: 42, fontWeight: '900', maxWidth: 360 },
   subtitle: { fontSize: 15, color: colors.textSecondary, marginTop: spacing.sm, marginBottom: spacing.xxl, textAlign: 'center' },
   wideButton: { width: '100%', marginTop: spacing.md },
   form: { width: '100%', maxWidth: breakpoints.readingColumn, alignSelf: 'center' },
