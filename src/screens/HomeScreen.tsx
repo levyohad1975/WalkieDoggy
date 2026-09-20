@@ -336,6 +336,22 @@ export function HomeScreen() {
     () => upcomingWalks(walks).filter((w) => w.id !== nextWalk?.id),
     [walks, nextWalk, minuteTick]
   );
+  const weeklyStats = useMemo(() => {
+    const now = new Date();
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - start.getDay());
+    const end = new Date(start);
+    end.setDate(end.getDate() + 7);
+    const inWeek = walks.filter((w) => {
+      const d = new Date(`${w.date}T12:00:00`);
+      return d >= start && d < end;
+    });
+    const done = inWeek.filter((w) => w.status === 'done');
+    const minutes = done.reduce((sum, w) => sum + (w.durationMinutes ?? 0), 0);
+    return { done: done.length, planned: inWeek.length, minutes };
+  }, [walks, minuteTick]);
+
   const overduePending = useMemo(
     () =>
       walks
@@ -463,13 +479,6 @@ export function HomeScreen() {
       >
         <View style={styles.topRow}>
           <Image
-            // BATCH 4 (item C — branding/onboarding): the previous asset had
-            // an opaque near-white background baked into its pixels (see
-            // the Batch 4 report) — against this screen's cream background
-            // it rendered as a visible white rectangle. This is a
-            // transparency-processed copy of the SAME wordmark artwork (no
-            // new/invented asset), produced from the official source — see
-            // the report for exactly how.
             source={require('../../assets/walkie-doggy-link-wordmark-transparent.png')}
             style={styles.brandWordmark}
             resizeMode="contain"
@@ -490,6 +499,20 @@ export function HomeScreen() {
               ) : null}
             </Pressable>
           ) : null}
+        </View>
+
+        <View style={styles.dogHero}>
+          {dog?.photoUrl ? (
+            <Image source={{ uri: dog.photoUrl }} style={styles.dogHeroImage} resizeMode="cover" accessibilityLabel={`תמונה של ${dog.name}`} />
+          ) : (
+            <View style={styles.dogHeroPlaceholder}>
+              <RtlText style={styles.dogHeroEmoji}>🐶</RtlText>
+              <RtlText style={styles.dogHeroPlaceholderText}>כאן תופיע התמונה של {dog?.name ?? 'הכלב/ה'}</RtlText>
+            </View>
+          )}
+          <View style={styles.dogHeroShade}>
+            <RtlText style={styles.dogHeroName}>{dog?.name ?? 'הכלב/ה'}</RtlText>
+          </View>
         </View>
 
         {nextWalk ? (
@@ -552,10 +575,33 @@ export function HomeScreen() {
           shrinkToFit
         />
 
+        <View style={styles.weeklyCard}>
+          <View style={styles.weeklyHeader}>
+            <RtlText style={styles.sectionTitle}>השבוע שלנו</RtlText>
+            <RtlText style={styles.weeklyPaw}>🐾</RtlText>
+          </View>
+          <View style={styles.weeklyStatsRow}>
+            <View style={styles.weeklyStat}>
+              <RtlText style={styles.weeklyStatValue}>{weeklyStats.done}</RtlText>
+              <RtlText style={styles.weeklyStatLabel}>טיולים בוצעו</RtlText>
+            </View>
+            <View style={styles.weeklyDivider} />
+            <View style={styles.weeklyStat}>
+              <RtlText style={styles.weeklyStatValue}>{weeklyStats.planned}</RtlText>
+              <RtlText style={styles.weeklyStatLabel}>טיולים השבוע</RtlText>
+            </View>
+            <View style={styles.weeklyDivider} />
+            <View style={styles.weeklyStat}>
+              <RtlText style={styles.weeklyStatValue}>{weeklyStats.minutes}</RtlText>
+              <RtlText style={styles.weeklyStatLabel}>דקות טיול</RtlText>
+            </View>
+          </View>
+        </View>
+
         {lastWalk ? (
           <View style={styles.section}>
             <View style={styles.sectionTitlePhysicalRight}>
-              <RtlText style={styles.sectionTitle}>הטיול האחרון</RtlText>
+              <RtlText style={styles.sectionTitle}>היסטוריה אחרונה</RtlText>
             </View>
 
             {(() => {
@@ -1000,7 +1046,7 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
-  content: { padding: spacing.xl, gap: spacing.xl, paddingBottom: spacing.xxxl, width: '100%' },
+  content: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: spacing.lg, paddingBottom: spacing.xxxl, width: '100%' },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: spacing.lg },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
   unplannedButton: { marginTop: -4 },
@@ -1016,8 +1062,23 @@ const styles = StyleSheet.create({
   testModeBannerText: { flex: 1, color: '#fff', fontWeight: '700', fontSize: typography.meta.fontSize, textAlign: 'right' },
   testModeBannerButton: { backgroundColor: '#ffffff33', borderRadius: radii.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   testModeBannerButtonText: { color: '#fff', fontWeight: '700', fontSize: 12 },
-  topRow: { position: 'relative', minHeight: 58, alignItems: 'center', justifyContent: 'center' },
-  brandWordmark: { width: 184, height: 58 },
+  topRow: { position: 'relative', minHeight: 46, alignItems: 'center', justifyContent: 'center' },
+  brandWordmark: { width: 150, height: 44 },
+  dogHero: { width: '100%', height: 230, borderRadius: 28, overflow: 'hidden', backgroundColor: '#DFF5EE', position: 'relative' },
+  dogHeroImage: { width: '100%', height: '100%' },
+  dogHeroPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  dogHeroEmoji: { fontSize: 64 },
+  dogHeroPlaceholderText: { fontSize: 15, fontWeight: '700', color: colors.textSecondary, textAlign: 'center' },
+  dogHeroShade: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 18, paddingVertical: 12, backgroundColor: '#173A3688' },
+  dogHeroName: { color: '#fff', fontSize: 24, lineHeight: 30, fontWeight: '900', textAlign: 'right' },
+  weeklyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, gap: spacing.md },
+  weeklyHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  weeklyPaw: { fontSize: 22 },
+  weeklyStatsRow: { flexDirection: 'row-reverse', alignItems: 'stretch', justifyContent: 'space-between' },
+  weeklyStat: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2 },
+  weeklyStatValue: { fontSize: 25, lineHeight: 31, fontWeight: '900', color: colors.primaryDark },
+  weeklyStatLabel: { fontSize: 12, lineHeight: 17, fontWeight: '700', color: colors.textSecondary, textAlign: 'center' },
+  weeklyDivider: { width: 1, backgroundColor: colors.border, marginVertical: 3 },
   notificationButton: { position: 'absolute', right: 0, top: 11, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
   webNotificationButton: { left: 0, right: undefined },
   notificationIcon: { fontSize: 18 },
