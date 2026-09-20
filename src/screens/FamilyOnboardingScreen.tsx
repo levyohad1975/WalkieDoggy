@@ -388,8 +388,12 @@ export function FamilyOnboardingScreen() {
       <SafeAreaView style={styles.formSafeArea}>
         <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
+            <View style={styles.formHero}>
+              <WalkieMascot state="happy" size={86} />
+              <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>בואו נקים למשפחה שלכם בית חדש 🐾</RtlText></View>
+            </View>
             <RtlText style={styles.title} accessibilityRole="header">יצירת משפחה חדשה</RtlText>
-            <RtlText style={styles.subtitle}>אחרי היצירה תוכלו להוסיף את בני המשפחה</RtlText>
+            <RtlText style={styles.subtitle}>כמה פרטים קצרים ומתחילים לטייל יחד</RtlText>
 
             <View style={styles.form}>
               <RtlText style={styles.label}>דוא״ל של מנהל/ת המשפחה</RtlText>
@@ -621,6 +625,10 @@ export function FamilyOnboardingScreen() {
     <SafeAreaView style={styles.formSafeArea}>
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
+          <View style={styles.formHero}>
+            <WalkieMascot state="happy" size={86} />
+            <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>קיבלתם קוד? בואו נמצא את המשפחה 🐾</RtlText></View>
+          </View>
           <RtlText style={styles.title} accessibilityRole="header">הצטרפות למשפחה קיימת</RtlText>
           <RtlText style={styles.subtitle}>הקלידו את קוד ההזמנה שקיבלתם מבן/בת המשפחה</RtlText>
 
@@ -710,9 +718,12 @@ const styles = StyleSheet.create({
   featureIcon: { color: '#102A5A', fontSize: 20, fontWeight: '900', lineHeight: 22 },
   featureLabel: { color: '#102A5A', fontSize: 10, lineHeight: 11, fontWeight: '800', textAlign: 'center' },
   smallWalks: { color: '#FFFFFF', fontSize: 13, lineHeight: 16, letterSpacing: 1.2, fontWeight: '700', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 5 },
-  formSafeArea: { flex: 1, backgroundColor: '#FFF9F1' },
+  formSafeArea: { flex: 1, backgroundColor: '#F7F4E9' },
+  formHero: { width: '100%', maxWidth: 620, minHeight: 118, borderRadius: 28, backgroundColor: '#DFF5EE', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 18, marginBottom: 18, overflow: 'hidden', borderWidth: 1, borderColor: '#CBE9DF' },
+  formSpeech: { maxWidth: 260, backgroundColor: '#FFFFFF', borderRadius: 22, paddingHorizontal: 16, paddingVertical: 12, borderWidth: 2, borderColor: '#2AA7B8' },
+  formSpeechText: { color: '#102A5A', fontSize: 16, lineHeight: 22, fontWeight: '800', textAlign: 'center' },
   flexFull: { flex: 1 },
-  formScrollContent: { alignItems: 'center', paddingTop: spacing.xxxl, paddingHorizontal: spacing.xl, paddingBottom: spacing.xxxl, minHeight: '100%' },
+  formScrollContent: { alignItems: 'center', paddingTop: spacing.xl, paddingHorizontal: spacing.xl, paddingBottom: spacing.xxxl, minHeight: '100%' },
 
   eyebrow: { ...typography.caption, letterSpacing: 3.2, color: colors.primaryDark, fontWeight: '900', textAlign: 'center', marginBottom: spacing.md },
   heroTitle: { fontSize: 34, lineHeight: 42, fontWeight: '900', color: colors.textPrimary, textAlign: 'center', maxWidth: 360 },
@@ -729,7 +740,7 @@ const styles = StyleSheet.create({
   title: { ...typography.screenTitle, color: '#173A36', textAlign: 'center', fontSize: 40, lineHeight: 47, fontWeight: '900', maxWidth: 420 },
   subtitle: { fontSize: 15, color: colors.textSecondary, marginTop: spacing.sm, marginBottom: spacing.xxl, textAlign: 'center' },
   wideButton: { width: '100%', marginTop: spacing.md },
-  form: { width: '100%', maxWidth: 620, alignSelf: 'center', backgroundColor: '#FFFFFF', borderRadius: 28, padding: spacing.xl, borderWidth: 1, borderColor: '#E9E2D8', shadowColor: '#513A1E', shadowOpacity: 0.08, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 3 },
+  form: { width: '100%', maxWidth: 620, alignSelf: 'center', backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: 28, padding: spacing.xl, borderWidth: 1, borderColor: '#D9E7DF', shadowColor: '#513A1E', shadowOpacity: 0.08, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 3 },
   label: { ...typography.meta, fontWeight: '700', color: colors.textSecondary, marginTop: spacing.md, marginBottom: spacing.sm, textAlign: 'right' },
   input: {
     backgroundColor: colors.surface,
