@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ImageBackground, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, ImageBackground, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
@@ -311,43 +311,45 @@ export function FamilyOnboardingScreen() {
   if (mode === 'choose') {
     return (
       <SafeAreaView style={styles.container}>
-        {/* BATCH 4 (item C — branding/onboarding): before a family exists,
-            Walkie Doggy IS the brand — the official mascot (see the Batch 4
-            report for the source asset) replaces the generic 🐶 emoji that
-            was here before. Given an explicit accessibilityLabel since this
-            IS the meaningful content on this screen, not a decorative
-            corner badge. */}
         <ImageBackground
           source={require("../../assets/onboarding-hero.png")}
-          style={styles.fullBleedHero}
-          imageStyle={styles.fullBleedHeroImage}
+          style={styles.referenceHero}
+          imageStyle={styles.referenceHeroImage}
           resizeMode="cover"
-          accessibilityLabel="כלב ומשפחה בטיול בטבע"
+          accessibilityLabel="משפחה וכלב בטיול בפארק"
         >
-          <View style={styles.heroScrim} accessibilityElementsHidden />
-          <View style={[styles.landingShell, isDesktop && styles.landingShellDesktop]}>
-            <View style={[styles.heroContentColumn, isDesktop && styles.heroContentColumnDesktop]}>
-              <OnboardingMascotWink size={isDesktop ? 116 : 88} />
-              <RtlText style={[styles.eyebrow, isDesktop && styles.textRight]}>WALKIE DOGGY LINK</RtlText>
-              <RtlText style={[styles.title, styles.heroTitleOnPhoto, isDesktop && styles.heroTitleDesktop]} accessibilityRole="header">כל המשפחה.{`\n`}טיול אחד מסודר.</RtlText>
-              <RtlText style={[styles.heroSubtitle, styles.heroSubtitleOnPhoto, isDesktop && styles.heroSubtitleDesktop]}>Walkie Doggy מרכז את התורנויות, העדכונים והטיולים במקום אחד — פשוט, ברור ומשפחתי.</RtlText>
-              <View style={styles.benefitRow}>
-                <View style={styles.benefitPill}><RtlText style={styles.benefitText}>מי יוצא? תמיד ברור</RtlText></View>
-                <View style={styles.benefitPill}><RtlText style={styles.benefitText}>הכול מתעדכן בזמן אמת</RtlText></View>
+          <View style={styles.referenceOverlay}>
+            <View style={styles.referenceTopRow}>
+              <View style={styles.languagePill}><RtlText style={styles.languageText}>🌐  עברית</RtlText></View>
+              <View style={styles.referenceBrand}>
+                <RtlText style={styles.referenceLogo}>Walkie{String.fromCharCode(10)}Doggy 🐾</RtlText>
+                <RtlText style={styles.referenceTagline}>HAPPIER DOGS{String.fromCharCode(10)}HAPPIER FAMILIES</RtlText>
               </View>
-              <View style={styles.actionCard}>
-                <Button label="יצירת המשפחה שלי" onPress={() => setMode('create')} style={styles.wideButton} />
-                <Button label="הצטרפות למשפחה קיימת" variant="secondary" onPress={() => setMode('join')} style={styles.wideButton} />
-                <Button
-                  label="יש לי קישור או קוד הזמנה"
-                  variant="secondary"
-                  onPress={() => {
-                    resetRedeemMode();
-                    setMode('redeem');
-                  }}
-                  style={styles.wideButton}
-                />
+              <RtlText style={styles.handwritten}>יחד ♥{String.fromCharCode(10)}מטיילים יותר{String.fromCharCode(10)}ומתאושרים :)</RtlText>
+            </View>
+
+            <View style={styles.mascotStage}>
+              <OnboardingMascotWink size={isDesktop ? 260 : Math.min(230, width * 0.48)} />
+              <View style={styles.speechBubble}>
+                <RtlText style={styles.speechText}>משפחה של מטיילים?{String.fromCharCode(10)}בואו נצא לדרך!</RtlText>
               </View>
+            </View>
+
+            <View style={styles.referenceBottom}>
+              <Pressable accessibilityRole="button" onPress={() => setMode('create')} style={[styles.referenceButton, styles.referencePrimary]}>
+                <RtlText style={styles.referencePrimaryText}>⊕  יצירת משפחה חדשה   ›</RtlText>
+              </Pressable>
+              <Pressable accessibilityRole="button" onPress={() => setMode('join')} style={[styles.referenceButton, styles.referenceSecondary]}>
+                <RtlText style={styles.referenceSecondaryText}>♙  הצטרפות למשפחה קיימת   ›</RtlText>
+              </Pressable>
+
+              <View style={styles.featureCircles}>
+                <View style={[styles.featureCircle,{backgroundColor:'#DDF6D9'}]}><RtlText style={styles.featureIcon}>▣</RtlText><RtlText style={styles.featureLabel}>תזכורות{String.fromCharCode(10)}חכמות</RtlText></View>
+                <View style={[styles.featureCircle,{backgroundColor:'#F8DDE1'}]}><RtlText style={styles.featureIcon}>♧</RtlText><RtlText style={styles.featureLabel}>התראות{String.fromCharCode(10)}בזמן</RtlText></View>
+                <View style={[styles.featureCircle,{backgroundColor:'#DCECF8'}]}><RtlText style={styles.featureIcon}>♙</RtlText><RtlText style={styles.featureLabel}>שיתוף{String.fromCharCode(10)}במשפחה</RtlText></View>
+                <View style={[styles.featureCircle,{backgroundColor:'#FFF3D8'}]}><RtlText style={styles.featureIcon}>♡</RtlText><RtlText style={styles.featureLabel}>כלב מאושר{String.fromCharCode(10)}יותר</RtlText></View>
+              </View>
+              <RtlText style={styles.smallWalks}>🐾{String.fromCharCode(10)}Small walks{String.fromCharCode(10)}Big happiness</RtlText>
             </View>
           </View>
         </ImageBackground>
@@ -680,13 +682,30 @@ export function FamilyOnboardingScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#173A36', overflow: 'hidden' },
-  fullBleedHero: { flex: 1, width: '100%', minHeight: '100%', alignItems: 'center', justifyContent: 'center' },
-  fullBleedHeroImage: { width: '100%', height: '100%' },
-  heroScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(10, 34, 31, 0.34)' },
-  landingShell: { flex: 1, width: '100%', maxWidth: 1180, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg, paddingVertical: spacing.xxl, zIndex: 1 },
-  landingShellDesktop: { alignItems: 'flex-end', paddingHorizontal: spacing.xxxl },
-  heroContentColumn: { width: '100%', maxWidth: breakpoints.readingColumn, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.88)', borderRadius: 30, padding: spacing.lg },
-  heroContentColumnDesktop: { width: 480, maxWidth: 480, alignItems: 'stretch', padding: spacing.xl },
+  referenceHero: { flex: 1, width: '100%', minHeight: '100%' },
+  referenceHeroImage: { width: '100%', height: '100%' },
+  referenceOverlay: { flex: 1, justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 12, paddingBottom: 18 },
+  referenceTopRow: { minHeight: 170, alignItems: 'center', justifyContent: 'center' },
+  languagePill: { position: 'absolute', right: 0, top: 0, backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 28, paddingHorizontal: 18, paddingVertical: 11 },
+  languageText: { color: '#102A5A', fontWeight: '800', fontSize: 14 },
+  referenceBrand: { alignItems: 'center' },
+  referenceLogo: { color: '#09295B', fontSize: 42, lineHeight: 35, fontWeight: '900', textAlign: 'center', textShadowColor: 'rgba(255,255,255,0.7)', textShadowRadius: 8 },
+  referenceTagline: { color: '#0B2248', fontSize: 10, lineHeight: 14, letterSpacing: 2.4, fontWeight: '800', textAlign: 'center', marginTop: 8 },
+  handwritten: { position: 'absolute', left: 0, top: 52, color: '#0A2454', fontSize: 18, lineHeight: 23, fontWeight: '800', transform: [{rotate:'-8deg'}], textAlign: 'center' },
+  mascotStage: { flex: 1, minHeight: 250, alignItems: 'center', justifyContent: 'center' },
+  speechBubble: { position: 'absolute', left: 0, bottom: 24, width: 150, minHeight: 105, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.96)', borderWidth: 4, borderColor: '#28A7B8', alignItems: 'center', justifyContent: 'center', padding: 14 },
+  speechText: { color: '#102A5A', fontSize: 18, lineHeight: 23, fontWeight: '800', textAlign: 'center' },
+  referenceBottom: { width: '100%', alignItems: 'center', gap: 10 },
+  referenceButton: { width: '88%', minHeight: 58, borderRadius: 30, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
+  referencePrimary: { backgroundColor: '#1288ED' },
+  referenceSecondary: { backgroundColor: 'rgba(255,255,255,0.96)' },
+  referencePrimaryText: { color: '#FFFFFF', fontSize: 20, fontWeight: '900', textAlign: 'center' },
+  referenceSecondaryText: { color: '#102A5A', fontSize: 18, fontWeight: '900', textAlign: 'center' },
+  featureCircles: { width: '90%', flexDirection: 'row-reverse', justifyContent: 'space-between', marginTop: 2 },
+  featureCircle: { width: 68, height: 68, borderRadius: 34, alignItems: 'center', justifyContent: 'center', padding: 4 },
+  featureIcon: { color: '#102A5A', fontSize: 20, fontWeight: '900', lineHeight: 22 },
+  featureLabel: { color: '#102A5A', fontSize: 10, lineHeight: 11, fontWeight: '800', textAlign: 'center' },
+  smallWalks: { color: '#FFFFFF', fontSize: 13, lineHeight: 16, letterSpacing: 1.2, fontWeight: '700', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 5 },
   formSafeArea: { flex: 1, backgroundColor: '#FFF9F1' },
   flexFull: { flex: 1 },
   formScrollContent: { alignItems: 'center', paddingTop: spacing.xxxl, paddingHorizontal: spacing.xl, paddingBottom: spacing.xxxl, minHeight: '100%' },
