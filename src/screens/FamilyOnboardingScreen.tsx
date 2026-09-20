@@ -180,6 +180,11 @@ export function FamilyOnboardingScreen() {
     setJoinError(null);
     setFound(null);
     try {
+      // Family lookup is an authenticated RPC in backend mode. On a fresh
+      // browser/device there may be no Supabase session yet, so establish the
+      // persisted anonymous device session before looking up the invite code.
+      // confirmJoin() already did this, but lookup happens one step earlier.
+      await ensureAnonymousSession();
       const result = await findFamilyByInviteCode(trimmed);
       if (!result) setJoinError('לא נמצאה משפחה עם הקוד הזה — בדקו שהקוד הוקלד נכון');
       else setFound(result);
