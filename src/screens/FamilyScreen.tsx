@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { AppState, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, AppState, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFamilyStore } from '../store/familyStore';
 import { isRealFamilyAdmin, useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { colors } from '../theme/colors';
 import { breakpoints, radii, spacing, typography } from '../theme/tokens';
-import { Avatar } from '../components/Avatar';
+import { Avatar } from '../components/Avatar';\nimport { DogPhoto } from '../components/DogPhoto';\nimport { pickAndUploadImage } from '../lib/uploadImage';
 import { Button } from '../components/Button';
 import { UserFormModal } from '../components/UserFormModal';
 import { DeleteUserModal } from '../components/DeleteUserModal';
@@ -76,7 +76,7 @@ export function FamilyScreen() {
   const [editingUser, setEditingUser] = useState<FamilyUser | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FamilyUser | null>(null);
   const [deleteImpact, setDeleteImpact] = useState<UserDeletionImpact | null>(null);
-  const [detailsTarget, setDetailsTarget] = useState<FamilyUser | null>(null);
+  const [detailsTarget, setDetailsTarget] = useState<FamilyUser | null>(null);\n  const [uploadingDogPhoto, setUploadingDogPhoto] = useState(false);\n\n  const changeDogPhoto = async () => {\n    if (!dog || familyRole !== 'admin') return;\n    setUploadingDogPhoto(true);\n    try {\n      const uri = await pickAndUploadImage('dogs', familyId, dog.id);\n      if (uri) await saveDog({ ...dog, photoUrl: uri });\n    } catch {\n      Alert.alert('לא הצלחנו להחליף תמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');\n    } finally {\n      setUploadingDogPhoto(false);\n    }\n  };
 
   // Role + presence (Parts 1F / 2) — sourced ENTIRELY from
   // admin_list_family_activity() (migrations/0005_*.sql), the same
@@ -295,7 +295,7 @@ export function FamilyScreen() {
             family data is still loading. */}
         <RtlText style={styles.subheader}>ניהול מי משתתף בסבב הטיולים של {dog?.name ?? 'הכלב/ה'}</RtlText>
 
-        <View style={styles.list}>
+        {dog ? (\n          <View style={styles.dogProfileCard}>\n            <DogPhoto photoUrl={dog.photoUrl} size={76} />\n            <View style={styles.dogProfileBody}>\n              <RtlText style={styles.dogProfileName}>{dog.name}</RtlText>\n              <RtlText style={styles.dogProfileMeta}>{dog.photoUrl ? 'תמונת הפרופיל של הכלב' : 'עדיין לא הוגדרה תמונת פרופיל'}</RtlText>\n            </View>\n            {familyRole === 'admin' ? (\n              <Pressable onPress={changeDogPhoto} disabled={uploadingDogPhoto} style={styles.dogPhotoButton} accessibilityRole=\"button\" accessibilityLabel={dog.photoUrl ? 'החלפת תמונת הכלב' : 'הוספת תמונת הכלב'}>\n                <RtlText style={styles.dogPhotoButtonText}>{uploadingDogPhoto ? 'מעלה…' : dog.photoUrl ? 'החלפה' : 'הוספת תמונה'}</RtlText>\n              </Pressable>\n            ) : null}\n          </View>\n        ) : null}\n\n        <View style={styles.list}>
           {users.filter((u) => !u.removedAt).map((u) => {
             const row = activityByUserId.get(u.id);
             const roleLabel = row ? (row.role === 'admin' ? 'מנהל' : 'בן משפחה') : null;
@@ -490,7 +490,7 @@ const styles = StyleSheet.create({
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
   header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   subheader: { width: '100%', ...typography.meta, color: colors.textSecondary, textAlign: 'right', writingDirection: 'rtl', marginTop: -8 },
-  list: { gap: spacing.sm },
+  dogProfileCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md },\n  dogProfileBody: { flex: 1, gap: 3 },\n  dogProfileName: { ...typography.sectionTitle, fontSize: 18, color: colors.textPrimary, textAlign: 'right' },\n  dogProfileMeta: { ...typography.meta, color: colors.textSecondary, textAlign: 'right' },\n  dogPhotoButton: { paddingVertical: 9, paddingHorizontal: 12, borderRadius: radii.md, backgroundColor: colors.surfaceMuted },\n  dogPhotoButtonText: { ...typography.meta, color: colors.primaryDark, fontWeight: '800' },\n  list: { gap: spacing.sm },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
