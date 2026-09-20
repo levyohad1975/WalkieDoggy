@@ -7,7 +7,7 @@ import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { useRequestsStore } from '../store/requestsStore';
 import { colors } from '../theme/colors';
-import { breakpoints } from '../theme/tokens';
+import { breakpoints, radii, spacing, typography } from '../theme/tokens';
 import { WalkRow } from '../components/WalkRow';
 import { EmptyState, ErrorState } from '../components/EmptyState';
 import { EditWalkModal } from '../components/EditWalkModal';
@@ -527,27 +527,27 @@ export function ScheduleScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: 16, paddingTop: 8, gap: 8, paddingBottom: 64 },
+  content: { padding: spacing.lg, paddingTop: spacing.sm, gap: spacing.sm, paddingBottom: spacing.xxxl },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
-  header: { width: '100%', fontSize: 22, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl', paddingHorizontal: 4 },
-  tabs: { flexDirection: 'row', gap: 8, paddingVertical: 8 },
+  header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl', paddingHorizontal: 4 },
+  tabs: { flexDirection: 'row', gap: spacing.sm, paddingVertical: spacing.sm },
   tab: {
     flex: 1,
     textAlign: 'center',
-    paddingVertical: 12,
-    borderRadius: 14,
+    paddingVertical: spacing.md,
+    borderRadius: radii.md,
     backgroundColor: colors.surfaceMuted,
     color: colors.textSecondary,
     fontWeight: '700',
     overflow: 'hidden',
   },
   tabActive: { backgroundColor: colors.primary, color: colors.textInverse },
-  daysList: { gap: 20 },
-  daySection: { gap: 10 },
-  dayTitle: { width: '100%', fontSize: 16, fontWeight: '700', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
-  list: { gap: 10 },
+  daysList: { gap: spacing.xl },
+  daySection: { gap: spacing.sm },
+  dayTitle: { width: '100%', ...typography.sectionTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  list: { gap: spacing.sm },
   empty: { fontSize: 14, color: colors.textSecondary, textAlign: 'right' },
-  section: { gap: 10, marginTop: 24, width: '100%' },
+  section: { gap: spacing.sm, marginTop: spacing.xl, width: '100%' },
   sectionHeaderRow: {
   flexDirection: 'row',
   justifyContent: 'space-between',
@@ -575,11 +575,11 @@ const styles = StyleSheet.create({
   alignItems: 'center',
   gap: 10,
   backgroundColor: colors.surface,
-  borderRadius: 16,
+  borderRadius: radii.lg,
   borderWidth: 1,
   borderColor: colors.border,
-  paddingHorizontal: 12,
-  paddingVertical: 10,
+  paddingHorizontal: spacing.md,
+  paddingVertical: spacing.sm,
 },
 
 ruleActions: {
