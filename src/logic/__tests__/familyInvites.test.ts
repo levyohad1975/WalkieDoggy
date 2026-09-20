@@ -84,6 +84,10 @@ describe('inviteStatusLabel', () => {
     expect(inviteStatusLabel('redeemed')).toBe('נוצלה');
     expect(inviteStatusLabel('revoked')).toBe('בוטלה');
   });
+
+  it('returns an empty string for a status value outside the known union (e.g. a future server-side status the client type does not model yet), rather than throwing or showing a broken label', () => {
+    expect(inviteStatusLabel('some-future-status' as unknown as Parameters<typeof inviteStatusLabel>[0])).toBe('');
+  });
 });
 
 function invite(overrides: Partial<FamilyInviteListItem>): FamilyInviteListItem {

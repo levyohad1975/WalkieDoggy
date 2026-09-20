@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFamilyStore } from '../store/familyStore';
 import { useAuthStore } from '../store/authStore';
 import { colors } from '../theme/colors';
+import { breakpoints, radii, spacing, typography } from '../theme/tokens';
 import { Button } from '../components/Button';
 import { EmptyState, ErrorState } from '../components/EmptyState';
 import { UserFormModal } from '../components/UserFormModal';
@@ -145,7 +146,7 @@ export function LoginScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={colors.primary} accessibilityLabel="טוען…" />
       </SafeAreaView>
     );
   }
@@ -160,8 +161,9 @@ export function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <View style={[styles.contentWrap, Platform.OS === 'web' && styles.webContent]}>
       <RtlText style={styles.emoji}>🐶</RtlText>
-      <RtlText style={styles.title}>{family?.name ?? 'המשפחה שלנו'}</RtlText>
+      <RtlText style={styles.title} accessibilityRole="header">{family?.name ?? 'המשפחה שלנו'}</RtlText>
       <RtlText style={styles.subtitle}>מי אתה?</RtlText>
 
       {activeUsers.length === 0 ? (
@@ -197,7 +199,7 @@ export function LoginScreen() {
 
       {staleClaimRecovered ? (
         <View style={styles.errorBanner}>
-          <RtlText style={styles.errorText}>
+          <RtlText style={styles.errorText} accessibilityRole="alert" accessibilityLiveRegion="polite">
             {staleClaimUser
               ? `הפרופיל ${staleClaimUser.name} הופעל במכשיר אחר.`
               : 'החיבור של המכשיר הזה פג — בחרו את הפרופיל שלכם שוב כדי להמשיך.'}
@@ -218,7 +220,9 @@ export function LoginScreen() {
 
       {claimError ? (
         <View style={styles.errorBanner}>
-          <RtlText style={styles.errorText}>{claimError}</RtlText>
+          <RtlText style={styles.errorText} accessibilityRole="alert" accessibilityLiveRegion="polite">
+            {claimError}
+          </RtlText>
           <RtlText style={styles.errorDismiss} onPress={() => setClaimError(null)}>
             הבנתי
           </RtlText>
@@ -266,28 +270,36 @@ export function LoginScreen() {
         onSubmit={handlePinReclaim}
         onCancel={() => setPinReclaimUserId(null)}
       />
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, alignItems: 'center', paddingTop: 80, paddingHorizontal: 24 },
+  container: { flex: 1, backgroundColor: colors.background, alignItems: 'center', paddingTop: spacing.xxxl, paddingHorizontal: spacing.xl },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
-  emoji: { fontSize: 64, marginBottom: 8 },
-  title: { fontSize: 26, fontWeight: '800', color: colors.textPrimary },
-  subtitle: { fontSize: 16, color: colors.textSecondary, marginTop: 4, marginBottom: 32 },
-  grid: { width: '100%', gap: 14 },
+  // width: '100%' preserves today's behavior on every platform (this box
+  // previously WAS the container's only child, implicitly filling it); the
+  // web-only maxWidth+alignSelf below layers HomeScreen's same desktop-
+  // containment pattern on top, without touching `container`'s own
+  // full-bleed background.
+  contentWrap: { width: '100%', alignItems: 'center' },
+  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center' },
+  emoji: { fontSize: 64, marginBottom: spacing.sm },
+  title: { ...typography.screenTitle, fontSize: 26, color: colors.textPrimary },
+  subtitle: { ...typography.body, fontWeight: 'normal', color: colors.textSecondary, marginTop: spacing.xs, marginBottom: spacing.xxl },
+  grid: { width: '100%', gap: spacing.md },
   userButton: { width: '100%' },
-  addButton: { width: '100%', marginTop: 20 },
+  addButton: { width: '100%', marginTop: spacing.xl },
   errorBanner: {
     width: '100%',
-    marginTop: 20,
+    marginTop: spacing.xl,
     backgroundColor: colors.statusOverdueBg,
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.md,
   },
   errorText: { flex: 1, color: colors.statusOverdue, fontWeight: '600', textAlign: 'right' },
   errorDismiss: { color: colors.statusOverdue, fontWeight: '800' },

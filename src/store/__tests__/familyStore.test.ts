@@ -94,6 +94,233 @@ describe('familyStore — dog loading (local/demo mode)', () => {
     expect(dog?.name).toBe('טופי'); // re-seeded, not the stale "רקס"
     expect(dog?.familyId).toBe(FAMILY.id);
   });
+
+  it('load(familyId) surfaces a repository failure as `error` instead of throwing, and leaves loading false', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { repository } = require('../../data');
+
+    const spy = jest.spyOn(repository, 'getFamily').mockRejectedValueOnce(new Error('boom'));
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+
+    const state = useFamilyStore.getState();
+    expect(state.loading).toBe(false);
+    expect(state.error).toBe('boom');
+
+    spy.mockRestore();
+  });
+});
+
+describe('familyStore — setReminderEnabled', () => {
+  beforeEach(() => {
+    jest.resetModules();
+  });
+
+  it('optimistically flips remindersEnabled and persists it via the repository', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { repository } = require('../../data');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    const [user] = useFamilyStore.getState().users;
+    const spy = jest.spyOn(repository, 'updateUserReminderSetting');
+
+    await useFamilyStore.getState().setReminderEnabled(user.id, false);
+
+    expect(spy).toHaveBeenCalledWith(user.id, false);
+    expect(useFamilyStore.getState().users.find((u: any) => u.id === user.id)?.remindersEnabled).toBe(false);
+
+    spy.mockRestore();
+  });
+
+  it('rolls back the optimistic update and sets a friendly error when the repository call fails', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { repository } = require('../../data');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    const usersBefore = useFamilyStore.getState().users;
+    const [user] = usersBefore;
+    const spy = jest.spyOn(repository, 'updateUserReminderSetting').mockRejectedValueOnce(new Error('boom'));
+
+    await useFamilyStore.getState().setReminderEnabled(user.id, false);
+
+    expect(useFamilyStore.getState().users).toEqual(usersBefore);
+    expect(useFamilyStore.getState().error).toBe('לא הצלחנו לעדכן את הגדרות התזכורות');
+
+    spy.mockRestore();
+  });
+
+  it('a rejection reverts only the affected member — a concurrent realtime update to an UNRELATED member landing during the RPC is preserved, not clobbered by a stale pre-await snapshot', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { repository } = require('../../data');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    const users = useFamilyStore.getState().users;
+    expect(users.length).toBeGreaterThan(1);
+    const [target, other] = users;
+
+    const spy = jest.spyOn(repository, 'updateUserReminderSetting').mockImplementationOnce(async () => {
+      // Models a realtime reload from another family member's unrelated
+      // concurrent edit landing on this device while this RPC is in flight
+      // (see lib/realtime.ts's subscribeToFamilyChanges, wired to
+      // useFamilyStore.load() in RootNavigator.tsx).
+      useFamilyStore.setState((s: any) => ({
+        users: s.users.map((u: any) => (u.id === other.id ? { ...u, name: 'שם עודכן במקביל' } : u)),
+      }));
+      throw new Error('boom');
+    });
+
+    await useFamilyStore.getState().setReminderEnabled(target.id, false);
+
+    expect(useFamilyStore.getState().users.find((u: any) => u.id === target.id)?.remindersEnabled).toBe(
+      target.remindersEnabled
+    );
+    expect(useFamilyStore.getState().users.find((u: any) => u.id === other.id)?.name).toBe('שם עודכן במקביל');
+
+    spy.mockRestore();
+  });
+});
+
+describe('familyStore — updateUser', () => {
+  beforeEach(() => {
+    jest.resetModules();
+  });
+
+  it('optimistically applies the update and persists it via the repository', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { repository } = require('../../data');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    const [user] = useFamilyStore.getState().users;
+    const spy = jest.spyOn(repository, 'upsertUser');
+    const updated = { ...user, name: 'שם חדש' };
+
+    await useFamilyStore.getState().updateUser(updated);
+
+    expect(spy).toHaveBeenCalledWith(updated);
+    expect(useFamilyStore.getState().users.find((u: any) => u.id === user.id)?.name).toBe('שם חדש');
+
+    spy.mockRestore();
+  });
+
+  it('rolls back to the previous users list and sets a friendly actionError when the repository call fails', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { repository } = require('../../data');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    const usersBefore = useFamilyStore.getState().users;
+    const [user] = usersBefore;
+    const spy = jest.spyOn(repository, 'upsertUser').mockRejectedValueOnce(new Error('boom'));
+
+    await useFamilyStore.getState().updateUser({ ...user, name: 'שם חדש' });
+
+    expect(useFamilyStore.getState().users).toEqual(usersBefore);
+    expect(useFamilyStore.getState().actionError).toBe('לא הצלחנו לעדכן את בן המשפחה');
+
+    spy.mockRestore();
+  });
+
+  it('a rejection reverts only the edited member — a concurrent realtime update to an UNRELATED member landing during the RPC is preserved, not clobbered by a stale pre-await snapshot', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { repository } = require('../../data');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    const users = useFamilyStore.getState().users;
+    expect(users.length).toBeGreaterThan(1);
+    const [target, other] = users;
+
+    const spy = jest.spyOn(repository, 'upsertUser').mockImplementationOnce(async () => {
+      // Models a realtime reload from another family member's unrelated
+      // concurrent edit landing on this device while this RPC is in flight.
+      useFamilyStore.setState((s: any) => ({
+        users: s.users.map((u: any) => (u.id === other.id ? { ...u, name: 'שם עודכן במקביל' } : u)),
+      }));
+      throw new Error('boom');
+    });
+
+    await useFamilyStore.getState().updateUser({ ...target, name: 'שם חדש' });
+
+    expect(useFamilyStore.getState().users.find((u: any) => u.id === target.id)?.name).toBe(target.name);
+    expect(useFamilyStore.getState().users.find((u: any) => u.id === other.id)?.name).toBe('שם עודכן במקביל');
+
+    spy.mockRestore();
+  });
+});
+
+describe('familyStore — addUser repository failure', () => {
+  beforeEach(() => {
+    jest.resetModules();
+  });
+
+  it('rolls back the optimistically-added user and sets actionError, then rethrows for the caller', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { repository } = require('../../data');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    const usersBefore = useFamilyStore.getState().users;
+    const spy = jest.spyOn(repository, 'createUser').mockRejectedValueOnce(new Error('boom'));
+
+    await expect(
+      useFamilyStore.getState().addUser({ name: 'חדש', avatar: '🐶', color: '#000' })
+    ).rejects.toThrow('boom');
+
+    expect(useFamilyStore.getState().users).toEqual(usersBefore);
+    expect(useFamilyStore.getState().actionError).toBe('לא הצלחנו להוסיף את בן המשפחה');
+
+    spy.mockRestore();
+  });
+});
+
+describe('familyStore — getUserDeletionImpact / clearActionError', () => {
+  beforeEach(() => {
+    jest.resetModules();
+  });
+
+  it('getUserDeletionImpact delegates to computeUserDeletionImpact with the current schedule state', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { useScheduleStore } = require('../scheduleStore');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    await useScheduleStore.getState().load(DEMO_FAMILY.id);
+    const [victim] = useFamilyStore.getState().users;
+
+    const impact = useFamilyStore.getState().getUserDeletionImpact(victim.id);
+
+    expect(impact).toBeDefined();
+    expect(typeof impact.futureScheduleEntryCount).toBe('number');
+    expect(Array.isArray(impact.rulesAffected)).toBe(true);
+    expect(typeof impact.directlyAssignedWalkCount).toBe('number');
+  });
+
+  it('clearActionError resets actionError back to null', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+
+    useFamilyStore.setState({ actionError: 'משהו השתבש' });
+    expect(useFamilyStore.getState().actionError).toBe('משהו השתבש');
+
+    useFamilyStore.getState().clearActionError();
+
+    expect(useFamilyStore.getState().actionError).toBeNull();
+  });
 });
 
 /**
@@ -312,5 +539,150 @@ describe('familyStore — deleteUser (soft delete, preserving history)', () => {
     expect(useFamilyStore.getState().users.find((u: any) => u.id === victim.id)?.removedAt).toBeFalsy();
 
     spy.mockRestore();
+  });
+
+  /**
+   * A CLIENT-side rejection, unlike the server-side one above: planUserRemoval()
+   * (src/logic/familyManagement.ts) throws FamilyManagementError itself,
+   * before repository.deleteFamilyMember is ever called, when the target is
+   * the sole member of a rotation and no replacement was given. Its message
+   * must reach actionError verbatim (the `e instanceof FamilyManagementError
+   * ? e.message : ...` branch), not the generic "לא הצלחנו למחוק" fallback
+   * meant for opaque server-side failures.
+   */
+  it('a client-side rejection (sole rotation member, no replacement given) surfaces the FamilyManagementError message verbatim, not the generic fallback', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { useScheduleStore } = require('../scheduleStore');
+    const { DEMO_FAMILY } = require('../../data/demoData');
+    const { toDateOnly } = require('../../logic/rotation');
+    const { repository } = require('../../data');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    await useScheduleStore.getState().load(DEMO_FAMILY.id);
+
+    const solo = await useFamilyStore.getState().addUser({ name: 'יחיד', avatar: '🧍', color: '#654321' });
+    const deleteFamilyMemberSpy = jest.spyOn(repository, 'deleteFamilyMember');
+
+    await useScheduleStore.getState().addRule({
+      id: 'rule-solo-rotation-test',
+      familyId: DEMO_FAMILY.id,
+      dogId: useFamilyStore.getState().dog.id,
+      time: '09:00',
+      label: 'טיול יחיד',
+      daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+      rotationUserIds: [solo.id],
+      rotationAnchorDate: toDateOnly(new Date()),
+      sortOrder: 99,
+      active: true,
+      createdAt: new Date().toISOString(),
+    });
+
+    await useFamilyStore.getState().deleteUser(solo.id, null);
+
+    expect(useFamilyStore.getState().actionError).toBe(
+      'אי אפשר למחוק — זה בן המשפחה היחיד בסבב הזה. בחר מי יחליף אותו.'
+    );
+    // Rejected client-side before any server call or local removedAt update.
+    expect(deleteFamilyMemberSpy).not.toHaveBeenCalled();
+    expect(useFamilyStore.getState().users.find((u: any) => u.id === solo.id)?.removedAt).toBeFalsy();
+
+    deleteFamilyMemberSpy.mockRestore();
+  });
+
+  it('a concurrent realtime update to an UNRELATED member landing while repository.deleteFamilyMember is in flight is preserved, not clobbered by a stale pre-await snapshot', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { useScheduleStore } = require('../scheduleStore');
+    const { DEMO_FAMILY } = require('../../data/demoData');
+    const { repository } = require('../../data');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    await useScheduleStore.getState().load(DEMO_FAMILY.id);
+
+    const users = useFamilyStore.getState().users;
+    expect(users.length).toBeGreaterThan(2);
+    const [victim, replacement, bystander] = users;
+
+    const spy = jest.spyOn(repository, 'deleteFamilyMember').mockImplementationOnce(async () => {
+      // Models a realtime reload from another family member's unrelated
+      // concurrent edit (e.g. another admin's device editing `bystander`)
+      // landing on THIS device while this admin-only RPC is still in
+      // flight — see lib/realtime.ts's subscribeToFamilyChanges, wired to
+      // useFamilyStore.load() in RootNavigator.tsx.
+      useFamilyStore.setState((s: any) => ({
+        users: s.users.map((u: any) => (u.id === bystander.id ? { ...u, name: 'שם עודכן במקביל' } : u)),
+      }));
+    });
+
+    await useFamilyStore.getState().deleteUser(victim.id, replacement.id);
+
+    // The deleted member is correctly soft-deleted...
+    expect(useFamilyStore.getState().users.find((u: any) => u.id === victim.id)?.removedAt).toBeTruthy();
+    // ...and the concurrent, unrelated update survives, not clobbered by a
+    // stale whole-array snapshot captured before the RPC's await.
+    expect(useFamilyStore.getState().users.find((u: any) => u.id === bystander.id)?.name).toBe('שם עודכן במקביל');
+
+    spy.mockRestore();
+  });
+});
+
+/**
+ * load()'s "signed in as an already-removed profile" auto-recovery: if
+ * another admin removed the member THIS device is currently signed in as
+ * (see FamilyUser.removedAt), the next load() must sign this device out
+ * rather than let a removed profile keep acting as if nothing happened —
+ * see familyStore.ts's own doc comment on this exact block.
+ */
+describe('familyStore — load() auto-recovery when the signed-in profile was removed elsewhere', () => {
+  beforeEach(() => {
+    jest.resetModules();
+  });
+
+  it('signs the device out when the currently signed-in user is found removed in the freshly loaded users list', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { useAuthStore } = require('../authStore');
+    const { DEMO_FAMILY } = require('../../data/demoData');
+    const { repository } = require('../../data');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    const [victim] = useFamilyStore.getState().users;
+
+    // This device is signed in as `victim`; another admin (a different
+    // device) has already soft-deleted them server-side.
+    useAuthStore.setState({ currentUserId: victim.id });
+    await repository.upsertUser({ ...victim, removedAt: new Date().toISOString() });
+
+    const signOutSpy = jest.spyOn(useAuthStore.getState(), 'signOut').mockResolvedValue(undefined);
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+
+    expect(signOutSpy).toHaveBeenCalledTimes(1);
+
+    signOutSpy.mockRestore();
+  });
+
+  it('does NOT sign out when the signed-in user is present and not removed', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { useAuthStore } = require('../authStore');
+    const { DEMO_FAMILY } = require('../../data/demoData');
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+    const [victim] = useFamilyStore.getState().users;
+    useAuthStore.setState({ currentUserId: victim.id });
+
+    const signOutSpy = jest.spyOn(useAuthStore.getState(), 'signOut').mockResolvedValue(undefined);
+
+    await useFamilyStore.getState().load(DEMO_FAMILY.id);
+
+    expect(signOutSpy).not.toHaveBeenCalled();
+
+    signOutSpy.mockRestore();
   });
 });

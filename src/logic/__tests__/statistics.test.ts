@@ -38,6 +38,19 @@ describe('filterWalksByPeriod', () => {
     const walks = [makeWalk({ id: 'a', date: '2020-01-01' })];
     expect(filterWalksByPeriod(walks, 'all', NOW)).toHaveLength(1);
   });
+
+  it('keeps only walks within the last 30 days (inclusive) for "30d"', () => {
+    const walks = [
+      makeWalk({ id: 'in', date: '2026-07-28' }), // exactly 29 days back
+      makeWalk({ id: 'out', date: '2026-07-01' }),
+    ];
+    expect(filterWalksByPeriod(walks, '30d', NOW).map((w) => w.id)).toEqual(['in']);
+  });
+
+  it('defaults to the real current moment when called with no `now` argument', () => {
+    const walks = [makeWalk({ id: 'today', date: new Date().toISOString().slice(0, 10) })];
+    expect(filterWalksByPeriod(walks, '7d').map((w) => w.id)).toEqual(['today']);
+  });
 });
 
 describe('computeCompletionStats', () => {
@@ -94,5 +107,10 @@ describe('computePeePoopStats', () => {
     ];
     const stats = computePeePoopStats(walks);
     expect(stats).toEqual({ peeCount: 2, poopCount: 1, doneCount: 2, peePercent: 100, poopPercent: 50 });
+  });
+
+  it('is 0%, not NaN, when no walk is done yet', () => {
+    const stats = computePeePoopStats([makeWalk({ status: 'pending', hadPee: true, hadPoop: true })]);
+    expect(stats).toEqual({ peeCount: 0, poopCount: 0, doneCount: 0, peePercent: 0, poopPercent: 0 });
   });
 });

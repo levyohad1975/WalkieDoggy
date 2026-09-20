@@ -1,7 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LocalRepository } from '../localRepository';
-import { DEMO_FAMILY } from '../demoData';
+import { DEMO_DOG, DEMO_ENTRIES, DEMO_FAMILY, DEMO_RULES, DEMO_USERS, DEMO_WALKS } from '../demoData';
 import type { Dog, Family, FamilyUser, ScheduleEntry, Walk } from '../../types';
+
+const STORAGE_KEY = 'dog-walk-family:v2';
 
 function otherFamilySeed() {
   const family: Family = { id: 'family-other', name: 'משפחת לוי', createdAt: new Date().toISOString() };
@@ -119,5 +121,229 @@ describe('LocalRepository — dog data (BUG 3: dog name must load in local/demo 
     await repo.getUsers(DEMO_FAMILY.id); // trigger seed
     const dog = await repo.getDog('some-other-family-id');
     expect(dog).toBeUndefined();
+  });
+
+  it('getFamily returns undefined for a family id that does not match the cached family', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+    const family = await repo.getFamily('some-other-family-id');
+    expect(family).toBeUndefined();
+  });
+});
+
+describe('LocalRepository — malformed on-disk cache', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  it('re-seeds from demo data instead of throwing when the cached JSON is unparseable', async () => {
+    await AsyncStorage.setItem(STORAGE_KEY, '{not valid json');
+
+    const repo = new LocalRepository();
+    const users = await repo.getUsers(DEMO_FAMILY.id);
+    expect(users.length).toBeGreaterThan(0);
+    expect(users.every((u) => u.familyId === DEMO_FAMILY.id)).toBe(true);
+  });
+});
+
+describe('LocalRepository — replaceAll / createUser', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  it('replaceAll overwrites the entire store and persists it', async () => {
+    const repo = new LocalRepository();
+    const replacementUser: FamilyUser = {
+      id: 'user-replaced',
+      familyId: DEMO_FAMILY.id,
+      name: 'חדש',
+      avatar: '🐶',
+      color: '#123456',
+      remindersEnabled: false,
+      createdAt: new Date().toISOString(),
+    };
+
+    await repo.replaceAll({
+      family: DEMO_FAMILY,
+      users: [replacementUser],
+      dog: DEMO_DOG,
+      rules: DEMO_RULES,
+      entries: DEMO_ENTRIES,
+      walks: DEMO_WALKS,
+    });
+
+    const users = await repo.getUsers(DEMO_FAMILY.id);
+    expect(users).toEqual([replacementUser]);
+
+    // A fresh repository instance reading the same underlying storage sees
+    // the replacement too, confirming replaceAll actually persisted it
+    // rather than only updating the in-memory cache.
+    const repo2 = new LocalRepository();
+    const usersFromDisk = await repo2.getUsers(DEMO_FAMILY.id);
+    expect(usersFromDisk).toEqual([replacementUser]);
+  });
+
+  it('createUser is an alias for upsertUser', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+    const newUser: FamilyUser = {
+      id: 'user-created-via-createUser',
+      familyId: DEMO_FAMILY.id,
+      name: 'נוצר',
+      avatar: '🐾',
+      color: '#abcdef',
+      remindersEnabled: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    await repo.createUser(newUser);
+
+    const users = await repo.getUsers(DEMO_FAMILY.id);
+    expect(users.find((u) => u.id === newUser.id)).toEqual(newUser);
+  });
+});
+
+describe('LocalRepository — deleteFamilyMember applies matched updates', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  it('replaces an existing walk when its id is present in updatedWalks', async () => {
+    const repo = new LocalRepository();
+    const existingWalks = await repo.getWalks(DEMO_FAMILY.id); // trigger seed
+    const target = existingWalks[0];
+    const updatedWalk: Walk = { ...target, status: 'skipped' };
+
+    await repo.deleteFamilyMember({
+      userId: DEMO_USERS[0].id,
+      updatedRules: [],
+      updatedEntries: [],
+      updatedWalks: [updatedWalk],
+    });
+
+    const walksAfter = await repo.getWalks(DEMO_FAMILY.id);
+    expect(walksAfter.find((w) => w.id === target.id)?.status).toBe('skipped');
+  });
+
+  it('replaces an existing rule and entry when their ids are present in updatedRules/updatedEntries', async () => {
+    const repo = new LocalRepository();
+    const existingRules = await repo.getScheduleRules(DEMO_FAMILY.id); // trigger seed
+    const existingEntries = await repo.getScheduleEntries(DEMO_FAMILY.id);
+    const targetRule = existingRules[0];
+    const targetEntry = existingEntries[0];
+    const updatedRule = { ...targetRule, active: !targetRule.active };
+    const updatedEntry = { ...targetEntry, responsibleUserId: DEMO_USERS[1].id };
+
+    await repo.deleteFamilyMember({
+      userId: DEMO_USERS[0].id,
+      updatedRules: [updatedRule],
+      updatedEntries: [updatedEntry],
+      updatedWalks: [],
+    });
+
+    const rulesAfter = await repo.getScheduleRules(DEMO_FAMILY.id);
+    const entriesAfter = await repo.getScheduleEntries(DEMO_FAMILY.id);
+    expect(rulesAfter.find((r) => r.id === targetRule.id)?.active).toBe(updatedRule.active);
+    expect(entriesAfter.find((e) => e.id === targetEntry.id)?.responsibleUserId).toBe(DEMO_USERS[1].id);
+  });
+
+  it('silently skips a rule/entry/walk id that no longer exists in the local store (concurrent-removal race)', async () => {
+    const repo = new LocalRepository();
+    const rulesBefore = await repo.getScheduleRules(DEMO_FAMILY.id); // trigger seed
+    const entriesBefore = await repo.getScheduleEntries(DEMO_FAMILY.id);
+    const walksBefore = await repo.getWalks(DEMO_FAMILY.id);
+
+    const goneRule = { ...rulesBefore[0], id: 'rule-already-gone' };
+    const goneEntry = { ...entriesBefore[0], id: 'entry-already-gone' };
+    const goneWalk = { ...walksBefore[0], id: 'walk-already-gone' };
+
+    await repo.deleteFamilyMember({
+      userId: DEMO_USERS[0].id,
+      updatedRules: [goneRule],
+      updatedEntries: [goneEntry],
+      updatedWalks: [goneWalk],
+    });
+
+    const rulesAfter = await repo.getScheduleRules(DEMO_FAMILY.id);
+    const entriesAfter = await repo.getScheduleEntries(DEMO_FAMILY.id);
+    const walksAfter = await repo.getWalks(DEMO_FAMILY.id);
+    expect(rulesAfter).toHaveLength(rulesBefore.length);
+    expect(entriesAfter).toHaveLength(entriesBefore.length);
+    expect(walksAfter).toHaveLength(walksBefore.length);
+    expect(rulesAfter.find((r) => r.id === goneRule.id)).toBeUndefined();
+  });
+
+  it('is a no-op on the users array when userId does not match any existing user', async () => {
+    const repo = new LocalRepository();
+    const usersBefore = await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+
+    await repo.deleteFamilyMember({
+      userId: 'user-does-not-exist',
+      updatedRules: [],
+      updatedEntries: [],
+      updatedWalks: [],
+    });
+
+    const usersAfter = await repo.getUsers(DEMO_FAMILY.id);
+    expect(usersAfter).toEqual(usersBefore);
+  });
+});
+
+describe('LocalRepository — updateScheduleEntry inserts an entry that does not already exist', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  it('pushes a brand-new entry when its id has no existing match', async () => {
+    const repo = new LocalRepository();
+    const before = await repo.getScheduleEntries(DEMO_FAMILY.id); // trigger seed
+    const newEntry: ScheduleEntry = {
+      id: 'entry-brand-new',
+      familyId: DEMO_FAMILY.id,
+      dogId: DEMO_DOG.id,
+      date: '2026-09-14',
+      time: '10:00',
+      responsibleUserId: DEMO_USERS[0].id,
+      createdAt: new Date().toISOString(),
+    };
+
+    await repo.updateScheduleEntry(newEntry);
+
+    const after = await repo.getScheduleEntries(DEMO_FAMILY.id);
+    expect(after).toHaveLength(before.length + 1);
+    expect(after.find((e) => e.id === newEntry.id)).toEqual(newEntry);
+  });
+});
+
+describe('LocalRepository — saveWalk concurrent-completion guard', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  it('keeps the already-saved walk when two different users both mark it done', async () => {
+    const repo = new LocalRepository();
+    const walks = await repo.getWalks(DEMO_FAMILY.id); // trigger seed
+    const target = walks[0];
+
+    const firstCompletion: Walk = {
+      ...target,
+      status: 'done',
+      completedByUserId: DEMO_USERS[0].id,
+      updatedAt: new Date().toISOString(),
+    };
+    await repo.saveWalk(firstCompletion);
+
+    const secondCompletion: Walk = {
+      ...target,
+      status: 'done',
+      completedByUserId: DEMO_USERS[1].id,
+      updatedAt: new Date().toISOString(),
+    };
+    await repo.saveWalk(secondCompletion);
+
+    const walksAfter = await repo.getWalks(DEMO_FAMILY.id);
+    const saved = walksAfter.find((w) => w.id === target.id);
+    // The second, conflicting completion must not overwrite the first.
+    expect(saved?.completedByUserId).toBe(DEMO_USERS[0].id);
   });
 });

@@ -2,6 +2,7 @@
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
+import { radii, spacing } from '../theme/tokens';
 import { Button } from './Button';
 import { adminListAuditLog, type AuditLogRow } from '../lib/requests';
 
@@ -88,10 +89,19 @@ export function AdminAuditLogModal({ visible, onClose }: AdminAuditLogModalProps
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
+      <Pressable
+        style={styles.backdrop}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="סגירת יומן פעילות"
+      >
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <RtlText style={styles.title}>יומן פעילות</RtlText>
-          {error ? <RtlText style={styles.error}>{error}</RtlText> : null}
+          <RtlText style={styles.title} accessibilityRole="header">יומן פעילות</RtlText>
+          {error ? (
+            <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+              {error}
+            </RtlText>
+          ) : null}
           <ScrollView style={styles.list}>
             {rows.map((r) => (
               <View key={r.id} style={styles.row}>
@@ -101,7 +111,7 @@ export function AdminAuditLogModal({ visible, onClose }: AdminAuditLogModalProps
                 </RtlText>
               </View>
             ))}
-            {loading ? <ActivityIndicator color={colors.primary} style={styles.spinner} /> : null}
+            {loading ? <ActivityIndicator color={colors.primary} style={styles.spinner} accessibilityLabel="טוען…" /> : null}
           </ScrollView>
           {hasMore && !loading ? (
             <Button label="טען עוד" variant="secondary" onPress={() => load(page + 1)} style={styles.moreButton} />
@@ -115,9 +125,9 @@ export function AdminAuditLogModal({ visible, onClose }: AdminAuditLogModalProps
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '85%' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, maxHeight: '85%' },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 10 },
-  error: { color: colors.statusOverdue, textAlign: 'center', marginBottom: 8 },
+  error: { color: colors.statusOverdue, textAlign: 'center', marginBottom: spacing.sm },
   list: { maxHeight: '70%' },
   row: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border },
   rowAction: { fontSize: 14, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },

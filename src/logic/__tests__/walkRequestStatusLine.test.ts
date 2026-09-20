@@ -13,6 +13,10 @@ function swap(overrides: Partial<SwapRequestRow> = {}): SwapRequestRow {
     created_at: '2026-09-04T08:00:00.000Z',
     resolved_at: null,
     requester_seen_at: null,
+    expected_responsible_user_id: 'u1',
+    expected_scheduled_time: '08:00',
+    expected_target_responsible_user_id: null,
+    expected_target_scheduled_time: null,
     ...overrides,
   };
 }
@@ -131,6 +135,45 @@ describe('computeWalkRequestStatusLine', () => {
     expect(result).toBeNull();
   });
 
+  it('hides a pending time-change request whose walk was rescheduled to a different time since (still pending, so status alone would not catch it)', () => {
+    const result = computeWalkRequestStatusLine(
+      { id: 'walk-1' },
+      [],
+      [timeChange()], // expected_time: '18:00', requested_by_user_id: 'u1'
+      { 'walk-1': { status: 'pending', responsibleUserId: 'u1', scheduledTime: '18:30' } },
+      NOW
+    );
+    expect(result).toBeNull();
+  });
+
+  it('hides a pending swap request whose target walk was reassigned to someone else since (still pending, so status alone would not catch it)', () => {
+    const result = computeWalkRequestStatusLine(
+      { id: 'walk-2' },
+      [
+        swap({
+          walk_id: 'walk-1',
+          target_walk_id: 'walk-2',
+          expected_responsible_user_id: 'u1',
+          expected_scheduled_time: '08:00',
+          expected_target_responsible_user_id: 'u2',
+          expected_target_scheduled_time: '09:00',
+        }),
+      ],
+      [],
+      {
+        'walk-1': { status: 'pending', responsibleUserId: 'u1', scheduledTime: '08:00' },
+        'walk-2': { status: 'pending', responsibleUserId: 'u3', scheduledTime: '09:00' },
+      },
+      NOW
+    );
+    expect(result).toBeNull();
+  });
+
+  it('defaults "now" to the real current time when omitted', () => {
+    const result = computeWalkRequestStatusLine({ id: 'walk-1' }, [], [timeChange()], walksById);
+    expect(result).toEqual({ text: '🕐 19:30 · ממתין', kind: 'timeChange', status: 'pending' });
+  });
+
   it('picks the MOST RECENT relevant request when several exist for the same walk', () => {
     const older = timeChange({
       id: 'tc-old',
@@ -145,6 +188,59 @@ describe('computeWalkRequestStatusLine', () => {
     });
     const result = computeWalkRequestStatusLine({ id: 'walk-1' }, [newer], [older], walksById, NOW);
     expect(result).toEqual({ text: '🔁 ממתין', kind: 'swap', status: 'pending' });
+  });
+
+  it('never hides a still-active request behind a MORE RECENTLY created but already-resolved one for the same walk', () => {
+    // Neither create_swap_request() nor create_time_change_request() blocks
+    // against the other request table (each only guards its own kind), so a
+    // walk's responsible member can end up with both a still-pending swap
+    // request AND a later, already-rejected time-change request at once. The
+    // rejected one alone would win a pure created_at tie-break despite the
+    // swap still being fully actionable — this must not happen.
+    const olderActiveSwap = swap({
+      id: 'swap-old-active',
+      status: 'pending',
+      created_at: '2026-09-04T07:00:00.000Z',
+    });
+    const newerResolvedTimeChange = timeChange({
+      id: 'tc-new-rejected',
+      status: 'rejected',
+      created_at: '2026-09-04T09:00:00.000Z',
+      resolved_at: '2026-09-04T09:05:00.000Z',
+    });
+    const result = computeWalkRequestStatusLine(
+      { id: 'walk-1' },
+      [olderActiveSwap],
+      [newerResolvedTimeChange],
+      walksById,
+      NOW,
+      'u1'
+    );
+    expect(result).toEqual({ text: '🔁 ממתין', kind: 'swap', status: 'pending' });
+  });
+
+  it('still prefers the more recent request when both candidates are resolved', () => {
+    const olderRejected = swap({
+      id: 'swap-older-rejected',
+      status: 'rejected',
+      created_at: '2026-09-04T07:00:00.000Z',
+      resolved_at: '2026-09-04T07:05:00.000Z',
+    });
+    const newerApproved = timeChange({
+      id: 'tc-newer-approved',
+      status: 'approved',
+      created_at: '2026-09-04T08:00:00.000Z',
+      resolved_at: '2026-09-04T08:05:00.000Z',
+    });
+    const result = computeWalkRequestStatusLine(
+      { id: 'walk-1' },
+      [olderRejected],
+      [newerApproved],
+      walksById,
+      NOW,
+      'u1'
+    );
+    expect(result).toEqual({ text: '✓ 19:30 אושר', kind: 'timeChange', status: 'approved' });
   });
 });
 

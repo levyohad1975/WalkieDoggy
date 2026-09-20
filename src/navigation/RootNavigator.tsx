@@ -4,6 +4,7 @@ import { RtlText } from '../components/RtlText';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
 import { HomeScreen } from '../screens/HomeScreen';
 import { ScheduleScreen } from '../screens/ScheduleScreen';
 import { FamilyScreen } from '../screens/FamilyScreen';
@@ -12,6 +13,7 @@ import { StatisticsScreen } from '../screens/StatisticsScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { ImpersonationBanner } from '../components/ImpersonationBanner';
 import { colors } from '../theme/colors';
+import { layout, nativeDirection, spacing } from '../theme/tokens';
 import { useAuthStore, useEffectiveUserId } from '../store/authStore';
 import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
@@ -31,14 +33,26 @@ export type RootTabParamList = {
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
 
-const TAB_ICON: Record<keyof RootTabParamList, string> = {
-  Home: '🏠',
-  Schedule: '📅',
-  Family: '👪',
-  History: '📖',
-  Statistics: '📈',
-  Settings: '⚙️',
-};
+function TabIcon({ name, color }: { name: keyof RootTabParamList; color: string }) {
+  const common = { stroke: color, strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+  const icon = (() => {
+    switch (name) {
+      case 'Home':
+        return <><Path d="M3 10.5 12 3l9 7.5" {...common} /><Path d="M5 9.5V21h14V9.5M9 21v-7h6v7" {...common} /></>;
+      case 'Schedule':
+        return <><Rect x="3" y="5" width="18" height="16" rx="2" {...common} fill="none" /><Line x1="7" y1="3" x2="7" y2="7" {...common} /><Line x1="17" y1="3" x2="17" y2="7" {...common} /><Line x1="3" y1="10" x2="21" y2="10" {...common} /></>;
+      case 'Family':
+        return <><Circle cx="9" cy="8" r="3" {...common} fill="none" /><Circle cx="17" cy="9" r="2.5" {...common} fill="none" /><Path d="M3.5 20c.4-4 2.3-6 5.5-6s5.1 2 5.5 6M14 15c3.7-.8 6 1 6.5 4.5" {...common} /></>;
+      case 'History':
+        return <><Path d="M4 5.5C6.5 4.5 9 4.7 12 6v15c-3-1.3-5.5-1.5-8-.5zM20 5.5c-2.5-1-5-.8-8 .5v15c3-1.3 5.5-1.5 8-.5z" {...common} fill="none" /></>;
+      case 'Statistics':
+        return <><Polyline points="4,18 9,12 13,15 20,7" {...common} fill="none" /><Line x1="4" y1="21" x2="20" y2="21" {...common} /></>;
+      case 'Settings':
+        return <><Circle cx="12" cy="12" r="3" {...common} fill="none" /><Path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.09A1.7 1.7 0 0 0 9 19.36a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.63 15 1.7 1.7 0 0 0 3.09 14H3v-4h.09A1.7 1.7 0 0 0 4.64 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63 1.7 1.7 0 0 0 10 3.09V3h4v.09A1.7 1.7 0 0 0 15 4.64a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.37 9 1.7 1.7 0 0 0 20.91 10H21v4h-.09A1.7 1.7 0 0 0 19.4 15Z" {...common} fill="none" /></>;
+    }
+  })();
+  return <Svg width={layout.iconSize} height={layout.iconSize} viewBox="0 0 24 24" accessibilityElementsHidden>{icon}</Svg>;
+}
 
 const TAB_LABEL: Record<keyof RootTabParamList, string> = {
   Home: 'בית',
@@ -90,14 +104,14 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
             accessibilityLabel={options?.tabBarAccessibilityLabel ?? TAB_LABEL[name]}
             style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 1 }}
           >
-            <RtlText allowFontScaling={false} style={{ fontSize: 20, color: tint }}>{TAB_ICON[name]}</RtlText>
+            <TabIcon name={name} color={tint} />
             <RtlText allowFontScaling={false} numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: tint, textAlign: 'center', writingDirection: 'rtl' }}>{TAB_LABEL[name]}</RtlText>
           </Pressable>
         );
       });
 
   return (
-    <View style={{ height: 56 + insets.bottom, paddingBottom: Math.max(8, insets.bottom), paddingTop: 6, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }}>
+    <View style={{ height: layout.rowHeight + insets.bottom, paddingBottom: Math.max(spacing.sm, insets.bottom), paddingTop: 6, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }}>
       <View
         style={{
           flex: 1,
@@ -105,7 +119,7 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
           maxWidth: Platform.OS === 'web' ? 1000 : undefined,
           alignSelf: 'center',
           flexDirection: 'row',
-          direction: 'ltr',
+          ...nativeDirection('ltr'),
         }}
       >
         {buttons}
@@ -221,13 +235,13 @@ export function RootNavigator() {
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textSecondary,
           tabBarStyle: {
-            height: 56 + insets.bottom,
-            paddingBottom: Math.max(8, insets.bottom),
+            height: layout.rowHeight + insets.bottom,
+            paddingBottom: Math.max(spacing.sm, insets.bottom),
             paddingTop: 6,
           },
           tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
           tabBarAllowFontScaling: false,
-          tabBarIcon: () => <RtlText style={{ fontSize: 20 }}>{TAB_ICON[route.name as keyof RootTabParamList]}</RtlText>,
+          tabBarIcon: ({ color }) => <TabIcon name={route.name as keyof RootTabParamList} color={color} />,
           tabBarLabel: TAB_LABEL[route.name as keyof RootTabParamList],
         })}
       >

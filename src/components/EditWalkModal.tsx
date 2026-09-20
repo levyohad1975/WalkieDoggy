@@ -3,6 +3,7 @@ import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, St
 import { RtlText } from './RtlText';
 import type { FamilyUser, Walk } from '../types';
 import { colors } from '../theme/colors';
+import { radii, spacing, typography } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 import { SwapWalkPickerModal } from './SwapWalkPickerModal';
@@ -54,12 +55,20 @@ export function EditWalkModal({
 
   if (!walk) return null;
 
-  // This sheet applies a valid selected time immediately, preserving its
-  // existing one-off edit contract.
+  // Only track the picker's local value here — do NOT commit on every
+  // onChange. On iOS, DateTimePicker's `display="spinner"` fires onChange
+  // continuously as the wheel scrolls (there is no "Done" tap in that mode),
+  // so committing immediately used to reschedule the walk to whatever
+  // intermediate value the wheel passed through first, then close the sheet
+  // out from under the user before they reached their intended time. The
+  // explicit "עדכן שעה" button below is the one place the change is
+  // actually applied, matching RequestTimeChangeModal/AddUnplannedWalkModal's
+  // own explicit-submit pattern for the identical spinner picker.
   const handleTimeChange = (newTime: string) => {
     setTime(newTime);
-    if (is24HourTime(newTime) && newTime !== walk.scheduledTime) onChangeTime(newTime);
   };
+
+  const timeChanged = is24HourTime(time) && time !== walk.scheduledTime;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -69,7 +78,12 @@ export function EditWalkModal({
           in a separate SwapWalkPickerModal — see Section 8 — so it's no
           longer nested inside this sheet's own ScrollView.) */}
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable
+          style={styles.backdrop}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel={`סגירת עריכת הטיול — ${walk.scheduledTime}`}
+        >
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             {/* Section 7's original fix here (`scroll: {flex:1}`, to keep
                 the "בטל את הטיול"/"סגור" buttons reachable for long content)
@@ -80,11 +94,18 @@ export function EditWalkModal({
                 shrinks/scrolls rather than pushing the sheet past its
                 maxHeight cap for long content. */}
             <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
-              <RtlText style={styles.title}>עריכת הטיול — {walk.scheduledTime}</RtlText>
+              <RtlText style={styles.title} accessibilityRole="header">עריכת הטיול — {walk.scheduledTime}</RtlText>
             <RtlText style={styles.subtitle}>שינוי חד-פעמי, לא משפיע על שאר הסבב</RtlText>
 
             <RtlText style={styles.label}>שעה</RtlText>
             <TimePickerField value={time} onChange={handleTimeChange} webLabel="בחירת שעת הטיול" />
+            <Button
+              label="עדכן שעה"
+              variant="secondary"
+              disabled={!timeChanged}
+              onPress={() => onChangeTime(time)}
+              style={styles.updateTimeButton}
+            />
 
             <RtlText style={styles.label}>אחראי לטיול הזה</RtlText>
             <View style={styles.userRow}>
@@ -112,6 +133,7 @@ export function EditWalkModal({
             <Button
   label="בטל את הטיול הזה"
   variant="danger"
+  accessibilityHint="יוצג אישור לפני ביטול הטיול"
   onPress={() => {
     Alert.alert(
       'לבטל את הטיול הזה?',
@@ -162,7 +184,7 @@ const styles = StyleSheet.create({
   backgroundColor: '#00000055',
   justifyContent: 'flex-end',
 },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '88%' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, maxHeight: '88%' },
   // BUG FIX (app-wide modal-collapse audit, final QA round): this was the
   // SAME `flex: 1`-on-ScrollView-inside-an-auto-height-maxHeight-sheet
   // pattern already found and fixed in DogDetailsModal/RemindersModal/
@@ -182,12 +204,13 @@ const styles = StyleSheet.create({
   // ScrollView shrink/scroll once content exceeds the 88% cap.
   scroll: { flexGrow: 0, flexShrink: 1 },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
-  subtitle: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: 4, marginBottom: 8 },
-  label: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: 16, marginBottom: 8, textAlign: 'right' },
-  userRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  userChip: { alignItems: 'center', minWidth: 68, gap: 4, opacity: 0.55 },
+  subtitle: { fontSize: typography.meta.fontSize, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xs, marginBottom: spacing.sm },
+  label: { fontSize: typography.meta.fontSize, fontWeight: '700', color: colors.textSecondary, marginTop: spacing.lg, marginBottom: spacing.sm, textAlign: 'right' },
+  userRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  userChip: { alignItems: 'center', minWidth: 68, gap: spacing.xs, opacity: 0.55 },
   userChipActive: { opacity: 1 },
   userChipName: { fontSize: 12, color: colors.textPrimary, fontWeight: '600' },
+  updateTimeButton: { marginTop: 10 },
   cancelButton: { marginTop: 22 },
   closeButton: { marginTop: 10 },
 });

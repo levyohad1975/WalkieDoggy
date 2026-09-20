@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFamilyStore } from '../store/familyStore';
@@ -7,6 +7,7 @@ import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { useRequestsStore } from '../store/requestsStore';
 import { colors } from '../theme/colors';
+import { breakpoints, radii, spacing, typography } from '../theme/tokens';
 import { WalkRow } from '../components/WalkRow';
 import { EmptyState, ErrorState } from '../components/EmptyState';
 import { EditWalkModal } from '../components/EditWalkModal';
@@ -20,7 +21,9 @@ import { DEMO_FAMILY } from '../data/demoData';
 import { generateId } from '../lib/id';
 import { localDateOnly } from '../logic/dateFormat';
 import { isOverdue } from '../logic/nextWalk';
+import { previewRotation } from '../logic/rotation';
 import { canRequestChangeForWalk } from '../logic/walkActions';
+import { walkHasActiveSwapRequest, walkHasActiveTimeChangeRequest } from '../logic/requestLifecycle';
 import { computeWalkRequestStatusLine } from '../logic/walkRequestStatusLine';
 import { isSupabaseConfigured } from '../lib/supabase';
 import type { ScheduleRule, Walk } from '../types';
@@ -186,6 +189,16 @@ export function ScheduleScreen() {
   const canRequestForWalk = (w: Walk): boolean =>
     canRequestChangeForWalk(w, effectiveUserId, familyRole, isSupabaseConfigured);
 
+  // Both create_swap_request() and create_time_change_request() (migrations
+  // 0018/0006) reject a second pending request naming a walk that already
+  // has one outstanding (see requestLifecycle.ts's own doc comment) — these
+  // add that check on top of canRequestForWalk's base eligibility rule, so
+  // the request links aren't shown for a walk that would always be rejected.
+  const canRequestSwapForWalk = (w: Walk): boolean =>
+    canRequestForWalk(w) && !walkHasActiveSwapRequest(w.id, swapRequests, walksById);
+  const canRequestTimeChangeForWalk = (w: Walk): boolean =>
+    canRequestForWalk(w) && !walkHasActiveTimeChangeRequest(w.id, timeChangeRequests, walksById);
+
   // QA pass v3, issue 11 fix: same authorization as NextWalkCard's
   // `canResolve` (admin, or the currently-responsible member — migration
   // 0012), but applied to EVERY overdue+pending walk in this list, not just
@@ -204,8 +217,8 @@ export function ScheduleScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <RtlText style={styles.header}>לוח הזמנים של {dog?.name ?? 'הכלב/ה שלנו'}</RtlText>
+      <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
+        <RtlText style={styles.header} accessibilityRole="header">לוח הזמנים של {dog?.name ?? 'הכלב/ה שלנו'}</RtlText>
 
         <View style={styles.tabs}>
           {(Object.keys(RANGE_LABELS) as RangeKey[]).map((key) => (
@@ -216,7 +229,7 @@ export function ScheduleScreen() {
         </View>
 
         {loading && walks.length === 0 ? (
-          <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />
+          <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} accessibilityLabel="טוען…" />
         ) : error ? (
           <ErrorState message={error} onRetry={() => loadSchedule(familyId)} />
         ) : grouped.length === 0 ? (
@@ -241,8 +254,8 @@ export function ScheduleScreen() {
                       // ROUND-5, Part 2: request actions for ANY eligible
                       // future walk, not just Home's "next walk" — see
                       // canRequestForWalk() above for the exact filter.
-                      onRequestSwap={canRequestForWalk(w) ? () => setRequestSwapWalkId(w.id) : undefined}
-                      onRequestTimeChange={canRequestForWalk(w) ? () => setRequestTimeChangeWalkId(w.id) : undefined}
+                      onRequestSwap={canRequestSwapForWalk(w) ? () => setRequestSwapWalkId(w.id) : undefined}
+                      onRequestTimeChange={canRequestTimeChangeForWalk(w) ? () => setRequestTimeChangeWalkId(w.id) : undefined}
                       onMarkDone={canResolveWalk(w) ? () => setResolveWalkId(w.id) : undefined}
                       onMarkNotDone={canResolveWalk(w) ? () => skip(w.id) : undefined}
                       requestStatusLine={
@@ -296,11 +309,19 @@ export function ScheduleScreen() {
         setRuleFormVisible(true);
       }}
       hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={`עריכת שעת טיול ${r.time}`}
     >
       <RtlText style={styles.ruleActionIcon}>✏️</RtlText>
     </Pressable>
 
-    <Pressable onPress={() => setDeleteRuleId(r.id)} hitSlop={8}>
+    <Pressable
+      onPress={() => setDeleteRuleId(r.id)}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={`מחיקת שעת טיול ${r.time}`}
+      accessibilityHint="יוצג אישור לפני מחיקת שעת הטיול"
+    >
       <RtlText style={styles.ruleActionIcon}>🗑️</RtlText>
     </Pressable>
   </View>
@@ -319,7 +340,10 @@ export function ScheduleScreen() {
           "bare dots". Wrapping instead of shrinking/truncating keeps every
           name fully readable at a consistent size. */}
       <RtlText style={styles.ruleRotation}>
-        {r.rotationUserIds.map((id) => usersById[id]?.name ?? '?').join(' → ')}
+        {previewRotation(
+          r.rotationUserIds.map((id) => usersById[id]?.name ?? '?'),
+          r.rotationUserIds.length
+        )}
       </RtlText>
     </View>
   </View>
@@ -460,7 +484,8 @@ export function ScheduleScreen() {
             w.status === 'pending' &&
             w.responsibleUserId === requestSwapTargetUserId &&
             (!requestSwapWalk || w.dogId === requestSwapWalk.dogId) &&
-            new Date(`${w.date}T${w.scheduledTime}:00`).getTime() > Date.now()
+            new Date(`${w.date}T${w.scheduledTime}:00`).getTime() > Date.now() &&
+            !walkHasActiveSwapRequest(w.id, swapRequests, walksById)
           )
           .sort((a, b) => `${a.date}T${a.scheduledTime}`.localeCompare(`${b.date}T${b.scheduledTime}`))
           .slice(0, 20)
@@ -502,26 +527,27 @@ export function ScheduleScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: 16, paddingTop: 8, gap: 8, paddingBottom: 64 },
-  header: { width: '100%', fontSize: 22, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl', paddingHorizontal: 4 },
-  tabs: { flexDirection: 'row', gap: 8, paddingVertical: 8 },
+  content: { padding: spacing.lg, paddingTop: spacing.sm, gap: spacing.sm, paddingBottom: spacing.xxxl },
+  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
+  header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl', paddingHorizontal: 4 },
+  tabs: { flexDirection: 'row', gap: spacing.sm, paddingVertical: spacing.sm },
   tab: {
     flex: 1,
     textAlign: 'center',
-    paddingVertical: 12,
-    borderRadius: 14,
+    paddingVertical: spacing.md,
+    borderRadius: radii.md,
     backgroundColor: colors.surfaceMuted,
     color: colors.textSecondary,
     fontWeight: '700',
     overflow: 'hidden',
   },
   tabActive: { backgroundColor: colors.primary, color: colors.textInverse },
-  daysList: { gap: 20 },
-  daySection: { gap: 10 },
-  dayTitle: { width: '100%', fontSize: 16, fontWeight: '700', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
-  list: { gap: 10 },
+  daysList: { gap: spacing.xl },
+  daySection: { gap: spacing.sm },
+  dayTitle: { width: '100%', ...typography.sectionTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  list: { gap: spacing.sm },
   empty: { fontSize: 14, color: colors.textSecondary, textAlign: 'right' },
-  section: { gap: 10, marginTop: 24, width: '100%' },
+  section: { gap: spacing.sm, marginTop: spacing.xl, width: '100%' },
   sectionHeaderRow: {
   flexDirection: 'row',
   justifyContent: 'space-between',
@@ -549,11 +575,11 @@ const styles = StyleSheet.create({
   alignItems: 'center',
   gap: 10,
   backgroundColor: colors.surface,
-  borderRadius: 16,
+  borderRadius: radii.lg,
   borderWidth: 1,
   borderColor: colors.border,
-  paddingHorizontal: 12,
-  paddingVertical: 10,
+  paddingHorizontal: spacing.md,
+  paddingVertical: spacing.sm,
 },
 
 ruleActions: {

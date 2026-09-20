@@ -1,0 +1,11 @@
+const fs = require('fs');
+const s = fs.readFileSync('supabase/migrations/0037_deactivate_push_on_member_removal.sql', 'utf8');
+console.log('pushIdx', s.indexOf('update push_tokens'));
+console.log('webPushIdx', s.indexOf('update web_push_subscriptions'));
+console.log('removedAtIdx', s.indexOf('update users\n  set removed_at = now()'));
+const re = /update users/g;
+let m;
+const idxs = [];
+while ((m = re.exec(s))) idxs.push(m.index);
+console.log('update users occurrences', idxs);
+console.log('length', s.length);

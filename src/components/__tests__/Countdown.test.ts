@@ -44,7 +44,7 @@ describe('Countdown — source order (structural)', () => {
   it('pins an explicit LTR layout direction on both the digit row and the label row, not just one', () => {
     const rowStyleMatch = source.match(/row:\s*\{[^}]*\}/);
     const labelRowStyleMatch = source.match(/labelRow:\s*\{[^}]*\}/);
-    expect(rowStyleMatch?.[0]).toMatch(/direction:\s*'ltr'/);
-    expect(labelRowStyleMatch?.[0]).toMatch(/direction:\s*'ltr'/);
+    expect(rowStyleMatch?.[0]).toMatch(/nativeDirection\('ltr'\)/);
+    expect(labelRowStyleMatch?.[0]).toMatch(/nativeDirection\('ltr'\)/);
   });
 });

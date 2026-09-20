@@ -35,7 +35,11 @@ export function ImpersonationBanner() {
     <View style={styles.banner}>
       <View style={styles.textWrap}>
         <RtlText style={styles.text}>בדיקה אמיתית: מחובר כ-{impersonatingUser?.name ?? '—'}</RtlText>
-        {bannerError ? <RtlText style={styles.error}>{bannerError}</RtlText> : null}
+        {bannerError ? (
+          <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+            {bannerError}
+          </RtlText>
+        ) : null}
       </View>
       <Pressable
         onPress={async () => {

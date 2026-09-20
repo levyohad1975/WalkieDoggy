@@ -1,5 +1,5 @@
 import type { Dog, Family, FamilyUser, ScheduleEntry, ScheduleRule, Walk } from '../types';
-import { toDateOnly } from '../logic/rotation';
+import { localDateOnly } from '../logic/dateFormat';
 
 /**
  * המשפחה שלנו — demo/seed data used by the local repository (offline mode,
@@ -77,7 +77,10 @@ export const DEMO_DOG: Dog = {
 const ALL_USER_IDS = DEMO_USERS.map((u) => u.id);
 
 function daysAgo(n: number): string {
-  return toDateOnly(new Date(Date.now() - n * 86400000));
+  // Local calendar day, not UTC — see dateFormat.ts's doc comment on why a
+  // UTC-anchored date is wrong here for anyone in a timezone ahead of UTC
+  // (e.g. Israel, this demo family's own configured timezone above).
+  return localDateOnly(new Date(Date.now() - n * 86400000));
 }
 
 export const DEMO_RULES: ScheduleRule[] = [
@@ -141,7 +144,7 @@ function todayEntry(rule: ScheduleRule, id: string, responsibleUserId: string): 
     familyId: DEMO_FAMILY.id,
     dogId: DEMO_DOG.id,
     ruleId: rule.id,
-    date: toDateOnly(new Date()),
+    date: localDateOnly(new Date()),
     time: rule.time,
     responsibleUserId,
     createdAt: new Date().toISOString(),
@@ -167,7 +170,7 @@ export const DEMO_WALKS: Walk[] = [
     familyId: DEMO_FAMILY.id,
     scheduleEntryId: 'entry-0700',
     dogId: DEMO_DOG.id,
-    date: toDateOnly(new Date()),
+    date: localDateOnly(new Date()),
     scheduledTime: '07:00',
     responsibleUserId: 'user-aba',
     status: 'done',
@@ -183,7 +186,7 @@ export const DEMO_WALKS: Walk[] = [
     familyId: DEMO_FAMILY.id,
     scheduleEntryId: 'entry-1230',
     dogId: DEMO_DOG.id,
-    date: toDateOnly(new Date()),
+    date: localDateOnly(new Date()),
     scheduledTime: '12:30',
     responsibleUserId: 'user-ima',
     status: 'pending',
@@ -195,7 +198,7 @@ export const DEMO_WALKS: Walk[] = [
     familyId: DEMO_FAMILY.id,
     scheduleEntryId: 'entry-1700',
     dogId: DEMO_DOG.id,
-    date: toDateOnly(new Date()),
+    date: localDateOnly(new Date()),
     scheduledTime: '17:00',
     responsibleUserId: 'user-eidan',
     status: 'pending',
@@ -207,7 +210,7 @@ export const DEMO_WALKS: Walk[] = [
     familyId: DEMO_FAMILY.id,
     scheduleEntryId: 'entry-2130',
     dogId: DEMO_DOG.id,
-    date: toDateOnly(new Date()),
+    date: localDateOnly(new Date()),
     scheduledTime: '21:30',
     responsibleUserId: 'user-omer',
     status: 'pending',

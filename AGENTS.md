@@ -55,12 +55,6 @@ file — in particular the git-push and production-approval rules below
 remain fully in force; the Agentic V1 documents add a state-tracking and
 continuity layer on top of them, not new authority.
 
-The GitHub Actions pipeline currently deployed for this mode
-(`.github/workflows/agentic-rc-worker.yml`, `agentic-rc-watchdog.yml`,
-`agentic-rc-validation.yml`) is wired to Claude specifically
-(`CLAUDE_CODE_OAUTH_TOKEN`/`ANTHROPIC_API_KEY`), independent of which
-engine is used for interactive/manual work on this repository.
-
 ## Working rules
 
 1. Work only inside this repository.

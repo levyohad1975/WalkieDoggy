@@ -14,7 +14,9 @@ export function DogPhoto({ photoUrl, size = 56 }: DogPhotoProps) {
   const showPhoto = Boolean(photoUrl) && !failed;
 
   return (
-    <View style={[styles.circle, { width: size, height: size, borderRadius: size / 2 }]}>
+    // Decorative: same reasoning as Avatar.tsx — no `name` prop here, and
+    // every caller already shows the dog's name as adjacent text.
+    <View accessible={false} style={[styles.circle, { width: size, height: size, borderRadius: size / 2 }]}>
       {showPhoto ? (
         <Image
           source={{ uri: photoUrl }}

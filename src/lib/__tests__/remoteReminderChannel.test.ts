@@ -173,6 +173,35 @@ describe('lib/remoteReminderChannel — device-specific channel selection', () =
     await expect(hasActiveRemoteReminderChannel()).resolves.toBe(false);
   });
 
+  it('resolves false (not throwing) when reading this device own Web Push endpoint itself throws', async () => {
+    setPlatformOS('web');
+    const rpc = jest.fn().mockResolvedValue({ data: true, error: null });
+    mockSupabaseClient(rpc);
+    jest.doMock('../pushTokens', () => ({ getExpoPushTokenIfKnown: jest.fn(() => null) }));
+    jest.doMock('../webPush', () => ({
+      getCurrentWebPushEndpoint: jest.fn().mockRejectedValue(new Error('no navigator.serviceWorker')),
+    }));
+
+    const { hasActiveRemoteReminderChannel } = require('../remoteReminderChannel');
+    const result = await hasActiveRemoteReminderChannel();
+
+    // Falls back to null, same as "no endpoint known" — and since there is
+    // also no Expo token on web, this short-circuits without an RPC call.
+    expect(result).toBe(false);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('resolves false (not throwing) when the RPC call itself throws rather than resolving with an error field', async () => {
+    setPlatformOS('ios');
+    const rpc = jest.fn().mockRejectedValue(new Error('network down'));
+    mockSupabaseClient(rpc);
+    jest.doMock('../pushTokens', () => ({ getExpoPushTokenIfKnown: jest.fn(() => 'token-y') }));
+    jest.doMock('../webPush', () => ({ getCurrentWebPushEndpoint: jest.fn().mockResolvedValue(null) }));
+
+    const { hasActiveRemoteReminderChannel } = require('../remoteReminderChannel');
+    await expect(hasActiveRemoteReminderChannel()).resolves.toBe(false);
+  });
+
   it('resolves false without a network call in local/demo mode (no Supabase configured)', async () => {
     setPlatformOS('ios');
     process.env = { ...ORIGINAL_ENV, EXPO_PUBLIC_SUPABASE_URL: '', EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: '' };

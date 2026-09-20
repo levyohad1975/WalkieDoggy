@@ -1,18 +1,26 @@
-import React, { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, ImageBackground, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
 import { colors } from '../theme/colors';
-import { breakpoints } from '../theme/tokens';
+import { breakpoints, radii, spacing, typography } from '../theme/tokens';
 import { Button } from '../components/Button';
-import { createFamily, ensureAnonymousSession, findFamilyByInviteCode, joinFamily } from '../lib/supabase';
+import { ensureAnonymousSession, findFamilyByInviteCode, joinFamily } from '../lib/supabase';
+import {
+  createVerifiedFamily,
+  getMyFamilyOnboardingStatus,
+  getVerifiedAdminIdentity,
+  requestAdminEmailVerification,
+  verifyAdminEmailOtp,
+} from '../lib/verifiedAdminOnboarding';
 import { inspectFamilyInviteDetail, redeemFamilyInvite, type FamilyInvitePreviewDetail } from '../lib/invites';
 import { formatInviteExpiry, inviteStatusLabel, parseInviteInput } from '../logic/familyInvites';
 import { friendlyErrorMessage } from '../lib/errorMessages';
 import { Avatar } from '../components/Avatar';
 import { DogPhoto } from '../components/DogPhoto';
 import { WalkieMascot } from '../components/WalkieMascot';
+import { OnboardingMascotWink } from '../components/OnboardingMascotWink';
 import type { FamilyLookupResult } from '../types';
 
 type Mode = 'choose' | 'create' | 'join' | 'redeem';
@@ -30,6 +38,8 @@ type Mode = 'choose' | 'create' | 'join' | 'redeem';
  * no changes needed here.
  */
 export function FamilyOnboardingScreen() {
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 900;
   const setFamilyId = useAuthStore((s) => s.setFamilyId);
   // Round 4 — set only when a redemption already succeeded server-side but
   // this device couldn't yet confirm it via whoami() (see authStore.ts's
@@ -50,14 +60,91 @@ export function FamilyOnboardingScreen() {
   const [dogName, setDogName] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [adminEmail, setAdminEmail] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [verificationSent, setVerificationSent] = useState(false);
+  const [verifiedAdminEmail, setVerifiedAdminEmail] = useState<string | null>(null);
+  const [verifyingEmail, setVerifyingEmail] = useState(false);
+  const [pendingApprovalFamilyName, setPendingApprovalFamilyName] = useState<string | null>(null);
+  // Set when get_my_family_onboarding_status() reports 'rejected' -- a
+  // System Admin declined this device's family-creation request.
+  // create_verified_family() (migration 0032) is idempotent per
+  // auth_user_id: once family_onboarding_requests has a row, it always
+  // returns that same family regardless of approval_status, so without
+  // surfacing this the device would otherwise be stuck silently back on
+  // the plain "choose" screen with no way to understand what happened.
+  const [rejectedFamilyName, setRejectedFamilyName] = useState<string | null>(null);
+
+  // Recovers an already-verified device's pending/active/rejected family-
+  // creation request after an app restart (e.g. it closed while awaiting
+  // System Admin approval). A device only has one if it already completed
+  // OTP verification and submitted create at least once, so this is a safe,
+  // side-effect-free no-op for every other case (demo/local mode, an
+  // anonymous session, or a device that never tried creating a family) --
+  // get_my_family_onboarding_status() simply returns no row.
+  useEffect(() => {
+    getMyFamilyOnboardingStatus()
+      .then((status) => {
+        if (!status) return;
+        if (status.approvalStatus === 'active') {
+          setFamilyId(status.familyId);
+        } else if (status.approvalStatus === 'pending') {
+          setMode('create');
+          setPendingApprovalFamilyName(status.familyName);
+        } else if (status.approvalStatus === 'rejected') {
+          setMode('create');
+          setRejectedFamilyName(status.familyName);
+        }
+      })
+      .catch(() => {
+        // Best-effort recovery only -- the ordinary choose screen is
+        // already the correct fallback (offline, demo mode, etc.).
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const sendAdminVerification = async () => {
+    setVerifyingEmail(true);
+    setCreateError(null);
+    try {
+      const normalizedEmail = await requestAdminEmailVerification(adminEmail);
+      setAdminEmail(normalizedEmail);
+      setVerificationSent(true);
+      setVerificationCode('');
+    } catch (e) {
+      setCreateError(friendlyErrorMessage(e));
+    } finally {
+      setVerifyingEmail(false);
+    }
+  };
+
+  const confirmAdminVerification = async () => {
+    setVerifyingEmail(true);
+    setCreateError(null);
+    try {
+      const identity = await verifyAdminEmailOtp(adminEmail, verificationCode);
+      setVerifiedAdminEmail(identity.email);
+    } catch (e) {
+      setCreateError(friendlyErrorMessage(e));
+    } finally {
+      setVerifyingEmail(false);
+    }
+  };
 
   const submitCreate = async () => {
-    if (!familyName.trim()) return;
+    if (!familyName.trim() || !verifiedAdminEmail) return;
     setCreating(true);
     setCreateError(null);
     try {
-      await ensureAnonymousSession();
-      const family = await createFamily(familyName.trim(), dogName.trim() || undefined);
+      const identity = await getVerifiedAdminIdentity();
+      if (identity.email !== verifiedAdminEmail) {
+        throw new Error('יש לאמת מחדש את כתובת הדוא״ל לפני יצירת המשפחה');
+      }
+      const family = await createVerifiedFamily(familyName.trim(), dogName.trim() || undefined);
+      if (family.approvalStatus === 'pending') {
+        setPendingApprovalFamilyName(family.name);
+        return;
+      }
       await setFamilyId(family.id);
     } catch (e) {
       setCreateError(friendlyErrorMessage(e));
@@ -204,8 +291,8 @@ export function FamilyOnboardingScreen() {
     // "ההזמנה הזו כבר נוצלה". Only whoami() verification is retried.
     return (
       <SafeAreaView style={styles.container}>
-        <RtlText style={styles.emoji}>⏳</RtlText>
-        <RtlText style={styles.title}>ממתין לאימות</RtlText>
+        <WalkieMascot state="waiting" size={128} testID="onboarding-mascot-verifying" />
+        <RtlText style={styles.title} accessibilityRole="header">ממתין לאימות</RtlText>
         <RtlText style={styles.subtitle}>
           ההצטרפות למשפחה כבר בוצעה בהצלחה, אך לא הצלחנו לאמת זאת במכשיר הזה כרגע — כנראה בעיית חיבור. אין
           צורך להזין את ההזמנה מחדש.
@@ -216,7 +303,7 @@ export function FamilyOnboardingScreen() {
           disabled={verifying}
           loading={verifying}
           style={styles.wideButton}
-        />
+          />
       </SafeAreaView>
     );
   }
@@ -230,34 +317,144 @@ export function FamilyOnboardingScreen() {
             was here before. Given an explicit accessibilityLabel since this
             IS the meaningful content on this screen, not a decorative
             corner badge. */}
-        <WalkieMascot state="idle" size={128} accessibilityLabel="הקמע של Walkie Doggy Link" testID="onboarding-mascot" />
-        <RtlText style={styles.title}>ברוכים הבאים</RtlText>
-        <RtlText style={styles.subtitle}>יצירת משפחה חדשה, או הצטרפות למשפחה קיימת עם קוד הזמנה</RtlText>
-
-        <Button label="יצירת משפחה חדשה" onPress={() => setMode('create')} style={styles.wideButton} />
-        <Button label="הצטרפות למשפחה קיימת" variant="secondary" onPress={() => setMode('join')} style={styles.wideButton} />
-        <Button
-          label="יש לי הזמנה"
-          variant="secondary"
-          onPress={() => {
-            resetRedeemMode();
-            setMode('redeem');
-          }}
-          style={styles.wideButton}
-        />
+        <View style={styles.heroGlow} accessibilityElementsHidden />
+        <View style={styles.sunsetBand} accessibilityElementsHidden />
+        <View style={[styles.landingShell, isDesktop && styles.landingShellDesktop]}>
+          <View style={[styles.heroMediaColumn, isDesktop && styles.heroMediaColumnDesktop]}>
+            <ImageBackground source={require("../../assets/onboarding-hero.png")} style={[styles.heroPhoto, isDesktop && styles.heroPhotoDesktop]} imageStyle={styles.heroPhotoImage} accessibilityLabel="כלב ומשפחה בטיול בטבע">
+              <View style={styles.photoCaption}><RtlText style={styles.photoCaptionText}>יוצאים יחד. חוזרים שמחים.</RtlText></View>
+            </ImageBackground>
+          </View>
+          <View style={[styles.heroContentColumn, isDesktop && styles.heroContentColumnDesktop]}>
+            <OnboardingMascotWink size={isDesktop ? 116 : 88} />
+            <RtlText style={[styles.eyebrow, isDesktop && styles.textRight]}>WALKIE DOGGY LINK</RtlText>
+            <RtlText style={[styles.title, isDesktop && styles.heroTitleDesktop]} accessibilityRole="header">כל המשפחה.{`\n`}טיול אחד מסודר.</RtlText>
+            <RtlText style={[styles.heroSubtitle, isDesktop && styles.heroSubtitleDesktop]}>Walkie Doggy מרכז את התורנויות, העדכונים והטיולים במקום אחד — פשוט, ברור ומשפחתי.</RtlText>
+            <View style={styles.benefitRow}>
+              <View style={styles.benefitPill}><RtlText style={styles.benefitText}>מי יוצא? תמיד ברור</RtlText></View>
+              <View style={styles.benefitPill}><RtlText style={styles.benefitText}>הכול מתעדכן בזמן אמת</RtlText></View>
+            </View>
+            <View style={styles.actionCard}>
+              <Button label="יצירת המשפחה שלי" onPress={() => setMode('create')} style={styles.wideButton} />
+              <Button label="הצטרפות למשפחה קיימת" variant="secondary" onPress={() => setMode('join')} style={styles.wideButton} />
+              <Button
+                label="יש לי קישור או קוד הזמנה"
+                variant="secondary"
+                onPress={() => {
+                  resetRedeemMode();
+                  setMode('redeem');
+                }}
+                style={styles.wideButton}
+              />
+            </View>
+          </View>
+        </View>
       </SafeAreaView>
     );
   }
 
   if (mode === 'create') {
+    if (rejectedFamilyName) {
+      return (
+        <SafeAreaView style={styles.container}>
+          <WalkieMascot state="concerned" size={128} testID="onboarding-mascot-rejected" />
+          <RtlText style={styles.title} accessibilityRole="header">הבקשה נדחתה</RtlText>
+          <RtlText style={styles.subtitle}>
+            הבקשה ליצירת {rejectedFamilyName} נדחתה על ידי מנהל המערכת. לפרטים נוספים, פנו לתמיכה.
+          </RtlText>
+          <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
+        </SafeAreaView>
+      );
+    }
+
+    if (pendingApprovalFamilyName) {
+      return (
+        <SafeAreaView style={styles.container}>
+          <WalkieMascot state="waiting" size={128} testID="onboarding-mascot-pending" />
+          <RtlText style={styles.title} accessibilityRole="header">המשפחה ממתינה לאישור</RtlText>
+          <RtlText style={styles.subtitle}>
+            הבקשה ליצירת {pendingApprovalFamilyName} התקבלה. נשלח עדכון לאחר אישור מנהל המערכת.
+          </RtlText>
+          <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
+        </SafeAreaView>
+      );
+    }
+
     return (
       <SafeAreaView style={styles.formSafeArea}>
         <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
-            <RtlText style={styles.title}>יצירת משפחה חדשה</RtlText>
+            <RtlText style={styles.title} accessibilityRole="header">יצירת משפחה חדשה</RtlText>
             <RtlText style={styles.subtitle}>אחרי היצירה תוכלו להוסיף את בני המשפחה</RtlText>
 
             <View style={styles.form}>
+              <RtlText style={styles.label}>דוא״ל של מנהל/ת המשפחה</RtlText>
+              <TextInput
+                value={adminEmail}
+                onChangeText={(value) => {
+                  setAdminEmail(value);
+                  setVerificationSent(false);
+                  setVerifiedAdminEmail(null);
+                  setVerificationCode('');
+                  setCreateError(null);
+                }}
+                placeholder="name@example.com"
+                placeholderTextColor={colors.textSecondary}
+                style={styles.input}
+                textAlign="left"
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                editable={!verifyingEmail && !verifiedAdminEmail}
+                accessibilityLabel="דוא״ל של מנהל/ת המשפחה"
+              />
+
+              {!verificationSent && !verifiedAdminEmail ? (
+                <Button
+                  label={verifyingEmail ? 'שולח קוד...' : 'שליחת קוד אימות'}
+                  onPress={sendAdminVerification}
+                  disabled={!adminEmail.trim() || verifyingEmail}
+                  loading={verifyingEmail}
+                  style={styles.wideButton}
+                />
+              ) : null}
+
+              {verificationSent && !verifiedAdminEmail ? (
+                <>
+                  <RtlText style={styles.label}>קוד האימות שקיבלת בדוא״ל</RtlText>
+                  <TextInput
+                    value={verificationCode}
+                    onChangeText={setVerificationCode}
+                    placeholder="123456"
+                    placeholderTextColor={colors.textSecondary}
+                    style={[styles.input, styles.codeInput]}
+                    textAlign="center"
+                    keyboardType="number-pad"
+                    autoCorrect={false}
+                    maxLength={8}
+                    accessibilityLabel="קוד האימות שקיבלת בדוא״ל"
+                  />
+                  <Button
+                    label={verifyingEmail ? 'מאמת...' : 'אימות הדוא״ל'}
+                    onPress={confirmAdminVerification}
+                    disabled={!verificationCode.trim() || verifyingEmail}
+                    loading={verifyingEmail}
+                    style={styles.wideButton}
+                  />
+                  <Button
+                    label="שליחת קוד חדש"
+                    variant="secondary"
+                    onPress={sendAdminVerification}
+                    disabled={verifyingEmail}
+                    style={styles.wideButton}
+                  />
+                </>
+              ) : null}
+
+              {verifiedAdminEmail ? (
+                <RtlText style={styles.foundSubtitle}>✓ הדוא״ל אומת: {verifiedAdminEmail}</RtlText>
+              ) : null}
+
               <RtlText style={styles.label}>שם המשפחה</RtlText>
               <TextInput
                 value={familyName}
@@ -266,6 +463,8 @@ export function FamilyOnboardingScreen() {
                 placeholderTextColor={colors.textSecondary}
                 style={styles.input}
                 textAlign="right"
+                editable={Boolean(verifiedAdminEmail)}
+                accessibilityLabel="שם המשפחה"
               />
 
               <RtlText style={styles.label}>שם הכלב/ה (אופציונלי)</RtlText>
@@ -276,14 +475,20 @@ export function FamilyOnboardingScreen() {
                 placeholderTextColor={colors.textSecondary}
                 style={styles.input}
                 textAlign="right"
+                editable={Boolean(verifiedAdminEmail)}
+                accessibilityLabel="שם הכלב/ה (אופציונלי)"
               />
 
-              {createError ? <RtlText style={styles.error}>{createError}</RtlText> : null}
+              {createError ? (
+                <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                  {createError}
+                </RtlText>
+              ) : null}
 
               <Button
                 label={creating ? 'יוצר משפחה...' : 'יצירת המשפחה'}
                 onPress={submitCreate}
-                disabled={!familyName.trim() || creating}
+                disabled={!familyName.trim() || !verifiedAdminEmail || creating}
                 loading={creating}
                 style={styles.wideButton}
               />
@@ -300,7 +505,7 @@ export function FamilyOnboardingScreen() {
       <SafeAreaView style={styles.formSafeArea}>
         <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
-            <RtlText style={styles.title}>יש לי הזמנה</RtlText>
+            <RtlText style={styles.title} accessibilityRole="header">יש לי הזמנה</RtlText>
             <RtlText style={styles.subtitle}>הדביקו את קישור ההזמנה, או את קוד ההזמנה עצמו, שקיבלתם מבן/בת המשפחה</RtlText>
 
             <View style={styles.form}>
@@ -316,14 +521,19 @@ export function FamilyOnboardingScreen() {
                 }}
                 placeholder="dogwalkfamily://invite/... או הקוד עצמו"
                 placeholderTextColor={colors.textSecondary}
-                style={styles.input}
-                textAlign="right"
+                style={[styles.input, styles.ltrInput]}
+                textAlign="left"
                 autoCapitalize="none"
                 autoCorrect={false}
+                accessibilityLabel="קישור או קוד הזמנה"
               />
 
-              {inspecting ? <ActivityIndicator color={colors.primary} style={{ marginTop: 8 }} /> : null}
-              {inspectError ? <RtlText style={styles.error}>{inspectError}</RtlText> : null}
+              {inspecting ? <ActivityIndicator color={colors.primary} style={{ marginTop: 8 }} accessibilityLabel="טוען…" /> : null}
+              {inspectError ? (
+                <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                  {inspectError}
+                </RtlText>
+              ) : null}
 
               {preview ? (
                 <View style={styles.foundCard}>
@@ -362,7 +572,11 @@ export function FamilyOnboardingScreen() {
                     </View>
                   ) : null}
 
-                  {redeemError ? <RtlText style={styles.error}>{redeemError}</RtlText> : null}
+                  {redeemError ? (
+                    <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                      {redeemError}
+                    </RtlText>
+                  ) : null}
 
                   <Button
                     label={redeeming ? 'מצטרף...' : 'הצטרפות'}
@@ -403,7 +617,7 @@ export function FamilyOnboardingScreen() {
     <SafeAreaView style={styles.formSafeArea}>
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
-          <RtlText style={styles.title}>הצטרפות למשפחה קיימת</RtlText>
+          <RtlText style={styles.title} accessibilityRole="header">הצטרפות למשפחה קיימת</RtlText>
           <RtlText style={styles.subtitle}>הקלידו את קוד ההזמנה שקיבלתם מבן/בת המשפחה</RtlText>
 
           <View style={styles.form}>
@@ -417,15 +631,20 @@ export function FamilyOnboardingScreen() {
               }}
               placeholder="ABC123"
               placeholderTextColor={colors.textSecondary}
-              style={[styles.input, styles.codeInput]}
+              style={[styles.input, styles.codeInput, styles.ltrInput]}
               textAlign="center"
               autoCapitalize="characters"
               autoCorrect={false}
               maxLength={8}
+              accessibilityLabel="קוד הזמנה"
             />
 
-            {looking ? <ActivityIndicator color={colors.primary} style={{ marginTop: 8 }} /> : null}
-            {joinError ? <RtlText style={styles.error}>{joinError}</RtlText> : null}
+            {looking ? <ActivityIndicator color={colors.primary} style={{ marginTop: 8 }} accessibilityLabel="טוען…" /> : null}
+            {joinError ? (
+              <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                {joinError}
+              </RtlText>
+            ) : null}
 
             {found ? (
               <View style={styles.foundCard}>
@@ -458,40 +677,63 @@ export function FamilyOnboardingScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, alignItems: 'center', paddingTop: 80, paddingHorizontal: 24 },
-  formSafeArea: { flex: 1, backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: '#F4FBFA', alignItems: 'center', justifyContent: 'center', paddingTop: spacing.xl, paddingHorizontal: spacing.xl, overflow: 'hidden' },
+  landingShell: { width: '100%', maxWidth: 1180, alignItems: 'center', justifyContent: 'center', zIndex: 1 },
+  landingShellDesktop: { flexDirection: 'row', gap: 64, paddingHorizontal: spacing.xl },
+  heroMediaColumn: { width: '100%', alignItems: 'center' },
+  heroMediaColumnDesktop: { flex: 1.15, minWidth: 0 },
+  heroContentColumn: { width: '100%', maxWidth: breakpoints.readingColumn, alignItems: 'center' },
+  heroContentColumnDesktop: { flex: 0.85, maxWidth: 480, alignItems: 'stretch' },
+  formSafeArea: { flex: 1, backgroundColor: '#FFF9F1' },
   flexFull: { flex: 1 },
-  formScrollContent: { alignItems: 'center', paddingTop: 80, paddingHorizontal: 24 },
-  emoji: { fontSize: 64, marginBottom: 8 },
-  title: { fontSize: 24, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
-  subtitle: { fontSize: 15, color: colors.textSecondary, marginTop: 8, marginBottom: 28, textAlign: 'center' },
-  wideButton: { width: '100%', marginTop: 12 },
-  form: { width: '100%', maxWidth: breakpoints.readingColumn, alignSelf: 'center' },
-  label: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: 14, marginBottom: 8, textAlign: 'right' },
+  formScrollContent: { alignItems: 'center', paddingTop: spacing.xxxl, paddingHorizontal: spacing.xl, paddingBottom: spacing.xxxl, minHeight: '100%' },
+  heroGlow: { position: 'absolute', width: 620, height: 620, borderRadius: 310, backgroundColor: '#FFE5BE', top: -350, right: -210, opacity: 0.95 },
+  sunsetBand: { position: 'absolute', width: '130%', height: 260, backgroundColor: '#DDF4EC', bottom: -130, transform: [{ rotate: '-5deg' }] },
+  heroPhoto: { width: '100%', maxWidth: breakpoints.readingColumn, height: 300, borderRadius: 32, marginBottom: spacing.lg, borderWidth: 1, borderColor: '#E9C68E', shadowColor: '#513A1E', shadowOpacity: 0.18, shadowRadius: 28, shadowOffset: { width: 0, height: 14 }, elevation: 5, overflow: 'hidden', justifyContent: 'flex-end' },
+  heroPhotoDesktop: { maxWidth: 650, height: 500, marginBottom: 0 },
+  heroPhotoImage: { borderRadius: 32, resizeMode: 'cover' },
+  photoCaption: { position: 'absolute', bottom: 14, right: 14, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: radii.round, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  photoCaptionText: { ...typography.meta, color: '#214C46', fontWeight: '900' },
+  eyebrow: { ...typography.caption, letterSpacing: 3.2, color: colors.primaryDark, fontWeight: '900', textAlign: 'center', marginBottom: spacing.md },
+  heroTitle: { fontSize: 34, lineHeight: 42, fontWeight: '900', color: colors.textPrimary, textAlign: 'center', maxWidth: 360 },
+  heroSubtitle: { ...typography.body, color: '#55706C', textAlign: 'center', maxWidth: 430, marginTop: spacing.md, marginBottom: spacing.xl, fontSize: 17, lineHeight: 26 },
+  heroTitleDesktop: { textAlign: 'right', alignSelf: 'stretch', maxWidth: 480, fontSize: 52, lineHeight: 60 },
+  heroSubtitleDesktop: { textAlign: 'right', alignSelf: 'stretch', maxWidth: 480, fontSize: 18, lineHeight: 29 },
+  textRight: { textAlign: 'right', alignSelf: 'stretch' },
+  benefitRow: { width: '100%', maxWidth: breakpoints.readingColumn, flexDirection: 'row-reverse', gap: spacing.sm, marginBottom: spacing.md },
+  benefitPill: { flex: 1, minHeight: 46, borderRadius: radii.round, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md, borderWidth: 1, borderColor: '#D5ECE8' },
+  benefitText: { ...typography.meta, color: colors.primaryDark, fontWeight: '800', textAlign: 'center' },
+  actionCard: { width: '100%', maxWidth: breakpoints.readingColumn, backgroundColor: '#FFFFFF', borderRadius: 28, padding: spacing.lg, borderWidth: 1, borderColor: '#DDEBE8', shadowColor: '#123B36', shadowOpacity: 0.08, shadowRadius: 28, shadowOffset: { width: 0, height: 12 }, elevation: 3 },
+  title: { ...typography.screenTitle, color: '#173A36', textAlign: 'center', fontSize: 40, lineHeight: 47, fontWeight: '900', maxWidth: 420 },
+  subtitle: { fontSize: 15, color: colors.textSecondary, marginTop: spacing.sm, marginBottom: spacing.xxl, textAlign: 'center' },
+  wideButton: { width: '100%', marginTop: spacing.md },
+  form: { width: '100%', maxWidth: 620, alignSelf: 'center', backgroundColor: '#FFFFFF', borderRadius: 28, padding: spacing.xl, borderWidth: 1, borderColor: '#E9E2D8', shadowColor: '#513A1E', shadowOpacity: 0.08, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 3 },
+  label: { ...typography.meta, fontWeight: '700', color: colors.textSecondary, marginTop: spacing.md, marginBottom: spacing.sm, textAlign: 'right' },
   input: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 14,
+    borderRadius: radii.md,
     padding: 14,
     fontSize: 16,
     color: colors.textPrimary,
   },
   codeInput: { fontSize: 24, fontWeight: '800', letterSpacing: 4 },
+  ltrInput: { writingDirection: 'ltr' },
   error: { fontSize: 13, color: colors.statusOverdue, fontWeight: '600', marginTop: 10, textAlign: 'right' },
   foundCard: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 16,
-    padding: 16,
-    marginTop: 14,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
+    marginTop: spacing.md,
   },
   foundTitle: { fontSize: 18, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
-  foundSubtitle: { fontSize: 14, color: colors.textSecondary, marginTop: 4, textAlign: 'right' },
+  foundSubtitle: { fontSize: 14, color: colors.textSecondary, marginTop: spacing.xs, textAlign: 'right' },
   previewDogRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, marginBottom: 10 },
   previewDogName: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
-  previewMembersRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 12, justifyContent: 'flex-end' },
-  previewMember: { alignItems: 'center', width: 56, gap: 4 },
+  previewMembersRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginTop: spacing.md, justifyContent: 'flex-end' },
+  previewMember: { alignItems: 'center', width: 56, gap: spacing.xs },
   previewMemberName: { fontSize: 11, color: colors.textSecondary, fontWeight: '600' },
 });

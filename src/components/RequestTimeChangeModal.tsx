@@ -3,6 +3,7 @@ import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleShee
 import { RtlText } from './RtlText';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { colors } from '../theme/colors';
+import { radii, spacing, typography } from '../theme/tokens';
 import { Button } from './Button';
 
 interface RequestTimeChangeModalProps {
@@ -51,12 +52,12 @@ function suggestedTimeFrom(currentTime: string): string {
  * added to this modal later).
  */
 export function RequestTimeChangeModal({ visible, currentTime, onSubmit, onClose }: RequestTimeChangeModalProps) {
-  const [time, setTime] = useState(currentTime);
+  const [time, setTime] = useState(() => suggestedTimeFrom(currentTime));
   const [pickerOpen, setPickerOpen] = useState(Platform.OS === 'ios');
 
   useEffect(() => {
     if (visible) {
-      setTime(currentTime);
+      setTime(suggestedTimeFrom(currentTime));
       setPickerOpen(Platform.OS === 'ios');
     }
   }, [visible, currentTime]);
@@ -75,14 +76,19 @@ export function RequestTimeChangeModal({ visible, currentTime, onSubmit, onClose
         style={styles.flexFull}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable
+          style={styles.backdrop}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="סגירת בקשת שינוי שעה"
+        >
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={styles.sheetContent}
               showsVerticalScrollIndicator={false}
             >
-              <RtlText style={styles.title}>בקשת שינוי שעה</RtlText>
+              <RtlText style={styles.title} accessibilityRole="header">בקשת שינוי שעה</RtlText>
               <RtlText style={styles.subtitle}>הבקשה תישלח למנהל/ת המשפחה לאישור — השעה לא תשתנה מיד</RtlText>
 
               {/* "07:00 → 08:30" before/after preview */}
@@ -144,15 +150,15 @@ export function RequestTimeChangeModal({ visible, currentTime, onSubmit, onClose
 const styles = StyleSheet.create({
   flexFull: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '90%' },
-  sheetContent: { padding: 24, gap: 4 },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, maxHeight: '90%' },
+  sheetContent: { padding: 24, gap: spacing.xs },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
-  subtitle: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: 4, marginBottom: 8 },
-  previewRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 10, marginBottom: 4 },
+  subtitle: { fontSize: typography.meta.fontSize, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xs, marginBottom: spacing.sm },
+  previewRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 10, marginBottom: spacing.xs },
   previewCurrent: { fontSize: 20, fontWeight: '600', color: colors.textSecondary },
   previewArrow: { fontSize: 18, color: colors.textSecondary },
-  previewTime: { fontSize: 26, fontWeight: '800', color: colors.primary },
-  pickerButton: { marginTop: 12 },
-  actions: { flexDirection: 'row', gap: 12, marginTop: 20 },
+  previewTime: { fontSize: typography.statValue.fontSize, fontWeight: typography.statValue.fontWeight, color: colors.primary },
+  pickerButton: { marginTop: spacing.md },
+  actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xl },
   flex: { flex: 1 },
 });

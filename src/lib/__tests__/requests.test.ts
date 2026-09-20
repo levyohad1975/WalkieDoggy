@@ -55,6 +55,16 @@ describe('lib/requests — Supabase mode', () => {
     await expect(approveSwapRequest('req-1')).rejects.toEqual({ message: 'only the requested member can approve this swap' });
   });
 
+  it('approveSwapRequest calls approve_swap_request with p_request_id and resolves on success', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    mockSupabaseClient(rpc);
+    const { approveSwapRequest } = require('../requests');
+
+    await expect(approveSwapRequest('req-1')).resolves.toBeUndefined();
+
+    expect(rpc).toHaveBeenCalledWith('approve_swap_request', { p_request_id: 'req-1' });
+  });
+
   it('rejectSwapRequest calls reject_swap_request with p_request_id', async () => {
     const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
     mockSupabaseClient(rpc);
@@ -63,6 +73,22 @@ describe('lib/requests — Supabase mode', () => {
     await rejectSwapRequest('req-9');
 
     expect(rpc).toHaveBeenCalledWith('reject_swap_request', { p_request_id: 'req-9' });
+  });
+
+  it('rejectSwapRequest propagates a server rejection rather than swallowing it', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'not found' } });
+    mockSupabaseClient(rpc);
+    const { rejectSwapRequest } = require('../requests');
+
+    await expect(rejectSwapRequest('req-9')).rejects.toEqual({ message: 'not found' });
+  });
+
+  it('createSwapRequest propagates a server rejection rather than swallowing it', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'walk not found' } });
+    mockSupabaseClient(rpc);
+    const { createSwapRequest } = require('../requests');
+
+    await expect(createSwapRequest('w', 'target-w')).rejects.toEqual({ message: 'walk not found' });
   });
 
   it('createTimeChangeRequest calls create_time_change_request with p_walk_id/p_proposed_time', async () => {
@@ -76,6 +102,14 @@ describe('lib/requests — Supabase mode', () => {
     expect(id).toBe('req-2');
   });
 
+  it('createTimeChangeRequest propagates a server rejection rather than swallowing it', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'walk not found' } });
+    mockSupabaseClient(rpc);
+    const { createTimeChangeRequest } = require('../requests');
+
+    await expect(createTimeChangeRequest('w', '10:00')).rejects.toEqual({ message: 'walk not found' });
+  });
+
   it('approveTimeChangeRequest / rejectTimeChangeRequest call the right RPC with p_request_id', async () => {
     const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
     mockSupabaseClient(rpc);
@@ -86,6 +120,33 @@ describe('lib/requests — Supabase mode', () => {
 
     await rejectTimeChangeRequest('req-5');
     expect(rpc).toHaveBeenCalledWith('reject_time_change_request', { p_request_id: 'req-5' });
+  });
+
+  it('approveTimeChangeRequest / rejectTimeChangeRequest propagate a server rejection rather than swallowing it', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'only an admin can resolve this request' } });
+    mockSupabaseClient(rpc);
+    const { approveTimeChangeRequest, rejectTimeChangeRequest } = require('../requests');
+
+    await expect(approveTimeChangeRequest('req-4')).rejects.toEqual({ message: 'only an admin can resolve this request' });
+    await expect(rejectTimeChangeRequest('req-5')).rejects.toEqual({ message: 'only an admin can resolve this request' });
+  });
+
+  it('markMyRequestResultsSeen calls mark_my_request_results_seen with no params', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    mockSupabaseClient(rpc);
+    const { markMyRequestResultsSeen } = require('../requests');
+
+    await markMyRequestResultsSeen();
+
+    expect(rpc).toHaveBeenCalledWith('mark_my_request_results_seen');
+  });
+
+  it('markMyRequestResultsSeen propagates a server rejection rather than swallowing it', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'unexpected error' } });
+    mockSupabaseClient(rpc);
+    const { markMyRequestResultsSeen } = require('../requests');
+
+    await expect(markMyRequestResultsSeen()).rejects.toEqual({ message: 'unexpected error' });
   });
 
   it('adminListFamilyActivity/adminListAuditLog call their RPCs and return the rows', async () => {
@@ -105,6 +166,25 @@ describe('lib/requests — Supabase mode', () => {
     expect(log).toHaveLength(1);
   });
 
+  it('adminListFamilyActivity/adminListAuditLog propagate a server rejection rather than swallowing it', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'admin permission required' } });
+    mockSupabaseClient(rpc);
+    const { adminListFamilyActivity, adminListAuditLog } = require('../requests');
+
+    await expect(adminListFamilyActivity()).rejects.toEqual({ message: 'admin permission required' });
+    await expect(adminListAuditLog()).rejects.toEqual({ message: 'admin permission required' });
+  });
+
+  it('adminListAuditLog defaults p_limit/p_offset to 50/0 when not provided', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: [], error: null });
+    mockSupabaseClient(rpc);
+    const { adminListAuditLog } = require('../requests');
+
+    await adminListAuditLog();
+
+    expect(rpc).toHaveBeenCalledWith('admin_list_audit_log', { p_limit: 50, p_offset: 0 });
+  });
+
   it('touchLastSeen calls touch_last_seen with no params', async () => {
     const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
     mockSupabaseClient(rpc);
@@ -113,6 +193,14 @@ describe('lib/requests — Supabase mode', () => {
     await touchLastSeen();
 
     expect(rpc).toHaveBeenCalledWith('touch_last_seen');
+  });
+
+  it('touchLastSeen propagates a server rejection rather than swallowing it', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'unexpected error' } });
+    mockSupabaseClient(rpc);
+    const { touchLastSeen } = require('../requests');
+
+    await expect(touchLastSeen()).rejects.toEqual({ message: 'unexpected error' });
   });
 
   it('listSwapRequests/listTimeChangeRequests select from the right table, ordered by created_at desc', async () => {
@@ -129,6 +217,31 @@ describe('lib/requests — Supabase mode', () => {
     await listTimeChangeRequests();
     expect(from).toHaveBeenCalledWith('time_change_requests');
   });
+
+  it('listSwapRequests/listTimeChangeRequests propagate a server rejection rather than swallowing it', async () => {
+    const order = jest.fn().mockResolvedValue({ data: null, error: { message: 'unexpected error' } });
+    const select = jest.fn(() => ({ order }));
+    const from = jest.fn(() => ({ select }));
+    mockSupabaseClient(jest.fn(), from);
+    const { listSwapRequests, listTimeChangeRequests } = require('../requests');
+
+    await expect(listSwapRequests()).rejects.toEqual({ message: 'unexpected error' });
+    await expect(listTimeChangeRequests()).rejects.toEqual({ message: 'unexpected error' });
+  });
+
+  it('listSwapRequests/listTimeChangeRequests/adminListFamilyActivity/adminListAuditLog default to [] on a null/undefined RPC-success data payload', async () => {
+    const order = jest.fn().mockResolvedValue({ data: null, error: null });
+    const select = jest.fn(() => ({ order }));
+    const from = jest.fn(() => ({ select }));
+    const rpc = jest.fn().mockResolvedValue({ data: undefined, error: null });
+    mockSupabaseClient(rpc, from);
+    const { listSwapRequests, listTimeChangeRequests, adminListFamilyActivity, adminListAuditLog } = require('../requests');
+
+    await expect(listSwapRequests()).resolves.toEqual([]);
+    await expect(listTimeChangeRequests()).resolves.toEqual([]);
+    await expect(adminListFamilyActivity()).resolves.toEqual([]);
+    await expect(adminListAuditLog()).resolves.toEqual([]);
+  });
 });
 
 describe('lib/requests — local/demo mode (no Supabase configured)', () => {
@@ -144,14 +257,33 @@ describe('lib/requests — local/demo mode (no Supabase configured)', () => {
   });
 
   it('every approval-workflow call throws SupabaseNotConfiguredError rather than silently no-op-ing', async () => {
-    const { createSwapRequest, approveSwapRequest, createTimeChangeRequest, adminListFamilyActivity, adminListAuditLog, SupabaseNotConfiguredError } = {
+    const {
+      createSwapRequest,
+      approveSwapRequest,
+      rejectSwapRequest,
+      listSwapRequests,
+      createTimeChangeRequest,
+      approveTimeChangeRequest,
+      rejectTimeChangeRequest,
+      listTimeChangeRequests,
+      markMyRequestResultsSeen,
+      adminListFamilyActivity,
+      adminListAuditLog,
+      SupabaseNotConfiguredError,
+    } = {
       ...require('../requests'),
       SupabaseNotConfiguredError: require('../supabase').SupabaseNotConfiguredError,
     };
 
     await expect(createSwapRequest('w', 'target-w')).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
     await expect(approveSwapRequest('r')).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
+    await expect(rejectSwapRequest('r')).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
+    await expect(listSwapRequests()).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
     await expect(createTimeChangeRequest('w', '10:00')).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
+    await expect(approveTimeChangeRequest('r')).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
+    await expect(rejectTimeChangeRequest('r')).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
+    await expect(listTimeChangeRequests()).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
+    await expect(markMyRequestResultsSeen()).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
     await expect(adminListFamilyActivity()).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
     await expect(adminListAuditLog()).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
   });

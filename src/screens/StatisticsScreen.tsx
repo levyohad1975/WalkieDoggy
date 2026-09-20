@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, View, Pressable } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, View, Pressable } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -7,13 +7,14 @@ import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveUserId } from '../store/authStore';
 import { colors } from '../theme/colors';
-import { radii, spacing, typography } from '../theme/tokens';
+import { breakpoints, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { Avatar } from '../components/Avatar';
 import { EmptyState, ErrorState } from '../components/EmptyState';
 import { DEMO_FAMILY } from '../data/demoData';
 import {
   computeCompletionStats,
   computeMemberDistribution,
+  computePeePoopStats,
   computePlannedVsSpontaneous,
   filterWalksByPeriod,
   type StatsPeriod,
@@ -71,6 +72,16 @@ export function StatisticsScreen() {
   const [statisticsAccessStatus, setStatisticsAccessStatus] = useState<'checking' | 'granted' | 'denied'>(
     isSupabaseConfigured ? 'checking' : 'granted'
   );
+  // Tracks whether a prior refreshStatisticsDataset() call already landed
+  // 'granted' at least once. useFocusEffect below re-runs
+  // refreshStatisticsDataset() (and thus resets statisticsAccessStatus to
+  // 'checking') on EVERY return to this tab, not just first mount — without
+  // this, a background revalidation of an already-authorized user would
+  // transiently render the "no access" EmptyState over their already-loaded,
+  // still-valid statisticsDataset on every single refocus. Reset to false on
+  // a genuine 'denied' so a subsequent refocus is treated as an unverified
+  // first check again, not a trusted background refresh.
+  const hasEverGrantedRef = useRef(false);
 
   const refreshStatisticsDataset = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -78,6 +89,7 @@ export function StatisticsScreen() {
       // call — scheduleStore.walks (unrestricted there) remains the
       // dataset, exactly as before this correction.
       setStatisticsAccessStatus('granted');
+      hasEverGrantedRef.current = true;
       return;
     }
     setStatisticsAccessStatus('checking');
@@ -85,9 +97,11 @@ export function StatisticsScreen() {
       const rows = await fetchStatisticsWalks();
       setStatisticsDataset(rows);
       setStatisticsAccessStatus('granted');
+      hasEverGrantedRef.current = true;
     } catch (e) {
       setStatisticsDataset([]);
       setStatisticsAccessStatus('denied');
+      hasEverGrantedRef.current = false;
     }
   }, []);
 
@@ -110,6 +124,7 @@ export function StatisticsScreen() {
   const completion = useMemo(() => computeCompletionStats(periodWalks), [periodWalks]);
   const memberDistribution = useMemo(() => computeMemberDistribution(periodWalks), [periodWalks]);
   const plannedVsSpontaneous = useMemo(() => computePlannedVsSpontaneous(periodWalks), [periodWalks]);
+  const peePoop = useMemo(() => computePeePoopStats(periodWalks), [periodWalks]);
 
   const loading = familyLoading || scheduleLoading;
   const error = familyError || scheduleError;
@@ -118,7 +133,7 @@ export function StatisticsScreen() {
   if (loading && sourceWalks.length === 0) {
     return (
       <SafeAreaView style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={colors.primary} accessibilityLabel="טוען…" />
       </SafeAreaView>
     );
   }
@@ -140,9 +155,13 @@ export function StatisticsScreen() {
   // list_statistics_walks() (migration 0027) response. CORRECTED FURTHER
   // (review #2): statisticsAccessStatus also gates whether statisticsDataset
   // (this screen's actual data source above) is trustworthy to render from.
+  // CORRECTED FURTHER (review #3): a background refocus revalidation
+  // ('checking' after a prior 'granted') must not blank an already-verified
+  // user's real data with this gate — only a genuine 'denied', or a
+  // never-yet-granted 'checking' (the real first-load case), should block.
   if (
     !canAccessStatisticsScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus) ||
-    statisticsAccessStatus !== 'granted'
+    (statisticsAccessStatus !== 'granted' && !(statisticsAccessStatus === 'checking' && hasEverGrantedRef.current))
   ) {
     return (
       <SafeAreaView style={styles.center}>
@@ -153,8 +172,8 @@ export function StatisticsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <RtlText style={styles.header}>📈 סטטיסטיקה</RtlText>
+      <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
+        <RtlText style={styles.header} accessibilityRole="header">📈 סטטיסטיקה</RtlText>
 
         <View style={styles.periodRow}>
           {PERIOD_LABELS.map(([key, label]) => (
@@ -288,6 +307,34 @@ export function StatisticsScreen() {
               />
             </View>
 
+            <View style={styles.card}>
+              <RtlText style={styles.cardTitle}>פיפי וקקי</RtlText>
+              {peePoop.doneCount === 0 ? (
+                <RtlText style={styles.metaText}>עדיין אין טיולים שהושלמו בטווח הזה</RtlText>
+              ) : (
+                <>
+                  <View style={styles.rowBetween}>
+                    <RtlText style={[styles.metaText, styles.rtlText]}>
+                      פיפי
+                    </RtlText>
+                    <RtlText style={[styles.metaTextStrong, styles.ltrText]}>
+                      {peePoop.peePercent}%
+                    </RtlText>
+                  </View>
+                  <Bar percent={peePoop.peePercent} color={colors.primary} />
+                  <View style={styles.rowBetween}>
+                    <RtlText style={[styles.metaText, styles.rtlText]}>
+                      קקי
+                    </RtlText>
+                    <RtlText style={[styles.metaTextStrong, styles.ltrText]}>
+                      {peePoop.poopPercent}%
+                    </RtlText>
+                  </View>
+                  <Bar percent={peePoop.poopPercent} color={colors.statusSkipped} />
+                </>
+              )}
+            </View>
+
           </>
         )}
       </ScrollView>
@@ -300,10 +347,11 @@ const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   // Bottom padding increased (final QA round, item H: adequate bottom
   // safe-area padding) so the last card clears the tab bar comfortably.
-  content: { padding: 20, gap: 16, paddingBottom: 64 },
-  header: { width: '100%', fontSize: 22, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
-  periodRow: { flexDirection: 'row', direction: 'rtl', gap: 8 },
-  periodChip: { flex: 1, backgroundColor: colors.surfaceMuted, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
+  content: { padding: spacing.xl, gap: spacing.lg, paddingBottom: spacing.xxxl },
+  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
+  header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  periodRow: { flexDirection: 'row', ...nativeDirection('rtl'), gap: spacing.sm },
+  periodChip: { flex: 1, backgroundColor: colors.surfaceMuted, borderRadius: radii.md, paddingVertical: spacing.sm, alignItems: 'center' },
   periodChipActive: { backgroundColor: colors.primary },
   periodChipText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
   periodChipTextActive: { color: colors.textInverse },
@@ -312,15 +360,15 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 16,
-    gap: 10,
+    padding: spacing.lg,
+    gap: spacing.sm,
   },
-  cardTitle: { width: '100%', fontSize: 15, fontWeight: '700', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
-  rowBetween: { flexDirection: 'row', direction: 'rtl', justifyContent: 'space-between' },
+  cardTitle: { width: '100%', ...typography.cardTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  rowBetween: { flexDirection: 'row', ...nativeDirection('rtl'), justifyContent: 'space-between' },
   metaText: { fontSize: 13, color: colors.textSecondary, fontWeight: '600', textAlign: 'right' },
   // Deliverable 3B — the 4-tile KPI grid (2x2, equal width, wraps via flexWrap
   // so it reads correctly at any phone width without a fixed column count).
-  kpiGrid: { flexDirection: 'row', direction: 'rtl', flexWrap: 'wrap', gap: spacing.sm },
+  kpiGrid: { flexDirection: 'row', ...nativeDirection('rtl'), flexWrap: 'wrap', gap: spacing.sm },
   kpiTile: {
     flexBasis: '47%',
     flexGrow: 1,
@@ -338,11 +386,11 @@ const styles = StyleSheet.create({
   kpiValueSkipped: { color: colors.statusSkipped },
   kpiLabel: { ...typography.meta, color: colors.textSecondary },
   kpiSubValue: { fontSize: 13, fontWeight: '700', color: colors.statusDone, marginTop: 2 },
-  inlineStat: { flexDirection: 'row', direction: 'rtl', alignItems: 'baseline', gap: 4 },
+  inlineStat: { flexDirection: 'row', ...nativeDirection('rtl'), alignItems: 'baseline', gap: 4 },
   metaTextStrong: { fontSize: 13, color: colors.textPrimary, fontWeight: '800' },
   barTrack: { height: 10, borderRadius: 5, backgroundColor: colors.surfaceMuted, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 5 },
-  memberRow: { flexDirection: 'row', direction: 'rtl', alignItems: 'center', gap: 8 },
+  memberRow: { flexDirection: 'row', ...nativeDirection('rtl'), alignItems: 'center', gap: 8 },
   memberName: { fontSize: 13, fontWeight: '700', color: colors.textPrimary, width: 64, textAlign: 'right' },
   memberBarWrap: { flex: 1 },
   memberCount: { fontSize: 12, fontWeight: '700', color: colors.textSecondary, minWidth: 20, textAlign: 'center' },

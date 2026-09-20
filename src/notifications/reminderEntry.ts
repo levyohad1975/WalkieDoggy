@@ -32,3 +32,14 @@ export function reminderOpenFromNotificationData(data: unknown): ReminderOpenEve
   if (value.kind !== 'pre_walk_reminder' && value.kind !== 'overdue_reminder') return null;
   return { walkId: value.walkId, kind: value.kind };
 }
+
+/**
+ * Test-only hook: clears in-memory listener/pending-event state between
+ * tests so one test's publishReminderOpen() can never leak into another
+ * test's subscribeToReminderOpens() call via the "replay the last event to a
+ * late subscriber" behavior above. Not used by production code paths.
+ */
+export function __resetReminderEntryForTests(): void {
+  listeners.clear();
+  pendingEvent = null;
+}

@@ -401,4 +401,461 @@ it('swapTwoWalks exchanges both walk owners and backing schedule-entry owners', 
   expect(persistedEntries.find((e: { id: string }) => e.id === walkB!.scheduleEntryId)?.responsibleUserId).toBe(userA);
 });
 
+it('deleteRule removes the rule plus its future pending entries/walks, and leaves other rules untouched', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const before = useScheduleStore.getState();
+  expect(before.rules.some((r) => r.id === 'rule-1700')).toBe(true);
+  expect(before.entries.some((e) => e.id === 'entry-1700')).toBe(true);
+  expect(before.walks.some((w) => w.id === 'walk-1700')).toBe(true);
+  const otherRuleIds = before.rules.filter((r) => r.id !== 'rule-1700').map((r) => r.id);
+
+  await useScheduleStore.getState().deleteRule('rule-1700');
+
+  const after = useScheduleStore.getState();
+  expect(after.actionError).toBeNull();
+  expect(after.rules.some((r) => r.id === 'rule-1700')).toBe(false);
+  expect(after.entries.some((e) => e.id === 'entry-1700')).toBe(false);
+  expect(after.walks.some((w) => w.id === 'walk-1700')).toBe(false);
+  for (const id of otherRuleIds) {
+    expect(after.rules.some((r) => r.id === id)).toBe(true);
+  }
+
+  const { repository } = require('../../data');
+  const persistedEntries = await repository.getScheduleEntries(FAMILY_ID);
+  expect(persistedEntries.some((e: { id: string }) => e.id === 'entry-1700')).toBe(false);
+});
+
+it('deleteRule surfaces a visible actionError instead of silently doing nothing when the repository write fails', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const { repository } = require('../../data');
+  const spy = jest.spyOn(repository, 'deleteScheduleRule').mockRejectedValueOnce(new Error('boom'));
+
+  await useScheduleStore.getState().deleteRule('rule-1700');
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeTruthy();
+  expect(state.rules.some((r) => r.id === 'rule-1700')).toBe(true); // untouched — the failure happened before any set()
+
+  spy.mockRestore();
+});
+
+it('reorderRules persists and applies only the sortOrder values that actually changed', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const { repository } = require('../../data');
+  const spy = jest.spyOn(repository, 'upsertScheduleRule');
+
+  const before = useScheduleStore.getState().rules;
+  const reordered = ['rule-1700', 'rule-0700', 'rule-1230', 'rule-2130'];
+
+  await useScheduleStore.getState().reorderRules(reordered);
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeNull();
+  expect(state.rules.find((r) => r.id === 'rule-1700')?.sortOrder).toBe(0);
+  expect(state.rules.find((r) => r.id === 'rule-0700')?.sortOrder).toBe(1);
+  expect(state.rules.find((r) => r.id === 'rule-1230')?.sortOrder).toBe(2);
+  expect(state.rules.find((r) => r.id === 'rule-2130')?.sortOrder).toBe(3);
+  // rule-2130 already had sortOrder 3 before this call — it must not be
+  // re-persisted for a no-op position change.
+  const persistedIds = spy.mock.calls.map((args) => (args[0] as { id: string }).id);
+  expect(persistedIds).toEqual(expect.arrayContaining(['rule-1700', 'rule-0700', 'rule-1230']));
+  expect(persistedIds).not.toContain('rule-2130');
+  expect(before.find((r) => r.id === 'rule-2130')?.sortOrder).toBe(3);
+
+  spy.mockRestore();
+});
+
+it('reorderRules surfaces a visible actionError instead of silently doing nothing when the repository write fails', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const { repository } = require('../../data');
+  const spy = jest.spyOn(repository, 'upsertScheduleRule').mockRejectedValueOnce(new Error('boom'));
+
+  await useScheduleStore.getState().reorderRules(['rule-1700', 'rule-0700', 'rule-1230', 'rule-2130']);
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeTruthy();
+
+  spy.mockRestore();
+});
+
+it('deleteEntry removes the entry and its backing walk together', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  expect(useScheduleStore.getState().entries.some((e) => e.id === 'entry-1700')).toBe(true);
+  expect(useScheduleStore.getState().walks.some((w) => w.id === 'walk-1700')).toBe(true);
+
+  await useScheduleStore.getState().deleteEntry('entry-1700');
+
+  const state = useScheduleStore.getState();
+  expect(state.entries.some((e) => e.id === 'entry-1700')).toBe(false);
+  expect(state.walks.some((w) => w.id === 'walk-1700')).toBe(false);
+  // Unrelated entry/walk pairs are untouched.
+  expect(state.entries.some((e) => e.id === 'entry-1230')).toBe(true);
+  expect(state.walks.some((w) => w.id === 'walk-1230')).toBe(true);
+});
+
+it('editDoneDetails updates a resolved walk\'s recorded details', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const doneWalk = useScheduleStore.getState().walks.find((w) => w.id === 'walk-0700');
+  expect(doneWalk?.status).toBe('done');
+
+  await useScheduleStore.getState().editDoneDetails('walk-0700', { note: 'תיקון', hadPee: false });
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeNull();
+  const updated = state.walks.find((w) => w.id === 'walk-0700');
+  expect(updated?.note).toBe('תיקון');
+  expect(updated?.hadPee).toBe(false);
+  expect(updated?.status).toBe('done'); // unaffected by the edit
+});
+
+it('editDoneDetails refuses (visible actionError) for a walk that is still pending', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const pendingWalk = useScheduleStore.getState().walks.find((w) => w.id === 'walk-1230');
+  expect(pendingWalk?.status).toBe('pending');
+
+  await useScheduleStore.getState().editDoneDetails('walk-1230', { note: 'לא אמור לעבוד' });
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeTruthy();
+  expect(state.walks.find((w) => w.id === 'walk-1230')?.note).toBeUndefined();
+});
+
+it('swap reassigns a single pending walk to a different family member', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const walk = useScheduleStore.getState().walks.find((w) => w.id === 'walk-1230');
+  expect(walk?.responsibleUserId).toBe('user-ima');
+
+  await useScheduleStore.getState().swap('walk-1230', 'user-eidan', 'user-ima');
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeNull();
+  expect(state.walks.find((w) => w.id === 'walk-1230')?.responsibleUserId).toBe('user-eidan');
+});
+
+it('swap refuses (visible actionError) when asked to swap a walk to its own current owner', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const walk = useScheduleStore.getState().walks.find((w) => w.id === 'walk-1230');
+  const currentOwner = walk!.responsibleUserId;
+
+  await useScheduleStore.getState().swap('walk-1230', currentOwner, currentOwner);
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeTruthy();
+  expect(state.walks.find((w) => w.id === 'walk-1230')?.responsibleUserId).toBe(currentOwner);
+});
+
+it('markDone refuses (visible actionError, returns false) for a walk that is already done', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const alreadyDone = useScheduleStore.getState().walks.find((w) => w.id === 'walk-0700');
+  expect(alreadyDone?.status).toBe('done');
+
+  const result = await useScheduleStore.getState().markDone('walk-0700', 'user-aba', {});
+
+  expect(result).toBe(false);
+  expect(useScheduleStore.getState().actionError).toBeTruthy();
+});
+
+it('deleteUnplannedWalk removes a previously-added unplanned walk, including from the repository', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const saved = await useScheduleStore.getState().addUnplannedWalk({
+    familyId: FAMILY_ID,
+    dogId: 'dog-topi',
+    performedByUserId: 'user-aba',
+    date: '2026-08-27',
+    time: '11:00',
+    hadPee: true,
+    hadPoop: true,
+  });
+  expect(saved).toBe(true);
+  const added = useScheduleStore.getState().walks.find((w) => w.isUnplanned && w.scheduledTime === '11:00');
+  expect(added).toBeTruthy();
+
+  await useScheduleStore.getState().deleteUnplannedWalk(added!.id);
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeNull();
+  expect(state.walks.some((w) => w.id === added!.id)).toBe(false);
+
+  const { repository } = require('../../data');
+  const persisted = await repository.getWalks(FAMILY_ID);
+  expect(persisted.some((w: Walk) => w.id === added!.id)).toBe(false);
+});
+
+it('deleteUnplannedWalk refuses (visible actionError) for a regular scheduled walk', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  expect(useScheduleStore.getState().walks.some((w) => w.id === 'walk-1230')).toBe(true);
+
+  await useScheduleStore.getState().deleteUnplannedWalk('walk-1230');
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeTruthy();
+  expect(state.walks.some((w) => w.id === 'walk-1230')).toBe(true); // untouched
+});
+
+it('deleteScheduledWalkOccurrence removes a resolved (done) scheduled walk occurrence', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  expect(useScheduleStore.getState().walks.some((w) => w.id === 'walk-0700')).toBe(true);
+
+  await useScheduleStore.getState().deleteScheduledWalkOccurrence('walk-0700');
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeNull();
+  expect(state.walks.some((w) => w.id === 'walk-0700')).toBe(false);
+});
+
+it('deleteScheduledWalkOccurrence refuses (visible actionError) for a walk that is still pending', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  expect(useScheduleStore.getState().walks.find((w) => w.id === 'walk-1230')?.status).toBe('pending');
+
+  await useScheduleStore.getState().deleteScheduledWalkOccurrence('walk-1230');
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeTruthy();
+  expect(state.walks.some((w) => w.id === 'walk-1230')).toBe(true); // untouched
+});
+
+it('deleteScheduledWalkOccurrence refuses (visible actionError) for an unplanned walk (wrong door — use deleteUnplannedWalk)', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const saved = await useScheduleStore.getState().addUnplannedWalk({
+    familyId: FAMILY_ID,
+    dogId: 'dog-topi',
+    performedByUserId: 'user-aba',
+    date: '2026-08-27',
+    time: '13:00',
+    hadPee: true,
+    hadPoop: true,
+  });
+  expect(saved).toBe(true);
+  const added = useScheduleStore.getState().walks.find((w) => w.isUnplanned && w.scheduledTime === '13:00');
+  expect(added).toBeTruthy();
+
+  await useScheduleStore.getState().deleteScheduledWalkOccurrence(added!.id);
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeTruthy();
+  expect(state.walks.some((w) => w.id === added!.id)).toBe(true); // untouched
+});
+
+it('updateRule surfaces a visible actionError instead of silently doing nothing when the repository write fails', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const { repository } = require('../../data');
+  const spy = jest.spyOn(repository, 'upsertScheduleRule').mockRejectedValueOnce(new Error('boom'));
+  const originalTime = useScheduleStore.getState().rules.find((r) => r.id === 'rule-1230')?.time;
+
+  await useScheduleStore.getState().updateRule('rule-1230', { time: '08:00' });
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeTruthy();
+  expect(state.rules.find((r) => r.id === 'rule-1230')?.time).toBe(originalTime);
+
+  spy.mockRestore();
+});
+
+it('updateRule with a changed daysOfWeek removes a still-pending entry/walk for a day just dropped from the rule', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const before = useScheduleStore.getState();
+  const todaysEntry = before.entries.find((e) => e.ruleId === 'rule-1230');
+  expect(todaysEntry).toBeTruthy();
+  const todaysWalk = before.walks.find((w) => w.scheduleEntryId === todaysEntry!.id);
+  expect(todaysWalk?.status).toBe('pending');
+  const todaysDayOfWeek = new Date(`${todaysEntry!.date}T00:00:00Z`).getUTCDay();
+
+  // Drop today's own weekday from the rule — this is the exact "turn off
+  // Saturday for Shabbat" scenario: an already-generated future occurrence
+  // for a day just disabled must stop showing/reminding, not linger for up
+  // to GENERATE_DAYS_AHEAD days.
+  const remainingDays = [0, 1, 2, 3, 4, 5, 6].filter((d) => d !== todaysDayOfWeek);
+  await useScheduleStore.getState().updateRule('rule-1230', { daysOfWeek: remainingDays });
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeNull();
+  expect(state.rules.find((r) => r.id === 'rule-1230')?.daysOfWeek).toEqual(remainingDays);
+  expect(state.entries.some((e) => e.id === todaysEntry!.id)).toBe(false);
+  expect(state.walks.some((w) => w.id === todaysWalk!.id)).toBe(false);
+});
+
+it('updateRule with a changed daysOfWeek generates a new entry/walk for a day just added to the rule', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const todaysEntry = useScheduleStore.getState().entries.find((e) => e.ruleId === 'rule-1230');
+  const todaysDayOfWeek = new Date(`${todaysEntry!.date}T00:00:00Z`).getUTCDay();
+
+  // First narrow the rule to exclude today's weekday (removes today's entry/walk).
+  const withoutToday = [0, 1, 2, 3, 4, 5, 6].filter((d) => d !== todaysDayOfWeek);
+  await useScheduleStore.getState().updateRule('rule-1230', { daysOfWeek: withoutToday });
+  expect(useScheduleStore.getState().entries.some((e) => e.ruleId === 'rule-1230' && e.date === todaysEntry!.date)).toBe(false);
+
+  // Now add today's weekday back — this is the exact "newly active day"
+  // case: it must regenerate an entry/walk right away, not wait for the
+  // rule's whole window to empty out via the unrelated backfill-on-load path.
+  await useScheduleStore.getState().updateRule('rule-1230', { daysOfWeek: [0, 1, 2, 3, 4, 5, 6] });
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeNull();
+  const regeneratedEntry = state.entries.find((e) => e.ruleId === 'rule-1230' && e.date === todaysEntry!.date);
+  expect(regeneratedEntry).toBeTruthy();
+  expect(regeneratedEntry!.id).not.toBe(todaysEntry!.id); // a genuinely new entry, not the deleted one resurrected by id
+  const regeneratedWalk = state.walks.find((w) => w.scheduleEntryId === regeneratedEntry!.id);
+  expect(regeneratedWalk?.status).toBe('pending');
+});
+
+it('updateRule with a time-only change (daysOfWeek untouched) does not resurrect a manually-deleted single occurrence on the same rule', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const entryFor1700 = useScheduleStore.getState().entries.find((e) => e.ruleId === 'rule-1700');
+  expect(entryFor1700).toBeTruthy();
+
+  // Admin deletes just today's occurrence for rule-1700 (e.g. "skip this one walk today").
+  await useScheduleStore.getState().deleteEntry(entryFor1700!.id);
+  expect(useScheduleStore.getState().entries.some((e) => e.id === entryFor1700!.id)).toBe(false);
+
+  // An unrelated time-only edit to the SAME rule (daysOfWeek untouched) must
+  // not silently regenerate the occurrence the admin just deleted.
+  await useScheduleStore.getState().updateRule('rule-1700', { time: '17:15' });
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeNull();
+  expect(state.entries.some((e) => e.ruleId === 'rule-1700' && e.date === entryFor1700!.date)).toBe(false);
+});
+
+it('skip refuses (visible actionError) for a walk that is not pending', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  expect(useScheduleStore.getState().walks.find((w) => w.id === 'walk-0700')?.status).toBe('done');
+
+  await useScheduleStore.getState().skip('walk-0700');
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeTruthy();
+  expect(state.walks.find((w) => w.id === 'walk-0700')?.status).toBe('done'); // untouched
+});
+
+it('swapTwoWalks reverts both walks/entries and surfaces a visible actionError when the repository write fails', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const before = useScheduleStore.getState();
+  const walkA = before.walks.find((w) => w.id === 'walk-1230')!;
+  const walkB = before.walks.find((w) => w.id === 'walk-1700')!;
+
+  const { repository } = require('../../data');
+  const spy = jest.spyOn(repository, 'saveWalk').mockRejectedValueOnce(new Error('boom'));
+
+  await useScheduleStore.getState().swapTwoWalks(walkA.id, walkB.id, 'user-aba');
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeTruthy();
+  expect(state.walks.find((w) => w.id === walkA.id)?.responsibleUserId).toBe(walkA.responsibleUserId);
+  expect(state.walks.find((w) => w.id === walkB.id)?.responsibleUserId).toBe(walkB.responsibleUserId);
+
+  spy.mockRestore();
+});
+
+it('editUnplannedWalk updates an existing unplanned walk in place, without creating a duplicate', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const saved = await useScheduleStore.getState().addUnplannedWalk({
+    familyId: FAMILY_ID,
+    dogId: 'dog-topi',
+    performedByUserId: 'user-aba',
+    date: '2026-08-27',
+    time: '09:00',
+    hadPee: true,
+    hadPoop: false,
+  });
+  expect(saved).toBe(true);
+  const added = useScheduleStore.getState().walks.find((w) => w.isUnplanned && w.scheduledTime === '09:00')!;
+  const before = useScheduleStore.getState().walks.length;
+
+  await useScheduleStore.getState().editUnplannedWalk(added.id, { note: 'עודכן', durationMinutes: 20 });
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeNull();
+  expect(state.walks).toHaveLength(before); // no duplicate
+  const updated = state.walks.find((w) => w.id === added.id);
+  expect(updated?.note).toBe('עודכן');
+  expect(updated?.durationMinutes).toBe(20);
+});
+
+it('editUnplannedWalk refuses (visible actionError) for a regular scheduled walk', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+
+  await useScheduleStore.getState().editUnplannedWalk('walk-1230', { note: 'לא אמור לעבוד' });
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeTruthy();
+  expect(state.walks.find((w) => w.id === 'walk-1230')?.note).toBeUndefined();
+});
+
+it('editUnplannedWalk reverts the optimistic update and surfaces a visible actionError when the repository write fails', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const saved = await useScheduleStore.getState().addUnplannedWalk({
+    familyId: FAMILY_ID,
+    dogId: 'dog-topi',
+    performedByUserId: 'user-aba',
+    date: '2026-08-27',
+    time: '10:00',
+    hadPee: true,
+    hadPoop: false,
+  });
+  expect(saved).toBe(true);
+  const added = useScheduleStore.getState().walks.find((w) => w.isUnplanned && w.scheduledTime === '10:00')!;
+
+  const { repository } = require('../../data');
+  const spy = jest.spyOn(repository, 'saveWalk').mockRejectedValueOnce(new Error('boom'));
+
+  await useScheduleStore.getState().editUnplannedWalk(added.id, { note: 'לא אמור להישמר' });
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeTruthy();
+  expect(state.walks.find((w) => w.id === added.id)?.note).toBeUndefined(); // reverted
+
+  spy.mockRestore();
+});
+
+it('deleteUnplannedWalk restores the walk and surfaces a visible actionError when the repository delete fails', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const saved = await useScheduleStore.getState().addUnplannedWalk({
+    familyId: FAMILY_ID,
+    dogId: 'dog-topi',
+    performedByUserId: 'user-aba',
+    date: '2026-08-27',
+    time: '14:00',
+    hadPee: true,
+    hadPoop: false,
+  });
+  expect(saved).toBe(true);
+  const added = useScheduleStore.getState().walks.find((w) => w.isUnplanned && w.scheduledTime === '14:00')!;
+
+  const { repository } = require('../../data');
+  const spy = jest.spyOn(repository, 'deleteWalk').mockRejectedValueOnce(new Error('boom'));
+
+  await useScheduleStore.getState().deleteUnplannedWalk(added.id);
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeTruthy();
+  expect(state.walks.some((w) => w.id === added.id)).toBe(true); // restored
+
+  spy.mockRestore();
+});
+
+it('deleteScheduledWalkOccurrence restores the walk and surfaces a visible actionError when the repository delete fails', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  expect(useScheduleStore.getState().walks.find((w) => w.id === 'walk-0700')?.status).toBe('done');
+
+  const { repository } = require('../../data');
+  const spy = jest.spyOn(repository, 'deleteWalk').mockRejectedValueOnce(new Error('boom'));
+
+  await useScheduleStore.getState().deleteScheduledWalkOccurrence('walk-0700');
+
+  const state = useScheduleStore.getState();
+  expect(state.actionError).toBeTruthy();
+  expect(state.walks.some((w) => w.id === 'walk-0700')).toBe(true); // restored
+
+  spy.mockRestore();
+});
+
+it('clearActionError resets actionError back to null', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  useScheduleStore.setState({ actionError: 'משהו נכשל' });
+
+  useScheduleStore.getState().clearActionError();
+
+  expect(useScheduleStore.getState().actionError).toBeNull();
+});
+
 });

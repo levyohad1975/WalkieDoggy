@@ -128,11 +128,45 @@ export interface QuarantinedItem {
  * 23xxx bug above did before Round 4's fix. Genuine connectivity/timeout/5xx
  * failures carry no Postgres code at all (or a network-layer one outside
  * these classes) and remain retryable, unaffected by this change.
+ *
+ * RC FIX: also treat SQLSTATE class "P0" (plpgsql_error — in practice from
+ * this schema this is always P0001, the default code for a bare `raise
+ * exception 'message'` with no `using errcode = ...`) as PERMANENT. Every
+ * business-rule `raise exception` across every migration in this schema
+ * (e.g. `enforce_walk_write_authorization()`'s "invalid status transition",
+ * "reassigning a walk requires an approved swap request", etc.) uses this
+ * bare form and therefore always raises P0001 — none of them override
+ * errcode. Retrying the exact same payload against the exact same walk/
+ * family state can never succeed any more than a 23xxx or 42xxx retry
+ * could: the write is business-rule-shaped, not connectivity-shaped. This
+ * is concretely reachable offline-first: e.g. a queued `saveWalk` resolving
+ * a walk whose server-side status/owner has since diverged (another device
+ * already resolved it, or a swap was approved, while this device was
+ * offline) hits exactly this trigger and, before this fix, would `break`
+ * the flush loop and block every later queued operation for this profile
+ * forever, exactly like the 23xxx/42xxx bugs above did before their own
+ * fixes.
+ *
+ * RC FIX: also treat SQLSTATE class "22" (data_exception — in practice from
+ * this client this is `22P02` invalid_text_representation or `22003`
+ * numeric_value_out_of_range) as PERMANENT. Concretely reachable via
+ * `AddUnplannedWalkModal.tsx`'s free-text duration field (no
+ * keyboard-type enforcement against clipboard paste, unlike the time/date
+ * fields which already gate submission on a format check): a queued
+ * `saveWalk`/`addScheduleEntries` carrying a non-integer duration (e.g.
+ * `20.5`) fails `walks.duration_minutes int`'s implicit cast with a class-22
+ * code every single retry, since the payload itself is malformed, not the
+ * connection. Before this fix that would `break` the flush loop and block
+ * every later queued operation for every user and every feature behind it
+ * forever, exactly like the 23xxx/42xxx/28xxx/P0xxx bugs above did before
+ * their own fixes.
  */
 function isPermanentError(error: unknown): boolean {
   const code = (error as { code?: string } | null | undefined)?.code;
   if (typeof code !== 'string') return false;
-  return code.startsWith('23') || code.startsWith('42') || code.startsWith('28');
+  return (
+    code.startsWith('23') || code.startsWith('42') || code.startsWith('28') || code.startsWith('P0') || code.startsWith('22')
+  );
 }
 
 export type SyncOperation =

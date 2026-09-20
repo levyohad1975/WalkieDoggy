@@ -39,4 +39,28 @@ describe('selectWalkCompletionCelebration', () => {
   it('does not use a family dog name as the brand mascot in celebration copy', () => {
     expect(CELEBRATION_LIBRARY.some((item) => item.eyebrow.includes('טופי') || item.title.includes('טופי') || item.message.includes('טופי'))).toBe(false);
   });
+
+  it('falls back to the full contextual pool when recentIds excludes every candidate', () => {
+    const allDaytimeIds = ['thank-you-heart', 'happy-jump', 'high-five', 'confetti', 'paw-party', 'trophy-teaser', 'special-surprise'];
+    const picked = selectWalkCompletionCelebration({
+      completedAt: new Date(2026, 8, 9, 13),
+      recentIds: allDaytimeIds,
+      random: () => 0,
+    });
+    expect(allDaytimeIds).toContain(picked.id);
+  });
+
+  it('falls back to the rare entry anyway when it is the only remaining candidate outside the 8% roll', () => {
+    const picked = selectWalkCompletionCelebration({
+      completedAt: new Date(2026, 8, 9, 13),
+      recentIds: ['thank-you-heart', 'happy-jump', 'high-five', 'confetti', 'paw-party', 'trophy-teaser'],
+      random: () => 0.5,
+    });
+    expect(picked.id).toBe('special-surprise');
+  });
+
+  it('defaults completedAt and random to the real current moment/Math.random when called with no argument', () => {
+    const picked = selectWalkCompletionCelebration();
+    expect(CELEBRATION_LIBRARY.map((item) => item.id)).toContain(picked.id);
+  });
 });

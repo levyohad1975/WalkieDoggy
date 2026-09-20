@@ -9,6 +9,7 @@ import {
   markWalkSkipped,
   summarizeWalksByUser,
   swapWalk,
+  swapWalksMutual,
   undoMarkDone,
   walkCompletionLine,
   walkHistoryTimingLine,
@@ -147,6 +148,59 @@ describe('undoMarkDone', () => {
     expect(reverted.status).toBe('pending');
     expect(reverted.completedByUserId).toBeUndefined();
   });
+
+  it('refuses to undo a walk that is not marked done', () => {
+    const walk = makeWalk({ status: 'pending' });
+    expect(() => undoMarkDone(walk)).toThrow(WalkActionError);
+  });
+});
+
+describe('swapWalksMutual (החלפה הדדית)', () => {
+  it('exchanges responsibility both ways and records an audit trail for each side', () => {
+    const now = new Date('2026-08-26T09:00:00');
+    const walkA = makeWalk({ id: 'wa', responsibleUserId: 'danny' });
+    const walkB = makeWalk({ id: 'wb', responsibleUserId: 'yael' });
+    const [swappedA, swappedB] = swapWalksMutual(walkA, walkB, 'danny', now);
+
+    expect(swappedA.responsibleUserId).toBe('yael');
+    expect(swappedA.swap).toEqual({
+      originalUserId: 'danny',
+      newUserId: 'yael',
+      swappedAt: now.toISOString(),
+      swappedByUserId: 'danny',
+    });
+    expect(swappedB.responsibleUserId).toBe('danny');
+    expect(swappedB.swap).toEqual({
+      originalUserId: 'yael',
+      newUserId: 'danny',
+      swappedAt: now.toISOString(),
+      swappedByUserId: 'danny',
+    });
+  });
+
+  it('preserves each walk\'s original responsible user across a repeat mutual swap', () => {
+    const walkA = makeWalk({ id: 'wa', responsibleUserId: 'danny' });
+    const walkB = makeWalk({ id: 'wb', responsibleUserId: 'yael' });
+    const [firstA, firstB] = swapWalksMutual(walkA, walkB, 'danny');
+    const [secondA, secondB] = swapWalksMutual(firstA, firstB, 'yael');
+
+    expect(secondA.swap?.originalUserId).toBe('danny');
+    expect(secondA.responsibleUserId).toBe('danny');
+    expect(secondB.swap?.originalUserId).toBe('yael');
+    expect(secondB.responsibleUserId).toBe('yael');
+  });
+
+  it('refuses to swap when either walk is not pending', () => {
+    const walkA = makeWalk({ id: 'wa', status: 'done' });
+    const walkB = makeWalk({ id: 'wb' });
+    expect(() => swapWalksMutual(walkA, walkB, 'danny')).toThrow(WalkActionError);
+    expect(() => swapWalksMutual(walkB, walkA, 'danny')).toThrow(WalkActionError);
+  });
+
+  it('refuses to swap a walk with itself', () => {
+    const walk = makeWalk({ id: 'wa' });
+    expect(() => swapWalksMutual(walk, walk, 'danny')).toThrow(WalkActionError);
+  });
 });
 
 describe('swapWalk (החלף תור)', () => {
@@ -262,6 +316,11 @@ describe('canRequestChangeForWalk', () => {
     const pastWalk = makeWalk({ date: '2026-09-01', scheduledTime: '09:00', status: 'pending', responsibleUserId: 'noam' });
     expect(canRequestChangeForWalk(pastWalk, 'noam', 'member', true, future)).toBe(false);
   });
+
+  it('defaults `now` to the real current time when omitted', () => {
+    const longPastWalk = makeWalk({ date: '2020-01-01', scheduledTime: '09:00', status: 'pending', responsibleUserId: 'noam' });
+    expect(canRequestChangeForWalk(longPastWalk, 'noam', 'member', true)).toBe(false);
+  });
 });
 
 /**
@@ -327,6 +386,13 @@ describe('computeNextWalkCardActions', () => {
     expect(actions.canSwapDirect).toBe(true);
     expect(actions.canEditDirect).toBe(true);
   });
+
+  it('defaults `now` to the real current time when omitted', () => {
+    const longPastWalk = makeWalk({ date: '2020-01-01', scheduledTime: '09:00', status: 'pending', responsibleUserId: 'noam' });
+    const actions = computeNextWalkCardActions(longPastWalk, 'noam', 'member', true);
+    expect(actions.canRequestSwap).toBe(false);
+    expect(actions.canRequestTimeChange).toBe(false);
+  });
 });
 
 describe('walkMetadataLine', () => {
@@ -343,7 +409,7 @@ describe('walkMetadataLine', () => {
       responsibleUserId: 'b',
       swap: { originalUserId: 'a', swappedAt: new Date().toISOString(), newUserId: 'b', swappedByUserId: 'a' } as never,
     });
-    expect(walkMetadataLine(swapped)).toBeNull();
+    expect(walkMetadataLine(swapped)).toBe('הוחלף');
   });
 
   it('joins both when a walk is both unplanned and swapped', () => {
@@ -352,7 +418,7 @@ describe('walkMetadataLine', () => {
       responsibleUserId: 'b',
       swap: { originalUserId: 'a', swappedAt: new Date().toISOString(), newUserId: 'b', swappedByUserId: 'a' } as never,
     });
-    expect(walkMetadataLine(both)).toBe('טיול ספונטני');
+    expect(walkMetadataLine(both)).toBe('טיול ספונטני · הוחלף');
   });
 
   it('null once a swap returns to its original assignee (A -> B -> A)', () => {
@@ -397,6 +463,12 @@ describe('walkCompletionLine', () => {
     const line = walkCompletionLine(walk, completedBy, false);
     expect(line).not.toContain('💧');
     expect(line).not.toContain('💩');
+  });
+
+  it('marks the completer\'s name "(הוסר)" when they have since been removed from the family', () => {
+    const walk = makeWalk({ status: 'done' });
+    const line = walkCompletionLine(walk, { name: 'אמא', removedAt: '2026-08-27T00:00:00.000Z' }, false);
+    expect(line).toContain('בוצע ע״י אמא (הוסר)');
   });
 });
 

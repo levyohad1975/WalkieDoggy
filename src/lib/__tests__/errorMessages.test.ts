@@ -52,6 +52,38 @@ describe('friendlyErrorMessage — role management (0007)', () => {
       'cannot demote the last admin of this family'
     );
   });
+
+  it('rawMessageOf falls back to an empty string for a nullish error (thrown `null`/`undefined`, never a real Error/string/object)', () => {
+    expect(rawMessageOf(null)).toBe('');
+    expect(rawMessageOf(undefined)).toBe('');
+  });
+});
+
+/**
+ * admin_delete_family_member()'s new fail-closed completeness check
+ * (migrations/0041_fail_closed_member_removal_completeness_check.sql) raises
+ * one of three distinct messages (rotation/schedule/walk) that all share the
+ * same "refresh and retry the deletion" substring, so one shared rule maps
+ * all three to the same friendly Hebrew message.
+ */
+describe('friendlyErrorMessage — member-removal completeness check (0041)', () => {
+  it('maps the stale-rotation-data rejection', () => {
+    expect(friendlyErrorMessage(new Error('stale rotation data — refresh and retry the deletion'))).toBe(
+      'המידע במסך אינו מעודכן. רעננו את המסך ונסו למחוק שוב.'
+    );
+  });
+
+  it('maps the stale-schedule-data rejection', () => {
+    expect(friendlyErrorMessage(new Error('stale schedule data — refresh and retry the deletion'))).toBe(
+      'המידע במסך אינו מעודכן. רעננו את המסך ונסו למחוק שוב.'
+    );
+  });
+
+  it('maps the stale-walk-data rejection', () => {
+    expect(friendlyErrorMessage(new Error('stale walk data — refresh and retry the deletion'))).toBe(
+      'המידע במסך אינו מעודכן. רעננו את המסך ונסו למחוק שוב.'
+    );
+  });
 });
 
 /**
@@ -270,5 +302,24 @@ describe('friendlyErrorMessage — History/Statistics server-side permission gat
     const message = friendlyErrorMessage(new Error('view_statistics permission required'));
     expect(message).toBe('אין לך גישה לסטטיסטיקה. פנו למנהל/ת המשפחה אם לדעתכם זו טעות.');
     expect(message).not.toBe(friendlyErrorMessage(new Error('view_history permission required')));
+  });
+});
+
+/**
+ * create-verified-family Edge Function reason strings, recovered from an
+ * otherwise-generic FunctionsHttpError by
+ * verifiedAdminOnboarding.ts's createVerifiedFamily() (see its own comment).
+ */
+describe('friendlyErrorMessage — create-verified-family Edge Function', () => {
+  it('maps a lapsed/anonymous verified-identity session', () => {
+    expect(friendlyErrorMessage(new Error('verified email identity required'))).toBe(
+      'יש לאמת מחדש את כתובת הדוא״ל לפני יצירת המשפחה.'
+    );
+  });
+
+  it('maps a missing family name', () => {
+    expect(friendlyErrorMessage(new Error('familyName is required'))).toBe(
+      'יש להזין שם למשפחה.'
+    );
   });
 });

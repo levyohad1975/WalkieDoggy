@@ -3,10 +3,12 @@ import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleShee
 import { RtlText } from './RtlText';
 import type { FamilyUser, ScheduleRule } from '../types';
 import { colors } from '../theme/colors';
+import { radii, spacing, typography } from '../theme/tokens';
 import { Avatar } from '../components/Avatar';
 import { Button } from './Button';
 import { TimePickerField } from './TimePickerField';
 import { is24HourTime } from '../logic/timeInput';
+import { previewRotation } from '../logic/rotation';
 
 const DAY_LABELS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
 // Round 6F: full spoken day names for the day chips' accessibilityLabel —
@@ -66,16 +68,28 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
           RequestTimeChangeModal.tsx — wraps the existing backdrop/sheet/
           ScrollView structure unchanged. */}
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable
+          style={styles.backdrop}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel={editingRule ? 'סגירת עריכת שעת טיול' : 'סגירת הוספת שעת טיול'}
+        >
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView keyboardShouldPersistTaps="handled">
-              <RtlText style={styles.title}>{editingRule ? 'עריכת שעת טיול' : 'הוספת שעת טיול'}</RtlText>
+              <RtlText style={styles.title} accessibilityRole="header">{editingRule ? 'עריכת שעת טיול' : 'הוספת שעת טיול'}</RtlText>
 
             <RtlText style={styles.label}>שעה</RtlText>
             <TimePickerField value={time} onChange={setTime} webLabel="בחירת שעת טיול" />
 
             <RtlText style={styles.label}>שם (אופציונלי)</RtlText>
-            <TextInput value={label} onChangeText={setLabel} placeholder="למשל: טיול בוקר" style={styles.input} textAlign="right" />
+            <TextInput
+              value={label}
+              onChangeText={setLabel}
+              placeholder="למשל: טיול בוקר"
+              style={styles.input}
+              textAlign="right"
+              accessibilityLabel="שם (אופציונלי)"
+            />
 
             <RtlText style={styles.label}>ימים</RtlText>
             <View style={styles.dayRow}>
@@ -131,12 +145,18 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
             </View>
             {rotation.length > 0 ? (
               <RtlText style={styles.rotationPreview}>
-                {rotation.map((id) => usersById[id]?.name).join(' → ')}
-                {rotation.length > 1 ? ` → ${usersById[rotation[0]]?.name} ...` : ''}
+                {previewRotation(
+                  rotation.map((id) => usersById[id]?.name ?? '?'),
+                  rotation.length > 1 ? rotation.length + 1 : rotation.length
+                )}
               </RtlText>
             ) : null}
 
-            {error ? <RtlText style={styles.error}>{error}</RtlText> : null}
+            {error ? (
+              <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                {error}
+              </RtlText>
+            ) : null}
 
             <View style={styles.actions}>
               <Button label="שמירה" onPress={submit} style={styles.flex} />
@@ -153,14 +173,14 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
 const styles = StyleSheet.create({
   flexFull: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '90%' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, maxHeight: '90%' },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
-  label: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: 14, marginBottom: 8, textAlign: 'right' },
+  label: { fontSize: typography.meta.fontSize, fontWeight: '700', color: colors.textSecondary, marginTop: 14, marginBottom: spacing.sm, textAlign: 'right' },
   input: {
     backgroundColor: colors.surfaceMuted,
-    borderRadius: 14,
+    borderRadius: radii.md,
     padding: 14,
-    fontSize: 16,
+    fontSize: typography.body.fontSize,
     color: colors.textPrimary,
   },
   dayRow: { flexDirection: 'row', gap: 6 },
@@ -168,16 +188,16 @@ const styles = StyleSheet.create({
   dayChipActive: { backgroundColor: colors.primary },
   dayChipText: { fontWeight: '700', color: colors.textSecondary },
   dayChipTextActive: { color: colors.textInverse },
-  rotationRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
+  rotationRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.lg },
   rotationChip: { alignItems: 'center', minWidth: 64 },
-  rotationName: { fontSize: 12, color: colors.textPrimary, marginTop: 4 },
+  rotationName: { fontSize: 12, color: colors.textPrimary, marginTop: spacing.xs },
   rotationBadge: {
     position: 'absolute',
     top: -4,
     end: -4,
     backgroundColor: colors.primary,
     color: colors.textInverse,
-    fontSize: 11,
+    fontSize: typography.caption.fontSize,
     fontWeight: '800',
     width: 18,
     height: 18,
@@ -186,8 +206,8 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     overflow: 'hidden',
   },
-  rotationPreview: { fontSize: 13, color: colors.primaryDark, fontWeight: '600', marginTop: 8, textAlign: 'right' },
-  error: { fontSize: 13, color: colors.statusOverdue, fontWeight: '600', marginTop: 10, textAlign: 'right' },
-  actions: { flexDirection: 'row', gap: 12, marginTop: 20 },
+  rotationPreview: { fontSize: typography.meta.fontSize, color: colors.primaryDark, fontWeight: '600', marginTop: spacing.sm, textAlign: 'right' },
+  error: { fontSize: typography.meta.fontSize, color: colors.statusOverdue, fontWeight: '600', marginTop: 10, textAlign: 'right' },
+  actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xl },
   flex: { flex: 1 },
 });

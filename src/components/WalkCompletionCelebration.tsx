@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { colors } from '../theme/colors';
-import { motion, spacing } from '../theme/tokens';
+import { motion, radii, spacing } from '../theme/tokens';
 import type { CompletionCelebration } from '../logic/walkCompletionCelebration';
 import { RtlText } from './RtlText';
 import { resolveCelebrationAsset } from './celebrationAssets';
@@ -62,7 +62,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(11, 39, 48, 0.34)', alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
   moment: { width: '100%', maxWidth: 420, alignItems: 'center' },
-  bubble: { maxWidth: 285, backgroundColor: colors.surface, borderRadius: 24, paddingHorizontal: 20, paddingVertical: 13, shadowColor: '#0B5C75', shadowOpacity: 0.16, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 6 },
+  bubble: { maxWidth: 285, backgroundColor: colors.surface, borderRadius: radii.xl, paddingHorizontal: spacing.xl, paddingVertical: 13, shadowColor: '#0B5C75', shadowOpacity: 0.16, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 6 },
   message: { color: colors.textPrimary, fontSize: 20, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
   tail: { width: 20, height: 20, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }, { translateY: -10 }], marginBottom: -12 },
   confetti: { position: 'absolute', top: 85, color: colors.primary, fontSize: 24, letterSpacing: 10 },

@@ -1,9 +1,13 @@
 import {
+  computeUserDeletionImpact,
+  FamilyManagementError,
   handleLastAdminGuardedPress,
   isLastActiveAdminMember,
+  planUserRemoval,
   shouldReloadActivityAfterRoleChange,
   type AdminActivityRoleRow,
 } from '../familyManagement';
+import type { ScheduleEntry, ScheduleRule, Walk } from '../../types';
 
 /**
  * Round 7, Part 3 — regression tests for the "stale activity survives losing
@@ -126,6 +130,227 @@ describe('handleLastAdminGuardedPress', () => {
     const action = jest.fn();
     handleLastAdminGuardedPress(false, action);
     expect(action).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * computeUserDeletionImpact() / planUserRemoval() power familyStore.ts's
+ * deleteUser() (see familyStore.test.ts's "deleteUser (soft delete,
+ * preserving history)" describe block, which exercises both indirectly
+ * through the demo dataset). These tests cover the two directly, including
+ * the no-replacement-leaves-an-empty-rotation throw and the walk
+ * reassignment branches that the demo-data scenarios don't happen to hit
+ * (a walk whose linked entry was itself reassigned vs. one that falls back
+ * to the replacement directly vs. one with neither).
+ */
+function rule(overrides: Partial<ScheduleRule> = {}): ScheduleRule {
+  return {
+    id: 'rule-1',
+    familyId: 'family-1',
+    dogId: 'dog-1',
+    time: '08:00',
+    daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+    rotationUserIds: ['u1', 'u2'],
+    rotationAnchorDate: '2026-01-01',
+    sortOrder: 0,
+    active: true,
+    createdAt: '2026-01-01T00:00:00Z',
+    ...overrides,
+  };
+}
+
+function entry(overrides: Partial<ScheduleEntry> = {}): ScheduleEntry {
+  return {
+    id: 'entry-1',
+    familyId: 'family-1',
+    dogId: 'dog-1',
+    date: '2026-09-15',
+    time: '08:00',
+    responsibleUserId: 'u1',
+    createdAt: '2026-09-01T00:00:00Z',
+    ...overrides,
+  };
+}
+
+function walk(overrides: Partial<Walk> = {}): Walk {
+  return {
+    id: 'walk-1',
+    familyId: 'family-1',
+    dogId: 'dog-1',
+    date: '2026-09-15',
+    scheduledTime: '08:00',
+    responsibleUserId: 'u1',
+    status: 'pending',
+    createdAt: '2026-09-01T00:00:00Z',
+    updatedAt: '2026-09-01T00:00:00Z',
+    ...overrides,
+  };
+}
+
+const noResolve = () => {
+  throw new Error('resolveResponsibleForDate should not be called in this test');
+};
+
+describe('computeUserDeletionImpact', () => {
+  const today = '2026-09-15';
+
+  it('counts only future (not past) schedule entries where the user is responsible', () => {
+    const entries = [
+      entry({ id: 'future', date: '2026-09-16', responsibleUserId: 'u1' }),
+      entry({ id: 'today', date: today, responsibleUserId: 'u1' }),
+      entry({ id: 'past', date: '2026-09-14', responsibleUserId: 'u1' }),
+      entry({ id: 'other-user', date: '2026-09-16', responsibleUserId: 'u2' }),
+    ];
+    const impact = computeUserDeletionImpact('u1', [], entries, [], today);
+    expect(impact.futureScheduleEntryCount).toBe(2); // "future" and "today", not "past" or "other-user"
+  });
+
+  it('lists the ids of every rule whose rotation includes the user, regardless of `active`', () => {
+    const rules = [
+      rule({ id: 'r1', rotationUserIds: ['u1', 'u2'], active: true }),
+      rule({ id: 'r2', rotationUserIds: ['u1'], active: false }),
+      rule({ id: 'r3', rotationUserIds: ['u2'], active: true }),
+    ];
+    const impact = computeUserDeletionImpact('u1', rules, [], [], today);
+    expect(impact.rulesAffected).toEqual(['r1', 'r2']);
+  });
+
+  it('counts a swapped-to walk (responsibleUserId=user, but its linked entry belongs to someone else) as directly-assigned impact', () => {
+    // Mirrors a real swap: the rotation's own entry never changed owner, only
+    // the one-off walk did — see swapWalk()/swapWalksMutual() in walkActions.ts.
+    const entries = [entry({ id: 'e1', date: '2026-09-20', responsibleUserId: 'other-owner' })];
+    const walks = [walk({ id: 'w1', scheduleEntryId: 'e1', date: '2026-09-20', responsibleUserId: 'u1', status: 'pending' })];
+    const impact = computeUserDeletionImpact('u1', [], entries, walks, today);
+    expect(impact.directlyAssignedWalkCount).toBe(1);
+    expect(impact.futureScheduleEntryCount).toBe(0); // the entry itself is not owned by u1
+  });
+
+  it('does NOT double count a walk whose linked entry is also owned by the user — planUserRemoval reassigns it via the entry, no replacement required', () => {
+    const entries = [entry({ id: 'e1', date: '2026-09-20', responsibleUserId: 'u1' })];
+    const walks = [walk({ id: 'w1', scheduleEntryId: 'e1', date: '2026-09-20', responsibleUserId: 'u1', status: 'pending' })];
+    const impact = computeUserDeletionImpact('u1', [], entries, walks, today);
+    expect(impact.futureScheduleEntryCount).toBe(1);
+    expect(impact.directlyAssignedWalkCount).toBe(0);
+  });
+
+  it('counts an unplanned walk (no linked entry at all) directly assigned to the user', () => {
+    const walks = [walk({ id: 'w1', scheduleEntryId: undefined, responsibleUserId: 'u1', status: 'pending', date: '2026-09-20', isUnplanned: true })];
+    const impact = computeUserDeletionImpact('u1', [], [], walks, today);
+    expect(impact.directlyAssignedWalkCount).toBe(1);
+  });
+
+  it('ignores directly-assigned walks that are not pending or not for this user', () => {
+    const walks = [
+      walk({ id: 'done', status: 'done', responsibleUserId: 'u1', date: '2026-09-20' }),
+      walk({ id: 'other-user', status: 'pending', responsibleUserId: 'u2', date: '2026-09-20' }),
+    ];
+    const impact = computeUserDeletionImpact('u1', [], [], walks, today);
+    expect(impact.directlyAssignedWalkCount).toBe(0);
+  });
+
+  it('counts an overdue-but-still-pending walk assigned to the user — the user can never be reclaimed to resolve it once deleted, so "safe to delete" must not be reported', () => {
+    const walks = [walk({ id: 'overdue', status: 'pending', responsibleUserId: 'u1', date: '2026-09-01' })];
+    const impact = computeUserDeletionImpact('u1', [], [], walks, today);
+    expect(impact.directlyAssignedWalkCount).toBe(1);
+  });
+});
+
+describe('planUserRemoval', () => {
+  const today = '2026-09-15';
+
+  it('throws the Hebrew "sole rotation member" error, as a FamilyManagementError, when no replacement is given and removal would empty a rotation', () => {
+    const rules = [rule({ id: 'r1', rotationUserIds: ['u1'] })];
+    expect(() => planUserRemoval('u1', null, rules, [], [], today, noResolve)).toThrow(FamilyManagementError);
+    expect(() => planUserRemoval('u1', null, rules, [], [], today, noResolve)).toThrow(
+      'אי אפשר למחוק — זה בן המשפחה היחיד בסבב הזה. בחר מי יחליף אותו.'
+    );
+  });
+
+  it('with no replacement, drops the user from a multi-person rotation instead of throwing', () => {
+    const rules = [rule({ id: 'r1', rotationUserIds: ['u1', 'u2'] })];
+    const result = planUserRemoval('u1', null, rules, [], [], today, noResolve);
+    expect(result.updatedRules).toEqual([expect.objectContaining({ id: 'r1', rotationUserIds: ['u2'] })]);
+  });
+
+  it('with a replacement, substitutes them in place within the rotation rather than dropping the slot', () => {
+    const rules = [rule({ id: 'r1', rotationUserIds: ['u1', 'u2'] })];
+    const result = planUserRemoval('u1', 'u3', rules, [], [], today, noResolve);
+    expect(result.updatedRules).toEqual([expect.objectContaining({ id: 'r1', rotationUserIds: ['u3', 'u2'] })]);
+  });
+
+  it('with no replacement, a pending future walk linked to a reassigned entry picks up the entry\'s newly resolved responsible user', () => {
+    const rules = [rule({ id: 'r1', rotationUserIds: ['u1', 'u2'] })];
+    const entries = [entry({ id: 'e1', ruleId: 'r1', date: '2026-09-20', responsibleUserId: 'u1' })];
+    const walks = [walk({ id: 'w1', scheduleEntryId: 'e1', date: '2026-09-20', responsibleUserId: 'u1' })];
+    const result = planUserRemoval('u1', null, rules, entries, walks, today, () => 'u2');
+    expect(result.updatedEntries[0].responsibleUserId).toBe('u2');
+    expect(result.updatedWalks[0].responsibleUserId).toBe('u2'); // followed the reassigned entry, not left on the removed user
+  });
+
+  it('a walk pointing at an entry that was NOT reassigned (e.g. already in the past) falls back to the replacement user instead', () => {
+    const walks = [walk({ id: 'w1', scheduleEntryId: 'past-entry', date: '2026-09-20', responsibleUserId: 'u1' })];
+    // entries is empty, so the walk's scheduleEntryId can never resolve to an
+    // updated entry — exercises the `linkedEntry` lookup finding nothing.
+    const result = planUserRemoval('u1', 'u3', [], [], walks, today, noResolve);
+    expect(result.updatedWalks[0].responsibleUserId).toBe('u3');
+  });
+
+  it('a pending walk with no linked entry (unplanned) falls back directly to the replacement user', () => {
+    const walks = [walk({ id: 'w1', scheduleEntryId: undefined, responsibleUserId: 'u1', isUnplanned: true })];
+    const result = planUserRemoval('u1', 'u3', [], [], walks, today, noResolve);
+    expect(result.updatedWalks).toEqual([expect.objectContaining({ id: 'w1', responsibleUserId: 'u3' })]);
+  });
+
+  it('a pending walk with neither a linked entry nor a replacement user is left out of updatedWalks entirely', () => {
+    const walks = [walk({ id: 'w1', scheduleEntryId: undefined, responsibleUserId: 'u1' })];
+    const result = planUserRemoval('u1', null, [], [], walks, today, noResolve);
+    expect(result.updatedWalks).toHaveLength(0);
+  });
+
+  it('only reassigns entries that both belong to the removed user AND are not already in the past', () => {
+    const entries = [
+      entry({ id: 'mine-future', date: '2026-09-20', responsibleUserId: 'u1' }),
+      entry({ id: 'other-user-future', date: '2026-09-20', responsibleUserId: 'u2' }),
+      entry({ id: 'mine-past', date: '2026-09-01', responsibleUserId: 'u1' }),
+    ];
+    const result = planUserRemoval('u1', 'u3', [], entries, [], today, noResolve);
+    expect(result.updatedEntries.map((e) => e.id)).toEqual(['mine-future']);
+  });
+
+  it('leaves rules that do not include the removed user untouched (not even returned in updatedRules)', () => {
+    const rules = [rule({ id: 'r1', rotationUserIds: ['u2', 'u3'] })];
+    const result = planUserRemoval('u1', 'u4', rules, [], [], today, noResolve);
+    expect(result.updatedRules).toHaveLength(0);
+  });
+
+  it('with no replacement, a future entry whose rule has no fallback resolver match is left out of updatedEntries rather than nulled out', () => {
+    // ruleId points at a rule that was never in `rules` at all, so
+    // rulesById has no entry for it — the same "no rule to fall back on"
+    // situation as an entry with no ruleId.
+    const entries = [entry({ id: 'e1', ruleId: 'missing-rule', date: '2026-09-20', responsibleUserId: 'u1' })];
+    const result = planUserRemoval('u1', null, [], entries, [], today, noResolve);
+    expect(result.updatedEntries).toHaveLength(0);
+  });
+
+  it('ignores walks that are not pending or not for this user', () => {
+    const walks = [
+      walk({ id: 'done', status: 'done', responsibleUserId: 'u1', date: '2026-09-20' }),
+      walk({ id: 'other-user', status: 'pending', responsibleUserId: 'u2', date: '2026-09-20' }),
+    ];
+    const result = planUserRemoval('u1', 'u3', [], [], walks, today, noResolve);
+    expect(result.updatedWalks).toHaveLength(0);
+  });
+
+  it('reassigns an overdue-but-still-pending walk to the replacement user, not just future ones — left behind it could never be resolved again once the user is deleted', () => {
+    const walks = [walk({ id: 'overdue', status: 'pending', responsibleUserId: 'u1', date: '2026-09-01' })];
+    const result = planUserRemoval('u1', 'u3', [], [], walks, today, noResolve);
+    expect(result.updatedWalks).toEqual([expect.objectContaining({ id: 'overdue', responsibleUserId: 'u3' })]);
+  });
+
+  it('with no replacement, an overdue pending walk with no linked entry to fall back on is left out of updatedWalks entirely (same as an unresolved future one)', () => {
+    const walks = [walk({ id: 'overdue', status: 'pending', responsibleUserId: 'u1', date: '2026-09-01', scheduleEntryId: undefined })];
+    const result = planUserRemoval('u1', null, [], [], walks, today, noResolve);
+    expect(result.updatedWalks).toHaveLength(0);
   });
 });
 

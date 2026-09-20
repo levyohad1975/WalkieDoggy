@@ -1,4 +1,4 @@
-import { CELEBRATION_ANIMATION_MANIFEST } from '../celebrationAnimationManifest';
+import { CELEBRATION_ANIMATION_MANIFEST, animationManifestFor } from '../celebrationAnimationManifest';
 import { CLEAN_MASCOT_MASTER_ASSET, CLEAN_MASCOT_REPLACEMENT_TARGETS } from '../mascotAssetManifest';
 
 describe('celebration animation manifest', () => {
@@ -27,5 +27,9 @@ describe('celebration animation manifest', () => {
       'src/components/celebrationAssets.ts',
       'assets/icon.png',
     ]));
+  });
+
+  it('animationManifestFor returns undefined for an id with no matching frame pack', () => {
+    expect(animationManifestFor({ id: 'not-a-real-celebration-id' })).toBeUndefined();
   });
 });

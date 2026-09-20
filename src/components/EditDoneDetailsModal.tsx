@@ -3,6 +3,7 @@ import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, St
 import { RtlText } from './RtlText';
 import type { FamilyUser, Walk } from '../types';
 import { colors } from '../theme/colors';
+import { radii, spacing, typography } from '../theme/tokens';
 import { Button } from './Button';
 import { Avatar } from './Avatar';
 
@@ -59,10 +60,15 @@ export function EditDoneDetailsModal({
           RequestTimeChangeModal.tsx — wraps the existing backdrop/sheet/
           ScrollView structure unchanged. */}
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable
+          style={styles.backdrop}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="סגירת עריכת פרטי הטיול"
+        >
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView keyboardShouldPersistTaps="handled">
-              <RtlText style={styles.title}>עריכת פרטי הטיול</RtlText>
+              <RtlText style={styles.title} accessibilityRole="header">עריכת פרטי הטיול</RtlText>
             <RtlText style={styles.subtitle}>
               {walk.date} · {walk.scheduledTime}
             </RtlText>
@@ -118,6 +124,7 @@ export function EditDoneDetailsModal({
               style={styles.noteInput}
               multiline
               textAlign="right"
+              accessibilityLabel="הערה"
             />
 
             <View style={styles.actions}>
@@ -144,6 +151,7 @@ export function EditDoneDetailsModal({
               <Button
                 label="🗑️ מחיקת הטיול"
                 variant="danger"
+                accessibilityHint="יוצג אישור לפני מחיקה לצמיתות של הטיול"
                 onPress={() =>
                   Alert.alert('למחוק את הטיול?', 'הפעולה תסיר את הטיול הזה לצמיתות. אי אפשר לבטל.', [
                     { text: 'ביטול', style: 'cancel' },
@@ -164,28 +172,28 @@ export function EditDoneDetailsModal({
 const styles = StyleSheet.create({
   flexFull: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '80%' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, maxHeight: '80%' },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
-  subtitle: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: 4, marginBottom: 12 },
-  label: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: 16, marginBottom: 8, textAlign: 'right' },
-  toggleRow: { flexDirection: 'row', gap: 12 },
+  subtitle: { fontSize: typography.meta.fontSize, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xs, marginBottom: spacing.md },
+  label: { fontSize: typography.meta.fontSize, fontWeight: '700', color: colors.textSecondary, marginTop: spacing.lg, marginBottom: spacing.sm, textAlign: 'right' },
+  toggleRow: { flexDirection: 'row', gap: spacing.md },
   toggle: {
     flex: 1,
     minHeight: 72,
-    borderRadius: 18,
+    borderRadius: radii.lg,
     backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: spacing.xs,
     borderWidth: 2,
     borderColor: 'transparent',
   },
   toggleActivePee: { backgroundColor: colors.statusCurrentBg, borderColor: colors.primary },
   toggleActivePoop: { backgroundColor: colors.statusSkippedBg, borderColor: colors.statusSkipped },
   toggleEmoji: { fontSize: 28 },
-  toggleLabel: { fontSize: 14, fontWeight: '700', color: colors.textSecondary },
+  toggleLabel: { fontSize: typography.cardTitle.fontSize, fontWeight: typography.cardTitle.fontWeight, color: colors.textSecondary },
   toggleLabelActive: { color: colors.textPrimary },
-  memberRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  memberRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   memberChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -198,17 +206,17 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   memberChipActive: { borderColor: colors.primary, backgroundColor: colors.statusCurrentBg },
-  memberChipName: { fontSize: 13, fontWeight: '700', color: colors.textPrimary, maxWidth: 90 },
+  memberChipName: { fontSize: typography.meta.fontSize, fontWeight: '700', color: colors.textPrimary, maxWidth: 90 },
   noteInput: {
     backgroundColor: colors.surfaceMuted,
-    borderRadius: 14,
+    borderRadius: radii.md,
     padding: 14,
     fontSize: 15,
     color: colors.textPrimary,
     minHeight: 60,
     textAlignVertical: 'top',
   },
-  actions: { flexDirection: 'row', gap: 12, marginTop: 22 },
+  actions: { flexDirection: 'row', gap: spacing.md, marginTop: 22 },
   flex: { flex: 1 },
-  deleteButton: { marginTop: 12 },
+  deleteButton: { marginTop: spacing.md },
 });

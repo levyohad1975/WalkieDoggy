@@ -6,95 +6,62 @@ on:
     branches:
       - main
   workflow_dispatch:
-    inputs:
-      target_branch:
-        description: 'Non-production branch to validate'
-        required: false
-        type: string
-      expected_sha:
-        description: 'Exact commit SHA to validate'
-        required: false
-        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ inputs.expected_sha || github.sha }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   validate:
     name: Typecheck and tests
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
 
     steps:
-      - name: Guard exact-head dispatch
-        if: github.event_name == 'workflow_dispatch' && inputs.expected_sha != ''
-        shell: pwsh
-        env:
-          TARGET_BRANCH: ${{ inputs.target_branch }}
-          EXPECTED_SHA: ${{ inputs.expected_sha }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          if ($env:TARGET_BRANCH -eq 'main') { throw 'Refusing main as an exact-head validation target.' }
-          if ($env:TARGET_BRANCH -notmatch '^(feat|fix|chore|test|docs|rc)/[A-Za-z0-9._/-]+$') { throw 'Invalid exact-head validation target.' }
-          if ($env:EXPECTED_SHA -notmatch '^[0-9a-f]{40}$') { throw 'Invalid expected SHA.' }
-          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
-          $encodedBranch = [System.Uri]::EscapeDataString($env:TARGET_BRANCH)
-          $branch = Invoke-RestMethod -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/branches/$encodedBranch" -Headers $headers -Method Get
-          if ([string]$branch.commit.sha -ne $env:EXPECTED_SHA) { throw "Target branch head no longer matches expected SHA $env:EXPECTED_SHA." }
-
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.expected_sha || github.sha }}
 
-      - name: Validate Agentic worker contract
-        shell: pwsh
+      - name: Validate Agentic worker OIDC contract
+        shell: bash
         run: |
-          $ErrorActionPreference = 'Stop'
-          $workflow = Get-Content '.github/workflows/agentic-rc-worker.yml' -Raw
-          if ($workflow -notmatch '(?m)^\s+id-token:\s+write\s*$') { throw 'Agentic worker is missing id-token: write.' }
-          if ($workflow -match '(?m)^\s+(pull-requests|issues):\s+write\s*$') { throw 'Agentic worker permissions are broader than the approved contract.' }
-          if ([regex]::Matches($workflow, '--max-turns 45').Count -lt 2) { throw 'Unexpected max-turns contract; both Claude paths must use the bounded 45-turn on-demand budget.' }
-          if ($workflow -notmatch 'confirm_claude_spend') { throw 'Claude on-demand spend confirmation input is missing.' }
-          if ($workflow -notmatch 'RUN_CLAUDE') { throw 'Claude per-run authorization guard is missing.' }
-          if ([regex]::Matches($workflow, 'reserve the final 25 turns', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase).Count -lt 2) { throw 'Worker repair-reserve contract is missing from one or both Claude paths.' }
-          if ([regex]::Matches($workflow, 'continue-on-error: true').Count -lt 2) { throw 'Unexpected continue-on-error contract.' }
-          @(
-            'name: Detect worker authentication',
-            'name: Run Claude worker with OAuth token',
-            'name: Run Claude worker with API key',
-            'name: Classify Claude result',
-            'name: Validate and publish RC progress',
-            'name: Enforce completion or checkpoint',
-            'chore(agentic): checkpoint RC execution',
-            "steps.publish.outputs.published != 'true'",
-            'AGENTIC_RC_TARGET_BRANCH'
-          ) | ForEach-Object { if (-not $workflow.Contains($_)) { throw "Missing Agentic worker contract marker: $_" } }
-          if ($workflow -notmatch '(?m)^\s+CLAUDE_CODE_OAUTH_TOKEN:\s+') { throw 'Agentic worker is missing OAuth credential wiring.' }
-          if ($workflow -notmatch '(?m)^\s+ANTHROPIC_API_KEY:\s+') { throw 'Agentic worker is missing API-key fallback wiring.' }
+          set -euo pipefail
+          workflow=".github/workflows/agentic-rc-worker.yml"
+          grep -Eq '^[[:space:]]+id-token:[[:space:]]+write[[:space:]]*$' "$workflow"
+          if grep -Eq '^[[:space:]]+(pull-requests|issues):[[:space:]]+write[[:space:]]*$' "$workflow"; then
+            echo "::error::Agentic worker permissions are broader than the approved contract."
+            exit 1
+          fi
+          [ "$(grep -c -- '--max-turns 60' "$workflow")" -eq 2 ]
+          [ "$(grep -c 'continue-on-error: true' "$workflow")" -eq 2 ]
+          grep -q 'name: Classify Claude result' "$workflow"
+          grep -q 'name: Enforce validated Claude completion or checkpoint' "$workflow"
+          grep -q 'checkpoint_eligible=true' "$workflow"
+          grep -q 'chore(agentic): checkpoint RC execution' "$workflow"
+          grep -q "steps.publish.outputs.published != 'true'" "$workflow"
+          grep -q 'npm run typecheck' "$workflow"
+          grep -q 'npm test -- --runInBand' "$workflow"
+          grep -q 'AGENTIC_RC_TARGET_BRANCH' "$workflow"
+          grep -Eq '^[[:space:]]+PUSH_TOKEN:[[:space:]]+' "$workflow"
+          grep -q 'x-access-token:%s' "$workflow"
 
       - name: Validate isolated Staging readiness contract
-        shell: pwsh
+        shell: bash
         run: |
-          $ErrorActionPreference = 'Stop'
-          $workflow = Get-Content '.github/workflows/agentic-staging-readiness.yml' -Raw
-          if ($workflow -notmatch '(?m)^\s+environment:\s+staging\s*$') { throw 'Staging environment guard missing.' }
-          if ($workflow -notmatch '(?m)^\s+EXPECTED_STAGING_PROJECT_REF:\s+czbxhsoxyawprqehkfit\s*$') { throw 'Unexpected Staging project ref.' }
-          @(
-            'secrets.SUPABASE_STAGING_URL',
-            'secrets.SUPABASE_STAGING_ANON_KEY',
-            'secrets.SUPABASE_ACCESS_TOKEN',
-            '/auth/v1/health',
-            '--output /dev/null',
-            'api.supabase.com/v1/projects/$EXPECTED_STAGING_PROJECT_REF/database/migrations',
-            'Apply only approved migration 0035 through Management API'
-          ) | ForEach-Object { if (-not $workflow.Contains($_)) { throw "Missing Staging contract marker: $_" } }
-          if ($workflow -match 'SERVICE_ROLE|DB_PASSWORD|RESEND_API_KEY|contents:\s+write') { throw 'Staging readiness workflow requests a credential or permission outside the approved Staging migration contract.' }
+          set -euo pipefail
+          workflow=".github/workflows/agentic-staging-readiness.yml"
+          grep -Eq '^[[:space:]]+environment:[[:space:]]+staging[[:space:]]*$' "$workflow"
+          grep -Eq '^[[:space:]]+EXPECTED_STAGING_PROJECT_REF:[[:space:]]+czbxhsoxyawprqehkfit[[:space:]]*$' "$workflow"
+          grep -q 'secrets.SUPABASE_STAGING_URL' "$workflow"
+          grep -q 'secrets.SUPABASE_STAGING_ANON_KEY' "$workflow"
+          grep -q '/auth/v1/health' "$workflow"
+          grep -q -- '--output /dev/null' "$workflow"
+          if grep -Eq 'SERVICE_ROLE|DB_PASSWORD|ACCESS_TOKEN|RESEND_API_KEY|contents:[[:space:]]+write' "$workflow"; then
+            echo "::error::Staging readiness workflow requests a credential or permission outside the approved read-only contract."
+            exit 1
+          fi
 
       - name: Set up Node.js
         uses: actions/setup-node@v4

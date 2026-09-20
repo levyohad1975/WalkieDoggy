@@ -59,12 +59,26 @@ export interface SystemAdminAuditEntry {
 }
 
 export interface SystemAdminFamilyDetail {
-  family: { id: string; name: string; inviteCode: string; createdAt: string } | null;
+  family: { id: string; name: string; inviteCode: string; createdAt: string; approvalStatus: string } | null;
   dog: { id: string; name: string; photoUrl: string | null; sex: 'male' | 'female' | null; walksPerDay: number } | null;
   members: SystemAdminFamilyMember[];
   walks: SystemAdminWalkSummary[];
   activeRequests: SystemAdminActiveRequest[];
   recentAudit: SystemAdminAuditEntry[];
+}
+
+export interface SystemAdminEmailDeliveryLogEntry {
+  id: string;
+  familyId: string | null;
+  authUserId: string | null;
+  messageType: 'family_welcome' | 'system_owner_new_family';
+  recipientEmail: string;
+  provider: string;
+  providerMessageId: string | null;
+  status: string;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /**
@@ -107,6 +121,27 @@ export async function listSystemAdminFamilies(search?: string): Promise<SystemAd
   }));
 }
 
+/**
+ * Wraps migration 0032's system_admin_set_family_approval(), the only
+ * server-side way to move a family out of 'pending'/'rejected' into 'active'
+ * (or vice versa into 'rejected'). Until this wrapper + its SystemAdminScreen
+ * call site, this RPC was defined and granted but never called from any
+ * client code — with AUTO_APPROVE_NEW_FAMILIES=false a pending family had no
+ * in-app path to ever become active. Throws (never silently no-ops) on a
+ * denial or an invalid target status, matching every other RPC wrapper here.
+ */
+export async function setSystemAdminFamilyApproval(
+  familyId: string,
+  approvalStatus: 'active' | 'rejected'
+): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.rpc('system_admin_set_family_approval', {
+    p_family_id: familyId,
+    p_approval_status: approvalStatus,
+  });
+  if (error) throw error;
+}
+
 export async function getSystemAdminFamilyDetail(familyId: string): Promise<SystemAdminFamilyDetail> {
   const client = requireSupabase();
   const { data, error } = await client.rpc('system_admin_get_family_detail', { p_family_id: familyId });
@@ -120,4 +155,44 @@ export async function getSystemAdminFamilyDetail(familyId: string): Promise<Syst
     activeRequests: detail.activeRequests ?? [],
     recentAudit: detail.recentAudit ?? [],
   };
+}
+
+/**
+ * Migration 0034's read-only counterpart to record_email_delivery_attempt()/
+ * update_email_delivery_status() (both service-role-only, called from the
+ * Edge Function and the Resend webhook function respectively) — this is the
+ * "admin-gated read RPC" 0034's own table comment refers to as the only
+ * client-reachable way to see email_delivery_log. p_limit is clamped
+ * server-side to [1, 200]; omit to get the server's own default of 50.
+ */
+export async function getSystemAdminEmailDeliveryLog(limit?: number): Promise<SystemAdminEmailDeliveryLogEntry[]> {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc('system_admin_list_email_delivery_log', { p_limit: limit ?? null });
+  if (error) throw error;
+  const rows = (data ?? []) as Array<{
+    id: string;
+    family_id: string | null;
+    auth_user_id: string | null;
+    message_type: 'family_welcome' | 'system_owner_new_family';
+    recipient_email: string;
+    provider: string;
+    provider_message_id: string | null;
+    status: string;
+    error: string | null;
+    created_at: string;
+    updated_at: string;
+  }>;
+  return rows.map((r) => ({
+    id: r.id,
+    familyId: r.family_id,
+    authUserId: r.auth_user_id,
+    messageType: r.message_type,
+    recipientEmail: r.recipient_email,
+    provider: r.provider,
+    providerMessageId: r.provider_message_id,
+    status: r.status,
+    error: r.error,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }));
 }

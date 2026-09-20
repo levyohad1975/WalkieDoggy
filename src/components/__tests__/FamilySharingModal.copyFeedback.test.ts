@@ -14,7 +14,7 @@ describe('FamilySharingModal — copy feedback + manual-copy fallback', () => {
   });
 
   it('the invite code text itself is selectable — a working manual-copy path independent of the Clipboard API', () => {
-    expect(source).toMatch(/<RtlText style=\{styles\.codeText\} selectable>/);
+    expect(source).toMatch(/<RtlText style=\{\[styles\.codeText, styles\.ltrText\]\} selectable>/);
   });
 
   it('feedback is opt-in per render (idle shows nothing) and defaults to idle when the caller passes nothing', () => {

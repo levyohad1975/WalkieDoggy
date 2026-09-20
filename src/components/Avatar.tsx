@@ -15,7 +15,13 @@ export function Avatar({ emoji, color, photoUrl, size = 44 }: AvatarProps) {
   const showPhoto = Boolean(photoUrl) && !failed;
 
   return (
+    // Decorative: this component has no `name` prop, so it can't build a
+    // meaningful accessibilityLabel, and every caller already shows the
+    // person's/dog's name as adjacent text (or as an interactive parent's
+    // own label). Without `accessible={false}`, the bare photo (or emoji
+    // fallback Text) becomes its own untitled screen-reader stop.
     <View
+      accessible={false}
       style={[
         styles.circle,
         { width: size, height: size, borderRadius: size / 2, backgroundColor: color + '26', borderColor: color },

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
+import { radii, spacing, typography } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 import type { FamilyUser } from '../types';
@@ -67,9 +68,14 @@ export function RemindersModal({
   };
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
+      <Pressable
+        style={styles.backdrop}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="סגירת חלון תזכורות"
+      >
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <RtlText style={styles.title}>🔔 תזכורות</RtlText>
+          <RtlText style={styles.title} accessibilityRole="header">🔔 תזכורות</RtlText>
           <ScrollView style={styles.scroll}>
 {Platform.OS === 'web' && (
   <View style={styles.webPushSection}>
@@ -123,7 +129,7 @@ export function RemindersModal({
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '75%' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, maxHeight: '75%' },
   // BUG FIX (real-device regression) — see DogDetailsModal.tsx's matching
   // comment for the full mechanism: `flex: 1` here forced the ScrollView's
   // flex-basis to 0 inside a `sheet` whose height is auto (capped only by
@@ -132,19 +138,19 @@ const styles = StyleSheet.create({
   // restores content-hugging sizing while still letting it scroll/shrink
   // down to the maxHeight cap once there are enough users to overflow it.
   scroll: { flexGrow: 0, flexShrink: 1 },
-  title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 8 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 4 },
-  name: { flex: 1, fontSize: 16, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
+  title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: spacing.sm },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: 10, paddingHorizontal: spacing.xs },
+  name: { flex: 1, fontSize: typography.body.fontSize, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
 webPushSection: {
   paddingVertical: 14,
-  paddingHorizontal: 4,
+  paddingHorizontal: spacing.xs,
   borderBottomWidth: StyleSheet.hairlineWidth,
   borderBottomColor: colors.border,
-  marginBottom: 8,
+  marginBottom: spacing.sm,
 },
 
 webPushTitle: {
-  fontSize: 16,
+  fontSize: typography.body.fontSize,
   fontWeight: '700',
   color: colors.textPrimary,
   textAlign: 'right',
@@ -152,10 +158,10 @@ webPushTitle: {
 },
 
 webPushText: {
-  fontSize: 14,
+  fontSize: typography.cardTitle.fontSize,
   color: colors.textSecondary,
   textAlign: 'right',
-  lineHeight: 20,
+  lineHeight: typography.cardTitle.lineHeight,
 },
 
 webPushButton: {

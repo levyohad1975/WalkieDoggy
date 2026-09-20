@@ -26,6 +26,14 @@ export interface SwapRequestRow {
   created_at: string;
   resolved_at: string | null;
   requester_seen_at: string | null;
+  /** Snapshot of both walks at request-creation time (migration 0018) — approve_swap_request()
+   *  re-validates the live walks against these before approving; computeRequestLifecycle()
+   *  mirrors that same check so a stale request stops showing as actionable before the user
+   *  taps approve and hits the server's rejection instead. */
+  expected_responsible_user_id: string;
+  expected_scheduled_time: string;
+  expected_target_responsible_user_id: string | null;
+  expected_target_scheduled_time: string | null;
 }
 
 export interface TimeChangeRequestRow {

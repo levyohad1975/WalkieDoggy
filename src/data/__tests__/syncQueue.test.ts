@@ -683,3 +683,246 @@ describe('SyncQueue — a later successful saveWalk clears a stale historical co
     expect(await queue.getConflictForWalk('walk-z')).toBeUndefined();
   });
 });
+
+/**
+ * Coverage-completion pass: flush()'s re-entrant guard and several of
+ * apply()'s SyncOperation-to-Repository-method routes had no direct test —
+ * OfflineFirstRepository's own tests stub the queue rather than exercising
+ * SyncQueue.flush()/apply() itself for these op types, so most of the
+ * switch in apply() had never actually run.
+ */
+describe('SyncQueue — flush() re-entrant guard and remaining apply() routes', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    setSyncQueueActorGetter(() => 'test-user');
+  });
+
+  afterEach(() => {
+    setSyncQueueActorGetter(() => null);
+  });
+
+  it('returns the current remaining count without touching remote when a flush is already in progress', async () => {
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'upsertUser', payload: fakeUser('a') });
+    await queue.enqueue({ type: 'upsertUser', payload: fakeUser('b') });
+    (queue as unknown as { flushing: boolean }).flushing = true;
+
+    const upsertUser = jest.fn().mockResolvedValue(undefined);
+    const result = await queue.flush(stubRemote({ upsertUser }));
+
+    expect(result).toEqual({ succeeded: 0, remaining: 2, conflicted: 0, quarantined: 0 });
+    expect(upsertUser).not.toHaveBeenCalled();
+  });
+
+  it('routes deleteUser, upsertDog, upsertScheduleRule, deleteScheduleRule, addScheduleEntries, deleteScheduleEntry, and updateUserReminderSetting to their matching remote methods', async () => {
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'deleteUser', payload: { userId: 'user-del' } });
+    await queue.enqueue({
+      type: 'upsertDog',
+      payload: { id: 'dog-new', familyId: 'family-main', name: 'Rex', walksPerDay: 2 },
+    });
+    await queue.enqueue({
+      type: 'upsertScheduleRule',
+      payload: {
+        id: 'rule-new',
+        familyId: 'family-main',
+        dogId: 'dog-1',
+        time: '08:00',
+        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        rotationUserIds: ['user-a'],
+        rotationAnchorDate: '2026-08-30',
+        sortOrder: 0,
+        active: true,
+        createdAt: new Date().toISOString(),
+      },
+    });
+    await queue.enqueue({ type: 'deleteScheduleRule', payload: { ruleId: 'rule-del' } });
+    await queue.enqueue({
+      type: 'addScheduleEntries',
+      payload: [
+        {
+          id: 'entry-new',
+          familyId: 'family-main',
+          dogId: 'dog-1',
+          date: '2026-09-01',
+          time: '08:00',
+          responsibleUserId: 'user-a',
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    });
+    await queue.enqueue({ type: 'deleteScheduleEntry', payload: { entryId: 'entry-del' } });
+    await queue.enqueue({ type: 'updateUserReminderSetting', payload: { userId: 'user-rem', enabled: false } });
+
+    const deleteUser = jest.fn().mockResolvedValue(undefined);
+    const upsertDog = jest.fn().mockResolvedValue(undefined);
+    const upsertScheduleRule = jest.fn().mockResolvedValue(undefined);
+    const deleteScheduleRule = jest.fn().mockResolvedValue(undefined);
+    const addScheduleEntries = jest.fn().mockResolvedValue(undefined);
+    const deleteScheduleEntry = jest.fn().mockResolvedValue(undefined);
+    const updateUserReminderSetting = jest.fn().mockResolvedValue(undefined);
+    const remote = stubRemote({
+      deleteUser,
+      upsertDog,
+      upsertScheduleRule,
+      deleteScheduleRule,
+      addScheduleEntries,
+      deleteScheduleEntry,
+      updateUserReminderSetting,
+    });
+
+    const result = await queue.flush(remote);
+
+    expect(deleteUser).toHaveBeenCalledWith('user-del');
+    expect(upsertDog).toHaveBeenCalledWith(expect.objectContaining({ id: 'dog-new' }));
+    expect(upsertScheduleRule).toHaveBeenCalledWith(expect.objectContaining({ id: 'rule-new' }));
+    expect(deleteScheduleRule).toHaveBeenCalledWith('rule-del');
+    expect(addScheduleEntries).toHaveBeenCalledWith([expect.objectContaining({ id: 'entry-new' })]);
+    expect(deleteScheduleEntry).toHaveBeenCalledWith('entry-del');
+    expect(updateUserReminderSetting).toHaveBeenCalledWith('user-rem', false);
+    expect(result).toEqual({ succeeded: 7, remaining: 0, conflicted: 0, quarantined: 0 });
+  });
+
+  it("routes a freshly-enqueued deleteFamilyMember op to remote.deleteFamilyMember (apply()'s own dispatch, distinct from load()'s legacy-discard path, which only ever runs on the FIRST load — see discardLegacyDeleteFamilyMember's doc comment)", async () => {
+    const queue = new SyncQueue();
+    const payload = { userId: 'user-x', updatedRules: [], updatedEntries: [], updatedWalks: [] };
+    await queue.enqueue({ type: 'deleteFamilyMember', payload });
+
+    const deleteFamilyMember = jest.fn().mockResolvedValue(undefined);
+    const result = await queue.flush(stubRemote({ deleteFamilyMember }));
+
+    expect(deleteFamilyMember).toHaveBeenCalledWith(payload);
+    expect(result).toEqual({ succeeded: 1, remaining: 0, conflicted: 0, quarantined: 0 });
+  });
+
+  it('routes deleteWalk to remote.deleteWalk when present', async () => {
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'deleteWalk', payload: { walkId: 'walk-del' } });
+
+    const deleteWalk = jest.fn().mockResolvedValue(undefined);
+    const result = await queue.flush(stubRemote({ deleteWalk }));
+
+    expect(deleteWalk).toHaveBeenCalledWith('walk-del');
+    expect(result).toEqual({ succeeded: 1, remaining: 0, conflicted: 0, quarantined: 0 });
+  });
+
+  it('treats a queued deleteWalk as a harmless no-op success when remote has no deleteWalk method (optional chaining)', async () => {
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'deleteWalk', payload: { walkId: 'walk-del' } });
+
+    const result = await queue.flush(stubRemote()); // base stub never sets deleteWalk
+
+    expect(result).toEqual({ succeeded: 1, remaining: 0, conflicted: 0, quarantined: 0 });
+  });
+
+  it('hasClaimedActor reflects whether the wired actor-getter currently returns a profile id', () => {
+    const queue = new SyncQueue();
+
+    setSyncQueueActorGetter(() => null);
+    expect(queue.hasClaimedActor()).toBe(false);
+
+    setSyncQueueActorGetter(() => 'user-a');
+    expect(queue.hasClaimedActor()).toBe(true);
+  });
+});
+
+/**
+ * Coverage-completion pass, part 2: isPermanentError's class-28 branch, a
+ * non-Error thrown value, and reloading an already-persisted conflict/
+ * quarantine list from a prior session — none of these branches were hit by
+ * any existing test.
+ */
+describe('SyncQueue — isPermanentError class 28, non-Error thrown values, and reloading persisted conflicts/quarantine', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    setSyncQueueActorGetter(() => 'test-user');
+  });
+
+  afterEach(() => {
+    setSyncQueueActorGetter(() => null);
+  });
+
+  it('treats a class-28 (invalid_authorization_specification) Postgres code as a permanent conflict, not a retryable failure', async () => {
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'upsertUser', payload: fakeUser('a') });
+
+    const authError = Object.assign(new Error('invalid authorization specification'), { code: '28000' });
+    const result = await queue.flush(stubRemote({ upsertUser: jest.fn().mockRejectedValue(authError) }));
+
+    expect(result).toEqual({ succeeded: 0, remaining: 0, conflicted: 1, quarantined: 0 });
+    const conflicts = await queue.getConflicts();
+    expect(conflicts[0].code).toBe('28000');
+  });
+
+  it('treats a class-P0 (P0001, a bare plpgsql "raise exception") Postgres code as a permanent conflict, not a retryable failure', async () => {
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'saveWalk', payload: fakeWalk('w1') });
+    await queue.enqueue({ type: 'upsertUser', payload: fakeUser('a') });
+
+    const businessRuleError = Object.assign(new Error('invalid status transition'), { code: 'P0001' });
+    const result = await queue.flush(
+      stubRemote({
+        saveWalk: jest.fn().mockRejectedValue(businessRuleError),
+        upsertUser: jest.fn().mockResolvedValue(undefined),
+      })
+    );
+
+    // the P0001 saveWalk is dropped as a permanent conflict, not left queued
+    // to `break` the loop and block the later upsertUser behind it.
+    expect(result).toEqual({ succeeded: 1, remaining: 0, conflicted: 1, quarantined: 0 });
+    const conflicts = await queue.getConflicts();
+    expect(conflicts[0].code).toBe('P0001');
+  });
+
+  it('treats a class-22 (22P02 invalid_text_representation) Postgres code as a permanent conflict, not a retryable failure', async () => {
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'saveWalk', payload: fakeWalk('w1', { durationMinutes: 20.5 }) });
+    await queue.enqueue({ type: 'upsertUser', payload: fakeUser('a') });
+
+    const invalidIntError = Object.assign(new Error('invalid input syntax for type integer: "20.5"'), { code: '22P02' });
+    const result = await queue.flush(
+      stubRemote({
+        saveWalk: jest.fn().mockRejectedValue(invalidIntError),
+        upsertUser: jest.fn().mockResolvedValue(undefined),
+      })
+    );
+
+    // the 22P02 saveWalk (e.g. a non-integer duration reaching
+    // walks.duration_minutes) is dropped as a permanent conflict, not left
+    // queued to `break` the loop and block the later upsertUser behind it.
+    expect(result).toEqual({ succeeded: 1, remaining: 0, conflicted: 1, quarantined: 0 });
+    const conflicts = await queue.getConflicts();
+    expect(conflicts[0].code).toBe('22P02');
+  });
+
+  it('records a conflict message via String(error) when the thrown value is not an Error instance', async () => {
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'upsertUser', payload: fakeUser('a') });
+
+    const result = await queue.flush(stubRemote({ upsertUser: jest.fn().mockRejectedValue({ code: '23505' }) }));
+
+    expect(result).toEqual({ succeeded: 0, remaining: 0, conflicted: 1, quarantined: 0 });
+    const conflicts = await queue.getConflicts();
+    expect(conflicts[0].message).toBe(String({ code: '23505' }));
+  });
+
+  it('getConflicts() parses an already-persisted conflict list from a prior session', async () => {
+    const persisted = [
+      { op: { type: 'upsertUser', payload: fakeUser('a') }, code: '23505', message: 'stale', failedAt: new Date().toISOString() },
+    ];
+    await AsyncStorage.setItem('dog-walk-family:sync-conflicts:v1', JSON.stringify(persisted));
+
+    const queue = new SyncQueue();
+    expect(await queue.getConflicts()).toEqual(persisted);
+  });
+
+  it('getQuarantined() parses an already-persisted quarantine list from a prior session', async () => {
+    const persisted = [
+      { op: { type: 'upsertUser', payload: fakeUser('a') }, quarantinedAt: new Date().toISOString(), reason: 'stale' },
+    ];
+    await AsyncStorage.setItem('dog-walk-family:sync-quarantine:v1', JSON.stringify(persisted));
+
+    const queue = new SyncQueue();
+    expect(await queue.getQuarantined()).toEqual(persisted);
+  });
+});

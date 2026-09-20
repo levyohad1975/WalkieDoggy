@@ -59,6 +59,14 @@
     ],
     "transformIgnorePatterns": [
       "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg)"
+    ],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "<rootDir>/src/lib/__tests__/__scratch_platform_probe.test.ts",
+      "<rootDir>/src/lib/__tests__/__scratch_pushTokens_probe.test.ts",
+      "<rootDir>/src/notifications/__tests__/__scratch_isolate_probe.test.ts",
+      "<rootDir>/src/notifications/__tests__/debugExpoConstants.test.ts",
+      "<rootDir>/src/notifications/__tests__/debugExpoNotifications.test.ts"
     ]
   }
 }

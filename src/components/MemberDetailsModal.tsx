@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Switch, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
+import { radii, spacing, typography } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 import { ConfirmModal } from './ConfirmModal';
@@ -299,11 +300,16 @@ export function MemberDetailsModal({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
+      <Pressable
+        style={styles.backdrop}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel={`סגירת פרטי ${user.name}`}
+      >
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <View style={styles.header}>
             <Avatar emoji={user.avatar} color={user.color} photoUrl={user.photoUrl} size={72} />
-            <RtlText style={styles.name}>{user.name}</RtlText>
+            <RtlText style={styles.name} accessibilityRole="header">{user.name}</RtlText>
             {roleLabel ? <RtlText style={styles.roleBadge}>{roleLabel}</RtlText> : null}
             {presence.label ? (
               <RtlText style={styles.presenceText}>
@@ -330,6 +336,8 @@ export function MemberDetailsModal({
                     role === 'member' && styles.roleOptionActive,
                     role === 'admin' && isLastAdmin && styles.roleOptionDisabled,
                   ]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: role === 'member' }}
                 >
                   <RtlText style={[styles.roleOptionText, role === 'member' && styles.roleOptionTextActive]}>
                     בן משפחה
@@ -343,6 +351,8 @@ export function MemberDetailsModal({
                     }
                   }}
                   style={[styles.roleOption, role === 'admin' && styles.roleOptionActive]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: role === 'admin' }}
                 >
                   <RtlText style={[styles.roleOptionText, role === 'admin' && styles.roleOptionTextActive]}>מנהל</RtlText>
                 </Pressable>
@@ -350,7 +360,11 @@ export function MemberDetailsModal({
               {role === 'admin' && isLastAdmin ? (
                 <RtlText style={styles.hint}>לא ניתן להסיר הרשאת מנהל מהמנהל האחרון במשפחה.</RtlText>
               ) : null}
-              {error ? <RtlText style={styles.error}>{error}</RtlText> : null}
+              {error ? (
+                <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                  {error}
+                </RtlText>
+              ) : null}
             </View>
           ) : null}
 
@@ -388,14 +402,24 @@ export function MemberDetailsModal({
                       accessibilityLabel={`הרשאת ${label} עבור ${user.name}`}
                     />
                     {override ? (
-                      <Pressable disabled={rowBusy} onPress={() => handleResetPermission(key)} hitSlop={8}>
+                      <Pressable
+                        disabled={rowBusy}
+                        onPress={() => handleResetPermission(key)}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={`איפוס הרשאת ${label} עבור ${user.name}`}
+                      >
                         <RtlText style={[styles.resetLink, rowBusy && styles.resetLinkDisabled]}>איפוס</RtlText>
                       </Pressable>
                     ) : null}
                   </View>
                 );
               })}
-              {permissionError ? <RtlText style={styles.error}>{permissionError}</RtlText> : null}
+              {permissionError ? (
+                <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                  {permissionError}
+                </RtlText>
+              ) : null}
             </View>
           ) : null}
 
@@ -414,7 +438,11 @@ export function MemberDetailsModal({
                 disabled={creatingInvite}
                 onPress={handleCreateInvite}
               />
-              {inviteError ? <RtlText style={styles.error}>{inviteError}</RtlText> : null}
+              {inviteError ? (
+                <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                  {inviteError}
+                </RtlText>
+              ) : null}
             </View>
           ) : null}
 
@@ -480,28 +508,28 @@ export function MemberDetailsModal({
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 },
-  header: { alignItems: 'center', gap: 6, marginBottom: 16 },
-  name: { fontSize: 20, fontWeight: '800', color: colors.textPrimary, marginTop: 8 },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24 },
+  header: { alignItems: 'center', gap: 6, marginBottom: spacing.lg },
+  name: { fontSize: 20, fontWeight: '800', color: colors.textPrimary, marginTop: spacing.sm },
   roleBadge: {
-    fontSize: 13,
+    fontSize: typography.meta.fontSize,
     fontWeight: '700',
     color: colors.primaryDark,
     backgroundColor: colors.statusCurrentBg,
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: spacing.xs,
     borderRadius: 999,
     overflow: 'hidden',
   },
-  presenceText: { fontSize: 13, color: colors.textSecondary },
-  roleSection: { gap: 8, marginBottom: 12 },
-  inviteSection: { gap: 8, marginBottom: 12 },
+  presenceText: { fontSize: typography.meta.fontSize, color: colors.textSecondary },
+  roleSection: { gap: spacing.sm, marginBottom: spacing.md },
+  inviteSection: { gap: spacing.sm, marginBottom: spacing.md },
   sectionTitle: { fontSize: 15, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
   roleOptions: { flexDirection: 'row', gap: 10 },
   roleOption: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 14,
+    paddingVertical: spacing.md,
+    borderRadius: radii.md,
     borderWidth: 1.5,
     borderColor: colors.border,
     alignItems: 'center',
@@ -512,8 +540,8 @@ const styles = StyleSheet.create({
   roleOptionText: { fontSize: 15, fontWeight: '700', color: colors.textSecondary },
   roleOptionTextActive: { color: colors.primaryDark },
   hint: { fontSize: 12, color: colors.textSecondary, textAlign: 'right' },
-  error: { fontSize: 13, color: colors.statusOverdue, textAlign: 'right' },
-  closeButton: { marginTop: 4 },
+  error: { fontSize: typography.meta.fontSize, color: colors.statusOverdue, textAlign: 'right' },
+  closeButton: { marginTop: spacing.xs },
   permissionRow: {
     flexDirection: 'row',
     alignItems: 'center',

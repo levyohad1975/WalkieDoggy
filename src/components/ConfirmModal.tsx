@@ -2,6 +2,7 @@ import React from 'react';
 import { Modal, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
+import { radii, spacing } from '../theme/tokens';
 import { Button } from './Button';
 
 interface ConfirmModalProps {
@@ -30,7 +31,7 @@ export function ConfirmModal({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View style={styles.backdrop}>
         <View style={styles.card}>
-          <RtlText style={styles.title}>{title}</RtlText>
+          <RtlText style={styles.title} accessibilityRole="header">{title}</RtlText>
           {message ? <RtlText style={styles.message}>{message}</RtlText> : null}
           <View style={styles.actions}>
             {/* Round 8, Fix 3: compact — a paired flex:1 row is the exact
@@ -50,9 +51,9 @@ export function ConfirmModal({
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: '#00000055', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  card: { backgroundColor: colors.surface, borderRadius: 24, padding: 24, width: '100%', maxWidth: 400 },
+  card: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: 24, width: '100%', maxWidth: 400 },
   title: { fontSize: 19, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
-  message: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', marginTop: 8 },
-  actions: { flexDirection: 'row', gap: 12, marginTop: 20 },
+  message: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.sm },
+  actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xl },
   flex: { flex: 1 },
 });

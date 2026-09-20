@@ -136,6 +136,14 @@ describe('lib/invites — Supabase mode', () => {
       // (toBeInstanceOf on a real Error subclass, not toThrow(string)).
       await expect(createFamilyInvite('user-2')).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
     });
+
+    it('surfaces a client-side "creation failed" error when the RPC reports no error but returns an empty row', async () => {
+      const rpc = jest.fn().mockResolvedValue({ data: [], error: null });
+      mockSupabaseClient(rpc);
+      const { createFamilyInvite } = require('../invites');
+
+      await expectRejectsWithMessage(createFamilyInvite('user-2'), 'יצירת ההזמנה נכשלה');
+    });
   });
 
   // ---- REVOKE ----
@@ -320,6 +328,18 @@ describe('lib/invites — Supabase mode', () => {
       });
     });
 
+    it('also accepts a single-row (non-array) RPC result', async () => {
+      const rpc = jest.fn().mockResolvedValue({
+        data: { family_name: 'משפחת לוי', target_name: 'דנה', target_avatar: null, status: 'pending', expires_at: '2026-09-03T00:00:00Z' },
+        error: null,
+      });
+      mockSupabaseClient(rpc);
+      const { inspectFamilyInvite } = require('../invites');
+
+      const result = await inspectFamilyInvite('tok');
+      expect(result.familyName).toBe('משפחת לוי');
+    });
+
     it.each(['expired', 'revoked', 'redeemed'])('maps a %s-status preview using the server-derived status verbatim', async (status) => {
       const rpc = jest.fn().mockResolvedValue({
         data: [{ family_name: 'משפחת לוי', target_name: 'דנה', target_avatar: null, status, expires_at: '2026-08-01T00:00:00Z' }],
@@ -361,6 +381,14 @@ describe('lib/invites — Supabase mode', () => {
       expect(result).not.toHaveProperty('token_hash');
       expect(result).not.toHaveProperty('tokenHash');
       expect(JSON.stringify(result)).not.toContain('should-never-appear');
+    });
+
+    it('surfaces a client-side "invite not found" error when the RPC reports no error but returns an empty row', async () => {
+      const rpc = jest.fn().mockResolvedValue({ data: [], error: null });
+      mockSupabaseClient(rpc);
+      const { inspectFamilyInvite } = require('../invites');
+
+      await expectRejectsWithMessage(inspectFamilyInvite('tok'), 'ההזמנה לא נמצאה');
     });
   });
 
@@ -410,6 +438,27 @@ describe('lib/invites — Supabase mode', () => {
           { name: 'אבא', avatar: '👨', photoUrl: 'https://example.com/dad.jpg' },
         ],
       });
+    });
+
+    it('also accepts a single-row (non-array) RPC result', async () => {
+      const rpc = jest.fn().mockResolvedValue({
+        data: {
+          family_name: 'משפחת לוי',
+          target_name: 'דנה',
+          target_avatar: null,
+          status: 'pending',
+          expires_at: '2026-09-03T00:00:00Z',
+          dog_name: null,
+          dog_photo_url: null,
+          members: [],
+        },
+        error: null,
+      });
+      mockSupabaseClient(rpc);
+      const { inspectFamilyInviteDetail } = require('../invites');
+
+      const result = await inspectFamilyInviteDetail('tok');
+      expect(result.familyName).toBe('משפחת לוי');
     });
 
     it('a non-pending (e.g. expired) invite maps dogName/dogPhotoUrl/members to null — never a stale/partial richer disclosure', async () => {
@@ -470,6 +519,14 @@ describe('lib/invites — Supabase mode', () => {
       expect(result).not.toHaveProperty('tokenHash');
       expect(JSON.stringify(result)).not.toContain('should-never-appear');
     });
+
+    it('surfaces a client-side "invite not found" error when the RPC reports no error but returns an empty row', async () => {
+      const rpc = jest.fn().mockResolvedValue({ data: [], error: null });
+      mockSupabaseClient(rpc);
+      const { inspectFamilyInviteDetail } = require('../invites');
+
+      await expectRejectsWithMessage(inspectFamilyInviteDetail('tok'), 'ההזמנה לא נמצאה');
+    });
   });
 
   // ---- REDEEM ----
@@ -486,6 +543,18 @@ describe('lib/invites — Supabase mode', () => {
 
       expect(rpc).toHaveBeenCalledWith('redeem_family_invite', { p_token: 'some-raw-token' });
       expect(result).toEqual({ familyId: 'family-1', familyName: 'משפחת לוי', targetUserId: 'user-2' });
+    });
+
+    it('also accepts a single-row (non-array) RPC result', async () => {
+      const rpc = jest.fn().mockResolvedValue({
+        data: { family_id: 'family-1', family_name: 'משפחת לוי', target_user_id: 'user-2' },
+        error: null,
+      });
+      mockSupabaseClient(rpc);
+      const { redeemFamilyInvite } = require('../invites');
+
+      const result = await redeemFamilyInvite('tok');
+      expect(result.familyId).toBe('family-1');
     });
 
     it('maps a different-family collision rejection', async () => {
@@ -532,6 +601,14 @@ describe('lib/invites — Supabase mode', () => {
       const { redeemFamilyInvite } = require('../invites');
 
       await expectRejectsWithMessage(redeemFamilyInvite('tok'), serverMessage);
+    });
+
+    it('surfaces a client-side "join failed" error when the RPC reports no error but returns an empty row', async () => {
+      const rpc = jest.fn().mockResolvedValue({ data: [], error: null });
+      mockSupabaseClient(rpc);
+      const { redeemFamilyInvite } = require('../invites');
+
+      await expectRejectsWithMessage(redeemFamilyInvite('tok'), 'הצטרפות למשפחה נכשלה');
     });
   });
 

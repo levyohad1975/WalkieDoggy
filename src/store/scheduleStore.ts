@@ -1,7 +1,13 @@
 ﻿import { create } from 'zustand';
 import type { ScheduleEntry, ScheduleRule, UnplannedWalkInput, Walk } from '../types';
 import { repository } from '../data';
-import { generateRotationSchedule, resolveResponsibleForDate, ruleNeedsEntryBackfill, toDateOnly } from '../logic/rotation';
+import {
+  generateRotationSchedule,
+  planRuleDaysReconciliation,
+  resolveResponsibleForDate,
+  ruleNeedsEntryBackfill,
+} from '../logic/rotation';
+import { localDateOnly } from '../logic/dateFormat';
 import {
   editWalkDetails,
   markWalkDone,
@@ -129,7 +135,7 @@ async function scheduleNotificationsForWalk(walk: Walk) {
   const settings = await repository.getNotificationSettings(walk.familyId);
   const setting = settings.find((s) => s.userId === user.id);
   if (!setting) return;
-  await scheduleWalkNotifications(walk, setting, user.name, dog.name);
+  await scheduleWalkNotifications(walk, setting, user.name, dog.name, dog.sex);
 }
 
 /**
@@ -162,7 +168,8 @@ export async function reconcileScheduleNotifications(familyId: string, walks: Wa
       return settingsByUserId.get(userId);
     },
     (userId) => usersById.get(userId)?.name,
-    dog.name
+    dog.name,
+    dog.sex
   );
 }
 
@@ -187,8 +194,12 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // never ran, was interrupted, or entries were wiped some other way)
       // must never just silently show an empty schedule — backfill it from
       // the rule itself, right here, before the screen ever renders.
-      const today = toDateOnly(new Date());
-      const endDate = toDateOnly(new Date(Date.now() + GENERATE_DAYS_AHEAD * 86400000));
+      // Local calendar day, not UTC — `entries`/`walks` dates are the
+      // family's local "today" (see dateFormat.ts), and a UTC-anchored
+      // "today" would be wrong for a few hours after local midnight for
+      // anyone ahead of UTC (e.g. Israel), generating a day-early entry.
+      const today = localDateOnly(new Date());
+      const endDate = localDateOnly(new Date(Date.now() + GENERATE_DAYS_AHEAD * 86400000));
       const rulesMissingEntries = rules.filter((r) => ruleNeedsEntryBackfill(r, entries, today));
 
       let finalEntries = entries;
@@ -229,8 +240,12 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     if (!guardTestModeMutation()) return;
     try {
       await repository.upsertScheduleRule(rule);
-      const today = toDateOnly(new Date());
-      const endDate = toDateOnly(new Date(Date.now() + GENERATE_DAYS_AHEAD * 86400000));
+      // Local calendar day, not UTC — `entries`/`walks` dates are the
+      // family's local "today" (see dateFormat.ts), and a UTC-anchored
+      // "today" would be wrong for a few hours after local midnight for
+      // anyone ahead of UTC (e.g. Israel), generating a day-early entry.
+      const today = localDateOnly(new Date());
+      const endDate = localDateOnly(new Date(Date.now() + GENERATE_DAYS_AHEAD * 86400000));
       const newEntries = generateRotationSchedule(rule, today, endDate, () => generateId('entry'));
       await repository.addScheduleEntries(newEntries);
 
@@ -259,6 +274,16 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
    * occurrences are left untouched; only still-pending future occurrences
    * (today included) are regenerated against the new rule — this is what
    * "change the default time without losing history" means in practice.
+   *
+   * If `daysOfWeek` itself changes, this also reconciles which days have
+   * entries at all: a day dropped from the rule has its still-pending
+   * future entries/walks removed (a disabled day must stop showing and
+   * reminding — e.g. an admin turning off Saturday for Shabbat), and a day
+   * newly added to the rule gets entries generated for it within the same
+   * window `addRule`/`load` use, instead of silently waiting up to
+   * `GENERATE_DAYS_AHEAD` days for the rule's entries to run out. See
+   * `planRuleDaysReconciliation` (logic/rotation.ts) for why this is scoped
+   * to just-changed days rather than every matching day.
    */
   updateRule: async (ruleId, patch) => {
     if (!guardTestModeMutation()) return;
@@ -268,18 +293,40 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       const updatedRule: ScheduleRule = { ...rule, ...patch };
       await repository.upsertScheduleRule(updatedRule);
 
-      const today = toDateOnly(new Date());
-      const affectedEntries = get().entries.filter((e) => e.ruleId === ruleId && e.date >= today);
-      const updatedEntries: ScheduleEntry[] = [];
-      for (const entry of affectedEntries) {
-        const responsibleUserId = resolveResponsibleForDate(updatedRule, entry.date);
-        const updatedEntry: ScheduleEntry = { ...entry, time: updatedRule.time, responsibleUserId };
-        await repository.updateScheduleEntry(updatedEntry);
-        updatedEntries.push(updatedEntry);
+      // Local calendar day, not UTC — `entries`/`walks` dates are the
+      // family's local "today" (see dateFormat.ts), and a UTC-anchored
+      // "today" would be wrong for a few hours after local midnight for
+      // anyone ahead of UTC (e.g. Israel), generating a day-early entry.
+      const today = localDateOnly(new Date());
+      const endDate = localDateOnly(new Date(Date.now() + GENERATE_DAYS_AHEAD * 86400000));
+      const { toRemove, toUpdate, toAdd } = planRuleDaysReconciliation(
+        rule,
+        updatedRule,
+        get().entries,
+        today,
+        endDate,
+        () => generateId('entry')
+      );
+
+      // Days dropped from the rule: only a still-pending occurrence is
+      // actually removed (its entry + walk, via FK cascade) — matches
+      // deleteRule's own history-preserving behavior for a done/skipped
+      // walk's entry.
+      const removedEntryIds = new Set<string>();
+      for (const entry of toRemove) {
+        const walk = get().walks.find((w) => w.scheduleEntryId === entry.id);
+        if (walk && walk.status === 'pending') {
+          await cancelWalkNotifications(walk.id);
+          await repository.deleteScheduleEntry(entry.id);
+          removedEntryIds.add(entry.id);
+        }
       }
 
+      for (const entry of toUpdate) {
+        await repository.updateScheduleEntry(entry);
+      }
       const updatedWalks: Walk[] = [];
-      for (const entry of updatedEntries) {
+      for (const entry of toUpdate) {
         const walk = get().walks.find((w) => w.scheduleEntryId === entry.id);
         if (!walk || walk.status !== 'pending') continue;
         const updatedWalk: Walk = { ...walk, scheduledTime: entry.time, responsibleUserId: entry.responsibleUserId, updatedAt: new Date().toISOString() };
@@ -287,13 +334,28 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         updatedWalks.push(updatedWalk);
       }
 
+      // Days newly added to the rule: generate entries/walks for them now,
+      // same as addRule.
+      if (toAdd.length > 0) await repository.addScheduleEntries(toAdd);
+      const newWalks = toAdd.map((e) => walkFromEntry(e, updatedRule.familyId));
+      for (const w of newWalks) await repository.saveWalk(w);
+
       set((s) => ({
         rules: s.rules.map((r) => (r.id === ruleId ? updatedRule : r)),
-        entries: s.entries.map((e) => updatedEntries.find((ue) => ue.id === e.id) ?? e),
-        walks: s.walks.map((w) => updatedWalks.find((uw) => uw.id === w.id) ?? w),
+        entries: [
+          ...s.entries.filter((e) => !removedEntryIds.has(e.id)).map((e) => toUpdate.find((ue) => ue.id === e.id) ?? e),
+          ...toAdd,
+        ],
+        walks: [
+          ...s.walks
+            .filter((w) => !(w.scheduleEntryId && removedEntryIds.has(w.scheduleEntryId)))
+            .map((w) => updatedWalks.find((uw) => uw.id === w.id) ?? w),
+          ...newWalks,
+        ],
         actionError: null,
       }));
       updatedWalks.forEach((w) => void scheduleNotificationsForWalk(w));
+      newWalks.forEach((w) => void scheduleNotificationsForWalk(w));
     } catch (e) {
       set({ actionError: e instanceof Error ? e.message : 'לא הצלחנו לעדכן את שעת הטיול' });
     }
@@ -303,7 +365,11 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   deleteRule: async (ruleId: string) => {
     if (!guardTestModeMutation()) return;
     try {
-      const today = toDateOnly(new Date());
+      // Local calendar day, not UTC — `entries`/`walks` dates are the
+      // family's local "today" (see dateFormat.ts), and a UTC-anchored
+      // "today" would be wrong for a few hours after local midnight for
+      // anyone ahead of UTC (e.g. Israel), generating a day-early entry.
+      const today = localDateOnly(new Date());
       const { entries, walks } = get();
       const futureEntries = entries.filter((e) => e.ruleId === ruleId && e.date >= today);
       for (const entry of futureEntries) {
@@ -594,16 +660,28 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       await scheduleNotificationsForWalk(updatedA);
       await scheduleNotificationsForWalk(updatedB);
     } catch (e) {
-      set({
-        walks: before.walks,
-        entries: before.entries,
+      // Revert only the two specific walks/entries back to their pre-swap
+      // values, merged against whatever the CURRENT state is — never a raw
+      // overwrite of the whole `walks`/`entries` arrays from the `before`
+      // closure. A realtime reload (see src/lib/realtime.ts) can land
+      // between the snapshot above and this catch firing (e.g. another
+      // family member's device marks an unrelated walk done while this
+      // RPC is in flight), and that legitimate concurrent update must not
+      // be silently discarded. Every sibling action in this file (markDone,
+      // skip, swap, editDoneDetails) already reverts this way; this was the
+      // one outlier.
+      set((s) => ({
+        walks: s.walks.map((w) => (w.id === walkAId ? walkA : w.id === walkBId ? walkB : w)),
+        entries: s.entries.map((e) =>
+          entryA && e.id === entryA.id ? entryA : entryB && e.id === entryB.id ? entryB : e
+        ),
         actionError:
           e instanceof WalkActionError
             ? e.message
             : e instanceof Error
               ? friendlyErrorMessage(e)
               : 'לא הצלחנו להחליף בין הטיולים',
-      });
+      }));
     }
   },
 

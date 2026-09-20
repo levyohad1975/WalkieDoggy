@@ -100,18 +100,48 @@ export function handleLastAdminGuardedPress(isLastAdmin: boolean, action: () => 
 
 export class FamilyManagementError extends Error {}
 
-/** What would break if `userId` were deleted right now. */
+/**
+ * What would break if `userId` were deleted right now.
+ *
+ * `walks` must be scanned separately from `entries`: a swapped (or
+ * unplanned) walk can have `responsibleUserId === userId` while its linked
+ * `schedule_entries` row — if any — belongs to someone else (a swap only
+ * ever touches the walk, never the rotation's own entry, by design). Such a
+ * walk is invisible to a scan of `entries`/`rules` alone, yet
+ * `planUserRemoval` below can only reassign it via the caller-supplied
+ * `replacementUserId` (it has no rotation/entry fallback for a walk whose
+ * entry it isn't also reassigning) — so it must count as impact requiring a
+ * replacement, exactly like an owned entry does.
+ *
+ * Unlike `entries` (a scheduling template — a past slot has nothing left to
+ * reassign), a `pending` walk is a live, unresolved item regardless of its
+ * date: an overdue walk nobody ever marked done/skipped still needs someone
+ * able to resolve it. It is deliberately NOT filtered by `date >= today`
+ * here — a past-but-pending walk left on a deleted user can never be
+ * resolved again (their identity can't be reclaimed once removed), so it
+ * must count as impact requiring a replacement just like a future one.
+ */
 export function computeUserDeletionImpact(
   userId: string,
   rules: ScheduleRule[],
   entries: ScheduleEntry[],
+  walks: Walk[],
   today: string
 ): UserDeletionImpact {
+  const ownedFutureEntryIds = new Set(
+    entries.filter((e) => e.responsibleUserId === userId && e.date >= today).map((e) => e.id)
+  );
   return {
-    futureScheduleEntryCount: entries.filter((e) => e.responsibleUserId === userId && e.date >= today).length,
+    futureScheduleEntryCount: ownedFutureEntryIds.size,
     // Matches planUserRemoval below, which processes every rule containing this
     // user regardless of `active` — keep both in sync if `active` toggling is ever added.
     rulesAffected: rules.filter((r) => r.rotationUserIds.includes(userId)).map((r) => r.id),
+    directlyAssignedWalkCount: walks.filter(
+      (w) =>
+        w.responsibleUserId === userId &&
+        w.status === 'pending' &&
+        !(w.scheduleEntryId && ownedFutureEntryIds.has(w.scheduleEntryId))
+    ).length,
   };
 }
 
@@ -164,7 +194,12 @@ export function planUserRemoval(
 
   const updatedWalks: Walk[] = [];
   for (const walk of walks) {
-    if (walk.responsibleUserId !== userId || walk.status !== 'pending' || walk.date < today) continue;
+    // No `walk.date < today` exclusion here (unlike the entries loop above):
+    // a `pending` walk is unresolved regardless of date, and once its
+    // responsible user is deleted nobody can ever resolve it again — an
+    // overdue one left behind must still be reassigned, exactly like a
+    // future one. See computeUserDeletionImpact's doc comment.
+    if (walk.responsibleUserId !== userId || walk.status !== 'pending') continue;
     const linkedEntry = walk.scheduleEntryId ? updatedEntries.find((e) => e.id === walk.scheduleEntryId) : undefined;
     const newResponsible = linkedEntry?.responsibleUserId ?? replacementUserId;
     if (!newResponsible) continue;

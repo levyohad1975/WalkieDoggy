@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import type { FamilyUser, UserDeletionImpact } from '../types';
 import { colors } from '../theme/colors';
+import { radii, spacing } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
+import { nextDeleteReplacementSelection } from '../logic/deleteUserModalTransitions';
 
 interface DeleteUserModalProps {
   visible: boolean;
@@ -22,25 +24,47 @@ interface DeleteUserModalProps {
  */
 export function DeleteUserModal({ visible, user, impact, otherUsers, onConfirm, onClose }: DeleteUserModalProps) {
   const [replacement, setReplacement] = useState<string | null>(null);
+  // See deleteUserModalTransitions.ts's own doc comment: `otherUsers` is a
+  // new array reference on almost every FamilyScreen render, not just when
+  // its membership actually changes, so the reset decision must be driven
+  // by the pure helper (open-transition / content-membership) rather than a
+  // bare `otherUsers` reference dependency.
+  const wasVisibleRef = useRef(false);
 
   useEffect(() => {
-    if (visible) setReplacement(otherUsers[0]?.id ?? null);
-  }, [visible, otherUsers]);
+    const next = nextDeleteReplacementSelection(
+      visible,
+      wasVisibleRef.current,
+      replacement,
+      otherUsers.map((u) => u.id)
+    );
+    wasVisibleRef.current = visible;
+    if (next !== undefined) setReplacement(next);
+  }, [visible, otherUsers, replacement]);
 
   if (!user) return null;
-  const hasImpact = Boolean(impact && (impact.futureScheduleEntryCount > 0 || impact.rulesAffected.length > 0));
+  const hasImpact = Boolean(
+    impact &&
+      (impact.futureScheduleEntryCount > 0 || impact.rulesAffected.length > 0 || impact.directlyAssignedWalkCount > 0)
+  );
+  // Combined for the warning copy below: from the admin's point of view these
+  // are all just "future walks of theirs" regardless of whether the walk
+  // comes from an owned rotation entry or was directly assigned via a swap
+  // (see computeUserDeletionImpact's doc comment for why the latter must
+  // count too).
+  const futureWalkCount = (impact?.futureScheduleEntryCount ?? 0) + (impact?.directlyAssignedWalkCount ?? 0);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <View style={styles.card}>
           <ScrollView>
-            <RtlText style={styles.title}>למחוק את {user.name}?</RtlText>
+            <RtlText style={styles.title} accessibilityRole="header">למחוק את {user.name}?</RtlText>
 
             {hasImpact ? (
               <>
                 <RtlText style={styles.warning}>
-                  ל{user.name} יש {impact!.futureScheduleEntryCount} טיולים עתידיים ו-{impact!.rulesAffected.length} סבבים
+                  ל{user.name} יש {futureWalkCount} טיולים עתידיים ו-{impact!.rulesAffected.length} סבבים
                   פעילים. כדי למחוק בבטחה, יש לבחור מי ימשיך את התורות שלו:
                 </RtlText>
                 {otherUsers.length === 0 ? (
@@ -83,6 +107,7 @@ export function DeleteUserModal({ visible, user, impact, otherUsers, onConfirm, 
                 label="מחק"
                 variant="danger"
                 disabled={hasImpact && !replacement}
+                accessibilityHint="המחיקה מיידית ואינה ניתנת לביטול"
                 onPress={() => onConfirm(hasImpact ? replacement : null)}
                 style={styles.flex}
                 compact
@@ -98,25 +123,25 @@ export function DeleteUserModal({ visible, user, impact, otherUsers, onConfirm, 
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: '#00000055', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  card: { backgroundColor: colors.surface, borderRadius: 24, padding: 24, width: '100%', maxWidth: 420, maxHeight: '80%' },
+  card: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: 24, width: '100%', maxWidth: 420, maxHeight: '80%' },
   title: { fontSize: 19, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
-  message: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', marginTop: 12 },
-  warning: { fontSize: 14, color: colors.textPrimary, textAlign: 'right', marginTop: 12, lineHeight: 20 },
+  message: { fontSize: 15, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.md },
+  warning: { fontSize: 14, color: colors.textPrimary, textAlign: 'right', marginTop: spacing.md, lineHeight: 20 },
   blocked: { fontSize: 14, color: colors.statusOverdue, textAlign: 'right', marginTop: 10, fontWeight: '600' },
   // Round 8, Fix 4: replaced the cramped wrapping avatar-only chip grid with
   // a plain vertical list — one full-width row per candidate, each with a
   // comfortable minimum touch target (52px, matching Button's own minimum)
   // and clear spacing between rows. Stays readable/scrollable at 4-5
   // members without the card needing to grow past its existing maxHeight.
-  userList: { gap: 8, marginTop: 12 },
+  userList: { gap: spacing.sm, marginTop: spacing.md },
   userChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.md,
     minHeight: 52,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 14,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
     borderWidth: 1.5,
     borderColor: colors.border,
     backgroundColor: colors.surfaceMuted,
@@ -127,13 +152,13 @@ const styles = StyleSheet.create({
   radioDot: {
     width: 20,
     height: 20,
-    borderRadius: 10,
+    borderRadius: radii.sm,
     borderWidth: 1.5,
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
   radioDotActive: { borderColor: colors.primary, backgroundColor: colors.primary },
-  divider: { height: 1, backgroundColor: colors.border, marginTop: 20 },
-  actions: { flexDirection: 'row', gap: 12, marginTop: 16 },
+  divider: { height: 1, backgroundColor: colors.border, marginTop: spacing.xl },
+  actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg },
   flex: { flex: 1 },
 });

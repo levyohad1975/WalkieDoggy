@@ -98,6 +98,22 @@ describe('lib/systemAdmin — Supabase mode', () => {
     ]);
   });
 
+  it('listSystemAdminFamilies passes through a real (non-"active") approval status, not a hardcoded constant', async () => {
+    const rpc = jest.fn().mockResolvedValue({
+      data: [
+        { family_id: 'fam-1', family_name: 'משפחה ממתינה', invite_code: 'PND001', created_at: '2026-01-01T00:00:00Z', member_count: 1, admin_names: ['דנה'], dog_name: null, status: 'pending' },
+        { family_id: 'fam-2', family_name: 'משפחה נדחתה', invite_code: 'REJ002', created_at: '2026-01-02T00:00:00Z', member_count: 1, admin_names: ['יוסי'], dog_name: null, status: 'rejected' },
+      ],
+      error: null,
+    });
+    mockSupabaseClient(rpc);
+    const { listSystemAdminFamilies } = require('../systemAdmin');
+
+    const result = await listSystemAdminFamilies();
+    expect(result[0].status).toBe('pending');
+    expect(result[1].status).toBe('rejected');
+  });
+
   it('listSystemAdminFamilies with no/blank search sends p_search: null (server treats it as "no filter")', async () => {
     const rpc = jest.fn().mockResolvedValue({ data: [], error: null });
     mockSupabaseClient(rpc);
@@ -136,10 +152,64 @@ describe('lib/systemAdmin — Supabase mode', () => {
     await expect(listSystemAdminFamilies()).rejects.toBeTruthy();
   });
 
+  it('listSystemAdminFamilies defaults to an empty list when the RPC succeeds with a null/undefined data payload', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    mockSupabaseClient(rpc);
+    const { listSystemAdminFamilies } = require('../systemAdmin');
+
+    await expect(listSystemAdminFamilies()).resolves.toEqual([]);
+  });
+
+  it('listSystemAdminFamilies maps a null admin_names to an empty array rather than null', async () => {
+    const rpc = jest.fn().mockResolvedValue({
+      data: [
+        { family_id: 'fam-1', family_name: 'משפחת כהן', invite_code: 'CCC333', created_at: '2026-01-01T00:00:00Z', member_count: 1, admin_names: null, dog_name: null, status: 'active' },
+      ],
+      error: null,
+    });
+    mockSupabaseClient(rpc);
+    const { listSystemAdminFamilies } = require('../systemAdmin');
+
+    const result = await listSystemAdminFamilies();
+    expect(result[0].adminNames).toEqual([]);
+  });
+
+  it('setSystemAdminFamilyApproval calls system_admin_set_family_approval with p_family_id/p_approval_status and resolves with no return value on success', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    mockSupabaseClient(rpc);
+    const { setSystemAdminFamilyApproval } = require('../systemAdmin');
+
+    await expect(setSystemAdminFamilyApproval('fam-1', 'active')).resolves.toBeUndefined();
+    expect(rpc).toHaveBeenCalledWith('system_admin_set_family_approval', {
+      p_family_id: 'fam-1',
+      p_approval_status: 'active',
+    });
+  });
+
+  it('setSystemAdminFamilyApproval passes through the rejected status verbatim', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    mockSupabaseClient(rpc);
+    const { setSystemAdminFamilyApproval } = require('../systemAdmin');
+
+    await setSystemAdminFamilyApproval('fam-2', 'rejected');
+    expect(rpc).toHaveBeenCalledWith('system_admin_set_family_approval', {
+      p_family_id: 'fam-2',
+      p_approval_status: 'rejected',
+    });
+  });
+
+  it('setSystemAdminFamilyApproval surfaces "system admin permission required" rather than swallowing it', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'system admin permission required' } });
+    mockSupabaseClient(rpc);
+    const { setSystemAdminFamilyApproval } = require('../systemAdmin');
+
+    await expect(setSystemAdminFamilyApproval('fam-1', 'active')).rejects.toBeTruthy();
+  });
+
   it('getSystemAdminFamilyDetail calls system_admin_get_family_detail with p_family_id and returns the jsonb bundle with safe array defaults', async () => {
     const rpc = jest.fn().mockResolvedValue({
       data: {
-        family: { id: 'fam-1', name: 'משפחת לוי', inviteCode: 'ABC123', createdAt: '2026-01-01T00:00:00Z' },
+        family: { id: 'fam-1', name: 'משפחת לוי', inviteCode: 'ABC123', createdAt: '2026-01-01T00:00:00Z', approvalStatus: 'pending' },
         dog: null,
         members: [{ id: 'u1', name: 'דנה', avatar: '🐶', photoUrl: null, role: 'admin', removedAt: null, claimed: true }],
         // activeRequests/recentAudit intentionally omitted — mapping must default to [], never throw.
@@ -153,10 +223,104 @@ describe('lib/systemAdmin — Supabase mode', () => {
 
     expect(rpc).toHaveBeenCalledWith('system_admin_get_family_detail', { p_family_id: 'fam-1' });
     expect(result.family?.name).toBe('משפחת לוי');
+    // approvalStatus must be a real per-family value passed through verbatim
+    // (0035 fix), not silently dropped or a hardcoded constant.
+    expect(result.family?.approvalStatus).toBe('pending');
     expect(result.dog).toBeNull();
     expect(result.members).toHaveLength(1);
     expect(result.activeRequests).toEqual([]);
     expect(result.recentAudit).toEqual([]);
+  });
+
+  it('getSystemAdminFamilyDetail surfaces a genuine RPC error rather than swallowing it', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'system admin permission required' } });
+    mockSupabaseClient(rpc);
+    const { getSystemAdminFamilyDetail } = require('../systemAdmin');
+
+    await expect(getSystemAdminFamilyDetail('fam-1')).rejects.toBeTruthy();
+  });
+
+  it('getSystemAdminFamilyDetail defaults every field to its safe empty shape when the RPC succeeds with a null/undefined data payload', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    mockSupabaseClient(rpc);
+    const { getSystemAdminFamilyDetail } = require('../systemAdmin');
+
+    const result = await getSystemAdminFamilyDetail('fam-1');
+    expect(result).toEqual({
+      family: null,
+      dog: null,
+      members: [],
+      walks: [],
+      activeRequests: [],
+      recentAudit: [],
+    });
+  });
+
+  it('getSystemAdminEmailDeliveryLog calls system_admin_list_email_delivery_log with p_limit and maps every field, including nullable ones', async () => {
+    const rpc = jest.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'log-1',
+          family_id: 'fam-1',
+          auth_user_id: 'auth-1',
+          message_type: 'family_welcome',
+          recipient_email: 'dana@example.com',
+          provider: 'resend',
+          provider_message_id: 'msg-123',
+          status: 'delivered',
+          error: null,
+          created_at: '2026-01-01T00:00:00Z',
+          updated_at: '2026-01-01T00:05:00Z',
+        },
+      ],
+      error: null,
+    });
+    mockSupabaseClient(rpc);
+    const { getSystemAdminEmailDeliveryLog } = require('../systemAdmin');
+
+    const result = await getSystemAdminEmailDeliveryLog(25);
+
+    expect(rpc).toHaveBeenCalledWith('system_admin_list_email_delivery_log', { p_limit: 25 });
+    expect(result).toEqual([
+      {
+        id: 'log-1',
+        familyId: 'fam-1',
+        authUserId: 'auth-1',
+        messageType: 'family_welcome',
+        recipientEmail: 'dana@example.com',
+        provider: 'resend',
+        providerMessageId: 'msg-123',
+        status: 'delivered',
+        error: null,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:05:00Z',
+      },
+    ]);
+  });
+
+  it('getSystemAdminEmailDeliveryLog with no limit sends p_limit: null (server applies its own default of 50)', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: [], error: null });
+    mockSupabaseClient(rpc);
+    const { getSystemAdminEmailDeliveryLog } = require('../systemAdmin');
+
+    await getSystemAdminEmailDeliveryLog();
+    expect(rpc).toHaveBeenCalledWith('system_admin_list_email_delivery_log', { p_limit: null });
+  });
+
+  it('getSystemAdminEmailDeliveryLog surfaces a genuine RPC error rather than swallowing it', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: { message: 'system admin permission required' } });
+    mockSupabaseClient(rpc);
+    const { getSystemAdminEmailDeliveryLog } = require('../systemAdmin');
+
+    await expect(getSystemAdminEmailDeliveryLog()).rejects.toBeTruthy();
+  });
+
+  it('getSystemAdminEmailDeliveryLog defaults to an empty list when the RPC succeeds with a null/undefined data payload', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    mockSupabaseClient(rpc);
+    const { getSystemAdminEmailDeliveryLog } = require('../systemAdmin');
+
+    await expect(getSystemAdminEmailDeliveryLog()).resolves.toEqual([]);
   });
 
   it('local/demo mode: every function throws SupabaseNotConfiguredError rather than pretending to succeed', async () => {
@@ -164,11 +328,19 @@ describe('lib/systemAdmin — Supabase mode', () => {
     process.env = { ...ORIGINAL_ENV };
     delete process.env.EXPO_PUBLIC_SUPABASE_URL;
     delete process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-    const { checkIsSystemAdmin, listSystemAdminFamilies, getSystemAdminFamilyDetail } = require('../systemAdmin');
+    const {
+      checkIsSystemAdmin,
+      listSystemAdminFamilies,
+      getSystemAdminFamilyDetail,
+      getSystemAdminEmailDeliveryLog,
+      setSystemAdminFamilyApproval,
+    } = require('../systemAdmin');
     const { SupabaseNotConfiguredError } = require('../supabase');
 
     await expect(checkIsSystemAdmin()).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
     await expect(listSystemAdminFamilies()).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
     await expect(getSystemAdminFamilyDetail('fam-1')).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
+    await expect(getSystemAdminEmailDeliveryLog()).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
+    await expect(setSystemAdminFamilyApproval('fam-1', 'active')).rejects.toBeInstanceOf(SupabaseNotConfiguredError);
   });
 });

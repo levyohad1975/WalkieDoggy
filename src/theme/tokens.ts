@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 /**
  * FINAL CORRECTION PASS — Deliverable 3A (design tokens).
  *
@@ -114,6 +116,20 @@ export const breakpoints = {
   readingColumn: 640,
   desktopContent: 1120,
 } as const;
+
+/**
+ * Pins a physical layout `direction` on native only. `direction` is a real,
+ * correctly-typed RN `ViewStyle` property (required to anchor `flexDirection:
+ * 'row'` to a fixed physical order regardless of the ambient RTL layout —
+ * see Countdown.tsx for the original documented bug this fixes), but
+ * react-native-web's own style validator unconditionally rejects and strips
+ * it, logging a console.error on every render. Returning `{}` on web keeps
+ * that a true no-op with no warning; native gets the exact same value as
+ * before.
+ */
+export function nativeDirection(value: 'ltr' | 'rtl'): { direction?: 'ltr' | 'rtl' } {
+  return Platform.OS === 'web' ? {} : { direction: value };
+}
 
 /** Motion timings are optional: non-essential motion must honor the OS
  * reduced-motion setting before it is played. */

@@ -4,6 +4,7 @@ import { RtlText } from './RtlText';
 import QRCode from 'react-native-qrcode-svg';
 import { copyToClipboard } from '../lib/clipboard';
 import { colors } from '../theme/colors';
+import { radii, spacing, typography } from '../theme/tokens';
 import { Button } from './Button';
 import { ConfirmModal } from './ConfirmModal';
 import { revokeFamilyInvite, type CreatedFamilyInvite } from '../lib/invites';
@@ -115,9 +116,14 @@ export function InviteShareModal({ visible, targetName, invite, onRevoked, onClo
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
+      <Pressable
+        style={styles.backdrop}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel={`סגירת הזמנה ל${targetName}`}
+      >
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <RtlText style={styles.title}>הזמנה ל{targetName}</RtlText>
+          <RtlText style={styles.title} accessibilityRole="header">הזמנה ל{targetName}</RtlText>
           {expiryText ? <RtlText style={styles.expiry}>ההזמנה בתוקף עד {expiryText}</RtlText> : null}
 
           <RtlText style={styles.explainer}>
@@ -152,11 +158,16 @@ export function InviteShareModal({ visible, targetName, invite, onRevoked, onClo
           <Button
             label="בטל הזמנה"
             variant="danger"
+            accessibilityHint="יוצג אישור לפני ביטול ההזמנה"
             onPress={() => setConfirmingRevoke(true)}
             style={styles.revokeButton}
           />
 
-          {error ? <RtlText style={styles.error}>{error}</RtlText> : null}
+          {error ? (
+            <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+              {error}
+            </RtlText>
+          ) : null}
 
           <Button label="סגור" variant="secondary" onPress={onClose} style={styles.closeButton} />
         </Pressable>
@@ -181,30 +192,30 @@ export function InviteShareModal({ visible, targetName, invite, onRevoked, onClo
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, gap: 10 },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, gap: 10 },
   title: { fontSize: 19, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
-  expiry: { fontSize: 13, color: colors.textSecondary, textAlign: 'right' },
-  explainer: { fontSize: 13, color: colors.textSecondary, textAlign: 'right', lineHeight: 19 },
+  expiry: { fontSize: typography.meta.fontSize, color: colors.textSecondary, textAlign: 'right' },
+  explainer: { fontSize: typography.meta.fontSize, color: colors.textSecondary, textAlign: 'right', lineHeight: 19 },
   notYetOpenable: { fontSize: 12, color: colors.textSecondary, textAlign: 'right', lineHeight: 17, fontStyle: 'italic' },
   linkCard: {
     backgroundColor: colors.surfaceMuted,
     borderRadius: 16,
     padding: 14,
-    marginTop: 4,
+    marginTop: spacing.xs,
   },
   linkText: { fontSize: 14, color: colors.textPrimary, textAlign: 'left', writingDirection: 'ltr' },
-  qrSection: { alignItems: 'center', marginTop: 6, gap: 8 },
+  qrSection: { alignItems: 'center', marginTop: 6, gap: spacing.sm },
   qrLabel: { fontSize: 12, color: colors.textSecondary, textAlign: 'center' },
   qrCard: {
     backgroundColor: '#ffffff',
     borderRadius: 16,
-    padding: 16,
+    padding: spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  actionsRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  actionsRow: { flexDirection: 'row', gap: 10, marginTop: spacing.xs },
   actionButton: { flex: 1 },
-  revokeButton: { marginTop: 4 },
-  error: { fontSize: 13, color: colors.statusOverdue, textAlign: 'right' },
-  closeButton: { marginTop: 4 },
+  revokeButton: { marginTop: spacing.xs },
+  error: { fontSize: typography.meta.fontSize, color: colors.statusOverdue, textAlign: 'right' },
+  closeButton: { marginTop: spacing.xs },
 });

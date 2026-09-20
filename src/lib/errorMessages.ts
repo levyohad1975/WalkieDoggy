@@ -76,6 +76,13 @@ export const SHARED_ERROR_RULES: ErrorRule[] = [
   { includes: 'cannot change the role of a removed member', message: 'לא ניתן לשנות תפקיד לבן משפחה שהוסר.' },
   { includes: 'target member has no linked auth session', message: 'לא ניתן לשנות תפקיד לבן המשפחה הזה כרגע.' },
   { includes: 'invalid role', message: 'תפקיד לא תקין.' },
+  // admin_delete_family_member() (migrations/0041_*.sql) — fail-closed
+  // completeness check: the caller's own cached rotation/schedule/walk data
+  // was stale (missed a row still assigned to the member being removed), so
+  // the server rejected the removal rather than silently orphaning that row
+  // on an unreclaimable soft-deleted user. All three checks (rotation,
+  // schedule, walk) share this one substring so a single rule covers them.
+  { includes: 'refresh and retry the deletion', message: 'המידע במסך אינו מעודכן. רעננו את המסך ונסו למחוק שוב.' },
   // set_member_role()/admin_delete_family_member() both raise this exact
   // text when the target user id doesn't resolve within the caller's own
   // family (not found at all, or found but in a different family) — see
@@ -167,6 +174,18 @@ export const SHARED_ERROR_RULES: ErrorRule[] = [
   { includes: 'account already has a claimed profile', message: 'למכשיר הזה כבר יש פרופיל משויך במשפחה.' },
   { includes: 'this device is not a member of a family', message: 'המכשיר הזה אינו חבר במשפחה כרגע.' },
   { includes: 'must be authenticated', message: 'יש להתחבר כדי לבצע פעולה זו.' },
+
+  // ---- Verified-admin family creation — create-verified-family Edge
+  // Function (supabase/functions/create-verified-family/index.ts). These are
+  // the exact reason strings that function returns in its JSON error body;
+  // verifiedAdminOnboarding.ts's createVerifiedFamily() recovers them from
+  // the otherwise-generic FunctionsHttpError before this table ever sees
+  // them. 'verified email identity required' is the reachable, actionable
+  // case (an anonymous or lapsed OTP session) — same wording
+  // FamilyOnboardingScreen.tsx's own submitCreate() already throws for the
+  // sibling email-mismatch case, so the two paths read identically.
+  { includes: 'verified email identity required', message: 'יש לאמת מחדש את כתובת הדוא״ל לפני יצירת המשפחה.' },
+  { includes: 'familyName is required', message: 'יש להזין שם למשפחה.' },
 
   // ---- Generic network failure — never show a raw fetch/TypeError string ----
   { includes: 'Network request failed', message: 'אין חיבור לאינטרנט. בדקו את החיבור ונסו שוב.' },

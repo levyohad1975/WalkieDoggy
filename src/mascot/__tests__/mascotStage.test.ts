@@ -55,6 +55,11 @@ describe('mascot/mascotStage — deriveMascotStageForPendingWalk (time bucketing
     expect(deriveMascotStageForPendingWalk(walkAt(day, '18:00'), new Date(2026, 8, 8, 18, 30))).toBe('concerned');
     expect(deriveMascotStageForPendingWalk(walkAt(day, '18:00'), new Date(2026, 8, 8, 19, 30))).toBe('concerned');
   });
+
+  it('omitting `now` defaults to the current time (a walk far in the future is still idle)', () => {
+    const farFutureWalk = walkAt('2099-01-01', '18:00');
+    expect(deriveMascotStageForPendingWalk(farFutureWalk)).toBe('idle');
+  });
 });
 
 describe('mascot/mascotStage — MASCOT_MOMENT_MAP / deriveMascotMoment (centralized C8 pairing)', () => {
@@ -74,6 +79,12 @@ describe('mascot/mascotStage — MASCOT_MOMENT_MAP / deriveMascotMoment (central
 
   it('deriveMascotMoment(null) -> idle (no walk to react to)', () => {
     const moment = deriveMascotMoment(null, new Date());
+    expect(moment.stage).toBe('idle');
+    expect(moment.mascotState).toBe('idle');
+  });
+
+  it('deriveMascotMoment omitting `now` defaults to the current time', () => {
+    const moment = deriveMascotMoment(walkAt('2099-01-01', '18:00'));
     expect(moment.stage).toBe('idle');
     expect(moment.mascotState).toBe('idle');
   });

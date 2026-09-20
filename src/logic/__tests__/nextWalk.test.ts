@@ -1,4 +1,4 @@
-import { computeLastWalk, computeNextWalk, formatDuration, isOverdue, relativeTimeLabel, upcomingWalks } from '../nextWalk';
+import { computeLastWalk, computeNextWalk, formatDuration, isOverdue, minutesUntil, relativeTimeLabel, upcomingWalks } from '../nextWalk';
 import type { Walk } from '../../types';
 
 function makeWalk(overrides: Partial<Walk>): Walk {
@@ -81,6 +81,11 @@ describe('computeNextWalk', () => {
 
     expect(computeNextWalk(walks, NOW)).toBeUndefined();
   });
+
+  it('defaults `now` to the current time when omitted', () => {
+    const walk = makeWalk({ id: 'future', date: '2099-01-01', scheduledTime: '00:00' });
+    expect(computeNextWalk([walk])?.id).toBe('future');
+  });
 });
 describe('computeLastWalk', () => {
   it('returns the most recently completed/skipped walk up to now', () => {
@@ -110,6 +115,16 @@ describe('computeLastWalk', () => {
 
     expect(computeLastWalk(walks, NOW)?.id).toBe('completed-early');
   });
+
+  it('returns undefined when there are no completed/skipped walks yet', () => {
+    const walks = [makeWalk({ status: 'pending' })];
+    expect(computeLastWalk(walks, NOW)).toBeUndefined();
+  });
+
+  it('defaults `now` to the current time when omitted', () => {
+    const walk = makeWalk({ status: 'done', completedAt: new Date(2020, 0, 1).toISOString() });
+    expect(computeLastWalk([walk])?.id).toBe('w');
+  });
 });
 
 describe('isOverdue / a walk that passed without being marked done', () => {
@@ -126,6 +141,18 @@ describe('isOverdue / a walk that passed without being marked done', () => {
   it('does not flag a future pending walk as overdue', () => {
     const walk = makeWalk({ scheduledTime: '20:00', status: 'pending' });
     expect(isOverdue(walk, NOW)).toBe(false);
+  });
+
+  it('defaults `now` to the current time when omitted', () => {
+    const walk = makeWalk({ date: '2020-01-01', scheduledTime: '00:00', status: 'pending' });
+    expect(isOverdue(walk)).toBe(true);
+  });
+});
+
+describe('minutesUntil', () => {
+  it('defaults `now` to the current time when omitted', () => {
+    const walk = makeWalk({ date: '2099-01-01', scheduledTime: '00:00' });
+    expect(minutesUntil(walk)).toBeGreaterThan(0);
   });
 });
 
@@ -165,6 +192,11 @@ describe('relativeTimeLabel', () => {
     const walk = makeWalk({ date: '2026-08-27', scheduledTime: '00:30' });
     expect(relativeTimeLabel(walk, new Date('2026-08-26T23:00:00'))).toBe('עוד שעה ו-30 דקות');
   });
+
+  it('defaults `now` to the current time when omitted', () => {
+    const walk = makeWalk({ date: '2099-01-01', scheduledTime: '00:00' });
+    expect(relativeTimeLabel(walk)).toMatch(/^עוד /);
+  });
 });
 
 describe('upcomingWalks', () => {
@@ -177,5 +209,14 @@ describe('upcomingWalks', () => {
     ];
 
     expect(upcomingWalks(walks, NOW).map((w) => w.id)).toEqual(['w2', 'w1']);
+  });
+
+  it('defaults `now` to the current time when omitted', () => {
+    const walks = [
+      makeWalk({ id: 'past', date: '2020-01-01', scheduledTime: '00:00' }),
+      makeWalk({ id: 'future', date: '2099-01-01', scheduledTime: '00:00' }),
+    ];
+
+    expect(upcomingWalks(walks).map((w) => w.id)).toEqual(['future']);
   });
 });

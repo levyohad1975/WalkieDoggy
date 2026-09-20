@@ -4,10 +4,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { RtlText } from '../components/RtlText';
 import { Button } from '../components/Button';
 import { colors } from '../theme/colors';
+import { radii, spacing, typography } from '../theme/tokens';
 import { friendlyErrorMessage } from '../lib/errorMessages';
 import {
+  getSystemAdminEmailDeliveryLog,
   getSystemAdminFamilyDetail,
   listSystemAdminFamilies,
+  setSystemAdminFamilyApproval,
+  type SystemAdminEmailDeliveryLogEntry,
   type SystemAdminFamilyDetail,
   type SystemAdminFamilyListItem,
 } from '../lib/systemAdmin';
@@ -15,6 +19,36 @@ import {
 interface SystemAdminScreenProps {
   visible: boolean;
   onClose: () => void;
+}
+
+/** Hebrew label for families.approval_status (0032/0035) — falls back to the raw value for any future status this screen doesn't know about yet, rather than hiding it. */
+function approvalStatusLabel(status: string): string {
+  if (status === 'active') return 'פעילה';
+  if (status === 'pending') return 'ממתינה לאישור';
+  if (status === 'rejected') return 'נדחתה';
+  return status;
+}
+
+/** Hebrew label for email_delivery_log.message_type (0034). */
+function emailMessageTypeLabel(type: string): string {
+  if (type === 'family_welcome') return 'ברוכים הבאים למשפחה';
+  if (type === 'system_owner_new_family') return 'התראת מנהל מערכת';
+  return type;
+}
+
+/** Hebrew label for email_delivery_log.status (0034) — falls back to the raw value for any future provider status. */
+function emailStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    queued: 'בתור',
+    sent: 'נשלח',
+    failed: 'נכשל',
+    delivered: 'נמסר',
+    bounced: 'הוחזר',
+    complained: 'תלונת דואר זבל',
+    opened: 'נפתח',
+    clicked: 'נלחץ',
+  };
+  return labels[status] ?? status;
 }
 
 /**
@@ -45,6 +79,13 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
   const [detail, setDetail] = useState<SystemAdminFamilyDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [approvalActionLoading, setApprovalActionLoading] = useState(false);
+  const [approvalActionError, setApprovalActionError] = useState<string | null>(null);
+
+  const [emailLogVisible, setEmailLogVisible] = useState(false);
+  const [emailLog, setEmailLog] = useState<SystemAdminEmailDeliveryLogEntry[]>([]);
+  const [emailLogLoading, setEmailLogLoading] = useState(false);
+  const [emailLogError, setEmailLogError] = useState<string | null>(null);
 
   const loadFamilies = useCallback(async (query?: string) => {
     setListLoading(true);
@@ -63,15 +104,31 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
     if (visible) {
       setSelectedFamilyId(null);
       setDetail(null);
+      setEmailLogVisible(false);
       void loadFamilies();
     }
   }, [visible, loadFamilies]);
+
+  const openEmailLog = async () => {
+    setEmailLogVisible(true);
+    setEmailLogLoading(true);
+    setEmailLogError(null);
+    try {
+      const result = await getSystemAdminEmailDeliveryLog();
+      setEmailLog(result);
+    } catch (e) {
+      setEmailLogError(friendlyErrorMessage(e));
+    } finally {
+      setEmailLogLoading(false);
+    }
+  };
 
   const openFamily = async (familyId: string) => {
     setSelectedFamilyId(familyId);
     setDetail(null);
     setDetailLoading(true);
     setDetailError(null);
+    setApprovalActionError(null);
     try {
       const result = await getSystemAdminFamilyDetail(familyId);
       setDetail(result);
@@ -86,26 +143,85 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
     setSelectedFamilyId(null);
     setDetail(null);
     setDetailError(null);
+    setApprovalActionError(null);
+  };
+
+  const handleSetApproval = async (approvalStatus: 'active' | 'rejected') => {
+    if (!selectedFamilyId) return;
+    setApprovalActionLoading(true);
+    setApprovalActionError(null);
+    try {
+      await setSystemAdminFamilyApproval(selectedFamilyId, approvalStatus);
+      await openFamily(selectedFamilyId);
+      await loadFamilies(search);
+    } catch (e) {
+      setApprovalActionError(friendlyErrorMessage(e));
+    } finally {
+      setApprovalActionLoading(false);
+    }
   };
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
-          <RtlText style={styles.title}>🛡️ ניהול מערכת</RtlText>
-          <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="סגירת ניהול מערכת" hitSlop={10}>
-            <RtlText style={styles.closeLink}>סגירה</RtlText>
-          </Pressable>
+          <RtlText style={styles.title} accessibilityRole="header">🛡️ ניהול מערכת</RtlText>
+          <View style={styles.headerActions}>
+            {!selectedFamilyId && !emailLogVisible ? (
+              <Pressable onPress={openEmailLog} accessibilityRole="button" accessibilityLabel="פתיחת יומן משלוח אימיילים" hitSlop={10}>
+                <RtlText style={styles.headerLink}>יומן אימיילים</RtlText>
+              </Pressable>
+            ) : null}
+            <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="סגירת ניהול מערכת" hitSlop={10}>
+              <RtlText style={styles.closeLink}>סגירה</RtlText>
+            </Pressable>
+          </View>
         </View>
 
-        {selectedFamilyId ? (
+        {emailLogVisible ? (
+          <ScrollView contentContainerStyle={styles.content}>
+            <Pressable
+              onPress={() => setEmailLogVisible(false)}
+              accessibilityRole="button"
+              accessibilityLabel="חזרה לרשימת המשפחות"
+            >
+              <RtlText style={styles.backLink}>‹ חזרה לרשימה</RtlText>
+            </Pressable>
+
+            {emailLogLoading ? <ActivityIndicator color={colors.primary} style={styles.spinner} accessibilityLabel="טוען…" /> : null}
+            {emailLogError ? (
+              <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                {emailLogError}
+              </RtlText>
+            ) : null}
+
+            <RtlText style={styles.sectionTitle}>יומן משלוח אימיילים ({emailLog.length})</RtlText>
+            <View style={styles.card}>
+              {!emailLogLoading && emailLog.length === 0 ? (
+                <RtlText style={styles.cardLine}>אין רשומות</RtlText>
+              ) : (
+                emailLog.map((e) => (
+                  <RtlText key={e.id} style={styles.cardLine}>
+                    {new Date(e.createdAt).toLocaleString('he-IL')} · {emailMessageTypeLabel(e.messageType)} ·{' '}
+                    {e.recipientEmail} · {emailStatusLabel(e.status)}
+                    {e.error ? ` · שגיאה: ${e.error}` : ''}
+                  </RtlText>
+                ))
+              )}
+            </View>
+          </ScrollView>
+        ) : selectedFamilyId ? (
           <ScrollView contentContainerStyle={styles.content}>
             <Pressable onPress={backToList} accessibilityRole="button" accessibilityLabel="חזרה לרשימת המשפחות">
               <RtlText style={styles.backLink}>‹ חזרה לרשימה</RtlText>
             </Pressable>
 
-            {detailLoading ? <ActivityIndicator color={colors.primary} style={styles.spinner} /> : null}
-            {detailError ? <RtlText style={styles.error}>{detailError}</RtlText> : null}
+            {detailLoading ? <ActivityIndicator color={colors.primary} style={styles.spinner} accessibilityLabel="טוען…" /> : null}
+            {detailError ? (
+              <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                {detailError}
+              </RtlText>
+            ) : null}
 
             {detail ? (
               <View>
@@ -116,6 +232,38 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                   <RtlText style={styles.cardLine}>
                     נוצרה: {detail.family?.createdAt ? new Date(detail.family.createdAt).toLocaleDateString('he-IL') : '—'}
                   </RtlText>
+                  <RtlText style={styles.cardLine}>
+                    סטטוס אישור: {detail.family?.approvalStatus ? approvalStatusLabel(detail.family.approvalStatus) : '—'}
+                  </RtlText>
+                  {detail.family && detail.family.approvalStatus !== 'active' ? (
+                    <View style={styles.approvalActions}>
+                      {approvalActionError ? (
+                        <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                          {approvalActionError}
+                        </RtlText>
+                      ) : null}
+                      {approvalActionLoading ? (
+                        <ActivityIndicator color={colors.primary} style={styles.spinner} accessibilityLabel="טוען…" />
+                      ) : (
+                        <>
+                          <Button
+                            label="אישור המשפחה"
+                            onPress={() => handleSetApproval('active')}
+                            compact
+                          />
+                          {detail.family.approvalStatus === 'pending' ? (
+                            <Button
+                              label="דחיית הבקשה"
+                              onPress={() => handleSetApproval('rejected')}
+                              variant="danger"
+                              compact
+                              accessibilityHint="הפעולה תעדכן מיידית את סטטוס המשפחה לנדחתה, ללא אישור נוסף"
+                            />
+                          ) : null}
+                        </>
+                      )}
+                    </View>
+                  ) : null}
                 </View>
 
                 <RtlText style={styles.sectionTitle}>כלב/ה</RtlText>
@@ -197,12 +345,17 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                 style={styles.searchInput}
                 textAlign="right"
                 returnKeyType="search"
+                accessibilityLabel="חיפוש לפי שם משפחה, קוד, או שם משתמש"
               />
               <Button label="חיפוש" onPress={() => loadFamilies(search)} compact />
             </View>
 
-            {listLoading ? <ActivityIndicator color={colors.primary} style={styles.spinner} /> : null}
-            {listError ? <RtlText style={styles.error}>{listError}</RtlText> : null}
+            {listLoading ? <ActivityIndicator color={colors.primary} style={styles.spinner} accessibilityLabel="טוען…" /> : null}
+            {listError ? (
+              <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                {listError}
+              </RtlText>
+            ) : null}
 
             <ScrollView contentContainerStyle={styles.content}>
               {!listLoading && families.length === 0 ? <RtlText style={styles.cardLine}>לא נמצאו משפחות</RtlText> : null}
@@ -223,6 +376,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                     מנהלים: {f.adminNames.length > 0 ? f.adminNames.join(', ') : '—'} · נוצרה{' '}
                     {new Date(f.createdAt).toLocaleDateString('he-IL')}
                   </RtlText>
+                  <RtlText style={styles.familyMeta}>סטטוס: {approvalStatusLabel(f.status)}</RtlText>
                 </Pressable>
               ))}
             </ScrollView>
@@ -240,39 +394,42 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  title: { fontSize: 20, fontWeight: '800', color: colors.textPrimary },
+  title: { ...typography.screenTitle, fontSize: 20, color: colors.textPrimary },
+  headerActions: { flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.lg },
+  headerLink: { color: colors.primaryDark, fontWeight: '700', fontSize: 14 },
   closeLink: { color: colors.primaryDark, fontWeight: '700', fontSize: 15 },
-  backLink: { color: colors.primaryDark, fontWeight: '700', fontSize: 14, marginBottom: 12 },
-  content: { padding: 20, gap: 10, paddingBottom: 48 },
-  searchRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 20, paddingTop: 14, alignItems: 'center' },
+  backLink: { color: colors.primaryDark, fontWeight: '700', fontSize: 14, marginBottom: spacing.md },
+  content: { padding: spacing.xl, gap: spacing.sm, paddingBottom: spacing.xxxl },
+  searchRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.xl, paddingTop: spacing.md, alignItems: 'center' },
   searchInput: {
     flex: 1,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: radii.sm,
+    padding: spacing.md,
     fontSize: 14,
     color: colors.textPrimary,
   },
-  spinner: { marginTop: 16 },
-  error: { fontSize: 13, color: colors.statusOverdue, fontWeight: '600', textAlign: 'right', marginHorizontal: 20, marginTop: 10 },
+  spinner: { marginTop: spacing.lg },
+  error: { ...typography.meta, fontWeight: '600', color: colors.statusOverdue, textAlign: 'right', marginHorizontal: spacing.xl, marginTop: spacing.sm },
   familyRow: {
     backgroundColor: colors.surface,
-    borderRadius: 16,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 14,
-    gap: 4,
+    padding: spacing.md,
+    gap: spacing.xs,
   },
-  familyName: { fontSize: 16, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
-  familyMeta: { fontSize: 12, color: colors.textSecondary, textAlign: 'right' },
-  sectionTitle: { fontSize: 14, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', marginTop: 14, marginBottom: 6 },
-  card: { backgroundColor: colors.surface, borderRadius: 14, borderWidth: 1, borderColor: colors.border, padding: 12, gap: 4 },
-  cardLine: { fontSize: 13, color: colors.textPrimary, textAlign: 'right' },
+  familyName: { ...typography.body, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
+  familyMeta: { ...typography.caption, fontSize: 12, fontWeight: '500', color: colors.textSecondary, textAlign: 'right' },
+  sectionTitle: { ...typography.cardTitle, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', marginTop: spacing.md, marginBottom: spacing.sm },
+  card: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
+  approvalActions: { flexDirection: 'row-reverse', gap: spacing.sm, marginTop: spacing.sm, flexWrap: 'wrap' },
+  cardLine: { ...typography.meta, color: colors.textPrimary, textAlign: 'right' },
 });

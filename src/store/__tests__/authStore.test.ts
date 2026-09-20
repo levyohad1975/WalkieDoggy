@@ -351,6 +351,26 @@ describe('authStore — setFamilyId resyncs currentUserId from the server (QA sa
     expect(useAuthStore.getState().currentUserId).toBe('real-dad-id');
     expect(await AsyncStorage.getItem('dog-walk-family:current-user-id')).toBe('real-dad-id');
   });
+
+  it('a family switch whose post-switch whoami() re-sync fails/is offline fails closed: clears the stale currentUserId rather than risk it under the wrong family', async () => {
+    jest.resetModules();
+    const rpc = rpcRouter({
+      current_family_role: () => ({ data: 'admin', error: null }),
+      current_family_is_qa: () => ({ data: false, error: null }),
+      whoami: () => ({ data: null, error: { message: 'network error' } }),
+    });
+    setupSupabaseMode(rpc);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useAuthStore } = require('../authStore');
+    useAuthStore.setState({ currentUserId: 'stale-persona-id' });
+    await AsyncStorage.setItem('dog-walk-family:current-user-id', 'stale-persona-id');
+
+    await useAuthStore.getState().setFamilyId('some-other-family-2');
+
+    expect(useAuthStore.getState().currentUserId).toBeNull();
+    expect(await AsyncStorage.getItem('dog-walk-family:current-user-id')).toBeNull();
+  });
 });
 
 /**
@@ -1200,6 +1220,29 @@ describe('authStore — signIn (Supabase mode: offline-queue audit-integrity gua
     expect(rpc).not.toHaveBeenCalledWith('claim_family_profile_with_pin', expect.anything());
     expect(useAuthStore.getState().currentUserId).toBeNull();
   });
+
+  it('a failed best-effort trySync() flush does not block the claim — only its own hasPendingForOtherUser() check afterwards decides that', async () => {
+    jest.resetModules();
+    process.env = {
+      ...ORIGINAL_ENV,
+      EXPO_PUBLIC_SUPABASE_URL: 'https://example.supabase.co',
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'anon-key',
+    };
+    const rpc = rpcRouter({});
+    mockSupabaseModule(rpc);
+    const trySync = jest.fn().mockRejectedValue(new Error('offline'));
+    const hasPendingForOtherUser = jest.fn().mockResolvedValue(false);
+    jest.doMock('../../data', () => ({ repository: { trySync, hasPendingForOtherUser } }));
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useAuthStore } = require('../authStore');
+
+    await useAuthStore.getState().signIn('user-2');
+
+    expect(trySync).toHaveBeenCalled();
+    expect(hasPendingForOtherUser).toHaveBeenCalledWith('user-2');
+    expect(useAuthStore.getState().currentUserId).toBe('user-2');
+  });
 });
 
 /**
@@ -1310,6 +1353,39 @@ describe('authStore — stale claim detection (whoami)', () => {
     expect(useAuthStore.getState().staleClaimRecovered).toBe(false);
   });
 
+  it('a corrupted (non-UUID-shaped) cached currentUserId is discarded before the whoami-based stale check even runs', async () => {
+    setupSupabaseModeForRestore();
+    const rpc = rpcRouter({
+      current_family_role: () => ({ data: 'admin', error: null }),
+    });
+    mockSupabaseModule(rpc);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    await AsyncStorage.setItem('dog-walk-family:current-family-id', 'fam-1');
+    await AsyncStorage.setItem('dog-walk-family:current-user-id', 'not-a-real-uuid');
+    const { useAuthStore } = require('../authStore');
+
+    await useAuthStore.getState().restoreSession();
+
+    expect(useAuthStore.getState().currentUserId).toBeNull();
+    expect(await AsyncStorage.getItem('dog-walk-family:current-user-id')).toBeNull();
+    // The isUuid guard fires first and clears currentUserId, so the separate
+    // whoami-based checkClaimStillValid() check never even gets a chance to run.
+    expect(rpc).not.toHaveBeenCalledWith('whoami');
+  });
+
+  it('clearStaleClaimNotice() clears both staleClaimRecovered and staleClaimUserId once the one-time banner has been shown', async () => {
+    setupSupabaseModeForRestore();
+    mockSupabaseModule(rpcRouter({}));
+    const { useAuthStore } = require('../authStore');
+    useAuthStore.setState({ staleClaimRecovered: true, staleClaimUserId: IDAN_ID });
+
+    useAuthStore.getState().clearStaleClaimNotice();
+
+    expect(useAuthStore.getState().staleClaimRecovered).toBe(false);
+    expect(useAuthStore.getState().staleClaimUserId).toBeNull();
+  });
+
   it('restoreSession ends any orphaned server-side impersonation session unconditionally, before resolving anything else (restart safety)', async () => {
     setupSupabaseModeForRestore();
     const rpc = rpcRouter({
@@ -1325,6 +1401,58 @@ describe('authStore — stale claim detection (whoami)', () => {
 
     expect(rpc).toHaveBeenCalledWith('end_impersonation');
     expect(useAuthStore.getState().impersonatingUserId).toBeNull();
+  });
+
+  it('restoreSession never throws even when ensureAnonymousSession() itself fails (no cached session and signInAnonymously rejects)', async () => {
+    setupSupabaseModeForRestore();
+    const rpc = rpcRouter({ current_family_role: () => ({ data: 'admin', error: null }) });
+    jest.doMock('@supabase/supabase-js', () => ({
+      createClient: jest.fn(() => ({
+        auth: {
+          getSession: jest.fn().mockResolvedValue({ data: { session: null } }),
+          signInAnonymously: jest.fn().mockResolvedValue({ error: { message: 'network error' } }),
+        },
+        rpc,
+        from: jest.fn(),
+        storage: { from: jest.fn() },
+      })),
+    }));
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useAuthStore } = require('../authStore');
+
+    await expect(useAuthStore.getState().restoreSession()).resolves.toBeUndefined();
+  });
+
+  it('restoreSession never throws even when its restart-safety end_impersonation() cleanup itself fails', async () => {
+    setupSupabaseModeForRestore();
+    const rpc = rpcRouter({
+      current_family_role: () => ({ data: 'admin', error: null }),
+      end_impersonation: () => ({ data: null, error: { message: 'network error' } }),
+    });
+    mockSupabaseModule(rpc);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useAuthStore } = require('../authStore');
+
+    await expect(useAuthStore.getState().restoreSession()).resolves.toBeUndefined();
+    expect(rpc).toHaveBeenCalledWith('end_impersonation');
+  });
+
+  it('setFamilyId never throws even when its own best-effort end_impersonation() cleanup fails', async () => {
+    setupSupabaseModeForRestore();
+    const rpc = rpcRouter({
+      current_family_role: () => ({ data: 'admin', error: null }),
+      end_impersonation: () => ({ data: null, error: { message: 'network error' } }),
+    });
+    mockSupabaseModule(rpc);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useAuthStore } = require('../authStore');
+
+    await expect(useAuthStore.getState().setFamilyId('fam-99')).resolves.toBeUndefined();
+    expect(rpc).toHaveBeenCalledWith('end_impersonation');
+    expect(useAuthStore.getState().familyId).toBe('fam-99');
   });
 
   it('revalidateClaim() (foreground re-check) recovers a mid-session drift the same way restoreSession does', async () => {
@@ -1367,6 +1495,34 @@ describe('authStore — stale claim detection (whoami)', () => {
     await useAuthStore.getState().revalidateClaim();
 
     expect(rpc).not.toHaveBeenCalledWith('whoami');
+  });
+
+  it('revalidateClaim() treats a "couldn\'t tell" whoami() (no matching row, no error) as no information — never signs anyone out', async () => {
+    setupSupabaseModeForRestore();
+    const rpc = rpcRouter({
+      current_family_role: () => ({ data: 'member', error: null }),
+      whoami: () => whoAmIRow({ profile_id: IDAN_ID, real_profile_id: IDAN_ID, family_role: 'member' }),
+    });
+    mockSupabaseModule(rpc);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    await AsyncStorage.setItem('dog-walk-family:current-family-id', 'fam-1');
+    await AsyncStorage.setItem('dog-walk-family:current-user-id', IDAN_ID);
+    const { useAuthStore } = require('../authStore');
+    await useAuthStore.getState().restoreSession();
+    expect(useAuthStore.getState().currentUserId).toBe(IDAN_ID);
+
+    // whoami() itself resolves with an empty result set (no error) — the
+    // same "couldn't tell" signal as an offline/thrown failure, just via a
+    // different code path through getWhoAmI()/checkClaimStillValid().
+    rpc.mockImplementationOnce((name: string) =>
+      name === 'whoami' ? Promise.resolve({ data: [], error: null }) : Promise.resolve({ data: null, error: null })
+    );
+
+    await useAuthStore.getState().revalidateClaim();
+
+    expect(useAuthStore.getState().currentUserId).toBe(IDAN_ID);
+    expect(useAuthStore.getState().staleClaimRecovered).toBe(false);
   });
 });
 
@@ -1446,6 +1602,17 @@ describe('authStore — real impersonation (QA mode)', () => {
     // Never touches the real, authenticated identity.
     expect(useAuthStore.getState().currentUserId).toBe('admin-1');
     expect(useAuthStore.getState().familyRole).toBe('admin');
+  });
+
+  it('endImpersonation is a no-op (never calls the RPC) when nothing is being impersonated', async () => {
+    const rpc = rpcRouter({ current_family_role: () => ({ data: 'admin', error: null }) });
+    const useAuthStore = await setupAdminInSupabaseMode(rpc);
+    rpc.mockClear();
+
+    await useAuthStore.getState().endImpersonation();
+
+    expect(rpc).not.toHaveBeenCalledWith('end_impersonation');
+    expect(useAuthStore.getState().impersonatingUserId).toBeNull();
   });
 
   it('endImpersonation only clears local state once the RPC actually succeeds', async () => {
@@ -1673,6 +1840,33 @@ describe('authStore — real impersonation (QA mode)', () => {
 
     expect(useAuthStore.getState().impersonatingUserId).toBe('member-1');
     expect(rpc).not.toHaveBeenCalledWith('end_impersonation');
+  });
+
+  it('clearImpersonationIfInvalid clears local state without attempting any server RPC in local/demo mode (Supabase not configured)', async () => {
+    jest.resetModules();
+    process.env = ORIGINAL_ENV;
+    const { useAuthStore } = require('../authStore');
+    useAuthStore.setState({ impersonatingUserId: 'member-1' });
+
+    useAuthStore.getState().clearImpersonationIfInvalid(['admin-1']); // member-1 no longer active
+
+    expect(useAuthStore.getState().impersonatingUserId).toBeNull();
+  });
+
+  it('clearImpersonationIfInvalid still clears local state even when its fire-and-forget end_impersonation() cleanup itself fails', async () => {
+    const rpc = rpcRouter({ current_family_role: () => ({ data: 'admin', error: null }),
+      begin_impersonation: () => ({ data: 'session-1', error: null }),
+      end_impersonation: () => ({ data: null, error: { message: 'network error' } }),
+    });
+    const useAuthStore = await setupAdminInSupabaseMode(rpc);
+    await useAuthStore.getState().beginImpersonation('member-1');
+
+    useAuthStore.getState().clearImpersonationIfInvalid(['admin-1', 'member-2']); // member-1 no longer active
+    // Fire-and-forget — flush the rejected promise's own .catch() before asserting.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(useAuthStore.getState().impersonatingUserId).toBeNull();
   });
 
   /**
@@ -1956,6 +2150,33 @@ describe('authStore — Test Mode / Real Impersonation mutual exclusion (round-5
     expect(useAuthStore.getState().impersonationStarting).toBe(false);
   });
 
+  // H2. Same forced-conflict path, but the best-effort cleanup RPC itself
+  // fails — the conflict must still be surfaced (never masked by a cleanup
+  // failure), and the failure is only logged, never left unhandled.
+  it('H2. defense-in-depth: if the cleanup end_impersonation() call itself fails, the conflict error is still thrown and the failure is only logged', async () => {
+    const { promise, resolve } = deferred<{ data: unknown; error: unknown }>();
+    const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const rpc = rpcRouter({ current_family_role: () => ({ data: 'admin', error: null }),
+      begin_impersonation: () => promise as unknown as { data: unknown; error: unknown },
+      end_impersonation: () => ({ data: null, error: { message: 'cleanup rpc failed' } }),
+    });
+    const useAuthStore = await setupAdminInSupabaseMode(rpc);
+
+    const beginPromise = useAuthStore.getState().beginImpersonation('member-1');
+    useAuthStore.setState({ testModeUserId: 'member-2' });
+    resolve({ data: 'session-1', error: null });
+
+    await expect(beginPromise).rejects.toThrow(/התנגשות/);
+
+    expect(useAuthStore.getState().impersonatingUserId).toBeNull();
+    expect(useAuthStore.getState().impersonationStarting).toBe(false);
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      'beginImpersonation: cleanup after conflict failed',
+      expect.anything()
+    );
+    consoleWarnSpy.mockRestore();
+  });
+
   // I. guardTestModeMutation: blocks during read-only Test Mode, allows during Real Impersonation.
   it('I. guardTestModeMutation blocks during Test Mode and allows during Real Impersonation', async () => {
     const rpc = rpcRouter({ current_family_role: () => ({ data: 'admin', error: null }),  begin_impersonation: () => ({ data: 'session-1', error: null }) });
@@ -2194,6 +2415,59 @@ describe('authStore — Round 4 invite redemption (completeInviteRedemption / pe
     expect(useAuthStore.getState().familyId).toBeNull();
   });
 
+  it('retryPendingInviteRedemptionVerification: a malformed (missing-field) stored marker is dropped rather than retried, returns "none"', async () => {
+    const rpc = rpcRouter({});
+    setupSupabaseModeForRedemption(rpc);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    await AsyncStorage.setItem(PENDING_KEY, JSON.stringify({ familyId: 'fam-invited' })); // missing targetUserId
+    const { useAuthStore } = require('../authStore');
+
+    const outcome = await useAuthStore.getState().retryPendingInviteRedemptionVerification();
+
+    expect(outcome).toBe('none');
+    expect(await AsyncStorage.getItem(PENDING_KEY)).toBeNull();
+    expect(useAuthStore.getState().pendingInviteRedemption).toBeNull();
+    expect(rpc).not.toHaveBeenCalledWith('whoami');
+  });
+
+  it('retryPendingInviteRedemptionVerification: an unparseable stored marker is dropped rather than retried forever, returns "none"', async () => {
+    const rpc = rpcRouter({});
+    setupSupabaseModeForRedemption(rpc);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    await AsyncStorage.setItem(PENDING_KEY, 'not-valid-json{');
+    const { useAuthStore } = require('../authStore');
+
+    const outcome = await useAuthStore.getState().retryPendingInviteRedemptionVerification();
+
+    expect(outcome).toBe('none');
+    expect(await AsyncStorage.getItem(PENDING_KEY)).toBeNull();
+    expect(rpc).not.toHaveBeenCalledWith('whoami');
+  });
+
+  it('retryPendingInviteRedemptionVerification: whoami still unreachable -> stays pending, re-surfaces pendingInviteRedemption, marker untouched', async () => {
+    const rpc = rpcRouter({
+      whoami: () => ({ data: null, error: { message: 'network error' } }),
+    });
+    setupSupabaseModeForRedemption(rpc);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    await AsyncStorage.setItem(PENDING_KEY, JSON.stringify({ familyId: 'fam-invited', targetUserId: TARGET_ID }));
+    const { useAuthStore } = require('../authStore');
+
+    const outcome = await useAuthStore.getState().retryPendingInviteRedemptionVerification();
+
+    expect(outcome).toBe('unverified');
+    expect(useAuthStore.getState().pendingInviteRedemption).toEqual({
+      familyId: 'fam-invited',
+      targetUserId: TARGET_ID,
+    });
+    expect(await AsyncStorage.getItem(PENDING_KEY)).toBe(
+      JSON.stringify({ familyId: 'fam-invited', targetUserId: TARGET_ID })
+    );
+  });
+
   it('restoreSession recovers a pending redemption automatically once whoami succeeds — no manual action required (cold-start recovery)', async () => {
     const rpc = rpcRouter({
       current_family_role: () => ({ data: 'member', error: null }),
@@ -2259,5 +2533,58 @@ describe('authStore — Round 4 invite redemption (completeInviteRedemption / pe
     expect(useAuthStore.getState().pendingInviteRedemption).toBeNull();
     // The stale marker is left alone in this case (not this device's concern) —
     // only relevant while currentUserId is unresolved.
+  });
+
+  it('restoreSession recovers gracefully from a corrupted (unparseable) pending-redemption marker, dropping it rather than retrying forever', async () => {
+    const rpc = rpcRouter({});
+    setupSupabaseModeForRedemption(rpc);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    await AsyncStorage.setItem(PENDING_KEY, 'not-valid-json{');
+    const { useAuthStore } = require('../authStore');
+
+    await useAuthStore.getState().restoreSession();
+
+    expect(useAuthStore.getState().pendingInviteRedemption).toBeNull();
+    expect(useAuthStore.getState().familyId).toBeNull();
+    expect(useAuthStore.getState().currentUserId).toBeNull();
+    expect(await AsyncStorage.getItem(PENDING_KEY)).toBeNull();
+    expect(rpc).not.toHaveBeenCalledWith('whoami');
+  });
+
+  it('restoreSession drops a pending-redemption marker that parses successfully to a falsy value (e.g. JSON "null"), same as a corrupted one', async () => {
+    const rpc = rpcRouter({});
+    setupSupabaseModeForRedemption(rpc);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    await AsyncStorage.setItem(PENDING_KEY, 'null');
+    const { useAuthStore } = require('../authStore');
+
+    await useAuthStore.getState().restoreSession();
+
+    expect(useAuthStore.getState().pendingInviteRedemption).toBeNull();
+    expect(await AsyncStorage.getItem(PENDING_KEY)).toBeNull();
+    expect(rpc).not.toHaveBeenCalledWith('whoami');
+  });
+
+  it('retryPendingInviteRedemptionVerification: a mismatch also clears an already-surfaced pendingInviteRedemption in the live store, not just the AsyncStorage marker', async () => {
+    const rpc = rpcRouter({
+      whoami: () => whoAmIRow({ profile_id: 'someone-else', real_profile_id: 'someone-else', family_role: 'member' }),
+    });
+    setupSupabaseModeForRedemption(rpc);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    await AsyncStorage.setItem(PENDING_KEY, JSON.stringify({ familyId: 'fam-invited', targetUserId: TARGET_ID }));
+    const { useAuthStore } = require('../authStore');
+    // Simulate a prior 'unverified' retry having already surfaced this
+    // pending redemption in the live store (see the "whoami still
+    // unreachable" test above) before this retry resolves to a mismatch.
+    useAuthStore.setState({ pendingInviteRedemption: { familyId: 'fam-invited', targetUserId: TARGET_ID } });
+
+    const outcome = await useAuthStore.getState().retryPendingInviteRedemptionVerification();
+
+    expect(outcome).toBe('mismatch');
+    expect(useAuthStore.getState().pendingInviteRedemption).toBeNull();
+    expect(await AsyncStorage.getItem(PENDING_KEY)).toBeNull();
   });
 });

@@ -5,6 +5,7 @@ import type { FamilyUser, Walk } from '../types';
 import { isOverdue } from '../logic/nextWalk';
 import { walkCompletionLine, walkHistoryTimingLine, walkMetadataLine } from '../logic/walkActions';
 import { colors } from '../theme/colors';
+import { nativeDirection } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { StatusBadge } from './StatusBadge';
 
@@ -240,12 +241,24 @@ export function WalkRow({
       {onMarkDone || onMarkNotDone ? (
         <View style={styles.resolveRow}>
           {onMarkDone ? (
-            <Pressable onPress={onMarkDone} style={[styles.resolveChip, styles.resolveChipDone]} hitSlop={6}>
+            <Pressable
+              onPress={onMarkDone}
+              style={[styles.resolveChip, styles.resolveChipDone]}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel="סימון הטיול כבוצע"
+            >
               <RtlText style={styles.resolveChipText} numberOfLines={1}>✓ בוצע</RtlText>
             </Pressable>
           ) : null}
           {onMarkNotDone ? (
-            <Pressable onPress={onMarkNotDone} style={[styles.resolveChip, styles.resolveChipNotDone]} hitSlop={6}>
+            <Pressable
+              onPress={onMarkNotDone}
+              style={[styles.resolveChip, styles.resolveChipNotDone]}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel="סימון הטיול כלא בוצע"
+            >
               <RtlText style={[styles.resolveChipText, { color: colors.statusSkipped }]} numberOfLines={1}>✕ לא בוצע</RtlText>
             </Pressable>
           ) : null}
@@ -293,7 +306,7 @@ const styles = StyleSheet.create({
     width: '100%',
     minHeight: 48,
     flexDirection: 'row-reverse',
-    direction: 'ltr',
+    ...nativeDirection('ltr'),
     alignItems: 'center',
     gap: 7,
   },

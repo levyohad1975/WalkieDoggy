@@ -3,6 +3,7 @@ import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleShee
 import { RtlText } from './RtlText';
 import type { FamilyUser } from '../types';
 import { colors } from '../theme/colors';
+import { radii, spacing } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 
@@ -50,10 +51,15 @@ export function CompleteWalkModal({
           RequestTimeChangeModal.tsx — wraps the existing backdrop/sheet/
           ScrollView structure unchanged. */}
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <Pressable style={styles.backdrop} onPress={onCancel}>
+        <Pressable
+          style={styles.backdrop}
+          onPress={onCancel}
+          accessibilityRole="button"
+          accessibilityLabel={`סגירת סימון הטיול של ${dogName} כבוצע`}
+        >
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView keyboardShouldPersistTaps="handled">
-              <RtlText style={styles.title}>סימון הטיול של {dogName} כבוצע</RtlText>
+              <RtlText style={styles.title} accessibilityRole="header">סימון הטיול של {dogName} כבוצע</RtlText>
             {scheduledTime ? <RtlText style={styles.subtitle}>מתוכנן לשעה {scheduledTime}</RtlText> : null}
 
             <RtlText style={styles.label}>מי טייל בפועל?</RtlText>
@@ -111,6 +117,7 @@ export function CompleteWalkModal({
               style={styles.noteInput}
               multiline
               textAlign="right"
+              accessibilityLabel="הערה (אופציונלי)"
             />
 
             <View style={styles.actions}>
@@ -132,23 +139,23 @@ export function CompleteWalkModal({
 const styles = StyleSheet.create({
   flexFull: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '88%' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, maxHeight: '88%' },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
-  subtitle: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: 4, marginBottom: 12 },
-  label: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: 16, marginBottom: 8, textAlign: 'right' },
-  userRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  userChip: { alignItems: 'center', minWidth: 68, gap: 4, opacity: 0.55 },
+  subtitle: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xs, marginBottom: spacing.md },
+  label: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: spacing.lg, marginBottom: spacing.sm, textAlign: 'right' },
+  userRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  userChip: { alignItems: 'center', minWidth: 68, gap: spacing.xs, opacity: 0.55 },
   userChipActive: { opacity: 1 },
   userChipName: { fontSize: 12, color: colors.textPrimary, fontWeight: '600' },
-  toggleRow: { flexDirection: 'row', gap: 12, marginTop: 4 },
+  toggleRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xs },
   toggle: {
     flex: 1,
     minHeight: 72,
-    borderRadius: 18,
+    borderRadius: radii.lg,
     backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: spacing.xs,
     borderWidth: 2,
     borderColor: 'transparent',
   },
@@ -159,13 +166,13 @@ const styles = StyleSheet.create({
   toggleLabelActive: { color: colors.textPrimary },
   noteInput: {
     backgroundColor: colors.surfaceMuted,
-    borderRadius: 14,
+    borderRadius: radii.md,
     padding: 14,
     fontSize: 15,
     color: colors.textPrimary,
     minHeight: 60,
     textAlignVertical: 'top',
   },
-  actions: { flexDirection: 'row', gap: 12, marginTop: 22 },
+  actions: { flexDirection: 'row', gap: spacing.md, marginTop: 22 },
   flex: { flex: 1 },
 });

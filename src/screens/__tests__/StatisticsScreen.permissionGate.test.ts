@@ -63,4 +63,26 @@ describe('StatisticsScreen — enforces view_statistics itself, not just via hid
   it('the server check defaults to blocking (\'checking\', not \'granted\') in Supabase mode, so an in-flight verification never transiently allows access', () => {
     expect(source).toMatch(/useState<'checking' \| 'granted' \| 'denied'>\(\s*isSupabaseConfigured \? 'checking' : 'granted'\s*\)/);
   });
+
+  it('tracks whether access was ever granted, so a background refocus revalidation does not blank an already-authorized user\'s data', () => {
+    expect(source).toMatch(/const hasEverGrantedRef = useRef\(false\);/);
+    // Set on every path that lands 'granted' (local/demo mode + the
+    // Supabase success path), and reset on the real 'denied' path — never
+    // just left stale from a prior visit.
+    expect(source).toMatch(/setStatisticsAccessStatus\('granted'\);\s*\n\s*hasEverGrantedRef\.current = true;/);
+    expect(source).toMatch(/setStatisticsAccessStatus\('denied'\);\s*\n\s*hasEverGrantedRef\.current = false;/);
+  });
+
+  it('the access gate treats an in-flight refocus revalidation of an already-granted user as still-allowed, not as a fresh denial', () => {
+    const guardIdx = source.indexOf(
+      "!canAccessStatisticsScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus) ||"
+    );
+    expect(guardIdx).toBeGreaterThan(-1);
+    const guardClauseEnd = source.indexOf(') {', guardIdx);
+    const guardClause = source.slice(guardIdx, guardClauseEnd);
+    expect(guardClause).toContain("statisticsAccessStatus !== 'granted'");
+    expect(guardClause).toContain("statisticsAccessStatus === 'checking' && hasEverGrantedRef.current");
+    const mainReturnIdx = source.indexOf('📈 סטטיסטיקה');
+    expect(mainReturnIdx).toBeGreaterThan(guardClauseEnd);
+  });
 });

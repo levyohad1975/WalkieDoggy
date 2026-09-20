@@ -46,4 +46,9 @@ describe('isWalkRequiringAttention', () => {
     const now = new Date('2026-08-27T00:00:00');
     expect(isWalkRequiringAttention(walk, now)).toBe(false);
   });
+
+  it('defaults to the real current moment when called with no `now` argument', () => {
+    const walk = makeWalk({ status: 'done' });
+    expect(isWalkRequiringAttention(walk)).toBe(false);
+  });
 });

@@ -29,7 +29,7 @@
  * all.
  */
 describe('SettingsScreen — "החלף משתמש" control flow (structural)', () => {
-  const source = require('fs').readFileSync(require.resolve('../SettingsScreen'), 'utf8');
+  const source = require('fs').readFileSync(require.resolve('../SettingsScreen'), 'utf8').replace(/\r\n/g, '\n');
 
   function extractFunctionBody(fnStartMarker: string): string {
     const startIdx = source.indexOf(fnStartMarker);

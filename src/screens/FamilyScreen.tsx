@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { AppState, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { AppState, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFamilyStore } from '../store/familyStore';
 import { isRealFamilyAdmin, useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { colors } from '../theme/colors';
+import { breakpoints, radii, spacing, typography } from '../theme/tokens';
 import { Avatar } from '../components/Avatar';
 import { Button } from '../components/Button';
 import { UserFormModal } from '../components/UserFormModal';
@@ -286,8 +287,8 @@ export function FamilyScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <RtlText style={styles.header}>בני המשפחה</RtlText>
+      <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
+        <RtlText style={styles.header} accessibilityRole="header">בני המשפחה</RtlText>
         {/* BATCH 4 (item B — dog profile completion): was hard-coded
             "טופי" regardless of the family's actual dog — now interpolates
             the real, authoritative dog.name, with a neutral fallback while
@@ -457,7 +458,9 @@ export function FamilyScreen() {
 
       {actionError ? (
         <View style={styles.errorBanner}>
-          <RtlText style={styles.errorText}>{actionError}</RtlText>
+          <RtlText style={styles.errorText} accessibilityRole="alert" accessibilityLiveRegion="polite">
+            {actionError}
+          </RtlText>
           <RtlText style={styles.errorDismiss} onPress={clearActionError}>
             הבנתי
           </RtlText>
@@ -466,7 +469,9 @@ export function FamilyScreen() {
 
       {roleRefreshNotice ? (
         <View style={styles.errorBanner}>
-          <RtlText style={styles.errorText}>{roleRefreshNotice}</RtlText>
+          <RtlText style={styles.errorText} accessibilityRole="alert" accessibilityLiveRegion="polite">
+            {roleRefreshNotice}
+          </RtlText>
           <RtlText
             style={styles.errorDismiss}
             onPress={() => useAuthStore.getState().clearRoleRefreshNotice()}
@@ -481,10 +486,11 @@ export function FamilyScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: 20, gap: 16, paddingBottom: 48 },
-  header: { width: '100%', fontSize: 22, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
-  subheader: { width: '100%', fontSize: 14, color: colors.textSecondary, textAlign: 'right', writingDirection: 'rtl', marginTop: -8 },
-  list: { gap: 10 },
+  content: { padding: spacing.xl, gap: spacing.lg, paddingBottom: spacing.xxxl },
+  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
+  header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  subheader: { width: '100%', ...typography.meta, color: colors.textSecondary, textAlign: 'right', writingDirection: 'rtl', marginTop: -8 },
+  list: { gap: spacing.sm },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -495,7 +501,7 @@ const styles = StyleSheet.create({
     // alone reclaims up to 3 * 2 = 6pt versus the previous 8 gap.
     gap: 6,
     backgroundColor: colors.surface,
-    borderRadius: 18,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
     // Round 8, Fix 2 (retry): was 12 — trimmed to 10, reclaiming another
@@ -521,7 +527,7 @@ const styles = StyleSheet.create({
   // iPhone QA found truncating) is what lets the Text children's own
   // numberOfLines={1} ellipsis kick in at the true available width instead
   // of overflowing the row.
-  nameWrap: { flex: 1, flexShrink: 1, gap: 2 },
+  nameWrap: { flex: 1, flexShrink: 1, gap: spacing.xs },
   name: { fontSize: 17, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
   subtitle: { fontSize: 12, color: colors.textSecondary, textAlign: 'right' },
   // Round 8, Fix 2 (retry): was padding 8, then 6 — still truncated.
@@ -538,18 +544,18 @@ const styles = StyleSheet.create({
   // fixed-width footprint for nameWrap without making the icons hard to see
   // or tap (hitSlop still covers the touch target, see iconButton above).
   iconText: { fontSize: 18 },
-  addButton: { marginTop: 4 },
+  addButton: { marginTop: spacing.xs },
   errorBanner: {
     position: 'absolute',
     bottom: 24,
     start: 20,
     end: 20,
     backgroundColor: colors.statusOverdueBg,
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.md,
   },
   errorText: { flex: 1, color: colors.statusOverdue, fontWeight: '600', textAlign: 'right' },
   errorDismiss: { color: colors.statusOverdue, fontWeight: '800' },

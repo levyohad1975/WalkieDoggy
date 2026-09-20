@@ -89,7 +89,7 @@ describe('HistoryScreen — enforces view_history itself, not just via hidden na
 
   it('renders a blocked state instead of the real content when EITHER the client gate or the server check denies access, BEFORE the main return', () => {
     const guardIdx = source.indexOf(
-      '!canAccessHistoryScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus) || historyAccessStatus !== \'granted\''
+      '!canAccessHistoryScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus) ||'
     );
     expect(guardIdx).toBeGreaterThan(-1);
     const mainReturnIdx = source.indexOf("<RtlText style={styles.header}");
@@ -99,5 +99,31 @@ describe('HistoryScreen — enforces view_history itself, not just via hidden na
 
   it('the server check defaults to blocking (\'checking\', not \'granted\') in Supabase mode, so an in-flight verification never transiently allows access', () => {
     expect(source).toMatch(/useState<'checking' \| 'granted' \| 'denied'>\(\s*isSupabaseConfigured \? 'checking' : 'granted'\s*\)/);
+  });
+
+  it('tracks whether access was ever granted, so a background refocus revalidation does not blank an already-authorized user\'s data', () => {
+    expect(source).toMatch(/const hasEverGrantedRef = useRef\(false\);/);
+    // Set on every path that lands 'granted' (local/demo mode + the
+    // Supabase success path), and reset on the real 'denied' path — never
+    // just left stale from a prior visit.
+    expect(source).toMatch(/setHistoryAccessStatus\('granted'\);\s*\n\s*hasEverGrantedRef\.current = true;/);
+    expect(source).toMatch(/setHistoryAccessStatus\('denied'\);\s*\n\s*hasEverGrantedRef\.current = false;/);
+  });
+
+  it('the access gate treats an in-flight refocus revalidation of an already-granted user as still-allowed, not as a fresh denial', () => {
+    const guardIdx = source.indexOf(
+      '!canAccessHistoryScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus) ||'
+    );
+    expect(guardIdx).toBeGreaterThan(-1);
+    const guardClauseEnd = source.indexOf(') {', guardIdx);
+    const guardClause = source.slice(guardIdx, guardClauseEnd);
+    expect(guardClause).toContain("historyAccessStatus !== 'granted'");
+    expect(guardClause).toContain("historyAccessStatus === 'checking' && hasEverGrantedRef.current");
+    const mainReturnIdx = source.indexOf('<RtlText style={styles.header}');
+    expect(mainReturnIdx).toBeGreaterThan(guardClauseEnd);
+  });
+
+  it('"סיכום שבועי" (weekly summary) uses a 6-day-back cutoff, matching statistics.ts\'s filterWalksByPeriod() inclusive-of-today convention (start of day 6 ago through today = 7 calendar days) — not 7-day-back, which would silently widen it to an 8-day window', () => {
+    expect(source).toMatch(/const weekAgo = useMemo\(\(\) => localDateOnly\(new Date\(Date\.now\(\) - 6 \* 86400000\)\), \[\]\);/);
   });
 });

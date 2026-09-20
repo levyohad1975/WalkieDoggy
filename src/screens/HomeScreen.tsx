@@ -32,7 +32,12 @@ import { DEMO_FAMILY } from '../data/demoData';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { fetchLastResolvedWalk } from '../lib/permissionedWalks';
 import { useRequestsStore } from '../store/requestsStore';
-import { countActionableRequests, countUnreadRequestResults } from '../logic/requestLifecycle';
+import {
+  countPendingRequestsForViewer,
+  countUnreadRequestResults,
+  walkHasActiveSwapRequest,
+  walkHasActiveTimeChangeRequest,
+} from '../logic/requestLifecycle';
 import { computeWalkRequestStatusLine } from '../logic/walkRequestStatusLine';
 import type { Walk } from '../types';
 import { renderMessageTemplate } from '../mascot/messageEngine';
@@ -367,16 +372,21 @@ export function HomeScreen() {
     });
   }, [dog, reminderPrompt, usersById, walksById]);
 
-  // Badge counts: for a Member, swap requests addressed to them awaiting
-  // their approval; for an Admin, time-change requests awaiting theirs
+  // Badge counts: swap requests addressed to the viewer (a swap target can
+  // be ANY active member, including one who also holds the Admin role —
+  // see countPendingRequestsForViewer's own doc comment), plus, for an
+  // Admin, every pending time-change request awaiting their approval
   // (requirement 4's "בקשות ממתינות (N)").
   // Section 9: badge = ONLY actionable (pending, non-expired) requests —
   // an "expired" pending request (its walk already resolved another way)
   // no longer inflates the badge, even though the row itself isn't deleted.
-  const pendingForMe =
+  const pendingForMe = countPendingRequestsForViewer(
+    swapRequests,
+    timeChangeRequests,
+    walksById,
+    effectiveUserId,
     effectiveRole === 'admin'
-      ? countActionableRequests(timeChangeRequests, walksById, () => true)
-      : countActionableRequests(swapRequests, walksById, (r) => r.target_user_id === effectiveUserId);
+  );
 
   const unreadResultsForMe =
     countUnreadRequestResults(swapRequests, walksById, effectiveUserId) +
@@ -427,7 +437,7 @@ export function HomeScreen() {
   if (loading && walks.length === 0) {
     return (
       <SafeAreaView style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={colors.primary} accessibilityLabel="טוען…" />
       </SafeAreaView>
     );
   }
@@ -516,9 +526,16 @@ export function HomeScreen() {
             // non-responsible admin" rule and its own unit tests.
             onSwap={nextWalkCardActions?.canSwapDirect ? () => setSwapWalkId(nextWalk.id) : undefined}
             onEdit={nextWalkCardActions?.canEditDirect ? () => setEditWalkId(nextWalk.id) : undefined}
-            onRequestSwap={nextWalkCardActions?.canRequestSwap ? () => setRequestSwapWalkId(nextWalk.id) : undefined}
+            onRequestSwap={
+              nextWalkCardActions?.canRequestSwap && !walkHasActiveSwapRequest(nextWalk.id, swapRequests, walksById)
+                ? () => setRequestSwapWalkId(nextWalk.id)
+                : undefined
+            }
             onRequestTimeChange={
-              nextWalkCardActions?.canRequestTimeChange ? () => setRequestTimeChangeWalkId(nextWalk.id) : undefined
+              nextWalkCardActions?.canRequestTimeChange &&
+              !walkHasActiveTimeChangeRequest(nextWalk.id, timeChangeRequests, walksById)
+                ? () => setRequestTimeChangeWalkId(nextWalk.id)
+                : undefined
             }
           />
         ) : (
@@ -683,12 +700,14 @@ export function HomeScreen() {
                   // predicate ScheduleScreen uses (logic/walkActions.ts),
                   // so eligibility is identical on both screens.
                   onRequestSwap={
-                    canRequestChangeForWalk(w, effectiveUserId, effectiveRole, isSupabaseConfigured)
+                    canRequestChangeForWalk(w, effectiveUserId, effectiveRole, isSupabaseConfigured) &&
+                    !walkHasActiveSwapRequest(w.id, swapRequests, walksById)
                       ? () => setRequestSwapWalkId(w.id)
                       : undefined
                   }
                   onRequestTimeChange={
-                    canRequestChangeForWalk(w, effectiveUserId, effectiveRole, isSupabaseConfigured)
+                    canRequestChangeForWalk(w, effectiveUserId, effectiveRole, isSupabaseConfigured) &&
+                    !walkHasActiveTimeChangeRequest(w.id, timeChangeRequests, walksById)
                       ? () => setRequestTimeChangeWalkId(w.id)
                       : undefined
                   }
@@ -913,7 +932,8 @@ export function HomeScreen() {
             w.status === 'pending' &&
             w.responsibleUserId === requestSwapTargetUserId &&
             (!requestSwapWalk || w.dogId === requestSwapWalk.dogId) &&
-            new Date(`${w.date}T${w.scheduledTime}:00`).getTime() > Date.now()
+            new Date(`${w.date}T${w.scheduledTime}:00`).getTime() > Date.now() &&
+            !walkHasActiveSwapRequest(w.id, swapRequests, walksById)
           )
           .sort((a, b) => `${a.date}T${a.scheduledTime}`.localeCompare(`${b.date}T${b.scheduledTime}`))
           .slice(0, 20)
@@ -980,7 +1000,7 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
-  content: { padding: spacing.xl, gap: spacing.xl, paddingBottom: 48, width: '100%' },
+  content: { padding: spacing.xl, gap: spacing.xl, paddingBottom: spacing.xxxl, width: '100%' },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: spacing.lg },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
   unplannedButton: { marginTop: -4 },
@@ -989,19 +1009,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: colors.statusOverdue,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    gap: 10,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
   },
-  testModeBannerText: { flex: 1, color: '#fff', fontWeight: '700', fontSize: 13, textAlign: 'right' },
-  testModeBannerButton: { backgroundColor: '#ffffff33', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 },
+  testModeBannerText: { flex: 1, color: '#fff', fontWeight: '700', fontSize: typography.meta.fontSize, textAlign: 'right' },
+  testModeBannerButton: { backgroundColor: '#ffffff33', borderRadius: radii.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   testModeBannerButtonText: { color: '#fff', fontWeight: '700', fontSize: 12 },
   topRow: { position: 'relative', minHeight: 58, alignItems: 'center', justifyContent: 'center' },
   brandWordmark: { width: 184, height: 58 },
   notificationButton: { position: 'absolute', right: 0, top: 11, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
   webNotificationButton: { left: 0, right: undefined },
   notificationIcon: { fontSize: 18 },
-  requestsCountBadge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryDark },
+  requestsCountBadge: { minWidth: spacing.xl, height: spacing.xl, borderRadius: radii.sm, paddingHorizontal: spacing.xs, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryDark },
   requestsCountText: { fontSize: 11, fontWeight: '800', color: '#fff' },
   section: { gap: spacing.sm },
   sectionTitlePhysicalRight: {
@@ -1016,15 +1036,15 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     writingDirection: 'rtl',
   },
-  list: { gap: 10 },
+  list: { gap: spacing.sm },
 
 lastWalkCard: {
   backgroundColor: colors.surface,
-  borderRadius: 18,
+  borderRadius: radii.lg,
   borderWidth: 1,
   borderColor: colors.border,
-  paddingHorizontal: 12,
-  paddingVertical: 10,
+  paddingHorizontal: spacing.md,
+  paddingVertical: spacing.sm,
 },
 
 lastWalkTopRow: {
@@ -1032,7 +1052,7 @@ lastWalkTopRow: {
   direction: 'ltr',
   alignItems: 'center',
   justifyContent: 'space-between',
-  gap: 8,
+  gap: spacing.sm,
   minHeight: 74,
 },
 

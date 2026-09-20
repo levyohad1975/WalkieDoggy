@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,14 +8,14 @@ import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { summarizeWalksByUser } from '../logic/walkActions';
-import { toDateOnly } from '../logic/rotation';
 import { isOverdue } from '../logic/nextWalk';
-import { formatHistoryDate } from '../logic/dateFormat';
+import { formatHistoryDate, localDateOnly } from '../logic/dateFormat';
 import { isWalkEligibleForHistory } from '../logic/history';
 import { canAccessHistoryScreen } from '../logic/permissions';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { fetchHistoryWalks } from '../lib/permissionedWalks';
 import { colors } from '../theme/colors';
+import { breakpoints, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { WalkRow } from '../components/WalkRow';
 import { EmptyState, ErrorState } from '../components/EmptyState';
 import { Avatar } from '../components/Avatar';
@@ -73,6 +73,16 @@ export function HistoryScreen() {
   const [historyAccessStatus, setHistoryAccessStatus] = useState<'checking' | 'granted' | 'denied'>(
     isSupabaseConfigured ? 'checking' : 'granted'
   );
+  // Tracks whether a prior refreshHistoryDataset() call already landed
+  // 'granted' at least once. useFocusEffect below re-runs
+  // refreshHistoryDataset() (and thus resets historyAccessStatus to
+  // 'checking') on EVERY return to this tab, not just first mount — without
+  // this, a background revalidation of an already-authorized user would
+  // transiently render the "no access" EmptyState over their already-loaded,
+  // still-valid historyDataset on every single refocus. Reset to false on a
+  // genuine 'denied' so a subsequent refocus is treated as an unverified
+  // first check again, not a trusted background refresh.
+  const hasEverGrantedRef = useRef(false);
 
   const refreshHistoryDataset = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -80,6 +90,7 @@ export function HistoryScreen() {
       // call — scheduleStore.walks (unrestricted there) remains the
       // dataset, exactly as before this correction.
       setHistoryAccessStatus('granted');
+      hasEverGrantedRef.current = true;
       return;
     }
     setHistoryAccessStatus('checking');
@@ -87,9 +98,11 @@ export function HistoryScreen() {
       const rows = await fetchHistoryWalks();
       setHistoryDataset(rows);
       setHistoryAccessStatus('granted');
+      hasEverGrantedRef.current = true;
     } catch (e) {
       setHistoryDataset([]);
       setHistoryAccessStatus('denied');
+      hasEverGrantedRef.current = false;
     }
   }, []);
 
@@ -122,7 +135,15 @@ export function HistoryScreen() {
   const resolveWalk = resolveWalkId ? sourceWalks.find((w) => w.id === resolveWalkId) : undefined;
   const canResolveWalk = (w: Walk) => w.status === 'pending' && isOverdue(w) && (effectiveRole === 'admin' || w.responsibleUserId === effectiveUserId);
 
-  const weekAgo = useMemo(() => toDateOnly(new Date(Date.now() - 7 * 86400000)), []);
+  // Local calendar day, not UTC — see dateFormat.ts's doc comment; a
+  // UTC-anchored cutoff would shift this boundary by a day for anyone
+  // ahead of UTC (e.g. Israel) for a few hours after local midnight.
+  // `6 * 86400000` (not 7), matching statistics.ts's filterWalksByPeriod()
+  // convention exactly: an inclusive-of-today 7-day window is TODAY minus 6
+  // days, not 7 — `Date.now() - 7 * 86400000` here previously produced an
+  // 8-calendar-day window, silently over-counting the "weekly summary" card
+  // by one extra day every time it rendered.
+  const weekAgo = useMemo(() => localDateOnly(new Date(Date.now() - 6 * 86400000)), []);
   const weeklyWalks = useMemo(
     () => sourceWalks.filter((w) => w.date >= weekAgo && isWalkEligibleForHistory(w)),
     [sourceWalks, weekAgo]
@@ -144,11 +165,11 @@ export function HistoryScreen() {
     [sourceWalks]
   );
 
-  const todayString = useMemo(() => toDateOnly(new Date()), []);
+  const todayString = useMemo(() => localDateOnly(new Date()), []);
   const rangeStartDate = useMemo(() => {
     if (rangeFilter === 'today') return todayString;
-    if (rangeFilter === '7d') return toDateOnly(new Date(Date.now() - 6 * 86400000));
-    if (rangeFilter === '30d') return toDateOnly(new Date(Date.now() - 29 * 86400000));
+    if (rangeFilter === '7d') return localDateOnly(new Date(Date.now() - 6 * 86400000));
+    if (rangeFilter === '30d') return localDateOnly(new Date(Date.now() - 29 * 86400000));
     return null;
   }, [rangeFilter, todayString]);
 
@@ -181,7 +202,7 @@ export function HistoryScreen() {
   if (loading && sourceWalks.length === 0) {
     return (
       <SafeAreaView style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={colors.primary} accessibilityLabel="טוען…" />
       </SafeAreaView>
     );
   }
@@ -213,7 +234,14 @@ export function HistoryScreen() {
   // CORRECTED FURTHER (review #2): historyAccessStatus is no longer just a
   // probe result — it also gates whether historyDataset (this screen's
   // actual data source below) is trustworthy to render from at all.
-  if (!canAccessHistoryScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus) || historyAccessStatus !== 'granted') {
+  // CORRECTED FURTHER (review #3): a background refocus revalidation
+  // ('checking' after a prior 'granted') must not blank an already-verified
+  // user's real data with this gate — only a genuine 'denied', or a
+  // never-yet-granted 'checking' (the real first-load case), should block.
+  if (
+    !canAccessHistoryScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus) ||
+    (historyAccessStatus !== 'granted' && !(historyAccessStatus === 'checking' && hasEverGrantedRef.current))
+  ) {
     return (
       <SafeAreaView style={styles.center}>
         <EmptyState emoji="🔒" title="אין לך גישה להיסטוריה" subtitle="פנו למנהל/ת המשפחה אם לדעתכם זו טעות" />
@@ -223,8 +251,8 @@ export function HistoryScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <RtlText style={styles.header} maxFontSizeMultiplier={1.35}>היסטוריה</RtlText>
+      <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
+        <RtlText style={styles.header} accessibilityRole="header" maxFontSizeMultiplier={1.35}>היסטוריה</RtlText>
 
         <View>
           <RtlText style={styles.sectionTitle}>סיכום שבועי</RtlText>
@@ -255,7 +283,7 @@ export function HistoryScreen() {
                 key={key}
                 onPress={() => {
                   if (key === 'custom') {
-                    setDraftCustomDate(customDate ?? toDateOnly(new Date()));
+                    setDraftCustomDate(customDate ?? localDateOnly(new Date()));
                     setCustomPickerOpen(true);
                   } else {
                     setRangeFilter(key);
@@ -280,7 +308,7 @@ export function HistoryScreen() {
               onChange={(_event: DateTimePickerEvent, selected?: Date) => {
                 setCustomPickerOpen(false);
                 if (selected) {
-                  const value = toDateOnly(selected);
+                  const value = localDateOnly(selected);
                   setCustomDate(value);
                   setRangeFilter('custom');
                 }
@@ -297,7 +325,7 @@ export function HistoryScreen() {
                   mode="date"
                   display="inline"
                   onChange={(_event: DateTimePickerEvent, selected?: Date) => {
-                    if (selected) setDraftCustomDate(toDateOnly(selected));
+                    if (selected) setDraftCustomDate(localDateOnly(selected));
                   }}
                 />
                 <View style={styles.dateModalActions}>
@@ -305,7 +333,7 @@ export function HistoryScreen() {
                     <RtlText style={styles.dateModalCancelText}>ביטול</RtlText>
                   </Pressable>
                   <Pressable style={[styles.dateModalButton, styles.dateModalConfirm]} onPress={() => {
-                    const value = draftCustomDate ?? toDateOnly(new Date());
+                    const value = draftCustomDate ?? localDateOnly(new Date());
                     setCustomDate(value);
                     setRangeFilter('custom');
                     setCustomPickerOpen(false);
@@ -497,17 +525,18 @@ const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   // Bottom padding increased (final QA round, item F: bottom safe-area/
   // list padding so the last history item isn't hidden behind the tab bar).
-  content: { padding: 20, gap: 28, paddingBottom: 64 },
-  header: { width: '100%', fontSize: 22, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
-  sectionTitle: { width: '100%', fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  content: { padding: spacing.xl, gap: spacing.xxl, paddingBottom: spacing.xxxl },
+  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
+  header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  sectionTitle: { width: '100%', ...typography.sectionTitle, fontSize: 18, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   sectionSubtitle: { width: '100%', fontSize: 13, color: colors.textSecondary, marginTop: 2, marginBottom: 12, textAlign: 'right', writingDirection: 'rtl' },
-  summaryCard: { backgroundColor: colors.surface, borderRadius: 20, borderWidth: 1, borderColor: colors.border, padding: 8 },
-  summaryRow: { flexDirection: 'row', direction: 'ltr', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 8 },
+  summaryCard: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.sm },
+  summaryRow: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 8 },
   // RTL fix (final QA round, item F): member names had no explicit
   // textAlign at all.
   summaryName: { flex: 1, fontSize: 15, fontWeight: '600', color: colors.textPrimary, textAlign: 'right' },
   summaryCount: { fontSize: 14, fontWeight: '700', color: colors.primary },
-  section: { gap: 10 },
+  section: { gap: spacing.sm },
   filterLabel: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, textAlign: 'right', marginTop: 6 },
   // RTL/visual polish (final QA round): the toggle now sits directly above
   // the collapsible content it controls (see the JSX comment above its
@@ -515,18 +544,18 @@ const styles = StyleSheet.create({
   // instead of pinned to the opposite end of a header row far from it.
   filterToggleRow: { width: '100%', marginTop: 4 },
   filterToggle: { width: '100%', fontSize: 13, fontWeight: '700', color: colors.primaryDark, textAlign: 'right', writingDirection: 'rtl' },
-  chipRow: { flexDirection: 'row-reverse', direction: 'ltr', flexWrap: 'wrap', gap: 8, marginTop: 8 },
-  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14, backgroundColor: colors.surfaceMuted },
+  chipRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
+  chip: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radii.md, backgroundColor: colors.surfaceMuted },
   chipActive: { backgroundColor: colors.primary },
   chipText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
   chipTextActive: { color: colors.textInverse },
-  list: { gap: 20 },
-  dayGroup: { gap: 8 },
+  list: { gap: spacing.xl },
+  dayGroup: { gap: spacing.sm },
   dayLabel: { width: '100%', fontSize: 12, color: colors.textSecondary, fontWeight: '500', textAlign: 'right' },
   historyItem: { gap: 4 },
   note: { fontSize: 12, fontWeight: '400', color: colors.textSecondary, textAlign: 'right', paddingHorizontal: 8 },
   dateModalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.38)', alignItems: 'center', justifyContent: 'center', padding: 20 },
-  dateModalCard: { width: '100%', maxWidth: 380, backgroundColor: colors.surface, borderRadius: 24, padding: 18, gap: 12 },
+  dateModalCard: { width: '100%', maxWidth: 380, backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing.lg, gap: spacing.md },
   dateModalTitle: { fontSize: 22, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
   dateModalActions: { flexDirection: 'row', gap: 10 },
   dateModalButton: { flex: 1, minHeight: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },

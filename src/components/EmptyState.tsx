@@ -7,7 +7,7 @@ export function EmptyState({ emoji = '🐾', title, subtitle }: { emoji?: string
   return (
     <View style={styles.container}>
       <RtlText style={styles.emoji}>{emoji}</RtlText>
-      <RtlText style={styles.title}>{title}</RtlText>
+      <RtlText style={styles.title} accessibilityRole="header">{title}</RtlText>
       {subtitle ? <RtlText style={styles.subtitle}>{subtitle}</RtlText> : null}
     </View>
   );
@@ -17,7 +17,7 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
   return (
     <View style={styles.container}>
       <RtlText style={styles.emoji}>😕</RtlText>
-      <RtlText style={styles.title}>{message}</RtlText>
+      <RtlText style={styles.title} accessibilityRole="header">{message}</RtlText>
       {onRetry ? (
         <RtlText style={styles.retry} onPress={onRetry}>
           נסה שוב

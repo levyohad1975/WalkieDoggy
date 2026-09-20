@@ -4,9 +4,10 @@ import { RtlText } from './RtlText';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import type { FamilyUser, Walk } from '../types';
 import { colors } from '../theme/colors';
+import { radii, spacing } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
-import { toDateOnly } from '../logic/rotation';
+import { localDateOnly } from '../logic/dateFormat';
 
 export interface UnplannedWalkResult {
   performedByUserId: string;
@@ -85,7 +86,10 @@ export function AddUnplannedWalkModal({
 }: AddUnplannedWalkModalProps) {
   const isEditing = !!editingWalk;
   const [performedBy, setPerformedBy] = useState(defaultUserId);
-  const [date, setDate] = useState(toDateOnly(new Date()));
+  // Local calendar day, not UTC — see dateFormat.ts's doc comment; a
+  // UTC-anchored default would show "yesterday" for a few hours after local
+  // midnight for anyone ahead of UTC (e.g. Israel).
+  const [date, setDate] = useState(localDateOnly(new Date()));
   const [time, setTime] = useState(nowTime());
   // Round 6C-time: same pickerOpen convention as RequestTimeChangeModal.tsx —
   // always open (inline spinner) on iOS, closed until the "שנה שעה" button is
@@ -108,7 +112,7 @@ export function AddUnplannedWalkModal({
         setDuration(editingWalk.durationMinutes ? String(editingWalk.durationMinutes) : '');
       } else {
         setPerformedBy(defaultUserId);
-        setDate(toDateOnly(new Date()));
+        setDate(localDateOnly(new Date()));
         setTime(nowTime());
         setHadPee(false);
         setHadPoop(false);
@@ -119,7 +123,14 @@ export function AddUnplannedWalkModal({
     }
   }, [visible, defaultUserId, editingWalk]);
 
-  const valid = timeIsValid(time) && /^\d{4}-\d{2}-\d{2}$/.test(date);
+  // Round RC-duration: the underlying `walks.duration_minutes` column is a
+  // Postgres `int` — a non-integer value (reachable via clipboard paste,
+  // since `keyboardType="number-pad"` is only an on-screen-keyboard hint,
+  // not an input filter) would otherwise sync-queue-fail with a permanent
+  // class-22 Postgres error (see syncQueue.ts's `isPermanentError`) with no
+  // clear feedback to the user. Empty stays valid (duration is optional).
+  const durationValid = duration.trim() === '' || /^\d+$/.test(duration.trim());
+  const valid = timeIsValid(time) && /^\d{4}-\d{2}-\d{2}$/.test(date) && durationValid;
 
   // Round 6C-time: native picker selection can't produce an invalid value,
   // so this just converts and stores it — the existing timeIsValid() gate
@@ -137,10 +148,15 @@ export function AddUnplannedWalkModal({
           RequestTimeChangeModal.tsx — wraps the existing backdrop/sheet/
           ScrollView structure unchanged. */}
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable
+          style={styles.backdrop}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel={isEditing ? `סגירת עריכת טיול ספונטני של ${dogName}` : `סגירת הוספת טיול ספונטני של ${dogName}`}
+        >
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView keyboardShouldPersistTaps="handled">
-              <RtlText style={styles.title}>
+              <RtlText style={styles.title} accessibilityRole="header">
                 {isEditing ? `עריכת טיול ספונטני של ${dogName}` : `הוספת טיול ספונטני של ${dogName}`}
               </RtlText>
             <RtlText style={styles.subtitle}>לטיול שכבר קרה, בלי לשנות את הסבב</RtlText>
@@ -181,7 +197,14 @@ export function AddUnplannedWalkModal({
             <View style={styles.row}>
               <View style={styles.flex}>
                 <RtlText style={styles.label}>תאריך</RtlText>
-                <TextInput value={date} onChangeText={setDate} style={styles.input} placeholder="YYYY-MM-DD" textAlign="center" />
+                <TextInput
+                  value={date}
+                  onChangeText={setDate}
+                  style={styles.input}
+                  placeholder="YYYY-MM-DD"
+                  textAlign="center"
+                  accessibilityLabel="תאריך"
+                />
               </View>
               <View style={styles.flex}>
                 <RtlText style={styles.label}>שעה</RtlText>
@@ -214,10 +237,22 @@ export function AddUnplannedWalkModal({
             ) : null}
 
             <View style={styles.toggleRow}>
-              <Pressable onPress={() => setHadPee((v) => !v)} style={[styles.toggle, hadPee && styles.toggleActivePee]}>
+              <Pressable
+                onPress={() => setHadPee((v) => !v)}
+                style={[styles.toggle, hadPee && styles.toggleActivePee]}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: hadPee }}
+                accessibilityLabel="סימון פיפי בטיול"
+              >
                 <RtlText style={styles.toggleEmoji}>💧</RtlText>
               </Pressable>
-              <Pressable onPress={() => setHadPoop((v) => !v)} style={[styles.toggle, hadPoop && styles.toggleActivePoop]}>
+              <Pressable
+                onPress={() => setHadPoop((v) => !v)}
+                style={[styles.toggle, hadPoop && styles.toggleActivePoop]}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: hadPoop }}
+                accessibilityLabel="סימון קקי בטיול"
+              >
                 <RtlText style={styles.toggleEmoji}>💩</RtlText>
               </Pressable>
             </View>
@@ -231,6 +266,7 @@ export function AddUnplannedWalkModal({
               placeholderTextColor={colors.textSecondary}
               style={styles.input}
               textAlign="center"
+              accessibilityLabel="משך (דקות, אופציונלי)"
             />
 
             <RtlText style={styles.label}>הערה (אופציונלי)</RtlText>
@@ -242,6 +278,7 @@ export function AddUnplannedWalkModal({
               style={styles.noteInput}
               multiline
               textAlign="right"
+              accessibilityLabel="הערה (אופציונלי)"
             />
 
             <View style={styles.actions}>
@@ -269,6 +306,7 @@ export function AddUnplannedWalkModal({
                 label="מחק טיול זה"
                 variant="danger"
                 style={styles.deleteButton}
+                accessibilityHint="יוצג אישור לפני מחיקה לצמיתות של הטיול"
                 onPress={() => {
                   Alert.alert(
                     'למחוק את הטיול הזה?',
@@ -292,30 +330,30 @@ export function AddUnplannedWalkModal({
 const styles = StyleSheet.create({
   flexFull: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '90%' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, maxHeight: '90%' },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
-  subtitle: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: 4, marginBottom: 8 },
-  label: { width: '100%', fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: 14, marginBottom: 8, textAlign: 'right', writingDirection: 'rtl' },
-  row: { flexDirection: 'row', gap: 12 },
+  subtitle: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xs, marginBottom: spacing.sm },
+  label: { width: '100%', fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: 14, marginBottom: spacing.sm, textAlign: 'right', writingDirection: 'rtl' },
+  row: { flexDirection: 'row', gap: spacing.md },
   flex: { flex: 1 },
-  input: { backgroundColor: colors.surfaceMuted, borderRadius: 14, padding: 14, fontSize: 16, color: colors.textPrimary },
+  input: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, padding: 14, fontSize: 16, color: colors.textPrimary },
   timeDisplay: { textAlign: 'center', fontWeight: '700' },
-  timeButton: { marginTop: 12 },
-  userRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  userChip: { alignItems: 'center', minWidth: 68, gap: 4, opacity: 0.55 },
+  timeButton: { marginTop: spacing.md },
+  userRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  userChip: { alignItems: 'center', minWidth: 68, gap: spacing.xs, opacity: 0.55 },
   userChipActive: { opacity: 1 },
   userChipName: { fontSize: 12, color: colors.textPrimary, fontWeight: '600' },
   selfRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   selfRowName: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
-  toggleRow: { width: '100%', flexDirection: 'row', gap: 12, marginTop: 4 },
+  toggleRow: { width: '100%', flexDirection: 'row', gap: spacing.md, marginTop: spacing.xs },
   toggle: {
     flex: 1,
     minHeight: 64,
-    borderRadius: 18,
+    borderRadius: radii.lg,
     backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: spacing.xs,
     borderWidth: 2,
     borderColor: 'transparent',
   },
@@ -326,13 +364,13 @@ const styles = StyleSheet.create({
   toggleLabelActive: { color: colors.textPrimary },
   noteInput: {
     backgroundColor: colors.surfaceMuted,
-    borderRadius: 14,
+    borderRadius: radii.md,
     padding: 14,
     fontSize: 15,
     color: colors.textPrimary,
     minHeight: 56,
     textAlignVertical: 'top',
   },
-  actions: { flexDirection: 'row', gap: 12, marginTop: 20 },
-  deleteButton: { marginTop: 12 },
+  actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xl },
+  deleteButton: { marginTop: spacing.md },
 });

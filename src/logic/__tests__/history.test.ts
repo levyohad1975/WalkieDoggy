@@ -38,4 +38,9 @@ describe('isWalkEligibleForHistory', () => {
     expect(isWalkEligibleForHistory(walk({ date: '2026-09-07', status: 'skipped' }), now)).toBe(false);
     expect(isWalkEligibleForHistory(walk({ date: '2026-09-07', status: 'done' }), now)).toBe(false);
   });
+
+  it('defaults to the real current moment when called with no `now` argument', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    expect(isWalkEligibleForHistory(walk({ date: today, status: 'done' }))).toBe(true);
+  });
 });

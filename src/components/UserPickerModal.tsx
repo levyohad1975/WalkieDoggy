@@ -3,6 +3,7 @@ import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import type { FamilyUser } from '../types';
 import { colors } from '../theme/colors';
+import { radii, spacing, typography } from '../theme/tokens';
 import { Avatar } from './Avatar';
 
 interface UserPickerModalProps {
@@ -19,9 +20,9 @@ export function UserPickerModal({ visible, title, users, excludeUserId, onSelect
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel={`סגירת ${title}`}>
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <RtlText style={styles.title}>{title}</RtlText>
+          <RtlText style={styles.title} accessibilityRole="header">{title}</RtlText>
           {options.length === 0 ? (
             <RtlText style={styles.empty}>אין בני משפחה נוספים</RtlText>
           ) : (
@@ -43,18 +44,18 @@ export function UserPickerModal({ visible, title, users, excludeUserId, onSelect
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, gap: 8 },
-  title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, marginBottom: 8, textAlign: 'center' },
-  empty: { textAlign: 'center', color: colors.textSecondary, paddingVertical: 16 },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, gap: spacing.sm },
+  title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.sm, textAlign: 'center' },
+  empty: { textAlign: 'center', color: colors.textSecondary, paddingVertical: spacing.lg },
   option: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
+    gap: spacing.md,
+    paddingVertical: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  optionName: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
-  cancel: { marginTop: 12, alignItems: 'center', paddingVertical: 8 },
+  optionName: { fontSize: typography.body.fontSize, fontWeight: typography.body.fontWeight, color: colors.textPrimary },
+  cancel: { marginTop: spacing.md, alignItems: 'center', paddingVertical: spacing.sm },
   cancelText: { color: colors.textSecondary, fontSize: 15, fontWeight: '600' },
 });

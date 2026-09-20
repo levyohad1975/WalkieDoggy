@@ -10,9 +10,9 @@ describe('shared schedule time picker integration', () => {
     expect(source).toContain('onSave({ time, label: label.trim()');
   });
 
-  it('gives the future-walk edit flow the same field and applies a selected valid time', () => {
+  it('gives the future-walk edit flow the same field, tracking the picked value locally and applying it only via an explicit confirm (see EditWalkModal.deferredTimeCommit.test.ts for why: iOS spinner mode fires onChange continuously mid-scroll)', () => {
     const source = read('EditWalkModal.tsx');
     expect(source).toContain('<TimePickerField value={time} onChange={handleTimeChange}');
-    expect(source).toContain('onChangeTime(newTime)');
+    expect(source).toContain('onPress={() => onChangeTime(time)}');
   });
 });

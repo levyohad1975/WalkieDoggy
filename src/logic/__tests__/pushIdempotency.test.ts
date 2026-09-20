@@ -44,6 +44,10 @@ describe('decideClaimOutcome', () => {
     expect(decideClaimOutcome(row, NOW, 10_000)).toBe('already_sending'); // 5s < 10s window
     expect(decideClaimOutcome(row, NOW, 1000)).toBe('reclaim_stale'); // 5s > 1s window
   });
+
+  it('defaults "now" to the real current time when omitted', () => {
+    expect(decideClaimOutcome(null)).toBe('claim');
+  });
 });
 
 describe('shouldSend', () => {

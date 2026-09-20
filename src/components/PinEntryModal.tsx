@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Modal, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
+import { radii, spacing, typography } from '../theme/tokens';
 import { Button } from './Button';
 
 interface PinEntryModalProps {
@@ -72,52 +73,64 @@ export function PinEntryModal({ visible, userName, subtitle, onSubmit, onCancel 
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={handleCancel}>
-      <View style={styles.backdrop}>
-        <View style={styles.card}>
-          <RtlText style={styles.title}>התחברות מחדש כ{userName}</RtlText>
-          <RtlText style={styles.subtitle}>
-            {subtitle ?? 'הפרופיל הזה פעיל כרגע במכשיר אחר. הזינו את קוד ה-PIN כדי להעביר אותו למכשיר הזה.'}
-          </RtlText>
-          <TextInput
-            style={styles.input}
-            value={pin}
-            onChangeText={(t) => setPin(t.replace(/[^0-9]/g, '').slice(0, 6))}
-            keyboardType="number-pad"
-            secureTextEntry
-            maxLength={6}
-            placeholder="••••"
-            placeholderTextColor={colors.textSecondary}
-            textAlign="center"
-            autoFocus
-          />
-          {error ? <RtlText style={styles.error}>{error}</RtlText> : null}
-          <View style={styles.actions}>
-            <Button label="התחבר" onPress={handleSubmit} loading={submitting} style={styles.flex} compact />
-            <Button label="ביטול" onPress={handleCancel} variant="secondary" style={styles.flex} compact disabled={submitting} />
+      {/* Same KeyboardAvoidingView pattern already proven in
+          DogDetailsModal.tsx/AddUnplannedWalkModal.tsx — without it, the
+          number-pad keyboard can cover this centered card's PIN input and
+          action buttons on shorter devices. */}
+      <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={styles.backdrop}>
+          <View style={styles.card}>
+            <RtlText style={styles.title} accessibilityRole="header">התחברות מחדש כ{userName}</RtlText>
+            <RtlText style={styles.subtitle}>
+              {subtitle ?? 'הפרופיל הזה פעיל כרגע במכשיר אחר. הזינו את קוד ה-PIN כדי להעביר אותו למכשיר הזה.'}
+            </RtlText>
+            <TextInput
+              style={styles.input}
+              value={pin}
+              onChangeText={(t) => setPin(t.replace(/[^0-9]/g, '').slice(0, 6))}
+              keyboardType="number-pad"
+              secureTextEntry
+              maxLength={6}
+              placeholder="••••"
+              placeholderTextColor={colors.textSecondary}
+              textAlign="center"
+              autoFocus
+              accessibilityLabel="קוד PIN"
+            />
+            {error ? (
+              <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                {error}
+              </RtlText>
+            ) : null}
+            <View style={styles.actions}>
+              <Button label="התחבר" onPress={handleSubmit} loading={submitting} style={styles.flex} compact />
+              <Button label="ביטול" onPress={handleCancel} variant="secondary" style={styles.flex} compact disabled={submitting} />
+            </View>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  flexFull: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: '#00000055', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  card: { backgroundColor: colors.surface, borderRadius: 24, padding: 24, width: '100%', maxWidth: 400 },
+  card: { backgroundColor: colors.surface, borderRadius: radii.xl, padding: 24, width: '100%', maxWidth: 400 },
   title: { fontSize: 19, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
-  subtitle: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', marginTop: 8, lineHeight: 20 },
+  subtitle: { fontSize: typography.cardTitle.fontSize, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.sm, lineHeight: 20 },
   input: {
-    marginTop: 20,
+    marginTop: spacing.xl,
     borderWidth: 1.5,
     borderColor: colors.border,
-    borderRadius: 14,
+    borderRadius: radii.md,
     paddingVertical: 14,
     fontSize: 24,
     letterSpacing: 8,
     color: colors.textPrimary,
     fontWeight: '700',
   },
-  error: { color: colors.statusOverdue, fontSize: 13, textAlign: 'center', marginTop: 10, fontWeight: '600' },
-  actions: { flexDirection: 'row', gap: 12, marginTop: 20 },
+  error: { color: colors.statusOverdue, fontSize: typography.meta.fontSize, textAlign: 'center', marginTop: 10, fontWeight: '600' },
+  actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xl },
   flex: { flex: 1 },
 });

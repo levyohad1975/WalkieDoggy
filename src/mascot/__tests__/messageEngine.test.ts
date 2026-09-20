@@ -204,6 +204,30 @@ describe('mascot/messageEngine — selectMessage (C5/C6/C7)', () => {
     }
   });
 
+  it('with a window at least as large as the whole category, genuinely exhausts the pool and falls back to the full candidate list rather than an empty one', () => {
+    const history = createAntiRepetitionHistory();
+    const category = 'morning';
+    const total = MESSAGE_COUNT_BY_CATEGORY[category];
+    // A windowSize >= the category's own size means recentIds() never evicts
+    // — unlike the default-window test above, this genuinely drives pool to
+    // empty (every id is "recent") once a full pass has been made, forcing
+    // selectMessage() to fall back from the (now-empty) pool to the raw
+    // candidates list. random: () => 0 always picks the filtered pool's
+    // first remaining element, walking the category in order with no
+    // repeats until it wraps.
+    for (let i = 0; i < total + 1; i += 1) {
+      const picked = selectMessage(category, {}, { history, windowSize: total, random: () => 0 });
+      expect(picked.id.startsWith(`${category}:`)).toBe(true);
+    }
+  });
+
+  it('tolerates a random() implementation that returns an out-of-range value (contract violation) without returning undefined', () => {
+    const history = createAntiRepetitionHistory();
+    const picked = selectMessage('excited', {}, { history, random: () => 1 });
+    expect(picked.id.startsWith('excited:')).toBe(true);
+    expect(typeof picked.text).toBe('string');
+  });
+
   it('renders the selected template with the given context (integration of selection + substitution)', () => {
     const history = createAntiRepetitionHistory();
     const picked = selectMessage(
@@ -213,6 +237,13 @@ describe('mascot/messageEngine — selectMessage (C5/C6/C7)', () => {
     );
     expect(picked.text).not.toContain('{');
     expect(picked.text).not.toContain('}');
+  });
+
+  it('uses the documented defaults (ctx, options, history, preset, random) when the caller supplies only a category', () => {
+    const picked = selectMessage('encouragement');
+    expect(picked.id.startsWith('encouragement:')).toBe(true);
+    expect(typeof picked.text).toBe('string');
+    expect(picked.text.length).toBeGreaterThan(0);
   });
 
   it('an unfiltered (default) preset sees the full category pool — every template in this batch is preset-agnostic', () => {
