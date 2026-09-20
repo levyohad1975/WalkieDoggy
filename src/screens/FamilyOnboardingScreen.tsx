@@ -325,6 +325,12 @@ export function FamilyOnboardingScreen() {
             </ImageBackground>
           </View>
           <View style={[styles.heroContentColumn, isDesktop && styles.heroContentColumnDesktop]}>
+            <WalkieMascot
+              state="idle"
+              size={isDesktop ? 116 : 88}
+              accessibilityLabel="הכלבלב של Walkie Doggy"
+              testID="onboarding-mascot-hero"
+            />
             <RtlText style={[styles.eyebrow, isDesktop && styles.textRight]}>WALKIE DOGGY LINK</RtlText>
             <RtlText style={[styles.title, isDesktop && styles.heroTitleDesktop]} accessibilityRole="header">כל המשפחה.{`\n`}טיול אחד מסודר.</RtlText>
             <RtlText style={[styles.heroSubtitle, isDesktop && styles.heroSubtitleDesktop]}>Walkie Doggy מרכז את התורנויות, העדכונים והטיולים במקום אחד — פשוט, ברור ומשפחתי.</RtlText>
