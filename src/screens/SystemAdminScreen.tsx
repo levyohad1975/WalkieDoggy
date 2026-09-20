@@ -367,7 +367,10 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                   accessibilityRole="button"
                   accessibilityLabel={`פתיחת פרטי משפחת ${f.familyName}, קוד ${f.inviteCode}`}
                 >
-                  <View style={styles.familyTitleRow}>\n                    <RtlText style={styles.familyName}>{f.familyName}</RtlText>\n                    {isTestFamily ? <RtlText style={styles.testBadge}>TEST / E2E</RtlText> : null}\n                  </View>
+                  <View style={styles.familyTitleRow}>
+                    <RtlText style={styles.familyName}>{f.familyName}</RtlText>
+                    {isTestFamily ? <RtlText style={styles.testBadge}>TEST / E2E</RtlText> : null}
+                  </View>
                   <RtlText style={styles.familyMeta}>
                     קוד: {f.inviteCode} · {f.memberCount} בני משפחה
                     {f.dogName ? ` · ${f.dogName}` : ''}
@@ -426,7 +429,9 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.xs,
   },
-  familyTitleRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },\n  familyName: { ...typography.body, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', flexShrink: 1 },\n  testBadge: { ...typography.caption, fontSize: 10, fontWeight: '900', color: colors.textSecondary, borderWidth: 1, borderColor: colors.border, borderRadius: radii.round, paddingHorizontal: 8, paddingVertical: 3, overflow: 'hidden' },
+  familyTitleRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+  familyName: { ...typography.body, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', flexShrink: 1 },
+  testBadge: { ...typography.caption, fontSize: 10, fontWeight: '900', color: colors.textSecondary, borderWidth: 1, borderColor: colors.border, borderRadius: radii.round, paddingHorizontal: 8, paddingVertical: 3, overflow: 'hidden' },
   familyMeta: { ...typography.caption, fontSize: 12, fontWeight: '500', color: colors.textSecondary, textAlign: 'right' },
   sectionTitle: { ...typography.cardTitle, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', marginTop: spacing.md, marginBottom: spacing.sm },
   card: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
