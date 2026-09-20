@@ -421,7 +421,31 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       AsyncStorage.getItem(CURRENT_USER_KEY),
       AsyncStorage.getItem(FAMILY_ID_KEY),
     ]);
-    const familyId = isSupabaseConfigured ? savedFamily : DEMO_FAMILY.id;
+    // Server-authoritative recovery for verified family creators: a browser can
+    // lose the app's own AsyncStorage key while Supabase's persisted verified
+    // session is still perfectly valid. In that case, do not send the creator
+    // back through create/join onboarding. Recover the active family from the
+    // onboarding-status RPC and repair the local cache. This RPC is scoped to
+    // the authenticated caller and returns null for ordinary anonymous devices.
+    let familyId = isSupabaseConfigured ? savedFamily : DEMO_FAMILY.id;
+    if (isSupabaseConfigured && !familyId) {
+      try {
+        const { supabase } = await import('../lib/supabase');
+        if (supabase) {
+          const { data, error } = await supabase.rpc('get_my_family_onboarding_status');
+          if (!error) {
+            const row = Array.isArray(data) ? data[0] : data;
+            if (row?.family_id && row?.approval_status === 'active') {
+              familyId = row.family_id;
+              await AsyncStorage.setItem(FAMILY_ID_KEY, familyId);
+            }
+          }
+        }
+      } catch {
+        // Best-effort recovery only. Offline/RPC failures preserve the normal
+        // onboarding fallback rather than inventing client-side membership.
+      }
+    }
 
     let currentUserId = savedUser;
 
