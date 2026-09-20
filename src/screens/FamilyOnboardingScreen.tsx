@@ -314,14 +314,22 @@ export function FamilyOnboardingScreen() {
             was here before. Given an explicit accessibilityLabel since this
             IS the meaningful content on this screen, not a decorative
             corner badge. */}
-        <WalkieMascot state="idle" size={128} accessibilityLabel="הקמע של Walkie Doggy Link" testID="onboarding-mascot" />
-        <RtlText style={styles.title} accessibilityRole="header">ברוכים הבאים</RtlText>
-        <RtlText style={styles.subtitle}>יצירת משפחה חדשה, או הצטרפות למשפחה קיימת עם קוד הזמנה</RtlText>
-
-        <Button label="יצירת משפחה חדשה" onPress={() => setMode('create')} style={styles.wideButton} />
-        <Button label="הצטרפות למשפחה קיימת" variant="secondary" onPress={() => setMode('join')} style={styles.wideButton} />
-        <Button
-          label="יש לי הזמנה"
+        <View style={styles.heroGlow} accessibilityElementsHidden />
+        <View style={styles.mascotHalo}>
+          <WalkieMascot state="idle" size={148} accessibilityLabel="הקמע של Walkie Doggy Link" testID="onboarding-mascot" />
+        </View>
+        <RtlText style={styles.eyebrow}>WALKIE DOGGY LINK</RtlText>
+        <RtlText style={styles.heroTitle} accessibilityRole="header">הטיולים של המשפחה.{`\n`}ביחד.</RtlText>
+        <RtlText style={styles.heroSubtitle}>פחות תיאומים, יותר זמן לטיולים ולרגעים הטובים עם הכלב שלכם.</RtlText>
+        <View style={styles.benefitRow}>
+          <View style={styles.benefitPill}><RtlText style={styles.benefitText}>✓ תורנויות ברורות</RtlText></View>
+          <View style={styles.benefitPill}><RtlText style={styles.benefitText}>✓ עדכון בזמן אמת</RtlText></View>
+        </View>
+        <View style={styles.actionCard}>
+          <Button label="בואו ניצור משפחה" onPress={() => setMode('create')} style={styles.wideButton} />
+          <Button label="הצטרפות למשפחה קיימת" variant="secondary" onPress={() => setMode('join')} style={styles.wideButton} />
+          <Button
+          label="יש לי קישור או קוד הזמנה"
           variant="secondary"
           onPress={() => {
             resetRedeemMode();
@@ -657,10 +665,19 @@ export function FamilyOnboardingScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, alignItems: 'center', paddingTop: spacing.xxxl, paddingHorizontal: spacing.xl },
-  formSafeArea: { flex: 1, backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: '#FFF9F1', alignItems: 'center', paddingTop: spacing.xxl, paddingHorizontal: spacing.xl, overflow: 'hidden' },
+  formSafeArea: { flex: 1, backgroundColor: '#FFF9F1' },
   flexFull: { flex: 1 },
-  formScrollContent: { alignItems: 'center', paddingTop: spacing.xxxl, paddingHorizontal: spacing.xl },
+  formScrollContent: { alignItems: 'center', paddingTop: spacing.xxxl, paddingHorizontal: spacing.xl, paddingBottom: spacing.xxxl },
+  heroGlow: { position: 'absolute', width: 420, height: 420, borderRadius: 210, backgroundColor: '#DDF5F1', top: -150, right: -120, opacity: 0.72 },
+  mascotHalo: { width: 184, height: 184, borderRadius: 92, backgroundColor: '#E4F7F4', alignItems: 'center', justifyContent: 'center', marginTop: spacing.sm, marginBottom: spacing.md, borderWidth: 1, borderColor: '#CDEDE8' },
+  eyebrow: { ...typography.caption, letterSpacing: 2.4, color: colors.primaryDark, fontWeight: '800', textAlign: 'center', marginBottom: spacing.sm },
+  heroTitle: { fontSize: 34, lineHeight: 42, fontWeight: '900', color: colors.textPrimary, textAlign: 'center', maxWidth: 360 },
+  heroSubtitle: { ...typography.body, color: colors.textSecondary, textAlign: 'center', maxWidth: 360, marginTop: spacing.md, marginBottom: spacing.lg },
+  benefitRow: { width: '100%', maxWidth: breakpoints.readingColumn, flexDirection: 'row-reverse', gap: spacing.sm, marginBottom: spacing.md },
+  benefitPill: { flex: 1, minHeight: 42, borderRadius: radii.round, backgroundColor: '#E4F7F4', alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.sm },
+  benefitText: { ...typography.meta, color: colors.primaryDark, fontWeight: '800', textAlign: 'center' },
+  actionCard: { width: '100%', maxWidth: breakpoints.readingColumn, backgroundColor: '#FFFEFC', borderRadius: radii.xl, padding: spacing.lg, borderWidth: 1, borderColor: '#EEE3D4' },
   title: { ...typography.screenTitle, color: colors.textPrimary, textAlign: 'center' },
   subtitle: { fontSize: 15, color: colors.textSecondary, marginTop: spacing.sm, marginBottom: spacing.xxl, textAlign: 'center' },
   wideButton: { width: '100%', marginTop: spacing.md },
