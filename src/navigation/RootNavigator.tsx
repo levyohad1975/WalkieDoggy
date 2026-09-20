@@ -12,7 +12,7 @@ import { StatisticsScreen } from '../screens/StatisticsScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { ImpersonationBanner } from '../components/ImpersonationBanner';
 import { colors } from '../theme/colors';
-import { nativeDirection } from '../theme/tokens';
+import { layout, nativeDirection, spacing } from '../theme/tokens';
 import { useAuthStore, useEffectiveUserId } from '../store/authStore';
 import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
@@ -98,7 +98,7 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
       });
 
   return (
-    <View style={{ height: 56 + insets.bottom, paddingBottom: Math.max(8, insets.bottom), paddingTop: 6, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }}>
+    <View style={{ height: layout.rowHeight + insets.bottom, paddingBottom: Math.max(spacing.sm, insets.bottom), paddingTop: 6, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }}>
       <View
         style={{
           flex: 1,
@@ -222,8 +222,8 @@ export function RootNavigator() {
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textSecondary,
           tabBarStyle: {
-            height: 56 + insets.bottom,
-            paddingBottom: Math.max(8, insets.bottom),
+            height: layout.rowHeight + insets.bottom,
+            paddingBottom: Math.max(spacing.sm, insets.bottom),
             paddingTop: 6,
           },
           tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
