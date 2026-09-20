@@ -4,7 +4,7 @@ import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
 import { colors } from '../theme/colors';
-import { breakpoints, radii, spacing } from '../theme/tokens';
+import { breakpoints, radii, spacing, typography } from '../theme/tokens';
 import { Button } from '../components/Button';
 import { ensureAnonymousSession, findFamilyByInviteCode, joinFamily } from '../lib/supabase';
 import {
@@ -657,15 +657,15 @@ export function FamilyOnboardingScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, alignItems: 'center', paddingTop: 80, paddingHorizontal: 24 },
+  container: { flex: 1, backgroundColor: colors.background, alignItems: 'center', paddingTop: spacing.xxxl, paddingHorizontal: spacing.xl },
   formSafeArea: { flex: 1, backgroundColor: colors.background },
   flexFull: { flex: 1 },
-  formScrollContent: { alignItems: 'center', paddingTop: 80, paddingHorizontal: 24 },
-  title: { fontSize: 24, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
+  formScrollContent: { alignItems: 'center', paddingTop: spacing.xxxl, paddingHorizontal: spacing.xl },
+  title: { ...typography.screenTitle, color: colors.textPrimary, textAlign: 'center' },
   subtitle: { fontSize: 15, color: colors.textSecondary, marginTop: spacing.sm, marginBottom: spacing.xxl, textAlign: 'center' },
   wideButton: { width: '100%', marginTop: spacing.md },
   form: { width: '100%', maxWidth: breakpoints.readingColumn, alignSelf: 'center' },
-  label: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: 14, marginBottom: spacing.sm, textAlign: 'right' },
+  label: { ...typography.meta, fontWeight: '700', color: colors.textSecondary, marginTop: spacing.md, marginBottom: spacing.sm, textAlign: 'right' },
   input: {
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -682,9 +682,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 16,
+    borderRadius: radii.lg,
     padding: spacing.lg,
-    marginTop: 14,
+    marginTop: spacing.md,
   },
   foundTitle: { fontSize: 18, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
   foundSubtitle: { fontSize: 14, color: colors.textSecondary, marginTop: spacing.xs, textAlign: 'right' },
