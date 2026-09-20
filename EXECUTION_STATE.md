@@ -54,7 +54,9 @@ Two concurrent goals on this branch:
 
 ## Current Task
 
-**Deliverable-3G modal design-token sweep** (serves #63's "consistent
+**Deliverable-3H navigation/design-system continuation** — `RootNavigator.tsx` tab-bar dimensions are being aligned with the approved shared design tokens while the approved `@expo/vector-icons` dependency remains unavailable in the lockfile. Emoji replacement stays queued until the dependency can be added atomically without a broken install. No Claude execution is required.
+
+**Previous completed deliverable: Deliverable-3G modal design-token sweep** (serves #63's "consistent
 typography, spacing, cards, buttons, forms" requirement using the
 already-approved `theme/tokens.ts` system — no new visual-language system
 introduced). One bounded unit per cycle: convert one `src/components/
@@ -87,7 +89,9 @@ modal sweep.
 
 ## Current Task Status
 
-`DONE` — the modal token sweep is 21/21 complete and locally verified at the
+`RUNNING` — navigation/design-system continuation advanced at `dfe6d1e`: the tab bar now consumes `layout.rowHeight` and `spacing.sm` instead of duplicating the same 56/8 values. This is a zero-visual-change consistency batch. Exact-head CI is pending; no Worker/Claude run was started.
+
+Previous modal deliverable remains `DONE` — the modal token sweep is 21/21 complete and locally verified at the
 exact product-code head `5a7764b`. Shared-token substitutions preserved all
 numeric values and product behavior. `npm run typecheck` passed; the full Jest
 suite passed 137/137 suites and 1625/1625 tests.
