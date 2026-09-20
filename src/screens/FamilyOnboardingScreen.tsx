@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ImageBackground, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Image, ImageBackground, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
@@ -53,6 +53,20 @@ export function FamilyOnboardingScreen() {
     (s) => s.retryPendingInviteRedemptionVerification
   );
   const [mode, setMode] = useState<Mode>('choose');
+  const [showWelcomeWink, setShowWelcomeWink] = useState(false);
+
+  useEffect(() => {
+    if (mode !== 'choose') return;
+    let winkTimer: ReturnType<typeof setTimeout> | undefined;
+    const interval = setInterval(() => {
+      setShowWelcomeWink(true);
+      winkTimer = setTimeout(() => setShowWelcomeWink(false), 320);
+    }, 4200);
+    return () => {
+      clearInterval(interval);
+      if (winkTimer) clearTimeout(winkTimer);
+    };
+  }, [mode]);
 
   // --- create ---
   const [familyName, setFamilyName] = useState('');
@@ -317,6 +331,15 @@ export function FamilyOnboardingScreen() {
           resizeMode="cover"
           accessibilityLabel="מסך הפתיחה של Walkie Doggy"
         >
+          {showWelcomeWink ? (
+            <Image
+              source={require("../../assets/onboarding-welcome-wink.png")}
+              style={styles.winkFrame}
+              resizeMode="cover"
+              pointerEvents="none"
+              accessibilityElementsHidden
+            />
+          ) : null}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="יצירת משפחה חדשה"
@@ -660,8 +683,9 @@ export function FamilyOnboardingScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#173A36', overflow: 'hidden' },
   welcomeContainer: { flex: 1, backgroundColor: '#173A36', overflow: 'hidden' },
-  createHotspot: { position: 'absolute', left: '10%', right: '10%', top: '69%', height: '8%' },
-  joinHotspot: { position: 'absolute', left: '10%', right: '10%', top: '78%', height: '8%' },
+  winkFrame: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  createHotspot: { position: 'absolute', left: '10%', right: '10%', top: '69%', height: '8%', zIndex: 2 },
+  joinHotspot: { position: 'absolute', left: '10%', right: '10%', top: '78%', height: '8%', zIndex: 2 },
   referenceHero: { flex: 1, width: '100%', minHeight: '100%' },
   referenceHeroImage: { width: '100%', height: '100%' },
   referenceOverlay: { flex: 1, justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 12, paddingBottom: 18 },
