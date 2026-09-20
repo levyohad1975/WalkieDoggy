@@ -389,7 +389,7 @@ export function FamilyOnboardingScreen() {
         <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
             <View style={styles.formHero}>
-              <WalkieMascot state="happy" size={86} />
+              <WalkieMascot state="excited" size={86} />
               <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>בואו נקים למשפחה שלכם בית חדש 🐾</RtlText></View>
             </View>
             <RtlText style={styles.title} accessibilityRole="header">יצירת משפחה חדשה</RtlText>
@@ -626,7 +626,7 @@ export function FamilyOnboardingScreen() {
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
           <View style={styles.formHero}>
-            <WalkieMascot state="happy" size={86} />
+            <WalkieMascot state="excited" size={86} />
             <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>קיבלתם קוד? בואו נמצא את המשפחה 🐾</RtlText></View>
           </View>
           <RtlText style={styles.title} accessibilityRole="header">הצטרפות למשפחה קיימת</RtlText>
