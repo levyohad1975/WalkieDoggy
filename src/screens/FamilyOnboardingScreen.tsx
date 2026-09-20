@@ -315,8 +315,10 @@ export function FamilyOnboardingScreen() {
             IS the meaningful content on this screen, not a decorative
             corner badge. */}
         <View style={styles.heroGlow} accessibilityElementsHidden />
-        <View style={styles.mascotHalo}>
-          <WalkieMascot state="idle" size={148} accessibilityLabel="הקמע של Walkie Doggy Link" testID="onboarding-mascot" />
+        <View style={styles.sunsetBand} accessibilityElementsHidden />
+        <View style={styles.heroPhoto}>
+          <WalkieMascot state="idle" size={190} accessibilityLabel="הקמע של Walkie Doggy Link" testID="onboarding-mascot" />
+        <View style={styles.photoCaption}><RtlText style={styles.photoCaptionText}>יוצאים יחד. חוזרים שמחים.</RtlText></View>
         </View>
         <RtlText style={styles.eyebrow}>WALKIE DOGGY LINK</RtlText>
         <RtlText style={styles.title} accessibilityRole="header">כל המשפחה.{`\n`}טיול אחד מסודר.</RtlText>
@@ -670,8 +672,11 @@ const styles = StyleSheet.create({
   formSafeArea: { flex: 1, backgroundColor: '#FFF9F1' },
   flexFull: { flex: 1 },
   formScrollContent: { alignItems: 'center', paddingTop: spacing.xxxl, paddingHorizontal: spacing.xl, paddingBottom: spacing.xxxl },
-  heroGlow: { position: 'absolute', width: 560, height: 560, borderRadius: 280, backgroundColor: '#D8F3EE', top: -310, right: -190, opacity: 0.95 },
-  mascotHalo: { width: 172, height: 172, borderRadius: 48, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg, borderWidth: 1, borderColor: '#C8E9E3', shadowColor: '#123B36', shadowOpacity: 0.10, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 4 },
+  heroGlow: { position: 'absolute', width: 620, height: 620, borderRadius: 310, backgroundColor: '#FFE5BE', top: -350, right: -210, opacity: 0.95 },
+  sunsetBand: { position: 'absolute', width: '130%', height: 260, backgroundColor: '#DDF4EC', bottom: -130, transform: [{ rotate: '-5deg' }] },
+  heroPhoto: { width: '100%', maxWidth: breakpoints.readingColumn, height: 238, borderRadius: 32, backgroundColor: '#F4D5A6', alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg, borderWidth: 1, borderColor: '#E9C68E', shadowColor: '#513A1E', shadowOpacity: 0.16, shadowRadius: 28, shadowOffset: { width: 0, height: 14 }, elevation: 5, overflow: 'hidden' },
+  photoCaption: { position: 'absolute', bottom: 14, right: 14, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: radii.round, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  photoCaptionText: { ...typography.meta, color: '#214C46', fontWeight: '900' },
   eyebrow: { ...typography.caption, letterSpacing: 3.2, color: colors.primaryDark, fontWeight: '900', textAlign: 'center', marginBottom: spacing.md },
   heroTitle: { fontSize: 34, lineHeight: 42, fontWeight: '900', color: colors.textPrimary, textAlign: 'center', maxWidth: 360 },
   heroSubtitle: { ...typography.body, color: '#55706C', textAlign: 'center', maxWidth: 430, marginTop: spacing.md, marginBottom: spacing.xl, fontSize: 17, lineHeight: 26 },
