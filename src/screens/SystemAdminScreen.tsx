@@ -404,7 +404,7 @@ const styles = StyleSheet.create({
   headerLink: { color: colors.primaryDark, fontWeight: '700', fontSize: 14 },
   closeLink: { color: colors.primaryDark, fontWeight: '700', fontSize: 15 },
   backLink: { color: colors.primaryDark, fontWeight: '700', fontSize: 14, marginBottom: spacing.md },
-  content: { padding: spacing.xl, gap: spacing.sm, paddingBottom: 48 },
+  content: { padding: spacing.xl, gap: spacing.sm, paddingBottom: spacing.xxxl },
   searchRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.xl, paddingTop: spacing.md, alignItems: 'center' },
   searchInput: {
     flex: 1,
