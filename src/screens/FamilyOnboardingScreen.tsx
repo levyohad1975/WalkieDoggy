@@ -326,9 +326,9 @@ export function FamilyOnboardingScreen() {
       <View style={styles.welcomeContainer}>
         <ImageBackground
           source={require("../../assets/onboarding-welcome-final.png")}
-          style={styles.referenceHero}
-          imageStyle={styles.referenceHeroImage}
-          resizeMode="cover"
+          style={[styles.referenceHero, isDesktop && styles.referenceHeroDesktop]}
+          imageStyle={[styles.referenceHeroImage, isDesktop && styles.referenceHeroImageDesktop]}
+          resizeMode={isDesktop ? "contain" : "cover"}
           accessibilityLabel="מסך הפתיחה של Walkie Doggy"
         >
           {showWelcomeWink ? (
@@ -695,7 +695,9 @@ const styles = StyleSheet.create({
   createHotspot: { position: 'absolute', left: '12%', right: '12%', top: '72%', height: '7.5%', zIndex: 2 },
   joinHotspot: { position: 'absolute', left: '12%', right: '12%', top: '80%', height: '7.5%', zIndex: 2 },
   referenceHero: { flex: 1, width: '100%', minHeight: '100%' },
+  referenceHeroDesktop: { alignSelf: 'center', width: '100%', maxWidth: 560, backgroundColor: '#173A36' },
   referenceHeroImage: { width: '100%', height: '100%' },
+  referenceHeroImageDesktop: { resizeMode: 'contain' },
   referenceOverlay: { flex: 1, justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 12, paddingBottom: 18 },
   referenceTopRow: { minHeight: 170, alignItems: 'center', justifyContent: 'center' },
   languagePill: { position: 'absolute', right: 0, top: 0, backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 28, paddingHorizontal: 18, paddingVertical: 11 },
