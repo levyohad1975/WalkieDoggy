@@ -463,43 +463,46 @@ export function FamilyOnboardingScreen() {
                 <RtlText style={styles.foundSubtitle}>✓ הדוא״ל אומת: {verifiedAdminEmail}</RtlText>
               ) : null}
 
-              <RtlText style={styles.label}>שם המשפחה</RtlText>
-              <TextInput
-                value={familyName}
-                onChangeText={setFamilyName}
-                placeholder="למשל: המשפחה שלנו"
-                placeholderTextColor={colors.textSecondary}
-                style={styles.input}
-                textAlign="right"
-                editable={Boolean(verifiedAdminEmail)}
-                accessibilityLabel="שם המשפחה"
-              />
+              {verifiedAdminEmail ? (
+                <>
+                  <RtlText style={styles.stepHint}>מעולה! עכשיו רק נותנים למשפחה שם 🐾</RtlText>
+                  <RtlText style={styles.label}>שם המשפחה</RtlText>
+                  <TextInput
+                    value={familyName}
+                    onChangeText={setFamilyName}
+                    placeholder="למשל: המשפחה שלנו"
+                    placeholderTextColor={colors.textSecondary}
+                    style={styles.input}
+                    textAlign="right"
+                    accessibilityLabel="שם המשפחה"
+                  />
 
-              <RtlText style={styles.label}>שם הכלב/ה (אופציונלי)</RtlText>
-              <TextInput
-                value={dogName}
-                onChangeText={setDogName}
-                placeholder="אפשר להוסיף גם אחר כך בהגדרות"
-                placeholderTextColor={colors.textSecondary}
-                style={styles.input}
-                textAlign="right"
-                editable={Boolean(verifiedAdminEmail)}
-                accessibilityLabel="שם הכלב/ה (אופציונלי)"
-              />
+                  <RtlText style={styles.label}>שם הכלב/ה (אופציונלי)</RtlText>
+                  <TextInput
+                    value={dogName}
+                    onChangeText={setDogName}
+                    placeholder="אפשר להוסיף גם אחר כך בהגדרות"
+                    placeholderTextColor={colors.textSecondary}
+                    style={styles.input}
+                    textAlign="right"
+                    accessibilityLabel="שם הכלב/ה (אופציונלי)"
+                  />
+
+                  <Button
+                    label={creating ? 'יוצר משפחה...' : 'יצירת המשפחה'}
+                    onPress={submitCreate}
+                    disabled={!familyName.trim() || creating}
+                    loading={creating}
+                    style={styles.wideButton}
+                  />
+                </>
+              ) : null}
 
               {createError ? (
                 <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
                   {createError}
                 </RtlText>
               ) : null}
-
-              <Button
-                label={creating ? 'יוצר משפחה...' : 'יצירת המשפחה'}
-                onPress={submitCreate}
-                disabled={!familyName.trim() || !verifiedAdminEmail || creating}
-                loading={creating}
-                style={styles.wideButton}
-              />
               <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
             </View>
           </ScrollView>
@@ -721,7 +724,7 @@ const styles = StyleSheet.create({
   featureLabel: { color: '#102A5A', fontSize: 10, lineHeight: 11, fontWeight: '800', textAlign: 'center' },
   smallWalks: { color: '#FFFFFF', fontSize: 13, lineHeight: 16, letterSpacing: 1.2, fontWeight: '700', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 5 },
   formSafeArea: { flex: 1, backgroundColor: '#DFF5EE' },
-  formHero: { width: '100%', maxWidth: 560, minHeight: 96, borderRadius: 24, backgroundColor: '#BFE8DA', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 14, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#CBE9DF' },
+  formHero: { width: '100%', maxWidth: 560, minHeight: 82, borderRadius: 24, backgroundColor: '#BFE8DA', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 14, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#CBE9DF' },
   formHeroDesktop: { maxWidth: 680, minHeight: 104 },
   formSpeech: { flex: 1, maxWidth: 330, backgroundColor: '#FFFFFF', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 2, borderColor: '#2AA7B8' },
   formSpeechText: { color: '#102A5A', fontSize: 16, lineHeight: 22, fontWeight: '800', textAlign: 'center' },
@@ -741,14 +744,15 @@ const styles = StyleSheet.create({
   benefitPill: { flex: 1, minHeight: 46, borderRadius: radii.round, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md, borderWidth: 1, borderColor: '#D5ECE8' },
   benefitText: { ...typography.meta, color: colors.primaryDark, fontWeight: '800', textAlign: 'center' },
   actionCard: { width: '100%', maxWidth: breakpoints.readingColumn, backgroundColor: '#FFFFFF', borderRadius: 28, padding: spacing.lg, borderWidth: 1, borderColor: '#DDEBE8', shadowColor: '#123B36', shadowOpacity: 0.08, shadowRadius: 28, shadowOffset: { width: 0, height: 12 }, elevation: 3 },
-  title: { ...typography.screenTitle, color: '#173A36', textAlign: 'center', fontSize: 34, lineHeight: 39, fontWeight: '900', maxWidth: 520 },
+  title: { ...typography.screenTitle, color: '#173A36', textAlign: 'center', fontSize: 30, lineHeight: 35, fontWeight: '900', maxWidth: 520 },
   titleDesktop: { fontSize: 42, lineHeight: 48 },
-  subtitle: { fontSize: 15, lineHeight: 21, color: colors.textSecondary, marginTop: 6, marginBottom: 16, textAlign: 'center', maxWidth: 520 },
+  subtitle: { fontSize: 14, lineHeight: 20, color: colors.textSecondary, marginTop: 4, marginBottom: 12, textAlign: 'center', maxWidth: 520 },
   subtitleDesktop: { fontSize: 16, marginBottom: 20 },
-  wideButton: { width: '100%', marginTop: 10 },
+  wideButton: { width: '100%', marginTop: 8 },
   form: { width: '100%', maxWidth: 560, alignSelf: 'center', backgroundColor: '#FDFBF4', borderRadius: 24, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 18, borderWidth: 1, borderColor: '#B8DCCF', shadowColor: '#173A36', shadowOpacity: 0.08, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
   formDesktop: { maxWidth: 680, paddingHorizontal: 28, paddingTop: 18, paddingBottom: 24 },
-  label: { ...typography.meta, fontWeight: '800', color: '#6E675C', marginTop: 10, marginBottom: 6, textAlign: 'right' },
+  label: { ...typography.meta, fontWeight: '800', color: '#6E675C', marginTop: 8, marginBottom: 5, textAlign: 'right' },
+  stepHint: { fontSize: 14, lineHeight: 20, color: '#173A36', fontWeight: '800', textAlign: 'right', marginTop: 10, marginBottom: 2 },
   input: {
     backgroundColor: colors.surface,
     borderWidth: 1,
