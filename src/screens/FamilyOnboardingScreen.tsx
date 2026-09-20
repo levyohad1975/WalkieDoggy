@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ImageBackground, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, ImageBackground, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
@@ -37,6 +37,8 @@ type Mode = 'choose' | 'create' | 'join' | 'redeem';
  * no changes needed here.
  */
 export function FamilyOnboardingScreen() {
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 900;
   const setFamilyId = useAuthStore((s) => s.setFamilyId);
   // Round 4 — set only when a redemption already succeeded server-side but
   // this device couldn't yet confirm it via whoami() (see authStore.ts's
@@ -316,28 +318,34 @@ export function FamilyOnboardingScreen() {
             corner badge. */}
         <View style={styles.heroGlow} accessibilityElementsHidden />
         <View style={styles.sunsetBand} accessibilityElementsHidden />
-        <ImageBackground source={require("../../assets/onboarding-hero.png")} style={styles.heroPhoto} imageStyle={styles.heroPhotoImage} accessibilityLabel="כלב ומשפחה בטיול בטבע">
-          <View style={styles.photoCaption}><RtlText style={styles.photoCaptionText}>יוצאים יחד. חוזרים שמחים.</RtlText></View>
-        </ImageBackground>
-        <RtlText style={styles.eyebrow}>WALKIE DOGGY LINK</RtlText>
-        <RtlText style={styles.title} accessibilityRole="header">כל המשפחה.{`\n`}טיול אחד מסודר.</RtlText>
-        <RtlText style={styles.heroSubtitle}>Walkie Doggy מרכז את התורנויות, העדכונים והטיולים במקום אחד — פשוט, ברור ומשפחתי.</RtlText>
-        <View style={styles.benefitRow}>
-          <View style={styles.benefitPill}><RtlText style={styles.benefitText}>מי יוצא? תמיד ברור</RtlText></View>
-          <View style={styles.benefitPill}><RtlText style={styles.benefitText}>הכול מתעדכן בזמן אמת</RtlText></View>
-        </View>
-        <View style={styles.actionCard}>
-          <Button label="יצירת המשפחה שלי" onPress={() => setMode('create')} style={styles.wideButton} />
-          <Button label="הצטרפות למשפחה קיימת" variant="secondary" onPress={() => setMode('join')} style={styles.wideButton} />
-          <Button
-          label="יש לי קישור או קוד הזמנה"
-          variant="secondary"
-          onPress={() => {
-            resetRedeemMode();
-            setMode('redeem');
-          }}
-          style={styles.wideButton}
-        />
+        <View style={[styles.landingShell, isDesktop && styles.landingShellDesktop]}>
+          <View style={[styles.heroMediaColumn, isDesktop && styles.heroMediaColumnDesktop]}>
+            <ImageBackground source={require("../../assets/onboarding-hero.png")} style={[styles.heroPhoto, isDesktop && styles.heroPhotoDesktop]} imageStyle={styles.heroPhotoImage} accessibilityLabel="כלב ומשפחה בטיול בטבע">
+              <View style={styles.photoCaption}><RtlText style={styles.photoCaptionText}>יוצאים יחד. חוזרים שמחים.</RtlText></View>
+            </ImageBackground>
+          </View>
+          <View style={[styles.heroContentColumn, isDesktop && styles.heroContentColumnDesktop]}>
+            <RtlText style={[styles.eyebrow, isDesktop && styles.textRight]}>WALKIE DOGGY LINK</RtlText>
+            <RtlText style={[styles.title, isDesktop && styles.heroTitleDesktop]} accessibilityRole="header">כל המשפחה.{`\n`}טיול אחד מסודר.</RtlText>
+            <RtlText style={[styles.heroSubtitle, isDesktop && styles.heroSubtitleDesktop]}>Walkie Doggy מרכז את התורנויות, העדכונים והטיולים במקום אחד — פשוט, ברור ומשפחתי.</RtlText>
+            <View style={styles.benefitRow}>
+              <View style={styles.benefitPill}><RtlText style={styles.benefitText}>מי יוצא? תמיד ברור</RtlText></View>
+              <View style={styles.benefitPill}><RtlText style={styles.benefitText}>הכול מתעדכן בזמן אמת</RtlText></View>
+            </View>
+            <View style={styles.actionCard}>
+              <Button label="יצירת המשפחה שלי" onPress={() => setMode('create')} style={styles.wideButton} />
+              <Button label="הצטרפות למשפחה קיימת" variant="secondary" onPress={() => setMode('join')} style={styles.wideButton} />
+              <Button
+                label="יש לי קישור או קוד הזמנה"
+                variant="secondary"
+                onPress={() => {
+                  resetRedeemMode();
+                  setMode('redeem');
+                }}
+                style={styles.wideButton}
+              />
+            </View>
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -668,18 +676,28 @@ export function FamilyOnboardingScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4FBFA', alignItems: 'center', justifyContent: 'center', paddingTop: spacing.xl, paddingHorizontal: spacing.xl, overflow: 'hidden' },
+  landingShell: { width: '100%', maxWidth: 1180, alignItems: 'center', justifyContent: 'center', zIndex: 1 },
+  landingShellDesktop: { flexDirection: 'row', gap: 64, paddingHorizontal: spacing.xl },
+  heroMediaColumn: { width: '100%', alignItems: 'center' },
+  heroMediaColumnDesktop: { flex: 1.15, minWidth: 0 },
+  heroContentColumn: { width: '100%', maxWidth: breakpoints.readingColumn, alignItems: 'center' },
+  heroContentColumnDesktop: { flex: 0.85, maxWidth: 480, alignItems: 'stretch' },
   formSafeArea: { flex: 1, backgroundColor: '#FFF9F1' },
   flexFull: { flex: 1 },
-  formScrollContent: { alignItems: 'center', paddingTop: spacing.xxxl, paddingHorizontal: spacing.xl, paddingBottom: spacing.xxxl },
+  formScrollContent: { alignItems: 'center', paddingTop: spacing.xxxl, paddingHorizontal: spacing.xl, paddingBottom: spacing.xxxl, minHeight: '100%' },
   heroGlow: { position: 'absolute', width: 620, height: 620, borderRadius: 310, backgroundColor: '#FFE5BE', top: -350, right: -210, opacity: 0.95 },
   sunsetBand: { position: 'absolute', width: '130%', height: 260, backgroundColor: '#DDF4EC', bottom: -130, transform: [{ rotate: '-5deg' }] },
   heroPhoto: { width: '100%', maxWidth: breakpoints.readingColumn, height: 300, borderRadius: 32, marginBottom: spacing.lg, borderWidth: 1, borderColor: '#E9C68E', shadowColor: '#513A1E', shadowOpacity: 0.18, shadowRadius: 28, shadowOffset: { width: 0, height: 14 }, elevation: 5, overflow: 'hidden', justifyContent: 'flex-end' },
+  heroPhotoDesktop: { maxWidth: 650, height: 500, marginBottom: 0 },
   heroPhotoImage: { borderRadius: 32, resizeMode: 'cover' },
   photoCaption: { position: 'absolute', bottom: 14, right: 14, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: radii.round, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   photoCaptionText: { ...typography.meta, color: '#214C46', fontWeight: '900' },
   eyebrow: { ...typography.caption, letterSpacing: 3.2, color: colors.primaryDark, fontWeight: '900', textAlign: 'center', marginBottom: spacing.md },
   heroTitle: { fontSize: 34, lineHeight: 42, fontWeight: '900', color: colors.textPrimary, textAlign: 'center', maxWidth: 360 },
   heroSubtitle: { ...typography.body, color: '#55706C', textAlign: 'center', maxWidth: 430, marginTop: spacing.md, marginBottom: spacing.xl, fontSize: 17, lineHeight: 26 },
+  heroTitleDesktop: { textAlign: 'right', alignSelf: 'stretch', maxWidth: 480, fontSize: 52, lineHeight: 60 },
+  heroSubtitleDesktop: { textAlign: 'right', alignSelf: 'stretch', maxWidth: 480, fontSize: 18, lineHeight: 29 },
+  textRight: { textAlign: 'right', alignSelf: 'stretch' },
   benefitRow: { width: '100%', maxWidth: breakpoints.readingColumn, flexDirection: 'row-reverse', gap: spacing.sm, marginBottom: spacing.md },
   benefitPill: { flex: 1, minHeight: 46, borderRadius: radii.round, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md, borderWidth: 1, borderColor: '#D5ECE8' },
   benefitText: { ...typography.meta, color: colors.primaryDark, fontWeight: '800', textAlign: 'center' },
@@ -687,7 +705,7 @@ const styles = StyleSheet.create({
   title: { ...typography.screenTitle, color: '#173A36', textAlign: 'center', fontSize: 40, lineHeight: 47, fontWeight: '900', maxWidth: 420 },
   subtitle: { fontSize: 15, color: colors.textSecondary, marginTop: spacing.sm, marginBottom: spacing.xxl, textAlign: 'center' },
   wideButton: { width: '100%', marginTop: spacing.md },
-  form: { width: '100%', maxWidth: breakpoints.readingColumn, alignSelf: 'center' },
+  form: { width: '100%', maxWidth: 620, alignSelf: 'center', backgroundColor: '#FFFFFF', borderRadius: 28, padding: spacing.xl, borderWidth: 1, borderColor: '#E9E2D8', shadowColor: '#513A1E', shadowOpacity: 0.08, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 3 },
   label: { ...typography.meta, fontWeight: '700', color: colors.textSecondary, marginTop: spacing.md, marginBottom: spacing.sm, textAlign: 'right' },
   input: {
     backgroundColor: colors.surface,
