@@ -319,14 +319,14 @@ export function FamilyOnboardingScreen() {
           <WalkieMascot state="idle" size={148} accessibilityLabel="הקמע של Walkie Doggy Link" testID="onboarding-mascot" />
         </View>
         <RtlText style={styles.eyebrow}>WALKIE DOGGY LINK</RtlText>
-        <RtlText style={styles.title} accessibilityRole="header">הטיולים של המשפחה.{`\n`}ביחד.</RtlText>
-        <RtlText style={styles.heroSubtitle}>פחות תיאומים, יותר זמן לטיולים ולרגעים הטובים עם הכלב שלכם.</RtlText>
+        <RtlText style={styles.title} accessibilityRole="header">כל המשפחה.{`\n`}טיול אחד מסודר.</RtlText>
+        <RtlText style={styles.heroSubtitle}>Walkie Doggy מרכז את התורנויות, העדכונים והטיולים במקום אחד — פשוט, ברור ומשפחתי.</RtlText>
         <View style={styles.benefitRow}>
-          <View style={styles.benefitPill}><RtlText style={styles.benefitText}>✓ תורנויות ברורות</RtlText></View>
-          <View style={styles.benefitPill}><RtlText style={styles.benefitText}>✓ עדכון בזמן אמת</RtlText></View>
+          <View style={styles.benefitPill}><RtlText style={styles.benefitText}>מי יוצא? תמיד ברור</RtlText></View>
+          <View style={styles.benefitPill}><RtlText style={styles.benefitText}>הכול מתעדכן בזמן אמת</RtlText></View>
         </View>
         <View style={styles.actionCard}>
-          <Button label="בואו ניצור משפחה" onPress={() => setMode('create')} style={styles.wideButton} />
+          <Button label="יצירת המשפחה שלי" onPress={() => setMode('create')} style={styles.wideButton} />
           <Button label="הצטרפות למשפחה קיימת" variant="secondary" onPress={() => setMode('join')} style={styles.wideButton} />
           <Button
           label="יש לי קישור או קוד הזמנה"
@@ -666,20 +666,20 @@ export function FamilyOnboardingScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFF9F1', alignItems: 'center', paddingTop: spacing.xxl, paddingHorizontal: spacing.xl, overflow: 'hidden' },
+  container: { flex: 1, backgroundColor: '#F4FBFA', alignItems: 'center', justifyContent: 'center', paddingTop: spacing.xl, paddingHorizontal: spacing.xl, overflow: 'hidden' },
   formSafeArea: { flex: 1, backgroundColor: '#FFF9F1' },
   flexFull: { flex: 1 },
   formScrollContent: { alignItems: 'center', paddingTop: spacing.xxxl, paddingHorizontal: spacing.xl, paddingBottom: spacing.xxxl },
-  heroGlow: { position: 'absolute', width: 420, height: 420, borderRadius: 210, backgroundColor: '#DDF5F1', top: -150, right: -120, opacity: 0.72 },
-  mascotHalo: { width: 184, height: 184, borderRadius: 92, backgroundColor: '#E4F7F4', alignItems: 'center', justifyContent: 'center', marginTop: spacing.sm, marginBottom: spacing.md, borderWidth: 1, borderColor: '#CDEDE8' },
-  eyebrow: { ...typography.caption, letterSpacing: 2.4, color: colors.primaryDark, fontWeight: '800', textAlign: 'center', marginBottom: spacing.sm },
+  heroGlow: { position: 'absolute', width: 560, height: 560, borderRadius: 280, backgroundColor: '#D8F3EE', top: -310, right: -190, opacity: 0.95 },
+  mascotHalo: { width: 172, height: 172, borderRadius: 48, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg, borderWidth: 1, borderColor: '#C8E9E3', shadowColor: '#123B36', shadowOpacity: 0.10, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 4 },
+  eyebrow: { ...typography.caption, letterSpacing: 3.2, color: colors.primaryDark, fontWeight: '900', textAlign: 'center', marginBottom: spacing.md },
   heroTitle: { fontSize: 34, lineHeight: 42, fontWeight: '900', color: colors.textPrimary, textAlign: 'center', maxWidth: 360 },
-  heroSubtitle: { ...typography.body, color: colors.textSecondary, textAlign: 'center', maxWidth: 360, marginTop: spacing.md, marginBottom: spacing.lg },
+  heroSubtitle: { ...typography.body, color: '#55706C', textAlign: 'center', maxWidth: 430, marginTop: spacing.md, marginBottom: spacing.xl, fontSize: 17, lineHeight: 26 },
   benefitRow: { width: '100%', maxWidth: breakpoints.readingColumn, flexDirection: 'row-reverse', gap: spacing.sm, marginBottom: spacing.md },
-  benefitPill: { flex: 1, minHeight: 42, borderRadius: radii.round, backgroundColor: '#E4F7F4', alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.sm },
+  benefitPill: { flex: 1, minHeight: 46, borderRadius: radii.round, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md, borderWidth: 1, borderColor: '#D5ECE8' },
   benefitText: { ...typography.meta, color: colors.primaryDark, fontWeight: '800', textAlign: 'center' },
-  actionCard: { width: '100%', maxWidth: breakpoints.readingColumn, backgroundColor: '#FFFEFC', borderRadius: radii.xl, padding: spacing.lg, borderWidth: 1, borderColor: '#EEE3D4' },
-  title: { ...typography.screenTitle, color: colors.textPrimary, textAlign: 'center', fontSize: 34, lineHeight: 42, fontWeight: '900', maxWidth: 360 },
+  actionCard: { width: '100%', maxWidth: breakpoints.readingColumn, backgroundColor: '#FFFFFF', borderRadius: 28, padding: spacing.lg, borderWidth: 1, borderColor: '#DDEBE8', shadowColor: '#123B36', shadowOpacity: 0.08, shadowRadius: 28, shadowOffset: { width: 0, height: 12 }, elevation: 3 },
+  title: { ...typography.screenTitle, color: '#173A36', textAlign: 'center', fontSize: 40, lineHeight: 47, fontWeight: '900', maxWidth: 420 },
   subtitle: { fontSize: 15, color: colors.textSecondary, marginTop: spacing.sm, marginBottom: spacing.xxl, textAlign: 'center' },
   wideButton: { width: '100%', marginTop: spacing.md },
   form: { width: '100%', maxWidth: breakpoints.readingColumn, alignSelf: 'center' },
