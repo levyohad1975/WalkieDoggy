@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, ImageBackground, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
@@ -316,10 +316,9 @@ export function FamilyOnboardingScreen() {
             corner badge. */}
         <View style={styles.heroGlow} accessibilityElementsHidden />
         <View style={styles.sunsetBand} accessibilityElementsHidden />
-        <View style={styles.heroPhoto}>
-          <WalkieMascot state="idle" size={190} accessibilityLabel="הקמע של Walkie Doggy Link" testID="onboarding-mascot" />
-        <View style={styles.photoCaption}><RtlText style={styles.photoCaptionText}>יוצאים יחד. חוזרים שמחים.</RtlText></View>
-        </View>
+        <ImageBackground source={require("../../assets/onboarding-hero.png")} style={styles.heroPhoto} imageStyle={styles.heroPhotoImage} accessibilityLabel="כלב ומשפחה בטיול בטבע">
+          <View style={styles.photoCaption}><RtlText style={styles.photoCaptionText}>יוצאים יחד. חוזרים שמחים.</RtlText></View>
+        </ImageBackground>
         <RtlText style={styles.eyebrow}>WALKIE DOGGY LINK</RtlText>
         <RtlText style={styles.title} accessibilityRole="header">כל המשפחה.{`\n`}טיול אחד מסודר.</RtlText>
         <RtlText style={styles.heroSubtitle}>Walkie Doggy מרכז את התורנויות, העדכונים והטיולים במקום אחד — פשוט, ברור ומשפחתי.</RtlText>
@@ -674,7 +673,8 @@ const styles = StyleSheet.create({
   formScrollContent: { alignItems: 'center', paddingTop: spacing.xxxl, paddingHorizontal: spacing.xl, paddingBottom: spacing.xxxl },
   heroGlow: { position: 'absolute', width: 620, height: 620, borderRadius: 310, backgroundColor: '#FFE5BE', top: -350, right: -210, opacity: 0.95 },
   sunsetBand: { position: 'absolute', width: '130%', height: 260, backgroundColor: '#DDF4EC', bottom: -130, transform: [{ rotate: '-5deg' }] },
-  heroPhoto: { width: '100%', maxWidth: breakpoints.readingColumn, height: 238, borderRadius: 32, backgroundColor: '#F4D5A6', alignItems: 'center', justifyContent: 'center', marginBottom: spacing.lg, borderWidth: 1, borderColor: '#E9C68E', shadowColor: '#513A1E', shadowOpacity: 0.16, shadowRadius: 28, shadowOffset: { width: 0, height: 14 }, elevation: 5, overflow: 'hidden' },
+  heroPhoto: { width: '100%', maxWidth: breakpoints.readingColumn, height: 300, borderRadius: 32, marginBottom: spacing.lg, borderWidth: 1, borderColor: '#E9C68E', shadowColor: '#513A1E', shadowOpacity: 0.18, shadowRadius: 28, shadowOffset: { width: 0, height: 14 }, elevation: 5, overflow: 'hidden', justifyContent: 'flex-end' },
+  heroPhotoImage: { borderRadius: 32, resizeMode: 'cover' },
   photoCaption: { position: 'absolute', bottom: 14, right: 14, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: radii.round, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   photoCaptionText: { ...typography.meta, color: '#214C46', fontWeight: '900' },
   eyebrow: { ...typography.caption, letterSpacing: 3.2, color: colors.primaryDark, fontWeight: '900', textAlign: 'center', marginBottom: spacing.md },
