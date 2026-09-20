@@ -20,7 +20,6 @@ import { friendlyErrorMessage } from '../lib/errorMessages';
 import { Avatar } from '../components/Avatar';
 import { DogPhoto } from '../components/DogPhoto';
 import { WalkieMascot } from '../components/WalkieMascot';
-import { OnboardingMascotWink } from '../components/OnboardingMascotWink';
 import type { FamilyLookupResult } from '../types';
 
 type Mode = 'choose' | 'create' | 'join' | 'redeem';
@@ -310,50 +309,28 @@ export function FamilyOnboardingScreen() {
 
   if (mode === 'choose') {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={styles.welcomeContainer}>
         <ImageBackground
           source={require("../../assets/onboarding-welcome-final.png")}
           style={styles.referenceHero}
           imageStyle={styles.referenceHeroImage}
           resizeMode="cover"
-          accessibilityLabel="משפחה וכלב בטיול בפארק"
+          accessibilityLabel="מסך הפתיחה של Walkie Doggy"
         >
-          <View style={styles.referenceOverlay}>
-            <View style={styles.referenceTopRow}>
-              <View style={styles.languagePill}><RtlText style={styles.languageText}>🌐  עברית</RtlText></View>
-              <View style={styles.referenceBrand}>
-                <RtlText style={styles.referenceLogo}>Walkie{String.fromCharCode(10)}Doggy 🐾</RtlText>
-                <RtlText style={styles.referenceTagline}>HAPPIER DOGS{String.fromCharCode(10)}HAPPIER FAMILIES</RtlText>
-              </View>
-              <RtlText style={styles.handwritten}>יחד ♥{String.fromCharCode(10)}מטיילים יותר{String.fromCharCode(10)}ומתאושרים :)</RtlText>
-            </View>
-
-            <View style={styles.mascotStage}>
-              <OnboardingMascotWink size={isDesktop ? 260 : Math.min(230, width * 0.48)} />
-              <View style={styles.speechBubble}>
-                <RtlText style={styles.speechText}>משפחה של מטיילים?{String.fromCharCode(10)}בואו נצא לדרך!</RtlText>
-              </View>
-            </View>
-
-            <View style={styles.referenceBottom}>
-              <Pressable accessibilityRole="button" onPress={() => setMode('create')} style={[styles.referenceButton, styles.referencePrimary]}>
-                <RtlText style={styles.referencePrimaryText}>⊕  יצירת משפחה חדשה   ›</RtlText>
-              </Pressable>
-              <Pressable accessibilityRole="button" onPress={() => setMode('join')} style={[styles.referenceButton, styles.referenceSecondary]}>
-                <RtlText style={styles.referenceSecondaryText}>♙  הצטרפות למשפחה קיימת   ›</RtlText>
-              </Pressable>
-
-              <View style={styles.featureCircles}>
-                <View style={[styles.featureCircle,{backgroundColor:'#DDF6D9'}]}><RtlText style={styles.featureIcon}>▣</RtlText><RtlText style={styles.featureLabel}>תזכורות{String.fromCharCode(10)}חכמות</RtlText></View>
-                <View style={[styles.featureCircle,{backgroundColor:'#F8DDE1'}]}><RtlText style={styles.featureIcon}>♧</RtlText><RtlText style={styles.featureLabel}>התראות{String.fromCharCode(10)}בזמן</RtlText></View>
-                <View style={[styles.featureCircle,{backgroundColor:'#DCECF8'}]}><RtlText style={styles.featureIcon}>♙</RtlText><RtlText style={styles.featureLabel}>שיתוף{String.fromCharCode(10)}במשפחה</RtlText></View>
-                <View style={[styles.featureCircle,{backgroundColor:'#FFF3D8'}]}><RtlText style={styles.featureIcon}>♡</RtlText><RtlText style={styles.featureLabel}>כלב מאושר{String.fromCharCode(10)}יותר</RtlText></View>
-              </View>
-              <RtlText style={styles.smallWalks}>🐾{String.fromCharCode(10)}Small walks{String.fromCharCode(10)}Big happiness</RtlText>
-            </View>
-          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="יצירת משפחה חדשה"
+            onPress={() => setMode('create')}
+            style={styles.createHotspot}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="הצטרפות למשפחה קיימת"
+            onPress={() => setMode('join')}
+            style={styles.joinHotspot}
+          />
         </ImageBackground>
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -682,6 +659,9 @@ export function FamilyOnboardingScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#173A36', overflow: 'hidden' },
+  welcomeContainer: { flex: 1, backgroundColor: '#173A36', overflow: 'hidden' },
+  createHotspot: { position: 'absolute', left: '10%', right: '10%', top: '69%', height: '8%' },
+  joinHotspot: { position: 'absolute', left: '10%', right: '10%', top: '78%', height: '8%' },
   referenceHero: { flex: 1, width: '100%', minHeight: '100%' },
   referenceHeroImage: { width: '100%', height: '100%' },
   referenceOverlay: { flex: 1, justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 12, paddingBottom: 18 },
