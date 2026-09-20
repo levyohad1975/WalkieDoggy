@@ -243,3 +243,15 @@ Task above) is independent of this Queue and proceeds in parallel.
 - Support / help desk
 - Cosmetic email branding
 - Any other backlog feature not in the Queue above
+
+
+## Final redesign QA checkpoint — 2026-09-20
+
+- Full scoped screen inventory reviewed: FamilyOnboarding, Login, Home, Schedule, Family, History, Statistics, Settings, SystemAdmin, plus RootNavigator.
+- RTL/state audit completed across the scoped screens; existing loading/empty/error/success handling remains intact.
+- Navigation emoji were replaced by internal react-native-svg line icons in d1eefee (no new dependency).
+- Final redesign head validated by CI #35490004685: SUCCESS.
+- Batch 2 Supabase Rehearsal #35490004739: SUCCESS.
+- No Claude or Codex worker was invoked for this QA pass.
+- Remaining visual emoji found in screen content are contextual content/action glyphs, not bottom-navigation icons; no behavior-changing cleanup was made during final QA.
+- Result: redesign branch is staging-preview ready from automated QA perspective. Device/browser visual acceptance remains a staging-preview activity.
