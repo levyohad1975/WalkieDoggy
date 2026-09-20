@@ -312,7 +312,7 @@ export function FamilyOnboardingScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <ImageBackground
-          source={require("../../assets/onboarding-hero.png")}
+          source={require("../../assets/onboarding-welcome-final.png")}
           style={styles.referenceHero}
           imageStyle={styles.referenceHeroImage}
           resizeMode="cover"
