@@ -305,8 +305,8 @@ export function FamilyOnboardingScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <WalkieMascot state="waiting" size={128} testID="onboarding-mascot-verifying" />
-        <RtlText style={styles.title} accessibilityRole="header">ממתין לאימות</RtlText>
-        <RtlText style={styles.subtitle}>
+        <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">ממתין לאימות</RtlText>
+        <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
           ההצטרפות למשפחה כבר בוצעה בהצלחה, אך לא הצלחנו לאמת זאת במכשיר הזה כרגע — כנראה בעיית חיבור. אין
           צורך להזין את ההזמנה מחדש.
         </RtlText>
@@ -362,8 +362,8 @@ export function FamilyOnboardingScreen() {
       return (
         <SafeAreaView style={styles.container}>
           <WalkieMascot state="concerned" size={128} testID="onboarding-mascot-rejected" />
-          <RtlText style={styles.title} accessibilityRole="header">הבקשה נדחתה</RtlText>
-          <RtlText style={styles.subtitle}>
+          <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">הבקשה נדחתה</RtlText>
+          <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
             הבקשה ליצירת {rejectedFamilyName} נדחתה על ידי מנהל המערכת. לפרטים נוספים, פנו לתמיכה.
           </RtlText>
           <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
@@ -375,8 +375,8 @@ export function FamilyOnboardingScreen() {
       return (
         <SafeAreaView style={styles.container}>
           <WalkieMascot state="waiting" size={128} testID="onboarding-mascot-pending" />
-          <RtlText style={styles.title} accessibilityRole="header">המשפחה ממתינה לאישור</RtlText>
-          <RtlText style={styles.subtitle}>
+          <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">המשפחה ממתינה לאישור</RtlText>
+          <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
             הבקשה ליצירת {pendingApprovalFamilyName} התקבלה. נשלח עדכון לאחר אישור מנהל המערכת.
           </RtlText>
           <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
@@ -388,14 +388,14 @@ export function FamilyOnboardingScreen() {
       <SafeAreaView style={styles.formSafeArea}>
         <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
-            <View style={styles.formHero}>
+            <View style={[styles.formHero, isDesktop && styles.formHeroDesktop]}>
               <WalkieMascot state="excited" size={86} />
               <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>בואו נקים למשפחה שלכם בית חדש 🐾</RtlText></View>
             </View>
-            <RtlText style={styles.title} accessibilityRole="header">יצירת משפחה חדשה</RtlText>
-            <RtlText style={styles.subtitle}>כמה פרטים קצרים ומתחילים לטייל יחד</RtlText>
+            <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">יצירת משפחה חדשה</RtlText>
+            <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>כמה פרטים קצרים ומתחילים לטייל יחד</RtlText>
 
-            <View style={styles.form}>
+            <View style={[styles.form, isDesktop && styles.formDesktop]}>
               <RtlText style={styles.label}>דוא״ל של מנהל/ת המשפחה</RtlText>
               <TextInput
                 value={adminEmail}
@@ -513,10 +513,10 @@ export function FamilyOnboardingScreen() {
       <SafeAreaView style={styles.formSafeArea}>
         <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
-            <RtlText style={styles.title} accessibilityRole="header">יש לי הזמנה</RtlText>
-            <RtlText style={styles.subtitle}>הדביקו את קישור ההזמנה, או את קוד ההזמנה עצמו, שקיבלתם מבן/בת המשפחה</RtlText>
+            <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">יש לי הזמנה</RtlText>
+            <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>הדביקו את קישור ההזמנה, או את קוד ההזמנה עצמו, שקיבלתם מבן/בת המשפחה</RtlText>
 
-            <View style={styles.form}>
+            <View style={[styles.form, isDesktop && styles.formDesktop]}>
               <RtlText style={styles.label}>קישור או קוד הזמנה</RtlText>
               <TextInput
                 value={redeemInput}
@@ -625,14 +625,14 @@ export function FamilyOnboardingScreen() {
     <SafeAreaView style={styles.formSafeArea}>
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
-          <View style={styles.formHero}>
+          <View style={[styles.formHero, isDesktop && styles.formHeroDesktop]}>
             <WalkieMascot state="excited" size={86} />
             <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>קיבלתם קוד? בואו נמצא את המשפחה 🐾</RtlText></View>
           </View>
-          <RtlText style={styles.title} accessibilityRole="header">הצטרפות למשפחה קיימת</RtlText>
-          <RtlText style={styles.subtitle}>הקלידו את קוד ההזמנה שקיבלתם מבן/בת המשפחה</RtlText>
+          <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">הצטרפות למשפחה קיימת</RtlText>
+          <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>הקלידו את קוד ההזמנה שקיבלתם מבן/בת המשפחה</RtlText>
 
-          <View style={styles.form}>
+          <View style={[styles.form, isDesktop && styles.formDesktop]}>
             <RtlText style={styles.label}>קוד הזמנה</RtlText>
             <TextInput
               value={code}
@@ -721,11 +721,13 @@ const styles = StyleSheet.create({
   featureLabel: { color: '#102A5A', fontSize: 10, lineHeight: 11, fontWeight: '800', textAlign: 'center' },
   smallWalks: { color: '#FFFFFF', fontSize: 13, lineHeight: 16, letterSpacing: 1.2, fontWeight: '700', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 5 },
   formSafeArea: { flex: 1, backgroundColor: '#F7F4E9' },
-  formHero: { width: '100%', maxWidth: 620, minHeight: 118, borderRadius: 28, backgroundColor: '#DFF5EE', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 18, marginBottom: 18, overflow: 'hidden', borderWidth: 1, borderColor: '#CBE9DF' },
-  formSpeech: { maxWidth: 260, backgroundColor: '#FFFFFF', borderRadius: 22, paddingHorizontal: 16, paddingVertical: 12, borderWidth: 2, borderColor: '#2AA7B8' },
+  formHero: { width: '100%', maxWidth: 560, minHeight: 96, borderRadius: 24, backgroundColor: '#DFF5EE', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 14, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#CBE9DF' },
+  formHeroDesktop: { maxWidth: 680, minHeight: 104 },
+  formSpeech: { flex: 1, maxWidth: 330, backgroundColor: '#FFFFFF', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 2, borderColor: '#2AA7B8' },
   formSpeechText: { color: '#102A5A', fontSize: 16, lineHeight: 22, fontWeight: '800', textAlign: 'center' },
   flexFull: { flex: 1 },
-  formScrollContent: { alignItems: 'center', paddingTop: spacing.xl, paddingHorizontal: spacing.xl, paddingBottom: spacing.xxxl, minHeight: '100%' },
+  formScrollContent: { alignItems: 'center', paddingTop: 14, paddingHorizontal: 18, paddingBottom: 34, minHeight: '100%' },
+  formScrollContentDesktop: { paddingTop: 28, paddingHorizontal: 32, paddingBottom: 48 },
 
   eyebrow: { ...typography.caption, letterSpacing: 3.2, color: colors.primaryDark, fontWeight: '900', textAlign: 'center', marginBottom: spacing.md },
   heroTitle: { fontSize: 34, lineHeight: 42, fontWeight: '900', color: colors.textPrimary, textAlign: 'center', maxWidth: 360 },
@@ -739,17 +741,22 @@ const styles = StyleSheet.create({
   benefitPill: { flex: 1, minHeight: 46, borderRadius: radii.round, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md, borderWidth: 1, borderColor: '#D5ECE8' },
   benefitText: { ...typography.meta, color: colors.primaryDark, fontWeight: '800', textAlign: 'center' },
   actionCard: { width: '100%', maxWidth: breakpoints.readingColumn, backgroundColor: '#FFFFFF', borderRadius: 28, padding: spacing.lg, borderWidth: 1, borderColor: '#DDEBE8', shadowColor: '#123B36', shadowOpacity: 0.08, shadowRadius: 28, shadowOffset: { width: 0, height: 12 }, elevation: 3 },
-  title: { ...typography.screenTitle, color: '#173A36', textAlign: 'center', fontSize: 40, lineHeight: 47, fontWeight: '900', maxWidth: 420 },
-  subtitle: { fontSize: 15, color: colors.textSecondary, marginTop: spacing.sm, marginBottom: spacing.xxl, textAlign: 'center' },
-  wideButton: { width: '100%', marginTop: spacing.md },
-  form: { width: '100%', maxWidth: 620, alignSelf: 'center', backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: 28, padding: spacing.xl, borderWidth: 1, borderColor: '#D9E7DF', shadowColor: '#513A1E', shadowOpacity: 0.08, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 3 },
-  label: { ...typography.meta, fontWeight: '700', color: colors.textSecondary, marginTop: spacing.md, marginBottom: spacing.sm, textAlign: 'right' },
+  title: { ...typography.screenTitle, color: '#173A36', textAlign: 'center', fontSize: 34, lineHeight: 39, fontWeight: '900', maxWidth: 520 },
+  titleDesktop: { fontSize: 42, lineHeight: 48 },
+  subtitle: { fontSize: 15, lineHeight: 21, color: colors.textSecondary, marginTop: 6, marginBottom: 16, textAlign: 'center', maxWidth: 520 },
+  subtitleDesktop: { fontSize: 16, marginBottom: 20 },
+  wideButton: { width: '100%', marginTop: 10 },
+  form: { width: '100%', maxWidth: 560, alignSelf: 'center', backgroundColor: 'rgba(255,255,255,0.98)', borderRadius: 24, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 18, borderWidth: 1, borderColor: '#D9E7DF', shadowColor: '#513A1E', shadowOpacity: 0.08, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
+  formDesktop: { maxWidth: 680, paddingHorizontal: 28, paddingTop: 18, paddingBottom: 24 },
+  label: { ...typography.meta, fontWeight: '800', color: '#6E675C', marginTop: 10, marginBottom: 6, textAlign: 'right' },
   input: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.md,
-    padding: 14,
+    minHeight: 54,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     fontSize: 16,
     color: colors.textPrimary,
   },
