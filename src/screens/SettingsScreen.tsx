@@ -467,17 +467,17 @@ export function SettingsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
-  content: { padding: 20, gap: 28, paddingBottom: 64 },
+  content: { padding: spacing.xl, gap: spacing.xxl, paddingBottom: spacing.xxxl },
   // Same desktop-containment pattern as HomeScreen's webContent: cap and
   // center the scroll content on web only — native is unaffected (RN's
   // ScrollView contentContainerStyle already renders full-width there, and
   // this repo's design intent is a bounded desktop column, not native).
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center' },
-  header: { width: '100%', fontSize: 22, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
-  section: { gap: 10 },
-  sectionTitle: { width: '100%', fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  section: { gap: spacing.sm },
+  sectionTitle: { width: '100%', ...typography.sectionTitle, fontSize: 18, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   dogMeta: { fontSize: 14, color: colors.textSecondary, textAlign: 'right' },
-  addButton: { marginTop: 6 },
+  addButton: { marginTop: spacing.xs },
   // Settings hub rows — consistent min-height (tokens.layout.rowHeight)
   // across every row, whether it has a subtitle (hubLabelWithMeta) or not.
   hubRow: {
