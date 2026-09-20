@@ -320,7 +320,7 @@ export function FamilyScreen() {
               <RtlText style={styles.dogProfileMeta}>{dog.photoUrl ? 'תמונת הפרופיל של הכלב' : 'עדיין לא הוגדרה תמונת פרופיל'}</RtlText>
             </View>
             {familyRole === 'admin' ? (
-              <Pressable onPress={changeDogPhoto} disabled={uploadingDogPhoto} style={styles.dogPhotoButton} accessibilityRole=\"button\" accessibilityLabel={dog.photoUrl ? 'החלפת תמונת הכלב' : 'הוספת תמונת הכלב'}>
+              <Pressable onPress={changeDogPhoto} disabled={uploadingDogPhoto} style={styles.dogPhotoButton} accessibilityRole={'button'} accessibilityLabel={dog.photoUrl ? 'החלפת תמונת הכלב' : 'הוספת תמונת הכלב'}>
                 <RtlText style={styles.dogPhotoButtonText}>{uploadingDogPhoto ? 'מעלה…' : dog.photoUrl ? 'החלפה' : 'הוספת תמונה'}</RtlText>
               </Pressable>
             ) : null}
