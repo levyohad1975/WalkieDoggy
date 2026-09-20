@@ -276,7 +276,7 @@ export function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, alignItems: 'center', paddingTop: 80, paddingHorizontal: 24 },
+  container: { flex: 1, backgroundColor: colors.background, alignItems: 'center', paddingTop: spacing.xxxl, paddingHorizontal: spacing.xl },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   // width: '100%' preserves today's behavior on every platform (this box
   // previously WAS the container's only child, implicitly filling it); the
@@ -287,15 +287,15 @@ const styles = StyleSheet.create({
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center' },
   emoji: { fontSize: 64, marginBottom: spacing.sm },
   title: { ...typography.screenTitle, fontSize: 26, color: colors.textPrimary },
-  subtitle: { ...typography.body, fontWeight: 'normal', color: colors.textSecondary, marginTop: spacing.xs, marginBottom: 32 },
-  grid: { width: '100%', gap: 14 },
+  subtitle: { ...typography.body, fontWeight: 'normal', color: colors.textSecondary, marginTop: spacing.xs, marginBottom: spacing.xxl },
+  grid: { width: '100%', gap: spacing.md },
   userButton: { width: '100%' },
   addButton: { width: '100%', marginTop: spacing.xl },
   errorBanner: {
     width: '100%',
     marginTop: spacing.xl,
     backgroundColor: colors.statusOverdueBg,
-    borderRadius: 16,
+    borderRadius: radii.lg,
     padding: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
