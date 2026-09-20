@@ -300,7 +300,8 @@ export function FamilyOnboardingScreen() {
           disabled={verifying}
           loading={verifying}
           style={styles.wideButton}
-        />
+          />
+        </View>
       </SafeAreaView>
     );
   }
