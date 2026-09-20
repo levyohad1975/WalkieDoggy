@@ -632,7 +632,7 @@ export function FamilyOnboardingScreen() {
             <WalkieMascot state="excited" size={86} />
             <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>קיבלתם קוד? בואו נמצא את המשפחה 🐾</RtlText></View>
           </View>
-          <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">הצטרפות למשפחה קיימת</RtlText>
+          <RtlText style={[styles.title, styles.joinTitle, isDesktop && styles.titleDesktop]} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit>הצטרפות למשפחה קיימת</RtlText>
           <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>הקלידו את קוד ההזמנה שקיבלתם מבן/בת המשפחה</RtlText>
 
           <View style={[styles.form, isDesktop && styles.formDesktop]}>
@@ -746,6 +746,7 @@ const styles = StyleSheet.create({
   actionCard: { width: '100%', maxWidth: breakpoints.readingColumn, backgroundColor: '#FFFFFF', borderRadius: 28, padding: spacing.lg, borderWidth: 1, borderColor: '#DDEBE8', shadowColor: '#123B36', shadowOpacity: 0.08, shadowRadius: 28, shadowOffset: { width: 0, height: 12 }, elevation: 3 },
   title: { ...typography.screenTitle, color: '#173A36', textAlign: 'center', fontSize: 30, lineHeight: 35, fontWeight: '900', maxWidth: 520 },
   titleDesktop: { fontSize: 42, lineHeight: 48 },
+  joinTitle: { width: '100%', maxWidth: 620, fontSize: 27, lineHeight: 33 },
   subtitle: { fontSize: 14, lineHeight: 20, color: colors.textSecondary, marginTop: 4, marginBottom: 12, textAlign: 'center', maxWidth: 520 },
   subtitleDesktop: { fontSize: 16, marginBottom: 20 },
   wideButton: { width: '100%', marginTop: 8 },
