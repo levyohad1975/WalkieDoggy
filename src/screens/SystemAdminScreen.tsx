@@ -44,14 +44,6 @@ function auditActionLabel(action: string): string {
   const labels: Record<string, string> = {
     'family.created': 'יצירת משפחה',
     'family.approval_changed': 'שינוי סטטוס אישור משפחה',
-    'system_admin_view_family_detail': 'מנהל מערכת צפה בפרטי משפחה',
-    'system_observer.started': 'התחלת צפייה נסתרת במשפחה',
-    'system_observer.ended': 'סיום צפייה נסתרת במשפחה',
-    'system_admin_observer.started': 'התחלת צפייה נסתרת במשפחה',
-    'system_admin_observer.ended': 'סיום צפייה נסתרת במשפחה',
-    'system_admin_family_approved': 'אישור משפחה על ידי מנהל מערכת',
-    'system_admin_family_rejected': 'דחיית משפחה על ידי מנהל מערכת',
-    'system_admin_family_disabled': 'השבתת משפחה על ידי מנהל מערכת',
     profile_claimed: 'חיבור פרופיל למכשיר',
     schedule_rule_created: 'יצירת תורנות',
     schedule_rule_deleted: 'מחיקת תורנות',
@@ -137,9 +129,16 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
   const [auditError, setAuditError] = useState<string | null>(null);
   const [auditFamilyId, setAuditFamilyId] = useState<string>('all');
 
+  const familyActivityAuditLog = useMemo(
+    () => auditLog.filter((entry) => entry.source !== 'system_audit'),
+    [auditLog]
+  );
+
   const filteredAuditLog = useMemo(
-    () => auditFamilyId === 'all' ? auditLog : auditLog.filter((entry) => entry.familyId === auditFamilyId),
-    [auditLog, auditFamilyId]
+    () => auditFamilyId === 'all'
+      ? familyActivityAuditLog
+      : familyActivityAuditLog.filter((entry) => entry.familyId === auditFamilyId),
+    [familyActivityAuditLog, auditFamilyId]
   );
 
   const overview = useMemo(() => {
@@ -310,7 +309,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
               <RtlText style={styles.backLink}>‹ חזרה לרשימה</RtlText>
             </Pressable>
             <RtlText style={styles.sectionTitle}>Audit Trail מערכת ({filteredAuditLog.length})</RtlText>
-            <RtlText style={styles.auditHint}>כל שינוי נתונים שנעשה ע״י משתמש נשמר מעכשיו אוטומטית. ניתן לסנן את הרשומות לפי משפחה.</RtlText>
+            <RtlText style={styles.auditHint}>פעולות שבוצעו בתוך המשפחות בלבד. פעולות ניהול מערכת וצפיית מנהל אינן מוצגות. ניתן לסנן לפי משפחה.</RtlText>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.auditFamilyFilters}>
               <Pressable
                 onPress={() => setAuditFamilyId('all')}
