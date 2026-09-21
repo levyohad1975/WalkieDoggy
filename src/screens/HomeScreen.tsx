@@ -521,7 +521,7 @@ export function HomeScreen() {
             ) : (
               <WalkieMascot
                 state="idle"
-                size={190}
+                size={126}
                 accessibilityLabel="הכלב המונפש של Walkie Doggy"
               />
             )}
