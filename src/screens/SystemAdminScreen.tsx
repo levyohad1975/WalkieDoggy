@@ -44,6 +44,14 @@ function auditActionLabel(action: string): string {
   const labels: Record<string, string> = {
     'family.created': 'יצירת משפחה',
     'family.approval_changed': 'שינוי סטטוס אישור משפחה',
+    'system_admin_view_family_detail': 'מנהל מערכת צפה בפרטי משפחה',
+    'system_observer.started': 'התחלת צפייה נסתרת במשפחה',
+    'system_observer.ended': 'סיום צפייה נסתרת במשפחה',
+    'system_admin_observer.started': 'התחלת צפייה נסתרת במשפחה',
+    'system_admin_observer.ended': 'סיום צפייה נסתרת במשפחה',
+    'system_admin_family_approved': 'אישור משפחה על ידי מנהל מערכת',
+    'system_admin_family_rejected': 'דחיית משפחה על ידי מנהל מערכת',
+    'system_admin_family_disabled': 'השבתת משפחה על ידי מנהל מערכת',
     profile_claimed: 'חיבור פרופיל למכשיר',
     schedule_rule_created: 'יצירת תורנות',
     schedule_rule_deleted: 'מחיקת תורנות',
@@ -516,7 +524,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                   ) : (
                     detail.recentAudit.slice(0, 15).map((a) => (
                       <RtlText key={a.id} style={styles.cardLine}>
-                        {new Date(a.createdAt).toLocaleString('he-IL')} · {a.action}
+                        {new Date(a.createdAt).toLocaleString('he-IL')} · {auditActionLabel(a.action)}
                       </RtlText>
                     ))
                   )}
