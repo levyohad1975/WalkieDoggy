@@ -14,7 +14,9 @@ describe('Home integrated walk lifecycle', () => {
   it('exposes start and end walk as the primary lifecycle action', () => {
     expect(card).toContain('label={overdue ? \'התחל טיול עכשיו\' : \'התחל טיול\'}');
     expect(card).toContain('label="סיים טיול"');
-    expect(home).toContain('setActiveWalkSession({ walkId: nextWalk.id');
+    expect(home).toContain('void startWalk(nextWalk.id)');
+    expect(home).toContain("nextWalk.status === 'in_progress'");
+    expect(home).not.toContain('setActiveWalkSession({ walkId: nextWalk.id');
     expect(home).toContain('setCompleteWalkId(nextWalk.id)');
   });
 

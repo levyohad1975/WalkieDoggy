@@ -102,8 +102,11 @@ export function toWalk(row: any): Walk {
     scheduledTime: row.scheduled_time,
     responsibleUserId: row.responsible_user_id,
     status: row.status,
+    startedAt: row.started_at ?? undefined,
+    startedByUserId: row.started_by_user_id ?? undefined,
     completedAt: row.completed_at ?? undefined,
     completedByUserId: row.completed_by_user_id ?? undefined,
+    endedByUserId: row.ended_by_user_id ?? undefined,
     hadPee: row.had_pee ?? undefined,
     hadPoop: row.had_poop ?? undefined,
     note: row.note ?? undefined,
@@ -137,8 +140,11 @@ function fromWalk(walk: Walk) {
     scheduled_time: walk.scheduledTime,
     responsible_user_id: walk.responsibleUserId,
     status: walk.status,
+    started_at: walk.startedAt ?? null,
+    started_by_user_id: walk.startedByUserId ?? null,
     completed_at: walk.completedAt ?? null,
     completed_by_user_id: walk.completedByUserId ?? null,
+    ended_by_user_id: walk.endedByUserId ?? null,
     had_pee: walk.hadPee ?? null,
     had_poop: walk.hadPoop ?? null,
     note: walk.note ?? null,
@@ -380,6 +386,24 @@ export class SupabaseRepository implements Repository {
    * request lands second simply affects 0 rows instead of overwriting the
    * first person's completion.
    */
+  async startWalk(walkId: string): Promise<Walk> {
+    const { data, error } = await this.client.rpc('start_walk', { target_walk_id: walkId });
+    if (error) throw error;
+    return toWalk(data);
+  }
+
+  async finishWalk(walkId: string, actualWalkerId: string, details: { hadPee?: boolean; hadPoop?: boolean; note?: string } = {}): Promise<Walk> {
+    const { data, error } = await this.client.rpc('finish_walk', {
+      target_walk_id: walkId,
+      actual_walker_id: actualWalkerId,
+      p_had_pee: details.hadPee ?? null,
+      p_had_poop: details.hadPoop ?? null,
+      p_note: details.note ?? null,
+    });
+    if (error) throw error;
+    return toWalk(data);
+  }
+
   async saveWalk(walk: Walk): Promise<void> {
     if (walk.status === 'done') {
       const { data, error } = await this.client

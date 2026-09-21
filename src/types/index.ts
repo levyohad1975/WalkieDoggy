@@ -4,7 +4,7 @@
  * business logic in src/logic can be unit-tested with plain Node.
  */
 
-export type WalkStatus = 'pending' | 'done' | 'skipped';
+export type WalkStatus = 'pending' | 'in_progress' | 'done' | 'skipped';
 
 export interface Family {
   id: string;
@@ -125,8 +125,11 @@ export interface Walk {
   scheduledTime: string; // "HH:mm"
   responsibleUserId: string; // who is/was officially responsible (post-swap if swapped)
   status: WalkStatus;
+  startedAt?: string; // ISO timestamp when Start walk was pressed
+  startedByUserId?: string; // profile that pressed Start (admin may differ from responsible)
   completedAt?: string; // ISO timestamp
   completedByUserId?: string; // who actually walked the dog — may differ from responsibleUserId
+  endedByUserId?: string; // profile that pressed End (admin may differ from actual walker)
   hadPee?: boolean;
   hadPoop?: boolean;
   note?: string;

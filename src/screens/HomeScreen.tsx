@@ -67,6 +67,8 @@ export function HomeScreen() {
     error: scheduleError,
     actionError,
     load: loadSchedule,
+    startWalk,
+    finishWalk,
     markDone,
     swap,
     swapTwoWalks,
@@ -148,10 +150,6 @@ export function HomeScreen() {
   const [requestSwapTargetUserId, setRequestSwapTargetUserId] = useState<string | null>(null);
   const [requestTimeChangeWalkId, setRequestTimeChangeWalkId] = useState<string | null>(null);
   const [requestsInboxVisible, setRequestsInboxVisible] = useState(false);
-  // First lifecycle slice: session state is intentionally UI-local until the
-  // server migration/RPC lands; ending the session persists through the
-  // existing, authorized completion path.
-  const [activeWalkSession, setActiveWalkSession] = useState<{ walkId: string; startedAt: string } | null>(null);
 
   useEffect(() => {
     loadFamily(familyId);
@@ -516,18 +514,15 @@ export function HomeScreen() {
             }
             primaryLabel={isOverdue(nextWalk) ? 'ממתין לעדכון' : undefined}
             onMarkDone={() => setCompleteWalkId(nextWalk.id)}
-            activeStartedAt={activeWalkSession?.walkId === nextWalk.id ? activeWalkSession.startedAt : null}
+            activeStartedAt={nextWalk.status === 'in_progress' ? nextWalk.startedAt ?? null : null}
             onStartWalk={
               effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId
-                ? () => setActiveWalkSession({ walkId: nextWalk.id, startedAt: new Date().toISOString() })
+                ? () => void startWalk(nextWalk.id)
                 : undefined
             }
             onEndWalk={
-              activeWalkSession?.walkId === nextWalk.id && (effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId)
-                ? () => {
-                    setActiveWalkSession(null);
-                    setCompleteWalkId(nextWalk.id);
-                  }
+              nextWalk.status === 'in_progress' && (effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId)
+                ? () => setCompleteWalkId(nextWalk.id)
                 : undefined
             }
             // AUTHORIZATION CORRECTION: ✓/✕ resolution is admin-or-
@@ -757,7 +752,9 @@ export function HomeScreen() {
           if (!walkId) return;
           // markDone() itself refuses while Test Mode is active (see
           // scheduleStore.ts) — no separate guard needed here.
-          const completed = await markDone(walkId, completedByUserId, { hadPee, hadPoop, note: note || undefined });
+          const completed = walkBeingCompleted?.status === 'in_progress'
+            ? await finishWalk(walkId, completedByUserId, { hadPee, hadPoop, note: note || undefined })
+            : await markDone(walkId, completedByUserId, { hadPee, hadPoop, note: note || undefined });
           // BATCH 4 (C2/C3/C8) — success mascot + message, best-effort only:
           // if anything about the walk/dog/user lookups above is somehow
           // unavailable, selectMessage()'s own safe fallbacks (see
