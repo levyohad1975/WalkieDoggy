@@ -83,6 +83,26 @@ export function FamilyScreen() {
   const [detailsTarget, setDetailsTarget] = useState<FamilyUser | null>(null);
   const [uploadingDogPhoto, setUploadingDogPhoto] = useState(false);
 
+  const removeDogPhoto = () => {
+    if (!dog || !dog.photoUrl || familyRole !== 'admin' || systemObserverActive) return;
+    Alert.alert(
+      'הסרת תמונת הכלב',
+      'להסיר את התמונה ולחזור לכלב של Walkie Doggy?',
+      [
+        { text: 'ביטול', style: 'cancel' },
+        {
+          text: 'הסרה',
+          style: 'destructive',
+          onPress: () => {
+            void saveDog({ ...dog, photoUrl: undefined }).catch(() => {
+              Alert.alert('לא הצלחנו להסיר את התמונה', 'נסו שוב בעוד רגע.');
+            });
+          },
+        },
+      ],
+    );
+  };
+
   const changeDogPhoto = async () => {
     if (!dog || familyRole !== 'admin') return;
     setUploadingDogPhoto(true);
@@ -330,10 +350,17 @@ export function FamilyScreen() {
               <RtlText style={styles.dogProfileName}>{dog.name}</RtlText>
               <RtlText style={styles.dogProfileMeta}>{dog.photoUrl ? 'תמונת הפרופיל של הכלב' : 'עדיין לא הוגדרה תמונת פרופיל'}</RtlText>
             </View>
-            {familyRole === 'admin' ? (
-              <Pressable onPress={changeDogPhoto} disabled={uploadingDogPhoto} style={styles.dogPhotoButton} accessibilityRole={'button'} accessibilityLabel={dog.photoUrl ? 'החלפת תמונת הכלב' : 'הוספת תמונת הכלב'}>
-                <RtlText style={styles.dogPhotoButtonText}>{uploadingDogPhoto ? 'מעלה…' : dog.photoUrl ? 'החלפה' : 'הוספת תמונה'}</RtlText>
-              </Pressable>
+            {familyRole === 'admin' && !systemObserverActive ? (
+              <View style={styles.dogPhotoActions}>
+                <Pressable onPress={changeDogPhoto} disabled={uploadingDogPhoto} style={styles.dogPhotoButton} accessibilityRole="button" accessibilityLabel={dog.photoUrl ? 'החלפת תמונת הכלב' : 'הוספת תמונת הכלב'}>
+                  <RtlText style={styles.dogPhotoButtonText}>{uploadingDogPhoto ? 'מעלה…' : dog.photoUrl ? 'החלפה' : 'הוספת תמונה'}</RtlText>
+                </Pressable>
+                {dog.photoUrl ? (
+                  <Pressable onPress={removeDogPhoto} disabled={uploadingDogPhoto} style={styles.dogPhotoRemoveButton} accessibilityRole="button" accessibilityLabel="הסרת תמונת הכלב">
+                    <RtlText style={styles.dogPhotoRemoveText}>הסרה</RtlText>
+                  </Pressable>
+                ) : null}
+              </View>
             ) : null}
           </View>
         ) : null}
@@ -546,8 +573,11 @@ const styles = StyleSheet.create({
   dogProfileBody: { flex: 1, gap: 3 },
   dogProfileName: { ...typography.sectionTitle, fontSize: 18, color: colors.textPrimary, textAlign: 'right' },
   dogProfileMeta: { ...typography.meta, color: colors.textSecondary, textAlign: 'right' },
+  dogPhotoActions: { alignItems: 'center', gap: spacing.xs },
   dogPhotoButton: { paddingVertical: 9, paddingHorizontal: 12, borderRadius: radii.md, backgroundColor: colors.surfaceMuted },
   dogPhotoButtonText: { ...typography.meta, color: colors.primaryDark, fontWeight: '800' },
+  dogPhotoRemoveButton: { paddingVertical: 5, paddingHorizontal: 10 },
+  dogPhotoRemoveText: { ...typography.caption, color: colors.statusOverdue, fontWeight: '700' },
   list: { gap: spacing.sm },
   row: {
     flexDirection: 'row',
