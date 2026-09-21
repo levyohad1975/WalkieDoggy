@@ -371,11 +371,11 @@ const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   systemAdminEntry: {
     position: 'absolute',
-    top: 58,
-    left: 18,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    top: 8,
+    left: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
@@ -388,5 +388,5 @@ const styles = StyleSheet.create({
     elevation: 3,
     zIndex: 100,
   },
-  systemAdminEntryText: { fontSize: 20 },
+  systemAdminEntryText: { fontSize: 17 },
 });
