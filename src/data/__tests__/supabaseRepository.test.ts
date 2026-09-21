@@ -360,7 +360,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
 describe('SupabaseRepository — reads map rows correctly (toDog/toRule/toEntry/toWalk)', () => {
   it('getDog returns undefined when no row exists', async () => {
     const client: any = {
-      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }) }),
+      from: () => ({ select: () => ({ eq: () => ({ order: () => ({ limit: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }) }) }) }),
     };
     const repo = new SupabaseRepository(client);
     expect(await repo.getDog('fam-42')).toBeUndefined();
@@ -368,7 +368,7 @@ describe('SupabaseRepository — reads map rows correctly (toDog/toRule/toEntry/
 
   it('getDog throws when the query errors', async () => {
     const client: any = {
-      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: { message: 'x' } }) }) }) }),
+      from: () => ({ select: () => ({ eq: () => ({ order: () => ({ limit: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: { message: 'x' } }) }) }) }) }) }),
     };
     const repo = new SupabaseRepository(client);
     await expect(repo.getDog('fam-42')).rejects.toBeTruthy();
@@ -379,11 +379,15 @@ describe('SupabaseRepository — reads map rows correctly (toDog/toRule/toEntry/
       from: () => ({
         select: () => ({
           eq: () => ({
-            maybeSingle: () =>
-              Promise.resolve({
-                data: { id: 'dog-1', family_id: 'fam-42', name: 'טופי', photo_url: null, walks_per_day: 3, notes: null, sex: null },
-                error: null,
+            order: () => ({
+              limit: () => ({
+                maybeSingle: () =>
+                  Promise.resolve({
+                    data: { id: 'dog-1', family_id: 'fam-42', name: 'טופי', photo_url: null, walks_per_day: 3, notes: null, sex: null },
+                    error: null,
+                  }),
               }),
+            }),
           }),
         }),
       }),
@@ -398,11 +402,15 @@ describe('SupabaseRepository — reads map rows correctly (toDog/toRule/toEntry/
       from: () => ({
         select: () => ({
           eq: () => ({
-            maybeSingle: () =>
-              Promise.resolve({
-                data: { id: 'dog-1', family_id: 'fam-42', name: 'טופי', photo_url: 'https://x/y.png', walks_per_day: 3, notes: 'אוהב לרוץ', sex: 'male' },
-                error: null,
+            order: () => ({
+              limit: () => ({
+                maybeSingle: () =>
+                  Promise.resolve({
+                    data: { id: 'dog-1', family_id: 'fam-42', name: 'טופי', photo_url: 'https://x/y.png', walks_per_day: 3, notes: 'אוהב לרוץ', sex: 'male' },
+                    error: null,
+                  }),
               }),
+            }),
           }),
         }),
       }),

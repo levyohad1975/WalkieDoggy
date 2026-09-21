@@ -317,7 +317,13 @@ export class SupabaseRepository implements Repository {
   }
 
   async getDog(familyId: string): Promise<Dog | undefined> {
-    const { data, error } = await this.client.from('dogs').select('*').eq('family_id', familyId).maybeSingle();
+    const { data, error } = await this.client
+      .from('dogs')
+      .select('*')
+      .eq('family_id', familyId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
     if (error) throw error;
     return data ? toDog(data) : undefined;
   }
