@@ -50,7 +50,7 @@ describe('screen/modal heading RtlText -> accessibilityRole="header"', () => {
   for (const [relativeFile, styleKey, expectedCount] of TARGET_FILES) {
     it(`every heading <RtlText style={styles.${styleKey}}> in ${relativeFile} carries accessibilityRole="header"`, () => {
       const source = fs.readFileSync(path.resolve(__dirname, relativeFile), 'utf8');
-      const tagPattern = new RegExp(`<RtlText style=\\{styles\\.${styleKey}\\}[^>]*>`, 'g');
+      // Accept both a direct style and an array whose first item is the heading style.\n      // Responsive screens legitimately add desktop/variant styles in the same array.\n      const tagPattern = new RegExp(`<RtlText style=\\{(?:styles\\.${styleKey}|\\[styles\\.${styleKey}(?:,|\\]))[^>]*>`, 'g');
       const matches = source.match(tagPattern) ?? [];
       expect(matches.length).toBe(expectedCount);
       for (const tag of matches) {
