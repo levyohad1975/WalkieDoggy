@@ -14,7 +14,6 @@ import { DEMO_FAMILY } from '../data/demoData';
 import {
   computeCompletionStats,
   computeMemberDistribution,
-  computePeePoopStats,
   computePlannedVsSpontaneous,
   filterWalksByPeriod,
   type StatsPeriod,
@@ -62,6 +61,8 @@ export function StatisticsScreen() {
   const { users, loading: familyLoading, error: familyError, load: loadFamily, permissionOverrides, permissionOverridesStatus } = useFamilyStore();
   const { walks, loading: scheduleLoading, error: scheduleError, load: loadSchedule } = useScheduleStore();
   const [period, setPeriod] = useState<StatsPeriod>('7d');
+  const [memberFilter, setMemberFilter] = useState<string>('all');
+  const [walkTypeFilter, setWalkTypeFilter] = useState<'all' | 'planned' | 'spontaneous'>('all');
 
   // BATCH 3 CORRECTION #2 (review #2): the actual display/calculation
   // dataset — see this file's own doc comment above. statisticsAccessStatus
@@ -120,11 +121,20 @@ export function StatisticsScreen() {
 
   const usersById = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u])), [users]);
   const periodWalks = useMemo(() => filterWalksByPeriod(sourceWalks, period), [sourceWalks, period]);
+  const filteredWalks = useMemo(
+    () =>
+      periodWalks.filter((walk) => {
+        if (memberFilter !== 'all' && walk.responsibleUserId !== memberFilter) return false;
+        if (walkTypeFilter === 'planned' && walk.isUnplanned) return false;
+        if (walkTypeFilter === 'spontaneous' && !walk.isUnplanned) return false;
+        return true;
+      }),
+    [periodWalks, memberFilter, walkTypeFilter]
+  );
 
-  const completion = useMemo(() => computeCompletionStats(periodWalks), [periodWalks]);
-  const memberDistribution = useMemo(() => computeMemberDistribution(periodWalks), [periodWalks]);
-  const plannedVsSpontaneous = useMemo(() => computePlannedVsSpontaneous(periodWalks), [periodWalks]);
-  const peePoop = useMemo(() => computePeePoopStats(periodWalks), [periodWalks]);
+  const completion = useMemo(() => computeCompletionStats(filteredWalks), [filteredWalks]);
+  const memberDistribution = useMemo(() => computeMemberDistribution(filteredWalks), [filteredWalks]);
+  const plannedVsSpontaneous = useMemo(() => computePlannedVsSpontaneous(filteredWalks), [filteredWalks]);
 
   const loading = familyLoading || scheduleLoading;
   const error = familyError || scheduleError;
@@ -173,24 +183,65 @@ export function StatisticsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
-        <RtlText style={styles.header} accessibilityRole="header">📈 סטטיסטיקה</RtlText>
-
-        <View style={styles.periodRow}>
-          {PERIOD_LABELS.map(([key, label]) => (
-            <Pressable
-              key={key}
-              onPress={() => setPeriod(key)}
-              style={[styles.periodChip, period === key && styles.periodChipActive]}
-              accessibilityRole="button"
-              accessibilityState={{ selected: period === key }}
-              accessibilityLabel={`תקופה: ${label}`}
-            >
-              <RtlText style={[styles.periodChipText, period === key && styles.periodChipTextActive]}>{label}</RtlText>
-            </Pressable>
-          ))}
+        <View style={styles.headerBlock}>
+          <RtlText style={styles.header} accessibilityRole="header">סטטיסטיקה</RtlText>
+          <RtlText style={styles.headerSubtitle}>תמונה ברורה של הטיולים והחלוקה במשפחה</RtlText>
         </View>
 
-        {periodWalks.length === 0 ? (
+        <View style={styles.filtersCard}>
+          <View style={styles.filterHeaderRow}>
+            <RtlText style={styles.filterTitle}>סינון נתונים</RtlText>
+            {(period !== '7d' || memberFilter !== 'all' || walkTypeFilter !== 'all') ? (
+              <Pressable onPress={() => { setPeriod('7d'); setMemberFilter('all'); setWalkTypeFilter('all'); }}>
+                <RtlText style={styles.clearFilters}>איפוס</RtlText>
+              </Pressable>
+            ) : null}
+          </View>
+
+          <RtlText style={styles.filterLabel}>תקופה</RtlText>
+          <View style={styles.segmentedRow}>
+            {PERIOD_LABELS.map(([key, label]) => (
+              <Pressable
+                key={key}
+                onPress={() => setPeriod(key)}
+                style={[styles.segment, period === key && styles.segmentActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: period === key }}
+                accessibilityLabel={`תקופה: ${label}`}
+              >
+                <RtlText style={[styles.segmentText, period === key && styles.segmentTextActive]}>{label}</RtlText>
+              </Pressable>
+            ))}
+          </View>
+
+          <RtlText style={styles.filterLabel}>בן משפחה</RtlText>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChipsRow}>
+            <Pressable onPress={() => setMemberFilter('all')} style={[styles.filterChip, memberFilter === 'all' && styles.filterChipActive]}>
+              <RtlText style={[styles.filterChipText, memberFilter === 'all' && styles.filterChipTextActive]}>כולם</RtlText>
+            </Pressable>
+            {users.map((user) => (
+              <Pressable key={user.id} onPress={() => setMemberFilter(user.id)} style={[styles.filterChip, memberFilter === user.id && styles.filterChipActive]}>
+                <Avatar emoji={user.avatar ?? '🙂'} color={user.color ?? colors.primary} photoUrl={user.photoUrl} size={22} />
+                <RtlText style={[styles.filterChipText, memberFilter === user.id && styles.filterChipTextActive]}>{user.name}</RtlText>
+              </Pressable>
+            ))}
+          </ScrollView>
+
+          <RtlText style={styles.filterLabel}>סוג טיול</RtlText>
+          <View style={styles.typeRow}>
+            {([
+              ['all', 'הכל'],
+              ['planned', 'מתוכנן'],
+              ['spontaneous', 'ספונטני'],
+            ] as const).map(([key, label]) => (
+              <Pressable key={key} onPress={() => setWalkTypeFilter(key)} style={[styles.typeChip, walkTypeFilter === key && styles.typeChipActive]}>
+                <RtlText style={[styles.typeChipText, walkTypeFilter === key && styles.typeChipTextActive]}>{label}</RtlText>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        {filteredWalks.length === 0 ? (
           <EmptyState emoji="📈" title="אין עדיין נתונים בטווח הזה" subtitle="הסטטיסטיקה תתמלא ככל שיירשמו טיולים" />
         ) : (
           <>
@@ -307,34 +358,6 @@ export function StatisticsScreen() {
               />
             </View>
 
-            <View style={styles.card}>
-              <RtlText style={styles.cardTitle}>פיפי וקקי</RtlText>
-              {peePoop.doneCount === 0 ? (
-                <RtlText style={styles.metaText}>עדיין אין טיולים שהושלמו בטווח הזה</RtlText>
-              ) : (
-                <>
-                  <View style={styles.rowBetween}>
-                    <RtlText style={[styles.metaText, styles.rtlText]}>
-                      פיפי
-                    </RtlText>
-                    <RtlText style={[styles.metaTextStrong, styles.ltrText]}>
-                      {peePoop.peePercent}%
-                    </RtlText>
-                  </View>
-                  <Bar percent={peePoop.peePercent} color={colors.primary} />
-                  <View style={styles.rowBetween}>
-                    <RtlText style={[styles.metaText, styles.rtlText]}>
-                      קקי
-                    </RtlText>
-                    <RtlText style={[styles.metaTextStrong, styles.ltrText]}>
-                      {peePoop.poopPercent}%
-                    </RtlText>
-                  </View>
-                  <Bar percent={peePoop.poopPercent} color={colors.statusSkipped} />
-                </>
-              )}
-            </View>
-
           </>
         )}
       </ScrollView>
@@ -349,15 +372,32 @@ const styles = StyleSheet.create({
   // safe-area padding) so the last card clears the tab bar comfortably.
   content: { padding: spacing.xl, gap: spacing.lg, paddingBottom: spacing.xxxl },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
+  headerBlock: { width: '100%', gap: 2 },
   header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
-  periodRow: { flexDirection: 'row', ...nativeDirection('rtl'), gap: spacing.sm },
-  periodChip: { flex: 1, backgroundColor: colors.surfaceMuted, borderRadius: radii.md, paddingVertical: spacing.sm, alignItems: 'center' },
-  periodChipActive: { backgroundColor: colors.primary },
-  periodChipText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
-  periodChipTextActive: { color: colors.textInverse },
+  headerSubtitle: { width: '100%', fontSize: 13, lineHeight: 19, color: colors.textSecondary, fontWeight: '600', textAlign: 'right', writingDirection: 'rtl' },
+  filtersCard: { backgroundColor: colors.surface, borderRadius: 22, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: 10 },
+  filterHeaderRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  filterTitle: { ...typography.cardTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  clearFilters: { fontSize: 12, fontWeight: '800', color: colors.primaryDark },
+  filterLabel: { width: '100%', fontSize: 12, fontWeight: '800', color: colors.textSecondary, textAlign: 'right', writingDirection: 'rtl' },
+  segmentedRow: { flexDirection: 'row-reverse', backgroundColor: colors.surfaceMuted, borderRadius: 14, padding: 3, gap: 3 },
+  segment: { flex: 1, borderRadius: 11, paddingVertical: 9, alignItems: 'center' },
+  segmentActive: { backgroundColor: colors.surface, shadowColor: colors.shadow, shadowOpacity: 0.8, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  segmentText: { fontSize: 12, fontWeight: '700', color: colors.textSecondary },
+  segmentTextActive: { color: colors.primaryDark, fontWeight: '900' },
+  filterChipsRow: { flexDirection: 'row-reverse', gap: 7, paddingVertical: 1 },
+  filterChip: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5, minHeight: 36, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 11 },
+  filterChipActive: { borderColor: colors.primary, backgroundColor: colors.surfaceMuted },
+  filterChipText: { fontSize: 12, fontWeight: '700', color: colors.textSecondary },
+  filterChipTextActive: { color: colors.primaryDark, fontWeight: '900' },
+  typeRow: { flexDirection: 'row-reverse', gap: 7 },
+  typeChip: { flex: 1, minHeight: 36, borderRadius: 18, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
+  typeChipActive: { borderColor: colors.primary, backgroundColor: colors.primary },
+  typeChipText: { fontSize: 12, fontWeight: '700', color: colors.textSecondary },
+  typeChipTextActive: { color: colors.textInverse, fontWeight: '900' },
   card: {
     backgroundColor: colors.surface,
-    borderRadius: 18,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.lg,
@@ -373,7 +413,7 @@ const styles = StyleSheet.create({
     flexBasis: '47%',
     flexGrow: 1,
     backgroundColor: colors.surface,
-    borderRadius: radii.lg,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: colors.border,
     paddingVertical: spacing.lg,
