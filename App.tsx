@@ -371,8 +371,8 @@ const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   systemAdminEntry: {
     position: 'absolute',
-    top: 58,
-    left: 18,
+    top: 14,
+    right: 18,
     width: 44,
     height: 44,
     borderRadius: 22,

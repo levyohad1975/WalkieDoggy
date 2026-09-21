@@ -23,6 +23,8 @@ interface NextWalkCardProps {
   dogPhotoUrl?: string;
   /** Home's photo-led hero already carries the real dog identity; hide the duplicate thumbnail there. */
   showDogPhoto?: boolean;
+  /** Home's large hero already carries the mascot/photo; avoid repeating the brand character in the action card. */
+  showMascot?: boolean;
   /** BATCH 4 (item B/C8) — feeds the mascot message engine's dogNoun/wentOut Hebrew gendering. Omit/undefined uses the same neutral fallback as everywhere else in the app. */
   dogSex?: Dog['sex'] | null;
   onMarkDone: () => void;
@@ -65,6 +67,7 @@ export function NextWalkCard({
   dogName,
   dogPhotoUrl,
   showDogPhoto = true,
+  showMascot = true,
   dogSex,
   onMarkDone,
   onMarkNotDone,
@@ -121,7 +124,7 @@ export function NextWalkCard({
             side of the row never grows and nothing here collides with the
             eyebrow title or card edge. Other WalkieMascot call sites
             (onboarding, reminder, celebration) are untouched. */}
-        <WalkieMascot state={mascotState} size={isWeb ? 60 : 69} testID="next-walk-mascot" />
+        {showMascot ? <WalkieMascot state={mascotState} size={isWeb ? 52 : 58} testID="next-walk-mascot" /> : null}
       </View>
 
       <RtlText style={styles.mascotMessage} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
@@ -257,7 +260,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: 28,
     paddingHorizontal: 20,
-    paddingVertical: 22,
+    paddingVertical: 16,
     borderWidth: 1,
     borderColor: colors.primary + '24',
     shadowColor: '#000',
@@ -266,17 +269,17 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     elevation: 5,
   },
-  webCard: { borderRadius: 22, paddingHorizontal: 28, paddingVertical: 18 },
+  webCard: { borderRadius: 22, paddingHorizontal: 22, paddingVertical: 15 },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
-  eyebrowRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), alignItems: 'center', gap: 8, marginBottom: 12 },
-  webEyebrowRow: { marginBottom: 4 },
+  eyebrowRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), alignItems: 'center', gap: 8, marginBottom: 6 },
+  webEyebrowRow: { marginBottom: 2 },
   eyebrow: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
   mascotMessage: {
     fontSize: 13,
     fontWeight: '600',
     color: colors.primaryDark,
     textAlign: 'right',
-    marginBottom: 14,
+    marginBottom: 8,
   },
   // Round 6F correction: timeBlock/personBlock each get an explicit, equal
   // `flex` share of the row instead of sizing themselves to their own text's
@@ -284,8 +287,8 @@ const styles = StyleSheet.create({
   // independent of Dynamic Type/system font-size — so neither block's
   // on-screen position drifts as text metrics change; only the content
   // centered inside each fixed-width box can shift by a few px.
-  mainRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 12 },
-  webMainRow: { marginBottom: 10, minHeight: 74 },
+  mainRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 12 },
+  webMainRow: { marginBottom: 8, minHeight: 68 },
   timeBlock: { flex: 1, alignItems: 'flex-start', minWidth: 0 },
   // Reduced from 44 (BUG report: too large, wrapped to two lines on a
   // narrow iPhone and dwarfed the rest of the card). Still the single
@@ -311,7 +314,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   requestStatusApproved: { color: colors.statusDone },
-  linkRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 14 },
+  linkRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 9 },
   linkText: { color: colors.primaryDark, fontSize: 14, fontWeight: '600' },
   linkDivider: { color: colors.textSecondary },
 });
