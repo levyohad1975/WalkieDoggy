@@ -3,6 +3,7 @@ import { Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, View 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RtlText } from './RtlText';
 import { WalkieMascot } from './WalkieMascot';
+import { ConfirmModal } from './ConfirmModal';
 import { useFamilyStore } from '../store/familyStore';
 import { useAuthStore, useEffectiveFamilyRole } from '../store/authStore';
 import { DEMO_FAMILY } from '../data/demoData';
@@ -17,6 +18,8 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
   const familyRole = useEffectiveFamilyRole();
   const systemObserverActive = useAuthStore((s) => s.systemObserverActive);
   const [uploading, setUploading] = useState(false);
+  const [removeConfirmVisible, setRemoveConfirmVisible] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   const changePhoto = async () => {
     if (!dog || familyRole !== 'admin' || systemObserverActive) return;
@@ -33,19 +36,24 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
 
   const removePhoto = () => {
     if (!dog || !dog.photoUrl || familyRole !== 'admin' || systemObserverActive) return;
-    Alert.alert('הסרת תמונת הכלב', 'להסיר את התמונה ולחזור לכלב של Walkie Doggy?', [
-      { text: 'ביטול', style: 'cancel' },
-      {
-        text: 'הסרה',
-        style: 'destructive',
-        onPress: () => void saveDog({ ...dog, photoUrl: undefined }).catch(() =>
-          Alert.alert('לא הצלחנו להסיר את התמונה', 'נסו שוב בעוד רגע.')
-        ),
-      },
-    ]);
+    setRemoveConfirmVisible(true);
+  };
+
+  const confirmRemovePhoto = async () => {
+    if (!dog || !dog.photoUrl || familyRole !== 'admin' || systemObserverActive || removing) return;
+    setRemoving(true);
+    try {
+      await saveDog({ ...dog, photoUrl: undefined });
+      setRemoveConfirmVisible(false);
+    } catch {
+      Alert.alert('לא הצלחנו להסיר את התמונה', 'נסו שוב בעוד רגע.');
+    } finally {
+      setRemoving(false);
+    }
   };
 
   return (
+    <>
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.container}>
         <View style={styles.topBar}>
@@ -79,11 +87,11 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
               </RtlText>
               {familyRole === 'admin' && !systemObserverActive ? (
                 <View style={styles.actions}>
-                  <Pressable onPress={changePhoto} disabled={uploading} style={styles.primaryButton} accessibilityRole="button">
+                  <Pressable onPress={changePhoto} disabled={uploading || removing} style={styles.primaryButton} accessibilityRole="button">
                     <RtlText style={styles.primaryText}>{uploading ? 'מעלה…' : dog.photoUrl ? 'החלפת תמונה' : 'הוספת תמונה'}</RtlText>
                   </Pressable>
                   {dog.photoUrl ? (
-                    <Pressable onPress={removePhoto} disabled={uploading} style={styles.removeButton} accessibilityRole="button">
+                    <Pressable onPress={removePhoto} disabled={uploading || removing} style={styles.removeButton} accessibilityRole="button">
                       <RtlText style={styles.removeText}>הסרת תמונה</RtlText>
                     </Pressable>
                   ) : null}
@@ -102,6 +110,17 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
         </ScrollView>
       </SafeAreaView>
     </Modal>
+    <ConfirmModal
+      visible={removeConfirmVisible}
+      title="הסרת תמונת הכלב"
+      message="להסיר את התמונה ולחזור לכלב של Walkie Doggy?"
+      confirmLabel="הסרה"
+      cancelLabel="ביטול"
+      onConfirm={() => void confirmRemovePhoto()}
+      onCancel={() => !removing && setRemoveConfirmVisible(false)}
+      loading={removing}
+    />
+    </>
   );
 }
 
