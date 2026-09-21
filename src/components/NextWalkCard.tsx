@@ -28,6 +28,10 @@ interface NextWalkCardProps {
   /** BATCH 4 (item B/C8) — feeds the mascot message engine's dogNoun/wentOut Hebrew gendering. Omit/undefined uses the same neutral fallback as everywhere else in the app. */
   dogSex?: Dog['sex'] | null;
   onMarkDone: () => void;
+  /** Primary lifecycle action. When omitted the legacy completion action remains available. */
+  onStartWalk?: () => void;
+  onEndWalk?: () => void;
+  activeStartedAt?: string | null;
   /**
    * ✕ "לא בוצע" for an overdue-unresolved walk (Section 3). Only rendered
    * once the walk is actually overdue AND canResolve is true.
@@ -70,6 +74,9 @@ export function NextWalkCard({
   showMascot = true,
   dogSex,
   onMarkDone,
+  onStartWalk,
+  onEndWalk,
+  activeStartedAt,
   onMarkNotDone,
   canResolve = true,
   onSwap,
@@ -86,6 +93,7 @@ export function NextWalkCard({
   const requiresAttention = isWalkRequiringAttention(walk);
   const isMine = walk.responsibleUserId === currentUserId;
   const isWeb = Platform.OS === 'web';
+  const isActive = Boolean(activeStartedAt);
 
   // BATCH 4 (C2/C3/C8) — the Walkie Doggy mascot + a matching personality
   // message, centrally derived (mascotStage.ts) from how far `walk` is from
@@ -182,25 +190,18 @@ export function NextWalkCard({
       ) : null}
 
       {!canResolve ? (
-        // Not the responsible member (and not an admin) — ✓/✕ is not
-        // theirs to resolve. Shown as plain informational text, never a
-        // disabled-but-visible button (would look like a bug), matching
-        // the "request system, not direct action" story for members.
         <RtlText style={styles.notMineNote} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-          {overdue ? 'ממתין לעדכון ע״י ' : 'רק '}
-          {responsible?.name ?? 'האחראי/ת'} יכול/ה לסמן את הטיול הזה
+          {isActive ? 'הטיול בתהליך · ' : overdue ? 'ממתין לעדכון ע״י ' : 'רק '}
+          {responsible?.name ?? 'האחראי/ת'}
         </RtlText>
+      ) : isActive && onEndWalk ? (
+        <Button label="סיים טיול" icon="■" onPress={onEndWalk} style={styles.endWalkButton} shrinkToFit />
+      ) : onStartWalk ? (
+        <Button label={overdue ? 'התחל טיול עכשיו' : 'התחל טיול'} icon="▶" onPress={onStartWalk} style={styles.doneButton} shrinkToFit />
       ) : overdue && onMarkNotDone ? (
         <View style={styles.resolveRow}>
           <Button label="✓ בוצע" onPress={onMarkDone} style={styles.resolveButton} compact shrinkToFit />
-          <Button
-            label="✕ לא בוצע"
-            variant="secondary"
-            onPress={onMarkNotDone}
-            style={styles.resolveButton}
-            compact
-            shrinkToFit
-          />
+          <Button label="✕ לא בוצע" variant="secondary" onPress={onMarkNotDone} style={styles.resolveButton} compact shrinkToFit />
         </View>
       ) : (
         <Button label="סמן כבוצע" icon="✓" onPress={onMarkDone} style={styles.doneButton} shrinkToFit />
@@ -302,6 +303,7 @@ const styles = StyleSheet.create({
   personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
   responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'right' },
   doneButton: { marginTop: 4 },
+  endWalkButton: { marginTop: 4, backgroundColor: colors.statusOverdue },
   resolveRow: { flexDirection: 'row', gap: 8, marginTop: 4, width: '100%' },
   resolveButton: { flex: 1, minWidth: 0 },
   notMineNote: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: 6 },
