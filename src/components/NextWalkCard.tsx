@@ -257,7 +257,7 @@ const CARD_MAX_FONT_SCALE = 1.35;
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.statusCurrentBg,
     borderRadius: 28,
     paddingHorizontal: 20,
     paddingVertical: 16,
