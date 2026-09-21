@@ -505,35 +505,41 @@ export function HomeScreen() {
         </View>
 
         <Pressable
-          style={styles.dogHero}
+          style={[styles.dogHero, !dog?.photoUrl && styles.dogHeroFallback]}
           onPress={() => setDogProfileVisible(true)}
           accessibilityRole="button"
           accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב'}`}
         >
-          <View style={styles.dogHeroMascot}>
-            {dog?.photoUrl ? (
+          {dog?.photoUrl ? (
+            <>
               <Image
                 source={{ uri: dog.photoUrl }}
-                style={styles.dogHeroProfilePhoto}
+                style={styles.dogHeroImage}
                 resizeMode="cover"
                 accessibilityLabel={`תמונה של ${dog.name}`}
               />
-            ) : (
+              <View style={styles.dogHeroShade} pointerEvents="none" />
+            </>
+          ) : (
+            <View style={styles.dogHeroMascot}>
               <WalkieMascot
                 state="idle"
-                size={190}
+                size={210}
                 accessibilityLabel="הכלב המונפש של Walkie Doggy"
               />
-            )}
-          </View>
-          <View style={styles.dogHeroCopy}>
-            <RtlText style={styles.dogHeroGreeting}>היי! מוכנים לטיול? 🐾</RtlText>
-            <RtlText style={styles.dogHeroName}>{dog?.name ?? 'הכלב/ה'}</RtlText>
-            <RtlText style={styles.dogHeroProfileLink}>לפרופיל הכלב ›</RtlText>
+            </View>
+          )}
+          <View style={[styles.dogHeroCopy, dog?.photoUrl ? styles.dogHeroCopyOnPhoto : styles.dogHeroCopyFallback]}>
+            <RtlText style={[styles.dogHeroGreeting, dog?.photoUrl && styles.dogHeroTextOnPhoto]}>היי! מוכנים לטיול הבא? 🐾</RtlText>
+            <RtlText style={[styles.dogHeroName, dog?.photoUrl && styles.dogHeroTextOnPhoto]}>{dog?.name ?? 'הכלב/ה'}</RtlText>
+            <View style={[styles.dogHeroProfilePill, dog?.photoUrl && styles.dogHeroProfilePillOnPhoto]}>
+              <RtlText style={[styles.dogHeroProfileLink, dog?.photoUrl && styles.dogHeroProfileLinkOnPhoto]}>לפרופיל הכלב ›</RtlText>
+            </View>
           </View>
         </Pressable>
 
-        {nextWalk ? (
+        <View style={styles.nextWalkLift}>
+          {nextWalk ? (
           <NextWalkCard
             walk={nextWalk}
             responsible={usersById[nextWalk.responsibleUserId]}
@@ -584,6 +590,7 @@ export function HomeScreen() {
             <EmptyState emoji="🎉" title="אין טיולים ממתינים" subtitle="אפשר להוסיף שעות טיול במסך לוח הזמנים" />
           </View>
         )}
+        </View>
 
         <Button
           label="+ הוסף טיול שבוצע"
@@ -1065,10 +1072,11 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
-  content: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: spacing.lg, paddingBottom: spacing.xxxl, width: '100%' },
-  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: spacing.lg },
+  content: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: 14, paddingBottom: spacing.xxxl, width: '100%' },
+  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: 14 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
-  unplannedButton: { marginTop: -4 },
+  nextWalkLift: { marginTop: -48, zIndex: 4, paddingHorizontal: 8 },
+  unplannedButton: { marginTop: -2 },
   testModeBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1083,13 +1091,21 @@ const styles = StyleSheet.create({
   testModeBannerButtonText: { color: '#fff', fontWeight: '700', fontSize: 12 },
   topRow: { position: 'relative', minHeight: 46, alignItems: 'center', justifyContent: 'center' },
   brandWordmark: { width: 150, height: 44 },
-  dogHero: { width: '100%', minHeight: 220, borderRadius: 28, overflow: 'hidden', backgroundColor: '#DFF5EE', position: 'relative', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 12 },
-  dogHeroMascot: { width: 190, height: 190, alignItems: 'center', justifyContent: 'center' },
-  dogHeroProfilePhoto: { width: 176, height: 176, borderRadius: 88, borderWidth: 3, borderColor: colors.surface },
-  dogHeroCopy: { flex: 1, minWidth: 0, alignItems: 'flex-end', gap: 5, paddingVertical: 10 },
+  dogHero: { width: '100%', height: 272, borderRadius: 30, overflow: 'hidden', backgroundColor: '#CFEDE5', position: 'relative', justifyContent: 'flex-end' },
+  dogHeroFallback: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14 },
+  dogHeroImage: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%' },
+  dogHeroShade: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: '#00000026' },
+  dogHeroMascot: { width: 210, height: 230, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start' },
+  dogHeroCopy: { minWidth: 0, alignItems: 'flex-end', gap: 4 },
+  dogHeroCopyOnPhoto: { position: 'absolute', right: 18, bottom: 66, left: 18, alignItems: 'flex-end' },
+  dogHeroCopyFallback: { flex: 1, paddingRight: 6, paddingBottom: 54 },
   dogHeroGreeting: { ...typography.body, color: colors.textPrimary, fontWeight: '800', textAlign: 'right' },
-  dogHeroName: { color: colors.textPrimary, fontSize: 24, lineHeight: 30, fontWeight: '900', textAlign: 'right' },
-  dogHeroProfileLink: { ...typography.meta, color: colors.primaryDark, fontWeight: '800', textAlign: 'right' },
+  dogHeroName: { color: colors.textPrimary, fontSize: 30, lineHeight: 36, fontWeight: '900', textAlign: 'right' },
+  dogHeroTextOnPhoto: { color: '#fff', textShadowColor: '#00000055', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
+  dogHeroProfilePill: { marginTop: 5, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: '#FFFFFFCC' },
+  dogHeroProfilePillOnPhoto: { backgroundColor: '#FFFFFFE8' },
+  dogHeroProfileLink: { ...typography.meta, color: colors.primaryDark, fontWeight: '900', textAlign: 'right' },
+  dogHeroProfileLinkOnPhoto: { color: colors.primaryDark },
   weeklyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, gap: spacing.md },
   weeklyHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   weeklyPaw: { fontSize: 22 },
