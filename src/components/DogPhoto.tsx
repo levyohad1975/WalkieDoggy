@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
-import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
 
 interface DogPhotoProps {
@@ -8,7 +7,7 @@ interface DogPhotoProps {
   size?: number;
 }
 
-/** Dog's photo, falling back to a paw emoji placeholder if there's no photo or it fails to load. */
+/** Dog photo is optional. Without one (or if it fails), show the Walkie Doggy app/logo artwork. */
 export function DogPhoto({ photoUrl, size = 56 }: DogPhotoProps) {
   const [failed, setFailed] = useState(false);
   const showPhoto = Boolean(photoUrl) && !failed;
@@ -24,7 +23,11 @@ export function DogPhoto({ photoUrl, size = 56 }: DogPhotoProps) {
           onError={() => setFailed(true)}
         />
       ) : (
-        <RtlText style={{ fontSize: size * 0.5 }}>🐶</RtlText>
+        <Image
+          source={require('../../assets/icon.png')}
+          style={{ width: size, height: size, borderRadius: size / 2 }}
+          resizeMode="cover"
+        />
       )}
     </View>
   );
