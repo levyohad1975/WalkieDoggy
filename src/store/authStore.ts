@@ -437,7 +437,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             const row = Array.isArray(data) ? data[0] : data;
             if (row?.family_id && row?.approval_status === 'active') {
               familyId = row.family_id;
-              await AsyncStorage.setItem(FAMILY_ID_KEY, familyId);
+              await AsyncStorage.setItem(FAMILY_ID_KEY, row.family_id);
             }
           }
         }
