@@ -162,9 +162,9 @@ export async function listSystemAdminFamilies(search?: string): Promise<SystemAd
   }));
 }
 
-export async function getSystemAdminGlobalAudit(limit = 200): Promise<SystemAdminGlobalAuditEntry[]> {
+export async function getSystemAdminGlobalAudit(limit = 200, familyId?: string | null): Promise<SystemAdminGlobalAuditEntry[]> {
   const client = requireSupabase();
-  const { data, error } = await client.rpc('system_admin_list_global_audit', { p_limit: limit });
+  const { data, error } = await client.rpc('system_admin_list_global_audit_v2', { p_limit: limit, p_family_id: familyId ?? null });
   if (error) throw error;
   const rows = (data ?? []) as Array<{
     event_id: string; source: 'family_audit' | 'system_audit' | 'state_change';
