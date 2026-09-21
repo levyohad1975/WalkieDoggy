@@ -55,7 +55,7 @@ describe('StatisticsScreen — enforces view_statistics itself, not just via hid
       '!canAccessStatisticsScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus) ||'
     );
     expect(guardIdx).toBeGreaterThan(-1);
-    const mainReturnIdx = source.indexOf('📈 סטטיסטיקה');
+    const mainReturnIdx = source.indexOf('>סטטיסטיקה</RtlText>');
     expect(mainReturnIdx).toBeGreaterThan(-1);
     expect(guardIdx).toBeLessThan(mainReturnIdx);
   });
@@ -82,7 +82,7 @@ describe('StatisticsScreen — enforces view_statistics itself, not just via hid
     const guardClause = source.slice(guardIdx, guardClauseEnd);
     expect(guardClause).toContain("statisticsAccessStatus !== 'granted'");
     expect(guardClause).toContain("statisticsAccessStatus === 'checking' && hasEverGrantedRef.current");
-    const mainReturnIdx = source.indexOf('📈 סטטיסטיקה');
+    const mainReturnIdx = source.indexOf('>סטטיסטיקה</RtlText>');
     expect(mainReturnIdx).toBeGreaterThan(guardClauseEnd);
   });
 });
