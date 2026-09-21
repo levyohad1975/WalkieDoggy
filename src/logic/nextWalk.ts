@@ -16,6 +16,9 @@ export function walkDateTime(walk: Pick<Walk, 'date' | 'scheduledTime'>): Date {
  * must never be hidden behind a later upcoming walk.
  */
 export function computeNextWalk(walks: Walk[], now: Date = new Date()): Walk | undefined {
+  const active = walks.find((w) => w.status === 'in_progress');
+  if (active) return active;
+
   const pending = walks.filter((w) => w.status === 'pending');
   const overdue = pending.filter((w) => walkDateTime(w).getTime() < now.getTime());
   const candidates = overdue.length ? overdue : pending.filter((w) => walkDateTime(w).getTime() >= now.getTime());
