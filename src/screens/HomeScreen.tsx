@@ -148,6 +148,10 @@ export function HomeScreen() {
   const [requestSwapTargetUserId, setRequestSwapTargetUserId] = useState<string | null>(null);
   const [requestTimeChangeWalkId, setRequestTimeChangeWalkId] = useState<string | null>(null);
   const [requestsInboxVisible, setRequestsInboxVisible] = useState(false);
+  // First lifecycle slice: session state is intentionally UI-local until the
+  // server migration/RPC lands; ending the session persists through the
+  // existing, authorized completion path.
+  const [activeWalkSession, setActiveWalkSession] = useState<{ walkId: string; startedAt: string } | null>(null);
 
   useEffect(() => {
     loadFamily(familyId);
@@ -512,6 +516,20 @@ export function HomeScreen() {
             }
             primaryLabel={isOverdue(nextWalk) ? 'ממתין לעדכון' : undefined}
             onMarkDone={() => setCompleteWalkId(nextWalk.id)}
+            activeStartedAt={activeWalkSession?.walkId === nextWalk.id ? activeWalkSession.startedAt : null}
+            onStartWalk={
+              effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId
+                ? () => setActiveWalkSession({ walkId: nextWalk.id, startedAt: new Date().toISOString() })
+                : undefined
+            }
+            onEndWalk={
+              activeWalkSession?.walkId === nextWalk.id && (effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId)
+                ? () => {
+                    setActiveWalkSession(null);
+                    setCompleteWalkId(nextWalk.id);
+                  }
+                : undefined
+            }
             // AUTHORIZATION CORRECTION: ✓/✕ resolution is admin-or-
             // currently-responsible-user only (migration 0012) — not "any
             // member" as an earlier pass had it.
