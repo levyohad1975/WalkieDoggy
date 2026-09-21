@@ -78,9 +78,14 @@ export async function pickAndUploadImage(kind: PhotoKind, familyId: string, id: 
     // SDK 57 / iOS does not guarantee ImagePicker base64 payloads. Read the
     // selected local URI as binary instead, which works for both iOS and
     // Android and avoids silently falling back to a device-only file URI.
-    const response = await fetch(asset.uri);
-    const bytes = await response.arrayBuffer();
-    const contentType = asset.mimeType ?? 'image/jpeg';
+    // On web/Safari ImagePicker can provide a real File object. Prefer it:
+    // fetching a browser-local blob URI is not reliable in Private Browsing
+    // and can fail before Storage ever receives the image. Native keeps the
+    // existing URI -> ArrayBuffer path.
+    const bytes = asset.file
+      ? await asset.file.arrayBuffer()
+      : await (await fetch(asset.uri)).arrayBuffer();
+    const contentType = asset.mimeType ?? asset.file?.type ?? 'image/jpeg';
     const extension = contentType === 'image/png' ? 'png' : contentType === 'image/webp' ? 'webp' : 'jpg';
     const finalPath = path.replace(/\.jpg$/, `.${extension}`);
     const { error } = await supabase.storage
