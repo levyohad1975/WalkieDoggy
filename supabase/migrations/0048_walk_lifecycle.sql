@@ -46,7 +46,8 @@ create or replace function finish_walk(
   actual_walker_id uuid default null,
   p_had_pee boolean default null,
   p_had_poop boolean default null,
-  p_note text default null
+  p_note text default null,
+  p_completed_at timestamptz default null
 )
 returns walks
 language plpgsql
