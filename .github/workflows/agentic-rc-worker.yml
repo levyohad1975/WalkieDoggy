@@ -123,13 +123,18 @@ jobs:
 
             Trigger context:
             - event: ${{ github.event_name }}
+            - issue number: ${{ github.event.issue.number || 'n/a' }}
+            - issue title: ${{ github.event.issue.title || 'n/a' }}
+            - issue body: ${{ github.event.issue.body || 'n/a' }}
             - upstream workflow: ${{ github.event.workflow_run.name || 'manual-dispatch' }}
             - upstream run id: ${{ github.event.workflow_run.id || 'n/a' }}
             - upstream conclusion: ${{ github.event.workflow_run.conclusion || 'manual' }}
             - target branch: ${{ env.TARGET_BRANCH }}
             - target sha: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-            Locked RC queue:
+            If this run was triggered by an issue labeled agentic-ready, treat that issue title/body as the locked task scope. Execute that issue only; do not substitute the generic RC queue.
+
+            Locked RC queue (used only for non-issue/manual continuation):
             1. Staging family-creation E2E through persisted family, invite/join code/link/QR and second-member join.
             2. AUTO_APPROVE_NEW_FAMILIES true/false plus System Admin approve/reject.
             3. Welcome/system-owner email, Resend webhook and email_delivery_log.
@@ -227,7 +232,7 @@ jobs:
           (steps.claude_result.outputs.success == 'true' || steps.claude_result.outputs.checkpoint_eligible == 'true')
         shell: bash
         env:
-          SAFE_TARGET_BRANCH: ${{ github.event.workflow_run.head_branch || inputs.target_branch || github.ref_name }}
+          SAFE_TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
           PUSH_TOKEN: ${{ github.token }}
           CLAUDE_SUCCESS: ${{ steps.claude_result.outputs.success }}
           CHECKPOINT_ELIGIBLE: ${{ steps.claude_result.outputs.checkpoint_eligible }}
