@@ -317,7 +317,19 @@ export class SupabaseRepository implements Repository {
   }
 
   async getDog(familyId: string): Promise<Dog | undefined> {
-    const { data, error } = await this.client.from('dogs').select('*').eq('family_id', familyId).maybeSingle();
+    // Historical Staging data can contain more than one dog row for a
+    // family. maybeSingle() turns that into an error and prevents the whole
+    // Family screen from loading, which also makes photo persistence look
+    // broken. Until the UI is upgraded to the planned multi-dog model, use
+    // the newest dog deterministically. This is read-only selection: no dog
+    // row or walk history is deleted.
+    const { data, error } = await this.client
+      .from('dogs')
+      .select('*')
+      .eq('family_id', familyId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
     if (error) throw error;
     return data ? toDog(data) : undefined;
   }

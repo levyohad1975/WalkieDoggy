@@ -96,7 +96,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
       const resolvedDog =
         dog ??
         (familyDogName
-          ? { id: `dog-${familyId}`, familyId, name: familyDogName, walksPerDay: 0 }
+          ? { id: generateId('dog'), familyId, name: familyDogName, walksPerDay: 0 }
           : !isSupabaseConfigured && familyId === DEMO_FAMILY.id
             ? DEMO_DOG
             : undefined);
@@ -191,8 +191,25 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
 
   saveDog: async (dog: Dog) => {
     if (!guardTestModeMutation()) return;
-    set({ dog });
-    await repository.upsertDog(dog);
+    const before = get().dog;
+    set({ dog, actionError: null });
+    try {
+      await repository.upsertDog(dog);
+      // Read back from the repository before declaring success. This catches
+      // Storage/DB paths where the UI was optimistically updated but the
+      // persisted dogs.photo_url was not actually readable on reload.
+      const persisted = await repository.getDog(dog.familyId);
+      if (!persisted || persisted.id !== dog.id || persisted.photoUrl !== dog.photoUrl) {
+        throw new Error('dog profile persistence verification failed');
+      }
+      set({ dog: persisted });
+    } catch (e) {
+      set({
+        dog: before,
+        actionError: friendlyErrorMessage(e, [], 'לא הצלחנו לשמור את תמונת הכלב'),
+      });
+      throw e;
+    }
   },
 
   addUser: async ({ name, avatar, color, photoUrl }) => {
