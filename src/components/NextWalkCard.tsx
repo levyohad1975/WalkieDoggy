@@ -21,6 +21,8 @@ interface NextWalkCardProps {
   currentUserId: string;
   dogName: string;
   dogPhotoUrl?: string;
+  /** Home's photo-led hero already carries the real dog identity; hide the duplicate thumbnail there. */
+  showDogPhoto?: boolean;
   /** BATCH 4 (item B/C8) — feeds the mascot message engine's dogNoun/wentOut Hebrew gendering. Omit/undefined uses the same neutral fallback as everywhere else in the app. */
   dogSex?: Dog['sex'] | null;
   onMarkDone: () => void;
@@ -62,6 +64,7 @@ export function NextWalkCard({
   currentUserId,
   dogName,
   dogPhotoUrl,
+  showDogPhoto = true,
   dogSex,
   onMarkDone,
   onMarkNotDone,
@@ -105,7 +108,7 @@ export function NextWalkCard({
   return (
     <View style={[styles.card, isWeb && styles.webCard, overdue && styles.cardOverdue]}>
       <View style={[styles.eyebrowRow, isWeb && styles.webEyebrowRow]}>
-        <DogPhoto photoUrl={dogPhotoUrl} size={isWeb ? 60 : 72} />
+        {showDogPhoto ? <DogPhoto photoUrl={dogPhotoUrl} size={isWeb ? 60 : 72} /> : null}
         <RtlText style={styles.eyebrow} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
           {primaryLabel ?? `הטיול הבא של ${dogName}`}
         </RtlText>
@@ -251,12 +254,17 @@ const CARD_MAX_FONT_SCALE = 1.35;
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.statusCurrentBg,
+    backgroundColor: colors.surface,
     borderRadius: 28,
     paddingHorizontal: 20,
-    paddingVertical: 24,
-    borderWidth: 1.5,
-    borderColor: colors.primary + '33',
+    paddingVertical: 22,
+    borderWidth: 1,
+    borderColor: colors.primary + '24',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.10,
+    shadowRadius: 18,
+    elevation: 5,
   },
   webCard: { borderRadius: 22, paddingHorizontal: 28, paddingVertical: 18 },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
