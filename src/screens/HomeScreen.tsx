@@ -511,11 +511,20 @@ export function HomeScreen() {
           accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב'}`}
         >
           <View style={styles.dogHeroMascot}>
-            <WalkieMascot
-              state="idle"
-              size={190}
-              accessibilityLabel="הכלב המונפש של Walkie Doggy"
-            />
+            {dog?.photoUrl ? (
+              <Image
+                source={{ uri: dog.photoUrl }}
+                style={styles.dogHeroProfilePhoto}
+                resizeMode="cover"
+                accessibilityLabel={`תמונה של ${dog.name}`}
+              />
+            ) : (
+              <WalkieMascot
+                state="idle"
+                size={190}
+                accessibilityLabel="הכלב המונפש של Walkie Doggy"
+              />
+            )}
           </View>
           <View style={styles.dogHeroCopy}>
             <RtlText style={styles.dogHeroGreeting}>היי! מוכנים לטיול? 🐾</RtlText>
@@ -1076,6 +1085,7 @@ const styles = StyleSheet.create({
   brandWordmark: { width: 150, height: 44 },
   dogHero: { width: '100%', minHeight: 220, borderRadius: 28, overflow: 'hidden', backgroundColor: '#DFF5EE', position: 'relative', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 12 },
   dogHeroMascot: { width: 190, height: 190, alignItems: 'center', justifyContent: 'center' },
+  dogHeroProfilePhoto: { width: 176, height: 176, borderRadius: 88, borderWidth: 3, borderColor: colors.surface },
   dogHeroCopy: { flex: 1, minWidth: 0, alignItems: 'flex-end', gap: 5, paddingVertical: 10 },
   dogHeroGreeting: { ...typography.body, color: colors.textPrimary, fontWeight: '800', textAlign: 'right' },
   dogHeroName: { color: colors.textPrimary, fontSize: 24, lineHeight: 30, fontWeight: '900', textAlign: 'right' },
