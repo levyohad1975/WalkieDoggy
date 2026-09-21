@@ -745,7 +745,7 @@ export function HomeScreen() {
         scheduledTime={completeWalkId ? walksById[completeWalkId]?.scheduledTime : undefined}
         users={activeUsers}
         defaultUserId={effectiveUserId}
-        onConfirm={async ({ completedByUserId, hadPee, hadPoop, note }) => {
+        onConfirm={async ({ completedByUserId, hadPee, hadPoop, note, completedAt }) => {
           const walkId = completeWalkId;
           const walkBeingCompleted = walkId ? walksById[walkId] : undefined;
           setCompleteWalkId(null);
@@ -753,8 +753,8 @@ export function HomeScreen() {
           // markDone() itself refuses while Test Mode is active (see
           // scheduleStore.ts) — no separate guard needed here.
           const completed = walkBeingCompleted?.status === 'in_progress'
-            ? await finishWalk(walkId, completedByUserId, { hadPee, hadPoop, note: note || undefined })
-            : await markDone(walkId, completedByUserId, { hadPee, hadPoop, note: note || undefined });
+            ? await finishWalk(walkId, completedByUserId, { hadPee, hadPoop, note: note || undefined, completedAt })
+            : await markDone(walkId, completedByUserId, { hadPee, hadPoop, note: note || undefined, completedAt });
           // BATCH 4 (C2/C3/C8) — success mascot + message, best-effort only:
           // if anything about the walk/dog/user lookups above is somehow
           // unavailable, selectMessage()'s own safe fallbacks (see
