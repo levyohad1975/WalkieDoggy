@@ -350,7 +350,7 @@ export default function App() {
               turn only ever came from am_i_system_admin() — a fresh,
               server-side check of the real auth identity, not a locally
               cached/guessed value. */}
-          {isSystemAdmin ? (
+          {isSystemAdmin && !systemObserverActive ? (
             <Pressable
               onPress={() => setSystemAdminOpen(true)}
               style={styles.systemAdminEntry}
