@@ -98,6 +98,28 @@ export interface SystemAdminEmailDeliveryLogEntry {
   updatedAt: string;
 }
 
+
+export interface SystemAdminObserverSession {
+  familyId: string;
+  familyName: string;
+  targetUserId: string | null;
+}
+
+export async function beginSystemAdminObserver(familyId: string): Promise<SystemAdminObserverSession> {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc('begin_system_admin_observer', { p_family_id: familyId });
+  if (error) throw error;
+  const row = (data ?? {}) as { family_id?: string; family_name?: string; target_user_id?: string | null };
+  if (!row.family_id || !row.family_name) throw new Error('observer session could not be established');
+  return { familyId: row.family_id, familyName: row.family_name, targetUserId: row.target_user_id ?? null };
+}
+
+export async function endSystemAdminObserver(): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.rpc('end_system_admin_observer');
+  if (error) throw error;
+}
+
 /**
  * Safe to call for ANY authenticated session — resolves the caller's own
  * System Admin status only (never anyone else's), used to decide whether to
