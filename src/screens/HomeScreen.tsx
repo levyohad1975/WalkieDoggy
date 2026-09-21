@@ -28,6 +28,7 @@ import { Button } from '../components/Button';
 import { WalkCompletionCelebration } from '../components/WalkCompletionCelebration';
 import { ReminderMascotPrompt } from '../components/ReminderMascotPrompt';
 import { DogProfileModal } from '../components/DogProfileModal';
+import { WalkieMascot } from '../components/WalkieMascot';
 import { selectWalkCompletionCelebration, type CompletionCelebration } from '../logic/walkCompletionCelebration';
 import { DEMO_FAMILY } from '../data/demoData';
 import { isSupabaseConfigured } from '../lib/supabase';
@@ -509,12 +510,15 @@ export function HomeScreen() {
           accessibilityRole="button"
           accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב'}`}
         >
-          {dog?.photoUrl ? (
-            <Image source={{ uri: dog.photoUrl }} style={styles.dogHeroImage} resizeMode="cover" accessibilityLabel={`תמונה של ${dog.name}`} />
-          ) : (
-            <Image source={require('../../assets/icon.png')} style={styles.dogHeroImage} resizeMode="cover" accessibilityLabel="כלב Walkie Doggy" />
-          )}
-          <View style={styles.dogHeroShade}>
+          <View style={styles.dogHeroMascot}>
+            <WalkieMascot
+              state="idle"
+              size={190}
+              accessibilityLabel="הכלב המונפש של Walkie Doggy"
+            />
+          </View>
+          <View style={styles.dogHeroCopy}>
+            <RtlText style={styles.dogHeroGreeting}>היי! מוכנים לטיול? 🐾</RtlText>
             <RtlText style={styles.dogHeroName}>{dog?.name ?? 'הכלב/ה'}</RtlText>
             <RtlText style={styles.dogHeroProfileLink}>לפרופיל הכלב ›</RtlText>
           </View>
@@ -1070,14 +1074,12 @@ const styles = StyleSheet.create({
   testModeBannerButtonText: { color: '#fff', fontWeight: '700', fontSize: 12 },
   topRow: { position: 'relative', minHeight: 46, alignItems: 'center', justifyContent: 'center' },
   brandWordmark: { width: 150, height: 44 },
-  dogHero: { width: '100%', height: 230, borderRadius: 28, overflow: 'hidden', backgroundColor: '#DFF5EE', position: 'relative' },
-  dogHeroImage: { width: '100%', height: '100%' },
-  dogHeroPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  dogHeroEmoji: { fontSize: 64 },
-  dogHeroPlaceholderText: { fontSize: 15, fontWeight: '700', color: colors.textSecondary, textAlign: 'center' },
-  dogHeroShade: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 18, paddingVertical: 12, backgroundColor: '#173A3688' },
-  dogHeroName: { color: '#fff', fontSize: 24, lineHeight: 30, fontWeight: '900', textAlign: 'right' },
-  dogHeroProfileLink: { ...typography.meta, color: colors.surface, fontWeight: '700', textAlign: 'right' },
+  dogHero: { width: '100%', minHeight: 220, borderRadius: 28, overflow: 'hidden', backgroundColor: '#DFF5EE', position: 'relative', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 12 },
+  dogHeroMascot: { width: 190, height: 190, alignItems: 'center', justifyContent: 'center' },
+  dogHeroCopy: { flex: 1, minWidth: 0, alignItems: 'flex-end', gap: 5, paddingVertical: 10 },
+  dogHeroGreeting: { ...typography.body, color: colors.textPrimary, fontWeight: '800', textAlign: 'right' },
+  dogHeroName: { color: colors.textPrimary, fontSize: 24, lineHeight: 30, fontWeight: '900', textAlign: 'right' },
+  dogHeroProfileLink: { ...typography.meta, color: colors.primaryDark, fontWeight: '800', textAlign: 'right' },
   weeklyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, gap: spacing.md },
   weeklyHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   weeklyPaw: { fontSize: 22 },
