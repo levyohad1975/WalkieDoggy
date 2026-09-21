@@ -526,7 +526,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       await cancelWalkNotifications(walkId);
       return true;
     } catch (e) {
-      set({ actionError: friendlyErrorMessage(e, 'לא הצלחנו להתחיל את הטיול') });
+      set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו להתחיל את הטיול') });
       return false;
     }
   },
@@ -543,7 +543,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       await cancelWalkNotifications(walkId);
       return true;
     } catch (e) {
-      set({ actionError: friendlyErrorMessage(e, 'לא הצלחנו לסיים את הטיול') });
+      set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו לסיים את הטיול') });
       return false;
     }
   },
