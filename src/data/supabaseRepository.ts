@@ -392,13 +392,14 @@ export class SupabaseRepository implements Repository {
     return toWalk(data);
   }
 
-  async finishWalk(walkId: string, actualWalkerId: string, details: { hadPee?: boolean; hadPoop?: boolean; note?: string } = {}): Promise<Walk> {
+  async finishWalk(walkId: string, actualWalkerId: string, details: { hadPee?: boolean; hadPoop?: boolean; note?: string; completedAt?: string } = {}): Promise<Walk> {
     const { data, error } = await this.client.rpc('finish_walk', {
       target_walk_id: walkId,
       actual_walker_id: actualWalkerId,
       p_had_pee: details.hadPee ?? null,
       p_had_poop: details.hadPoop ?? null,
       p_note: details.note ?? null,
+      p_completed_at: details.completedAt ?? null,
     });
     if (error) throw error;
     return toWalk(data);

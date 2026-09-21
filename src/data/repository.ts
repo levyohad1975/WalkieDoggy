@@ -105,7 +105,7 @@ export interface Repository {
   saveWalk(walk: Walk): Promise<void>;
   /** Server-authoritative lifecycle operations; Supabase persists actor/time atomically. */
   startWalk?(walkId: string): Promise<Walk>;
-  finishWalk?(walkId: string, actualWalkerId: string, details?: { hadPee?: boolean; hadPoop?: boolean; note?: string }): Promise<Walk>;
+  finishWalk?(walkId: string, actualWalkerId: string, details?: { hadPee?: boolean; hadPoop?: boolean; note?: string; completedAt?: string }): Promise<Walk>;
   /**
    * Section 2: permanently deletes an unplanned/spontaneous walk entered by
    * mistake. Callers (scheduleStore.deleteUnplannedWalk) must only call this

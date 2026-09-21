@@ -14,14 +14,16 @@ describe('Home integrated walk lifecycle', () => {
   it('exposes start and end walk as the primary lifecycle action', () => {
     expect(card).toContain('label={overdue ? \'התחל טיול עכשיו\' : \'התחל טיול\'}');
     expect(card).toContain('label="סיים טיול"');
+    expect(card).toContain('שכחנו להתחיל? סמן כבוצע');
     expect(home).toContain('void startWalk(nextWalk.id)');
     expect(home).toContain("nextWalk.status === 'in_progress'");
     expect(home).not.toContain('setActiveWalkSession({ walkId: nextWalk.id');
     expect(home).toContain('setCompleteWalkId(nextWalk.id)');
   });
 
-  it('keeps overdue visual treatment', () => {
-    expect(card).toContain('overdue && styles.cardOverdue');
+  it('keeps overdue red for pending walks without overriding an active green walk', () => {
+    expect(card).toContain('overdue && !isActive && styles.cardOverdue');
     expect(card).toContain('backgroundColor: colors.statusOverdueBg');
+    expect(card).toContain('isActive && styles.cardActive');
   });
 });
