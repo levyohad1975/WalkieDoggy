@@ -379,11 +379,15 @@ describe('SupabaseRepository — reads map rows correctly (toDog/toRule/toEntry/
       from: () => ({
         select: () => ({
           eq: () => ({
-            order: () => ({ limit: () => ({ maybeSingle: () =>
-              Promise.resolve({
-                data: { id: 'dog-1', family_id: 'fam-42', name: 'טופי', photo_url: null, walks_per_day: 3, notes: null, sex: null },
-                error: null,
-              }) }),
+            order: () => ({
+              limit: () => ({
+                maybeSingle: () =>
+                  Promise.resolve({
+                    data: { id: 'dog-1', family_id: 'fam-42', name: 'טופי', photo_url: null, walks_per_day: 3, notes: null, sex: null },
+                    error: null,
+                  }),
+              }),
+            }),
           }),
         }),
       }),
@@ -398,11 +402,15 @@ describe('SupabaseRepository — reads map rows correctly (toDog/toRule/toEntry/
       from: () => ({
         select: () => ({
           eq: () => ({
-            order: () => ({ limit: () => ({ maybeSingle: () =>
-              Promise.resolve({
-                data: { id: 'dog-1', family_id: 'fam-42', name: 'טופי', photo_url: 'https://x/y.png', walks_per_day: 3, notes: 'אוהב לרוץ', sex: 'male' },
-                error: null,
-              }) }),
+            order: () => ({
+              limit: () => ({
+                maybeSingle: () =>
+                  Promise.resolve({
+                    data: { id: 'dog-1', family_id: 'fam-42', name: 'טופי', photo_url: 'https://x/y.png', walks_per_day: 3, notes: 'אוהב לרוץ', sex: 'male' },
+                    error: null,
+                  }),
+              }),
+            }),
           }),
         }),
       }),
