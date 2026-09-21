@@ -27,6 +27,7 @@ import { RequestsInboxModal } from '../components/RequestsInboxModal';
 import { Button } from '../components/Button';
 import { WalkCompletionCelebration } from '../components/WalkCompletionCelebration';
 import { ReminderMascotPrompt } from '../components/ReminderMascotPrompt';
+import { DogProfileModal } from '../components/DogProfileModal';
 import { selectWalkCompletionCelebration, type CompletionCelebration } from '../logic/walkCompletionCelebration';
 import { DEMO_FAMILY } from '../data/demoData';
 import { isSupabaseConfigured } from '../lib/supabase';
@@ -46,6 +47,7 @@ import type { RootTabParamList } from '../navigation/RootNavigator';
 
 export function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
+  const [dogProfileVisible, setDogProfileVisible] = useState(false);
   const currentUserId = useAuthStore((s) => s.currentUserId)!;
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const effectiveRole = useEffectiveFamilyRole();
@@ -501,19 +503,22 @@ export function HomeScreen() {
           ) : null}
         </View>
 
-        <View style={styles.dogHero}>
+        <Pressable
+          style={styles.dogHero}
+          onPress={() => setDogProfileVisible(true)}
+          accessibilityRole="button"
+          accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב'}`}
+        >
           {dog?.photoUrl ? (
             <Image source={{ uri: dog.photoUrl }} style={styles.dogHeroImage} resizeMode="cover" accessibilityLabel={`תמונה של ${dog.name}`} />
           ) : (
-            <View style={styles.dogHeroPlaceholder}>
-              <RtlText style={styles.dogHeroEmoji}>🐶</RtlText>
-              <RtlText style={styles.dogHeroPlaceholderText}>כאן תופיע התמונה של {dog?.name ?? 'הכלב/ה'}</RtlText>
-            </View>
+            <Image source={require('../../assets/icon.png')} style={styles.dogHeroImage} resizeMode="cover" accessibilityLabel="כלב Walkie Doggy" />
           )}
           <View style={styles.dogHeroShade}>
             <RtlText style={styles.dogHeroName}>{dog?.name ?? 'הכלב/ה'}</RtlText>
+            <RtlText style={styles.dogHeroProfileLink}>לפרופיל הכלב ›</RtlText>
           </View>
-        </View>
+        </Pressable>
 
         {nextWalk ? (
           <NextWalkCard
@@ -1039,6 +1044,7 @@ export function HomeScreen() {
         onConfirm={clearRequestsError}
         onCancel={clearRequestsError}
       />
+      <DogProfileModal visible={dogProfileVisible} onClose={() => setDogProfileVisible(false)} />
     </SafeAreaView>
   );
 }
@@ -1071,6 +1077,7 @@ const styles = StyleSheet.create({
   dogHeroPlaceholderText: { fontSize: 15, fontWeight: '700', color: colors.textSecondary, textAlign: 'center' },
   dogHeroShade: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 18, paddingVertical: 12, backgroundColor: '#173A3688' },
   dogHeroName: { color: '#fff', fontSize: 24, lineHeight: 30, fontWeight: '900', textAlign: 'right' },
+  dogHeroProfileLink: { ...typography.meta, color: colors.surface, fontWeight: '700', textAlign: 'right' },
   weeklyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, gap: spacing.md },
   weeklyHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   weeklyPaw: { fontSize: 22 },
