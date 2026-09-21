@@ -1,6 +1,9 @@
 import { Alert } from 'react-native';
 import { useAuthStore } from '../store/authStore';
 
+export const SYSTEM_OBSERVER_READ_ONLY_MESSAGE =
+  'צפייה נסתרת של מנהל המערכת היא לקריאה בלבד — לא ניתן לשנות נתוני משפחה במצב זה.';
+
 export const TEST_MODE_READ_ONLY_MESSAGE =
   'מצב בדיקה הוא לצפייה בלבד — לא ניתן לבצע פעולות שמשנות נתונים בזמן שמדמים משתמש אחר.';
 
@@ -23,6 +26,10 @@ export const TEST_MODE_READ_ONLY_MESSAGE =
  * choice here — the person needs to understand why nothing happened.
  */
 export function guardTestModeMutation(): boolean {
+  if (useAuthStore.getState().systemObserverActive) {
+    Alert.alert('צפייה נסתרת', SYSTEM_OBSERVER_READ_ONLY_MESSAGE);
+    return false;
+  }
   if (useAuthStore.getState().testModeUserId) {
     Alert.alert('מצב בדיקה', TEST_MODE_READ_ONLY_MESSAGE);
     return false;

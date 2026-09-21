@@ -25,7 +25,7 @@ describe('App.tsx — System Admin entry point sits OUTSIDE family/auth branchin
 
   it('the System Admin entry Pressable and SystemAdminScreen are rendered in the same fragment AFTER the needsFamilyOnboarding/currentUserId/LoginScreen ternary, never inside one of its branches', () => {
     const ternaryIdx = source.indexOf('{needsFamilyOnboarding ? (');
-    const entryIdx = source.indexOf('{isSystemAdmin ? (');
+    const entryIdx = source.indexOf('{isSystemAdmin && !systemObserverActive ? (');
     const screenIdx = source.indexOf('<SystemAdminScreen');
     expect(ternaryIdx).toBeGreaterThan(-1);
     expect(entryIdx).toBeGreaterThan(ternaryIdx);

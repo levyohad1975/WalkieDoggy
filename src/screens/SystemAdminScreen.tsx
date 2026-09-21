@@ -6,12 +6,15 @@ import { Button } from '../components/Button';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { friendlyErrorMessage } from '../lib/errorMessages';
+import { useAuthStore } from '../store/authStore';
 import {
   getSystemAdminEmailDeliveryLog,
+  getSystemAdminGlobalAudit,
   getSystemAdminFamilyDetail,
   listSystemAdminFamilies,
   setSystemAdminFamilyApproval,
   type SystemAdminEmailDeliveryLogEntry,
+  type SystemAdminGlobalAuditEntry,
   type SystemAdminFamilyDetail,
   type SystemAdminFamilyListItem,
 } from '../lib/systemAdmin';
@@ -37,6 +40,36 @@ function emailMessageTypeLabel(type: string): string {
 }
 
 /** Hebrew label for email_delivery_log.status (0034) — falls back to the raw value for any future provider status. */
+function auditActionLabel(action: string): string {
+  const labels: Record<string, string> = {
+    'family.created': 'יצירת משפחה',
+    'family.approval_changed': 'שינוי סטטוס אישור משפחה',
+    profile_claimed: 'חיבור פרופיל למכשיר',
+    schedule_rule_created: 'יצירת תורנות',
+    schedule_rule_deleted: 'מחיקת תורנות',
+    walk_completed: 'סיום טיול',
+    'walks.insert': 'יצירת טיול',
+    'walks.update': 'עדכון טיול',
+    'walks.delete': 'מחיקת טיול',
+    'schedule_rules.insert': 'יצירת כלל תורנות',
+    'schedule_rules.update': 'עדכון כלל תורנות',
+    'schedule_rules.delete': 'מחיקת כלל תורנות',
+    'users.insert': 'הוספת בן/בת משפחה',
+    'users.update': 'עדכון בן/בת משפחה',
+    'users.delete': 'מחיקת בן/בת משפחה',
+    'dogs.insert': 'הוספת כלב/ה',
+    'dogs.update': 'עדכון פרטי כלב/ה',
+    'dogs.delete': 'מחיקת כלב/ה',
+    'walk_swap_requests.insert': 'בקשת החלפת טיול',
+    'walk_swap_requests.update': 'עדכון בקשת החלפה',
+    'time_change_requests.insert': 'בקשת שינוי שעה',
+    'time_change_requests.update': 'עדכון בקשת שינוי שעה',
+    'member_permission_overrides.insert': 'שינוי הרשאת משתמש',
+    'member_permission_overrides.update': 'עדכון הרשאת משתמש',
+  };
+  return labels[action] ?? action;
+}
+
 function emailStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     queued: 'בתור',
@@ -71,6 +104,9 @@ function emailStatusLabel(status: string): string {
  */
 export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) {
   const [search, setSearch] = useState('');
+  const beginSystemObserver = useAuthStore((s) => s.beginSystemObserver);
+  const [observerStartingFamilyId, setObserverStartingFamilyId] = useState<string | null>(null);
+  const [observerError, setObserverError] = useState<string | null>(null);
   const [families, setFamilies] = useState<SystemAdminFamilyListItem[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
@@ -87,6 +123,11 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
   const [emailLogLoading, setEmailLogLoading] = useState(false);
   const [emailLogError, setEmailLogError] = useState<string | null>(null);
 
+  const [auditVisible, setAuditVisible] = useState(false);
+  const [auditLog, setAuditLog] = useState<SystemAdminGlobalAuditEntry[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
+
   const overview = useMemo(() => {
     const now = Date.now();
     const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
@@ -101,6 +142,11 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
       emailFailures: emailLog.filter((e) => e.status === 'failed' || e.status === 'bounced').length,
     };
   }, [families, emailLog]);
+
+  const selectedFamily = useMemo(
+    () => families.find((family) => family.familyId === selectedFamilyId) ?? null,
+    [families, selectedFamilyId]
+  );
 
   const detailOverview = useMemo(() => {
     if (!detail) return null;
@@ -133,6 +179,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
       setSelectedFamilyId(null);
       setDetail(null);
       setEmailLogVisible(false);
+      setAuditVisible(false);
       void loadFamilies();
       void getSystemAdminEmailDeliveryLog().then(setEmailLog).catch(() => {
         // Overview email health is supplementary; the dedicated log keeps
@@ -140,6 +187,20 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
       });
     }
   }, [visible, loadFamilies]);
+
+  const openAuditLog = async () => {
+    setAuditVisible(true);
+    setAuditLoading(true);
+    setAuditError(null);
+    try {
+      const result = await getSystemAdminGlobalAudit(500);
+      setAuditLog(result);
+    } catch (e) {
+      setAuditError(friendlyErrorMessage(e));
+    } finally {
+      setAuditLoading(false);
+    }
+  };
 
   const openEmailLog = async () => {
     setEmailLogVisible(true);
@@ -178,6 +239,19 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
     setApprovalActionError(null);
   };
 
+  const openHiddenObserver = async (familyId: string) => {
+    setObserverStartingFamilyId(familyId);
+    setObserverError(null);
+    try {
+      await beginSystemObserver(familyId);
+      onClose();
+    } catch (e) {
+      setObserverError(friendlyErrorMessage(e, [], 'לא הצלחנו להיכנס לצפייה נסתרת'));
+    } finally {
+      setObserverStartingFamilyId(null);
+    }
+  };
+
   const handleSetApproval = async (approvalStatus: 'active' | 'rejected') => {
     if (!selectedFamilyId) return;
     setApprovalActionLoading(true);
@@ -199,10 +273,15 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
         <View style={styles.header}>
           <RtlText style={styles.title} accessibilityRole="header">🛡️ ניהול מערכת</RtlText>
           <View style={styles.headerActions}>
-            {!selectedFamilyId && !emailLogVisible ? (
-              <Pressable onPress={openEmailLog} accessibilityRole="button" accessibilityLabel="פתיחת יומן משלוח אימיילים" hitSlop={10}>
+            {!selectedFamilyId && !emailLogVisible && !auditVisible ? (
+              <>
+                <Pressable onPress={openAuditLog} accessibilityRole="button" accessibilityLabel="פתיחת Audit Trail" hitSlop={10}>
+                  <RtlText style={styles.headerLink}>Audit Trail</RtlText>
+                </Pressable>
+                <Pressable onPress={openEmailLog} accessibilityRole="button" accessibilityLabel="פתיחת יומן משלוח אימיילים" hitSlop={10}>
                 <RtlText style={styles.headerLink}>יומן אימיילים</RtlText>
-              </Pressable>
+                </Pressable>
+              </>
             ) : null}
             <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="סגירת ניהול מערכת" hitSlop={10}>
               <RtlText style={styles.closeLink}>סגירה</RtlText>
@@ -210,7 +289,28 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
           </View>
         </View>
 
-        {emailLogVisible ? (
+        {auditVisible ? (
+          <ScrollView contentContainerStyle={styles.content}>
+            <Pressable onPress={() => setAuditVisible(false)} accessibilityRole="button" accessibilityLabel="חזרה לרשימת המשפחות">
+              <RtlText style={styles.backLink}>‹ חזרה לרשימה</RtlText>
+            </Pressable>
+            <RtlText style={styles.sectionTitle}>Audit Trail מערכת ({auditLog.length})</RtlText>
+            <RtlText style={styles.auditHint}>כל שינוי נתונים שנעשה ע״י משתמש נשמר מעכשיו אוטומטית. הרשומות ההיסטוריות הקיימות מוצגות גם הן.</RtlText>
+            {auditLoading ? <ActivityIndicator color={colors.primary} style={styles.spinner} accessibilityLabel="טוען…" /> : null}
+            {auditError ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{auditError}</RtlText> : null}
+            {!auditLoading && auditLog.length === 0 ? <RtlText style={styles.cardLine}>אין רשומות Audit</RtlText> : null}
+            {auditLog.map((entry) => (
+              <View key={`${entry.source}-${entry.id}`} style={styles.auditCard}>
+                <RtlText style={styles.auditAction}>{auditActionLabel(entry.action)}</RtlText>
+                <RtlText style={styles.cardLine}>{new Date(entry.createdAt).toLocaleString('he-IL')}</RtlText>
+                <RtlText style={styles.cardLine}>משפחה: {entry.familyName ?? 'מערכתי'}</RtlText>
+                <RtlText style={styles.cardLine}>משתמש: {entry.actorName ?? '—'}</RtlText>
+                <RtlText style={styles.cardLine}>אימייל: {entry.actorEmail ?? '—'}</RtlText>
+                <RtlText style={styles.cardLine}>יעד: {entry.targetType ?? '—'}{entry.targetId ? ` · ${entry.targetId.slice(0, 12)}` : ''}</RtlText>
+              </View>
+            ))}
+          </ScrollView>
+        ) : emailLogVisible ? (
           <ScrollView contentContainerStyle={styles.content}>
             <Pressable
               onPress={() => setEmailLogVisible(false)}
@@ -272,15 +372,28 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                 ) : null}
 
                 <RtlText style={styles.sectionTitle}>משפחה</RtlText>
+                {observerError ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{observerError}</RtlText> : null}
                 <View style={styles.card}>
                   <RtlText style={styles.cardLine}>שם: {detail.family?.name ?? '—'}</RtlText>
                   <RtlText style={styles.cardLine}>קוד הצטרפות: {detail.family?.inviteCode ?? '—'}</RtlText>
+                  <RtlText style={styles.cardLine}>אימייל שאומת ביצירת המשפחה: {selectedFamily?.verifiedEmail ?? '—'}</RtlText>
                   <RtlText style={styles.cardLine}>
                     נוצרה: {detail.family?.createdAt ? new Date(detail.family.createdAt).toLocaleDateString('he-IL') : '—'}
                   </RtlText>
                   <RtlText style={styles.cardLine}>
                     סטטוס אישור: {detail.family?.approvalStatus ? approvalStatusLabel(detail.family.approvalStatus) : '—'}
                   </RtlText>
+                  {detail.family ? (
+                    <View style={styles.observerAction}>
+                      <Button
+                        label={observerStartingFamilyId === detail.family.id ? 'נכנס לצפייה…' : 'כניסה כצופה נסתר'}
+                        onPress={() => openHiddenObserver(detail.family!.id)}
+                        disabled={observerStartingFamilyId !== null}
+                        compact
+                      />
+                      <RtlText style={styles.observerHint}>מציג את כל המסכים וההגדרות כמנהל המשפחה, ללא אפשרות לשנות נתונים וללא נוכחות גלויה למשפחה.</RtlText>
+                    </View>
+                  ) : null}
                   {detail.family && detail.family.approvalStatus !== 'active' ? (
                     <View style={styles.approvalActions}>
                       {approvalActionError ? (
@@ -441,6 +554,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                     מנהלים: {f.adminNames.length > 0 ? f.adminNames.join(', ') : '—'} · נוצרה{' '}
                     {new Date(f.createdAt).toLocaleDateString('he-IL')}
                   </RtlText>
+                  <RtlText style={styles.familyMeta}>אימייל מאומת: {f.verifiedEmail ?? '—'}</RtlText>
                   <RtlText style={styles.familyMeta}>סטטוס: {approvalStatusLabel(f.status)}</RtlText>
                 </Pressable>
               ))}
@@ -497,6 +611,8 @@ const styles = StyleSheet.create({
   familyMeta: { ...typography.caption, fontSize: 12, fontWeight: '500', color: colors.textSecondary, textAlign: 'right' },
   sectionTitle: { ...typography.cardTitle, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', marginTop: spacing.md, marginBottom: spacing.sm },
   card: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
+  observerAction: { gap: spacing.xs, marginTop: spacing.sm, alignItems: 'flex-end' },
+  observerHint: { ...typography.caption, color: colors.textSecondary, textAlign: 'right' },
   approvalActions: { flexDirection: 'row-reverse', gap: spacing.sm, marginTop: spacing.sm, flexWrap: 'wrap' },
   cardLine: { ...typography.meta, color: colors.textPrimary, textAlign: 'right' },
   metricsGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: spacing.sm },
@@ -525,4 +641,7 @@ const styles = StyleSheet.create({
   },
   healthTitle: { ...typography.cardTitle, color: colors.textPrimary, textAlign: 'right' },
   healthLine: { ...typography.meta, color: colors.textSecondary, textAlign: 'right' },
+  auditHint: { ...typography.meta, color: colors.textSecondary, textAlign: 'right', marginBottom: spacing.sm },
+  auditCard: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
+  auditAction: { ...typography.body, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
 });

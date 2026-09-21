@@ -71,6 +71,7 @@ export function FamilyScreen() {
   // screen, but role management is gated on the REAL role/impersonation
   // pair on purpose, matching the requirement's exact wording.
   const realFamilyRole = useAuthStore((s) => s.familyRole);
+  const systemObserverActive = useAuthStore((s) => s.systemObserverActive);
   const realCurrentUserId = useAuthStore((s) => s.currentUserId);
   const impersonatingUserId = useAuthStore((s) => s.impersonatingUserId);
   const isRealAdmin = isRealFamilyAdmin(realFamilyRole, impersonatingUserId);
@@ -164,7 +165,7 @@ export function FamilyScreen() {
   useEffect(() => {
     loadActivity();
     loadInvites();
-  }, [loadActivity, loadInvites]);
+  }, [loadActivity, loadInvites, systemObserverActive]);
 
   // Round 7, Part 3 (bug A fix): the moment the current viewer stops being a
   // real admin — a self-demotion just landed via handleRoleChanged below, or
@@ -253,12 +254,18 @@ export function FamilyScreen() {
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
-        touchLastSeen()
-          .catch(() => undefined) // presence is best-effort, same failure handling as App.tsx's own call site
-          .then(() => {
-            loadActivity();
-            loadInvites();
-          });
+        if (systemObserverActive) {
+          // Hidden System Admin observation must never create a presence heartbeat.
+          loadActivity();
+          loadInvites();
+        } else {
+          touchLastSeen()
+            .catch(() => undefined)
+            .then(() => {
+              loadActivity();
+              loadInvites();
+            });
+        }
       }
     });
     return () => sub.remove();
@@ -270,6 +277,10 @@ export function FamilyScreen() {
   useEffect(() => {
     if (!isRealAdmin || !isSupabaseConfigured) return;
     const refresh = () => {
+      if (systemObserverActive) {
+        loadActivity();
+        return;
+      }
       touchLastSeen()
         .catch(() => undefined)
         .then(() => loadActivity());
@@ -277,7 +288,7 @@ export function FamilyScreen() {
     refresh();
     const timer = setInterval(refresh, 2 * 60 * 1000);
     return () => clearInterval(timer);
-  }, [isRealAdmin, loadActivity]);
+  }, [isRealAdmin, loadActivity, systemObserverActive]);
 
   const activityByUserId = new Map(activity.map((row) => [row.user_id, row]));
   // ROUND 3: reduces list_family_invites()'s full history to the single

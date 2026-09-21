@@ -17,6 +17,7 @@ import { isSupabaseConfigured } from './src/lib/supabase';
 import { touchLastSeen } from './src/lib/requests';
 import { useRequestsStore } from './src/store/requestsStore';
 import { useScheduleStore, reconcileScheduleNotifications } from './src/store/scheduleStore';
+import { useFamilyStore } from './src/store/familyStore';
 
 // Reconciles local notifications against the currently loaded schedule store
 // state (A3's authoritative rule: notification content always comes from the
@@ -101,7 +102,17 @@ export function runForegroundSync(): Promise<void> {
 }
 
 async function runForegroundSyncOnce(): Promise<void> {
-  const { familyId, currentUserId } = useAuthStore.getState();
+  const { familyId, currentUserId, systemObserverActive } = useAuthStore.getState();
+  if (systemObserverActive) {
+    if (!familyId) return;
+    // Hidden observer mode is strictly read-only: refresh visible data only.
+    // Never flush queued writes, register presence, or reconcile notifications
+    // as the observed family.
+    await useFamilyStore.getState().load(familyId);
+    await useScheduleStore.getState().load(familyId);
+    if (isSupabaseConfigured) await useRequestsStore.getState().load();
+    return;
+  }
   if (!familyId || !currentUserId) return;
 
   // 1. Push this device's own queued writes.
@@ -224,12 +235,12 @@ export async function registerPushTokenAndReconcile(): Promise<void> {
 setSyncQueueActorGetter(() => useAuthStore.getState().currentUserId);
 
 export default function App() {
-  const { currentUserId, familyId, hydrated, restoreSession } = useAuthStore();
+  const { currentUserId, familyId, hydrated, restoreSession, systemObserverActive } = useAuthStore();
   // In Supabase (backend) mode, a device with no familyId yet hasn't
   // created/joined a family — show that onboarding before anything else.
   // Local/demo mode always has a familyId (the seeded demo family) and
   // never reaches this branch.
-  const needsFamilyOnboarding = isSupabaseConfigured && !familyId;
+  const needsFamilyOnboarding = isSupabaseConfigured && !familyId && !systemObserverActive;
 
   // BATCH 4 (item A — System Admin V1): "System Admin is a platform
   // identity, NOT automatically a Family Admin/member" (the brief's own
@@ -266,10 +277,10 @@ export default function App() {
   // was known could otherwise survive, undeleted, once registration
   // completed).
   useEffect(() => {
-    if (currentUserId) {
+    if (currentUserId && !systemObserverActive) {
       void registerPushTokenAndReconcile();
     }
-  }, [currentUserId]);
+  }, [currentUserId, systemObserverActive]);
 
   useEffect(() => {
     // BUG 2 FIX (cold-start sync race): restoreSession() is now fully
@@ -326,7 +337,7 @@ export default function App() {
           <StatusBar style="dark" />
           {needsFamilyOnboarding ? (
             <FamilyOnboardingScreen />
-          ) : currentUserId ? (
+          ) : currentUserId || systemObserverActive ? (
             <RootNavigator />
           ) : (
             <LoginScreen />
@@ -339,7 +350,7 @@ export default function App() {
               turn only ever came from am_i_system_admin() — a fresh,
               server-side check of the real auth identity, not a locally
               cached/guessed value. */}
-          {isSystemAdmin ? (
+          {isSystemAdmin && !systemObserverActive ? (
             <Pressable
               onPress={() => setSystemAdminOpen(true)}
               style={styles.systemAdminEntry}
@@ -360,7 +371,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   systemAdminEntry: {
     position: 'absolute',
-    bottom: 18,
+    top: 58,
     left: 18,
     width: 44,
     height: 44,
@@ -375,6 +386,7 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
+    zIndex: 100,
   },
   systemAdminEntryText: { fontSize: 20 },
 });
