@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RtlText } from '../components/RtlText';
@@ -87,6 +87,34 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
   const [emailLogLoading, setEmailLogLoading] = useState(false);
   const [emailLogError, setEmailLogError] = useState<string | null>(null);
 
+  const overview = useMemo(() => {
+    const now = Date.now();
+    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+    return {
+      totalFamilies: families.length,
+      activeFamilies: families.filter((f) => f.status === 'active').length,
+      pendingFamilies: families.filter((f) => f.status === 'pending').length,
+      rejectedFamilies: families.filter((f) => f.status === 'rejected').length,
+      members: families.reduce((sum, f) => sum + f.memberCount, 0),
+      dogs: families.filter((f) => Boolean(f.dogName)).length,
+      newThisWeek: families.filter((f) => new Date(f.createdAt).getTime() >= sevenDaysAgo).length,
+      emailFailures: emailLog.filter((e) => e.status === 'failed' || e.status === 'bounced').length,
+    };
+  }, [families, emailLog]);
+
+  const detailOverview = useMemo(() => {
+    if (!detail) return null;
+    const activeMembers = detail.members.filter((m) => !m.removedAt);
+    return {
+      activeMembers: activeMembers.length,
+      admins: activeMembers.filter((m) => m.role === 'admin').length,
+      claimed: activeMembers.filter((m) => m.claimed).length,
+      completedWalks: detail.walks.filter((w) => w.status === 'done').length,
+      pendingWalks: detail.walks.filter((w) => w.status === 'pending').length,
+      spontaneousWalks: detail.walks.filter((w) => w.isUnplanned).length,
+    };
+  }, [detail]);
+
   const loadFamilies = useCallback(async (query?: string) => {
     setListLoading(true);
     setListError(null);
@@ -106,6 +134,10 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
       setDetail(null);
       setEmailLogVisible(false);
       void loadFamilies();
+      void getSystemAdminEmailDeliveryLog().then(setEmailLog).catch(() => {
+        // Overview email health is supplementary; the dedicated log keeps
+        // its own visible error state when opened.
+      });
     }
   }, [visible, loadFamilies]);
 
@@ -225,6 +257,20 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
 
             {detail ? (
               <View>
+                {detailOverview ? (
+                  <>
+                    <RtlText style={styles.sectionTitle}>תמונת מצב</RtlText>
+                    <View style={styles.metricsGrid}>
+                      <View style={styles.metricCard}><RtlText style={styles.metricValue}>{detailOverview.activeMembers}</RtlText><RtlText style={styles.metricLabel}>חברים פעילים</RtlText></View>
+                      <View style={styles.metricCard}><RtlText style={styles.metricValue}>{detailOverview.admins}</RtlText><RtlText style={styles.metricLabel}>מנהלים</RtlText></View>
+                      <View style={styles.metricCard}><RtlText style={styles.metricValue}>{detailOverview.claimed}</RtlText><RtlText style={styles.metricLabel}>פרופילים מחוברים</RtlText></View>
+                      <View style={styles.metricCard}><RtlText style={styles.metricValue}>{detailOverview.completedWalks}</RtlText><RtlText style={styles.metricLabel}>טיולים שבוצעו</RtlText></View>
+                      <View style={styles.metricCard}><RtlText style={styles.metricValue}>{detailOverview.pendingWalks}</RtlText><RtlText style={styles.metricLabel}>טיולים ממתינים</RtlText></View>
+                      <View style={styles.metricCard}><RtlText style={styles.metricValue}>{detailOverview.spontaneousWalks}</RtlText><RtlText style={styles.metricLabel}>טיולים ספונטניים</RtlText></View>
+                    </View>
+                  </>
+                ) : null}
+
                 <RtlText style={styles.sectionTitle}>משפחה</RtlText>
                 <View style={styles.card}>
                   <RtlText style={styles.cardLine}>שם: {detail.family?.name ?? '—'}</RtlText>
@@ -358,6 +404,22 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
             ) : null}
 
             <ScrollView contentContainerStyle={styles.content}>
+              <RtlText style={styles.sectionTitle}>תמונת מצב מערכתית</RtlText>
+              <View style={styles.metricsGrid}>
+                <View style={styles.metricCard}><RtlText style={styles.metricValue}>{overview.totalFamilies}</RtlText><RtlText style={styles.metricLabel}>משפחות</RtlText></View>
+                <View style={styles.metricCard}><RtlText style={styles.metricValue}>{overview.activeFamilies}</RtlText><RtlText style={styles.metricLabel}>פעילות</RtlText></View>
+                <View style={styles.metricCard}><RtlText style={styles.metricValue}>{overview.pendingFamilies}</RtlText><RtlText style={styles.metricLabel}>ממתינות לאישור</RtlText></View>
+                <View style={styles.metricCard}><RtlText style={styles.metricValue}>{overview.members}</RtlText><RtlText style={styles.metricLabel}>בני משפחה</RtlText></View>
+                <View style={styles.metricCard}><RtlText style={styles.metricValue}>{overview.dogs}</RtlText><RtlText style={styles.metricLabel}>כלבים רשומים</RtlText></View>
+                <View style={styles.metricCard}><RtlText style={styles.metricValue}>{overview.newThisWeek}</RtlText><RtlText style={styles.metricLabel}>חדשות השבוע</RtlText></View>
+              </View>
+              <View style={styles.healthCard}>
+                <RtlText style={styles.healthTitle}>בריאות תפעולית</RtlText>
+                <RtlText style={styles.healthLine}>משפחות שנדחו: {overview.rejectedFamilies}</RtlText>
+                <RtlText style={styles.healthLine}>כשלים/החזרות ביומן האימיילים האחרון: {overview.emailFailures}</RtlText>
+              </View>
+
+              <RtlText style={styles.sectionTitle}>משפחות ({families.length})</RtlText>
               {!listLoading && families.length === 0 ? <RtlText style={styles.cardLine}>לא נמצאו משפחות</RtlText> : null}
               {families.map((f) => (
                 <Pressable
@@ -369,7 +431,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                 >
                   <View style={styles.familyTitleRow}>
                     <RtlText style={styles.familyName}>{f.familyName}</RtlText>
-                    {isTestFamily ? <RtlText style={styles.testBadge}>TEST / E2E</RtlText> : null}
+                    <RtlText style={styles.statusBadge}>{approvalStatusLabel(f.status)}</RtlText>
                   </View>
                   <RtlText style={styles.familyMeta}>
                     קוד: {f.inviteCode} · {f.memberCount} בני משפחה
@@ -431,10 +493,36 @@ const styles = StyleSheet.create({
   },
   familyTitleRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   familyName: { ...typography.body, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', flexShrink: 1 },
-  testBadge: { ...typography.caption, fontSize: 10, fontWeight: '900', color: colors.textSecondary, borderWidth: 1, borderColor: colors.border, borderRadius: radii.round, paddingHorizontal: 8, paddingVertical: 3, overflow: 'hidden' },
+  statusBadge: { ...typography.caption, fontSize: 10, fontWeight: '800', color: colors.primaryDark, backgroundColor: colors.surfaceMuted, borderRadius: radii.round, paddingHorizontal: 8, paddingVertical: 4, overflow: 'hidden' },
   familyMeta: { ...typography.caption, fontSize: 12, fontWeight: '500', color: colors.textSecondary, textAlign: 'right' },
   sectionTitle: { ...typography.cardTitle, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', marginTop: spacing.md, marginBottom: spacing.sm },
   card: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
   approvalActions: { flexDirection: 'row-reverse', gap: spacing.sm, marginTop: spacing.sm, flexWrap: 'wrap' },
   cardLine: { ...typography.meta, color: colors.textPrimary, textAlign: 'right' },
+  metricsGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: spacing.sm },
+  metricCard: {
+    flexBasis: '30%',
+    flexGrow: 1,
+    minWidth: 96,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    alignItems: 'center',
+    gap: 2,
+  },
+  metricValue: { ...typography.statValue, fontSize: 24, color: colors.textPrimary, writingDirection: 'ltr' },
+  metricLabel: { ...typography.caption, color: colors.textSecondary, textAlign: 'center', writingDirection: 'rtl' },
+  healthCard: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  healthTitle: { ...typography.cardTitle, color: colors.textPrimary, textAlign: 'right' },
+  healthLine: { ...typography.meta, color: colors.textSecondary, textAlign: 'right' },
 });
