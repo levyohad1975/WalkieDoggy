@@ -7,6 +7,9 @@ on:
       - Batch 2 Supabase Rehearsal
     types:
       - completed
+  issues:
+    types:
+      - labeled
   workflow_dispatch:
     inputs:
       target_branch:
@@ -20,7 +23,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: agentic-rc-worker-${{ github.event.workflow_run.head_branch || inputs.target_branch || github.ref_name }}
+  group: agentic-rc-worker-${{ github.event.issue.number || github.event.workflow_run.head_branch || inputs.target_branch || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -28,6 +31,7 @@ jobs:
     name: Autonomous RC continuation
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issues' && github.event.label.name == 'agentic-ready') ||
       (
         github.event.workflow_run.head_repository.full_name == github.repository &&
         (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'workflow_dispatch') &&
@@ -38,7 +42,7 @@ jobs:
     env:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      TARGET_BRANCH: ${{ github.event.workflow_run.head_branch || inputs.target_branch || github.ref_name }}
+      TARGET_BRANCH: ${{ github.event_name == 'issues' && format('feat/issue-{0}', github.event.issue.number) || github.event.workflow_run.head_branch || inputs.target_branch || github.ref_name }}
 
     steps:
       - name: Guard autonomous target
