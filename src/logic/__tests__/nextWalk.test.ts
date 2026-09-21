@@ -20,6 +20,15 @@ function makeWalk(overrides: Partial<Walk>): Walk {
 const NOW = new Date('2026-08-26T18:00:00');
 
 describe('computeNextWalk', () => {
+  it('keeps an in-progress walk as the main card instead of advancing to the next pending walk', () => {
+    const walks = [
+      makeWalk({ id: 'active', scheduledTime: '17:30', status: 'in_progress', startedAt: '2026-08-26T17:31:00.000Z' }),
+      makeWalk({ id: 'future', scheduledTime: '20:00', status: 'pending' }),
+    ];
+
+    expect(computeNextWalk(walks, NOW)?.id).toBe('active');
+  });
+
   it('picks the earliest pending future walk', () => {
     const walks = [
       makeWalk({ id: 'w1', scheduledTime: '07:00', status: 'done' }),
