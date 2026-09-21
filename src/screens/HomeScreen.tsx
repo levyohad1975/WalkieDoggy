@@ -524,7 +524,7 @@ export function HomeScreen() {
             <View style={styles.dogHeroMascot}>
               <WalkieMascot
                 state="idle"
-                size={210}
+                size={168}
                 accessibilityLabel="הכלב המונפש של Walkie Doggy"
               />
             </View>
@@ -547,6 +547,7 @@ export function HomeScreen() {
             dogName={dog?.name ?? 'הכלב/ה'}
             dogPhotoUrl={dog?.photoUrl}
             showDogPhoto={false}
+            showMascot={false}
             dogSex={dog?.sex}
             requestStatusLine={
               computeWalkRequestStatusLine(nextWalk, swapRequests, timeChangeRequests, walksById, new Date(), effectiveUserId)?.text
@@ -1076,7 +1077,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: 14, paddingBottom: spacing.xxxl, width: '100%' },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: 14 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
-  nextWalkLift: { marginTop: -48, zIndex: 4, paddingHorizontal: 8 },
+  nextWalkLift: { marginTop: -30, zIndex: 4, paddingHorizontal: 6 },
   unplannedButton: { marginTop: -2 },
   testModeBanner: {
     flexDirection: 'row',
@@ -1092,16 +1093,16 @@ const styles = StyleSheet.create({
   testModeBannerButtonText: { color: '#fff', fontWeight: '700', fontSize: 12 },
   topRow: { position: 'relative', minHeight: 46, alignItems: 'center', justifyContent: 'center' },
   brandWordmark: { width: 150, height: 44 },
-  dogHero: { width: '100%', height: 272, borderRadius: 30, overflow: 'hidden', backgroundColor: '#CFEDE5', position: 'relative', justifyContent: 'flex-end' },
+  dogHero: { width: '100%', height: 208, borderRadius: 30, overflow: 'hidden', backgroundColor: '#CFEDE5', position: 'relative', justifyContent: 'flex-end' },
   dogHeroFallback: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14 },
   dogHeroImage: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%' },
   dogHeroShade: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: '#00000026' },
-  dogHeroMascot: { width: 210, height: 230, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start' },
+  dogHeroMascot: { width: 172, height: 180, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start' },
   dogHeroCopy: { minWidth: 0, alignItems: 'flex-end', gap: 4 },
-  dogHeroCopyOnPhoto: { position: 'absolute', right: 18, bottom: 66, left: 18, alignItems: 'flex-end' },
-  dogHeroCopyFallback: { flex: 1, paddingRight: 6, paddingBottom: 54 },
+  dogHeroCopyOnPhoto: { position: 'absolute', right: 18, bottom: 46, left: 18, alignItems: 'flex-end' },
+  dogHeroCopyFallback: { flex: 1, paddingRight: 6, paddingBottom: 30 },
   dogHeroGreeting: { ...typography.body, color: colors.textPrimary, fontWeight: '800', textAlign: 'right' },
-  dogHeroName: { color: colors.textPrimary, fontSize: 30, lineHeight: 36, fontWeight: '900', textAlign: 'right' },
+  dogHeroName: { color: colors.textPrimary, fontSize: 26, lineHeight: 32, fontWeight: '900', textAlign: 'right' },
   dogHeroTextOnPhoto: { color: '#fff', textShadowColor: '#00000055', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
   dogHeroProfilePill: { marginTop: 5, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: '#FFFFFFCC' },
   dogHeroProfilePillOnPhoto: { backgroundColor: '#FFFFFFE8' },
