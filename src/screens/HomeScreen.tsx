@@ -514,15 +514,19 @@ export function HomeScreen() {
               />
             </View>
           )}
-          <View style={[styles.dogHeroCopy, dog?.photoUrl ? styles.dogHeroCopyOnPhoto : styles.dogHeroCopyFallback]}>
-            <RtlText style={[styles.dogHeroGreeting, dog?.photoUrl && styles.dogHeroTextOnPhoto]}>
-              {dog?.photoUrl ? 'יאללה, לטיול הבא! ♥' : 'היי! מוכנים לטיול הבא? 🐾'}
-            </RtlText>
-            <RtlText style={[styles.dogHeroName, dog?.photoUrl && styles.dogHeroPhotoName]}>{dog?.name ?? 'הכלב/ה'}</RtlText>
-            <View style={[styles.dogHeroProfilePill, dog?.photoUrl && styles.dogHeroProfilePillOnPhoto]}>
-              <RtlText style={[styles.dogHeroProfileLink, dog?.photoUrl && styles.dogHeroProfileLinkOnPhoto]}>לפרופיל הכלב ›</RtlText>
+          {dog?.photoUrl ? (
+            <View style={styles.photoProfileBadge}>
+              <RtlText style={styles.photoProfileBadgeText}>פרופיל ›</RtlText>
             </View>
-          </View>
+          ) : (
+            <View style={[styles.dogHeroCopy, styles.dogHeroCopyFallback]}>
+              <RtlText style={styles.dogHeroGreeting}>היי! מוכנים לטיול הבא? 🐾</RtlText>
+              <RtlText style={styles.dogHeroName}>{dog?.name ?? 'הכלב/ה'}</RtlText>
+              <View style={styles.dogHeroProfilePill}>
+                <RtlText style={styles.dogHeroProfileLink}>לפרופיל הכלב ›</RtlText>
+              </View>
+            </View>
+          )}
         </Pressable>
 
         <View style={styles.nextWalkLift}>
@@ -1059,22 +1063,19 @@ const styles = StyleSheet.create({
   brandWordmark: { width: 150, height: 42 },
   brandTagline: { marginTop: -4, color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: '700', textAlign: 'center' },
   dogHero: { width: '100%', height: 208, borderRadius: 30, overflow: 'hidden', backgroundColor: '#CFEDE5', position: 'relative', justifyContent: 'flex-end' },
-  dogHeroPhoto: { height: 276, backgroundColor: '#DCEBE5' },
+  dogHeroPhoto: { height: 248, backgroundColor: '#DCEBE5' },
   dogHeroFallback: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14 },
   dogHeroImage: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%' },
-  dogHeroShade: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: '#00000012' },
+  dogHeroShade: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: '#00000008' },
   dogHeroMascot: { width: 172, height: 180, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start' },
   dogHeroCopy: { minWidth: 0, alignItems: 'flex-end', gap: 4 },
-  dogHeroCopyOnPhoto: { position: 'absolute', right: 18, bottom: 50, left: 18, alignItems: 'flex-end' },
   dogHeroCopyFallback: { flex: 1, paddingRight: 6, paddingBottom: 30 },
   dogHeroGreeting: { ...typography.body, color: colors.textPrimary, fontWeight: '800', textAlign: 'right' },
   dogHeroName: { color: colors.textPrimary, fontSize: 26, lineHeight: 32, fontWeight: '900', textAlign: 'right' },
-  dogHeroTextOnPhoto: { color: '#fff', fontSize: 22, lineHeight: 28, textShadowColor: '#00000099', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 5 },
-  dogHeroPhotoName: { color: '#fff', fontSize: 17, lineHeight: 22, textShadowColor: '#00000099', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
   dogHeroProfilePill: { marginTop: 5, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: '#FFFFFFCC' },
-  dogHeroProfilePillOnPhoto: { backgroundColor: '#FFFFFFE8' },
   dogHeroProfileLink: { ...typography.meta, color: colors.primaryDark, fontWeight: '900', textAlign: 'right' },
-  dogHeroProfileLinkOnPhoto: { color: colors.primaryDark },
+  photoProfileBadge: { position: 'absolute', top: 14, right: 14, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: '#FFFFFFE8' },
+  photoProfileBadgeText: { ...typography.meta, color: colors.primaryDark, fontWeight: '900', textAlign: 'right' },
   notificationButton: { position: 'absolute', right: 0, top: 11, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
   webNotificationButton: { left: 0, right: undefined },
   notificationIcon: { fontSize: 18 },
