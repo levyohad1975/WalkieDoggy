@@ -25,6 +25,8 @@ interface NextWalkCardProps {
   showDogPhoto?: boolean;
   /** Home's large hero already carries the mascot/photo; avoid repeating the brand character in the action card. */
   showMascot?: boolean;
+  /** Compact Home presentation: prioritizes the action over marketing-style vertical space. */
+  compact?: boolean;
   /** BATCH 4 (item B/C8) — feeds the mascot message engine's dogNoun/wentOut Hebrew gendering. Omit/undefined uses the same neutral fallback as everywhere else in the app. */
   dogSex?: Dog['sex'] | null;
   onMarkDone: () => void;
@@ -68,6 +70,7 @@ export function NextWalkCard({
   dogPhotoUrl,
   showDogPhoto = true,
   showMascot = true,
+  compact = false,
   dogSex,
   onMarkDone,
   onMarkNotDone,
@@ -109,7 +112,7 @@ export function NextWalkCard({
   }, [walk.id, walk.scheduledTime, walk.date, walk.status, dogName, dogSex, responsible?.name]);
 
   return (
-    <View style={[styles.card, isWeb && styles.webCard, overdue && styles.cardOverdue]}>
+    <View style={[styles.card, isWeb && styles.webCard, compact && styles.compactCard, overdue && styles.cardOverdue]}>
       <View style={[styles.eyebrowRow, isWeb && styles.webEyebrowRow]}>
         {showDogPhoto ? <DogPhoto photoUrl={dogPhotoUrl} size={isWeb ? 60 : 72} /> : null}
         <RtlText style={styles.eyebrow} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
@@ -127,11 +130,13 @@ export function NextWalkCard({
         {showMascot ? <WalkieMascot state={mascotState} size={isWeb ? 52 : 58} testID="next-walk-mascot" /> : null}
       </View>
 
-      <RtlText style={styles.mascotMessage} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-        {message}
-      </RtlText>
+      {showMascot ? (
+        <RtlText style={styles.mascotMessage} numberOfLines={compact ? 1 : 2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+          {message}
+        </RtlText>
+      ) : null}
 
-      <View style={[styles.mainRow, isWeb && styles.webMainRow]}>
+      <View style={[styles.mainRow, isWeb && styles.webMainRow, compact && styles.compactMainRow]}>
         <View style={styles.timeBlock}>
           <RtlText
             style={styles.time}
@@ -156,7 +161,7 @@ export function NextWalkCard({
               {relativeTimeLabel(walk)}
             </RtlText>
           ) : (
-            <Countdown target={walkDateTime(walk)} />
+            <Countdown target={walkDateTime(walk)} compact={compact} />
           )}
         </View>
 
@@ -270,6 +275,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   webCard: { borderRadius: 22, paddingHorizontal: 22, paddingVertical: 15 },
+  compactCard: { borderRadius: 22, paddingHorizontal: 16, paddingVertical: 12 },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
   eyebrowRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), alignItems: 'center', gap: 8, marginBottom: 6 },
   webEyebrowRow: { marginBottom: 2 },
@@ -289,6 +295,7 @@ const styles = StyleSheet.create({
   // centered inside each fixed-width box can shift by a few px.
   mainRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 12 },
   webMainRow: { marginBottom: 8, minHeight: 68 },
+  compactMainRow: { marginBottom: 8, gap: 8 },
   timeBlock: { flex: 1, alignItems: 'flex-start', minWidth: 0 },
   // Reduced from 44 (BUG report: too large, wrapped to two lines on a
   // narrow iPhone and dwarfed the rest of the card). Still the single
