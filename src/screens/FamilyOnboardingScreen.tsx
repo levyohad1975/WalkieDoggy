@@ -341,7 +341,6 @@ export function FamilyOnboardingScreen() {
               source={require("../../assets/onboarding-welcome-wink.png")}
               style={styles.winkFrame}
               resizeMode="cover"
-              pointerEvents="none"
               accessibilityElementsHidden
             />
           ) : null}
@@ -699,7 +698,7 @@ export function FamilyOnboardingScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#173A36', overflow: 'hidden' },
   welcomeContainer: { flex: 1, backgroundColor: '#173A36', overflow: 'hidden' },
-  winkFrame: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  winkFrame: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%' },
   createHotspot: { position: 'absolute', left: '12%', right: '12%', top: '72%', height: '7.5%', zIndex: 2 },
   joinHotspot: { position: 'absolute', left: '12%', right: '12%', top: '80%', height: '7.5%', zIndex: 2 },
   // On desktop the reference image is contained inside a much wider ImageBackground.
