@@ -112,6 +112,8 @@ export interface WalkCompletionDetails {
   hadPoop?: boolean;
   note?: string;
   durationMinutes?: number;
+  /** Actual completion time when a late report corrects the default now timestamp. */
+  completedAt?: string;
   /**
    * Final QA round v2: corrects WHO actually walked the dog, distinct from
    * `responsibleUserId` (the rotation-assigned person) — already a
@@ -152,7 +154,7 @@ export function markWalkDone(
   return {
     ...walk,
     status: 'done',
-    completedAt: now.toISOString(),
+    completedAt: details.completedAt ?? now.toISOString(),
     completedByUserId,
     hadPee: details.hadPee,
     hadPoop: details.hadPoop,
