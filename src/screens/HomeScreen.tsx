@@ -527,6 +527,7 @@ export function HomeScreen() {
             dogPhotoUrl={dog?.photoUrl}
             showDogPhoto={false}
             showMascot={false}
+            compact
             dogSex={dog?.sex}
             requestStatusLine={
               computeWalkRequestStatusLine(nextWalk, swapRequests, timeChangeRequests, walksById, new Date(), effectiveUserId)?.text
