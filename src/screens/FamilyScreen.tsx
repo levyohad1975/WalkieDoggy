@@ -7,8 +7,6 @@ import { isRealFamilyAdmin, useAuthStore, useEffectiveFamilyRole, useEffectiveUs
 import { colors } from '../theme/colors';
 import { breakpoints, radii, spacing, typography } from '../theme/tokens';
 import { Avatar } from '../components/Avatar';
-import { DogPhoto } from '../components/DogPhoto';
-import { pickAndUploadImage } from '../lib/uploadImage';
 import { Button } from '../components/Button';
 import { UserFormModal } from '../components/UserFormModal';
 import { DeleteUserModal } from '../components/DeleteUserModal';
@@ -39,8 +37,7 @@ export function FamilyScreen() {
     clearActionError,
     permissionOverrides,
     setPermissionOverride,
-    clearPermissionOverride,
-    saveDog,
+    clearPermissionOverride
   } = useFamilyStore();
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   // Single source of truth for admin/member permissions — see authStore.
@@ -81,21 +78,6 @@ export function FamilyScreen() {
   const [deleteTarget, setDeleteTarget] = useState<FamilyUser | null>(null);
   const [deleteImpact, setDeleteImpact] = useState<UserDeletionImpact | null>(null);
   const [detailsTarget, setDetailsTarget] = useState<FamilyUser | null>(null);
-  const [uploadingDogPhoto, setUploadingDogPhoto] = useState(false);
-
-  const changeDogPhoto = async () => {
-    if (!dog || familyRole !== 'admin') return;
-    setUploadingDogPhoto(true);
-    try {
-      const uri = await pickAndUploadImage('dogs', familyId, dog.id);
-      if (uri) await saveDog({ ...dog, photoUrl: uri });
-    } catch {
-      Alert.alert('לא הצלחנו להחליף תמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
-    } finally {
-      setUploadingDogPhoto(false);
-    }
-  };
-
   // Role + presence (Parts 1F / 2) — sourced ENTIRELY from
   // admin_list_family_activity() (migrations/0005_*.sql), the same
   // Admin-only RPC AdminActivityModal already uses. Deliberately not
@@ -318,26 +300,6 @@ export function FamilyScreen() {
       <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
         <RtlText style={styles.header} accessibilityRole="header">המשפחה שלנו</RtlText>
 
-        <View style={styles.dogSection}>
-          <RtlText style={styles.sectionHeader} accessibilityRole="header">הכלב שלנו</RtlText>
-          <RtlText style={styles.sectionDescription}>פרופיל הכלב נפרד מבני המשפחה</RtlText>
-        </View>
-
-        {dog ? (
-          <View style={styles.dogProfileCard}>
-            <DogPhoto photoUrl={dog.photoUrl} size={76} />
-            <View style={styles.dogProfileBody}>
-              <RtlText style={styles.dogProfileName}>{dog.name}</RtlText>
-              <RtlText style={styles.dogProfileMeta}>{dog.photoUrl ? 'תמונת הפרופיל של הכלב' : 'עדיין לא הוגדרה תמונת פרופיל'}</RtlText>
-            </View>
-            {familyRole === 'admin' ? (
-              <Pressable onPress={changeDogPhoto} disabled={uploadingDogPhoto} style={styles.dogPhotoButton} accessibilityRole={'button'} accessibilityLabel={dog.photoUrl ? 'החלפת תמונת הכלב' : 'הוספת תמונת הכלב'}>
-                <RtlText style={styles.dogPhotoButtonText}>{uploadingDogPhoto ? 'מעלה…' : dog.photoUrl ? 'החלפה' : 'הוספת תמונה'}</RtlText>
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
-
         <View style={styles.memberSectionHeader}>
           <RtlText style={styles.sectionHeader} accessibilityRole="header">בני המשפחה</RtlText>
           <RtlText style={styles.subheader}>רק בני המשפחה שמשתתפים בניהול ובטיולים של {dog?.name ?? 'הכלב/ה'}</RtlText>
@@ -538,16 +500,8 @@ const styles = StyleSheet.create({
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
   header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   sectionHeader: { width: '100%', ...typography.sectionTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
-  dogSection: { width: '100%', gap: spacing.xs, marginTop: spacing.sm, paddingBottom: spacing.xs, borderBottomWidth: 1, borderBottomColor: colors.border },
   memberSectionHeader: { width: '100%', gap: spacing.xs, marginTop: spacing.lg, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
-  sectionDescription: { width: '100%', ...typography.meta, color: colors.textSecondary, textAlign: 'right', writingDirection: 'rtl' },
   subheader: { width: '100%', ...typography.meta, color: colors.textSecondary, textAlign: 'right', writingDirection: 'rtl', marginTop: -8 },
-  dogProfileCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md },
-  dogProfileBody: { flex: 1, gap: 3 },
-  dogProfileName: { ...typography.sectionTitle, fontSize: 18, color: colors.textPrimary, textAlign: 'right' },
-  dogProfileMeta: { ...typography.meta, color: colors.textSecondary, textAlign: 'right' },
-  dogPhotoButton: { paddingVertical: 9, paddingHorizontal: 12, borderRadius: radii.md, backgroundColor: colors.surfaceMuted },
-  dogPhotoButtonText: { ...typography.meta, color: colors.primaryDark, fontWeight: '800' },
   list: { gap: spacing.sm },
   row: {
     flexDirection: 'row',
