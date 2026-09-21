@@ -56,7 +56,7 @@ function two(n: number): string {
  * zero behavior change on either platform (web already dropped the key;
  * native still gets it).
  */
-export function Countdown({ target, now }: { target: Date; now?: Date }) {
+export function Countdown({ target, now, compact = false }: { target: Date; now?: Date; compact?: boolean }) {
   const [tick, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setTick((n) => n + 1), 1000);
@@ -73,25 +73,25 @@ export function Countdown({ target, now }: { target: Date; now?: Date }) {
   const LRM = '‎';
 
   return (
-    <View style={styles.wrapper}>
+    <View style={[styles.wrapper, compact && styles.compactWrapper]}>
       <View style={styles.row}>
-        <RtlText style={styles.segment} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
+        <RtlText style={[styles.segment, compact && styles.compactSegment]} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
           {LRM}{two(hours)}{LRM}
         </RtlText>
-        <RtlText style={styles.colon} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
+        <RtlText style={[styles.colon, compact && styles.compactColon]} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
           :
         </RtlText>
-        <RtlText style={styles.segment} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
+        <RtlText style={[styles.segment, compact && styles.compactSegment]} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
           {LRM}{two(minutes)}{LRM}
         </RtlText>
-        <RtlText style={styles.colon} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
+        <RtlText style={[styles.colon, compact && styles.compactColon]} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
           :
         </RtlText>
-        <RtlText style={styles.segment} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
+        <RtlText style={[styles.segment, compact && styles.compactSegment]} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
           {LRM}{two(seconds)}{LRM}
         </RtlText>
       </View>
-      <View style={styles.labelRow}>
+      {!compact ? <View style={styles.labelRow}>
         <RtlText style={styles.label} maxFontSizeMultiplier={LABEL_MAX_FONT_SCALE}>
           שעות
         </RtlText>
@@ -101,7 +101,7 @@ export function Countdown({ target, now }: { target: Date; now?: Date }) {
         <RtlText style={styles.label} maxFontSizeMultiplier={LABEL_MAX_FONT_SCALE}>
           שניות
         </RtlText>
-      </View>
+      </View> : null}
     </View>
   );
 }
@@ -146,6 +146,7 @@ const styles = StyleSheet.create({
   // nor a row's own direction alone should be trusted to be the single
   // place this can never regress from.
   wrapper: { ...nativeDirection('ltr') },
+  compactWrapper: { marginTop: 1 },
   row: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'baseline', flexWrap: 'nowrap' },
   segment: {
     fontSize: 22,
@@ -158,7 +159,9 @@ const styles = StyleSheet.create({
     // reflow width every second as e.g. "1" and "8" trade places.
     fontVariant: ['tabular-nums'],
   },
+  compactSegment: { fontSize: 18, minWidth: 34 },
   colon: { fontSize: 20, fontWeight: '700', color: colors.textSecondary, marginHorizontal: 1, flexShrink: 0 },
+  compactColon: { fontSize: 17, marginHorizontal: 0 },
   // Same deterministic-LTR mechanism as `row` above, applied identically
   // so the labels row can never end up reversed relative to the digits
   // row it must stay aligned under.
