@@ -44,6 +44,10 @@ function auditActionLabel(action: string): string {
   const labels: Record<string, string> = {
     'family.created': 'יצירת משפחה',
     'family.approval_changed': 'שינוי סטטוס אישור משפחה',
+    'system_observer.started': 'כניסה לצפייה נסתרת במשפחה',
+    'system_observer.ended': 'יציאה מצפייה נסתרת במשפחה',
+    'system_admin_view_family_detail': 'צפייה בפרטי משפחה',
+    'system_admin.view_family_detail': 'צפייה בפרטי משפחה',
     profile_claimed: 'חיבור פרופיל למכשיר',
     schedule_rule_created: 'יצירת תורנות',
     schedule_rule_deleted: 'מחיקת תורנות',
@@ -282,8 +286,8 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
           <View style={styles.headerActions}>
             {!selectedFamilyId && !emailLogVisible && !auditVisible ? (
               <>
-                <Pressable onPress={openAuditLog} accessibilityRole="button" accessibilityLabel="פתיחת Audit Trail" hitSlop={10}>
-                  <RtlText style={styles.headerLink}>Audit Trail</RtlText>
+                <Pressable onPress={openAuditLog} accessibilityRole="button" accessibilityLabel="פתיחת יומן פעילות" hitSlop={10}>
+                  <RtlText style={styles.headerLink}>יומן פעילות</RtlText>
                 </Pressable>
                 <Pressable onPress={openEmailLog} accessibilityRole="button" accessibilityLabel="פתיחת יומן משלוח אימיילים" hitSlop={10}>
                 <RtlText style={styles.headerLink}>יומן אימיילים</RtlText>
@@ -301,7 +305,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
             <Pressable onPress={() => setAuditVisible(false)} accessibilityRole="button" accessibilityLabel="חזרה לרשימת המשפחות">
               <RtlText style={styles.backLink}>‹ חזרה לרשימה</RtlText>
             </Pressable>
-            <RtlText style={styles.sectionTitle}>Audit Trail מערכת ({filteredAuditLog.length})</RtlText>
+            <RtlText style={styles.sectionTitle}>יומן פעילות מערכת ({filteredAuditLog.length})</RtlText>
             <RtlText style={styles.auditHint}>כל שינוי נתונים שנעשה ע״י משתמש נשמר מעכשיו אוטומטית. ניתן לסנן את הרשומות לפי משפחה.</RtlText>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.auditFamilyFilters}>
               <Pressable
@@ -309,7 +313,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                 style={[styles.auditFilterChip, auditFamilyId === 'all' && styles.auditFilterChipSelected]}
                 accessibilityRole="button"
                 accessibilityState={{ selected: auditFamilyId === 'all' }}
-                accessibilityLabel="הצגת Audit מכל המשפחות"
+                accessibilityLabel="הצגת פעילות מכל המשפחות"
               >
                 <RtlText style={[styles.auditFilterText, auditFamilyId === 'all' && styles.auditFilterTextSelected]}>כל המשפחות</RtlText>
               </Pressable>
@@ -320,7 +324,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                   style={[styles.auditFilterChip, auditFamilyId === family.familyId && styles.auditFilterChipSelected]}
                   accessibilityRole="button"
                   accessibilityState={{ selected: auditFamilyId === family.familyId }}
-                  accessibilityLabel={`סינון Audit למשפחת ${family.familyName}`}
+                  accessibilityLabel={`סינון פעילות למשפחת ${family.familyName}`}
                 >
                   <RtlText style={[styles.auditFilterText, auditFamilyId === family.familyId && styles.auditFilterTextSelected]}>
                     {family.familyName}
@@ -330,7 +334,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
             </ScrollView>
             {auditLoading ? <ActivityIndicator color={colors.primary} style={styles.spinner} accessibilityLabel="טוען…" /> : null}
             {auditError ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{auditError}</RtlText> : null}
-            {!auditLoading && filteredAuditLog.length === 0 ? <RtlText style={styles.cardLine}>אין רשומות Audit</RtlText> : null}
+            {!auditLoading && filteredAuditLog.length === 0 ? <RtlText style={styles.cardLine}>אין רשומות ביומן</RtlText> : null}
             {filteredAuditLog.map((entry) => (
               <View key={`${entry.source}-${entry.id}`} style={styles.auditCard}>
                 <RtlText style={styles.auditAction}>{auditActionLabel(entry.action)}</RtlText>
