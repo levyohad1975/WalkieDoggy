@@ -96,7 +96,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
       const resolvedDog =
         dog ??
         (familyDogName
-          ? { id: `dog-${familyId}`, familyId, name: familyDogName }
+          ? { id: `dog-${familyId}`, familyId, name: familyDogName, walksPerDay: 0 }
           : !isSupabaseConfigured && familyId === DEMO_FAMILY.id
             ? DEMO_DOG
             : undefined);
