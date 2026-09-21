@@ -40,34 +40,136 @@ function emailMessageTypeLabel(type: string): string {
 }
 
 /** Hebrew label for email_delivery_log.status (0034) — falls back to the raw value for any future provider status. */
+function auditTargetLabel(targetType: string | null): string {
+  const labels: Record<string, string> = {
+    family: 'משפחה', families: 'משפחה',
+    user: 'בן/בת משפחה', users: 'בן/בת משפחה',
+    dog: 'כלב/ה', dogs: 'כלב/ה',
+    walk: 'טיול', walks: 'טיול',
+    schedule_rule: 'כלל תורנות', schedule_rules: 'כלל תורנות',
+    schedule_entries: 'שיבוץ תורנות',
+    walk_swap_requests: 'בקשת החלפת טיול',
+    time_change_requests: 'בקשת שינוי שעה',
+    member_permission_overrides: 'הרשאה',
+    family_auth_members: 'הרשאת משפחה',
+    profile_auth_sessions: 'חיבור פרופיל',
+    notifications: 'התראה',
+  };
+  return targetType ? (labels[targetType] ?? 'רשומת מערכת') : 'מערכת';
+}
+
 function auditActionLabel(action: string): string {
   const labels: Record<string, string> = {
     'family.created': 'יצירת משפחה',
     'family.approval_changed': 'שינוי סטטוס אישור משפחה',
     profile_claimed: 'חיבור פרופיל למכשיר',
+    profile_edited: 'עריכת פרופיל בן/בת משפחה',
+    family_member_removed: 'הסרת בן/בת משפחה',
     schedule_rule_created: 'יצירת תורנות',
+    schedule_rule_edited: 'עריכת תורנות',
     schedule_rule_deleted: 'מחיקת תורנות',
+    spontaneous_walk_added: 'הוספת טיול ספונטני',
     walk_completed: 'סיום טיול',
+    system_admin_view_family_detail: 'צפייה של מנהל המערכת בפרטי משפחה',
+    'system_observer.started': 'כניסת מנהל מערכת כצופה נסתר',
+    'system_observer.ended': 'יציאת מנהל מערכת מצפייה נסתרת',
     'walks.insert': 'יצירת טיול',
     'walks.update': 'עדכון טיול',
     'walks.delete': 'מחיקת טיול',
     'schedule_rules.insert': 'יצירת כלל תורנות',
     'schedule_rules.update': 'עדכון כלל תורנות',
     'schedule_rules.delete': 'מחיקת כלל תורנות',
+    'schedule_entries.insert': 'יצירת שיבוץ תורנות',
+    'schedule_entries.update': 'עדכון שיבוץ תורנות',
+    'schedule_entries.delete': 'מחיקת שיבוץ תורנות',
     'users.insert': 'הוספת בן/בת משפחה',
     'users.update': 'עדכון בן/בת משפחה',
     'users.delete': 'מחיקת בן/בת משפחה',
     'dogs.insert': 'הוספת כלב/ה',
     'dogs.update': 'עדכון פרטי כלב/ה',
     'dogs.delete': 'מחיקת כלב/ה',
-    'walk_swap_requests.insert': 'בקשת החלפת טיול',
-    'walk_swap_requests.update': 'עדכון בקשת החלפה',
-    'time_change_requests.insert': 'בקשת שינוי שעה',
+    'walk_swap_requests.insert': 'יצירת בקשת החלפת טיול',
+    'walk_swap_requests.update': 'עדכון בקשת החלפת טיול',
+    'walk_swap_requests.delete': 'מחיקת בקשת החלפת טיול',
+    'time_change_requests.insert': 'יצירת בקשת שינוי שעה',
     'time_change_requests.update': 'עדכון בקשת שינוי שעה',
+    'time_change_requests.delete': 'מחיקת בקשת שינוי שעה',
     'member_permission_overrides.insert': 'שינוי הרשאת משתמש',
     'member_permission_overrides.update': 'עדכון הרשאת משתמש',
+    'member_permission_overrides.delete': 'איפוס הרשאת משתמש',
+    'family_auth_members.insert': 'הוספת הרשאת משפחה',
+    'family_auth_members.update': 'עדכון הרשאת משפחה',
+    'family_auth_members.delete': 'הסרת הרשאת משפחה',
+    'profile_auth_sessions.insert': 'חיבור מכשיר לפרופיל',
+    'profile_auth_sessions.update': 'עדכון חיבור מכשיר לפרופיל',
+    'profile_auth_sessions.delete': 'ניתוק מכשיר מפרופיל',
+    'notifications.insert': 'יצירת התראה',
+    'notifications.update': 'עדכון התראה',
+    'notifications.delete': 'מחיקת התראה',
   };
-  return labels[action] ?? action;
+  if (labels[action]) return labels[action];
+  const match = action.match(/^(.+)\.(insert|update|delete)$/);
+  if (match) {
+    const target = auditTargetLabel(match[1]);
+    const verb = match[2] === 'insert' ? 'יצירת' : match[2] === 'update' ? 'עדכון' : 'מחיקת';
+    return `${verb} ${target}`;
+  }
+  return 'פעולת מערכת';
+}
+
+function auditBoolean(value: unknown): string {
+  return value === true ? 'כן' : value === false ? 'לא' : String(value ?? '—');
+}
+
+function auditFieldLabel(field: string): string {
+  const labels: Record<string, string> = {
+    name: 'שם', date: 'תאריך', time: 'שעה', scheduled_time: 'שעה מתוכננת',
+    status: 'סטטוס', role: 'תפקיד', label: 'תיאור', notes: 'הערות',
+    walks_per_day: 'מספר טיולים ביום', had_pee: 'פיפי', had_poop: 'קקי',
+    approval_status: 'סטטוס אישור', photo_url: 'תמונה', responsible_user_id: 'אחראי',
+    completed_by_user_id: 'בוצע על ידי', proposed_time: 'שעה מוצעת',
+  };
+  return labels[field] ?? 'פרט נוסף';
+}
+
+function auditValue(field: string, value: unknown): string {
+  if (field === 'photo_url') return value ? 'עודכנה' : 'הוסרה';
+  if (typeof value === 'boolean') return auditBoolean(value);
+  if (value === null || value === undefined || value === '') return 'ללא';
+  return String(value);
+}
+
+function auditMetadataLines(entry: SystemAdminGlobalAuditEntry): string[] {
+  const m = entry.metadata ?? {};
+  const lines: string[] = [];
+  const add = (label: string, value: unknown) => {
+    if (value !== null && value !== undefined && value !== '') lines.push(`${label}: ${String(value)}`);
+  };
+
+  add('תאריך הטיול', m.date);
+  add('שעת הטיול', m.time);
+  add('אחראי לטיול', m.responsible_user_name);
+  add('הטיול הושלם על ידי', m.completed_by_user_name);
+  add('משתמש יעד', m.target_user_name);
+  if ('had_pee' in m) lines.push(`פיפי: ${auditBoolean(m.had_pee)}`);
+  if ('had_poop' in m) lines.push(`קקי: ${auditBoolean(m.had_poop)}`);
+  if ('approval_status' in m) add('סטטוס אישור', approvalStatusLabel(String(m.approval_status)));
+  if ('multi_device' in m) lines.push(`חיבור ממספר מכשירים: ${auditBoolean(m.multi_device)}`);
+  if ('read_only' in m) lines.push(`מצב קריאה בלבד: ${auditBoolean(m.read_only)}`);
+  if ('hidden_from_family' in m) lines.push(`נסתר מבני המשפחה: ${auditBoolean(m.hidden_from_family)}`);
+
+  const changedFields = Array.isArray(m.changed_fields) ? m.changed_fields.filter((v): v is string => typeof v === 'string') : [];
+  const after = m.after && typeof m.after === 'object' && !Array.isArray(m.after) ? m.after as Record<string, unknown> : null;
+  if (changedFields.length) {
+    lines.push(`שדות ששונו: ${changedFields.map(auditFieldLabel).join(', ')}`);
+    if (after) {
+      changedFields
+        .filter((field) => ['name','date','time','scheduled_time','status','role','label','notes','walks_per_day','had_pee','had_poop','approval_status','photo_url','proposed_time'].includes(field))
+        .forEach((field) => lines.push(`${auditFieldLabel(field)} לאחר השינוי: ${auditValue(field, after[field])}`));
+    }
+  }
+
+  return lines;
 }
 
 function emailStatusLabel(status: string): string {
@@ -127,6 +229,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
   const [auditLog, setAuditLog] = useState<SystemAdminGlobalAuditEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
+  const [auditFamilyId, setAuditFamilyId] = useState<string | null>(null);
 
   const overview = useMemo(() => {
     const now = Date.now();
@@ -188,18 +291,23 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
     }
   }, [visible, loadFamilies]);
 
-  const openAuditLog = async () => {
-    setAuditVisible(true);
+  const loadAuditLog = async (familyId: string | null) => {
+    setAuditFamilyId(familyId);
     setAuditLoading(true);
     setAuditError(null);
     try {
-      const result = await getSystemAdminGlobalAudit(500);
+      const result = await getSystemAdminGlobalAudit(500, familyId);
       setAuditLog(result);
     } catch (e) {
       setAuditError(friendlyErrorMessage(e));
     } finally {
       setAuditLoading(false);
     }
+  };
+
+  const openAuditLog = async () => {
+    setAuditVisible(true);
+    await loadAuditLog(null);
   };
 
   const openEmailLog = async () => {
@@ -276,7 +384,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
             {!selectedFamilyId && !emailLogVisible && !auditVisible ? (
               <>
                 <Pressable onPress={openAuditLog} accessibilityRole="button" accessibilityLabel="פתיחת Audit Trail" hitSlop={10}>
-                  <RtlText style={styles.headerLink}>Audit Trail</RtlText>
+                  <RtlText style={styles.headerLink}>יומן פעילות</RtlText>
                 </Pressable>
                 <Pressable onPress={openEmailLog} accessibilityRole="button" accessibilityLabel="פתיחת יומן משלוח אימיילים" hitSlop={10}>
                 <RtlText style={styles.headerLink}>יומן אימיילים</RtlText>
@@ -294,21 +402,50 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
             <Pressable onPress={() => setAuditVisible(false)} accessibilityRole="button" accessibilityLabel="חזרה לרשימת המשפחות">
               <RtlText style={styles.backLink}>‹ חזרה לרשימה</RtlText>
             </Pressable>
-            <RtlText style={styles.sectionTitle}>Audit Trail מערכת ({auditLog.length})</RtlText>
-            <RtlText style={styles.auditHint}>כל שינוי נתונים שנעשה ע״י משתמש נשמר מעכשיו אוטומטית. הרשומות ההיסטוריות הקיימות מוצגות גם הן.</RtlText>
+            <RtlText style={styles.sectionTitle}>יומן פעילות מערכת ({auditLog.length})</RtlText>
+            <RtlText style={styles.auditHint}>כל פעולה נשמרת עם המשפחה, המשתמש, הזמן ופרטי השינוי. ניתן לסנן לפי משפחה.</RtlText>
+            <RtlText style={styles.filterTitle}>סינון לפי משפחה</RtlText>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.auditFilters}>
+              <Pressable
+                onPress={() => void loadAuditLog(null)}
+                style={[styles.auditFilterChip, auditFamilyId === null && styles.auditFilterChipActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: auditFamilyId === null }}
+              >
+                <RtlText style={[styles.auditFilterText, auditFamilyId === null && styles.auditFilterTextActive]}>כל המשפחות</RtlText>
+              </Pressable>
+              {families.map((family) => (
+                <Pressable
+                  key={family.familyId}
+                  onPress={() => void loadAuditLog(family.familyId)}
+                  style={[styles.auditFilterChip, auditFamilyId === family.familyId && styles.auditFilterChipActive]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: auditFamilyId === family.familyId }}
+                >
+                  <RtlText style={[styles.auditFilterText, auditFamilyId === family.familyId && styles.auditFilterTextActive]}>{family.familyName}</RtlText>
+                </Pressable>
+              ))}
+            </ScrollView>
             {auditLoading ? <ActivityIndicator color={colors.primary} style={styles.spinner} accessibilityLabel="טוען…" /> : null}
             {auditError ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{auditError}</RtlText> : null}
-            {!auditLoading && auditLog.length === 0 ? <RtlText style={styles.cardLine}>אין רשומות Audit</RtlText> : null}
-            {auditLog.map((entry) => (
-              <View key={`${entry.source}-${entry.id}`} style={styles.auditCard}>
-                <RtlText style={styles.auditAction}>{auditActionLabel(entry.action)}</RtlText>
-                <RtlText style={styles.cardLine}>{new Date(entry.createdAt).toLocaleString('he-IL')}</RtlText>
-                <RtlText style={styles.cardLine}>משפחה: {entry.familyName ?? 'מערכתי'}</RtlText>
-                <RtlText style={styles.cardLine}>משתמש: {entry.actorName ?? '—'}</RtlText>
-                <RtlText style={styles.cardLine}>אימייל: {entry.actorEmail ?? '—'}</RtlText>
-                <RtlText style={styles.cardLine}>יעד: {entry.targetType ?? '—'}{entry.targetId ? ` · ${entry.targetId.slice(0, 12)}` : ''}</RtlText>
-              </View>
-            ))}
+            {!auditLoading && auditLog.length === 0 ? <RtlText style={styles.cardLine}>לא נמצאו פעולות</RtlText> : null}
+            {auditLog.map((entry) => {
+              const detailLines = auditMetadataLines(entry);
+              return (
+                <View key={`${entry.source}-${entry.id}`} style={styles.auditCard}>
+                  <RtlText style={styles.auditAction}>{auditActionLabel(entry.action)}</RtlText>
+                  <RtlText style={styles.auditTime}>{new Date(entry.createdAt).toLocaleString('he-IL')}</RtlText>
+                  <RtlText style={styles.cardLine}>משפחה: {entry.familyName ?? 'פעולת מערכת כללית'}</RtlText>
+                  <RtlText style={styles.cardLine}>בוצע על ידי: {entry.actorName ?? 'מנהל מערכת / תהליך מערכת'}</RtlText>
+                  {entry.actorEmail ? <RtlText style={styles.cardLine}>אימייל: {entry.actorEmail}</RtlText> : null}
+                  <RtlText style={styles.cardLine}>סוג רשומה: {auditTargetLabel(entry.targetType)}</RtlText>
+                  {detailLines.map((line, index) => (
+                    <RtlText key={`${entry.id}-detail-${index}`} style={styles.auditDetail}>• {line}</RtlText>
+                  ))}
+                  {entry.targetId ? <RtlText style={styles.auditTechnical}>מזהה רשומה: {entry.targetId}</RtlText> : null}
+                </View>
+              );
+            })}
           </ScrollView>
         ) : emailLogVisible ? (
           <ScrollView contentContainerStyle={styles.content}>
@@ -642,6 +779,15 @@ const styles = StyleSheet.create({
   healthTitle: { ...typography.cardTitle, color: colors.textPrimary, textAlign: 'right' },
   healthLine: { ...typography.meta, color: colors.textSecondary, textAlign: 'right' },
   auditHint: { ...typography.meta, color: colors.textSecondary, textAlign: 'right', marginBottom: spacing.sm },
+  filterTitle: { ...typography.meta, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
+  auditFilters: { gap: spacing.sm, paddingVertical: spacing.sm, flexDirection: 'row-reverse' },
+  auditFilterChip: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: 999, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  auditFilterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  auditFilterText: { ...typography.meta, color: colors.textPrimary },
+  auditFilterTextActive: { color: colors.surface, fontWeight: '800' },
   auditCard: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
   auditAction: { ...typography.body, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
+  auditTime: { ...typography.meta, color: colors.primaryDark, fontWeight: '700', textAlign: 'right' },
+  auditDetail: { ...typography.meta, color: colors.textPrimary, textAlign: 'right', lineHeight: 21 },
+  auditTechnical: { ...typography.caption, color: colors.textSecondary, textAlign: 'right' },
 });
