@@ -59,6 +59,8 @@ interface ScheduleState {
   rescheduleWalk: (walkId: string, newTime: string) => Promise<void>;
   deleteEntry: (entryId: string) => Promise<void>;
 
+  startWalk: (walkId: string) => Promise<boolean>;
+  finishWalk: (walkId: string, completedByUserId: string, details?: WalkCompletionDetails) => Promise<boolean>;
   markDone: (walkId: string, completedByUserId: string, details?: WalkCompletionDetails) => Promise<boolean>;
   editDoneDetails: (walkId: string, details: WalkCompletionDetails) => Promise<void>;
   skip: (walkId: string) => Promise<void>;
@@ -510,6 +512,40 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       entries: s.entries.filter((e) => e.id !== entryId),
       walks: s.walks.filter((w) => w.scheduleEntryId !== entryId),
     }));
+  },
+
+  startWalk: async (walkId: string) => {
+    if (!guardTestModeMutation()) return false;
+    const walk = get().walks.find((w) => w.id === walkId);
+    if (!walk) return false;
+    try {
+      let updated: Walk;
+      if (repository.startWalk) updated = await repository.startWalk(walkId);
+      else updated = { ...walk, status: 'in_progress', startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
+      await cancelWalkNotifications(walkId);
+      return true;
+    } catch (e) {
+      set({ actionError: friendlyErrorMessage(e, 'לא הצלחנו להתחיל את הטיול') });
+      return false;
+    }
+  },
+
+  finishWalk: async (walkId: string, completedByUserId: string, details: WalkCompletionDetails = {}) => {
+    if (!guardTestModeMutation()) return false;
+    const walk = get().walks.find((w) => w.id === walkId);
+    if (!walk) return false;
+    try {
+      let updated: Walk;
+      if (repository.finishWalk) updated = await repository.finishWalk(walkId, completedByUserId, details);
+      else updated = markWalkDone(walk, completedByUserId, details);
+      set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
+      await cancelWalkNotifications(walkId);
+      return true;
+    } catch (e) {
+      set({ actionError: friendlyErrorMessage(e, 'לא הצלחנו לסיים את הטיול') });
+      return false;
+    }
   },
 
   markDone: async (walkId: string, completedByUserId: string, details: WalkCompletionDetails = {}) => {
