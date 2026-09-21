@@ -386,6 +386,24 @@ export class SupabaseRepository implements Repository {
    * request lands second simply affects 0 rows instead of overwriting the
    * first person's completion.
    */
+  async startWalk(walkId: string): Promise<Walk> {
+    const { data, error } = await this.client.rpc('start_walk', { target_walk_id: walkId });
+    if (error) throw error;
+    return toWalk(data);
+  }
+
+  async finishWalk(walkId: string, actualWalkerId: string, details: { hadPee?: boolean; hadPoop?: boolean; note?: string } = {}): Promise<Walk> {
+    const { data, error } = await this.client.rpc('finish_walk', {
+      target_walk_id: walkId,
+      actual_walker_id: actualWalkerId,
+      p_had_pee: details.hadPee ?? null,
+      p_had_poop: details.hadPoop ?? null,
+      p_note: details.note ?? null,
+    });
+    if (error) throw error;
+    return toWalk(data);
+  }
+
   async saveWalk(walk: Walk): Promise<void> {
     if (walk.status === 'done') {
       const { data, error } = await this.client
