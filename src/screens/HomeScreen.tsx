@@ -471,7 +471,6 @@ export function HomeScreen() {
             resizeMode="contain"
             accessibilityLabel="Walkie Doggy Link"
           />
-          <RtlText style={styles.brandTagline}>טיולים מאושרים לכל המשפחה ♥</RtlText>
           {isSupabaseConfigured ? (
             <Pressable
               onPress={openRequestsInbox}
@@ -490,43 +489,32 @@ export function HomeScreen() {
         </View>
 
         <Pressable
-          style={[styles.dogHero, dog?.photoUrl ? styles.dogHeroPhoto : styles.dogHeroFallback]}
+          style={styles.dogSummaryCard}
           onPress={() => setDogProfileVisible(true)}
           accessibilityRole="button"
           accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב'}`}
         >
-          {dog?.photoUrl ? (
-            <>
+          <View style={styles.dogSummaryCopy}>
+            <RtlText style={styles.dogSummaryEyebrow}>הכלב שלנו</RtlText>
+            <RtlText style={styles.dogSummaryName}>{dog?.name ?? 'הכלב/ה'}</RtlText>
+            <RtlText style={styles.dogSummaryLink}>לפרופיל הכלב ›</RtlText>
+          </View>
+          <View style={styles.dogSummaryMedia}>
+            {dog?.photoUrl ? (
               <Image
                 source={{ uri: dog.photoUrl }}
-                style={styles.dogHeroImage}
+                style={styles.dogSummaryImage}
                 resizeMode="cover"
                 accessibilityLabel={`תמונה של ${dog.name}`}
               />
-              <View style={styles.dogHeroShade} pointerEvents="none" />
-            </>
-          ) : (
-            <View style={styles.dogHeroMascot}>
+            ) : (
               <WalkieMascot
                 state="idle"
-                size={168}
+                size={104}
                 accessibilityLabel="הכלב המונפש של Walkie Doggy"
               />
-            </View>
-          )}
-          {dog?.photoUrl ? (
-            <View style={styles.photoProfileBadge}>
-              <RtlText style={styles.photoProfileBadgeText}>פרופיל ›</RtlText>
-            </View>
-          ) : (
-            <View style={[styles.dogHeroCopy, styles.dogHeroCopyFallback]}>
-              <RtlText style={styles.dogHeroGreeting}>היי! מוכנים לטיול הבא? 🐾</RtlText>
-              <RtlText style={styles.dogHeroName}>{dog?.name ?? 'הכלב/ה'}</RtlText>
-              <View style={styles.dogHeroProfilePill}>
-                <RtlText style={styles.dogHeroProfileLink}>לפרופיל הכלב ›</RtlText>
-              </View>
-            </View>
-          )}
+            )}
+          </View>
         </Pressable>
 
         <View style={styles.nextWalkLift}>
@@ -1045,7 +1033,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: 14, paddingBottom: spacing.xxxl, width: '100%' },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: 14 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
-  nextWalkLift: { marginTop: -30, zIndex: 4, paddingHorizontal: 6 },
+  nextWalkLift: { marginTop: 0, zIndex: 1, paddingHorizontal: 0 },
   unplannedButton: { marginTop: -2 },
   testModeBanner: {
     flexDirection: 'row',
@@ -1059,23 +1047,36 @@ const styles = StyleSheet.create({
   testModeBannerText: { flex: 1, color: '#fff', fontWeight: '700', fontSize: typography.meta.fontSize, textAlign: 'right' },
   testModeBannerButton: { backgroundColor: '#ffffff33', borderRadius: radii.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   testModeBannerButtonText: { color: '#fff', fontWeight: '700', fontSize: 12 },
-  topRow: { position: 'relative', minHeight: 66, alignItems: 'center', justifyContent: 'center' },
-  brandWordmark: { width: 150, height: 42 },
-  brandTagline: { marginTop: -4, color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: '700', textAlign: 'center' },
-  dogHero: { width: '100%', height: 208, borderRadius: 30, overflow: 'hidden', backgroundColor: '#CFEDE5', position: 'relative', justifyContent: 'flex-end' },
-  dogHeroPhoto: { height: 248, backgroundColor: '#DCEBE5' },
-  dogHeroFallback: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14 },
-  dogHeroImage: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%' },
-  dogHeroShade: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: '#00000008' },
-  dogHeroMascot: { width: 172, height: 180, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start' },
-  dogHeroCopy: { minWidth: 0, alignItems: 'flex-end', gap: 4 },
-  dogHeroCopyFallback: { flex: 1, paddingRight: 6, paddingBottom: 30 },
-  dogHeroGreeting: { ...typography.body, color: colors.textPrimary, fontWeight: '800', textAlign: 'right' },
-  dogHeroName: { color: colors.textPrimary, fontSize: 26, lineHeight: 32, fontWeight: '900', textAlign: 'right' },
-  dogHeroProfilePill: { marginTop: 5, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: '#FFFFFFCC' },
-  dogHeroProfileLink: { ...typography.meta, color: colors.primaryDark, fontWeight: '900', textAlign: 'right' },
-  photoProfileBadge: { position: 'absolute', top: 14, right: 14, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, backgroundColor: '#FFFFFFE8' },
-  photoProfileBadgeText: { ...typography.meta, color: colors.primaryDark, fontWeight: '900', textAlign: 'right' },
+  topRow: { position: 'relative', minHeight: 52, alignItems: 'center', justifyContent: 'center' },
+  brandWordmark: { width: 132, height: 42 },
+  dogSummaryCard: {
+    width: '100%',
+    minHeight: 112,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: 10,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  dogSummaryMedia: {
+    width: 92,
+    height: 92,
+    borderRadius: 22,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#CFEDE5',
+    flexShrink: 0,
+  },
+  dogSummaryImage: { width: '100%', height: '100%' },
+  dogSummaryCopy: { flex: 1, alignItems: 'flex-end', justifyContent: 'center', gap: 2, paddingHorizontal: 4 },
+  dogSummaryEyebrow: { ...typography.meta, color: colors.textSecondary, fontWeight: '700', textAlign: 'right' },
+  dogSummaryName: { fontSize: 24, lineHeight: 30, color: colors.textPrimary, fontWeight: '900', textAlign: 'right' },
+  dogSummaryLink: { ...typography.meta, color: colors.primaryDark, fontWeight: '900', textAlign: 'right', marginTop: 3 },
   notificationButton: { position: 'absolute', right: 0, top: 11, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
   webNotificationButton: { left: 0, right: undefined },
   notificationIcon: { fontSize: 18 },
