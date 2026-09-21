@@ -316,12 +316,12 @@ export function FamilyScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
-        <RtlText style={styles.header} accessibilityRole="header">בני המשפחה</RtlText>
-        {/* BATCH 4 (item B — dog profile completion): was hard-coded
-            "טופי" regardless of the family's actual dog — now interpolates
-            the real, authoritative dog.name, with a neutral fallback while
-            family data is still loading. */}
-        <RtlText style={styles.subheader}>ניהול מי משתתף בסבב הטיולים של {dog?.name ?? 'הכלב/ה'}</RtlText>
+        <RtlText style={styles.header} accessibilityRole="header">המשפחה שלנו</RtlText>
+
+        <View style={styles.dogSection}>
+          <RtlText style={styles.sectionHeader} accessibilityRole="header">הכלב שלנו</RtlText>
+          <RtlText style={styles.sectionDescription}>פרופיל הכלב נפרד מבני המשפחה</RtlText>
+        </View>
 
         {dog ? (
           <View style={styles.dogProfileCard}>
@@ -337,6 +337,11 @@ export function FamilyScreen() {
             ) : null}
           </View>
         ) : null}
+
+        <View style={styles.memberSectionHeader}>
+          <RtlText style={styles.sectionHeader} accessibilityRole="header">בני המשפחה</RtlText>
+          <RtlText style={styles.subheader}>רק בני המשפחה שמשתתפים בניהול ובטיולים של {dog?.name ?? 'הכלב/ה'}</RtlText>
+        </View>
 
         <View style={styles.list}>
           {users.filter((u) => !u.removedAt).map((u) => {
@@ -532,6 +537,10 @@ const styles = StyleSheet.create({
   content: { padding: spacing.xl, gap: spacing.lg, paddingBottom: spacing.xxxl },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
   header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  sectionHeader: { width: '100%', ...typography.sectionTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  dogSection: { width: '100%', gap: spacing.xs, marginTop: spacing.sm, paddingBottom: spacing.xs, borderBottomWidth: 1, borderBottomColor: colors.border },
+  memberSectionHeader: { width: '100%', gap: spacing.xs, marginTop: spacing.lg, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
+  sectionDescription: { width: '100%', ...typography.meta, color: colors.textSecondary, textAlign: 'right', writingDirection: 'rtl' },
   subheader: { width: '100%', ...typography.meta, color: colors.textSecondary, textAlign: 'right', writingDirection: 'rtl', marginTop: -8 },
   dogProfileCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md },
   dogProfileBody: { flex: 1, gap: 3 },
