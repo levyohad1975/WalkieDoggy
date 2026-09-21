@@ -9,7 +9,6 @@ import { colors } from '../theme/colors';
 import { nativeDirection } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
-import { DogPhoto } from './DogPhoto';
 import { Countdown } from './Countdown';
 import { WalkieMascot } from './WalkieMascot';
 import { deriveMascotMoment } from '../mascot/mascotStage';
@@ -73,6 +72,7 @@ export function NextWalkCard({
   requestStatusLine,
   primaryLabel,
 }: NextWalkCardProps) {
+  void dogPhotoUrl;
   const overdue = isOverdue(walk);
   // Batch 2, requirement 7 ("walk requires attention" in-app state) — see
   // src/logic/walkAttention.ts for why this is a pure, derived read rather
@@ -105,25 +105,18 @@ export function NextWalkCard({
   return (
     <View style={[styles.card, isWeb && styles.webCard, overdue && styles.cardOverdue]}>
       <View style={[styles.eyebrowRow, isWeb && styles.webEyebrowRow]}>
-        <DogPhoto photoUrl={dogPhotoUrl} size={isWeb ? 60 : 72} />
-        <RtlText style={styles.eyebrow} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-          {primaryLabel ?? `הטיול הבא של ${dogName}`}
-        </RtlText>
-        {/* The Walkie Doggy MASCOT (brand character) — deliberately separate
-            from DogPhoto above (the family's REAL dog), never interchanged,
-            per the Batch 4 brief's explicit distinction.
-            Home-card-only size bump (+50%, from 40/46): the mascot read as a
-            small decorative icon at the old size. 60 (web) / 69 (native) is
-            capped at DogPhoto's own size in this row (60/72) so the taller
-            side of the row never grows and nothing here collides with the
-            eyebrow title or card edge. Other WalkieMascot call sites
-            (onboarding, reminder, celebration) are untouched. */}
-        <WalkieMascot state={mascotState} size={isWeb ? 60 : 69} testID="next-walk-mascot" />
+        <View style={styles.titleBlock}>
+          <RtlText style={styles.eyebrow} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+            {primaryLabel ?? `הטיול הבא של ${dogName}`}
+          </RtlText>
+          <RtlText style={styles.mascotMessage} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+            {message}
+          </RtlText>
+        </View>
+        <View style={styles.cardMascot}>
+          <WalkieMascot state={mascotState} size={isWeb ? 46 : 52} testID="next-walk-mascot" />
+        </View>
       </View>
-
-      <RtlText style={styles.mascotMessage} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-        {message}
-      </RtlText>
 
       <View style={[styles.mainRow, isWeb && styles.webMainRow]}>
         <View style={styles.timeBlock}>
@@ -251,24 +244,27 @@ const CARD_MAX_FONT_SCALE = 1.35;
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.statusCurrentBg,
-    borderRadius: 28,
-    paddingHorizontal: 20,
-    paddingVertical: 24,
-    borderWidth: 1.5,
-    borderColor: colors.primary + '33',
+    backgroundColor: colors.surface,
+    borderRadius: 24,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  webCard: { borderRadius: 22, paddingHorizontal: 28, paddingVertical: 18 },
-  cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
-  eyebrowRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), alignItems: 'center', gap: 8, marginBottom: 12 },
-  webEyebrowRow: { marginBottom: 4 },
-  eyebrow: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
+  webCard: { borderRadius: 22, paddingHorizontal: 24, paddingVertical: 18 },
+  cardOverdue: { backgroundColor: '#FFF9F7', borderColor: '#F2D8D0' },
+  eyebrowRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), alignItems: 'center', gap: 10, marginBottom: 14 },
+  webEyebrowRow: { marginBottom: 10 },
+  titleBlock: { flex: 1, minWidth: 0, alignItems: 'flex-end', gap: 3 },
+  cardMascot: { width: 54, height: 54, borderRadius: 27, backgroundColor: '#EAF8F4', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  eyebrow: { width: '100%', fontSize: 16, lineHeight: 21, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
   mascotMessage: {
-    fontSize: 13,
+    width: '100%',
+    fontSize: 12,
+    lineHeight: 17,
     fontWeight: '600',
-    color: colors.primaryDark,
+    color: colors.textSecondary,
     textAlign: 'right',
-    marginBottom: 14,
   },
   // Round 6F correction: timeBlock/personBlock each get an explicit, equal
   // `flex` share of the row instead of sizing themselves to their own text's
@@ -276,14 +272,14 @@ const styles = StyleSheet.create({
   // independent of Dynamic Type/system font-size — so neither block's
   // on-screen position drifts as text metrics change; only the content
   // centered inside each fixed-width box can shift by a few px.
-  mainRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 12 },
+  mainRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14, gap: 12, backgroundColor: colors.background, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 12 },
   webMainRow: { marginBottom: 10, minHeight: 74 },
   timeBlock: { flex: 1, alignItems: 'flex-start', minWidth: 0 },
   // Reduced from 44 (BUG report: too large, wrapped to two lines on a
   // narrow iPhone and dwarfed the rest of the card). Still the single
   // biggest element on the card, so it stays the clear visual anchor next
   // to the responsible person's name (18) and "סמן כבוצע" button.
-  time: { fontSize: 30, fontWeight: '800', color: colors.textPrimary, textAlign: 'left' },
+  time: { fontSize: 32, fontWeight: '900', color: colors.textPrimary, textAlign: 'left' },
   dateContext: { fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginTop: 1 },
   relative: { fontSize: 16, fontWeight: '600', color: colors.primary, marginTop: 2 },
   relativeOverdue: { color: colors.statusOverdue },
@@ -291,7 +287,7 @@ const styles = StyleSheet.create({
   personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
   responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'right' },
   doneButton: { marginTop: 4 },
-  resolveRow: { flexDirection: 'row', gap: 8, marginTop: 4, width: '100%' },
+  resolveRow: { flexDirection: 'row', gap: 10, marginTop: 2, width: '100%' },
   resolveButton: { flex: 1, minWidth: 0 },
   notMineNote: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: 6 },
   requestStatusLine: {
@@ -303,7 +299,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   requestStatusApproved: { color: colors.statusDone },
-  linkRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 14 },
+  linkRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 10 },
   linkText: { color: colors.primaryDark, fontSize: 14, fontWeight: '600' },
   linkDivider: { color: colors.textSecondary },
 });
