@@ -127,6 +127,12 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
   const [auditLog, setAuditLog] = useState<SystemAdminGlobalAuditEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
+  const [auditFamilyId, setAuditFamilyId] = useState<string>('all');
+
+  const filteredAuditLog = useMemo(
+    () => auditFamilyId === 'all' ? auditLog : auditLog.filter((entry) => entry.familyId === auditFamilyId),
+    [auditLog, auditFamilyId]
+  );
 
   const overview = useMemo(() => {
     const now = Date.now();
@@ -189,6 +195,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
   }, [visible, loadFamilies]);
 
   const openAuditLog = async () => {
+    setAuditFamilyId('all');
     setAuditVisible(true);
     setAuditLoading(true);
     setAuditError(null);
@@ -294,12 +301,37 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
             <Pressable onPress={() => setAuditVisible(false)} accessibilityRole="button" accessibilityLabel="חזרה לרשימת המשפחות">
               <RtlText style={styles.backLink}>‹ חזרה לרשימה</RtlText>
             </Pressable>
-            <RtlText style={styles.sectionTitle}>Audit Trail מערכת ({auditLog.length})</RtlText>
-            <RtlText style={styles.auditHint}>כל שינוי נתונים שנעשה ע״י משתמש נשמר מעכשיו אוטומטית. הרשומות ההיסטוריות הקיימות מוצגות גם הן.</RtlText>
+            <RtlText style={styles.sectionTitle}>Audit Trail מערכת ({filteredAuditLog.length})</RtlText>
+            <RtlText style={styles.auditHint}>כל שינוי נתונים שנעשה ע״י משתמש נשמר מעכשיו אוטומטית. ניתן לסנן את הרשומות לפי משפחה.</RtlText>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.auditFamilyFilters}>
+              <Pressable
+                onPress={() => setAuditFamilyId('all')}
+                style={[styles.auditFilterChip, auditFamilyId === 'all' && styles.auditFilterChipSelected]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: auditFamilyId === 'all' }}
+                accessibilityLabel="הצגת Audit מכל המשפחות"
+              >
+                <RtlText style={[styles.auditFilterText, auditFamilyId === 'all' && styles.auditFilterTextSelected]}>כל המשפחות</RtlText>
+              </Pressable>
+              {families.map((family) => (
+                <Pressable
+                  key={family.familyId}
+                  onPress={() => setAuditFamilyId(family.familyId)}
+                  style={[styles.auditFilterChip, auditFamilyId === family.familyId && styles.auditFilterChipSelected]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: auditFamilyId === family.familyId }}
+                  accessibilityLabel={`סינון Audit למשפחת ${family.familyName}`}
+                >
+                  <RtlText style={[styles.auditFilterText, auditFamilyId === family.familyId && styles.auditFilterTextSelected]}>
+                    {family.familyName}
+                  </RtlText>
+                </Pressable>
+              ))}
+            </ScrollView>
             {auditLoading ? <ActivityIndicator color={colors.primary} style={styles.spinner} accessibilityLabel="טוען…" /> : null}
             {auditError ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{auditError}</RtlText> : null}
-            {!auditLoading && auditLog.length === 0 ? <RtlText style={styles.cardLine}>אין רשומות Audit</RtlText> : null}
-            {auditLog.map((entry) => (
+            {!auditLoading && filteredAuditLog.length === 0 ? <RtlText style={styles.cardLine}>אין רשומות Audit</RtlText> : null}
+            {filteredAuditLog.map((entry) => (
               <View key={`${entry.source}-${entry.id}`} style={styles.auditCard}>
                 <RtlText style={styles.auditAction}>{auditActionLabel(entry.action)}</RtlText>
                 <RtlText style={styles.cardLine}>{new Date(entry.createdAt).toLocaleString('he-IL')}</RtlText>
@@ -642,6 +674,11 @@ const styles = StyleSheet.create({
   healthTitle: { ...typography.cardTitle, color: colors.textPrimary, textAlign: 'right' },
   healthLine: { ...typography.meta, color: colors.textSecondary, textAlign: 'right' },
   auditHint: { ...typography.meta, color: colors.textSecondary, textAlign: 'right', marginBottom: spacing.sm },
+  auditFamilyFilters: { flexDirection: 'row-reverse', gap: spacing.sm, paddingVertical: spacing.xs },
+  auditFilterChip: { borderWidth: 1, borderColor: colors.border, borderRadius: radii.round, backgroundColor: colors.surface, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  auditFilterChipSelected: { backgroundColor: colors.primaryDark, borderColor: colors.primaryDark },
+  auditFilterText: { ...typography.meta, color: colors.textPrimary, fontWeight: '700' },
+  auditFilterTextSelected: { color: colors.surface },
   auditCard: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
   auditAction: { ...typography.body, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
 });
