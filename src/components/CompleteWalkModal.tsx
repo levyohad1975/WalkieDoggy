@@ -13,7 +13,7 @@ interface CompleteWalkModalProps {
   scheduledTime?: string;
   users: FamilyUser[];
   defaultUserId: string;
-  onConfirm: (result: { completedByUserId: string; hadPee: boolean; hadPoop: boolean; note: string }) => void;
+  onConfirm: (result: { completedByUserId: string; hadPee: boolean; hadPoop: boolean; note: string; completedAt?: string }) => void;
   onCancel: () => void;
 }
 
@@ -35,6 +35,8 @@ export function CompleteWalkModal({
   const [hadPee, setHadPee] = useState(false);
   const [hadPoop, setHadPoop] = useState(false);
   const [note, setNote] = useState('');
+  const [useCustomTime, setUseCustomTime] = useState(false);
+  const [actualTime, setActualTime] = useState('');
 
   useEffect(() => {
     if (visible) {
@@ -42,6 +44,8 @@ export function CompleteWalkModal({
       setHadPee(false);
       setHadPoop(false);
       setNote('');
+      setUseCustomTime(false);
+      setActualTime(new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false }));
     }
   }, [visible, defaultUserId]);
 
@@ -61,6 +65,29 @@ export function CompleteWalkModal({
             <ScrollView keyboardShouldPersistTaps="handled">
               <RtlText style={styles.title} accessibilityRole="header">סימון הטיול של {dogName} כבוצע</RtlText>
             {scheduledTime ? <RtlText style={styles.subtitle}>מתוכנן לשעה {scheduledTime}</RtlText> : null}
+
+
+            <RtlText style={styles.label}>מתי הטיול בוצע?</RtlText>
+            <View style={styles.timeChoiceRow}>
+              <Pressable onPress={() => setUseCustomTime(false)} style={[styles.timeChoice, !useCustomTime && styles.timeChoiceActive]}>
+                <RtlText style={styles.timeChoiceText}>עכשיו</RtlText>
+              </Pressable>
+              <Pressable onPress={() => setUseCustomTime(true)} style={[styles.timeChoice, useCustomTime && styles.timeChoiceActive]}>
+                <RtlText style={styles.timeChoiceText}>שעה אחרת</RtlText>
+              </Pressable>
+            </View>
+            {useCustomTime ? (
+              <TextInput
+                value={actualTime}
+                onChangeText={setActualTime}
+                placeholder="19:00"
+                keyboardType="numbers-and-punctuation"
+                maxLength={5}
+                style={styles.timeInput}
+                textAlign="center"
+                accessibilityLabel="שעת ביצוע הטיול בפועל"
+              />
+            ) : null}
 
             <RtlText style={styles.label}>מי טייל בפועל?</RtlText>
             <View style={styles.userRow}>
@@ -123,7 +150,17 @@ export function CompleteWalkModal({
             <View style={styles.actions}>
               <Button
                 label="בוצע ✓"
-                onPress={() => onConfirm({ completedByUserId: performedBy, hadPee, hadPoop, note: note.trim() })}
+                onPress={() => {
+                  let completedAt: string | undefined;
+                  if (useCustomTime && /^([01]\\d|2[0-3]):[0-5]\\d$/.test(actualTime)) {
+                    const [hours, minutes] = actualTime.split(':').map(Number);
+                    const actual = new Date();
+                    actual.setHours(hours, minutes, 0, 0);
+                    if (actual.getTime() > Date.now()) actual.setDate(actual.getDate() - 1);
+                    completedAt = actual.toISOString();
+                  }
+                  onConfirm({ completedByUserId: performedBy, hadPee, hadPoop, note: note.trim(), completedAt });
+                }}
                 style={styles.flex}
               />
               <Button label="ביטול" onPress={onCancel} variant="secondary" style={styles.flex} />
@@ -143,6 +180,11 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
   subtitle: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xs, marginBottom: spacing.md },
   label: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: spacing.lg, marginBottom: spacing.sm, textAlign: 'right' },
+  timeChoiceRow: { flexDirection: 'row', gap: spacing.sm },
+  timeChoice: { flex: 1, paddingVertical: 10, borderRadius: radii.md, backgroundColor: colors.surfaceMuted, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
+  timeChoiceActive: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
+  timeChoiceText: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
+  timeInput: { marginTop: spacing.sm, backgroundColor: colors.surfaceMuted, borderRadius: radii.md, padding: 12, fontSize: 18, fontWeight: '700', color: colors.textPrimary },
   userRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   userChip: { alignItems: 'center', minWidth: 68, gap: spacing.xs, opacity: 0.55 },
   userChipActive: { opacity: 1 },
