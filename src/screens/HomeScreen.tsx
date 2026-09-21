@@ -471,6 +471,14 @@ export function HomeScreen() {
             resizeMode="contain"
             accessibilityLabel="Walkie Doggy Link"
           />
+          <Pressable
+            onPress={() => setDogProfileVisible(true)}
+            style={styles.mascotHeaderButton}
+            accessibilityRole="button"
+            accessibilityLabel="פתיחת פרופיל הכלב"
+          >
+            <WalkieMascot state="idle" size={38} accessibilityLabel="Walkie Doggy" />
+          </Pressable>
           {isSupabaseConfigured ? (
             <Pressable
               onPress={openRequestsInbox}
@@ -488,35 +496,6 @@ export function HomeScreen() {
           ) : null}
         </View>
 
-        <Pressable
-          style={styles.dogSummaryCard}
-          onPress={() => setDogProfileVisible(true)}
-          accessibilityRole="button"
-          accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב'}`}
-        >
-          <View style={styles.dogSummaryCopy}>
-            <RtlText style={styles.dogSummaryEyebrow}>הכלב שלנו</RtlText>
-            <RtlText style={styles.dogSummaryName}>{dog?.name ?? 'הכלב/ה'}</RtlText>
-            <RtlText style={styles.dogSummaryLink}>לפרופיל הכלב ›</RtlText>
-          </View>
-          <View style={styles.dogSummaryMedia}>
-            {dog?.photoUrl ? (
-              <Image
-                source={{ uri: dog.photoUrl }}
-                style={styles.dogSummaryImage}
-                resizeMode="cover"
-                accessibilityLabel={`תמונה של ${dog.name}`}
-              />
-            ) : (
-              <WalkieMascot
-                state="idle"
-                size={104}
-                accessibilityLabel="הכלב המונפש של Walkie Doggy"
-              />
-            )}
-          </View>
-        </Pressable>
-
         <View style={styles.nextWalkLift}>
           {nextWalk ? (
           <NextWalkCard
@@ -525,7 +504,7 @@ export function HomeScreen() {
             currentUserId={effectiveUserId}
             dogName={dog?.name ?? 'הכלב/ה'}
             dogPhotoUrl={dog?.photoUrl}
-            showDogPhoto={false}
+            showDogPhoto
             showMascot={false}
             dogSex={dog?.sex}
             requestStatusLine={
@@ -1049,6 +1028,7 @@ const styles = StyleSheet.create({
   testModeBannerButtonText: { color: '#fff', fontWeight: '700', fontSize: 12 },
   topRow: { position: 'relative', minHeight: 52, alignItems: 'center', justifyContent: 'center' },
   brandWordmark: { width: 132, height: 42 },
+  mascotHeaderButton: { position: 'absolute', left: 0, top: 6, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   dogSummaryCard: {
     width: '100%',
     minHeight: 112,
