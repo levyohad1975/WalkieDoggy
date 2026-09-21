@@ -117,11 +117,11 @@ export function NextWalkCard({
   }, [walk.id, walk.scheduledTime, walk.date, walk.status, dogName, dogSex, responsible?.name]);
 
   return (
-    <View style={[styles.card, isWeb && styles.webCard, overdue && styles.cardOverdue]}>
+    <View style={[styles.card, isWeb && styles.webCard, isActive && styles.cardActive, overdue && !isActive && styles.cardOverdue]}>
       <View style={[styles.eyebrowRow, isWeb && styles.webEyebrowRow]}>
         {showDogPhoto ? <DogPhoto photoUrl={dogPhotoUrl} size={isWeb ? 60 : 72} /> : null}
         <RtlText style={styles.eyebrow} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-          {primaryLabel ?? `הטיול הבא של ${dogName}`}
+          {isActive ? `בזמן טיול · ${dogName}` : (primaryLabel ?? `הטיול הבא של ${dogName}`)}
         </RtlText>
         {/* The Walkie Doggy MASCOT (brand character) — deliberately separate
             from DogPhoto above (the family's REAL dog), never interchanged,
@@ -271,6 +271,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   webCard: { borderRadius: 22, paddingHorizontal: 22, paddingVertical: 15 },
+  cardActive: { backgroundColor: colors.successSoft, borderColor: colors.success + '55' },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
   eyebrowRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), alignItems: 'center', gap: 8, marginBottom: 6 },
   webEyebrowRow: { marginBottom: 2 },
