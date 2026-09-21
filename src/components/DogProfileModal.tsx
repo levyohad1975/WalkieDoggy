@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RtlText } from './RtlText';
+import { WalkieMascot } from './WalkieMascot';
 import { useFamilyStore } from '../store/familyStore';
 import { useAuthStore, useEffectiveFamilyRole } from '../store/authStore';
 import { DEMO_FAMILY } from '../data/demoData';
@@ -57,12 +58,20 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
           {dog ? (
             <>
               <View style={styles.photoWrap}>
-                <Image
-                  source={dog.photoUrl ? { uri: dog.photoUrl } : require('../../assets/icon.png')}
-                  style={styles.photo}
-                  resizeMode="cover"
-                  accessibilityLabel={dog.photoUrl ? `תמונה של ${dog.name}` : 'כלב Walkie Doggy'}
-                />
+                {dog.photoUrl ? (
+                  <Image
+                    source={{ uri: dog.photoUrl }}
+                    style={styles.photo}
+                    resizeMode="cover"
+                    accessibilityLabel={`תמונה של ${dog.name}`}
+                  />
+                ) : (
+                  <WalkieMascot
+                    state="idle"
+                    size={180}
+                    accessibilityLabel="הכלב המונפש של Walkie Doggy"
+                  />
+                )}
               </View>
               <RtlText style={styles.name}>{dog.name}</RtlText>
               <RtlText style={styles.hint}>
@@ -103,7 +112,7 @@ const styles = StyleSheet.create({
   title: { ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right' },
   content: { padding: spacing.xl, gap: spacing.md, alignItems: 'center', paddingBottom: spacing.xxxl },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
-  photoWrap: { marginTop: spacing.md },
+  photoWrap: { marginTop: spacing.md, width: 180, height: 180, alignItems: 'center', justifyContent: 'center' },
   photo: { width: 180, height: 180, borderRadius: 90, borderWidth: 3, borderColor: colors.surface },
   name: { ...typography.screenTitle, color: colors.textPrimary, textAlign: 'center' },
   hint: { ...typography.meta, color: colors.textSecondary, textAlign: 'center' },
