@@ -297,7 +297,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
             <RtlText style={styles.sectionTitle}>Audit Trail מערכת ({auditLog.length})</RtlText>
             <RtlText style={styles.auditHint}>כל שינוי נתונים שנעשה ע״י משתמש נשמר מעכשיו אוטומטית. הרשומות ההיסטוריות הקיימות מוצגות גם הן.</RtlText>
             {auditLoading ? <ActivityIndicator color={colors.primary} style={styles.spinner} accessibilityLabel="טוען…" /> : null}
-            {auditError ? <RtlText style={styles.error} accessibilityRole="alert">{auditError}</RtlText> : null}
+            {auditError ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{auditError}</RtlText> : null}
             {!auditLoading && auditLog.length === 0 ? <RtlText style={styles.cardLine}>אין רשומות Audit</RtlText> : null}
             {auditLog.map((entry) => (
               <View key={`${entry.source}-${entry.id}`} style={styles.auditCard}>
@@ -372,7 +372,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                 ) : null}
 
                 <RtlText style={styles.sectionTitle}>משפחה</RtlText>
-                {observerError ? <RtlText style={styles.error} accessibilityRole="alert">{observerError}</RtlText> : null}
+                {observerError ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{observerError}</RtlText> : null}
                 <View style={styles.card}>
                   <RtlText style={styles.cardLine}>שם: {detail.family?.name ?? '—'}</RtlText>
                   <RtlText style={styles.cardLine}>קוד הצטרפות: {detail.family?.inviteCode ?? '—'}</RtlText>
