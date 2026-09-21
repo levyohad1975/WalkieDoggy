@@ -527,9 +527,12 @@ export function HomeScreen() {
             )}
           </View>
           <View style={styles.dogHeroCopy}>
-            <RtlText style={styles.dogHeroGreeting}>היי! מוכנים לטיול? 🐾</RtlText>
+            <RtlText style={styles.dogHeroEyebrow}>החבר/ה שלנו 🐾</RtlText>
             <RtlText style={styles.dogHeroName}>{dog?.name ?? 'הכלב/ה'}</RtlText>
-            <RtlText style={styles.dogHeroProfileLink}>לפרופיל הכלב ›</RtlText>
+            <View style={styles.dogHeroLinkPill}>
+              <RtlText style={styles.dogHeroProfileLink}>לפרופיל הכלב</RtlText>
+              <RtlText style={styles.dogHeroChevron}>‹</RtlText>
+            </View>
           </View>
         </Pressable>
 
@@ -1065,8 +1068,8 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
-  content: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: spacing.lg, paddingBottom: spacing.xxxl, width: '100%' },
-  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: spacing.lg },
+  content: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: 14, paddingBottom: spacing.xxxl, width: '100%' },
+  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: 16 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
   unplannedButton: { marginTop: -4 },
   testModeBanner: {
@@ -1081,15 +1084,17 @@ const styles = StyleSheet.create({
   testModeBannerText: { flex: 1, color: '#fff', fontWeight: '700', fontSize: typography.meta.fontSize, textAlign: 'right' },
   testModeBannerButton: { backgroundColor: '#ffffff33', borderRadius: radii.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   testModeBannerButtonText: { color: '#fff', fontWeight: '700', fontSize: 12 },
-  topRow: { position: 'relative', minHeight: 46, alignItems: 'center', justifyContent: 'center' },
-  brandWordmark: { width: 150, height: 44 },
-  dogHero: { width: '100%', minHeight: 220, borderRadius: 28, overflow: 'hidden', backgroundColor: '#DFF5EE', position: 'relative', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 12 },
-  dogHeroMascot: { width: 190, height: 190, alignItems: 'center', justifyContent: 'center' },
-  dogHeroProfilePhoto: { width: 176, height: 176, borderRadius: 88, borderWidth: 3, borderColor: colors.surface },
-  dogHeroCopy: { flex: 1, minWidth: 0, alignItems: 'flex-end', gap: 5, paddingVertical: 10 },
-  dogHeroGreeting: { ...typography.body, color: colors.textPrimary, fontWeight: '800', textAlign: 'right' },
-  dogHeroName: { color: colors.textPrimary, fontSize: 24, lineHeight: 30, fontWeight: '900', textAlign: 'right' },
-  dogHeroProfileLink: { ...typography.meta, color: colors.primaryDark, fontWeight: '800', textAlign: 'right' },
+  topRow: { position: 'relative', minHeight: 52, alignItems: 'center', justifyContent: 'center' },
+  brandWordmark: { width: 142, height: 42 },
+  dogHero: { width: '100%', minHeight: 154, borderRadius: 24, overflow: 'hidden', backgroundColor: '#EAF8F4', position: 'relative', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 12, borderWidth: 1, borderColor: '#D5EEE7' },
+  dogHeroMascot: { width: 126, height: 126, alignItems: 'center', justifyContent: 'center' },
+  dogHeroProfilePhoto: { width: 116, height: 116, borderRadius: 58, borderWidth: 3, borderColor: colors.surface },
+  dogHeroCopy: { flex: 1, minWidth: 0, alignItems: 'flex-end', gap: 3, paddingVertical: 8 },
+  dogHeroEyebrow: { fontSize: 13, lineHeight: 18, color: colors.textSecondary, fontWeight: '700', textAlign: 'right' },
+  dogHeroName: { color: colors.textPrimary, fontSize: 27, lineHeight: 34, fontWeight: '900', textAlign: 'right' },
+  dogHeroLinkPill: { marginTop: 6, flexDirection: 'row-reverse', alignItems: 'center', gap: 4, backgroundColor: colors.surface, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 7 },
+  dogHeroProfileLink: { fontSize: 13, lineHeight: 18, color: colors.primaryDark, fontWeight: '800', textAlign: 'right' },
+  dogHeroChevron: { fontSize: 18, lineHeight: 18, color: colors.primaryDark, fontWeight: '900' },
   weeklyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, gap: spacing.md },
   weeklyHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   weeklyPaw: { fontSize: 22 },
