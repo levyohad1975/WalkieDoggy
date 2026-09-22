@@ -8,6 +8,7 @@ import type {
   ScheduleEntry,
   ScheduleRule,
   Walk,
+  WalkGpsSession,
 } from '../types';
 import { defaultNotificationSetting } from '../logic/reminders';
 import type { DeleteFamilyMemberPayload, Repository } from './repository';
@@ -41,6 +42,7 @@ interface LocalStoreShape {
   entries: ScheduleEntry[];
   walks: Walk[];
   healthTasks: HealthTask[];
+  gpsSessions: WalkGpsSession[];
 }
 
 function safeJsonParse(raw: string): unknown {
@@ -60,6 +62,7 @@ function seedStore(): LocalStoreShape {
     entries: DEMO_ENTRIES,
     walks: DEMO_WALKS,
     healthTasks: [],
+    gpsSessions: [],
   };
 }
 
@@ -117,6 +120,9 @@ export class LocalRepository implements Repository {
       // of forcing every existing device to re-seed its whole family/
       // schedule/walk cache just to gain one new empty array.
       if (!Array.isArray(this.cache.healthTasks)) this.cache.healthTasks = [];
+      // Same soft-add as healthTasks above — a cache written before GPS
+      // sessions existed just gains an empty array here.
+      if (!Array.isArray(this.cache.gpsSessions)) this.cache.gpsSessions = [];
     } else {
       this.cache = seedStore();
       await this.persist();
@@ -232,6 +238,19 @@ export class LocalRepository implements Repository {
     const idx = s.healthTasks.findIndex((t) => t.id === task.id);
     if (idx >= 0) s.healthTasks[idx] = task;
     else s.healthTasks.push(task);
+    await this.persist();
+  }
+
+  async getGpsSession(walkId: string): Promise<WalkGpsSession | undefined> {
+    const s = await this.load();
+    return s.gpsSessions.find((g) => g.walkId === walkId);
+  }
+
+  async upsertGpsSession(session: WalkGpsSession): Promise<void> {
+    const s = await this.load();
+    const idx = s.gpsSessions.findIndex((g) => g.walkId === session.walkId);
+    if (idx >= 0) s.gpsSessions[idx] = session;
+    else s.gpsSessions.push(session);
     await this.persist();
   }
 

@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LocalRepository } from '../localRepository';
 import { DEMO_DOG, DEMO_ENTRIES, DEMO_FAMILY, DEMO_RULES, DEMO_USERS, DEMO_WALKS } from '../demoData';
-import type { Dog, Family, FamilyUser, HealthTask, ScheduleEntry, Walk } from '../../types';
+import type { Dog, Family, FamilyUser, HealthTask, ScheduleEntry, Walk, WalkGpsSession } from '../../types';
 
 const STORAGE_KEY = 'dog-walk-family:v3';
 
@@ -205,6 +205,37 @@ describe('LocalRepository — dog data (BUG 3: dog name must load in local/demo 
     expect(tasks[0].completedAt).toBe(completed.completedAt);
   });
 
+  it('foundation: getGpsSession/upsertGpsSession are keyed by walk_id — a re-save (e.g. recording a correction) updates the same row, never a duplicate', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+    const session: WalkGpsSession = {
+      id: 'gps-1',
+      walkId: 'walk-1',
+      familyId: DEMO_FAMILY.id,
+      dogId: DEMO_DOG.id,
+      distanceMeters: 900.5,
+      pointCount: 55,
+      source: 'device_gps',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await repo.upsertGpsSession(session);
+    expect(await repo.getGpsSession(session.walkId)).toEqual(session);
+
+    const corrected: WalkGpsSession = { ...session, correctedDistanceMeters: 850, correctedByUserId: 'user-aba' };
+    await repo.upsertGpsSession(corrected);
+
+    const result = await repo.getGpsSession(session.walkId);
+    expect(result).toEqual(corrected);
+    expect(result?.distanceMeters).toBe(900.5); // original reading preserved
+  });
+
+  it('getGpsSession returns undefined for a walk with no session at all', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+    expect(await repo.getGpsSession('walk-no-session')).toBeUndefined();
+  });
+
   it('getFamily returns undefined for a family id that does not match the cached family', async () => {
     const repo = new LocalRepository();
     await repo.getUsers(DEMO_FAMILY.id); // trigger seed
@@ -253,6 +284,7 @@ describe('LocalRepository — replaceAll / createUser', () => {
       entries: DEMO_ENTRIES,
       walks: DEMO_WALKS,
       healthTasks: [],
+      gpsSessions: [],
     });
 
     const users = await repo.getUsers(DEMO_FAMILY.id);

@@ -1,6 +1,6 @@
 import type { Repository } from '../repository';
 import type { OfflineFirstRepository as OfflineFirstRepositoryType } from '../offlineFirstRepository';
-import type { Dog, FamilyUser, HealthTask, ScheduleEntry, ScheduleRule, Walk } from '../../types';
+import type { Dog, FamilyUser, HealthTask, ScheduleEntry, ScheduleRule, Walk, WalkGpsSession } from '../../types';
 
 function stubRemote(overrides: Partial<Repository> = {}): Repository {
   return {
@@ -16,6 +16,8 @@ function stubRemote(overrides: Partial<Repository> = {}): Repository {
     upsertDog: jest.fn(),
     getHealthTasks: jest.fn(),
     upsertHealthTask: jest.fn(),
+    getGpsSession: jest.fn(),
+    upsertGpsSession: jest.fn(),
     getScheduleRules: jest.fn(),
     upsertScheduleRule: jest.fn(),
     deleteScheduleRule: jest.fn(),
@@ -378,6 +380,19 @@ describe('OfflineFirstRepository — online + remote succeeds: reads return the 
     expect(remote.getHealthTasks).toHaveBeenCalledWith('dog-1');
   });
 
+  it('getGpsSession returns the remote session for that walk', async () => {
+    const session: WalkGpsSession = {
+      id: 'gps-1', walkId: 'walk-1', familyId: 'family-1', dogId: 'dog-1',
+      distanceMeters: 812.4, pointCount: 40, source: 'device_gps',
+      createdAt: 'c', updatedAt: 'u',
+    };
+    const remote = stubRemote({ getGpsSession: jest.fn().mockResolvedValue(session) });
+    const repo = await makeRepo(true, remote);
+
+    await expect(repo.getGpsSession('walk-1')).resolves.toEqual(session);
+    expect(remote.getGpsSession).toHaveBeenCalledWith('walk-1');
+  });
+
   it('getScheduleRules returns the remote rules', async () => {
     const fresh: ScheduleRule[] = [
       {
@@ -484,6 +499,20 @@ describe('OfflineFirstRepository — writes with a remote repository configured:
     await repo.upsertHealthTask(task);
 
     await expect(repo.getHealthTasks('dog-1')).resolves.toEqual([task]);
+    expect(await repo.pendingSyncCount()).toBe(1);
+  });
+
+  it('upsertGpsSession writes the local session and enqueues a sync op', async () => {
+    const repo = await makeRepo(false, stubRemote());
+    const session: WalkGpsSession = {
+      id: 'gps-1', walkId: 'walk-1', familyId: 'family-1', dogId: 'dog-1',
+      distanceMeters: 500, pointCount: 20, source: 'device_gps',
+      createdAt: 'c', updatedAt: 'u',
+    };
+
+    await repo.upsertGpsSession(session);
+
+    await expect(repo.getGpsSession('walk-1')).resolves.toEqual(session);
     expect(await repo.pendingSyncCount()).toBe(1);
   });
 

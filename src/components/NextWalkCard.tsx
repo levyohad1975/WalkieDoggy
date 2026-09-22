@@ -14,6 +14,7 @@ import { Countdown } from './Countdown';
 import { WalkieMascot } from './WalkieMascot';
 import { deriveMascotMoment } from '../mascot/mascotStage';
 import { selectMessage } from '../mascot/messageEngine';
+import { formatDistanceMeters } from '../logic/gpsDistance';
 
 interface NextWalkCardProps {
   walk: Walk;
@@ -32,6 +33,15 @@ interface NextWalkCardProps {
   onStartWalk?: () => void;
   onEndWalk?: () => void;
   activeStartedAt?: string | null;
+  /**
+   * Phase 4 (GPS foundation, PRD §7 — "In Progress" card state: "מרחק/מצב
+   * GPS"). Only ever rendered while the walk is active (isActive); omit
+   * entirely for a caller with no GPS integration (every other call site
+   * of this component) — a fully backward-compatible addition.
+   */
+  liveDistanceMeters?: number | null;
+  /** null/undefined = tracking hasn't reported a status yet (e.g. still requesting permission) — distinct from 'denied'/'unavailable', which show an explanatory note instead of a bare "0 מ'". */
+  gpsStatus?: 'granted' | 'denied' | 'unavailable' | null;
   /**
    * ✕ "לא בוצע" for an overdue-unresolved walk (Section 3). Only rendered
    * once the walk is actually overdue AND canResolve is true.
@@ -77,6 +87,8 @@ export function NextWalkCard({
   onStartWalk,
   onEndWalk,
   activeStartedAt,
+  liveDistanceMeters,
+  gpsStatus,
   onMarkNotDone,
   canResolve = true,
   onSwap,
@@ -138,6 +150,18 @@ export function NextWalkCard({
       <RtlText style={styles.mascotMessage} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
         {message}
       </RtlText>
+
+      {/* 'unavailable' (no permission API at all, e.g. some sandboxed
+          environments) is silently skipped — a persistent "GPS unavailable"
+          line for every such device would be clutter with no action the
+          person can take, unlike 'denied' (a real, correctable state). */}
+      {isActive && (gpsStatus === 'granted' || gpsStatus === 'denied') ? (
+        <RtlText style={styles.gpsStatusLine} numberOfLines={1} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+          {gpsStatus === 'granted'
+            ? `📍 ${liveDistanceMeters != null ? formatDistanceMeters(liveDistanceMeters) : 'עוקב אחרי המסלול…'}`
+            : '📍 מיקום לא זמין — אפשר להפעיל בהגדרות המכשיר'}
+        </RtlText>
+      ) : null}
 
       <View style={[styles.mainRow, isWeb && styles.webMainRow]}>
         <View style={styles.timeBlock}>
@@ -290,6 +314,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: colors.primaryDark,
+    textAlign: 'right',
+    marginBottom: 8,
+  },
+  gpsStatusLine: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
     textAlign: 'right',
     marginBottom: 8,
   },

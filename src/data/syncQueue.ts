@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Dog, FamilyUser, HealthTask, ScheduleEntry, ScheduleRule, Walk } from '../types';
+import type { Dog, FamilyUser, HealthTask, ScheduleEntry, ScheduleRule, Walk, WalkGpsSession } from '../types';
 import type { DeleteFamilyMemberPayload, Repository } from './repository';
 
 const QUEUE_KEY = 'dog-walk-family:sync-queue:v4';
@@ -176,6 +176,7 @@ export type SyncOperation =
   | { type: 'deleteFamilyMember'; payload: DeleteFamilyMemberPayload }
   | { type: 'upsertDog'; payload: Dog }
   | { type: 'upsertHealthTask'; payload: HealthTask }
+  | { type: 'upsertGpsSession'; payload: WalkGpsSession }
   | { type: 'upsertScheduleRule'; payload: ScheduleRule }
   | { type: 'deleteScheduleRule'; payload: { ruleId: string } }
   | { type: 'addScheduleEntries'; payload: ScheduleEntry[] }
@@ -620,6 +621,8 @@ export class SyncQueue {
         return remote.upsertDog(op.payload);
       case 'upsertHealthTask':
         return remote.upsertHealthTask(op.payload);
+      case 'upsertGpsSession':
+        return remote.upsertGpsSession(op.payload);
       case 'upsertScheduleRule':
         return remote.upsertScheduleRule(op.payload);
       case 'deleteScheduleRule':

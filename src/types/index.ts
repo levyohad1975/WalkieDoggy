@@ -192,6 +192,35 @@ export interface Walk {
   updatedAt: string;
 }
 
+/**
+ * PRD §7 (Phase 4, GPS foundation) — an optional, per-walk GPS distance
+ * capture. Deliberately holds only a DERIVED aggregate (distance + point
+ * count), never raw lat/lng history — the device computes distance from an
+ * in-memory position stream it never persists anywhere (see
+ * lib/gpsTracking.ts) — see supabase/migrations/0051_walk_gps_sessions.sql
+ * for the full privacy-by-design rationale. `distanceMeters` is the
+ * original device-computed reading; `correctedDistanceMeters`, once a
+ * family member sets it (the PRD's required "assistive, not sole source of
+ * truth" correction flow), is authoritative for display/statistics instead.
+ */
+export interface WalkGpsSession {
+  id: string;
+  walkId: string;
+  familyId: string;
+  dogId: string;
+  distanceMeters?: number;
+  pointCount: number;
+  correctedDistanceMeters?: number;
+  correctedByUserId?: string;
+  startedAt?: string; // ISO timestamp
+  endedAt?: string; // ISO timestamp
+  /** 'device_gps' today (this device's own foreground tracking) — an open list so a future external collar/tracker adapter adds a value here, not a schema rewrite. */
+  source: 'device_gps';
+  createdByUserId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type NotificationKind = 'pre_walk_reminder' | 'overdue_reminder';
 
 export interface NotificationSetting {

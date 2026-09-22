@@ -8,6 +8,7 @@ import type {
   ScheduleEntry,
   ScheduleRule,
   Walk,
+  WalkGpsSession,
 } from '../types';
 import type { DeleteFamilyMemberPayload, Repository } from './repository';
 import { LocalRepository } from './localRepository';
@@ -310,6 +311,33 @@ export class OfflineFirstRepository implements Repository {
         }
       }
       await this.queue.enqueue({ type: 'upsertHealthTask', payload: task });
+      await this.trySync();
+    }
+  }
+
+  async getGpsSession(walkId: string): Promise<WalkGpsSession | undefined> {
+    if (await this.isOnline()) {
+      try {
+        return await this.remote!.getGpsSession(walkId);
+      } catch {
+        /* fall through */
+      }
+    }
+    return this.local.getGpsSession(walkId);
+  }
+
+  async upsertGpsSession(session: WalkGpsSession): Promise<void> {
+    await this.local.upsertGpsSession(session);
+    if (this.remote) {
+      if (await this.isOnline()) {
+        try {
+          await this.remote.upsertGpsSession(session);
+          return;
+        } catch {
+          // Preserve offline-first behaviour: retry through the sync queue.
+        }
+      }
+      await this.queue.enqueue({ type: 'upsertGpsSession', payload: session });
       await this.trySync();
     }
   }

@@ -8,6 +8,7 @@ import type {
   ScheduleEntry,
   ScheduleRule,
   Walk,
+  WalkGpsSession,
 } from '../types';
 import { defaultNotificationSetting } from '../logic/reminders';
 import type { DeleteFamilyMemberPayload, Repository } from './repository';
@@ -225,6 +226,42 @@ function fromHealthTask(task: HealthTask) {
   };
 }
 
+function toGpsSession(row: any): WalkGpsSession {
+  return {
+    id: row.id,
+    walkId: row.walk_id,
+    familyId: row.family_id,
+    dogId: row.dog_id,
+    distanceMeters: row.distance_meters ?? undefined,
+    pointCount: row.point_count,
+    correctedDistanceMeters: row.corrected_distance_meters ?? undefined,
+    correctedByUserId: row.corrected_by_user_id ?? undefined,
+    startedAt: row.started_at ?? undefined,
+    endedAt: row.ended_at ?? undefined,
+    source: row.source,
+    createdByUserId: row.created_by_user_id ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function fromGpsSession(session: WalkGpsSession) {
+  return {
+    id: session.id,
+    walk_id: session.walkId,
+    family_id: session.familyId,
+    dog_id: session.dogId,
+    distance_meters: session.distanceMeters ?? null,
+    point_count: session.pointCount,
+    corrected_distance_meters: session.correctedDistanceMeters ?? null,
+    corrected_by_user_id: session.correctedByUserId ?? null,
+    started_at: session.startedAt ?? null,
+    ended_at: session.endedAt ?? null,
+    source: session.source,
+    created_by_user_id: session.createdByUserId ?? null,
+  };
+}
+
 function fromDog(dog: Dog) {
   return {
     id: dog.id,
@@ -386,6 +423,21 @@ export class SupabaseRepository implements Repository {
 
   async upsertHealthTask(task: HealthTask): Promise<void> {
     const { error } = await this.client.from('health_tasks').upsert(fromHealthTask(task));
+    if (error) throw error;
+  }
+
+  async getGpsSession(walkId: string): Promise<WalkGpsSession | undefined> {
+    const { data, error } = await this.client.from('walk_gps_sessions').select('*').eq('walk_id', walkId).maybeSingle();
+    if (error) throw error;
+    return data ? toGpsSession(data) : undefined;
+  }
+
+  async upsertGpsSession(session: WalkGpsSession): Promise<void> {
+    // Conflict target is walk_id (its own unique constraint, 0051), not the
+    // primary key `id` — a re-save (e.g. recording a correction after the
+    // initial device-computed reading) must update the SAME row for this
+    // walk rather than erroring on walk_id's uniqueness with a fresh id.
+    const { error } = await this.client.from('walk_gps_sessions').upsert(fromGpsSession(session), { onConflict: 'walk_id' });
     if (error) throw error;
   }
 

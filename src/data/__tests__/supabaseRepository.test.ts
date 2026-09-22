@@ -1,5 +1,5 @@
 import { SupabaseRepository } from '../supabaseRepository';
-import type { Dog, Family, FamilyUser, HealthTask, ScheduleEntry, ScheduleRule, Walk } from '../../types';
+import type { Dog, Family, FamilyUser, HealthTask, ScheduleEntry, ScheduleRule, Walk, WalkGpsSession } from '../../types';
 
 /**
  * Verifies the SupabaseRepository <-> Postgres row mapping — specifically
@@ -215,6 +215,86 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
     };
     const repo = new SupabaseRepository(client);
     await expect(repo.getHealthTasks('dog-1')).rejects.toBeTruthy();
+  });
+
+  it('upsertGpsSession sends walk_id/dog_id/family_id mapped correctly, with onConflict: walk_id (not the row id)', async () => {
+    const calls: { table: string; payload: unknown; options: unknown }[] = [];
+    const client: any = {
+      from: (table: string) => ({
+        upsert: (payload: unknown, options: unknown) => {
+          calls.push({ table, payload, options });
+          return Promise.resolve({ error: null });
+        },
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+    const session: WalkGpsSession = {
+      id: 'gps-1', walkId: 'walk-1', familyId: 'fam-42', dogId: 'dog-1',
+      distanceMeters: 640.2, pointCount: 30, source: 'device_gps',
+      createdAt: 'c', updatedAt: 'u',
+    };
+
+    await repo.upsertGpsSession(session);
+
+    expect(calls[0].table).toBe('walk_gps_sessions');
+    expect((calls[0].payload as any).walk_id).toBe('walk-1');
+    expect((calls[0].payload as any).dog_id).toBe('dog-1');
+    expect((calls[0].payload as any).family_id).toBe('fam-42');
+    expect(calls[0].options).toEqual({ onConflict: 'walk_id' });
+  });
+
+  it('upsertGpsSession throws when the upsert errors', async () => {
+    const client: any = { from: () => ({ upsert: () => Promise.resolve({ error: { message: 'x' } }) }) };
+    const session: WalkGpsSession = {
+      id: 'gps-1', walkId: 'walk-1', familyId: 'fam-42', dogId: 'dog-1',
+      pointCount: 0, source: 'device_gps', createdAt: 'c', updatedAt: 'u',
+    };
+    await expect(new SupabaseRepository(client).upsertGpsSession(session)).rejects.toBeTruthy();
+  });
+
+  it('getGpsSession maps a row via toGpsSession, including nullish correction fields -> undefined', async () => {
+    const client: any = {
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () =>
+              Promise.resolve({
+                data: {
+                  id: 'gps-1', walk_id: 'walk-1', family_id: 'fam-42', dog_id: 'dog-1',
+                  distance_meters: 640.2, point_count: 30, corrected_distance_meters: null,
+                  corrected_by_user_id: null, started_at: null, ended_at: null,
+                  source: 'device_gps', created_by_user_id: null, created_at: 'c', updated_at: 'u',
+                },
+                error: null,
+              }),
+          }),
+        }),
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+    const session = await repo.getGpsSession('walk-1');
+    expect(session).toEqual({
+      id: 'gps-1', walkId: 'walk-1', familyId: 'fam-42', dogId: 'dog-1',
+      distanceMeters: 640.2, pointCount: 30, correctedDistanceMeters: undefined,
+      correctedByUserId: undefined, startedAt: undefined, endedAt: undefined,
+      source: 'device_gps', createdByUserId: undefined, createdAt: 'c', updatedAt: 'u',
+    });
+  });
+
+  it('getGpsSession returns undefined when no row exists for that walk', async () => {
+    const client: any = {
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }) }),
+    };
+    const repo = new SupabaseRepository(client);
+    expect(await repo.getGpsSession('walk-1')).toBeUndefined();
+  });
+
+  it('getGpsSession throws when the query errors', async () => {
+    const client: any = {
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: { message: 'x' } }) }) }) }),
+    };
+    const repo = new SupabaseRepository(client);
+    await expect(repo.getGpsSession('walk-1')).rejects.toBeTruthy();
   });
 
   it('upsertScheduleRule sends family_id mapped from rule.familyId', async () => {

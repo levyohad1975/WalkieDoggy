@@ -47,6 +47,7 @@ import { subscribeToReminderOpens, type ReminderOpenEvent } from '../notificatio
 import type { RootTabParamList } from '../navigation/RootNavigator';
 import { useHealthStore } from '../store/healthStore';
 import { summarizeHealthTasksForHome } from '../logic/healthTasks';
+import { useGpsStore } from '../store/gpsStore';
 
 export function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
@@ -103,6 +104,16 @@ export function HomeScreen() {
   const loadHealthTasks = useHealthStore((s) => s.load);
   const requestOpenHealthModal = useHealthStore((s) => s.requestOpen);
   const healthSummary = useMemo(() => summarizeHealthTasksForHome(healthTasks), [healthTasks]);
+
+  // Phase 4 (GPS foundation, PRD §7) — live tracking state for whichever
+  // walk gpsStore is currently tracking. NextWalkCard below only ever
+  // shows these when THIS card's own walk is the one being tracked (see
+  // its liveDistanceMeters/gpsStatus wiring) — a different in-progress
+  // walk elsewhere (shouldn't normally happen; at most one walk is active
+  // at a time) would simply show nothing extra.
+  const gpsTrackingWalkId = useGpsStore((s) => s.trackingWalkId);
+  const gpsDistanceMeters = useGpsStore((s) => s.distanceMeters);
+  const gpsPermissionStatus = useGpsStore((s) => s.permissionStatus);
 
   const [completeWalkId, setCompleteWalkId] = useState<string | null>(null);
   // BATCH 4 (C2/C3/C8) — brief "success" mascot + message shown right after
@@ -564,6 +575,8 @@ export function HomeScreen() {
             primaryLabel={isOverdue(nextWalk) ? 'ממתין לעדכון' : undefined}
             onMarkDone={() => setCompleteWalkId(nextWalk.id)}
             activeStartedAt={nextWalk.status === 'in_progress' ? nextWalk.startedAt ?? null : null}
+            liveDistanceMeters={gpsTrackingWalkId === nextWalk.id ? gpsDistanceMeters : null}
+            gpsStatus={gpsTrackingWalkId === nextWalk.id ? gpsPermissionStatus : null}
             onStartWalk={
               effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId
                 ? () => void startWalk(nextWalk.id)

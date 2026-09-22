@@ -24,6 +24,7 @@ import { hasActiveRemoteReminderChannel } from '../lib/remoteReminderChannel';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { adminRescheduleWalk, adminSwapWalks } from '../lib/walkAdmin';
 import { friendlyErrorMessage } from '../lib/errorMessages';
+import { useGpsStore } from './gpsStore';
 
 const GENERATE_DAYS_AHEAD = 14;
 
@@ -524,6 +525,11 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       else updated = { ...walk, status: 'in_progress', startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
       await cancelWalkNotifications(walkId);
+      // Phase 4 (GPS foundation, PRD §7): best-effort, fire-and-forget —
+      // GPS is assistive, never a precondition for the walk lifecycle
+      // itself (permission denial/unavailability must never fail or delay
+      // Start). See gpsStore.startTracking's own doc comment.
+      void useGpsStore.getState().startTracking(updated);
       return true;
     } catch (e) {
       set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו להתחיל את הטיול') });
@@ -541,6 +547,10 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       else updated = markWalkDone(walk, completedByUserId, details);
       set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
       await cancelWalkNotifications(walkId);
+      // Best-effort, mirrors startWalk above — stops tracking (a no-op if
+      // this walk was never being tracked) and persists whatever distance
+      // was captured.
+      void useGpsStore.getState().stopTracking(updated, completedByUserId);
       return true;
     } catch (e) {
       set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו לסיים את הטיול') });
@@ -558,6 +568,12 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
       await repository.saveWalk(updated);
       await cancelWalkNotifications(walkId);
+      // markDone is the "✓ סמן כבוצע" fallback path someone might use
+      // instead of the formal "סיים טיול" action — stop tracking here too
+      // (a no-op if this walk was never being tracked, e.g. it was marked
+      // done without ever being started) so a GPS watch started via
+      // startWalk can never keep running past a walk that's already done.
+      void useGpsStore.getState().stopTracking(updated, completedByUserId);
 
       // A2 fix: OfflineFirstRepository.saveWalk() never throws even when the
       // remote write ultimately failed — it always writes locally first

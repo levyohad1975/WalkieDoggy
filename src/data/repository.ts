@@ -7,6 +7,7 @@ import type {
   ScheduleEntry,
   ScheduleRule,
   Walk,
+  WalkGpsSession,
 } from '../types';
 
 /** Payload for Repository.deleteFamilyMember — see its doc comment below. */
@@ -105,6 +106,11 @@ export interface Repository {
   getHealthTasks(dogId: string): Promise<HealthTask[]>;
   /** Upserts by task.id — covers both creating a new log/task entry and marking one complete (patch + save). No delete: see 0049's migration comment for why a health record is never client-erasable. */
   upsertHealthTask(task: HealthTask): Promise<void>;
+
+  /** The GPS session for one walk (PRD §7), if any tracking was attempted — undefined if the walk has no session at all. */
+  getGpsSession(walkId: string): Promise<WalkGpsSession | undefined>;
+  /** Upserts by session.walkId (one session per walk — see 0051's unique constraint). Covers creating the initial device-computed reading AND recording a correction. No delete: same "history record" posture as health tasks/dogs. */
+  upsertGpsSession(session: WalkGpsSession): Promise<void>;
 
   getScheduleRules(familyId: string): Promise<ScheduleRule[]>;
   upsertScheduleRule(rule: ScheduleRule): Promise<void>;
