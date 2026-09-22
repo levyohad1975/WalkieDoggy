@@ -35,46 +35,88 @@ jobs:
         with:
           version: 2.116.0
 
-      - name: Prepare ephemeral migration history (schema.sql baseline + only the migrations it doesn't already reflect)
+      - name: Seed schema.sql as migration 0000 (the true pre-migration-1 baseline)
+        # Local rehearsal only -- never modifies or commits a real repo file.
+        # schema.sql's own header: "always reflects the current/target
+        # schema, not an incremental diff". Migration 0001 itself assumes
+        # it: its statements are plain `alter table users add column`,
+        # never `create table users`, and no numbered migration anywhere
+        # in the repo ever creates `families`/`users` -- only schema.sql
+        # does. So schema.sql is not optional or skippable: it is the one
+        # and only source of those base tables for a from-empty replay.
+        run: cp supabase/schema.sql supabase/migrations/0000_base_schema.sql
+
+      - name: Generate ephemeral idempotency guards for 0001-0041 (rehearsal-only, never committed)
         shell: bash
         run: |
           set -euo pipefail
-          # Local rehearsal only. No repository migration file is ever
-          # changed or committed; this only edits the ephemeral checkout's
-          # migrations directory inside the runner.
+          # schema.sql is a periodically-refreshed snapshot, not frozen at
+          # any single migration number -- confirmed directly: it already
+          # contains some 0001-0041 objects (e.g. the 0003 "insert users
+          # (family admins only)" policy) but is missing at least one
+          # later one (0023's member_permission_overrides table). Because
+          # real Postgres CREATE POLICY has no IF NOT EXISTS, replaying
+          # the real 0001-0041 files verbatim after schema.sql hits
+          # 42710 "already exists" on whichever exact subset schema.sql
+          # happens to already carry.
           #
-          # schema.sql's own header says it "always reflects the current/
-          # target schema, not an incremental diff" -- it is a snapshot,
-          # not a pre-migration-1 empty bootstrap. Verified directly: it
-          # already contains 0001-0041's tables/policies/functions (e.g.
-          # the 0003 "insert users (family admins only)" policy), and
-          # 0042_dogs_no_client_delete.sql's own comment confirms schema.sql
-          # still has the *pre-0042* single "modify dogs in own family"
-          # policy at the time that migration was written. It contains
-          # NONE of 0043-0048 (grepped for finish_walk/start_walk and
-          # active_system_admin_observer_family -- zero hits).
-          #
-          # So the correct replay -- matching the same "prepend schema.sql
-          # as 0000, keep only the migrations schema.sql doesn't already
-          # cover" approach the pre-existing Batch 2 rehearsal
-          # (.github/workflows/batch2-supabase-rehearsal.yml) established
-          # -- is: schema.sql as 0000, then only 0042-0048 on top (0042
-          # included because schema.sql predates it too). Every kept
-          # migration in this range already uses `drop policy if exists` /
-          # `create or replace function` / `create table if not exists`,
-          # so replaying them on top of schema.sql is idempotent and safe.
-          rehearsal_dir="$(mktemp -d)"
-          for n in 0042 0043 0044 0045 0046 0047 0048; do
-            cp supabase/migrations/${n}_*.sql "$rehearsal_dir/"
-          done
-          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -delete
-          cp supabase/schema.sql supabase/migrations/0000_base_schema.sql
-          cp "$rehearsal_dir/"*.sql supabase/migrations/
+          # Rather than guess/maintain that subset by hand (fragile, and
+          # got it wrong twice already), generate a guard migration that
+          # DROP POLICY IF EXISTS-es every policy name 0001-0041 ever
+          # creates, on every table schema.sql already has. This is a
+          # no-op for any name schema.sql doesn't happen to contain, and
+          # for any name it does contain it removes it just before the
+          # real migration recreates it from its own source -- so the
+          # real files replay completely unmodified and unskipped, and
+          # the final schema is identical either way. Ordered 0000b so it
+          # lands after schema.sql (0000) and before every real migration.
+          python3 - <<'PYEOF'
+          import re
+
+          schema = open('supabase/schema.sql').read()
+          existing_tables = set(re.findall(r'create table if not exists\s+([a-zA-Z_.]+)', schema, re.I))
+
+          seen = []
+          seen_set = set()
+          import glob
+          for f in sorted(glob.glob('supabase/migrations/00[0-3][0-9]_*.sql') + glob.glob('supabase/migrations/0041_*.sql')):
+              text = open(f).read()
+              for m in re.finditer(r'create policy\s+"([^"]+)"\s+on\s+([a-zA-Z_.]+)', text, re.I):
+                  key = (m.group(1), m.group(2))
+                  if key not in seen_set:
+                      seen_set.add(key)
+                      seen.append(key)
+
+          lines = [
+              "-- Auto-generated for this isolated rehearsal run only. Never committed.",
+              "-- See the workflow step that generated this file for the full rationale.",
+          ]
+          for name, table in seen:
+              if table == 'storage.objects' or table in existing_tables:
+                  esc = name.replace("'", "''")
+                  lines.append(f'drop policy if exists "{name}" on {table};')
+
+          # CREATE OR REPLACE FUNCTION cannot rename a parameter or change
+          # a RETURNS TABLE row shape (Postgres requires DROP FUNCTION
+          # first for either). schema.sql documents every function whose
+          # signature was reshaped partway through its own history with an
+          # explicit `drop function if exists NAME(args);` right before
+          # its own final redefinition -- that is the authoritative,
+          # complete list of functions an earlier migration's
+          # create-or-replace could conflict with, so reuse it verbatim.
+          for m in re.finditer(r'^drop function if exists\s+((?:public\.)?[a-zA-Z_][a-zA-Z0-9_]*\([^)]*\));', schema, re.I | re.M):
+              lines.append(f'drop function if exists {m.group(1)};')
+
+          with open('supabase/migrations/0000b_rehearsal_policy_guards.sql', 'w') as out:
+              out.write("\n".join(lines) + "\n")
+          print(f"Generated {len(lines) - 2} guard statements")
+          PYEOF
+          cat supabase/migrations/0000b_rehearsal_policy_guards.sql
 
       - name: Start isolated Supabase stack
         run: supabase start -x studio,imgproxy,storage-api,realtime,edge-runtime,logflare,vector,supavisor
 
-      - name: Replay schema.sql baseline + 0042-0048 from empty
+      - name: Replay the FULL real migration chain (0000 base + 0001-0048) from empty
         run: supabase db reset --local
 
       - name: Run the 0043-0048 integration rehearsal (real Postgres, not source review)
