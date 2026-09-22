@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from './authStore';
 import { create } from 'zustand';
 import type { Dog, Family, FamilyUser, UserDeletionImpact } from '../types';
@@ -14,18 +15,26 @@ import { guardTestModeMutation, TEST_MODE_READ_ONLY_MESSAGE } from '../lib/testM
 import type { MemberPermissionOverride, PermissionKey, PermissionLoadStatus } from '../logic/permissions';
 import { clearMemberPermissionOverride, listMemberPermissionOverrides, setMemberPermissionOverride } from '../lib/permissions';
 
+// A device belongs to exactly one family (see authStore's FAMILY_ID_KEY) —
+// so, like FAMILY_ID_KEY/CURRENT_USER_KEY, a single un-namespaced key is
+// enough; re-selecting a dog after switching families is expected (the old
+// id simply won't be found in the new family's `dogs` and load() falls back
+// to the first dog — see load()'s selection resolution below).
+const SELECTED_DOG_KEY = 'dog-walk-family:selected-dog-id';
+
 interface FamilyState {
   family: Family | null;
   users: FamilyUser[];
-  /** @deprecated First/primary entry of `dogs`, kept for single-dog call sites that predate multi-dog support. */
+  /** The currently SELECTED/active dog (see `selectedDogId`/`selectDog` below) — every dog-dependent screen (Home, new walk/rule creation, ...) reads this one. Not simply `dogs[0]`. */
   dog: Dog | null;
   /**
    * Every dog belonging to this family (Phase 1B: arbitrary N dogs
    * foundation — schedule_rules/schedule_entries/walks already carry their
-   * own dog_id at the DB layer, see supabase/schema.sql). New multi-dog UI
-   * should read this instead of `dog`.
+   * own dog_id at the DB layer, see supabase/schema.sql).
    */
   dogs: Dog[];
+  /** The id backing `dog` above. Kept alongside `dog` so a selector UI can compare against it directly without re-deriving it from `dog?.id`. */
+  selectedDogId: string | null;
   loading: boolean;
   error: string | null;
   actionError: string | null;
@@ -65,6 +74,8 @@ interface FamilyState {
   clearPermissionOverride: (userId: string, permissionKey: PermissionKey) => Promise<void>;
   setReminderEnabled: (userId: string, enabled: boolean) => Promise<void>;
   saveDog: (dog: Dog) => Promise<void>;
+  /** Makes `dogId` (must already be in `dogs`) the active dog and persists the choice locally so it survives an app restart. No-op if `dogId` isn't one of this family's dogs. */
+  selectDog: (dogId: string) => Promise<void>;
 
   addUser: (input: { name: string; avatar: string; color: string; photoUrl?: string }) => Promise<FamilyUser>;
   updateUser: (user: FamilyUser) => Promise<void>;
@@ -79,6 +90,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
   users: [],
   dog: null,
   dogs: [],
+  selectedDogId: null,
   loading: false,
   error: null,
   actionError: null,
@@ -110,7 +122,37 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
             : !isSupabaseConfigured && familyId === DEMO_FAMILY.id
               ? [DEMO_DOG]
               : [];
-      set({ family: family ?? null, users, dog: resolvedDogs[0] ?? null, dogs: resolvedDogs, loading: false });
+
+      // Resolve which dog is ACTIVE: prefer the device's persisted choice
+      // (e.g. a member switched to the family's second dog before closing
+      // the app) as long as it still refers to one of this family's dogs —
+      // a stale id (the dog was removed, or this is a different family than
+      // the one that id was saved for) falls back to the first dog instead
+      // of leaving `dog` pointing at nothing.
+      let persistedSelectedId: string | null = null;
+      try {
+        persistedSelectedId = await AsyncStorage.getItem(SELECTED_DOG_KEY);
+      } catch {
+        /* best-effort — falls back to the first dog below */
+      }
+      const selectedDog =
+        (persistedSelectedId && resolvedDogs.find((d) => d.id === persistedSelectedId)) || resolvedDogs[0] || null;
+      if (selectedDog && selectedDog.id !== persistedSelectedId) {
+        try {
+          await AsyncStorage.setItem(SELECTED_DOG_KEY, selectedDog.id);
+        } catch {
+          /* best-effort */
+        }
+      }
+
+      set({
+        family: family ?? null,
+        users,
+        dog: selectedDog,
+        dogs: resolvedDogs,
+        selectedDogId: selectedDog?.id ?? null,
+        loading: false,
+      });
 
       // If an admin removed the profile THIS device is currently signed in
       // as (soft-deleted, see FamilyUser.removedAt), send it back to "pick
@@ -202,13 +244,30 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
   saveDog: async (dog: Dog) => {
     if (!guardTestModeMutation()) return;
     // Upserts by id, so this doubles as "add a new dog" once a caller wants
-    // more than one — see `dogs`'s doc comment above.
+    // more than one — see `dogs`'s doc comment above. Deliberately does NOT
+    // change the selection on its own (a caller adding a brand-new dog
+    // calls selectDog() explicitly afterwards) — editing the CURRENTLY
+    // selected dog's photo/name must not silently reselect a different one.
     set((s) => {
       const idx = s.dogs.findIndex((d) => d.id === dog.id);
       const dogs = idx >= 0 ? s.dogs.map((d, i) => (i === idx ? dog : d)) : [...s.dogs, dog];
-      return { dog, dogs };
+      // Nothing was selected yet (e.g. the family's very first dog) -> this
+      // one becomes it, so `dog` is never left null after a successful save.
+      const isSelected = s.selectedDogId === dog.id || s.selectedDogId === null;
+      return isSelected ? { dog, dogs, selectedDogId: dog.id } : { dogs };
     });
     await repository.upsertDog(dog);
+  },
+
+  selectDog: async (dogId: string) => {
+    const target = get().dogs.find((d) => d.id === dogId);
+    if (!target) return;
+    set({ dog: target, selectedDogId: dogId });
+    try {
+      await AsyncStorage.setItem(SELECTED_DOG_KEY, dogId);
+    } catch {
+      // best-effort persistence — the in-memory selection already applied
+    }
   },
 
   addUser: async ({ name, avatar, color, photoUrl }) => {

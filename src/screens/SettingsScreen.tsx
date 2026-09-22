@@ -25,9 +25,10 @@ import { RemindersModal } from '../components/RemindersModal';
 import { FamilySharingModal } from '../components/FamilySharingModal';
 import { guardTestModeMutation } from '../lib/testModeGuard';
 import { decideChildModalToOpen, type SettingsChildModal } from '../logic/settingsModalTransitions';
+import { generateId } from '../lib/id';
 
 export function SettingsScreen() {
-  const { family, users, dog, load: loadFamily, setReminderEnabled, saveDog } = useFamilyStore();
+  const { family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, saveDog, selectDog } = useFamilyStore();
   const { currentUserId, setFamilyId } = useAuthStore();
   const signInWithPin = useAuthStore((s) => s.signInWithPin);
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
@@ -55,6 +56,7 @@ export function SettingsScreen() {
   // its own sub-screen (modal, matching this app's existing navigation
   // pattern) instead of all being visible on the main list at once.
   const [dogModalVisible, setDogModalVisible] = useState(false);
+  const [addingDog, setAddingDog] = useState(false);
   const [remindersModalVisible, setRemindersModalVisible] = useState(false);
   const [sharingModalVisible, setSharingModalVisible] = useState(false);
   const [managementVisible, setManagementVisible] = useState(false);
@@ -171,6 +173,31 @@ export function SettingsScreen() {
       Alert.alert('לא הצלחנו להחליף תמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
     } finally {
       setUploadingPhoto(false);
+    }
+  };
+
+  // Arbitrary-N multi-dog foundation (Phase 1B): creates a new dog for this
+  // family, selects it (so the existing dog card below — and every other
+  // dog-dependent screen reading `dog` from the store — immediately reflects
+  // it), and opens the same edit sheet used for any dog so the admin can
+  // rename it right away instead of living with a placeholder name.
+  const handleAddDog = async () => {
+    if (!guardTestModeMutation()) return;
+    setAddingDog(true);
+    try {
+      const newDog: Dog = {
+        id: generateId('dog'),
+        familyId,
+        name: 'כלב חדש',
+        walksPerDay: 4,
+      };
+      await saveDog(newDog);
+      await selectDog(newDog.id);
+      setDogModalVisible(true);
+    } catch {
+      Alert.alert('לא הצלחנו להוסיף כלב', 'נסו שוב בעוד רגע.');
+    } finally {
+      setAddingDog(false);
     }
   };
 
@@ -312,6 +339,55 @@ export function SettingsScreen() {
           clearly separate advanced area (unchanged Management sheet below)
           rather than mixed into these rows.
         */}
+        {/*
+          Arbitrary-N multi-dog foundation (Phase 1B): a compact selector
+          strip above the existing dog card — tapping a chip makes that dog
+          the ACTIVE one (selectDog(), persisted so it survives a restart),
+          which the card right below (and Home's dog card, next-walk
+          creation, etc. — every screen that reads `dog` from the store)
+          then reflects with no further change. Editing a specific dog is
+          "select it, then tap the card below" rather than a second edit
+          affordance per chip, to keep this one coherent interaction instead
+          of duplicating the edit entry point.
+        */}
+        {dogs.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.dogSelectorRow}
+          >
+            {dogs.map((d) => {
+              const isActive = d.id === selectedDogId;
+              return (
+                <Pressable
+                  key={d.id}
+                  onPress={() => void selectDog(d.id)}
+                  style={[styles.dogSelectorChip, isActive && styles.dogSelectorChipActive]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isActive }}
+                  accessibilityLabel={isActive ? `${d.name}, הכלב הפעיל כעת` : `בחירת ${d.name} ככלב הפעיל`}
+                >
+                  <DogPhoto photoUrl={d.photoUrl} size={40} />
+                  <RtlText style={[styles.dogSelectorChipName, isActive && styles.dogSelectorChipNameActive]} numberOfLines={1}>
+                    {d.name}
+                  </RtlText>
+                </Pressable>
+              );
+            })}
+            <Pressable
+              onPress={() => void handleAddDog()}
+              disabled={addingDog}
+              style={styles.dogSelectorAddChip}
+              accessibilityRole="button"
+              accessibilityLabel="הוספת כלב נוסף למשפחה"
+              accessibilityState={{ disabled: addingDog }}
+            >
+              <RtlText style={styles.dogSelectorAddPlus}>＋</RtlText>
+              <RtlText style={styles.dogSelectorAddText}>{addingDog ? 'מוסיף…' : 'הוספת כלב'}</RtlText>
+            </Pressable>
+          </ScrollView>
+        ) : null}
+
         {dog ? (
           <Pressable
             style={styles.dogCard}
@@ -513,6 +589,39 @@ const styles = StyleSheet.create({
   dogCardBody: { flex: 1, gap: 2 },
   dogCardName: { ...typography.sectionTitle, fontSize: 18, color: colors.textPrimary, textAlign: 'right' },
   dogCardMeta: { ...typography.meta, color: colors.textSecondary, textAlign: 'right' },
+  // Multi-dog selector strip — same horizontal-filter-chip pattern as
+  // SystemAdminScreen's auditFamilyFilters (row-reverse content, no
+  // nativeDirection override: a horizontal ScrollView already flips its
+  // own scroll direction under RTL, so reversing the row keeps chip order
+  // matching natural reading order instead of double-flipping).
+  dogSelectorRow: { flexDirection: 'row-reverse', gap: spacing.sm, paddingBottom: spacing.xs },
+  dogSelectorChip: {
+    alignItems: 'center',
+    gap: 4,
+    width: 72,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  dogSelectorChipActive: { backgroundColor: colors.statusCurrentBg, borderColor: colors.primary },
+  dogSelectorChipName: { ...typography.meta, fontSize: 12, color: colors.textSecondary, textAlign: 'center' },
+  dogSelectorChipNameActive: { color: colors.primaryDark, fontWeight: '700' },
+  dogSelectorAddChip: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    width: 72,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+  },
+  dogSelectorAddPlus: { fontSize: 20, color: colors.primaryDark, fontWeight: '700' },
+  dogSelectorAddText: { ...typography.meta, fontSize: 12, color: colors.primaryDark, fontWeight: '700', textAlign: 'center' },
   familyCardHeader: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', justifyContent: 'space-between' },
   familyCardTitle: { ...typography.sectionTitle, fontSize: 17, color: colors.textPrimary, textAlign: 'right' },
   familyCard: {
