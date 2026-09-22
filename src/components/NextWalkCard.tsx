@@ -199,9 +199,14 @@ export function NextWalkCard({
       ) : onStartWalk ? (
         <>
           <Button label={overdue ? 'התחל טיול עכשיו' : 'התחל טיול'} icon="▶" onPress={onStartWalk} style={styles.doneButton} shrinkToFit />
-          <RtlText style={styles.forgotStartLink} onPress={onMarkDone} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-            שכחנו להתחיל? סמן כבוצע
-          </RtlText>
+          <Button
+            label="✓ סמן טיול כבוצע"
+            variant="secondary"
+            onPress={onMarkDone}
+            style={styles.markDoneFallbackButton}
+            compact
+            shrinkToFit
+          />
         </>
       ) : overdue && onMarkNotDone ? (
         <View style={styles.resolveRow}>
@@ -309,7 +314,7 @@ const styles = StyleSheet.create({
   personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
   responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'right' },
   doneButton: { marginTop: 4 },
-  forgotStartLink: { color: colors.primaryDark, fontSize: 13, fontWeight: '600', textAlign: 'center', marginTop: 10 },
+  markDoneFallbackButton: { marginTop: 10, borderWidth: 1.5, borderColor: colors.primaryDark },
   endWalkButton: { marginTop: 4, backgroundColor: colors.statusOverdue },
   resolveRow: { flexDirection: 'row', gap: 8, marginTop: 4, width: '100%' },
   resolveButton: { flex: 1, minWidth: 0 },

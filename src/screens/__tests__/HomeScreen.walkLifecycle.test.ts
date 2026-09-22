@@ -8,13 +8,13 @@ describe('Home integrated walk lifecycle', () => {
   it('moves the family dog identity into the next-walk card and removes the standalone profile card', () => {
     expect(home).toContain('showDogPhoto');
     expect(home).not.toContain('style={styles.dogSummaryCard}');
-    expect(home).toContain('style={styles.mascotHeaderButton}');
+    expect(home).toContain("style={[styles.mascotHeaderButton, Platform.OS === 'web' && styles.webMascotHeaderButton]}");
   });
 
   it('exposes start and end walk as the primary lifecycle action', () => {
     expect(card).toContain('label={overdue ? \'התחל טיול עכשיו\' : \'התחל טיול\'}');
     expect(card).toContain('label="סיים טיול"');
-    expect(card).toContain('שכחנו להתחיל? סמן כבוצע');
+    expect(card).toContain('label="✓ סמן טיול כבוצע"');
     expect(home).toContain('void startWalk(nextWalk.id)');
     expect(home).toContain("nextWalk.status === 'in_progress'");
     expect(home).not.toContain('setActiveWalkSession({ walkId: nextWalk.id');
