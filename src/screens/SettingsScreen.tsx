@@ -438,27 +438,41 @@ export function SettingsScreen() {
 
 
 
-        {/* Ordinary settings rows — grouped, consistent row height/icon/
-            chevron, no admin/QA tools mixed in here (those live in the
-            separate "⚙️ ניהול" advanced area below). */}
+        {/* Ordinary settings rows — organized into clearly labeled areas
+            (family, walks & reminders, health & grooming, my account)
+            instead of one long undifferentiated list, so the growing
+            feature set stays scannable. Same rows/handlers/modals as
+            before this reorganization — purely grouped and labeled, no
+            admin/QA tools mixed in here (those stay their own separate
+            "⚙️ ניהול" advanced area below). */}
         <View style={styles.section}>
-          <Pressable style={styles.hubRow} onPress={() => setRemindersModalVisible(true)} accessibilityRole="button" accessibilityLabel="תזכורות">
-            <RtlText style={styles.hubChevron}>‹</RtlText>
-            <RtlText style={styles.hubLabel}>🔔 תזכורות</RtlText>
-          </Pressable>
-
-          {dog ? (
-            <Pressable style={styles.hubRow} onPress={() => setHealthModalVisible(true)} accessibilityRole="button" accessibilityLabel={`בריאות וטיפוח, ${dog.name}`}>
-              <RtlText style={styles.hubChevron}>‹</RtlText>
-              <RtlText style={styles.hubLabel}>🏥 בריאות וטיפוח</RtlText>
-            </Pressable>
-          ) : null}
-
+          <RtlText style={styles.sectionTitle}>👪 משפחה</RtlText>
           <Pressable style={styles.hubRow} onPress={() => setSharingModalVisible(true)} accessibilityRole="button" accessibilityLabel="שיתוף המשפחה">
             <RtlText style={styles.hubChevron}>‹</RtlText>
             <RtlText style={styles.hubLabel}>📤 שיתוף המשפחה</RtlText>
           </Pressable>
+        </View>
 
+        <View style={styles.section}>
+          <RtlText style={styles.sectionTitle}>🐾 טיולים ותזכורות</RtlText>
+          <Pressable style={styles.hubRow} onPress={() => setRemindersModalVisible(true)} accessibilityRole="button" accessibilityLabel="תזכורות">
+            <RtlText style={styles.hubChevron}>‹</RtlText>
+            <RtlText style={styles.hubLabel}>🔔 תזכורות</RtlText>
+          </Pressable>
+        </View>
+
+        {dog ? (
+          <View style={styles.section}>
+            <RtlText style={styles.sectionTitle}>בריאות וטיפוח</RtlText>
+            <Pressable style={styles.hubRow} onPress={() => setHealthModalVisible(true)} accessibilityRole="button" accessibilityLabel={`בריאות וטיפוח, ${dog.name}`}>
+              <RtlText style={styles.hubChevron}>‹</RtlText>
+              <RtlText style={styles.hubLabel}>🏥 בריאות וטיפוח</RtlText>
+            </Pressable>
+          </View>
+        ) : null}
+
+        <View style={styles.section}>
+          <RtlText style={styles.sectionTitle}>📱 החשבון שלי</RtlText>
           <Pressable style={styles.hubRow} onPress={handleSwitchUser} accessibilityRole="button" accessibilityLabel="החלף משתמש, מעבר לפרופיל אחר במכשיר הזה">
             <RtlText style={styles.hubChevron}>‹</RtlText>
             <View style={styles.hubLabelWithMeta}>

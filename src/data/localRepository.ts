@@ -254,6 +254,12 @@ export class LocalRepository implements Repository {
     await this.persist();
   }
 
+  async getGpsSessionsForWalkIds(walkIds: string[]): Promise<WalkGpsSession[]> {
+    const s = await this.load();
+    const ids = new Set(walkIds);
+    return s.gpsSessions.filter((g) => ids.has(g.walkId));
+  }
+
   async getScheduleRules(familyId: string): Promise<ScheduleRule[]> {
     const s = await this.load();
     return s.rules.filter((r) => r.familyId === familyId);

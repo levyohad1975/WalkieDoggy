@@ -18,11 +18,14 @@ describe('SettingsScreen wires the Health & Grooming entry point to the active d
   });
 
   it('the entry row is gated on `dog` (hidden entirely with no active dog) and opens healthModalVisible', () => {
-    const rowStart = source.indexOf('בריאות וטיפוח');
+    // Statistics/Settings redesign batch: this row now sits under its own
+    // "בריאות וטיפוח" section title (same words), so anchor on the row's
+    // own onPress rather than the first occurrence of that text.
+    const rowStart = source.indexOf('onPress={() => setHealthModalVisible(true)}');
     expect(rowStart).toBeGreaterThan(-1);
-    const rowBlock = source.slice(Math.max(0, rowStart - 300), rowStart + 100);
+    const rowBlock = source.slice(Math.max(0, rowStart - 400), rowStart + 100);
     expect(rowBlock).toMatch(/\{dog \? \(/);
-    expect(rowBlock).toMatch(/onPress=\{\(\) => setHealthModalVisible\(true\)\}/);
+    expect(rowBlock).toMatch(/בריאות וטיפוח/);
   });
 
   it('loads health tasks for the active dog only while the modal is open, and reloads if the active dog changes', () => {

@@ -111,6 +111,8 @@ export interface Repository {
   getGpsSession(walkId: string): Promise<WalkGpsSession | undefined>;
   /** Upserts by session.walkId (one session per walk — see 0051's unique constraint). Covers creating the initial device-computed reading AND recording a correction. No delete: same "history record" posture as health tasks/dogs. */
   upsertGpsSession(session: WalkGpsSession): Promise<void>;
+  /** Bulk read for Statistics' optional distance KPI — every session for the given walk ids, in one query rather than N. Missing ids are simply absent from the result (never an error). */
+  getGpsSessionsForWalkIds(walkIds: string[]): Promise<WalkGpsSession[]>;
 
   getScheduleRules(familyId: string): Promise<ScheduleRule[]>;
   upsertScheduleRule(rule: ScheduleRule): Promise<void>;

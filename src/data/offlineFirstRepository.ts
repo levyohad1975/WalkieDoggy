@@ -342,6 +342,17 @@ export class OfflineFirstRepository implements Repository {
     }
   }
 
+  async getGpsSessionsForWalkIds(walkIds: string[]): Promise<WalkGpsSession[]> {
+    if (await this.isOnline()) {
+      try {
+        return await this.remote!.getGpsSessionsForWalkIds(walkIds);
+      } catch {
+        /* fall through */
+      }
+    }
+    return this.local.getGpsSessionsForWalkIds(walkIds);
+  }
+
   async getScheduleRules(familyId: string): Promise<ScheduleRule[]> {
     if (await this.isOnline()) {
       try {

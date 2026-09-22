@@ -236,6 +236,22 @@ describe('LocalRepository — dog data (BUG 3: dog name must load in local/demo 
     expect(await repo.getGpsSession('walk-no-session')).toBeUndefined();
   });
 
+  it('getGpsSessionsForWalkIds returns only sessions matching the given ids, in one bulk read', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+    const sessionA: WalkGpsSession = { id: 'gps-a', walkId: 'walk-a', familyId: DEMO_FAMILY.id, dogId: DEMO_DOG.id, distanceMeters: 500, pointCount: 10, source: 'device_gps', createdAt: 'c', updatedAt: 'u' };
+    const sessionB: WalkGpsSession = { id: 'gps-b', walkId: 'walk-b', familyId: DEMO_FAMILY.id, dogId: DEMO_DOG.id, distanceMeters: 700, pointCount: 15, source: 'device_gps', createdAt: 'c', updatedAt: 'u' };
+    const sessionC: WalkGpsSession = { id: 'gps-c', walkId: 'walk-c', familyId: DEMO_FAMILY.id, dogId: DEMO_DOG.id, distanceMeters: 300, pointCount: 5, source: 'device_gps', createdAt: 'c', updatedAt: 'u' };
+    await repo.upsertGpsSession(sessionA);
+    await repo.upsertGpsSession(sessionB);
+    await repo.upsertGpsSession(sessionC);
+
+    const result = await repo.getGpsSessionsForWalkIds(['walk-a', 'walk-c', 'walk-nonexistent']);
+
+    expect(result).toHaveLength(2);
+    expect(result.map((s) => s.walkId).sort()).toEqual(['walk-a', 'walk-c']);
+  });
+
   it('getFamily returns undefined for a family id that does not match the cached family', async () => {
     const repo = new LocalRepository();
     await repo.getUsers(DEMO_FAMILY.id); // trigger seed

@@ -441,6 +441,13 @@ export class SupabaseRepository implements Repository {
     if (error) throw error;
   }
 
+  async getGpsSessionsForWalkIds(walkIds: string[]): Promise<WalkGpsSession[]> {
+    if (walkIds.length === 0) return [];
+    const { data, error } = await this.client.from('walk_gps_sessions').select('*').in('walk_id', walkIds);
+    if (error) throw error;
+    return (data ?? []).map(toGpsSession);
+  }
+
   async getScheduleRules(familyId: string): Promise<ScheduleRule[]> {
     const { data, error } = await this.client.from('schedule_rules').select('*').eq('family_id', familyId);
     if (error) throw error;

@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, ScrollView, StyleSheet, View, Pressable } from 'react-native';
+import { ActivityIndicator, Modal, Platform, ScrollView, StyleSheet, View, Pressable } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveUserId } from '../store/authStore';
@@ -11,22 +12,48 @@ import { breakpoints, nativeDirection, radii, spacing, typography } from '../the
 import { Avatar } from '../components/Avatar';
 import { EmptyState, ErrorState } from '../components/EmptyState';
 import { DEMO_FAMILY } from '../data/demoData';
+import { repository } from '../data';
 import {
+  applyStatisticsFilters,
   computeCompletionStats,
+  computeDailyTrend,
+  computeDistanceStats,
+  computeDogDistribution,
+  computeDurationStats,
+  computeInsights,
   computeMemberDistribution,
+  computeOnTimeStats,
   computePlannedVsSpontaneous,
-  filterWalksByPeriod,
+  DEFAULT_STATISTICS_FILTERS,
+  formatDistanceMeters,
+  periodToDateRange,
+  type StatisticsFilters,
   type StatsPeriod,
 } from '../logic/statistics';
+import { localDateOnly } from '../logic/dateFormat';
 import { canAccessStatisticsScreen } from '../logic/permissions';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { fetchStatisticsWalks } from '../lib/permissionedWalks';
-import type { Walk } from '../types';
+import type { Walk, WalkGpsSession, WalkStatus } from '../types';
 
 const PERIOD_LABELS: [StatsPeriod, string][] = [
   ['7d', '7 ימים'],
   ['30d', '30 ימים'],
   ['all', 'הכל'],
+];
+
+const STATUS_LABELS: [WalkStatus | 'all', string][] = [
+  ['all', 'הכל'],
+  ['done', 'בוצע'],
+  ['pending', 'ממתין'],
+  ['skipped', 'לא בוצע'],
+  ['in_progress', 'בתהליך'],
+];
+
+const PLANNED_LABELS: [StatisticsFilters['planned'], string][] = [
+  ['all', 'הכל'],
+  ['planned', 'מתוכנן'],
+  ['adhoc', 'ספונטני'],
 ];
 
 /** A horizontal percentage bar built from plain Views — no chart library needed for this app's needs (see final report for why none was added). */
@@ -38,29 +65,45 @@ function Bar({ percent, color }: { percent: number; color: string }) {
   );
 }
 
+/** A minimal daily trend sparkline — vertical bars sized relative to the busiest day in range. Plain Views, matching this screen's existing no-chart-library convention. */
+function TrendChart({ points }: { points: { date: string; count: number }[] }) {
+  const max = Math.max(1, ...points.map((p) => p.count));
+  return (
+    <View style={styles.trendRow}>
+      {points.map((p) => (
+        <View key={p.date} style={styles.trendBarWrap}>
+          <View style={[styles.trendBar, { height: `${Math.max(6, (p.count / max) * 100)}%` }]} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
 /**
- * Section 13: real-data-only graphs/statistics screen.
+ * Reports & Insights redesign (Statistics/Settings batch): a real filters +
+ * KPIs + trends experience, replacing the old period-chips-only screen.
+ * Pee/poop is deliberately NOT a KPI tile here — see computeInsights' own
+ * doc comment for where it's allowed to appear (one supplementary sentence).
  *
- * CORRECTED (Batch 3 correction #2, review #2): this screen used to read
- * directly from scheduleStore's live `walks` array (a useMemo over it, not
- * a snapshot). It now computes from statisticsDataset — the authorized
- * result of list_statistics_walks() (migration 0027) — because the raw
- * `walks` RLS path (what scheduleStore reads) is deliberately restricted to
- * an operational window and no longer a valid source of bulk historical
- * data for anyone, permitted or not (see 0027's own comment). Reactivity is
- * preserved via useFocusEffect (the same established pattern HomeScreen.tsx
- * already uses for its own refetch-on-return-to-tab): this screen has no
- * mutations of its own, so a refetch on every focus is what keeps it
- * reflecting edits made elsewhere (History, Home) while this tab wasn't
- * active, without falling back to unrestricted raw historical access just
- * to stay live.
+ * CORRECTED (Batch 3 correction #2, review #2, preserved through this
+ * redesign): this screen computes from statisticsDataset — the authorized
+ * result of list_statistics_walks() (migration 0027) — never the raw
+ * scheduleStore.walks array, because that RLS path is a permission-
+ * independent operational window, not a valid bulk-historical source.
+ * Reactivity is preserved via useFocusEffect, same as before.
  */
 export function StatisticsScreen() {
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const effectiveUserId = useEffectiveUserId();
-  const { users, loading: familyLoading, error: familyError, load: loadFamily, permissionOverrides, permissionOverridesStatus } = useFamilyStore();
+  const { users, dogs, loading: familyLoading, error: familyError, load: loadFamily, permissionOverrides, permissionOverridesStatus } = useFamilyStore();
   const { walks, loading: scheduleLoading, error: scheduleError, load: loadSchedule } = useScheduleStore();
   const [period, setPeriod] = useState<StatsPeriod>('7d');
+  const [customRange, setCustomRange] = useState<{ start: string; end: string } | null>(null);
+  const [filters, setFilters] = useState<StatisticsFilters>(DEFAULT_STATISTICS_FILTERS);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [rangePickerOpen, setRangePickerOpen] = useState<'start' | 'end' | null>(null);
+  const [draftRangeDate, setDraftRangeDate] = useState<string | null>(null);
+  const [gpsSessions, setGpsSessions] = useState<WalkGpsSession[]>([]);
 
   // BATCH 3 CORRECTION #2 (review #2): the actual display/calculation
   // dataset — see this file's own doc comment above. statisticsAccessStatus
@@ -118,15 +161,62 @@ export function StatisticsScreen() {
   const sourceWalks = isSupabaseConfigured ? statisticsDataset : walks;
 
   const usersById = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u])), [users]);
-  const periodWalks = useMemo(() => filterWalksByPeriod(sourceWalks, period), [sourceWalks, period]);
+  const dogsById = useMemo(() => Object.fromEntries(dogs.map((d) => [d.id, d])), [dogs]);
 
-  const completion = useMemo(() => computeCompletionStats(periodWalks), [periodWalks]);
-  const memberDistribution = useMemo(() => computeMemberDistribution(periodWalks), [periodWalks]);
-  const plannedVsSpontaneous = useMemo(() => computePlannedVsSpontaneous(periodWalks), [periodWalks]);
+  const dateRange = period === 'all' ? customRange : periodToDateRange(period);
+  const effectiveFilters = useMemo<StatisticsFilters>(() => ({ ...filters, dateRange }), [filters, dateRange]);
+  const filteredWalks = useMemo(() => applyStatisticsFilters(sourceWalks, effectiveFilters), [sourceWalks, effectiveFilters]);
+
+  // Distance is an optional KPI (see computeDistanceStats' own doc comment)
+  // — best-effort fetch, never blocking the rest of the screen. Bulk query
+  // scoped to exactly the walks currently in view.
+  useEffect(() => {
+    const doneWalkIds = filteredWalks.filter((w) => w.status === 'done').map((w) => w.id);
+    if (doneWalkIds.length === 0) {
+      setGpsSessions([]);
+      return;
+    }
+    let cancelled = false;
+    repository
+      .getGpsSessionsForWalkIds(doneWalkIds)
+      .then((sessions) => {
+        if (!cancelled) setGpsSessions(sessions);
+      })
+      .catch(() => {
+        if (!cancelled) setGpsSessions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [filteredWalks]);
+
+  const completion = useMemo(() => computeCompletionStats(filteredWalks), [filteredWalks]);
+  const memberDistribution = useMemo(() => computeMemberDistribution(filteredWalks), [filteredWalks]);
+  const dogDistribution = useMemo(() => computeDogDistribution(filteredWalks), [filteredWalks]);
+  const plannedVsSpontaneous = useMemo(() => computePlannedVsSpontaneous(filteredWalks), [filteredWalks]);
+  const onTimeStats = useMemo(() => computeOnTimeStats(filteredWalks), [filteredWalks]);
+  const durationStats = useMemo(() => computeDurationStats(filteredWalks), [filteredWalks]);
+  const distanceStats = useMemo(() => computeDistanceStats(gpsSessions), [gpsSessions]);
+  const trend = useMemo(() => computeDailyTrend(filteredWalks), [filteredWalks]);
+  const insights = useMemo(() => computeInsights(filteredWalks, usersById, dogsById), [filteredWalks, usersById, dogsById]);
 
   const loading = familyLoading || scheduleLoading;
   const error = familyError || scheduleError;
   const maxMemberCount = Math.max(1, ...memberDistribution.map((m) => m.count));
+  const maxDogCount = Math.max(1, ...dogDistribution.map((m) => m.count));
+
+  const openRangePicker = (which: 'start' | 'end') => {
+    setDraftRangeDate((which === 'start' ? customRange?.start : customRange?.end) ?? localDateOnly(new Date()));
+    setRangePickerOpen(which);
+  };
+  const confirmRangePicker = (value: string) => {
+    setCustomRange((prev) => {
+      const base = prev ?? { start: value, end: value };
+      return rangePickerOpen === 'start' ? { ...base, start: value } : { ...base, end: value };
+    });
+    setPeriod('all');
+    setRangePickerOpen(null);
+  };
 
   if (loading && sourceWalks.length === 0) {
     return (
@@ -146,17 +236,6 @@ export function StatisticsScreen() {
 
   // BATCH 3 (Task 4) — see HistoryScreen.tsx's identical guard for the full
   // reasoning: the hidden nav tab is a convenience, this is the boundary.
-  // CORRECTED (Batch 3 correction #1/#2, post-review): two independent
-  // checks, both must pass — canAccessStatisticsScreen() fails closed while
-  // permissionOverrides hasn't finished loading/failed, and
-  // statisticsAccessStatus reflects the actual server-side
-  // list_statistics_walks() (migration 0027) response. CORRECTED FURTHER
-  // (review #2): statisticsAccessStatus also gates whether statisticsDataset
-  // (this screen's actual data source above) is trustworthy to render from.
-  // CORRECTED FURTHER (review #3): a background refocus revalidation
-  // ('checking' after a prior 'granted') must not blank an already-verified
-  // user's real data with this gate — only a genuine 'denied', or a
-  // never-yet-granted 'checking' (the real first-load case), should block.
   if (
     !canAccessStatisticsScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus) ||
     (statisticsAccessStatus !== 'granted' && !(statisticsAccessStatus === 'checking' && hasEverGrantedRef.current))
@@ -172,8 +251,8 @@ export function StatisticsScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
         <View style={styles.hero}>
-          <RtlText style={styles.header} accessibilityRole="header">סטטיסטיקה</RtlText>
-          <RtlText style={styles.headerSubtitle}>תמונה ברורה של הטיולים והחלוקה המשפחתית</RtlText>
+          <RtlText style={styles.header} accessibilityRole="header">סטטיסטיקה ותובנות</RtlText>
+          <RtlText style={styles.headerSubtitle}>תמונה ברורה של הטיולים, הזמנים והחלוקה המשפחתית</RtlText>
         </View>
 
         <RtlText style={styles.filterLabel}>טווח זמן</RtlText>
@@ -192,67 +271,209 @@ export function StatisticsScreen() {
           ))}
         </View>
 
-        {periodWalks.length === 0 ? (
-          <EmptyState emoji="📈" title="אין עדיין נתונים בטווח הזה" subtitle="הסטטיסטיקה תתמלא ככל שיירשמו טיולים" />
-        ) : (
-          <>
-            {/*
-              FINAL CORRECTION PASS — Deliverable 3B: the approved Design 1
-              KPI grid — 4 equal tiles (סה״כ טיולים / בוצעו + אחוז ביצוע /
-              לא בוצעו / ספונטניים), each a single clear number with its own
-              label, instead of the previous single dense "completion" card.
-              BIDI: every numeric run stays its own Text pinned to
-              styles.ltrText (so digits/percent signs can never be
-              reordered by the surrounding RTL layout — the exact bug the
-              prior redesign's bidi fix already established the pattern
-              for), every Hebrew label its own Text pinned to
-              styles.rtlText. NARROW FIX PASS (typecheck): writingDirection
-              is a Text `style` property in this project's RN/@types/
-              react-native version, not a direct JSX prop — moved into
-              these two shared style objects (styles.ltrText/rtlText,
-              defined below) rather than 15 repeated inline `{
-              writingDirection: 'ltr' }` objects, matching how this file
-              already shares kpiValue/kpiLabel/etc. The VISUAL behavior is
-              unchanged — same property, same values, just relocated into
-              `style`.
-            */}
-            <View style={styles.kpiGrid}>
-              <View style={styles.kpiTile}>
-                <RtlText style={[styles.kpiValue, styles.ltrText]}>
-                  {completion.total}
-                </RtlText>
-                <RtlText style={[styles.kpiLabel, styles.rtlText]}>
-                  סה״כ טיולים
-                </RtlText>
-              </View>
-              <View style={styles.kpiTile}>
-                <RtlText style={[styles.kpiValue, styles.kpiValueDone, styles.ltrText]}>
-                  {completion.done}
-                </RtlText>
-                <RtlText style={[styles.kpiLabel, styles.rtlText]}>
-                  בוצעו
-                </RtlText>
-                <RtlText style={[styles.kpiSubValue, styles.ltrText]}>
-                  {completion.donePercentOfResolved}%
-                </RtlText>
-              </View>
-              <View style={styles.kpiTile}>
-                <RtlText style={[styles.kpiValue, styles.kpiValueSkipped, styles.ltrText]}>
-                  {completion.notDone}
-                </RtlText>
-                <RtlText style={[styles.kpiLabel, styles.rtlText]}>
-                  לא בוצעו
-                </RtlText>
-              </View>
-              <View style={styles.kpiTile}>
-                <RtlText style={[styles.kpiValue, styles.ltrText]}>
-                  {plannedVsSpontaneous.spontaneous}
-                </RtlText>
-                <RtlText style={[styles.kpiLabel, styles.rtlText]}>
-                  ספונטניים
-                </RtlText>
+        <View style={styles.customRangeRow}>
+          <Pressable style={styles.customRangeButton} onPress={() => openRangePicker('start')} accessibilityRole="button">
+            <RtlText style={styles.customRangeButtonText}>
+              מ: {customRange?.start ?? '—'}
+            </RtlText>
+          </Pressable>
+          <Pressable style={styles.customRangeButton} onPress={() => openRangePicker('end')} accessibilityRole="button">
+            <RtlText style={styles.customRangeButtonText}>
+              עד: {customRange?.end ?? '—'}
+            </RtlText>
+          </Pressable>
+          {customRange ? (
+            <Pressable
+              style={styles.customRangeClear}
+              onPress={() => {
+                setCustomRange(null);
+                setPeriod('7d');
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="נקה טווח תאריכים מותאם"
+            >
+              <RtlText style={styles.customRangeClearText}>✕</RtlText>
+            </Pressable>
+          ) : null}
+        </View>
+
+        {Platform.OS === 'android' && rangePickerOpen ? (
+          <DateTimePicker
+            value={draftRangeDate ? new Date(`${draftRangeDate}T00:00:00`) : new Date()}
+            mode="date"
+            display="default"
+            onChange={(_event: DateTimePickerEvent, selected?: Date) => {
+              if (selected) confirmRangePicker(localDateOnly(selected));
+              else setRangePickerOpen(null);
+            }}
+          />
+        ) : null}
+
+        <Modal visible={Platform.OS === 'ios' && !!rangePickerOpen} transparent animationType="fade" onRequestClose={() => setRangePickerOpen(null)}>
+          <View style={styles.dateModalBackdrop}>
+            <View style={styles.dateModalCard}>
+              <RtlText style={styles.dateModalTitle}>{rangePickerOpen === 'start' ? 'תאריך התחלה' : 'תאריך סיום'}</RtlText>
+              <DateTimePicker
+                value={draftRangeDate ? new Date(`${draftRangeDate}T00:00:00`) : new Date()}
+                mode="date"
+                display="inline"
+                onChange={(_event: DateTimePickerEvent, selected?: Date) => {
+                  if (selected) setDraftRangeDate(localDateOnly(selected));
+                }}
+              />
+              <View style={styles.dateModalActions}>
+                <Pressable style={[styles.dateModalButton, styles.dateModalCancel]} onPress={() => setRangePickerOpen(null)}>
+                  <RtlText style={styles.dateModalCancelText}>ביטול</RtlText>
+                </Pressable>
+                <Pressable
+                  style={[styles.dateModalButton, styles.dateModalConfirm]}
+                  onPress={() => confirmRangePicker(draftRangeDate ?? localDateOnly(new Date()))}
+                >
+                  <RtlText style={styles.dateModalConfirmText}>אישור</RtlText>
+                </Pressable>
               </View>
             </View>
+          </View>
+        </Modal>
+
+        <Pressable
+          style={styles.filterToggleRow}
+          onPress={() => setFiltersExpanded((v) => !v)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: filtersExpanded }}
+        >
+          <RtlText style={styles.filterToggleText}>{filtersExpanded ? 'הסתר סינון מתקדם ⌃' : 'סינון מתקדם ⌄'}</RtlText>
+        </Pressable>
+
+        {filtersExpanded ? (
+          <View style={styles.advancedFilters}>
+            {dogs.length > 1 ? (
+              <View style={styles.filterGroup}>
+                <RtlText style={styles.filterGroupLabel}>כלב</RtlText>
+                <View style={styles.chipRow}>
+                  <Pressable
+                    style={[styles.chip, !filters.dogId && styles.chipActive]}
+                    onPress={() => setFilters((f) => ({ ...f, dogId: null }))}
+                    accessibilityRole="button"
+                  >
+                    <RtlText style={[styles.chipText, !filters.dogId && styles.chipTextActive]}>הכל</RtlText>
+                  </Pressable>
+                  {dogs.map((d) => (
+                    <Pressable
+                      key={d.id}
+                      style={[styles.chip, filters.dogId === d.id && styles.chipActive]}
+                      onPress={() => setFilters((f) => ({ ...f, dogId: f.dogId === d.id ? null : d.id }))}
+                      accessibilityRole="button"
+                    >
+                      <RtlText style={[styles.chipText, filters.dogId === d.id && styles.chipTextActive]}>{d.name}</RtlText>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            <View style={styles.filterGroup}>
+              <RtlText style={styles.filterGroupLabel}>בן/בת משפחה</RtlText>
+              <View style={styles.chipRow}>
+                <Pressable
+                  style={[styles.chip, !filters.memberId && styles.chipActive]}
+                  onPress={() => setFilters((f) => ({ ...f, memberId: null }))}
+                  accessibilityRole="button"
+                >
+                  <RtlText style={[styles.chipText, !filters.memberId && styles.chipTextActive]}>הכל</RtlText>
+                </Pressable>
+                {users.map((u) => (
+                  <Pressable
+                    key={u.id}
+                    style={[styles.chip, filters.memberId === u.id && styles.chipActive]}
+                    onPress={() => setFilters((f) => ({ ...f, memberId: f.memberId === u.id ? null : u.id }))}
+                    accessibilityRole="button"
+                  >
+                    <RtlText style={[styles.chipText, filters.memberId === u.id && styles.chipTextActive]}>{u.name}</RtlText>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.filterGroup}>
+              <RtlText style={styles.filterGroupLabel}>סטטוס</RtlText>
+              <View style={styles.chipRow}>
+                {STATUS_LABELS.map(([key, label]) => (
+                  <Pressable
+                    key={key}
+                    style={[styles.chip, filters.status === key && styles.chipActive]}
+                    onPress={() => setFilters((f) => ({ ...f, status: key }))}
+                    accessibilityRole="button"
+                  >
+                    <RtlText style={[styles.chipText, filters.status === key && styles.chipTextActive]}>{label}</RtlText>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.filterGroup}>
+              <RtlText style={styles.filterGroupLabel}>סוג</RtlText>
+              <View style={styles.chipRow}>
+                {PLANNED_LABELS.map(([key, label]) => (
+                  <Pressable
+                    key={key}
+                    style={[styles.chip, filters.planned === key && styles.chipActive]}
+                    onPress={() => setFilters((f) => ({ ...f, planned: key }))}
+                    accessibilityRole="button"
+                  >
+                    <RtlText style={[styles.chipText, filters.planned === key && styles.chipTextActive]}>{label}</RtlText>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          </View>
+        ) : null}
+
+        {filteredWalks.length === 0 ? (
+          <EmptyState emoji="📈" title="אין עדיין נתונים בטווח או בסינון הזה" subtitle="הסטטיסטיקה תתמלא ככל שיירשמו טיולים" />
+        ) : (
+          <>
+            <View style={styles.kpiGrid}>
+              <View style={styles.kpiTile}>
+                <RtlText style={[styles.kpiValue, styles.ltrText]}>{completion.total}</RtlText>
+                <RtlText style={[styles.kpiLabel, styles.rtlText]}>סה״כ טיולים</RtlText>
+              </View>
+              <View style={styles.kpiTile}>
+                <RtlText style={[styles.kpiValue, styles.kpiValueDone, styles.ltrText]}>{completion.done}</RtlText>
+                <RtlText style={[styles.kpiLabel, styles.rtlText]}>בוצעו</RtlText>
+                <RtlText style={[styles.kpiSubValue, styles.ltrText]}>{completion.donePercentOfResolved}%</RtlText>
+              </View>
+              <View style={styles.kpiTile}>
+                <RtlText style={[styles.kpiValue, styles.ltrText]}>{onTimeStats.onTimePercent}%</RtlText>
+                <RtlText style={[styles.kpiLabel, styles.rtlText]}>בזמן</RtlText>
+                {onTimeStats.onTime + onTimeStats.late > 0 ? (
+                  <RtlText style={[styles.kpiSubValue, styles.rtlText]}>{onTimeStats.onTime + onTimeStats.late} רלוונטיים</RtlText>
+                ) : null}
+              </View>
+              <View style={styles.kpiTile}>
+                <RtlText style={[styles.kpiValue, styles.ltrText]}>
+                  {durationStats.averageMinutes ?? '—'}
+                </RtlText>
+                <RtlText style={[styles.kpiLabel, styles.rtlText]}>דקות בממוצע</RtlText>
+              </View>
+              {distanceStats.sessionCount > 0 ? (
+                <View style={styles.kpiTile}>
+                  <RtlText style={[styles.kpiValue, styles.ltrText]}>{formatDistanceMeters(distanceStats.totalMeters)}</RtlText>
+                  <RtlText style={[styles.kpiLabel, styles.rtlText]}>מרחק כולל</RtlText>
+                </View>
+              ) : null}
+              <View style={styles.kpiTile}>
+                <RtlText style={[styles.kpiValue, styles.ltrText]}>{plannedVsSpontaneous.spontaneous}</RtlText>
+                <RtlText style={[styles.kpiLabel, styles.rtlText]}>ספונטניים</RtlText>
+              </View>
+            </View>
+
+            {trend.length > 1 ? (
+              <View style={styles.card}>
+                <RtlText style={styles.cardTitle}>מגמה יומית</RtlText>
+                <TrendChart points={trend} />
+              </View>
+            ) : null}
 
             <View style={styles.card}>
               <RtlText style={styles.cardTitle}>התפלגות בין בני המשפחה</RtlText>
@@ -270,33 +491,43 @@ export function StatisticsScreen() {
                       <View style={styles.memberBarWrap}>
                         <Bar percent={(count / maxMemberCount) * 100} color={user?.color ?? colors.primary} />
                       </View>
-                      <RtlText style={[styles.memberCount, styles.ltrText]}>
-                        {count}
-                      </RtlText>
+                      <RtlText style={[styles.memberCount, styles.ltrText]}>{count}</RtlText>
                     </View>
                   );
                 })
               )}
             </View>
 
+            {dogs.length > 1 && dogDistribution.length > 0 ? (
+              <View style={styles.card}>
+                <RtlText style={styles.cardTitle}>התפלגות בין כלבים</RtlText>
+                {dogDistribution.map(({ dogId, count }) => {
+                  const dog = dogsById[dogId];
+                  return (
+                    <View key={dogId} style={styles.memberRow}>
+                      <RtlText style={[styles.memberName, styles.rtlText]} numberOfLines={1}>
+                        {dog?.name ?? 'לא ידוע'}
+                      </RtlText>
+                      <View style={styles.memberBarWrap}>
+                        <Bar percent={(count / maxDogCount) * 100} color={colors.primary} />
+                      </View>
+                      <RtlText style={[styles.memberCount, styles.ltrText]}>{count}</RtlText>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
+
             <View style={styles.card}>
               <RtlText style={styles.cardTitle}>מתוכנן לעומת ספונטני</RtlText>
               <View style={styles.rowBetween}>
                 <View style={styles.inlineStat}>
-                  <RtlText style={[styles.metaText, styles.rtlText]}>
-                    ספונטני
-                  </RtlText>
-                  <RtlText style={[styles.metaTextStrong, styles.ltrText]}>
-                    {plannedVsSpontaneous.spontaneous}
-                  </RtlText>
+                  <RtlText style={[styles.metaText, styles.rtlText]}>ספונטני</RtlText>
+                  <RtlText style={[styles.metaTextStrong, styles.ltrText]}>{plannedVsSpontaneous.spontaneous}</RtlText>
                 </View>
                 <View style={styles.inlineStat}>
-                  <RtlText style={[styles.metaText, styles.rtlText]}>
-                    מתוכנן
-                  </RtlText>
-                  <RtlText style={[styles.metaTextStrong, styles.ltrText]}>
-                    {plannedVsSpontaneous.planned}
-                  </RtlText>
+                  <RtlText style={[styles.metaText, styles.rtlText]}>מתוכנן</RtlText>
+                  <RtlText style={[styles.metaTextStrong, styles.ltrText]}>{plannedVsSpontaneous.planned}</RtlText>
                 </View>
               </View>
               <Bar
@@ -309,8 +540,16 @@ export function StatisticsScreen() {
               />
             </View>
 
-
-
+            {insights.length > 0 ? (
+              <View style={styles.card}>
+                <RtlText style={styles.cardTitle}>תובנות</RtlText>
+                {insights.map((line, i) => (
+                  <RtlText key={i} style={[styles.insightText, styles.rtlText]}>
+                    {line}
+                  </RtlText>
+                ))}
+              </View>
+            ) : null}
           </>
         )}
       </ScrollView>
@@ -321,8 +560,6 @@ export function StatisticsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
-  // Bottom padding increased (final QA round, item H: adequate bottom
-  // safe-area padding) so the last card clears the tab bar comfortably.
   content: { padding: spacing.xl, gap: spacing.lg, paddingBottom: spacing.xxxl },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
   hero: { width: '100%', gap: spacing.xs, paddingTop: spacing.xs },
@@ -334,6 +571,30 @@ const styles = StyleSheet.create({
   periodChipActive: { backgroundColor: colors.primary },
   periodChipText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
   periodChipTextActive: { color: colors.textInverse },
+  customRangeRow: { flexDirection: 'row', ...nativeDirection('rtl'), gap: spacing.sm, alignItems: 'center' },
+  customRangeButton: { flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.sm, alignItems: 'center' },
+  customRangeButtonText: { fontSize: 12, fontWeight: '700', color: colors.textPrimary, writingDirection: 'rtl' },
+  customRangeClear: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surfaceMuted, alignItems: 'center', justifyContent: 'center' },
+  customRangeClearText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
+  filterToggleRow: { alignItems: 'center', paddingVertical: spacing.xs },
+  filterToggleText: { fontSize: 13, fontWeight: '700', color: colors.primaryDark, writingDirection: 'rtl' },
+  advancedFilters: { gap: spacing.md, backgroundColor: colors.surfaceMuted, borderRadius: radii.lg, padding: spacing.md },
+  filterGroup: { gap: spacing.xs },
+  filterGroupLabel: { fontSize: 12, fontWeight: '700', color: colors.textSecondary, textAlign: 'right', writingDirection: 'rtl' },
+  chipRow: { flexDirection: 'row', ...nativeDirection('rtl'), flexWrap: 'wrap', gap: spacing.xs },
+  chip: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radii.round, paddingVertical: 6, paddingHorizontal: 12 },
+  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipText: { fontSize: 12, fontWeight: '700', color: colors.textSecondary },
+  chipTextActive: { color: colors.textInverse },
+  dateModalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
+  dateModalCard: { backgroundColor: colors.surface, borderRadius: radii.lg, padding: spacing.lg, gap: spacing.md, width: '100%', maxWidth: 340 },
+  dateModalTitle: { fontSize: 15, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  dateModalActions: { flexDirection: 'row', ...nativeDirection('rtl'), gap: spacing.sm },
+  dateModalButton: { flex: 1, borderRadius: radii.md, paddingVertical: spacing.sm, alignItems: 'center' },
+  dateModalCancel: { backgroundColor: colors.surfaceMuted },
+  dateModalCancelText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
+  dateModalConfirm: { backgroundColor: colors.primary },
+  dateModalConfirmText: { fontSize: 13, fontWeight: '700', color: colors.textInverse },
   card: {
     backgroundColor: colors.surface,
     borderRadius: 18,
@@ -345,8 +606,6 @@ const styles = StyleSheet.create({
   cardTitle: { width: '100%', ...typography.cardTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   rowBetween: { flexDirection: 'row', ...nativeDirection('rtl'), justifyContent: 'space-between' },
   metaText: { fontSize: 13, color: colors.textSecondary, fontWeight: '600', textAlign: 'right' },
-  // Deliverable 3B — the 4-tile KPI grid (2x2, equal width, wraps via flexWrap
-  // so it reads correctly at any phone width without a fixed column count).
   kpiGrid: { flexDirection: 'row', ...nativeDirection('rtl'), flexWrap: 'wrap', gap: spacing.sm },
   kpiTile: {
     flexBasis: '47%',
@@ -362,7 +621,6 @@ const styles = StyleSheet.create({
   },
   kpiValue: { ...typography.statValue, color: colors.textPrimary },
   kpiValueDone: { color: colors.statusDone },
-  kpiValueSkipped: { color: colors.statusSkipped },
   kpiLabel: { ...typography.meta, color: colors.textSecondary },
   kpiSubValue: { fontSize: 13, fontWeight: '700', color: colors.statusDone, marginTop: 2 },
   inlineStat: { flexDirection: 'row', ...nativeDirection('rtl'), alignItems: 'baseline', gap: 4 },
@@ -373,13 +631,10 @@ const styles = StyleSheet.create({
   memberName: { fontSize: 13, fontWeight: '700', color: colors.textPrimary, width: 64, textAlign: 'right' },
   memberBarWrap: { flex: 1 },
   memberCount: { fontSize: 12, fontWeight: '700', color: colors.textSecondary, minWidth: 20, textAlign: 'center' },
-  // NARROW FIX PASS (typecheck): writingDirection belongs in the Text
-  // `style` object in this project's RN/@types/react-native version, not
-  // as a direct JSX prop (`<RtlText writingDirection="ltr">` typechecks under
-  // some RN/TS version combinations but not this project's — see this
-  // file's own BIDI doc comment above). Shared here instead of 15 repeated
-  // inline `{ writingDirection: '...' }` objects, consistent with this
-  // file's existing shared-style convention.
+  trendRow: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'flex-end', height: 64, gap: 4 },
+  trendBarWrap: { flex: 1, height: '100%', justifyContent: 'flex-end' },
+  trendBar: { width: '100%', minHeight: 4, borderRadius: 3, backgroundColor: colors.primary },
+  insightText: { fontSize: 13, color: colors.textPrimary, fontWeight: '600', textAlign: 'right', lineHeight: 19 },
   ltrText: { writingDirection: 'ltr' },
   rtlText: { writingDirection: 'rtl' },
 });

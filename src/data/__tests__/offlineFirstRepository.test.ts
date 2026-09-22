@@ -18,6 +18,7 @@ function stubRemote(overrides: Partial<Repository> = {}): Repository {
     upsertHealthTask: jest.fn(),
     getGpsSession: jest.fn(),
     upsertGpsSession: jest.fn(),
+    getGpsSessionsForWalkIds: jest.fn(),
     getScheduleRules: jest.fn(),
     upsertScheduleRule: jest.fn(),
     deleteScheduleRule: jest.fn(),
@@ -391,6 +392,17 @@ describe('OfflineFirstRepository — online + remote succeeds: reads return the 
 
     await expect(repo.getGpsSession('walk-1')).resolves.toEqual(session);
     expect(remote.getGpsSession).toHaveBeenCalledWith('walk-1');
+  });
+
+  it('getGpsSessionsForWalkIds returns the remote bulk result', async () => {
+    const sessions: WalkGpsSession[] = [
+      { id: 'gps-1', walkId: 'walk-1', familyId: 'family-1', dogId: 'dog-1', distanceMeters: 500, pointCount: 10, source: 'device_gps', createdAt: 'c', updatedAt: 'u' },
+    ];
+    const remote = stubRemote({ getGpsSessionsForWalkIds: jest.fn().mockResolvedValue(sessions) });
+    const repo = await makeRepo(true, remote);
+
+    await expect(repo.getGpsSessionsForWalkIds(['walk-1', 'walk-2'])).resolves.toEqual(sessions);
+    expect(remote.getGpsSessionsForWalkIds).toHaveBeenCalledWith(['walk-1', 'walk-2']);
   });
 
   it('getScheduleRules returns the remote rules', async () => {
