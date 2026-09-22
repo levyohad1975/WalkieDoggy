@@ -302,7 +302,11 @@ export function HomeScreen() {
     void (async () => {
       const achievementWalks = await fetchAchievementWalks();
       if (achievementWalks.length === 0) return;
-      await useAchievementStore.getState().checkForNewUnlocks(familyId, achievementWalks, effectiveUserId);
+      // swapRequests is already loaded by the mount effect above
+      // (`if (isSupabaseConfigured) loadRequests();`) — read fresh from
+      // the store rather than a possibly-stale closed-over value, same
+      // convention as fetchAchievementWalks itself.
+      await useAchievementStore.getState().checkForNewUnlocks(familyId, achievementWalks, effectiveUserId, useRequestsStore.getState().swapRequests);
     })();
   }, [fetchAchievementWalks, familyId, effectiveUserId]);
 

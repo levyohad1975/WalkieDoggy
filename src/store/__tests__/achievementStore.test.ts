@@ -1,4 +1,5 @@
 import type { AchievementUnlock, Walk } from '../../types';
+import type { SwapRequestRow } from '../../lib/requests';
 
 /**
  * PRD §9 gamification, Phase 5 kickoff — achievementStore is the first
@@ -25,6 +26,26 @@ describe('achievementStore', () => {
       completedByUserId: 'noam',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      ...overrides,
+    };
+  }
+
+  function makeSwap(overrides: Partial<SwapRequestRow>): SwapRequestRow {
+    return {
+      id: 'swap-1',
+      family_id: 'family-1',
+      walk_id: 'w1',
+      requested_by_user_id: 'noam',
+      target_user_id: 'dana',
+      target_walk_id: 'w2',
+      status: 'approved',
+      created_at: new Date().toISOString(),
+      resolved_at: new Date().toISOString(),
+      requester_seen_at: null,
+      expected_responsible_user_id: 'noam',
+      expected_scheduled_time: new Date().toISOString(),
+      expected_target_responsible_user_id: 'dana',
+      expected_target_scheduled_time: new Date().toISOString(),
       ...overrides,
     };
   }
@@ -113,6 +134,21 @@ describe('achievementStore', () => {
 
     const state = useAchievementStore.getState();
     expect(state.unlocks.some((u: AchievementUnlock) => u.achievementKey === 'personal_first_walk' && u.userId === 'noam')).toBe(true);
+  });
+
+  it('checkForNewUnlocks passes swapRequests through, unlocking personal_fair_swap once enough approved swaps exist', async () => {
+    const { useAchievementStore } = require('../achievementStore');
+    const { repository } = require('../../data');
+    const { FAIR_SWAP_TARGET } = require('../../logic/achievements');
+    jest.spyOn(repository, 'getAchievementUnlocks').mockResolvedValueOnce([]);
+    jest.spyOn(repository, 'upsertAchievementUnlock').mockResolvedValue(undefined);
+    await useAchievementStore.getState().load('family-1');
+
+    const swaps = Array.from({ length: FAIR_SWAP_TARGET }, (_, i) => makeSwap({ id: `s${i}`, requested_by_user_id: 'noam' }));
+    await useAchievementStore.getState().checkForNewUnlocks('family-1', [], 'noam', swaps);
+
+    const state = useAchievementStore.getState();
+    expect(state.unlocks.some((u: AchievementUnlock) => u.achievementKey === 'personal_fair_swap' && u.userId === 'noam')).toBe(true);
   });
 
   it('checkForNewUnlocks never re-persists or re-queues an achievement already in the loaded ledger', async () => {

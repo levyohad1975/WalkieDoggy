@@ -34,6 +34,7 @@ import { useAchievementStore } from '../store/achievementStore';
 import { AchievementsModal } from '../components/AchievementsModal';
 import { computeFamilyAchievementProgress, computePersonalAchievementProgress } from '../logic/achievements';
 import { fetchHistoryWalks } from '../lib/permissionedWalks';
+import { listSwapRequests, type SwapRequestRow } from '../lib/requests';
 
 export function SettingsScreen() {
   const { family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, setGamificationEnabled, saveDog, selectDog } = useFamilyStore();
@@ -78,6 +79,11 @@ export function SettingsScreen() {
   // Achievements sheet is actually opened — same convention as
   // healthModalVisible/loadHealthTasks below.
   const [achievementWalks, setAchievementWalks] = useState<Walk[]>([]);
+  // "החלפה הוגנת" (fair swap) needs approved swap history — Supabase-only,
+  // same posture as achievementWalks above; simply stays empty in
+  // local/demo mode (lib/requests.ts's own doc comment: no swap-request
+  // concept exists there at all) rather than failing.
+  const [achievementSwapRequests, setAchievementSwapRequests] = useState<SwapRequestRow[]>([]);
   const [remindersModalVisible, setRemindersModalVisible] = useState(false);
   const [sharingModalVisible, setSharingModalVisible] = useState(false);
   const [managementVisible, setManagementVisible] = useState(false);
@@ -138,11 +144,15 @@ export function SettingsScreen() {
     void useAchievementStore.getState().load(familyId);
     if (!isSupabaseConfigured) {
       setAchievementWalks(useScheduleStore.getState().walks);
+      setAchievementSwapRequests([]);
       return;
     }
     fetchHistoryWalks()
       .then(setAchievementWalks)
       .catch(() => setAchievementWalks([]));
+    listSwapRequests()
+      .then(setAchievementSwapRequests)
+      .catch(() => setAchievementSwapRequests([]));
   }, [achievementsModalVisible, familyId]);
 
   // Cross-tab "open Health & Grooming" signal from Home's summary badge —
@@ -215,8 +225,8 @@ export function SettingsScreen() {
   const gamificationEnabled = currentUser?.gamificationEnabled ?? true;
   const familyAchievementProgress = useMemo(() => computeFamilyAchievementProgress(achievementWalks), [achievementWalks]);
   const personalAchievementProgress = useMemo(
-    () => (currentUserId ? computePersonalAchievementProgress(achievementWalks, currentUserId) : []),
-    [achievementWalks, currentUserId]
+    () => (currentUserId ? computePersonalAchievementProgress(achievementWalks, currentUserId, achievementSwapRequests) : []),
+    [achievementWalks, currentUserId, achievementSwapRequests]
   );
 
   const persistDog = async (patch: Partial<Dog>) => {

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { AchievementUnlock, Walk } from '../types';
+import type { SwapRequestRow } from '../lib/requests';
 import { repository } from '../data';
 import { generateId } from '../lib/id';
 import {
@@ -49,7 +50,7 @@ interface AchievementState {
    * family achievements accurate even while one member has opted out of
    * seeing popups themselves.
    */
-  checkForNewUnlocks: (familyId: string, walks: Walk[], userId: string | null) => Promise<void>;
+  checkForNewUnlocks: (familyId: string, walks: Walk[], userId: string | null, swapRequests?: SwapRequestRow[]) => Promise<void>;
   consumeNextUnlocked: () => AchievementProgress | undefined;
 }
 
@@ -73,10 +74,10 @@ export const useAchievementStore = create<AchievementState>((set, get) => ({
     }
   },
 
-  checkForNewUnlocks: async (familyId: string, walks: Walk[], userId: string | null) => {
+  checkForNewUnlocks: async (familyId: string, walks: Walk[], userId: string | null, swapRequests: SwapRequestRow[] = []) => {
     if (get().loadedFamilyId !== familyId) return; // see doc comment above
     const family = computeFamilyAchievementProgress(walks);
-    const personal = userId ? computePersonalAchievementProgress(walks, userId) : [];
+    const personal = userId ? computePersonalAchievementProgress(walks, userId, swapRequests) : [];
     const combined = [...family, ...personal];
 
     const alreadyUnlockedKeys = new Set(

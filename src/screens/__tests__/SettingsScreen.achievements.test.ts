@@ -21,18 +21,19 @@ describe('SettingsScreen wires the Achievements entry point (structural)', () =>
     expect(rowIdx).toBeLessThan(adminSectionIdx);
   });
 
-  it('loads the family unlock ledger and fetches walk history only once the sheet is actually opened, not eagerly on mount', () => {
+  it('loads the family unlock ledger and fetches walk history + swap requests only once the sheet is actually opened, not eagerly on mount', () => {
     const effectStart = source.indexOf('if (!achievementsModalVisible) return;');
     expect(effectStart).toBeGreaterThan(-1);
-    const effectBlock = source.slice(Math.max(0, effectStart - 100), effectStart + 400);
+    const effectBlock = source.slice(Math.max(0, effectStart - 100), effectStart + 600);
     expect(effectBlock).toMatch(/useAchievementStore\.getState\(\)\.load\(familyId\)/);
     expect(effectBlock).toMatch(/fetchHistoryWalks\(\)/);
+    expect(effectBlock).toMatch(/listSwapRequests\(\)/);
   });
 
   it('computes family and personal progress from the loaded achievement walks via logic/achievements', () => {
     expect(source).toMatch(/import \{ computeFamilyAchievementProgress, computePersonalAchievementProgress \} from '\.\.\/logic\/achievements';/);
     expect(source).toMatch(/computeFamilyAchievementProgress\(achievementWalks\)/);
-    expect(source).toMatch(/computePersonalAchievementProgress\(achievementWalks, currentUserId\)/);
+    expect(source).toMatch(/computePersonalAchievementProgress\(achievementWalks, currentUserId, achievementSwapRequests\)/);
   });
 
   it('passes the current user\'s own gamificationEnabled flag and a real setter into AchievementsModal, not a stub', () => {

@@ -30,6 +30,12 @@ describe('HomeScreen wires achievement-unlock detection + celebration (structura
     expect(spontaneousBlock).toContain('checkForNewAchievementUnlocks()');
   });
 
+  it('passes swapRequests through to checkForNewUnlocks, so personal_fair_swap can be detected', () => {
+    expect(source).toMatch(
+      /checkForNewUnlocks\(familyId, achievementWalks, effectiveUserId, useRequestsStore\.getState\(\)\.swapRequests\)/
+    );
+  });
+
   it('the achievement-unlock check reads the family-wide history read (not the RLS-windowed scheduleStore.walks) in Supabase mode', () => {
     const fnStart = source.indexOf('const fetchAchievementWalks = useCallback');
     expect(fnStart).toBeGreaterThan(-1);

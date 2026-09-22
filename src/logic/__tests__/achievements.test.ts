@@ -2,16 +2,39 @@ import {
   achievementDedupeKey,
   achievementDefinition,
   ACHIEVEMENT_CATALOG,
+  computeFairSwapCount,
   computeFamilyAchievementProgress,
   computeOnTimeStreak,
   computePersonalAchievementProgress,
   detectNewlyUnlocked,
+  FAIR_SWAP_TARGET,
   FAMILY_HELPER_TARGET,
   LONG_WALK_MINUTES,
   ON_TIME_STREAK_TARGET,
   PERFECT_MONTH_MIN_RESOLVED,
 } from '../achievements';
 import type { Walk } from '../../types';
+import type { SwapRequestRow } from '../../lib/requests';
+
+function makeSwap(overrides: Partial<SwapRequestRow>): SwapRequestRow {
+  return {
+    id: 'swap-1',
+    family_id: 'family-1',
+    walk_id: 'w1',
+    requested_by_user_id: 'noam',
+    target_user_id: 'dana',
+    target_walk_id: 'w2',
+    status: 'approved',
+    created_at: new Date().toISOString(),
+    resolved_at: new Date().toISOString(),
+    requester_seen_at: null,
+    expected_responsible_user_id: 'noam',
+    expected_scheduled_time: new Date().toISOString(),
+    expected_target_responsible_user_id: 'dana',
+    expected_target_scheduled_time: new Date().toISOString(),
+    ...overrides,
+  };
+}
 
 function makeWalk(overrides: Partial<Walk>): Walk {
   return {
@@ -195,6 +218,42 @@ describe('computePersonalAchievementProgress', () => {
   it('every entry carries the given userId (never another member\'s)', () => {
     const progress = computePersonalAchievementProgress([], 'noam');
     expect(progress.every((p) => p.userId === 'noam')).toBe(true);
+  });
+
+  it('personal_fair_swap defaults to 0/target when swapRequests is omitted (e.g. local/demo mode)', () => {
+    const progress = computePersonalAchievementProgress([], 'noam');
+    expect(progress.find((p) => p.key === 'personal_fair_swap')).toEqual({
+      key: 'personal_fair_swap', scope: 'personal', userId: 'noam', unlocked: false, current: 0, target: FAIR_SWAP_TARGET,
+    });
+  });
+
+  it('personal_fair_swap unlocks at FAIR_SWAP_TARGET approved swaps involving this user', () => {
+    const swaps = Array.from({ length: FAIR_SWAP_TARGET }, (_, i) => makeSwap({ id: `s${i}`, requested_by_user_id: 'noam' }));
+    const progress = computePersonalAchievementProgress([], 'noam', swaps);
+    expect(progress.find((p) => p.key === 'personal_fair_swap')?.unlocked).toBe(true);
+  });
+});
+
+describe('computeFairSwapCount', () => {
+  it('counts approved swaps where the user is EITHER side (requester or target)', () => {
+    const swaps = [
+      makeSwap({ id: '1', status: 'approved', requested_by_user_id: 'noam', target_user_id: 'dana' }),
+      makeSwap({ id: '2', status: 'approved', requested_by_user_id: 'dana', target_user_id: 'noam' }),
+      makeSwap({ id: '3', status: 'approved', requested_by_user_id: 'other', target_user_id: 'someone' }),
+    ];
+    expect(computeFairSwapCount(swaps, 'noam')).toBe(2);
+  });
+
+  it('never counts a pending or rejected swap, even if this user is a party to it', () => {
+    const swaps = [
+      makeSwap({ id: '1', status: 'pending', requested_by_user_id: 'noam' }),
+      makeSwap({ id: '2', status: 'rejected', requested_by_user_id: 'noam' }),
+    ];
+    expect(computeFairSwapCount(swaps, 'noam')).toBe(0);
+  });
+
+  it('is 0 for an empty list', () => {
+    expect(computeFairSwapCount([], 'noam')).toBe(0);
   });
 });
 

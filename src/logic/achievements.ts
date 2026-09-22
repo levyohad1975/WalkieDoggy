@@ -1,16 +1,17 @@
 import type { AchievementScope, Walk } from '../types';
+import type { SwapRequestRow } from '../lib/requests';
 import { filterWalksByPeriod, wasCompletedOnTime } from './statistics';
 import { walkDateTime } from './nextWalk';
 
 /**
- * PRD §9 gamification ("גביעים ועידוד משפחתי") — first coherent slice. The
- * catalog intentionally mirrors the PRD's own example list (first walk,
- * 10/25/50 walks, "תמיד בזמן", "עוזר משפחתי", "טיול ארוך", "חודש מושלם")
- * rather than inventing new achievement ideas, and every one of them is
- * derivable purely from existing Walk data already used by Statistics — no
- * new tracked state beyond the immutable unlock ledger itself (0052).
- * Deliberately NOT included yet: "החלפה הוגנת" (fair swap) — that needs
- * requestsStore's swap-request data, which this slice doesn't touch.
+ * PRD §9 gamification ("גביעים ועידוד משפחתי") — the catalog mirrors the
+ * PRD's own example list (first walk, 10/25/50 walks, "תמיד בזמן", "עוזר
+ * משפחתי", "טיול ארוך", "חודש מושלם", "החלפה הוגנת") rather than inventing
+ * new achievement ideas. Every walk-based entry is derivable purely from
+ * existing Walk data already used by Statistics; "החלפה הוגנת" (fair swap)
+ * additionally draws on requestsStore's swap-request data (migration
+ * 0005) — no new tracked state beyond the immutable unlock ledger itself
+ * (0052) either way.
  *
  * Family achievements are preferred over kid-vs-kid ranking (PRD's own
  * framing) — this catalog has no cross-member comparison/leaderboard
@@ -32,6 +33,7 @@ export const FAMILY_HELPER_TARGET = 3;
 export const PERFECT_MONTH_MIN_RESOLVED = 10;
 export const LONG_WALK_MINUTES = 45;
 export const FAMILY_WALK_MILESTONES = [10, 25, 50] as const;
+export const FAIR_SWAP_TARGET = 3;
 
 export const ACHIEVEMENT_CATALOG: AchievementDefinition[] = [
   { key: 'family_first_walk', scope: 'family', title: 'הטיול הראשון', description: 'השלמתם את הטיול הראשון של המשפחה!', icon: '🐾', celebrationId: 'trophy-teaser' },
@@ -43,6 +45,7 @@ export const ACHIEVEMENT_CATALOG: AchievementDefinition[] = [
   { key: 'personal_long_walk', scope: 'personal', title: 'טיול ארוך', description: `השלמת טיול של ${LONG_WALK_MINUTES} דקות ומעלה.`, icon: '⏱️', celebrationId: 'long-walk' },
   { key: 'personal_family_helper', scope: 'personal', title: 'עוזר/ת משפחתי/ת', description: `עזרת בטיול שלא היה תורך ${FAMILY_HELPER_TARGET} פעמים.`, icon: '🤝', celebrationId: 'trophy-teaser' },
   { key: 'personal_on_time_streak', scope: 'personal', title: 'תמיד בזמן', description: `${ON_TIME_STREAK_TARGET} טיולים ברצף בזמן.`, icon: '⏰', celebrationId: 'trophy-teaser' },
+  { key: 'personal_fair_swap', scope: 'personal', title: 'החלפה הוגנת', description: `השתתפת ב-${FAIR_SWAP_TARGET} החלפות טיולים שאושרו בהצלחה.`, icon: '🔄', celebrationId: 'trophy-teaser' },
 ];
 
 export function achievementDefinition(key: string): AchievementDefinition | undefined {
@@ -117,17 +120,37 @@ export function computeOnTimeStreak(walks: Walk[], userId: string): number {
 }
 
 /** One member's own progress — never another member's, keeping this a personal, not comparative, view (PRD's "not aggressive ranking"). */
-export function computePersonalAchievementProgress(walks: Walk[], userId: string): AchievementProgress[] {
+/**
+ * "החלפה הוגנת" (fair swap) — counts APPROVED swaps this user actually
+ * completed on either side (the one who asked, or the one who agreed to
+ * swap), since both sides equally reflect the cooperative behavior the
+ * PRD is pointing at. A pending/rejected request never counts — this
+ * rewards swaps that genuinely went through, not just requesting one.
+ */
+export function computeFairSwapCount(swapRequests: SwapRequestRow[], userId: string): number {
+  return swapRequests.filter(
+    (r) => r.status === 'approved' && (r.requested_by_user_id === userId || r.target_user_id === userId)
+  ).length;
+}
+
+/** One member's own progress — never another member's, keeping this a personal, not comparative, view (PRD's "not aggressive ranking"). `swapRequests` is optional/best-effort: omitting it (e.g. local/demo mode, where swap requests don't exist server-side — see lib/requests.ts's own doc comment) simply leaves personal_fair_swap at 0/target rather than failing. */
+export function computePersonalAchievementProgress(
+  walks: Walk[],
+  userId: string,
+  swapRequests: SwapRequestRow[] = []
+): AchievementProgress[] {
   const ownDone = walks.filter((w) => w.status === 'done' && w.completedByUserId === userId);
   const longWalkUnlocked = ownDone.some((w) => typeof w.durationMinutes === 'number' && w.durationMinutes >= LONG_WALK_MINUTES);
   const helperCount = ownDone.filter((w) => w.responsibleUserId !== userId).length;
   const streak = computeOnTimeStreak(walks, userId);
+  const fairSwapCount = computeFairSwapCount(swapRequests, userId);
 
   return [
     { key: 'personal_first_walk', scope: 'personal', userId, unlocked: ownDone.length >= 1, current: Math.min(ownDone.length, 1), target: 1 },
     { key: 'personal_long_walk', scope: 'personal', userId, unlocked: longWalkUnlocked, current: longWalkUnlocked ? 1 : 0, target: 1 },
     { key: 'personal_family_helper', scope: 'personal', userId, unlocked: helperCount >= FAMILY_HELPER_TARGET, current: Math.min(helperCount, FAMILY_HELPER_TARGET), target: FAMILY_HELPER_TARGET },
     { key: 'personal_on_time_streak', scope: 'personal', userId, unlocked: streak >= ON_TIME_STREAK_TARGET, current: Math.min(streak, ON_TIME_STREAK_TARGET), target: ON_TIME_STREAK_TARGET },
+    { key: 'personal_fair_swap', scope: 'personal', userId, unlocked: fairSwapCount >= FAIR_SWAP_TARGET, current: Math.min(fairSwapCount, FAIR_SWAP_TARGET), target: FAIR_SWAP_TARGET },
   ];
 }
 
