@@ -299,6 +299,38 @@ export class OfflineFirstRepository implements Repository {
     }
   }
 
+  /**
+   * Walk lifecycle transitions must be server-authoritative when Supabase is
+   * configured. Without these delegates the Repository interface's optional
+   * methods are absent on OfflineFirstRepository, so scheduleStore falls
+   * back to a local-only in_progress state; the next authoritative refresh
+   * then restores the server's still-pending row and the UI appears to
+   * "jump back" a few seconds after Start.
+   */
+  async startWalk(walkId: string): Promise<Walk> {
+    if (this.remote?.startWalk && (await this.isOnline())) {
+      const updated = await this.remote.startWalk(walkId);
+      await this.local.saveWalk(updated);
+      return updated;
+    }
+
+    throw new Error('אין חיבור לשרת. כדי להתחיל מעקב טיול יש להתחבר לאינטרנט.');
+  }
+
+  async finishWalk(
+    walkId: string,
+    completedByUserId: string,
+    details: { hadPee?: boolean; hadPoop?: boolean; note?: string; completedAt?: string } = {}
+  ): Promise<Walk> {
+    if (this.remote?.finishWalk && (await this.isOnline())) {
+      const updated = await this.remote.finishWalk(walkId, completedByUserId, details);
+      await this.local.saveWalk(updated);
+      return updated;
+    }
+
+    throw new Error('אין חיבור לשרת. כדי לסיים מעקב טיול יש להתחבר לאינטרנט.');
+  }
+
   async getWalks(familyId: string): Promise<Walk[]> {
     if (await this.isOnline()) {
       try {
