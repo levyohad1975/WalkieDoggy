@@ -199,14 +199,35 @@ export function NextWalkCard({
       ) : onStartWalk ? (
         <>
           <Button label={overdue ? 'התחל טיול עכשיו' : 'התחל טיול'} icon="▶" onPress={onStartWalk} style={styles.doneButton} shrinkToFit />
-          <Button
-            label="✓ סמן טיול כבוצע"
-            variant="secondary"
-            onPress={onMarkDone}
-            style={styles.markDoneFallbackButton}
-            compact
-            shrinkToFit
-          />
+          {overdue && onMarkNotDone ? (
+            <View style={styles.resolveRow}>
+              <Button
+                label="✓ סמן טיול כבוצע"
+                variant="secondary"
+                onPress={onMarkDone}
+                style={styles.resolveButton}
+                compact
+                shrinkToFit
+              />
+              <Button
+                label="✕ לא בוצע"
+                variant="secondary"
+                onPress={onMarkNotDone}
+                style={styles.resolveButton}
+                compact
+                shrinkToFit
+              />
+            </View>
+          ) : (
+            <Button
+              label="✓ סמן טיול כבוצע"
+              variant="secondary"
+              onPress={onMarkDone}
+              style={styles.markDoneFallbackButton}
+              compact
+              shrinkToFit
+            />
+          )}
         </>
       ) : overdue && onMarkNotDone ? (
         <View style={styles.resolveRow}>
