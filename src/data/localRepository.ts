@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type {
+  AchievementUnlock,
   Dog,
   Family,
   FamilyUser,
@@ -43,6 +44,7 @@ interface LocalStoreShape {
   walks: Walk[];
   healthTasks: HealthTask[];
   gpsSessions: WalkGpsSession[];
+  achievementUnlocks: AchievementUnlock[];
 }
 
 function safeJsonParse(raw: string): unknown {
@@ -63,6 +65,7 @@ function seedStore(): LocalStoreShape {
     walks: DEMO_WALKS,
     healthTasks: [],
     gpsSessions: [],
+    achievementUnlocks: [],
   };
 }
 
@@ -123,6 +126,13 @@ export class LocalRepository implements Repository {
       // Same soft-add as healthTasks above — a cache written before GPS
       // sessions existed just gains an empty array here.
       if (!Array.isArray(this.cache.gpsSessions)) this.cache.gpsSessions = [];
+      // Same soft-add — a cache written before gamification existed just
+      // gains an empty unlock ledger and each user defaults to opted-in
+      // (matching 0052's `default true` for the same column server-side).
+      if (!Array.isArray(this.cache.achievementUnlocks)) this.cache.achievementUnlocks = [];
+      this.cache.users = this.cache.users.map((u) =>
+        typeof u.gamificationEnabled === 'boolean' ? u : { ...u, gamificationEnabled: true }
+      );
     } else {
       this.cache = seedStore();
       await this.persist();
@@ -210,6 +220,12 @@ export class LocalRepository implements Repository {
     await this.persist();
   }
 
+  async updateUserGamificationSetting(userId: string, enabled: boolean): Promise<void> {
+    const s = await this.load();
+    s.users = s.users.map((u) => (u.id === userId ? { ...u, gamificationEnabled: enabled } : u));
+    await this.persist();
+  }
+
   async getDog(familyId: string): Promise<Dog | undefined> {
     const s = await this.load();
     return s.dogs.find((d) => d.familyId === familyId);
@@ -258,6 +274,24 @@ export class LocalRepository implements Repository {
     const s = await this.load();
     const ids = new Set(walkIds);
     return s.gpsSessions.filter((g) => ids.has(g.walkId));
+  }
+
+  async getAchievementUnlocks(familyId: string): Promise<AchievementUnlock[]> {
+    const s = await this.load();
+    return s.achievementUnlocks.filter((a) => a.familyId === familyId);
+  }
+
+  async upsertAchievementUnlock(unlock: AchievementUnlock): Promise<void> {
+    const s = await this.load();
+    // Idempotent by (familyId, achievementKey, userId) — see 0052's
+    // dedupe_key generated column for the server-side equivalent.
+    const exists = s.achievementUnlocks.some(
+      (a) => a.familyId === unlock.familyId && a.achievementKey === unlock.achievementKey && a.userId === unlock.userId
+    );
+    if (!exists) {
+      s.achievementUnlocks.push(unlock);
+      await this.persist();
+    }
   }
 
   async getScheduleRules(familyId: string): Promise<ScheduleRule[]> {

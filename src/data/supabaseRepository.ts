@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
+  AchievementUnlock,
   Dog,
   Family,
   FamilyUser,
@@ -24,6 +25,7 @@ function toUser(row: any): FamilyUser {
     photoUrl: row.photo_url ?? undefined,
     color: row.color,
     remindersEnabled: row.reminders_enabled,
+    gamificationEnabled: row.gamification_enabled,
     createdAt: row.created_at,
     removedAt: row.removed_at ?? undefined,
   };
@@ -262,6 +264,29 @@ function fromGpsSession(session: WalkGpsSession) {
   };
 }
 
+function toAchievementUnlock(row: any): AchievementUnlock {
+  return {
+    id: row.id,
+    familyId: row.family_id,
+    achievementKey: row.achievement_key,
+    scope: row.scope,
+    userId: row.user_id ?? undefined,
+    unlockedAt: row.unlocked_at,
+    createdAt: row.created_at,
+  };
+}
+
+function fromAchievementUnlock(unlock: AchievementUnlock) {
+  return {
+    id: unlock.id,
+    family_id: unlock.familyId,
+    achievement_key: unlock.achievementKey,
+    scope: unlock.scope,
+    user_id: unlock.userId ?? null,
+    unlocked_at: unlock.unlockedAt,
+  };
+}
+
 function fromDog(dog: Dog) {
   return {
     id: dog.id,
@@ -398,6 +423,11 @@ export class SupabaseRepository implements Repository {
     if (error) throw error;
   }
 
+  async updateUserGamificationSetting(userId: string, enabled: boolean): Promise<void> {
+    const { error } = await this.client.from('users').update({ gamification_enabled: enabled }).eq('id', userId);
+    if (error) throw error;
+  }
+
   async getDog(familyId: string): Promise<Dog | undefined> {
     const { data, error } = await this.client.from('dogs').select('*').eq('family_id', familyId).maybeSingle();
     if (error) throw error;
@@ -446,6 +476,23 @@ export class SupabaseRepository implements Repository {
     const { data, error } = await this.client.from('walk_gps_sessions').select('*').in('walk_id', walkIds);
     if (error) throw error;
     return (data ?? []).map(toGpsSession);
+  }
+
+  async getAchievementUnlocks(familyId: string): Promise<AchievementUnlock[]> {
+    const { data, error } = await this.client.from('achievement_unlocks').select('*').eq('family_id', familyId);
+    if (error) throw error;
+    return (data ?? []).map(toAchievementUnlock);
+  }
+
+  async upsertAchievementUnlock(unlock: AchievementUnlock): Promise<void> {
+    // Conflict target is (family_id, dedupe_key) — 0052's generated column +
+    // unique constraint — so a duplicate unlock attempt (two devices
+    // crossing the same threshold, or a retried write) is silently a no-op
+    // rather than a constraint-violation error.
+    const { error } = await this.client
+      .from('achievement_unlocks')
+      .upsert(fromAchievementUnlock(unlock), { onConflict: 'family_id,dedupe_key', ignoreDuplicates: true });
+    if (error) throw error;
   }
 
   async getScheduleRules(familyId: string): Promise<ScheduleRule[]> {

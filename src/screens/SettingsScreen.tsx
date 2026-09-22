@@ -1,9 +1,10 @@
-﻿import React, { useCallback, useEffect, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFamilyStore } from '../store/familyStore';
+import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { colors } from '../theme/colors';
 import { Button } from '../components/Button';
@@ -17,7 +18,7 @@ import {
 import { friendlyErrorMessage } from '../lib/errorMessages';
 import { copyToClipboard } from '../lib/clipboard';
 import { DEMO_FAMILY } from '../data/demoData';
-import type { Dog } from '../types';
+import type { Dog, Walk } from '../types';
 import { UserPickerModal } from '../components/UserPickerModal';
 import { PinEntryModal } from '../components/PinEntryModal';
 import { AdminAuditLogModal } from '../components/AdminAuditLogModal';
@@ -29,9 +30,13 @@ import { decideChildModalToOpen, type SettingsChildModal } from '../logic/settin
 import { generateId } from '../lib/id';
 import { useHealthStore } from '../store/healthStore';
 import { HealthGroomingModal } from '../components/HealthGroomingModal';
+import { useAchievementStore } from '../store/achievementStore';
+import { AchievementsModal } from '../components/AchievementsModal';
+import { computeFamilyAchievementProgress, computePersonalAchievementProgress } from '../logic/achievements';
+import { fetchHistoryWalks } from '../lib/permissionedWalks';
 
 export function SettingsScreen() {
-  const { family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, saveDog, selectDog } = useFamilyStore();
+  const { family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, setGamificationEnabled, saveDog, selectDog } = useFamilyStore();
   const healthTasks = useHealthStore((s) => s.tasks);
   const loadHealthTasks = useHealthStore((s) => s.load);
   const saveHealthTask = useHealthStore((s) => s.saveTask);
@@ -65,6 +70,14 @@ export function SettingsScreen() {
   const [dogModalVisible, setDogModalVisible] = useState(false);
   const [addingDog, setAddingDog] = useState(false);
   const [healthModalVisible, setHealthModalVisible] = useState(false);
+  const [achievementsModalVisible, setAchievementsModalVisible] = useState(false);
+  // PRD §9 gamification — the same permissioned bulk-historical read
+  // HomeScreen's checkForNewAchievementUnlocks() uses (see that file's own
+  // doc comment on why family-wide milestones need this instead of
+  // scheduleStore's RLS-windowed `walks`). Loaded lazily, only once the
+  // Achievements sheet is actually opened — same convention as
+  // healthModalVisible/loadHealthTasks below.
+  const [achievementWalks, setAchievementWalks] = useState<Walk[]>([]);
   const [remindersModalVisible, setRemindersModalVisible] = useState(false);
   const [sharingModalVisible, setSharingModalVisible] = useState(false);
   const [managementVisible, setManagementVisible] = useState(false);
@@ -119,6 +132,18 @@ export function SettingsScreen() {
       void loadHealthTasks(dog.id);
     }
   }, [healthModalVisible, dog?.id, loadHealthTasks]);
+
+  useEffect(() => {
+    if (!achievementsModalVisible) return;
+    void useAchievementStore.getState().load(familyId);
+    if (!isSupabaseConfigured) {
+      setAchievementWalks(useScheduleStore.getState().walks);
+      return;
+    }
+    fetchHistoryWalks()
+      .then(setAchievementWalks)
+      .catch(() => setAchievementWalks([]));
+  }, [achievementsModalVisible, familyId]);
 
   // Cross-tab "open Health & Grooming" signal from Home's summary badge —
   // see healthStore's pendingOpenRequest doc comment. Consumed (and
@@ -187,6 +212,12 @@ export function SettingsScreen() {
   // (visible && dog) { setName(dog.name); setNotes(...) } }, [visible,
   // dog])`, so nothing here needs replacing.
   const currentUser = currentUserId ? users.find((u) => u.id === currentUserId) : undefined;
+  const gamificationEnabled = currentUser?.gamificationEnabled ?? true;
+  const familyAchievementProgress = useMemo(() => computeFamilyAchievementProgress(achievementWalks), [achievementWalks]);
+  const personalAchievementProgress = useMemo(
+    () => (currentUserId ? computePersonalAchievementProgress(achievementWalks, currentUserId) : []),
+    [achievementWalks, currentUserId]
+  );
 
   const persistDog = async (patch: Partial<Dog>) => {
     if (!dog) return;
@@ -473,6 +504,10 @@ export function SettingsScreen() {
 
         <View style={styles.section}>
           <RtlText style={styles.sectionTitle}>📱 החשבון שלי</RtlText>
+          <Pressable style={styles.hubRow} onPress={() => setAchievementsModalVisible(true)} accessibilityRole="button" accessibilityLabel="הישגים">
+            <RtlText style={styles.hubChevron}>‹</RtlText>
+            <RtlText style={styles.hubLabel}>🏆 הישגים</RtlText>
+          </Pressable>
           <Pressable style={styles.hubRow} onPress={handleSwitchUser} accessibilityRole="button" accessibilityLabel="החלף משתמש, מעבר לפרופיל אחר במכשיר הזה">
             <RtlText style={styles.hubChevron}>‹</RtlText>
             <View style={styles.hubLabelWithMeta}>
@@ -540,6 +575,17 @@ export function SettingsScreen() {
         onSave={saveHealthTask}
         onComplete={(taskId) => completeHealthTask(taskId, currentUserId ?? '')}
         onClose={() => setHealthModalVisible(false)}
+      />
+
+      <AchievementsModal
+        visible={achievementsModalVisible}
+        familyProgress={familyAchievementProgress}
+        personalProgress={personalAchievementProgress}
+        gamificationEnabled={gamificationEnabled}
+        onSetGamificationEnabled={(enabled) => {
+          if (currentUserId) void setGamificationEnabled(currentUserId, enabled);
+        }}
+        onClose={() => setAchievementsModalVisible(false)}
       />
 
       <RemindersModal

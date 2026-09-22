@@ -73,6 +73,8 @@ interface FamilyState {
   /** Reverts one member/permission back to the role default. Family-Admin-only server-side (clear_member_permission_override, 0023). */
   clearPermissionOverride: (userId: string, permissionKey: PermissionKey) => Promise<void>;
   setReminderEnabled: (userId: string, enabled: boolean) => Promise<void>;
+  /** PRD §9 gamification off-switch — same shape as setReminderEnabled. */
+  setGamificationEnabled: (userId: string, enabled: boolean) => Promise<void>;
   saveDog: (dog: Dog) => Promise<void>;
   /** Makes `dogId` (must already be in `dogs`) the active dog and persists the choice locally so it survives an app restart. No-op if `dogId` isn't one of this family's dogs. */
   selectDog: (dogId: string) => Promise<void>;
@@ -241,6 +243,24 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
     }
   },
 
+  setGamificationEnabled: async (userId: string, enabled: boolean) => {
+    if (!guardTestModeMutation()) return;
+    const before = get().users.find((u) => u.id === userId);
+    set((s) => ({ users: s.users.map((u) => (u.id === userId ? { ...u, gamificationEnabled: enabled } : u)) }));
+    try {
+      await repository.updateUserGamificationSetting(userId, enabled);
+    } catch (e) {
+      // Same functional-merge-against-current-state rollback as
+      // setReminderEnabled above, for the same reason (a concurrent
+      // realtime reload must not be clobbered by a stale pre-await
+      // snapshot).
+      set((s) => ({
+        users: before ? s.users.map((u) => (u.id === userId ? { ...u, gamificationEnabled: before.gamificationEnabled } : u)) : s.users,
+        error: 'לא הצלחנו לעדכן את הגדרת הגיימיפיקציה',
+      }));
+    }
+  },
+
   saveDog: async (dog: Dog) => {
     if (!guardTestModeMutation()) return;
     // Upserts by id, so this doubles as "add a new dog" once a caller wants
@@ -297,6 +317,7 @@ if (!familyId) {
       photoUrl,
       color,
       remindersEnabled: true,
+      gamificationEnabled: true,
       createdAt: new Date().toISOString(),
     };
     set((s) => ({ users: [...s.users, user] }));

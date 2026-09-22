@@ -14,7 +14,7 @@ describe('SettingsScreen offers a multi-dog selector above the existing dog card
   const source = fs.readFileSync(require.resolve('../SettingsScreen'), 'utf8').replace(/\r\n/g, '\n');
 
   it('destructures dogs/selectedDogId/selectDog from familyStore alongside the existing dog/saveDog', () => {
-    expect(source).toMatch(/const \{ family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, saveDog, selectDog \} = useFamilyStore\(\);/);
+    expect(source).toMatch(/const \{ family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, setGamificationEnabled, saveDog, selectDog \} = useFamilyStore\(\);/);
   });
 
   it('renders one selectable chip per dog, each calling selectDog(d.id)', () => {

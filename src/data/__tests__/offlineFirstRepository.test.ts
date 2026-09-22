@@ -1,6 +1,6 @@
 import type { Repository } from '../repository';
 import type { OfflineFirstRepository as OfflineFirstRepositoryType } from '../offlineFirstRepository';
-import type { Dog, FamilyUser, HealthTask, ScheduleEntry, ScheduleRule, Walk, WalkGpsSession } from '../../types';
+import type { AchievementUnlock, Dog, FamilyUser, HealthTask, ScheduleEntry, ScheduleRule, Walk, WalkGpsSession } from '../../types';
 
 function stubRemote(overrides: Partial<Repository> = {}): Repository {
   return {
@@ -11,6 +11,7 @@ function stubRemote(overrides: Partial<Repository> = {}): Repository {
     deleteUser: jest.fn(),
     deleteFamilyMember: jest.fn(),
     updateUserReminderSetting: jest.fn().mockResolvedValue(undefined),
+    updateUserGamificationSetting: jest.fn().mockResolvedValue(undefined),
     getDog: jest.fn(),
     getDogs: jest.fn(),
     upsertDog: jest.fn(),
@@ -19,6 +20,8 @@ function stubRemote(overrides: Partial<Repository> = {}): Repository {
     getGpsSession: jest.fn(),
     upsertGpsSession: jest.fn(),
     getGpsSessionsForWalkIds: jest.fn(),
+    getAchievementUnlocks: jest.fn(),
+    upsertAchievementUnlock: jest.fn(),
     getScheduleRules: jest.fn(),
     upsertScheduleRule: jest.fn(),
     deleteScheduleRule: jest.fn(),
@@ -72,7 +75,7 @@ describe('OfflineFirstRepository.deleteFamilyMember — online rejection propaga
       name: 'Admin',
       avatar: '🙂',
       color: '#000',
-      remindersEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true,
       createdAt: new Date().toISOString(),
     };
     await repo.upsertUser(user); // seed the local cache the old way (upsertUser is unaffected by this fix)
@@ -102,7 +105,7 @@ describe('OfflineFirstRepository.deleteFamilyMember — online rejection propaga
       name: 'Member',
       avatar: '🙂',
       color: '#000',
-      remindersEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true,
       createdAt: new Date().toISOString(),
     };
     await repo.upsertUser(user);
@@ -131,7 +134,7 @@ describe('OfflineFirstRepository.deleteFamilyMember — online rejection propaga
       name: 'Member',
       avatar: '🙂',
       color: '#000',
-      remindersEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true,
       createdAt: new Date().toISOString(),
     };
     await repo.upsertUser(user);
@@ -201,7 +204,7 @@ describe('OfflineFirstRepository.deleteFamilyMember — online rejection propaga
       name: 'Member',
       avatar: '🙂',
       color: '#000',
-      remindersEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true,
       createdAt: new Date().toISOString(),
     };
     await repo.upsertUser(user);
@@ -340,7 +343,7 @@ describe('OfflineFirstRepository — online + remote succeeds: reads return the 
 
   it('getUsers returns the remote list', async () => {
     const fresh: FamilyUser[] = [
-      { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, createdAt: new Date().toISOString() },
+      { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: new Date().toISOString() },
     ];
     const remote = stubRemote({ getUsers: jest.fn().mockResolvedValue(fresh) });
     const repo = await makeRepo(true, remote);
@@ -448,6 +451,17 @@ describe('OfflineFirstRepository — online + remote succeeds: reads return the 
     await expect(repo.getWalks('family-1')).resolves.toEqual(fresh);
     expect(remote.getWalks).toHaveBeenCalledWith('family-1');
   });
+
+  it('getAchievementUnlocks returns the remote unlocks', async () => {
+    const unlocks: AchievementUnlock[] = [
+      { id: 'unlock-1', familyId: 'family-1', achievementKey: 'first_walk', scope: 'family', unlockedAt: 'u', createdAt: 'c' },
+    ];
+    const remote = stubRemote({ getAchievementUnlocks: jest.fn().mockResolvedValue(unlocks) });
+    const repo = await makeRepo(true, remote);
+
+    await expect(repo.getAchievementUnlocks('family-1')).resolves.toEqual(unlocks);
+    expect(remote.getAchievementUnlocks).toHaveBeenCalledWith('family-1');
+  });
 });
 
 describe('OfflineFirstRepository — writes with a remote repository configured: applied locally and queued for sync', () => {
@@ -471,7 +485,7 @@ describe('OfflineFirstRepository — writes with a remote repository configured:
   };
   const entry: ScheduleEntry = { id: 'entry-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-01-02', time: '08:00', responsibleUserId: 'u1', createdAt: new Date().toISOString() };
   const walk: Walk = { id: 'walk-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-01-02', scheduledTime: '08:00', responsibleUserId: 'u1', status: 'pending', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-  const user: FamilyUser = { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, createdAt: new Date().toISOString() };
+  const user: FamilyUser = { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: new Date().toISOString() };
 
   it('deleteUser removes the local user and enqueues a sync op', async () => {
     const repo = await makeRepo(false, stubRemote());
@@ -525,6 +539,27 @@ describe('OfflineFirstRepository — writes with a remote repository configured:
     await repo.upsertGpsSession(session);
 
     await expect(repo.getGpsSession('walk-1')).resolves.toEqual(session);
+    expect(await repo.pendingSyncCount()).toBe(1);
+  });
+
+  it('updateUserGamificationSetting updates the local flag and enqueues a sync op', async () => {
+    const repo = await makeRepo(false, stubRemote());
+    await repo.upsertUser(user);
+    const before = await repo.pendingSyncCount();
+
+    await repo.updateUserGamificationSetting('u1', false);
+
+    expect((await repo.getUsers('family-1')).find((u) => u.id === 'u1')?.gamificationEnabled).toBe(false);
+    expect(await repo.pendingSyncCount()).toBe(before + 1);
+  });
+
+  it('upsertAchievementUnlock writes the local unlock and enqueues a sync op', async () => {
+    const repo = await makeRepo(false, stubRemote());
+    const unlock: AchievementUnlock = { id: 'unlock-1', familyId: 'family-1', achievementKey: 'first_walk', scope: 'family', unlockedAt: 'u', createdAt: 'c' };
+
+    await repo.upsertAchievementUnlock(unlock);
+
+    await expect(repo.getAchievementUnlocks('family-1')).resolves.toEqual([unlock]);
     expect(await repo.pendingSyncCount()).toBe(1);
   });
 
@@ -617,7 +652,7 @@ describe('OfflineFirstRepository — local/demo mode (no remote configured): wri
   };
   const entry: ScheduleEntry = { id: 'entry-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-01-02', time: '08:00', responsibleUserId: 'u1', createdAt: new Date().toISOString() };
   const walk: Walk = { id: 'walk-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-01-02', scheduledTime: '08:00', responsibleUserId: 'u1', status: 'pending', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-  const user: FamilyUser = { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, createdAt: new Date().toISOString() };
+  const user: FamilyUser = { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: new Date().toISOString() };
 
   it('deleteUser removes the local user, nothing queued', async () => {
     const repo = await makeRepo(true, null);
@@ -636,6 +671,26 @@ describe('OfflineFirstRepository — local/demo mode (no remote configured): wri
     await repo.updateUserReminderSetting('u1', false);
 
     expect((await repo.getUsers('family-1')).find((u) => u.id === 'u1')?.remindersEnabled).toBe(false);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+
+  it('updateUserGamificationSetting updates locally, nothing queued', async () => {
+    const repo = await makeRepo(true, null);
+    await repo.upsertUser(user);
+
+    await repo.updateUserGamificationSetting('u1', false);
+
+    expect((await repo.getUsers('family-1')).find((u) => u.id === 'u1')?.gamificationEnabled).toBe(false);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+
+  it('upsertAchievementUnlock writes locally, nothing queued', async () => {
+    const repo = await makeRepo(true, null);
+    const unlock: AchievementUnlock = { id: 'unlock-1', familyId: 'family-1', achievementKey: 'first_walk', scope: 'family', unlockedAt: 'u', createdAt: 'c' };
+
+    await repo.upsertAchievementUnlock(unlock);
+
+    await expect(repo.getAchievementUnlocks('family-1')).resolves.toEqual([unlock]);
     expect(await repo.pendingSyncCount()).toBe(0);
   });
 

@@ -1,5 +1,5 @@
 import { SupabaseRepository } from '../supabaseRepository';
-import type { Dog, Family, FamilyUser, HealthTask, ScheduleEntry, ScheduleRule, Walk, WalkGpsSession } from '../../types';
+import type { AchievementUnlock, Dog, Family, FamilyUser, HealthTask, ScheduleEntry, ScheduleRule, Walk, WalkGpsSession } from '../../types';
 
 /**
  * Verifies the SupabaseRepository <-> Postgres row mapping — specifically
@@ -54,7 +54,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
       name: 'אבא',
       avatar: '👨',
       color: '#5B8DEF',
-      remindersEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true,
       createdAt: new Date().toISOString(),
     };
 
@@ -86,7 +86,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
       name: 'אבא',
       avatar: '👨',
       color: '#5B8DEF',
-      remindersEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true,
       createdAt: new Date().toISOString(),
     };
 
@@ -107,7 +107,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
       name: 'בן משפחה חדש',
       avatar: '🙂',
       color: '#5B8DEF',
-      remindersEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true,
       createdAt: new Date().toISOString(),
     };
 
@@ -126,7 +126,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
       name: 'בן משפחה',
       avatar: '🙂',
       color: '#5B8DEF',
-      remindersEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true,
       createdAt: new Date().toISOString(),
     };
 
@@ -341,6 +341,119 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
     await expect(repo.getGpsSessionsForWalkIds(['walk-1'])).rejects.toBeTruthy();
   });
 
+  it('upsertAchievementUnlock sends family_id/achievement_key/scope/user_id mapped correctly, with onConflict: family_id,dedupe_key + ignoreDuplicates', async () => {
+    const calls: { table: string; payload: unknown; options: unknown }[] = [];
+    const client: any = {
+      from: (table: string) => ({
+        upsert: (payload: unknown, options: unknown) => {
+          calls.push({ table, payload, options });
+          return Promise.resolve({ error: null });
+        },
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+    const unlock: AchievementUnlock = {
+      id: 'unlock-1', familyId: 'fam-42', achievementKey: 'first_walk', scope: 'family',
+      unlockedAt: 'u', createdAt: 'c',
+    };
+
+    await repo.upsertAchievementUnlock(unlock);
+
+    expect(calls[0].table).toBe('achievement_unlocks');
+    expect((calls[0].payload as any).family_id).toBe('fam-42');
+    expect((calls[0].payload as any).achievement_key).toBe('first_walk');
+    expect((calls[0].payload as any).scope).toBe('family');
+    expect((calls[0].payload as any).user_id).toBeNull();
+    expect(calls[0].options).toEqual({ onConflict: 'family_id,dedupe_key', ignoreDuplicates: true });
+  });
+
+  it('upsertAchievementUnlock maps a personal-scope unlock\'s userId to user_id', async () => {
+    const calls: { payload: unknown }[] = [];
+    const client: any = {
+      from: () => ({
+        upsert: (payload: unknown) => {
+          calls.push({ payload });
+          return Promise.resolve({ error: null });
+        },
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+    const unlock: AchievementUnlock = {
+      id: 'unlock-2', familyId: 'fam-42', achievementKey: 'long_walk', scope: 'personal', userId: 'user-1',
+      unlockedAt: 'u', createdAt: 'c',
+    };
+
+    await repo.upsertAchievementUnlock(unlock);
+
+    expect((calls[0].payload as any).user_id).toBe('user-1');
+  });
+
+  it('upsertAchievementUnlock throws when the upsert errors', async () => {
+    const client: any = { from: () => ({ upsert: () => Promise.resolve({ error: { message: 'x' } }) }) };
+    const unlock: AchievementUnlock = {
+      id: 'unlock-1', familyId: 'fam-42', achievementKey: 'first_walk', scope: 'family', unlockedAt: 'u', createdAt: 'c',
+    };
+    await expect(new SupabaseRepository(client).upsertAchievementUnlock(unlock)).rejects.toBeTruthy();
+  });
+
+  it('getAchievementUnlocks queries achievement_unlocks filtered by family_id and maps every row', async () => {
+    const eqCalls: unknown[] = [];
+    const client: any = {
+      from: () => ({
+        select: () => ({
+          eq: (column: string, value: string) => {
+            eqCalls.push({ column, value });
+            return Promise.resolve({
+              data: [
+                { id: 'unlock-1', family_id: 'fam-42', achievement_key: 'first_walk', scope: 'family', user_id: null, unlocked_at: 'u', created_at: 'c' },
+                { id: 'unlock-2', family_id: 'fam-42', achievement_key: 'long_walk', scope: 'personal', user_id: 'user-1', unlocked_at: 'u2', created_at: 'c2' },
+              ],
+              error: null,
+            });
+          },
+        }),
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+
+    const result = await repo.getAchievementUnlocks('fam-42');
+
+    expect(eqCalls).toEqual([{ column: 'family_id', value: 'fam-42' }]);
+    expect(result).toEqual([
+      { id: 'unlock-1', familyId: 'fam-42', achievementKey: 'first_walk', scope: 'family', userId: undefined, unlockedAt: 'u', createdAt: 'c' },
+      { id: 'unlock-2', familyId: 'fam-42', achievementKey: 'long_walk', scope: 'personal', userId: 'user-1', unlockedAt: 'u2', createdAt: 'c2' },
+    ]);
+  });
+
+  it('getAchievementUnlocks throws when the query errors', async () => {
+    const client: any = {
+      from: () => ({ select: () => ({ eq: () => Promise.resolve({ data: null, error: { message: 'x' } }) }) }),
+    };
+    const repo = new SupabaseRepository(client);
+    await expect(repo.getAchievementUnlocks('fam-42')).rejects.toBeTruthy();
+  });
+
+  it('updateUserGamificationSetting updates gamification_enabled for the given userId', async () => {
+    const calls: { table: string; payload: unknown }[] = [];
+    const client: any = {
+      from: (table: string) => ({
+        update: (payload: unknown) => {
+          calls.push({ table, payload });
+          return { eq: () => Promise.resolve({ error: null }) };
+        },
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+    await repo.updateUserGamificationSetting('user-1', false);
+    expect(calls[0]).toEqual({ table: 'users', payload: { gamification_enabled: false } });
+  });
+
+  it('updateUserGamificationSetting throws on error', async () => {
+    const client: any = { from: () => ({ update: () => ({ eq: () => Promise.resolve({ error: { message: 'x' } }) }) }) };
+    const repo = new SupabaseRepository(client);
+    await expect(repo.updateUserGamificationSetting('user-1', true)).rejects.toBeTruthy();
+  });
+
   it('upsertScheduleRule sends family_id mapped from rule.familyId', async () => {
     const { client, calls } = makeMockClient();
     const repo = new SupabaseRepository(client);
@@ -489,13 +602,13 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
 
   it('createUser throws when the insert errors (e.g. a non-admin device)', async () => {
     const client: any = { from: () => ({ insert: () => Promise.resolve({ error: { message: '42501' } }) }) };
-    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, createdAt: 'x' };
+    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: 'x' };
     await expect(new SupabaseRepository(client).createUser(user)).rejects.toBeTruthy();
   });
 
   it('upsertUser throws when the conditional update itself errors', async () => {
     const client: any = { from: () => ({ update: () => ({ eq: () => ({ select: () => Promise.resolve({ data: null, error: { message: 'x' } }) }) }) }) };
-    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, createdAt: 'x' };
+    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: 'x' };
     await expect(new SupabaseRepository(client).upsertUser(user)).rejects.toBeTruthy();
   });
 
@@ -506,7 +619,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
         insert: () => Promise.resolve({ error: { message: 'x' } }),
       }),
     };
-    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, createdAt: 'x' };
+    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: 'x' };
     await expect(new SupabaseRepository(client).upsertUser(user)).rejects.toBeTruthy();
   });
 

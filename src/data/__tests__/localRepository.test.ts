@@ -1,14 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LocalRepository } from '../localRepository';
 import { DEMO_DOG, DEMO_ENTRIES, DEMO_FAMILY, DEMO_RULES, DEMO_USERS, DEMO_WALKS } from '../demoData';
-import type { Dog, Family, FamilyUser, HealthTask, ScheduleEntry, Walk, WalkGpsSession } from '../../types';
+import type { AchievementUnlock, Dog, Family, FamilyUser, HealthTask, ScheduleEntry, Walk, WalkGpsSession } from '../../types';
 
 const STORAGE_KEY = 'dog-walk-family:v3';
 
 function otherFamilySeed() {
   const family: Family = { id: 'family-other', name: 'משפחת לוי', createdAt: new Date().toISOString() };
   const users: FamilyUser[] = [
-    { id: 'user-other-1', familyId: family.id, name: 'אורי', avatar: '🧑', color: '#000', remindersEnabled: true, createdAt: new Date().toISOString() },
+    { id: 'user-other-1', familyId: family.id, name: 'אורי', avatar: '🧑', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: new Date().toISOString() },
   ];
   const dog: Dog = { id: 'dog-other', familyId: family.id, name: 'ריקי', walksPerDay: 2 };
   return { family, users, dog };
@@ -258,6 +258,87 @@ describe('LocalRepository — dog data (BUG 3: dog name must load in local/demo 
     const family = await repo.getFamily('some-other-family-id');
     expect(family).toBeUndefined();
   });
+
+  it('updateUserGamificationSetting toggles only the targeted user\'s flag', async () => {
+    const repo = new LocalRepository();
+    const users = await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+    await repo.updateUserGamificationSetting(users[0].id, false);
+    const reloaded = await repo.getUsers(DEMO_FAMILY.id);
+    expect(reloaded.find((u) => u.id === users[0].id)?.gamificationEnabled).toBe(false);
+    expect(reloaded.find((u) => u.id === users[1].id)?.gamificationEnabled).toBe(true);
+  });
+
+  it('getAchievementUnlocks/upsertAchievementUnlock: family-scope and personal-scope unlocks persist, scoped by familyId', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+    const familyUnlock: AchievementUnlock = {
+      id: 'unlock-1',
+      familyId: DEMO_FAMILY.id,
+      achievementKey: 'first_walk',
+      scope: 'family',
+      unlockedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+    const personalUnlock: AchievementUnlock = {
+      id: 'unlock-2',
+      familyId: DEMO_FAMILY.id,
+      achievementKey: 'long_walk',
+      scope: 'personal',
+      userId: 'user-aba',
+      unlockedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+    await repo.upsertAchievementUnlock(familyUnlock);
+    await repo.upsertAchievementUnlock(personalUnlock);
+
+    const unlocks = await repo.getAchievementUnlocks(DEMO_FAMILY.id);
+    expect(unlocks).toHaveLength(2);
+    expect(unlocks.map((u) => u.id).sort()).toEqual(['unlock-1', 'unlock-2']);
+  });
+
+  it('upsertAchievementUnlock is idempotent by (familyId, achievementKey, userId) — a repeat unlock attempt never duplicates', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+    const unlock: AchievementUnlock = {
+      id: 'unlock-1',
+      familyId: DEMO_FAMILY.id,
+      achievementKey: 'first_walk',
+      scope: 'family',
+      unlockedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+    await repo.upsertAchievementUnlock(unlock);
+    await repo.upsertAchievementUnlock({ ...unlock, id: 'unlock-1-retry' });
+
+    const unlocks = await repo.getAchievementUnlocks(DEMO_FAMILY.id);
+    expect(unlocks).toHaveLength(1);
+    expect(unlocks[0].id).toBe('unlock-1');
+  });
+
+  it('getAchievementUnlocks never leaks another family\'s unlocks', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+    const { family: otherFamily } = otherFamilySeed();
+    await repo.upsertAchievementUnlock({
+      id: 'unlock-mine',
+      familyId: DEMO_FAMILY.id,
+      achievementKey: 'first_walk',
+      scope: 'family',
+      unlockedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    });
+    await repo.upsertAchievementUnlock({
+      id: 'unlock-other',
+      familyId: otherFamily.id,
+      achievementKey: 'first_walk',
+      scope: 'family',
+      unlockedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    });
+
+    const mine = await repo.getAchievementUnlocks(DEMO_FAMILY.id);
+    expect(mine.map((u) => u.id)).toEqual(['unlock-mine']);
+  });
 });
 
 describe('LocalRepository — malformed on-disk cache', () => {
@@ -288,7 +369,7 @@ describe('LocalRepository — replaceAll / createUser', () => {
       name: 'חדש',
       avatar: '🐶',
       color: '#123456',
-      remindersEnabled: false,
+      remindersEnabled: false, gamificationEnabled: true,
       createdAt: new Date().toISOString(),
     };
 
@@ -301,6 +382,7 @@ describe('LocalRepository — replaceAll / createUser', () => {
       walks: DEMO_WALKS,
       healthTasks: [],
       gpsSessions: [],
+      achievementUnlocks: [],
     });
 
     const users = await repo.getUsers(DEMO_FAMILY.id);
@@ -323,7 +405,7 @@ describe('LocalRepository — replaceAll / createUser', () => {
       name: 'נוצר',
       avatar: '🐾',
       color: '#abcdef',
-      remindersEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true,
       createdAt: new Date().toISOString(),
     };
 

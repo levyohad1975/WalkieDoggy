@@ -42,6 +42,8 @@ export interface FamilyUser {
   photoUrl?: string; // real profile photo (device URI in demo mode, Supabase Storage URL when configured)
   color: string; // hex, personal color used across the UI
   remindersEnabled: boolean;
+  /** PRD §9 gamification off-switch ("עם אפשרות לכיבוי") — per-user/device, same self-service-toggle shape as remindersEnabled, not a family-wide admin setting. */
+  gamificationEnabled: boolean;
   createdAt: string;
   /**
    * Set when an admin "deletes" this family member. The row is never
@@ -219,6 +221,32 @@ export interface WalkGpsSession {
   createdByUserId?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * PRD §9 gamification ("גביעים ועידוד משפחתי"): an immutable unlock ledger
+ * row, not a mutable "achievement state" table — an achievement, once
+ * unlocked, stays unlocked forever, exactly like health_tasks/dogs' own
+ * no-DELETE posture (0049/0042). 'family' scope covers milestones that
+ * belong to the whole family (e.g. first walk ever, 10/25/50 walks
+ * total); 'personal' scope covers a specific member's own behavior (e.g.
+ * on-time streak, helping out). The achievement catalog itself
+ * (thresholds, Hebrew copy) lives in logic/achievements.ts, not the DB —
+ * this table only records WHEN each key was actually crossed, so a
+ * client never re-shows the same celebration twice.
+ */
+export type AchievementScope = 'personal' | 'family';
+
+export interface AchievementUnlock {
+  id: string;
+  familyId: string;
+  /** Matches a key in logic/achievements.ts' ACHIEVEMENT_CATALOG. */
+  achievementKey: string;
+  scope: AchievementScope;
+  /** Set for 'personal' scope (who earned it); undefined for 'family' scope. */
+  userId?: string;
+  unlockedAt: string; // ISO timestamp
+  createdAt: string;
 }
 
 export type NotificationKind = 'pre_walk_reminder' | 'overdue_reminder';

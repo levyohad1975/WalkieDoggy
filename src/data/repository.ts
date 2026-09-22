@@ -1,4 +1,5 @@
 import type {
+  AchievementUnlock,
   Dog,
   Family,
   FamilyUser,
@@ -89,6 +90,8 @@ export interface Repository {
    */
   deleteFamilyMember(payload: DeleteFamilyMemberPayload): Promise<void>;
   updateUserReminderSetting(userId: string, enabled: boolean): Promise<void>;
+  /** PRD §9 gamification off-switch — per-user/device, same shape as updateUserReminderSetting. */
+  updateUserGamificationSetting(userId: string, enabled: boolean): Promise<void>;
 
   /** @deprecated Returns an arbitrary one of the family's dogs once more than one exists (kept only for the single-dog call sites that predate multi-dog support). New code should use getDogs. */
   getDog(familyId: string): Promise<Dog | undefined>;
@@ -113,6 +116,11 @@ export interface Repository {
   upsertGpsSession(session: WalkGpsSession): Promise<void>;
   /** Bulk read for Statistics' optional distance KPI — every session for the given walk ids, in one query rather than N. Missing ids are simply absent from the result (never an error). */
   getGpsSessionsForWalkIds(walkIds: string[]): Promise<WalkGpsSession[]>;
+
+  /** Every achievement unlock ever recorded for this family (PRD §9) — both 'family'-scope and every member's 'personal'-scope rows, since celebration/progress display needs the whole family's picture at once. */
+  getAchievementUnlocks(familyId: string): Promise<AchievementUnlock[]>;
+  /** Idempotent by (familyId, achievementKey, scope, userId) — see 0052's dedupe_key generated column. Calling this for an already-unlocked achievement is always safe and a no-op; the caller (achievementStore) is what decides an achievement newly crossed its threshold, this just durably records it exactly once. No delete: an immutable ledger, same posture as health tasks/GPS sessions. */
+  upsertAchievementUnlock(unlock: AchievementUnlock): Promise<void>;
 
   getScheduleRules(familyId: string): Promise<ScheduleRule[]>;
   upsertScheduleRule(rule: ScheduleRule): Promise<void>;

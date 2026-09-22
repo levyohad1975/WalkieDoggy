@@ -1,5 +1,6 @@
 import NetInfo from '@react-native-community/netinfo';
 import type {
+  AchievementUnlock,
   Dog,
   Family,
   FamilyUser,
@@ -247,6 +248,14 @@ export class OfflineFirstRepository implements Repository {
     }
   }
 
+  async updateUserGamificationSetting(userId: string, enabled: boolean): Promise<void> {
+    await this.local.updateUserGamificationSetting(userId, enabled);
+    if (this.remote) {
+      await this.queue.enqueue({ type: 'updateUserGamificationSetting', payload: { userId, enabled } });
+      await this.trySync();
+    }
+  }
+
   async getDog(familyId: string): Promise<Dog | undefined> {
     if (await this.isOnline()) {
       try {
@@ -351,6 +360,33 @@ export class OfflineFirstRepository implements Repository {
       }
     }
     return this.local.getGpsSessionsForWalkIds(walkIds);
+  }
+
+  async getAchievementUnlocks(familyId: string): Promise<AchievementUnlock[]> {
+    if (await this.isOnline()) {
+      try {
+        return await this.remote!.getAchievementUnlocks(familyId);
+      } catch {
+        /* fall through */
+      }
+    }
+    return this.local.getAchievementUnlocks(familyId);
+  }
+
+  async upsertAchievementUnlock(unlock: AchievementUnlock): Promise<void> {
+    await this.local.upsertAchievementUnlock(unlock);
+    if (this.remote) {
+      if (await this.isOnline()) {
+        try {
+          await this.remote.upsertAchievementUnlock(unlock);
+          return;
+        } catch {
+          // Preserve offline-first behaviour: retry through the sync queue.
+        }
+      }
+      await this.queue.enqueue({ type: 'upsertAchievementUnlock', payload: unlock });
+      await this.trySync();
+    }
   }
 
   async getScheduleRules(familyId: string): Promise<ScheduleRule[]> {

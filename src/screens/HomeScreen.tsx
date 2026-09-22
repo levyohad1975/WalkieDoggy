@@ -29,10 +29,13 @@ import { WalkCompletionCelebration } from '../components/WalkCompletionCelebrati
 import { ReminderMascotPrompt } from '../components/ReminderMascotPrompt';
 import { DogProfileModal } from '../components/DogProfileModal';
 import { WalkieMascot } from '../components/WalkieMascot';
-import { selectWalkCompletionCelebration, type CompletionCelebration } from '../logic/walkCompletionCelebration';
+import { CELEBRATION_LIBRARY, selectWalkCompletionCelebration, type CompletionCelebration } from '../logic/walkCompletionCelebration';
+import { achievementDefinition, type AchievementProgress } from '../logic/achievements';
+import { useAchievementStore } from '../store/achievementStore';
 import { DEMO_FAMILY } from '../data/demoData';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { fetchLastResolvedWalk } from '../lib/permissionedWalks';
+import { fetchHistoryWalks } from '../lib/permissionedWalks';
 import { useRequestsStore } from '../store/requestsStore';
 import {
   countPendingRequestsForViewer,
@@ -140,6 +143,7 @@ export function HomeScreen() {
       // Purely cosmetic — never block or interrupt a successfully saved walk.
     }
   }, [recentCelebrationIds]);
+
   const [swapWalkId, setSwapWalkId] = useState<string | null>(null);
   const [editWalkId, setEditWalkId] = useState<string | null>(null);
   const [addUnplannedVisible, setAddUnplannedVisible] = useState(false);
@@ -173,6 +177,11 @@ export function HomeScreen() {
     loadFamily(familyId);
     loadSchedule(familyId);
     if (isSupabaseConfigured) loadRequests();
+    // PRD §9 gamification — loads the family's persisted unlock ledger so
+    // checkForNewUnlocks() has a real "already unlocked" baseline to check
+    // against (see achievementStore's own doc comment on why it refuses to
+    // run before this resolves).
+    void useAchievementStore.getState().load(familyId);
   }, [loadFamily, loadSchedule, loadRequests, familyId]);
 
   // Health & Grooming summary badge below needs this dog's tasks loaded —
@@ -225,6 +234,77 @@ export function HomeScreen() {
   // authenticated identity (currentUserId) and REAL familyRole never
   // change, and are never used for mutations/RLS/audit either way.
   const effectiveUserId = useEffectiveUserId()!; // HomeScreen only renders once currentUserId is set (see the `!` above)
+
+  // PRD §9 gamification — an unlocked achievement reuses the SAME
+  // celebration modal/state as an ordinary walk-completion celebration
+  // (`celebration`/`setCelebration` above), sequenced through it rather
+  // than a second overlay: showNextAchievementCelebration() is called both
+  // from the walk-completion celebration's own onDismiss (so an
+  // achievement unlocked by that same walk shows right after) AND from the
+  // effect below (so one that resolves asynchronously, after the walk
+  // celebration was already dismissed, still gets shown instead of being
+  // silently lost). gamificationEnabled is this member's own PRD §9
+  // off-switch — an opted-out member still contributes to (and can later
+  // still open, via Settings) the family's shared achievement ledger; they
+  // just never see the popup.
+  const gamificationEnabled = usersById[effectiveUserId]?.gamificationEnabled ?? true;
+  const buildAchievementCelebration = useCallback((progress: AchievementProgress): CompletionCelebration => {
+    const definition = achievementDefinition(progress.key);
+    const base = CELEBRATION_LIBRARY.find((c) => c.id === (definition?.celebrationId ?? 'trophy-teaser')) ?? CELEBRATION_LIBRARY[0];
+    return {
+      ...base,
+      eyebrow: 'הישג חדש! 🏆',
+      title: definition?.title ?? base.title,
+      message: definition?.description ?? base.message,
+      reaction: definition?.icon ?? base.accent,
+    };
+  }, []);
+  const showNextAchievementCelebration = useCallback(() => {
+    if (!gamificationEnabled) {
+      // Opted out of the popup — drain the queue silently rather than
+      // leaving it to surface unexpectedly if the setting is re-enabled
+      // later mid-session.
+      while (useAchievementStore.getState().consumeNextUnlocked()) {
+        /* drain */
+      }
+      return;
+    }
+    const next = useAchievementStore.getState().consumeNextUnlocked();
+    if (next) setCelebration(buildAchievementCelebration(next));
+  }, [gamificationEnabled, buildAchievementCelebration]);
+  const newlyUnlockedAchievementCount = useAchievementStore((s) => s.newlyUnlocked.length);
+  useEffect(() => {
+    if (newlyUnlockedAchievementCount > 0 && !celebration) showNextAchievementCelebration();
+  }, [newlyUnlockedAchievementCount, celebration, showNextAchievementCelebration]);
+
+  /**
+   * The achievement catalog's family-wide milestones (e.g. 10/25/50 total
+   * walks) need the family's FULL history, not scheduleStore's own `walks`
+   * (RLS-restricted to an operational window — see StatisticsScreen.tsx's
+   * matching doc comment). Reuses fetchHistoryWalks() (migration 0027) —
+   * the same permissioned bulk-historical read HistoryScreen already
+   * relies on — rather than introducing a third one. Best-effort: a
+   * denied/offline/local-demo caller simply skips this check for now
+   * (falling back to scheduleStore's own walks in local/demo mode, where
+   * there is no such RLS window to begin with) — achievement detection is
+   * a bonus layered on top of the walk flow, never a reason to block or
+   * degrade it.
+   */
+  const fetchAchievementWalks = useCallback(async (): Promise<Walk[]> => {
+    if (!isSupabaseConfigured) return useScheduleStore.getState().walks;
+    try {
+      return await fetchHistoryWalks();
+    } catch {
+      return [];
+    }
+  }, []);
+  const checkForNewAchievementUnlocks = useCallback(() => {
+    void (async () => {
+      const achievementWalks = await fetchAchievementWalks();
+      if (achievementWalks.length === 0) return;
+      await useAchievementStore.getState().checkForNewUnlocks(familyId, achievementWalks, effectiveUserId);
+    })();
+  }, [fetchAchievementWalks, familyId, effectiveUserId]);
 
   // Minute-level refresh so "עוד X שעות ו-Y דקות" doesn't go stale while this
   // screen stays open, without re-rendering more often than that (see
@@ -823,14 +903,20 @@ export function HomeScreen() {
           // messageEngine.ts) still produce a grammatical message, and this
           // is purely cosmetic — never re-thrown, never blocks markDone's
           // own error handling.
-          if (completed) showWalkCompletionCelebration(walkBeingCompleted?.durationMinutes);
+          if (completed) {
+            showWalkCompletionCelebration(walkBeingCompleted?.durationMinutes);
+            checkForNewAchievementUnlocks();
+          }
         }}
         onCancel={() => setCompleteWalkId(null)}
       />
 
       <WalkCompletionCelebration
         celebration={celebration}
-        onDismiss={() => setCelebration(null)}
+        onDismiss={() => {
+          setCelebration(null);
+          showNextAchievementCelebration();
+        }}
       />
 
       <ReminderMascotPrompt visible={!!reminderPromptMessage} message={reminderPromptMessage ?? ''} onDismiss={() => setReminderPrompt(null)} />
@@ -909,7 +995,10 @@ export function HomeScreen() {
               note: result.note || undefined,
               durationMinutes: result.durationMinutes,
             });
-            if (saved) showWalkCompletionCelebration(result.durationMinutes);
+            if (saved) {
+              showWalkCompletionCelebration(result.durationMinutes);
+              checkForNewAchievementUnlocks();
+            }
           } else {
             // Must never fail silently: without a loaded dog we have no
             // dogId to attach the walk to, but the person already tapped

@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Dog, FamilyUser, HealthTask, ScheduleEntry, ScheduleRule, Walk, WalkGpsSession } from '../types';
+import type { AchievementUnlock, Dog, FamilyUser, HealthTask, ScheduleEntry, ScheduleRule, Walk, WalkGpsSession } from '../types';
 import type { DeleteFamilyMemberPayload, Repository } from './repository';
 
 const QUEUE_KEY = 'dog-walk-family:sync-queue:v4';
@@ -177,6 +177,7 @@ export type SyncOperation =
   | { type: 'upsertDog'; payload: Dog }
   | { type: 'upsertHealthTask'; payload: HealthTask }
   | { type: 'upsertGpsSession'; payload: WalkGpsSession }
+  | { type: 'upsertAchievementUnlock'; payload: AchievementUnlock }
   | { type: 'upsertScheduleRule'; payload: ScheduleRule }
   | { type: 'deleteScheduleRule'; payload: { ruleId: string } }
   | { type: 'addScheduleEntries'; payload: ScheduleEntry[] }
@@ -184,7 +185,8 @@ export type SyncOperation =
   | { type: 'deleteScheduleEntry'; payload: { entryId: string } }
   | { type: 'saveWalk'; payload: Walk }
   | { type: 'deleteWalk'; payload: { walkId: string } }
-  | { type: 'updateUserReminderSetting'; payload: { userId: string; enabled: boolean } };
+  | { type: 'updateUserReminderSetting'; payload: { userId: string; enabled: boolean } }
+  | { type: 'updateUserGamificationSetting'; payload: { userId: string; enabled: boolean } };
 
 /**
  * Persistent FIFO queue of writes that couldn't reach Supabase yet (no
@@ -623,6 +625,8 @@ export class SyncQueue {
         return remote.upsertHealthTask(op.payload);
       case 'upsertGpsSession':
         return remote.upsertGpsSession(op.payload);
+      case 'upsertAchievementUnlock':
+        return remote.upsertAchievementUnlock(op.payload);
       case 'upsertScheduleRule':
         return remote.upsertScheduleRule(op.payload);
       case 'deleteScheduleRule':
@@ -639,6 +643,8 @@ export class SyncQueue {
         return remote.deleteWalk?.(op.payload.walkId);
       case 'updateUserReminderSetting':
         return remote.updateUserReminderSetting(op.payload.userId, op.payload.enabled);
+      case 'updateUserGamificationSetting':
+        return remote.updateUserGamificationSetting(op.payload.userId, op.payload.enabled);
     }
   }
 }

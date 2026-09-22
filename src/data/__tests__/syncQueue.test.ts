@@ -4,7 +4,7 @@ import type { Repository } from '../repository';
 import type { FamilyUser } from '../../types';
 
 function fakeUser(id: string): FamilyUser {
-  return { id, familyId: 'family-main', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, createdAt: new Date().toISOString() };
+  return { id, familyId: 'family-main', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: new Date().toISOString() };
 }
 
 function stubRemote(overrides: Partial<Repository> = {}): Repository {
