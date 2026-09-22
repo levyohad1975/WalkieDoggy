@@ -111,7 +111,12 @@ async function detectCapability(): Promise<NotificationCapability> {
  * can't be loaded (e.g. this test sandbox, or a bare RN environment with no
  * native modules at all) so callers can no-op instead of throwing.
  */
-async function getNotifications(): Promise<typeof ExpoNotifications | null> {
+// Exported (Phase 3, Health & Grooming): healthReminderService.ts reuses
+// this exact lazy-load + Expo-Go-crash-avoidance guard rather than
+// reimplementing it — see this function's own doc comment for why that
+// guard is safety-critical (P0 Android Expo Go crash) and must not be
+// duplicated with a second, possibly-drifting copy.
+export async function getNotifications(): Promise<typeof ExpoNotifications | null> {
   const capability = await detectCapability();
   if (capability === 'unavailable') return null;
 

@@ -5,49 +5,25 @@ import { Button } from './Button';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { generateId } from '../lib/id';
-import type { Dog, HealthTask, HealthTaskCategory } from '../types';
-
-const CATEGORIES: HealthTaskCategory[] = [
-  'vaccination',
-  'parasite_prevention',
-  'medication',
-  'vet_visit',
-  'weight',
-  'allergy',
-  'food',
-  'grooming',
-  'bath',
-  'nails',
-  'teeth',
-  'ears',
-  'other',
-];
-
-const CATEGORY_LABELS: Record<HealthTaskCategory, string> = {
-  vaccination: 'חיסון',
-  parasite_prevention: 'תילוע/פרעושים/קרציות',
-  medication: 'תרופה',
-  vet_visit: 'ביקור וטרינר',
-  weight: 'משקל',
-  allergy: 'אלרגיה/רגישות',
-  food: 'מזון והנחיות',
-  grooming: 'טיפוח/ספר',
-  bath: 'מקלחת',
-  nails: 'ציפורניים',
-  teeth: 'שיניים',
-  ears: 'אוזניים',
-  other: 'אחר',
-};
+import { HEALTH_TASK_CATEGORIES as CATEGORIES, HEALTH_TASK_CATEGORY_LABELS as CATEGORY_LABELS, getHealthTaskLifecycle } from '../logic/healthTasks';
+import type { Dog, FamilyUser, HealthTask, HealthTaskCategory } from '../types';
 
 interface HealthGroomingModalProps {
   visible: boolean;
   dog: Dog | null;
   tasks: HealthTask[];
+  users: FamilyUser[];
   currentUserId: string | null | undefined;
   onSave: (task: HealthTask) => Promise<void>;
   onComplete: (taskId: string) => Promise<void>;
   onClose: () => void;
 }
+
+const LIFECYCLE_BADGE: Record<'upcoming' | 'due' | 'overdue', { label: string; color: string; bg: string }> = {
+  upcoming: { label: 'קרוב', color: colors.statusPending, bg: colors.statusPendingBg },
+  due: { label: 'היום', color: colors.statusCurrent, bg: colors.statusCurrentBg },
+  overdue: { label: 'באיחור', color: colors.statusOverdue, bg: colors.statusOverdueBg },
+};
 
 /**
  * Phase 3 kickoff (PRD §10, בריאות וטיפוח) — a per-DOG journal + task list,
@@ -57,7 +33,7 @@ interface HealthGroomingModalProps {
  * family-wide list, since every record is attributed to one specific dog
  * (supabase/migrations/0049_health_grooming_foundation.sql).
  */
-export function HealthGroomingModal({ visible, dog, tasks, currentUserId, onSave, onComplete, onClose }: HealthGroomingModalProps) {
+export function HealthGroomingModal({ visible, dog, tasks, users, currentUserId, onSave, onComplete, onClose }: HealthGroomingModalProps) {
   const [formVisible, setFormVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<HealthTask | null>(null);
   const [completingId, setCompletingId] = useState<string | null>(null);
@@ -106,55 +82,71 @@ export function HealthGroomingModal({ visible, dog, tasks, currentUserId, onSave
               {open.length === 0 ? (
                 <RtlText style={styles.emptyHint}>אין משימות פתוחות כרגע.</RtlText>
               ) : (
-                open.map((t) => (
-                  <View key={t.id} style={styles.row}>
-                    <Pressable
-                      style={styles.rowBody}
-                      onPress={() => openEditForm(t)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`עריכת ${t.title}, ${CATEGORY_LABELS[t.category]}`}
-                    >
-                      <RtlText style={styles.rowTitle} numberOfLines={1}>{t.title}</RtlText>
-                      <RtlText style={styles.rowMeta}>
-                        {CATEGORY_LABELS[t.category]}
-                        {t.dueDate ? ` · יעד: ${t.dueDate}` : ''}
-                      </RtlText>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => void handleComplete(t.id)}
-                      disabled={completingId === t.id}
-                      style={styles.completeButton}
-                      accessibilityRole="button"
-                      accessibilityLabel={`סימון ${t.title} כבוצע`}
-                    >
-                      <RtlText style={styles.completeButtonText}>{completingId === t.id ? '…' : '✓ בוצע'}</RtlText>
-                    </Pressable>
-                  </View>
-                ))
+                open.map((t) => {
+                  const lifecycle = getHealthTaskLifecycle(t) as 'upcoming' | 'due' | 'overdue';
+                  const badge = LIFECYCLE_BADGE[lifecycle];
+                  const responsibleName = t.responsibleUserId ? users.find((u) => u.id === t.responsibleUserId)?.name : undefined;
+                  return (
+                    <View key={t.id} style={styles.row}>
+                      <Pressable
+                        style={styles.rowBody}
+                        onPress={() => openEditForm(t)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`עריכת ${t.title}, ${CATEGORY_LABELS[t.category]}, ${badge.label}`}
+                      >
+                        <View style={styles.rowTitleLine}>
+                          <RtlText style={styles.rowTitle} numberOfLines={1}>{t.title}</RtlText>
+                          <View style={[styles.lifecycleBadge, { backgroundColor: badge.bg }]}>
+                            <RtlText style={[styles.lifecycleBadgeText, { color: badge.color }]}>{badge.label}</RtlText>
+                          </View>
+                        </View>
+                        <RtlText style={styles.rowMeta}>
+                          {CATEGORY_LABELS[t.category]}
+                          {t.dueDate ? ` · יעד: ${t.dueDate}` : ''}
+                          {responsibleName ? ` · אחראי/ת: ${responsibleName}` : ''}
+                          {t.recurrenceIntervalDays ? ` · חוזר כל ${t.recurrenceIntervalDays} ימים` : ''}
+                        </RtlText>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => void handleComplete(t.id)}
+                        disabled={completingId === t.id}
+                        style={styles.completeButton}
+                        accessibilityRole="button"
+                        accessibilityLabel={`סימון ${t.title} כבוצע`}
+                      >
+                        <RtlText style={styles.completeButtonText}>{completingId === t.id ? '…' : '✓ בוצע'}</RtlText>
+                      </Pressable>
+                    </View>
+                  );
+                })
               )}
 
               <RtlText style={styles.sectionLabel}>היסטוריה</RtlText>
               {completed.length === 0 ? (
                 <RtlText style={styles.emptyHint}>אין רשומות עדיין.</RtlText>
               ) : (
-                completed.map((t) => (
-                  <Pressable
-                    key={t.id}
-                    style={styles.row}
-                    onPress={() => openEditForm(t)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`עריכת ${t.title}, ${CATEGORY_LABELS[t.category]}`}
-                  >
-                    <View style={styles.rowBody}>
-                      <RtlText style={styles.rowTitle} numberOfLines={1}>{t.title}</RtlText>
-                      <RtlText style={styles.rowMeta}>
-                        {CATEGORY_LABELS[t.category]}
-                        {t.category === 'weight' && t.weightKg != null ? ` · ${t.weightKg} ק"ג` : ''}
-                        {t.completedAt ? ` · הושלם ${t.completedAt.slice(0, 10)}` : ''}
-                      </RtlText>
-                    </View>
-                  </Pressable>
-                ))
+                completed.map((t) => {
+                  const completedByName = t.completedByUserId ? users.find((u) => u.id === t.completedByUserId)?.name : undefined;
+                  return (
+                    <Pressable
+                      key={t.id}
+                      style={styles.row}
+                      onPress={() => openEditForm(t)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`עריכת ${t.title}, ${CATEGORY_LABELS[t.category]}`}
+                    >
+                      <View style={styles.rowBody}>
+                        <RtlText style={styles.rowTitle} numberOfLines={1}>{t.title}</RtlText>
+                        <RtlText style={styles.rowMeta}>
+                          {CATEGORY_LABELS[t.category]}
+                          {t.category === 'weight' && t.weightKg != null ? ` · ${t.weightKg} ק"ג` : ''}
+                          {t.completedAt ? ` · הושלם ${t.completedAt.slice(0, 10)}` : ''}
+                          {completedByName ? ` · ע"י ${completedByName}` : ''}
+                        </RtlText>
+                      </View>
+                    </Pressable>
+                  );
+                })
               )}
             </ScrollView>
             <Button label="+ הוספת רשומה" onPress={openAddForm} style={styles.addButton} />
@@ -167,6 +159,7 @@ export function HealthGroomingModal({ visible, dog, tasks, currentUserId, onSave
         visible={formVisible}
         dog={dog}
         task={editingTask}
+        users={users}
         currentUserId={currentUserId}
         onSave={async (task) => {
           await onSave(task);
@@ -182,6 +175,7 @@ interface HealthTaskFormModalProps {
   visible: boolean;
   dog: Dog;
   task: HealthTask | null;
+  users: FamilyUser[];
   currentUserId: string | null | undefined;
   onSave: (task: HealthTask) => Promise<void>;
   onClose: () => void;
@@ -196,12 +190,14 @@ interface HealthTaskFormModalProps {
  * this modal's parent's dedicated "✓ בוצע" row action, not something this
  * form does.
  */
-function HealthTaskFormModal({ visible, dog, task, currentUserId, onSave, onClose }: HealthTaskFormModalProps) {
+function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave, onClose }: HealthTaskFormModalProps) {
   const [category, setCategory] = useState<HealthTaskCategory>('vaccination');
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [weightKg, setWeightKg] = useState('');
+  const [responsibleUserId, setResponsibleUserId] = useState<string | undefined>(undefined);
+  const [recurrenceDays, setRecurrenceDays] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -211,6 +207,8 @@ function HealthTaskFormModal({ visible, dog, task, currentUserId, onSave, onClos
     setNotes(task?.notes ?? '');
     setDueDate(task?.dueDate ?? '');
     setWeightKg(task?.weightKg != null ? String(task.weightKg) : '');
+    setResponsibleUserId(task?.responsibleUserId);
+    setRecurrenceDays(task?.recurrenceIntervalDays != null ? String(task.recurrenceIntervalDays) : '');
   }, [visible, task]);
 
   const handleSave = async () => {
@@ -228,6 +226,12 @@ function HealthTaskFormModal({ visible, dog, task, currentUserId, onSave, onClos
       Alert.alert('משקל לא תקין', 'יש להזין משקל חיובי בק"ג.');
       return;
     }
+    const trimmedRecurrence = recurrenceDays.trim();
+    const parsedRecurrence = trimmedRecurrence ? Number(trimmedRecurrence) : undefined;
+    if (trimmedRecurrence && (!Number.isInteger(parsedRecurrence) || (parsedRecurrence as number) <= 0)) {
+      Alert.alert('תדירות לא תקינה', 'יש להזין מספר ימים חיובי, או להשאיר ריק לרשומה חד-פעמית.');
+      return;
+    }
     setSaving(true);
     try {
       const now = new Date().toISOString();
@@ -243,10 +247,11 @@ function HealthTaskFormModal({ visible, dog, task, currentUserId, onSave, onClos
         title: title.trim(),
         notes: notes.trim() || undefined,
         weightKg: category === 'weight' ? parsedWeight : undefined,
+        recurrenceIntervalDays: parsedRecurrence,
         dueDate: dueDate || undefined,
         completedAt: logNow ? now : task?.completedAt,
         completedByUserId: logNow ? currentUserId ?? undefined : task?.completedByUserId,
-        responsibleUserId: task?.responsibleUserId,
+        responsibleUserId,
         createdByUserId: task?.createdByUserId ?? currentUserId ?? undefined,
         createdAt: task?.createdAt ?? now,
         updatedAt: now,
@@ -321,6 +326,46 @@ function HealthTaskFormModal({ visible, dog, task, currentUserId, onSave, onClos
                 accessibilityLabel="תאריך יעד"
               />
 
+              <RtlText style={styles.label}>חוזר כל כמה ימים (ריק = חד-פעמי)</RtlText>
+              <TextInput
+                value={recurrenceDays}
+                onChangeText={setRecurrenceDays}
+                style={styles.input}
+                textAlign="right"
+                keyboardType="number-pad"
+                placeholder="למשל: 30"
+                placeholderTextColor={colors.textSecondary}
+                accessibilityLabel="תדירות חזרה בימים"
+              />
+
+              <RtlText style={styles.label}>אחראי/ת (לא חובה)</RtlText>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
+                <Pressable
+                  onPress={() => setResponsibleUserId(undefined)}
+                  style={[styles.categoryChip, !responsibleUserId && styles.categoryChipActive]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: !responsibleUserId }}
+                  accessibilityLabel="ללא אחראי/ת"
+                >
+                  <RtlText style={[styles.categoryChipText, !responsibleUserId && styles.categoryChipTextActive]}>ללא</RtlText>
+                </Pressable>
+                {users.filter((u) => !u.removedAt).map((u) => {
+                  const selected = responsibleUserId === u.id;
+                  return (
+                    <Pressable
+                      key={u.id}
+                      onPress={() => setResponsibleUserId(u.id)}
+                      style={[styles.categoryChip, selected && styles.categoryChipActive]}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={u.name}
+                    >
+                      <RtlText style={[styles.categoryChipText, selected && styles.categoryChipTextActive]}>{u.name}</RtlText>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+
               <RtlText style={styles.label}>הערות</RtlText>
               <TextInput
                 value={notes}
@@ -361,7 +406,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   rowBody: { flex: 1, gap: 2 },
-  rowTitle: { ...typography.body, fontSize: 15, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
+  rowTitleLine: { flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.xs },
+  rowTitle: { flexShrink: 1, ...typography.body, fontSize: 15, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
+  lifecycleBadge: { paddingVertical: 2, paddingHorizontal: spacing.xs, borderRadius: radii.round },
+  lifecycleBadgeText: { fontSize: 11, fontWeight: '700' },
   rowMeta: { ...typography.meta, color: colors.textSecondary, textAlign: 'right' },
   completeButton: { paddingVertical: 6, paddingHorizontal: spacing.sm, borderRadius: radii.md, backgroundColor: colors.statusCurrentBg },
   completeButtonText: { ...typography.meta, color: colors.primaryDark, fontWeight: '700' },

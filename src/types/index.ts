@@ -99,7 +99,7 @@ export type HealthTaskCategory =
  * `dueDate` is set and `completedAt` isn't (e.g. "next vet visit"), or both
  * (a due task marked done keeps its dueDate). See
  * supabase/migrations/0049_health_grooming_foundation.sql for the full
- * rationale, including why recurrence isn't part of this shape yet.
+ * rationale, and 0050_health_task_recurrence.sql for `recurrenceIntervalDays`.
  */
 export interface HealthTask {
   id: string;
@@ -110,6 +110,14 @@ export interface HealthTask {
   notes?: string;
   /** Only meaningful for category 'weight' — a weight-log entry's reading, in kg. */
   weightKg?: number;
+  /**
+   * When set on a task, completing it auto-generates the NEXT occurrence
+   * (same category/title/notes/responsibleUserId/recurrenceIntervalDays,
+   * dueDate = this completion's date + this many days) — see
+   * healthStore.completeTask(). Undefined/absent = a one-off record, exactly
+   * today's behavior. See supabase/migrations/0050_health_task_recurrence.sql.
+   */
+  recurrenceIntervalDays?: number;
   dueDate?: string; // "YYYY-MM-DD"
   completedAt?: string; // ISO timestamp
   completedByUserId?: string;

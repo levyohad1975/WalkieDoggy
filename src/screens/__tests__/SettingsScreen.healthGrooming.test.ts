@@ -33,12 +33,22 @@ describe('SettingsScreen wires the Health & Grooming entry point to the active d
     expect(source).toMatch(/\}, \[healthModalVisible, dog\?\.id, loadHealthTasks\]\);/);
   });
 
+  it('consumes the cross-tab pendingOpenRequest signal on focus (from Home\'s badge), opening the sheet exactly once per request', () => {
+    expect(source).toMatch(/import \{ useFocusEffect \} from '@react-navigation\/native';/);
+    const focusIdx = source.indexOf('useFocusEffect(');
+    expect(focusIdx).toBeGreaterThan(-1);
+    const block = source.slice(focusIdx, focusIdx + 400);
+    expect(block).toMatch(/useHealthStore\.getState\(\)\.consumePendingOpenRequest\(\)/);
+    expect(block).toMatch(/setHealthModalVisible\(true\)/);
+  });
+
   it('passes the active dog, its tasks, and save/complete handlers into HealthGroomingModal', () => {
     const modalStart = source.indexOf('<HealthGroomingModal');
     expect(modalStart).toBeGreaterThan(-1);
     const modalBlock = source.slice(modalStart, modalStart + 400);
     expect(modalBlock).toMatch(/dog=\{dog \?\? null\}/);
     expect(modalBlock).toMatch(/tasks=\{healthTasks\}/);
+    expect(modalBlock).toMatch(/users=\{users\}/);
     expect(modalBlock).toMatch(/onSave=\{saveHealthTask\}/);
     expect(modalBlock).toMatch(/onComplete=\{\(taskId\) => completeHealthTask\(taskId, currentUserId \?\? ''\)\}/);
   });

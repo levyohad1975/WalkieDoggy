@@ -1,5 +1,6 @@
-﻿import React, { useEffect, useState } from 'react';
+﻿import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFamilyStore } from '../store/familyStore';
@@ -118,6 +119,18 @@ export function SettingsScreen() {
       void loadHealthTasks(dog.id);
     }
   }, [healthModalVisible, dog?.id, loadHealthTasks]);
+
+  // Cross-tab "open Health & Grooming" signal from Home's summary badge —
+  // see healthStore's pendingOpenRequest doc comment. Consumed (and
+  // cleared) only while this tab actually has focus, so it can never fire
+  // while Settings merely happens to be mounted in the background.
+  useFocusEffect(
+    useCallback(() => {
+      if (useHealthStore.getState().consumePendingOpenRequest()) {
+        setHealthModalVisible(true);
+      }
+    }, [])
+  );
 
   // NESTED-MODAL LIFECYCLE FIX (final QA round), non-iOS path: Modal's
   // onDismiss is iOS-only, so on Android (or any other platform) there is
@@ -508,6 +521,7 @@ export function SettingsScreen() {
         visible={healthModalVisible}
         dog={dog ?? null}
         tasks={healthTasks}
+        users={users}
         currentUserId={currentUserId}
         onSave={saveHealthTask}
         onComplete={(taskId) => completeHealthTask(taskId, currentUserId ?? '')}

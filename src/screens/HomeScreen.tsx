@@ -45,6 +45,8 @@ import type { Walk } from '../types';
 import { renderMessageTemplate } from '../mascot/messageEngine';
 import { subscribeToReminderOpens, type ReminderOpenEvent } from '../notifications/reminderEntry';
 import type { RootTabParamList } from '../navigation/RootNavigator';
+import { useHealthStore } from '../store/healthStore';
+import { summarizeHealthTasksForHome } from '../logic/healthTasks';
 
 export function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
@@ -96,6 +98,11 @@ export function HomeScreen() {
     markResultsSeen,
     clearError: clearRequestsError,
   } = useRequestsStore();
+
+  const healthTasks = useHealthStore((s) => s.tasks);
+  const loadHealthTasks = useHealthStore((s) => s.load);
+  const requestOpenHealthModal = useHealthStore((s) => s.requestOpen);
+  const healthSummary = useMemo(() => summarizeHealthTasksForHome(healthTasks), [healthTasks]);
 
   const [completeWalkId, setCompleteWalkId] = useState<string | null>(null);
   // BATCH 4 (C2/C3/C8) — brief "success" mascot + message shown right after
@@ -156,6 +163,14 @@ export function HomeScreen() {
     loadSchedule(familyId);
     if (isSupabaseConfigured) loadRequests();
   }, [loadFamily, loadSchedule, loadRequests, familyId]);
+
+  // Health & Grooming summary badge below needs this dog's tasks loaded —
+  // eagerly, on mount and whenever the ACTIVE dog changes (unlike Settings'
+  // Health sheet, which loads lazily only once opened), since the badge
+  // itself must be visible without the member ever opening that sheet.
+  useEffect(() => {
+    if (dog) void loadHealthTasks(dog.id);
+  }, [dog?.id, loadHealthTasks]);
 
   // Cross-device safety net: Realtime remains the fast path, but a tab can
   // miss an event during a transient reconnect. Every time Home becomes
@@ -497,6 +512,40 @@ export function HomeScreen() {
             </Pressable>
           ) : null}
         </View>
+
+        {/*
+          Health & Grooming summary (PRD §10) — deliberately a single slim,
+          dismissible-feeling pill, never a full list here: this screen's
+          job is the walk experience, so the badge only ever tells the
+          member "something needs attention" and hands off to Settings'
+          Health sheet (via healthStore.requestOpen(), a cross-tab signal —
+          see that store's own doc comment) for the actual list. Rendered
+          only when there's genuinely something to flag, so a family with no
+          open tasks — or none due/overdue yet — sees nothing extra at all.
+        */}
+        {healthSummary.overdueCount + healthSummary.dueSoonCount > 0 ? (
+          <Pressable
+            style={[styles.healthSummaryPill, healthSummary.overdueCount > 0 && styles.healthSummaryPillOverdue]}
+            onPress={() => {
+              requestOpenHealthModal();
+              navigation.navigate('Settings');
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={
+              healthSummary.overdueCount > 0
+                ? `${healthSummary.overdueCount} משימות בריאות וטיפוח באיחור, מעבר להגדרות`
+                : `${healthSummary.dueSoonCount} משימות בריאות וטיפוח קרובות, מעבר להגדרות`
+            }
+          >
+            <RtlText style={styles.healthSummaryIcon}>🏥</RtlText>
+            <RtlText style={styles.healthSummaryText}>
+              {healthSummary.overdueCount > 0
+                ? `${healthSummary.overdueCount} משימות בריאות באיחור`
+                : `${healthSummary.dueSoonCount} משימות בריאות קרובות`}
+            </RtlText>
+            <RtlText style={styles.healthSummaryChevron}>‹</RtlText>
+          </Pressable>
+        ) : null}
 
         <View style={styles.nextWalkLift}>
           {nextWalk ? (
@@ -1076,6 +1125,21 @@ const styles = StyleSheet.create({
   notificationIcon: { fontSize: 18 },
   requestsCountBadge: { minWidth: spacing.xl, height: spacing.xl, borderRadius: radii.sm, paddingHorizontal: spacing.xs, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryDark },
   requestsCountText: { fontSize: 11, fontWeight: '800', color: '#fff' },
+  healthSummaryPill: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: spacing.xs,
+    alignSelf: 'flex-end',
+    marginTop: spacing.sm,
+    paddingVertical: 6,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.round,
+    backgroundColor: colors.statusCurrentBg,
+  },
+  healthSummaryPillOverdue: { backgroundColor: colors.statusOverdueBg },
+  healthSummaryIcon: { fontSize: 14 },
+  healthSummaryText: { ...typography.meta, fontSize: 12, fontWeight: '700', color: colors.textPrimary },
+  healthSummaryChevron: { fontSize: 14, color: colors.textSecondary, writingDirection: 'ltr' },
   section: { gap: spacing.sm },
   sectionTitlePhysicalRight: {
     width: '100%',
