@@ -35,7 +35,7 @@ jobs:
         with:
           version: 2.116.0
 
-      - name: Seed schema.sql as migration 0000 (the true pre-migration-1 baseline)
+      - name: Seed schema.sql as migration 00000 (the true pre-migration-1 baseline)
         # Local rehearsal only -- never modifies or commits a real repo file.
         # schema.sql's own header: "always reflects the current/target
         # schema, not an incremental diff". Migration 0001 itself assumes
@@ -44,7 +44,18 @@ jobs:
         # in the repo ever creates `families`/`users` -- only schema.sql
         # does. So schema.sql is not optional or skippable: it is the one
         # and only source of those base tables for a from-empty replay.
-        run: cp supabase/schema.sql supabase/migrations/0000_base_schema.sql
+        #
+        # 5-digit "00000" (not "0000"): Supabase CLI tracks each applied
+        # migration's numeric-prefix "version" as a unique key in its own
+        # supabase_migrations.schema_migrations table (confirmed directly
+        # -- a real run failed with "duplicate key ... Key (version)=
+        # (0000) already exists" once a second file also used a "0000"
+        # prefix, and the error preserved the leading zeros verbatim,
+        # meaning that column keeps the literal digit-string, not a
+        # normalized integer). A 5-digit prefix sorts before any 4-digit
+        # "000N" migration by ordinary string comparison while never
+        # colliding with one.
+        run: cp supabase/schema.sql supabase/migrations/00000_base_schema.sql
 
       - name: Generate ephemeral idempotency guards for 0001-0041 (rehearsal-only, never committed)
         shell: bash
@@ -107,25 +118,20 @@ jobs:
           for m in re.finditer(r'^drop function if exists\s+((?:public\.)?[a-zA-Z_][a-zA-Z0-9_]*\([^)]*\));', schema, re.I | re.M):
               lines.append(f'drop function if exists {m.group(1)};')
 
-          # Supabase CLI requires a migration filename's prefix (before the
-          # first underscore) to be purely numeric -- it silently SKIPS
-          # any file that doesn't match (confirmed directly: an earlier
-          # "0000b_..." name here was skipped with no error, which is why
-          # a prior real-CI run still hit the exact original 42710
-          # collision even though this script had generated the guards).
-          # "0000_zzz_..." keeps a purely-numeric "0000" prefix so the CLI
-          # accepts it, and "zzz" sorts after "base_schema" so it still
-          # lands right after 0000_base_schema.sql and before 0001_*.
-          with open('supabase/migrations/0000_zzz_rehearsal_policy_guards.sql', 'w') as out:
+          # Same version-uniqueness constraint as the 00000_base_schema.sql
+          # step above: "00001" is a distinct 5-digit version from
+          # "00000" (schema.sql) and from any real "000N" migration, and
+          # sorts between them by ordinary string comparison.
+          with open('supabase/migrations/00001_rehearsal_policy_guards.sql', 'w') as out:
               out.write("\n".join(lines) + "\n")
           print(f"Generated {len(lines) - 2} guard statements")
           PYEOF
-          cat supabase/migrations/0000_zzz_rehearsal_policy_guards.sql
+          cat supabase/migrations/00001_rehearsal_policy_guards.sql
 
       - name: Start isolated Supabase stack
         run: supabase start -x studio,imgproxy,storage-api,realtime,edge-runtime,logflare,vector,supavisor
 
-      - name: Replay the FULL real migration chain (0000 base + 0001-0048) from empty
+      - name: Replay the FULL real migration chain (00000 base + 0001-0048) from empty
         run: supabase db reset --local
 
       - name: Run the 0043-0048 integration rehearsal (real Postgres, not source review)
