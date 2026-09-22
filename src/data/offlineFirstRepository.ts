@@ -299,6 +299,59 @@ export class OfflineFirstRepository implements Repository {
     }
   }
 
+  /**
+   * Walk lifecycle transitions must be server-authoritative when Supabase is
+   * configured. Without these delegates the Repository interface's optional
+   * methods are absent on OfflineFirstRepository, so scheduleStore falls
+   * back to a local-only in_progress state; the next authoritative refresh
+   * then restores the server's still-pending row and the UI appears to
+   * "jump back" a few seconds after Start.
+   */
+  async startWalk(walkId: string): Promise<Walk> {
+    if (this.remote?.startWalk && (await this.isOnline())) {
+      const updated = await this.remote.startWalk(walkId);
+      await this.local.saveWalk(updated);
+      return updated;
+    }
+
+    const walks = await this.local.getWalks('');
+    const walk = walks.find((candidate) => candidate.id === walkId);
+    if (!walk) throw new Error('Walk not found');
+    const now = new Date().toISOString();
+    const updated: Walk = { ...walk, status: 'in_progress', startedAt: now, updatedAt: now };
+    await this.local.saveWalk(updated);
+    return updated;
+  }
+
+  async finishWalk(
+    walkId: string,
+    completedByUserId: string,
+    details: { hadPee?: boolean; hadPoop?: boolean; note?: string; completedAt?: string } = {}
+  ): Promise<Walk> {
+    if (this.remote?.finishWalk && (await this.isOnline())) {
+      const updated = await this.remote.finishWalk(walkId, completedByUserId, details);
+      await this.local.saveWalk(updated);
+      return updated;
+    }
+
+    const walks = await this.local.getWalks('');
+    const walk = walks.find((candidate) => candidate.id === walkId);
+    if (!walk) throw new Error('Walk not found');
+    const completedAt = details.completedAt ?? new Date().toISOString();
+    const updated: Walk = {
+      ...walk,
+      status: 'done',
+      completedAt,
+      completedByUserId,
+      hadPee: details.hadPee,
+      hadPoop: details.hadPoop,
+      note: details.note,
+      updatedAt: new Date().toISOString(),
+    };
+    await this.local.saveWalk(updated);
+    return updated;
+  }
+
   async getWalks(familyId: string): Promise<Walk[]> {
     if (await this.isOnline()) {
       try {
