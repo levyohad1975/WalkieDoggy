@@ -26,9 +26,15 @@ import { FamilySharingModal } from '../components/FamilySharingModal';
 import { guardTestModeMutation } from '../lib/testModeGuard';
 import { decideChildModalToOpen, type SettingsChildModal } from '../logic/settingsModalTransitions';
 import { generateId } from '../lib/id';
+import { useHealthStore } from '../store/healthStore';
+import { HealthGroomingModal } from '../components/HealthGroomingModal';
 
 export function SettingsScreen() {
   const { family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, saveDog, selectDog } = useFamilyStore();
+  const healthTasks = useHealthStore((s) => s.tasks);
+  const loadHealthTasks = useHealthStore((s) => s.load);
+  const saveHealthTask = useHealthStore((s) => s.saveTask);
+  const completeHealthTask = useHealthStore((s) => s.completeTask);
   const { currentUserId, setFamilyId } = useAuthStore();
   const signInWithPin = useAuthStore((s) => s.signInWithPin);
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
@@ -57,6 +63,7 @@ export function SettingsScreen() {
   // pattern) instead of all being visible on the main list at once.
   const [dogModalVisible, setDogModalVisible] = useState(false);
   const [addingDog, setAddingDog] = useState(false);
+  const [healthModalVisible, setHealthModalVisible] = useState(false);
   const [remindersModalVisible, setRemindersModalVisible] = useState(false);
   const [sharingModalVisible, setSharingModalVisible] = useState(false);
   const [managementVisible, setManagementVisible] = useState(false);
@@ -101,6 +108,16 @@ export function SettingsScreen() {
   useEffect(() => {
     setInviteCode(family?.inviteCode);
   }, [family?.inviteCode]);
+
+  // Health/grooming records are per-DOG (0049) — only load once the modal
+  // is actually opened, and reload whenever the active dog changes while
+  // it's open (switching dogs via the selector strip above while this sheet
+  // is up must not keep showing the previous dog's records).
+  useEffect(() => {
+    if (healthModalVisible && dog) {
+      void loadHealthTasks(dog.id);
+    }
+  }, [healthModalVisible, dog?.id, loadHealthTasks]);
 
   // NESTED-MODAL LIFECYCLE FIX (final QA round), non-iOS path: Modal's
   // onDismiss is iOS-only, so on Android (or any other platform) there is
@@ -417,6 +434,13 @@ export function SettingsScreen() {
             <RtlText style={styles.hubLabel}>🔔 תזכורות</RtlText>
           </Pressable>
 
+          {dog ? (
+            <Pressable style={styles.hubRow} onPress={() => setHealthModalVisible(true)} accessibilityRole="button" accessibilityLabel={`בריאות וטיפוח, ${dog.name}`}>
+              <RtlText style={styles.hubChevron}>‹</RtlText>
+              <RtlText style={styles.hubLabel}>🏥 בריאות וטיפוח</RtlText>
+            </Pressable>
+          ) : null}
+
           <Pressable style={styles.hubRow} onPress={() => setSharingModalVisible(true)} accessibilityRole="button" accessibilityLabel="שיתוף המשפחה">
             <RtlText style={styles.hubChevron}>‹</RtlText>
             <RtlText style={styles.hubLabel}>📤 שיתוף המשפחה</RtlText>
@@ -478,6 +502,16 @@ export function SettingsScreen() {
         onChangePhoto={changeDogPhoto}
         onSave={persistDog}
         onClose={() => setDogModalVisible(false)}
+      />
+
+      <HealthGroomingModal
+        visible={healthModalVisible}
+        dog={dog ?? null}
+        tasks={healthTasks}
+        currentUserId={currentUserId}
+        onSave={saveHealthTask}
+        onComplete={(taskId) => completeHealthTask(taskId, currentUserId ?? '')}
+        onClose={() => setHealthModalVisible(false)}
       />
 
       <RemindersModal

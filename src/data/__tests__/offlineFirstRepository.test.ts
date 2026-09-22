@@ -1,6 +1,6 @@
 import type { Repository } from '../repository';
 import type { OfflineFirstRepository as OfflineFirstRepositoryType } from '../offlineFirstRepository';
-import type { Dog, FamilyUser, ScheduleEntry, ScheduleRule, Walk } from '../../types';
+import type { Dog, FamilyUser, HealthTask, ScheduleEntry, ScheduleRule, Walk } from '../../types';
 
 function stubRemote(overrides: Partial<Repository> = {}): Repository {
   return {
@@ -14,6 +14,8 @@ function stubRemote(overrides: Partial<Repository> = {}): Repository {
     getDog: jest.fn(),
     getDogs: jest.fn(),
     upsertDog: jest.fn(),
+    getHealthTasks: jest.fn(),
+    upsertHealthTask: jest.fn(),
     getScheduleRules: jest.fn(),
     upsertScheduleRule: jest.fn(),
     deleteScheduleRule: jest.fn(),
@@ -365,6 +367,17 @@ describe('OfflineFirstRepository — online + remote succeeds: reads return the 
     expect(remote.getDogs).toHaveBeenCalledWith('family-1');
   });
 
+  it('getHealthTasks returns the remote tasks for that dog', async () => {
+    const tasks: HealthTask[] = [
+      { id: 'task-1', familyId: 'family-1', dogId: 'dog-1', category: 'vaccination', title: 'חיסון', dueDate: '2026-10-01', createdAt: 'c', updatedAt: 'u' },
+    ];
+    const remote = stubRemote({ getHealthTasks: jest.fn().mockResolvedValue(tasks) });
+    const repo = await makeRepo(true, remote);
+
+    await expect(repo.getHealthTasks('dog-1')).resolves.toEqual(tasks);
+    expect(remote.getHealthTasks).toHaveBeenCalledWith('dog-1');
+  });
+
   it('getScheduleRules returns the remote rules', async () => {
     const fresh: ScheduleRule[] = [
       {
@@ -461,6 +474,16 @@ describe('OfflineFirstRepository — writes with a remote repository configured:
     await repo.upsertDog(dog);
 
     await expect(repo.getDog('family-1')).resolves.toEqual(dog);
+    expect(await repo.pendingSyncCount()).toBe(1);
+  });
+
+  it('upsertHealthTask writes the local task and enqueues a sync op', async () => {
+    const repo = await makeRepo(false, stubRemote());
+    const task: HealthTask = { id: 'task-1', familyId: 'family-1', dogId: 'dog-1', category: 'vaccination', title: 'חיסון', dueDate: '2026-10-01', createdAt: 'c', updatedAt: 'u' };
+
+    await repo.upsertHealthTask(task);
+
+    await expect(repo.getHealthTasks('dog-1')).resolves.toEqual([task]);
     expect(await repo.pendingSyncCount()).toBe(1);
   });
 

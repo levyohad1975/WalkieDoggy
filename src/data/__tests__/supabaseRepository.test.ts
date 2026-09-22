@@ -1,5 +1,5 @@
 import { SupabaseRepository } from '../supabaseRepository';
-import type { Dog, Family, FamilyUser, ScheduleEntry, ScheduleRule, Walk } from '../../types';
+import type { Dog, Family, FamilyUser, HealthTask, ScheduleEntry, ScheduleRule, Walk } from '../../types';
 
 /**
  * Verifies the SupabaseRepository <-> Postgres row mapping — specifically
@@ -146,6 +146,75 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
 
     expect(calls[0].table).toBe('dogs');
     expect((calls[0].payload as any).family_id).toBe('fam-42');
+  });
+
+  it('upsertHealthTask sends dog_id/family_id mapped from task.dogId/familyId', async () => {
+    const { client, calls } = makeMockClient();
+    const repo = new SupabaseRepository(client);
+    const task: HealthTask = {
+      id: 'task-1',
+      familyId: 'fam-42',
+      dogId: 'dog-1',
+      category: 'vaccination',
+      title: 'חיסון',
+      createdAt: 'x',
+      updatedAt: 'x',
+      dueDate: '2026-10-01',
+    };
+
+    await repo.upsertHealthTask(task);
+
+    expect(calls[0].table).toBe('health_tasks');
+    expect((calls[0].payload as any).dog_id).toBe('dog-1');
+    expect((calls[0].payload as any).family_id).toBe('fam-42');
+  });
+
+  it('upsertHealthTask throws when the upsert errors', async () => {
+    const client: any = { from: () => ({ upsert: () => Promise.resolve({ error: { message: 'x' } }) }) };
+    const task: HealthTask = {
+      id: 'task-1', familyId: 'fam-42', dogId: 'dog-1', category: 'weight', title: 'שקילה',
+      createdAt: 'x', updatedAt: 'x', weightKg: 10,
+    };
+    await expect(new SupabaseRepository(client).upsertHealthTask(task)).rejects.toBeTruthy();
+  });
+
+  it('getHealthTasks maps rows via toHealthTask, including nullish fields -> undefined', async () => {
+    const client: any = {
+      from: () => ({
+        select: () => ({
+          eq: () =>
+            Promise.resolve({
+              data: [
+                {
+                  id: 'task-1', family_id: 'fam-42', dog_id: 'dog-1', category: 'grooming', title: 'תספורת',
+                  notes: null, weight_kg: null, due_date: '2026-10-01', completed_at: null,
+                  completed_by_user_id: null, responsible_user_id: null, created_by_user_id: null,
+                  created_at: 'c', updated_at: 'u',
+                },
+              ],
+              error: null,
+            }),
+        }),
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+    const tasks = await repo.getHealthTasks('dog-1');
+    expect(tasks).toEqual([
+      {
+        id: 'task-1', familyId: 'fam-42', dogId: 'dog-1', category: 'grooming', title: 'תספורת',
+        notes: undefined, weightKg: undefined, dueDate: '2026-10-01', completedAt: undefined,
+        completedByUserId: undefined, responsibleUserId: undefined, createdByUserId: undefined,
+        createdAt: 'c', updatedAt: 'u',
+      },
+    ]);
+  });
+
+  it('getHealthTasks throws when the query errors', async () => {
+    const client: any = {
+      from: () => ({ select: () => ({ eq: () => Promise.resolve({ data: null, error: { message: 'x' } }) }) }),
+    };
+    const repo = new SupabaseRepository(client);
+    await expect(repo.getHealthTasks('dog-1')).rejects.toBeTruthy();
   });
 
   it('upsertScheduleRule sends family_id mapped from rule.familyId', async () => {

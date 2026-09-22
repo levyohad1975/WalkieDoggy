@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LocalRepository } from '../localRepository';
 import { DEMO_DOG, DEMO_ENTRIES, DEMO_FAMILY, DEMO_RULES, DEMO_USERS, DEMO_WALKS } from '../demoData';
-import type { Dog, Family, FamilyUser, ScheduleEntry, Walk } from '../../types';
+import type { Dog, Family, FamilyUser, HealthTask, ScheduleEntry, Walk } from '../../types';
 
 const STORAGE_KEY = 'dog-walk-family:v3';
 
@@ -148,6 +148,63 @@ describe('LocalRepository — dog data (BUG 3: dog name must load in local/demo 
     expect(dogs[0].name).toBe('טופי החדש');
   });
 
+  it('foundation: getHealthTasks/upsertHealthTask are scoped per dog_id, not mixed across a family\'s dogs', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+    const secondDog: Dog = { id: 'dog-second', familyId: DEMO_FAMILY.id, name: 'רעי', walksPerDay: 3 };
+    await repo.upsertDog(secondDog);
+
+    const topiTask: HealthTask = {
+      id: 'task-1',
+      familyId: DEMO_FAMILY.id,
+      dogId: DEMO_DOG.id,
+      category: 'vaccination',
+      title: 'חיסון כלבת',
+      dueDate: '2026-10-01',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const reiTask: HealthTask = {
+      id: 'task-2',
+      familyId: DEMO_FAMILY.id,
+      dogId: secondDog.id,
+      category: 'weight',
+      title: 'שקילה',
+      weightKg: 12.4,
+      completedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await repo.upsertHealthTask(topiTask);
+    await repo.upsertHealthTask(reiTask);
+
+    expect(await repo.getHealthTasks(DEMO_DOG.id)).toEqual([topiTask]);
+    expect(await repo.getHealthTasks(secondDog.id)).toEqual([reiTask]);
+  });
+
+  it('foundation: upsertHealthTask updates an existing task in place by id (e.g. marking it complete), not a duplicate row', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+    const task: HealthTask = {
+      id: 'task-1',
+      familyId: DEMO_FAMILY.id,
+      dogId: DEMO_DOG.id,
+      category: 'grooming',
+      title: 'תספורת',
+      dueDate: '2026-10-01',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await repo.upsertHealthTask(task);
+
+    const completed: HealthTask = { ...task, completedAt: new Date().toISOString(), completedByUserId: 'user-aba' };
+    await repo.upsertHealthTask(completed);
+
+    const tasks = await repo.getHealthTasks(DEMO_DOG.id);
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].completedAt).toBe(completed.completedAt);
+  });
+
   it('getFamily returns undefined for a family id that does not match the cached family', async () => {
     const repo = new LocalRepository();
     await repo.getUsers(DEMO_FAMILY.id); // trigger seed
@@ -195,6 +252,7 @@ describe('LocalRepository — replaceAll / createUser', () => {
       rules: DEMO_RULES,
       entries: DEMO_ENTRIES,
       walks: DEMO_WALKS,
+      healthTasks: [],
     });
 
     const users = await repo.getUsers(DEMO_FAMILY.id);

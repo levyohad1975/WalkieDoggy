@@ -2,6 +2,7 @@ import type {
   Dog,
   Family,
   FamilyUser,
+  HealthTask,
   NotificationSetting,
   ScheduleEntry,
   ScheduleRule,
@@ -99,6 +100,11 @@ export interface Repository {
   getDogs(familyId: string): Promise<Dog[]>;
   /** Upserts by dog.id — safe to call for any of a family's dogs, not just a single "the" dog. */
   upsertDog(dog: Dog): Promise<void>;
+
+  /** Every health/grooming record (log entries + due tasks, PRD §10) for one specific dog — never the whole family, since these are always per-dog. */
+  getHealthTasks(dogId: string): Promise<HealthTask[]>;
+  /** Upserts by task.id — covers both creating a new log/task entry and marking one complete (patch + save). No delete: see 0049's migration comment for why a health record is never client-erasable. */
+  upsertHealthTask(task: HealthTask): Promise<void>;
 
   getScheduleRules(familyId: string): Promise<ScheduleRule[]>;
   upsertScheduleRule(rule: ScheduleRule): Promise<void>;

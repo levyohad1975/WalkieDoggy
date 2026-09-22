@@ -75,6 +75,50 @@ export interface Dog {
   sex?: 'male' | 'female';
 }
 
+/** The PRD §10 core category list for a health/grooming record. */
+export type HealthTaskCategory =
+  | 'vaccination'
+  | 'parasite_prevention'
+  | 'medication'
+  | 'vet_visit'
+  | 'weight'
+  | 'allergy'
+  | 'food'
+  | 'grooming'
+  | 'bath'
+  | 'nails'
+  | 'teeth'
+  | 'ears'
+  | 'other';
+
+/**
+ * A single row in a dog's health/grooming hub (PRD §10) — a journal entry
+ * AND task list unified onto one shape, exactly like `Walk` already unifies
+ * planned/unplanned. A record is a LOG entry once `completedAt` is set (e.g.
+ * "gave the heartworm pill today", a weight reading), a DUE task while
+ * `dueDate` is set and `completedAt` isn't (e.g. "next vet visit"), or both
+ * (a due task marked done keeps its dueDate). See
+ * supabase/migrations/0049_health_grooming_foundation.sql for the full
+ * rationale, including why recurrence isn't part of this shape yet.
+ */
+export interface HealthTask {
+  id: string;
+  familyId: string;
+  dogId: string;
+  category: HealthTaskCategory;
+  title: string;
+  notes?: string;
+  /** Only meaningful for category 'weight' — a weight-log entry's reading, in kg. */
+  weightKg?: number;
+  dueDate?: string; // "YYYY-MM-DD"
+  completedAt?: string; // ISO timestamp
+  completedByUserId?: string;
+  responsibleUserId?: string;
+  createdByUserId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /**
  * A recurring rule used to auto-generate schedule_entries.
  * e.g. "every day at 07:00/14:00/20:00, rotating danny -> yael -> noam"

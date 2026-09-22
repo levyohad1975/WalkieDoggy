@@ -3,6 +3,7 @@ import type {
   Dog,
   Family,
   FamilyUser,
+  HealthTask,
   NotificationSetting,
   ScheduleEntry,
   ScheduleRule,
@@ -186,6 +187,42 @@ function fromEntry(entry: ScheduleEntry) {
   };
 }
 
+function toHealthTask(row: any): HealthTask {
+  return {
+    id: row.id,
+    familyId: row.family_id,
+    dogId: row.dog_id,
+    category: row.category,
+    title: row.title,
+    notes: row.notes ?? undefined,
+    weightKg: row.weight_kg ?? undefined,
+    dueDate: row.due_date ?? undefined,
+    completedAt: row.completed_at ?? undefined,
+    completedByUserId: row.completed_by_user_id ?? undefined,
+    responsibleUserId: row.responsible_user_id ?? undefined,
+    createdByUserId: row.created_by_user_id ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function fromHealthTask(task: HealthTask) {
+  return {
+    id: task.id,
+    family_id: task.familyId,
+    dog_id: task.dogId,
+    category: task.category,
+    title: task.title,
+    notes: task.notes ?? null,
+    weight_kg: task.weightKg ?? null,
+    due_date: task.dueDate ?? null,
+    completed_at: task.completedAt ?? null,
+    completed_by_user_id: task.completedByUserId ?? null,
+    responsible_user_id: task.responsibleUserId ?? null,
+    created_by_user_id: task.createdByUserId ?? null,
+  };
+}
+
 function fromDog(dog: Dog) {
   return {
     id: dog.id,
@@ -336,6 +373,17 @@ export class SupabaseRepository implements Repository {
 
   async upsertDog(dog: Dog): Promise<void> {
     const { error } = await this.client.from('dogs').upsert(fromDog(dog));
+    if (error) throw error;
+  }
+
+  async getHealthTasks(dogId: string): Promise<HealthTask[]> {
+    const { data, error } = await this.client.from('health_tasks').select('*').eq('dog_id', dogId);
+    if (error) throw error;
+    return (data ?? []).map(toHealthTask);
+  }
+
+  async upsertHealthTask(task: HealthTask): Promise<void> {
+    const { error } = await this.client.from('health_tasks').upsert(fromHealthTask(task));
     if (error) throw error;
   }
 

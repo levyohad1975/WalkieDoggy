@@ -3,6 +3,7 @@ import type {
   Dog,
   Family,
   FamilyUser,
+  HealthTask,
   NotificationSetting,
   ScheduleEntry,
   ScheduleRule,
@@ -39,6 +40,7 @@ interface LocalStoreShape {
   rules: ScheduleRule[];
   entries: ScheduleEntry[];
   walks: Walk[];
+  healthTasks: HealthTask[];
 }
 
 function safeJsonParse(raw: string): unknown {
@@ -57,6 +59,7 @@ function seedStore(): LocalStoreShape {
     rules: DEMO_RULES,
     entries: DEMO_ENTRIES,
     walks: DEMO_WALKS,
+    healthTasks: [],
   };
 }
 
@@ -107,6 +110,13 @@ export class LocalRepository implements Repository {
       Array.isArray(parsed.walks)
     ) {
       this.cache = parsed;
+      // Soft-add, not a corrupt-cache trigger: a cache written before
+      // health_tasks existed simply won't have this field yet. Unlike the
+      // v2->v3 `dog`->`dogs` change, there's no old value to reinterpret
+      // here, so there's nothing to lose by defaulting it in place instead
+      // of forcing every existing device to re-seed its whole family/
+      // schedule/walk cache just to gain one new empty array.
+      if (!Array.isArray(this.cache.healthTasks)) this.cache.healthTasks = [];
     } else {
       this.cache = seedStore();
       await this.persist();
@@ -209,6 +219,19 @@ export class LocalRepository implements Repository {
     const idx = s.dogs.findIndex((d) => d.id === dog.id);
     if (idx >= 0) s.dogs[idx] = dog;
     else s.dogs.push(dog);
+    await this.persist();
+  }
+
+  async getHealthTasks(dogId: string): Promise<HealthTask[]> {
+    const s = await this.load();
+    return s.healthTasks.filter((t) => t.dogId === dogId);
+  }
+
+  async upsertHealthTask(task: HealthTask): Promise<void> {
+    const s = await this.load();
+    const idx = s.healthTasks.findIndex((t) => t.id === task.id);
+    if (idx >= 0) s.healthTasks[idx] = task;
+    else s.healthTasks.push(task);
     await this.persist();
   }
 

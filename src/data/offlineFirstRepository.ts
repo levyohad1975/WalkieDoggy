@@ -3,6 +3,7 @@ import type {
   Dog,
   Family,
   FamilyUser,
+  HealthTask,
   NotificationSetting,
   ScheduleEntry,
   ScheduleRule,
@@ -282,6 +283,33 @@ export class OfflineFirstRepository implements Repository {
         }
       }
       await this.queue.enqueue({ type: 'upsertDog', payload: dog });
+      await this.trySync();
+    }
+  }
+
+  async getHealthTasks(dogId: string): Promise<HealthTask[]> {
+    if (await this.isOnline()) {
+      try {
+        return await this.remote!.getHealthTasks(dogId);
+      } catch {
+        /* fall through */
+      }
+    }
+    return this.local.getHealthTasks(dogId);
+  }
+
+  async upsertHealthTask(task: HealthTask): Promise<void> {
+    await this.local.upsertHealthTask(task);
+    if (this.remote) {
+      if (await this.isOnline()) {
+        try {
+          await this.remote.upsertHealthTask(task);
+          return;
+        } catch {
+          // Preserve offline-first behaviour: retry through the sync queue.
+        }
+      }
+      await this.queue.enqueue({ type: 'upsertHealthTask', payload: task });
       await this.trySync();
     }
   }
