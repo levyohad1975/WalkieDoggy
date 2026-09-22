@@ -101,6 +101,17 @@ jobs:
           lines = [
               "-- Auto-generated for this isolated rehearsal run only. Never committed.",
               "-- See the workflow step that generated this file for the full rationale.",
+              "",
+              "-- 0025_walk_reminder_scheduler.sql defines due_walk_reminders()",
+              "-- (a `language sql` function) before family_admin_profile_ids(),",
+              "-- which its own body calls -- SQL-language functions are eagerly",
+              "-- planned at CREATE time (unlike plpgsql), so Postgres rejects the",
+              "-- forward reference by default. Confirmed directly against real",
+              "-- Postgres: `check_function_bodies = off` (a documented, standard",
+              "-- Postgres GUC for exactly this ordering situation) fixes it. This",
+              "-- is a session-level SET (not SET LOCAL) so it persists across the",
+              "-- rest of this single-session migration replay, including 0025.",
+              "set check_function_bodies = off;",
           ]
           for name, table in seen:
               if table == 'storage.objects' or table in existing_tables:
@@ -124,7 +135,7 @@ jobs:
           # sorts between them by ordinary string comparison.
           with open('supabase/migrations/00001_rehearsal_policy_guards.sql', 'w') as out:
               out.write("\n".join(lines) + "\n")
-          print(f"Generated {len(lines) - 2} guard statements")
+          print(f"Generated {sum(1 for l in lines if l.startswith('drop ') or l.startswith('set '))} guard statements")
           PYEOF
           cat supabase/migrations/00001_rehearsal_policy_guards.sql
 
