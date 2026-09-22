@@ -97,24 +97,60 @@ as $$
   );
 $$;
 
+-- SECURITY: 0033 originally dropped current_family_role()/is_family_admin()
+-- to bare device-level family_auth_members lookups (stale admin device
+-- keeps authority after persona demotion; an impersonating admin resolves
+-- as real admin server-side). 0038 restored persona-anchored,
+-- impersonation-safe versions. An earlier draft of THIS migration
+-- re-introduced 0033's broken bodies wrapped in an observer-mode coalesce,
+-- silently undoing 0038's fix for every non-observing caller. Fixed here:
+-- restore 0038's exact logic for the non-observer path, add only the
+-- observer-mode branch on top.
 create or replace function current_family_role()
 returns text
-language sql
+language plpgsql
 stable
 security definer
 set search_path = public
 as $$
-  select case
-    when active_system_admin_observer_family() is not null then 'admin'::text
-    else (
-      select m.role
-      from family_auth_members m
-      join families f on f.id = m.family_id
-      where m.auth_user_id = auth.uid()
-        and f.approval_status = 'active'
-      limit 1
-    )
-  end;
+declare
+  persona_id uuid;
+  persona_role text;
+  persona_family uuid;
+  fam_id uuid;
+begin
+  if active_system_admin_observer_family() is not null then
+    return 'admin';
+  end if;
+
+  -- From here down: verbatim 0038 logic (persona-anchored, fail-closed,
+  -- bootstrap-only device fallback).
+  persona_id := real_current_profile_id();
+  if persona_id is not null then
+    select role, family_id into persona_role, persona_family
+    from users where id = persona_id;
+
+    if not exists (
+      select 1 from families
+      where id = persona_family and approval_status = 'active'
+    ) then
+      return null; -- fail closed: this persona's family is not (or no longer) active
+    end if;
+
+    return persona_role;
+  end if;
+
+  fam_id := current_family_id(); -- already gated on approval_status = 'active'
+  if fam_id is null then
+    return null; -- no active family membership at all
+  end if;
+
+  if exists (select 1 from users where family_id = fam_id and removed_at is null) then
+    return null; -- fail closed: an active persona exists somewhere in this family, and this device holds none of them
+  end if;
+
+  return (select role from family_auth_members where auth_user_id = auth.uid() and family_id = fam_id limit 1);
+end;
 $$;
 
 create or replace function is_family_admin(target_family_id uuid)
@@ -126,14 +162,14 @@ set search_path = public
 as $$
   select
     active_system_admin_observer_family() = target_family_id
-    or exists (
-      select 1
-      from family_auth_members m
-      join families f on f.id = m.family_id
-      where m.auth_user_id = auth.uid()
-        and m.family_id = target_family_id
-        and m.role = 'admin'
-        and f.approval_status = 'active'
+    -- Non-observer path: verbatim 0038 logic (impersonation-safe,
+    -- persona-anchored is_real_family_admin()), not the raw
+    -- family_auth_members lookup an earlier draft of this migration used.
+    or (
+      case
+        when active_impersonation_target() is not null then false
+        else is_real_family_admin(target_family_id)
+      end
     );
 $$;
 
