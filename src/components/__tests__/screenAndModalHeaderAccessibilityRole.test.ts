@@ -13,7 +13,7 @@ import path from 'path';
  * render-test harness.
  */
 const TARGET_FILES: Array<[string, string, number]> = [
-  ['../../screens/FamilyOnboardingScreen.tsx', 'title', 6],
+  ['../../screens/FamilyOnboardingScreen.tsx', 'title', 7],
   ['../../screens/LoginScreen.tsx', 'title', 1],
   ['../../screens/SystemAdminScreen.tsx', 'title', 1],
   ['../../screens/SettingsScreen.tsx', 'header', 1],
