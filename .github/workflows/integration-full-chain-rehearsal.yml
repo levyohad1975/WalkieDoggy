@@ -152,22 +152,27 @@ jobs:
           # or removes anything in the actual repository.
           rm supabase/migrations/0019_request_result_read_state.sql
 
-      - name: Hide the migrations directory before first boot
-        run: mv supabase/migrations supabase/migrations.pending && mkdir supabase/migrations
+      - name: Hide the migrations directory and seed.sql before first boot
+        run: |
+          mv supabase/migrations supabase/migrations.pending && mkdir supabase/migrations
+          mv supabase/seed.sql supabase/seed.sql.pending
         # `supabase start` itself replays every file in supabase/migrations
-        # as part of its OWN first-boot database initialization -- it does
-        # not just launch empty containers and wait for a later `db reset`.
-        # Confirmed directly from a real run: the "Applying migration ..."
-        # log lines (including the 0025 forward-reference failure) appeared
-        # INSIDE the "Start isolated Supabase stack" step itself, which the
-        # job's own step list shows as the one that failed -- every step
-        # after it, including the ALTER SYSTEM fix and the explicit `db
-        # reset --local`, never ran at all (conclusion: "skipped"). So
-        # setting check_function_bodies=off *after* `start` can never take
-        # effect: by the time that step would run, `start` has already
-        # tried and failed to apply 0025 during its own bootstrap. Hiding
-        # the directory makes `start` boot with nothing to replay, so its
-        # first-boot pass always succeeds trivially; the real replay then
+        # AND applies supabase/seed.sql as part of its OWN first-boot
+        # database initialization -- it does not just launch empty
+        # containers and wait for a later `db reset`. Confirmed directly
+        # from two real runs: first the "Applying migration ..." log lines
+        # (including the 0025 forward-reference failure) appeared INSIDE
+        # the "Start isolated Supabase stack" step itself; after hiding
+        # migrations, start got past that but then failed inside the SAME
+        # step applying seed.sql ("relation \"families\" does not exist",
+        # since seed.sql's own header says it must run after schema.sql/
+        # migrations exist, which they now deliberately don't yet). Either
+        # way, every step after "Start isolated Supabase stack" -- the
+        # ALTER SYSTEM fix and the explicit `db reset --local` -- never ran
+        # at all (conclusion: "skipped") when start itself failed. Hiding
+        # both makes start boot with nothing to replay or seed, so its
+        # first-boot pass always succeeds trivially; the real replay (which
+        # also reapplies seed.sql, correctly, once the schema exists) then
         # happens explicitly below, after the GUC is already in place.
 
       - name: Start isolated Supabase stack
@@ -194,8 +199,10 @@ jobs:
             -c "alter system set check_function_bodies = off;" \
             -c "select pg_reload_conf();"
 
-      - name: Restore the migrations directory for the real replay
-        run: rmdir supabase/migrations && mv supabase/migrations.pending supabase/migrations
+      - name: Restore the migrations directory and seed.sql for the real replay
+        run: |
+          rmdir supabase/migrations && mv supabase/migrations.pending supabase/migrations
+          mv supabase/seed.sql.pending supabase/seed.sql
 
       - name: Replay the FULL real migration chain (00000 base + 0001-0048) from empty
         run: supabase db reset --local
