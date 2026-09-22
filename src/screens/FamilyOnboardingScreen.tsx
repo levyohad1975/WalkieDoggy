@@ -22,7 +22,7 @@ import { DogPhoto } from '../components/DogPhoto';
 import { WalkieMascot } from '../components/WalkieMascot';
 import type { FamilyLookupResult } from '../types';
 
-type Mode = 'choose' | 'create' | 'join' | 'redeem';
+type Mode = 'choose' | 'recover' | 'create' | 'join' | 'redeem';
 
 /**
  * Shown once per device, only in Supabase (backend) mode, before this device
@@ -52,7 +52,8 @@ export function FamilyOnboardingScreen() {
   const retryPendingInviteRedemptionVerification = useAuthStore(
     (s) => s.retryPendingInviteRedemptionVerification
   );
-  const [mode, setMode] = useState<Mode>('choose');
+  const isInstalledWebApp = Platform.OS === 'web' && typeof window !== 'undefined' && Boolean(window.matchMedia?.('(display-mode: standalone)').matches || (typeof navigator !== 'undefined' && (navigator as typeof navigator & { standalone?: boolean }).standalone === true));
+  const [mode, setMode] = useState<Mode>(isInstalledWebApp ? 'recover' : 'choose');
   const [showWelcomeWink, setShowWelcomeWink] = useState(false);
 
   useEffect(() => {
@@ -137,6 +138,30 @@ export function FamilyOnboardingScreen() {
     try {
       const identity = await verifyAdminEmailOtp(adminEmail, verificationCode);
       setVerifiedAdminEmail(identity.email);
+    } catch (e) {
+      setCreateError(friendlyErrorMessage(e));
+    } finally {
+      setVerifyingEmail(false);
+    }
+  };
+
+  const recoverExistingFamily = async () => {
+    setVerifyingEmail(true);
+    setCreateError(null);
+    try {
+      const identity = await verifyAdminEmailOtp(adminEmail, verificationCode);
+      setVerifiedAdminEmail(identity.email);
+      const status = await getMyFamilyOnboardingStatus();
+      if (status?.approvalStatus === 'active') {
+        await setFamilyId(status.familyId);
+        return;
+      }
+      if (status?.approvalStatus === 'pending') {
+        setMode('create');
+        setPendingApprovalFamilyName(status.familyName);
+        return;
+      }
+      throw new Error('לא נמצאה משפחה פעילה המקושרת לכתובת הזו. אם הצטרפתם כבן משפחה, השתמשו בקוד או בקישור ההזמנה.');
     } catch (e) {
       setCreateError(friendlyErrorMessage(e));
     } finally {
@@ -300,6 +325,39 @@ export function FamilyOnboardingScreen() {
       setVerifying(false);
     }
   };
+
+  if (mode === 'recover') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <WalkieMascot state="waiting" size={128} testID="onboarding-mascot-recover" />
+        <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">מחברים אותך למשפחה…</RtlText>
+        <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
+          פתחת את Walkie Doggy מהאייקון החדש. אין צורך ליצור את המשפחה מחדש. אם אתם מנהלי המשפחה, אמתו את כתובת הדוא״ל ששימשה ליצירתה ונשחזר את החיבור.
+        </RtlText>
+        <TextInput
+          value={adminEmail}
+          onChangeText={setAdminEmail}
+          placeholder="כתובת הדוא״ל של מנהל המשפחה"
+          accessibilityLabel="כתובת הדוא״ל של מנהל המשפחה"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          style={styles.input}
+          textAlign="right"
+        />
+        {!verificationSent ? (
+          <Button label={verifyingEmail ? 'שולח קוד…' : 'שלחו לי קוד אימות'} onPress={sendAdminVerification} disabled={verifyingEmail || !adminEmail.trim()} loading={verifyingEmail} style={styles.wideButton} />
+        ) : (
+          <>
+            <TextInput value={verificationCode} onChangeText={setVerificationCode} placeholder="קוד האימות שקיבלתם במייל" accessibilityLabel="קוד האימות שקיבלתם במייל" keyboardType="number-pad" style={styles.input} textAlign="right" />
+            <Button label={verifyingEmail ? 'מחבר למשפחה…' : 'המשך למשפחה שלי'} onPress={recoverExistingFamily} disabled={verifyingEmail || !verificationCode.trim()} loading={verifyingEmail} style={styles.wideButton} />
+          </>
+        )}
+        {createError ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{createError}</RtlText> : null}
+        <Button label="אני בן משפחה — יש לי הזמנה" variant="secondary" onPress={() => setMode('redeem')} style={styles.wideButton} />
+        <Button label="זו באמת משפחה חדשה" variant="secondary" onPress={() => setMode('create')} style={styles.wideButton} />
+      </SafeAreaView>
+    );
+  }
 
   if (mode === 'choose' && pendingInviteRedemption) {
     // Round 4 — a redemption already succeeded server-side but this device
