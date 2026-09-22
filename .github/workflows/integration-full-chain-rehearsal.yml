@@ -102,23 +102,6 @@ jobs:
               "-- Auto-generated for this isolated rehearsal run only. Never committed.",
               "-- See the workflow step that generated this file for the full rationale.",
               "",
-              "-- 0025_walk_reminder_scheduler.sql defines due_walk_reminders() (a",
-              "-- `language sql` function, eagerly planned at CREATE time -- unlike",
-              "-- plpgsql, which defers) before family_admin_profile_ids(), which",
-              "-- its own body calls. Postgres rejects that forward reference",
-              "-- unless check_function_bodies is off. ALTER SYSTEM (tried first)",
-              "-- needs superuser, which the Supabase local stack's exposed",
-              "-- `postgres` role does not have (\"permission denied to set",
-              "-- parameter\", confirmed directly). A plain session-level SET",
-              "-- here, as the first statement `supabase db reset --local` runs",
-              "-- right after schema.sql, needs no special privilege -- it only",
-              "-- has to persist for the rest of THIS SINGLE reset invocation,",
-              "-- which is what's being tested now that db reset is the sole",
-              "-- migration-applying path (supabase start's own separate",
-              "-- first-boot bootstrap, which has different connection",
-              "-- semantics, no longer applies any migrations at all -- see the",
-              "-- \"Hide the migrations directory\" step below).",
-              "set check_function_bodies = off;",
           ]
           for name, table in seen:
               if table == 'storage.objects' or table in existing_tables:
@@ -168,6 +151,58 @@ jobs:
           # untouched, empty, and never renamed) -- this step never edits
           # or removes anything in the actual repository.
           rm supabase/migrations/0019_request_result_read_state.sql
+
+      - name: Reorder 0025's two function definitions for this ephemeral replay only
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 0025_walk_reminder_scheduler.sql defines due_walk_reminders() (a
+          # `language sql` function, eagerly planned and validated at CREATE
+          # time -- unlike plpgsql, which defers) before
+          # family_admin_profile_ids(), which its own body calls. Postgres
+          # rejects that forward reference with "function ... does not
+          # exist" (confirmed directly, twice: once via supabase start's own
+          # bootstrap replay, once via the explicit `supabase db reset
+          # --local` -- both apply each migration file over its own
+          # separate connection, so neither a session-level `set
+          # check_function_bodies = off` in an earlier file nor -- lacking
+          # superuser on the local stack's exposed `postgres` role -- a
+          # server-wide `alter system` can reach across to 0025's own
+          # connection).
+          #
+          # The actual, minimal fix needs no privilege at all: move the
+          # `family_admin_profile_ids()` CREATE FUNCTION block (Part 4)
+          # earlier in this ephemeral copy of the file, before
+          # `due_walk_reminders()` (Part 2) calls it. This only changes the
+          # ORDER two independent CREATE FUNCTION statements run in within
+          # the same file -- verified byte-for-byte: every non-blank line
+          # of the reordered copy is identical to the original, just
+          # reshuffled (`diff <(sort orig) <(sort reordered)` is empty) --
+          # so the resulting schema is identical either way; only the
+          # never-committed ephemeral copy in this checkout changes, not
+          # the real repository file.
+          python3 - <<'PYEOF'
+          path = 'supabase/migrations/0025_walk_reminder_scheduler.sql'
+          lines = open(path).read().split('\n')
+
+          def find(marker):
+              for i, l in enumerate(lines):
+                  if l.startswith(marker):
+                      return i
+              raise SystemExit(f'marker not found: {marker}')
+
+          part2 = find('-- Part 2:')
+          part4 = find('-- Part 4:')
+          part5 = find('-- Part 5:')
+          assert part2 < part4 < part5, (part2, part4, part5)
+
+          part4_block = lines[part4:part5]
+          remaining = lines[:part4] + lines[part5:]
+          new_lines = remaining[:part2] + part4_block + [''] + remaining[part2:]
+
+          open(path, 'w').write('\n'.join(new_lines))
+          print(f'Reordered {path}: family_admin_profile_ids() now defined before due_walk_reminders()')
+          PYEOF
 
       - name: Hide the migrations directory and seed.sql before first boot
         run: |
