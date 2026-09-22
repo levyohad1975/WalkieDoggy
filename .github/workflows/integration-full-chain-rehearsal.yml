@@ -35,26 +35,46 @@ jobs:
         with:
           version: 2.116.0
 
-      - name: Seed schema.sql as migration 0000 (matches every historical migration's own stated precondition)
-        # Migration 0001's own header: "Safe to run against an existing
-        # database seeded from supabase/schema.sql ... Run this ... AFTER
-        # the base schema exists." schema.sql is the true pre-migration-1
-        # bootstrap baseline, not a periodically-refreshed snapshot of
-        # "state as of migration N" -- every one of 0001-0048 (including
-        # 0043-0048) must run on top of it in full, real order. This copies
-        # the repository file into the migrations directory (never
-        # modifying or committing supabase/schema.sql itself) so
-        # `supabase db reset --local`'s normal lexicographic replay picks
-        # it up first, then every real migration file runs unmodified
-        # after it -- the same "prepend as 0000" trick the Batch 2
-        # rehearsal used, but keeping the FULL chain (0001-0048) instead
-        # of hand-picking a subset.
-        run: cp supabase/schema.sql supabase/migrations/0000_base_schema.sql
+      - name: Prepare ephemeral migration history (schema.sql baseline + only the migrations it doesn't already reflect)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Local rehearsal only. No repository migration file is ever
+          # changed or committed; this only edits the ephemeral checkout's
+          # migrations directory inside the runner.
+          #
+          # schema.sql's own header says it "always reflects the current/
+          # target schema, not an incremental diff" -- it is a snapshot,
+          # not a pre-migration-1 empty bootstrap. Verified directly: it
+          # already contains 0001-0041's tables/policies/functions (e.g.
+          # the 0003 "insert users (family admins only)" policy), and
+          # 0042_dogs_no_client_delete.sql's own comment confirms schema.sql
+          # still has the *pre-0042* single "modify dogs in own family"
+          # policy at the time that migration was written. It contains
+          # NONE of 0043-0048 (grepped for finish_walk/start_walk and
+          # active_system_admin_observer_family -- zero hits).
+          #
+          # So the correct replay -- matching the same "prepend schema.sql
+          # as 0000, keep only the migrations schema.sql doesn't already
+          # cover" approach the pre-existing Batch 2 rehearsal
+          # (.github/workflows/batch2-supabase-rehearsal.yml) established
+          # -- is: schema.sql as 0000, then only 0042-0048 on top (0042
+          # included because schema.sql predates it too). Every kept
+          # migration in this range already uses `drop policy if exists` /
+          # `create or replace function` / `create table if not exists`,
+          # so replaying them on top of schema.sql is idempotent and safe.
+          rehearsal_dir="$(mktemp -d)"
+          for n in 0042 0043 0044 0045 0046 0047 0048; do
+            cp supabase/migrations/${n}_*.sql "$rehearsal_dir/"
+          done
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -delete
+          cp supabase/schema.sql supabase/migrations/0000_base_schema.sql
+          cp "$rehearsal_dir/"*.sql supabase/migrations/
 
       - name: Start isolated Supabase stack
         run: supabase start -x studio,imgproxy,storage-api,realtime,edge-runtime,logflare,vector,supavisor
 
-      - name: Replay the FULL real migration chain (0000 base + 0001-current) from empty
+      - name: Replay schema.sql baseline + 0042-0048 from empty
         run: supabase db reset --local
 
       - name: Run the 0043-0048 integration rehearsal (real Postgres, not source review)
