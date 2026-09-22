@@ -475,7 +475,7 @@ export function HomeScreen() {
           />
           <Pressable
             onPress={() => setDogProfileVisible(true)}
-            style={styles.mascotHeaderButton}
+            style={[styles.mascotHeaderButton, Platform.OS === 'web' && styles.webMascotHeaderButton]}
             accessibilityRole="button"
             accessibilityLabel="פתיחת פרופיל הכלב"
           >
@@ -1044,6 +1044,7 @@ const styles = StyleSheet.create({
   topRow: { position: 'relative', minHeight: 52, alignItems: 'center', justifyContent: 'center' },
   brandWordmark: { width: 132, height: 42 },
   mascotHeaderButton: { position: 'absolute', left: 0, top: 6, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  webMascotHeaderButton: { right: 0, left: undefined },
   dogSummaryCard: {
     width: '100%',
     minHeight: 112,
