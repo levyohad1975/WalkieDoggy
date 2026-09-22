@@ -17,7 +17,7 @@ import path from 'path';
  * convention for RN components with no render-test harness.
  */
 const TARGET_FILES: Array<[string, number]> = [
-  ['../../screens/FamilyOnboardingScreen.tsx', 4],
+  ['../../screens/FamilyOnboardingScreen.tsx', 5],
   ['../../screens/LoginScreen.tsx', 2],
   ['../../screens/FamilyScreen.tsx', 2],
   ['../../screens/SystemAdminScreen.tsx', 6],
