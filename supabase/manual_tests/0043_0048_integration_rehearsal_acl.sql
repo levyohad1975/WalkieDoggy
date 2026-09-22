@@ -30,12 +30,32 @@
 
 begin;
 
+-- Setup fixtures are inserted directly as the connecting superuser, before
+-- any request.jwt.claims/role is established below -- enforce_walk_write_
+-- authorization() (0005) fires unconditionally on every walks write
+-- regardless of role and would otherwise reject this bootstrap data for
+-- having no resolvable actor. app.trusted_write is that trigger's own
+-- documented escape hatch for exactly this kind of pre-validated, trusted
+-- direct write (see its definition's comment); mirror that convention here
+-- for setup only, and clear it immediately after so every ACL check below
+-- runs under the real authorization path.
+set local app.trusted_write = 'on';
+
 insert into auth.users (id) values
   ('00000000-0000-0000-0000-0000000c4801'), -- admin (family 48)
   ('00000000-0000-0000-0000-0000000c4802'), -- member (family 48)
-  ('00000000-0000-0000-0000-0000000c4803'), -- system admin
   ('00000000-0000-0000-0000-0000000c4804'), -- admin (family 49 -- stale-device scenario)
   ('00000000-0000-0000-0000-0000000c4805')  -- member (family 49, later promoted then the auth user demoted)
+on conflict (id) do nothing;
+
+-- is_system_admin() (0030) is fail-closed on identity verification: it
+-- requires BOTH the current request's own JWT claim (checked below via
+-- request.jwt.claims' is_anonymous key) AND the durable auth.users row
+-- itself to say is_anonymous = false, plus a confirmed email -- a plain
+-- anonymous auth.users row (this test's other personas) is correctly never
+-- eligible, by design (see that migration's own comment).
+insert into auth.users (id, email, is_anonymous, email_confirmed_at) values
+  ('00000000-0000-0000-0000-0000000c4803', 'system-admin-rehearsal@example.com', false, now())
 on conflict (id) do nothing;
 
 insert into system_admins (auth_user_id) values
@@ -110,18 +130,25 @@ end $$;
 grant select on t48 to authenticated;
 grant select on t49 to authenticated;
 
+reset app.trusted_write;
+
 -- ----------------------------------------------------------------------------
 -- A. start_walk(): unauthorized member cannot start someone else's walk.
 -- ----------------------------------------------------------------------------
 set local role authenticated;
-set local request.jwt.claims = '{"sub": "00000000-0000-0000-0000-0000000c4803"}'; -- system admin, no family membership here at all
+set local request.jwt.claims = '{"sub": "00000000-0000-0000-0000-0000000c4803", "is_anonymous": false}'; -- system admin, no family membership here at all
 do $$
 begin
   perform start_walk((select walk_id from t48));
   raise exception 'REHEARSAL FAILED: an unrelated user was able to start another family''s walk';
 exception
   when others then
-    if sqlerrm !~* 'may start this walk' then raise; end if; -- expected authorization rejection
+    -- c4803 (system admin, used here purely as "unrelated caller") has no
+    -- profile_auth_sessions row in family 48 at all, so start_walk()'s own
+    -- current_profile_id() guard rejects it before ever reaching the
+    -- responsible-member/admin check -- both are valid rejections of this
+    -- unauthorized caller.
+    if sqlerrm !~* 'may start this walk|no active profile found' then raise; end if;
 end $$;
 
 -- ----------------------------------------------------------------------------
@@ -151,14 +178,15 @@ end $$;
 -- fresh reload -- not just the RPC's own return value.
 -- ----------------------------------------------------------------------------
 -- Unauthorized finish attempt first (still in_progress at this point).
-set local request.jwt.claims = '{"sub": "00000000-0000-0000-0000-0000000c4803"}';
+set local request.jwt.claims = '{"sub": "00000000-0000-0000-0000-0000000c4803", "is_anonymous": false}';
 do $$
 begin
   perform finish_walk((select walk_id from t48), (select member_id from t48));
   raise exception 'REHEARSAL FAILED: an unrelated user was able to finish another family''s walk';
 exception
   when others then
-    if sqlerrm !~* 'may finish this walk' then raise; end if;
+    -- same reasoning as the start_walk() check above.
+    if sqlerrm !~* 'may finish this walk|no active profile found' then raise; end if;
 end $$;
 
 set local request.jwt.claims = '{"sub": "00000000-0000-0000-0000-0000000c4802"}';
@@ -168,7 +196,10 @@ select finish_walk(
   true,   -- had_pee
   false,  -- had_poop
   'רהרסל 0048',
-  (select scheduled_time::timestamp + interval '25 minutes' from walks where id = (select walk_id from t48))::timestamptz
+  -- scheduled_time is `text` (e.g. '08:00'), not directly castable to
+  -- timestamp -- combine with date first, matching the same pattern
+  -- 0025_walk_reminder_scheduler.sql itself uses.
+  (select (date::text || ' ' || scheduled_time || ':00')::timestamp + interval '25 minutes' from walks where id = (select walk_id from t48))::timestamptz
     -- started_at was set by start_walk() to now(); this rehearsal instead
     -- asserts the RPC's ARITHMETIC (duration = supplied completed_at -
     -- started_at), not a specific wall-clock value, so it stays correct
@@ -233,7 +264,7 @@ reset role;
 -- cleanly.
 -- ----------------------------------------------------------------------------
 set local role authenticated;
-set local request.jwt.claims = '{"sub": "00000000-0000-0000-0000-0000000c4803"}'; -- system admin
+set local request.jwt.claims = '{"sub": "00000000-0000-0000-0000-0000000c4803", "is_anonymous": false}'; -- system admin
 
 select 1 / ((select is_system_admin()) is true)::int;
 
@@ -294,7 +325,15 @@ set local role authenticated;
 set local request.jwt.claims = '{"sub": "00000000-0000-0000-0000-0000000c4804"}';
 
 select 1 / (
-  (select is_family_admin((select family_id from t49))) is false
+  -- is_family_admin() is `NULL = target_family_id OR ...` when not an
+  -- observer -- SQL's three-valued logic makes that expression NULL, not
+  -- a literal false, whenever the non-observer branch itself evaluates to
+  -- false (NULL OR false = NULL). Every real call site already treats
+  -- NULL and false identically (`if is_family_admin(...) then` never
+  -- enters on either), so the correct assertion here is "not true",
+  -- matching that same real-world semantics rather than requiring the
+  -- stricter/coincidental literal false.
+  coalesce((select is_family_admin((select family_id from t49))), false) is false
 )::int; -- MUST be false: persona-anchored, not the stale family_auth_members row.
 select 1 / (
   (select current_family_role()) is distinct from 'admin'
@@ -314,7 +353,8 @@ select 1 / ((select is_family_admin((select family_id from t48))) is true)::int;
 select 1 / ((select current_family_role()) = 'admin')::int;
 
 set local request.jwt.claims = '{"sub": "00000000-0000-0000-0000-0000000c4802"}';
-select 1 / ((select is_family_admin((select family_id from t48))) is false)::int;
+-- Same NULL-vs-false three-valued-logic note as section F above.
+select 1 / (coalesce((select is_family_admin((select family_id from t48))), false) is false)::int;
 select 1 / ((select current_family_role()) = 'member')::int;
 select 1 / (
   (select count(*) from walks where family_id = (select family_id from t48)) >= 1
