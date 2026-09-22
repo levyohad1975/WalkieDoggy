@@ -46,11 +46,36 @@ forbids), has no on-time/late metric, no trend chart, no distance/duration
 aggregation, and is custom-bar-built with no chart library or accessible
 chart semantics.
 
-**One in-progress effort was already attempted and abandoned**: PR #109
-("PWA recover family after Home Screen install") went green on CI and was
-closed without merging on 2026-09-22, for reasons not recorded in the PR
-itself. Re-attempting this (PRD §4, Phase 1) should start by checking why
-it was dropped rather than starting cold.
+**Correction (verified against GitHub directly after an initial drafting
+error):** PR #109 ("PWA recover family after Home Screen install") is
+**merged** (`merged: true`, merge commit `e7d33e7`) — but into
+`rc/web-staging-integration`, not `main`. That branch has **diverged from
+`main` by 90 commits / 43 files / 6 new migrations (0043–0048)** and is
+not an ancestor of `main` (`git merge-base --is-ancestor` returns false).
+It already contains real, working fixes for several items this analysis
+found Partial/Missing on `main` alone, verified directly:
+- **PWA/Home-Screen-install recovery** (PR #109 + 2 follow-up commits) —
+  present.
+- **Home header** — bell is `left:0`, mascot `right:0`
+  (`HomeScreen.tsx` styles), exactly the PRD's target layout; `main`
+  still has bell on the physical right on native.
+- **A real `in_progress` walk state** — migration `0048_walk_lifecycle.sql`
+  adds `started_at`/`started_by_user_id`/`ended_by_user_id` and
+  `start_walk()`/`finish_walk()` RPCs; `HomeScreen.tsx` wires
+  `onStartWalk`/`onEndWalk`/`activeStartedAt` into the walk card. This is
+  §5's "In Progress" state, found Missing-entirely on `main`.
+- **System Admin audit Hebrew labels** — `SystemAdminScreen.tsx` gained
+  its own `auditActionLabel()` Hebrew map, fixing exactly the
+  inconsistency flagged in §14 below.
+- Also present but not yet cross-checked against this document in detail:
+  `authStore.ts` (+94 lines), `familyStore.ts` (+12 lines),
+  `scheduleStore.ts` (+36 lines), `StatisticsScreen.tsx` (43 lines
+  changed), and migrations 0043–0047 (system-admin global audit / hidden
+  observer / data hotfixes).
+
+**This changes the shape of Phase 1**: a meaningful share of "Stabilize"
+work already exists, unmerged, on `rc/web-staging-integration`. See §5 for
+the strategic question this raises before writing any new code.
 
 **One live inconsistency worth an immediate, cheap fix**: the Settings
 Audit Trail (`AdminAuditLogModal.tsx`) already renders human-readable
@@ -75,11 +100,14 @@ server-enforced (RLS + RPCs), confirmed via `PROJECT_ENGINEERING_BRAIN.md`
 - Generic cold-start recovery (pending-status recheck, invite-redemption
   confirmation): **Existing** (`FamilyOnboardingScreen.tsx:85-104,
   244-275,286-309`).
-- **PWA/Home-Screen-install-aware recovery: Missing.** No `standalone`/
-  `display-mode`/`matchMedia` detection anywhere in `src/` or `App.tsx`;
-  `App.tsx:232` routes purely on `familyId`/`currentUserId`, with no
-  PWA-specific branch. **PR #109 attempted this, went CI-green, was
-  closed unmerged same day — investigate why before restarting.**
+- **PWA/Home-Screen-install-aware recovery: Existing, on
+  `rc/web-staging-integration`; Missing on `main`.** `main` has no
+  `standalone`/`display-mode`/`matchMedia` detection (`App.tsx:232`
+  routes purely on `familyId`/`currentUserId`). **PR #109 is merged**
+  (merge commit `e7d33e7`) into `rc/web-staging-integration`, which has
+  diverged 90 commits from `main` — not merged into `main` yet. Per
+  owner decision: do not reimplement; inspect the merged implementation
+  on that branch and identify only remaining defects.
 - Admin re-verifies email specifically *to recover* an existing family:
   **Missing** (current email-verify path is create-only,
   `verifiedAdminOnboarding.ts:63-121,190`).
@@ -92,27 +120,42 @@ server-enforced (RLS + RPCs), confirmed via `PROJECT_ENGINEERING_BRAIN.md`
   **Existing** (per `PRODUCT_CONTEXT.md`, mascot/dog separation is an
   enforced convention).
 - Header layout (bell left / wordmark center / mascot right, no overlap):
-  **Partial, and platform-inconsistent.** `HomeScreen.tsx:1019-1024`:
-  wordmark centered ✓; bell is physical-**right** on native
-  (`notificationButton: {right:0}`) but physical-**left** on web
-  (`webNotificationButton`) — native contradicts the PRD target, web
-  matches it. **No mascot in the header at all** (mascot lives inside
-  `NextWalkCard.tsx:121` instead). System Admin entry is a floating
-  circular button (`App.tsx:342-378`, absolute-positioned), not part of
-  the header, so it doesn't overlap anything but also isn't "near" it.
-- 4-state walk card — **no 4-state model exists at all**; `WalkStatus` is
-  only `'pending'|'done'|'skipped'` (`types/index.ts:7`), overdue is
-  derived, not stored:
-  - Scheduled: **Partial** — pale blue (`statusCurrentBg #E9F0FF`), no
-    turquoise, no ▶ button (only a "mark done" text button).
-  - Overdue: **Partial** — whole card does tint red/salmon
+  **On `main`: Partial, platform-inconsistent** (`HomeScreen.tsx:1019-1024`
+  — bell physical-right on native, physical-left on web; no mascot in the
+  header at all, it lives inside `NextWalkCard.tsx:121` instead). **On
+  `rc/web-staging-integration`: Existing** — verified directly:
+  `notificationButton: {left:0}`, a new `mascotHeaderButton: {right:0}`
+  opening `DogProfileModal`, wordmark still centered. Exact PRD match,
+  not yet merged into `main`. System Admin entry is a floating circular
+  button (`App.tsx:342-378`) on both branches — doesn't overlap, but
+  isn't header-adjacent either, unchanged either way.
+- 4-state walk card — `WalkStatus` on `main` is only
+  `'pending'|'done'|'skipped'` (`types/index.ts:7`), overdue derived not
+  stored:
+  - Scheduled: **Partial on `main`** — pale blue (`statusCurrentBg
+    #E9F0FF`), no turquoise, no ▶ button (text button only). Not
+    independently re-checked on `rc/web-staging-integration`.
+  - Overdue: **Partial on `main`** — whole card tints red/salmon
     (`statusOverdueBg #FBEAE6` + red border, confirmed whole-card not
-    icon-only), but it's pale, not the PRD's bold "all-red + start-now"
-    treatment; button is "done/not done", not "start now".
-  - In Progress (timer + GPS/distance + ■ finish): **Missing entirely** —
-    no such status exists, no timer, no GPS/distance field anywhere.
+    icon-only) but pale, not the PRD's bold treatment; button is
+    "done/not done", not "start now".
+  - In Progress (timer + ■ finish): **Missing on `main`; Existing on
+    `rc/web-staging-integration`.** Migration `0048_walk_lifecycle.sql`
+    adds `started_at`/`started_by_user_id`/`ended_by_user_id` + a
+    `walks_status_check` allowing `'pending'|'in_progress'|'done'|
+    'skipped'`, with `start_walk()`/`finish_walk()` `SECURITY DEFINER`
+    RPCs (admin-or-responsible-member only). `HomeScreen.tsx` there wires
+    `onStartWalk`/`onEndWalk`/`activeStartedAt` into the walk card.
+    **GPS/distance is still Missing even there** — this tracks time
+    only; §7's gap is unaffected.
   - Completed summary: **Partial** — time/duration/pee-poop/notes shown;
-    no distance, no "stops" (no such data exists).
+    no distance/"stops" on either branch (needs §7).
+  - **Risk, now concrete rather than hypothetical:** merging this into
+    `main` means adopting a real `WalkStatus` enum change plus 6 new
+    migrations (0043–0048) together — needs its own review pass (RLS on
+    the new columns, offline-sync/audit interaction with `in_progress`,
+    whether 0043–0047's separate system-admin changes are wanted as-is),
+    not a rubber-stamp merge.
   - **Risk:** introducing a real "in progress" status is a `WalkStatus`
     enum change touching migrations, RLS, every consumer of `Walk` type,
     and the offline sync/audit logic — not a UI-only change.
@@ -173,7 +216,8 @@ every RPC (`... limit 1`) and the client store
 deletes would silently wipe schedule/walk history) that incidentally
 documents the one-dog assumption in its own comment — it is not itself a
 multi-dog blocker, but any multi-dog work must preserve its no-delete
-protection per dog row.
+protection per dog row. **Owner decision (§4.2): build real, arbitrary-N
+multi-dog support as a foundation, before Health & Grooming.**
 
 ### §12 — Profile/dog photos, crop/zoom editor
 Upload exists (`expo-image-picker`, `DogDetailsModal`/`Avatar`/
@@ -190,7 +234,9 @@ See §1 for the summary. Detail, all confirmed against
   scheduled-vs-actual concept anywhere). Duration: **Partial**
   (`durationMinutes` exists on `Walk` but is never aggregated here).
   Distance: **Missing** (no field exists at all — depends on §7 GPS or a
-  manual-entry alternative).
+  manual-entry alternative). **Owner decision (§4.3): ship the Statistics
+  redesign now without distance; add it as an optional field once GPS
+  data exists rather than blocking the whole screen on Phase 4.**
 - Trend chart: **Missing** (period toggle re-filters snapshot totals;
   no time series).
 - By family member: **Existing.** By dog: **Missing**, and blocked on §11.
@@ -222,12 +268,13 @@ See §1 for the summary. Detail, all confirmed against
 - History filter/search, planned-vs-actual, responsible-person
   attribution: **Existing** (`HistoryScreen.tsx`, `EditDoneDetailsModal`).
 - Distance/route on a history entry: **Missing** (blocked on §7).
-- Audit Trail Hebrew phrasing: **Partial/inconsistent** — `Settings →
-  AdminAuditLogModal.tsx` already has a full ~25-entry `ACTION_LABEL`
-  Hebrew map (`:14-44`) and uses it. **`SystemAdminScreen.tsx:328`'s own,
-  separate audit section still renders the raw `a.action` id** — same
-  requirement, same repo, not applied consistently. Cheap, low-risk fix:
-  reuse `AdminAuditLogModal`'s label map in `SystemAdminScreen`.
+- Audit Trail Hebrew phrasing: **Partial/inconsistent on `main`; already
+  fixed on `rc/web-staging-integration`.** `Settings → AdminAuditLogModal.tsx`
+  has a full ~25-entry `ACTION_LABEL` Hebrew map on `main`.
+  `SystemAdminScreen.tsx:328` on `main` still renders the raw `a.action`
+  id — but on `rc/web-staging-integration` it already gained its own
+  `auditActionLabel()` Hebrew map, verified directly. No new work needed
+  here once that branch reaches `main`.
 
 ### §15 — Requests/Inbox
 **Partial.** `RequestsInboxModal.tsx` unifies swap requests and
@@ -299,8 +346,9 @@ Runtime states: **Existing but named differently than the PRD** — current
 `WalkieMascot` states are `idle/excited/ready/waiting/concerned/success`
 (6 states); PRD asks for `idle/happy/reminder/overdue-concerned/
 walk-start/walking/walk-complete/achievement/long-walk/special-surprise`
-(10, several tied to §7/§9 domains that don't exist yet) — needs explicit
-reconciliation, not a rename. **Final frame artwork: Missing** for both
+(10, several tied to §7/§9 domains that don't exist yet). **Owner
+decision (§4.4): extend/reconcile, reusing existing states where they
+already fit, rather than renaming.** **Final frame artwork: Missing** for both
 sets (architecture/manifest only, zero files under `assets/celebrations/`,
 confirmed by both `MASCOT_SPEC.md` itself and direct repo search).
 
@@ -361,32 +409,60 @@ section for each criterion's status.
 
 The PRD's own phase order (§27) already matches this evidence well: it
 correctly sequences Stabilize (Phase 1, including PWA recovery and the
-Home lifecycle/header work found Partial/Missing above) before Core
-completeness (Phase 2, flexible schedule/requests — already mostly
-Existing, so this phase should be lighter than the PRD assumes) before
-Health & Grooming (Phase 3) before GPS (Phase 4) before Engagement/
-gamification (Phase 5) before Statistics redesign (Phase 6). One
-adjustment worth flagging to the owner: **multi-dog (§11) isn't its own
-PRD phase** — it's referenced only inside Statistics (§13) and implied by
-Health & Grooming (§10) and Home (§5). Recommend deciding explicitly
-*when* multi-dog lands (e.g., as part of Phase 3 before Health & Grooming,
-since per-dog health data is far more natural to build once multi-dog
-exists than to retrofit) rather than letting it default to "whichever
-phase needs it first."
+Home lifecycle/header work — see §4 correction: substantially already
+built, just unmerged) before Core completeness (Phase 2, flexible
+schedule/requests — already mostly Existing, lighter than the PRD
+assumes) before Health & Grooming (Phase 3, now sequenced after
+multi-dog per the owner decision below) before GPS (Phase 4) before
+Engagement/gamification (Phase 5) before Statistics redesign (Phase 6,
+not gated on GPS per the owner decision below).
+
+**Open strategic question this analysis surfaces, not answered yet:**
+should Phase 1 work proceed by merging `rc/web-staging-integration`
+(90 commits, already containing PWA recovery, header fixes, the
+`in_progress` walk-lifecycle RPCs, and the audit-label fix, plus
+migrations 0043–0048 not yet reviewed here) into `main`, or should Phase
+1 re-derive the same fixes independently on `main`? Merging is very
+likely the higher-leverage path — it avoids redoing real, already-tested
+work — but it is a six-migration, 43-file merge into `main`, which is a
+different risk class than ordinary Phase 1 feature work and deserves its
+own explicit review pass (not a rubber-stamp merge) rather than being
+bundled silently into "normal safe development work."
 
 ---
 
-## 4. Open questions for the owner (not decidable from repository evidence)
+## 4. Product decisions (owner, 2026-09-22)
 
-1. Why was PR #109 (PWA recovery) closed unmerged after going CI-green?
-   Worth checking before Phase 1 re-attempts the same problem.
-2. Multi-dog: confirm this should be built as real multi-dog support
-   (arbitrary N dogs) vs. some smaller near-term shape — it's a
-   cross-cutting decision, not a per-screen one.
-3. Statistics distance/duration and Home "In Progress" timer both assume
-   GPS-adjacent data collection (§7) — confirm whether Phase 6
-   (Statistics) should ship distance metrics before Phase 4 (GPS) lands,
-   or omit distance until then.
-4. Mascot state-name reconciliation (§19): confirm whether to rename/
-   extend the existing 6 `WalkieMascot` states to the PRD's 10, or treat
-   the PRD's list as illustrative rather than literal.
+1. **PR #109 / PWA recovery — correction, not a question.** Verified
+   directly against GitHub: PR #109 is merged (`e7d33e7`), into
+   `rc/web-staging-integration`, not `main`. The original "closed
+   unmerged, investigate why" framing in an earlier draft of this
+   document was a factual error — corrected in §4/§5 above. Per owner
+   instruction: do not reimplement; inspect and preserve the merged
+   implementation on that branch, then identify only remaining defects.
+2. **Multi-dog: build real, arbitrary-N-dog support** — not a two-dog
+   shortcut. Treat it as a foundation, sequenced **before** Health &
+   Grooming (Phase 3, ahead of the PRD's implicit ordering), shared
+   across Home, walks/schedule, GPS, Statistics, Health & Grooming, and
+   achievements. This is now Phase 1/early-Phase-2 scope, not an
+   incidental side effect of whichever feature needs it first.
+3. **Statistics is not gated on GPS.** Build the modern dashboard (Phase
+   6) against currently-available data now; distance/route metrics are
+   optional fields that appear only once GPS data exists (post-Phase 4).
+   The data/UI architecture must be GPS-ready (e.g. an optional
+   `distanceMeters`-shaped field, not a required one) rather than
+   omitting the concept entirely.
+4. **Mascot states: extend/reconcile, do not blindly rename.** Keep the
+   existing 6 `WalkieMascot` states where semantically correct and add
+   the PRD's additional product moments (reminder, overdue, walk-start/
+   in-progress/completion, achievement, special celebrations) as
+   additions, reusing states where they already fit. Preserve mascot
+   identity governance (`MASCOT_SPEC.md`) and the Reduced Motion
+   fallback throughout.
+
+## 5. Remaining open question (not decidable from repository evidence)
+
+Whether Phase 1 should proceed via merging `rc/web-staging-integration`
+into `main` (recommended — see §3) or by independently re-deriving its
+fixes on `main`. Everything else previously listed here has an owner
+decision recorded in §4 above.
