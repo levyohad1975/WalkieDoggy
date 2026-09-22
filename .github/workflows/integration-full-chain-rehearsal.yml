@@ -152,6 +152,24 @@ jobs:
           # or removes anything in the actual repository.
           rm supabase/migrations/0019_request_result_read_state.sql
 
+      - name: Hide the migrations directory before first boot
+        run: mv supabase/migrations supabase/migrations.pending && mkdir supabase/migrations
+        # `supabase start` itself replays every file in supabase/migrations
+        # as part of its OWN first-boot database initialization -- it does
+        # not just launch empty containers and wait for a later `db reset`.
+        # Confirmed directly from a real run: the "Applying migration ..."
+        # log lines (including the 0025 forward-reference failure) appeared
+        # INSIDE the "Start isolated Supabase stack" step itself, which the
+        # job's own step list shows as the one that failed -- every step
+        # after it, including the ALTER SYSTEM fix and the explicit `db
+        # reset --local`, never ran at all (conclusion: "skipped"). So
+        # setting check_function_bodies=off *after* `start` can never take
+        # effect: by the time that step would run, `start` has already
+        # tried and failed to apply 0025 during its own bootstrap. Hiding
+        # the directory makes `start` boot with nothing to replay, so its
+        # first-boot pass always succeeds trivially; the real replay then
+        # happens explicitly below, after the GUC is already in place.
+
       - name: Start isolated Supabase stack
         run: supabase start -x studio,imgproxy,storage-api,realtime,edge-runtime,logflare,vector,supavisor
 
@@ -164,22 +182,20 @@ jobs:
           # `language sql` function, eagerly planned at CREATE time -- unlike
           # plpgsql, which defers) before family_admin_profile_ids(), which
           # its own body calls. Postgres rejects that forward reference
-          # unless check_function_bodies is off; a session-level `set` as
-          # the first statement of the generated guard migration did NOT
-          # persist through to 0025 in a real run (confirmed directly --
-          # `supabase db reset --local` evidently does not keep every
-          # migration file on one single session/connection the way a
-          # literal `cat file1 file2 ... | psql` replay does, even though
-          # its own log output never shows an explicit reconnect between
-          # files). ALTER SYSTEM sets a server-wide default for every NEW
-          # connection on this already-running Postgres instance regardless
-          # of per-file connection behavior, and survives `db reset`
+          # unless check_function_bodies is off. ALTER SYSTEM sets a
+          # server-wide default for every NEW connection on this
+          # already-running Postgres instance, and survives `db reset`
           # dropping/recreating the database itself since the server
           # process is not restarted -- only `supabase stop` at the end of
-          # this job ever tears down the server.
+          # this job ever tears down the server. This now runs before the
+          # migrations directory is restored, so it's in place before
+          # anything ever tries to apply 0025.
           psql "postgresql://postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 \
             -c "alter system set check_function_bodies = off;" \
             -c "select pg_reload_conf();"
+
+      - name: Restore the migrations directory for the real replay
+        run: rmdir supabase/migrations && mv supabase/migrations.pending supabase/migrations
 
       - name: Replay the FULL real migration chain (00000 base + 0001-0048) from empty
         run: supabase db reset --local
