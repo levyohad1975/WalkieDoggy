@@ -314,13 +314,7 @@ export class OfflineFirstRepository implements Repository {
       return updated;
     }
 
-    const walks = await this.local.getWalks('');
-    const walk = walks.find((candidate) => candidate.id === walkId);
-    if (!walk) throw new Error('Walk not found');
-    const now = new Date().toISOString();
-    const updated: Walk = { ...walk, status: 'in_progress', startedAt: now, updatedAt: now };
-    await this.local.saveWalk(updated);
-    return updated;
+    throw new Error('אין חיבור לשרת. כדי להתחיל מעקב טיול יש להתחבר לאינטרנט.');
   }
 
   async finishWalk(
@@ -334,22 +328,7 @@ export class OfflineFirstRepository implements Repository {
       return updated;
     }
 
-    const walks = await this.local.getWalks('');
-    const walk = walks.find((candidate) => candidate.id === walkId);
-    if (!walk) throw new Error('Walk not found');
-    const completedAt = details.completedAt ?? new Date().toISOString();
-    const updated: Walk = {
-      ...walk,
-      status: 'done',
-      completedAt,
-      completedByUserId,
-      hadPee: details.hadPee,
-      hadPoop: details.hadPoop,
-      note: details.note,
-      updatedAt: new Date().toISOString(),
-    };
-    await this.local.saveWalk(updated);
-    return updated;
+    throw new Error('אין חיבור לשרת. כדי לסיים מעקב טיול יש להתחבר לאינטרנט.');
   }
 
   async getWalks(familyId: string): Promise<Walk[]> {
