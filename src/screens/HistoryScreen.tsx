@@ -476,6 +476,7 @@ export function HistoryScreen() {
       <EditDoneDetailsModal
         visible={!!editWalkId}
         walk={editWalkId ? sourceWalks.find((w) => w.id === editWalkId) ?? null : null}
+        currentUserId={effectiveUserId}
         onSave={async (details) => {
           if (editWalkId) {
             await editDoneDetails(editWalkId, details);

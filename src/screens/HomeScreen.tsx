@@ -1067,6 +1067,7 @@ export function HomeScreen() {
             walk={editingLastScheduledWalk}
             users={activeUsers}
             canReassignCompletedBy
+            currentUserId={effectiveUserId}
             onSave={async (details) => {
               const walkId = editingLastDoneDetailsId;
               setEditingLastDoneDetailsId(null);
