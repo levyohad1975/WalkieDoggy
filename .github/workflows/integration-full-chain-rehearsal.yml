@@ -230,10 +230,23 @@ jobs:
       - name: Start isolated Supabase stack
         run: supabase start -x studio,imgproxy,storage-api,realtime,edge-runtime,logflare,vector,supavisor
 
-      - name: Restore the migrations directory and seed.sql for the real replay
-        run: |
-          rmdir supabase/migrations && mv supabase/migrations.pending supabase/migrations
-          mv supabase/seed.sql.pending supabase/seed.sql
+      - name: Restore the migrations directory for the real replay
+        run: rmdir supabase/migrations && mv supabase/migrations.pending supabase/migrations
+        # seed.sql stays hidden through `db reset --local` too (restored
+        # again right at the end, below). `db reset --local` applies
+        # supabase/seed.sql itself immediately after the full migration
+        # chain -- confirmed directly: with all 48 migrations now applying
+        # cleanly (the actual thing this rehearsal validates), the next and
+        # only failure was seed.sql's own demo-data inserts, rejected with
+        # "no active profile found for this session" by the same kind of
+        # authorization trigger the manual ACL test's own setup block hit
+        # earlier (see that file's app.trusted_write comment) -- seed.sql
+        # inserts directly as the connecting superuser with no
+        # request.jwt.claims/role/app.trusted_write context at all. That
+        # demo data plays no part in validating 0043-0048 (the ACL test
+        # below creates its own fixtures), so it's simplest to leave it
+        # out of this replay entirely rather than deciding how to
+        # authorize a demo-only insert that was never in scope here.
 
       - name: Replay the FULL real migration chain (00000 base + 0001-0048) from empty
         run: supabase db reset --local
@@ -245,6 +258,10 @@ jobs:
           psql "postgresql://postgres@127.0.0.1:54322/postgres" \
             -v ON_ERROR_STOP=1 \
             -f supabase/manual_tests/0043_0048_integration_rehearsal_acl.sql
+
+      - name: Restore seed.sql
+        if: always()
+        run: mv supabase/seed.sql.pending supabase/seed.sql
 
       - name: Stop isolated stack
         if: always()
