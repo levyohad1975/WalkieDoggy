@@ -102,6 +102,23 @@ jobs:
               "-- Auto-generated for this isolated rehearsal run only. Never committed.",
               "-- See the workflow step that generated this file for the full rationale.",
               "",
+              "-- 0025_walk_reminder_scheduler.sql defines due_walk_reminders() (a",
+              "-- `language sql` function, eagerly planned at CREATE time -- unlike",
+              "-- plpgsql, which defers) before family_admin_profile_ids(), which",
+              "-- its own body calls. Postgres rejects that forward reference",
+              "-- unless check_function_bodies is off. ALTER SYSTEM (tried first)",
+              "-- needs superuser, which the Supabase local stack's exposed",
+              "-- `postgres` role does not have (\"permission denied to set",
+              "-- parameter\", confirmed directly). A plain session-level SET",
+              "-- here, as the first statement `supabase db reset --local` runs",
+              "-- right after schema.sql, needs no special privilege -- it only",
+              "-- has to persist for the rest of THIS SINGLE reset invocation,",
+              "-- which is what's being tested now that db reset is the sole",
+              "-- migration-applying path (supabase start's own separate",
+              "-- first-boot bootstrap, which has different connection",
+              "-- semantics, no longer applies any migrations at all -- see the",
+              "-- \"Hide the migrations directory\" step below).",
+              "set check_function_bodies = off;",
           ]
           for name, table in seen:
               if table == 'storage.objects' or table in existing_tables:
@@ -167,37 +184,16 @@ jobs:
         # step applying seed.sql ("relation \"families\" does not exist",
         # since seed.sql's own header says it must run after schema.sql/
         # migrations exist, which they now deliberately don't yet). Either
-        # way, every step after "Start isolated Supabase stack" -- the
-        # ALTER SYSTEM fix and the explicit `db reset --local` -- never ran
-        # at all (conclusion: "skipped") when start itself failed. Hiding
-        # both makes start boot with nothing to replay or seed, so its
-        # first-boot pass always succeeds trivially; the real replay (which
-        # also reapplies seed.sql, correctly, once the schema exists) then
-        # happens explicitly below, after the GUC is already in place.
+        # way, every step after "Start isolated Supabase stack" -- including
+        # the explicit `db reset --local` -- never ran at all (conclusion:
+        # "skipped") when start itself failed. Hiding both makes start boot
+        # with nothing to replay or seed, so its first-boot pass always
+        # succeeds trivially; the real replay (which also reapplies
+        # seed.sql, correctly, once the schema exists) then happens
+        # explicitly below via `db reset --local`.
 
       - name: Start isolated Supabase stack
         run: supabase start -x studio,imgproxy,storage-api,realtime,edge-runtime,logflare,vector,supavisor
-
-      - name: Disable eager function-body checking server-wide (rehearsal-only, real repo file unaffected)
-        env:
-          PGPASSWORD: postgres
-        run: |
-          set -euo pipefail
-          # 0025_walk_reminder_scheduler.sql defines due_walk_reminders() (a
-          # `language sql` function, eagerly planned at CREATE time -- unlike
-          # plpgsql, which defers) before family_admin_profile_ids(), which
-          # its own body calls. Postgres rejects that forward reference
-          # unless check_function_bodies is off. ALTER SYSTEM sets a
-          # server-wide default for every NEW connection on this
-          # already-running Postgres instance, and survives `db reset`
-          # dropping/recreating the database itself since the server
-          # process is not restarted -- only `supabase stop` at the end of
-          # this job ever tears down the server. This now runs before the
-          # migrations directory is restored, so it's in place before
-          # anything ever tries to apply 0025.
-          psql "postgresql://postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 \
-            -c "alter system set check_function_bodies = off;" \
-            -c "select pg_reload_conf();"
 
       - name: Restore the migrations directory and seed.sql for the real replay
         run: |
