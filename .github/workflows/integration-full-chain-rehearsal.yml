@@ -1,0 +1,62 @@
+name: Integration Full-Chain Supabase Rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'Branch to rehearse (defaults to the branch this is dispatched from)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  full-chain-rehearsal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SUPABASE_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_branch || github.ref }}
+
+      - name: Verify known duplicate 0019 state
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f supabase/migrations/0019_request_result_read_state.sql
+          test -f supabase/migrations/0019_request_result_seen_state.sql
+          test ! -s supabase/migrations/0019_request_result_read_state.sql
+          test -s supabase/migrations/0019_request_result_seen_state.sql
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.116.0
+
+      - name: Start isolated Supabase stack
+        run: supabase start -x studio,imgproxy,storage-api,realtime,edge-runtime,logflare,vector,supavisor
+
+      - name: Replay the FULL real migration chain (0001-current) from empty
+        # Deliberately NOT the schema.sql-shortcut approach the Batch 2
+        # rehearsal used (that baseline is confirmed stale as of this PR --
+        # missing system_admins/family_onboarding_requests/email_delivery_log/
+        # system_audit_log, all of which 0043-0048 depend on). This replays
+        # every migration file exactly as committed, in order, from an empty
+        # database -- the only way to genuinely validate that 0043-0048 apply
+        # cleanly on top of everything before them, not against a synthetic
+        # pre-built schema.
+        run: supabase db reset --local
+
+      - name: Run the 0043-0048 integration rehearsal (real Postgres, not source review)
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/manual_tests/0043_0048_integration_rehearsal_acl.sql
+
+      - name: Stop isolated stack
+        if: always()
+        run: supabase stop --no-backup
