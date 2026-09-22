@@ -104,6 +104,28 @@ export function summarizeHealthTasksForHome(
 }
 
 /**
+ * PRD §15's "תזכורות חשובות" (important reminders) item type for the
+ * unified requests Inbox — the actual overdue/due/due-soon tasks (not
+ * just the Home badge's counts), sorted most-urgent-first (overdue,
+ * then due today, then due-soon), so the inbox row order matches what a
+ * member should act on first. Same "one dog's tasks only" scoping
+ * contract as summarizeHealthTasksForHome above.
+ */
+export function getImportantHealthReminders(tasks: HealthTask[], now: Date = new Date()): HealthTask[] {
+  const today = localDateOnly(now);
+  const soonCutoff = addDaysToDateOnly(today, HEALTH_DUE_SOON_DAYS);
+  const urgencyRank: Record<'overdue' | 'due' | 'due_soon', number> = { overdue: 0, due: 1, due_soon: 2 };
+  return tasks
+    .filter((t) => !t.completedAt && t.dueDate && t.dueDate <= soonCutoff)
+    .map((t) => {
+      const rank: 'overdue' | 'due' | 'due_soon' = t.dueDate! < today ? 'overdue' : t.dueDate === today ? 'due' : 'due_soon';
+      return { task: t, rank };
+    })
+    .sort((a, b) => urgencyRank[a.rank] - urgencyRank[b.rank] || (a.task.dueDate ?? '').localeCompare(b.task.dueDate ?? ''))
+    .map(({ task }) => task);
+}
+
+/**
  * Builds the NEXT occurrence for a recurring task once `sourceTask` has just
  * been completed — a fresh, independent row (own id), never a mutation of
  * the completed one, so the completed record's own history is preserved

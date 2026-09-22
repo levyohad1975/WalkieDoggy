@@ -49,7 +49,7 @@ import { renderMessageTemplate } from '../mascot/messageEngine';
 import { subscribeToReminderOpens, type ReminderOpenEvent } from '../notifications/reminderEntry';
 import type { RootTabParamList } from '../navigation/RootNavigator';
 import { useHealthStore } from '../store/healthStore';
-import { summarizeHealthTasksForHome } from '../logic/healthTasks';
+import { getImportantHealthReminders, summarizeHealthTasksForHome } from '../logic/healthTasks';
 import { useGpsStore } from '../store/gpsStore';
 
 export function HomeScreen() {
@@ -107,6 +107,10 @@ export function HomeScreen() {
   const loadHealthTasks = useHealthStore((s) => s.load);
   const requestOpenHealthModal = useHealthStore((s) => s.requestOpen);
   const healthSummary = useMemo(() => summarizeHealthTasksForHome(healthTasks), [healthTasks]);
+  // PRD §15's "תזכורות חשובות" inbox item type — the same active-dog
+  // health tasks the Home summary pill already reads, just as a real list
+  // for the Inbox rather than a count.
+  const healthReminders = useMemo(() => getImportantHealthReminders(healthTasks), [healthTasks]);
 
   // Phase 4 (GPS foundation, PRD §7) — live tracking state for whichever
   // walk gpsStore is currently tracking. NextWalkCard below only ever
@@ -1152,6 +1156,13 @@ export function HomeScreen() {
         onRejectSwap={rejectSwap}
         onApproveTimeChange={approveTimeChange}
         onRejectTimeChange={rejectTimeChange}
+        healthReminders={healthReminders}
+        dogName={dog?.name}
+        onOpenHealthReminders={() => {
+          setRequestsInboxVisible(false);
+          requestOpenHealthModal();
+          navigation.navigate('Settings');
+        }}
         onClose={() => setRequestsInboxVisible(false)}
       />
 

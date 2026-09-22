@@ -2,6 +2,7 @@ import {
   addDaysToDateOnly,
   buildNextRecurringTask,
   getHealthTaskLifecycle,
+  getImportantHealthReminders,
   HEALTH_DUE_SOON_DAYS,
   HEALTH_OVERDUE_NUDGE_DAYS_AFTER,
   HEALTH_TASK_CATEGORIES,
@@ -81,6 +82,36 @@ describe('summarizeHealthTasksForHome', () => {
 
   it('returns zero counts for an empty or all-completed dog', () => {
     expect(summarizeHealthTasksForHome([], now)).toEqual({ overdueCount: 0, dueSoonCount: 0 });
+  });
+});
+
+describe('getImportantHealthReminders', () => {
+  const now = new Date('2026-06-15T12:00:00.000Z');
+
+  it('includes overdue, due-today, and due-soon tasks, excluding completed and far-future ones', () => {
+    const tasks: HealthTask[] = [
+      { ...baseTask, id: 't-overdue', dueDate: '2026-06-10' },
+      { ...baseTask, id: 't-due-today', dueDate: '2026-06-15' },
+      { ...baseTask, id: 't-due-soon', dueDate: addDaysToDateOnly('2026-06-15', HEALTH_DUE_SOON_DAYS) },
+      { ...baseTask, id: 't-far-future', dueDate: addDaysToDateOnly('2026-06-15', HEALTH_DUE_SOON_DAYS + 1) },
+      { ...baseTask, id: 't-completed', dueDate: '2026-06-05', completedAt: '2026-06-05T00:00:00.000Z' },
+    ];
+    expect(getImportantHealthReminders(tasks, now).map((t) => t.id)).toEqual(['t-overdue', 't-due-today', 't-due-soon']);
+  });
+
+  it('sorts most-urgent-first: overdue, then due today, then due-soon, each by dueDate ascending', () => {
+    const tasks: HealthTask[] = [
+      { ...baseTask, id: 'soon-2', dueDate: addDaysToDateOnly('2026-06-15', 2) },
+      { ...baseTask, id: 'overdue-1', dueDate: '2026-06-14' },
+      { ...baseTask, id: 'today', dueDate: '2026-06-15' },
+      { ...baseTask, id: 'overdue-5', dueDate: '2026-06-10' },
+      { ...baseTask, id: 'soon-1', dueDate: addDaysToDateOnly('2026-06-15', 1) },
+    ];
+    expect(getImportantHealthReminders(tasks, now).map((t) => t.id)).toEqual(['overdue-5', 'overdue-1', 'today', 'soon-1', 'soon-2']);
+  });
+
+  it('returns [] for an empty or all-completed/far-future dog', () => {
+    expect(getImportantHealthReminders([], now)).toEqual([]);
   });
 });
 

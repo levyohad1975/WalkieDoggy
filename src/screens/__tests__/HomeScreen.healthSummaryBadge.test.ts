@@ -17,7 +17,7 @@ describe('HomeScreen surfaces a Health & Grooming summary badge (structural)', (
   });
 
   it('computes the summary via the shared summarizeHealthTasksForHome (never re-implements the overdue/due-soon math)', () => {
-    expect(source).toMatch(/import \{ summarizeHealthTasksForHome \} from '\.\.\/logic\/healthTasks';/);
+    expect(source).toMatch(/import \{ getImportantHealthReminders, summarizeHealthTasksForHome \} from '\.\.\/logic\/healthTasks';/);
     expect(source).toMatch(/summarizeHealthTasksForHome\(healthTasks\)/);
   });
 
