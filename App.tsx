@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, AppState, Pressable, StyleSheet } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Platform, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from './src/store/authStore';
@@ -257,9 +257,22 @@ export default function App() {
   const isSystemAdmin = useSystemAdminStore((s) => s.isSystemAdmin);
   const refreshSystemAdmin = useSystemAdminStore((s) => s.refresh);
   const [systemAdminOpen, setSystemAdminOpen] = useState(false);
+  const [showIosInstallPrompt, setShowIosInstallPrompt] = useState(false);
   useEffect(() => {
     if (hydrated) void refreshSystemAdmin();
   }, [hydrated, refreshSystemAdmin]);
+
+  useEffect(() => {
+    if (!hydrated || Platform.OS !== 'web' || typeof navigator === 'undefined' || typeof window === 'undefined') return;
+    const nav = navigator as typeof navigator & { standalone?: boolean };
+    const isIos = /iphone|ipad|ipod/i.test(nav.userAgent) || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1);
+    const isStandalone = Boolean(window.matchMedia?.('(display-mode: standalone)').matches || nav.standalone === true);
+    if (!isIos || isStandalone) return;
+    const key = 'walkie-ios-install-prompt-seen';
+    if (window.sessionStorage?.getItem(key)) return;
+    window.sessionStorage?.setItem(key, '1');
+    setShowIosInstallPrompt(true);
+  }, [hydrated]);
 
   // Platform admins must not be forced through family onboarding. When the
   // authenticated identity is a System Admin and this device has no active
@@ -343,6 +356,20 @@ export default function App() {
       ) : (
         <>
           <StatusBar style="dark" />
+          {showIosInstallPrompt ? (
+            <Pressable style={styles.installPromptBackdrop} onPress={() => setShowIosInstallPrompt(false)}>
+              <Pressable style={styles.installPromptCard} onPress={(event) => event.stopPropagation()}>
+                <RtlText style={styles.installPromptTitle}>הוסיפו את Walkie Doggy למסך הבית</RtlText>
+                <RtlText style={styles.installPromptText}>כך תוכלו לפתוח את Walkie Doggy כמו אפליקציה ולקבל תזכורות גם כשהאתר סגור.</RtlText>
+                <RtlText style={styles.installPromptStep}>1. לחצו על כפתור השיתוף של Safari.</RtlText>
+                <RtlText style={styles.installPromptStep}>2. בחרו ״הוספה למסך הבית״.</RtlText>
+                <RtlText style={styles.installPromptStep}>3. פתחו את Walkie Doggy מהסמל החדש.</RtlText>
+                <Pressable style={styles.installPromptButton} onPress={() => setShowIosInstallPrompt(false)} accessibilityRole="button">
+                  <RtlText style={styles.installPromptButtonText}>הבנתי</RtlText>
+                </Pressable>
+              </Pressable>
+            </Pressable>
+          ) : null}
           {shouldEnterSystemAdminDirectly ? (
             <SystemAdminScreen visible onClose={() => undefined} />
           ) : needsFamilyOnboarding ? (
@@ -401,4 +428,11 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   systemAdminEntryText: { fontSize: 20 },
+  installPromptBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: '#00000055', alignItems: 'center', justifyContent: 'center', padding: 24, zIndex: 1000 },
+  installPromptCard: { width: '100%', maxWidth: 420, backgroundColor: colors.surface, borderRadius: 20, padding: 22, gap: 10 },
+  installPromptTitle: { fontSize: 20, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
+  installPromptText: { fontSize: 15, color: colors.textSecondary, textAlign: 'right', lineHeight: 22, marginBottom: 4 },
+  installPromptStep: { fontSize: 14, color: colors.textPrimary, textAlign: 'right', lineHeight: 21 },
+  installPromptButton: { marginTop: 8, minHeight: 46, borderRadius: 14, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  installPromptButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
 });
