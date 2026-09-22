@@ -28,12 +28,21 @@ export function RemindersModal({
 }: RemindersModalProps) {
   const [webPushStatus, setWebPushStatus] = useState<WebPushStatus>('default');
   const [webPushBusy, setWebPushBusy] = useState(false);
+  const [iosSafariNeedsInstall, setIosSafariNeedsInstall] = useState(false);
 
   useEffect(() => {
     if (!visible || Platform.OS !== 'web') {
       return;
     }
 
+    const nav = typeof navigator !== 'undefined' ? navigator : null;
+    const win = typeof window !== 'undefined' ? window : null;
+    const isIos = Boolean(nav && /iphone|ipad|ipod/i.test(nav.userAgent));
+    const isStandalone = Boolean(
+      win?.matchMedia?.('(display-mode: standalone)').matches ||
+      (nav as any)?.standalone === true
+    );
+    setIosSafariNeedsInstall(isIos && !isStandalone);
     void getWebPushStatus().then(setWebPushStatus);
   }, [visible]);
 
@@ -82,25 +91,33 @@ export function RemindersModal({
     <RtlText style={styles.webPushTitle}>התראות במכשיר הזה</RtlText>
 
     <RtlText style={styles.webPushText}>
-      {webPushStatus === 'subscribed'
-        ? 'ההתראות פעילות במכשיר הזה.'
-        : webPushStatus === 'denied'
-          ? 'ההתראות חסומות בהגדרות הדפדפן או המכשיר.'
-          : webPushStatus === 'unsupported'
-            ? 'המכשיר או הדפדפן הזה אינם תומכים ב-Web Push.'
-            : 'אפשר לקבל התראות גם כשהאפליקציה אינה פתוחה.'}
+      {iosSafariNeedsInstall
+        ? 'באייפון, כדי לקבל תזכורות גם כשהאתר סגור, הוסיפו את Walkie Doggy למסך הבית ואז פתחו אותו משם.'
+        : webPushStatus === 'subscribed'
+          ? 'ההתראות פעילות במכשיר הזה.'
+          : webPushStatus === 'denied'
+            ? 'ההתראות חסומות בהגדרות הדפדפן או המכשיר.'
+            : webPushStatus === 'unsupported'
+              ? 'המכשיר או הדפדפן הזה אינם תומכים ב-Web Push.'
+              : 'אפשר לקבל התראות גם כשהאפליקציה אינה פתוחה.'}
     </RtlText>
 
-    {webPushStatus !== 'subscribed' &&
+    {iosSafariNeedsInstall ? (
+      <View style={styles.installGuide}>
+        <RtlText style={styles.installGuideStep}>1. לחצו על כפתור השיתוף של Safari.</RtlText>
+        <RtlText style={styles.installGuideStep}>2. בחרו ״הוספה למסך הבית״.</RtlText>
+        <RtlText style={styles.installGuideStep}>3. פתחו את Walkie Doggy ממסך הבית והפעילו התראות.</RtlText>
+      </View>
+    ) : webPushStatus !== 'subscribed' &&
       webPushStatus !== 'denied' &&
-      webPushStatus !== 'unsupported' && (
+      webPushStatus !== 'unsupported' ? (
         <Button
           label={webPushBusy ? 'מפעיל התראות...' : 'אפשר התראות'}
           onPress={handleEnableWebPush}
           disabled={webPushBusy}
           style={styles.webPushButton}
         />
-      )}
+      ) : null}
   </View>
 )}
             {users
@@ -164,6 +181,15 @@ webPushText: {
   lineHeight: typography.cardTitle.lineHeight,
 },
 
+installGuide: {
+  marginTop: 10,
+  gap: 5,
+},
+installGuideStep: {
+  fontSize: 13,
+  color: colors.textPrimary,
+  textAlign: 'right',
+},
 webPushButton: {
   marginTop: 10,
 },  
