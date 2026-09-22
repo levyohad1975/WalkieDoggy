@@ -102,16 +102,6 @@ jobs:
               "-- Auto-generated for this isolated rehearsal run only. Never committed.",
               "-- See the workflow step that generated this file for the full rationale.",
               "",
-              "-- 0025_walk_reminder_scheduler.sql defines due_walk_reminders()",
-              "-- (a `language sql` function) before family_admin_profile_ids(),",
-              "-- which its own body calls -- SQL-language functions are eagerly",
-              "-- planned at CREATE time (unlike plpgsql), so Postgres rejects the",
-              "-- forward reference by default. Confirmed directly against real",
-              "-- Postgres: `check_function_bodies = off` (a documented, standard",
-              "-- Postgres GUC for exactly this ordering situation) fixes it. This",
-              "-- is a session-level SET (not SET LOCAL) so it persists across the",
-              "-- rest of this single-session migration replay, including 0025.",
-              "set check_function_bodies = off;",
           ]
           for name, table in seen:
               if table == 'storage.objects' or table in existing_tables:
@@ -164,6 +154,32 @@ jobs:
 
       - name: Start isolated Supabase stack
         run: supabase start -x studio,imgproxy,storage-api,realtime,edge-runtime,logflare,vector,supavisor
+
+      - name: Disable eager function-body checking server-wide (rehearsal-only, real repo file unaffected)
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          # 0025_walk_reminder_scheduler.sql defines due_walk_reminders() (a
+          # `language sql` function, eagerly planned at CREATE time -- unlike
+          # plpgsql, which defers) before family_admin_profile_ids(), which
+          # its own body calls. Postgres rejects that forward reference
+          # unless check_function_bodies is off; a session-level `set` as
+          # the first statement of the generated guard migration did NOT
+          # persist through to 0025 in a real run (confirmed directly --
+          # `supabase db reset --local` evidently does not keep every
+          # migration file on one single session/connection the way a
+          # literal `cat file1 file2 ... | psql` replay does, even though
+          # its own log output never shows an explicit reconnect between
+          # files). ALTER SYSTEM sets a server-wide default for every NEW
+          # connection on this already-running Postgres instance regardless
+          # of per-file connection behavior, and survives `db reset`
+          # dropping/recreating the database itself since the server
+          # process is not restarted -- only `supabase stop` at the end of
+          # this job ever tears down the server.
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 \
+            -c "alter system set check_function_bodies = off;" \
+            -c "select pg_reload_conf();"
 
       - name: Replay the FULL real migration chain (00000 base + 0001-0048) from empty
         run: supabase db reset --local
