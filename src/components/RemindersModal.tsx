@@ -28,14 +28,41 @@ export function RemindersModal({
 }: RemindersModalProps) {
   const [webPushStatus, setWebPushStatus] = useState<WebPushStatus>('default');
   const [webPushBusy, setWebPushBusy] = useState(false);
+  const [iosSafariNeedsInstall, setIosSafariNeedsInstall] = useState(false);
+  const [androidNeedsInstall, setAndroidNeedsInstall] = useState(false);
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
 
   useEffect(() => {
     if (!visible || Platform.OS !== 'web') {
       return;
     }
 
+    const nav = typeof navigator !== 'undefined' ? navigator : null;
+    const win = typeof window !== 'undefined' ? window : null;
+    const isIos = Boolean(nav && /iphone|ipad|ipod/i.test(nav.userAgent));
+    const isStandalone = Boolean(
+      win?.matchMedia?.('(display-mode: standalone)').matches ||
+      (nav as any)?.standalone === true
+    );
+    const isAndroid = Boolean(nav && /android/i.test(nav.userAgent));
+    setIosSafariNeedsInstall(isIos && !isStandalone);
+    setAndroidNeedsInstall(isAndroid && !isStandalone);
     void getWebPushStatus().then(setWebPushStatus);
+
+    const handleBeforeInstallPrompt = (event: any) => {
+      event.preventDefault();
+      setInstallPrompt(event);
+    };
+    win?.addEventListener?.('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => win?.removeEventListener?.('beforeinstallprompt', handleBeforeInstallPrompt);
   }, [visible]);
+
+  const handleInstallAndroid = async () => {
+    if (!installPrompt) return;
+    await installPrompt.prompt();
+    await installPrompt.userChoice;
+    setInstallPrompt(null);
+  };
 
   const handleEnableWebPush = async () => {
     try {
@@ -82,25 +109,47 @@ export function RemindersModal({
     <RtlText style={styles.webPushTitle}>התראות במכשיר הזה</RtlText>
 
     <RtlText style={styles.webPushText}>
-      {webPushStatus === 'subscribed'
-        ? 'ההתראות פעילות במכשיר הזה.'
-        : webPushStatus === 'denied'
-          ? 'ההתראות חסומות בהגדרות הדפדפן או המכשיר.'
-          : webPushStatus === 'unsupported'
-            ? 'המכשיר או הדפדפן הזה אינם תומכים ב-Web Push.'
-            : 'אפשר לקבל התראות גם כשהאפליקציה אינה פתוחה.'}
+      {iosSafariNeedsInstall
+        ? 'באייפון, כדי לקבל תזכורות גם כשהאתר סגור, הוסיפו את Walkie Doggy למסך הבית ואז פתחו אותו משם.'
+        : androidNeedsInstall
+          ? 'כדי לקבל חוויה מלאה ותזכורות אמינות, התקינו את Walkie Doggy במסך הבית.'
+        : webPushStatus === 'subscribed'
+          ? 'ההתראות פעילות במכשיר הזה.'
+          : webPushStatus === 'denied'
+            ? 'ההתראות חסומות בהגדרות הדפדפן או המכשיר.'
+            : webPushStatus === 'unsupported'
+              ? 'המכשיר או הדפדפן הזה אינם תומכים ב-Web Push.'
+              : 'אפשר לקבל התראות גם כשהאפליקציה אינה פתוחה.'}
     </RtlText>
 
-    {webPushStatus !== 'subscribed' &&
+    {iosSafariNeedsInstall ? (
+      <View style={styles.installGuide}>
+        <RtlText style={styles.installGuideStep}>1. לחצו על כפתור השיתוף של Safari.</RtlText>
+        <RtlText style={styles.installGuideStep}>2. בחרו ״הוספה למסך הבית״.</RtlText>
+        <RtlText style={styles.installGuideStep}>3. פתחו את Walkie Doggy ממסך הבית והפעילו התראות.</RtlText>
+      </View>
+    ) : androidNeedsInstall ? (
+      <View style={styles.installGuide}>
+        {installPrompt ? (
+          <Button label="התקינו את Walkie Doggy" onPress={handleInstallAndroid} style={styles.webPushButton} />
+        ) : (
+          <>
+            <RtlText style={styles.installGuideStep}>1. פתחו את תפריט ⋮ של Chrome.</RtlText>
+            <RtlText style={styles.installGuideStep}>2. בחרו ״התקנת האפליקציה״ או ״הוספה למסך הבית״.</RtlText>
+            <RtlText style={styles.installGuideStep}>3. פתחו את Walkie Doggy מהסמל החדש והפעילו התראות.</RtlText>
+          </>
+        )}
+      </View>
+    ) : webPushStatus !== 'subscribed' &&
       webPushStatus !== 'denied' &&
-      webPushStatus !== 'unsupported' && (
+      webPushStatus !== 'unsupported' ? (
         <Button
           label={webPushBusy ? 'מפעיל התראות...' : 'אפשר התראות'}
           onPress={handleEnableWebPush}
           disabled={webPushBusy}
           style={styles.webPushButton}
         />
-      )}
+      ) : null}
   </View>
 )}
             {users
@@ -164,6 +213,15 @@ webPushText: {
   lineHeight: typography.cardTitle.lineHeight,
 },
 
+installGuide: {
+  marginTop: 10,
+  gap: 5,
+},
+installGuideStep: {
+  fontSize: 13,
+  color: colors.textPrimary,
+  textAlign: 'right',
+},
 webPushButton: {
   marginTop: 10,
 },  

@@ -74,6 +74,7 @@ describe('lib/systemAdmin — Supabase mode', () => {
           admin_names: ['דנה'],
           dog_name: 'רקסי',
           status: 'active',
+          verified_email: 'dana@example.com',
         },
       ],
       error: null,
@@ -83,7 +84,7 @@ describe('lib/systemAdmin — Supabase mode', () => {
 
     const result = await listSystemAdminFamilies('לוי');
 
-    expect(rpc).toHaveBeenCalledWith('system_admin_list_families', { p_search: 'לוי' });
+    expect(rpc).toHaveBeenCalledWith('system_admin_list_families_v2', { p_search: 'לוי' });
     expect(result).toEqual([
       {
         familyId: 'fam-1',
@@ -94,6 +95,7 @@ describe('lib/systemAdmin — Supabase mode', () => {
         adminNames: ['דנה'],
         dogName: 'רקסי',
         status: 'active',
+        verifiedEmail: 'dana@example.com',
       },
     ]);
   });
@@ -120,10 +122,10 @@ describe('lib/systemAdmin — Supabase mode', () => {
     const { listSystemAdminFamilies } = require('../systemAdmin');
 
     await listSystemAdminFamilies();
-    expect(rpc).toHaveBeenCalledWith('system_admin_list_families', { p_search: null });
+    expect(rpc).toHaveBeenCalledWith('system_admin_list_families_v2', { p_search: null });
 
     await listSystemAdminFamilies('   ');
-    expect(rpc).toHaveBeenLastCalledWith('system_admin_list_families', { p_search: null });
+    expect(rpc).toHaveBeenLastCalledWith('system_admin_list_families_v2', { p_search: null });
   });
 
   it('two families with the SAME name are both returned as distinct rows, distinguished by inviteCode — duplicate family names must work', async () => {

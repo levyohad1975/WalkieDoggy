@@ -24,9 +24,9 @@ describe('App.tsx — System Admin entry point sits OUTSIDE family/auth branchin
   });
 
   it('the System Admin entry Pressable and SystemAdminScreen are rendered in the same fragment AFTER the needsFamilyOnboarding/currentUserId/LoginScreen ternary, never inside one of its branches', () => {
-    const ternaryIdx = source.indexOf('{needsFamilyOnboarding ? (');
-    const entryIdx = source.indexOf('{isSystemAdmin ? (');
-    const screenIdx = source.indexOf('<SystemAdminScreen');
+    const ternaryIdx = source.indexOf('{shouldEnterSystemAdminDirectly ? (');
+    const entryIdx = source.indexOf('{isSystemAdmin && !systemObserverActive ? (');
+    const screenIdx = source.indexOf('<SystemAdminScreen', ternaryIdx);
     expect(ternaryIdx).toBeGreaterThan(-1);
     expect(entryIdx).toBeGreaterThan(ternaryIdx);
     expect(screenIdx).toBeGreaterThan(ternaryIdx);
@@ -38,4 +38,13 @@ describe('App.tsx — System Admin entry point sits OUTSIDE family/auth branchin
     const adminBlock = source.slice(adminBlockStart, adminBlockEnd);
     expect(adminBlock).not.toMatch(/setFamilyId|familyId\s*=/);
   });
+  it('routes a standalone System Admin directly to the platform console before family onboarding', () => {
+    expect(source).toMatch(/const shouldEnterSystemAdminDirectly =/);
+    const directIdx = source.indexOf('{shouldEnterSystemAdminDirectly ? (');
+    const onboardingIdx = source.indexOf(': needsFamilyOnboarding ? (');
+    expect(directIdx).toBeGreaterThan(-1);
+    expect(onboardingIdx).toBeGreaterThan(directIdx);
+    expect(source).toMatch(/isSystemAdmin && !familyId && !currentUserId && !systemObserverActive/);
+  });
+
 });

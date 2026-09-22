@@ -27,6 +27,8 @@ import { RequestsInboxModal } from '../components/RequestsInboxModal';
 import { Button } from '../components/Button';
 import { WalkCompletionCelebration } from '../components/WalkCompletionCelebration';
 import { ReminderMascotPrompt } from '../components/ReminderMascotPrompt';
+import { DogProfileModal } from '../components/DogProfileModal';
+import { WalkieMascot } from '../components/WalkieMascot';
 import { selectWalkCompletionCelebration, type CompletionCelebration } from '../logic/walkCompletionCelebration';
 import { DEMO_FAMILY } from '../data/demoData';
 import { isSupabaseConfigured } from '../lib/supabase';
@@ -46,6 +48,7 @@ import type { RootTabParamList } from '../navigation/RootNavigator';
 
 export function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
+  const [dogProfileVisible, setDogProfileVisible] = useState(false);
   const currentUserId = useAuthStore((s) => s.currentUserId)!;
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const effectiveRole = useEffectiveFamilyRole();
@@ -64,6 +67,8 @@ export function HomeScreen() {
     error: scheduleError,
     actionError,
     load: loadSchedule,
+    startWalk,
+    finishWalk,
     markDone,
     swap,
     swapTwoWalks,
@@ -463,22 +468,23 @@ export function HomeScreen() {
       >
         <View style={styles.topRow}>
           <Image
-            // BATCH 4 (item C — branding/onboarding): the previous asset had
-            // an opaque near-white background baked into its pixels (see
-            // the Batch 4 report) — against this screen's cream background
-            // it rendered as a visible white rectangle. This is a
-            // transparency-processed copy of the SAME wordmark artwork (no
-            // new/invented asset), produced from the official source — see
-            // the report for exactly how.
             source={require('../../assets/walkie-doggy-link-wordmark-transparent.png')}
             style={styles.brandWordmark}
             resizeMode="contain"
             accessibilityLabel="Walkie Doggy Link"
           />
+          <Pressable
+            onPress={() => setDogProfileVisible(true)}
+            style={styles.mascotHeaderButton}
+            accessibilityRole="button"
+            accessibilityLabel="פתיחת פרופיל הכלב"
+          >
+            <WalkieMascot state="idle" size={38} accessibilityLabel="Walkie Doggy" />
+          </Pressable>
           {isSupabaseConfigured ? (
             <Pressable
               onPress={openRequestsInbox}
-              style={[styles.notificationButton, Platform.OS === 'web' && styles.webNotificationButton]}
+              style={styles.notificationButton}
               accessibilityRole="button"
               accessibilityLabel={bellBadgeCount > 0 ? `התראות בקשות: ${bellBadgeCount}` : 'בקשות'}
             >
@@ -492,19 +498,33 @@ export function HomeScreen() {
           ) : null}
         </View>
 
-        {nextWalk ? (
+        <View style={styles.nextWalkLift}>
+          {nextWalk ? (
           <NextWalkCard
             walk={nextWalk}
             responsible={usersById[nextWalk.responsibleUserId]}
             currentUserId={effectiveUserId}
             dogName={dog?.name ?? 'הכלב/ה'}
             dogPhotoUrl={dog?.photoUrl}
+            showDogPhoto
+            showMascot={false}
             dogSex={dog?.sex}
             requestStatusLine={
               computeWalkRequestStatusLine(nextWalk, swapRequests, timeChangeRequests, walksById, new Date(), effectiveUserId)?.text
             }
             primaryLabel={isOverdue(nextWalk) ? 'ממתין לעדכון' : undefined}
             onMarkDone={() => setCompleteWalkId(nextWalk.id)}
+            activeStartedAt={nextWalk.status === 'in_progress' ? nextWalk.startedAt ?? null : null}
+            onStartWalk={
+              effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId
+                ? () => void startWalk(nextWalk.id)
+                : undefined
+            }
+            onEndWalk={
+              nextWalk.status === 'in_progress' && (effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId)
+                ? () => setCompleteWalkId(nextWalk.id)
+                : undefined
+            }
             // AUTHORIZATION CORRECTION: ✓/✕ resolution is admin-or-
             // currently-responsible-user only (migration 0012) — not "any
             // member" as an earlier pass had it.
@@ -543,6 +563,7 @@ export function HomeScreen() {
             <EmptyState emoji="🎉" title="אין טיולים ממתינים" subtitle="אפשר להוסיף שעות טיול במסך לוח הזמנים" />
           </View>
         )}
+        </View>
 
         <Button
           label="+ הוסף טיול שבוצע"
@@ -555,7 +576,7 @@ export function HomeScreen() {
         {lastWalk ? (
           <View style={styles.section}>
             <View style={styles.sectionTitlePhysicalRight}>
-              <RtlText style={styles.sectionTitle}>הטיול האחרון</RtlText>
+              <RtlText style={styles.sectionTitle}>היסטוריה אחרונה</RtlText>
             </View>
 
             {(() => {
@@ -724,14 +745,16 @@ export function HomeScreen() {
         scheduledTime={completeWalkId ? walksById[completeWalkId]?.scheduledTime : undefined}
         users={activeUsers}
         defaultUserId={effectiveUserId}
-        onConfirm={async ({ completedByUserId, hadPee, hadPoop, note }) => {
+        onConfirm={async ({ completedByUserId, hadPee, hadPoop, note, completedAt }) => {
           const walkId = completeWalkId;
           const walkBeingCompleted = walkId ? walksById[walkId] : undefined;
           setCompleteWalkId(null);
           if (!walkId) return;
           // markDone() itself refuses while Test Mode is active (see
           // scheduleStore.ts) — no separate guard needed here.
-          const completed = await markDone(walkId, completedByUserId, { hadPee, hadPoop, note: note || undefined });
+          const completed = walkBeingCompleted?.status === 'in_progress'
+            ? await finishWalk(walkId, completedByUserId, { hadPee, hadPoop, note: note || undefined, completedAt })
+            : await markDone(walkId, completedByUserId, { hadPee, hadPoop, note: note || undefined, completedAt });
           // BATCH 4 (C2/C3/C8) — success mascot + message, best-effort only:
           // if anything about the walk/dog/user lookups above is somehow
           // unavailable, selectMessage()'s own safe fallbacks (see
@@ -993,6 +1016,7 @@ export function HomeScreen() {
         onConfirm={clearRequestsError}
         onCancel={clearRequestsError}
       />
+      <DogProfileModal visible={dogProfileVisible} onClose={() => setDogProfileVisible(false)} />
     </SafeAreaView>
   );
 }
@@ -1000,10 +1024,11 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
-  content: { padding: spacing.xl, gap: spacing.xl, paddingBottom: spacing.xxxl, width: '100%' },
-  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: spacing.lg },
+  content: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: 14, paddingBottom: spacing.xxxl, width: '100%' },
+  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: 14 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
-  unplannedButton: { marginTop: -4 },
+  nextWalkLift: { marginTop: 0, zIndex: 1, paddingHorizontal: 0 },
+  unplannedButton: { marginTop: -2 },
   testModeBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1016,10 +1041,38 @@ const styles = StyleSheet.create({
   testModeBannerText: { flex: 1, color: '#fff', fontWeight: '700', fontSize: typography.meta.fontSize, textAlign: 'right' },
   testModeBannerButton: { backgroundColor: '#ffffff33', borderRadius: radii.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   testModeBannerButtonText: { color: '#fff', fontWeight: '700', fontSize: 12 },
-  topRow: { position: 'relative', minHeight: 58, alignItems: 'center', justifyContent: 'center' },
-  brandWordmark: { width: 184, height: 58 },
-  notificationButton: { position: 'absolute', right: 0, top: 11, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
-  webNotificationButton: { left: 0, right: undefined },
+  topRow: { position: 'relative', minHeight: 52, alignItems: 'center', justifyContent: 'center' },
+  brandWordmark: { width: 132, height: 42 },
+  mascotHeaderButton: { position: 'absolute', right: 0, top: 6, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  dogSummaryCard: {
+    width: '100%',
+    minHeight: 112,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    padding: 10,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  dogSummaryMedia: {
+    width: 92,
+    height: 92,
+    borderRadius: 22,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#CFEDE5',
+    flexShrink: 0,
+  },
+  dogSummaryImage: { width: '100%', height: '100%' },
+  dogSummaryCopy: { flex: 1, alignItems: 'flex-end', justifyContent: 'center', gap: 2, paddingHorizontal: 4 },
+  dogSummaryEyebrow: { ...typography.meta, color: colors.textSecondary, fontWeight: '700', textAlign: 'right' },
+  dogSummaryName: { fontSize: 24, lineHeight: 30, color: colors.textPrimary, fontWeight: '900', textAlign: 'right' },
+  dogSummaryLink: { ...typography.meta, color: colors.primaryDark, fontWeight: '900', textAlign: 'right', marginTop: 3 },
+  notificationButton: { position: 'absolute', left: 0, top: 11, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
   notificationIcon: { fontSize: 18 },
   requestsCountBadge: { minWidth: spacing.xl, height: spacing.xl, borderRadius: radii.sm, paddingHorizontal: spacing.xs, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryDark },
   requestsCountText: { fontSize: 11, fontWeight: '800', color: '#fff' },

@@ -24,7 +24,45 @@ export class OfflineFirstRepository implements Repository {
   private local = new LocalRepository();
   private queue = new SyncQueue();
 
-  constructor(private remote: Repository | null) {}
+  // start_walk()/finish_walk() (0048) are server-authoritative,
+  // authorization-checked RPCs (admin-or-responsible-member only) — the
+  // same category deleteFamilyMember below is: no blind offline replay (a
+  // rejection, e.g. "walk is not pending", must reach the caller, not be
+  // silently swallowed by SyncQueue.flush()'s conflict recording). Assigned
+  // conditionally in the constructor, not as ordinary class methods, so
+  // `repository.startWalk`/`repository.finishWalk` are genuinely `undefined`
+  // in local/demo mode (no remote configured) — scheduleStore.ts's own
+  // `if (repository.startWalk)` capability check relies on that exact
+  // absence to fall back to its in-memory-only demo behavior; a class method
+  // that merely throws in demo mode would always be truthy and break that
+  // fallback instead of triggering it.
+  startWalk?: (walkId: string) => Promise<Walk>;
+  finishWalk?: (
+    walkId: string,
+    actualWalkerId: string,
+    details?: { hadPee?: boolean; hadPoop?: boolean; note?: string; completedAt?: string }
+  ) => Promise<Walk>;
+
+  constructor(private remote: Repository | null) {
+    if (this.remote) {
+      this.startWalk = async (walkId: string): Promise<Walk> => {
+        if (!(await this.isOnline())) {
+          throw new Error('startWalk requires an internet connection and cannot be queued offline');
+        }
+        const walk = await this.remote!.startWalk!(walkId);
+        await this.local.saveWalk(walk);
+        return walk;
+      };
+      this.finishWalk = async (walkId, actualWalkerId, details) => {
+        if (!(await this.isOnline())) {
+          throw new Error('finishWalk requires an internet connection and cannot be queued offline');
+        }
+        const walk = await this.remote!.finishWalk!(walkId, actualWalkerId, details);
+        await this.local.saveWalk(walk);
+        return walk;
+      };
+    }
+  }
 
   private async isOnline(): Promise<boolean> {
     if (!this.remote) return false;
@@ -221,6 +259,17 @@ export class OfflineFirstRepository implements Repository {
   async upsertDog(dog: Dog): Promise<void> {
     await this.local.upsertDog(dog);
     if (this.remote) {
+      // Make profile edits authoritative before another screen reloads the
+      // dog. Queue-only writes could let Home immediately fetch the older
+      // remote row and replace an optimistic photoUrl with a stale value.
+      if (await this.isOnline()) {
+        try {
+          await this.remote.upsertDog(dog);
+          return;
+        } catch {
+          // Preserve offline-first behaviour: retry through the sync queue.
+        }
+      }
       await this.queue.enqueue({ type: 'upsertDog', payload: dog });
       await this.trySync();
     }

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, AppState, Pressable, StyleSheet } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Platform, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from './src/store/authStore';
@@ -17,6 +17,7 @@ import { isSupabaseConfigured } from './src/lib/supabase';
 import { touchLastSeen } from './src/lib/requests';
 import { useRequestsStore } from './src/store/requestsStore';
 import { useScheduleStore, reconcileScheduleNotifications } from './src/store/scheduleStore';
+import { useFamilyStore } from './src/store/familyStore';
 
 // Reconciles local notifications against the currently loaded schedule store
 // state (A3's authoritative rule: notification content always comes from the
@@ -101,7 +102,17 @@ export function runForegroundSync(): Promise<void> {
 }
 
 async function runForegroundSyncOnce(): Promise<void> {
-  const { familyId, currentUserId } = useAuthStore.getState();
+  const { familyId, currentUserId, systemObserverActive } = useAuthStore.getState();
+  if (systemObserverActive) {
+    if (!familyId) return;
+    // Hidden observer mode is strictly read-only: refresh visible data only.
+    // Never flush queued writes, register presence, or reconcile notifications
+    // as the observed family.
+    await useFamilyStore.getState().load(familyId);
+    await useScheduleStore.getState().load(familyId);
+    if (isSupabaseConfigured) await useRequestsStore.getState().load();
+    return;
+  }
   if (!familyId || !currentUserId) return;
 
   // 1. Push this device's own queued writes.
@@ -224,12 +235,12 @@ export async function registerPushTokenAndReconcile(): Promise<void> {
 setSyncQueueActorGetter(() => useAuthStore.getState().currentUserId);
 
 export default function App() {
-  const { currentUserId, familyId, hydrated, restoreSession } = useAuthStore();
+  const { currentUserId, familyId, hydrated, restoreSession, systemObserverActive } = useAuthStore();
   // In Supabase (backend) mode, a device with no familyId yet hasn't
   // created/joined a family — show that onboarding before anything else.
   // Local/demo mode always has a familyId (the seeded demo family) and
   // never reaches this branch.
-  const needsFamilyOnboarding = isSupabaseConfigured && !familyId;
+  const needsFamilyOnboarding = isSupabaseConfigured && !familyId && !systemObserverActive;
 
   // BATCH 4 (item A — System Admin V1): "System Admin is a platform
   // identity, NOT automatically a Family Admin/member" (the brief's own
@@ -246,9 +257,27 @@ export default function App() {
   const isSystemAdmin = useSystemAdminStore((s) => s.isSystemAdmin);
   const refreshSystemAdmin = useSystemAdminStore((s) => s.refresh);
   const [systemAdminOpen, setSystemAdminOpen] = useState(false);
+  const [showIosInstallPrompt, setShowIosInstallPrompt] = useState(false);
   useEffect(() => {
     if (hydrated) void refreshSystemAdmin();
   }, [hydrated, refreshSystemAdmin]);
+
+  useEffect(() => {
+    if (!hydrated || Platform.OS !== 'web' || typeof navigator === 'undefined' || typeof window === 'undefined') return;
+    const nav = navigator as typeof navigator & { standalone?: boolean };
+    const isIos = /iphone|ipad|ipod/i.test(nav.userAgent) || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1);
+    const isStandalone = Boolean(window.matchMedia?.('(display-mode: standalone)').matches || nav.standalone === true);
+    if (!isIos || isStandalone) return;
+    setShowIosInstallPrompt(true);
+  }, [hydrated]);
+
+  // Platform admins must not be forced through family onboarding. When the
+  // authenticated identity is a System Admin and this device has no active
+  // family/persona, enter the platform console directly. A System Admin who
+  // also uses a family still keeps the normal family UI and can open the
+  // console from the header entry point.
+  const shouldEnterSystemAdminDirectly =
+    isSupabaseConfigured && isSystemAdmin && !familyId && !currentUserId && !systemObserverActive;
 
   // Section 10: remote request-push token registration — completely
   // separate from requestNotificationPermissions() below (that's the
@@ -266,10 +295,10 @@ export default function App() {
   // was known could otherwise survive, undeleted, once registration
   // completed).
   useEffect(() => {
-    if (currentUserId) {
+    if (currentUserId && !systemObserverActive) {
       void registerPushTokenAndReconcile();
     }
-  }, [currentUserId]);
+  }, [currentUserId, systemObserverActive]);
 
   useEffect(() => {
     // BUG 2 FIX (cold-start sync race): restoreSession() is now fully
@@ -324,9 +353,27 @@ export default function App() {
       ) : (
         <>
           <StatusBar style="dark" />
-          {needsFamilyOnboarding ? (
+          {showIosInstallPrompt ? (
+            <Pressable style={styles.installPromptBackdrop} onPress={() => setShowIosInstallPrompt(false)}>
+              <Pressable style={styles.installPromptCard} onPress={(event) => event.stopPropagation()}>
+                <RtlText style={styles.installPromptTitle}>בואו נוסיף את Walkie Doggy למסך הבית</RtlText>
+                <RtlText style={styles.installPromptText}>כך האפליקציה תהיה זמינה בלחיצה אחת ותוכל לקבל תזכורות גם כשהדפדפן סגור.</RtlText>
+                <RtlText style={styles.installPromptStep}>1️⃣ בתחתית Safari לחצו על כפתור השיתוף — הריבוע עם החץ כלפי מעלה ↑.</RtlText>
+                <RtlText style={styles.installPromptStep}>2️⃣ בתפריט שנפתח גללו ובחרו ״הוספה למסך הבית״.</RtlText>
+                <RtlText style={styles.installPromptStep}>3️⃣ במסך הבא לחצו ״הוסף״ בפינה העליונה.</RtlText>
+                <RtlText style={styles.installPromptStep}>4️⃣ חזרו למסך הבית ופתחו את Walkie Doggy מהאייקון החדש.</RtlText>
+                <RtlText style={styles.installPromptHint}>לאחר שתפתחו מהאייקון, נדריך אתכם גם בהפעלת ההתראות.</RtlText>
+                <Pressable style={styles.installPromptButton} onPress={() => setShowIosInstallPrompt(false)} accessibilityRole="button">
+                  <RtlText style={styles.installPromptButtonText}>הבנתי</RtlText>
+                </Pressable>
+              </Pressable>
+            </Pressable>
+          ) : null}
+          {shouldEnterSystemAdminDirectly ? (
+            <SystemAdminScreen visible onClose={() => undefined} />
+          ) : needsFamilyOnboarding ? (
             <FamilyOnboardingScreen />
-          ) : currentUserId ? (
+          ) : currentUserId || systemObserverActive ? (
             <RootNavigator />
           ) : (
             <LoginScreen />
@@ -339,7 +386,7 @@ export default function App() {
               turn only ever came from am_i_system_admin() — a fresh,
               server-side check of the real auth identity, not a locally
               cached/guessed value. */}
-          {isSystemAdmin ? (
+          {isSystemAdmin && !systemObserverActive ? (
             <Pressable
               onPress={() => setSystemAdminOpen(true)}
               style={styles.systemAdminEntry}
@@ -349,7 +396,9 @@ export default function App() {
               <RtlText style={styles.systemAdminEntryText}>🛡️</RtlText>
             </Pressable>
           ) : null}
-          <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} />
+          {!shouldEnterSystemAdminDirectly ? (
+            <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} />
+          ) : null}
         </>
       )}
     </SafeAreaProvider>
@@ -360,8 +409,8 @@ const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   systemAdminEntry: {
     position: 'absolute',
-    bottom: 18,
-    left: 18,
+    top: 14,
+    right: 18,
     width: 44,
     height: 44,
     borderRadius: 22,
@@ -375,6 +424,15 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
+    zIndex: 100,
   },
   systemAdminEntryText: { fontSize: 20 },
+  installPromptBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: '#00000055', alignItems: 'center', justifyContent: 'center', padding: 24, zIndex: 1000 },
+  installPromptCard: { width: '100%', maxWidth: 420, backgroundColor: colors.surface, borderRadius: 20, padding: 22, gap: 10 },
+  installPromptTitle: { fontSize: 20, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
+  installPromptText: { fontSize: 15, color: colors.textSecondary, textAlign: 'right', lineHeight: 22, marginBottom: 4 },
+  installPromptStep: { fontSize: 14, color: colors.textPrimary, textAlign: 'right', lineHeight: 22 },
+  installPromptHint: { fontSize: 13, fontWeight: '700', color: colors.primaryDark, textAlign: 'right', lineHeight: 20, marginTop: 4 },
+  installPromptButton: { marginTop: 8, minHeight: 46, borderRadius: 14, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  installPromptButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
 });

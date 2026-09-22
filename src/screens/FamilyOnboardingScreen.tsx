@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ImageBackground, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Image, ImageBackground, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
@@ -20,10 +20,9 @@ import { friendlyErrorMessage } from '../lib/errorMessages';
 import { Avatar } from '../components/Avatar';
 import { DogPhoto } from '../components/DogPhoto';
 import { WalkieMascot } from '../components/WalkieMascot';
-import { OnboardingMascotWink } from '../components/OnboardingMascotWink';
 import type { FamilyLookupResult } from '../types';
 
-type Mode = 'choose' | 'create' | 'join' | 'redeem';
+type Mode = 'choose' | 'recover' | 'create' | 'join' | 'redeem';
 
 /**
  * Shown once per device, only in Supabase (backend) mode, before this device
@@ -53,7 +52,22 @@ export function FamilyOnboardingScreen() {
   const retryPendingInviteRedemptionVerification = useAuthStore(
     (s) => s.retryPendingInviteRedemptionVerification
   );
-  const [mode, setMode] = useState<Mode>('choose');
+  const isInstalledWebApp = Platform.OS === 'web' && typeof window !== 'undefined' && Boolean(window.matchMedia?.('(display-mode: standalone)').matches || (typeof navigator !== 'undefined' && (navigator as typeof navigator & { standalone?: boolean }).standalone === true));
+  const [mode, setMode] = useState<Mode>(isInstalledWebApp ? 'recover' : 'choose');
+  const [showWelcomeWink, setShowWelcomeWink] = useState(false);
+
+  useEffect(() => {
+    if (mode !== 'choose') return;
+    let winkTimer: ReturnType<typeof setTimeout> | undefined;
+    const interval = setInterval(() => {
+      setShowWelcomeWink(true);
+      winkTimer = setTimeout(() => setShowWelcomeWink(false), 320);
+    }, 4200);
+    return () => {
+      clearInterval(interval);
+      if (winkTimer) clearTimeout(winkTimer);
+    };
+  }, [mode]);
 
   // --- create ---
   const [familyName, setFamilyName] = useState('');
@@ -131,6 +145,30 @@ export function FamilyOnboardingScreen() {
     }
   };
 
+  const recoverExistingFamily = async () => {
+    setVerifyingEmail(true);
+    setCreateError(null);
+    try {
+      const identity = await verifyAdminEmailOtp(adminEmail, verificationCode);
+      setVerifiedAdminEmail(identity.email);
+      const status = await getMyFamilyOnboardingStatus();
+      if (status?.approvalStatus === 'active') {
+        await setFamilyId(status.familyId);
+        return;
+      }
+      if (status?.approvalStatus === 'pending') {
+        setMode('create');
+        setPendingApprovalFamilyName(status.familyName);
+        return;
+      }
+      throw new Error('לא נמצאה משפחה פעילה המקושרת לכתובת הזו. אם הצטרפתם כבן משפחה, השתמשו בקוד או בקישור ההזמנה.');
+    } catch (e) {
+      setCreateError(friendlyErrorMessage(e));
+    } finally {
+      setVerifyingEmail(false);
+    }
+  };
+
   const submitCreate = async () => {
     if (!familyName.trim() || !verifiedAdminEmail) return;
     setCreating(true);
@@ -167,6 +205,11 @@ export function FamilyOnboardingScreen() {
     setJoinError(null);
     setFound(null);
     try {
+      // Family lookup is an authenticated RPC in backend mode. On a fresh
+      // browser/device there may be no Supabase session yet, so establish the
+      // persisted anonymous device session before looking up the invite code.
+      // confirmJoin() already did this, but lookup happens one step earlier.
+      await ensureAnonymousSession();
       const result = await findFamilyByInviteCode(trimmed);
       if (!result) setJoinError('לא נמצאה משפחה עם הקוד הזה — בדקו שהקוד הוקלד נכון');
       else setFound(result);
@@ -283,6 +326,39 @@ export function FamilyOnboardingScreen() {
     }
   };
 
+  if (mode === 'recover') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <WalkieMascot state="waiting" size={128} testID="onboarding-mascot-recover" />
+        <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">מחברים אותך למשפחה…</RtlText>
+        <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
+          פתחת את Walkie Doggy מהאייקון החדש. אין צורך ליצור את המשפחה מחדש. אם אתם מנהלי המשפחה, אמתו את כתובת הדוא״ל ששימשה ליצירתה ונשחזר את החיבור.
+        </RtlText>
+        <TextInput
+          value={adminEmail}
+          onChangeText={setAdminEmail}
+          placeholder="כתובת הדוא״ל של מנהל המשפחה"
+          accessibilityLabel="כתובת הדוא״ל של מנהל המשפחה"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          style={styles.input}
+          textAlign="right"
+        />
+        {!verificationSent ? (
+          <Button label={verifyingEmail ? 'שולח קוד…' : 'שלחו לי קוד אימות'} onPress={sendAdminVerification} disabled={verifyingEmail || !adminEmail.trim()} loading={verifyingEmail} style={styles.wideButton} />
+        ) : (
+          <>
+            <TextInput value={verificationCode} onChangeText={setVerificationCode} placeholder="קוד האימות שקיבלתם במייל" accessibilityLabel="קוד האימות שקיבלתם במייל" keyboardType="number-pad" style={styles.input} textAlign="right" />
+            <Button label={verifyingEmail ? 'מחבר למשפחה…' : 'המשך למשפחה שלי'} onPress={recoverExistingFamily} disabled={verifyingEmail || !verificationCode.trim()} loading={verifyingEmail} style={styles.wideButton} />
+          </>
+        )}
+        {createError ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{createError}</RtlText> : null}
+        <Button label="אני בן משפחה — יש לי הזמנה" variant="secondary" onPress={() => setMode('redeem')} style={styles.wideButton} />
+        <Button label="זו באמת משפחה חדשה" variant="secondary" onPress={() => setMode('create')} style={styles.wideButton} />
+      </SafeAreaView>
+    );
+  }
+
   if (mode === 'choose' && pendingInviteRedemption) {
     // Round 4 — a redemption already succeeded server-side but this device
     // hasn't confirmed it yet (see authStore.ts). Deliberately NOT the
@@ -292,8 +368,8 @@ export function FamilyOnboardingScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <WalkieMascot state="waiting" size={128} testID="onboarding-mascot-verifying" />
-        <RtlText style={styles.title} accessibilityRole="header">ממתין לאימות</RtlText>
-        <RtlText style={styles.subtitle}>
+        <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">ממתין לאימות</RtlText>
+        <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
           ההצטרפות למשפחה כבר בוצעה בהצלחה, אך לא הצלחנו לאמת זאת במכשיר הזה כרגע — כנראה בעיית חיבור. אין
           צורך להזין את ההזמנה מחדש.
         </RtlText>
@@ -310,46 +386,36 @@ export function FamilyOnboardingScreen() {
 
   if (mode === 'choose') {
     return (
-      <SafeAreaView style={styles.container}>
-        {/* BATCH 4 (item C — branding/onboarding): before a family exists,
-            Walkie Doggy IS the brand — the official mascot (see the Batch 4
-            report for the source asset) replaces the generic 🐶 emoji that
-            was here before. Given an explicit accessibilityLabel since this
-            IS the meaningful content on this screen, not a decorative
-            corner badge. */}
-        <View style={styles.heroGlow} accessibilityElementsHidden />
-        <View style={styles.sunsetBand} accessibilityElementsHidden />
-        <View style={[styles.landingShell, isDesktop && styles.landingShellDesktop]}>
-          <View style={[styles.heroMediaColumn, isDesktop && styles.heroMediaColumnDesktop]}>
-            <ImageBackground source={require("../../assets/onboarding-hero.png")} style={[styles.heroPhoto, isDesktop && styles.heroPhotoDesktop]} imageStyle={styles.heroPhotoImage} accessibilityLabel="כלב ומשפחה בטיול בטבע">
-              <View style={styles.photoCaption}><RtlText style={styles.photoCaptionText}>יוצאים יחד. חוזרים שמחים.</RtlText></View>
-            </ImageBackground>
-          </View>
-          <View style={[styles.heroContentColumn, isDesktop && styles.heroContentColumnDesktop]}>
-            <OnboardingMascotWink size={isDesktop ? 116 : 88} />
-            <RtlText style={[styles.eyebrow, isDesktop && styles.textRight]}>WALKIE DOGGY LINK</RtlText>
-            <RtlText style={[styles.title, isDesktop && styles.heroTitleDesktop]} accessibilityRole="header">כל המשפחה.{`\n`}טיול אחד מסודר.</RtlText>
-            <RtlText style={[styles.heroSubtitle, isDesktop && styles.heroSubtitleDesktop]}>Walkie Doggy מרכז את התורנויות, העדכונים והטיולים במקום אחד — פשוט, ברור ומשפחתי.</RtlText>
-            <View style={styles.benefitRow}>
-              <View style={styles.benefitPill}><RtlText style={styles.benefitText}>מי יוצא? תמיד ברור</RtlText></View>
-              <View style={styles.benefitPill}><RtlText style={styles.benefitText}>הכול מתעדכן בזמן אמת</RtlText></View>
-            </View>
-            <View style={styles.actionCard}>
-              <Button label="יצירת המשפחה שלי" onPress={() => setMode('create')} style={styles.wideButton} />
-              <Button label="הצטרפות למשפחה קיימת" variant="secondary" onPress={() => setMode('join')} style={styles.wideButton} />
-              <Button
-                label="יש לי קישור או קוד הזמנה"
-                variant="secondary"
-                onPress={() => {
-                  resetRedeemMode();
-                  setMode('redeem');
-                }}
-                style={styles.wideButton}
-              />
-            </View>
-          </View>
-        </View>
-      </SafeAreaView>
+      <View style={styles.welcomeContainer}>
+        <ImageBackground
+          source={require("../../assets/onboarding-welcome-final.png")}
+          style={[styles.referenceHero, isDesktop && styles.referenceHeroDesktop]}
+          imageStyle={[styles.referenceHeroImage, isDesktop && styles.referenceHeroImageDesktop]}
+          resizeMode={isDesktop ? "contain" : "cover"}
+          accessibilityLabel="מסך הפתיחה של Walkie Doggy"
+        >
+          {showWelcomeWink ? (
+            <Image
+              source={require("../../assets/onboarding-welcome-wink.png")}
+              style={styles.winkFrame}
+              resizeMode="cover"
+              accessibilityElementsHidden
+            />
+          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="יצירת משפחה חדשה"
+            onPress={() => setMode('create')}
+            style={[styles.createHotspot, isDesktop && styles.createHotspotDesktop]}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="הצטרפות למשפחה קיימת"
+            onPress={() => setMode('join')}
+            style={[styles.joinHotspot, isDesktop && styles.joinHotspotDesktop]}
+          />
+        </ImageBackground>
+      </View>
     );
   }
 
@@ -358,8 +424,8 @@ export function FamilyOnboardingScreen() {
       return (
         <SafeAreaView style={styles.container}>
           <WalkieMascot state="concerned" size={128} testID="onboarding-mascot-rejected" />
-          <RtlText style={styles.title} accessibilityRole="header">הבקשה נדחתה</RtlText>
-          <RtlText style={styles.subtitle}>
+          <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">הבקשה נדחתה</RtlText>
+          <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
             הבקשה ליצירת {rejectedFamilyName} נדחתה על ידי מנהל המערכת. לפרטים נוספים, פנו לתמיכה.
           </RtlText>
           <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
@@ -371,8 +437,8 @@ export function FamilyOnboardingScreen() {
       return (
         <SafeAreaView style={styles.container}>
           <WalkieMascot state="waiting" size={128} testID="onboarding-mascot-pending" />
-          <RtlText style={styles.title} accessibilityRole="header">המשפחה ממתינה לאישור</RtlText>
-          <RtlText style={styles.subtitle}>
+          <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">המשפחה ממתינה לאישור</RtlText>
+          <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
             הבקשה ליצירת {pendingApprovalFamilyName} התקבלה. נשלח עדכון לאחר אישור מנהל המערכת.
           </RtlText>
           <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
@@ -384,10 +450,14 @@ export function FamilyOnboardingScreen() {
       <SafeAreaView style={styles.formSafeArea}>
         <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
-            <RtlText style={styles.title} accessibilityRole="header">יצירת משפחה חדשה</RtlText>
-            <RtlText style={styles.subtitle}>אחרי היצירה תוכלו להוסיף את בני המשפחה</RtlText>
+            <View style={[styles.formHero, isDesktop && styles.formHeroDesktop]}>
+              <WalkieMascot state="excited" size={86} />
+              <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>בואו נקים למשפחה שלכם בית חדש 🐾</RtlText></View>
+            </View>
+            <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">יצירת משפחה חדשה</RtlText>
+            <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>כמה פרטים קצרים ומתחילים לטייל יחד</RtlText>
 
-            <View style={styles.form}>
+            <View style={[styles.form, isDesktop && styles.formDesktop]}>
               <RtlText style={styles.label}>דוא״ל של מנהל/ת המשפחה</RtlText>
               <TextInput
                 value={adminEmail}
@@ -455,43 +525,46 @@ export function FamilyOnboardingScreen() {
                 <RtlText style={styles.foundSubtitle}>✓ הדוא״ל אומת: {verifiedAdminEmail}</RtlText>
               ) : null}
 
-              <RtlText style={styles.label}>שם המשפחה</RtlText>
-              <TextInput
-                value={familyName}
-                onChangeText={setFamilyName}
-                placeholder="למשל: המשפחה שלנו"
-                placeholderTextColor={colors.textSecondary}
-                style={styles.input}
-                textAlign="right"
-                editable={Boolean(verifiedAdminEmail)}
-                accessibilityLabel="שם המשפחה"
-              />
+              {verifiedAdminEmail ? (
+                <>
+                  <RtlText style={styles.stepHint}>מעולה! עכשיו רק נותנים למשפחה שם 🐾</RtlText>
+                  <RtlText style={styles.label}>שם המשפחה</RtlText>
+                  <TextInput
+                    value={familyName}
+                    onChangeText={setFamilyName}
+                    placeholder="למשל: המשפחה שלנו"
+                    placeholderTextColor={colors.textSecondary}
+                    style={styles.input}
+                    textAlign="right"
+                    accessibilityLabel="שם המשפחה"
+                  />
 
-              <RtlText style={styles.label}>שם הכלב/ה (אופציונלי)</RtlText>
-              <TextInput
-                value={dogName}
-                onChangeText={setDogName}
-                placeholder="אפשר להוסיף גם אחר כך בהגדרות"
-                placeholderTextColor={colors.textSecondary}
-                style={styles.input}
-                textAlign="right"
-                editable={Boolean(verifiedAdminEmail)}
-                accessibilityLabel="שם הכלב/ה (אופציונלי)"
-              />
+                  <RtlText style={styles.label}>שם הכלב/ה (אופציונלי)</RtlText>
+                  <TextInput
+                    value={dogName}
+                    onChangeText={setDogName}
+                    placeholder="אפשר להוסיף גם אחר כך בהגדרות"
+                    placeholderTextColor={colors.textSecondary}
+                    style={styles.input}
+                    textAlign="right"
+                    accessibilityLabel="שם הכלב/ה (אופציונלי)"
+                  />
+
+                  <Button
+                    label={creating ? 'יוצר משפחה...' : 'יצירת המשפחה'}
+                    onPress={submitCreate}
+                    disabled={!familyName.trim() || creating}
+                    loading={creating}
+                    style={styles.wideButton}
+                  />
+                </>
+              ) : null}
 
               {createError ? (
                 <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
                   {createError}
                 </RtlText>
               ) : null}
-
-              <Button
-                label={creating ? 'יוצר משפחה...' : 'יצירת המשפחה'}
-                onPress={submitCreate}
-                disabled={!familyName.trim() || !verifiedAdminEmail || creating}
-                loading={creating}
-                style={styles.wideButton}
-              />
               <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
             </View>
           </ScrollView>
@@ -505,10 +578,10 @@ export function FamilyOnboardingScreen() {
       <SafeAreaView style={styles.formSafeArea}>
         <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
-            <RtlText style={styles.title} accessibilityRole="header">יש לי הזמנה</RtlText>
-            <RtlText style={styles.subtitle}>הדביקו את קישור ההזמנה, או את קוד ההזמנה עצמו, שקיבלתם מבן/בת המשפחה</RtlText>
+            <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">יש לי הזמנה</RtlText>
+            <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>הדביקו את קישור ההזמנה, או את קוד ההזמנה עצמו, שקיבלתם מבן/בת המשפחה</RtlText>
 
-            <View style={styles.form}>
+            <View style={[styles.form, isDesktop && styles.formDesktop]}>
               <RtlText style={styles.label}>קישור או קוד הזמנה</RtlText>
               <TextInput
                 value={redeemInput}
@@ -617,10 +690,14 @@ export function FamilyOnboardingScreen() {
     <SafeAreaView style={styles.formSafeArea}>
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
-          <RtlText style={styles.title} accessibilityRole="header">הצטרפות למשפחה קיימת</RtlText>
-          <RtlText style={styles.subtitle}>הקלידו את קוד ההזמנה שקיבלתם מבן/בת המשפחה</RtlText>
+          <View style={[styles.formHero, isDesktop && styles.formHeroDesktop]}>
+            <WalkieMascot state="excited" size={86} />
+            <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>קיבלתם קוד? בואו נמצא את המשפחה 🐾</RtlText></View>
+          </View>
+          <RtlText style={[styles.title, styles.joinTitle, isDesktop && styles.titleDesktop]} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit>הצטרפות למשפחה קיימת</RtlText>
+          <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>הקלידו את קוד ההזמנה שקיבלתם מבן/בת המשפחה</RtlText>
 
-          <View style={styles.form}>
+          <View style={[styles.form, isDesktop && styles.formDesktop]}>
             <RtlText style={styles.label}>קוד הזמנה</RtlText>
             <TextInput
               value={code}
@@ -677,26 +754,56 @@ export function FamilyOnboardingScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F4FBFA', alignItems: 'center', justifyContent: 'center', paddingTop: spacing.xl, paddingHorizontal: spacing.xl, overflow: 'hidden' },
-  landingShell: { width: '100%', maxWidth: 1180, alignItems: 'center', justifyContent: 'center', zIndex: 1 },
-  landingShellDesktop: { flexDirection: 'row', gap: 64, paddingHorizontal: spacing.xl },
-  heroMediaColumn: { width: '100%', alignItems: 'center' },
-  heroMediaColumnDesktop: { flex: 1.15, minWidth: 0 },
-  heroContentColumn: { width: '100%', maxWidth: breakpoints.readingColumn, alignItems: 'center' },
-  heroContentColumnDesktop: { flex: 0.85, maxWidth: 480, alignItems: 'stretch' },
-  formSafeArea: { flex: 1, backgroundColor: '#FFF9F1' },
+  container: { flex: 1, backgroundColor: '#173A36', overflow: 'hidden' },
+  welcomeContainer: { flex: 1, backgroundColor: '#173A36', overflow: 'hidden' },
+  winkFrame: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%' },
+  createHotspot: { position: 'absolute', left: '12%', right: '12%', top: '72%', height: '7.5%', zIndex: 2 },
+  joinHotspot: { position: 'absolute', left: '12%', right: '12%', top: '80%', height: '7.5%', zIndex: 2 },
+  // On desktop the reference image is contained inside a much wider ImageBackground.
+  // Percentage hotspots relative to that wide box land outside the visible phone artwork,
+  // so clicks appear dead. Keep the interactive areas centered on the 560px artwork.
+  createHotspotDesktop: { left: '12%', right: '12%', top: '72%' },
+  joinHotspotDesktop: { left: '12%', right: '12%', top: '80%' },
+  referenceHero: { flex: 1, width: '100%', minHeight: '100%' },
+  referenceHeroDesktop: { alignSelf: 'center', width: 560, maxWidth: '100%', backgroundColor: '#173A36' },
+  referenceHeroImage: { width: '100%', height: '100%' },
+  referenceHeroImageDesktop: { resizeMode: 'contain' },
+  referenceOverlay: { flex: 1, justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 12, paddingBottom: 18 },
+  referenceTopRow: { minHeight: 170, alignItems: 'center', justifyContent: 'center' },
+  languagePill: { position: 'absolute', right: 0, top: 0, backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 28, paddingHorizontal: 18, paddingVertical: 11 },
+  languageText: { color: '#102A5A', fontWeight: '800', fontSize: 14 },
+  referenceBrand: { alignItems: 'center' },
+  referenceLogo: { color: '#09295B', fontSize: 42, lineHeight: 35, fontWeight: '900', textAlign: 'center', textShadowColor: 'rgba(255,255,255,0.7)', textShadowRadius: 8 },
+  referenceTagline: { color: '#0B2248', fontSize: 10, lineHeight: 14, letterSpacing: 2.4, fontWeight: '800', textAlign: 'center', marginTop: 8 },
+  handwritten: { position: 'absolute', left: 0, top: 52, color: '#0A2454', fontSize: 18, lineHeight: 23, fontWeight: '800', transform: [{rotate:'-8deg'}], textAlign: 'center' },
+  mascotStage: { flex: 1, minHeight: 250, alignItems: 'center', justifyContent: 'center' },
+  speechBubble: { position: 'absolute', left: 0, bottom: 24, width: 150, minHeight: 105, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.96)', borderWidth: 4, borderColor: '#28A7B8', alignItems: 'center', justifyContent: 'center', padding: 14 },
+  speechText: { color: '#102A5A', fontSize: 18, lineHeight: 23, fontWeight: '800', textAlign: 'center' },
+  referenceBottom: { width: '100%', alignItems: 'center', gap: 10 },
+  referenceButton: { width: '88%', minHeight: 58, borderRadius: 30, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
+  referencePrimary: { backgroundColor: '#1288ED' },
+  referenceSecondary: { backgroundColor: 'rgba(255,255,255,0.96)' },
+  referencePrimaryText: { color: '#FFFFFF', fontSize: 20, fontWeight: '900', textAlign: 'center' },
+  referenceSecondaryText: { color: '#102A5A', fontSize: 18, fontWeight: '900', textAlign: 'center' },
+  featureCircles: { width: '90%', flexDirection: 'row-reverse', justifyContent: 'space-between', marginTop: 2 },
+  featureCircle: { width: 68, height: 68, borderRadius: 34, alignItems: 'center', justifyContent: 'center', padding: 4 },
+  featureIcon: { color: '#102A5A', fontSize: 20, fontWeight: '900', lineHeight: 22 },
+  featureLabel: { color: '#102A5A', fontSize: 10, lineHeight: 11, fontWeight: '800', textAlign: 'center' },
+  smallWalks: { color: '#FFFFFF', fontSize: 13, lineHeight: 16, letterSpacing: 1.2, fontWeight: '700', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 5 },
+  formSafeArea: { flex: 1, backgroundColor: '#DFF5EE' },
+  formHero: { width: '100%', maxWidth: 560, minHeight: 82, borderRadius: 24, backgroundColor: '#BFE8DA', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 14, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#CBE9DF' },
+  formHeroDesktop: { maxWidth: 680, minHeight: 104 },
+  formSpeech: { flex: 1, maxWidth: 330, backgroundColor: '#FFFFFF', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 2, borderColor: '#2AA7B8' },
+  formSpeechText: { color: '#102A5A', fontSize: 16, lineHeight: 22, fontWeight: '800', textAlign: 'center' },
   flexFull: { flex: 1 },
-  formScrollContent: { alignItems: 'center', paddingTop: spacing.xxxl, paddingHorizontal: spacing.xl, paddingBottom: spacing.xxxl, minHeight: '100%' },
-  heroGlow: { position: 'absolute', width: 620, height: 620, borderRadius: 310, backgroundColor: '#FFE5BE', top: -350, right: -210, opacity: 0.95 },
-  sunsetBand: { position: 'absolute', width: '130%', height: 260, backgroundColor: '#DDF4EC', bottom: -130, transform: [{ rotate: '-5deg' }] },
-  heroPhoto: { width: '100%', maxWidth: breakpoints.readingColumn, height: 300, borderRadius: 32, marginBottom: spacing.lg, borderWidth: 1, borderColor: '#E9C68E', shadowColor: '#513A1E', shadowOpacity: 0.18, shadowRadius: 28, shadowOffset: { width: 0, height: 14 }, elevation: 5, overflow: 'hidden', justifyContent: 'flex-end' },
-  heroPhotoDesktop: { maxWidth: 650, height: 500, marginBottom: 0 },
-  heroPhotoImage: { borderRadius: 32, resizeMode: 'cover' },
-  photoCaption: { position: 'absolute', bottom: 14, right: 14, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: radii.round, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  photoCaptionText: { ...typography.meta, color: '#214C46', fontWeight: '900' },
+  formScrollContent: { alignItems: 'center', paddingTop: 14, paddingHorizontal: 18, paddingBottom: 34, minHeight: '100%', backgroundColor: '#DFF5EE' },
+  formScrollContentDesktop: { paddingTop: 28, paddingHorizontal: 32, paddingBottom: 48 },
+
   eyebrow: { ...typography.caption, letterSpacing: 3.2, color: colors.primaryDark, fontWeight: '900', textAlign: 'center', marginBottom: spacing.md },
   heroTitle: { fontSize: 34, lineHeight: 42, fontWeight: '900', color: colors.textPrimary, textAlign: 'center', maxWidth: 360 },
+  heroTitleOnPhoto: { textShadowColor: 'rgba(255,255,255,0.55)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8 },
   heroSubtitle: { ...typography.body, color: '#55706C', textAlign: 'center', maxWidth: 430, marginTop: spacing.md, marginBottom: spacing.xl, fontSize: 17, lineHeight: 26 },
+  heroSubtitleOnPhoto: { color: '#284D48' },
   heroTitleDesktop: { textAlign: 'right', alignSelf: 'stretch', maxWidth: 480, fontSize: 52, lineHeight: 60 },
   heroSubtitleDesktop: { textAlign: 'right', alignSelf: 'stretch', maxWidth: 480, fontSize: 18, lineHeight: 29 },
   textRight: { textAlign: 'right', alignSelf: 'stretch' },
@@ -704,17 +811,24 @@ const styles = StyleSheet.create({
   benefitPill: { flex: 1, minHeight: 46, borderRadius: radii.round, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md, borderWidth: 1, borderColor: '#D5ECE8' },
   benefitText: { ...typography.meta, color: colors.primaryDark, fontWeight: '800', textAlign: 'center' },
   actionCard: { width: '100%', maxWidth: breakpoints.readingColumn, backgroundColor: '#FFFFFF', borderRadius: 28, padding: spacing.lg, borderWidth: 1, borderColor: '#DDEBE8', shadowColor: '#123B36', shadowOpacity: 0.08, shadowRadius: 28, shadowOffset: { width: 0, height: 12 }, elevation: 3 },
-  title: { ...typography.screenTitle, color: '#173A36', textAlign: 'center', fontSize: 40, lineHeight: 47, fontWeight: '900', maxWidth: 420 },
-  subtitle: { fontSize: 15, color: colors.textSecondary, marginTop: spacing.sm, marginBottom: spacing.xxl, textAlign: 'center' },
-  wideButton: { width: '100%', marginTop: spacing.md },
-  form: { width: '100%', maxWidth: 620, alignSelf: 'center', backgroundColor: '#FFFFFF', borderRadius: 28, padding: spacing.xl, borderWidth: 1, borderColor: '#E9E2D8', shadowColor: '#513A1E', shadowOpacity: 0.08, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 3 },
-  label: { ...typography.meta, fontWeight: '700', color: colors.textSecondary, marginTop: spacing.md, marginBottom: spacing.sm, textAlign: 'right' },
+  title: { ...typography.screenTitle, color: '#173A36', textAlign: 'center', fontSize: 30, lineHeight: 35, fontWeight: '900', maxWidth: 520 },
+  titleDesktop: { fontSize: 42, lineHeight: 48 },
+  joinTitle: { width: '100%', maxWidth: 620, fontSize: 27, lineHeight: 33 },
+  subtitle: { fontSize: 14, lineHeight: 20, color: colors.textSecondary, marginTop: 4, marginBottom: 12, textAlign: 'center', maxWidth: 520 },
+  subtitleDesktop: { fontSize: 16, marginBottom: 20 },
+  wideButton: { width: '100%', marginTop: 8 },
+  form: { width: '100%', maxWidth: 560, alignSelf: 'center', backgroundColor: '#FDFBF4', borderRadius: 24, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 18, borderWidth: 1, borderColor: '#B8DCCF', shadowColor: '#173A36', shadowOpacity: 0.08, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
+  formDesktop: { maxWidth: 680, paddingHorizontal: 28, paddingTop: 18, paddingBottom: 24 },
+  label: { ...typography.meta, fontWeight: '800', color: '#6E675C', marginTop: 8, marginBottom: 5, textAlign: 'right' },
+  stepHint: { fontSize: 14, lineHeight: 20, color: '#173A36', fontWeight: '800', textAlign: 'right', marginTop: 10, marginBottom: 2 },
   input: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.md,
-    padding: 14,
+    minHeight: 54,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     fontSize: 16,
     color: colors.textPrimary,
   },

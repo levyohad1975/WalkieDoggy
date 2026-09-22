@@ -14,7 +14,6 @@ import { DEMO_FAMILY } from '../data/demoData';
 import {
   computeCompletionStats,
   computeMemberDistribution,
-  computePeePoopStats,
   computePlannedVsSpontaneous,
   filterWalksByPeriod,
   type StatsPeriod,
@@ -124,7 +123,6 @@ export function StatisticsScreen() {
   const completion = useMemo(() => computeCompletionStats(periodWalks), [periodWalks]);
   const memberDistribution = useMemo(() => computeMemberDistribution(periodWalks), [periodWalks]);
   const plannedVsSpontaneous = useMemo(() => computePlannedVsSpontaneous(periodWalks), [periodWalks]);
-  const peePoop = useMemo(() => computePeePoopStats(periodWalks), [periodWalks]);
 
   const loading = familyLoading || scheduleLoading;
   const error = familyError || scheduleError;
@@ -173,8 +171,12 @@ export function StatisticsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
-        <RtlText style={styles.header} accessibilityRole="header">📈 סטטיסטיקה</RtlText>
+        <View style={styles.hero}>
+          <RtlText style={styles.header} accessibilityRole="header">סטטיסטיקה</RtlText>
+          <RtlText style={styles.headerSubtitle}>תמונה ברורה של הטיולים והחלוקה המשפחתית</RtlText>
+        </View>
 
+        <RtlText style={styles.filterLabel}>טווח זמן</RtlText>
         <View style={styles.periodRow}>
           {PERIOD_LABELS.map(([key, label]) => (
             <Pressable
@@ -307,33 +309,7 @@ export function StatisticsScreen() {
               />
             </View>
 
-            <View style={styles.card}>
-              <RtlText style={styles.cardTitle}>פיפי וקקי</RtlText>
-              {peePoop.doneCount === 0 ? (
-                <RtlText style={styles.metaText}>עדיין אין טיולים שהושלמו בטווח הזה</RtlText>
-              ) : (
-                <>
-                  <View style={styles.rowBetween}>
-                    <RtlText style={[styles.metaText, styles.rtlText]}>
-                      פיפי
-                    </RtlText>
-                    <RtlText style={[styles.metaTextStrong, styles.ltrText]}>
-                      {peePoop.peePercent}%
-                    </RtlText>
-                  </View>
-                  <Bar percent={peePoop.peePercent} color={colors.primary} />
-                  <View style={styles.rowBetween}>
-                    <RtlText style={[styles.metaText, styles.rtlText]}>
-                      קקי
-                    </RtlText>
-                    <RtlText style={[styles.metaTextStrong, styles.ltrText]}>
-                      {peePoop.poopPercent}%
-                    </RtlText>
-                  </View>
-                  <Bar percent={peePoop.poopPercent} color={colors.statusSkipped} />
-                </>
-              )}
-            </View>
+
 
           </>
         )}
@@ -349,9 +325,12 @@ const styles = StyleSheet.create({
   // safe-area padding) so the last card clears the tab bar comfortably.
   content: { padding: spacing.xl, gap: spacing.lg, paddingBottom: spacing.xxxl },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
+  hero: { width: '100%', gap: spacing.xs, paddingTop: spacing.xs },
   header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
-  periodRow: { flexDirection: 'row', ...nativeDirection('rtl'), gap: spacing.sm },
-  periodChip: { flex: 1, backgroundColor: colors.surfaceMuted, borderRadius: radii.md, paddingVertical: spacing.sm, alignItems: 'center' },
+  headerSubtitle: { width: '100%', ...typography.meta, color: colors.textSecondary, textAlign: 'right', writingDirection: 'rtl' },
+  filterLabel: { width: '100%', ...typography.meta, fontWeight: '700', color: colors.textSecondary, textAlign: 'right', writingDirection: 'rtl', marginBottom: -spacing.sm },
+  periodRow: { flexDirection: 'row', ...nativeDirection('rtl'), gap: spacing.xs, backgroundColor: colors.surfaceMuted, borderRadius: radii.lg, padding: spacing.xs },
+  periodChip: { flex: 1, backgroundColor: 'transparent', borderRadius: radii.md, paddingVertical: spacing.sm, alignItems: 'center' },
   periodChipActive: { backgroundColor: colors.primary },
   periodChipText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
   periodChipTextActive: { color: colors.textInverse },

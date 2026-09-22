@@ -21,9 +21,17 @@ interface NextWalkCardProps {
   currentUserId: string;
   dogName: string;
   dogPhotoUrl?: string;
+  /** Home's photo-led hero already carries the real dog identity; hide the duplicate thumbnail there. */
+  showDogPhoto?: boolean;
+  /** Home's large hero already carries the mascot/photo; avoid repeating the brand character in the action card. */
+  showMascot?: boolean;
   /** BATCH 4 (item B/C8) — feeds the mascot message engine's dogNoun/wentOut Hebrew gendering. Omit/undefined uses the same neutral fallback as everywhere else in the app. */
   dogSex?: Dog['sex'] | null;
   onMarkDone: () => void;
+  /** Primary lifecycle action. When omitted the legacy completion action remains available. */
+  onStartWalk?: () => void;
+  onEndWalk?: () => void;
+  activeStartedAt?: string | null;
   /**
    * ✕ "לא בוצע" for an overdue-unresolved walk (Section 3). Only rendered
    * once the walk is actually overdue AND canResolve is true.
@@ -62,8 +70,13 @@ export function NextWalkCard({
   currentUserId,
   dogName,
   dogPhotoUrl,
+  showDogPhoto = true,
+  showMascot = true,
   dogSex,
   onMarkDone,
+  onStartWalk,
+  onEndWalk,
+  activeStartedAt,
   onMarkNotDone,
   canResolve = true,
   onSwap,
@@ -80,6 +93,7 @@ export function NextWalkCard({
   const requiresAttention = isWalkRequiringAttention(walk);
   const isMine = walk.responsibleUserId === currentUserId;
   const isWeb = Platform.OS === 'web';
+  const isActive = Boolean(activeStartedAt);
 
   // BATCH 4 (C2/C3/C8) — the Walkie Doggy mascot + a matching personality
   // message, centrally derived (mascotStage.ts) from how far `walk` is from
@@ -103,11 +117,11 @@ export function NextWalkCard({
   }, [walk.id, walk.scheduledTime, walk.date, walk.status, dogName, dogSex, responsible?.name]);
 
   return (
-    <View style={[styles.card, isWeb && styles.webCard, overdue && styles.cardOverdue]}>
+    <View style={[styles.card, isWeb && styles.webCard, isActive && styles.cardActive, overdue && !isActive && styles.cardOverdue]}>
       <View style={[styles.eyebrowRow, isWeb && styles.webEyebrowRow]}>
-        <DogPhoto photoUrl={dogPhotoUrl} size={isWeb ? 60 : 72} />
+        {showDogPhoto ? <DogPhoto photoUrl={dogPhotoUrl} size={isWeb ? 60 : 72} /> : null}
         <RtlText style={styles.eyebrow} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-          {primaryLabel ?? `הטיול הבא של ${dogName}`}
+          {isActive ? `בזמן טיול · ${dogName}` : (primaryLabel ?? `הטיול הבא של ${dogName}`)}
         </RtlText>
         {/* The Walkie Doggy MASCOT (brand character) — deliberately separate
             from DogPhoto above (the family's REAL dog), never interchanged,
@@ -118,7 +132,7 @@ export function NextWalkCard({
             side of the row never grows and nothing here collides with the
             eyebrow title or card edge. Other WalkieMascot call sites
             (onboarding, reminder, celebration) are untouched. */}
-        <WalkieMascot state={mascotState} size={isWeb ? 60 : 69} testID="next-walk-mascot" />
+        {showMascot ? <WalkieMascot state={mascotState} size={isWeb ? 52 : 58} testID="next-walk-mascot" /> : null}
       </View>
 
       <RtlText style={styles.mascotMessage} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
@@ -176,25 +190,28 @@ export function NextWalkCard({
       ) : null}
 
       {!canResolve ? (
-        // Not the responsible member (and not an admin) — ✓/✕ is not
-        // theirs to resolve. Shown as plain informational text, never a
-        // disabled-but-visible button (would look like a bug), matching
-        // the "request system, not direct action" story for members.
         <RtlText style={styles.notMineNote} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-          {overdue ? 'ממתין לעדכון ע״י ' : 'רק '}
-          {responsible?.name ?? 'האחראי/ת'} יכול/ה לסמן את הטיול הזה
+          {isActive ? 'הטיול בתהליך · ' : overdue ? 'ממתין לעדכון ע״י ' : 'רק '}
+          {responsible?.name ?? 'האחראי/ת'}
         </RtlText>
-      ) : overdue && onMarkNotDone ? (
-        <View style={styles.resolveRow}>
-          <Button label="✓ בוצע" onPress={onMarkDone} style={styles.resolveButton} compact shrinkToFit />
+      ) : isActive && onEndWalk ? (
+        <Button label="סיים טיול" icon="■" onPress={onEndWalk} style={styles.endWalkButton} shrinkToFit />
+      ) : onStartWalk ? (
+        <>
+          <Button label={overdue ? 'התחל טיול עכשיו' : 'התחל טיול'} icon="▶" onPress={onStartWalk} style={styles.doneButton} shrinkToFit />
           <Button
-            label="✕ לא בוצע"
+            label="✓ סמן טיול כבוצע"
             variant="secondary"
-            onPress={onMarkNotDone}
-            style={styles.resolveButton}
+            onPress={onMarkDone}
+            style={styles.markDoneFallbackButton}
             compact
             shrinkToFit
           />
+        </>
+      ) : overdue && onMarkNotDone ? (
+        <View style={styles.resolveRow}>
+          <Button label="✓ בוצע" onPress={onMarkDone} style={styles.resolveButton} compact shrinkToFit />
+          <Button label="✕ לא בוצע" variant="secondary" onPress={onMarkNotDone} style={styles.resolveButton} compact shrinkToFit />
         </View>
       ) : (
         <Button label="סמן כבוצע" icon="✓" onPress={onMarkDone} style={styles.doneButton} shrinkToFit />
@@ -254,21 +271,27 @@ const styles = StyleSheet.create({
     backgroundColor: colors.statusCurrentBg,
     borderRadius: 28,
     paddingHorizontal: 20,
-    paddingVertical: 24,
-    borderWidth: 1.5,
-    borderColor: colors.primary + '33',
+    paddingVertical: 16,
+    borderWidth: 1,
+    borderColor: colors.primary + '24',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.10,
+    shadowRadius: 18,
+    elevation: 5,
   },
-  webCard: { borderRadius: 22, paddingHorizontal: 28, paddingVertical: 18 },
+  webCard: { borderRadius: 22, paddingHorizontal: 22, paddingVertical: 15 },
+  cardActive: { backgroundColor: colors.successSoft, borderColor: colors.success + '55' },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
-  eyebrowRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), alignItems: 'center', gap: 8, marginBottom: 12 },
-  webEyebrowRow: { marginBottom: 4 },
+  eyebrowRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), alignItems: 'center', gap: 8, marginBottom: 6 },
+  webEyebrowRow: { marginBottom: 2 },
   eyebrow: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
   mascotMessage: {
     fontSize: 13,
     fontWeight: '600',
     color: colors.primaryDark,
     textAlign: 'right',
-    marginBottom: 14,
+    marginBottom: 8,
   },
   // Round 6F correction: timeBlock/personBlock each get an explicit, equal
   // `flex` share of the row instead of sizing themselves to their own text's
@@ -276,8 +299,8 @@ const styles = StyleSheet.create({
   // independent of Dynamic Type/system font-size — so neither block's
   // on-screen position drifts as text metrics change; only the content
   // centered inside each fixed-width box can shift by a few px.
-  mainRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 12 },
-  webMainRow: { marginBottom: 10, minHeight: 74 },
+  mainRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 12 },
+  webMainRow: { marginBottom: 8, minHeight: 68 },
   timeBlock: { flex: 1, alignItems: 'flex-start', minWidth: 0 },
   // Reduced from 44 (BUG report: too large, wrapped to two lines on a
   // narrow iPhone and dwarfed the rest of the card). Still the single
@@ -291,6 +314,8 @@ const styles = StyleSheet.create({
   personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
   responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'right' },
   doneButton: { marginTop: 4 },
+  markDoneFallbackButton: { marginTop: 10, borderWidth: 1.5, borderColor: colors.primaryDark },
+  endWalkButton: { marginTop: 4, backgroundColor: colors.statusOverdue },
   resolveRow: { flexDirection: 'row', gap: 8, marginTop: 4, width: '100%' },
   resolveButton: { flex: 1, minWidth: 0 },
   notMineNote: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: 6 },
@@ -303,7 +328,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   requestStatusApproved: { color: colors.statusDone },
-  linkRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 14 },
+  linkRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 9 },
   linkText: { color: colors.primaryDark, fontSize: 14, fontWeight: '600' },
   linkDivider: { color: colors.textSecondary },
 });

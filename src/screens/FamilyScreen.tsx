@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { AppState, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, AppState, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFamilyStore } from '../store/familyStore';
@@ -37,7 +37,7 @@ export function FamilyScreen() {
     clearActionError,
     permissionOverrides,
     setPermissionOverride,
-    clearPermissionOverride,
+    clearPermissionOverride
   } = useFamilyStore();
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   // Single source of truth for admin/member permissions — see authStore.
@@ -68,6 +68,7 @@ export function FamilyScreen() {
   // screen, but role management is gated on the REAL role/impersonation
   // pair on purpose, matching the requirement's exact wording.
   const realFamilyRole = useAuthStore((s) => s.familyRole);
+  const systemObserverActive = useAuthStore((s) => s.systemObserverActive);
   const realCurrentUserId = useAuthStore((s) => s.currentUserId);
   const impersonatingUserId = useAuthStore((s) => s.impersonatingUserId);
   const isRealAdmin = isRealFamilyAdmin(realFamilyRole, impersonatingUserId);
@@ -77,7 +78,6 @@ export function FamilyScreen() {
   const [deleteTarget, setDeleteTarget] = useState<FamilyUser | null>(null);
   const [deleteImpact, setDeleteImpact] = useState<UserDeletionImpact | null>(null);
   const [detailsTarget, setDetailsTarget] = useState<FamilyUser | null>(null);
-
   // Role + presence (Parts 1F / 2) — sourced ENTIRELY from
   // admin_list_family_activity() (migrations/0005_*.sql), the same
   // Admin-only RPC AdminActivityModal already uses. Deliberately not
@@ -147,7 +147,7 @@ export function FamilyScreen() {
   useEffect(() => {
     loadActivity();
     loadInvites();
-  }, [loadActivity, loadInvites]);
+  }, [loadActivity, loadInvites, systemObserverActive]);
 
   // Round 7, Part 3 (bug A fix): the moment the current viewer stops being a
   // real admin — a self-demotion just landed via handleRoleChanged below, or
@@ -236,12 +236,18 @@ export function FamilyScreen() {
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
-        touchLastSeen()
-          .catch(() => undefined) // presence is best-effort, same failure handling as App.tsx's own call site
-          .then(() => {
-            loadActivity();
-            loadInvites();
-          });
+        if (systemObserverActive) {
+          // Hidden System Admin observation must never create a presence heartbeat.
+          loadActivity();
+          loadInvites();
+        } else {
+          touchLastSeen()
+            .catch(() => undefined)
+            .then(() => {
+              loadActivity();
+              loadInvites();
+            });
+        }
       }
     });
     return () => sub.remove();
@@ -253,6 +259,10 @@ export function FamilyScreen() {
   useEffect(() => {
     if (!isRealAdmin || !isSupabaseConfigured) return;
     const refresh = () => {
+      if (systemObserverActive) {
+        loadActivity();
+        return;
+      }
       touchLastSeen()
         .catch(() => undefined)
         .then(() => loadActivity());
@@ -260,7 +270,7 @@ export function FamilyScreen() {
     refresh();
     const timer = setInterval(refresh, 2 * 60 * 1000);
     return () => clearInterval(timer);
-  }, [isRealAdmin, loadActivity]);
+  }, [isRealAdmin, loadActivity, systemObserverActive]);
 
   const activityByUserId = new Map(activity.map((row) => [row.user_id, row]));
   // ROUND 3: reduces list_family_invites()'s full history to the single
@@ -288,12 +298,12 @@ export function FamilyScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
-        <RtlText style={styles.header} accessibilityRole="header">בני המשפחה</RtlText>
-        {/* BATCH 4 (item B — dog profile completion): was hard-coded
-            "טופי" regardless of the family's actual dog — now interpolates
-            the real, authoritative dog.name, with a neutral fallback while
-            family data is still loading. */}
-        <RtlText style={styles.subheader}>ניהול מי משתתף בסבב הטיולים של {dog?.name ?? 'הכלב/ה'}</RtlText>
+        <RtlText style={styles.header} accessibilityRole="header">המשפחה שלנו</RtlText>
+
+        <View style={styles.memberSectionHeader}>
+          <RtlText style={styles.sectionHeader} accessibilityRole="header">בני המשפחה</RtlText>
+          <RtlText style={styles.subheader}>רק בני המשפחה שמשתתפים בניהול ובטיולים של {dog?.name ?? 'הכלב/ה'}</RtlText>
+        </View>
 
         <View style={styles.list}>
           {users.filter((u) => !u.removedAt).map((u) => {
@@ -489,6 +499,8 @@ const styles = StyleSheet.create({
   content: { padding: spacing.xl, gap: spacing.lg, paddingBottom: spacing.xxxl },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
   header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  sectionHeader: { width: '100%', ...typography.sectionTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  memberSectionHeader: { width: '100%', gap: spacing.xs, marginTop: spacing.lg, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
   subheader: { width: '100%', ...typography.meta, color: colors.textSecondary, textAlign: 'right', writingDirection: 'rtl', marginTop: -8 },
   list: { gap: spacing.sm },
   row: {

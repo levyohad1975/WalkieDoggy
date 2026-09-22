@@ -8,17 +8,20 @@ import { colors } from '../theme/colors';
 // color alone (accessibility — Section 15).
 const LABELS: Record<WalkStatus, string> = {
   pending: 'ממתין',
+  in_progress: 'בטיול',
   done: 'בוצע',
   skipped: 'לא בוצע',
 };
 
 const GLYPHS: Partial<Record<WalkStatus, string>> = {
+  in_progress: '▶',
   done: '✓', // ✓
   skipped: '✕', // ✕
 };
 
 const STYLES: Record<WalkStatus, { bg: string; fg: string }> = {
   pending: { bg: colors.statusPendingBg, fg: colors.statusPending },
+  in_progress: { bg: colors.statusCurrentBg, fg: colors.textPrimary },
   done: { bg: colors.statusDoneBg, fg: colors.statusDone },
   skipped: { bg: colors.statusSkippedBg, fg: colors.statusSkipped },
 };

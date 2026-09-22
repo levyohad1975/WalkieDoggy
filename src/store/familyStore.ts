@@ -89,7 +89,17 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
       // no dog for it (a stale cache from an earlier build, a not-yet-run
       // Supabase seed, etc.) fall back to the known demo dog rather than
       // leaving `dog` null with no way for the UI to recover on its own.
-      const resolvedDog = dog ?? (!isSupabaseConfigured && familyId === DEMO_FAMILY.id ? DEMO_DOG : undefined);
+      // Some verified-family onboarding rows can exist before a dogs row is
+      // readable/created. Keep the Family profile usable by synthesizing the
+      // family's known dog identity, then persist it when the photo is saved.
+      const familyDogName = (family as any)?.dogName ?? (family as any)?.dog_name;
+      const resolvedDog =
+        dog ??
+        (familyDogName
+          ? { id: `dog-${familyId}`, familyId, name: familyDogName, walksPerDay: 0 }
+          : !isSupabaseConfigured && familyId === DEMO_FAMILY.id
+            ? DEMO_DOG
+            : undefined);
       set({ family: family ?? null, users, dog: resolvedDog ?? null, loading: false });
 
       // If an admin removed the profile THIS device is currently signed in

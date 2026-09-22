@@ -12,6 +12,7 @@ import { HistoryScreen } from '../screens/HistoryScreen';
 import { StatisticsScreen } from '../screens/StatisticsScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { ImpersonationBanner } from '../components/ImpersonationBanner';
+import { SystemObserverBanner } from '../components/SystemObserverBanner';
 import { colors } from '../theme/colors';
 import { layout, nativeDirection, spacing } from '../theme/tokens';
 import { useAuthStore, useEffectiveUserId } from '../store/authStore';
@@ -174,6 +175,7 @@ export function RootNavigator() {
   // sit above every screen at all times, silently pushing everything down
   // even while nobody is being impersonated.
   const impersonatingUserId = useAuthStore((s) => s.impersonatingUserId);
+  const systemObserverActive = useAuthStore((s) => s.systemObserverActive);
   // FINAL CORRECTION PASS — Deliverable 3F (navigation, real bug fix): the
   // tab bar previously set a FIXED `height: 64` — specifying an explicit
   // height on tabBarStyle opts OUT of react-navigation's own automatic
@@ -221,6 +223,11 @@ export function RootNavigator() {
           each screen below still applies its own top safe-area padding
           independently, which is harmless (a little extra breathing room
           under the banner, not a layout bug). */}
+      {systemObserverActive ? (
+        <SafeAreaView edges={['top']} style={{ backgroundColor: colors.primaryDark }}>
+          <SystemObserverBanner />
+        </SafeAreaView>
+      ) : null}
       {impersonatingUserId ? (
         <SafeAreaView edges={['top']} style={{ backgroundColor: colors.primaryDark }}>
           <ImpersonationBanner />

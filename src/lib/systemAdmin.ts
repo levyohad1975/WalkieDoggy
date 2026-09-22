@@ -24,6 +24,7 @@ export interface SystemAdminFamilyListItem {
   adminNames: string[];
   dogName: string | null;
   status: string;
+  verifiedEmail: string | null;
 }
 
 export interface SystemAdminFamilyMember {
@@ -67,6 +68,22 @@ export interface SystemAdminFamilyDetail {
   recentAudit: SystemAdminAuditEntry[];
 }
 
+export interface SystemAdminGlobalAuditEntry {
+  id: string;
+  source: 'family_audit' | 'system_audit' | 'state_change';
+  familyId: string | null;
+  familyName: string | null;
+  actorUserId: string | null;
+  actorName: string | null;
+  actorAuthUserId: string | null;
+  actorEmail: string | null;
+  action: string;
+  targetType: string | null;
+  targetId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
 export interface SystemAdminEmailDeliveryLogEntry {
   id: string;
   familyId: string | null;
@@ -79,6 +96,28 @@ export interface SystemAdminEmailDeliveryLogEntry {
   error: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+
+export interface SystemAdminObserverSession {
+  familyId: string;
+  familyName: string;
+  targetUserId: string | null;
+}
+
+export async function beginSystemAdminObserver(familyId: string): Promise<SystemAdminObserverSession> {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc('begin_system_admin_observer', { p_family_id: familyId });
+  if (error) throw error;
+  const row = (data ?? {}) as { family_id?: string; family_name?: string; target_user_id?: string | null };
+  if (!row.family_id || !row.family_name) throw new Error('observer session could not be established');
+  return { familyId: row.family_id, familyName: row.family_name, targetUserId: row.target_user_id ?? null };
+}
+
+export async function endSystemAdminObserver(): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.rpc('end_system_admin_observer');
+  if (error) throw error;
 }
 
 /**
@@ -97,7 +136,7 @@ export async function checkIsSystemAdmin(): Promise<boolean> {
 
 export async function listSystemAdminFamilies(search?: string): Promise<SystemAdminFamilyListItem[]> {
   const client = requireSupabase();
-  const { data, error } = await client.rpc('system_admin_list_families', { p_search: search?.trim() || null });
+  const { data, error } = await client.rpc('system_admin_list_families_v2', { p_search: search?.trim() || null });
   if (error) throw error;
   const rows = (data ?? []) as Array<{
     family_id: string;
@@ -108,6 +147,7 @@ export async function listSystemAdminFamilies(search?: string): Promise<SystemAd
     admin_names: string[] | null;
     dog_name: string | null;
     status: string;
+    verified_email: string | null;
   }>;
   return rows.map((r) => ({
     familyId: r.family_id,
@@ -118,6 +158,26 @@ export async function listSystemAdminFamilies(search?: string): Promise<SystemAd
     adminNames: r.admin_names ?? [],
     dogName: r.dog_name,
     status: r.status,
+    verifiedEmail: r.verified_email,
+  }));
+}
+
+export async function getSystemAdminGlobalAudit(limit = 200): Promise<SystemAdminGlobalAuditEntry[]> {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc('system_admin_list_global_audit', { p_limit: limit });
+  if (error) throw error;
+  const rows = (data ?? []) as Array<{
+    event_id: string; source: 'family_audit' | 'system_audit' | 'state_change';
+    family_id: string | null; family_name: string | null; actor_user_id: string | null;
+    actor_name: string | null; actor_auth_user_id: string | null; actor_email: string | null;
+    action: string; target_type: string | null; target_id: string | null;
+    metadata: Record<string, unknown> | null; created_at: string;
+  }>;
+  return rows.map((r) => ({
+    id: r.event_id, source: r.source, familyId: r.family_id, familyName: r.family_name,
+    actorUserId: r.actor_user_id, actorName: r.actor_name, actorAuthUserId: r.actor_auth_user_id,
+    actorEmail: r.actor_email, action: r.action, targetType: r.target_type, targetId: r.target_id,
+    metadata: r.metadata ?? {}, createdAt: r.created_at,
   }));
 }
 

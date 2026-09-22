@@ -207,6 +207,91 @@ describe('OfflineFirstRepository.deleteFamilyMember — online rejection propaga
   });
 });
 
+/**
+ * start_walk()/finish_walk() (0048) were wired into scheduleStore.ts and
+ * HomeScreen.tsx (`if (repository.startWalk) ... else <fake local state>`)
+ * but OfflineFirstRepository never actually implemented either method —
+ * `repository.startWalk`/`repository.finishWalk` were always `undefined`,
+ * so every call silently took the in-memory-only fallback branch: nothing
+ * was ever persisted to Supabase or the local cache, and the RPCs were dead
+ * code from the client's perspective. Fixed by assigning both conditionally
+ * in the constructor (present only when a remote repository is configured,
+ * exactly so the store's own capability check keeps working correctly in
+ * local/demo mode). These tests cover the fix directly, mirroring the
+ * deleteFamilyMember tests above for the same "server-authoritative, no
+ * blind offline replay" category of action.
+ */
+describe('OfflineFirstRepository.startWalk/finishWalk — actually wired to the remote RPCs', () => {
+  const baseWalk: Walk = {
+    id: 'walk-1',
+    familyId: 'family-1',
+    dogId: 'dog-1',
+    date: '2026-01-01',
+    scheduledTime: '08:00',
+    responsibleUserId: 'user-1',
+    status: 'pending',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+
+  it('online + remote configured -> repository.startWalk is defined, calls the RPC, and persists the returned row locally', async () => {
+    const started: Walk = { ...baseWalk, status: 'in_progress', startedAt: '2026-01-01T08:00:00.000Z', startedByUserId: 'user-1' };
+    const remote = stubRemote({ startWalk: jest.fn().mockResolvedValue(started) });
+    const repo = await makeRepo(true, remote);
+    expect(repo.startWalk).toBeDefined();
+
+    const result = await repo.startWalk!('walk-1');
+    expect(result).toEqual(started);
+    expect(remote.startWalk).toHaveBeenCalledWith('walk-1');
+
+    const localWalks = await (repo as any).local.getWalks('family-1');
+    expect(localWalks.find((w: Walk) => w.id === 'walk-1')?.status).toBe('in_progress');
+  });
+
+  it('online + remote rejects (e.g. "walk is not pending") -> the rejection propagates, not silently swallowed', async () => {
+    const remote = stubRemote({ startWalk: jest.fn().mockRejectedValue(new Error('walk is not pending')) });
+    const repo = await makeRepo(true, remote);
+
+    await expect(repo.startWalk!('walk-1')).rejects.toThrow('walk is not pending');
+    expect(remote.startWalk).toHaveBeenCalledTimes(1);
+  });
+
+  it('offline -> rejects immediately, never calls the remote RPC, and never enqueues for later replay', async () => {
+    const remote = stubRemote({ startWalk: jest.fn() });
+    const repo = await makeRepo(false, remote);
+
+    await expect(repo.startWalk!('walk-1')).rejects.toThrow(
+      'startWalk requires an internet connection and cannot be queued offline'
+    );
+    expect(remote.startWalk).not.toHaveBeenCalled();
+  });
+
+  it('local/demo mode (no remote configured) -> repository.startWalk/finishWalk are undefined, matching the interface\'s optional-capability contract', async () => {
+    const repo = await makeRepo(true, null);
+    expect(repo.startWalk).toBeUndefined();
+    expect(repo.finishWalk).toBeUndefined();
+  });
+
+  it('finishWalk: online + remote configured -> calls finish_walk with the actual walker and completedAt, persists the result locally', async () => {
+    const finished: Walk = {
+      ...baseWalk,
+      status: 'done',
+      completedAt: '2026-01-01T08:30:00.000Z',
+      completedByUserId: 'user-2',
+      hadPee: true,
+    };
+    const remote = stubRemote({ finishWalk: jest.fn().mockResolvedValue(finished) });
+    const repo = await makeRepo(true, remote);
+
+    const result = await repo.finishWalk!('walk-1', 'user-2', { hadPee: true, completedAt: '2026-01-01T08:30:00.000Z' });
+    expect(result).toEqual(finished);
+    expect(remote.finishWalk).toHaveBeenCalledWith('walk-1', 'user-2', { hadPee: true, completedAt: '2026-01-01T08:30:00.000Z' });
+
+    const localWalks = await (repo as any).local.getWalks('family-1');
+    expect(localWalks.find((w: Walk) => w.id === 'walk-1')?.status).toBe('done');
+  });
+});
+
 /** Builds a fresh, isolated OfflineFirstRepository for one test: resets the module registry so the NetInfo mock below takes effect, clears the AsyncStorage-backed local cache, then constructs the repository against `remote`. */
 async function makeRepo(online: boolean, remote: Repository | null): Promise<OfflineFirstRepositoryType> {
   jest.resetModules();

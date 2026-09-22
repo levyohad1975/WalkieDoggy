@@ -14,6 +14,7 @@ import {
 } from '../lib/supabase';
 import { DEMO_FAMILY } from '../data/demoData';
 import { repository } from '../data';
+import { beginSystemAdminObserver as beginSystemAdminObserverRpc, endSystemAdminObserver as endSystemAdminObserverRpc } from '../lib/systemAdmin';
 
 const CURRENT_USER_KEY = 'dog-walk-family:current-user-id';
 // Device-local: which family THIS device belongs to. Deliberately separate
@@ -82,6 +83,17 @@ interface AuthState {
    */
   isQaFamily: boolean;
   hydrated: boolean;
+  /** System Admin cross-family hidden observer. In-memory only and read-only. */
+  systemObserverActive: boolean;
+  systemObserverFamilyName: string | null;
+  systemObserverReturnState: {
+    familyId: string | null;
+    currentUserId: string | null;
+    familyRole: FamilyRole | null;
+    isQaFamily: boolean;
+  } | null;
+  beginSystemObserver: (familyId: string) => Promise<void>;
+  endSystemObserver: () => Promise<void>;
   restoreSession: () => Promise<void>;
   signIn: (userId: string) => Promise<void>;
   /**
@@ -391,6 +403,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   familyRole: null,
   isQaFamily: false,
   hydrated: false,
+  systemObserverActive: false,
+  systemObserverFamilyName: null,
+  systemObserverReturnState: null,
   testModeUserId: null,
   impersonatingUserId: null,
   impersonationStarting: false,
@@ -416,12 +431,37 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // when nothing is active (see its own doc comment), so this costs
       // nothing on the overwhelmingly common case.
       await endImpersonationRpc().catch(() => undefined);
+      await endSystemAdminObserverRpc().catch(() => undefined);
     }
     const [savedUser, savedFamily] = await Promise.all([
       AsyncStorage.getItem(CURRENT_USER_KEY),
       AsyncStorage.getItem(FAMILY_ID_KEY),
     ]);
-    const familyId = isSupabaseConfigured ? savedFamily : DEMO_FAMILY.id;
+    // Server-authoritative recovery for verified family creators: a browser can
+    // lose the app's own AsyncStorage key while Supabase's persisted verified
+    // session is still perfectly valid. In that case, do not send the creator
+    // back through create/join onboarding. Recover the active family from the
+    // onboarding-status RPC and repair the local cache. This RPC is scoped to
+    // the authenticated caller and returns null for ordinary anonymous devices.
+    let familyId = isSupabaseConfigured ? savedFamily : DEMO_FAMILY.id;
+    if (isSupabaseConfigured && !familyId) {
+      try {
+        const { supabase } = await import('../lib/supabase');
+        if (supabase) {
+          const { data, error } = await supabase.rpc('get_my_family_onboarding_status');
+          if (!error) {
+            const row = Array.isArray(data) ? data[0] : data;
+            if (row?.family_id && row?.approval_status === 'active') {
+              familyId = row.family_id;
+              await AsyncStorage.setItem(FAMILY_ID_KEY, row.family_id);
+            }
+          }
+        }
+      } catch {
+        // Best-effort recovery only. Offline/RPC failures preserve the normal
+        // onboarding fallback rather than inventing client-side membership.
+      }
+    }
 
     let currentUserId = savedUser;
 
@@ -663,6 +703,54 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   clearRoleRefreshNotice: () => set({ roleRefreshNotice: null }),
 
+  beginSystemObserver: async (familyId: string) => {
+    const state = get();
+    if (state.systemObserverActive) {
+      throw new Error('מצב צפייה נסתרת כבר פעיל');
+    }
+    if (state.impersonatingUserId) {
+      await state.endImpersonation();
+    }
+    if (state.testModeUserId) {
+      state.exitTestMode();
+    }
+    const session = await beginSystemAdminObserverRpc(familyId);
+    set({
+      systemObserverActive: true,
+      systemObserverFamilyName: session.familyName,
+      systemObserverReturnState: {
+        familyId: state.familyId,
+        currentUserId: state.currentUserId,
+        familyRole: state.familyRole,
+        isQaFamily: state.isQaFamily,
+      },
+      familyId: session.familyId,
+      currentUserId: session.targetUserId,
+      familyRole: 'admin',
+      isQaFamily: false,
+      testModeUserId: null,
+      impersonatingUserId: null,
+    });
+  },
+
+  endSystemObserver: async () => {
+    const state = get();
+    if (!state.systemObserverActive) return;
+    await endSystemAdminObserverRpc();
+    const previous = state.systemObserverReturnState;
+    set({
+      systemObserverActive: false,
+      systemObserverFamilyName: null,
+      systemObserverReturnState: null,
+      familyId: previous?.familyId ?? null,
+      currentUserId: previous?.currentUserId ?? null,
+      familyRole: previous?.familyRole ?? null,
+      isQaFamily: previous?.isQaFamily ?? false,
+      testModeUserId: null,
+      impersonatingUserId: null,
+    });
+  },
+
   signIn: async (userId: string) => {
     await get().__signInCore(userId, 'plain');
   },
@@ -789,6 +877,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   signOut: async () => {
+    if (get().systemObserverActive) {
+      await get().endSystemObserver();
+      return;
+    }
     // ORDERING FIX (round 3 security review): an earlier draft checked
     // `get().impersonatingUserId !== null` AFTER the `set({ ...,
     // impersonatingUserId: null })` below — a bug that made the condition
