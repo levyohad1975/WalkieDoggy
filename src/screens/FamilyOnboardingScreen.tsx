@@ -338,6 +338,7 @@ export function FamilyOnboardingScreen() {
           value={adminEmail}
           onChangeText={setAdminEmail}
           placeholder="כתובת הדוא״ל של מנהל המשפחה"
+          accessibilityLabel="כתובת הדוא״ל של מנהל המשפחה"
           keyboardType="email-address"
           autoCapitalize="none"
           style={styles.input}
@@ -347,11 +348,11 @@ export function FamilyOnboardingScreen() {
           <Button label={verifyingEmail ? 'שולח קוד…' : 'שלחו לי קוד אימות'} onPress={sendAdminVerification} disabled={verifyingEmail || !adminEmail.trim()} loading={verifyingEmail} style={styles.wideButton} />
         ) : (
           <>
-            <TextInput value={verificationCode} onChangeText={setVerificationCode} placeholder="קוד האימות שקיבלתם במייל" keyboardType="number-pad" style={styles.input} textAlign="right" />
+            <TextInput value={verificationCode} onChangeText={setVerificationCode} placeholder="קוד האימות שקיבלתם במייל" accessibilityLabel="קוד האימות שקיבלתם במייל" keyboardType="number-pad" style={styles.input} textAlign="right" />
             <Button label={verifyingEmail ? 'מחבר למשפחה…' : 'המשך למשפחה שלי'} onPress={recoverExistingFamily} disabled={verifyingEmail || !verificationCode.trim()} loading={verifyingEmail} style={styles.wideButton} />
           </>
         )}
-        {createError ? <RtlText style={styles.error}>{createError}</RtlText> : null}
+        {createError ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{createError}</RtlText> : null}
         <Button label="אני בן משפחה — יש לי הזמנה" variant="secondary" onPress={() => setMode('redeem')} style={styles.wideButton} />
         <Button label="זו באמת משפחה חדשה" variant="secondary" onPress={() => setMode('create')} style={styles.wideButton} />
       </SafeAreaView>
