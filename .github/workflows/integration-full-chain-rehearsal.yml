@@ -128,6 +128,29 @@ jobs:
           PYEOF
           cat supabase/migrations/00001_rehearsal_policy_guards.sql
 
+      - name: Remove the known-empty duplicate 0019 file for this ephemeral replay only
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Rehearsal-only, never touches the committed repo file. Supabase
+          # CLI's own supabase_migrations.schema_migrations bookkeeping
+          # enforces each migration's numeric-prefix "version" as a unique
+          # key -- confirmed directly, a real run got all the way through
+          # 0001-0019 successfully (proving the policy/function guards
+          # above work) and then failed with "duplicate key ... Key
+          # (version)=(0019) already exists", because this repo
+          # deliberately keeps two 0019-prefixed files (verified empty vs.
+          # non-empty by the "Verify known duplicate 0019 state" step
+          # above, which still runs first and unchanged). The empty file
+          # applies nothing -- deleting it from this ephemeral checkout
+          # changes zero resulting schema/data, it only avoids the
+          # CLI's own version-bookkeeping collision. The corresponding
+          # migration surely already exists in the real Staging history
+          # under that exact filename (this is exactly why it is
+          # untouched, empty, and never renamed) -- this step never edits
+          # or removes anything in the actual repository.
+          rm supabase/migrations/0019_request_result_read_state.sql
+
       - name: Start isolated Supabase stack
         run: supabase start -x studio,imgproxy,storage-api,realtime,edge-runtime,logflare,vector,supavisor
 
