@@ -38,4 +38,13 @@ describe('App.tsx — System Admin entry point sits OUTSIDE family/auth branchin
     const adminBlock = source.slice(adminBlockStart, adminBlockEnd);
     expect(adminBlock).not.toMatch(/setFamilyId|familyId\s*=/);
   });
+  it('routes a standalone System Admin directly to the platform console before family onboarding', () => {
+    expect(source).toMatch(/const shouldEnterSystemAdminDirectly =/);
+    const directIdx = source.indexOf('{shouldEnterSystemAdminDirectly ? (');
+    const onboardingIdx = source.indexOf(': needsFamilyOnboarding ? (');
+    expect(directIdx).toBeGreaterThan(-1);
+    expect(onboardingIdx).toBeGreaterThan(directIdx);
+    expect(source).toMatch(/isSystemAdmin && !familyId && !currentUserId && !systemObserverActive/);
+  });
+
 });
