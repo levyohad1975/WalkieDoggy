@@ -159,7 +159,7 @@ export function NextWalkCard({
             {walkDateContextLabel(walk.date)}
           </RtlText>
           {overdue ? (
-            <RtlText style={[styles.relative, styles.relativeOverdue]} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+            <RtlText style={[styles.relative, styles.relativeOverdue]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
               {requiresAttention ? '🚨 דורש תשומת לב · ' : 'ממתין לעדכון · '}
               {relativeTimeLabel(walk)}
             </RtlText>
