@@ -88,7 +88,16 @@ export interface Repository {
   deleteFamilyMember(payload: DeleteFamilyMemberPayload): Promise<void>;
   updateUserReminderSetting(userId: string, enabled: boolean): Promise<void>;
 
+  /** @deprecated Returns an arbitrary one of the family's dogs once more than one exists (kept only for the single-dog call sites that predate multi-dog support). New code should use getDogs. */
   getDog(familyId: string): Promise<Dog | undefined>;
+  /**
+   * Every dog belonging to this family. The `dogs` table has no uniqueness
+   * constraint on family_id, and schedule_rules/schedule_entries/walks
+   * already carry their own dog_id (see supabase/schema.sql) — this is the
+   * multi-dog-safe read; prefer it over getDog for any new code.
+   */
+  getDogs(familyId: string): Promise<Dog[]>;
+  /** Upserts by dog.id — safe to call for any of a family's dogs, not just a single "the" dog. */
   upsertDog(dog: Dog): Promise<void>;
 
   getScheduleRules(familyId: string): Promise<ScheduleRule[]>;

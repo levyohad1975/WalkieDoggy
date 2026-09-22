@@ -414,6 +414,37 @@ describe('SupabaseRepository — reads map rows correctly (toDog/toRule/toEntry/
     expect(dog.sex).toBe('male');
   });
 
+  it('getDogs maps every row for the family via toDog (arbitrary N, not just one)', async () => {
+    const client: any = {
+      from: () => ({
+        select: () => ({
+          eq: () =>
+            Promise.resolve({
+              data: [
+                { id: 'dog-1', family_id: 'fam-42', name: 'טופי', photo_url: null, walks_per_day: 4, notes: null, sex: null },
+                { id: 'dog-2', family_id: 'fam-42', name: 'ריקי', photo_url: null, walks_per_day: 2, notes: null, sex: null },
+              ],
+              error: null,
+            }),
+        }),
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+    const dogs = await repo.getDogs('fam-42');
+    expect(dogs).toEqual([
+      { id: 'dog-1', familyId: 'fam-42', name: 'טופי', photoUrl: undefined, walksPerDay: 4, notes: undefined, sex: undefined },
+      { id: 'dog-2', familyId: 'fam-42', name: 'ריקי', photoUrl: undefined, walksPerDay: 2, notes: undefined, sex: undefined },
+    ]);
+  });
+
+  it('getDogs throws when the query errors', async () => {
+    const client: any = {
+      from: () => ({ select: () => ({ eq: () => Promise.resolve({ data: null, error: { message: 'x' } }) }) }),
+    };
+    const repo = new SupabaseRepository(client);
+    await expect(repo.getDogs('fam-42')).rejects.toBeTruthy();
+  });
+
   it('getScheduleRules maps rows via toRule, including nullish label -> undefined and sort_order default 0', async () => {
     const client: any = {
       from: () => ({

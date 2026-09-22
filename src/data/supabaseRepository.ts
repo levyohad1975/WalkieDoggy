@@ -328,6 +328,12 @@ export class SupabaseRepository implements Repository {
     return data ? toDog(data) : undefined;
   }
 
+  async getDogs(familyId: string): Promise<Dog[]> {
+    const { data, error } = await this.client.from('dogs').select('*').eq('family_id', familyId);
+    if (error) throw error;
+    return (data ?? []).map(toDog);
+  }
+
   async upsertDog(dog: Dog): Promise<void> {
     const { error } = await this.client.from('dogs').upsert(fromDog(dog));
     if (error) throw error;

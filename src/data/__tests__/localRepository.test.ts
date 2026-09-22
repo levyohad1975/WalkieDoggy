@@ -3,7 +3,7 @@ import { LocalRepository } from '../localRepository';
 import { DEMO_DOG, DEMO_ENTRIES, DEMO_FAMILY, DEMO_RULES, DEMO_USERS, DEMO_WALKS } from '../demoData';
 import type { Dog, Family, FamilyUser, ScheduleEntry, Walk } from '../../types';
 
-const STORAGE_KEY = 'dog-walk-family:v2';
+const STORAGE_KEY = 'dog-walk-family:v3';
 
 function otherFamilySeed() {
   const family: Family = { id: 'family-other', name: 'משפחת לוי', createdAt: new Date().toISOString() };
@@ -123,6 +123,31 @@ describe('LocalRepository — dog data (BUG 3: dog name must load in local/demo 
     expect(dog).toBeUndefined();
   });
 
+  it('foundation: upsertDog supports a second, distinct dog for the same family without clobbering the first (arbitrary N)', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers(DEMO_FAMILY.id); // trigger seed (one dog already present: DEMO_DOG)
+    const secondDog: Dog = { id: 'dog-second', familyId: DEMO_FAMILY.id, name: 'רעי', walksPerDay: 3 };
+
+    await repo.upsertDog(secondDog);
+
+    const dogs = await repo.getDogs(DEMO_FAMILY.id);
+    expect(dogs).toHaveLength(2);
+    expect(dogs.find((d) => d.id === DEMO_DOG.id)).toBeDefined();
+    expect(dogs.find((d) => d.id === secondDog.id)).toEqual(secondDog);
+  });
+
+  it('foundation: upsertDog updates an existing dog in place by id, rather than appending a duplicate', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+    const renamed: Dog = { ...DEMO_DOG, name: 'טופי החדש' };
+
+    await repo.upsertDog(renamed);
+
+    const dogs = await repo.getDogs(DEMO_FAMILY.id);
+    expect(dogs).toHaveLength(1);
+    expect(dogs[0].name).toBe('טופי החדש');
+  });
+
   it('getFamily returns undefined for a family id that does not match the cached family', async () => {
     const repo = new LocalRepository();
     await repo.getUsers(DEMO_FAMILY.id); // trigger seed
@@ -166,7 +191,7 @@ describe('LocalRepository — replaceAll / createUser', () => {
     await repo.replaceAll({
       family: DEMO_FAMILY,
       users: [replacementUser],
-      dog: DEMO_DOG,
+      dogs: [DEMO_DOG],
       rules: DEMO_RULES,
       entries: DEMO_ENTRIES,
       walks: DEMO_WALKS,

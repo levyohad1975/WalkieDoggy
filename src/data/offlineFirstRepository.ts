@@ -256,6 +256,17 @@ export class OfflineFirstRepository implements Repository {
     return this.local.getDog(familyId);
   }
 
+  async getDogs(familyId: string): Promise<Dog[]> {
+    if (await this.isOnline()) {
+      try {
+        return await this.remote!.getDogs(familyId);
+      } catch {
+        /* fall through */
+      }
+    }
+    return this.local.getDogs(familyId);
+  }
+
   async upsertDog(dog: Dog): Promise<void> {
     await this.local.upsertDog(dog);
     if (this.remote) {

@@ -12,6 +12,7 @@ function stubRemote(overrides: Partial<Repository> = {}): Repository {
     deleteFamilyMember: jest.fn(),
     updateUserReminderSetting: jest.fn().mockResolvedValue(undefined),
     getDog: jest.fn(),
+    getDogs: jest.fn(),
     upsertDog: jest.fn(),
     getScheduleRules: jest.fn(),
     upsertScheduleRule: jest.fn(),
@@ -350,6 +351,18 @@ describe('OfflineFirstRepository — online + remote succeeds: reads return the 
 
     await expect(repo.getDog('family-1')).resolves.toEqual(fresh);
     expect(remote.getDog).toHaveBeenCalledWith('family-1');
+  });
+
+  it('getDogs returns every remote dog for the family (arbitrary N, not just one)', async () => {
+    const dogs: Dog[] = [
+      { id: 'dog-1', familyId: 'family-1', name: 'טופי', walksPerDay: 4 },
+      { id: 'dog-2', familyId: 'family-1', name: 'ריקי', walksPerDay: 2 },
+    ];
+    const remote = stubRemote({ getDogs: jest.fn().mockResolvedValue(dogs) });
+    const repo = await makeRepo(true, remote);
+
+    await expect(repo.getDogs('family-1')).resolves.toEqual(dogs);
+    expect(remote.getDogs).toHaveBeenCalledWith('family-1');
   });
 
   it('getScheduleRules returns the remote rules', async () => {

@@ -26,12 +26,16 @@ import {
 // which dead-ended the "pick your profile" screen with no way forward. A
 // version bump makes any such stale cache get re-seeded from scratch instead
 // of read as-is.
-const STORAGE_KEY = 'dog-walk-family:v2';
+// Bumped from v2 -> v3: the single `dog: Dog` slot became `dogs: Dog[]`
+// (arbitrary-N multi-dog foundation) — an old cache's `dog` field would
+// otherwise be read as `undefined` under the new shape and crash the first
+// `.filter()`/`.find()` call against `dogs`.
+const STORAGE_KEY = 'dog-walk-family:v3';
 
 interface LocalStoreShape {
   family: Family;
   users: FamilyUser[];
-  dog: Dog;
+  dogs: Dog[];
   rules: ScheduleRule[];
   entries: ScheduleEntry[];
   walks: Walk[];
@@ -49,7 +53,7 @@ function seedStore(): LocalStoreShape {
   return {
     family: DEMO_FAMILY,
     users: DEMO_USERS,
-    dog: DEMO_DOG,
+    dogs: [DEMO_DOG],
     rules: DEMO_RULES,
     entries: DEMO_ENTRIES,
     walks: DEMO_WALKS,
@@ -85,16 +89,19 @@ export class LocalRepository implements Repository {
     // entries), not as a visible error.
     // A dog whose familyId doesn't match the cached family's id is exactly
     // the kind of stale/mismatched leftover an earlier dev build could have
-    // written (see the STORAGE_KEY bump above) — `getDog()` would silently
-    // return undefined forever for the current family, even though the
-    // cache otherwise "looks" valid. Treat that as corrupt too.
-    const dogMatchesFamily = Boolean(parsed?.dog && parsed?.family && parsed.dog.familyId === parsed.family.id);
+    // written (see the STORAGE_KEY bump above) — `getDog()`/`getDogs()`
+    // would silently return nothing forever for the current family, even
+    // though the cache otherwise "looks" valid. Treat that as corrupt too.
+    // An empty `dogs` array is valid (no dog added yet) — only a MISMATCHED
+    // one is corrupt.
+    const dogsMatchFamily = Boolean(
+      parsed && parsed.family && Array.isArray(parsed.dogs) && parsed.dogs.every((d) => d && d.familyId === parsed.family.id)
+    );
     if (
       parsed &&
       parsed.family &&
       Array.isArray(parsed.users) &&
-      parsed.dog &&
-      dogMatchesFamily &&
+      dogsMatchFamily &&
       Array.isArray(parsed.rules) &&
       Array.isArray(parsed.entries) &&
       Array.isArray(parsed.walks)
@@ -189,12 +196,19 @@ export class LocalRepository implements Repository {
 
   async getDog(familyId: string): Promise<Dog | undefined> {
     const s = await this.load();
-    return s.dog.familyId === familyId ? s.dog : undefined;
+    return s.dogs.find((d) => d.familyId === familyId);
+  }
+
+  async getDogs(familyId: string): Promise<Dog[]> {
+    const s = await this.load();
+    return s.dogs.filter((d) => d.familyId === familyId);
   }
 
   async upsertDog(dog: Dog): Promise<void> {
     const s = await this.load();
-    s.dog = dog;
+    const idx = s.dogs.findIndex((d) => d.id === dog.id);
+    if (idx >= 0) s.dogs[idx] = dog;
+    else s.dogs.push(dog);
     await this.persist();
   }
 

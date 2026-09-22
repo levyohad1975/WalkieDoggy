@@ -17,7 +17,15 @@ import { clearMemberPermissionOverride, listMemberPermissionOverrides, setMember
 interface FamilyState {
   family: Family | null;
   users: FamilyUser[];
+  /** @deprecated First/primary entry of `dogs`, kept for single-dog call sites that predate multi-dog support. */
   dog: Dog | null;
+  /**
+   * Every dog belonging to this family (Phase 1B: arbitrary N dogs
+   * foundation — schedule_rules/schedule_entries/walks already carry their
+   * own dog_id at the DB layer, see supabase/schema.sql). New multi-dog UI
+   * should read this instead of `dog`.
+   */
+  dogs: Dog[];
   loading: boolean;
   error: string | null;
   actionError: string | null;
@@ -70,6 +78,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
   family: null,
   users: [],
   dog: null,
+  dogs: [],
   loading: false,
   error: null,
   actionError: null,
@@ -79,28 +88,29 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
   load: async (familyId: string) => {
     set({ loading: true, error: null });
     try {
-      const [family, users, dog] = await Promise.all([
+      const [family, users, dogs] = await Promise.all([
         repository.getFamily(familyId),
         repository.getUsers(familyId),
-        repository.getDog(familyId),
+        repository.getDogs(familyId),
       ]);
       // The dog must never be silently missing in local/demo mode: this is
       // the app's single seeded family, so if the repository came back with
-      // no dog for it (a stale cache from an earlier build, a not-yet-run
+      // no dogs for it (a stale cache from an earlier build, a not-yet-run
       // Supabase seed, etc.) fall back to the known demo dog rather than
-      // leaving `dog` null with no way for the UI to recover on its own.
+      // leaving `dogs` empty with no way for the UI to recover on its own.
       // Some verified-family onboarding rows can exist before a dogs row is
       // readable/created. Keep the Family profile usable by synthesizing the
       // family's known dog identity, then persist it when the photo is saved.
       const familyDogName = (family as any)?.dogName ?? (family as any)?.dog_name;
-      const resolvedDog =
-        dog ??
-        (familyDogName
-          ? { id: `dog-${familyId}`, familyId, name: familyDogName, walksPerDay: 0 }
-          : !isSupabaseConfigured && familyId === DEMO_FAMILY.id
-            ? DEMO_DOG
-            : undefined);
-      set({ family: family ?? null, users, dog: resolvedDog ?? null, loading: false });
+      const resolvedDogs: Dog[] =
+        dogs.length > 0
+          ? dogs
+          : familyDogName
+            ? [{ id: `dog-${familyId}`, familyId, name: familyDogName, walksPerDay: 0 }]
+            : !isSupabaseConfigured && familyId === DEMO_FAMILY.id
+              ? [DEMO_DOG]
+              : [];
+      set({ family: family ?? null, users, dog: resolvedDogs[0] ?? null, dogs: resolvedDogs, loading: false });
 
       // If an admin removed the profile THIS device is currently signed in
       // as (soft-deleted, see FamilyUser.removedAt), send it back to "pick
@@ -191,7 +201,13 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
 
   saveDog: async (dog: Dog) => {
     if (!guardTestModeMutation()) return;
-    set({ dog });
+    // Upserts by id, so this doubles as "add a new dog" once a caller wants
+    // more than one — see `dogs`'s doc comment above.
+    set((s) => {
+      const idx = s.dogs.findIndex((d) => d.id === dog.id);
+      const dogs = idx >= 0 ? s.dogs.map((d, i) => (i === idx ? dog : d)) : [...s.dogs, dog];
+      return { dog, dogs };
+    });
     await repository.upsertDog(dog);
   },
 
