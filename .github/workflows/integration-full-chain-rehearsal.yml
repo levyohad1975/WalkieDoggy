@@ -35,18 +35,26 @@ jobs:
         with:
           version: 2.116.0
 
+      - name: Seed schema.sql as migration 0000 (matches every historical migration's own stated precondition)
+        # Migration 0001's own header: "Safe to run against an existing
+        # database seeded from supabase/schema.sql ... Run this ... AFTER
+        # the base schema exists." schema.sql is the true pre-migration-1
+        # bootstrap baseline, not a periodically-refreshed snapshot of
+        # "state as of migration N" -- every one of 0001-0048 (including
+        # 0043-0048) must run on top of it in full, real order. This copies
+        # the repository file into the migrations directory (never
+        # modifying or committing supabase/schema.sql itself) so
+        # `supabase db reset --local`'s normal lexicographic replay picks
+        # it up first, then every real migration file runs unmodified
+        # after it -- the same "prepend as 0000" trick the Batch 2
+        # rehearsal used, but keeping the FULL chain (0001-0048) instead
+        # of hand-picking a subset.
+        run: cp supabase/schema.sql supabase/migrations/0000_base_schema.sql
+
       - name: Start isolated Supabase stack
         run: supabase start -x studio,imgproxy,storage-api,realtime,edge-runtime,logflare,vector,supavisor
 
-      - name: Replay the FULL real migration chain (0001-current) from empty
-        # Deliberately NOT the schema.sql-shortcut approach the Batch 2
-        # rehearsal used (that baseline is confirmed stale as of this PR --
-        # missing system_admins/family_onboarding_requests/email_delivery_log/
-        # system_audit_log, all of which 0043-0048 depend on). This replays
-        # every migration file exactly as committed, in order, from an empty
-        # database -- the only way to genuinely validate that 0043-0048 apply
-        # cleanly on top of everything before them, not against a synthetic
-        # pre-built schema.
+      - name: Replay the FULL real migration chain (0000 base + 0001-current) from empty
         run: supabase db reset --local
 
       - name: Run the 0043-0048 integration rehearsal (real Postgres, not source review)
