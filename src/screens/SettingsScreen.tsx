@@ -1,5 +1,5 @@
 ﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -44,6 +44,7 @@ export function SettingsScreen() {
   const completeHealthTask = useHealthStore((s) => s.completeTask);
   const { currentUserId, setFamilyId } = useAuthStore();
   const signInWithPin = useAuthStore((s) => s.signInWithPin);
+  const signOut = useAuthStore((s) => s.signOut);
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   // Single source of truth for admin/member permissions — see authStore.
   // REAL role — deliberately NOT the effective/simulated one. This gates
@@ -393,6 +394,33 @@ export function SettingsScreen() {
     setSwitchTargetUserId(null);
   };
 
+  // PRD §16: "keep a clear support channel from within the app; the final
+  // support address should come from configuration, not be scattered in
+  // code." The row itself is hidden entirely (see the section below) when
+  // this isn't set — never a broken mailto: link to a placeholder.
+  const supportEmail = process.env.EXPO_PUBLIC_SUPPORT_EMAIL;
+  const handleContactSupport = async () => {
+    if (!supportEmail) return;
+    try {
+      await Linking.openURL(`mailto:${supportEmail}`);
+    } catch {
+      Alert.alert('לא הצלחנו לפתוח את האימייל', `אפשר לפנות ידנית לכתובת ${supportEmail}.`);
+    }
+  };
+
+  // PRD §16 pairs "תמיכה ויציאה" (support AND sign-out) in the same
+  // sentence — a genuine full sign-out, distinct from "החלף משתמש" (which
+  // only ever switches to another profile, never leaves the app signed
+  // out entirely). authStore.signOut() already has its own fail-safe
+  // contract (always completes locally even offline/on RPC failure) — see
+  // its own doc comment — so this just needs the confirmation.
+  const handleSignOut = () => {
+    Alert.alert('להתנתק מהמכשיר הזה?', 'תצטרכו להזין קוד PIN כדי להתחבר שוב.', [
+      { text: 'ביטול', style: 'cancel' },
+      { text: 'התנתקות', style: 'destructive', onPress: () => void signOut() },
+    ]);
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -524,6 +552,25 @@ export function SettingsScreen() {
               <RtlText style={styles.hubLabel}>🔁 החלף משתמש</RtlText>
               <RtlText style={styles.hubRowMeta}>מעבר לפרופיל אחר במשפחה במכשיר הזה</RtlText>
             </View>
+          </Pressable>
+        </View>
+
+        {/* PRD §16 pairs support and sign-out in one phrase ("תמיכה
+            ויציאה") — kept as their own small section rather than folded
+            into "📱 החשבון שלי" above, since sign-out is a deliberately
+            weightier, less-frequent action. The support row only renders
+            once EXPO_PUBLIC_SUPPORT_EMAIL is actually configured. */}
+        <View style={styles.section}>
+          <RtlText style={styles.sectionTitle}>❓ תמיכה ויציאה</RtlText>
+          {supportEmail ? (
+            <Pressable style={styles.hubRow} onPress={() => void handleContactSupport()} accessibilityRole="button" accessibilityLabel="פנייה לתמיכה">
+              <RtlText style={styles.hubChevron}>‹</RtlText>
+              <RtlText style={styles.hubLabel}>✉️ פנייה לתמיכה</RtlText>
+            </Pressable>
+          ) : null}
+          <Pressable style={styles.hubRow} onPress={handleSignOut} accessibilityRole="button" accessibilityLabel="התנתקות מהמכשיר הזה">
+            <RtlText style={styles.hubChevron}>‹</RtlText>
+            <RtlText style={styles.hubLabel}>🚪 התנתקות</RtlText>
           </Pressable>
         </View>
         {familyRole === 'admin' ? (
