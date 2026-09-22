@@ -261,6 +261,14 @@ export default function App() {
     if (hydrated) void refreshSystemAdmin();
   }, [hydrated, refreshSystemAdmin]);
 
+  // Platform admins must not be forced through family onboarding. When the
+  // authenticated identity is a System Admin and this device has no active
+  // family/persona, enter the platform console directly. A System Admin who
+  // also uses a family still keeps the normal family UI and can open the
+  // console from the header entry point.
+  const shouldEnterSystemAdminDirectly =
+    isSupabaseConfigured && isSystemAdmin && !familyId && !currentUserId && !systemObserverActive;
+
   // Section 10: remote request-push token registration — completely
   // separate from requestNotificationPermissions() below (that's the
   // LOCAL scheduled-walk-reminder permission flow / Android
@@ -335,7 +343,9 @@ export default function App() {
       ) : (
         <>
           <StatusBar style="dark" />
-          {needsFamilyOnboarding ? (
+          {shouldEnterSystemAdminDirectly ? (
+            <SystemAdminScreen visible onClose={() => undefined} />
+          ) : needsFamilyOnboarding ? (
             <FamilyOnboardingScreen />
           ) : currentUserId || systemObserverActive ? (
             <RootNavigator />
@@ -360,7 +370,9 @@ export default function App() {
               <RtlText style={styles.systemAdminEntryText}>🛡️</RtlText>
             </Pressable>
           ) : null}
-          <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} />
+          {!shouldEnterSystemAdminDirectly ? (
+            <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} />
+          ) : null}
         </>
       )}
     </SafeAreaProvider>
