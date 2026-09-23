@@ -35,9 +35,6 @@ import { AchievementsModal } from '../components/AchievementsModal';
 import { computeFamilyAchievementProgress, computePersonalAchievementProgress } from '../logic/achievements';
 import { fetchHistoryWalks } from '../lib/permissionedWalks';
 import { listSwapRequests, type SwapRequestRow } from '../lib/requests';
-import { repository } from '../data';
-import type { QuarantinedItem, SyncConflict } from '../data/syncQueue';
-import { SyncIssuesModal } from '../components/SyncIssuesModal';
 import { PrivacyAccessibilityInfoModal } from '../components/PrivacyAccessibilityInfoModal';
 import { useSystemAdminStore } from '../store/systemAdminStore';
 import { SystemAdminScreen } from './SystemAdminScreen';
@@ -91,20 +88,6 @@ export function SettingsScreen() {
   // local/demo mode (lib/requests.ts's own doc comment: no swap-request
   // concept exists there at all) rather than failing.
   const [achievementSwapRequests, setAchievementSwapRequests] = useState<SwapRequestRow[]>([]);
-  // PRD §20: "persistent queue conflicts must be visible, never silently
-  // disappear." Checked on every mount (cheap local AsyncStorage reads via
-  // the repository, no network) so the "⚠️ בעיות סנכרון" row below only
-  // ever renders when there's genuinely something to show — never a
-  // blocking empty-by-default row, same convention as every other
-  // conditional Settings/Home badge this app already has.
-  const [syncConflicts, setSyncConflicts] = useState<SyncConflict[]>([]);
-  const [quarantinedSyncItems, setQuarantinedSyncItems] = useState<QuarantinedItem[]>([]);
-  // PRD §25's "sync pending" state — how many writes made on this device
-  // are still queued, not yet reached the server. Independent of
-  // syncConflicts/quarantinedSyncItems above: this counts writes still
-  // making their way through normally, not ones that failed or got stuck.
-  const [pendingSyncCount, setPendingSyncCount] = useState(0);
-  const [syncIssuesModalVisible, setSyncIssuesModalVisible] = useState(false);
   const [privacyAccessibilityModalVisible, setPrivacyAccessibilityModalVisible] = useState(false);
   const [remindersModalVisible, setRemindersModalVisible] = useState(false);
   const [sharingModalVisible, setSharingModalVisible] = useState(false);
@@ -189,19 +172,6 @@ export function SettingsScreen() {
       if (useHealthStore.getState().consumePendingOpenRequest()) {
         setHealthModalVisible(true);
       }
-    }, [])
-  );
-
-  // PRD §20 — re-checked on every focus (cheap local AsyncStorage reads,
-  // no network) so the "⚠️ בעיות סנכרון" row stays current if a write
-  // failed/quarantined while this tab wasn't active. Optional-chained:
-  // repositories without a sync queue (LocalRepository, a bare
-  // SupabaseRepository) simply never surface this row at all.
-  useFocusEffect(
-    useCallback(() => {
-      void repository.getSyncConflicts?.().then((c) => setSyncConflicts(c ?? []));
-      void repository.getQuarantinedSyncItems?.().then((q) => setQuarantinedSyncItems(q ?? []));
-      void repository.pendingSyncCount?.().then((n) => setPendingSyncCount(n ?? 0));
     }, [])
   );
 
@@ -474,12 +444,6 @@ export function SettingsScreen() {
     ]);
   };
 
-  const syncIssueCount = syncConflicts.length + quarantinedSyncItems.length;
-  const handleClearSyncConflicts = async () => {
-    await repository.clearSyncConflicts?.();
-    setSyncConflicts([]);
-  };
-
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -574,40 +538,6 @@ export function SettingsScreen() {
               <RtlText style={styles.hubRowMeta}>בחירת פרופיל אחר מהמשפחה</RtlText>
             </View>
           </Pressable>
-          {/* PRD §20: "persistent queue conflicts must be visible, never
-              silently disappear" — only rendered at all when there's
-              genuinely something to show (see the useFocusEffect above). */}
-          {syncIssueCount > 0 ? (
-            <Pressable
-              style={styles.hubRow}
-              onPress={() => setSyncIssuesModalVisible(true)}
-              accessibilityRole="button"
-              accessibilityLabel={`בעיות סנכרון, ${syncIssueCount} פריטים`}
-            >
-              <RtlText style={styles.hubChevron}>‹</RtlText>
-              <View style={styles.hubLabelWithMeta}>
-                <RtlText style={styles.hubLabel}>⚠️ בעיות סנכרון</RtlText>
-                <RtlText style={styles.hubRowMeta}>{syncIssueCount} שינויים לא הסתנכרנו עם השרת</RtlText>
-              </View>
-            </Pressable>
-          ) : null}
-          {/* PRD §25's "sync pending" state — informational only (not
-              actionable like the conflicts row above), so a plain row
-              rather than a Pressable. Only shown when there's genuinely
-              something still in flight. */}
-          {pendingSyncCount > 0 ? (
-            <View style={styles.hubRow} accessible accessibilityLabel={`${pendingSyncCount} שינויים ממתינים לסנכרון`}>
-              {/* Not a chevron — this row is informational only, never
-                  tappable, so no navigation affordance is shown. A
-                  fixed-width decorative spacer keeps the label aligned
-                  with the actionable rows above/below it. */}
-              <View style={styles.hubChevronSpacer} accessible={false} />
-              <View style={styles.hubLabelWithMeta}>
-                <RtlText style={styles.hubLabel}>🔄 מסנכרן…</RtlText>
-                <RtlText style={styles.hubRowMeta}>{pendingSyncCount} שינויים ממתינים לסנכרון עם השרת</RtlText>
-              </View>
-            </View>
-          ) : null}
         </View>
 
         {/* PRD §16: Settings must include "פרטיות/GPS, נגישות/Reduced
@@ -731,14 +661,6 @@ export function SettingsScreen() {
           if (currentUserId) void setGamificationEnabled(currentUserId, enabled);
         }}
         onClose={() => setAchievementsModalVisible(false)}
-      />
-
-      <SyncIssuesModal
-        visible={syncIssuesModalVisible}
-        conflicts={syncConflicts}
-        quarantined={quarantinedSyncItems}
-        onClearConflicts={() => void handleClearSyncConflicts()}
-        onClose={() => setSyncIssuesModalVisible(false)}
       />
 
       <PrivacyAccessibilityInfoModal
@@ -919,10 +841,6 @@ const styles = StyleSheet.create({
   sheetScroll: { flexGrow: 0, flexShrink: 1 },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 8 },
 });
-
-
-
-
 
 
 
