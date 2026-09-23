@@ -108,6 +108,9 @@ function emailStatusLabel(status: string): string {
  */
 export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) {
   const [search, setSearch] = useState('');
+  const beginSystemObserver = useAuthStore((s) => s.beginSystemObserver);
+  const [observerStartingFamilyId, setObserverStartingFamilyId] = useState<string | null>(null);
+  const [observerError, setObserverError] = useState<string | null>(null);
   const [families, setFamilies] = useState<SystemAdminFamilyListItem[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
@@ -247,6 +250,18 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
     setApprovalActionError(null);
   };
 
+  const openHiddenObserver = async (familyId: string) => {
+    setObserverStartingFamilyId(familyId);
+    setObserverError(null);
+    try {
+      await beginSystemObserver(familyId);
+      onClose();
+    } catch (e) {
+      setObserverError(friendlyErrorMessage(e, [], 'לא הצלחנו להיכנס לצפייה נסתרת'));
+    } finally {
+      setObserverStartingFamilyId(null);
+    }
+  };
 
   const handleSetApproval = async (approvalStatus: 'active' | 'rejected') => {
     if (!selectedFamilyId) return;
@@ -393,6 +408,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                 ) : null}
 
                 <RtlText style={styles.sectionTitle}>משפחה</RtlText>
+                {observerError ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{observerError}</RtlText> : null}
                 <View style={styles.card}>
                   <RtlText style={styles.cardLine}>שם: {detail.family?.name ?? '—'}</RtlText>
                   <RtlText style={styles.cardLine}>קוד הצטרפות: {detail.family?.inviteCode ?? '—'}</RtlText>
@@ -403,6 +419,17 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                   <RtlText style={styles.cardLine}>
                     סטטוס אישור: {detail.family?.approvalStatus ? approvalStatusLabel(detail.family.approvalStatus) : '—'}
                   </RtlText>
+                  {detail.family ? (
+                    <View style={styles.observerAction}>
+                      <Button
+                        label={observerStartingFamilyId === detail.family.id ? 'נכנס לצפייה…' : 'כניסה כצופה נסתר'}
+                        onPress={() => openHiddenObserver(detail.family!.id)}
+                        disabled={observerStartingFamilyId !== null}
+                        compact
+                      />
+                      <RtlText style={styles.observerHint}>מציג את כל המסכים וההגדרות כמנהל המשפחה, ללא אפשרות לשנות נתונים וללא נוכחות גלויה למשפחה.</RtlText>
+                    </View>
+                  ) : null}
                   {detail.family && detail.family.approvalStatus !== 'active' ? (
                     <View style={styles.approvalActions}>
                       {approvalActionError ? (
@@ -620,6 +647,8 @@ const styles = StyleSheet.create({
   familyMeta: { ...typography.caption, fontSize: 12, fontWeight: '500', color: colors.textSecondary, textAlign: 'right' },
   sectionTitle: { ...typography.cardTitle, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', marginTop: spacing.md, marginBottom: spacing.sm },
   card: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
+  observerAction: { gap: spacing.xs, marginTop: spacing.sm, alignItems: 'flex-end' },
+  observerHint: { ...typography.caption, color: colors.textSecondary, textAlign: 'right' },
   approvalActions: { flexDirection: 'row-reverse', gap: spacing.sm, marginTop: spacing.sm, flexWrap: 'wrap' },
   cardLine: { ...typography.meta, color: colors.textPrimary, textAlign: 'right' },
   metricsGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: spacing.sm },
