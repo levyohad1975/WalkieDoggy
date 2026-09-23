@@ -643,7 +643,7 @@ export function SettingsScreen() {
             <RtlText style={styles.hubLabel}>🚪 התנתקות</RtlText>
           </Pressable>
         </View>
-        {familyRole === 'admin' ? (
+        {familyRole === 'admin' && !systemObserverActive ? (
           <View style={styles.section}>
             <RtlText style={styles.sectionTitle}>🛠️ מתקדם</RtlText>
             <Pressable style={styles.hubRow} onPress={() => setManagementVisible(true)} accessibilityRole="button" accessibilityLabel="ניהול, למנהל בלבד">
