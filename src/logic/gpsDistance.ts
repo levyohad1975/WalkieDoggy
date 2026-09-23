@@ -92,7 +92,7 @@ export function accumulateDistance(acc: GpsAccumulator, point: GpsPoint): GpsAcc
     // doesn't move `lastPoint` forward — otherwise a string of sub-floor
     // jitters would each pass the floor against the PREVIOUS jitter and
     // slowly accumulate real-looking distance from pure noise.
-    return { distanceMeters: acc.distanceMeters, pointCount: acc.pointCount + 1, lastPoint: acc.lastPoint };
+    return { distanceMeters: acc.distanceMeters, pointCount: acc.pointCount + 1, lastPoint: acc.lastPoint, routePoints: acc.routePoints };
   }
     return { distanceMeters: acc.distanceMeters + delta, pointCount: acc.pointCount + 1, lastPoint: point, routePoints: [...acc.routePoints, point] };
 }

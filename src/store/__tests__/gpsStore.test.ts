@@ -41,14 +41,14 @@ describe('gpsStore', () => {
   it('feeds live distance/pointCount updates from the onUpdate callback into state', async () => {
     const { useGpsStore } = require('../gpsStore');
     const gpsTracking = require('../../lib/gpsTracking');
-    let feed: (acc: { distanceMeters: number; pointCount: number }) => void = () => undefined;
+    let feed: (acc: { distanceMeters: number; pointCount: number; routePoints: never[] }) => void = () => undefined;
     jest.spyOn(gpsTracking, 'startGpsWatch').mockImplementationOnce(async (onUpdate: any) => {
       feed = onUpdate;
       return { remove: jest.fn() };
     });
 
     await useGpsStore.getState().startTracking(walk);
-    feed({ distanceMeters: 123.4, pointCount: 7 });
+    feed({ distanceMeters: 123.4, pointCount: 7, routePoints: [] });
 
     const state = useGpsStore.getState();
     expect(state.distanceMeters).toBe(123.4);
@@ -101,7 +101,7 @@ describe('gpsStore', () => {
     const { repository } = require('../../data');
     const gpsTracking = require('../../lib/gpsTracking');
     const removeMock = jest.fn();
-    let feed: (acc: { distanceMeters: number; pointCount: number }) => void = () => undefined;
+    let feed: (acc: { distanceMeters: number; pointCount: number; routePoints: never[] }) => void = () => undefined;
     jest.spyOn(gpsTracking, 'startGpsWatch').mockImplementationOnce(async (onUpdate: any) => {
       feed = onUpdate;
       return { remove: removeMock };
@@ -109,7 +109,7 @@ describe('gpsStore', () => {
     const upsertSpy = jest.spyOn(repository, 'upsertGpsSession').mockResolvedValue(undefined);
 
     await useGpsStore.getState().startTracking(walk);
-    feed({ distanceMeters: 900.5, pointCount: 42 });
+    feed({ distanceMeters: 900.5, pointCount: 42, routePoints: [] });
 
     const result = await useGpsStore.getState().stopTracking(walk, 'user-aba');
 
