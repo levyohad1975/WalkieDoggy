@@ -147,9 +147,14 @@ export function NextWalkCard({
         {showMascot ? <WalkieMascot state={mascotState} size={isWeb ? 52 : 58} testID="next-walk-mascot" /> : null}
       </View>
 
-      <RtlText style={styles.mascotMessage} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-        {message}
-      </RtlText>
+      {/* An overdue card is an operational decision, not a greeting. Keeping
+          the mascot copy out of that state gives the time, assignee and the
+          two resolution actions enough calm, predictable room on a phone. */}
+      {!overdue && !isActive ? (
+        <RtlText style={styles.mascotMessage} numberOfLines={1} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+          {message}
+        </RtlText>
+      ) : null}
 
       {/* 'unavailable' (no permission API at all, e.g. some sandboxed
           environments) is silently skipped — a persistent "GPS unavailable"
@@ -183,7 +188,7 @@ export function NextWalkCard({
             {walkDateContextLabel(walk.date)}
           </RtlText>
           {overdue ? (
-            <RtlText style={[styles.relative, styles.relativeOverdue]} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.72} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+            <RtlText style={[styles.relative, styles.relativeOverdue]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
               {requiresAttention ? '🚨 דורש תשומת לב · ' : 'ממתין לעדכון · '}
               {relativeTimeLabel(walk)}
             </RtlText>
@@ -226,7 +231,7 @@ export function NextWalkCard({
           {overdue && onMarkNotDone ? (
             <View style={styles.resolveRow}>
               <Button
-                label="✓ סמן טיול כבוצע"
+                label="✓ בוצע"
                 variant="secondary"
                 onPress={onMarkDone}
                 style={styles.resolveButton}
@@ -234,7 +239,7 @@ export function NextWalkCard({
                 shrinkToFit
               />
               <Button
-                label="✕ לא בוצע"
+                label="לא בוצע"
                 variant="secondary"
                 onPress={onMarkNotDone}
                 style={styles.resolveButton}
@@ -244,7 +249,7 @@ export function NextWalkCard({
             </View>
           ) : (
             <Button
-              label="✓ סמן טיול כבוצע"
+              label="✓ סמן כבוצע"
               variant="secondary"
               onPress={onMarkDone}
               style={styles.markDoneFallbackButton}
@@ -256,7 +261,7 @@ export function NextWalkCard({
       ) : overdue && onMarkNotDone ? (
         <View style={styles.resolveRow}>
           <Button label="✓ בוצע" onPress={onMarkDone} style={styles.resolveButton} compact shrinkToFit />
-          <Button label="✕ לא בוצע" variant="secondary" onPress={onMarkNotDone} style={styles.resolveButton} compact shrinkToFit />
+          <Button label="לא בוצע" variant="secondary" onPress={onMarkNotDone} style={styles.resolveButton} compact shrinkToFit />
         </View>
       ) : (
         <Button label="סמן כבוצע" icon="✓" onPress={onMarkDone} style={styles.doneButton} shrinkToFit />
@@ -336,7 +341,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.primaryDark,
     textAlign: 'right',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   gpsStatusLine: {
     fontSize: 12,
@@ -345,30 +350,27 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     marginBottom: 8,
   },
-  // Round 6F correction: timeBlock/personBlock each get an explicit, equal
-  // `flex` share of the row instead of sizing themselves to their own text's
-  // rendered width. Box widths are now a fixed proportion of the row —
-  // independent of Dynamic Type/system font-size — so neither block's
-  // on-screen position drifts as text metrics change; only the content
-  // centered inside each fixed-width box can shift by a few px.
-  mainRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 12 },
+  // The row follows the reading direction: the scheduled time anchors the
+  // right edge and the responsible person sits opposite it. Fixed halves
+  // prevent a long status from pushing either item into a third column.
+  mainRow: { flexDirection: 'row-reverse', alignItems: 'center', marginBottom: 14, gap: 12 },
   webMainRow: { marginBottom: 8, minHeight: 68 },
   timeBlock: { flex: 1, alignItems: 'flex-start', minWidth: 0 },
   // Reduced from 44 (BUG report: too large, wrapped to two lines on a
   // narrow iPhone and dwarfed the rest of the card). Still the single
   // biggest element on the card, so it stays the clear visual anchor next
   // to the responsible person's name (18) and "סמן כבוצע" button.
-  time: { fontSize: 30, fontWeight: '800', color: colors.textPrimary, textAlign: 'left' },
+  time: { fontSize: 32, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
   dateContext: { fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginTop: 1 },
-  relative: { fontSize: 16, fontWeight: '600', color: colors.primary, marginTop: 2 },
+  relative: { width: '100%', fontSize: 14, fontWeight: '700', color: colors.primary, marginTop: 4, textAlign: 'right' },
   relativeOverdue: { color: colors.statusOverdue },
-  personBlock: { flex: 1, alignItems: 'center', gap: 4, minWidth: 0 },
-  personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
-  responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'right' },
-  doneButton: { marginTop: 4 },
-  markDoneFallbackButton: { marginTop: 10, borderWidth: 1.5, borderColor: colors.primaryDark },
+  personBlock: { flex: 1, alignItems: 'flex-end', gap: 3, minWidth: 0 },
+  personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'left' },
+  responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'left' },
+  doneButton: { marginTop: 2 },
+  markDoneFallbackButton: { marginTop: 8, borderWidth: 1.5, borderColor: colors.primaryDark },
   endWalkButton: { marginTop: 4, backgroundColor: colors.statusOverdue },
-  resolveRow: { flexDirection: 'row', gap: 8, marginTop: 4, width: '100%' },
+  resolveRow: { flexDirection: 'row-reverse', gap: 8, marginTop: 8, width: '100%' },
   resolveButton: { flex: 1, minWidth: 0 },
   notMineNote: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: 6 },
   requestStatusLine: {
@@ -381,7 +383,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   requestStatusApproved: { color: colors.statusDone },
-  linkRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 9 },
+  linkRow: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 10 },
   linkText: { color: colors.primaryDark, fontSize: 14, fontWeight: '600' },
   linkDivider: { color: colors.textSecondary },
 });
