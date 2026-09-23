@@ -16,6 +16,7 @@ import { RuleFormModal, type RuleFormResult } from '../components/RuleFormModal'
 import { ConfirmModal } from '../components/ConfirmModal';
 import { UserPickerModal } from '../components/UserPickerModal';
 import { SwapWalkPickerModal } from '../components/SwapWalkPickerModal';
+import { DogSelectorRow } from '../components/DogSelectorRow';
 import { RequestTimeChangeModal } from '../components/RequestTimeChangeModal';
 import { DEMO_FAMILY } from '../data/demoData';
 import { generateId } from '../lib/id';
@@ -58,7 +59,7 @@ function formatDateLabel(dateStr: string): string {
 }
 
 export function ScheduleScreen() {
-  const { users, dog, loading: familyLoading, load: loadFamily } = useFamilyStore();
+  const { users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, load: loadFamily } = useFamilyStore();
   const {
     walks,
     rules,
@@ -149,8 +150,23 @@ export function ScheduleScreen() {
   // "hand this walk to"): a removed member must never be offered here.
   const activeUsers = useMemo(() => users.filter((u) => !u.removedAt), [users]);
 
+  // PRD §11: multi-dog families must see only the SELECTED dog's schedule
+  // here — `walks`/`rules` themselves are the raw, family-wide store,
+  // unfiltered by dog. A single-dog family (dogs.length <= 1) is
+  // unaffected. ID-based lookups (walksById, walks.find) stay on the
+  // unfiltered `walks` on purpose — they resolve one already-known walk
+  // regardless of which dog is currently selected.
+  const visibleWalks = useMemo(
+    () => (dogs.length > 1 && dog ? walks.filter((w) => w.dogId === dog.id) : walks),
+    [walks, dogs.length, dog?.id]
+  );
+  const visibleRules = useMemo(
+    () => (dogs.length > 1 && dog ? rules.filter((r) => r.dogId === dog.id) : rules),
+    [rules, dogs.length, dog?.id]
+  );
+
   const grouped = useMemo(() => {
-    const filtered = walks.filter((w) => inRange(w.date, range));
+    const filtered = visibleWalks.filter((w) => inRange(w.date, range));
     const byDate = new Map<string, Walk[]>();
     for (const w of filtered) {
       const list = byDate.get(w.date) ?? [];
@@ -159,7 +175,7 @@ export function ScheduleScreen() {
     }
     for (const list of byDate.values()) list.sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
     return [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [walks, range]);
+  }, [visibleWalks, range]);
 
   // Chronological by actual walk time, not the old manual sort_order — the
   // ▲/▼ reordering UI only ever changed display order while the times
@@ -167,13 +183,16 @@ export function ScheduleScreen() {
   // `sortOrder` column itself is left alone (no migration needed; nothing
   // still reads it for ordering, but other code/back-compat may still rely
   // on the column existing).
-  const sortedRules = useMemo(() => [...rules].sort((a, b) => a.time.localeCompare(b.time)), [rules]);
+  const sortedRules = useMemo(() => [...visibleRules].sort((a, b) => a.time.localeCompare(b.time)), [visibleRules]);
 
   const editingWalk = editingWalkId ? walks.find((w) => w.id === editingWalkId) ?? null : null;
   const otherPendingWalks = useMemo(() => {
     if (!editingWalk) return [];
+    // Multi-dog (PRD §11): a swap target must belong to the SAME dog as
+    // the walk being edited — matching HomeScreen's identical fix and the
+    // dogId filter SwapWalkPickerModal's other call sites already apply.
     return walks
-      .filter((w) => w.id !== editingWalk.id && w.status === 'pending')
+      .filter((w) => w.id !== editingWalk.id && w.status === 'pending' && w.dogId === editingWalk.dogId)
       .sort((a, b) => (a.date + a.scheduledTime).localeCompare(b.date + b.scheduledTime))
       .slice(0, 12)
       .map((w) => ({ walk: w, responsible: usersById[w.responsibleUserId] }));
@@ -219,6 +238,13 @@ export function ScheduleScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
         <RtlText style={styles.header} accessibilityRole="header">לוח הזמנים של {dog?.name ?? 'הכלב/ה שלנו'}</RtlText>
+
+        {/* PRD §11: easy dog picker whenever there's more than one dog —
+            same widget/placement pattern as HomeScreen's own fix. Hidden
+            entirely for a single-dog family. */}
+        {dogs.length > 1 ? (
+          <DogSelectorRow dogs={dogs} selectedDogId={selectedDogId} onSelect={(dogId) => void selectDog(dogId)} />
+        ) : null}
 
         <View style={styles.tabs}>
           {(Object.keys(RANGE_LABELS) as RangeKey[]).map((key) => (
