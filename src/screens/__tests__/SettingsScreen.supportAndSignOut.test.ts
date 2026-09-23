@@ -38,7 +38,8 @@ describe('SettingsScreen wires support + sign-out (structural)', () => {
     const fnIdx = source.indexOf('const handleSignOut = ()');
     expect(fnIdx).toBeGreaterThan(-1);
     const fn = source.slice(fnIdx, source.indexOf('};', fnIdx));
-    expect(fn).toMatch(/style: 'destructive', onPress: \(\) => void signOut\(\)/);
+    expect(fn).toContain("const performSignOut = () => void signOut();");
+    expect(fn).toMatch(/style: 'destructive', onPress: performSignOut/);
     expect(fn).toMatch(/text: 'ביטול', style: 'cancel'/);
   });
 });
