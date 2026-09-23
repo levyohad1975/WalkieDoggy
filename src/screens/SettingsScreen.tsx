@@ -38,8 +38,17 @@ import { listSwapRequests, type SwapRequestRow } from '../lib/requests';
 import { PrivacyAccessibilityInfoModal } from '../components/PrivacyAccessibilityInfoModal';
 import { useSystemAdminStore } from '../store/systemAdminStore';
 import { SystemAdminScreen } from './SystemAdminScreen';
+import { ScreenRecoveryBoundary } from '../components/ScreenRecoveryBoundary';
 
 export function SettingsScreen() {
+  return (
+    <ScreenRecoveryBoundary screenName="הגדרות">
+      <SettingsScreenContent />
+    </ScreenRecoveryBoundary>
+  );
+}
+
+function SettingsScreenContent() {
   const { family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, setGamificationEnabled, saveDog, selectDog } = useFamilyStore();
   const healthTasks = useHealthStore((s) => s.tasks);
   const loadHealthTasks = useHealthStore((s) => s.load);
