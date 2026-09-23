@@ -177,7 +177,20 @@ export function StatisticsScreen() {
   const usersById = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u])), [users]);
   const dogsById = useMemo(() => Object.fromEntries(dogs.map((d) => [d.id, d])), [dogs]);
 
-  const dateRange = period === 'all' ? customRange : periodToDateRange(period);
+  // periodToDateRange() allocates a brand-new { start, end } object on every
+  // call (never null unless period === 'all') — computing it directly in
+  // the render body gave `dateRange` a new reference on every single
+  // render, which cascaded through effectiveFilters -> filteredWalks (both
+  // memoized on reference equality) into the GPS-sessions effect below
+  // (dependent on filteredWalks), whose setGpsSessions() call triggered
+  // another render, recomputing dateRange again — an infinite render loop
+  // that pegged the CPU and crashed the tab. Memoizing on the actual
+  // primitive inputs (period, customRange) keeps the reference stable
+  // across renders that don't change either.
+  const dateRange = useMemo(
+    () => (period === 'all' ? customRange : periodToDateRange(period)),
+    [period, customRange]
+  );
   const effectiveFilters = useMemo<StatisticsFilters>(() => ({ ...filters, dateRange }), [filters, dateRange]);
   const filteredWalks = useMemo(() => applyStatisticsFilters(sourceWalks, effectiveFilters), [sourceWalks, effectiveFilters]);
 
