@@ -29,7 +29,22 @@ describe('PhotoCropHost (structural)', () => {
 
   it('renders PhotoCropModal wired to its own confirm/cancel handlers', () => {
     expect(source).toMatch(
-      /<PhotoCropModal visible=\{uri !== null\} uri=\{uri\} onConfirm=\{handleConfirm\} onCancel=\{handleCancel\} \/>/,
+      /<PhotoCropModal visible uri=\{uri\} onConfirm=\{handleConfirm\} onCancel=\{handleCancel\} \/>/,
     );
+  });
+
+  it('renders nothing at all until a crop is actually requested — never mounts <PhotoCropModal>/its <Modal> unconditionally at app start', () => {
+    // Bug fix: react-native-web's Modal gives every instance the SAME
+    // fixed z-index, so two simultaneously-open Modals stack by plain DOM
+    // order. PhotoCropHost lives near App.tsx's root — mounting
+    // <PhotoCropModal> (and its underlying <Modal>, which creates its
+    // portal <div> immediately on mount regardless of `visible`)
+    // unconditionally would permanently put its portal EARLIER in the DOM
+    // than any screen-level Modal (e.g. DogDetailsModal) opened later,
+    // leaving the crop step rendered behind an already-open modal and
+    // completely unreachable. Returning null until uri is set ensures the
+    // Modal only mounts (and portals) AFTER whichever screen modal
+    // triggered the photo picker is already open.
+    expect(source).toMatch(/if \(uri === null\) return null;/);
   });
 });
