@@ -387,16 +387,6 @@ export default function App() {
               turn only ever came from am_i_system_admin() — a fresh,
               server-side check of the real auth identity, not a locally
               cached/guessed value. */}
-          {isSystemAdmin && !systemObserverActive ? (
-            <Pressable
-              onPress={() => setSystemAdminOpen(true)}
-              style={styles.systemAdminEntry}
-              accessibilityRole="button"
-              accessibilityLabel="ניהול מערכת"
-            >
-              <RtlText style={styles.systemAdminEntryText}>🛡️</RtlText>
-            </Pressable>
-          ) : null}
           {!shouldEnterSystemAdminDirectly ? (
             <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} />
           ) : null}
