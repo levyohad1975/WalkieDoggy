@@ -691,14 +691,6 @@ export function SettingsScreen() {
         onClose={() => setAchievementsModalVisible(false)}
       />
 
-      <SyncIssuesModal
-        visible={syncIssuesModalVisible}
-        conflicts={syncConflicts}
-        quarantined={quarantinedSyncItems}
-        onClearConflicts={() => void handleClearSyncConflicts()}
-        onClose={() => setSyncIssuesModalVisible(false)}
-      />
-
       <PrivacyAccessibilityInfoModal
         visible={privacyAccessibilityModalVisible}
         onClose={() => setPrivacyAccessibilityModalVisible(false)}
