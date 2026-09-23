@@ -30,7 +30,7 @@ import {
   type StatisticsFilters,
   type StatsPeriod,
 } from '../logic/statistics';
-import { localDateOnly } from '../logic/dateFormat';
+import { formatHistoryDate, localDateOnly } from '../logic/dateFormat';
 import { canAccessStatisticsScreen } from '../logic/permissions';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { fetchStatisticsWalks } from '../lib/permissionedWalks';
@@ -65,13 +65,27 @@ function Bar({ percent, color }: { percent: number; color: string }) {
   );
 }
 
-/** A minimal daily trend sparkline — vertical bars sized relative to the busiest day in range. Plain Views, matching this screen's existing no-chart-library convention. */
+/**
+ * A minimal daily trend sparkline — vertical bars sized relative to the
+ * busiest day in range. Plain Views, matching this screen's existing
+ * no-chart-library convention. Unlike the member-distribution Bar above
+ * (which sits beside a visible name/count RtlText, so the bar itself can
+ * stay purely decorative), each point here has no adjacent visible label at
+ * all — the bar height is the ONLY representation of that day's count. A
+ * screen reader got nothing from this chart before; each point is now its
+ * own accessible element with a real date + count description.
+ */
 function TrendChart({ points }: { points: { date: string; count: number }[] }) {
   const max = Math.max(1, ...points.map((p) => p.count));
   return (
     <View style={styles.trendRow}>
       {points.map((p) => (
-        <View key={p.date} style={styles.trendBarWrap}>
+        <View
+          key={p.date}
+          style={styles.trendBarWrap}
+          accessible
+          accessibilityLabel={`${formatHistoryDate(p.date)}: ${p.count} ${p.count === 1 ? 'טיול' : 'טיולים'}`}
+        >
           <View style={[styles.trendBar, { height: `${Math.max(6, (p.count / max) * 100)}%` }]} />
         </View>
       ))}
