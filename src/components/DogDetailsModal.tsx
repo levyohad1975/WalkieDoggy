@@ -19,11 +19,12 @@ interface DogDetailsModalProps {
   uploadingPhoto: boolean;
   onChangePhoto: () => void;
   onRemovePhoto: () => void;
+  onAddDog?: () => void;
   onSave: (patch: Partial<Dog>) => void;
   onClose: () => void;
 }
 
-export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, onRemovePhoto, onSave, onClose }: DogDetailsModalProps) {
+export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, onRemovePhoto, onAddDog, onSave, onClose }: DogDetailsModalProps) {
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -79,6 +80,11 @@ export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, o
               <RtlText style={styles.label}>הערות</RtlText>
               <TextInput value={notes} onChangeText={setNotes} onBlur={() => onSave({ notes: notes.trim() || undefined })} style={styles.input} textAlign="right" placeholder="למשל: אוהב להריח כל עמוד" placeholderTextColor={colors.textSecondary} accessibilityLabel="הערות" />
               <RtlText style={styles.hint}>{dog.walksPerDay} טיולים ביום · שינוי בלוח זמנים</RtlText>
+              {onAddDog ? (
+                <Pressable onPress={onAddDog} style={styles.addDogSecondary} accessibilityRole="button" accessibilityLabel="הוספת כלב נוסף למשפחה">
+                  <RtlText style={styles.addDogSecondaryText}>＋ הוספת כלב נוסף למשפחה</RtlText>
+                </Pressable>
+              ) : null}
               <Button label="סגור" variant="secondary" onPress={onClose} style={styles.closeButton} />
             </ScrollView>
           </Pressable>
@@ -108,5 +114,7 @@ const styles = StyleSheet.create({
   sexChipTextActive: { color: colors.primaryDark, fontWeight: '700' },
   input: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, padding: radii.md, fontSize: typography.body.fontSize, color: colors.textPrimary },
   hint: { fontSize: 12, color: colors.textSecondary, textAlign: 'right', marginTop: radii.sm, lineHeight: 18 },
+  addDogSecondary: { alignSelf: 'center', paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
+  addDogSecondaryText: { color: colors.primaryDark, fontWeight: '600', textAlign: 'center' },
   closeButton: { marginTop: spacing.xl },
 });
