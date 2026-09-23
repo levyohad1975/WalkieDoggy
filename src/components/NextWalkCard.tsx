@@ -187,14 +187,9 @@ export function NextWalkCard({
           <RtlText style={styles.dateContext} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
             {walkDateContextLabel(walk.date)}
           </RtlText>
-          {overdue ? (
-            <RtlText style={[styles.relative, styles.relativeOverdue]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-              {requiresAttention ? '🚨 דורש תשומת לב · ' : 'ממתין לעדכון · '}
-              {relativeTimeLabel(walk)}
-            </RtlText>
-          ) : (
+          {!overdue ? (
             <Countdown target={walkDateTime(walk)} />
-          )}
+          ) : null}
         </View>
 
         <View style={styles.personBlock}>
@@ -211,6 +206,13 @@ export function NextWalkCard({
           ) : null}
         </View>
       </View>
+
+      {overdue ? (
+        <RtlText style={[styles.relative, styles.relativeOverdue]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+          {requiresAttention ? '🚨 דורש תשומת לב · ' : 'ממתין לעדכון · '}
+          {relativeTimeLabel(walk)}
+        </RtlText>
+      ) : null}
 
       {requestStatusLine && !requestStatusLine.startsWith('✓') && !requestStatusLine.startsWith('✕') ? (
         <RtlText style={styles.requestStatusLine} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
