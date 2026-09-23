@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Platform, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import type { Dog, FamilyUser, Walk } from '../types';
 import { isOverdue, relativeTimeLabel, walkDateTime } from '../logic/nextWalk';
@@ -106,6 +106,38 @@ export function NextWalkCard({
   const isMine = walk.responsibleUserId === currentUserId;
   const isWeb = Platform.OS === 'web';
   const isActive = Boolean(activeStartedAt);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const walkerBob = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!isActive || !activeStartedAt) {
+      setElapsedSeconds(0);
+      walkerBob.stopAnimation();
+      walkerBob.setValue(0);
+      return;
+    }
+
+    const updateElapsed = () => {
+      const startedAtMs = new Date(activeStartedAt).getTime();
+      setElapsedSeconds(Number.isFinite(startedAtMs) ? Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000)) : 0);
+    };
+    updateElapsed();
+    const timer = setInterval(updateElapsed, 1000);
+    const bob = Animated.loop(
+      Animated.sequence([
+        Animated.timing(walkerBob, { toValue: -3, duration: 350, useNativeDriver: true }),
+        Animated.timing(walkerBob, { toValue: 0, duration: 350, useNativeDriver: true }),
+      ])
+    );
+    bob.start();
+    return () => {
+      clearInterval(timer);
+      bob.stop();
+      walkerBob.stopAnimation();
+    };
+  }, [activeStartedAt, isActive, walkerBob]);
+
+  const elapsedLabel = `${String(Math.floor(elapsedSeconds / 60)).padStart(2, '0')}:${String(elapsedSeconds % 60).padStart(2, '0')}`;
 
   // BATCH 4 (C2/C3/C8) — the Walkie Doggy mascot + a matching personality
   // message, centrally derived (mascotStage.ts) from how far `walk` is from
@@ -154,6 +186,20 @@ export function NextWalkCard({
         <RtlText style={styles.mascotMessage} numberOfLines={1} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
           {message}
         </RtlText>
+      ) : null}
+
+      {isActive ? (
+        <View style={styles.activeWalkBanner} accessibilityRole="timer" accessibilityLabel={`משך הטיול ${elapsedLabel}`}>
+          <Animated.Text style={[styles.walkerEmoji, { transform: [{ translateY: walkerBob }] }]}>🚶‍♂️</Animated.Text>
+          <View style={styles.activeWalkCopy}>
+            <RtlText style={styles.activeWalkTitle}>מטיילים עכשיו</RtlText>
+            <RtlText style={styles.activeWalkSubtitle}>האדם והכלב בדרך 🐕</RtlText>
+          </View>
+          <View style={styles.elapsedBlock}>
+            <RtlText style={styles.elapsedLabel}>זמן</RtlText>
+            <RtlText style={styles.elapsedTime}>{elapsedLabel}</RtlText>
+          </View>
+        </View>
       ) : null}
 
       {/* 'unavailable' (no permission API at all, e.g. some sandboxed
@@ -350,6 +396,24 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     marginBottom: 8,
   },
+  activeWalkBanner: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    width: '100%',
+    backgroundColor: colors.success + '18',
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  walkerEmoji: { fontSize: 30 },
+  activeWalkCopy: { flex: 1, alignItems: 'flex-end' },
+  activeWalkTitle: { fontSize: 15, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
+  activeWalkSubtitle: { fontSize: 12, color: colors.textSecondary, textAlign: 'right', marginTop: 2 },
+  elapsedBlock: { minWidth: 72, alignItems: 'center' },
+  elapsedLabel: { fontSize: 11, color: colors.textSecondary, fontWeight: '700' },
+  elapsedTime: { fontSize: 22, color: colors.success, fontWeight: '900', fontVariant: ['tabular-nums'] },
   // The row follows the reading direction: the scheduled time anchors the
   // right edge and the responsible person sits opposite it. Fixed halves
   // prevent a long status from pushing either item into a third column.
