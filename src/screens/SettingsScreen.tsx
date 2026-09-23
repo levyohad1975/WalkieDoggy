@@ -312,6 +312,23 @@ export function SettingsScreen() {
 
   const removeDogPhoto = () => {
     if (!dog?.photoUrl) return;
+    const remove = async () => {
+      try {
+        await persistDog({ photoUrl: undefined });
+      } catch {
+        Alert.alert('לא הצלחנו להסיר את התמונה', 'נסו שוב בעוד רגע.');
+      }
+    };
+
+    // React Native's Alert is not reliably presented by the Safari Web
+    // build. Use the browser confirmation there, so the visible control
+    // actually removes the photo instead of appearing unresponsive.
+    if (Platform.OS === 'web') {
+      const confirm = (globalThis as typeof globalThis & { confirm?: (message?: string) => boolean }).confirm;
+      if (!confirm || confirm('להסיר את תמונת הכלב ולחזור למסקוט של Walkie Doggy?')) void remove();
+      return;
+    }
+
     Alert.alert(
       'להסיר את תמונת הכלב?',
       'התמונה תוסר והמסקוט של Walkie Doggy יוצג שוב במקום תמונת הכלב.',
@@ -320,7 +337,7 @@ export function SettingsScreen() {
         {
           text: 'הסר תמונה',
           style: 'destructive',
-          onPress: () => void persistDog({ photoUrl: undefined }),
+          onPress: () => void remove(),
         },
       ]
     );
@@ -919,7 +936,6 @@ const styles = StyleSheet.create({
   sheetScroll: { flexGrow: 0, flexShrink: 1 },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 8 },
 });
-
 
 
 
