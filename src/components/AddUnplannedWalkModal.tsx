@@ -208,7 +208,19 @@ export function AddUnplannedWalkModal({
               </View>
               <View style={styles.flex}>
                 <RtlText style={styles.label}>שעה</RtlText>
-                <RtlText style={[styles.input, styles.timeDisplay]}>{time}</RtlText>
+                {/* The app is also used from Safari. DateTimePicker has no
+                    visible Web control there, so render the browser's native
+                    time picker instead of a static-looking time label. */}
+                {Platform.OS === 'web' ? React.createElement('input', {
+                  type: 'time',
+                  value: time,
+                  step: 60,
+                  'aria-label': 'בחר שעת טיול',
+                  onChange: (event: { target: { value: string } }) => setTime(event.target.value),
+                  style: webTimeInputStyle,
+                }) : (
+                  <RtlText style={[styles.input, styles.timeDisplay]}>{time}</RtlText>
+                )}
               </View>
             </View>
 
@@ -326,6 +338,12 @@ export function AddUnplannedWalkModal({
     </Modal>
   );
 }
+
+const webTimeInputStyle = {
+  display: 'block', width: '100%', minHeight: 52, boxSizing: 'border-box', padding: 12,
+  fontSize: 18, fontWeight: '700', borderRadius: radii.md, border: `1px solid ${colors.border}`,
+  backgroundColor: colors.surfaceMuted, color: colors.textPrimary, textAlign: 'center', direction: 'ltr', cursor: 'pointer',
+};
 
 const styles = StyleSheet.create({
   flexFull: { flex: 1 },
