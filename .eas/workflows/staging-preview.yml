@@ -1,3 +1,4 @@
+# Deploys only a preview alias; production is never promoted by this workflow.
 name: Deploy web staging
 
 on:
