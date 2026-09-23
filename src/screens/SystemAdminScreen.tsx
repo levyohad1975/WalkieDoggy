@@ -39,6 +39,22 @@ function emailMessageTypeLabel(type: string): string {
   return type;
 }
 
+/**
+ * Audit actions that record a System Admin's OWN hidden-observation
+ * activity (entering/exiting silent family viewing, or opening a family's
+ * detail view) rather than something a family did. Hidden from the "יומן
+ * פעילות מערכת" presentation per explicit product direction — the log
+ * should read as family activity, not "who is watching". The rows
+ * themselves stay fully intact in the backend audit table; this only
+ * narrows what filteredAuditLog renders.
+ */
+const HIDDEN_OBSERVATION_AUDIT_ACTIONS = new Set([
+  'system_observer.started',
+  'system_observer.ended',
+  'system_admin_view_family_detail',
+  'system_admin.view_family_detail',
+]);
+
 /** Hebrew label for email_delivery_log.status (0034) — falls back to the raw value for any future provider status. */
 function auditActionLabel(action: string): string {
   const labels: Record<string, string> = {
@@ -133,8 +149,27 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
   const [auditError, setAuditError] = useState<string | null>(null);
   const [auditFamilyId, setAuditFamilyId] = useState<string>('all');
 
+  // Family names are not unique (see SystemAdminFamilyListItem's own doc
+  // comment) — the invite code is the actual distinguishing identifier,
+  // already shown on every family card below. Reused here (not a new
+  // exposure — a System Admin already sees every family's invite code)
+  // so two same-named families never look identical in the audit log.
+  const familyInviteCodeById = useMemo(
+    () => new Map(families.map((f) => [f.familyId, f.inviteCode])),
+    [families]
+  );
+
   const filteredAuditLog = useMemo(
-    () => auditFamilyId === 'all' ? auditLog : auditLog.filter((entry) => entry.familyId === auditFamilyId),
+    () =>
+      auditLog
+        // UI-presentation-only filter: the System Admin's own hidden-
+        // observation actions (entering/exiting silent family viewing, or
+        // viewing family detail) are noise in an activity log meant to show
+        // what FAMILIES did, not when an admin looked. The underlying rows
+        // are untouched in the backend audit table/RPC — getSystemAdminGlobalAudit
+        // above still fetches everything, this only narrows what renders.
+        .filter((entry) => !HIDDEN_OBSERVATION_AUDIT_ACTIONS.has(entry.action))
+        .filter((entry) => auditFamilyId === 'all' || entry.familyId === auditFamilyId),
     [auditLog, auditFamilyId]
   );
 
@@ -324,10 +359,10 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                   style={[styles.auditFilterChip, auditFamilyId === family.familyId && styles.auditFilterChipSelected]}
                   accessibilityRole="button"
                   accessibilityState={{ selected: auditFamilyId === family.familyId }}
-                  accessibilityLabel={`סינון פעילות למשפחת ${family.familyName}`}
+                  accessibilityLabel={`סינון פעילות למשפחת ${family.familyName}, קוד ${family.inviteCode}`}
                 >
                   <RtlText style={[styles.auditFilterText, auditFamilyId === family.familyId && styles.auditFilterTextSelected]}>
-                    {family.familyName}
+                    {family.familyName} · {family.inviteCode}
                   </RtlText>
                 </Pressable>
               ))}
@@ -339,7 +374,10 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
               <View key={`${entry.source}-${entry.id}`} style={styles.auditCard}>
                 <RtlText style={styles.auditAction}>{auditActionLabel(entry.action)}</RtlText>
                 <RtlText style={styles.cardLine}>{new Date(entry.createdAt).toLocaleString('he-IL')}</RtlText>
-                <RtlText style={styles.cardLine}>משפחה: {entry.familyName ?? 'מערכתי'}</RtlText>
+                <RtlText style={styles.cardLine}>
+                  משפחה: {entry.familyName ?? 'מערכתי'}
+                  {entry.familyId && familyInviteCodeById.get(entry.familyId) ? ` · קוד ${familyInviteCodeById.get(entry.familyId)}` : ''}
+                </RtlText>
                 <RtlText style={styles.cardLine}>משתמש: {entry.actorName ?? '—'}</RtlText>
                 <RtlText style={styles.cardLine}>אימייל: {entry.actorEmail ?? '—'}</RtlText>
                 <RtlText style={styles.cardLine}>יעד: {entry.targetType ?? '—'}{entry.targetId ? ` · ${entry.targetId.slice(0, 12)}` : ''}</RtlText>
