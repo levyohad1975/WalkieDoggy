@@ -110,6 +110,8 @@ export function SettingsScreen() {
   const [sharingModalVisible, setSharingModalVisible] = useState(false);
   const [managementVisible, setManagementVisible] = useState(false);
   const isSystemAdmin = useSystemAdminStore((state) => state.isSystemAdmin);
+  // System administration must never leak into a cross-family hidden observer view.
+  const systemObserverActive = useAuthStore((state) => state.systemObserverActive);
   const [systemAdminVisible, setSystemAdminVisible] = useState(false);
   // NESTED-MODAL LIFECYCLE FIX (final QA round) — see
   // logic/settingsModalTransitions.ts's doc comment for the full mechanism.
@@ -655,7 +657,7 @@ export function SettingsScreen() {
                 <RtlText style={styles.hubRowMeta}>יומן פעילות</RtlText>
               </View>
             </Pressable>
-            {isSystemAdmin ? (
+            {isSystemAdmin && !systemObserverActive ? (
               <Pressable style={styles.hubRow} onPress={() => setSystemAdminVisible(true)} accessibilityRole="button" accessibilityLabel="ניהול מערכת">
                 <RtlText style={styles.hubChevron}>‹</RtlText>
                 <View style={styles.hubLabelWithMeta}>
