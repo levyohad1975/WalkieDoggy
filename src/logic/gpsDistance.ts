@@ -58,10 +58,12 @@ export interface GpsAccumulator {
   distanceMeters: number;
   pointCount: number;
   lastPoint: GpsPoint | null;
+  /** Accepted route points retained only for the completed walk preview. */
+  routePoints: GpsPoint[];
 }
 
 export function createGpsAccumulator(): GpsAccumulator {
-  return { distanceMeters: 0, pointCount: 0, lastPoint: null };
+  return { distanceMeters: 0, pointCount: 0, lastPoint: null, routePoints: [] };
 }
 
 /**
@@ -82,7 +84,7 @@ export function accumulateDistance(acc: GpsAccumulator, point: GpsPoint): GpsAcc
     return acc; // too noisy to trust — not counted, not remembered as "last point" either
   }
   if (!acc.lastPoint) {
-    return { distanceMeters: acc.distanceMeters, pointCount: acc.pointCount + 1, lastPoint: point };
+    return { ...acc, pointCount: acc.pointCount + 1, lastPoint: point, routePoints: [point] };
   }
   const delta = haversineDistanceMeters(acc.lastPoint, point);
   if (delta < MIN_MOVEMENT_METERS) {
@@ -92,5 +94,5 @@ export function accumulateDistance(acc: GpsAccumulator, point: GpsPoint): GpsAcc
     // slowly accumulate real-looking distance from pure noise.
     return { distanceMeters: acc.distanceMeters, pointCount: acc.pointCount + 1, lastPoint: acc.lastPoint };
   }
-  return { distanceMeters: acc.distanceMeters + delta, pointCount: acc.pointCount + 1, lastPoint: point };
+    return { distanceMeters: acc.distanceMeters + delta, pointCount: acc.pointCount + 1, lastPoint: point, routePoints: [...acc.routePoints, point] };
 }
