@@ -97,6 +97,11 @@ export function SettingsScreen() {
   // conditional Settings/Home badge this app already has.
   const [syncConflicts, setSyncConflicts] = useState<SyncConflict[]>([]);
   const [quarantinedSyncItems, setQuarantinedSyncItems] = useState<QuarantinedItem[]>([]);
+  // PRD §25's "sync pending" state — how many writes made on this device
+  // are still queued, not yet reached the server. Independent of
+  // syncConflicts/quarantinedSyncItems above: this counts writes still
+  // making their way through normally, not ones that failed or got stuck.
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
   const [syncIssuesModalVisible, setSyncIssuesModalVisible] = useState(false);
   const [privacyAccessibilityModalVisible, setPrivacyAccessibilityModalVisible] = useState(false);
   const [remindersModalVisible, setRemindersModalVisible] = useState(false);
@@ -191,6 +196,7 @@ export function SettingsScreen() {
     useCallback(() => {
       void repository.getSyncConflicts?.().then((c) => setSyncConflicts(c ?? []));
       void repository.getQuarantinedSyncItems?.().then((q) => setQuarantinedSyncItems(q ?? []));
+      void repository.pendingSyncCount?.().then((n) => setPendingSyncCount(n ?? 0));
     }, [])
   );
 
@@ -602,6 +608,23 @@ export function SettingsScreen() {
               </View>
             </Pressable>
           ) : null}
+          {/* PRD §25's "sync pending" state — informational only (not
+              actionable like the conflicts row above), so a plain row
+              rather than a Pressable. Only shown when there's genuinely
+              something still in flight. */}
+          {pendingSyncCount > 0 ? (
+            <View style={styles.hubRow} accessible accessibilityLabel={`${pendingSyncCount} שינויים ממתינים לסנכרון`}>
+              {/* Not a chevron — this row is informational only, never
+                  tappable, so no navigation affordance is shown. A
+                  fixed-width decorative spacer keeps the label aligned
+                  with the actionable rows above/below it. */}
+              <View style={styles.hubChevronSpacer} accessible={false} />
+              <View style={styles.hubLabelWithMeta}>
+                <RtlText style={styles.hubLabel}>🔄 מסנכרן…</RtlText>
+                <RtlText style={styles.hubRowMeta}>{pendingSyncCount} שינויים ממתינים לסנכרון עם השרת</RtlText>
+              </View>
+            </View>
+          ) : null}
         </View>
 
         {/* PRD §16: Settings must include "פרטיות/GPS, נגישות/Reduced
@@ -818,6 +841,9 @@ const styles = StyleSheet.create({
   hubLabelWithMeta: { flex: 1, gap: 2, alignItems: 'stretch' },
   hubRowMeta: { ...typography.meta, color: colors.textSecondary, textAlign: 'right' },
   hubChevron: { fontSize: 20, color: colors.textSecondary, writingDirection: 'ltr' }, // RTL: chevron points left toward the row's leading (right) edge
+  // Same footprint as hubChevron, for a non-tappable informational row that
+  // still needs its label aligned with the actionable rows around it.
+  hubChevronSpacer: { width: 20, height: 20 },
   // Deliverable 3C — dog card (identity-first, top of screen) and the
   // compact "המשפחה שלי" summary card right below it.
   dogCard: {

@@ -181,6 +181,14 @@ export interface Repository {
   getQuarantinedSyncItems?(): Promise<QuarantinedItem[]>;
   /** Dismisses every recorded conflict — the person reviewing them has seen what happened, per PRD §20's "visible, never silently disappear" (a user-initiated dismissal is not the app hiding it). */
   clearSyncConflicts?(): Promise<void>;
+  /**
+   * PRD §25's "sync pending" state: how many writes are currently queued on
+   * this device, waiting to reach the server (already computed/tested —
+   * OfflineFirstRepository.pendingSyncCount() — but had no UI consumer).
+   * Optional for the same reason as the other sync-queue methods above:
+   * repositories with no queue have nothing to count.
+   */
+  pendingSyncCount?(): Promise<number>;
 }
 
 export class RepositoryError extends Error {}
