@@ -154,7 +154,6 @@ export function EditWalkModal({
         title="לבטל את הטיול הזה?"
         message={`הטיול של ${walk.scheduledTime} יבוטל רק הפעם. שאר הסבב לא ישתנה.`}
         confirmLabel="בטל טיול"
-        destructive
         onConfirm={() => {
           setCancelConfirmVisible(false);
           onCancelWalk();
