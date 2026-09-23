@@ -1,0 +1,321 @@
+import React, { useEffect, useState } from 'react';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { RtlText } from './RtlText';
+import type { FamilyUser, Walk, WalkGpsSession } from '../types';
+import { colors } from '../theme/colors';
+import { radii, spacing, typography } from '../theme/tokens';
+import { Button } from './Button';
+import { Avatar } from './Avatar';
+import { useGpsStore } from '../store/gpsStore';
+import { formatDistanceMeters } from '../logic/gpsDistance';
+import { RoutePreview } from './RoutePreview';
+import { ConfirmModal } from './ConfirmModal';
+
+interface EditDoneDetailsModalProps {
+  visible: boolean;
+  walk: Walk | null;
+  onSave: (details: { hadPee: boolean; hadPoop: boolean; note: string; completedAt?: string; completedByUserId?: string }) => void;
+  onClose: () => void;
+  /**
+   * Final QA round v2 (item D completion): both new, OPT-IN, and
+   * backward-compatible — HistoryScreen.tsx's existing usage passes
+   * neither, so its behavior (pee/poop/note only, no delete, no
+   * completedByUserId in the onSave payload at all) is completely
+   * unchanged. Only a caller that passes `users` AND
+   * `canReassignCompletedBy` gets the "who actually walked the dog"
+   * picker; only a caller that passes `onDelete` gets the delete button.
+   */
+  users?: FamilyUser[];
+  canReassignCompletedBy?: boolean;
+  onDelete?: (walkId: string) => void;
+  /**
+   * PRD §7's required GPS correction flow — attributed to whoever is
+   * editing right now. Optional/backward-compatible like the props above:
+   * a caller that omits it still gets a distance field whenever this walk
+   * has a GPS session (correctedByUserId is simply left unset).
+   */
+  currentUserId?: string | null;
+}
+
+/** Lets you fix up the pee/poop/note (and, for an opted-in caller, who-actually-walked-the-dog / delete / GPS distance) details of a walk after it's already been resolved. */
+export function EditDoneDetailsModal({
+  visible,
+  walk,
+  onSave,
+  onClose,
+  users,
+  canReassignCompletedBy,
+  onDelete,
+  currentUserId,
+}: EditDoneDetailsModalProps) {
+  const [hadPee, setHadPee] = useState(false);
+  const [hadPoop, setHadPoop] = useState(false);
+  const [note, setNote] = useState('');
+  const [completedAt, setCompletedAt] = useState<Date>(new Date());
+  const [timePickerOpen, setTimePickerOpen] = useState(false);
+  const [completedByUserId, setCompletedByUserId] = useState<string | undefined>(undefined);
+  // PRD §7 — GPS is assistive, never the sole source of truth: a family
+  // member can confirm/correct the device-computed distance here. Only
+  // shown at all once a session with a real reading exists for this walk
+  // (undefined distanceMeters means tracking never ran) — never a blocking
+  // empty-by-default field, same "optional once GPS data exists" posture
+  // Statistics' own distance KPI already established.
+  const [gpsDistanceMeters, setGpsDistanceMeters] = useState<number | undefined>(undefined);
+  const [distanceInput, setDistanceInput] = useState('');
+  const [gpsSession, setGpsSession] = useState<WalkGpsSession | null>(null);
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+
+  useEffect(() => {
+    if (visible && walk) {
+      setHadPee(Boolean(walk.hadPee));
+      setHadPoop(Boolean(walk.hadPoop));
+      setNote(walk.note ?? '');
+      setCompletedAt(walk.completedAt ? new Date(walk.completedAt) : new Date(`${walk.date}T${walk.scheduledTime}:00`));
+      setTimePickerOpen(false);
+      setCompletedByUserId(walk.completedByUserId ?? walk.responsibleUserId);
+      setGpsDistanceMeters(undefined);
+      setDistanceInput('');
+      void useGpsStore.getState().loadSession(walk.id).then((session) => {
+        setGpsSession(session ?? null);
+        if (!session || typeof session.distanceMeters !== 'number') return;
+        const authoritative = session.correctedDistanceMeters ?? session.distanceMeters;
+        setGpsDistanceMeters(session.distanceMeters);
+        setDistanceInput(String(Math.round(authoritative)));
+      });
+    } else if (!visible) {
+      setGpsSession(null);
+    }
+  }, [visible, walk]);
+
+  if (!walk) return null;
+
+  const showCompletedByPicker = canReassignCompletedBy && users && users.length > 0;
+  const handleCompletedAtChange = (event: DateTimePickerEvent, selected?: Date) => {
+    if (Platform.OS !== 'ios') setTimePickerOpen(false);
+    if (event.type !== 'dismissed' && selected) setCompletedAt(selected);
+  };
+  const showDistanceField = gpsDistanceMeters != null;
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      {/* Round 6C1: same KeyboardAvoidingView pattern already proven in
+          RequestTimeChangeModal.tsx — wraps the existing backdrop/sheet/
+          ScrollView structure unchanged. */}
+      <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <Pressable
+          style={styles.backdrop}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="סגירת עריכת פרטי הטיול"
+        >
+          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              <RtlText style={styles.title} accessibilityRole="header">עריכת פרטי הטיול</RtlText>
+            <RtlText style={styles.subtitle}>
+              {walk.date} · {walk.scheduledTime}
+            </RtlText>
+
+            <View style={styles.toggleRow}>
+              <Pressable onPress={() => setHadPee((v) => !v)} style={[styles.toggle, hadPee && styles.toggleActivePee]}>
+                <RtlText style={styles.toggleEmoji}>💧</RtlText>
+              </Pressable>
+              <Pressable onPress={() => setHadPoop((v) => !v)} style={[styles.toggle, hadPoop && styles.toggleActivePoop]}>
+                <RtlText style={styles.toggleEmoji}>💩</RtlText>
+              </Pressable>
+            </View>
+
+            <RtlText style={styles.label}>שעת ביצוע</RtlText>
+            <Button
+              label={completedAt.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+              variant="secondary"
+              onPress={() => setTimePickerOpen((open) => !open)}
+              accessibilityLabel="בחירת שעת ביצוע הטיול"
+            />
+            {timePickerOpen ? (
+              <DateTimePicker
+                value={completedAt}
+                mode="time"
+                is24Hour
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={handleCompletedAtChange}
+              />
+            ) : null}
+
+            {showCompletedByPicker ? (
+              <>
+                {/*
+                  Final QA round v2: corrects WHO actually walked the dog
+                  (completedByUserId), deliberately NOT the walk's
+                  responsibleUserId (rotation assignment) — see
+                  WalkCompletionDetails' own doc comment in
+                  src/logic/walkActions.ts for why reassigning
+                  responsibleUserId stays out of this modal entirely.
+                */}
+                <RtlText style={styles.label}>מי הוציא/ה בפועל</RtlText>
+                <View style={styles.memberRow}>
+                  {users!.map((u) => (
+                    <Pressable
+                      key={u.id}
+                      onPress={() => setCompletedByUserId(u.id)}
+                      style={[styles.memberChip, completedByUserId === u.id && styles.memberChipActive]}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: completedByUserId === u.id }}
+                      accessibilityLabel={u.name}
+                    >
+                      <Avatar emoji={u.avatar} color={u.color} photoUrl={u.photoUrl} size={32} />
+                      <RtlText style={styles.memberChipName} numberOfLines={1}>
+                        {u.name}
+                      </RtlText>
+                    </Pressable>
+                  ))}
+                </View>
+              </>
+            ) : null}
+
+            {showDistanceField ? (
+              <>
+                <RtlText style={styles.label}>מרחק (מטרים)</RtlText>
+                <TextInput
+                  value={distanceInput}
+                  onChangeText={setDistanceInput}
+                  keyboardType="number-pad"
+                  style={styles.noteInput}
+                  textAlign="right"
+                  accessibilityLabel="מרחק בטיול, במטרים"
+                />
+                <RtlText style={styles.gpsHint}>
+                  מדידת GPS מקורית: {formatDistanceMeters(gpsDistanceMeters!)}
+                </RtlText>
+              </>
+            ) : null}
+
+            {gpsSession?.routePoints && gpsSession.routePoints.length > 1 ? (
+              <>
+                <RtlText style={styles.label}>מסלול הטיול</RtlText>
+                <RoutePreview session={gpsSession} large />
+              </>
+            ) : null}
+
+            <RtlText style={styles.label}>הערה</RtlText>
+            <TextInput
+              value={note}
+              onChangeText={setNote}
+              placeholder="הערה חופשית"
+              placeholderTextColor={colors.textSecondary}
+              style={styles.noteInput}
+              multiline
+              textAlign="right"
+              accessibilityLabel="הערה"
+            />
+
+            <View style={styles.actions}>
+              <Button
+                label="שמירה"
+                onPress={() => {
+                  onSave({
+                    hadPee,
+                    hadPoop,
+                    note: note.trim(),
+                    // Only included when this caller opted into the
+                    // picker — History's existing call site (no `users`/
+                    // `canReassignCompletedBy` passed) never sends this
+                    // field, so its behavior is byte-identical to before.
+                    completedAt: completedAt.toISOString(),
+                    ...(showCompletedByPicker ? { completedByUserId } : {}),
+                  });
+                  // GPS correction is a separate, independent write (its
+                  // own store/table, not part of `walks`) — best-effort,
+                  // never blocking or failing the primary save above.
+                  if (showDistanceField) {
+                    const parsed = Number(distanceInput);
+                    if (Number.isFinite(parsed) && parsed >= 0) {
+                      void useGpsStore.getState().correctDistance(walk.id, parsed, currentUserId);
+                    }
+                  }
+                }}
+                style={styles.flex}
+              />
+              <Button label="ביטול" onPress={onClose} variant="secondary" style={styles.flex} />
+            </View>
+
+            {onDelete ? (
+              <Button
+                label="🗑️ מחיקת הטיול"
+                variant="danger"
+                accessibilityHint="יוצג אישור לפני מחיקה לצמיתות של הטיול"
+                onPress={() => setDeleteConfirmVisible(true)}
+                style={styles.deleteButton}
+              />
+            ) : null}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </KeyboardAvoidingView>
+      <ConfirmModal
+        visible={deleteConfirmVisible}
+        title="למחוק את הטיול?"
+        message="הפעולה תסיר את הטיול הזה לצמיתות. אי אפשר לבטל."
+        confirmLabel="מחק"
+        onConfirm={() => {
+          setDeleteConfirmVisible(false);
+          onDelete?.(walk.id);
+        }}
+        onCancel={() => setDeleteConfirmVisible(false)}
+      />
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  flexFull: { flex: 1 },
+  backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, maxHeight: '80%' },
+  title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
+  subtitle: { fontSize: typography.meta.fontSize, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xs, marginBottom: spacing.md },
+  label: { fontSize: typography.meta.fontSize, fontWeight: '700', color: colors.textSecondary, marginTop: spacing.lg, marginBottom: spacing.sm, textAlign: 'right' },
+  toggleRow: { flexDirection: 'row', gap: spacing.md },
+  toggle: {
+    flex: 1,
+    minHeight: 72,
+    borderRadius: radii.lg,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  toggleActivePee: { backgroundColor: colors.statusCurrentBg, borderColor: colors.primary },
+  toggleActivePoop: { backgroundColor: colors.statusSkippedBg, borderColor: colors.statusSkipped },
+  toggleEmoji: { fontSize: 28 },
+  toggleLabel: { fontSize: typography.cardTitle.fontSize, fontWeight: typography.cardTitle.fontWeight, color: colors.textSecondary },
+  toggleLabelActive: { color: colors.textPrimary },
+  memberRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  memberChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+    backgroundColor: colors.surfaceMuted,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  memberChipActive: { borderColor: colors.primary, backgroundColor: colors.statusCurrentBg },
+  memberChipName: { fontSize: typography.meta.fontSize, fontWeight: '700', color: colors.textPrimary, maxWidth: 90 },
+  gpsHint: { fontSize: 12, color: colors.textSecondary, textAlign: 'right', marginTop: 4 },
+  noteInput: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radii.md,
+    padding: 14,
+    fontSize: 15,
+    color: colors.textPrimary,
+    minHeight: 60,
+    textAlignVertical: 'top',
+  },
+  actions: { flexDirection: 'row', gap: spacing.md, marginTop: 22 },
+  flex: { flex: 1 },
+  deleteButton: { marginTop: spacing.md },
+});
