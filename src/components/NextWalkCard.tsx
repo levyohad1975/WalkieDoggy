@@ -183,7 +183,7 @@ export function NextWalkCard({
             {walkDateContextLabel(walk.date)}
           </RtlText>
           {overdue ? (
-            <RtlText style={[styles.relative, styles.relativeOverdue]} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+            <RtlText style={[styles.relative, styles.relativeOverdue]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
               {requiresAttention ? '🚨 דורש תשומת לב · ' : 'ממתין לעדכון · '}
               {relativeTimeLabel(walk)}
             </RtlText>
@@ -223,14 +223,35 @@ export function NextWalkCard({
       ) : onStartWalk ? (
         <>
           <Button label={overdue ? 'התחל טיול עכשיו' : 'התחל טיול'} icon="▶" onPress={onStartWalk} style={styles.doneButton} shrinkToFit />
-          <Button
-            label="✓ סמן טיול כבוצע"
-            variant="secondary"
-            onPress={onMarkDone}
-            style={styles.markDoneFallbackButton}
-            compact
-            shrinkToFit
-          />
+          {overdue && onMarkNotDone ? (
+            <View style={styles.resolveRow}>
+              <Button
+                label="✓ סמן טיול כבוצע"
+                variant="secondary"
+                onPress={onMarkDone}
+                style={styles.resolveButton}
+                compact
+                shrinkToFit
+              />
+              <Button
+                label="✕ לא בוצע"
+                variant="secondary"
+                onPress={onMarkNotDone}
+                style={styles.resolveButton}
+                compact
+                shrinkToFit
+              />
+            </View>
+          ) : (
+            <Button
+              label="✓ סמן טיול כבוצע"
+              variant="secondary"
+              onPress={onMarkDone}
+              style={styles.markDoneFallbackButton}
+              compact
+              shrinkToFit
+            />
+          )}
         </>
       ) : overdue && onMarkNotDone ? (
         <View style={styles.resolveRow}>

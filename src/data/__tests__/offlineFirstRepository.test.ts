@@ -270,7 +270,7 @@ describe('OfflineFirstRepository.startWalk/finishWalk — actually wired to the 
     const repo = await makeRepo(false, remote);
 
     await expect(repo.startWalk!('walk-1')).rejects.toThrow(
-      'startWalk requires an internet connection and cannot be queued offline'
+      'אין חיבור לשרת. כדי להתחיל מעקב טיול יש להתחבר לאינטרנט.'
     );
     expect(remote.startWalk).not.toHaveBeenCalled();
   });

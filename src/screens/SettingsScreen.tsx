@@ -305,6 +305,22 @@ export function SettingsScreen() {
     }
   };
 
+  const removeDogPhoto = () => {
+    if (!dog?.photoUrl) return;
+    Alert.alert(
+      'להסיר את תמונת הכלב?',
+      'התמונה תוסר והמסקוט של Walkie Doggy יוצג שוב במקום תמונת הכלב.',
+      [
+        { text: 'ביטול', style: 'cancel' },
+        {
+          text: 'הסר תמונה',
+          style: 'destructive',
+          onPress: () => void persistDog({ photoUrl: undefined }),
+        },
+      ]
+    );
+  };
+
   // BATCH 4 (item E — Copy Family Code). `copyFeedback` drives the inline
   // "✓ הועתק" success state FamilySharingModal renders next to the button
   // (in addition to, not instead of, the existing Alert — belt and
@@ -709,6 +725,7 @@ export function SettingsScreen() {
         dog={dog ?? null}
         uploadingPhoto={uploadingPhoto}
         onChangePhoto={changeDogPhoto}
+        onRemovePhoto={removeDogPhoto}
         onSave={persistDog}
         onClose={() => setDogModalVisible(false)}
       />

@@ -50,7 +50,7 @@ export class OfflineFirstRepository implements Repository {
     if (this.remote) {
       this.startWalk = async (walkId: string): Promise<Walk> => {
         if (!(await this.isOnline())) {
-          throw new Error('startWalk requires an internet connection and cannot be queued offline');
+          throw new Error('אין חיבור לשרת. כדי להתחיל מעקב טיול יש להתחבר לאינטרנט.');
         }
         const walk = await this.remote!.startWalk!(walkId);
         await this.local.saveWalk(walk);
@@ -58,7 +58,7 @@ export class OfflineFirstRepository implements Repository {
       };
       this.finishWalk = async (walkId, actualWalkerId, details) => {
         if (!(await this.isOnline())) {
-          throw new Error('finishWalk requires an internet connection and cannot be queued offline');
+          throw new Error('אין חיבור לשרת. כדי לסיים מעקב טיול יש להתחבר לאינטרנט.');
         }
         const walk = await this.remote!.finishWalk!(walkId, actualWalkerId, details);
         await this.local.saveWalk(walk);
