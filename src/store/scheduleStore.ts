@@ -68,6 +68,7 @@ interface ScheduleState {
   swap: (walkId: string, newUserId: string, swappedByUserId: string) => Promise<void>;
   swapTwoWalks: (walkAId: string, walkBId: string, swappedByUserId: string) => Promise<void>;
   addUnplannedWalk: (input: UnplannedWalkInput) => Promise<boolean>;
+  startUnplannedWalk: (input: UnplannedWalkInput) => Promise<boolean>;
   /**
    * Section 2: edits an existing unplanned/spontaneous walk IN PLACE — same
    * record, never a duplicate. `patch` may include any subset of the fields
@@ -749,6 +750,34 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   },
 
   /** Logs a walk that already happened with no prior plan — never touches the rotation. */
+  startUnplannedWalk: async (input: UnplannedWalkInput) => {
+    if (!guardTestModeMutation()) return false;
+    const now = new Date().toISOString();
+    const walk: Walk = {
+      id: generateId('walk'),
+      familyId: input.familyId,
+      dogId: input.dogId,
+      date: input.date,
+      scheduledTime: input.time,
+      responsibleUserId: input.performedByUserId,
+      status: 'pending',
+      hadPee: input.hadPee,
+      hadPoop: input.hadPoop,
+      note: input.note,
+      isUnplanned: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    set((state) => ({ walks: [...state.walks, walk], actionError: null }));
+    try {
+      await repository.saveWalk(walk);
+      return await get().startWalk(walk.id);
+    } catch {
+      set((state) => ({ walks: state.walks.filter((item) => item.id !== walk.id), actionError: 'לא הצלחנו להתחיל את הטיול' }));
+      return false;
+    }
+  },
+
   addUnplannedWalk: async (input: UnplannedWalkInput) => {
     if (!guardTestModeMutation()) return false;
     const now = new Date().toISOString();
