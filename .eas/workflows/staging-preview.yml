@@ -10,5 +10,6 @@ jobs:
   deploy_web_staging:
     name: Deploy web staging
     type: deploy
+    environment: preview
     params:
       alias: staging
