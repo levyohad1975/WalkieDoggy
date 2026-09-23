@@ -8,6 +8,7 @@ import { RootNavigator } from './src/navigation/RootNavigator';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { FamilyOnboardingScreen } from './src/screens/FamilyOnboardingScreen';
 import { SystemAdminScreen } from './src/screens/SystemAdminScreen';
+import { PhotoCropHost } from './src/components/PhotoCropHost';
 import { RtlText } from './src/components/RtlText';
 import { colors } from './src/theme/colors';
 import { requestNotificationPermissions, subscribeToWalkReminderResponses } from './src/notifications/notificationService';
@@ -399,6 +400,12 @@ export default function App() {
           {!shouldEnterSystemAdminDirectly ? (
             <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} />
           ) : null}
+
+          {/* PRD §12 (profile-photo crop/zoom/pan) — web-only, no-op on
+              native. See PhotoCropHost.tsx's doc comment for why this sits
+              outside every other branch, same as the isSystemAdmin button
+              above. */}
+          <PhotoCropHost />
         </>
       )}
     </SafeAreaProvider>
