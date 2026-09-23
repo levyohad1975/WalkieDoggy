@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ConfirmModal } from './ConfirmModal';
 import { RtlText } from './RtlText';
 import type { FamilyUser, Walk } from '../types';
 import { colors } from '../theme/colors';
@@ -58,6 +59,7 @@ export function EditDoneDetailsModal({
   // Statistics' own distance KPI already established.
   const [gpsDistanceMeters, setGpsDistanceMeters] = useState<number | undefined>(undefined);
   const [distanceInput, setDistanceInput] = useState('');
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
 
   useEffect(() => {
     if (visible && walk) {
@@ -99,17 +101,6 @@ export function EditDoneDetailsModal({
             <RtlText style={styles.subtitle}>
               {walk.date} · {walk.scheduledTime}
             </RtlText>
-
-            <View style={styles.toggleRow}>
-              <Pressable onPress={() => setHadPee((v) => !v)} style={[styles.toggle, hadPee && styles.toggleActivePee]}>
-                <RtlText style={styles.toggleEmoji}>💧</RtlText>
-                <RtlText style={[styles.toggleLabel, hadPee && styles.toggleLabelActive]}>פיפי</RtlText>
-              </Pressable>
-              <Pressable onPress={() => setHadPoop((v) => !v)} style={[styles.toggle, hadPoop && styles.toggleActivePoop]}>
-                <RtlText style={styles.toggleEmoji}>💩</RtlText>
-                <RtlText style={[styles.toggleLabel, hadPoop && styles.toggleLabelActive]}>קקי</RtlText>
-              </Pressable>
-            </View>
 
             {showCompletedByPicker ? (
               <>
@@ -205,10 +196,7 @@ export function EditDoneDetailsModal({
                 label="🗑️ מחיקת הטיול"
                 variant="danger"
                 accessibilityHint="יוצג אישור לפני מחיקה לצמיתות של הטיול"
-                onPress={() =>
-                  Alert.alert('למחוק את הטיול?', 'הפעולה תסיר את הטיול הזה לצמיתות. אי אפשר לבטל.', [
-                    { text: 'ביטול', style: 'cancel' },
-                    { text: 'מחק', style: 'destructive', onPress: () => onDelete(walk.id) },
+                onPress={() => setDeleteConfirmVisible(true)},
                   ])
                 }
                 style={styles.deleteButton}
@@ -219,6 +207,17 @@ export function EditDoneDetailsModal({
         </Pressable>
       </KeyboardAvoidingView>
     </Modal>
+      <ConfirmModal
+        visible={deleteConfirmVisible}
+        title="למחוק את הטיול?"
+        message="הפעולה תסיר את הטיול הזה לצמיתות. אי אפשר לבטל."
+        confirmLabel="מחק"
+        onConfirm={() => {
+          setDeleteConfirmVisible(false);
+          onDelete?.(walk.id);
+        }}
+        onCancel={() => setDeleteConfirmVisible(false)}
+      />
   );
 }
 

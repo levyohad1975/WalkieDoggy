@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ConfirmModal } from './ConfirmModal';
 import { RtlText } from './RtlText';
 import type { FamilyUser, Walk } from '../types';
 import { colors } from '../theme/colors';
@@ -45,6 +46,7 @@ export function EditWalkModal({
 }: EditWalkModalProps) {
   const [time, setTime] = useState(walk?.scheduledTime ?? '');
   const [swapMode, setSwapMode] = useState(false);
+  const [cancelConfirmVisible, setCancelConfirmVisible] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -134,23 +136,7 @@ export function EditWalkModal({
   label="בטל את הטיול הזה"
   variant="danger"
   accessibilityHint="יוצג אישור לפני ביטול הטיול"
-  onPress={() => {
-    Alert.alert(
-      'לבטל את הטיול הזה?',
-      `הטיול של ${walk.scheduledTime} יבוטל רק הפעם. שאר הסבב לא ישתנה.`,
-      [
-        {
-          text: 'חזרה',
-          style: 'cancel',
-        },
-        {
-          text: 'בטל טיול',
-          style: 'destructive',
-          onPress: onCancelWalk,
-        },
-      ]
-    );
-  }}
+  onPress={() => setCancelConfirmVisible(true)}
   style={styles.cancelButton}
 />
             <Button label="סגור" variant="secondary" onPress={onClose} style={styles.closeButton} />
@@ -163,6 +149,18 @@ export function EditWalkModal({
           rather than a nested ScrollView squeezed into this sheet — avoids
           the cramped 180px box and the nested-scroll gesture conflict, and
           preserves the exact same onSwapWithWalk(otherWalkId) contract. */}
+      <ConfirmModal
+        visible={cancelConfirmVisible}
+        title="לבטל את הטיול הזה?"
+        message={`הטיול של ${walk.scheduledTime} יבוטל רק הפעם. שאר הסבב לא ישתנה.`}
+        confirmLabel="בטל טיול"
+        onConfirm={() => {
+          setCancelConfirmVisible(false);
+          onCancelWalk();
+        }}
+        onCancel={() => setCancelConfirmVisible(false)}
+      />
+
       <SwapWalkPickerModal
         visible={swapMode}
         walk={walk}
