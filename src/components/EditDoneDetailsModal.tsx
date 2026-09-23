@@ -13,7 +13,7 @@ import { formatDistanceMeters } from '../logic/gpsDistance';
 interface EditDoneDetailsModalProps {
   visible: boolean;
   walk: Walk | null;
-  onSave: (details: { hadPee: boolean; hadPoop: boolean; note: string; completedByUserId?: string }) => void;
+  onSave: (details: { hadPee: boolean; hadPoop: boolean; note: string; completedAt?: string; completedByUserId?: string }) => void;
   onClose: () => void;
   /**
    * Final QA round v2 (item D completion): both new, OPT-IN, and
