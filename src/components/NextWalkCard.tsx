@@ -208,7 +208,7 @@ export function NextWalkCard({
       </View>
 
       {requestStatusLine && !requestStatusLine.startsWith('✓') && !requestStatusLine.startsWith('✕') ? (
-        <RtlText style={styles.requestStatusLine} numberOfLines={1} ellipsizeMode="tail" adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+        <RtlText style={styles.requestStatusLine} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
           {requestStatusLine}
         </RtlText>
       ) : null}
@@ -378,6 +378,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.primaryDark,
     marginTop: 4,
+    lineHeight: 18,
   },
   requestStatusApproved: { color: colors.statusDone },
   linkRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 9 },
