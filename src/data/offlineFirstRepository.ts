@@ -102,6 +102,19 @@ export class OfflineFirstRepository implements Repository {
     return this.queue.getConflictForWalk(walkId);
   }
 
+  /** See Repository.getSyncConflicts's doc comment (PRD §20). */
+  async getSyncConflicts() {
+    return this.queue.getConflicts();
+  }
+
+  async getQuarantinedSyncItems() {
+    return this.queue.getQuarantined();
+  }
+
+  async clearSyncConflicts(): Promise<void> {
+    await this.queue.clearConflicts();
+  }
+
   async getFamily(familyId: string): Promise<Family | undefined> {
     if (await this.isOnline()) {
       try {

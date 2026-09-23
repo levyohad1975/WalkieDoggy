@@ -10,6 +10,7 @@ import type {
   Walk,
   WalkGpsSession,
 } from '../types';
+import type { QuarantinedItem, SyncConflict } from './syncQueue';
 
 /** Payload for Repository.deleteFamilyMember — see its doc comment below. */
 export interface DeleteFamilyMemberPayload {
@@ -165,6 +166,21 @@ export interface Repository {
   hasPendingSaveWalk?(walkId: string): Promise<boolean>;
   /** Optional (A2 fix): the most recent permanent-failure sync conflict recorded for this walk's saveWalk write, if any. */
   getConflictForWalk?(walkId: string): Promise<{ message: string; failedAt: string } | undefined>;
+
+  /**
+   * PRD §20: "persistent queue conflicts must be visible, never silently
+   * disappear." getConflictForWalk above only ever answers "does THIS walk
+   * have one" (for scheduleStore's own optimistic-revert logic) — these
+   * three surface the FULL picture (every operation type, not just
+   * saveWalk) for a dedicated review UI. Optional for the same reason as
+   * the other sync-queue methods above: repositories with no queue have
+   * nothing to report.
+   */
+  getSyncConflicts?(): Promise<SyncConflict[]>;
+  /** Legacy/untagged queued writes flush() refused to auto-replay at all — see SyncQueue.QuarantinedItem's doc comment for why these are surfaced for manual review rather than silently discarded or replayed. Deliberately no "clear" counterpart: there is no safe automated resolution for an item whose original actor is unknown. */
+  getQuarantinedSyncItems?(): Promise<QuarantinedItem[]>;
+  /** Dismisses every recorded conflict — the person reviewing them has seen what happened, per PRD §20's "visible, never silently disappear" (a user-initiated dismissal is not the app hiding it). */
+  clearSyncConflicts?(): Promise<void>;
 }
 
 export class RepositoryError extends Error {}

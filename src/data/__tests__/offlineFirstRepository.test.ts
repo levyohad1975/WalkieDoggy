@@ -771,3 +771,78 @@ describe('OfflineFirstRepository — local/demo mode (no remote configured): wri
     expect(await repo.pendingSyncCount()).toBe(0);
   });
 });
+
+/**
+ * PRD §20: "persistent queue conflicts must be visible, never silently
+ * disappear." SyncQueue's own getConflicts()/getQuarantined() are already
+ * exhaustively tested in syncQueue.test.ts — these tests only verify the
+ * REPOSITORY-level delegation (getSyncConflicts/getQuarantinedSyncItems/
+ * clearSyncConflicts) is wired end-to-end, not the underlying queue logic.
+ */
+describe('OfflineFirstRepository — sync conflicts/quarantine surfaced for review (PRD §20)', () => {
+  afterEach(() => {
+    const { setSyncQueueActorGetter } = require('../syncQueue');
+    setSyncQueueActorGetter(() => null);
+  });
+
+  it('getSyncConflicts reflects a real permanent-failure write, end-to-end through a live flush', async () => {
+    const dog: Dog = { id: 'dog-1', familyId: 'family-1', name: 'ריקי', walksPerDay: 2 };
+    const conflictError = Object.assign(new Error('duplicate key value violates unique constraint'), { code: '23505' });
+    const repo = await makeRepo(true, stubRemote({ upsertDog: jest.fn().mockRejectedValue(conflictError) }));
+    // Tagged, so the item reaches apply() and actually fails there —
+    // otherwise (no actor claimed) it would be quarantined instead of
+    // attempted at all; see SyncQueue.flush()'s own `claimedByUserId ==
+    // null` branch, covered separately below.
+    const { setSyncQueueActorGetter } = require('../syncQueue');
+    setSyncQueueActorGetter(() => 'test-user');
+
+    await repo.upsertDog(dog);
+
+    const conflicts = await repo.getSyncConflicts!();
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0].op.type).toBe('upsertDog');
+    expect(conflicts[0].code).toBe('23505');
+  });
+
+  it('getSyncConflicts is empty when nothing has failed', async () => {
+    const repo = await makeRepo(true, null);
+    await expect(repo.getSyncConflicts!()).resolves.toEqual([]);
+  });
+
+  it('clearSyncConflicts dismisses every recorded conflict', async () => {
+    const dog: Dog = { id: 'dog-1', familyId: 'family-1', name: 'ריקי', walksPerDay: 2 };
+    const conflictError = Object.assign(new Error('duplicate key'), { code: '23505' });
+    const repo = await makeRepo(true, stubRemote({ upsertDog: jest.fn().mockRejectedValue(conflictError) }));
+    const { setSyncQueueActorGetter } = require('../syncQueue');
+    setSyncQueueActorGetter(() => 'test-user');
+    await repo.upsertDog(dog);
+    expect(await repo.getSyncConflicts!()).toHaveLength(1);
+
+    await repo.clearSyncConflicts!();
+
+    expect(await repo.getSyncConflicts!()).toEqual([]);
+  });
+
+  it('getQuarantinedSyncItems is empty when nothing has been quarantined', async () => {
+    const repo = await makeRepo(true, null);
+    await expect(repo.getQuarantinedSyncItems!()).resolves.toEqual([]);
+  });
+
+  it('getQuarantinedSyncItems reflects a real untagged/legacy write that flush() refused to attempt', async () => {
+    // No actor claimed on this device (setSyncQueueActorGetter never
+    // called) — flush() quarantines rather than attempts an untagged
+    // write, per SyncQueue's own audit-attribution safety guarantee.
+    // Uses updateUserReminderSetting (always enqueue+trySync, unlike
+    // upsertDog's direct-online-write-first shortcut) so this exercises
+    // the queue's flush() path, not an early return before it.
+    const updateUserReminderSetting = jest.fn().mockResolvedValue(undefined);
+    const repo = await makeRepo(true, stubRemote({ updateUserReminderSetting }));
+
+    await repo.updateUserReminderSetting('u1', false);
+
+    const quarantined = await repo.getQuarantinedSyncItems!();
+    expect(quarantined).toHaveLength(1);
+    expect(quarantined[0].op.type).toBe('updateUserReminderSetting');
+    expect(updateUserReminderSetting).not.toHaveBeenCalled(); // never even attempted
+  });
+});

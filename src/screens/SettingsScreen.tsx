@@ -35,6 +35,9 @@ import { AchievementsModal } from '../components/AchievementsModal';
 import { computeFamilyAchievementProgress, computePersonalAchievementProgress } from '../logic/achievements';
 import { fetchHistoryWalks } from '../lib/permissionedWalks';
 import { listSwapRequests, type SwapRequestRow } from '../lib/requests';
+import { repository } from '../data';
+import type { QuarantinedItem, SyncConflict } from '../data/syncQueue';
+import { SyncIssuesModal } from '../components/SyncIssuesModal';
 
 export function SettingsScreen() {
   const { family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, setGamificationEnabled, saveDog, selectDog } = useFamilyStore();
@@ -85,6 +88,15 @@ export function SettingsScreen() {
   // local/demo mode (lib/requests.ts's own doc comment: no swap-request
   // concept exists there at all) rather than failing.
   const [achievementSwapRequests, setAchievementSwapRequests] = useState<SwapRequestRow[]>([]);
+  // PRD §20: "persistent queue conflicts must be visible, never silently
+  // disappear." Checked on every mount (cheap local AsyncStorage reads via
+  // the repository, no network) so the "⚠️ בעיות סנכרון" row below only
+  // ever renders when there's genuinely something to show — never a
+  // blocking empty-by-default row, same convention as every other
+  // conditional Settings/Home badge this app already has.
+  const [syncConflicts, setSyncConflicts] = useState<SyncConflict[]>([]);
+  const [quarantinedSyncItems, setQuarantinedSyncItems] = useState<QuarantinedItem[]>([]);
+  const [syncIssuesModalVisible, setSyncIssuesModalVisible] = useState(false);
   const [remindersModalVisible, setRemindersModalVisible] = useState(false);
   const [sharingModalVisible, setSharingModalVisible] = useState(false);
   const [managementVisible, setManagementVisible] = useState(false);
@@ -165,6 +177,18 @@ export function SettingsScreen() {
       if (useHealthStore.getState().consumePendingOpenRequest()) {
         setHealthModalVisible(true);
       }
+    }, [])
+  );
+
+  // PRD §20 — re-checked on every focus (cheap local AsyncStorage reads,
+  // no network) so the "⚠️ בעיות סנכרון" row stays current if a write
+  // failed/quarantined while this tab wasn't active. Optional-chained:
+  // repositories without a sync queue (LocalRepository, a bare
+  // SupabaseRepository) simply never surface this row at all.
+  useFocusEffect(
+    useCallback(() => {
+      void repository.getSyncConflicts?.().then((c) => setSyncConflicts(c ?? []));
+      void repository.getQuarantinedSyncItems?.().then((q) => setQuarantinedSyncItems(q ?? []));
     }, [])
   );
 
@@ -421,6 +445,12 @@ export function SettingsScreen() {
     ]);
   };
 
+  const syncIssueCount = syncConflicts.length + quarantinedSyncItems.length;
+  const handleClearSyncConflicts = async () => {
+    await repository.clearSyncConflicts?.();
+    setSyncConflicts([]);
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -553,6 +583,23 @@ export function SettingsScreen() {
               <RtlText style={styles.hubRowMeta}>מעבר לפרופיל אחר במשפחה במכשיר הזה</RtlText>
             </View>
           </Pressable>
+          {/* PRD §20: "persistent queue conflicts must be visible, never
+              silently disappear" — only rendered at all when there's
+              genuinely something to show (see the useFocusEffect above). */}
+          {syncIssueCount > 0 ? (
+            <Pressable
+              style={styles.hubRow}
+              onPress={() => setSyncIssuesModalVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel={`בעיות סנכרון, ${syncIssueCount} פריטים`}
+            >
+              <RtlText style={styles.hubChevron}>‹</RtlText>
+              <View style={styles.hubLabelWithMeta}>
+                <RtlText style={styles.hubLabel}>⚠️ בעיות סנכרון</RtlText>
+                <RtlText style={styles.hubRowMeta}>{syncIssueCount} שינויים לא הסתנכרנו עם השרת</RtlText>
+              </View>
+            </Pressable>
+          ) : null}
         </View>
 
         {/* PRD §16 pairs support and sign-out in one phrase ("תמיכה
@@ -643,6 +690,14 @@ export function SettingsScreen() {
           if (currentUserId) void setGamificationEnabled(currentUserId, enabled);
         }}
         onClose={() => setAchievementsModalVisible(false)}
+      />
+
+      <SyncIssuesModal
+        visible={syncIssuesModalVisible}
+        conflicts={syncConflicts}
+        quarantined={quarantinedSyncItems}
+        onClearConflicts={() => void handleClearSyncConflicts()}
+        onClose={() => setSyncIssuesModalVisible(false)}
       />
 
       <RemindersModal
