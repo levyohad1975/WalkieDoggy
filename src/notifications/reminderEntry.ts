@@ -29,7 +29,12 @@ export function reminderOpenFromNotificationData(data: unknown): ReminderOpenEve
   if (!data || typeof data !== 'object') return null;
   const value = data as { walkId?: unknown; kind?: unknown };
   if (typeof value.walkId !== 'string') return null;
-  if (value.kind !== 'pre_walk_reminder' && value.kind !== 'overdue_reminder') return null;
+  if (
+    value.kind !== 'T-15' &&
+    value.kind !== 'T' &&
+    value.kind !== 'T+15' &&
+    value.kind !== 'T+30'
+  ) return null;
   return { walkId: value.walkId, kind: value.kind };
 }
 

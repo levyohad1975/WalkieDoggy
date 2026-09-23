@@ -137,7 +137,13 @@ export function applyStatisticsFilters(walks: Walk[], filters: StatisticsFilters
   });
 }
 
-/** Grace period before a completed walk counts as "late" — matches the walk-reminder system's own DEFAULT_OVERDUE_MINUTES_AFTER (logic/reminders.ts), so "on time" here means the same threshold the reminder that would have fired already uses, not a second, differently-tuned notion of lateness. */
+/**
+ * Grace period before a completed walk counts as "late" for statistics
+ * purposes. Independently chosen — the walk-reminder system's own escalation
+ * timing (PRD §8's fixed T-15/T/T+15/T+30 stages; see
+ * src/logic/reminderMessages.ts's REMINDER_STAGE_OFFSET_MINUTES) is a
+ * separate, fixed schedule, not a threshold this constant needs to track.
+ */
 export const ON_TIME_GRACE_MINUTES = 10;
 
 /**

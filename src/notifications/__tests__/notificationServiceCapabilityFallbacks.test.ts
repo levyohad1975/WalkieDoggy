@@ -50,10 +50,10 @@ describe('notificationService — detectCapability() fails open when expo-consta
     await cancelWalkNotifications('walk-constants-unavailable');
 
     expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith(
-      'notif:walk-constants-unavailable:pre_walk_reminder'
+      'notif:walk-constants-unavailable:T-15'
     );
     expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith(
-      'notif:walk-constants-unavailable:overdue_reminder'
+      'notif:walk-constants-unavailable:T+30'
     );
   });
 });
@@ -89,7 +89,7 @@ describe('notificationService — detectCapability() without an ESM .default wra
     await cancelWalkNotifications('walk-cjs-constants');
 
     expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith(
-      'notif:walk-cjs-constants:pre_walk_reminder'
+      'notif:walk-cjs-constants:T-15'
     );
   });
 });
@@ -117,7 +117,7 @@ describe('notificationService — real Expo Go (storeClient) end-to-end: every n
     };
   }
 
-  const setting = { userId: 'user-a', minutesBefore: 15, overdueMinutesAfter: 10, enabled: true };
+  const setting = { userId: 'user-a', enabled: true };
 
   it('ensureAndroidNotificationChannel() no-ops on Android in Expo Go, without ever touching expo-notifications', async () => {
     mockExpoGoConstants();

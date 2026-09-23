@@ -249,12 +249,22 @@ export interface AchievementUnlock {
   createdAt: string;
 }
 
-export type NotificationKind = 'pre_walk_reminder' | 'overdue_reminder';
+/**
+ * PRD §8: "T-15, at walk time, T+15, and T+30" — the same four fixed
+ * stages the server-side scheduler already uses (see
+ * supabase/migrations/0025_walk_reminder_scheduler.sql's `stages` CTE and
+ * src/logic/reminderMessages.ts's REMINDER_STAGES, the single source of
+ * truth for these literal values on the client). This is a structural
+ * duplicate of `ReminderStage` from reminderMessages.ts, not an import of
+ * it: this file is the foundational types module (no other module in
+ * src/ imports FROM it into logic/), so the two string-literal unions are
+ * kept in sync by construction (same four literals) rather than a
+ * cross-layer dependency.
+ */
+export type NotificationKind = 'T-15' | 'T' | 'T+15' | 'T+30';
 
 export interface NotificationSetting {
   userId: string;
-  minutesBefore: number; // default 15
-  overdueMinutesAfter: number; // default 10
   enabled: boolean;
 }
 
