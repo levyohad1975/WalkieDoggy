@@ -1,0 +1,13 @@
+name: Deploy web staging
+
+on:
+  push:
+    branches:
+      - rc/web-staging-integration
+
+jobs:
+  deploy_web_staging:
+    name: Deploy web staging
+    type: deploy
+    params:
+      alias: staging
