@@ -38,6 +38,7 @@ import { listSwapRequests, type SwapRequestRow } from '../lib/requests';
 import { repository } from '../data';
 import type { QuarantinedItem, SyncConflict } from '../data/syncQueue';
 import { SyncIssuesModal } from '../components/SyncIssuesModal';
+import { PrivacyAccessibilityInfoModal } from '../components/PrivacyAccessibilityInfoModal';
 
 export function SettingsScreen() {
   const { family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, setGamificationEnabled, saveDog, selectDog } = useFamilyStore();
@@ -97,6 +98,7 @@ export function SettingsScreen() {
   const [syncConflicts, setSyncConflicts] = useState<SyncConflict[]>([]);
   const [quarantinedSyncItems, setQuarantinedSyncItems] = useState<QuarantinedItem[]>([]);
   const [syncIssuesModalVisible, setSyncIssuesModalVisible] = useState(false);
+  const [privacyAccessibilityModalVisible, setPrivacyAccessibilityModalVisible] = useState(false);
   const [remindersModalVisible, setRemindersModalVisible] = useState(false);
   const [sharingModalVisible, setSharingModalVisible] = useState(false);
   const [managementVisible, setManagementVisible] = useState(false);
@@ -602,6 +604,24 @@ export function SettingsScreen() {
           ) : null}
         </View>
 
+        {/* PRD §16: Settings must include "פרטיות/GPS, נגישות/Reduced
+            Motion" as their own entries — both are informational facts
+            about this app's behavior (see PrivacyAccessibilityInfoModal's
+            own doc comment), not settings configured here, so this is a
+            single small entry point rather than a toggle-filled section. */}
+        <View style={styles.section}>
+          <RtlText style={styles.sectionTitle}>🔒 פרטיות ונגישות</RtlText>
+          <Pressable
+            style={styles.hubRow}
+            onPress={() => setPrivacyAccessibilityModalVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel="פרטיות ו-GPS, נגישות ותנועה מופחתת"
+          >
+            <RtlText style={styles.hubChevron}>‹</RtlText>
+            <RtlText style={styles.hubLabel}>🛰️ מיקום, GPS ונגישות</RtlText>
+          </Pressable>
+        </View>
+
         {/* PRD §16 pairs support and sign-out in one phrase ("תמיכה
             ויציאה") — kept as their own small section rather than folded
             into "📱 החשבון שלי" above, since sign-out is a deliberately
@@ -698,6 +718,11 @@ export function SettingsScreen() {
         quarantined={quarantinedSyncItems}
         onClearConflicts={() => void handleClearSyncConflicts()}
         onClose={() => setSyncIssuesModalVisible(false)}
+      />
+
+      <PrivacyAccessibilityInfoModal
+        visible={privacyAccessibilityModalVisible}
+        onClose={() => setPrivacyAccessibilityModalVisible(false)}
       />
 
       <RemindersModal
