@@ -11,7 +11,7 @@ import { computeLastWalk, computeNextWalk, isOverdue, upcomingWalks } from '../l
 import { walkDateContextLabel } from '../logic/walkDateContext';
 import { canDeleteScheduledWalk, canRequestChangeForWalk, computeNextWalkCardActions, formatCompletedAtBadge } from '../logic/walkActions';
 import { colors } from '../theme/colors';
-import { breakpoints, radii, spacing, typography } from '../theme/tokens';
+import { breakpoints, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { NextWalkCard } from '../components/NextWalkCard';
 import { WalkRow } from '../components/WalkRow';
 import { EmptyState, ErrorState } from '../components/EmptyState';
@@ -1205,9 +1205,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     gap: spacing.sm,
   },
-  testModeBannerText: { flex: 1, color: '#fff', fontWeight: '700', fontSize: typography.meta.fontSize, textAlign: 'right' },
+  testModeBannerText: { flex: 1, color: colors.textInverse, fontWeight: '700', fontSize: typography.meta.fontSize, textAlign: 'right' },
   testModeBannerButton: { backgroundColor: '#ffffff33', borderRadius: radii.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
-  testModeBannerButtonText: { color: '#fff', fontWeight: '700', fontSize: 12 },
+  testModeBannerButtonText: { color: colors.textInverse, fontWeight: '700', fontSize: 12 },
   topRow: { position: 'relative', minHeight: 52, alignItems: 'center', justifyContent: 'center' },
   brandWordmark: { width: 132, height: 42 },
   mascotHeaderButton: { position: 'absolute', right: 0, top: 6, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
@@ -1242,7 +1242,7 @@ const styles = StyleSheet.create({
   notificationButton: { position: 'absolute', left: 0, top: 11, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
   notificationIcon: { fontSize: 18 },
   requestsCountBadge: { minWidth: spacing.xl, height: spacing.xl, borderRadius: radii.sm, paddingHorizontal: spacing.xs, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryDark },
-  requestsCountText: { fontSize: 11, fontWeight: '800', color: '#fff' },
+  requestsCountText: { fontSize: 11, fontWeight: '800', color: colors.textInverse },
   healthSummaryPill: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -1261,7 +1261,7 @@ const styles = StyleSheet.create({
   section: { gap: spacing.sm },
   sectionTitlePhysicalRight: {
     width: '100%',
-    direction: 'ltr',
+    ...nativeDirection('ltr'),
     alignItems: 'flex-end',
   },
   sectionTitle: {
@@ -1284,7 +1284,7 @@ lastWalkCard: {
 
 lastWalkTopRow: {
   flexDirection: 'row',
-  direction: 'ltr',
+  ...nativeDirection('ltr'),
   alignItems: 'center',
   justifyContent: 'space-between',
   gap: spacing.sm,
@@ -1327,7 +1327,7 @@ lastWalkSkippedBadge: {
 lastWalkActions: {
   width: 154,
   flexDirection: 'row',
-  direction: 'ltr',
+  ...nativeDirection('ltr'),
   alignItems: 'center',
   justifyContent: 'center',
   gap: 18,
@@ -1346,7 +1346,7 @@ lastWalkEditAction: {
 
 lastWalkNeedsGroup: {
   flexDirection: 'row',
-  direction: 'ltr',
+  ...nativeDirection('ltr'),
   alignItems: 'center',
   gap: 4,
   flexShrink: 0,
