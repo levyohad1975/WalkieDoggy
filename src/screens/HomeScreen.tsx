@@ -40,6 +40,7 @@ import { fetchHistoryWalks } from '../lib/permissionedWalks';
 import { useRequestsStore } from '../store/requestsStore';
 import {
   countPendingRequestsForViewer,
+  countRecentlyResolvedRequestsForAdmin,
   countUnreadRequestResults,
   walkHasActiveSwapRequest,
   walkHasActiveTimeChangeRequest,
@@ -541,7 +542,11 @@ export function HomeScreen() {
 
   const unreadResultsForMe =
     countUnreadRequestResults(swapRequests, walksById, effectiveUserId) +
-    countUnreadRequestResults(timeChangeRequests, walksById, effectiveUserId);
+    countUnreadRequestResults(timeChangeRequests, walksById, effectiveUserId) +
+    (effectiveRole === 'admin'
+      ? countRecentlyResolvedRequestsForAdmin(swapRequests, walksById, effectiveUserId) +
+        countRecentlyResolvedRequestsForAdmin(timeChangeRequests, walksById, effectiveUserId)
+      : 0);
   const bellBadgeCount = pendingForMe + unreadResultsForMe;
 
   const openRequestsInbox = () => {
