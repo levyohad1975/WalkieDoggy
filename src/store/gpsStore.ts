@@ -20,6 +20,7 @@ interface GpsState {
   /** Live running total while trackingWalkId is set — meaningless/stale once tracking stops (read sessionsByWalkId for the persisted, authoritative value instead). */
   distanceMeters: number;
   pointCount: number;
+  routePoints: Array<{ latitude: number; longitude: number; timestamp: number }>;
   /** Persisted sessions this device has loaded/saved, keyed by walkId — a cache, not the source of truth (the repository is); populated by loadSession()/stopTracking()/correctDistance(). */
   sessionsByWalkId: Record<string, WalkGpsSession>;
 
@@ -53,6 +54,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
   permissionStatus: null,
   distanceMeters: 0,
   pointCount: 0,
+  routePoints: [],
   sessionsByWalkId: {},
 
   startTracking: async (walk) => {
@@ -63,13 +65,13 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       activeWatch.remove();
       activeWatch = null;
     }
-    set({ trackingWalkId: walk.id, permissionStatus: null, distanceMeters: 0, pointCount: 0 });
+    set({ trackingWalkId: walk.id, permissionStatus: null, distanceMeters: 0, pointCount: 0, routePoints: [] });
 
     const handle = await startGpsWatch((acc: GpsAccumulator) => {
       // Ignore a late callback from a watch that's since been stopped/
       // superseded (e.g. the walk ended right as a fix arrived).
       if (get().trackingWalkId !== walk.id) return;
-      set({ distanceMeters: acc.distanceMeters, pointCount: acc.pointCount });
+      set({ distanceMeters: acc.distanceMeters, pointCount: acc.pointCount, routePoints: acc.routePoints.map(({ latitude, longitude, timestamp }) => ({ latitude, longitude, timestamp })) });
     });
 
     if (get().trackingWalkId !== walk.id) {
@@ -117,6 +119,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       dogId: walk.dogId,
       distanceMeters,
       pointCount,
+      routePoints: get().routePoints,
       source: 'device_gps',
       createdByUserId: existing?.createdByUserId ?? userId ?? undefined,
       createdAt: existing?.createdAt ?? now,
@@ -124,6 +127,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     };
     await repository.upsertGpsSession(session);
     set((s) => ({ sessionsByWalkId: { ...s.sessionsByWalkId, [walk.id]: session } }));
+    set({ routePoints: [] });
     return session;
   },
 

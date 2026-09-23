@@ -13,6 +13,7 @@ import { formatHistoryDate, localDateOnly } from '../logic/dateFormat';
 import { isWalkEligibleForHistory, walkMatchesHistorySearch } from '../logic/history';
 import { canAccessHistoryScreen } from '../logic/permissions';
 import { isSupabaseConfigured } from '../lib/supabase';
+import { repository } from '../data';
 import { fetchHistoryWalks } from '../lib/permissionedWalks';
 import { colors } from '../theme/colors';
 import { breakpoints, nativeDirection, radii, spacing, typography } from '../theme/tokens';
@@ -23,7 +24,7 @@ import { EditDoneDetailsModal } from '../components/EditDoneDetailsModal';
 import { CompleteWalkModal } from '../components/CompleteWalkModal';
 import { AddUnplannedWalkModal, type UnplannedWalkResult } from '../components/AddUnplannedWalkModal';
 import { DEMO_FAMILY } from '../data/demoData';
-import type { Walk } from '../types';
+import type { Walk, WalkGpsSession } from '../types';
 
 type PlanFilter = 'all' | 'planned' | 'unplanned';
 // Section 11: replaces the old "up to 10 individual date chips" wall with a
@@ -71,6 +72,7 @@ export function HistoryScreen() {
   // independent of whatever the client-loaded permissionOverrides below
   // currently believes.
   const [historyDataset, setHistoryDataset] = useState<Walk[]>([]);
+  const [gpsSessions, setGpsSessions] = useState<Record<string, WalkGpsSession>>({});
   const [historyAccessStatus, setHistoryAccessStatus] = useState<'checking' | 'granted' | 'denied'>(
     isSupabaseConfigured ? 'checking' : 'granted'
   );
@@ -130,6 +132,21 @@ export function HistoryScreen() {
   // permission-gated fetch in Supabase mode, the ordinary reactive store in
   // local/demo mode (see refreshHistoryDataset()'s own comment).
   const sourceWalks = isSupabaseConfigured ? historyDataset : walks;
+
+  useEffect(() => {
+    const ids = sourceWalks.filter((w) => w.status === 'done').map((w) => w.id);
+    if (ids.length === 0) {
+      setGpsSessions({});
+      return;
+    }
+    let cancelled = false;
+    void repository.getGpsSessionsForWalkIds(ids).then((sessions) => {
+      if (!cancelled) setGpsSessions(Object.fromEntries(sessions.map((session) => [session.walkId, session])));
+    }).catch(() => {
+      if (!cancelled) setGpsSessions({});
+    });
+    return () => { cancelled = true; };
+  }, [sourceWalks]);
 
   const usersById = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u])), [users]);
   const activeUsers = useMemo(() => users.filter((u) => !u.removedAt), [users]);
@@ -432,6 +449,7 @@ export function HistoryScreen() {
                     <View key={w.id} style={styles.historyItem}>
                       <WalkRow
                         walk={w}
+                        routeSession={gpsSessions[w.id]}
                         historyCompact
                         responsible={usersById[w.responsibleUserId]}
                         completedBy={w.completedByUserId ? usersById[w.completedByUserId] : undefined}
