@@ -110,6 +110,7 @@ export function SettingsScreen() {
   const [sharingModalVisible, setSharingModalVisible] = useState(false);
   const [managementVisible, setManagementVisible] = useState(false);
   const isSystemAdmin = useSystemAdminStore((state) => state.isSystemAdmin);
+  const systemObserverActive = useAuthStore((state) => state.systemObserverActive);
   const [systemAdminVisible, setSystemAdminVisible] = useState(false);
   // NESTED-MODAL LIFECYCLE FIX (final QA round) — see
   // logic/settingsModalTransitions.ts's doc comment for the full mechanism.
@@ -655,20 +656,22 @@ export function SettingsScreen() {
                 <RtlText style={styles.hubRowMeta}>יומן פעילות</RtlText>
               </View>
             </Pressable>
-            {isSystemAdmin ? (
-              <Pressable style={styles.hubRow} onPress={() => setSystemAdminVisible(true)} accessibilityRole="button" accessibilityLabel="ניהול מערכת">
-                <RtlText style={styles.hubChevron}>‹</RtlText>
-                <View style={styles.hubLabelWithMeta}>
-                  <RtlText style={styles.hubLabel}>🛡️ ניהול מערכת</RtlText>
-                  <RtlText style={styles.hubRowMeta}>כלי System Admin</RtlText>
-                </View>
-              </Pressable>
-            ) : null}
           </View>
         ) : null}
 
       </ScrollView>
       </KeyboardAvoidingView>
+
+      {isSystemAdmin && !systemObserverActive ? (
+        <Pressable
+          style={styles.systemAdminFab}
+          onPress={() => setSystemAdminVisible(true)}
+          accessibilityRole="button"
+          accessibilityLabel="ניהול מערכת"
+        >
+          <RtlText style={styles.systemAdminFabText}>🛡️</RtlText>
+        </Pressable>
+      ) : null}
 
       <SystemAdminScreen visible={systemAdminVisible} onClose={() => setSystemAdminVisible(false)} />
 
@@ -805,6 +808,8 @@ export function SettingsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  systemAdminFab: { position: 'absolute', right: spacing.lg, bottom: spacing.xl, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primaryDark, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8, elevation: 6 },
+  systemAdminFabText: { fontSize: 25 },
   flex: { flex: 1 },
   content: { padding: spacing.xl, gap: spacing.xxl, paddingBottom: spacing.xxxl },
   // Same desktop-containment pattern as HomeScreen's webContent: cap and
