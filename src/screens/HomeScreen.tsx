@@ -792,7 +792,7 @@ export function HomeScreen() {
         {lastWalk ? (
           <View style={styles.section}>
             <View style={styles.sectionTitlePhysicalRight}>
-              <RtlText style={styles.sectionTitle}>היסטוריה אחרונה</RtlText>
+              <RtlText style={styles.sectionTitle}>הטיול האחרון</RtlText>
             </View>
 
             {(() => {
