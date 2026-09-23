@@ -605,6 +605,27 @@ export function HomeScreen() {
     );
   }
 
+  // PRD §25's "no dog" state — a dog is genuinely optional at family
+  // creation (FamilyOnboardingScreen), so an admin can land here with a
+  // fully-loaded, dogless family. Previously this fell through to the
+  // generic "אין טיולים ממתינים" (no pending walks) empty state below,
+  // which misleadingly implies walks exist but happen to be scheduled
+  // elsewhere, rather than that there is nothing to walk at all yet.
+  // Gated on !familyLoading so this never flashes before the real family
+  // data (and its dog, if any) has actually loaded.
+  if (!dog && !familyLoading) {
+    return (
+      <SafeAreaView style={styles.center}>
+        <EmptyState
+          emoji="🐶"
+          title="עדיין אין כלב במשפחה"
+          subtitle="הוסיפו את הכלב הראשון כדי להתחיל לתכנן טיולים ותורנויות"
+        />
+        <Button label="הוספת כלב" onPress={() => navigation.navigate('Settings')} style={styles.addFirstDogButton} />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* QA/UX round, Part F2 fix: this used to be rendered here, only on
@@ -1236,6 +1257,7 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
+  addFirstDogButton: { marginTop: spacing.md },
   content: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: 14, paddingBottom: spacing.xxxl, width: '100%' },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: 14 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
