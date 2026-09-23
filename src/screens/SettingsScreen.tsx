@@ -312,6 +312,23 @@ export function SettingsScreen() {
 
   const removeDogPhoto = () => {
     if (!dog?.photoUrl) return;
+    const remove = async () => {
+      try {
+        await persistDog({ photoUrl: undefined });
+      } catch {
+        Alert.alert('לא הצלחנו להסיר את התמונה', 'נסו שוב בעוד רגע.');
+      }
+    };
+
+    // React Native's Alert is not reliably presented by the Safari Web
+    // build. Use the browser confirmation there, so the visible control
+    // actually removes the photo instead of appearing unresponsive.
+    if (Platform.OS === 'web') {
+      const confirm = (globalThis as typeof globalThis & { confirm?: (message?: string) => boolean }).confirm;
+      if (!confirm || confirm('להסיר את תמונת הכלב ולחזור למסקוט של Walkie Doggy?')) void remove();
+      return;
+    }
+
     Alert.alert(
       'להסיר את תמונת הכלב?',
       'התמונה תוסר והמסקוט של Walkie Doggy יוצג שוב במקום תמונת הכלב.',
@@ -320,7 +337,7 @@ export function SettingsScreen() {
         {
           text: 'הסר תמונה',
           style: 'destructive',
-          onPress: () => void persistDog({ photoUrl: undefined }),
+          onPress: () => void remove(),
         },
       ]
     );
@@ -468,9 +485,20 @@ export function SettingsScreen() {
   // contract (always completes locally even offline/on RPC failure) — see
   // its own doc comment — so this just needs the confirmation.
   const handleSignOut = () => {
+    const performSignOut = () => void signOut();
+
+    // React Native's Alert is not reliably surfaced in the Safari Web
+    // build, which made the visible row appear inert. Use the browser's
+    // confirmation there; native iOS/Android retain the platform dialog.
+    if (Platform.OS === 'web') {
+      const confirm = (globalThis as typeof globalThis & { confirm?: (message?: string) => boolean }).confirm;
+      if (!confirm || confirm('להתנתק מהמכשיר הזה? תצטרכו להזין קוד PIN כדי להתחבר שוב.')) performSignOut();
+      return;
+    }
+
     Alert.alert('להתנתק מהמכשיר הזה?', 'תצטרכו להזין קוד PIN כדי להתחבר שוב.', [
       { text: 'ביטול', style: 'cancel' },
-      { text: 'התנתקות', style: 'destructive', onPress: () => void signOut() },
+      { text: 'התנתקות', style: 'destructive', onPress: performSignOut },
     ]);
   };
 
@@ -816,7 +844,10 @@ const styles = StyleSheet.create({
   // center the scroll content on web only — native is unaffected (RN's
   // ScrollView contentContainerStyle already renders full-width there, and
   // this repo's design intent is a bounded desktop column, not native).
-  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center' },
+  // `alignSelf: center` alone lets the Web ScrollView content shrink to its
+  // intrinsic width on a phone. Keep the desktop cap, but explicitly fill
+  // the mobile viewport so every settings card matches the other screens.
+  webContent: { width: '100%', maxWidth: breakpoints.desktopContent, alignSelf: 'center' },
   header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   section: { gap: spacing.sm },
   sectionTitle: { width: '100%', ...typography.sectionTitle, fontSize: 18, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
@@ -919,8 +950,6 @@ const styles = StyleSheet.create({
   sheetScroll: { flexGrow: 0, flexShrink: 1 },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 8 },
 });
-
-
 
 
 
