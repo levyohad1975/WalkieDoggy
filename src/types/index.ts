@@ -212,6 +212,8 @@ export interface WalkGpsSession {
   dogId: string;
   distanceMeters?: number;
   pointCount: number;
+  /** GPS points retained for the in-app route preview/map. */
+  routePoints?: Array<{ latitude: number; longitude: number; timestamp: number }>;
   correctedDistanceMeters?: number;
   correctedByUserId?: string;
   startedAt?: string; // ISO timestamp
