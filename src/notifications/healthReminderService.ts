@@ -64,8 +64,13 @@ function healthNotificationIdentifier(taskId: string, kind: HealthNotificationKi
  * restart, exactly like scheduleWalkNotifications(). A completed task (or
  * one somehow missing a dueDate) has its reminders cancelled outright
  * rather than scheduled. No-op in Expo Go / on Web — see getNotifications().
+ *
+ * `now` is injectable (defaults to the real current moment) — same
+ * convention as logic/healthTasks.ts's own getImportantHealthReminders() —
+ * so the "is this fire time already in the past" check below is testable
+ * without depending on the real wall-clock hour at test-run time.
  */
-export async function scheduleHealthTaskNotifications(task: HealthTask, dogName: string): Promise<void> {
+export async function scheduleHealthTaskNotifications(task: HealthTask, dogName: string, now: Date = new Date()): Promise<void> {
   const Notifications = await getNotifications();
   if (!Notifications) return;
 
@@ -80,7 +85,7 @@ export async function scheduleHealthTaskNotifications(task: HealthTask, dogName:
 
   for (const item of plan) {
     const fireDate = new Date(item.fireAt);
-    if (fireDate.getTime() <= Date.now()) continue; // don't schedule reminders in the past
+    if (fireDate.getTime() <= now.getTime()) continue; // don't schedule reminders in the past
 
     const title = item.kind === 'health_task_due' ? `🏥 ${categoryLabel} מגיע/ה היום` : `⏰ ${categoryLabel} עדיין לא סומן/ה כבוצע`;
     const body =
@@ -177,10 +182,14 @@ async function cancelOrphanedHealthTaskNotifications(currentTaskIds: Set<string>
  * health-reminder notification on the device whose task id isn't in this
  * dog's set at all. Deterministic ids make repeated calls a safe no-op when
  * nothing changed. Degrades to "does nothing" in Expo Go / on Web.
+ *
+ * `now` is injectable (see scheduleHealthTaskNotifications' own doc
+ * comment) and threaded through to every per-task call, so a whole
+ * reconciliation pass can be exercised deterministically in tests.
  */
-export async function reconcileHealthTaskNotifications(tasks: HealthTask[], dogName: string): Promise<void> {
+export async function reconcileHealthTaskNotifications(tasks: HealthTask[], dogName: string, now: Date = new Date()): Promise<void> {
   for (const task of tasks) {
-    await scheduleHealthTaskNotifications(task, dogName);
+    await scheduleHealthTaskNotifications(task, dogName, now);
   }
   await cancelOrphanedHealthTaskNotifications(new Set(tasks.map((t) => t.id)));
 }

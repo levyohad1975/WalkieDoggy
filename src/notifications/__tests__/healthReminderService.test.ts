@@ -168,18 +168,24 @@ describe('healthReminderService — Android notification channel', () => {
 
 describe('healthReminderService — stale-kind cleanup', () => {
   it('cancels the one kind whose computed fire time has already passed while still (re)scheduling the other', async () => {
-    // Due today (fires at 09:00 today, likely already past "now" during a
-    // test run) -> health_task_due is stale; health_task_overdue (due +1
-    // day) is still in the future.
-    const today = new Date().toISOString().slice(0, 10);
-    await scheduleHealthTaskNotifications(fakeTask('task-stale', { dueDate: today }), 'טופי');
+    // FIXED `now` (noon on a fixed date), injected explicitly — see
+    // scheduleHealthTaskNotifications' own doc comment. This is what makes
+    // the test deterministic regardless of the real wall-clock hour at
+    // test-run time: previously it compared a task due "today" (fires at
+    // 09:00 local) against the REAL Date.now(), which only reads as
+    // "already past" when the suite happens to run after 09:00 local —
+    // exactly the flake this now-injectable `now` param exists to remove.
+    const fixedNow = new Date(2026, 0, 15, 12, 0, 0); // 2026-01-15 12:00 local
+    const dueToday = '2026-01-15';
+    // health_task_due fires at 2026-01-15T09:00 (3h before fixedNow) ->
+    // stale. health_task_overdue fires at 2026-01-16T09:00 (still ahead of
+    // fixedNow) -> not stale. Both relationships hold unconditionally,
+    // independent of whatever the real current time is.
+    await scheduleHealthTaskNotifications(fakeTask('task-stale', { dueDate: dueToday }), 'טופי', fixedNow);
 
     const scheduledIds = scheduleMock.mock.calls.map((call) => call[0].identifier);
     expect(scheduledIds).not.toContain('health-notif:task-stale:health_task_due');
-    // Only assert the overdue kind if "today 09:00 + 1 day" is genuinely
-    // still in the future relative to right now (always true unless the
-    // suite runs exactly at 09:00 on the boundary day, which cannot happen
-    // given FUTURE_DATE-based tests run instantly in the same process).
+    expect(scheduledIds).toContain('health-notif:task-stale:health_task_overdue');
     expect(cancelMock).toHaveBeenCalledWith('health-notif:task-stale:health_task_due');
   });
 });
