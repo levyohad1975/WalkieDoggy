@@ -39,6 +39,8 @@ import { repository } from '../data';
 import type { QuarantinedItem, SyncConflict } from '../data/syncQueue';
 import { SyncIssuesModal } from '../components/SyncIssuesModal';
 import { PrivacyAccessibilityInfoModal } from '../components/PrivacyAccessibilityInfoModal';
+import { useSystemAdminStore } from '../store/systemAdminStore';
+import { SystemAdminScreen } from './SystemAdminScreen';
 
 export function SettingsScreen() {
   const { family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, setGamificationEnabled, saveDog, selectDog } = useFamilyStore();
@@ -107,6 +109,8 @@ export function SettingsScreen() {
   const [remindersModalVisible, setRemindersModalVisible] = useState(false);
   const [sharingModalVisible, setSharingModalVisible] = useState(false);
   const [managementVisible, setManagementVisible] = useState(false);
+  const isSystemAdmin = useSystemAdminStore((state) => state.isSystemAdmin);
+  const [systemAdminVisible, setSystemAdminVisible] = useState(false);
   // NESTED-MODAL LIFECYCLE FIX (final QA round) — see
   // logic/settingsModalTransitions.ts's doc comment for the full mechanism.
   // "יומן פעילות" used to open its own Modal directly while the Management
@@ -503,44 +507,6 @@ export function SettingsScreen() {
           affordance per chip, to keep this one coherent interaction instead
           of duplicating the edit entry point.
         */}
-        {dogs.length > 0 ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.dogSelectorRow}
-          >
-            {dogs.map((d) => {
-              const isActive = d.id === selectedDogId;
-              return (
-                <Pressable
-                  key={d.id}
-                  onPress={() => void selectDog(d.id)}
-                  style={[styles.dogSelectorChip, isActive && styles.dogSelectorChipActive]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: isActive }}
-                  accessibilityLabel={isActive ? `${d.name}, הכלב הפעיל כעת` : `בחירת ${d.name} ככלב הפעיל`}
-                >
-                  <DogPhoto photoUrl={d.photoUrl} size={40} />
-                  <RtlText style={[styles.dogSelectorChipName, isActive && styles.dogSelectorChipNameActive]} numberOfLines={1}>
-                    {d.name}
-                  </RtlText>
-                </Pressable>
-              );
-            })}
-            <Pressable
-              onPress={() => void handleAddDog()}
-              disabled={addingDog}
-              style={styles.dogSelectorAddChip}
-              accessibilityRole="button"
-              accessibilityLabel="הוספת כלב נוסף למשפחה"
-              accessibilityState={{ disabled: addingDog }}
-            >
-              <RtlText style={styles.dogSelectorAddPlus}>＋</RtlText>
-              <RtlText style={styles.dogSelectorAddText}>{addingDog ? 'מוסיף…' : 'הוספת כלב'}</RtlText>
-            </Pressable>
-          </ScrollView>
-        ) : null}
-
         {dog ? (
           <Pressable
             style={styles.dogCard}
@@ -603,8 +569,8 @@ export function SettingsScreen() {
           <Pressable style={styles.hubRow} onPress={handleSwitchUser} accessibilityRole="button" accessibilityLabel="החלף משתמש, מעבר לפרופיל אחר במכשיר הזה">
             <RtlText style={styles.hubChevron}>‹</RtlText>
             <View style={styles.hubLabelWithMeta}>
-              <RtlText style={styles.hubLabel}>🔁 החלף משתמש</RtlText>
-              <RtlText style={styles.hubRowMeta}>מעבר לפרופיל אחר במשפחה במכשיר הזה</RtlText>
+              <RtlText style={styles.hubLabel}>🔁 החלפת פרופיל במכשיר הזה</RtlText>
+              <RtlText style={styles.hubRowMeta}>בחירת פרופיל אחר מהמשפחה</RtlText>
             </View>
           </Pressable>
           {/* PRD §20: "persistent queue conflicts must be visible, never
@@ -689,11 +655,22 @@ export function SettingsScreen() {
                 <RtlText style={styles.hubRowMeta}>יומן פעילות</RtlText>
               </View>
             </Pressable>
+            {isSystemAdmin ? (
+              <Pressable style={styles.hubRow} onPress={() => setSystemAdminVisible(true)} accessibilityRole="button" accessibilityLabel="ניהול מערכת">
+                <RtlText style={styles.hubChevron}>‹</RtlText>
+                <View style={styles.hubLabelWithMeta}>
+                  <RtlText style={styles.hubLabel}>🛡️ ניהול מערכת</RtlText>
+                  <RtlText style={styles.hubRowMeta}>כלי System Admin</RtlText>
+                </View>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
 
       </ScrollView>
       </KeyboardAvoidingView>
+
+      <SystemAdminScreen visible={systemAdminVisible} onClose={() => setSystemAdminVisible(false)} />
 
       <UserPickerModal
         visible={switchUserPickerVisible}
