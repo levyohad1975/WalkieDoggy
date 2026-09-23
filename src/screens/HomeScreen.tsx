@@ -82,6 +82,7 @@ export function HomeScreen() {
     rescheduleWalk,
     skip,
     addUnplannedWalk,
+    startUnplannedWalk,
     editDoneDetails,
     editUnplannedWalk,
     deleteUnplannedWalk,
@@ -780,6 +781,18 @@ export function HomeScreen() {
           </View>
         )}
         </View>
+
+        {dog && (!nextWalk || nextWalk.status !== 'in_progress') ? (
+          <Button
+            label="▶ התחל טיול ספונטני"
+            variant="secondary"
+            onPress={() => void startUnplannedWalk(familyId, dog.id, effectiveUserId)}
+            accessibilityLabel="התחלת טיול ספונטני עכשיו"
+            accessibilityHint="יוצר טיול חדש ומתחיל אותו מיד, בלי להשפיע על התורנות"
+            style={styles.unplannedButton}
+            shrinkToFit
+          />
+        ) : null}
 
         <Button
           label="+ הוסף טיול שבוצע"
