@@ -10,32 +10,25 @@ import fs from 'fs';
  * dog, selects it, and opens the same edit sheet.
  * Source-scan convention: this repo has no render-test harness for screens.
  */
-describe('SettingsScreen offers a multi-dog selector above the existing dog card (structural)', () => {
+describe('SettingsScreen keeps multi-dog support secondary to the common single-dog case (structural)', () => {
   const source = fs.readFileSync(require.resolve('../SettingsScreen'), 'utf8').replace(/\r\n/g, '\n');
 
   it('destructures dogs/selectedDogId/selectDog from familyStore alongside the existing dog/saveDog', () => {
     expect(source).toMatch(/const \{ family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, setGamificationEnabled, saveDog, selectDog \} = useFamilyStore\(\);/);
   });
 
-  it('renders one selectable chip per dog, each calling selectDog(d.id)', () => {
-    const blockStart = source.indexOf('dogs.map((d)');
-    expect(blockStart).toBeGreaterThan(-1);
-    const block = source.slice(blockStart, blockStart + 800);
-    expect(block).toMatch(/onPress=\{\(\) => void selectDog\(d\.id\)\}/);
-    expect(block).toMatch(/accessibilityState=\{\{ selected: isActive \}\}/);
+  it('does not render the prominent multi-dog selector strip on the main Settings screen', () => {
+    expect(source).not.toContain('dogs.map((d)');
+    expect(source).not.toContain('{dogs.length > 0 ?');
   });
 
-  it('offers an "add dog" chip that creates, selects, and opens the edit sheet for a new dog', () => {
+  it('keeps add-dog capability but exposes it through DogDetailsModal as a secondary action', () => {
     const handlerStart = source.indexOf('const handleAddDog');
     expect(handlerStart).toBeGreaterThan(-1);
     const handler = source.slice(handlerStart, handlerStart + 700);
-    expect(handler).toMatch(/id: generateId\('dog'\)/);
     expect(handler).toMatch(/await saveDog\(newDog\)/);
     expect(handler).toMatch(/await selectDog\(newDog\.id\)/);
-    expect(handler).toMatch(/setDogModalVisible\(true\)/);
-
-    const jsxCallIdx = source.indexOf('onPress={() => void handleAddDog()}');
-    expect(jsxCallIdx).toBeGreaterThan(-1);
+    expect(source).toContain('onAddDog={() => void handleAddDog()}');
   });
 
   it('the existing dog card (tap-to-edit) is untouched and still reads `dog` from the store — no regression for the single-dog case', () => {
@@ -46,8 +39,5 @@ describe('SettingsScreen offers a multi-dog selector above the existing dog card
     expect(card).toMatch(/פרטי \$\{dog\.name\}, לעריכה/);
   });
 
-  it('the selector strip is guarded on dogs.length, never rendered for zero dogs', () => {
-    const guardIdx = source.indexOf('{dogs.length > 0 ?');
-    expect(guardIdx).toBeGreaterThan(-1);
-  });
+
 });
