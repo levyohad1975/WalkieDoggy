@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { RtlText } from './RtlText';
 import type { FamilyUser, Walk } from '../types';
 import { colors } from '../theme/colors';
@@ -49,6 +50,8 @@ export function EditDoneDetailsModal({
   const [hadPee, setHadPee] = useState(false);
   const [hadPoop, setHadPoop] = useState(false);
   const [note, setNote] = useState('');
+  const [completedAt, setCompletedAt] = useState<Date>(new Date());
+  const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [completedByUserId, setCompletedByUserId] = useState<string | undefined>(undefined);
   // PRD §7 — GPS is assistive, never the sole source of truth: a family
   // member can confirm/correct the device-computed distance here. Only
@@ -64,6 +67,8 @@ export function EditDoneDetailsModal({
       setHadPee(Boolean(walk.hadPee));
       setHadPoop(Boolean(walk.hadPoop));
       setNote(walk.note ?? '');
+      setCompletedAt(walk.completedAt ? new Date(walk.completedAt) : new Date(`${walk.date}T${walk.scheduledTime}:00`));
+      setTimePickerOpen(false);
       setCompletedByUserId(walk.completedByUserId ?? walk.responsibleUserId);
       setGpsDistanceMeters(undefined);
       setDistanceInput('');
@@ -79,6 +84,10 @@ export function EditDoneDetailsModal({
   if (!walk) return null;
 
   const showCompletedByPicker = canReassignCompletedBy && users && users.length > 0;
+  const handleCompletedAtChange = (event: DateTimePickerEvent, selected?: Date) => {
+    if (Platform.OS !== 'ios') setTimePickerOpen(false);
+    if (event.type !== 'dismissed' && selected) setCompletedAt(selected);
+  };
   const showDistanceField = gpsDistanceMeters != null;
 
   return (
@@ -103,13 +112,28 @@ export function EditDoneDetailsModal({
             <View style={styles.toggleRow}>
               <Pressable onPress={() => setHadPee((v) => !v)} style={[styles.toggle, hadPee && styles.toggleActivePee]}>
                 <RtlText style={styles.toggleEmoji}>💧</RtlText>
-                <RtlText style={[styles.toggleLabel, hadPee && styles.toggleLabelActive]}>פיפי</RtlText>
               </Pressable>
               <Pressable onPress={() => setHadPoop((v) => !v)} style={[styles.toggle, hadPoop && styles.toggleActivePoop]}>
                 <RtlText style={styles.toggleEmoji}>💩</RtlText>
-                <RtlText style={[styles.toggleLabel, hadPoop && styles.toggleLabelActive]}>קקי</RtlText>
               </Pressable>
             </View>
+
+            <RtlText style={styles.label}>שעת ביצוע</RtlText>
+            <Button
+              label={completedAt.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+              variant="secondary"
+              onPress={() => setTimePickerOpen((open) => !open)}
+              accessibilityLabel="בחירת שעת ביצוע הטיול"
+            />
+            {timePickerOpen ? (
+              <DateTimePicker
+                value={completedAt}
+                mode="time"
+                is24Hour
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={handleCompletedAtChange}
+              />
+            ) : null}
 
             {showCompletedByPicker ? (
               <>
@@ -183,6 +207,7 @@ export function EditDoneDetailsModal({
                     // picker — History's existing call site (no `users`/
                     // `canReassignCompletedBy` passed) never sends this
                     // field, so its behavior is byte-identical to before.
+                    completedAt: completedAt.toISOString(),
                     ...(showCompletedByPicker ? { completedByUserId } : {}),
                   });
                   // GPS correction is a separate, independent write (its
