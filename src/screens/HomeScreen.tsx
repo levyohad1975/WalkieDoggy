@@ -82,6 +82,7 @@ export function HomeScreen() {
     rescheduleWalk,
     skip,
     addUnplannedWalk,
+    startUnplannedWalk,
     editDoneDetails,
     editUnplannedWalk,
     deleteUnplannedWalk,
@@ -792,7 +793,7 @@ export function HomeScreen() {
         {lastWalk ? (
           <View style={styles.section}>
             <View style={styles.sectionTitlePhysicalRight}>
-              <RtlText style={styles.sectionTitle}>היסטוריה אחרונה</RtlText>
+              <RtlText style={styles.sectionTitle}>הטיול האחרון</RtlText>
             </View>
 
             {(() => {
@@ -1058,7 +1059,7 @@ export function HomeScreen() {
           setAddUnplannedVisible(false);
           // addUnplannedWalk() itself refuses while Test Mode is active.
           if (dog) {
-            const saved = await addUnplannedWalk({
+            const input = {
               familyId: familyId,
               dogId: dog.id,
               performedByUserId: result.performedByUserId,
@@ -1068,7 +1069,10 @@ export function HomeScreen() {
               hadPoop: result.hadPoop,
               note: result.note || undefined,
               durationMinutes: result.durationMinutes,
-            });
+            };
+            const saved = result.mode === 'start'
+              ? await startUnplannedWalk(input)
+              : await addUnplannedWalk(input);
             if (saved) {
               showWalkCompletionCelebration(result.durationMinutes);
               checkForNewAchievementUnlocks();

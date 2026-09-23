@@ -513,18 +513,25 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                   ))}
                 </View>
 
-                <RtlText style={styles.sectionTitle}>יומן ביקורת ({detail.recentAudit.length})</RtlText>
-                <View style={styles.card}>
-                  {detail.recentAudit.length === 0 ? (
-                    <RtlText style={styles.cardLine}>אין רשומות</RtlText>
-                  ) : (
-                    detail.recentAudit.slice(0, 15).map((a) => (
+                {(() => {
+                  const visibleAudit = detail.recentAudit.filter((entry) => !entry.action.startsWith('system_observer.'));
+                  return (
+                    <>
+                      <RtlText style={styles.sectionTitle}>יומן פעילות ({visibleAudit.length})</RtlText>
+                      <View style={styles.card}>
+                        {visibleAudit.length === 0 ? (
+                          <RtlText style={styles.cardLine}>אין רשומות</RtlText>
+                        ) : (
+                          visibleAudit.slice(0, 15).map((a) => (
                       <RtlText key={a.id} style={styles.cardLine}>
                         {new Date(a.createdAt).toLocaleString('he-IL')} · {a.action}
                       </RtlText>
-                    ))
-                  )}
-                </View>
+                          ))
+                        )}
+                      </View>
+                    </>
+                  );
+                })()}
               </View>
             ) : null}
           </ScrollView>

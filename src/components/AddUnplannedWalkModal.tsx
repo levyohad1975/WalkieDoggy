@@ -17,6 +17,7 @@ export interface UnplannedWalkResult {
   hadPoop: boolean;
   note: string;
   durationMinutes?: number;
+  mode?: 'complete' | 'start';
 }
 
 interface AddUnplannedWalkModalProps {
@@ -282,11 +283,11 @@ export function AddUnplannedWalkModal({
             />
 
             <View style={styles.actions}>
-              <Button
-                label={isEditing ? 'שמור שינויים' : 'שמור טיול'}
-                disabled={!valid}
-                onPress={() =>
-                  onConfirm({
+              {!isEditing ? (
+                <Button
+                  label="התחל טיול"
+                  disabled={!valid}
+                  onPress={() => onConfirm({ ...{
                     performedByUserId: performedBy,
                     date,
                     time,
@@ -294,8 +295,22 @@ export function AddUnplannedWalkModal({
                     hadPoop,
                     note: note.trim(),
                     durationMinutes: duration ? Number(duration) : undefined,
-                  })
-                }
+                  }, mode: 'start' })}
+                  style={styles.flex}
+                />
+              ) : null}
+              <Button
+                label={isEditing ? 'שמור שינויים' : 'סיים ושמור'}
+                disabled={!valid}
+                onPress={() => onConfirm({ ...{
+                    performedByUserId: performedBy,
+                    date,
+                    time,
+                    hadPee,
+                    hadPoop,
+                    note: note.trim(),
+                    durationMinutes: duration ? Number(duration) : undefined,
+                  }, mode: 'complete' })}
                 style={styles.flex}
               />
               <Button label="ביטול" onPress={onClose} variant="secondary" style={styles.flex} />
