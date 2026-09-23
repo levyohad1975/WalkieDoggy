@@ -1,5 +1,5 @@
 ﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -41,6 +41,7 @@ import { SyncIssuesModal } from '../components/SyncIssuesModal';
 import { PrivacyAccessibilityInfoModal } from '../components/PrivacyAccessibilityInfoModal';
 import { useSystemAdminStore } from '../store/systemAdminStore';
 import { SystemAdminScreen } from './SystemAdminScreen';
+import { ConfirmModal } from '../components/ConfirmModal';
 
 export function SettingsScreen() {
   const { family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, setGamificationEnabled, saveDog, selectDog } = useFamilyStore();
@@ -111,6 +112,7 @@ export function SettingsScreen() {
   const [managementVisible, setManagementVisible] = useState(false);
   const isSystemAdmin = useSystemAdminStore((state) => state.isSystemAdmin);
   const [systemAdminVisible, setSystemAdminVisible] = useState(false);
+  const [signOutConfirmVisible, setSignOutConfirmVisible] = useState(false);
   // NESTED-MODAL LIFECYCLE FIX (final QA round) — see
   // logic/settingsModalTransitions.ts's doc comment for the full mechanism.
   // "יומן פעילות" used to open its own Modal directly while the Management
@@ -466,12 +468,7 @@ export function SettingsScreen() {
   // out entirely). authStore.signOut() already has its own fail-safe
   // contract (always completes locally even offline/on RPC failure) — see
   // its own doc comment — so this just needs the confirmation.
-  const handleSignOut = () => {
-    Alert.alert('להתנתק מהמכשיר הזה?', 'תצטרכו להזין קוד PIN כדי להתחבר שוב.', [
-      { text: 'ביטול', style: 'cancel' },
-      { text: 'התנתקות', style: 'destructive', onPress: () => void signOut() },
-    ]);
-  };
+  const handleSignOut = () => setSignOutConfirmVisible(true);
 
   const syncIssueCount = syncConflicts.length + quarantinedSyncItems.length;
   const handleClearSyncConflicts = async () => {
@@ -672,6 +669,18 @@ export function SettingsScreen() {
 
       <SystemAdminScreen visible={systemAdminVisible} onClose={() => setSystemAdminVisible(false)} />
 
+      <ConfirmModal
+        visible={signOutConfirmVisible}
+        title="להתנתק מהמכשיר הזה?"
+        message="תצטרכו להזין קוד PIN כדי להתחבר שוב."
+        confirmLabel="התנתקות"
+        onConfirm={() => {
+          setSignOutConfirmVisible(false);
+          void signOut();
+        }}
+        onCancel={() => setSignOutConfirmVisible(false)}
+      />
+
       <UserPickerModal
         visible={switchUserPickerVisible}
         title="להתחבר כמי?"
@@ -806,7 +815,7 @@ export function SettingsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
-  content: { padding: spacing.xl, gap: spacing.xxl, paddingBottom: spacing.xxxl },
+  content: { width: '100%', alignSelf: 'stretch', paddingHorizontal: spacing.lg, paddingTop: spacing.xl, gap: spacing.xxl, paddingBottom: spacing.xxxl },
   // Same desktop-containment pattern as HomeScreen's webContent: cap and
   // center the scroll content on web only — native is unaffected (RN's
   // ScrollView contentContainerStyle already renders full-width there, and
