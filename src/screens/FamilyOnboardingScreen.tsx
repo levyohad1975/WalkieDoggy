@@ -4,7 +4,7 @@ import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
 import { colors } from '../theme/colors';
-import { breakpoints, radii, spacing, typography } from '../theme/tokens';
+import { breakpoints, elevation, radii, spacing, typography } from '../theme/tokens';
 import { Button } from '../components/Button';
 import { ensureAnonymousSession, findFamilyByInviteCode, joinFamily } from '../lib/supabase';
 import {
@@ -872,13 +872,20 @@ const styles = StyleSheet.create({
   featureIcon: { color: '#102A5A', fontSize: 20, fontWeight: '900', lineHeight: 22 },
   featureLabel: { color: '#102A5A', fontSize: 10, lineHeight: 11, fontWeight: '800', textAlign: 'center' },
   smallWalks: { color: '#FFFFFF', fontSize: 13, lineHeight: 16, letterSpacing: 1.2, fontWeight: '700', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 5 },
-  formSafeArea: { flex: 1, backgroundColor: '#DFF5EE' },
-  formHero: { width: '100%', maxWidth: 560, minHeight: 82, borderRadius: 24, backgroundColor: '#BFE8DA', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 14, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#CBE9DF' },
+  // Same brand cream (colors.background) as the welcome screen's letterbox,
+  // so stepping from "choose" into create/join/redeem reads as one
+  // continuous surface rather than a hand-off into a different, pale-green
+  // page. formHero is a muted (not tinted-green) card floating on that
+  // cream, with turquoise kept to a controlled accent (the speech bubble's
+  // border) per BRAND_BIBLE's "calm cream backgrounds, turquoise as a
+  // controlled brand accent".
+  formSafeArea: { flex: 1, backgroundColor: colors.background },
+  formHero: { width: '100%', maxWidth: 560, minHeight: 82, borderRadius: 24, backgroundColor: colors.surfaceMuted, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 14, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
   formHeroDesktop: { maxWidth: 680, minHeight: 104 },
-  formSpeech: { flex: 1, maxWidth: 330, backgroundColor: '#FFFFFF', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 2, borderColor: '#2AA7B8' },
+  formSpeech: { flex: 1, maxWidth: 330, backgroundColor: colors.surface, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 2, borderColor: colors.primary },
   formSpeechText: { color: '#102A5A', fontSize: 16, lineHeight: 22, fontWeight: '800', textAlign: 'center' },
   flexFull: { flex: 1 },
-  formScrollContent: { alignItems: 'center', paddingTop: 14, paddingHorizontal: 18, paddingBottom: 34, minHeight: '100%', backgroundColor: '#DFF5EE' },
+  formScrollContent: { alignItems: 'center', paddingTop: 14, paddingHorizontal: 18, paddingBottom: 34, minHeight: '100%', backgroundColor: colors.background },
   formScrollContentDesktop: { paddingTop: 28, paddingHorizontal: 32, paddingBottom: 48 },
 
   eyebrow: { ...typography.caption, letterSpacing: 3.2, color: colors.primaryDark, fontWeight: '900', textAlign: 'center', marginBottom: spacing.md },
@@ -899,7 +906,7 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 14, lineHeight: 20, color: colors.textSecondary, marginTop: 4, marginBottom: 12, textAlign: 'center', maxWidth: 520 },
   subtitleDesktop: { fontSize: 16, marginBottom: 20 },
   wideButton: { width: '100%', marginTop: 8 },
-  form: { width: '100%', maxWidth: 560, alignSelf: 'center', backgroundColor: '#FDFBF4', borderRadius: 24, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 18, borderWidth: 1, borderColor: '#B8DCCF', shadowColor: '#173A36', shadowOpacity: 0.08, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
+  form: { width: '100%', maxWidth: 560, alignSelf: 'center', backgroundColor: colors.surface, borderRadius: 24, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 18, borderWidth: 1, borderColor: colors.border, ...elevation.card },
   formDesktop: { maxWidth: 680, paddingHorizontal: 28, paddingTop: 18, paddingBottom: 24 },
   label: { ...typography.meta, fontWeight: '800', color: '#6E675C', marginTop: 8, marginBottom: 5, textAlign: 'right' },
   stepHint: { fontSize: 14, lineHeight: 20, color: '#173A36', fontWeight: '800', textAlign: 'right', marginTop: 10, marginBottom: 2 },
