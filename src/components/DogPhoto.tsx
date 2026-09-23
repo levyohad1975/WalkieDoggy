@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
-import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
+import { WalkieMascot } from './WalkieMascot';
 
 interface DogPhotoProps {
   photoUrl?: string;
   size?: number;
 }
 
-/** Dog's photo, falling back to a paw emoji placeholder if there's no photo or it fails to load. */
+/** Dog's photo, falling back to the animated Walkie mascot if there is no photo. */
 export function DogPhoto({ photoUrl, size = 56 }: DogPhotoProps) {
   const [failed, setFailed] = useState(false);
   const showPhoto = Boolean(photoUrl) && !failed;
@@ -24,7 +24,7 @@ export function DogPhoto({ photoUrl, size = 56 }: DogPhotoProps) {
           onError={() => setFailed(true)}
         />
       ) : (
-        <RtlText style={{ fontSize: size * 0.5 }}>🐶</RtlText>
+        <WalkieMascot state="idle" size={Math.round(size * 0.82)} />
       )}
     </View>
   );
