@@ -50,6 +50,7 @@ export function SettingsScreen() {
   const saveHealthTask = useHealthStore((s) => s.saveTask);
   const completeHealthTask = useHealthStore((s) => s.completeTask);
   const { currentUserId, setFamilyId } = useAuthStore();
+  const systemObserverActive = useAuthStore((state) => state.systemObserverActive);
   const signInWithPin = useAuthStore((s) => s.signInWithPin);
   const signOut = useAuthStore((s) => s.signOut);
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
@@ -652,7 +653,7 @@ export function SettingsScreen() {
                 <RtlText style={styles.hubRowMeta}>יומן פעילות</RtlText>
               </View>
             </Pressable>
-            {isSystemAdmin ? (
+            {isSystemAdmin && !systemObserverActive ? (
               <Pressable style={styles.hubRow} onPress={() => setSystemAdminVisible(true)} accessibilityRole="button" accessibilityLabel="ניהול מערכת">
                 <RtlText style={styles.hubChevron}>‹</RtlText>
                 <View style={styles.hubLabelWithMeta}>
@@ -667,7 +668,7 @@ export function SettingsScreen() {
       </ScrollView>
       </KeyboardAvoidingView>
 
-      <SystemAdminScreen visible={systemAdminVisible} onClose={() => setSystemAdminVisible(false)} />
+      <SystemAdminScreen visible={systemAdminVisible && !systemObserverActive} onClose={() => setSystemAdminVisible(false)} />
 
       <ConfirmModal
         visible={signOutConfirmVisible}
