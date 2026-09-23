@@ -2,13 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { RtlText } from './RtlText';
-import type { FamilyUser, Walk } from '../types';
+import type { FamilyUser, Walk, WalkGpsSession } from '../types';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { Button } from './Button';
 import { Avatar } from './Avatar';
 import { useGpsStore } from '../store/gpsStore';
 import { formatDistanceMeters } from '../logic/gpsDistance';
+import { RoutePreview } from './RoutePreview';
 
 interface EditDoneDetailsModalProps {
   visible: boolean;
@@ -61,6 +62,7 @@ export function EditDoneDetailsModal({
   // Statistics' own distance KPI already established.
   const [gpsDistanceMeters, setGpsDistanceMeters] = useState<number | undefined>(undefined);
   const [distanceInput, setDistanceInput] = useState('');
+  const [gpsSession, setGpsSession] = useState<WalkGpsSession | null>(null);
 
   useEffect(() => {
     if (visible && walk) {
@@ -73,11 +75,14 @@ export function EditDoneDetailsModal({
       setGpsDistanceMeters(undefined);
       setDistanceInput('');
       void useGpsStore.getState().loadSession(walk.id).then((session) => {
+        setGpsSession(session ?? null);
         if (!session || typeof session.distanceMeters !== 'number') return;
         const authoritative = session.correctedDistanceMeters ?? session.distanceMeters;
         setGpsDistanceMeters(session.distanceMeters);
         setDistanceInput(String(Math.round(authoritative)));
       });
+    } else if (!visible) {
+      setGpsSession(null);
     }
   }, [visible, walk]);
 
@@ -180,6 +185,13 @@ export function EditDoneDetailsModal({
                 <RtlText style={styles.gpsHint}>
                   מדידת GPS מקורית: {formatDistanceMeters(gpsDistanceMeters!)}
                 </RtlText>
+              </>
+            ) : null}
+
+            {gpsSession?.routePoints && gpsSession.routePoints.length > 1 ? (
+              <>
+                <RtlText style={styles.label}>מסלול הטיול</RtlText>
+                <RoutePreview session={gpsSession} large />
               </>
             ) : null}
 
