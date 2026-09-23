@@ -416,7 +416,9 @@ const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   systemAdminEntry: {
     position: 'absolute',
-    top: 14,
+    // Keep the platform-admin shortcut below the branded header so it can
+    // never cover/compete with the Walkie Doggy mascot on narrow phones.
+    top: 72,
     right: 18,
     width: 44,
     height: 44,
