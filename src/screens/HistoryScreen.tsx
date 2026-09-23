@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -10,7 +10,7 @@ import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../sto
 import { summarizeWalksByUser } from '../logic/walkActions';
 import { isOverdue } from '../logic/nextWalk';
 import { formatHistoryDate, localDateOnly } from '../logic/dateFormat';
-import { isWalkEligibleForHistory } from '../logic/history';
+import { isWalkEligibleForHistory, walkMatchesHistorySearch } from '../logic/history';
 import { canAccessHistoryScreen } from '../logic/permissions';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { fetchHistoryWalks } from '../lib/permissionedWalks';
@@ -55,6 +55,7 @@ export function HistoryScreen() {
   const [draftCustomDate, setDraftCustomDate] = useState<string | null>(null);
   const [resolveWalkId, setResolveWalkId] = useState<string | null>(null);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [historySearchQuery, setHistorySearchQuery] = useState('');
 
   // BATCH 3 CORRECTION #2 (review #2, post-review): HistoryScreen's actual
   // display/calculation dataset. list_history_walks() (migration 0027) is
@@ -182,9 +183,10 @@ export function HistoryScreen() {
         if (rangeFilter === 'today' && w.date !== todayString) return false;
         if ((rangeFilter === '7d' || rangeFilter === '30d') && rangeStartDate && w.date < rangeStartDate) return false;
         if (rangeFilter === 'custom' && customDate && w.date !== customDate) return false;
+        if (!walkMatchesHistorySearch(w, historySearchQuery)) return false;
         return true;
       }),
-    [allHistory, userFilter, planFilter, rangeFilter, rangeStartDate, customDate, todayString]
+    [allHistory, userFilter, planFilter, rangeFilter, rangeStartDate, customDate, todayString, historySearchQuery]
   );
 
   const dailySummary = useMemo(() => {
@@ -276,6 +278,21 @@ export function HistoryScreen() {
               people actually touch) stays visible; the rest expands on
               demand. */}
           <RtlText style={styles.sectionTitle}>סינון</RtlText>
+
+          {/* PRD §14: "History displays ... with filtering AND SEARCH."
+              Free-text search over a walk's note — instant/client-side,
+              matching the instant-filter chips below rather than needing a
+              submit step. */}
+          <TextInput
+            value={historySearchQuery}
+            onChangeText={setHistorySearchQuery}
+            placeholder="חיפוש בהערות הטיול"
+            placeholderTextColor={colors.textSecondary}
+            style={styles.searchInput}
+            textAlign="right"
+            returnKeyType="search"
+            accessibilityLabel="חיפוש בהערות הטיול"
+          />
 
           <View style={styles.chipRow}>
             {RANGE_LABELS.map(([key, label]) => (
@@ -545,6 +562,16 @@ const styles = StyleSheet.create({
   // instead of pinned to the opposite end of a header row far from it.
   filterToggleRow: { width: '100%', marginTop: 4 },
   filterToggle: { width: '100%', fontSize: 13, fontWeight: '700', color: colors.primaryDark, textAlign: 'right', writingDirection: 'rtl' },
+  searchInput: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.sm,
+    padding: spacing.md,
+    fontSize: 14,
+    color: colors.textPrimary,
+    marginTop: spacing.sm,
+  },
   chipRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
   chip: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radii.md, backgroundColor: colors.surfaceMuted },
   chipActive: { backgroundColor: colors.primary },

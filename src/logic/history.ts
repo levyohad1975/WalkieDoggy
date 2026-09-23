@@ -17,3 +17,16 @@ export function isWalkEligibleForHistory(walk: Walk, now: Date = new Date()): bo
     ? walkDateTime(walk).getTime() <= now.getTime()
     : walk.date <= localDateOnly(now);
 }
+
+/**
+ * PRD §14: "History displays ... with filtering AND SEARCH." A walk's note
+ * is the one free-text field History surfaces per item (see HistoryScreen's
+ * "💬 {w.note}" line) — this is a case/whitespace-insensitive substring
+ * match against it. An empty/whitespace-only query matches every walk, so a
+ * cleared search box never hides the list.
+ */
+export function walkMatchesHistorySearch(walk: Walk, query: string): boolean {
+  const trimmed = query.trim().toLowerCase();
+  if (!trimmed) return true;
+  return (walk.note ?? '').toLowerCase().includes(trimmed);
+}
