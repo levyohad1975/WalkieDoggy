@@ -123,6 +123,33 @@ describe('gpsStore', () => {
     expect(useGpsStore.getState().trackingWalkId).toBeNull();
   });
 
+  it('GPS audit fix: persists the session\'s startedAt/endedAt — previously always omitted even though the schema/repository already round-trip them', async () => {
+    const { useGpsStore } = require('../gpsStore');
+    const gpsTracking = require('../../lib/gpsTracking');
+    let feed: (acc: { distanceMeters: number; pointCount: number; routePoints: never[] }) => void = () => undefined;
+    jest.spyOn(gpsTracking, 'startGpsWatch').mockImplementationOnce(async (onUpdate: any) => {
+      feed = onUpdate;
+      return { remove: jest.fn() };
+    });
+
+    expect(useGpsStore.getState().trackingStartedAt).toBeNull();
+    await useGpsStore.getState().startTracking(walk);
+    // startTracking() only sets trackingStartedAt once the watch actually
+    // starts (after startGpsWatch() resolves) — not merely on being called.
+    const startedAt = useGpsStore.getState().trackingStartedAt;
+    expect(startedAt).toEqual(expect.any(String));
+    expect(Number.isNaN(new Date(startedAt!).getTime())).toBe(false);
+
+    feed({ distanceMeters: 200, pointCount: 10, routePoints: [] });
+    const result = await useGpsStore.getState().stopTracking(walk, 'user-aba');
+
+    expect(result?.startedAt).toBe(startedAt);
+    expect(result?.endedAt).toEqual(expect.any(String));
+    expect(new Date(result!.endedAt!).getTime()).toBeGreaterThanOrEqual(new Date(startedAt!).getTime());
+    // Reset for the next tracking round, not left stale.
+    expect(useGpsStore.getState().trackingStartedAt).toBeNull();
+  });
+
   it('loadSession fetches a persisted session from the repository and caches it', async () => {
     const { useGpsStore } = require('../gpsStore');
     const { repository } = require('../../data');

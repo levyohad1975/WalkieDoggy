@@ -4,11 +4,22 @@
  * `GpsPoint` is exactly what a foreground `watchPositionAsync` callback
  * hands the caller; accumulateDistance() is the ONLY place raw points are
  * ever touched — see lib/gpsTracking.ts, which feeds points through this
- * reducer one at a time and keeps only the running total + the last point,
- * never a growing array. No raw point is ever persisted (client cache or
- * server) — see supabase/migrations/0051_walk_gps_sessions.sql's own
- * privacy-by-design rationale for why that's a deliberate boundary, not an
- * oversight.
+ * reducer one at a time and keeps only the running total, the last point,
+ * and the accepted route (see `routePoints` below).
+ *
+ * NOTE ON HISTORY: migration 0051_walk_gps_sessions.sql originally shipped
+ * with NO raw point persistence at all, by explicit privacy-by-design
+ * choice (that migration's own header), gating a future stored route on a
+ * still-open PRD retention/privacy decision. Migration 0053 (route_points,
+ * a jsonb array of {latitude,longitude,timestamp}) later added exactly
+ * that stored route — this file's own accumulator now retains and returns
+ * `routePoints` (accepted fixes only, after the accuracy/movement filters
+ * below), and gpsStore.ts persists it via upsertGpsSession(). This
+ * comment previously still claimed "no raw point is ever persisted",
+ * which stopped being true as of 0053 — corrected here, but whether that
+ * PRD retention/privacy question was actually revisited before 0053
+ * shipped is outside this file's own knowledge and worth confirming
+ * separately.
  */
 
 export interface GpsPoint {

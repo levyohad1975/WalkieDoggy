@@ -17,6 +17,8 @@ interface GpsState {
   trackingWalkId: string | null;
   /** Set once startTracking() resolves permission — lets UI show WHY there's no live distance (denied vs. unavailable vs. simply not started yet). */
   permissionStatus: GpsPermissionStatus | null;
+  /** ISO timestamp of when the CURRENT tracking round actually began (the watch started, not just startTracking() being called) — null whenever trackingWalkId is null. Feeds WalkGpsSession.startedAt/endedAt on stop, which the schema/repository layer already round-trip but this store never used to populate. */
+  trackingStartedAt: string | null;
   /** Live running total while trackingWalkId is set — meaningless/stale once tracking stops (read sessionsByWalkId for the persisted, authoritative value instead). */
   distanceMeters: number;
   pointCount: number;
@@ -52,6 +54,7 @@ interface GpsState {
 export const useGpsStore = create<GpsState>((set, get) => ({
   trackingWalkId: null,
   permissionStatus: null,
+  trackingStartedAt: null,
   distanceMeters: 0,
   pointCount: 0,
   routePoints: [],
@@ -65,7 +68,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       activeWatch.remove();
       activeWatch = null;
     }
-    set({ trackingWalkId: walk.id, permissionStatus: null, distanceMeters: 0, pointCount: 0, routePoints: [] });
+    set({ trackingWalkId: walk.id, permissionStatus: null, trackingStartedAt: null, distanceMeters: 0, pointCount: 0, routePoints: [] });
 
     const handle = await startGpsWatch((acc: GpsAccumulator) => {
       // Ignore a late callback from a watch that's since been stopped/
@@ -92,7 +95,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       return;
     }
     activeWatch = handle;
-    set({ permissionStatus: 'granted' });
+    set({ permissionStatus: 'granted', trackingStartedAt: new Date().toISOString() });
   },
 
   stopTracking: async (walk, userId) => {
@@ -103,14 +106,14 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     }
     if (!wasTracking) return null; // this walk was never the one being tracked
 
-    const { distanceMeters, pointCount } = get();
-    set({ trackingWalkId: null });
+    const { distanceMeters, pointCount, trackingStartedAt } = get();
+    const now = new Date().toISOString();
+    set({ trackingWalkId: null, trackingStartedAt: null });
 
     // Nothing was ever actually captured (denied/unavailable, or stopped
     // before any fix arrived) — no session worth persisting.
     if (pointCount === 0) return null;
 
-    const now = new Date().toISOString();
     const existing = get().sessionsByWalkId[walk.id];
     const session: WalkGpsSession = {
       id: existing?.id ?? generateId('gps-session'),
@@ -121,6 +124,13 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       pointCount,
       routePoints: get().routePoints,
       source: 'device_gps',
+      // Schema/repository layer already round-trips these (migration
+      // 0051); this store previously never populated them at all. Bug
+      // fix, found during the GPS audit — trackingStartedAt is set the
+      // moment startTracking()'s watch actually begins (not merely when
+      // it's called), `now` is this stop.
+      startedAt: trackingStartedAt ?? undefined,
+      endedAt: now,
       createdByUserId: existing?.createdByUserId ?? userId ?? undefined,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,

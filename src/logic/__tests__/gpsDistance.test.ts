@@ -74,6 +74,16 @@ describe('accumulateDistance', () => {
     expect(acc.lastPoint).toEqual(point({ latitude: 32.08000000, longitude: 34.78000000, timestamp: 1 }));
   });
 
+  it('regression: the sub-floor-jitter branch keeps routePoints a valid array, never dropping it (it fed straight into a live gpsStore subscriber that crashed on routePoints.map of undefined)', () => {
+    let acc = createGpsAccumulator();
+    acc = accumulateDistance(acc, point({ latitude: 32.08000000, longitude: 34.78000000, timestamp: 1 }));
+    expect(acc.routePoints).toEqual([point({ latitude: 32.08000000, longitude: 34.78000000, timestamp: 1 })]);
+    // ~0.5m jitter — well under the floor; must not accumulate distance
+    // AND must not drop routePoints off the returned accumulator.
+    acc = accumulateDistance(acc, point({ latitude: 32.08000450, longitude: 34.78000000, timestamp: 2 }));
+    expect(acc.routePoints).toEqual([point({ latitude: 32.08000000, longitude: 34.78000000, timestamp: 1 })]);
+  });
+
   it('a string of sub-floor jitters never accumulates real-looking distance by drifting against each other', () => {
     let acc = createGpsAccumulator();
     acc = accumulateDistance(acc, point({ latitude: 32.08, longitude: 34.78, timestamp: 1 }));
