@@ -320,12 +320,25 @@ export function AddUnplannedWalkModal({
                 style={styles.deleteButton}
                 accessibilityHint="יוצג אישור לפני מחיקה לצמיתות של הטיול"
                 onPress={() => {
+                  const confirmDelete = () => onDelete(editingWalk.id);
+
+                  // React Native Alert is not reliably shown in Safari Web.
+                  // Use the browser confirmation there so the delete button
+                  // is actually actionable on iPhone Safari.
+                  if (Platform.OS === 'web') {
+                    const confirm = (globalThis as typeof globalThis & { confirm?: (message?: string) => boolean }).confirm;
+                    if (!confirm || confirm('למחוק את הטיול הזה?\\n\\nהפעולה תמחק לצמיתות את הטיול הספונטני הזה ואת כל הפרטים שלו.')) {
+                      void confirmDelete();
+                    }
+                    return;
+                  }
+
                   Alert.alert(
                     'למחוק את הטיול הזה?',
                     'הפעולה תמחק לצמיתות את הטיול הספונטני הזה ואת כל הפרטים שלו.',
                     [
                       { text: 'חזרה', style: 'cancel' },
-                      { text: 'מחק', style: 'destructive', onPress: () => onDelete(editingWalk.id) },
+                      { text: 'מחק', style: 'destructive', onPress: () => void confirmDelete() },
                     ]
                   );
                 }}
