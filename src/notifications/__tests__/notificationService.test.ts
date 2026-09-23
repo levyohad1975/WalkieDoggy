@@ -5,6 +5,7 @@ import { buildWalkReminderMessage, type ReminderStage } from '../../logic/remind
 import {
   cancelWalkNotifications,
   ensureAndroidNotificationChannel,
+  getNativeNotificationPermissionStatus,
   reconcileWalkNotifications,
   requestNotificationPermissions,
   scheduleWalkNotifications,
@@ -306,6 +307,29 @@ describe('notificationService — Android notification channel (Round 6D)', () =
     expect(setChannelMock).not.toHaveBeenCalled();
     expect(requestPermissionsMock).not.toHaveBeenCalled(); // already granted — existing short-circuit, unchanged
     expect(granted).toBe(true);
+  });
+
+  describe('getNativeNotificationPermissionStatus (PRD §25 native notifications-disabled state)', () => {
+    it('resolves "granted" without ever calling requestPermissionsAsync (read-only status check)', async () => {
+      getPermissionsMock.mockResolvedValueOnce({ granted: true });
+
+      await expect(getNativeNotificationPermissionStatus()).resolves.toBe('granted');
+      expect(requestPermissionsMock).not.toHaveBeenCalled();
+    });
+
+    it('resolves "denied" when not granted and the OS won\'t ask again', async () => {
+      getPermissionsMock.mockResolvedValueOnce({ granted: false, canAskAgain: false });
+
+      await expect(getNativeNotificationPermissionStatus()).resolves.toBe('denied');
+      expect(requestPermissionsMock).not.toHaveBeenCalled();
+    });
+
+    it('resolves "undetermined" when not granted but the OS could still ask (never yet prompted)', async () => {
+      getPermissionsMock.mockResolvedValueOnce({ granted: false, canAskAgain: true });
+
+      await expect(getNativeNotificationPermissionStatus()).resolves.toBe('undetermined');
+      expect(requestPermissionsMock).not.toHaveBeenCalled();
+    });
   });
 
   it('scheduleWalkNotifications on Android routes scheduled notifications to channelId "walk-reminders"', async () => {

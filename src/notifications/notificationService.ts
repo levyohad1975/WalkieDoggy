@@ -280,6 +280,29 @@ export async function requestNotificationPermissions(): Promise<boolean> {
   return requested.granted;
 }
 
+export type NativeNotificationPermissionStatus = 'granted' | 'denied' | 'undetermined' | 'unavailable';
+
+/**
+ * PRD §25's "notifications disabled" state, native (iOS/Android) side —
+ * RemindersModal.tsx previously only ever surfaced permission status for
+ * Web (Web Push denied/unsupported messaging); a native device with OS
+ * notification permission denied had nothing telling the person why local
+ * reminders never fire. Read-only: unlike requestNotificationPermissions()
+ * above, this NEVER calls requestPermissionsAsync() — checking status must
+ * never itself trigger an OS prompt (which, once denied, doesn't re-show
+ * anyway, but the point is this is purely a status read, not a request).
+ * 'undetermined' means the person has never been asked — a caller should
+ * offer requestNotificationPermissions() rather than a "go to Settings"
+ * link, since the OS can still prompt them directly at that point.
+ */
+export async function getNativeNotificationPermissionStatus(): Promise<NativeNotificationPermissionStatus> {
+  const Notifications = await getNotifications();
+  if (!Notifications) return 'unavailable';
+  const current = await Notifications.getPermissionsAsync();
+  if (current.granted) return 'granted';
+  return current.canAskAgain ? 'undetermined' : 'denied';
+}
+
 /**
  * Schedules (or reschedules) the pre-walk + overdue reminders for one walk,
  * per src/logic/reminders.ts. Call this whenever a walk is created, its
