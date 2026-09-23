@@ -159,7 +159,7 @@ describe('notificationService — real Expo Go (storeClient) end-to-end: every n
     const Notifications = require('expo-notifications');
     const { reconcileWalkNotifications } = require('../notificationService');
 
-    await reconcileWalkNotifications([fakeWalk('walk-expo-go-2')], async () => setting, () => 'עומר', 'רקסי');
+    await reconcileWalkNotifications([fakeWalk('walk-expo-go-2')], async () => setting, () => 'עומר', () => ({ name: 'רקסי' }));
 
     expect(Notifications.getAllScheduledNotificationsAsync).not.toHaveBeenCalled();
     expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();

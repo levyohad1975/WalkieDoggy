@@ -28,6 +28,7 @@ import { Button } from '../components/Button';
 import { WalkCompletionCelebration } from '../components/WalkCompletionCelebration';
 import { ReminderMascotPrompt } from '../components/ReminderMascotPrompt';
 import { DogProfileModal } from '../components/DogProfileModal';
+import { DogSelectorRow } from '../components/DogSelectorRow';
 import { WalkieMascot } from '../components/WalkieMascot';
 import { CELEBRATION_LIBRARY, selectWalkCompletionCelebration, type CompletionCelebration } from '../logic/walkCompletionCelebration';
 import { achievementDefinition, type AchievementProgress } from '../logic/achievements';
@@ -66,7 +67,7 @@ export function HomeScreen() {
   // cause anymore).
   const clearTestModeIfInvalid = useAuthStore((s) => s.clearTestModeIfInvalid);
   const clearImpersonationIfInvalid = useAuthStore((s) => s.clearImpersonationIfInvalid);
-  const { users, dog, loading: familyLoading, error: familyError, load: loadFamily } = useFamilyStore();
+  const { users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, error: familyError, load: loadFamily } = useFamilyStore();
   const {
     walks,
     loading: scheduleLoading,
@@ -324,7 +325,22 @@ export function HomeScreen() {
     return () => clearInterval(id);
   }, []);
 
-  const nextWalk = useMemo(() => computeNextWalk(walks), [walks, minuteTick]);
+  // PRD §11: multi-dog families must see only the SELECTED dog's walks on
+  // this screen (next/last/upcoming/overdue) — `walks` itself is the raw,
+  // family-wide store, unfiltered by dog. Filtering here (rather than
+  // changing computeNextWalk/computeLastWalk/upcomingWalks themselves)
+  // keeps those pure functions generic and untouched; every "pick from the
+  // pool" usage below reads visibleWalks instead of walks. A single-dog
+  // family (dogs.length <= 1) sees everything unfiltered — no behavior
+  // change there. Walk lookups BY ID (walksById, walks.find(id)) stay on
+  // the unfiltered `walks` on purpose: those resolve one already-known
+  // walk regardless of which dog is currently selected (e.g. an edit modal
+  // opened before a dog switch, or a reminder tap for a different dog).
+  const visibleWalks = useMemo(
+    () => (dogs.length > 1 && dog ? walks.filter((w) => w.dogId === dog.id) : walks),
+    [walks, dogs.length, dog?.id]
+  );
+  const nextWalk = useMemo(() => computeNextWalk(visibleWalks), [visibleWalks, minuteTick]);
   useEffect(
     () =>
       subscribeToReminderOpens((event) => {
@@ -425,7 +441,7 @@ export function HomeScreen() {
     }, [refreshServerLastResolvedWalk, familyId])
   );
   const lastWalk = useMemo(() => {
-    const resolvedToday = computeLastWalk(walks);
+    const resolvedToday = computeLastWalk(visibleWalks);
     if (resolvedToday) return resolvedToday;
     if (!isSupabaseConfigured) return undefined;
     // The family-scoped gate: a fetched row is only ever usable when it was
@@ -434,8 +450,15 @@ export function HomeScreen() {
     // even a row that legitimately made it into state can never be
     // displayed for the wrong family.
     if (!serverLastResolvedWalk || serverLastResolvedWalk.familyId !== familyId) return undefined;
+    // NOTE (multi-dog, PRD §11): unlike resolvedToday above, this server
+    // fallback (get_last_resolved_walk()) is family-wide, not dog-scoped —
+    // it only kicks in when NOTHING was resolved today for ANY dog, so a
+    // multi-dog family could very rarely see another dog's last resolved
+    // walk here specifically in that edge case. Narrowing it further needs
+    // an RPC signature change (a new migration), out of scope for this
+    // client-only pass.
     return serverLastResolvedWalk.walk ?? undefined;
-  }, [walks, serverLastResolvedWalk, familyId]);
+  }, [visibleWalks, serverLastResolvedWalk, familyId]);
   // Whether `lastWalk` is present in the local, operational-window-limited
   // `walks` state — true for anything resolved today (or always, in
   // local/demo mode, where `walks` is unrestricted). Every mutation this
@@ -452,12 +475,12 @@ export function HomeScreen() {
   // met; edit/delete remain exactly where they can safely work.
   const lastWalkIsEditable = !isSupabaseConfigured || (!!lastWalk && walks.some((w) => w.id === lastWalk.id));
   const upcoming = useMemo(
-    () => upcomingWalks(walks).filter((w) => w.id !== nextWalk?.id),
-    [walks, nextWalk, minuteTick]
+    () => upcomingWalks(visibleWalks).filter((w) => w.id !== nextWalk?.id),
+    [visibleWalks, nextWalk, minuteTick]
   );
   const overduePending = useMemo(
     () =>
-      walks
+      visibleWalks
         .filter(
           (w) =>
             w.status === 'pending' &&
@@ -468,7 +491,7 @@ export function HomeScreen() {
         .sort((a, b) =>
           `${a.date}T${a.scheduledTime}`.localeCompare(`${b.date}T${b.scheduledTime}`)
         ),
-    [walks, nextWalk, minuteTick, effectiveRole, effectiveUserId]
+    [visibleWalks, nextWalk, minuteTick, effectiveRole, effectiveUserId]
   );
 
   // ADMIN TEST MODE mutation-blocking (requirement 1) now lives centrally in
@@ -480,16 +503,24 @@ export function HomeScreen() {
 
   const walksById = useMemo(() => Object.fromEntries(walks.map((w) => [w.id, w])), [walks]);
   const reminderPromptMessage = useMemo(() => {
-    if (!reminderPrompt || !dog) return null;
+    if (!reminderPrompt) return null;
     const walk = walksById[reminderPrompt.walkId];
     if (!walk || walk.status !== 'pending') return null;
+    // Multi-dog (PRD §11): a reminder can fire for ANY of the family's
+    // dogs, regardless of which one is currently selected in the UI — look
+    // the walk's actual dog up by walk.dogId rather than assuming it's the
+    // globally active `dog`. Falls back to the active dog only if the walk
+    // somehow references a dog no longer in `dogs` (shouldn't normally
+    // happen), so a genuinely resolvable prompt is never dropped.
+    const walkDog = dogs.find((d) => d.id === walk.dogId) ?? dog;
+    if (!walkDog) return null;
 
     return renderMessageTemplate('{responsibleName}, הגיע הזמן לטייל עם {dogNoun} 🐾', {
-      dogName: dog.name,
-      dogSex: dog.sex,
+      dogName: walkDog.name,
+      dogSex: walkDog.sex,
       responsibleName: usersById[walk.responsibleUserId]?.name,
     });
-  }, [dog, reminderPrompt, usersById, walksById]);
+  }, [dog, dogs, reminderPrompt, usersById, walksById]);
 
   // Badge counts: swap requests addressed to the viewer (a swap target can
   // be ANY active member, including one who also holds the Admin role —
@@ -529,8 +560,13 @@ export function HomeScreen() {
   const otherPendingWalks = useMemo(() => {
   if (!editingWalk) return [];
 
+  // Multi-dog (PRD §11): a swap target must belong to the SAME dog as the
+  // walk being edited — matching the dogId filter both SwapWalkPickerModal
+  // call sites below already apply. Without this, a multi-dog family could
+  // be offered to "swap" one dog's walk with a completely different dog's
+  // occurrence.
   return upcomingWalks(walks, new Date(), 50)
-    .filter((w) => w.id !== editingWalk.id)
+    .filter((w) => w.id !== editingWalk.id && w.dogId === editingWalk.dogId)
     .slice(0, 12)
     .map((w) => ({
       walk: w,
@@ -611,6 +647,15 @@ export function HomeScreen() {
             </Pressable>
           ) : null}
         </View>
+
+        {/* PRD §11: "ב-Home יש בחירת כלב קלה כאשר יש יותר מכלב אחד" — an
+            easy dog picker on Home whenever there's more than one dog.
+            Selecting a chip makes that dog active (selectDog(), persisted),
+            which visibleWalks above (and every card below) then reflects.
+            Hidden entirely for a single-dog family — no change there. */}
+        {dogs.length > 1 ? (
+          <DogSelectorRow dogs={dogs} selectedDogId={selectedDogId} onSelect={(dogId) => void selectDog(dogId)} />
+        ) : null}
 
         {/*
           Health & Grooming summary (PRD §10) — deliberately a single slim,

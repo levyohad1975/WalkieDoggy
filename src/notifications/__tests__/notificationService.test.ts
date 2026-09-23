@@ -64,6 +64,19 @@ const setting: NotificationSetting = {
 /** All four PRD §8 stages, in the fixed order the server-side scheduler (migration 0025) and REMINDER_STAGES both use. */
 const ALL_STAGES: ReminderStage[] = ['T-15', 'T', 'T+15', 'T+30'];
 
+/**
+ * PRD §11 (multi-dog): reconcileWalkNotifications() resolves each walk's
+ * own dog by walk.dogId, not a single fixed dogName/dogSex — see
+ * notificationService.ts's own doc comment. Most tests in this file only
+ * ever exercise one dog, so this ignores dogId and always resolves the
+ * same fixed dog, matching the OLD fixed-dogName/dogSex test behavior
+ * exactly for every test that doesn't care about the multi-dog case
+ * itself.
+ */
+function fakeGetDog(name = 'רקסי', sex?: 'male' | 'female') {
+  return (_dogId: string) => ({ name, sex });
+}
+
 /** Builds a fake Notifications.NotificationRequest the way expo-notifications would return it from getAllScheduledNotificationsAsync — content.data matches what scheduleWalkNotifications() actually schedules with. */
 function fakeScheduledRequest(
   identifier: string,
@@ -150,7 +163,7 @@ describe('notificationService — a walk marked done has its reminders removed',
       [doneWalk],
       async () => setting,
       () => 'עומר',
-      'רקסי'
+      fakeGetDog()
     );
 
     for (const stage of ALL_STAGES) {
@@ -177,7 +190,7 @@ describe('notificationService — bug 4: orphaned notification for a remotely-de
       [stillPendingWalk],
       async () => setting,
       () => 'עומר',
-      'רקסי'
+      fakeGetDog()
     );
 
     expect(cancelMock).toHaveBeenCalledWith('notif:deleted-walk:T-15');
@@ -196,7 +209,7 @@ describe('notificationService — bug 4: orphaned notification for a remotely-de
       [stillPendingWalk],
       async () => setting,
       () => 'עומר',
-      'רקסי'
+      fakeGetDog()
     );
 
     expect(cancelMock).not.toHaveBeenCalledWith('notif:walk-present:T-15');
@@ -210,7 +223,7 @@ describe('notificationService — bug 4: orphaned notification for a remotely-de
       fakeScheduledRequest('some-other-feature:reminder-42', { somethingElse: true }),
     ]);
 
-    await reconcileWalkNotifications([], async () => setting, () => 'עומר', 'רקסי');
+    await reconcileWalkNotifications([], async () => setting, () => 'עומר', fakeGetDog());
 
     expect(cancelMock).not.toHaveBeenCalledWith('some-other-feature:reminder-42');
   });
@@ -220,7 +233,7 @@ describe('notificationService — bug 4: orphaned notification for a remotely-de
       fakeScheduledRequest('notif:deleted-walk-2:T+30' /* no data */),
     ]);
 
-    await reconcileWalkNotifications([], async () => setting, () => 'עומר', 'רקסי');
+    await reconcileWalkNotifications([], async () => setting, () => 'עומר', fakeGetDog());
 
     expect(cancelMock).toHaveBeenCalledWith('notif:deleted-walk-2:T+30');
   });
@@ -525,7 +538,7 @@ describe('notificationService — cancelOrphanedWalkNotifications resiliency', (
     getAllScheduledMock.mockRejectedValueOnce(new Error('OS enumeration failed'));
 
     await expect(
-      reconcileWalkNotifications([fakeWalk('walk-enum-fail')], async () => setting, () => 'עומר', 'רקסי')
+      reconcileWalkNotifications([fakeWalk('walk-enum-fail')], async () => setting, () => 'עומר', fakeGetDog())
     ).resolves.toBeUndefined();
   });
 });
@@ -533,7 +546,7 @@ describe('notificationService — cancelOrphanedWalkNotifications resiliency', (
 describe('notificationService — reconcileWalkNotifications missing-setting/name guard', () => {
   it('cancels a pending walk whose responsible user has no notification setting at all', async () => {
     const walk = fakeWalk('walk-no-setting');
-    await reconcileWalkNotifications([walk], async () => undefined, () => 'עומר', 'רקסי');
+    await reconcileWalkNotifications([walk], async () => undefined, () => 'עומר', fakeGetDog());
 
     for (const stage of ALL_STAGES) {
       expect(cancelMock).toHaveBeenCalledWith(`notif:walk-no-setting:${stage}`);
@@ -544,7 +557,7 @@ describe('notificationService — reconcileWalkNotifications missing-setting/nam
   it('cancels a pending walk whose responsible user has disabled reminders', async () => {
     const walk = fakeWalk('walk-disabled-setting');
     const disabledSetting: NotificationSetting = { ...setting, enabled: false };
-    await reconcileWalkNotifications([walk], async () => disabledSetting, () => 'עומר', 'רקסי');
+    await reconcileWalkNotifications([walk], async () => disabledSetting, () => 'עומר', fakeGetDog());
 
     expect(cancelMock).toHaveBeenCalledWith('notif:walk-disabled-setting:T-15');
     expect(scheduleMock).not.toHaveBeenCalled();
@@ -552,7 +565,7 @@ describe('notificationService — reconcileWalkNotifications missing-setting/nam
 
   it('cancels a pending walk whose responsible user name cannot be resolved', async () => {
     const walk = fakeWalk('walk-no-username');
-    await reconcileWalkNotifications([walk], async () => setting, () => undefined, 'רקסי');
+    await reconcileWalkNotifications([walk], async () => setting, () => undefined, fakeGetDog());
 
     expect(cancelMock).toHaveBeenCalledWith('notif:walk-no-username:T-15');
     expect(scheduleMock).not.toHaveBeenCalled();
@@ -610,7 +623,7 @@ describe('notificationService — message content is generated via reminderMessa
 
   it('reconcileWalkNotifications threads dogSex through to scheduleWalkNotifications', async () => {
     const walk = fakeWalk('walk-reconcile-sex');
-    await reconcileWalkNotifications([walk], async () => setting, () => 'עומר', 'רקסי', 'female');
+    await reconcileWalkNotifications([walk], async () => setting, () => 'עומר', fakeGetDog('רקסי', 'female'));
     expectCallsMatchGeneratedMessages('walk-reconcile-sex', 'רקסי', 'female', 'עומר');
   });
 });

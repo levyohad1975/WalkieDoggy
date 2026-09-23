@@ -471,13 +471,21 @@ async function cancelOrphanedWalkNotifications(currentWalkIds: Set<string>): Pro
  * In Expo Go every underlying call above is already a no-op, so this whole
  * pass degrades to "does nothing, returns normally" — safe to call
  * unconditionally from every call site without an Expo-Go check at each one.
+ *
+ * `getDog` resolves EACH walk's own dog by its `dogId` — PRD §11's
+ * multi-dog requirement means a batch of walks passed here can belong to
+ * more than one of the family's dogs, so a single fixed dogName/dogSex
+ * (this function's pre-multi-dog-fix signature) would silently mislabel
+ * every walk whose dog isn't whichever one the caller happened to pass. A
+ * walk whose dog can't be resolved is treated exactly like a missing
+ * setting/username above — cancelled rather than scheduled with a guessed
+ * or wrong dog identity.
  */
 export async function reconcileWalkNotifications(
   walks: Walk[],
   getSetting: (userId: string) => Promise<NotificationSetting | undefined>,
   getUserName: (userId: string) => string | undefined,
-  dogName: string,
-  dogSex?: Dog['sex'] | null
+  getDog: (dogId: string) => { name: string; sex?: Dog['sex'] | null } | undefined
 ): Promise<void> {
   for (const walk of walks) {
     if (walk.status !== 'pending') {
@@ -486,11 +494,12 @@ export async function reconcileWalkNotifications(
     }
     const setting = await getSetting(walk.responsibleUserId);
     const userName = getUserName(walk.responsibleUserId);
-    if (!setting || !setting.enabled || !userName) {
+    const dog = getDog(walk.dogId);
+    if (!setting || !setting.enabled || !userName || !dog) {
       await cancelWalkNotifications(walk.id);
       continue;
     }
-    await scheduleWalkNotifications(walk, setting, userName, dogName, dogSex);
+    await scheduleWalkNotifications(walk, setting, userName, dog.name, dog.sex);
   }
 
   await cancelOrphanedWalkNotifications(new Set(walks.map((w) => w.id)));

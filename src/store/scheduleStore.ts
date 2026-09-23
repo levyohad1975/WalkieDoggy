@@ -132,8 +132,15 @@ async function scheduleNotificationsForWalk(walk: Walk) {
     return;
   }
   const { useFamilyStore } = require('./familyStore') as typeof import('./familyStore');
-  const { users, dog } = useFamilyStore.getState();
+  const { users, dog: activeDog, dogs } = useFamilyStore.getState();
   const user = users.find((u) => u.id === walk.responsibleUserId);
+  // Multi-dog (PRD §11): resolve THIS walk's own dog by walk.dogId, never
+  // the globally-selected active dog — a walk being (re)scheduled can
+  // belong to any of the family's dogs regardless of which one is
+  // currently active in the UI. Falls back to the active dog only if
+  // walk.dogId somehow isn't in `dogs` (shouldn't normally happen), so a
+  // genuinely schedulable reminder is never silently dropped.
+  const dog = dogs.find((d) => d.id === walk.dogId) ?? activeDog;
   if (!user || !user.remindersEnabled || !dog) return;
   const settings = await repository.getNotificationSettings(walk.familyId);
   const setting = settings.find((s) => s.userId === user.id);
@@ -158,9 +165,14 @@ export async function reconcileScheduleNotifications(familyId: string, walks: Wa
     return;
   }
   const { useFamilyStore } = require('./familyStore') as typeof import('./familyStore');
-  const { users, dog } = useFamilyStore.getState();
-  if (!dog) return;
+  const { users, dog: activeDog, dogs } = useFamilyStore.getState();
+  if (!activeDog && dogs.length === 0) return;
   const usersById = new Map(users.map((u) => [u.id, u]));
+  // Multi-dog (PRD §11): per-walk dog resolution, same reasoning as
+  // scheduleNotificationsForWalk() above — this reconciliation pass runs
+  // over the family's WHOLE walk set, which can span every one of its
+  // dogs, not just whichever one is currently active.
+  const dogsById = new Map(dogs.map((d) => [d.id, d]));
   const settings = await repository.getNotificationSettings(familyId);
   const settingsByUserId = new Map(settings.map((s) => [s.userId, s]));
   await reconcileWalkNotifications(
@@ -171,8 +183,7 @@ export async function reconcileScheduleNotifications(familyId: string, walks: Wa
       return settingsByUserId.get(userId);
     },
     (userId) => usersById.get(userId)?.name,
-    dog.name,
-    dog.sex
+    (dogId) => dogsById.get(dogId) ?? activeDog ?? undefined
   );
 }
 
