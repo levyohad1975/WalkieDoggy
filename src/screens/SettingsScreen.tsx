@@ -703,6 +703,7 @@ export function SettingsScreen() {
         uploadingPhoto={uploadingPhoto}
         onChangePhoto={changeDogPhoto}
         onRemovePhoto={removeDogPhoto}
+        onAddDog={() => void handleAddDog()}
         onSave={persistDog}
         onClose={() => setDogModalVisible(false)}
       />
