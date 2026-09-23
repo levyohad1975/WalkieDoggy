@@ -24,6 +24,7 @@ import { hasActiveRemoteReminderChannel } from '../lib/remoteReminderChannel';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { adminRescheduleWalk, adminSwapWalks } from '../lib/walkAdmin';
 import { friendlyErrorMessage } from '../lib/errorMessages';
+import { useGpsStore } from './gpsStore';
 
 const GENERATE_DAYS_AHEAD = 14;
 
@@ -131,8 +132,15 @@ async function scheduleNotificationsForWalk(walk: Walk) {
     return;
   }
   const { useFamilyStore } = require('./familyStore') as typeof import('./familyStore');
-  const { users, dog } = useFamilyStore.getState();
+  const { users, dog: activeDog, dogs } = useFamilyStore.getState();
   const user = users.find((u) => u.id === walk.responsibleUserId);
+  // Multi-dog (PRD §11): resolve THIS walk's own dog by walk.dogId, never
+  // the globally-selected active dog — a walk being (re)scheduled can
+  // belong to any of the family's dogs regardless of which one is
+  // currently active in the UI. Falls back to the active dog only if
+  // walk.dogId somehow isn't in `dogs` (shouldn't normally happen), so a
+  // genuinely schedulable reminder is never silently dropped.
+  const dog = dogs.find((d) => d.id === walk.dogId) ?? activeDog;
   if (!user || !user.remindersEnabled || !dog) return;
   const settings = await repository.getNotificationSettings(walk.familyId);
   const setting = settings.find((s) => s.userId === user.id);
@@ -157,9 +165,14 @@ export async function reconcileScheduleNotifications(familyId: string, walks: Wa
     return;
   }
   const { useFamilyStore } = require('./familyStore') as typeof import('./familyStore');
-  const { users, dog } = useFamilyStore.getState();
-  if (!dog) return;
+  const { users, dog: activeDog, dogs } = useFamilyStore.getState();
+  if (!activeDog && dogs.length === 0) return;
   const usersById = new Map(users.map((u) => [u.id, u]));
+  // Multi-dog (PRD §11): per-walk dog resolution, same reasoning as
+  // scheduleNotificationsForWalk() above — this reconciliation pass runs
+  // over the family's WHOLE walk set, which can span every one of its
+  // dogs, not just whichever one is currently active.
+  const dogsById = new Map(dogs.map((d) => [d.id, d]));
   const settings = await repository.getNotificationSettings(familyId);
   const settingsByUserId = new Map(settings.map((s) => [s.userId, s]));
   await reconcileWalkNotifications(
@@ -170,8 +183,7 @@ export async function reconcileScheduleNotifications(familyId: string, walks: Wa
       return settingsByUserId.get(userId);
     },
     (userId) => usersById.get(userId)?.name,
-    dog.name,
-    dog.sex
+    (dogId) => dogsById.get(dogId) ?? activeDog ?? undefined
   );
 }
 
@@ -524,6 +536,11 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       else updated = { ...walk, status: 'in_progress', startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
       await cancelWalkNotifications(walkId);
+      // Phase 4 (GPS foundation, PRD §7): best-effort, fire-and-forget —
+      // GPS is assistive, never a precondition for the walk lifecycle
+      // itself (permission denial/unavailability must never fail or delay
+      // Start). See gpsStore.startTracking's own doc comment.
+      void useGpsStore.getState().startTracking(updated);
       return true;
     } catch (e) {
       set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו להתחיל את הטיול') });
@@ -541,6 +558,10 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       else updated = markWalkDone(walk, completedByUserId, details);
       set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
       await cancelWalkNotifications(walkId);
+      // Best-effort, mirrors startWalk above — stops tracking (a no-op if
+      // this walk was never being tracked) and persists whatever distance
+      // was captured.
+      void useGpsStore.getState().stopTracking(updated, completedByUserId);
       return true;
     } catch (e) {
       set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו לסיים את הטיול') });
@@ -558,6 +579,12 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
       await repository.saveWalk(updated);
       await cancelWalkNotifications(walkId);
+      // markDone is the "✓ סמן כבוצע" fallback path someone might use
+      // instead of the formal "סיים טיול" action — stop tracking here too
+      // (a no-op if this walk was never being tracked, e.g. it was marked
+      // done without ever being started) so a GPS watch started via
+      // startWalk can never keep running past a walk that's already done.
+      void useGpsStore.getState().stopTracking(updated, completedByUserId);
 
       // A2 fix: OfflineFirstRepository.saveWalk() never throws even when the
       // remote write ultimately failed — it always writes locally first

@@ -1,12 +1,15 @@
 import NetInfo from '@react-native-community/netinfo';
 import type {
+  AchievementUnlock,
   Dog,
   Family,
   FamilyUser,
+  HealthTask,
   NotificationSetting,
   ScheduleEntry,
   ScheduleRule,
   Walk,
+  WalkGpsSession,
 } from '../types';
 import type { DeleteFamilyMemberPayload, Repository } from './repository';
 import { LocalRepository } from './localRepository';
@@ -24,7 +27,45 @@ export class OfflineFirstRepository implements Repository {
   private local = new LocalRepository();
   private queue = new SyncQueue();
 
-  constructor(private remote: Repository | null) {}
+  // start_walk()/finish_walk() (0048) are server-authoritative,
+  // authorization-checked RPCs (admin-or-responsible-member only) — the
+  // same category deleteFamilyMember below is: no blind offline replay (a
+  // rejection, e.g. "walk is not pending", must reach the caller, not be
+  // silently swallowed by SyncQueue.flush()'s conflict recording). Assigned
+  // conditionally in the constructor, not as ordinary class methods, so
+  // `repository.startWalk`/`repository.finishWalk` are genuinely `undefined`
+  // in local/demo mode (no remote configured) — scheduleStore.ts's own
+  // `if (repository.startWalk)` capability check relies on that exact
+  // absence to fall back to its in-memory-only demo behavior; a class method
+  // that merely throws in demo mode would always be truthy and break that
+  // fallback instead of triggering it.
+  startWalk?: (walkId: string) => Promise<Walk>;
+  finishWalk?: (
+    walkId: string,
+    actualWalkerId: string,
+    details?: { hadPee?: boolean; hadPoop?: boolean; note?: string; completedAt?: string }
+  ) => Promise<Walk>;
+
+  constructor(private remote: Repository | null) {
+    if (this.remote) {
+      this.startWalk = async (walkId: string): Promise<Walk> => {
+        if (!(await this.isOnline())) {
+          throw new Error('אין חיבור לשרת. כדי להתחיל מעקב טיול יש להתחבר לאינטרנט.');
+        }
+        const walk = await this.remote!.startWalk!(walkId);
+        await this.local.saveWalk(walk);
+        return walk;
+      };
+      this.finishWalk = async (walkId, actualWalkerId, details) => {
+        if (!(await this.isOnline())) {
+          throw new Error('אין חיבור לשרת. כדי לסיים מעקב טיול יש להתחבר לאינטרנט.');
+        }
+        const walk = await this.remote!.finishWalk!(walkId, actualWalkerId, details);
+        await this.local.saveWalk(walk);
+        return walk;
+      };
+    }
+  }
 
   private async isOnline(): Promise<boolean> {
     if (!this.remote) return false;
@@ -59,6 +100,19 @@ export class OfflineFirstRepository implements Repository {
   /** See SyncQueue.getConflictForWalk's doc comment (A2 fix). */
   async getConflictForWalk(walkId: string) {
     return this.queue.getConflictForWalk(walkId);
+  }
+
+  /** See Repository.getSyncConflicts's doc comment (PRD §20). */
+  async getSyncConflicts() {
+    return this.queue.getConflicts();
+  }
+
+  async getQuarantinedSyncItems() {
+    return this.queue.getQuarantined();
+  }
+
+  async clearSyncConflicts(): Promise<void> {
+    await this.queue.clearConflicts();
   }
 
   async getFamily(familyId: string): Promise<Family | undefined> {
@@ -207,6 +261,14 @@ export class OfflineFirstRepository implements Repository {
     }
   }
 
+  async updateUserGamificationSetting(userId: string, enabled: boolean): Promise<void> {
+    await this.local.updateUserGamificationSetting(userId, enabled);
+    if (this.remote) {
+      await this.queue.enqueue({ type: 'updateUserGamificationSetting', payload: { userId, enabled } });
+      await this.trySync();
+    }
+  }
+
   async getDog(familyId: string): Promise<Dog | undefined> {
     if (await this.isOnline()) {
       try {
@@ -216,6 +278,17 @@ export class OfflineFirstRepository implements Repository {
       }
     }
     return this.local.getDog(familyId);
+  }
+
+  async getDogs(familyId: string): Promise<Dog[]> {
+    if (await this.isOnline()) {
+      try {
+        return await this.remote!.getDogs(familyId);
+      } catch {
+        /* fall through */
+      }
+    }
+    return this.local.getDogs(familyId);
   }
 
   async upsertDog(dog: Dog): Promise<void> {
@@ -233,6 +306,98 @@ export class OfflineFirstRepository implements Repository {
         }
       }
       await this.queue.enqueue({ type: 'upsertDog', payload: dog });
+      await this.trySync();
+    }
+  }
+
+  async getHealthTasks(dogId: string): Promise<HealthTask[]> {
+    if (await this.isOnline()) {
+      try {
+        return await this.remote!.getHealthTasks(dogId);
+      } catch {
+        /* fall through */
+      }
+    }
+    return this.local.getHealthTasks(dogId);
+  }
+
+  async upsertHealthTask(task: HealthTask): Promise<void> {
+    await this.local.upsertHealthTask(task);
+    if (this.remote) {
+      if (await this.isOnline()) {
+        try {
+          await this.remote.upsertHealthTask(task);
+          return;
+        } catch {
+          // Preserve offline-first behaviour: retry through the sync queue.
+        }
+      }
+      await this.queue.enqueue({ type: 'upsertHealthTask', payload: task });
+      await this.trySync();
+    }
+  }
+
+  async getGpsSession(walkId: string): Promise<WalkGpsSession | undefined> {
+    if (await this.isOnline()) {
+      try {
+        return await this.remote!.getGpsSession(walkId);
+      } catch {
+        /* fall through */
+      }
+    }
+    return this.local.getGpsSession(walkId);
+  }
+
+  async upsertGpsSession(session: WalkGpsSession): Promise<void> {
+    await this.local.upsertGpsSession(session);
+    if (this.remote) {
+      if (await this.isOnline()) {
+        try {
+          await this.remote.upsertGpsSession(session);
+          return;
+        } catch {
+          // Preserve offline-first behaviour: retry through the sync queue.
+        }
+      }
+      await this.queue.enqueue({ type: 'upsertGpsSession', payload: session });
+      await this.trySync();
+    }
+  }
+
+  async getGpsSessionsForWalkIds(walkIds: string[]): Promise<WalkGpsSession[]> {
+    if (await this.isOnline()) {
+      try {
+        return await this.remote!.getGpsSessionsForWalkIds(walkIds);
+      } catch {
+        /* fall through */
+      }
+    }
+    return this.local.getGpsSessionsForWalkIds(walkIds);
+  }
+
+  async getAchievementUnlocks(familyId: string): Promise<AchievementUnlock[]> {
+    if (await this.isOnline()) {
+      try {
+        return await this.remote!.getAchievementUnlocks(familyId);
+      } catch {
+        /* fall through */
+      }
+    }
+    return this.local.getAchievementUnlocks(familyId);
+  }
+
+  async upsertAchievementUnlock(unlock: AchievementUnlock): Promise<void> {
+    await this.local.upsertAchievementUnlock(unlock);
+    if (this.remote) {
+      if (await this.isOnline()) {
+        try {
+          await this.remote.upsertAchievementUnlock(unlock);
+          return;
+        } catch {
+          // Preserve offline-first behaviour: retry through the sync queue.
+        }
+      }
+      await this.queue.enqueue({ type: 'upsertAchievementUnlock', payload: unlock });
       await this.trySync();
     }
   }
@@ -297,38 +462,6 @@ export class OfflineFirstRepository implements Repository {
       await this.queue.enqueue({ type: 'deleteScheduleEntry', payload: { entryId } });
       await this.trySync();
     }
-  }
-
-  /**
-   * Walk lifecycle transitions must be server-authoritative when Supabase is
-   * configured. Without these delegates the Repository interface's optional
-   * methods are absent on OfflineFirstRepository, so scheduleStore falls
-   * back to a local-only in_progress state; the next authoritative refresh
-   * then restores the server's still-pending row and the UI appears to
-   * "jump back" a few seconds after Start.
-   */
-  async startWalk(walkId: string): Promise<Walk> {
-    if (this.remote?.startWalk && (await this.isOnline())) {
-      const updated = await this.remote.startWalk(walkId);
-      await this.local.saveWalk(updated);
-      return updated;
-    }
-
-    throw new Error('אין חיבור לשרת. כדי להתחיל מעקב טיול יש להתחבר לאינטרנט.');
-  }
-
-  async finishWalk(
-    walkId: string,
-    completedByUserId: string,
-    details: { hadPee?: boolean; hadPoop?: boolean; note?: string; completedAt?: string } = {}
-  ): Promise<Walk> {
-    if (this.remote?.finishWalk && (await this.isOnline())) {
-      const updated = await this.remote.finishWalk(walkId, completedByUserId, details);
-      await this.local.saveWalk(updated);
-      return updated;
-    }
-
-    throw new Error('אין חיבור לשרת. כדי לסיים מעקב טיול יש להתחבר לאינטרנט.');
   }
 
   async getWalks(familyId: string): Promise<Walk[]> {

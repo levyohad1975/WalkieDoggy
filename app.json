@@ -50,6 +50,12 @@
           "photosPermission": "כדי לבחור תמונה של הכלב/ה שלכם או של בן משפחה מהגלריה שלכם."
         }
       ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "כדי למדוד מרחק בזמן הטיול, נדרשת גישה למיקום כשהאפליקציה פתוחה. המיקום נשמר רק כמרחק כולל, לא כמסלול."
+        }
+      ],
       "@react-native-community/datetimepicker",
       "expo-status-bar",
       [

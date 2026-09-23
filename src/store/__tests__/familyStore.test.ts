@@ -54,7 +54,7 @@ describe('familyStore — dog loading (local/demo mode)', () => {
     // repository call for the dog comes back empty (a stale/mismatched
     // cache, or a backend not yet seeded) even though family/users load
     // fine — the dog must never be silently missing in local/demo mode.
-    const spy = jest.spyOn(repository, 'getDog').mockResolvedValueOnce(undefined);
+    const spy = jest.spyOn(repository, 'getDogs').mockResolvedValueOnce([]);
 
     await useFamilyStore.getState().load(DEMO_FAMILY.id);
 
@@ -77,11 +77,11 @@ describe('familyStore — dog loading (local/demo mode)', () => {
     // array) but whose dog belongs to a different family — the kind of
     // stale leftover an earlier build could have persisted.
     await AsyncStorage.setItem(
-      'dog-walk-family:v2',
+      'dog-walk-family:v3',
       JSON.stringify({
         family: FAMILY,
         users: DEMO_USERS,
-        dog: { id: 'dog-old', familyId: 'some-other-family', name: 'רקס', walksPerDay: 2 },
+        dogs: [{ id: 'dog-old', familyId: 'some-other-family', name: 'רקס', walksPerDay: 2 }],
         rules: DEMO_RULES,
         entries: DEMO_ENTRIES,
         walks: DEMO_WALKS,

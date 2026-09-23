@@ -1,12 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type {
+  AchievementUnlock,
   Dog,
   Family,
   FamilyUser,
+  HealthTask,
   NotificationSetting,
   ScheduleEntry,
   ScheduleRule,
   Walk,
+  WalkGpsSession,
 } from '../types';
 import { defaultNotificationSetting } from '../logic/reminders';
 import type { DeleteFamilyMemberPayload, Repository } from './repository';
@@ -26,15 +29,22 @@ import {
 // which dead-ended the "pick your profile" screen with no way forward. A
 // version bump makes any such stale cache get re-seeded from scratch instead
 // of read as-is.
-const STORAGE_KEY = 'dog-walk-family:v2';
+// Bumped from v2 -> v3: the single `dog: Dog` slot became `dogs: Dog[]`
+// (arbitrary-N multi-dog foundation) — an old cache's `dog` field would
+// otherwise be read as `undefined` under the new shape and crash the first
+// `.filter()`/`.find()` call against `dogs`.
+const STORAGE_KEY = 'dog-walk-family:v3';
 
 interface LocalStoreShape {
   family: Family;
   users: FamilyUser[];
-  dog: Dog;
+  dogs: Dog[];
   rules: ScheduleRule[];
   entries: ScheduleEntry[];
   walks: Walk[];
+  healthTasks: HealthTask[];
+  gpsSessions: WalkGpsSession[];
+  achievementUnlocks: AchievementUnlock[];
 }
 
 function safeJsonParse(raw: string): unknown {
@@ -49,10 +59,13 @@ function seedStore(): LocalStoreShape {
   return {
     family: DEMO_FAMILY,
     users: DEMO_USERS,
-    dog: DEMO_DOG,
+    dogs: [DEMO_DOG],
     rules: DEMO_RULES,
     entries: DEMO_ENTRIES,
     walks: DEMO_WALKS,
+    healthTasks: [],
+    gpsSessions: [],
+    achievementUnlocks: [],
   };
 }
 
@@ -85,21 +98,41 @@ export class LocalRepository implements Repository {
     // entries), not as a visible error.
     // A dog whose familyId doesn't match the cached family's id is exactly
     // the kind of stale/mismatched leftover an earlier dev build could have
-    // written (see the STORAGE_KEY bump above) — `getDog()` would silently
-    // return undefined forever for the current family, even though the
-    // cache otherwise "looks" valid. Treat that as corrupt too.
-    const dogMatchesFamily = Boolean(parsed?.dog && parsed?.family && parsed.dog.familyId === parsed.family.id);
+    // written (see the STORAGE_KEY bump above) — `getDog()`/`getDogs()`
+    // would silently return nothing forever for the current family, even
+    // though the cache otherwise "looks" valid. Treat that as corrupt too.
+    // An empty `dogs` array is valid (no dog added yet) — only a MISMATCHED
+    // one is corrupt.
+    const dogsMatchFamily = Boolean(
+      parsed && parsed.family && Array.isArray(parsed.dogs) && parsed.dogs.every((d) => d && d.familyId === parsed.family.id)
+    );
     if (
       parsed &&
       parsed.family &&
       Array.isArray(parsed.users) &&
-      parsed.dog &&
-      dogMatchesFamily &&
+      dogsMatchFamily &&
       Array.isArray(parsed.rules) &&
       Array.isArray(parsed.entries) &&
       Array.isArray(parsed.walks)
     ) {
       this.cache = parsed;
+      // Soft-add, not a corrupt-cache trigger: a cache written before
+      // health_tasks existed simply won't have this field yet. Unlike the
+      // v2->v3 `dog`->`dogs` change, there's no old value to reinterpret
+      // here, so there's nothing to lose by defaulting it in place instead
+      // of forcing every existing device to re-seed its whole family/
+      // schedule/walk cache just to gain one new empty array.
+      if (!Array.isArray(this.cache.healthTasks)) this.cache.healthTasks = [];
+      // Same soft-add as healthTasks above — a cache written before GPS
+      // sessions existed just gains an empty array here.
+      if (!Array.isArray(this.cache.gpsSessions)) this.cache.gpsSessions = [];
+      // Same soft-add — a cache written before gamification existed just
+      // gains an empty unlock ledger and each user defaults to opted-in
+      // (matching 0052's `default true` for the same column server-side).
+      if (!Array.isArray(this.cache.achievementUnlocks)) this.cache.achievementUnlocks = [];
+      this.cache.users = this.cache.users.map((u) =>
+        typeof u.gamificationEnabled === 'boolean' ? u : { ...u, gamificationEnabled: true }
+      );
     } else {
       this.cache = seedStore();
       await this.persist();
@@ -187,15 +220,78 @@ export class LocalRepository implements Repository {
     await this.persist();
   }
 
+  async updateUserGamificationSetting(userId: string, enabled: boolean): Promise<void> {
+    const s = await this.load();
+    s.users = s.users.map((u) => (u.id === userId ? { ...u, gamificationEnabled: enabled } : u));
+    await this.persist();
+  }
+
   async getDog(familyId: string): Promise<Dog | undefined> {
     const s = await this.load();
-    return s.dog.familyId === familyId ? s.dog : undefined;
+    return s.dogs.find((d) => d.familyId === familyId);
+  }
+
+  async getDogs(familyId: string): Promise<Dog[]> {
+    const s = await this.load();
+    return s.dogs.filter((d) => d.familyId === familyId);
   }
 
   async upsertDog(dog: Dog): Promise<void> {
     const s = await this.load();
-    s.dog = dog;
+    const idx = s.dogs.findIndex((d) => d.id === dog.id);
+    if (idx >= 0) s.dogs[idx] = dog;
+    else s.dogs.push(dog);
     await this.persist();
+  }
+
+  async getHealthTasks(dogId: string): Promise<HealthTask[]> {
+    const s = await this.load();
+    return s.healthTasks.filter((t) => t.dogId === dogId);
+  }
+
+  async upsertHealthTask(task: HealthTask): Promise<void> {
+    const s = await this.load();
+    const idx = s.healthTasks.findIndex((t) => t.id === task.id);
+    if (idx >= 0) s.healthTasks[idx] = task;
+    else s.healthTasks.push(task);
+    await this.persist();
+  }
+
+  async getGpsSession(walkId: string): Promise<WalkGpsSession | undefined> {
+    const s = await this.load();
+    return s.gpsSessions.find((g) => g.walkId === walkId);
+  }
+
+  async upsertGpsSession(session: WalkGpsSession): Promise<void> {
+    const s = await this.load();
+    const idx = s.gpsSessions.findIndex((g) => g.walkId === session.walkId);
+    if (idx >= 0) s.gpsSessions[idx] = session;
+    else s.gpsSessions.push(session);
+    await this.persist();
+  }
+
+  async getGpsSessionsForWalkIds(walkIds: string[]): Promise<WalkGpsSession[]> {
+    const s = await this.load();
+    const ids = new Set(walkIds);
+    return s.gpsSessions.filter((g) => ids.has(g.walkId));
+  }
+
+  async getAchievementUnlocks(familyId: string): Promise<AchievementUnlock[]> {
+    const s = await this.load();
+    return s.achievementUnlocks.filter((a) => a.familyId === familyId);
+  }
+
+  async upsertAchievementUnlock(unlock: AchievementUnlock): Promise<void> {
+    const s = await this.load();
+    // Idempotent by (familyId, achievementKey, userId) — see 0052's
+    // dedupe_key generated column for the server-side equivalent.
+    const exists = s.achievementUnlocks.some(
+      (a) => a.familyId === unlock.familyId && a.achievementKey === unlock.achievementKey && a.userId === unlock.userId
+    );
+    if (!exists) {
+      s.achievementUnlocks.push(unlock);
+      await this.persist();
+    }
   }
 
   async getScheduleRules(familyId: string): Promise<ScheduleRule[]> {

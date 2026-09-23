@@ -1,12 +1,16 @@
 import type {
+  AchievementUnlock,
   Dog,
   Family,
   FamilyUser,
+  HealthTask,
   NotificationSetting,
   ScheduleEntry,
   ScheduleRule,
   Walk,
+  WalkGpsSession,
 } from '../types';
+import type { QuarantinedItem, SyncConflict } from './syncQueue';
 
 /** Payload for Repository.deleteFamilyMember — see its doc comment below. */
 export interface DeleteFamilyMemberPayload {
@@ -87,9 +91,37 @@ export interface Repository {
    */
   deleteFamilyMember(payload: DeleteFamilyMemberPayload): Promise<void>;
   updateUserReminderSetting(userId: string, enabled: boolean): Promise<void>;
+  /** PRD §9 gamification off-switch — per-user/device, same shape as updateUserReminderSetting. */
+  updateUserGamificationSetting(userId: string, enabled: boolean): Promise<void>;
 
+  /** @deprecated Returns an arbitrary one of the family's dogs once more than one exists (kept only for the single-dog call sites that predate multi-dog support). New code should use getDogs. */
   getDog(familyId: string): Promise<Dog | undefined>;
+  /**
+   * Every dog belonging to this family. The `dogs` table has no uniqueness
+   * constraint on family_id, and schedule_rules/schedule_entries/walks
+   * already carry their own dog_id (see supabase/schema.sql) — this is the
+   * multi-dog-safe read; prefer it over getDog for any new code.
+   */
+  getDogs(familyId: string): Promise<Dog[]>;
+  /** Upserts by dog.id — safe to call for any of a family's dogs, not just a single "the" dog. */
   upsertDog(dog: Dog): Promise<void>;
+
+  /** Every health/grooming record (log entries + due tasks, PRD §10) for one specific dog — never the whole family, since these are always per-dog. */
+  getHealthTasks(dogId: string): Promise<HealthTask[]>;
+  /** Upserts by task.id — covers both creating a new log/task entry and marking one complete (patch + save). No delete: see 0049's migration comment for why a health record is never client-erasable. */
+  upsertHealthTask(task: HealthTask): Promise<void>;
+
+  /** The GPS session for one walk (PRD §7), if any tracking was attempted — undefined if the walk has no session at all. */
+  getGpsSession(walkId: string): Promise<WalkGpsSession | undefined>;
+  /** Upserts by session.walkId (one session per walk — see 0051's unique constraint). Covers creating the initial device-computed reading AND recording a correction. No delete: same "history record" posture as health tasks/dogs. */
+  upsertGpsSession(session: WalkGpsSession): Promise<void>;
+  /** Bulk read for Statistics' optional distance KPI — every session for the given walk ids, in one query rather than N. Missing ids are simply absent from the result (never an error). */
+  getGpsSessionsForWalkIds(walkIds: string[]): Promise<WalkGpsSession[]>;
+
+  /** Every achievement unlock ever recorded for this family (PRD §9) — both 'family'-scope and every member's 'personal'-scope rows, since celebration/progress display needs the whole family's picture at once. */
+  getAchievementUnlocks(familyId: string): Promise<AchievementUnlock[]>;
+  /** Idempotent by (familyId, achievementKey, scope, userId) — see 0052's dedupe_key generated column. Calling this for an already-unlocked achievement is always safe and a no-op; the caller (achievementStore) is what decides an achievement newly crossed its threshold, this just durably records it exactly once. No delete: an immutable ledger, same posture as health tasks/GPS sessions. */
+  upsertAchievementUnlock(unlock: AchievementUnlock): Promise<void>;
 
   getScheduleRules(familyId: string): Promise<ScheduleRule[]>;
   upsertScheduleRule(rule: ScheduleRule): Promise<void>;
@@ -134,6 +166,29 @@ export interface Repository {
   hasPendingSaveWalk?(walkId: string): Promise<boolean>;
   /** Optional (A2 fix): the most recent permanent-failure sync conflict recorded for this walk's saveWalk write, if any. */
   getConflictForWalk?(walkId: string): Promise<{ message: string; failedAt: string } | undefined>;
+
+  /**
+   * PRD §20: "persistent queue conflicts must be visible, never silently
+   * disappear." getConflictForWalk above only ever answers "does THIS walk
+   * have one" (for scheduleStore's own optimistic-revert logic) — these
+   * three surface the FULL picture (every operation type, not just
+   * saveWalk) for a dedicated review UI. Optional for the same reason as
+   * the other sync-queue methods above: repositories with no queue have
+   * nothing to report.
+   */
+  getSyncConflicts?(): Promise<SyncConflict[]>;
+  /** Legacy/untagged queued writes flush() refused to auto-replay at all — see SyncQueue.QuarantinedItem's doc comment for why these are surfaced for manual review rather than silently discarded or replayed. Deliberately no "clear" counterpart: there is no safe automated resolution for an item whose original actor is unknown. */
+  getQuarantinedSyncItems?(): Promise<QuarantinedItem[]>;
+  /** Dismisses every recorded conflict — the person reviewing them has seen what happened, per PRD §20's "visible, never silently disappear" (a user-initiated dismissal is not the app hiding it). */
+  clearSyncConflicts?(): Promise<void>;
+  /**
+   * PRD §25's "sync pending" state: how many writes are currently queued on
+   * this device, waiting to reach the server (already computed/tested —
+   * OfflineFirstRepository.pendingSyncCount() — but had no UI consumer).
+   * Optional for the same reason as the other sync-queue methods above:
+   * repositories with no queue have nothing to count.
+   */
+  pendingSyncCount?(): Promise<number>;
 }
 
 export class RepositoryError extends Error {}

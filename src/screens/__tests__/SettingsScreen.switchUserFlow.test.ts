@@ -49,18 +49,40 @@ describe('SettingsScreen — "החלף משתמש" control flow (structural)', (
     expect(scoped).not.toMatch(/signOut\s*\(/);
   });
 
-  it('the file no longer calls signOut() anywhere in actual code (comments aside)', () => {
+  it('the switch-user flow itself (handleSwitchUser through the PIN modal) never calls signOut() (comments aside)', () => {
     // The whole point of this pass's fix: "switch user" must never sign out
     // locally before a switch is verified. Doc comments in this file
     // legitimately mention signOut() BY NAME to explain the OLD, now-fixed
     // bug (see handleSwitchUser's own doc comment) — so this strips
     // // line comments and /* */ block comments first, then asserts no
-    // actual `signOut(` CALL remains anywhere in the executable code,
-    // which is the real guarantee: nothing in this screen reaches for it.
-    const withoutComments = source
+    // actual `signOut(` CALL remains anywhere in the switch-user flow's own
+    // code. Scoped to handleSwitchUser..handleSwitchUserPinSubmit's closing
+    // brace (not the whole file) since Settings later gained a genuine,
+    // deliberate "🚪 התנתקות" sign-out row of its own (PRD §16, a
+    // completely separate action a person explicitly taps) — that row
+    // legitimately calls signOut(), so a whole-file ban would now be wrong,
+    // not a real regression guard.
+    const startIdx = source.indexOf('const handleSwitchUser = ()');
+    expect(startIdx).toBeGreaterThan(-1);
+    const pinSubmitStart = source.indexOf('const handleSwitchUserPinSubmit = async (pin: string)', startIdx);
+    expect(pinSubmitStart).toBeGreaterThan(-1);
+    const endIdx = source.indexOf('};', pinSubmitStart);
+    const scoped = source.slice(startIdx, endIdx);
+    const withoutComments = scoped
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^\s*\/\/.*$/gm, '');
     expect(withoutComments).not.toMatch(/\bsignOut\s*\(/);
+  });
+
+  it('the "🚪 התנתקות" sign-out row is a distinct, separately-confirmed action from "החלף משתמש" — never triggered by the switch-user flow', () => {
+    const rowIdx = source.indexOf('onPress={handleSignOut}');
+    expect(rowIdx).toBeGreaterThan(-1);
+    // handleSignOut itself must confirm before ever calling signOut().
+    const fnIdx = source.indexOf('const handleSignOut = ()');
+    expect(fnIdx).toBeGreaterThan(-1);
+    const fnBody = source.slice(fnIdx, source.indexOf('};', fnIdx));
+    expect(fnBody).toMatch(/Alert\.alert\(/);
+    expect(fnBody).toMatch(/void signOut\(\)/);
   });
 
   it('handleSwitchUser only opens the target picker — no direct RPC/claim call of its own', () => {

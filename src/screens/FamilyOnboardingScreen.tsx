@@ -22,7 +22,7 @@ import { DogPhoto } from '../components/DogPhoto';
 import { WalkieMascot } from '../components/WalkieMascot';
 import type { FamilyLookupResult } from '../types';
 
-type Mode = 'choose' | 'recover' | 'create' | 'join' | 'redeem';
+type Mode = 'choose' | 'pwaChoice' | 'recover' | 'create' | 'join' | 'redeem';
 
 /**
  * Shown once per device, only in Supabase (backend) mode, before this device
@@ -53,7 +53,15 @@ export function FamilyOnboardingScreen() {
     (s) => s.retryPendingInviteRedemptionVerification
   );
   const isInstalledWebApp = Platform.OS === 'web' && typeof window !== 'undefined' && Boolean(window.matchMedia?.('(display-mode: standalone)').matches || (typeof navigator !== 'undefined' && (navigator as typeof navigator & { standalone?: boolean }).standalone === true));
-  const [mode, setMode] = useState<Mode>(isInstalledWebApp ? 'recover' : 'choose');
+  // An installed PWA launch is ambiguous -- it's exactly as true for a
+  // returning device reopening the icon as for a brand-new install that
+  // just added the icon during setup (no reliable synchronous client-side
+  // signal distinguishes them; even a brand-new device already has an
+  // anonymous Supabase session by the time this screen renders). Previously
+  // this defaulted straight into 'recover', silently assuming "returning"
+  // for every case including first-time installs. Show a neutral 3-way
+  // choice instead and let the device tell us which it is.
+  const [mode, setMode] = useState<Mode>(isInstalledWebApp ? 'pwaChoice' : 'choose');
   const [showWelcomeWink, setShowWelcomeWink] = useState(false);
 
   useEffect(() => {
@@ -326,6 +334,36 @@ export function FamilyOnboardingScreen() {
     }
   };
 
+  if (mode === 'pwaChoice') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <WalkieMascot state="ready" size={128} testID="onboarding-mascot-pwa-choice" />
+        <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">רגע לפני שממשיכים</RtlText>
+        <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
+          פתחתם את Walkie Doggy מהאייקון שנוסף למסך הבית. כדי לחבר את המכשיר הזה נכון, ספרו לנו קודם באיזה שלב אתם.
+        </RtlText>
+        <Button
+          label="המשפחה שלי כבר קיימת"
+          variant="secondary"
+          onPress={() => setMode('recover')}
+          style={styles.wideButton}
+        />
+        <Button
+          label="יש לי הזמנה"
+          variant="secondary"
+          onPress={() => setMode('redeem')}
+          style={styles.wideButton}
+        />
+        <Button
+          label="יצירת משפחה חדשה"
+          variant="secondary"
+          onPress={() => setMode('create')}
+          style={styles.wideButton}
+        />
+      </SafeAreaView>
+    );
+  }
+
   if (mode === 'recover') {
     return (
       <SafeAreaView style={styles.container}>
@@ -428,7 +466,7 @@ export function FamilyOnboardingScreen() {
           <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
             הבקשה ליצירת {rejectedFamilyName} נדחתה על ידי מנהל המערכת. לפרטים נוספים, פנו לתמיכה.
           </RtlText>
-          <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
+          <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
         </SafeAreaView>
       );
     }
@@ -441,7 +479,7 @@ export function FamilyOnboardingScreen() {
           <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
             הבקשה ליצירת {pendingApprovalFamilyName} התקבלה. נשלח עדכון לאחר אישור מנהל המערכת.
           </RtlText>
-          <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
+          <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
         </SafeAreaView>
       );
     }
@@ -565,7 +603,7 @@ export function FamilyOnboardingScreen() {
                   {createError}
                 </RtlText>
               ) : null}
-              <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
+              <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -674,7 +712,7 @@ export function FamilyOnboardingScreen() {
                 variant="secondary"
                 onPress={() => {
                   resetRedeemMode();
-                  setMode('choose');
+                  setMode(isInstalledWebApp ? 'pwaChoice' : 'choose');
                 }}
                 style={styles.wideButton}
               />
@@ -745,7 +783,7 @@ export function FamilyOnboardingScreen() {
               />
             )}
 
-            <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
+            <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

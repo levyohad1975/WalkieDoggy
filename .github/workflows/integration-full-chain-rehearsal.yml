@@ -1,0 +1,268 @@
+name: Integration Full-Chain Supabase Rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'Branch to rehearse (defaults to the branch this is dispatched from)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  full-chain-rehearsal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SUPABASE_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_branch || github.ref }}
+
+      - name: Verify known duplicate 0019 state
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f supabase/migrations/0019_request_result_read_state.sql
+          test -f supabase/migrations/0019_request_result_seen_state.sql
+          test ! -s supabase/migrations/0019_request_result_read_state.sql
+          test -s supabase/migrations/0019_request_result_seen_state.sql
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.116.0
+
+      - name: Seed schema.sql as migration 00000 (the true pre-migration-1 baseline)
+        # Local rehearsal only -- never modifies or commits a real repo file.
+        # schema.sql's own header: "always reflects the current/target
+        # schema, not an incremental diff". Migration 0001 itself assumes
+        # it: its statements are plain `alter table users add column`,
+        # never `create table users`, and no numbered migration anywhere
+        # in the repo ever creates `families`/`users` -- only schema.sql
+        # does. So schema.sql is not optional or skippable: it is the one
+        # and only source of those base tables for a from-empty replay.
+        #
+        # 5-digit "00000" (not "0000"): Supabase CLI tracks each applied
+        # migration's numeric-prefix "version" as a unique key in its own
+        # supabase_migrations.schema_migrations table (confirmed directly
+        # -- a real run failed with "duplicate key ... Key (version)=
+        # (0000) already exists" once a second file also used a "0000"
+        # prefix, and the error preserved the leading zeros verbatim,
+        # meaning that column keeps the literal digit-string, not a
+        # normalized integer). A 5-digit prefix sorts before any 4-digit
+        # "000N" migration by ordinary string comparison while never
+        # colliding with one.
+        run: cp supabase/schema.sql supabase/migrations/00000_base_schema.sql
+
+      - name: Generate ephemeral idempotency guards for 0001-0041 (rehearsal-only, never committed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # schema.sql is a periodically-refreshed snapshot, not frozen at
+          # any single migration number -- confirmed directly: it already
+          # contains some 0001-0041 objects (e.g. the 0003 "insert users
+          # (family admins only)" policy) but is missing at least one
+          # later one (0023's member_permission_overrides table). Because
+          # real Postgres CREATE POLICY has no IF NOT EXISTS, replaying
+          # the real 0001-0041 files verbatim after schema.sql hits
+          # 42710 "already exists" on whichever exact subset schema.sql
+          # happens to already carry.
+          #
+          # Rather than guess/maintain that subset by hand (fragile, and
+          # got it wrong twice already), generate a guard migration that
+          # DROP POLICY IF EXISTS-es every policy name 0001-0041 ever
+          # creates, on every table schema.sql already has. This is a
+          # no-op for any name schema.sql doesn't happen to contain, and
+          # for any name it does contain it removes it just before the
+          # real migration recreates it from its own source -- so the
+          # real files replay completely unmodified and unskipped, and
+          # the final schema is identical either way. Ordered 0000b so it
+          # lands after schema.sql (0000) and before every real migration.
+          python3 - <<'PYEOF'
+          import re
+
+          schema = open('supabase/schema.sql').read()
+          existing_tables = set(re.findall(r'create table if not exists\s+([a-zA-Z_.]+)', schema, re.I))
+
+          seen = []
+          seen_set = set()
+          import glob
+          for f in sorted(glob.glob('supabase/migrations/00[0-3][0-9]_*.sql') + glob.glob('supabase/migrations/0041_*.sql')):
+              text = open(f).read()
+              for m in re.finditer(r'create policy\s+"([^"]+)"\s+on\s+([a-zA-Z_.]+)', text, re.I):
+                  key = (m.group(1), m.group(2))
+                  if key not in seen_set:
+                      seen_set.add(key)
+                      seen.append(key)
+
+          lines = [
+              "-- Auto-generated for this isolated rehearsal run only. Never committed.",
+              "-- See the workflow step that generated this file for the full rationale.",
+              "",
+          ]
+          for name, table in seen:
+              if table == 'storage.objects' or table in existing_tables:
+                  esc = name.replace("'", "''")
+                  lines.append(f'drop policy if exists "{name}" on {table};')
+
+          # CREATE OR REPLACE FUNCTION cannot rename a parameter or change
+          # a RETURNS TABLE row shape (Postgres requires DROP FUNCTION
+          # first for either). schema.sql documents every function whose
+          # signature was reshaped partway through its own history with an
+          # explicit `drop function if exists NAME(args);` right before
+          # its own final redefinition -- that is the authoritative,
+          # complete list of functions an earlier migration's
+          # create-or-replace could conflict with, so reuse it verbatim.
+          for m in re.finditer(r'^drop function if exists\s+((?:public\.)?[a-zA-Z_][a-zA-Z0-9_]*\([^)]*\));', schema, re.I | re.M):
+              lines.append(f'drop function if exists {m.group(1)};')
+
+          # Same version-uniqueness constraint as the 00000_base_schema.sql
+          # step above: "00001" is a distinct 5-digit version from
+          # "00000" (schema.sql) and from any real "000N" migration, and
+          # sorts between them by ordinary string comparison.
+          with open('supabase/migrations/00001_rehearsal_policy_guards.sql', 'w') as out:
+              out.write("\n".join(lines) + "\n")
+          print(f"Generated {sum(1 for l in lines if l.startswith('drop ') or l.startswith('set '))} guard statements")
+          PYEOF
+          cat supabase/migrations/00001_rehearsal_policy_guards.sql
+
+      - name: Remove the known-empty duplicate 0019 file for this ephemeral replay only
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Rehearsal-only, never touches the committed repo file. Supabase
+          # CLI's own supabase_migrations.schema_migrations bookkeeping
+          # enforces each migration's numeric-prefix "version" as a unique
+          # key -- confirmed directly, a real run got all the way through
+          # 0001-0019 successfully (proving the policy/function guards
+          # above work) and then failed with "duplicate key ... Key
+          # (version)=(0019) already exists", because this repo
+          # deliberately keeps two 0019-prefixed files (verified empty vs.
+          # non-empty by the "Verify known duplicate 0019 state" step
+          # above, which still runs first and unchanged). The empty file
+          # applies nothing -- deleting it from this ephemeral checkout
+          # changes zero resulting schema/data, it only avoids the
+          # CLI's own version-bookkeeping collision. The corresponding
+          # migration surely already exists in the real Staging history
+          # under that exact filename (this is exactly why it is
+          # untouched, empty, and never renamed) -- this step never edits
+          # or removes anything in the actual repository.
+          rm supabase/migrations/0019_request_result_read_state.sql
+
+      - name: Reorder 0025's two function definitions for this ephemeral replay only
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 0025_walk_reminder_scheduler.sql defines due_walk_reminders() (a
+          # `language sql` function, eagerly planned and validated at CREATE
+          # time -- unlike plpgsql, which defers) before
+          # family_admin_profile_ids(), which its own body calls. Postgres
+          # rejects that forward reference with "function ... does not
+          # exist" (confirmed directly, twice: once via supabase start's own
+          # bootstrap replay, once via the explicit `supabase db reset
+          # --local` -- both apply each migration file over its own
+          # separate connection, so neither a session-level `set
+          # check_function_bodies = off` in an earlier file nor -- lacking
+          # superuser on the local stack's exposed `postgres` role -- a
+          # server-wide `alter system` can reach across to 0025's own
+          # connection).
+          #
+          # The actual, minimal fix needs no privilege at all: move the
+          # `family_admin_profile_ids()` CREATE FUNCTION block (Part 4)
+          # earlier in this ephemeral copy of the file, before
+          # `due_walk_reminders()` (Part 2) calls it. This only changes the
+          # ORDER two independent CREATE FUNCTION statements run in within
+          # the same file -- verified byte-for-byte: every non-blank line
+          # of the reordered copy is identical to the original, just
+          # reshuffled (`diff <(sort orig) <(sort reordered)` is empty) --
+          # so the resulting schema is identical either way; only the
+          # never-committed ephemeral copy in this checkout changes, not
+          # the real repository file.
+          python3 - <<'PYEOF'
+          path = 'supabase/migrations/0025_walk_reminder_scheduler.sql'
+          lines = open(path).read().split('\n')
+
+          def find(marker):
+              for i, l in enumerate(lines):
+                  if l.startswith(marker):
+                      return i
+              raise SystemExit(f'marker not found: {marker}')
+
+          part2 = find('-- Part 2:')
+          part4 = find('-- Part 4:')
+          part5 = find('-- Part 5:')
+          assert part2 < part4 < part5, (part2, part4, part5)
+
+          part4_block = lines[part4:part5]
+          remaining = lines[:part4] + lines[part5:]
+          new_lines = remaining[:part2] + part4_block + [''] + remaining[part2:]
+
+          open(path, 'w').write('\n'.join(new_lines))
+          print(f'Reordered {path}: family_admin_profile_ids() now defined before due_walk_reminders()')
+          PYEOF
+
+      - name: Hide the migrations directory and seed.sql before first boot
+        run: |
+          mv supabase/migrations supabase/migrations.pending && mkdir supabase/migrations
+          mv supabase/seed.sql supabase/seed.sql.pending
+        # `supabase start` itself replays every file in supabase/migrations
+        # AND applies supabase/seed.sql as part of its OWN first-boot
+        # database initialization -- it does not just launch empty
+        # containers and wait for a later `db reset`. Confirmed directly
+        # from two real runs: first the "Applying migration ..." log lines
+        # (including the 0025 forward-reference failure) appeared INSIDE
+        # the "Start isolated Supabase stack" step itself; after hiding
+        # migrations, start got past that but then failed inside the SAME
+        # step applying seed.sql ("relation \"families\" does not exist",
+        # since seed.sql's own header says it must run after schema.sql/
+        # migrations exist, which they now deliberately don't yet). Either
+        # way, every step after "Start isolated Supabase stack" -- including
+        # the explicit `db reset --local` -- never ran at all (conclusion:
+        # "skipped") when start itself failed. Hiding both makes start boot
+        # with nothing to replay or seed, so its first-boot pass always
+        # succeeds trivially; the real replay (which also reapplies
+        # seed.sql, correctly, once the schema exists) then happens
+        # explicitly below via `db reset --local`.
+
+      - name: Start isolated Supabase stack
+        run: supabase start -x studio,imgproxy,storage-api,realtime,edge-runtime,logflare,vector,supavisor
+
+      - name: Restore the migrations directory for the real replay
+        run: rmdir supabase/migrations && mv supabase/migrations.pending supabase/migrations
+        # seed.sql stays hidden through `db reset --local` too (restored
+        # again right at the end, below). `db reset --local` applies
+        # supabase/seed.sql itself immediately after the full migration
+        # chain -- confirmed directly: with all 48 migrations now applying
+        # cleanly (the actual thing this rehearsal validates), the next and
+        # only failure was seed.sql's own demo-data inserts, rejected with
+        # "no active profile found for this session" by the same kind of
+        # authorization trigger the manual ACL test's own setup block hit
+        # earlier (see that file's app.trusted_write comment) -- seed.sql
+        # inserts directly as the connecting superuser with no
+        # request.jwt.claims/role/app.trusted_write context at all. That
+        # demo data plays no part in validating 0043-0048 (the ACL test
+        # below creates its own fixtures), so it's simplest to leave it
+        # out of this replay entirely rather than deciding how to
+        # authorize a demo-only insert that was never in scope here.
+
+      - name: Replay the FULL real migration chain (00000 base + 0001-0048) from empty
+        run: supabase db reset --local
+
+      - name: Run the 0043-0048 integration rehearsal (real Postgres, not source review)
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/manual_tests/0043_0048_integration_rehearsal_acl.sql
+
+      - name: Restore seed.sql
+        if: always()
+        run: mv supabase/seed.sql.pending supabase/seed.sql
+
+      - name: Stop isolated stack
+        if: always()
+        run: supabase stop --no-backup

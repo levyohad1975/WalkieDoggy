@@ -77,13 +77,13 @@ begin
   perform set_config('app.trusted_write','on',true);
   update walks set
     status='done',
-    completed_at=now(),
+    completed_at=coalesce(p_completed_at, now()),
     completed_by_user_id=walker,
     ended_by_user_id=actor,
     had_pee=p_had_pee,
     had_poop=p_had_poop,
     note=p_note,
-    duration_minutes=greatest(0, round(extract(epoch from (now()-started_at))/60.0)::int),
+    duration_minutes=greatest(0, round(extract(epoch from (coalesce(p_completed_at, now())-started_at))/60.0)::int),
     updated_at=now()
   where id=target_walk_id
   returning * into w;
@@ -92,4 +92,4 @@ end;
 $$;
 
 grant execute on function start_walk(uuid) to authenticated;
-grant execute on function finish_walk(uuid,uuid,boolean,boolean,text) to authenticated;
+grant execute on function finish_walk(uuid,uuid,boolean,boolean,text,timestamptz) to authenticated;

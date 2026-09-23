@@ -54,10 +54,10 @@ describe('HomeScreen — last-walk card falls back to get_last_resolved_walk() w
   it('prefers a walk resolved TODAY (computeLastWalk(walks)) over the server fallback, never the reverse', () => {
     const lastWalkIdx = source.indexOf('const lastWalk = useMemo(() => {');
     expect(lastWalkIdx).toBeGreaterThan(-1);
-    const lastWalkBlockEnd = source.indexOf('}, [walks, serverLastResolvedWalk, familyId]);', lastWalkIdx);
+    const lastWalkBlockEnd = source.indexOf('}, [visibleWalks, serverLastResolvedWalk, familyId]);', lastWalkIdx);
     expect(lastWalkBlockEnd).toBeGreaterThan(lastWalkIdx);
     const block = source.slice(lastWalkIdx, lastWalkBlockEnd);
-    const resolvedTodayIdx = block.indexOf('const resolvedToday = computeLastWalk(walks);');
+    const resolvedTodayIdx = block.indexOf('const resolvedToday = computeLastWalk(visibleWalks);');
     const ifReturnIdx = block.indexOf('if (resolvedToday) return resolvedToday;');
     const familyGateIdx = block.indexOf(
       'if (!serverLastResolvedWalk || serverLastResolvedWalk.familyId !== familyId) return undefined;'
@@ -114,7 +114,7 @@ describe('HomeScreen — last-walk card falls back to get_last_resolved_walk() w
     });
 
     it('lastWalk\'s memo dependency array includes familyId (the fallback must be recomputed when the viewed family changes, not just when the fetch resolves)', () => {
-      expect(source).toMatch(/\}, \[walks, serverLastResolvedWalk, familyId\]\);/);
+      expect(source).toMatch(/\}, \[visibleWalks, serverLastResolvedWalk, familyId\]\);/);
     });
 
     it('declares a request-generation ref, initialized once per mount (not per family) — kept as a COMPLEMENTARY guard against out-of-order same-family responses (e.g. A → B → A), not the primary cross-family protection', () => {

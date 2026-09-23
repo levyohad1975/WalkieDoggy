@@ -6,6 +6,8 @@ import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { Button } from './Button';
 import { Avatar } from './Avatar';
+import { useGpsStore } from '../store/gpsStore';
+import { formatDistanceMeters } from '../logic/gpsDistance';
 
 interface EditDoneDetailsModalProps {
   visible: boolean;
@@ -24,9 +26,16 @@ interface EditDoneDetailsModalProps {
   users?: FamilyUser[];
   canReassignCompletedBy?: boolean;
   onDelete?: (walkId: string) => void;
+  /**
+   * PRD §7's required GPS correction flow — attributed to whoever is
+   * editing right now. Optional/backward-compatible like the props above:
+   * a caller that omits it still gets a distance field whenever this walk
+   * has a GPS session (correctedByUserId is simply left unset).
+   */
+  currentUserId?: string | null;
 }
 
-/** Lets you fix up the pee/poop/note (and, for an opted-in caller, who-actually-walked-the-dog / delete) details of a walk after it's already been resolved. */
+/** Lets you fix up the pee/poop/note (and, for an opted-in caller, who-actually-walked-the-dog / delete / GPS distance) details of a walk after it's already been resolved. */
 export function EditDoneDetailsModal({
   visible,
   walk,
@@ -35,11 +44,20 @@ export function EditDoneDetailsModal({
   users,
   canReassignCompletedBy,
   onDelete,
+  currentUserId,
 }: EditDoneDetailsModalProps) {
   const [hadPee, setHadPee] = useState(false);
   const [hadPoop, setHadPoop] = useState(false);
   const [note, setNote] = useState('');
   const [completedByUserId, setCompletedByUserId] = useState<string | undefined>(undefined);
+  // PRD §7 — GPS is assistive, never the sole source of truth: a family
+  // member can confirm/correct the device-computed distance here. Only
+  // shown at all once a session with a real reading exists for this walk
+  // (undefined distanceMeters means tracking never ran) — never a blocking
+  // empty-by-default field, same "optional once GPS data exists" posture
+  // Statistics' own distance KPI already established.
+  const [gpsDistanceMeters, setGpsDistanceMeters] = useState<number | undefined>(undefined);
+  const [distanceInput, setDistanceInput] = useState('');
 
   useEffect(() => {
     if (visible && walk) {
@@ -47,12 +65,21 @@ export function EditDoneDetailsModal({
       setHadPoop(Boolean(walk.hadPoop));
       setNote(walk.note ?? '');
       setCompletedByUserId(walk.completedByUserId ?? walk.responsibleUserId);
+      setGpsDistanceMeters(undefined);
+      setDistanceInput('');
+      void useGpsStore.getState().loadSession(walk.id).then((session) => {
+        if (!session || typeof session.distanceMeters !== 'number') return;
+        const authoritative = session.correctedDistanceMeters ?? session.distanceMeters;
+        setGpsDistanceMeters(session.distanceMeters);
+        setDistanceInput(String(Math.round(authoritative)));
+      });
     }
   }, [visible, walk]);
 
   if (!walk) return null;
 
   const showCompletedByPicker = canReassignCompletedBy && users && users.length > 0;
+  const showDistanceField = gpsDistanceMeters != null;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -115,6 +142,23 @@ export function EditDoneDetailsModal({
               </>
             ) : null}
 
+            {showDistanceField ? (
+              <>
+                <RtlText style={styles.label}>מרחק (מטרים)</RtlText>
+                <TextInput
+                  value={distanceInput}
+                  onChangeText={setDistanceInput}
+                  keyboardType="number-pad"
+                  style={styles.noteInput}
+                  textAlign="right"
+                  accessibilityLabel="מרחק בטיול, במטרים"
+                />
+                <RtlText style={styles.gpsHint}>
+                  מדידת GPS מקורית: {formatDistanceMeters(gpsDistanceMeters!)}
+                </RtlText>
+              </>
+            ) : null}
+
             <RtlText style={styles.label}>הערה</RtlText>
             <TextInput
               value={note}
@@ -130,7 +174,7 @@ export function EditDoneDetailsModal({
             <View style={styles.actions}>
               <Button
                 label="שמירה"
-                onPress={() =>
+                onPress={() => {
                   onSave({
                     hadPee,
                     hadPoop,
@@ -140,8 +184,17 @@ export function EditDoneDetailsModal({
                     // `canReassignCompletedBy` passed) never sends this
                     // field, so its behavior is byte-identical to before.
                     ...(showCompletedByPicker ? { completedByUserId } : {}),
-                  })
-                }
+                  });
+                  // GPS correction is a separate, independent write (its
+                  // own store/table, not part of `walks`) — best-effort,
+                  // never blocking or failing the primary save above.
+                  if (showDistanceField) {
+                    const parsed = Number(distanceInput);
+                    if (Number.isFinite(parsed) && parsed >= 0) {
+                      void useGpsStore.getState().correctDistance(walk.id, parsed, currentUserId);
+                    }
+                  }
+                }}
                 style={styles.flex}
               />
               <Button label="ביטול" onPress={onClose} variant="secondary" style={styles.flex} />
@@ -207,6 +260,7 @@ const styles = StyleSheet.create({
   },
   memberChipActive: { borderColor: colors.primary, backgroundColor: colors.statusCurrentBg },
   memberChipName: { fontSize: typography.meta.fontSize, fontWeight: '700', color: colors.textPrimary, maxWidth: 90 },
+  gpsHint: { fontSize: 12, color: colors.textSecondary, textAlign: 'right', marginTop: 4 },
   noteInput: {
     backgroundColor: colors.surfaceMuted,
     borderRadius: radii.md,

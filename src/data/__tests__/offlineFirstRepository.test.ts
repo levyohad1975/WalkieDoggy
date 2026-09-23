@@ -1,6 +1,6 @@
 import type { Repository } from '../repository';
 import type { OfflineFirstRepository as OfflineFirstRepositoryType } from '../offlineFirstRepository';
-import type { Dog, FamilyUser, ScheduleEntry, ScheduleRule, Walk } from '../../types';
+import type { AchievementUnlock, Dog, FamilyUser, HealthTask, ScheduleEntry, ScheduleRule, Walk, WalkGpsSession } from '../../types';
 
 function stubRemote(overrides: Partial<Repository> = {}): Repository {
   return {
@@ -11,8 +11,17 @@ function stubRemote(overrides: Partial<Repository> = {}): Repository {
     deleteUser: jest.fn(),
     deleteFamilyMember: jest.fn(),
     updateUserReminderSetting: jest.fn().mockResolvedValue(undefined),
+    updateUserGamificationSetting: jest.fn().mockResolvedValue(undefined),
     getDog: jest.fn(),
+    getDogs: jest.fn(),
     upsertDog: jest.fn(),
+    getHealthTasks: jest.fn(),
+    upsertHealthTask: jest.fn(),
+    getGpsSession: jest.fn(),
+    upsertGpsSession: jest.fn(),
+    getGpsSessionsForWalkIds: jest.fn(),
+    getAchievementUnlocks: jest.fn(),
+    upsertAchievementUnlock: jest.fn(),
     getScheduleRules: jest.fn(),
     upsertScheduleRule: jest.fn(),
     deleteScheduleRule: jest.fn(),
@@ -66,7 +75,7 @@ describe('OfflineFirstRepository.deleteFamilyMember — online rejection propaga
       name: 'Admin',
       avatar: '🙂',
       color: '#000',
-      remindersEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true,
       createdAt: new Date().toISOString(),
     };
     await repo.upsertUser(user); // seed the local cache the old way (upsertUser is unaffected by this fix)
@@ -96,7 +105,7 @@ describe('OfflineFirstRepository.deleteFamilyMember — online rejection propaga
       name: 'Member',
       avatar: '🙂',
       color: '#000',
-      remindersEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true,
       createdAt: new Date().toISOString(),
     };
     await repo.upsertUser(user);
@@ -125,7 +134,7 @@ describe('OfflineFirstRepository.deleteFamilyMember — online rejection propaga
       name: 'Member',
       avatar: '🙂',
       color: '#000',
-      remindersEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true,
       createdAt: new Date().toISOString(),
     };
     await repo.upsertUser(user);
@@ -195,7 +204,7 @@ describe('OfflineFirstRepository.deleteFamilyMember — online rejection propaga
       name: 'Member',
       avatar: '🙂',
       color: '#000',
-      remindersEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true,
       createdAt: new Date().toISOString(),
     };
     await repo.upsertUser(user);
@@ -204,6 +213,91 @@ describe('OfflineFirstRepository.deleteFamilyMember — online rejection propaga
 
     const localUsers = await (repo as any).local.getUsers('family-1');
     expect(localUsers.find((u: FamilyUser) => u.id === 'user-5')?.removedAt).toBeTruthy();
+  });
+});
+
+/**
+ * start_walk()/finish_walk() (0048) were wired into scheduleStore.ts and
+ * HomeScreen.tsx (`if (repository.startWalk) ... else <fake local state>`)
+ * but OfflineFirstRepository never actually implemented either method —
+ * `repository.startWalk`/`repository.finishWalk` were always `undefined`,
+ * so every call silently took the in-memory-only fallback branch: nothing
+ * was ever persisted to Supabase or the local cache, and the RPCs were dead
+ * code from the client's perspective. Fixed by assigning both conditionally
+ * in the constructor (present only when a remote repository is configured,
+ * exactly so the store's own capability check keeps working correctly in
+ * local/demo mode). These tests cover the fix directly, mirroring the
+ * deleteFamilyMember tests above for the same "server-authoritative, no
+ * blind offline replay" category of action.
+ */
+describe('OfflineFirstRepository.startWalk/finishWalk — actually wired to the remote RPCs', () => {
+  const baseWalk: Walk = {
+    id: 'walk-1',
+    familyId: 'family-1',
+    dogId: 'dog-1',
+    date: '2026-01-01',
+    scheduledTime: '08:00',
+    responsibleUserId: 'user-1',
+    status: 'pending',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+
+  it('online + remote configured -> repository.startWalk is defined, calls the RPC, and persists the returned row locally', async () => {
+    const started: Walk = { ...baseWalk, status: 'in_progress', startedAt: '2026-01-01T08:00:00.000Z', startedByUserId: 'user-1' };
+    const remote = stubRemote({ startWalk: jest.fn().mockResolvedValue(started) });
+    const repo = await makeRepo(true, remote);
+    expect(repo.startWalk).toBeDefined();
+
+    const result = await repo.startWalk!('walk-1');
+    expect(result).toEqual(started);
+    expect(remote.startWalk).toHaveBeenCalledWith('walk-1');
+
+    const localWalks = await (repo as any).local.getWalks('family-1');
+    expect(localWalks.find((w: Walk) => w.id === 'walk-1')?.status).toBe('in_progress');
+  });
+
+  it('online + remote rejects (e.g. "walk is not pending") -> the rejection propagates, not silently swallowed', async () => {
+    const remote = stubRemote({ startWalk: jest.fn().mockRejectedValue(new Error('walk is not pending')) });
+    const repo = await makeRepo(true, remote);
+
+    await expect(repo.startWalk!('walk-1')).rejects.toThrow('walk is not pending');
+    expect(remote.startWalk).toHaveBeenCalledTimes(1);
+  });
+
+  it('offline -> rejects immediately, never calls the remote RPC, and never enqueues for later replay', async () => {
+    const remote = stubRemote({ startWalk: jest.fn() });
+    const repo = await makeRepo(false, remote);
+
+    await expect(repo.startWalk!('walk-1')).rejects.toThrow(
+      'אין חיבור לשרת. כדי להתחיל מעקב טיול יש להתחבר לאינטרנט.'
+    );
+    expect(remote.startWalk).not.toHaveBeenCalled();
+  });
+
+  it('local/demo mode (no remote configured) -> repository.startWalk/finishWalk are undefined, matching the interface\'s optional-capability contract', async () => {
+    const repo = await makeRepo(true, null);
+    expect(repo.startWalk).toBeUndefined();
+    expect(repo.finishWalk).toBeUndefined();
+  });
+
+  it('finishWalk: online + remote configured -> calls finish_walk with the actual walker and completedAt, persists the result locally', async () => {
+    const finished: Walk = {
+      ...baseWalk,
+      status: 'done',
+      completedAt: '2026-01-01T08:30:00.000Z',
+      completedByUserId: 'user-2',
+      hadPee: true,
+    };
+    const remote = stubRemote({ finishWalk: jest.fn().mockResolvedValue(finished) });
+    const repo = await makeRepo(true, remote);
+
+    const result = await repo.finishWalk!('walk-1', 'user-2', { hadPee: true, completedAt: '2026-01-01T08:30:00.000Z' });
+    expect(result).toEqual(finished);
+    expect(remote.finishWalk).toHaveBeenCalledWith('walk-1', 'user-2', { hadPee: true, completedAt: '2026-01-01T08:30:00.000Z' });
+
+    const localWalks = await (repo as any).local.getWalks('family-1');
+    expect(localWalks.find((w: Walk) => w.id === 'walk-1')?.status).toBe('done');
   });
 });
 
@@ -249,7 +343,7 @@ describe('OfflineFirstRepository — online + remote succeeds: reads return the 
 
   it('getUsers returns the remote list', async () => {
     const fresh: FamilyUser[] = [
-      { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, createdAt: new Date().toISOString() },
+      { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: new Date().toISOString() },
     ];
     const remote = stubRemote({ getUsers: jest.fn().mockResolvedValue(fresh) });
     const repo = await makeRepo(true, remote);
@@ -265,6 +359,53 @@ describe('OfflineFirstRepository — online + remote succeeds: reads return the 
 
     await expect(repo.getDog('family-1')).resolves.toEqual(fresh);
     expect(remote.getDog).toHaveBeenCalledWith('family-1');
+  });
+
+  it('getDogs returns every remote dog for the family (arbitrary N, not just one)', async () => {
+    const dogs: Dog[] = [
+      { id: 'dog-1', familyId: 'family-1', name: 'טופי', walksPerDay: 4 },
+      { id: 'dog-2', familyId: 'family-1', name: 'ריקי', walksPerDay: 2 },
+    ];
+    const remote = stubRemote({ getDogs: jest.fn().mockResolvedValue(dogs) });
+    const repo = await makeRepo(true, remote);
+
+    await expect(repo.getDogs('family-1')).resolves.toEqual(dogs);
+    expect(remote.getDogs).toHaveBeenCalledWith('family-1');
+  });
+
+  it('getHealthTasks returns the remote tasks for that dog', async () => {
+    const tasks: HealthTask[] = [
+      { id: 'task-1', familyId: 'family-1', dogId: 'dog-1', category: 'vaccination', title: 'חיסון', dueDate: '2026-10-01', createdAt: 'c', updatedAt: 'u' },
+    ];
+    const remote = stubRemote({ getHealthTasks: jest.fn().mockResolvedValue(tasks) });
+    const repo = await makeRepo(true, remote);
+
+    await expect(repo.getHealthTasks('dog-1')).resolves.toEqual(tasks);
+    expect(remote.getHealthTasks).toHaveBeenCalledWith('dog-1');
+  });
+
+  it('getGpsSession returns the remote session for that walk', async () => {
+    const session: WalkGpsSession = {
+      id: 'gps-1', walkId: 'walk-1', familyId: 'family-1', dogId: 'dog-1',
+      distanceMeters: 812.4, pointCount: 40, source: 'device_gps',
+      createdAt: 'c', updatedAt: 'u',
+    };
+    const remote = stubRemote({ getGpsSession: jest.fn().mockResolvedValue(session) });
+    const repo = await makeRepo(true, remote);
+
+    await expect(repo.getGpsSession('walk-1')).resolves.toEqual(session);
+    expect(remote.getGpsSession).toHaveBeenCalledWith('walk-1');
+  });
+
+  it('getGpsSessionsForWalkIds returns the remote bulk result', async () => {
+    const sessions: WalkGpsSession[] = [
+      { id: 'gps-1', walkId: 'walk-1', familyId: 'family-1', dogId: 'dog-1', distanceMeters: 500, pointCount: 10, source: 'device_gps', createdAt: 'c', updatedAt: 'u' },
+    ];
+    const remote = stubRemote({ getGpsSessionsForWalkIds: jest.fn().mockResolvedValue(sessions) });
+    const repo = await makeRepo(true, remote);
+
+    await expect(repo.getGpsSessionsForWalkIds(['walk-1', 'walk-2'])).resolves.toEqual(sessions);
+    expect(remote.getGpsSessionsForWalkIds).toHaveBeenCalledWith(['walk-1', 'walk-2']);
   });
 
   it('getScheduleRules returns the remote rules', async () => {
@@ -310,6 +451,17 @@ describe('OfflineFirstRepository — online + remote succeeds: reads return the 
     await expect(repo.getWalks('family-1')).resolves.toEqual(fresh);
     expect(remote.getWalks).toHaveBeenCalledWith('family-1');
   });
+
+  it('getAchievementUnlocks returns the remote unlocks', async () => {
+    const unlocks: AchievementUnlock[] = [
+      { id: 'unlock-1', familyId: 'family-1', achievementKey: 'first_walk', scope: 'family', unlockedAt: 'u', createdAt: 'c' },
+    ];
+    const remote = stubRemote({ getAchievementUnlocks: jest.fn().mockResolvedValue(unlocks) });
+    const repo = await makeRepo(true, remote);
+
+    await expect(repo.getAchievementUnlocks('family-1')).resolves.toEqual(unlocks);
+    expect(remote.getAchievementUnlocks).toHaveBeenCalledWith('family-1');
+  });
 });
 
 describe('OfflineFirstRepository — writes with a remote repository configured: applied locally and queued for sync', () => {
@@ -333,7 +485,7 @@ describe('OfflineFirstRepository — writes with a remote repository configured:
   };
   const entry: ScheduleEntry = { id: 'entry-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-01-02', time: '08:00', responsibleUserId: 'u1', createdAt: new Date().toISOString() };
   const walk: Walk = { id: 'walk-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-01-02', scheduledTime: '08:00', responsibleUserId: 'u1', status: 'pending', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-  const user: FamilyUser = { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, createdAt: new Date().toISOString() };
+  const user: FamilyUser = { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: new Date().toISOString() };
 
   it('deleteUser removes the local user and enqueues a sync op', async () => {
     const repo = await makeRepo(false, stubRemote());
@@ -363,6 +515,51 @@ describe('OfflineFirstRepository — writes with a remote repository configured:
     await repo.upsertDog(dog);
 
     await expect(repo.getDog('family-1')).resolves.toEqual(dog);
+    expect(await repo.pendingSyncCount()).toBe(1);
+  });
+
+  it('upsertHealthTask writes the local task and enqueues a sync op', async () => {
+    const repo = await makeRepo(false, stubRemote());
+    const task: HealthTask = { id: 'task-1', familyId: 'family-1', dogId: 'dog-1', category: 'vaccination', title: 'חיסון', dueDate: '2026-10-01', createdAt: 'c', updatedAt: 'u' };
+
+    await repo.upsertHealthTask(task);
+
+    await expect(repo.getHealthTasks('dog-1')).resolves.toEqual([task]);
+    expect(await repo.pendingSyncCount()).toBe(1);
+  });
+
+  it('upsertGpsSession writes the local session and enqueues a sync op', async () => {
+    const repo = await makeRepo(false, stubRemote());
+    const session: WalkGpsSession = {
+      id: 'gps-1', walkId: 'walk-1', familyId: 'family-1', dogId: 'dog-1',
+      distanceMeters: 500, pointCount: 20, source: 'device_gps',
+      createdAt: 'c', updatedAt: 'u',
+    };
+
+    await repo.upsertGpsSession(session);
+
+    await expect(repo.getGpsSession('walk-1')).resolves.toEqual(session);
+    expect(await repo.pendingSyncCount()).toBe(1);
+  });
+
+  it('updateUserGamificationSetting updates the local flag and enqueues a sync op', async () => {
+    const repo = await makeRepo(false, stubRemote());
+    await repo.upsertUser(user);
+    const before = await repo.pendingSyncCount();
+
+    await repo.updateUserGamificationSetting('u1', false);
+
+    expect((await repo.getUsers('family-1')).find((u) => u.id === 'u1')?.gamificationEnabled).toBe(false);
+    expect(await repo.pendingSyncCount()).toBe(before + 1);
+  });
+
+  it('upsertAchievementUnlock writes the local unlock and enqueues a sync op', async () => {
+    const repo = await makeRepo(false, stubRemote());
+    const unlock: AchievementUnlock = { id: 'unlock-1', familyId: 'family-1', achievementKey: 'first_walk', scope: 'family', unlockedAt: 'u', createdAt: 'c' };
+
+    await repo.upsertAchievementUnlock(unlock);
+
+    await expect(repo.getAchievementUnlocks('family-1')).resolves.toEqual([unlock]);
     expect(await repo.pendingSyncCount()).toBe(1);
   });
 
@@ -455,7 +652,7 @@ describe('OfflineFirstRepository — local/demo mode (no remote configured): wri
   };
   const entry: ScheduleEntry = { id: 'entry-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-01-02', time: '08:00', responsibleUserId: 'u1', createdAt: new Date().toISOString() };
   const walk: Walk = { id: 'walk-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-01-02', scheduledTime: '08:00', responsibleUserId: 'u1', status: 'pending', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-  const user: FamilyUser = { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, createdAt: new Date().toISOString() };
+  const user: FamilyUser = { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: new Date().toISOString() };
 
   it('deleteUser removes the local user, nothing queued', async () => {
     const repo = await makeRepo(true, null);
@@ -474,6 +671,26 @@ describe('OfflineFirstRepository — local/demo mode (no remote configured): wri
     await repo.updateUserReminderSetting('u1', false);
 
     expect((await repo.getUsers('family-1')).find((u) => u.id === 'u1')?.remindersEnabled).toBe(false);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+
+  it('updateUserGamificationSetting updates locally, nothing queued', async () => {
+    const repo = await makeRepo(true, null);
+    await repo.upsertUser(user);
+
+    await repo.updateUserGamificationSetting('u1', false);
+
+    expect((await repo.getUsers('family-1')).find((u) => u.id === 'u1')?.gamificationEnabled).toBe(false);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+
+  it('upsertAchievementUnlock writes locally, nothing queued', async () => {
+    const repo = await makeRepo(true, null);
+    const unlock: AchievementUnlock = { id: 'unlock-1', familyId: 'family-1', achievementKey: 'first_walk', scope: 'family', unlockedAt: 'u', createdAt: 'c' };
+
+    await repo.upsertAchievementUnlock(unlock);
+
+    await expect(repo.getAchievementUnlocks('family-1')).resolves.toEqual([unlock]);
     expect(await repo.pendingSyncCount()).toBe(0);
   });
 
@@ -552,5 +769,80 @@ describe('OfflineFirstRepository — local/demo mode (no remote configured): wri
 
     await expect(repo.getWalks('family-1')).resolves.toEqual([]);
     expect(await repo.pendingSyncCount()).toBe(0);
+  });
+});
+
+/**
+ * PRD §20: "persistent queue conflicts must be visible, never silently
+ * disappear." SyncQueue's own getConflicts()/getQuarantined() are already
+ * exhaustively tested in syncQueue.test.ts — these tests only verify the
+ * REPOSITORY-level delegation (getSyncConflicts/getQuarantinedSyncItems/
+ * clearSyncConflicts) is wired end-to-end, not the underlying queue logic.
+ */
+describe('OfflineFirstRepository — sync conflicts/quarantine surfaced for review (PRD §20)', () => {
+  afterEach(() => {
+    const { setSyncQueueActorGetter } = require('../syncQueue');
+    setSyncQueueActorGetter(() => null);
+  });
+
+  it('getSyncConflicts reflects a real permanent-failure write, end-to-end through a live flush', async () => {
+    const dog: Dog = { id: 'dog-1', familyId: 'family-1', name: 'ריקי', walksPerDay: 2 };
+    const conflictError = Object.assign(new Error('duplicate key value violates unique constraint'), { code: '23505' });
+    const repo = await makeRepo(true, stubRemote({ upsertDog: jest.fn().mockRejectedValue(conflictError) }));
+    // Tagged, so the item reaches apply() and actually fails there —
+    // otherwise (no actor claimed) it would be quarantined instead of
+    // attempted at all; see SyncQueue.flush()'s own `claimedByUserId ==
+    // null` branch, covered separately below.
+    const { setSyncQueueActorGetter } = require('../syncQueue');
+    setSyncQueueActorGetter(() => 'test-user');
+
+    await repo.upsertDog(dog);
+
+    const conflicts = await repo.getSyncConflicts!();
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0].op.type).toBe('upsertDog');
+    expect(conflicts[0].code).toBe('23505');
+  });
+
+  it('getSyncConflicts is empty when nothing has failed', async () => {
+    const repo = await makeRepo(true, null);
+    await expect(repo.getSyncConflicts!()).resolves.toEqual([]);
+  });
+
+  it('clearSyncConflicts dismisses every recorded conflict', async () => {
+    const dog: Dog = { id: 'dog-1', familyId: 'family-1', name: 'ריקי', walksPerDay: 2 };
+    const conflictError = Object.assign(new Error('duplicate key'), { code: '23505' });
+    const repo = await makeRepo(true, stubRemote({ upsertDog: jest.fn().mockRejectedValue(conflictError) }));
+    const { setSyncQueueActorGetter } = require('../syncQueue');
+    setSyncQueueActorGetter(() => 'test-user');
+    await repo.upsertDog(dog);
+    expect(await repo.getSyncConflicts!()).toHaveLength(1);
+
+    await repo.clearSyncConflicts!();
+
+    expect(await repo.getSyncConflicts!()).toEqual([]);
+  });
+
+  it('getQuarantinedSyncItems is empty when nothing has been quarantined', async () => {
+    const repo = await makeRepo(true, null);
+    await expect(repo.getQuarantinedSyncItems!()).resolves.toEqual([]);
+  });
+
+  it('getQuarantinedSyncItems reflects a real untagged/legacy write that flush() refused to attempt', async () => {
+    // No actor claimed on this device (setSyncQueueActorGetter never
+    // called) — flush() quarantines rather than attempts an untagged
+    // write, per SyncQueue's own audit-attribution safety guarantee.
+    // Uses updateUserReminderSetting (always enqueue+trySync, unlike
+    // upsertDog's direct-online-write-first shortcut) so this exercises
+    // the queue's flush() path, not an early return before it.
+    const updateUserReminderSetting = jest.fn().mockResolvedValue(undefined);
+    const repo = await makeRepo(true, stubRemote({ updateUserReminderSetting }));
+
+    await repo.updateUserReminderSetting('u1', false);
+
+    const quarantined = await repo.getQuarantinedSyncItems!();
+    expect(quarantined).toHaveLength(1);
+    expect(quarantined[0].op.type).toBe('updateUserReminderSetting');
+    expect(updateUserReminderSetting).not.toHaveBeenCalled(); // never even attempted
   });
 });
