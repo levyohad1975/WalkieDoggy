@@ -7,6 +7,7 @@ import { radii, spacing, typography } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 import { pickAndUploadImage } from '../lib/uploadImage';
+import { useFamilyStore } from '../store/familyStore';
 
 export function shouldRunPendingWebPhotoPick(pendingPhotoPick: boolean, platform: string): boolean {
   return pendingPhotoPick && platform === 'web';
@@ -35,6 +36,7 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
   const [photoUrl, setPhotoUrl] = useState<string | undefined>(undefined);
   const [uploading, setUploading] = useState(false);
   const [pendingPhotoPick, setPendingPhotoPick] = useState(false);
+  const persistExistingMemberPhoto = useFamilyStore((s) => s.updateUser);
   // Keep latest values available while the hosted web cropper is open.
   // The upload effect must not restart/cancel just because the parent or form re-renders.
   const webPhotoSaveRef = useRef({ editingUser, name, avatar, color, onSave });
@@ -87,7 +89,13 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
           setPhotoUrl(uri);
           const latest = webPhotoSaveRef.current;
           if (shouldAutoSaveUploadedMemberPhoto(latest.editingUser, uri)) {
-            return Promise.resolve(latest.onSave({ name: latest.name.trim(), avatar: latest.avatar, color: latest.color, photoUrl: uri }));
+            return persistExistingMemberPhoto({
+              ...latest.editingUser!,
+              name: latest.name.trim(),
+              avatar: latest.avatar,
+              color: latest.color,
+              photoUrl: uri,
+            }).then(() => onClose());
           }
         }
       })
@@ -101,7 +109,7 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
         }
       });
     return () => { cancelled = true; };
-  }, [pendingPhotoPick, familyId]);
+  }, [pendingPhotoPick, familyId, persistExistingMemberPhoto, onClose]);
 
   if (pendingPhotoPick && Platform.OS === 'web') return null;
 
