@@ -30,6 +30,7 @@ import { ReminderMascotPrompt } from '../components/ReminderMascotPrompt';
 import { DogProfileModal } from '../components/DogProfileModal';
 import { DogSelectorRow } from '../components/DogSelectorRow';
 import { WalkieMascot } from '../components/WalkieMascot';
+import { DogPhoto } from '../components/DogPhoto';
 import { CELEBRATION_LIBRARY, selectWalkCompletionCelebration, type CompletionCelebration } from '../logic/walkCompletionCelebration';
 import { achievementDefinition, type AchievementProgress } from '../logic/achievements';
 import { useAchievementStore } from '../store/achievementStore';
@@ -656,7 +657,7 @@ export function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel="פתיחת פרופיל הכלב"
           >
-            <WalkieMascot state="idle" size={38} accessibilityLabel="Walkie Doggy" />
+            <DogPhoto photoUrl={dog?.photoUrl} size={38} />
           </Pressable>
           {isSupabaseConfigured ? (
             <Pressable
