@@ -8,6 +8,7 @@ import {
   ruleNeedsEntryBackfill,
 } from '../logic/rotation';
 import { localDateOnly } from '../logic/dateFormat';
+import { pickerDateToTime } from '../logic/timeInput';
 import {
   editWalkDetails,
   markWalkDone,
@@ -68,6 +69,29 @@ interface ScheduleState {
   swap: (walkId: string, newUserId: string, swappedByUserId: string) => Promise<void>;
   swapTwoWalks: (walkAId: string, walkBId: string, swappedByUserId: string) => Promise<void>;
   addUnplannedWalk: (input: UnplannedWalkInput) => Promise<boolean>;
+  /**
+   * Gives a spontaneous walk the same live start_walk/finish_walk lifecycle
+   * a planned walk gets ("case A" — see migration 0054), alongside (never
+   * instead of) addUnplannedWalk's existing after-the-fact logging ("case
+   * B", unchanged). Creates a brand-new `pending` walk row (isUnplanned,
+   * no scheduleEntryId — never touches the rotation/schedule) attributed
+   * to the caller, then immediately runs it through the existing
+   * startWalk() action so it goes through the SAME start_walk RPC,
+   * authorization, and GPS-tracking kickoff as any scheduled walk.
+   * Server-side authorization for the initial insert is migration 0054's
+   * trigger extension — any family member may insert their OWN pending,
+   * not-yet-started/completed unplanned walk; the actual pending-
+   * >in_progress->done transitions are only ever written by
+   * start_walk()/finish_walk() themselves, never by this insert.
+   * computeNextWalk() (see logic/nextWalk.ts) already picks the first
+   * `in_progress` walk regardless of isUnplanned, so this needs no
+   * Home-screen changes for the resulting walk to show up in the normal
+   * "current walk" card with its normal "סיים טיול" action, wired to the
+   * existing finishWalk(). Deliberately always attributed to the caller
+   * (never a picker for someone else) — starting a walk is "I am doing
+   * this right now", not a backfill.
+   */
+  startUnplannedWalk: (familyId: string, dogId: string, userId: string) => Promise<boolean>;
   /**
    * Section 2: edits an existing unplanned/spontaneous walk IN PLACE — same
    * record, never a duplicate. `patch` may include any subset of the fields
@@ -779,6 +803,51 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       set((s) => ({ walks: s.walks.filter((w) => w.id !== walk.id), actionError: 'לא הצלחנו לשמור את הטיול' }));
       return false;
     }
+  },
+
+  startUnplannedWalk: async (familyId: string, dogId: string, userId: string) => {
+    if (!guardTestModeMutation()) return false;
+    const now = new Date().toISOString();
+    const walk: Walk = {
+      id: generateId('walk'),
+      familyId,
+      dogId,
+      date: localDateOnly(new Date()),
+      scheduledTime: pickerDateToTime(new Date()),
+      responsibleUserId: userId,
+      status: 'pending',
+      isUnplanned: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    // Optimistic, like addUnplannedWalk above — reverted below if the
+    // initial save fails. startWalk() (called next) does its own
+    // optimistic update/rollback for the pending->in_progress step, so
+    // this action only owns getting the new row to exist at all.
+    set((s) => ({ walks: [...s.walks, walk], actionError: null }));
+    try {
+      await repository.saveWalk(walk);
+    } catch (e) {
+      set((s) => ({ walks: s.walks.filter((w) => w.id !== walk.id), actionError: 'לא הצלחנו להתחיל את הטיול' }));
+      return false;
+    }
+    const started = await get().startWalk(walk.id);
+    if (!started) {
+      // startWalk() already set its own actionError (e.g. offline —
+      // startWalk/finishWalk are server-authoritative RPCs with no blind
+      // offline replay, same as a scheduled walk). Remove the now-orphaned
+      // pending row rather than leaving a phantom walk that would compete
+      // with the real next-scheduled-walk card — best-effort; if this also
+      // fails, the member can still remove it manually like any other
+      // unplanned walk (deleteUnplannedWalk).
+      try {
+        await repository.deleteWalk?.(walk.id);
+      } catch {
+        // Already-surfaced actionError from startWalk() above stands.
+      }
+      set((s) => ({ walks: s.walks.filter((w) => w.id !== walk.id) }));
+    }
+    return started;
   },
 
   editUnplannedWalk: async (walkId, patch) => {

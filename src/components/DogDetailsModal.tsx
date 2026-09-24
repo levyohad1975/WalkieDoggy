@@ -20,11 +20,13 @@ interface DogDetailsModalProps {
   onChangePhoto: () => void;
   onRemovePhoto: () => void;
   onAddDog?: () => void;
+  onDeleteDog?: () => void;
+  deletingDog?: boolean;
   onSave: (patch: Partial<Dog>) => void;
   onClose: () => void;
 }
 
-export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, onRemovePhoto, onAddDog, onSave, onClose }: DogDetailsModalProps) {
+export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, onRemovePhoto, onAddDog, onDeleteDog, deletingDog = false, onSave, onClose }: DogDetailsModalProps) {
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -52,7 +54,7 @@ export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, o
                   </Pressable>
                   {dog.photoUrl ? (
                     <Pressable onPress={onRemovePhoto} disabled={uploadingPhoto} style={styles.removePhotoButton} accessibilityRole="button" accessibilityLabel="מחיקת תמונת הכלב וחזרה למסקוט">
-                      <RtlText style={styles.removePhotoLink}>הסר תמונה וחזור למסקוט</RtlText>
+                      <RtlText style={styles.removePhotoLink}>הסר תמונה</RtlText>
                     </Pressable>
                   ) : null}
                 </View>
@@ -83,6 +85,11 @@ export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, o
               {onAddDog ? (
                 <Pressable onPress={onAddDog} style={styles.addDogSecondary} accessibilityRole="button" accessibilityLabel="הוספת כלב נוסף למשפחה">
                   <RtlText style={styles.addDogSecondaryText}>＋ הוספת כלב נוסף למשפחה</RtlText>
+                </Pressable>
+              ) : null}
+              {onDeleteDog ? (
+                <Pressable onPress={onDeleteDog} disabled={deletingDog} style={styles.deleteDogButton} accessibilityRole="button" accessibilityLabel="מחיקת הכלב מהמשפחה">
+                  <RtlText style={styles.deleteDogText}>{deletingDog ? 'מוחק…' : 'מחיקת כלב'}</RtlText>
                 </Pressable>
               ) : null}
               <Button label="סגור" variant="secondary" onPress={onClose} style={styles.closeButton} />
@@ -116,5 +123,7 @@ const styles = StyleSheet.create({
   hint: { fontSize: 12, color: colors.textSecondary, textAlign: 'right', marginTop: radii.sm, lineHeight: 18 },
   addDogSecondary: { alignSelf: 'center', paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
   addDogSecondaryText: { color: colors.primaryDark, fontWeight: '600', textAlign: 'center' },
+  deleteDogButton: { alignSelf: 'center', marginTop: spacing.lg, paddingVertical: spacing.sm, paddingHorizontal: spacing.lg },
+  deleteDogText: { color: colors.statusOverdue, fontWeight: '700', textAlign: 'center' },
   closeButton: { marginTop: spacing.xl },
 });

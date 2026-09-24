@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
-import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { RtlText } from './RtlText';
 import type { FamilyUser, Walk, WalkGpsSession } from '../types';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { Button } from './Button';
 import { Avatar } from './Avatar';
+import { TimePickerField } from './TimePickerField';
+import { pickerDateToTime } from '../logic/timeInput';
 import { useGpsStore } from '../store/gpsStore';
 import { formatDistanceMeters } from '../logic/gpsDistance';
 import { RoutePreview } from './RoutePreview';
@@ -53,7 +54,6 @@ export function EditDoneDetailsModal({
   const [hadPoop, setHadPoop] = useState(false);
   const [note, setNote] = useState('');
   const [completedAt, setCompletedAt] = useState<Date>(new Date());
-  const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [completedByUserId, setCompletedByUserId] = useState<string | undefined>(undefined);
   // PRD §7 — GPS is assistive, never the sole source of truth: a family
   // member can confirm/correct the device-computed distance here. Only
@@ -72,7 +72,6 @@ export function EditDoneDetailsModal({
       setHadPoop(Boolean(walk.hadPoop));
       setNote(walk.note ?? '');
       setCompletedAt(walk.completedAt ? new Date(walk.completedAt) : new Date(`${walk.date}T${walk.scheduledTime}:00`));
-      setTimePickerOpen(false);
       setCompletedByUserId(walk.completedByUserId ?? walk.responsibleUserId);
       setGpsDistanceMeters(undefined);
       setDistanceInput('');
@@ -91,9 +90,13 @@ export function EditDoneDetailsModal({
   if (!walk) return null;
 
   const showCompletedByPicker = canReassignCompletedBy && users && users.length > 0;
-  const handleCompletedAtChange = (event: DateTimePickerEvent, selected?: Date) => {
-    if (Platform.OS !== 'ios') setTimePickerOpen(false);
-    if (event.type !== 'dismissed' && selected) setCompletedAt(selected);
+  const handleCompletedTimeChange = (time: string) => {
+    const [hours, minutes] = time.split(':').map(Number);
+    setCompletedAt((prev) => {
+      const next = new Date(prev);
+      next.setHours(hours, minutes, 0, 0);
+      return next;
+    });
   };
   const showDistanceField = gpsDistanceMeters != null;
 
@@ -126,21 +129,11 @@ export function EditDoneDetailsModal({
             </View>
 
             <RtlText style={styles.label}>שעת ביצוע</RtlText>
-            <Button
-              label={completedAt.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
-              variant="secondary"
-              onPress={() => setTimePickerOpen((open) => !open)}
-              accessibilityLabel="בחירת שעת ביצוע הטיול"
+            <TimePickerField
+              value={pickerDateToTime(completedAt)}
+              onChange={handleCompletedTimeChange}
+              webLabel="בחירת שעת ביצוע הטיול"
             />
-            {timePickerOpen ? (
-              <DateTimePicker
-                value={completedAt}
-                mode="time"
-                is24Hour
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={handleCompletedAtChange}
-              />
-            ) : null}
 
             {showCompletedByPicker ? (
               <>

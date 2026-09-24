@@ -40,6 +40,7 @@ import { fetchHistoryWalks } from '../lib/permissionedWalks';
 import { useRequestsStore } from '../store/requestsStore';
 import {
   countPendingRequestsForViewer,
+  countRecentlyResolvedRequestsForAdmin,
   countUnreadRequestResults,
   walkHasActiveSwapRequest,
   walkHasActiveTimeChangeRequest,
@@ -82,6 +83,7 @@ export function HomeScreen() {
     rescheduleWalk,
     skip,
     addUnplannedWalk,
+    startUnplannedWalk,
     editDoneDetails,
     editUnplannedWalk,
     deleteUnplannedWalk,
@@ -540,7 +542,11 @@ export function HomeScreen() {
 
   const unreadResultsForMe =
     countUnreadRequestResults(swapRequests, walksById, effectiveUserId) +
-    countUnreadRequestResults(timeChangeRequests, walksById, effectiveUserId);
+    countUnreadRequestResults(timeChangeRequests, walksById, effectiveUserId) +
+    (effectiveRole === 'admin'
+      ? countRecentlyResolvedRequestsForAdmin(swapRequests, walksById, effectiveUserId) +
+        countRecentlyResolvedRequestsForAdmin(timeChangeRequests, walksById, effectiveUserId)
+      : 0);
   const bellBadgeCount = pendingForMe + unreadResultsForMe;
 
   const openRequestsInbox = () => {
@@ -780,6 +786,18 @@ export function HomeScreen() {
           </View>
         )}
         </View>
+
+        {dog && (!nextWalk || nextWalk.status !== 'in_progress') ? (
+          <Button
+            label="▶ התחל טיול ספונטני"
+            variant="secondary"
+            onPress={() => void startUnplannedWalk(familyId, dog.id, effectiveUserId)}
+            accessibilityLabel="התחלת טיול ספונטני עכשיו"
+            accessibilityHint="יוצר טיול חדש ומתחיל אותו מיד, בלי להשפיע על התורנות"
+            style={styles.unplannedButton}
+            shrinkToFit
+          />
+        ) : null}
 
         <Button
           label="+ הוסף טיול שבוצע"

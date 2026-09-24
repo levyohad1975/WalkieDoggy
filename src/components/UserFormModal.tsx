@@ -26,6 +26,7 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
   const [color, setColor] = useState(userPalette[0]);
   const [photoUrl, setPhotoUrl] = useState<string | undefined>(undefined);
   const [uploading, setUploading] = useState(false);
+  const [pendingPhotoPick, setPendingPhotoPick] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -37,6 +38,13 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
   }, [visible, editingUser]);
 
   const pickPhoto = async () => {
+    // On Web, the crop UI is hosted above this form modal. Hide the form
+    // first so the cropper is never trapped behind a React-Native-Web Modal.
+    // Native uses the OS editor and does not need this hand-off.
+    if (Platform.OS === 'web') {
+      setPendingPhotoPick(true);
+      return;
+    }
     setUploading(true);
     try {
       const uri = await pickAndUploadImage('users', familyId, editingUser?.id ?? 'new');
@@ -47,6 +55,28 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
       setUploading(false);
     }
   };
+
+  useEffect(() => {
+    if (!pendingPhotoPick || visible) return;
+    let cancelled = false;
+    setUploading(true);
+    void pickAndUploadImage('users', familyId, editingUser?.id ?? 'new')
+      .then((uri) => {
+        if (!cancelled && uri) setPhotoUrl(uri);
+      })
+      .catch(() => {
+        if (!cancelled) Alert.alert('לא הצלחנו להחליף תמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setUploading(false);
+          setPendingPhotoPick(false);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [pendingPhotoPick, visible, familyId, editingUser?.id]);
+
+  if (pendingPhotoPick && Platform.OS === 'web') return null;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>

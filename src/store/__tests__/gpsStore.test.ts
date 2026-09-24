@@ -41,14 +41,14 @@ describe('gpsStore', () => {
   it('feeds live distance/pointCount updates from the onUpdate callback into state', async () => {
     const { useGpsStore } = require('../gpsStore');
     const gpsTracking = require('../../lib/gpsTracking');
-    let feed: (acc: { distanceMeters: number; pointCount: number }) => void = () => undefined;
+    let feed: (acc: { distanceMeters: number; pointCount: number; routePoints: never[] }) => void = () => undefined;
     jest.spyOn(gpsTracking, 'startGpsWatch').mockImplementationOnce(async (onUpdate: any) => {
       feed = onUpdate;
       return { remove: jest.fn() };
     });
 
     await useGpsStore.getState().startTracking(walk);
-    feed({ distanceMeters: 123.4, pointCount: 7 });
+    feed({ distanceMeters: 123.4, pointCount: 7, routePoints: [] });
 
     const state = useGpsStore.getState();
     expect(state.distanceMeters).toBe(123.4);
@@ -101,7 +101,7 @@ describe('gpsStore', () => {
     const { repository } = require('../../data');
     const gpsTracking = require('../../lib/gpsTracking');
     const removeMock = jest.fn();
-    let feed: (acc: { distanceMeters: number; pointCount: number }) => void = () => undefined;
+    let feed: (acc: { distanceMeters: number; pointCount: number; routePoints: never[] }) => void = () => undefined;
     jest.spyOn(gpsTracking, 'startGpsWatch').mockImplementationOnce(async (onUpdate: any) => {
       feed = onUpdate;
       return { remove: removeMock };
@@ -109,7 +109,7 @@ describe('gpsStore', () => {
     const upsertSpy = jest.spyOn(repository, 'upsertGpsSession').mockResolvedValue(undefined);
 
     await useGpsStore.getState().startTracking(walk);
-    feed({ distanceMeters: 900.5, pointCount: 42 });
+    feed({ distanceMeters: 900.5, pointCount: 42, routePoints: [] });
 
     const result = await useGpsStore.getState().stopTracking(walk, 'user-aba');
 
@@ -121,6 +121,33 @@ describe('gpsStore', () => {
     expect(upsertSpy).toHaveBeenCalledWith(expect.objectContaining({ walkId: 'walk-1', distanceMeters: 900.5 }));
     expect(useGpsStore.getState().sessionsByWalkId['walk-1']).toEqual(result);
     expect(useGpsStore.getState().trackingWalkId).toBeNull();
+  });
+
+  it('GPS audit fix: persists the session\'s startedAt/endedAt — previously always omitted even though the schema/repository already round-trip them', async () => {
+    const { useGpsStore } = require('../gpsStore');
+    const gpsTracking = require('../../lib/gpsTracking');
+    let feed: (acc: { distanceMeters: number; pointCount: number; routePoints: never[] }) => void = () => undefined;
+    jest.spyOn(gpsTracking, 'startGpsWatch').mockImplementationOnce(async (onUpdate: any) => {
+      feed = onUpdate;
+      return { remove: jest.fn() };
+    });
+
+    expect(useGpsStore.getState().trackingStartedAt).toBeNull();
+    await useGpsStore.getState().startTracking(walk);
+    // startTracking() only sets trackingStartedAt once the watch actually
+    // starts (after startGpsWatch() resolves) — not merely on being called.
+    const startedAt = useGpsStore.getState().trackingStartedAt;
+    expect(startedAt).toEqual(expect.any(String));
+    expect(Number.isNaN(new Date(startedAt!).getTime())).toBe(false);
+
+    feed({ distanceMeters: 200, pointCount: 10, routePoints: [] });
+    const result = await useGpsStore.getState().stopTracking(walk, 'user-aba');
+
+    expect(result?.startedAt).toBe(startedAt);
+    expect(result?.endedAt).toEqual(expect.any(String));
+    expect(new Date(result!.endedAt!).getTime()).toBeGreaterThanOrEqual(new Date(startedAt!).getTime());
+    // Reset for the next tracking round, not left stale.
+    expect(useGpsStore.getState().trackingStartedAt).toBeNull();
   });
 
   it('loadSession fetches a persisted session from the repository and caches it', async () => {

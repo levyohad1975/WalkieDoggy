@@ -44,5 +44,21 @@ export function PhotoCropHost() {
     resolverRef.current = null;
   };
 
-  return <PhotoCropModal visible={uri !== null} uri={uri} onConfirm={handleConfirm} onCancel={handleCancel} />;
+  // Mount PhotoCropModal's <Modal> (and thus create its DOM portal) only
+  // once a crop is actually requested, not unconditionally at app start.
+  // react-native-web's Modal always applies the SAME fixed z-index to
+  // every instance (react-native-web's ModalAnimation component — not
+  // configurable from here), so two simultaneously-open Modals stack by
+  // plain DOM order: whichever one's underlying <div> was appended to
+  // document.body LAST wins. PhotoCropHost lives near App.tsx's root, so
+  // an unconditionally-rendered <PhotoCropModal> would create its portal
+  // at app startup — permanently EARLIER in the DOM than any screen-level
+  // Modal (e.g. DogDetailsModal) opened later — leaving the crop step
+  // rendered behind an already-open modal, completely unreachable, with
+  // the photo upload stuck forever at "מעלה תמונה...". Rendering nothing
+  // until uri is set means the Modal (and its portal) is only created
+  // AFTER whichever screen modal triggered the photo picker is already
+  // open, so it's always later in DOM order and correctly renders on top.
+  if (uri === null) return null;
+  return <PhotoCropModal visible uri={uri} onConfirm={handleConfirm} onCancel={handleCancel} />;
 }
