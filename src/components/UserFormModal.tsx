@@ -36,7 +36,6 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
   const [photoUrl, setPhotoUrl] = useState<string | undefined>(undefined);
   const [uploading, setUploading] = useState(false);
   const [pendingPhotoPick, setPendingPhotoPick] = useState(false);
-  const persistExistingMemberPhoto = useFamilyStore((s) => s.updateUser);
   const saveUserPhoto = useFamilyStore((s) => s.saveUserPhoto);
   // Keep latest values available while the hosted web cropper is open.
   // The upload effect must not restart/cancel just because the parent or form re-renders.
@@ -83,25 +82,14 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
   useEffect(() => {
     if (!shouldRunPendingWebPhotoPick(pendingPhotoPick, Platform.OS)) return;
     setUploading(true);
-    void (editingUser ? saveUserPhoto(editingUser.id, familyId) : pickAndUploadImage('users', familyId, 'new'))
+    const latest = webPhotoSaveRef.current;
+    void (latest.editingUser
+      ? saveUserPhoto(latest.editingUser.id, familyId)
+      : pickAndUploadImage('users', familyId, 'new'))
       .then((uri) => {
         if (!uri) return;
-        const latest = webPhotoSaveRef.current;
-        // Once Storage accepted the image, modal lifecycle changes must not
-        // cancel the authoritative users.photo_url write.
-        if (shouldAutoSaveUploadedMemberPhoto(latest.editingUser, uri)) {
-          return persistExistingMemberPhoto({
-            ...latest.editingUser!,
-            name: latest.name.trim(),
-            avatar: latest.avatar,
-            color: latest.color,
-            photoUrl: uri,
-          }).then(() => {
-            setPhotoUrl(uri);
-            latest.onClose();
-          });
-        }
         setPhotoUrl(uri);
+        if (latest.editingUser) latest.onClose();
       })
       .catch(() => {
         Alert.alert('לא הצלחנו להחליף תמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
@@ -110,7 +98,7 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
         setUploading(false);
         setPendingPhotoPick(false);
       });
-  }, [pendingPhotoPick, familyId, persistExistingMemberPhoto, saveUserPhoto]);
+  }, [pendingPhotoPick, familyId, saveUserPhoto]);
 
   if (pendingPhotoPick && Platform.OS === 'web') return null;
 
