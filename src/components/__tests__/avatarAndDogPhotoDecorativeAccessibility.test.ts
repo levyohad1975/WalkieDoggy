@@ -29,3 +29,10 @@ describe('Avatar/DogPhoto wrapper View -> accessible={false}', () => {
     });
   }
 });
+
+describe('Avatar replacement photo recovery', () => {
+  it('retries loading when a new photo URL replaces a previously failed one', () => {
+    const source = fs.readFileSync(path.resolve(__dirname, '../Avatar.tsx'), 'utf8');
+    expect(source).toContain("useEffect(() => setFailed(false), [photoUrl]);");
+  });
+});
