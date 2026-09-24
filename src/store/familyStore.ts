@@ -12,6 +12,7 @@ import { useScheduleStore } from './scheduleStore';
 import { DEMO_DOG, DEMO_FAMILY } from '../data/demoData';
 import { isSupabaseConfigured, removeUnusedDog } from '../lib/supabase';
 import { guardTestModeMutation, TEST_MODE_READ_ONLY_MESSAGE } from '../lib/testModeGuard';
+import { pickAndUploadImage } from '../lib/uploadImage';
 import type { MemberPermissionOverride, PermissionKey, PermissionLoadStatus } from '../logic/permissions';
 import { clearMemberPermissionOverride, listMemberPermissionOverrides, setMemberPermissionOverride } from '../lib/permissions';
 
@@ -83,6 +84,17 @@ interface FamilyState {
 
   addUser: (input: { name: string; avatar: string; color: string; photoUrl?: string }) => Promise<FamilyUser>;
   updateUser: (user: FamilyUser) => Promise<void>;
+  saveUserPhoto: (userId: string, familyId: string) => Promise<string | null>;
+  saveUserPhoto: async (userId: string, familyId: string) => {
+    if (!guardTestModeMutation()) return null;
+    const user = get().users.find((candidate) => candidate.id === userId);
+    if (!user) return null;
+    const uri = await pickAndUploadImage('users', familyId, userId);
+    if (!uri) return null;
+    await get().updateUser({ ...user, photoUrl: uri });
+    return uri;
+  },
+
   getUserDeletionImpact: (userId: string) => UserDeletionImpact;
   /** Pass a replacementUserId to hand this person's future turns to someone else; pass null to just drop them from each rotation (requires at least one person left in it). */
   deleteUser: (userId: string, replacementUserId: string | null) => Promise<void>;
