@@ -7,6 +7,7 @@ returns void as $$
 declare
   fam uuid;
   dog_family uuid;
+  has_health boolean := false;
 begin
   if auth.uid() is null then raise exception 'must be authenticated'; end if;
   fam := current_family_id();
@@ -15,10 +16,16 @@ begin
   select family_id into dog_family from dogs where id = p_dog_id;
   if dog_family is null or dog_family is distinct from fam then raise exception 'dog not found'; end if;
 
+  -- Staging may receive this safety RPC before the optional health/grooming
+  -- foundation migration. Check that table only when it exists.
+  if to_regclass('public.health_tasks') is not null then
+    execute 'select exists (select 1 from public.health_tasks where dog_id = $1)' into has_health using p_dog_id;
+  end if;
+
   if exists (select 1 from schedule_rules where dog_id = p_dog_id)
      or exists (select 1 from schedule_entries where dog_id = p_dog_id)
      or exists (select 1 from walks where dog_id = p_dog_id)
-     or exists (select 1 from health_tasks where dog_id = p_dog_id) then
+     or has_health then
     raise exception 'dog has history and cannot be removed';
   end if;
 
