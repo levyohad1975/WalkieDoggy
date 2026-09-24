@@ -370,6 +370,10 @@ if (!familyId) {
         users: before ? s.users.map((u) => (u.id === user.id ? before : u)) : s.users,
         actionError: 'לא הצלחנו לעדכן את בן המשפחה',
       }));
+      // Callers must be able to distinguish a persisted update from an
+      // optimistic update that was rolled back. In particular, photo upload
+      // must not close the editor and report success when photo_url failed.
+      throw e;
     }
   },
 
