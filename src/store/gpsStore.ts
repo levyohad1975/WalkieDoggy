@@ -74,7 +74,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       // Ignore a late callback from a watch that's since been stopped/
       // superseded (e.g. the walk ended right as a fix arrived).
       if (get().trackingWalkId !== walk.id) return;
-      set({ distanceMeters: acc.distanceMeters, pointCount: acc.pointCount, routePoints: acc.routePoints.map(({ latitude, longitude, timestamp }) => ({ latitude, longitude, timestamp })) });
+      set({ distanceMeters: acc.distanceMeters, pointCount: acc.pointCount, routePoints: (acc.routePoints ?? []).map(({ latitude, longitude, timestamp }) => ({ latitude, longitude, timestamp })) });
     });
 
     if (get().trackingWalkId !== walk.id) {
