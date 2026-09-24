@@ -327,7 +327,7 @@ export function AddUnplannedWalkModal({
                   // is actually actionable on iPhone Safari.
                   if (Platform.OS === 'web') {
                     const confirm = (globalThis as typeof globalThis & { confirm?: (message?: string) => boolean }).confirm;
-                    if (!confirm || confirm('למחוק את הטיול הזה?\\n\\nהפעולה תמחק לצמיתות את הטיול הספונטני הזה ואת כל הפרטים שלו.')) {
+                    if (confirm?.('למחוק את הטיול הזה?\\n\\nהפעולה תמחק לצמיתות את הטיול הספונטני הזה ואת כל הפרטים שלו.')) {
                       void confirmDelete();
                     }
                     return;

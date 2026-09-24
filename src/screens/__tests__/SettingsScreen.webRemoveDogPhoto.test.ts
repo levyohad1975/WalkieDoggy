@@ -8,4 +8,9 @@ describe('SettingsScreen — web dog-photo removal', () => {
     expect(source).toMatch(/if \(confirm\?\.\('להסיר את תמונת הכלב\?'\)\) void remove\(\);/);
     expect(source).not.toMatch(/if \(!confirm \|\| confirm\('להסיר את תמונת הכלב/);
   });
+
+  it('requires explicit browser confirmation before signing out', () => {
+    expect(source).toMatch(/if \(confirm\?\.\('להתנתק מהמכשיר הזה\? תצטרכו להזין קוד PIN כדי להתחבר שוב\.'\)\) performSignOut\(\);/);
+    expect(source).not.toMatch(/if \(!confirm \|\| confirm\('להתנתק מהמכשיר הזה/);
+  });
 });

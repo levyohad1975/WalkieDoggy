@@ -497,7 +497,7 @@ function SettingsScreenContent() {
     // confirmation there; native iOS/Android retain the platform dialog.
     if (Platform.OS === 'web') {
       const confirm = (globalThis as typeof globalThis & { confirm?: (message?: string) => boolean }).confirm;
-      if (!confirm || confirm('להתנתק מהמכשיר הזה? תצטרכו להזין קוד PIN כדי להתחבר שוב.')) performSignOut();
+      if (confirm?.('להתנתק מהמכשיר הזה? תצטרכו להזין קוד PIN כדי להתחבר שוב.')) performSignOut();
       return;
     }
 
@@ -887,7 +887,6 @@ const styles = StyleSheet.create({
   sheetScroll: { flexGrow: 0, flexShrink: 1 },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 8 },
 });
-
 
 
 
