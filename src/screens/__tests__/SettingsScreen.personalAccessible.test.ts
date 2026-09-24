@@ -16,7 +16,7 @@ describe('SettingsScreen — personal settings stay accessible to every member',
     'utf8'
   );
 
-  it('the ordinary settings sections (family / walks & reminders / switch user) are NOT wrapped in an admin-only role check', () => {
+  it('the ordinary settings sections (family / walks & reminders / achievements) are NOT wrapped in an admin-only role check', () => {
     // Statistics/Settings redesign batch: the single undifferentiated
     // "ordinary settings rows" block was split into several clearly
     // labeled <View style={styles.section}> areas (👪 משפחה, 🐾 טיולים
@@ -35,7 +35,7 @@ describe('SettingsScreen — personal settings stay accessible to every member',
     expect(ordinarySectionOpenIdx).toBeLessThan(adminSectionIdx);
     // Every labeled area between the ordinary-section comment and the
     // admin conditional must itself sit before that conditional too.
-    for (const title of ['👪 משפחה', '🐾 טיולים ותזכורות', '📱 החשבון שלי']) {
+    for (const title of ['👪 משפחה', '🐾 טיולים ותזכורות', 'הישגים 🏆']) {
       const titleIdx = settingsSource.indexOf(title, sectionIdx);
       expect(titleIdx).toBeGreaterThan(-1);
       expect(titleIdx).toBeLessThan(adminSectionIdx);
@@ -48,14 +48,14 @@ describe('SettingsScreen — personal settings stay accessible to every member',
     // opening (proving they render unconditionally within that section).
     const remindersRowIdx = settingsSource.indexOf("onPress={() => setRemindersModalVisible(true)}");
     const sharingRowIdx = settingsSource.indexOf('onPress={() => setSharingModalVisible(true)}');
-    const switchUserRowIdx = settingsSource.indexOf('onPress={handleSwitchUser}');
+    const achievementsRowIdx = settingsSource.indexOf('onPress={() => setAchievementsModalVisible(true)}');
     const adminSectionIdx = settingsSource.indexOf("familyRole === 'admin' ? (");
     expect(remindersRowIdx).toBeGreaterThan(-1);
     expect(sharingRowIdx).toBeGreaterThan(-1);
-    expect(switchUserRowIdx).toBeGreaterThan(-1);
+    expect(achievementsRowIdx).toBeGreaterThan(-1);
     expect(remindersRowIdx).toBeLessThan(adminSectionIdx);
     expect(sharingRowIdx).toBeLessThan(adminSectionIdx);
-    expect(switchUserRowIdx).toBeLessThan(adminSectionIdx);
+    expect(achievementsRowIdx).toBeLessThan(adminSectionIdx);
   });
 
   it("RemindersModal: a member can always toggle their OWN device's reminder switch, regardless of family role/permissions", () => {
