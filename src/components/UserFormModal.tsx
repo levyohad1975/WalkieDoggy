@@ -8,6 +8,10 @@ import { Avatar } from './Avatar';
 import { Button } from './Button';
 import { pickAndUploadImage } from '../lib/uploadImage';
 
+export function shouldRunPendingWebPhotoPick(pendingPhotoPick: boolean, platform: string): boolean {
+  return pendingPhotoPick && platform === 'web';
+}
+
 const EMOJI_OPTIONS = ['🧑', '👨', '👩', '🧒', '👦', '👧', '👴', '👵'];
 
 interface UserFormModalProps {
@@ -57,7 +61,7 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
   };
 
   useEffect(() => {
-    if (!pendingPhotoPick || Platform.OS !== 'web') return;
+    if (!shouldRunPendingWebPhotoPick(pendingPhotoPick, Platform.OS)) return;
     let cancelled = false;
     setUploading(true);
     void pickAndUploadImage('users', familyId, editingUser?.id ?? 'new')
