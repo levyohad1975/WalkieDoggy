@@ -81,34 +81,34 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
 
   useEffect(() => {
     if (!shouldRunPendingWebPhotoPick(pendingPhotoPick, Platform.OS)) return;
-    let cancelled = false;
     setUploading(true);
     void pickAndUploadImage('users', familyId, editingUser?.id ?? 'new')
       .then((uri) => {
-        if (!cancelled && uri) {
-          setPhotoUrl(uri);
-          const latest = webPhotoSaveRef.current;
-          if (shouldAutoSaveUploadedMemberPhoto(latest.editingUser, uri)) {
-            return persistExistingMemberPhoto({
-              ...latest.editingUser!,
-              name: latest.name.trim(),
-              avatar: latest.avatar,
-              color: latest.color,
-              photoUrl: uri,
-            }).then(() => latest.onClose());
-          }
+        if (!uri) return;
+        const latest = webPhotoSaveRef.current;
+        // Once Storage accepted the image, modal lifecycle changes must not
+        // cancel the authoritative users.photo_url write.
+        if (shouldAutoSaveUploadedMemberPhoto(latest.editingUser, uri)) {
+          return persistExistingMemberPhoto({
+            ...latest.editingUser!,
+            name: latest.name.trim(),
+            avatar: latest.avatar,
+            color: latest.color,
+            photoUrl: uri,
+          }).then(() => {
+            setPhotoUrl(uri);
+            latest.onClose();
+          });
         }
+        setPhotoUrl(uri);
       })
       .catch(() => {
-        if (!cancelled) Alert.alert('לא הצלחנו להחליף תמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
+        Alert.alert('לא הצלחנו להחליף תמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
       })
       .finally(() => {
-        if (!cancelled) {
-          setUploading(false);
-          setPendingPhotoPick(false);
-        }
+        setUploading(false);
+        setPendingPhotoPick(false);
       });
-    return () => { cancelled = true; };
   }, [pendingPhotoPick, familyId, persistExistingMemberPhoto]);
 
   if (pendingPhotoPick && Platform.OS === 'web') return null;
