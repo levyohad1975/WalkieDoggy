@@ -344,6 +344,38 @@ describe('OfflineFirstRepository.upsertUser — online direct write during queue
     releaseQueuedDog();
     await activeFlush;
   });
+
+  it('waits for an older in-flight edit of the same member before persisting a newer photo', async () => {
+    let releaseOlderEdit!: () => void;
+    const olderEdit = new Promise<void>((resolve) => { releaseOlderEdit = resolve; });
+    const remote = stubRemote({
+      upsertUser: jest.fn().mockReturnValueOnce(olderEdit).mockResolvedValueOnce(undefined),
+    });
+    const repo = await makeRepo(true, remote);
+    const { setSyncQueueActorGetter } = require('../syncQueue');
+    setSyncQueueActorGetter(() => 'user-1');
+
+    const olderMember: FamilyUser = {
+      id: 'user-1', familyId: 'family-1', name: 'עידן', avatar: '🧑', color: '#123456',
+      remindersEnabled: true, gamificationEnabled: true, createdAt: 'now',
+    };
+    const memberWithPhoto: FamilyUser = { ...olderMember, photoUrl: 'https://example.test/member-photo.jpg' };
+    await (repo as any).queue.enqueue({ type: 'upsertUser', payload: olderMember });
+    const activeFlush = repo.trySync();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(remote.upsertUser).toHaveBeenCalledTimes(1);
+
+    const savePhoto = repo.upsertUser(memberWithPhoto);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(remote.upsertUser).toHaveBeenCalledTimes(1);
+
+    releaseOlderEdit();
+    await Promise.all([activeFlush, savePhoto]);
+
+    expect(remote.upsertUser).toHaveBeenNthCalledWith(1, olderMember);
+    expect(remote.upsertUser).toHaveBeenNthCalledWith(2, memberWithPhoto);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
 });
 
 describe('OfflineFirstRepository — trySync', () => {

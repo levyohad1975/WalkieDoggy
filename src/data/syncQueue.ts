@@ -188,6 +188,8 @@ export type SyncOperation =
   | { type: 'updateUserReminderSetting'; payload: { userId: string; enabled: boolean } }
   | { type: 'updateUserGamificationSetting'; payload: { userId: string; enabled: boolean } };
 
+type FlushResult = { succeeded: number; remaining: number; conflicted: number; quarantined: number };
+
 /**
  * Persistent FIFO queue of writes that couldn't reach Supabase yet (no
  * connection, or Supabase not configured). `OfflineFirstRepository` enqueues
@@ -200,7 +202,8 @@ export class SyncQueue {
   private queue: QueuedItem[] | null = null;
   private conflicts: SyncConflict[] | null = null;
   private quarantined: QuarantinedItem[] | null = null;
-  private flushing = false;
+  /** A concurrent caller joins the active flush instead of receiving a misleading no-op. */
+  private flushPromise: Promise<FlushResult> | null = null;
 
   private async load(): Promise<QueuedItem[]> {
     if (this.queue) return this.queue;
@@ -408,6 +411,21 @@ export class SyncQueue {
     return q.some((item) => item.op.type === 'saveWalk' && item.op.payload.id === walkId);
   }
 
+  /** True while an older profile edit for this exact member is queued or in flight. */
+  async hasPendingUpsertUser(userId: string): Promise<boolean> {
+    const q = await this.load();
+    return q.some((item) => item.op.type === 'upsertUser' && item.op.payload.id === userId);
+  }
+
+  /** Drops only queued edits superseded by a newer authoritative write for this member. */
+  async discardPendingUpsertUser(userId: string): Promise<void> {
+    const q = await this.load();
+    const kept = q.filter((item) => item.op.type !== 'upsertUser' || item.op.payload.id !== userId);
+    if (kept.length === q.length) return;
+    this.queue = kept;
+    await this.persist();
+  }
+
   /**
    * Most recent recorded permanent-failure conflict for a `saveWalk` write of
    * this walk id, if any (see isPermanentError). Reflects only the CURRENT
@@ -515,18 +533,24 @@ export class SyncQueue {
    * foreground/mutation once restoreSession() has resolved — never a wrong
    * actor.
    */
-  async flush(remote: Repository): Promise<{ succeeded: number; remaining: number; conflicted: number; quarantined: number }> {
-    if (this.flushing) {
-      return { succeeded: 0, remaining: (await this.load()).length, conflicted: 0, quarantined: 0 };
-    }
-    this.flushing = true;
+  async flush(remote: Repository): Promise<FlushResult> {
+    if (this.flushPromise) return this.flushPromise;
+    const work = this.flushOnce(remote);
+    this.flushPromise = work;
     try {
-      const q = await this.load();
-      let succeeded = 0;
-      let conflicted = 0;
-      let quarantinedCount = 0;
-      let i = 0;
-      while (i < q.length) {
+      return await work;
+    } finally {
+      if (this.flushPromise === work) this.flushPromise = null;
+    }
+  }
+
+  private async flushOnce(remote: Repository): Promise<FlushResult> {
+    const q = await this.load();
+    let succeeded = 0;
+    let conflicted = 0;
+    let quarantinedCount = 0;
+    let i = 0;
+    while (i < q.length) {
         const item = q[i];
 
         if (item.claimedByUserId == null) {
@@ -602,11 +626,8 @@ export class SyncQueue {
           }
           break; // retryable: keep it queued, try again on next flush
         }
-      }
-      return { succeeded, remaining: q.length, conflicted, quarantined: quarantinedCount };
-    } finally {
-      this.flushing = false;
     }
+    return { succeeded, remaining: q.length, conflicted, quarantined: quarantinedCount };
   }
 
   private async apply(remote: Repository, op: SyncOperation): Promise<void> {
