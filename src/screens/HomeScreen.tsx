@@ -726,7 +726,7 @@ export function HomeScreen() {
             currentUserId={effectiveUserId}
             dogName={dog?.name ?? 'הכלב/ה'}
             dogPhotoUrl={dog?.photoUrl}
-            showDogPhoto
+            showDogPhoto={false}
             showMascot={false}
             dogSex={dog?.sex}
             requestStatusLine={
