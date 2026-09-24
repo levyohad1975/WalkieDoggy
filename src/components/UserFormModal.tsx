@@ -39,8 +39,8 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
   const persistExistingMemberPhoto = useFamilyStore((s) => s.updateUser);
   // Keep latest values available while the hosted web cropper is open.
   // The upload effect must not restart/cancel just because the parent or form re-renders.
-  const webPhotoSaveRef = useRef({ editingUser, name, avatar, color, onSave });
-  webPhotoSaveRef.current = { editingUser, name, avatar, color, onSave };
+  const webPhotoSaveRef = useRef({ editingUser, name, avatar, color, onSave, onClose });
+  webPhotoSaveRef.current = { editingUser, name, avatar, color, onSave, onClose };
 
   useEffect(() => {
     if (visible) {
@@ -95,7 +95,7 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
               avatar: latest.avatar,
               color: latest.color,
               photoUrl: uri,
-            }).then(() => onClose());
+            }).then(() => latest.onClose());
           }
         }
       })
@@ -109,7 +109,7 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
         }
       });
     return () => { cancelled = true; };
-  }, [pendingPhotoPick, familyId, persistExistingMemberPhoto, onClose]);
+  }, [pendingPhotoPick, familyId, persistExistingMemberPhoto]);
 
   if (pendingPhotoPick && Platform.OS === 'web') return null;
 
