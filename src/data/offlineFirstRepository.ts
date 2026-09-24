@@ -13,7 +13,7 @@ import type {
 } from '../types';
 import type { DeleteFamilyMemberPayload, Repository } from './repository';
 import { LocalRepository } from './localRepository';
-import { SyncQueue } from './syncQueue';
+import { isPermanentSyncError, SyncQueue } from './syncQueue';
 
 /**
  * The repository the app actually uses. Reads always come from the local
@@ -196,8 +196,15 @@ export class OfflineFirstRepository implements Repository {
         try {
           await this.remote!.upsertUser(user);
           return;
-        } catch {
-          // Preserve offline-first behaviour: retry through the sync queue.
+        } catch (error) {
+          // A rejected RLS/business-rule write is not an offline write. If
+          // we enqueue it, the UI reports success while the later flush
+          // drops it as a conflict — exactly how a successfully uploaded
+          // member photo could disappear after refresh. Surface permanent
+          // server rejections to familyStore so it rolls back and informs
+          // the user; keep only genuinely transient failures offline-first.
+          if (isPermanentSyncError(error)) throw error;
+          // Preserve offline-first behaviour for connectivity/timeouts.
         }
       }
       await this.queue.enqueue({ type: 'upsertUser', payload: user });
