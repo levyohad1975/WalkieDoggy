@@ -15,11 +15,12 @@ describe('SettingsScreen wires support + sign-out (structural)', () => {
     expect(source).not.toMatch(/mailto:[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
   });
 
-  it('the support row only renders once an address is actually configured', () => {
-    const sectionIdx = source.indexOf('❓ תמיכה ויציאה');
-    expect(sectionIdx).toBeGreaterThan(-1);
-    const block = source.slice(sectionIdx, sectionIdx + 500);
+  it('the support action only renders once an address is actually configured', () => {
+    const advancedIdx = source.indexOf('🛠️ מתקדם');
+    expect(advancedIdx).toBeGreaterThan(-1);
+    const block = source.slice(advancedIdx, advancedIdx + 2500);
     expect(block).toMatch(/supportEmail \? \(/);
+    expect(block).toContain('✉️ פנייה לתמיכה');
   });
 
   it('opens the configured address via Linking.openURL with a mailto: scheme', () => {
@@ -27,11 +28,12 @@ describe('SettingsScreen wires support + sign-out (structural)', () => {
     expect(source).toMatch(/Linking\.openURL\(`mailto:\$\{supportEmail\}`\)/);
   });
 
-  it('sign-out is its own distinct, always-visible row (not admin-gated, not folded into switch-user)', () => {
+  it('device disconnect is kept in the admin-only advanced area', () => {
     const rowIdx = source.indexOf('onPress={handleSignOut}');
     expect(rowIdx).toBeGreaterThan(-1);
     const adminSectionIdx = source.indexOf("familyRole === 'admin' ? (");
-    expect(rowIdx).toBeLessThan(adminSectionIdx);
+    expect(rowIdx).toBeGreaterThan(adminSectionIdx);
+    expect(source.slice(adminSectionIdx, rowIdx + 300)).toContain('🚪 ניתוק המכשיר');
   });
 
   it('sign-out requires confirmation before calling authStore.signOut()', () => {
