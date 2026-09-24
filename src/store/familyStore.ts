@@ -10,7 +10,7 @@ import { resolveResponsibleForDate } from '../logic/rotation';
 import { localDateOnly } from '../logic/dateFormat';
 import { useScheduleStore } from './scheduleStore';
 import { DEMO_DOG, DEMO_FAMILY } from '../data/demoData';
-import { isSupabaseConfigured } from '../lib/supabase';
+import { isSupabaseConfigured, removeUnusedDog } from '../lib/supabase';
 import { guardTestModeMutation, TEST_MODE_READ_ONLY_MESSAGE } from '../lib/testModeGuard';
 import type { MemberPermissionOverride, PermissionKey, PermissionLoadStatus } from '../logic/permissions';
 import { clearMemberPermissionOverride, listMemberPermissionOverrides, setMemberPermissionOverride } from '../lib/permissions';
@@ -78,6 +78,8 @@ interface FamilyState {
   saveDog: (dog: Dog) => Promise<void>;
   /** Makes `dogId` (must already be in `dogs`) the active dog and persists the choice locally so it survives an app restart. No-op if `dogId` isn't one of this family's dogs. */
   selectDog: (dogId: string) => Promise<void>;
+  /** Admin-only safe removal; server refuses dogs with any history/dependencies. */
+  deleteUnusedDog: (dogId: string) => Promise<void>;
 
   addUser: (input: { name: string; avatar: string; color: string; photoUrl?: string }) => Promise<FamilyUser>;
   updateUser: (user: FamilyUser) => Promise<void>;
@@ -287,6 +289,23 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
       await AsyncStorage.setItem(SELECTED_DOG_KEY, dogId);
     } catch {
       // best-effort persistence — the in-memory selection already applied
+    }
+  },
+
+  deleteUnusedDog: async (dogId: string) => {
+    if (!guardTestModeMutation()) throw new Error(TEST_MODE_READ_ONLY_MESSAGE);
+    await removeUnusedDog(dogId);
+    set((s) => {
+      const dogs = s.dogs.filter((d) => d.id !== dogId);
+      const selected = s.selectedDogId === dogId ? (dogs[0] ?? null) : (s.dog ?? dogs[0] ?? null);
+      return { dogs, dog: selected, selectedDogId: selected?.id ?? null };
+    });
+    try {
+      const selectedId = get().selectedDogId;
+      if (selectedId) await AsyncStorage.setItem(SELECTED_DOG_KEY, selectedId);
+      else await AsyncStorage.removeItem(SELECTED_DOG_KEY);
+    } catch {
+      // best effort; authoritative server removal already succeeded
     }
   },
 
