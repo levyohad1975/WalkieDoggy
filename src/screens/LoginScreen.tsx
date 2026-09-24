@@ -10,6 +10,7 @@ import { Button } from '../components/Button';
 import { EmptyState, ErrorState } from '../components/EmptyState';
 import { UserFormModal } from '../components/UserFormModal';
 import { PinEntryModal } from '../components/PinEntryModal';
+import { WalkieMascot } from '../components/WalkieMascot';
 import { DEMO_FAMILY } from '../data/demoData';
 import { friendlyErrorMessage } from '../lib/errorMessages';
 
@@ -162,7 +163,9 @@ export function LoginScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={[styles.contentWrap, Platform.OS === 'web' && styles.webContent]}>
-      <RtlText style={styles.emoji}>🐶</RtlText>
+      <View style={styles.mascotWrap}>
+        <WalkieMascot state="waiting" size={72} accessibilityLabel="Walkie Doggy" />
+      </View>
       <RtlText style={styles.title} accessibilityRole="header">{family?.name ?? 'המשפחה שלנו'}</RtlText>
       <RtlText style={styles.subtitle}>מי אתה?</RtlText>
 
@@ -285,7 +288,7 @@ const styles = StyleSheet.create({
   // full-bleed background.
   contentWrap: { width: '100%', alignItems: 'center' },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center' },
-  emoji: { fontSize: 64, marginBottom: spacing.sm },
+  mascotWrap: { marginBottom: spacing.sm },
   title: { ...typography.screenTitle, fontSize: 26, color: colors.textPrimary },
   subtitle: { ...typography.body, fontWeight: 'normal', color: colors.textSecondary, marginTop: spacing.xs, marginBottom: spacing.xxl },
   grid: { width: '100%', gap: spacing.md },

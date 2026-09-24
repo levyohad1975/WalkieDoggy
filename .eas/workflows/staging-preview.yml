@@ -1,0 +1,15 @@
+# Deploys only a preview alias; production is never promoted by this workflow.
+name: Deploy web staging
+
+on:
+  push:
+    branches:
+      - rc/web-staging-integration
+
+jobs:
+  deploy_web_staging:
+    name: Deploy web staging
+    type: deploy
+    environment: preview
+    params:
+      alias: staging
