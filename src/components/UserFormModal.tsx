@@ -57,7 +57,7 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
   };
 
   useEffect(() => {
-    if (!pendingPhotoPick || visible) return;
+    if (!pendingPhotoPick || Platform.OS !== 'web') return;
     let cancelled = false;
     setUploading(true);
     void pickAndUploadImage('users', familyId, editingUser?.id ?? 'new')
@@ -74,7 +74,7 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
         }
       });
     return () => { cancelled = true; };
-  }, [pendingPhotoPick, visible, familyId, editingUser?.id]);
+  }, [pendingPhotoPick, familyId, editingUser?.id]);
 
   if (pendingPhotoPick && Platform.OS === 'web') return null;
 
