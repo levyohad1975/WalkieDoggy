@@ -12,6 +12,10 @@ export function shouldRunPendingWebPhotoPick(pendingPhotoPick: boolean, platform
   return pendingPhotoPick && platform === 'web';
 }
 
+export function shouldAutoSaveUploadedMemberPhoto(editingUser: FamilyUser | null, uri: string | null): boolean {
+  return Boolean(editingUser && uri);
+}
+
 const EMOJI_OPTIONS = ['🧑', '👨', '👩', '🧒', '👦', '👧', '👴', '👵'];
 
 interface UserFormModalProps {
@@ -52,7 +56,16 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
     setUploading(true);
     try {
       const uri = await pickAndUploadImage('users', familyId, editingUser?.id ?? 'new');
-      if (uri) setPhotoUrl(uri);
+      if (uri) {
+        setPhotoUrl(uri);
+        // Existing member photo uploads are complete mutations, not drafts.
+        // Persist immediately so a refresh cannot discard a successfully
+        // uploaded Storage object just because the user did not press the
+        // separate form Save button afterwards.
+        if (shouldAutoSaveUploadedMemberPhoto(editingUser, uri)) {
+          await onSave({ name: name.trim(), avatar, color, photoUrl: uri });
+        }
+      }
     } catch {
       Alert.alert('לא הצלחנו להחליף תמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
     } finally {
@@ -66,7 +79,12 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
     setUploading(true);
     void pickAndUploadImage('users', familyId, editingUser?.id ?? 'new')
       .then((uri) => {
-        if (!cancelled && uri) setPhotoUrl(uri);
+        if (!cancelled && uri) {
+          setPhotoUrl(uri);
+          if (shouldAutoSaveUploadedMemberPhoto(editingUser, uri)) {
+            return Promise.resolve(onSave({ name: name.trim(), avatar, color, photoUrl: uri }));
+          }
+        }
       })
       .catch(() => {
         if (!cancelled) Alert.alert('לא הצלחנו להחליף תמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
@@ -78,7 +96,7 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
         }
       });
     return () => { cancelled = true; };
-  }, [pendingPhotoPick, familyId, editingUser?.id]);
+  }, [pendingPhotoPick, familyId, editingUser, name, avatar, color, onSave]);
 
   if (pendingPhotoPick && Platform.OS === 'web') return null;
 
