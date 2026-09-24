@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, ImageBackground, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Image, ImageBackground, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
@@ -36,10 +36,24 @@ type Mode = 'choose' | 'pwaChoice' | 'recover' | 'create' | 'join' | 'redeem';
  * new family) and "pick who you are" (an existing family being joined) with
  * no changes needed here.
  */
+// True width/height ratio of assets/onboarding-welcome-final.png and
+// -wink.png (941x1671 px). Sizing the hero to this exact ratio — rather than
+// leaning on resizeMode alone inside a mismatched box — guarantees the full
+// composition (badges, speech bubble, both CTA buttons) is always visible
+// with no cropping, and confines any letterbox space to outside the image's
+// own bounds so it can be filled with the brand cream background instead of
+// the flat dark teal that read as a "green screen".
+const ONBOARDING_HERO_ASPECT = 941 / 1671;
+
 export function FamilyOnboardingScreen() {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const isDesktop = width >= 900;
   const setFamilyId = useAuthStore((s) => s.setFamilyId);
+  const heroMaxWidth = isDesktop ? Math.min(560, width) : width;
+  const heroHeightIfWidthConstrained = heroMaxWidth / ONBOARDING_HERO_ASPECT;
+  const isWidthConstrained = heroHeightIfWidthConstrained <= height;
+  const heroHeight = isWidthConstrained ? heroHeightIfWidthConstrained : height;
+  const heroWidth = isWidthConstrained ? heroMaxWidth : Math.min(heroHeight * ONBOARDING_HERO_ASPECT, heroMaxWidth);
   // Round 4 — set only when a redemption already succeeded server-side but
   // this device couldn't yet confirm it via whoami() (see authStore.ts's
   // completeInviteRedemption/restoreSession doc comments). Checked on mount
@@ -63,9 +77,31 @@ export function FamilyOnboardingScreen() {
   // choice instead and let the device tell us which it is.
   const [mode, setMode] = useState<Mode>(isInstalledWebApp ? 'pwaChoice' : 'choose');
   const [showWelcomeWink, setShowWelcomeWink] = useState(false);
+  // Same fail-safe-static convention as WalkieMascot/MascotFrameAnimation:
+  // default true (no animation) until the OS setting is confirmed, so a
+  // Reduced Motion device never sees even one wink before this resolves.
+  const [reducedMotion, setReducedMotion] = useState(true);
 
   useEffect(() => {
-    if (mode !== 'choose') return;
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((enabled) => {
+        if (mounted) setReducedMotion(!!enabled);
+      })
+      .catch(() => {
+        if (mounted) setReducedMotion(false);
+      });
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', (enabled: boolean) =>
+      setReducedMotion(!!enabled)
+    );
+    return () => {
+      mounted = false;
+      subscription?.remove?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (mode !== 'choose' || reducedMotion) return;
     let winkTimer: ReturnType<typeof setTimeout> | undefined;
     const interval = setInterval(() => {
       setShowWelcomeWink(true);
@@ -75,7 +111,7 @@ export function FamilyOnboardingScreen() {
       clearInterval(interval);
       if (winkTimer) clearTimeout(winkTimer);
     };
-  }, [mode]);
+  }, [mode, reducedMotion]);
 
   // --- create ---
   const [familyName, setFamilyName] = useState('');
@@ -427,9 +463,13 @@ export function FamilyOnboardingScreen() {
       <View style={styles.welcomeContainer}>
         <ImageBackground
           source={require("../../assets/onboarding-welcome-final.png")}
-          style={[styles.referenceHero, isDesktop && styles.referenceHeroDesktop]}
-          imageStyle={[styles.referenceHeroImage, isDesktop && styles.referenceHeroImageDesktop]}
-          resizeMode={isDesktop ? "contain" : "cover"}
+          style={[
+            styles.referenceHero,
+            isDesktop && styles.referenceHeroDesktop,
+            { width: heroWidth, height: heroHeight },
+          ]}
+          imageStyle={styles.referenceHeroImage}
+          resizeMode="contain"
           accessibilityLabel="מסך הפתיחה של Walkie Doggy"
         >
           {showWelcomeWink ? (
@@ -792,8 +832,13 @@ export function FamilyOnboardingScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#173A36', overflow: 'hidden' },
-  welcomeContainer: { flex: 1, backgroundColor: '#173A36', overflow: 'hidden' },
+  container: { flex: 1, backgroundColor: colors.background, overflow: 'hidden' },
+  // width/height are set per-render to the artwork's exact aspect ratio (see
+  // ONBOARDING_HERO_ASPECT), so any leftover space is real letterboxing
+  // outside the image bounds, not a mismatched-container crop. Centering it
+  // here fills that leftover space with the brand cream background instead
+  // of the previous flat dark teal.
+  welcomeContainer: { flex: 1, backgroundColor: colors.background, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   winkFrame: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%' },
   createHotspot: { position: 'absolute', left: '12%', right: '12%', top: '72%', height: '7.5%', zIndex: 2 },
   joinHotspot: { position: 'absolute', left: '12%', right: '12%', top: '80%', height: '7.5%', zIndex: 2 },
@@ -802,10 +847,9 @@ const styles = StyleSheet.create({
   // so clicks appear dead. Keep the interactive areas centered on the 560px artwork.
   createHotspotDesktop: { left: '12%', right: '12%', top: '72%' },
   joinHotspotDesktop: { left: '12%', right: '12%', top: '80%' },
-  referenceHero: { flex: 1, width: '100%', minHeight: '100%' },
-  referenceHeroDesktop: { alignSelf: 'center', width: 560, maxWidth: '100%', backgroundColor: '#173A36' },
+  referenceHero: {},
+  referenceHeroDesktop: { alignSelf: 'center' },
   referenceHeroImage: { width: '100%', height: '100%' },
-  referenceHeroImageDesktop: { resizeMode: 'contain' },
   referenceOverlay: { flex: 1, justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 12, paddingBottom: 18 },
   referenceTopRow: { minHeight: 170, alignItems: 'center', justifyContent: 'center' },
   languagePill: { position: 'absolute', right: 0, top: 0, backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 28, paddingHorizontal: 18, paddingVertical: 11 },
