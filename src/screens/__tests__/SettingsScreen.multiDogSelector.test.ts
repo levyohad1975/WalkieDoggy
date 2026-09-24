@@ -14,7 +14,7 @@ describe('SettingsScreen keeps multi-dog support secondary to the common single-
   const source = fs.readFileSync(require.resolve('../SettingsScreen'), 'utf8').replace(/\r\n/g, '\n');
 
   it('destructures dogs/selectedDogId/selectDog from familyStore alongside the existing dog/saveDog', () => {
-    expect(source).toMatch(/const \{ family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, setGamificationEnabled, saveDog, selectDog \} = useFamilyStore\(\);/);
+    expect(source).toMatch(/const \\{ family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, setGamificationEnabled, saveDog, deleteUnusedDog, selectDog \\} = useFamilyStore\\(\\);/);
   });
 
   it('does not render the prominent multi-dog selector strip on the main Settings screen', () => {
