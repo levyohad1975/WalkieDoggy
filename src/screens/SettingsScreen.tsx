@@ -40,7 +40,7 @@ import { useSystemAdminStore } from '../store/systemAdminStore';
 import { SystemAdminScreen } from './SystemAdminScreen';
 
 export function SettingsScreen() {
-  const { family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, setGamificationEnabled, saveDog, selectDog } = useFamilyStore();
+  const { family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, setGamificationEnabled, saveDog, selectDog, deleteUnusedDog } = useFamilyStore();
   const healthTasks = useHealthStore((s) => s.tasks);
   const loadHealthTasks = useHealthStore((s) => s.load);
   const saveHealthTask = useHealthStore((s) => s.saveTask);
@@ -74,6 +74,7 @@ export function SettingsScreen() {
   // pattern) instead of all being visible on the main list at once.
   const [dogModalVisible, setDogModalVisible] = useState(false);
   const [addingDog, setAddingDog] = useState(false);
+  const [deletingDog, setDeletingDog] = useState(false);
   const [healthModalVisible, setHealthModalVisible] = useState(false);
   const [achievementsModalVisible, setAchievementsModalVisible] = useState(false);
   // PRD §9 gamification — the same permissioned bulk-historical read
@@ -278,6 +279,31 @@ export function SettingsScreen() {
     } finally {
       setAddingDog(false);
     }
+  };
+
+  const confirmDeleteDog = () => {
+    if (!dog || effectiveFamilyRole !== 'admin' || systemObserverActive || deletingDog) return;
+    const remove = async () => {
+      setDeletingDog(true);
+      try {
+        await deleteUnusedDog(dog.id);
+        setDogModalVisible(false);
+      } catch (e) {
+        Alert.alert('לא ניתן למחוק את הכלב', friendlyErrorMessage(e) || 'אפשר למחוק רק כלב שנוסף בטעות ושעדיין אין לו טיולים, לוח זמנים או היסטוריה.');
+      } finally {
+        setDeletingDog(false);
+      }
+    };
+    const message = 'למחוק את הכלב מהמשפחה? ניתן למחוק רק כלב ללא טיולים, לוח זמנים או היסטוריה.';
+    if (Platform.OS === 'web') {
+      const confirm = (globalThis as typeof globalThis & { confirm?: (message?: string) => boolean }).confirm;
+      if (confirm?.(message)) void remove();
+      return;
+    }
+    Alert.alert('מחיקת כלב', message, [
+      { text: 'ביטול', style: 'cancel' },
+      { text: 'מחיקה', style: 'destructive', onPress: () => void remove() },
+    ]);
   };
 
   const removeDogPhoto = () => {
@@ -665,6 +691,8 @@ export function SettingsScreen() {
         onChangePhoto={changeDogPhoto}
         onRemovePhoto={removeDogPhoto}
         onAddDog={() => void handleAddDog()}
+        onDeleteDog={effectiveFamilyRole === 'admin' && !systemObserverActive ? confirmDeleteDog : undefined}
+        deletingDog={deletingDog}
         onSave={persistDog}
         onClose={() => setDogModalVisible(false)}
       />
