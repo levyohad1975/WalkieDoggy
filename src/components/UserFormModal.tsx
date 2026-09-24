@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from './RtlText';
 import type { FamilyUser } from '../types';
@@ -35,6 +35,10 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
   const [photoUrl, setPhotoUrl] = useState<string | undefined>(undefined);
   const [uploading, setUploading] = useState(false);
   const [pendingPhotoPick, setPendingPhotoPick] = useState(false);
+  // Keep latest values available while the hosted web cropper is open.
+  // The upload effect must not restart/cancel just because the parent or form re-renders.
+  const webPhotoSaveRef = useRef({ editingUser, name, avatar, color, onSave });
+  webPhotoSaveRef.current = { editingUser, name, avatar, color, onSave };
 
   useEffect(() => {
     if (visible) {
@@ -81,8 +85,9 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
       .then((uri) => {
         if (!cancelled && uri) {
           setPhotoUrl(uri);
-          if (shouldAutoSaveUploadedMemberPhoto(editingUser, uri)) {
-            return Promise.resolve(onSave({ name: name.trim(), avatar, color, photoUrl: uri }));
+          const latest = webPhotoSaveRef.current;
+          if (shouldAutoSaveUploadedMemberPhoto(latest.editingUser, uri)) {
+            return Promise.resolve(latest.onSave({ name: latest.name.trim(), avatar: latest.avatar, color: latest.color, photoUrl: uri }));
           }
         }
       })
@@ -96,7 +101,7 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
         }
       });
     return () => { cancelled = true; };
-  }, [pendingPhotoPick, familyId, editingUser, name, avatar, color, onSave]);
+  }, [pendingPhotoPick, familyId]);
 
   if (pendingPhotoPick && Platform.OS === 'web') return null;
 
