@@ -330,7 +330,7 @@ function SettingsScreenContent() {
     // actually removes the photo instead of appearing unresponsive.
     if (Platform.OS === 'web') {
       const confirm = (globalThis as typeof globalThis & { confirm?: (message?: string) => boolean }).confirm;
-      if (!confirm || confirm('להסיר את תמונת הכלב ולחזור למסקוט של Walkie Doggy?')) void remove();
+      if (confirm?.('להסיר את תמונת הכלב?')) void remove();
       return;
     }
 
