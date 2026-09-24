@@ -9,7 +9,7 @@ import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { computeLastWalk, computeNextWalk, isOverdue, upcomingWalks } from '../logic/nextWalk';
 import { walkDateContextLabel } from '../logic/walkDateContext';
-import { canDeleteScheduledWalk, canRequestChangeForWalk, computeNextWalkCardActions, formatCompletedAtBadge } from '../logic/walkActions';
+import { canRequestChangeForWalk, computeNextWalkCardActions, formatCompletedAtBadge } from '../logic/walkActions';
 import { colors } from '../theme/colors';
 import { breakpoints, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { NextWalkCard } from '../components/NextWalkCard';
@@ -1128,10 +1128,14 @@ export function HomeScreen() {
             });
           }
         }}
-        onDelete={async (walkId) => {
-          setEditingLastUnplannedWalkId(null);
-          await deleteUnplannedWalk(walkId);
-        }}
+        onDelete={
+          effectiveRole === 'admin'
+            ? async (walkId) => {
+                setEditingLastUnplannedWalkId(null);
+                await deleteUnplannedWalk(walkId);
+              }
+            : undefined
+        }
         onClose={() => setEditingLastUnplannedWalkId(null)}
       />
 
@@ -1150,9 +1154,7 @@ export function HomeScreen() {
         const editingLastScheduledWalk = editingLastDoneDetailsId
           ? walks.find((w) => w.id === editingLastDoneDetailsId) ?? null
           : null;
-        const canDeleteThisWalk =
-          !!editingLastScheduledWalk &&
-          canDeleteScheduledWalk(editingLastScheduledWalk, effectiveUserId, effectiveRole === 'admin');
+        const canDeleteThisWalk = !!editingLastScheduledWalk && effectiveRole === 'admin';
         return (
           <EditDoneDetailsModal
             visible={!!editingLastDoneDetailsId}
