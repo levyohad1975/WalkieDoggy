@@ -245,7 +245,7 @@ export function NextWalkCard({
           <RtlText style={styles.personName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
             {responsible?.name ?? '—'}
           </RtlText>
-          {!isMine ? (
+          {overdue ? (
             <RtlText style={styles.responsibleLabel} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
               באחריות {responsible?.name}
             </RtlText>

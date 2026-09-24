@@ -20,12 +20,12 @@
 -- `public` is searched inside them regardless of the calling session's own
 -- search_path — this is exactly what makes SECURITY DEFINER safe against a
 -- caller manipulating search_path to shadow a function/table). Because only
--- `public` is searched, an unqualified `gen_random_bytes(...)`/`digest(...)`
+-- `public` is searched, an unqualified `extensions.gen_random_bytes(...)`/`extensions.digest(...)`
 -- call inside these functions cannot resolve on the live project, where
 -- those functions live in `extensions` rather than `public`.
 --
 -- Fix: explicit schema-qualification of every pgcrypto call
--- (`extensions.gen_random_bytes(...)`, `digest(...)`) inside the
+-- (`extensions.gen_random_bytes(...)`, `extensions.digest(...)`) inside the
 -- three functions that actually use them. `search_path` itself is left
 -- exactly as `public` — NOT widened to include `extensions` — because
 -- widening search_path is a strictly weaker fix for this exact problem:
@@ -65,9 +65,9 @@
 -- create_family_invite(p_target_user_id uuid) — pgcrypto-qualified
 --
 -- Identical to 0008's definition in every respect except lines
--- `v_raw_token := encode(gen_random_bytes(32), 'base64');` and
--- `v_token_hash := encode(digest(v_raw_token, 'sha256'), 'hex');`, which now
--- read `gen_random_bytes(32)` / `digest(...)`.
+-- `v_raw_token := encode(extensions.gen_random_bytes(32), 'base64');` and
+-- `v_token_hash := encode(extensions.digest(v_raw_token, 'sha256'), 'hex');`, which now
+-- read `extensions.gen_random_bytes(32)` / `extensions.digest(...)`.
 -- ----------------------------------------------------------------------------
 
 create or replace function create_family_invite(p_target_user_id uuid)
@@ -150,13 +150,13 @@ begin
   -- functions resolve under `extensions`, not `public`; since this function
   -- is `set search_path = public`, the previously-unqualified call could not
   -- resolve there.
-  v_raw_token := encode(gen_random_bytes(32), 'base64');
+  v_raw_token := encode(extensions.gen_random_bytes(32), 'base64');
   v_raw_token := replace(replace(v_raw_token, '+', '-'), '/', '_');
   v_raw_token := rtrim(v_raw_token, '=');
 
-  -- 0009 FIX: schema-qualified digest(...) — same reason as
+  -- 0009 FIX: schema-qualified extensions.digest(...) — same reason as
   -- gen_random_bytes above.
-  v_token_hash := encode(digest(v_raw_token, 'sha256'), 'hex');
+  v_token_hash := encode(extensions.digest(v_raw_token, 'sha256'), 'hex');
   v_expires_at := now() + interval '72 hours';
 
   insert into family_invites (
@@ -181,8 +181,8 @@ $$ language plpgsql volatile security definer set search_path = public, extensio
 -- inspect_family_invite(p_token text) — pgcrypto-qualified
 --
 -- Identical to 0008's definition except
--- `v_token_hash := encode(digest(p_token, 'sha256'), 'hex');`, which now
--- reads `digest(...)`.
+-- `v_token_hash := encode(extensions.digest(p_token, 'sha256'), 'hex');`, which now
+-- reads `extensions.digest(...)`.
 -- ----------------------------------------------------------------------------
 
 create or replace function inspect_family_invite(p_token text)
@@ -200,9 +200,9 @@ begin
     raise exception 'invite not found';
   end if;
 
-  -- 0009 FIX: schema-qualified digest(...) — see the migration
+  -- 0009 FIX: schema-qualified extensions.digest(...) — see the migration
   -- header comment.
-  v_token_hash := encode(digest(p_token, 'sha256'), 'hex');
+  v_token_hash := encode(extensions.digest(p_token, 'sha256'), 'hex');
 
   return query
   select
@@ -226,8 +226,8 @@ $$ language plpgsql stable security definer set search_path = public, extensions
 -- redeem_family_invite(p_token text) — pgcrypto-qualified
 --
 -- Identical to 0008's definition except
--- `v_token_hash := encode(digest(p_token, 'sha256'), 'hex');`, which now
--- reads `digest(...)`.
+-- `v_token_hash := encode(extensions.digest(p_token, 'sha256'), 'hex');`, which now
+-- reads `extensions.digest(...)`.
 -- ----------------------------------------------------------------------------
 
 create or replace function redeem_family_invite(p_token text)
@@ -251,9 +251,9 @@ begin
     raise exception 'invite not found';
   end if;
 
-  -- 0009 FIX: schema-qualified digest(...) — see the migration
+  -- 0009 FIX: schema-qualified extensions.digest(...) — see the migration
   -- header comment.
-  v_token_hash := encode(digest(p_token, 'sha256'), 'hex');
+  v_token_hash := encode(extensions.digest(p_token, 'sha256'), 'hex');
 
   -- Row-level lock: serializes concurrent redemption attempts of this exact
   -- token. The second (losing) transaction blocks here until the first

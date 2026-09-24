@@ -41,7 +41,7 @@ const RANGE_LABELS: [RangeFilter, string][] = [
 
 export function HistoryScreen() {
   const { users, dog, loading: familyLoading, load: loadFamily, permissionOverrides, permissionOverridesStatus } = useFamilyStore();
-  const { walks, loading: scheduleLoading, error, load: loadSchedule, editDoneDetails, editUnplannedWalk, deleteUnplannedWalk, skip, markDone } = useScheduleStore();
+  const { walks, loading: scheduleLoading, error, load: loadSchedule, editDoneDetails, editUnplannedWalk, deleteUnplannedWalk, deleteScheduledWalkOccurrence, skip, markDone } = useScheduleStore();
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const effectiveRole = useEffectiveFamilyRole();
   const effectiveUserId = useEffectiveUserId();
@@ -519,6 +519,11 @@ export function HistoryScreen() {
           }
           setEditWalkId(null);
         }}
+        onDelete={effectiveRole === 'admin' ? async (walkId) => {
+          setEditWalkId(null);
+          await deleteScheduledWalkOccurrence(walkId);
+          await refreshHistoryDataset();
+        } : undefined}
         onClose={() => setEditWalkId(null)}
       />
 
@@ -545,11 +550,11 @@ export function HistoryScreen() {
             await refreshHistoryDataset();
           }
         }}
-        onDelete={async (walkId) => {
+        onDelete={effectiveRole === 'admin' ? async (walkId) => {
           setEditUnplannedWalkId(null);
           await deleteUnplannedWalk(walkId);
           await refreshHistoryDataset();
-        }}
+        } : undefined}
         onClose={() => setEditUnplannedWalkId(null)}
       />
     </SafeAreaView>

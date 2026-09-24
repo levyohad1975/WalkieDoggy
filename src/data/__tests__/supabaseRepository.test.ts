@@ -77,6 +77,28 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
    * genuinely new intended behavior, not a weakened assertion — the
    * family_id-is-correctly-mapped assertion it exists to check is unchanged.
    */
+  it('upsertUser persists member photo_url so a refresh can restore the uploaded photo', async () => {
+    const { client, calls } = makeMockClient({ updateMatches: true });
+    const repo = new SupabaseRepository(client);
+    const user: FamilyUser = {
+      id: 'user-photo',
+      familyId: 'fam-42',
+      name: 'עידן',
+      avatar: '🙂',
+      photoUrl: 'https://cdn.example/member.jpg',
+      color: '#5B8DEF',
+      remindersEnabled: true,
+      gamificationEnabled: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    await repo.upsertUser(user);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].method).toBe('update');
+    expect((calls[0].payload as any).photo_url).toBe('https://cdn.example/member.jpg');
+  });
+
   it('upsertUser calls .update() (not .upsert()/.insert()) for an existing row — the RLS 42501 fix', async () => {
     const { client, calls } = makeMockClient({ updateMatches: true });
     const repo = new SupabaseRepository(client);
