@@ -161,7 +161,14 @@ export interface QuarantinedItem {
  * forever, exactly like the 23xxx/42xxx/28xxx/P0xxx bugs above did before
  * their own fixes.
  */
-function isPermanentError(error: unknown): boolean {
+/**
+ * True when retrying the same request cannot fix the server rejection.
+ *
+ * Exported for direct-write callers as well as queued replay: converting an
+ * RLS/business-rule rejection into a queued "success" loses a user edit
+ * before SyncQueue ever gets a chance to surface its conflict record.
+ */
+export function isPermanentSyncError(error: unknown): boolean {
   const code = (error as { code?: string } | null | undefined)?.code;
   if (typeof code !== 'string') return false;
   return (
@@ -610,7 +617,7 @@ export class SyncQueue {
             JSON.stringify(item.op.payload),
             error
           );
-          if (isPermanentError(error)) {
+          if (isPermanentSyncError(error)) {
             q.splice(i, 1);
             await this.persist();
             const conflicts = await this.loadConflicts();
