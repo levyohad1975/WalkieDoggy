@@ -4,7 +4,7 @@ name: Deploy web staging
 on:
   push:
     branches:
-      - rc/web-staging-integration
+      - fix/urgent-master-batch-20260925
 
 jobs:
   deploy_web_staging:
