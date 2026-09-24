@@ -376,6 +376,21 @@ describe('OfflineFirstRepository.upsertUser — online direct write during queue
     expect(remote.upsertUser).toHaveBeenNthCalledWith(2, memberWithPhoto);
     expect(await repo.pendingSyncCount()).toBe(0);
   });
+
+  it('does not report a permanently rejected member photo as an offline success', async () => {
+    const denied = Object.assign(new Error('new row violates row-level security policy'), { code: '42501' });
+    const remote = stubRemote({ upsertUser: jest.fn().mockRejectedValue(denied) });
+    const repo = await makeRepo(true, remote);
+    const { setSyncQueueActorGetter } = require('../syncQueue');
+    setSyncQueueActorGetter(() => 'user-1');
+    const memberWithPhoto: FamilyUser = {
+      id: 'user-1', familyId: 'family-1', name: 'עידן', avatar: '🧑', color: '#123456',
+      photoUrl: 'https://example.test/member-photo.jpg', remindersEnabled: true, gamificationEnabled: true, createdAt: 'now',
+    };
+
+    await expect(repo.upsertUser(memberWithPhoto)).rejects.toBe(denied);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
 });
 
 describe('OfflineFirstRepository — trySync', () => {
