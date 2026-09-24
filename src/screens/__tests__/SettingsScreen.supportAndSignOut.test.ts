@@ -16,10 +16,9 @@ describe('SettingsScreen wires support + sign-out (structural)', () => {
   });
 
   it('the support action only renders once an address is actually configured', () => {
-    const advancedIdx = source.indexOf('🛠️ מתקדם');
-    expect(advancedIdx).toBeGreaterThan(-1);
-    const block = source.slice(advancedIdx, advancedIdx + 2500);
-    expect(block).toMatch(/supportEmail \? \(/);
+    const supportIdx = source.indexOf('{supportEmail ? (');
+    expect(supportIdx).toBeGreaterThan(-1);
+    const block = source.slice(supportIdx, supportIdx + 500);
     expect(block).toContain('✉️ פנייה לתמיכה');
   });
 
