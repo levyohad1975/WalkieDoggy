@@ -589,17 +589,9 @@ function SettingsScreenContent() {
         ) : null}
 
         <View style={styles.section}>
-          <RtlText style={styles.sectionTitle}>📱 החשבון שלי</RtlText>
           <Pressable style={styles.hubRow} onPress={() => setAchievementsModalVisible(true)} accessibilityRole="button" accessibilityLabel="הישגים">
             <RtlText style={styles.hubChevron}>‹</RtlText>
-            <RtlText style={styles.hubLabel}>🏆 הישגים</RtlText>
-          </Pressable>
-          <Pressable style={styles.hubRow} onPress={handleSwitchUser} accessibilityRole="button" accessibilityLabel="החלף משתמש, מעבר לפרופיל אחר במכשיר הזה">
-            <RtlText style={styles.hubChevron}>‹</RtlText>
-            <View style={styles.hubLabelWithMeta}>
-              <RtlText style={styles.hubLabel}>🔁 החלפת פרופיל במכשיר הזה</RtlText>
-              <RtlText style={styles.hubRowMeta}>בחירת פרופיל אחר מהמשפחה</RtlText>
-            </View>
+            <RtlText style={styles.hubLabel}>הישגים 🏆</RtlText>
           </Pressable>
         </View>
 
@@ -621,24 +613,6 @@ function SettingsScreenContent() {
           </Pressable>
         </View>
 
-        {/* PRD §16 pairs support and sign-out in one phrase ("תמיכה
-            ויציאה") — kept as their own small section rather than folded
-            into "📱 החשבון שלי" above, since sign-out is a deliberately
-            weightier, less-frequent action. The support row only renders
-            once EXPO_PUBLIC_SUPPORT_EMAIL is actually configured. */}
-        <View style={styles.section}>
-          <RtlText style={styles.sectionTitle}>❓ תמיכה ויציאה</RtlText>
-          {supportEmail ? (
-            <Pressable style={styles.hubRow} onPress={() => void handleContactSupport()} accessibilityRole="button" accessibilityLabel="פנייה לתמיכה">
-              <RtlText style={styles.hubChevron}>‹</RtlText>
-              <RtlText style={styles.hubLabel}>✉️ פנייה לתמיכה</RtlText>
-            </Pressable>
-          ) : null}
-          <Pressable style={styles.hubRow} onPress={handleSignOut} accessibilityRole="button" accessibilityLabel="התנתקות מהמכשיר הזה">
-            <RtlText style={styles.hubChevron}>‹</RtlText>
-            <RtlText style={styles.hubLabel}>🚪 התנתקות</RtlText>
-          </Pressable>
-        </View>
         {familyRole === 'admin' ? (
           <View style={styles.section}>
             <RtlText style={styles.sectionTitle}>🛠️ מתקדם</RtlText>
@@ -783,6 +757,10 @@ function SettingsScreenContent() {
               ) : (
                 <RtlText style={styles.dogMeta}>יומן פעילות זמין רק כשהאפליקציה מחוברת ל-Supabase.</RtlText>
               )}
+              {supportEmail ? (
+                <Button label="✉️ פנייה לתמיכה" variant="secondary" onPress={() => void handleContactSupport()} style={styles.addButton} />
+              ) : null}
+              <Button label="🚪 ניתוק המכשיר" variant="secondary" onPress={handleSignOut} style={styles.addButton} />
 
               <Button label="סגור" variant="secondary" onPress={() => setManagementVisible(false)} style={styles.addButton} />
             </ScrollView>
