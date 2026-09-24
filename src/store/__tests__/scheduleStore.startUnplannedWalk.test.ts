@@ -97,4 +97,25 @@ describe('scheduleStore.startUnplannedWalk', () => {
 
     delete (repository as unknown as { startWalk?: unknown }).startWalk;
   });
+
+  it('ignores a second tap while the first spontaneous-walk save is still in flight', async () => {
+    await useScheduleStore.getState().load(FAMILY_ID);
+    const { repository } = require('../../data');
+    let releaseSave!: () => void;
+    const pendingSave = new Promise<void>((resolve) => { releaseSave = resolve; });
+    const saveSpy = jest.spyOn(repository, 'saveWalk').mockReturnValueOnce(pendingSave);
+
+    const firstTap = useScheduleStore.getState().startUnplannedWalk(FAMILY_ID, 'dog-topi', 'user-eidan');
+    await Promise.resolve();
+    expect(useScheduleStore.getState().isStartingUnplannedWalk).toBe(true);
+
+    await expect(useScheduleStore.getState().startUnplannedWalk(FAMILY_ID, 'dog-topi', 'user-eidan')).resolves.toBe(false);
+    expect(saveSpy).toHaveBeenCalledTimes(1);
+
+    releaseSave();
+    await expect(firstTap).resolves.toBe(true);
+    expect(useScheduleStore.getState().isStartingUnplannedWalk).toBe(false);
+    expect(useScheduleStore.getState().walks.filter((walk) => walk.isUnplanned && walk.status === 'in_progress')).toHaveLength(1);
+    saveSpy.mockRestore();
+  });
 });

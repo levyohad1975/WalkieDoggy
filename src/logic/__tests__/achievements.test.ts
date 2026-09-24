@@ -7,6 +7,7 @@ import {
   computeOnTimeStreak,
   computePersonalAchievementProgress,
   detectNewlyUnlocked,
+  preserveUnlockedAchievements,
   FAIR_SWAP_TARGET,
   FAMILY_HELPER_TARGET,
   LONG_WALK_MINUTES,
@@ -79,6 +80,24 @@ describe('achievementDedupeKey', () => {
 
   it('is stable for the same key+userId', () => {
     expect(achievementDedupeKey({ key: 'x', userId: 'u1' })).toBe(achievementDedupeKey({ key: 'x', userId: 'u1' }));
+  });
+});
+
+describe('preserveUnlockedAchievements', () => {
+  it('keeps an immutable ledger unlock visible even when a deleted walk lowers current progress', () => {
+    const progress = computeFamilyAchievementProgress([], NOW);
+    const preserved = preserveUnlockedAchievements(progress, [
+      { id: 'unlock-1', familyId: 'family-1', achievementKey: 'family_first_walk', scope: 'family', unlockedAt: 'x', createdAt: 'x' },
+    ]);
+    expect(preserved.find((item) => item.key === 'family_first_walk')).toMatchObject({ current: 0, target: 1, unlocked: true });
+  });
+
+  it('does not apply another member\'s personal unlock to this member\'s progress', () => {
+    const progress = computePersonalAchievementProgress([], 'noam');
+    const preserved = preserveUnlockedAchievements(progress, [
+      { id: 'unlock-2', familyId: 'family-1', achievementKey: 'personal_first_walk', scope: 'personal', userId: 'dana', unlockedAt: 'x', createdAt: 'x' },
+    ]);
+    expect(preserved.find((item) => item.key === 'personal_first_walk')?.unlocked).toBe(false);
   });
 });
 

@@ -24,7 +24,7 @@ interface UserFormModalProps {
   editingUser: FamilyUser | null;
   /** Needed to build the Supabase Storage path ({familyId}/users/{userId}/...) — unused in local/demo mode. */
   familyId: string;
-  onSave: (input: { name: string; avatar: string; color: string; photoUrl?: string }) => void;
+  onSave: (input: { name: string; avatar: string; color: string; photoUrl?: string }) => void | Promise<void>;
   onClose: () => void;
 }
 
@@ -89,7 +89,18 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
       .then((uri) => {
         if (!uri) return;
         setPhotoUrl(uri);
-        if (latest.editingUser) latest.onClose();
+        if (latest.editingUser) {
+          // saveUserPhoto() persists the uploaded image for refresh safety,
+          // but it reads the currently stored member and therefore cannot
+          // include draft name/avatar/color edits still open in this form.
+          // Persist the complete latest draft before closing the hand-off.
+          return Promise.resolve(latest.onSave({
+            name: latest.name.trim(),
+            avatar: latest.avatar,
+            color: latest.color,
+            photoUrl: uri,
+          })).then(() => latest.onClose());
+        }
       })
       .catch(() => {
         Alert.alert('לא הצלחנו להחליף תמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');

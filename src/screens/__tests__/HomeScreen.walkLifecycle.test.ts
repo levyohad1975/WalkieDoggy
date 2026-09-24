@@ -23,6 +23,12 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('setCompleteWalkId(nextWalk.id)');
   });
 
+  it('disables the spontaneous-start button while its first tap is in flight', () => {
+    expect(home).toContain('isStartingUnplannedWalk,');
+    expect(home).toContain("label={isStartingUnplannedWalk ? 'מתחיל טיול...' : '▶ התחל טיול ספונטני'}");
+    expect(home).toContain('disabled={isStartingUnplannedWalk}');
+  });
+
   it('keeps overdue red for pending walks without overriding an active green walk', () => {
     expect(card).toContain('overdue && !isActive && styles.cardOverdue');
     expect(card).toContain('backgroundColor: colors.statusOverdueBg');

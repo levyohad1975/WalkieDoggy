@@ -1,4 +1,4 @@
-import type { AchievementScope, Walk } from '../types';
+import type { AchievementScope, AchievementUnlock, Walk } from '../types';
 import type { SwapRequestRow } from '../lib/requests';
 import { filterWalksByPeriod, wasCompletedOnTime } from './statistics';
 import { walkDateTime } from './nextWalk';
@@ -65,6 +65,22 @@ export interface AchievementProgress {
 /** Same identity 0052's `dedupe_key` generated column uses server-side — a client never needs to special-case family vs. personal when checking "is this already unlocked". */
 export function achievementDedupeKey(p: { key: string; userId?: string }): string {
   return `${p.key}:${p.userId ?? ''}`;
+}
+
+/**
+ * The live walk list determines progress, but `achievement_unlocks` is an
+ * immutable record of a milestone already earned. Deleting or correcting a
+ * walk may lower current progress; it must never re-lock a past achievement.
+ */
+export function preserveUnlockedAchievements(
+  progress: AchievementProgress[],
+  unlocks: AchievementUnlock[]
+): AchievementProgress[] {
+  const unlockedKeys = new Set(unlocks.map((unlock) => achievementDedupeKey({ key: unlock.achievementKey, userId: unlock.userId })));
+  return progress.map((item) => ({
+    ...item,
+    unlocked: item.unlocked || unlockedKeys.has(achievementDedupeKey(item)),
+  }));
 }
 
 function milestoneProgress(key: string, doneCount: number, target: number): AchievementProgress {

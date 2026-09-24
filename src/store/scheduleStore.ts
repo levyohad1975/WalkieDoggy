@@ -92,6 +92,7 @@ interface ScheduleState {
    * this right now", not a backfill.
    */
   startUnplannedWalk: (familyId: string, dogId: string, userId: string) => Promise<boolean>;
+  isStartingUnplannedWalk: boolean;
   /**
    * Section 2: edits an existing unplanned/spontaneous walk IN PLACE — same
    * record, never a duplicate. `patch` may include any subset of the fields
@@ -218,6 +219,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   loading: false,
   error: null,
   actionError: null,
+  isStartingUnplannedWalk: false,
 
   load: async (familyId: string): Promise<boolean> => {
     set({ loading: true, error: null });
@@ -807,32 +809,37 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
 
   startUnplannedWalk: async (familyId: string, dogId: string, userId: string) => {
     if (!guardTestModeMutation()) return false;
-    const now = new Date().toISOString();
-    const walk: Walk = {
-      id: generateId('walk'),
-      familyId,
-      dogId,
-      date: localDateOnly(new Date()),
-      scheduledTime: pickerDateToTime(new Date()),
-      responsibleUserId: userId,
-      status: 'pending',
-      isUnplanned: true,
-      createdAt: now,
-      updatedAt: now,
-    };
+    // A second tap can arrive before the first async save has created its
+    // in-progress row. Keep this client-side guard until the action settles.
+    if (get().isStartingUnplannedWalk) return false;
+    set({ isStartingUnplannedWalk: true });
+    try {
+      const now = new Date().toISOString();
+      const walk: Walk = {
+        id: generateId('walk'),
+        familyId,
+        dogId,
+        date: localDateOnly(new Date()),
+        scheduledTime: pickerDateToTime(new Date()),
+        responsibleUserId: userId,
+        status: 'pending',
+        isUnplanned: true,
+        createdAt: now,
+        updatedAt: now,
+      };
     // Optimistic, like addUnplannedWalk above — reverted below if the
     // initial save fails. startWalk() (called next) does its own
     // optimistic update/rollback for the pending->in_progress step, so
     // this action only owns getting the new row to exist at all.
-    set((s) => ({ walks: [...s.walks, walk], actionError: null }));
-    try {
-      await repository.saveWalk(walk);
-    } catch (e) {
-      set((s) => ({ walks: s.walks.filter((w) => w.id !== walk.id), actionError: 'לא הצלחנו להתחיל את הטיול' }));
-      return false;
-    }
-    const started = await get().startWalk(walk.id);
-    if (!started) {
+      set((s) => ({ walks: [...s.walks, walk], actionError: null }));
+      try {
+        await repository.saveWalk(walk);
+      } catch (e) {
+        set((s) => ({ walks: s.walks.filter((w) => w.id !== walk.id), actionError: 'לא הצלחנו להתחיל את הטיול' }));
+        return false;
+      }
+      const started = await get().startWalk(walk.id);
+      if (!started) {
       // startWalk() already set its own actionError (e.g. offline —
       // startWalk/finishWalk are server-authoritative RPCs with no blind
       // offline replay, same as a scheduled walk). Remove the now-orphaned
@@ -840,14 +847,17 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // with the real next-scheduled-walk card — best-effort; if this also
       // fails, the member can still remove it manually like any other
       // unplanned walk (deleteUnplannedWalk).
-      try {
-        await repository.deleteWalk?.(walk.id);
-      } catch {
-        // Already-surfaced actionError from startWalk() above stands.
+        try {
+          await repository.deleteWalk?.(walk.id);
+        } catch {
+          // Already-surfaced actionError from startWalk() above stands.
+        }
+        set((s) => ({ walks: s.walks.filter((w) => w.id !== walk.id) }));
       }
-      set((s) => ({ walks: s.walks.filter((w) => w.id !== walk.id) }));
+      return started;
+    } finally {
+      set({ isStartingUnplannedWalk: false });
     }
-    return started;
   },
 
   editUnplannedWalk: async (walkId, patch) => {
@@ -919,5 +929,4 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
 
   clearActionError: () => set({ actionError: null }),
 }));
-
 

@@ -30,10 +30,12 @@ describe('SettingsScreen wires the Achievements entry point (structural)', () =>
     expect(effectBlock).toMatch(/listSwapRequests\(\)/);
   });
 
-  it('computes family and personal progress from the loaded achievement walks via logic/achievements', () => {
-    expect(source).toMatch(/import \{ computeFamilyAchievementProgress, computePersonalAchievementProgress \} from '\.\.\/logic\/achievements';/);
+  it('computes progress from current walks while preserving immutable unlocks from the current family ledger', () => {
+    expect(source).toMatch(/import \{ computeFamilyAchievementProgress, computePersonalAchievementProgress, preserveUnlockedAchievements \} from '\.\.\/logic\/achievements';/);
     expect(source).toMatch(/computeFamilyAchievementProgress\(achievementWalks\)/);
     expect(source).toMatch(/computePersonalAchievementProgress\(achievementWalks, currentUserId, achievementSwapRequests\)/);
+    expect(source).toContain('loadedAchievementFamilyId === familyId ? achievementUnlocks : []');
+    expect(source).toContain('preserveUnlockedAchievements(');
   });
 
   it('passes the current user\'s own gamificationEnabled flag and a real setter into AchievementsModal, not a stub', () => {

@@ -32,7 +32,7 @@ import { useHealthStore } from '../store/healthStore';
 import { HealthGroomingModal } from '../components/HealthGroomingModal';
 import { useAchievementStore } from '../store/achievementStore';
 import { AchievementsModal } from '../components/AchievementsModal';
-import { computeFamilyAchievementProgress, computePersonalAchievementProgress } from '../logic/achievements';
+import { computeFamilyAchievementProgress, computePersonalAchievementProgress, preserveUnlockedAchievements } from '../logic/achievements';
 import { fetchHistoryWalks } from '../lib/permissionedWalks';
 import { listSwapRequests, type SwapRequestRow } from '../lib/requests';
 import { PrivacyAccessibilityInfoModal } from '../components/PrivacyAccessibilityInfoModal';
@@ -98,6 +98,9 @@ function SettingsScreenContent() {
   // local/demo mode (lib/requests.ts's own doc comment: no swap-request
   // concept exists there at all) rather than failing.
   const [achievementSwapRequests, setAchievementSwapRequests] = useState<SwapRequestRow[]>([]);
+  const achievementUnlocks = useAchievementStore((s) => s.unlocks);
+  const loadedAchievementFamilyId = useAchievementStore((s) => s.loadedFamilyId);
+  const currentFamilyUnlocks = loadedAchievementFamilyId === familyId ? achievementUnlocks : [];
   const [privacyAccessibilityModalVisible, setPrivacyAccessibilityModalVisible] = useState(false);
   const [remindersModalVisible, setRemindersModalVisible] = useState(false);
   const [sharingModalVisible, setSharingModalVisible] = useState(false);
@@ -241,10 +244,13 @@ function SettingsScreenContent() {
   // dog])`, so nothing here needs replacing.
   const currentUser = currentUserId ? users.find((u) => u.id === currentUserId) : undefined;
   const gamificationEnabled = currentUser?.gamificationEnabled ?? true;
-  const familyAchievementProgress = useMemo(() => computeFamilyAchievementProgress(achievementWalks), [achievementWalks]);
+  const familyAchievementProgress = useMemo(
+    () => preserveUnlockedAchievements(computeFamilyAchievementProgress(achievementWalks), currentFamilyUnlocks),
+    [achievementWalks, currentFamilyUnlocks]
+  );
   const personalAchievementProgress = useMemo(
-    () => (currentUserId ? computePersonalAchievementProgress(achievementWalks, currentUserId, achievementSwapRequests) : []),
-    [achievementWalks, currentUserId, achievementSwapRequests]
+    () => (currentUserId ? preserveUnlockedAchievements(computePersonalAchievementProgress(achievementWalks, currentUserId, achievementSwapRequests), currentFamilyUnlocks) : []),
+    [achievementWalks, currentUserId, achievementSwapRequests, currentFamilyUnlocks]
   );
 
   const persistDog = async (patch: Partial<Dog>) => {
@@ -887,8 +893,6 @@ const styles = StyleSheet.create({
   sheetScroll: { flexGrow: 0, flexShrink: 1 },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 8 },
 });
-
-
 
 
 

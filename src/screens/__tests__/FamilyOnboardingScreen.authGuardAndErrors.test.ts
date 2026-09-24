@@ -78,4 +78,12 @@ describe('FamilyOnboardingScreen — create/join auth guard and error mapping (s
     expect(createBody).not.toMatch(/e instanceof Error \? e\.message/);
     expect(joinBody).not.toMatch(/e instanceof Error \? e\.message/);
   });
+
+  it('lookup() maps backend errors through friendlyErrorMessage(), never raw e.message', () => {
+    const lookupStart = source.indexOf('const lookup = async () =>');
+    const lookupEnd = source.indexOf('const confirmJoin = async () =>', lookupStart);
+    const lookupBody = source.slice(lookupStart, lookupEnd);
+    expect(lookupBody).toMatch(/setJoinError\(friendlyErrorMessage\(e\)\)/);
+    expect(lookupBody).not.toMatch(/e instanceof Error \? e\.message/);
+  });
 });

@@ -178,6 +178,17 @@ export class OfflineFirstRepository implements Repository {
   async upsertUser(user: FamilyUser): Promise<void> {
     await this.local.upsertUser(user);
     if (this.remote) {
+      // Like dog-profile edits, make an online member edit authoritative
+      // before a concurrent queue flush or a subsequent screen reload can
+      // rehydrate the older remote row over the optimistic local photoUrl.
+      if (await this.isOnline()) {
+        try {
+          await this.remote.upsertUser(user);
+          return;
+        } catch {
+          // Preserve offline-first behaviour: retry through the sync queue.
+        }
+      }
       await this.queue.enqueue({ type: 'upsertUser', payload: user });
       await this.trySync();
     }

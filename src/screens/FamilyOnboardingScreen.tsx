@@ -258,7 +258,7 @@ export function FamilyOnboardingScreen() {
       if (!result) setJoinError('לא נמצאה משפחה עם הקוד הזה — בדקו שהקוד הוקלד נכון');
       else setFound(result);
     } catch (e) {
-      setJoinError(e instanceof Error ? e.message : 'לא הצלחנו לחפש את הקוד');
+      setJoinError(friendlyErrorMessage(e));
     } finally {
       setLooking(false);
     }

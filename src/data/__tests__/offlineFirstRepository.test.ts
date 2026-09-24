@@ -314,6 +314,38 @@ async function makeRepo(online: boolean, remote: Repository | null): Promise<Off
   return new OfflineFirstRepository(remote);
 }
 
+describe('OfflineFirstRepository.upsertUser — online direct write during queue flush', () => {
+  it('writes an edited member photo directly to the remote even while another queued operation is flushing', async () => {
+    let releaseQueuedDog!: () => void;
+    const queuedDogWrite = new Promise<void>((resolve) => { releaseQueuedDog = resolve; });
+    const remote = stubRemote({
+      upsertDog: jest.fn().mockReturnValueOnce(queuedDogWrite),
+      upsertUser: jest.fn().mockResolvedValue(undefined),
+    });
+    const repo = await makeRepo(true, remote);
+    const { setSyncQueueActorGetter } = require('../syncQueue');
+    setSyncQueueActorGetter(() => 'user-1');
+
+    const queuedDog: Dog = { id: 'dog-1', familyId: 'family-1', name: 'טופי', walksPerDay: 2 };
+    await (repo as any).queue.enqueue({ type: 'upsertDog', payload: queuedDog });
+    const activeFlush = repo.trySync();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(remote.upsertDog).toHaveBeenCalledWith(queuedDog);
+
+    const memberWithPhoto: FamilyUser = {
+      id: 'user-1', familyId: 'family-1', name: 'עידן', avatar: '🧑', color: '#123456',
+      photoUrl: 'https://example.test/member-photo.jpg', remindersEnabled: true, gamificationEnabled: true, createdAt: 'now',
+    };
+    await repo.upsertUser(memberWithPhoto);
+
+    expect(remote.upsertUser).toHaveBeenCalledWith(memberWithPhoto);
+    expect(await repo.pendingSyncCount()).toBe(1); // only the already-flushing dog item, never the photo update
+
+    releaseQueuedDog();
+    await activeFlush;
+  });
+});
+
 describe('OfflineFirstRepository — trySync', () => {
   it('is a no-op when no remote repository is configured (e.g. App.tsx calling it opportunistically in local/demo mode)', async () => {
     const repo = await makeRepo(true, null);

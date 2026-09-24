@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RtlText } from './RtlText';
@@ -20,6 +20,11 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
   const [uploading, setUploading] = useState(false);
   const [removeConfirmVisible, setRemoveConfirmVisible] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
+
+  useEffect(() => {
+    setPhotoLoadFailed(false);
+  }, [dog?.id, dog?.photoUrl]);
 
   const changePhoto = async () => {
     if (!dog || familyRole !== 'admin' || systemObserverActive) return;
@@ -66,12 +71,13 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
           {dog ? (
             <>
               <View style={styles.photoWrap}>
-                {dog.photoUrl ? (
+                {dog.photoUrl && !photoLoadFailed ? (
                   <Image
                     source={{ uri: dog.photoUrl }}
                     style={styles.photo}
                     resizeMode="cover"
                     accessibilityLabel={`תמונה של ${dog.name}`}
+                    onError={() => setPhotoLoadFailed(true)}
                   />
                 ) : (
                   <WalkieMascot
@@ -83,7 +89,7 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
               </View>
               <RtlText style={styles.name}>{dog.name}</RtlText>
               <RtlText style={styles.hint}>
-                {dog.photoUrl ? 'תמונה אישית' : 'תמונת הכלב אינה חובה — מוצג כלב Walkie Doggy כברירת מחדל'}
+                {dog.photoUrl && !photoLoadFailed ? 'תמונה אישית' : 'תמונת הכלב אינה חובה — מוצג כלב Walkie Doggy כברירת מחדל'}
               </RtlText>
               {familyRole === 'admin' && !systemObserverActive ? (
                 <View style={styles.actions}>
