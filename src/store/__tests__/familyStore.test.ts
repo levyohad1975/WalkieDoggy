@@ -223,7 +223,7 @@ describe('familyStore — updateUser', () => {
     const [user] = usersBefore;
     const spy = jest.spyOn(repository, 'upsertUser').mockRejectedValueOnce(new Error('boom'));
 
-    await useFamilyStore.getState().updateUser({ ...user, name: 'שם חדש' });
+    await expect(useFamilyStore.getState().updateUser({ ...user, name: 'שם חדש' })).rejects.toThrow('boom');
 
     expect(useFamilyStore.getState().users).toEqual(usersBefore);
     expect(useFamilyStore.getState().actionError).toBe('לא הצלחנו לעדכן את בן המשפחה');
@@ -251,7 +251,7 @@ describe('familyStore — updateUser', () => {
       throw new Error('boom');
     });
 
-    await useFamilyStore.getState().updateUser({ ...target, name: 'שם חדש' });
+    await expect(useFamilyStore.getState().updateUser({ ...target, name: 'שם חדש' })).rejects.toThrow('boom');
 
     expect(useFamilyStore.getState().users.find((u: any) => u.id === target.id)?.name).toBe(target.name);
     expect(useFamilyStore.getState().users.find((u: any) => u.id === other.id)?.name).toBe('שם עודכן במקביל');
