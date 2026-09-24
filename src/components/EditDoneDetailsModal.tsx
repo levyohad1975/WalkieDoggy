@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from './RtlText';
 import type { FamilyUser, Walk, WalkGpsSession } from '../types';
 import { colors } from '../theme/colors';
@@ -11,6 +11,7 @@ import { pickerDateToTime } from '../logic/timeInput';
 import { useGpsStore } from '../store/gpsStore';
 import { formatDistanceMeters } from '../logic/gpsDistance';
 import { RoutePreview } from './RoutePreview';
+import { ConfirmModal } from './ConfirmModal';
 
 interface EditDoneDetailsModalProps {
   visible: boolean;
@@ -63,6 +64,7 @@ export function EditDoneDetailsModal({
   const [gpsDistanceMeters, setGpsDistanceMeters] = useState<number | undefined>(undefined);
   const [distanceInput, setDistanceInput] = useState('');
   const [gpsSession, setGpsSession] = useState<WalkGpsSession | null>(null);
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
 
   useEffect(() => {
     if (visible && walk) {
@@ -235,12 +237,7 @@ export function EditDoneDetailsModal({
                 label="🗑️ מחיקת הטיול"
                 variant="danger"
                 accessibilityHint="יוצג אישור לפני מחיקה לצמיתות של הטיול"
-                onPress={() =>
-                  Alert.alert('למחוק את הטיול?', 'הפעולה תסיר את הטיול הזה לצמיתות. אי אפשר לבטל.', [
-                    { text: 'ביטול', style: 'cancel' },
-                    { text: 'מחק', style: 'destructive', onPress: () => onDelete(walk.id) },
-                  ])
-                }
+                onPress={() => setDeleteConfirmVisible(true)}
                 style={styles.deleteButton}
               />
             ) : null}
@@ -248,6 +245,17 @@ export function EditDoneDetailsModal({
           </Pressable>
         </Pressable>
       </KeyboardAvoidingView>
+      <ConfirmModal
+        visible={deleteConfirmVisible}
+        title="למחוק את הטיול?"
+        message="הפעולה תסיר את הטיול הזה לצמיתות. אי אפשר לבטל."
+        confirmLabel="מחק"
+        onConfirm={() => {
+          setDeleteConfirmVisible(false);
+          onDelete?.(walk.id);
+        }}
+        onCancel={() => setDeleteConfirmVisible(false)}
+      />
     </Modal>
   );
 }
