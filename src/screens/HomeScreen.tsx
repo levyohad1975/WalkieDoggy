@@ -30,6 +30,7 @@ import { ReminderMascotPrompt } from '../components/ReminderMascotPrompt';
 import { DogProfileModal } from '../components/DogProfileModal';
 import { DogSelectorRow } from '../components/DogSelectorRow';
 import { WalkieMascot } from '../components/WalkieMascot';
+import { DogPhoto } from '../components/DogPhoto';
 import { Avatar } from '../components/Avatar';
 import { CELEBRATION_LIBRARY, selectWalkCompletionCelebration, type CompletionCelebration } from '../logic/walkCompletionCelebration';
 import { achievementDefinition, type AchievementProgress } from '../logic/achievements';
@@ -885,7 +886,7 @@ export function HomeScreen() {
               <RtlText style={styles.dashboardLastWalkMeta}>{lastWalk.scheduledTime} · {walkDateContextLabel(lastWalk.date)}</RtlText>
             </View>
             <View style={styles.dashboardLastWalkDog}>
-              <WalkieMascot state="success" size={54} accessibilityLabel="כלב Walkie Doggy" />
+              <DogPhoto photoUrl={dog?.photoUrl} photoCutoutUrl={dog?.photoCutoutUrl} size={48} />
             </View>
             <RtlText style={styles.dashboardLastWalkChevron}>‹</RtlText>
           </Pressable>
