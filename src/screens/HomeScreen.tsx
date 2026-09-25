@@ -60,7 +60,6 @@ export function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
   const [dogProfileVisible, setDogProfileVisible] = useState(false);
   const [heroBackgroundId, setHeroBackgroundId] = useState<string | undefined>(undefined);
-  const [heroPhotoFailed, setHeroPhotoFailed] = useState(false);
   const currentUserId = useAuthStore((s) => s.currentUserId)!;
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const effectiveRole = useEffectiveFamilyRole();
@@ -76,9 +75,7 @@ export function HomeScreen() {
   const heroBackground = getDogBackground(heroBackgroundId);
   useEffect(() => {
     setHeroBackgroundId(getDogBackgroundId(dog?.id));
-    setHeroPhotoFailed(false);
-  }, [dog?.id, dog?.photoUrl]);
-  const showPersonalHero = Boolean(dog?.photoUrl) && !heroPhotoFailed;
+  }, [dog?.id]);
 
   const {
     walks,
@@ -684,44 +681,35 @@ export function HomeScreen() {
           </Pressable>
         </View>
 
-        {/* Issue #145 / approved Dashboard Option D. The real family-dog
-            photo is a full-width, deliberately shallow hero; its only
-            interaction remains opening the profile. No image persistence
-            behaviour is changed here. */}
+        {/* Issue #145 / approved Dashboard Option D. The normal Home hero is
+            the soft lavender dashboard composition from the approved
+            reference, not a full-bleed family-dog photo. A deliberately
+            selected scene remains available as a backdrop; photo upload,
+            removal and sync are untouched by this presentation-only work. */}
         <Pressable
           onPress={() => setDogProfileVisible(true)}
           style={styles.dashboardHero}
           accessibilityRole="button"
           accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
         >
-          {/* A personal photo already contains its own scene. Do not stack it
-              on top of a different selected backdrop: that creates the
-              pasted-on look. The scenic gallery is the fallback only. */}
-          {!showPersonalHero ? (
+          {heroBackground ? (
             <Image
-              source={heroBackground ? { uri: heroBackground.uri } : require('../../assets/onboarding-hero.png')}
+              source={{ uri: heroBackground.uri }}
               style={styles.dashboardHeroImage}
               resizeMode="cover"
             />
           ) : null}
-          {showPersonalHero ? (
-            <Image
-              source={{ uri: dog!.photoUrl! }}
-              style={styles.dashboardHeroImage}
-              resizeMode="cover"
-              onError={() => setHeroPhotoFailed(true)}
-            />
-          ) : null}
+          {!heroBackground ? <View style={styles.dashboardHeroBloomOne} pointerEvents="none" /> : null}
+          {!heroBackground ? <View style={styles.dashboardHeroBloomTwo} pointerEvents="none" /> : null}
+          {!heroBackground ? <View style={styles.dashboardHeroGlow} pointerEvents="none" /> : null}
           <View style={styles.dashboardHeroShade} />
           <View style={styles.dashboardHeroGreeting} pointerEvents="none">
             <RtlText style={styles.dashboardHeroGreetingTitle}>שלום {family?.name ?? 'משפחה'}</RtlText>
             <RtlText style={styles.dashboardHeroGreetingSubtitle}>{dog?.name ?? 'הכלב/ה'} מחכה לטיול הבא 🐾</RtlText>
           </View>
-          {!showPersonalHero ? (
-            <View style={styles.dashboardHeroMascot} pointerEvents="none">
-              <WalkieMascot state="idle" size={152} accessibilityLabel="כלב Walkie Doggy" />
-            </View>
-          ) : null}
+          <View style={styles.dashboardHeroMascot} pointerEvents="none">
+            <WalkieMascot state="idle" size={172} accessibilityLabel="כלב Walkie Doggy" />
+          </View>
         </Pressable>
 
         {/* PRD §11: "ב-Home יש בחירת כלב קלה כאשר יש יותר מכלב אחד" — an
@@ -881,15 +869,6 @@ export function HomeScreen() {
             </View>
           </Pressable>
         ) : null}
-
-        <Pressable
-          onPress={() => navigation.navigate('Schedule')}
-          style={styles.dashboardMoreButton}
-          accessibilityRole="button"
-          accessibilityLabel="הצגת אפשרויות נוספות"
-        >
-          <RtlText style={styles.dashboardMoreButtonText}>עוד  ‹</RtlText>
-        </Pressable>
 
         <View style={styles.dashboardOverflow}>
         {lastWalk ? (
@@ -1388,44 +1367,45 @@ const styles = StyleSheet.create({
   testModeBannerText: { flex: 1, color: colors.textInverse, fontWeight: '700', fontSize: typography.meta.fontSize, textAlign: 'right' },
   testModeBannerButton: { backgroundColor: '#ffffff33', borderRadius: radii.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   testModeBannerButtonText: { color: colors.textInverse, fontWeight: '700', fontSize: 12 },
-  topRow: { position: 'relative', minHeight: 58, alignItems: 'center', justifyContent: 'center' },
-  brandWordmark: { position: 'absolute', left: '50%', width: 126, height: 40, transform: [{ translateX: -63 }] },
-  mascotHeaderButton: { position: 'absolute', right: 0, top: 6, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E4E7F4' },
+  topRow: { position: 'relative', minHeight: 62, alignItems: 'center', justifyContent: 'center' },
+  brandWordmark: { position: 'absolute', left: 0, width: 132, height: 42 },
+  mascotHeaderButton: { position: 'absolute', right: 0, top: 8, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E4E7F4' },
   dashboardHero: {
     width: '100%',
-    height: 218,
-    borderRadius: 28,
-    backgroundColor: '#DCE8FF',
+    height: 210,
+    borderRadius: 32,
+    backgroundColor: '#E8ECFF',
     overflow: 'hidden',
     alignItems: 'flex-end',
     justifyContent: 'flex-end',
   },
   dashboardHeroImage: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
-  dashboardHeroShade: { ...StyleSheet.absoluteFill, backgroundColor: '#1B1F5A10' },
-  dashboardHeroGreeting: { position: 'absolute', top: 20, left: 18, alignItems: 'flex-start', zIndex: 2 },
-  dashboardHeroGreetingTitle: { fontSize: 25, lineHeight: 30, color: '#17245B', fontWeight: '900', textAlign: 'left' },
-  dashboardHeroGreetingSubtitle: { marginTop: 3, fontSize: 15, color: '#2E3170', fontWeight: '700', textAlign: 'left' },
-  dashboardHeroMascot: { position: 'absolute', right: 18, bottom: 8, zIndex: 2 },
+  dashboardHeroBloomOne: { position: 'absolute', width: 270, height: 270, borderRadius: 135, left: -112, bottom: -174, backgroundColor: '#D8D4FF' },
+  dashboardHeroBloomTwo: { position: 'absolute', width: 250, height: 250, borderRadius: 125, right: -104, top: -132, backgroundColor: '#C9D7FF' },
+  dashboardHeroGlow: { position: 'absolute', width: 260, height: 92, borderRadius: 130, left: 24, bottom: 16, backgroundColor: '#FFFFFF75', transform: [{ rotate: '-8deg' }] },
+  dashboardHeroShade: { ...StyleSheet.absoluteFill, backgroundColor: '#FFFFFF12' },
+  dashboardHeroGreeting: { position: 'absolute', top: 34, left: 22, width: '57%', alignItems: 'flex-end', zIndex: 2 },
+  dashboardHeroGreetingTitle: { width: '100%', fontSize: 26, lineHeight: 31, color: '#253275', fontWeight: '900', textAlign: 'right' },
+  dashboardHeroGreetingSubtitle: { width: '100%', marginTop: 4, fontSize: 15, lineHeight: 20, color: '#454E91', fontWeight: '700', textAlign: 'right' },
+  dashboardHeroMascot: { position: 'absolute', right: -8, bottom: -8, zIndex: 2 },
   dashboardHeroCopy: { width: '52%', alignItems: 'flex-end', alignSelf: 'flex-start', paddingTop: 38, paddingHorizontal: spacing.md, zIndex: 2 },
   dashboardHeroEyebrow: { fontSize: 16, color: '#27376F', fontWeight: '700', textAlign: 'right' },
   dashboardHeroName: { fontSize: 30, lineHeight: 36, color: '#16245B', fontWeight: '900', textAlign: 'right' },
   dashboardShortcuts: { flexDirection: 'row-reverse', gap: spacing.sm, width: '100%', marginTop: -2 },
   dashboardShortcut: { flex: 1, minHeight: 84, borderRadius: 22, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, gap: 4, borderWidth: 1, borderColor: '#FFFFFFAA' },
-  dashboardShortcutMint: { backgroundColor: '#D5F5EE' },
-  dashboardShortcutBlue: { backgroundColor: '#DCE8FF' },
+  dashboardShortcutMint: { backgroundColor: '#EDF2FF' },
+  dashboardShortcutBlue: { backgroundColor: '#E6ECFF' },
   dashboardShortcutGold: { backgroundColor: '#FFF0C9' },
-  dashboardShortcutPurple: { backgroundColor: '#EBDDFF' },
+  dashboardShortcutPurple: { backgroundColor: '#F0EBFF' },
   dashboardShortcutLabel: { fontSize: 14, lineHeight: 19, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
   dashboardShortcutIcon: { fontSize: 26, lineHeight: 28 },
-  dashboardMoreButton: { alignSelf: 'center', minHeight: 30, paddingHorizontal: spacing.md, alignItems: 'center', justifyContent: 'center' },
-  dashboardMoreButtonText: { fontSize: 15, fontWeight: '800', color: colors.primaryDark, textDecorationLine: 'underline' },
   dashboardLastWalk: { minHeight: 96, borderRadius: radii.xl, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EAE5DD', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm, shadowColor: '#17245B', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
   dashboardLastWalkCopy: { flex: 1, alignItems: 'flex-end' },
   dashboardLastWalkTitle: { fontSize: 18, fontWeight: '900', color: '#17245B', textAlign: 'right' },
   dashboardLastWalkMeta: { marginTop: 5, fontSize: 14, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
   dashboardLastWalkDog: { width: 82, height: 66, overflow: 'hidden', borderRadius: radii.lg, backgroundColor: '#EEF3FF', alignItems: 'center', justifyContent: 'center' },
   dashboardLastWalkChevron: { fontSize: 34, color: '#454B9E', writingDirection: 'ltr' },
-  dashboardTimeline: { minHeight: 88, borderRadius: radii.xl, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EAE5DD', padding: spacing.md, gap: spacing.sm },
+  dashboardTimeline: { minHeight: 88, borderRadius: radii.xl, backgroundColor: '#FBFBFF', borderWidth: 1, borderColor: '#E1E2F4', padding: spacing.md, gap: spacing.sm },
   dashboardTimelineHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   dashboardTimelineTitle: { fontSize: 16, fontWeight: '900', color: '#17245B', textAlign: 'right' },
   dashboardTimelineChevron: { fontSize: 24, color: '#454B9E', writingDirection: 'ltr' },
@@ -1433,7 +1413,7 @@ const styles = StyleSheet.create({
   dashboardTimelineStop: { alignItems: 'center', gap: 4 },
   dashboardTimelineTime: { fontSize: 13, fontWeight: '800', color: '#2E3170' },
   dashboardOverflow: { display: 'none' },
-  notificationButton: { position: 'absolute', left: 0, top: 6, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF4D6', borderWidth: 1, borderColor: '#F2E5C2' },
+  notificationButton: { position: 'absolute', right: 52, top: 8, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF4D6', borderWidth: 1, borderColor: '#F2E5C2' },
   notificationIcon: { fontSize: 18 },
   requestsCountBadge: { minWidth: spacing.xl, height: spacing.xl, borderRadius: radii.sm, paddingHorizontal: spacing.xs, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryDark },
   requestsCountText: { fontSize: 11, fontWeight: '800', color: colors.textInverse },

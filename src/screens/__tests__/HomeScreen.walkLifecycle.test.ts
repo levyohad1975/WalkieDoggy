@@ -5,11 +5,16 @@ describe('Home integrated walk lifecycle', () => {
   const home = fs.readFileSync(path.join(__dirname, '..', 'HomeScreen.tsx'), 'utf8');
   const card = fs.readFileSync(path.join(__dirname, '..', '..', 'components', 'NextWalkCard.tsx'), 'utf8');
 
-  it('keeps the family dog in the approved photo-led dashboard hero without changing its profile flow', () => {
+  it('keeps the approved lavender dashboard hero independent of family-photo persistence', () => {
     expect(home).toContain('showDogPhoto');
     expect(home).toContain('style={styles.dashboardHero}');
     expect(home).toContain('style={styles.dashboardHeroShade}');
-    expect(home).toContain('height: 218');
+    expect(home).toContain('height: 210');
+    expect(home).toContain('style={styles.dashboardHeroBloomOne}');
+    expect(home).toContain('style={styles.dashboardHeroBloomTwo}');
+    expect(home).toContain('style={styles.dashboardHeroGlow}');
+    expect(home).toContain('heroBackground ? (');
+    expect(home).not.toContain('source={{ uri: dog!.photoUrl! }}');
     expect(home).toContain('tone="dashboard"');
     expect(home).toContain('setDogProfileVisible(true)');
     expect(home).toContain("style={styles.mascotHeaderButton}");
@@ -22,13 +27,11 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('setRequestTimeChangeWalkId(nextWalk?.id ?? null)');
   });
 
-  it('keeps Home compact by showing two upcoming walks and linking to the full schedule', () => {
-    expect(home).toContain('upcoming.slice(0, 2).map');
-    expect(home).toContain('עוד ‹');
-    expect(home).toContain('הצגת כל הטיולים בלוח הזמנים');
+  it('keeps Home compact with one tappable three-stop timeline instead of a long list', () => {
+    expect(home).toContain('upcoming.slice(0, 3).map');
+    expect(home).toContain('פתיחת לוח הזמנים להמשך היום');
     expect(home).toContain('scrollEnabled={false}');
-    expect(home).toContain('style={styles.dashboardMoreButton}');
-    expect(home).toContain('>עוד  ‹</RtlText>');
+    expect(home).not.toContain('style={styles.dashboardMoreButton}');
   });
 
   it('exposes start and end walk as the primary lifecycle action', () => {
