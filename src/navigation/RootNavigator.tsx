@@ -112,7 +112,21 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
       });
 
   return (
-    <View style={{ height: layout.rowHeight + insets.bottom, paddingBottom: Math.max(spacing.sm, insets.bottom), paddingTop: 6, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }}>
+    <View
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 50,
+        height: layout.rowHeight + insets.bottom,
+        paddingBottom: Math.max(spacing.sm, insets.bottom),
+        paddingTop: 6,
+        backgroundColor: colors.surface,
+        borderTopWidth: 1,
+        borderTopColor: colors.border,
+      }}
+    >
       <View
         style={{
           flex: 1,
@@ -125,6 +139,32 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
       >
         {buttons}
       </View>
+      <Pressable
+        onPress={() => navigation.navigate('Home')}
+        accessibilityRole="button"
+        accessibilityLabel="בית"
+        style={{
+          position: 'absolute',
+          left: '50%',
+          top: -26,
+          marginLeft: -29,
+          width: 58,
+          height: 58,
+          borderRadius: 29,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: colors.primary,
+          borderWidth: 5,
+          borderColor: colors.surface,
+          shadowColor: '#17245B',
+          shadowOpacity: 0.18,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 4 },
+          elevation: 8,
+        }}
+      >
+        <RtlText allowFontScaling={false} style={{ fontSize: 28, lineHeight: 32 }}>🐾</RtlText>
+      </Pressable>
     </View>
   );
 }
