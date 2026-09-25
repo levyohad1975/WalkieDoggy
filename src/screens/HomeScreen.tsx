@@ -674,33 +674,23 @@ export function HomeScreen() {
           ) : null}
         </View>
 
-        {/*
-          Issue #145 / approved Dashboard Option D: a controlled, two-pane
-          family-dog hero. The photo is display-only: this does not alter the
-          upload, removal, crop, or sync path in any way. Keeping copy on the
-          cream pane (rather than over the image) preserves readable RTL text
-          on every photo and stops the hero from taking over the viewport.
-        */}
+        {/* Issue #145 / approved Dashboard Option D. The real family-dog
+            photo is a full-width, deliberately shallow hero; its only
+            interaction remains opening the profile. No image persistence
+            behaviour is changed here. */}
         <Pressable
           onPress={() => setDogProfileVisible(true)}
           style={styles.dashboardHero}
           accessibilityRole="button"
           accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
         >
-          <View style={styles.dashboardHeroMedia}>
-            {dog?.photoUrl ? (
-              <Image source={{ uri: dog.photoUrl }} style={styles.dashboardHeroImage} resizeMode="cover" />
-            ) : (
-              <WalkieMascot state="ready" size={108} accessibilityLabel="Walkie Doggy" />
-            )}
-          </View>
+          {dog?.photoUrl ? <Image source={{ uri: dog.photoUrl }} style={styles.dashboardHeroImage} resizeMode="cover" /> : null}
+          <View style={styles.dashboardHeroShade} />
           <View style={styles.dashboardHeroCopy}>
             <RtlText style={styles.dashboardHeroEyebrow}>היום עם</RtlText>
-            <RtlText style={styles.dashboardHeroName} numberOfLines={1}>
-              {dog?.name ?? 'הכלב/ה שלנו'}
-            </RtlText>
-            <RtlText style={styles.dashboardHeroHint}>כל מה שצריך לטיול הבא, במקום אחד</RtlText>
+            <RtlText style={styles.dashboardHeroName} numberOfLines={1}>{dog?.name ?? 'הכלב/ה שלנו'}</RtlText>
           </View>
+          {!dog?.photoUrl ? <WalkieMascot state="ready" size={124} accessibilityLabel="Walkie Doggy" /> : null}
         </Pressable>
 
         {/* PRD §11: "ב-Home יש בחירת כלב קלה כאשר יש יותר מכלב אחד" — an
@@ -815,13 +805,24 @@ export function HomeScreen() {
         )}
         </View>
 
-        <Button
-          label="הוסף טיול שבוצע"
-          variant="secondary"
-          onPress={() => setAddUnplannedVisible(true)}
-          style={styles.unplannedButton}
-          shrinkToFit
-        />
+        <View style={styles.dashboardShortcuts} accessibilityLabel="קיצורי דרך">
+          <Pressable onPress={() => setAddUnplannedVisible(true)} style={[styles.dashboardShortcut, styles.dashboardShortcutMint]} accessibilityRole="button" accessibilityLabel="הוספת טיול ידני">
+            <RtlText style={styles.dashboardShortcutIcon}>📍</RtlText>
+            <RtlText style={styles.dashboardShortcutLabel}>הוספת טיול{`\n`}ידני</RtlText>
+          </Pressable>
+          <Pressable onPress={() => navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutBlue]} accessibilityRole="button" accessibilityLabel="לוח זמנים">
+            <RtlText style={styles.dashboardShortcutIcon}>🗓️</RtlText>
+            <RtlText style={styles.dashboardShortcutLabel}>לוח זמנים</RtlText>
+          </Pressable>
+          <Pressable onPress={() => navigation.navigate('History')} style={[styles.dashboardShortcut, styles.dashboardShortcutGold]} accessibilityRole="button" accessibilityLabel="היסטוריית טיולים">
+            <RtlText style={styles.dashboardShortcutIcon}>📊</RtlText>
+            <RtlText style={styles.dashboardShortcutLabel}>היסטוריית{`\n`}טיולים</RtlText>
+          </Pressable>
+          <Pressable onPress={() => navigation.navigate('Family')} style={[styles.dashboardShortcut, styles.dashboardShortcutPurple]} accessibilityRole="button" accessibilityLabel="משפחה">
+            <RtlText style={styles.dashboardShortcutIcon}>👥</RtlText>
+            <RtlText style={styles.dashboardShortcutLabel}>משפחה</RtlText>
+          </Pressable>
+        </View>
 
         {lastWalk ? (
           <View style={styles.section}>
@@ -1297,8 +1298,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: 14, paddingBottom: spacing.xxxl, width: '100%' },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: 14 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
-  nextWalkLift: { marginTop: 0, zIndex: 1, paddingHorizontal: 0 },
-  unplannedButton: { marginTop: -2 },
+  nextWalkLift: { marginTop: -64, zIndex: 1, paddingHorizontal: 0 },
   testModeBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1316,31 +1316,26 @@ const styles = StyleSheet.create({
   mascotHeaderButton: { position: 'absolute', right: 0, top: 6, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   dashboardHero: {
     width: '100%',
-    minHeight: 156,
-    maxHeight: 184,
+    height: 256,
     borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceMuted,
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    overflow: 'hidden',
-    ...elevation.card,
-  },
-  dashboardHeroMedia: {
-    width: '46%',
-    alignSelf: 'stretch',
+    backgroundColor: colors.primaryDark,
     overflow: 'hidden',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primarySoft,
-    flexShrink: 0,
+    justifyContent: 'flex-end',
   },
-  dashboardHeroImage: { width: '100%', height: '100%' },
-  dashboardHeroCopy: { flex: 1, alignItems: 'flex-end', justifyContent: 'center', gap: spacing.xs, paddingHorizontal: spacing.lg },
-  dashboardHeroEyebrow: { ...typography.meta, color: colors.textSecondary, fontWeight: '700', textAlign: 'right' },
-  dashboardHeroName: { fontSize: 28, lineHeight: 34, color: colors.textPrimary, fontWeight: '900', textAlign: 'right' },
-  dashboardHeroHint: { ...typography.meta, color: colors.primaryDark, fontWeight: '700', textAlign: 'right', marginTop: 2 },
+  dashboardHeroImage: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
+  dashboardHeroShade: { ...StyleSheet.absoluteFill, backgroundColor: '#00000026' },
+  dashboardHeroCopy: { width: '100%', alignItems: 'center', paddingBottom: 76, paddingHorizontal: spacing.lg },
+  dashboardHeroEyebrow: { fontSize: 16, color: colors.textInverse, fontWeight: '700', textAlign: 'center' },
+  dashboardHeroName: { fontSize: 30, lineHeight: 36, color: colors.textInverse, fontWeight: '900', textAlign: 'center' },
+  dashboardShortcuts: { flexDirection: 'row-reverse', gap: spacing.sm, width: '100%', marginTop: -2 },
+  dashboardShortcut: { flex: 1, minHeight: 106, borderRadius: radii.lg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, gap: 8 },
+  dashboardShortcutMint: { backgroundColor: '#DDF8F2' },
+  dashboardShortcutBlue: { backgroundColor: '#E7F1FF' },
+  dashboardShortcutGold: { backgroundColor: '#FFF4D5' },
+  dashboardShortcutPurple: { backgroundColor: '#F1E7FF' },
+  dashboardShortcutLabel: { fontSize: 14, lineHeight: 19, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
+  dashboardShortcutIcon: { fontSize: 26, lineHeight: 28 },
   notificationButton: { position: 'absolute', left: 0, top: 11, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
   notificationIcon: { fontSize: 18 },
   requestsCountBadge: { minWidth: spacing.xl, height: spacing.xl, borderRadius: radii.sm, paddingHorizontal: spacing.xs, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryDark },

@@ -5,12 +5,20 @@ describe('Home integrated walk lifecycle', () => {
   const home = fs.readFileSync(path.join(__dirname, '..', 'HomeScreen.tsx'), 'utf8');
   const card = fs.readFileSync(path.join(__dirname, '..', '..', 'components', 'NextWalkCard.tsx'), 'utf8');
 
-  it('keeps the family dog in the approved compact dashboard hero without changing its profile flow', () => {
+  it('keeps the family dog in the approved photo-led dashboard hero without changing its profile flow', () => {
     expect(home).toContain('showDogPhoto');
     expect(home).toContain('style={styles.dashboardHero}');
-    expect(home).toContain('style={styles.dashboardHeroMedia}');
+    expect(home).toContain('style={styles.dashboardHeroShade}');
+    expect(home).toContain('height: 256');
     expect(home).toContain('setDogProfileVisible(true)');
     expect(home).toContain("style={styles.mascotHeaderButton}");
+  });
+
+  it('keeps the approved four dashboard shortcuts wired to the existing flows', () => {
+    expect(home).toContain("navigation.navigate('Schedule')");
+    expect(home).toContain("navigation.navigate('History')");
+    expect(home).toContain("navigation.navigate('Family')");
+    expect(home).toContain('setAddUnplannedVisible(true)');
   });
 
   it('exposes start and end walk as the primary lifecycle action', () => {
@@ -26,7 +34,8 @@ describe('Home integrated walk lifecycle', () => {
   });
 
   it('keeps only the approved completed-walk entry instead of a redundant spontaneous-start CTA', () => {
-    expect(home).toContain('label="הוסף טיול שבוצע"');
+    expect(home).toContain('הוספת טיול');
+    expect(home).toContain('setAddUnplannedVisible(true)');
     expect(home).not.toContain('התחל טיול ספונטני');
   });
 
