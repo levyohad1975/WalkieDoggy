@@ -738,11 +738,6 @@ export function HomeScreen() {
             activeStartedAt={nextWalk.status === 'in_progress' ? nextWalk.startedAt ?? null : null}
             liveDistanceMeters={gpsTrackingWalkId === nextWalk.id ? gpsDistanceMeters : null}
             gpsStatus={gpsTrackingWalkId === nextWalk.id ? gpsPermissionStatus : null}
-            onStartWalk={
-              effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId
-                ? () => void startWalk(nextWalk.id)
-                : undefined
-            }
             onEndWalk={
               nextWalk.status === 'in_progress' && (effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId)
                 ? () => setCompleteWalkId(nextWalk.id)
@@ -788,18 +783,6 @@ export function HomeScreen() {
         )}
         </View>
 
-        {dog && (!nextWalk || nextWalk.status !== 'in_progress') ? (
-          <Button
-            label={isStartingUnplannedWalk ? 'מתחיל טיול...' : '▶ התחל טיול ספונטני'}
-            variant="secondary"
-            onPress={() => void startUnplannedWalk(familyId, dog.id, effectiveUserId)}
-            disabled={isStartingUnplannedWalk}
-            accessibilityLabel="התחלת טיול ספונטני עכשיו"
-            accessibilityHint="יוצר טיול חדש ומתחיל אותו מיד, בלי להשפיע על התורנות"
-            style={styles.unplannedButton}
-            shrinkToFit
-          />
-        ) : null}
 
         <Button
           label="+ הוסף טיול שבוצע"
