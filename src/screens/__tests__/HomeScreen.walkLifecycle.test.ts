@@ -5,16 +5,18 @@ describe('Home integrated walk lifecycle', () => {
   const home = fs.readFileSync(path.join(__dirname, '..', 'HomeScreen.tsx'), 'utf8');
   const card = fs.readFileSync(path.join(__dirname, '..', '..', 'components', 'NextWalkCard.tsx'), 'utf8');
 
-  it('moves the family dog identity into the next-walk card and removes the standalone profile card', () => {
+  it('keeps the family dog in the approved compact dashboard hero without changing its profile flow', () => {
     expect(home).toContain('showDogPhoto');
-    expect(home).not.toContain('style={styles.dogSummaryCard}');
+    expect(home).toContain('style={styles.dashboardHero}');
+    expect(home).toContain('style={styles.dashboardHeroMedia}');
+    expect(home).toContain('setDogProfileVisible(true)');
     expect(home).toContain("style={styles.mascotHeaderButton}");
   });
 
   it('exposes start and end walk as the primary lifecycle action', () => {
-    expect(card).toContain('label={overdue ? \'התחל טיול עכשיו\' : \'התחל טיול\'}');
+    expect(card).toContain('label="התחל טיול עכשיו"');
     expect(card).toContain('label="סיים טיול"');
-    expect(card).toContain('label="✓ סמן כבוצע"');
+    expect(card).toContain('label="בוצע"');
     expect(card).toContain('label="לא בוצע"');
     expect(card).toContain('overdue && onMarkNotDone');
     expect(home).toContain('void startWalk(nextWalk.id)');
@@ -23,10 +25,9 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('setCompleteWalkId(nextWalk.id)');
   });
 
-  it('disables the spontaneous-start button while its first tap is in flight', () => {
-    expect(home).toContain('isStartingUnplannedWalk,');
-    expect(home).toContain("label={isStartingUnplannedWalk ? 'מתחיל טיול...' : '▶ התחל טיול ספונטני'}");
-    expect(home).toContain('disabled={isStartingUnplannedWalk}');
+  it('keeps only the approved completed-walk entry instead of a redundant spontaneous-start CTA', () => {
+    expect(home).toContain('label="הוסף טיול שבוצע"');
+    expect(home).not.toContain('התחל טיול ספונטני');
   });
 
   it('keeps overdue red for pending walks without overriding an active green walk', () => {
