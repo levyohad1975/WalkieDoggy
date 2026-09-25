@@ -7,32 +7,39 @@
 /**
  * Background-removal provider abstraction. The Edge Function handler
  * (index.ts) only ever talks to this interface — never to a specific
- * vendor's API directly — so the provider can be swapped (e.g. for a
- * self-hosted `rembg` service) without touching auth, Storage, or request
- * handling. Approved provider: Hugging Face Inference API running
- * briaai/RMBG-1.4 (see docs/engineering/ for the cost/privacy tradeoffs
- * that were compared before choosing it).
+ * vendor's API directly — so the provider can be swapped without touching
+ * auth, Storage, or request handling. Approved provider: a self-hosted
+ * `rembg` service (isnet-general-use model) — $0 per-image, no managed
+ * inference API, no BRIA/remove.bg — running rembg's own HTTP server
+ * (`rembg s`) on free hosting (e.g. a Hugging Face Space or Render free web
+ * service) that this function is configured to call.
  */
 export interface BackgroundRemovalProvider {
   /** Takes the original photo's bytes, returns a transparent-background PNG's bytes. Throws on any failure — the caller treats this as best-effort and never lets it break the upload flow. */
   removeBackground(imageBytes: Uint8Array, contentType: string): Promise<Uint8Array>;
 }
 
-const HUGGING_FACE_MODEL_URL = 'https://api-inference.huggingface.co/models/briaai/RMBG-1.4';
+const REMBG_MODEL = 'isnet-general-use';
 
-const huggingFaceRmbgProvider: BackgroundRemovalProvider = {
+const selfHostedRembgProvider: BackgroundRemovalProvider = {
   async removeBackground(imageBytes, contentType) {
-    const token = Deno.env.get('HUGGINGFACE_API_TOKEN');
-    if (!token) {
-      throw new Error('remove-photo-background: HUGGINGFACE_API_TOKEN is not configured');
+    const serviceUrl = Deno.env.get('REMBG_SERVICE_URL');
+    if (!serviceUrl) {
+      throw new Error('remove-photo-background: REMBG_SERVICE_URL is not configured');
     }
-    const response = await fetch(HUGGING_FACE_MODEL_URL, {
+    const token = Deno.env.get('REMBG_SERVICE_TOKEN');
+
+    // rembg's built-in HTTP server (`rembg s`) exposes POST /api/remove,
+    // accepting the image as multipart form-data plus a `model` field —
+    // see https://github.com/danielgatis/rembg#usage-as-a-http-server.
+    const form = new FormData();
+    form.append('model', REMBG_MODEL);
+    form.append('file', new Blob([imageBytes], { type: contentType }), 'photo');
+
+    const response = await fetch(`${serviceUrl.replace(/\/+$/, '')}/api/remove`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': contentType,
-      },
-      body: imageBytes,
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body: form,
     });
     if (!response.ok) {
       throw new Error(`remove-photo-background: provider request failed (${response.status})`);
@@ -43,10 +50,10 @@ const huggingFaceRmbgProvider: BackgroundRemovalProvider = {
 };
 
 /**
- * Single seam for swapping providers later (e.g. self-hosted `rembg`):
- * write a second object implementing BackgroundRemovalProvider and return
- * it here instead — no other file needs to change.
+ * Single seam for swapping providers later: write a second object
+ * implementing BackgroundRemovalProvider and return it here instead — no
+ * other file needs to change.
  */
 export function getBackgroundRemovalProvider(): BackgroundRemovalProvider {
-  return huggingFaceRmbgProvider;
+  return selfHostedRembgProvider;
 }

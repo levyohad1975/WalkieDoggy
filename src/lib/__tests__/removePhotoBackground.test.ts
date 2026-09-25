@@ -41,6 +41,12 @@ describe('remove-photo-background Edge Function', () => {
   it('provider.ts exposes the swap seam and keeps the vendor call fully isolated behind it', () => {
     expect(provider).toContain('export interface BackgroundRemovalProvider');
     expect(provider).toContain('export function getBackgroundRemovalProvider()');
-    expect(provider).toContain("Deno.env.get('HUGGINGFACE_API_TOKEN')");
+    expect(provider).toContain("Deno.env.get('REMBG_SERVICE_URL')");
+  });
+
+  it('uses a self-hosted rembg service — no BRIA/remove.bg/managed Hugging Face inference', () => {
+    expect(provider).not.toMatch(/api-inference\.huggingface\.co|api\.remove\.bg|briaai/i);
+    expect(provider).toContain("const REMBG_MODEL = 'isnet-general-use';");
+    expect(provider).toContain("form.append('model', REMBG_MODEL);");
   });
 });
