@@ -11,7 +11,7 @@ import { computeLastWalk, computeNextWalk, isOverdue, upcomingWalks } from '../l
 import { walkDateContextLabel } from '../logic/walkDateContext';
 import { canRequestChangeForWalk, computeNextWalkCardActions, formatCompletedAtBadge } from '../logic/walkActions';
 import { colors } from '../theme/colors';
-import { breakpoints, nativeDirection, radii, spacing, typography } from '../theme/tokens';
+import { breakpoints, elevation, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { NextWalkCard } from '../components/NextWalkCard';
 import { WalkRow } from '../components/WalkRow';
 import { EmptyState, ErrorState } from '../components/EmptyState';
@@ -83,8 +83,6 @@ export function HomeScreen() {
     rescheduleWalk,
     skip,
     addUnplannedWalk,
-    startUnplannedWalk,
-    isStartingUnplannedWalk,
     editDoneDetails,
     editUnplannedWalk,
     deleteUnplannedWalk,
@@ -676,6 +674,35 @@ export function HomeScreen() {
           ) : null}
         </View>
 
+        {/*
+          Issue #145 / approved Dashboard Option D: a controlled, two-pane
+          family-dog hero. The photo is display-only: this does not alter the
+          upload, removal, crop, or sync path in any way. Keeping copy on the
+          cream pane (rather than over the image) preserves readable RTL text
+          on every photo and stops the hero from taking over the viewport.
+        */}
+        <Pressable
+          onPress={() => setDogProfileVisible(true)}
+          style={styles.dashboardHero}
+          accessibilityRole="button"
+          accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
+        >
+          <View style={styles.dashboardHeroMedia}>
+            {dog?.photoUrl ? (
+              <Image source={{ uri: dog.photoUrl }} style={styles.dashboardHeroImage} resizeMode="cover" />
+            ) : (
+              <WalkieMascot state="ready" size={108} accessibilityLabel="Walkie Doggy" />
+            )}
+          </View>
+          <View style={styles.dashboardHeroCopy}>
+            <RtlText style={styles.dashboardHeroEyebrow}>היום עם</RtlText>
+            <RtlText style={styles.dashboardHeroName} numberOfLines={1}>
+              {dog?.name ?? 'הכלב/ה שלנו'}
+            </RtlText>
+            <RtlText style={styles.dashboardHeroHint}>כל מה שצריך לטיול הבא, במקום אחד</RtlText>
+          </View>
+        </Pressable>
+
         {/* PRD §11: "ב-Home יש בחירת כלב קלה כאשר יש יותר מכלב אחד" — an
             easy dog picker on Home whenever there's more than one dog.
             Selecting a chip makes that dog active (selectDog(), persisted),
@@ -684,28 +711,6 @@ export function HomeScreen() {
         {dogs.length > 1 ? (
           <DogSelectorRow dogs={dogs} selectedDogId={selectedDogId} onSelect={(dogId) => void selectDog(dogId)} />
         ) : null}
-
-        <Pressable
-          style={styles.dogHero}
-          onPress={() => setDogProfileVisible(true)}
-          accessibilityRole="button"
-          accessibilityLabel="פתיחת פרופיל הכלב"
-        >
-          <View style={styles.dogHeroMedia}>
-            {dog?.photoUrl ? (
-              <Image source={{ uri: dog.photoUrl }} style={styles.dogHeroImage} resizeMode="cover" />
-            ) : (
-              <View style={styles.dogHeroMascot}>
-                <WalkieMascot state="idle" size={104} accessibilityLabel={dog?.name ?? 'Walkie Doggy'} />
-              </View>
-            )}
-            <View style={styles.dogHeroScrim} />
-            <View style={styles.dogHeroCopy}>
-              <RtlText style={styles.dogHeroName}>{dog?.name}</RtlText>
-              <RtlText style={styles.dogHeroMessage}>מחכה לטיול! 🐾</RtlText>
-            </View>
-          </View>
-        </Pressable>
 
         {/*
           Health & Grooming summary (PRD §10) — deliberately a single slim,
@@ -760,6 +765,11 @@ export function HomeScreen() {
             activeStartedAt={nextWalk.status === 'in_progress' ? nextWalk.startedAt ?? null : null}
             liveDistanceMeters={gpsTrackingWalkId === nextWalk.id ? gpsDistanceMeters : null}
             gpsStatus={gpsTrackingWalkId === nextWalk.id ? gpsPermissionStatus : null}
+            onStartWalk={
+              effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId
+                ? () => void startWalk(nextWalk.id)
+                : undefined
+            }
             onEndWalk={
               nextWalk.status === 'in_progress' && (effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId)
                 ? () => setCompleteWalkId(nextWalk.id)
@@ -805,9 +815,8 @@ export function HomeScreen() {
         )}
         </View>
 
-
         <Button
-          label="+ הוסף טיול שבוצע"
+          label="הוסף טיול שבוצע"
           variant="secondary"
           onPress={() => setAddUnplannedVisible(true)}
           style={styles.unplannedButton}
@@ -1288,7 +1297,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: 14, paddingBottom: spacing.xxxl, width: '100%' },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: 14 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
-  nextWalkLift: { marginTop: -34, zIndex: 2, paddingHorizontal: spacing.sm },
+  nextWalkLift: { marginTop: 0, zIndex: 1, paddingHorizontal: 0 },
   unplannedButton: { marginTop: -2 },
   testModeBanner: {
     flexDirection: 'row',
@@ -1305,42 +1314,33 @@ const styles = StyleSheet.create({
   topRow: { position: 'relative', minHeight: 52, alignItems: 'center', justifyContent: 'center' },
   brandWordmark: { width: 132, height: 42 },
   mascotHeaderButton: { position: 'absolute', right: 0, top: 6, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  dogSummaryCard: {
+  dashboardHero: {
     width: '100%',
-    minHeight: 112,
-    borderRadius: 24,
+    minHeight: 156,
+    maxHeight: 184,
+    borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
-    padding: 10,
+    backgroundColor: colors.surfaceMuted,
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
+    overflow: 'hidden',
+    ...elevation.card,
   },
-  dogSummaryMedia: {
-    width: 92,
-    height: 92,
-    borderRadius: 22,
+  dashboardHeroMedia: {
+    width: '46%',
+    alignSelf: 'stretch',
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#CFEDE5',
+    backgroundColor: colors.primarySoft,
     flexShrink: 0,
   },
-  dogSummaryImage: { width: '100%', height: '100%' },
-  dogSummaryCopy: { flex: 1, alignItems: 'flex-end', justifyContent: 'center', gap: 2, paddingHorizontal: 4 },
-  dogSummaryEyebrow: { ...typography.meta, color: colors.textSecondary, fontWeight: '700', textAlign: 'right' },
-  dogSummaryName: { fontSize: 24, lineHeight: 30, color: colors.textPrimary, fontWeight: '900', textAlign: 'right' },
-  dogSummaryLink: { ...typography.meta, color: colors.primaryDark, fontWeight: '900', textAlign: 'right', marginTop: 3 },
-  dogHero: { width: '100%', borderRadius: 26, overflow: 'hidden', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  dogHeroMedia: { width: '100%', height: Platform.OS === 'web' ? 220 : 190, position: 'relative', overflow: 'hidden', backgroundColor: '#CFEDE5' },
-  dogHeroImage: { width: '100%', height: '100%' },
-  dogHeroMascot: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 18 },
-  dogHeroScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 92, backgroundColor: 'rgba(30,35,31,0.22)' },
-  dogHeroCopy: { position: 'absolute', right: spacing.lg, bottom: 42, alignItems: 'flex-end' },
-  dogHeroName: { fontSize: 26, lineHeight: 31, fontWeight: '900', color: '#FFFFFF', textAlign: 'right', textShadowColor: 'rgba(0,0,0,0.28)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
-  dogHeroMessage: { marginTop: 3, paddingHorizontal: 10, paddingVertical: 5, borderRadius: radii.round, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.92)', fontSize: 13, fontWeight: '800', color: colors.textPrimary },
+  dashboardHeroImage: { width: '100%', height: '100%' },
+  dashboardHeroCopy: { flex: 1, alignItems: 'flex-end', justifyContent: 'center', gap: spacing.xs, paddingHorizontal: spacing.lg },
+  dashboardHeroEyebrow: { ...typography.meta, color: colors.textSecondary, fontWeight: '700', textAlign: 'right' },
+  dashboardHeroName: { fontSize: 28, lineHeight: 34, color: colors.textPrimary, fontWeight: '900', textAlign: 'right' },
+  dashboardHeroHint: { ...typography.meta, color: colors.primaryDark, fontWeight: '700', textAlign: 'right', marginTop: 2 },
   notificationButton: { position: 'absolute', left: 0, top: 11, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
   notificationIcon: { fontSize: 18 },
   requestsCountBadge: { minWidth: spacing.xl, height: spacing.xl, borderRadius: radii.sm, paddingHorizontal: spacing.xs, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryDark },
