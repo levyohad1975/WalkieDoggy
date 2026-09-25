@@ -10,6 +10,7 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('style={styles.dashboardHero}');
     expect(home).toContain('style={styles.dashboardHeroShade}');
     expect(home).toContain('height: 256');
+    expect(home).toContain('tone="dashboard"');
     expect(home).toContain('setDogProfileVisible(true)');
     expect(home).toContain("style={styles.mascotHeaderButton}");
   });

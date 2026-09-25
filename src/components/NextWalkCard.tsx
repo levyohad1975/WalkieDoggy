@@ -67,6 +67,8 @@ interface NextWalkCardProps {
   requestStatusLine?: string | null;
   /** Overdue primary cards are status decisions, not "next" walks. */
   primaryLabel?: string;
+  /** Home uses a richer surface so the dashboard does not flatten into white cards. */
+  tone?: 'default' | 'dashboard';
 }
 
 /**
@@ -97,6 +99,7 @@ export function NextWalkCard({
   onRequestTimeChange,
   requestStatusLine,
   primaryLabel,
+  tone = 'default',
 }: NextWalkCardProps) {
   const overdue = isOverdue(walk);
   // Batch 2, requirement 7 ("walk requires attention" in-app state) — see
@@ -161,7 +164,7 @@ export function NextWalkCard({
   }, [walk.id, walk.scheduledTime, walk.date, walk.status, dogName, dogSex, responsible?.name]);
 
   return (
-    <View style={[styles.card, isWeb && styles.webCard, isActive && styles.cardActive, overdue && !isActive && styles.cardOverdue]}>
+    <View style={[styles.card, tone === 'dashboard' && styles.cardDashboard, isWeb && styles.webCard, isActive && styles.cardActive, overdue && !isActive && styles.cardOverdue]}>
       <View style={[styles.eyebrowRow, isWeb && styles.webEyebrowRow]}>
         {showDogPhoto ? <DogPhoto photoUrl={dogPhotoUrl} size={isWeb ? 60 : 72} /> : null}
         <RtlText style={styles.eyebrow} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
@@ -378,6 +381,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 2,
   },
+  cardDashboard: { backgroundColor: '#E5F7F6', borderColor: '#9ADFD9', shadowOpacity: 0.09, shadowRadius: 14, elevation: 3 },
   webCard: { borderRadius: radii.xl, paddingHorizontal: 24, paddingVertical: 18 },
   cardActive: { backgroundColor: colors.successSoft, borderColor: colors.success + '55' },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },

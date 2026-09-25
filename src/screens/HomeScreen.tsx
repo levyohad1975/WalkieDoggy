@@ -751,6 +751,7 @@ export function HomeScreen() {
               computeWalkRequestStatusLine(nextWalk, swapRequests, timeChangeRequests, walksById, new Date(), effectiveUserId)?.text
             }
             primaryLabel={isOverdue(nextWalk) ? 'ממתין לעדכון' : undefined}
+            tone="dashboard"
             onMarkDone={() => setCompleteWalkId(nextWalk.id)}
             activeStartedAt={nextWalk.status === 'in_progress' ? nextWalk.startedAt ?? null : null}
             liveDistanceMeters={gpsTrackingWalkId === nextWalk.id ? gpsDistanceMeters : null}
@@ -1300,7 +1301,7 @@ export function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: '#EEF7F4' },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   addFirstDogButton: { marginTop: spacing.md },
   content: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: 14, paddingBottom: spacing.xxxl, width: '100%' },
@@ -1381,7 +1382,7 @@ const styles = StyleSheet.create({
   list: { gap: spacing.sm },
 
 lastWalkCard: {
-  backgroundColor: colors.surface,
+  backgroundColor: '#FFF7E8',
   borderRadius: radii.lg,
   borderWidth: 1,
   borderColor: colors.border,
