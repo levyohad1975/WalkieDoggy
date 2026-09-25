@@ -510,13 +510,31 @@ export class OfflineFirstRepository implements Repository {
     return this.local.getWalks(familyId);
   }
 
-  /** Always writable offline: saved locally immediately, then queued/synced when possible. */
+  /**
+   * Saves locally immediately. When online, persist the walk to Supabase
+   * before returning so lifecycle RPCs (start_walk/finish_walk) can never
+   * race a still-queued creation and fail with "walk not found".
+   * Transient failures keep the normal offline-first queue fallback.
+   */
   async saveWalk(walk: Walk): Promise<void> {
     await this.local.saveWalk(walk);
-    if (this.remote) {
-      await this.queue.enqueue({ type: 'saveWalk', payload: walk });
-      await this.trySync();
+    if (!this.remote) return;
+
+    if (await this.isOnline()) {
+      try {
+        await this.remote.saveWalk(walk);
+        return;
+      } catch (error) {
+        // A permanent server rejection must reach the caller; queueing the
+        // exact same invalid write would only hide the failure and make a
+        // later lifecycle RPC operate on a row that was never created.
+        if (isPermanentSyncError(error)) throw error;
+        // Connectivity/transient failure: preserve offline-first behaviour.
+      }
     }
+
+    await this.queue.enqueue({ type: 'saveWalk', payload: walk });
+    await this.trySync();
   }
 
   async deleteWalk(walkId: string): Promise<void> {
