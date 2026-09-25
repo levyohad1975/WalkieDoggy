@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Platform, StyleSheet, View } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
 import { RtlText } from './RtlText';
 import type { Dog, FamilyUser, Walk } from '../types';
 import { isOverdue, relativeTimeLabel, walkDateTime } from '../logic/nextWalk';
@@ -172,6 +173,16 @@ export function NextWalkCard({
 
   return (
     <View style={[styles.card, tone === 'dashboard' && styles.cardDashboard, isWeb && styles.webCard, isActive && styles.cardActive, overdue && !isActive && styles.cardOverdue]}>
+      {tone === 'dashboard' && !isActive && !overdue ? (
+        <View pointerEvents="none" style={styles.dashboardTexture}>
+          <Svg width="100%" height="100%" viewBox="0 0 360 420" preserveAspectRatio="none">
+            <Circle cx="34" cy="40" r="118" fill="#E7E3FF" />
+            <Circle cx="350" cy="86" r="138" fill="#E1E9FF" />
+            <Circle cx="105" cy="420" r="154" fill="#F0E9FF" />
+            <Circle cx="330" cy="360" r="92" fill="#E9E5FF" />
+          </Svg>
+        </View>
+      ) : null}
       <View style={[styles.eyebrowRow, isWeb && styles.webEyebrowRow]}>
         {showDogPhoto ? <DogPhoto photoUrl={dogPhotoUrl} size={isWeb ? 60 : 72} /> : null}
         <RtlText style={styles.eyebrow} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
@@ -396,7 +407,8 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 2,
   },
-  cardDashboard: { backgroundColor: '#FAFAFF', borderColor: '#DEDDF5', borderRadius: 30, shadowOpacity: 0.12, shadowRadius: 16, elevation: 4, paddingVertical: 9 },
+  cardDashboard: { backgroundColor: '#F7F6FF', borderColor: '#DEDDF5', borderRadius: 30, shadowOpacity: 0.12, shadowRadius: 16, elevation: 4, paddingVertical: 9, overflow: 'hidden' },
+  dashboardTexture: { ...StyleSheet.absoluteFillObject, opacity: 0.72 },
   webCard: { borderRadius: radii.xl, paddingHorizontal: 24, paddingVertical: 18 },
   cardActive: { backgroundColor: colors.successSoft, borderColor: colors.success + '55' },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
