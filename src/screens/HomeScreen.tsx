@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 20142)
-Total output lines: 1597
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
@@ -128,6 +125,7 @@ export function HomeScreen() {
   // at a time) would simply show nothing extra.
   const gpsTrackingWalkId = useGpsStore((s) => s.trackingWalkId);
   const gpsDistanceMeters = useGpsStore((s) => s.distanceMeters);
+  const gpsPointCount = useGpsStore((s) => s.pointCount);
   const gpsPermissionStatus = useGpsStore((s) => s.permissionStatus);
 
   const [completeWalkId, setCompleteWalkId] = useState<string | null>(null);
@@ -652,11 +650,10 @@ export function HomeScreen() {
           visible on every tab while impersonating, not just this one. See
           components/ImpersonationBanner.tsx's doc comment. */}
       <ScrollView
-        // The dashboard contains real, variable family data. On a phone,
-        // clipping the schedule summary below the fixed tab bar is worse
-        // than a short, natural vertical scroll. Web keeps its constrained
-        // dashboard presentation without a page-sized scroll.
-        scrollEnabled={Platform.OS !== 'web'}
+        // The dashboard contains real, variable family data. It must remain
+        // reachable on Safari too: the bottom tab bar is fixed, so disabling
+        // Web scrolling cuts the schedule/approval cards off below it.
+        scrollEnabled
         contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
@@ -753,13 +750,29 @@ export function HomeScreen() {
                 : `${healthSummary.dueSoonCount} משימות בריאות קרובות`}
             </RtlText>
             <RtlText style={styles.healthSummaryChevron}>‹</RtlText>
-  …142 tokens truncated…s, walksById, new Date(), effectiveUserId)?.text
+          </Pressable>
+        ) : null}
+
+        <View style={styles.nextWalkLift}>
+          {nextWalk ? (
+          <NextWalkCard
+            walk={nextWalk}
+            responsible={usersById[nextWalk.responsibleUserId]}
+            currentUserId={effectiveUserId}
+            dogName={dog?.name ?? 'הכלב/ה'}
+            dogPhotoUrl={dog?.photoUrl}
+            showDogPhoto={false}
+            showMascot={false}
+            dogSex={dog?.sex}
+            requestStatusLine={
+              computeWalkRequestStatusLine(nextWalk, swapRequests, timeChangeRequests, walksById, new Date(), effectiveUserId)?.text
             }
             primaryLabel={isOverdue(nextWalk) ? 'ממתין לעדכון' : undefined}
             tone="dashboard"
             onMarkDone={() => setCompleteWalkId(nextWalk.id)}
             activeStartedAt={nextWalk.status === 'in_progress' ? nextWalk.startedAt ?? null : null}
             liveDistanceMeters={gpsTrackingWalkId === nextWalk.id ? gpsDistanceMeters : null}
+            gpsPointCount={gpsTrackingWalkId === nextWalk.id ? gpsPointCount : null}
             gpsStatus={gpsTrackingWalkId === nextWalk.id ? gpsPermissionStatus : null}
             onStartWalk={
               effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId
@@ -1358,7 +1371,9 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF9F2' },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   addFirstDogButton: { marginTop: spacing.md },
-  content: { flexGrow: 1, paddingHorizontal: spacing.md, paddingTop: spacing.xs, gap: 10, paddingBottom: spacing.md, width: '100%', backgroundColor: '#FBF8F3' },
+  // Leaves the final card clear of the persistent bottom tab bar on phones
+  // and in Safari/PWA, instead of letting it end underneath the navigation.
+  content: { flexGrow: 1, paddingHorizontal: spacing.md, paddingTop: spacing.xs, gap: 10, paddingBottom: 120, width: '100%', backgroundColor: '#FBF8F3' },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: 14 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
   nextWalkLift: { marginTop: -50, zIndex: 1, paddingHorizontal: spacing.xs },

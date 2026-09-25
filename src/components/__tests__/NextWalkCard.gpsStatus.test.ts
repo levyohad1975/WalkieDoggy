@@ -10,6 +10,7 @@ describe('NextWalkCard surfaces live GPS distance/status while active (structura
 
   it('accepts liveDistanceMeters/gpsStatus as optional props (backward compatible for every other call site)', () => {
     expect(source).toMatch(/liveDistanceMeters\?: number \| null;/);
+    expect(source).toMatch(/gpsPointCount\?: number \| null;/);
     expect(source).toMatch(/gpsStatus\?: 'granted' \| 'denied' \| 'unavailable' \| null;/);
   });
 
@@ -22,6 +23,7 @@ describe('NextWalkCard surfaces live GPS distance/status while active (structura
     const blockStart = source.indexOf("gpsStatus === 'granted'");
     const block = source.slice(blockStart, blockStart + 600);
     expect(block).toContain('ממתין לנתוני GPS');
+    expect(block).toContain('GPS פעיל — ממתין לתנועה');
     expect(block).toContain('מיקום לא זמין');
     expect(block).toContain('לא התקבל מיקום');
     expect(block).toContain('מפעיל GPS');

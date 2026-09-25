@@ -34,7 +34,8 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('dashboardTimelineWalks.map');
     expect(home).toContain('אין טיולים נוספים היום');
     expect(home).toContain('פתיחת לוח הזמנים להמשך היום');
-    expect(home).toContain("scrollEnabled={Platform.OS !== 'web'}");
+    expect(home).toContain('scrollEnabled');
+    expect(home).toContain('paddingBottom: 120');
     expect(home).not.toContain('style={styles.dashboardMoreButton}');
   });
 

@@ -40,6 +40,9 @@ interface NextWalkCardProps {
    * of this component) — a fully backward-compatible addition.
    */
   liveDistanceMeters?: number | null;
+  /** Number of accepted location fixes in the current active session. Lets
+   * the card distinguish a healthy zero-distance start from a stalled GPS. */
+  gpsPointCount?: number | null;
   /** null/undefined = tracking hasn't reported a status yet (e.g. still requesting permission) — distinct from 'denied'/'unavailable', which show an explanatory note instead of a bare "0 מ'". */
   gpsStatus?: 'granted' | 'denied' | 'unavailable' | null;
   /**
@@ -90,6 +93,7 @@ export function NextWalkCard({
   onEndWalk,
   activeStartedAt,
   liveDistanceMeters,
+  gpsPointCount,
   gpsStatus,
   onMarkNotDone,
   canResolve = true,
@@ -215,7 +219,11 @@ export function NextWalkCard({
       {isActive ? (
         <RtlText style={styles.gpsStatusLine} numberOfLines={1} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
           {gpsStatus === 'granted'
-            ? `📍 ${liveDistanceMeters != null && liveDistanceMeters > 0 ? formatDistanceMeters(liveDistanceMeters) : 'ממתין לנתוני GPS…'}`
+            ? `📍 ${liveDistanceMeters != null && liveDistanceMeters > 0
+              ? formatDistanceMeters(liveDistanceMeters)
+              : gpsPointCount != null && gpsPointCount > 0
+                ? 'GPS פעיל — ממתין לתנועה'
+                : 'ממתין לנתוני GPS…'}`
             : gpsStatus === 'denied'
               ? '📍 מיקום לא זמין — אפשר להפעיל בהגדרות המכשיר'
               : gpsStatus === 'unavailable'

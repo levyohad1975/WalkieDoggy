@@ -15,6 +15,7 @@ describe('HomeScreen wires gpsStore\'s live tracking state into NextWalkCard (st
 
   it('only passes live distance/status through when gpsTrackingWalkId matches THIS card\'s walk', () => {
     expect(source).toMatch(/liveDistanceMeters=\{gpsTrackingWalkId === nextWalk\.id \? gpsDistanceMeters : null\}/);
+    expect(source).toMatch(/gpsPointCount=\{gpsTrackingWalkId === nextWalk\.id \? gpsPointCount : null\}/);
     expect(source).toMatch(/gpsStatus=\{gpsTrackingWalkId === nextWalk\.id \? gpsPermissionStatus : null\}/);
   });
 
