@@ -212,8 +212,8 @@ export interface WalkGpsSession {
   dogId: string;
   distanceMeters?: number;
   pointCount: number;
-  /** GPS points retained for the in-app route preview/map. */
-  routePoints?: Array<{ latitude: number; longitude: number; timestamp: number }>;
+  /** GPS points retained for the in-app route preview/map. `accuracy` (meters, device-reported) is each point's own quality signal — see logic/gpsDistance.ts's header for why it's carried through rather than stripped. */
+  routePoints?: Array<{ latitude: number; longitude: number; timestamp: number; accuracy?: number }>;
   correctedDistanceMeters?: number;
   correctedByUserId?: string;
   startedAt?: string; // ISO timestamp

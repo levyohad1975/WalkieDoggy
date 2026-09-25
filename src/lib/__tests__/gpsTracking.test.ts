@@ -111,13 +111,41 @@ describe('gpsTracking', () => {
       const handle = await startGpsWatch((acc: unknown) => updates.push(acc));
       expect(handle).not.toBeNull();
 
-      feedPoint({ coords: { latitude: 32.0800, longitude: 34.7800, accuracy: 5 }, timestamp: 1 });
-      feedPoint({ coords: { latitude: 32.0810, longitude: 34.7800, accuracy: 5 }, timestamp: 2 }); // ~111m
+      // 30s apart — a realistic gap between accepted fixes (~111m/30s ≈
+      // 3.7 m/s), so this stays under gpsDistance.ts's speed-jump filter.
+      feedPoint({ coords: { latitude: 32.0800, longitude: 34.7800, accuracy: 5 }, timestamp: 0 });
+      feedPoint({ coords: { latitude: 32.0810, longitude: 34.7800, accuracy: 5 }, timestamp: 30_000 }); // ~111m
 
       expect(updates).toHaveLength(2);
       expect(updates[0].pointCount).toBe(1);
       expect(updates[1].pointCount).toBe(2);
       expect(updates[1].distanceMeters).toBeGreaterThan(90);
+      // The raw fix's own accuracy reading survives the full pipeline
+      // (Location callback -> GpsPoint -> accumulator's routePoints).
+      expect(updates[1].routePoints.map((p: { accuracy?: number }) => p.accuracy)).toEqual([5, 5]);
+    });
+
+    it('discards an implausible GPS jump (e.g. multipath near a building) the same way a low-accuracy fix is discarded', async () => {
+      let feedPoint: (loc: any) => void = () => undefined;
+      mockLocationModule({
+        getForegroundPermissionsAsync: jest.fn().mockResolvedValue({ granted: true }),
+        watchPositionAsync: jest.fn().mockImplementation(async (_options: unknown, callback: (loc: any) => void) => {
+          feedPoint = callback;
+          return { remove: jest.fn() };
+        }),
+      });
+      const { startGpsWatch } = require('../gpsTracking');
+
+      const updates: any[] = [];
+      const handle = await startGpsWatch((acc: unknown) => updates.push(acc));
+      expect(handle).not.toBeNull();
+
+      feedPoint({ coords: { latitude: 32.0800, longitude: 34.7800, accuracy: 5 }, timestamp: 0 });
+      // ~1.1km away, 5s later — an implausible jump, not a real dog walk.
+      feedPoint({ coords: { latitude: 32.0900, longitude: 34.7900, accuracy: 5 }, timestamp: 5000 });
+
+      expect(updates).toHaveLength(2);
+      expect(updates[1]).toEqual(updates[0]); // second update is a no-op — the jump was discarded
     });
 
     it('the returned handle\'s remove() calls the underlying subscription\'s remove()', async () => {

@@ -22,7 +22,7 @@ interface GpsState {
   /** Live running total while trackingWalkId is set — meaningless/stale once tracking stops (read sessionsByWalkId for the persisted, authoritative value instead). */
   distanceMeters: number;
   pointCount: number;
-  routePoints: Array<{ latitude: number; longitude: number; timestamp: number }>;
+  routePoints: Array<{ latitude: number; longitude: number; timestamp: number; accuracy?: number }>;
   /** Persisted sessions this device has loaded/saved, keyed by walkId — a cache, not the source of truth (the repository is); populated by loadSession()/stopTracking()/correctDistance(). */
   sessionsByWalkId: Record<string, WalkGpsSession>;
 
@@ -74,7 +74,12 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       // Ignore a late callback from a watch that's since been stopped/
       // superseded (e.g. the walk ended right as a fix arrived).
       if (get().trackingWalkId !== walk.id) return;
-      set({ distanceMeters: acc.distanceMeters, pointCount: acc.pointCount, routePoints: (acc.routePoints ?? []).map(({ latitude, longitude, timestamp }) => ({ latitude, longitude, timestamp })) });
+      // Carries each point's own accuracy reading through into the persisted
+      // route (see logic/gpsDistance.ts's header doc comment) — `?? undefined`
+      // normalizes expo-location's `number | null` to this store's
+      // `number | undefined` shape, same convention as every other optional
+      // field here.
+      set({ distanceMeters: acc.distanceMeters, pointCount: acc.pointCount, routePoints: (acc.routePoints ?? []).map(({ latitude, longitude, timestamp, accuracy }) => ({ latitude, longitude, timestamp, accuracy: accuracy ?? undefined })) });
     });
 
     if (get().trackingWalkId !== walk.id) {

@@ -55,6 +55,31 @@ describe('gpsStore', () => {
     expect(state.pointCount).toBe(7);
   });
 
+  it('carries each fed point\'s own accuracy through into routePoints state (not stripped to just lat/lng/timestamp)', async () => {
+    const { useGpsStore } = require('../gpsStore');
+    const gpsTracking = require('../../lib/gpsTracking');
+    let feed: (acc: { distanceMeters: number; pointCount: number; routePoints: Array<{ latitude: number; longitude: number; timestamp: number; accuracy?: number | null }> }) => void = () => undefined;
+    jest.spyOn(gpsTracking, 'startGpsWatch').mockImplementationOnce(async (onUpdate: any) => {
+      feed = onUpdate;
+      return { remove: jest.fn() };
+    });
+
+    await useGpsStore.getState().startTracking(walk);
+    feed({
+      distanceMeters: 40,
+      pointCount: 2,
+      routePoints: [
+        { latitude: 32.08, longitude: 34.78, timestamp: 1, accuracy: 12 },
+        { latitude: 32.0803, longitude: 34.78, timestamp: 2, accuracy: null },
+      ],
+    });
+
+    expect(useGpsStore.getState().routePoints).toEqual([
+      { latitude: 32.08, longitude: 34.78, timestamp: 1, accuracy: 12 },
+      { latitude: 32.0803, longitude: 34.78, timestamp: 2, accuracy: undefined },
+    ]);
+  });
+
   it('starting a new walk while a previous handle is active removes the old one first (no subscription leak)', async () => {
     const { useGpsStore } = require('../gpsStore');
     const gpsTracking = require('../../lib/gpsTracking');

@@ -303,6 +303,50 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
     });
   });
 
+  it('upsertGpsSession sends route_points (including each point\'s accuracy) through unmodified — jsonb passthrough, no field stripping', async () => {
+    const calls: { payload: unknown }[] = [];
+    const client: any = {
+      from: () => ({ upsert: (payload: unknown) => { calls.push({ payload }); return Promise.resolve({ error: null }); } }),
+    };
+    const routePoints = [
+      { latitude: 32.08, longitude: 34.78, timestamp: 1, accuracy: 12 },
+      { latitude: 32.0803, longitude: 34.78, timestamp: 2, accuracy: undefined },
+    ];
+    const session: WalkGpsSession = {
+      id: 'gps-1', walkId: 'walk-1', familyId: 'fam-42', dogId: 'dog-1',
+      pointCount: 2, routePoints, source: 'device_gps', createdAt: 'c', updatedAt: 'u',
+    };
+
+    await new SupabaseRepository(client).upsertGpsSession(session);
+
+    expect((calls[0].payload as any).route_points).toEqual(routePoints);
+  });
+
+  it('getGpsSession maps route_points (including accuracy) through unmodified', async () => {
+    const routePoints = [{ latitude: 32.08, longitude: 34.78, timestamp: 1, accuracy: 12 }];
+    const client: any = {
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () =>
+              Promise.resolve({
+                data: {
+                  id: 'gps-1', walk_id: 'walk-1', family_id: 'fam-42', dog_id: 'dog-1',
+                  distance_meters: 100, point_count: 1, route_points: routePoints,
+                  corrected_distance_meters: null, corrected_by_user_id: null,
+                  started_at: null, ended_at: null, source: 'device_gps',
+                  created_by_user_id: null, created_at: 'c', updated_at: 'u',
+                },
+                error: null,
+              }),
+          }),
+        }),
+      }),
+    };
+    const session = await new SupabaseRepository(client).getGpsSession('walk-1');
+    expect(session?.routePoints).toEqual(routePoints);
+  });
+
   it('getGpsSession returns undefined when no row exists for that walk', async () => {
     const client: any = {
       from: () => ({ select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }) }),
