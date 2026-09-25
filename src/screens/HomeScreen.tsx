@@ -648,7 +648,11 @@ export function HomeScreen() {
           visible on every tab while impersonating, not just this one. See
           components/ImpersonationBanner.tsx's doc comment. */}
       <ScrollView
-        scrollEnabled={false}
+        // The dashboard contains real, variable family data. On a phone,
+        // clipping the schedule summary below the fixed tab bar is worse
+        // than a short, natural vertical scroll. Web keeps its constrained
+        // dashboard presentation without a page-sized scroll.
+        scrollEnabled={Platform.OS !== 'web'}
         contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
