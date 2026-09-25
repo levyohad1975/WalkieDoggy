@@ -10,6 +10,7 @@ import { DEMO_FAMILY } from '../data/demoData';
 import { pickAndUploadImage } from '../lib/uploadImage';
 import { colors } from '../theme/colors';
 import { breakpoints, radii, spacing, typography } from '../theme/tokens';
+import { DOG_BACKGROUNDS, getDogBackground, getDogBackgroundId, setDogBackgroundId } from '../theme/dogBackgrounds';
 
 export function DogProfileModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const dog = useFamilyStore((s) => s.dog);
@@ -22,10 +23,11 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
   const [removing, setRemoving] = useState(false);
   const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
   const [backgroundPickerVisible, setBackgroundPickerVisible] = useState(false);
-  const [selectedBackground, setSelectedBackground] = useState(0);
+  const [selectedBackground, setSelectedBackground] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     setPhotoLoadFailed(false);
+    setSelectedBackground(getDogBackgroundId(dog?.id));
   }, [dog?.id, dog?.photoUrl]);
 
   const changePhoto = async () => {
@@ -73,6 +75,9 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
           {dog ? (
             <>
               <View style={styles.photoWrap}>
+                {getDogBackground(selectedBackground) ? (
+                  <Image source={{ uri: getDogBackground(selectedBackground)!.uri }} style={styles.previewBackground} resizeMode="cover" />
+                ) : null}
                 {dog.photoUrl && !photoLoadFailed ? (
                   <Image
                     source={{ uri: dog.photoUrl }}
@@ -110,18 +115,27 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
                     <View style={styles.backgroundPicker}>
                       <RtlText style={styles.backgroundTitle}>בחרו רקע</RtlText>
                       <View style={styles.backgroundGrid}>
-                        {BACKGROUND_OPTIONS.map((backgroundStyle, index) => (
+                        {DOG_BACKGROUNDS.map((item) => (
                           <Pressable
-                            key={index}
-                            onPress={() => { setSelectedBackground(index); setBackgroundPickerVisible(false); }}
-                            style={[styles.backgroundSwatch, backgroundStyle, selectedBackground === index && styles.backgroundSelected]}
+                            key={item.id}
+                            onPress={() => {
+                              if (!dog) return;
+                              setSelectedBackground(item.id);
+                              setDogBackgroundId(dog.id, item.id);
+                            }}
+                            style={[styles.backgroundTile, selectedBackground === item.id && styles.backgroundSelected]}
                             accessibilityRole="button"
-                            accessibilityLabel={`בחירת רקע ${index + 1}`}
+                            accessibilityLabel={`בחירת רקע ${item.label}`}
                           >
-                            {selectedBackground === index ? <RtlText style={styles.backgroundCheck}>✓</RtlText> : null}
+                            <Image source={{ uri: item.uri }} style={styles.backgroundThumb} resizeMode="cover" />
+                            <View style={styles.backgroundLabelWrap}>
+                              <RtlText style={styles.backgroundLabel}>{item.label}</RtlText>
+                            </View>
+                            {selectedBackground === item.id ? <View style={styles.backgroundCheckBadge}><RtlText style={styles.backgroundCheck}>✓</RtlText></View> : null}
                           </Pressable>
                         ))}
                       </View>
+                      <RtlText style={styles.backgroundHint}>הבחירה נשמרת אוטומטית. אפשר להחליף רקע בכל עת.</RtlText>
                     </View>
                   ) : null}
                 </View>
@@ -153,13 +167,6 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
   );
 }
 
-const BACKGROUND_OPTIONS = [
-  { backgroundColor: '#78C9B5' }, { backgroundColor: '#F6C97A' }, { backgroundColor: '#A8C8F0' },
-  { backgroundColor: '#E8B7C8' }, { backgroundColor: '#B9D78B' }, { backgroundColor: '#C8B5E8' },
-  { backgroundColor: '#F0A98C' }, { backgroundColor: '#8FCFD8' }, { backgroundColor: '#D7C79B' },
-  { backgroundColor: '#AFC2A5' }, { backgroundColor: '#D9A9A9' }, { backgroundColor: '#9FB5D7' },
-];
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   topBar: { minHeight: 64, paddingHorizontal: spacing.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
@@ -167,8 +174,9 @@ const styles = StyleSheet.create({
   title: { ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right' },
   content: { padding: spacing.xl, gap: spacing.md, alignItems: 'center', paddingBottom: spacing.xxxl },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
-  photoWrap: { marginTop: spacing.md, width: 180, height: 180, alignItems: 'center', justifyContent: 'center' },
-  photo: { width: 180, height: 180, borderRadius: 90, borderWidth: 3, borderColor: colors.surface },
+  photoWrap: { marginTop: spacing.md, width: 280, height: 210, borderRadius: radii.xl, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
+  previewBackground: { ...StyleSheet.absoluteFillObject, width: undefined, height: undefined },
+  photo: { width: 150, height: 150, borderRadius: 75, borderWidth: 4, borderColor: colors.surface },
   name: { ...typography.screenTitle, color: colors.textPrimary, textAlign: 'center' },
   hint: { ...typography.meta, color: colors.textSecondary, textAlign: 'center' },
   actions: { width: '100%', maxWidth: 420, gap: spacing.sm, marginTop: spacing.sm },
@@ -178,10 +186,15 @@ const styles = StyleSheet.create({
   backgroundButtonText: { ...typography.body, color: colors.primaryDark, fontWeight: '800' },
   backgroundPicker: { width: '100%', padding: spacing.md, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: spacing.sm },
   backgroundTitle: { ...typography.sectionTitle, color: colors.textPrimary, textAlign: 'right' },
-  backgroundGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: spacing.sm, justifyContent: 'flex-start' },
-  backgroundSwatch: { width: 58, height: 44, borderRadius: radii.md, borderWidth: 2, borderColor: colors.surface },
-  backgroundSelected: { borderColor: colors.primaryDark, borderWidth: 3 },
-  backgroundCheck: { fontSize: 20, fontWeight: '900', color: colors.surface, textAlign: 'center', lineHeight: 38 },
+  backgroundGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: spacing.sm, justifyContent: 'space-between' },
+  backgroundTile: { width: '48%', height: 100, borderRadius: radii.md, overflow: 'hidden', borderWidth: 3, borderColor: 'transparent', position: 'relative' },
+  backgroundThumb: { ...StyleSheet.absoluteFillObject, width: undefined, height: undefined },
+  backgroundSelected: { borderColor: colors.primaryDark },
+  backgroundLabelWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#00000088', paddingVertical: 5, paddingHorizontal: 8 },
+  backgroundLabel: { color: '#fff', fontSize: 13, fontWeight: '800', textAlign: 'center' },
+  backgroundCheckBadge: { position: 'absolute', top: 6, right: 6, width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primaryDark, alignItems: 'center', justifyContent: 'center' },
+  backgroundCheck: { fontSize: 18, fontWeight: '900', color: '#fff' },
+  backgroundHint: { ...typography.meta, color: colors.textSecondary, textAlign: 'center' },
   removeButton: { paddingVertical: spacing.sm, alignItems: 'center' },
   removeText: { ...typography.body, color: colors.statusOverdue, fontWeight: '700' },
   card: { width: '100%', maxWidth: 520, marginTop: spacing.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radii.lg, padding: spacing.lg, gap: spacing.sm },

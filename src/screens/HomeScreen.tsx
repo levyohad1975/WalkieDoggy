@@ -52,11 +52,13 @@ import { subscribeToReminderOpens, type ReminderOpenEvent } from '../notificatio
 import type { RootTabParamList } from '../navigation/RootNavigator';
 import { useHealthStore } from '../store/healthStore';
 import { getImportantHealthReminders, summarizeHealthTasksForHome } from '../logic/healthTasks';
+import { getDogBackground, getDogBackgroundId } from '../theme/dogBackgrounds';
 import { useGpsStore } from '../store/gpsStore';
 
 export function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
   const [dogProfileVisible, setDogProfileVisible] = useState(false);
+  const [heroBackgroundId, setHeroBackgroundId] = useState<string | undefined>(undefined);
   const currentUserId = useAuthStore((s) => s.currentUserId)!;
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const effectiveRole = useEffectiveFamilyRole();
@@ -69,6 +71,11 @@ export function HomeScreen() {
   const clearTestModeIfInvalid = useAuthStore((s) => s.clearTestModeIfInvalid);
   const clearImpersonationIfInvalid = useAuthStore((s) => s.clearImpersonationIfInvalid);
   const { users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, error: familyError, load: loadFamily } = useFamilyStore();
+  const heroBackground = getDogBackground(heroBackgroundId);
+  useEffect(() => {
+    setHeroBackgroundId(getDogBackgroundId(dog?.id));
+  }, [dog?.id]);
+
   const {
     walks,
     loading: scheduleLoading,
@@ -685,7 +692,8 @@ export function HomeScreen() {
           accessibilityRole="button"
           accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
         >
-          {dog?.photoUrl ? <Image source={{ uri: dog.photoUrl }} style={styles.dashboardHeroImage} resizeMode="cover" /> : null}
+          {heroBackground ? <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" /> : null}
+          {dog?.photoUrl ? <Image source={{ uri: dog.photoUrl }} style={heroBackground ? styles.dashboardDogOverlay : styles.dashboardHeroImage} resizeMode="cover" /> : null}
           <View style={styles.dashboardHeroShade} />
           <View style={styles.dashboardHeroCopy}>
             <RtlText style={styles.dashboardHeroEyebrow}>היום עם</RtlText>
@@ -1307,7 +1315,7 @@ export function HomeScreen() {
         onConfirm={clearRequestsError}
         onCancel={clearRequestsError}
       />
-      <DogProfileModal visible={dogProfileVisible} onClose={() => setDogProfileVisible(false)} />
+      <DogProfileModal visible={dogProfileVisible} onClose={() => { setDogProfileVisible(false); setHeroBackgroundId(getDogBackgroundId(dog?.id)); }} />
     </SafeAreaView>
   );
 }
@@ -1345,6 +1353,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   dashboardHeroImage: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
+  dashboardDogOverlay: { width: 176, height: 176, borderRadius: 88, borderWidth: 4, borderColor: '#FFFFFFE8', marginBottom: 28 },
   dashboardHeroShade: { ...StyleSheet.absoluteFill, backgroundColor: '#00000026' },
   dashboardHeroCopy: { width: '100%', alignItems: 'center', paddingBottom: 76, paddingHorizontal: spacing.lg },
   dashboardHeroEyebrow: { fontSize: 16, color: colors.textInverse, fontWeight: '700', textAlign: 'center' },
