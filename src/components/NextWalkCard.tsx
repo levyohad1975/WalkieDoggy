@@ -222,7 +222,7 @@ export function NextWalkCard({
         </RtlText>
       ) : null}
 
-      <View style={[styles.mainRow, isWeb && styles.webMainRow]}>
+      <View style={[styles.mainRow, tone === 'dashboard' && styles.dashboardMainRow, isWeb && styles.webMainRow]}>
         <View style={styles.timeBlock}>
           <RtlText
             style={styles.time}
@@ -439,6 +439,9 @@ const styles = StyleSheet.create({
   dateContext: { fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginTop: 1 },
   relative: { width: '100%', fontSize: 14, fontWeight: '700', color: colors.primary, marginTop: 4, textAlign: 'right' },
   relativeOverdue: { color: colors.statusOverdue },
+  // Keep the family-member circle visually separated from the large time on
+  // the dashboard, especially on narrow phones.
+  dashboardMainRow: { gap: 22 },
   personBlock: { flex: 1, alignItems: 'flex-end', gap: 3, minWidth: 0 },
   personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'left' },
   responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'left' },
