@@ -488,6 +488,11 @@ export function HomeScreen() {
           ) : null}
         </View>
 
+        <View style={styles.welcomeCopy}>
+          <RtlText style={styles.welcomeTitle}>שלום משפחתנו</RtlText>
+          <RtlText style={styles.welcomeSubtitle}>בואו נטייל יחד היום <RtlText style={styles.welcomePaw}>🐾</RtlText></RtlText>
+        </View>
+
         <Pressable
           style={styles.dogSummaryCard}
           onPress={() => setDogProfileVisible(true)}
@@ -585,7 +590,7 @@ export function HomeScreen() {
         {lastWalk ? (
           <View style={styles.section}>
             <View style={styles.sectionTitlePhysicalRight}>
-              <RtlText style={styles.sectionTitle}>היסטוריה אחרונה</RtlText>
+              <RtlText style={styles.sectionTitle}>הטיול האחרון</RtlText>
             </View>
 
             {(() => {
@@ -688,6 +693,51 @@ export function HomeScreen() {
               );
             })()}
           </View>
+        ) : null}
+
+        <View style={styles.quickActionsRow}>
+          <Pressable style={[styles.quickAction, styles.quickActionBlue]} onPress={() => setAddUnplannedVisible(true)} accessibilityRole="button">
+            <RtlText style={styles.quickActionIcon}>♟</RtlText>
+            <RtlText style={styles.quickActionLabel}>טיול ספונטני</RtlText>
+          </Pressable>
+          <Pressable style={[styles.quickAction, styles.quickActionPurple]} onPress={openRequestsInbox} accessibilityRole="button">
+            <RtlText style={styles.quickActionIcon}>⇄</RtlText>
+            <RtlText style={styles.quickActionLabel}>בקשת החלפה</RtlText>
+          </Pressable>
+          <Pressable style={[styles.quickAction, styles.quickActionLavender]} onPress={() => navigation.navigate('Schedule')} accessibilityRole="button">
+            <RtlText style={styles.quickActionIcon}>◷</RtlText>
+            <RtlText style={styles.quickActionLabel}>שינוי שעה</RtlText>
+          </Pressable>
+        </View>
+
+        {upcoming.length > 0 ? (
+          <Pressable style={styles.todayTimeline} onPress={() => navigation.navigate('Schedule')} accessibilityRole="button">
+            <View style={styles.timelineHeader}>
+              <RtlText style={styles.timelineTitle}>בהמשך היום · {Math.min(upcoming.length, 3)} טיולים</RtlText>
+              <RtlText style={styles.timelineArrow}>‹</RtlText>
+            </View>
+            <View style={styles.timelineItems}>
+              {upcoming.slice(0, 3).map((walk, index) => (
+                <View style={styles.timelineItem} key={walk.id}>
+                  <RtlText style={styles.timelineTime}>{walk.scheduledTime}</RtlText>
+                  <View style={styles.timelineDot} />
+                  <RtlText style={styles.timelineName} numberOfLines={1}>{usersById[walk.responsibleUserId]?.name ?? '—'}</RtlText>
+                  {index < Math.min(upcoming.length, 3) - 1 ? <View style={styles.timelineLine} /> : null}
+                </View>
+              ))}
+            </View>
+          </Pressable>
+        ) : null}
+
+        {bellBadgeCount > 0 ? (
+          <Pressable style={styles.requestBanner} onPress={openRequestsInbox} accessibilityRole="button">
+            <RtlText style={styles.requestBannerIcon}>🔔</RtlText>
+            <View style={styles.requestBannerCopy}>
+              <RtlText style={styles.requestBannerTitle}>יש בקשה שממתינה לאישור</RtlText>
+              <RtlText style={styles.requestBannerSubtitle}>לחצו כאן לצפייה בפרטי הבקשה</RtlText>
+            </View>
+            <RtlText style={styles.requestBannerArrow}>‹</RtlText>
+          </Pressable>
         ) : null}
 
         {overduePending.length > 0 ? (
@@ -1050,30 +1100,34 @@ const styles = StyleSheet.create({
   testModeBannerButtonText: { color: '#fff', fontWeight: '700', fontSize: 12 },
   topRow: { position: 'relative', minHeight: 52, alignItems: 'center', justifyContent: 'center' },
   brandWordmark: { width: 132, height: 42 },
+  welcomeCopy: { alignItems: 'flex-end', paddingHorizontal: 4, marginTop: 2, marginBottom: 2 },
+  welcomeTitle: { color: colors.textPrimary, fontSize: 26, lineHeight: 32, fontWeight: '900', textAlign: 'right' },
+  welcomeSubtitle: { color: colors.textSecondary, fontSize: 18, lineHeight: 24, fontWeight: '600', textAlign: 'right', marginTop: 2 },
+  welcomePaw: { fontSize: 17 },
   dogSummaryCard: {
     width: '100%',
-    minHeight: 112,
+    minHeight: 142,
     borderRadius: 24,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    padding: 10,
+    borderWidth: 0,
+    borderColor: 'transparent',
+    backgroundColor: 'transparent',
+    padding: 0,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   dogSummaryMedia: {
-    width: 92,
-    height: 92,
-    borderRadius: 22,
-    overflow: 'hidden',
+    width: 150,
+    height: 142,
+    borderRadius: 0,
+    overflow: 'visible',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#CFEDE5',
+    backgroundColor: 'transparent',
     flexShrink: 0,
   },
-  dogSummaryImage: { width: '100%', height: '100%' },
+  dogSummaryImage: { width: '100%', height: '100%', borderRadius: 0 },
   dogSummaryCopy: { flex: 1, alignItems: 'flex-end', justifyContent: 'center', gap: 2, paddingHorizontal: 4 },
   dogSummaryEyebrow: { ...typography.meta, color: colors.textSecondary, fontWeight: '700', textAlign: 'right' },
   dogSummaryName: { fontSize: 24, lineHeight: 30, color: colors.textPrimary, fontWeight: '900', textAlign: 'right' },
@@ -1097,6 +1151,29 @@ const styles = StyleSheet.create({
     writingDirection: 'rtl',
   },
   list: { gap: spacing.sm },
+  quickActionsRow: { flexDirection: 'row', gap: 10, width: '100%' },
+  quickAction: { flex: 1, minHeight: 76, borderRadius: 22, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, gap: 3 },
+  quickActionBlue: { backgroundColor: '#E6F0FF' },
+  quickActionPurple: { backgroundColor: '#EDE9FF' },
+  quickActionLavender: { backgroundColor: '#E8E4FF' },
+  quickActionIcon: { fontSize: 25, lineHeight: 29, fontWeight: '800', color: colors.primaryDark },
+  quickActionLabel: { color: colors.textPrimary, fontSize: 13, fontWeight: '800', textAlign: 'center' },
+  todayTimeline: { backgroundColor: colors.surface, borderRadius: 24, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 1, borderColor: colors.border, gap: 12 },
+  timelineHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  timelineTitle: { flex: 1, color: colors.textPrimary, fontSize: 17, fontWeight: '800', textAlign: 'right' },
+  timelineArrow: { color: colors.primaryDark, fontSize: 28, lineHeight: 28 },
+  timelineItems: { flexDirection: 'row-reverse', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
+  timelineItem: { flex: 1, alignItems: 'center', gap: 4, position: 'relative' },
+  timelineTime: { color: colors.textPrimary, fontSize: 13, fontWeight: '800' },
+  timelineName: { color: colors.textSecondary, fontSize: 11, fontWeight: '600', maxWidth: 62 },
+  timelineDot: { width: 11, height: 11, borderRadius: 6, backgroundColor: colors.primary, zIndex: 2 },
+  timelineLine: { position: 'absolute', top: 28, left: '60%', width: '80%', height: 2, backgroundColor: colors.border },
+  requestBanner: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, backgroundColor: '#FFF1DB', borderRadius: 24, paddingHorizontal: 16, paddingVertical: 13 },
+  requestBannerIcon: { fontSize: 23, color: '#D97A13' },
+  requestBannerCopy: { flex: 1, alignItems: 'flex-end', gap: 2 },
+  requestBannerTitle: { color: '#A95D0A', fontSize: 15, fontWeight: '900', textAlign: 'right' },
+  requestBannerSubtitle: { color: colors.textPrimary, fontSize: 12, fontWeight: '600', textAlign: 'right' },
+  requestBannerArrow: { color: '#A95D0A', fontSize: 28 },
 
 lastWalkCard: {
   backgroundColor: colors.surface,
