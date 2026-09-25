@@ -689,7 +689,13 @@ export function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel="פתיחת פרופיל הכלב"
           >
-            <WalkieMascot state="idle" size={38} accessibilityLabel="Walkie Doggy" />
+            {hasDogCutout ? (
+              <WalkieMascot state="idle" size={38} source={{ uri: dog!.photoCutoutUrl }} accessibilityLabel={`תמונה של ${dog!.name}`} />
+            ) : hasDogPhoto ? (
+              <WalkieMascot state="idle" size={38} source={{ uri: dog!.photoUrl }} accessibilityLabel={`תמונה של ${dog!.name}`} />
+            ) : (
+              <WalkieMascot state="idle" size={38} accessibilityLabel="Walkie Doggy" />
+            )}
           </Pressable>
           <Pressable
             onPress={openRequestsInbox}
@@ -716,7 +722,7 @@ export function HomeScreen() {
           accessibilityRole="button"
           accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
         >
-          {heroBackground ? <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" /> : null}
+          {heroBackground && hasDogCutout ? <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" /> : null}
           <View style={styles.dashboardHeroBloomOne} pointerEvents="none" />
           <View style={styles.dashboardHeroBloomTwo} pointerEvents="none" />
           <View style={styles.dashboardHeroGlow} pointerEvents="none" />
@@ -729,7 +735,7 @@ export function HomeScreen() {
             {hasDogCutout ? (
               <WalkieMascot state="idle" size={144} source={{ uri: dog!.photoCutoutUrl }} onError={() => setDogCutoutFailed(true)} accessibilityLabel={`דמות שקופה של ${dog!.name}`} testID="home-dog-cutout-mascot" />
             ) : hasDogPhoto ? (
-              <WalkieMascot state="idle" size={144} source={{ uri: dog!.photoUrl }} onError={() => setDogPhotoFailed(true)} accessibilityLabel={`תמונה של ${dog!.name}`} testID="home-dog-photo-mascot" />
+              <Image source={{ uri: dog!.photoUrl }} style={styles.dashboardHeroPhotoScene} resizeMode="cover" onError={() => setDogPhotoFailed(true)} accessibilityLabel={`תמונה של ${dog!.name}`} testID="home-dog-photo-scene" />
             ) : (
               <WalkieMascot state="idle" size={144} accessibilityLabel="כלב Walkie Doggy" testID="home-brand-mascot" />
             )}
@@ -1438,7 +1444,8 @@ const styles = StyleSheet.create({
   dashboardHeroGreeting: { position: 'absolute', top: 24, left: 18, width: '54%', alignItems: 'flex-end', zIndex: 2 },
   dashboardHeroGreetingTitle: { width: '100%', fontSize: 23, lineHeight: 28, color: '#253275', fontWeight: '900', textAlign: 'right' },
   dashboardHeroGreetingSubtitle: { width: '100%', marginTop: 4, fontSize: 13, lineHeight: 18, color: '#454E91', fontWeight: '700', textAlign: 'right' },
-  dashboardHeroMascot: { position: 'absolute', right: -4, bottom: -8, zIndex: 2, width: 140, height: 140, alignItems: 'center', justifyContent: 'flex-end' },
+  dashboardHeroMascot: { position: 'absolute', right: -4, bottom: -8, zIndex: 2, width: 140, height: 140, alignItems: 'center', justifyContent: 'flex-end', overflow: 'hidden', borderBottomRightRadius: 26 },
+  dashboardHeroPhotoScene: { width: '100%', height: '100%' },
   dashboardHeroCopy: { width: '52%', alignItems: 'flex-end', alignSelf: 'flex-start', paddingTop: 38, paddingHorizontal: spacing.md, zIndex: 2 },
   dashboardHeroEyebrow: { fontSize: 16, color: '#27376F', fontWeight: '700', textAlign: 'right' },
   dashboardHeroName: { fontSize: 30, lineHeight: 36, color: '#16245B', fontWeight: '900', textAlign: 'right' },
