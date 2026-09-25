@@ -53,13 +53,11 @@ import { subscribeToReminderOpens, type ReminderOpenEvent } from '../notificatio
 import type { RootTabParamList } from '../navigation/RootNavigator';
 import { useHealthStore } from '../store/healthStore';
 import { getImportantHealthReminders, summarizeHealthTasksForHome } from '../logic/healthTasks';
-import { getDogBackground, getDogBackgroundId } from '../theme/dogBackgrounds';
 import { useGpsStore } from '../store/gpsStore';
 
 export function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
   const [dogProfileVisible, setDogProfileVisible] = useState(false);
-  const [heroBackgroundId, setHeroBackgroundId] = useState<string | undefined>(undefined);
   const currentUserId = useAuthStore((s) => s.currentUserId)!;
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const effectiveRole = useEffectiveFamilyRole();
@@ -72,10 +70,6 @@ export function HomeScreen() {
   const clearTestModeIfInvalid = useAuthStore((s) => s.clearTestModeIfInvalid);
   const clearImpersonationIfInvalid = useAuthStore((s) => s.clearImpersonationIfInvalid);
   const { family, users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, error: familyError, load: loadFamily } = useFamilyStore();
-  const heroBackground = getDogBackground(heroBackgroundId);
-  useEffect(() => {
-    setHeroBackgroundId(getDogBackgroundId(dog?.id));
-  }, [dog?.id]);
 
   const {
     walks,
@@ -688,34 +682,26 @@ export function HomeScreen() {
           </Pressable>
         </View>
 
-        {/* Issue #145 / approved Dashboard Option D. The normal Home hero is
-            the soft lavender dashboard composition from the approved
-            reference, not a full-bleed family-dog photo. A deliberately
-            selected scene remains available as a backdrop; photo upload,
-            removal and sync are untouched by this presentation-only work. */}
+        {/* Issue #145 / approved Dashboard Option D. Home always uses the
+            soft lavender dashboard composition from the approved reference.
+            A previously saved dog-profile scene must never override this
+            layout. Photo upload, removal and sync are untouched. */}
         <Pressable
           onPress={() => setDogProfileVisible(true)}
           style={styles.dashboardHero}
           accessibilityRole="button"
           accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
         >
-          {heroBackground ? (
-            <Image
-              source={{ uri: heroBackground.uri }}
-              style={styles.dashboardHeroImage}
-              resizeMode="cover"
-            />
-          ) : null}
-          {!heroBackground ? <View style={styles.dashboardHeroBloomOne} pointerEvents="none" /> : null}
-          {!heroBackground ? <View style={styles.dashboardHeroBloomTwo} pointerEvents="none" /> : null}
-          {!heroBackground ? <View style={styles.dashboardHeroGlow} pointerEvents="none" /> : null}
+          <View style={styles.dashboardHeroBloomOne} pointerEvents="none" />
+          <View style={styles.dashboardHeroBloomTwo} pointerEvents="none" />
+          <View style={styles.dashboardHeroGlow} pointerEvents="none" />
           <View style={styles.dashboardHeroShade} />
           <View style={styles.dashboardHeroGreeting} pointerEvents="none">
-            <RtlText style={styles.dashboardHeroGreetingTitle}>שלום {family?.name ?? 'משפחה'}</RtlText>
-            <RtlText style={styles.dashboardHeroGreetingSubtitle}>{dog?.name ?? 'הכלב/ה'} מחכה לטיול הבא 🐾</RtlText>
+            <RtlText style={styles.dashboardHeroGreetingTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שלום {family?.name ?? 'משפחה'}</RtlText>
+            <RtlText style={styles.dashboardHeroGreetingSubtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{dog?.name ?? 'הכלב/ה'} מחכה לטיול הבא 🐾</RtlText>
           </View>
           <View style={styles.dashboardHeroMascot} pointerEvents="none">
-            <WalkieMascot state="idle" size={172} accessibilityLabel="כלב Walkie Doggy" />
+            <WalkieMascot state="idle" size={144} accessibilityLabel="כלב Walkie Doggy" />
           </View>
         </Pressable>
 
@@ -1364,7 +1350,7 @@ export function HomeScreen() {
         onConfirm={clearRequestsError}
         onCancel={clearRequestsError}
       />
-      <DogProfileModal visible={dogProfileVisible} onClose={() => { setDogProfileVisible(false); setHeroBackgroundId(getDogBackgroundId(dog?.id)); }} />
+      <DogProfileModal visible={dogProfileVisible} onClose={() => setDogProfileVisible(false)} />
     </SafeAreaView>
   );
 }
@@ -1406,10 +1392,10 @@ const styles = StyleSheet.create({
   dashboardHeroBloomTwo: { position: 'absolute', width: 250, height: 250, borderRadius: 125, right: -104, top: -132, backgroundColor: '#C9D7FF' },
   dashboardHeroGlow: { position: 'absolute', width: 260, height: 92, borderRadius: 130, left: 24, bottom: 16, backgroundColor: '#FFFFFF75', transform: [{ rotate: '-8deg' }] },
   dashboardHeroShade: { ...StyleSheet.absoluteFill, backgroundColor: '#FFFFFF12' },
-  dashboardHeroGreeting: { position: 'absolute', top: 34, left: 22, width: '57%', alignItems: 'flex-end', zIndex: 2 },
-  dashboardHeroGreetingTitle: { width: '100%', fontSize: 26, lineHeight: 31, color: '#253275', fontWeight: '900', textAlign: 'right' },
-  dashboardHeroGreetingSubtitle: { width: '100%', marginTop: 4, fontSize: 15, lineHeight: 20, color: '#454E91', fontWeight: '700', textAlign: 'right' },
-  dashboardHeroMascot: { position: 'absolute', right: -8, bottom: -8, zIndex: 2 },
+  dashboardHeroGreeting: { position: 'absolute', top: 35, left: 18, width: '54%', alignItems: 'flex-end', zIndex: 2 },
+  dashboardHeroGreetingTitle: { width: '100%', fontSize: 23, lineHeight: 28, color: '#253275', fontWeight: '900', textAlign: 'right' },
+  dashboardHeroGreetingSubtitle: { width: '100%', marginTop: 4, fontSize: 13, lineHeight: 18, color: '#454E91', fontWeight: '700', textAlign: 'right' },
+  dashboardHeroMascot: { position: 'absolute', right: -4, bottom: -4, zIndex: 2 },
   dashboardHeroCopy: { width: '52%', alignItems: 'flex-end', alignSelf: 'flex-start', paddingTop: 38, paddingHorizontal: spacing.md, zIndex: 2 },
   dashboardHeroEyebrow: { fontSize: 16, color: '#27376F', fontWeight: '700', textAlign: 'right' },
   dashboardHeroName: { fontSize: 30, lineHeight: 36, color: '#16245B', fontWeight: '900', textAlign: 'right' },

@@ -13,7 +13,8 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('style={styles.dashboardHeroBloomOne}');
     expect(home).toContain('style={styles.dashboardHeroBloomTwo}');
     expect(home).toContain('style={styles.dashboardHeroGlow}');
-    expect(home).toContain('heroBackground ? (');
+    expect(home).not.toContain('heroBackground ? (');
+    expect(home).not.toContain('getDogBackgroundId');
     expect(home).not.toContain('source={{ uri: dog!.photoUrl! }}');
     expect(home).toContain('tone="dashboard"');
     expect(home).toContain('setDogProfileVisible(true)');
