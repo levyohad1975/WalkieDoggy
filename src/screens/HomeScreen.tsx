@@ -639,6 +639,7 @@ export function HomeScreen() {
           visible on every tab while impersonating, not just this one. See
           components/ImpersonationBanner.tsx's doc comment. */}
       <ScrollView
+        scrollEnabled={false}
         contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
@@ -825,6 +826,16 @@ export function HomeScreen() {
           </Pressable>
         </View>
 
+        <Pressable
+          onPress={() => navigation.navigate('Schedule')}
+          style={styles.dashboardMoreButton}
+          accessibilityRole="button"
+          accessibilityLabel="פתיחת לוח הזמנים המלא"
+        >
+          <RtlText style={styles.dashboardMoreButtonText}>לוח זמנים מלא  ‹</RtlText>
+        </Pressable>
+
+        <View style={styles.dashboardOverflow}>
         {lastWalk ? (
           <View style={styles.section}>
             <View style={styles.sectionTitlePhysicalRight}>
@@ -997,6 +1008,7 @@ export function HomeScreen() {
             </View>
           </View>
         ) : null}
+        </View>
       </ScrollView>
 
       <CompleteWalkModal
@@ -1304,7 +1316,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#EEF7F4' },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   addFirstDogButton: { marginTop: spacing.md },
-  content: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: 14, paddingBottom: spacing.xxxl, width: '100%' },
+  content: { flexGrow: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: 12, paddingBottom: spacing.md, width: '100%' },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: 14 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
   nextWalkLift: { marginTop: -64, zIndex: 1, paddingHorizontal: 0 },
@@ -1345,6 +1357,9 @@ const styles = StyleSheet.create({
   dashboardShortcutPurple: { backgroundColor: '#E9D9FF' },
   dashboardShortcutLabel: { fontSize: 14, lineHeight: 19, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
   dashboardShortcutIcon: { fontSize: 26, lineHeight: 28 },
+  dashboardMoreButton: { minHeight: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: '#D6F0EE', borderRadius: radii.md },
+  dashboardMoreButtonText: { fontSize: 15, fontWeight: '800', color: colors.primaryDark },
+  dashboardOverflow: { display: 'none' },
   notificationButton: { position: 'absolute', left: 0, top: 11, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
   notificationIcon: { fontSize: 18 },
   requestsCountBadge: { minWidth: spacing.xl, height: spacing.xl, borderRadius: radii.sm, paddingHorizontal: spacing.xs, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryDark },

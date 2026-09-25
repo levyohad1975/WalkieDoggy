@@ -26,6 +26,9 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('upcoming.slice(0, 2).map');
     expect(home).toContain('עוד ‹');
     expect(home).toContain('הצגת כל הטיולים בלוח הזמנים');
+    expect(home).toContain('scrollEnabled={false}');
+    expect(home).toContain('style={styles.dashboardMoreButton}');
+    expect(home).toContain('לוח זמנים מלא');
   });
 
   it('exposes start and end walk as the primary lifecycle action', () => {
