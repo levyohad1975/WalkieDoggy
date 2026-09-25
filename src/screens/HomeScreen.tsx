@@ -1353,7 +1353,10 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   dashboardHeroImage: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
-  dashboardDogOverlay: { width: 176, height: 176, borderRadius: 88, borderWidth: 4, borderColor: '#FFFFFFE8', marginBottom: 28 },
+  // The family dog's own photo belongs to the scenic hero, not a framed
+  // avatar treatment. There is deliberately no border or outline: the
+  // photo is simply layered into the selected scene.
+  dashboardDogOverlay: { width: 196, height: 148, borderRadius: 24, borderWidth: 0, marginBottom: 24 },
   dashboardHeroShade: { ...StyleSheet.absoluteFill, backgroundColor: '#00000026' },
   dashboardHeroCopy: { width: '100%', alignItems: 'center', paddingBottom: 62, paddingHorizontal: spacing.lg },
   dashboardHeroEyebrow: { fontSize: 16, color: colors.textInverse, fontWeight: '700', textAlign: 'center' },
