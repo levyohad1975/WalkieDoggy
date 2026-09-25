@@ -816,9 +816,9 @@ export function HomeScreen() {
         </View>
 
         <View style={styles.dashboardShortcuts} accessibilityLabel="קיצורי דרך">
-          <Pressable onPress={() => setAddUnplannedVisible(true)} style={[styles.dashboardShortcut, styles.dashboardShortcutMint]} accessibilityRole="button" accessibilityLabel="הוספת טיול ידני">
+          <Pressable onPress={() => setAddUnplannedVisible(true)} style={[styles.dashboardShortcut, styles.dashboardShortcutMint]} accessibilityRole="button" accessibilityLabel="הוסף טיול שבוצע">
             <RtlText style={styles.dashboardShortcutIcon}>📍</RtlText>
-            <RtlText style={styles.dashboardShortcutLabel}>הוספת טיול{`\n`}ידני</RtlText>
+            <RtlText style={styles.dashboardShortcutLabel}>הוסף טיול{`\n`}שבוצע</RtlText>
           </Pressable>
           <Pressable onPress={() => navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutBlue]} accessibilityRole="button" accessibilityLabel="לוח זמנים">
             <RtlText style={styles.dashboardShortcutIcon}>🗓️</RtlText>
@@ -838,9 +838,9 @@ export function HomeScreen() {
           onPress={() => navigation.navigate('Schedule')}
           style={styles.dashboardMoreButton}
           accessibilityRole="button"
-          accessibilityLabel="פתיחת לוח הזמנים המלא"
+          accessibilityLabel="הצגת אפשרויות נוספות"
         >
-          <RtlText style={styles.dashboardMoreButtonText}>לוח זמנים מלא  ‹</RtlText>
+          <RtlText style={styles.dashboardMoreButtonText}>עוד  ‹</RtlText>
         </Pressable>
 
         <View style={styles.dashboardOverflow}>
@@ -1321,7 +1321,7 @@ export function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#EEF7F4' },
+  container: { flex: 1, backgroundColor: '#FFF9F2' },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   addFirstDogButton: { marginTop: spacing.md },
   content: { flexGrow: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: 12, paddingBottom: spacing.md, width: '100%' },
@@ -1345,7 +1345,7 @@ const styles = StyleSheet.create({
   mascotHeaderButton: { position: 'absolute', right: 0, top: 6, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   dashboardHero: {
     width: '100%',
-    height: 256,
+    height: 224,
     borderRadius: radii.xl,
     backgroundColor: colors.primaryDark,
     overflow: 'hidden',
@@ -1355,7 +1355,7 @@ const styles = StyleSheet.create({
   dashboardHeroImage: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
   dashboardDogOverlay: { width: 176, height: 176, borderRadius: 88, borderWidth: 4, borderColor: '#FFFFFFE8', marginBottom: 28 },
   dashboardHeroShade: { ...StyleSheet.absoluteFill, backgroundColor: '#00000026' },
-  dashboardHeroCopy: { width: '100%', alignItems: 'center', paddingBottom: 76, paddingHorizontal: spacing.lg },
+  dashboardHeroCopy: { width: '100%', alignItems: 'center', paddingBottom: 62, paddingHorizontal: spacing.lg },
   dashboardHeroEyebrow: { fontSize: 16, color: colors.textInverse, fontWeight: '700', textAlign: 'center' },
   dashboardHeroName: { fontSize: 30, lineHeight: 36, color: colors.textInverse, fontWeight: '900', textAlign: 'center' },
   dashboardShortcuts: { flexDirection: 'row-reverse', gap: spacing.sm, width: '100%', marginTop: -2 },
@@ -1366,7 +1366,7 @@ const styles = StyleSheet.create({
   dashboardShortcutPurple: { backgroundColor: '#E9D9FF' },
   dashboardShortcutLabel: { fontSize: 14, lineHeight: 19, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
   dashboardShortcutIcon: { fontSize: 26, lineHeight: 28 },
-  dashboardMoreButton: { minHeight: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: '#D6F0EE', borderRadius: radii.md },
+  dashboardMoreButton: { minHeight: 38, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F3E6D3', borderRadius: radii.md },
   dashboardMoreButtonText: { fontSize: 15, fontWeight: '800', color: colors.primaryDark },
   dashboardOverflow: { display: 'none' },
   notificationButton: { position: 'absolute', left: 0, top: 11, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },

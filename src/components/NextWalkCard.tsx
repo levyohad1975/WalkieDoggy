@@ -381,7 +381,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 2,
   },
-  cardDashboard: { backgroundColor: '#E5F7F6', borderColor: '#9ADFD9', shadowOpacity: 0.09, shadowRadius: 14, elevation: 3 },
+  cardDashboard: { backgroundColor: '#FFFFFF', borderColor: '#E8DCCB', shadowOpacity: 0.1, shadowRadius: 14, elevation: 3 },
   webCard: { borderRadius: radii.xl, paddingHorizontal: 24, paddingVertical: 18 },
   cardActive: { backgroundColor: colors.successSoft, borderColor: colors.success + '55' },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },

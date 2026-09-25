@@ -9,7 +9,7 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('showDogPhoto');
     expect(home).toContain('style={styles.dashboardHero}');
     expect(home).toContain('style={styles.dashboardHeroShade}');
-    expect(home).toContain('height: 256');
+    expect(home).toContain('height: 224');
     expect(home).toContain('tone="dashboard"');
     expect(home).toContain('setDogProfileVisible(true)');
     expect(home).toContain("style={styles.mascotHeaderButton}");
@@ -28,7 +28,7 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('הצגת כל הטיולים בלוח הזמנים');
     expect(home).toContain('scrollEnabled={false}');
     expect(home).toContain('style={styles.dashboardMoreButton}');
-    expect(home).toContain('לוח זמנים מלא');
+    expect(home).toContain('>עוד  ‹</RtlText>');
   });
 
   it('exposes start and end walk as the primary lifecycle action', () => {
@@ -44,7 +44,7 @@ describe('Home integrated walk lifecycle', () => {
   });
 
   it('keeps only the approved completed-walk entry instead of a redundant spontaneous-start CTA', () => {
-    expect(home).toContain('הוספת טיול');
+    expect(home).toContain('הוסף טיול');
     expect(home).toContain('setAddUnplannedVisible(true)');
     expect(home).not.toContain('התחל טיול ספונטני');
   });

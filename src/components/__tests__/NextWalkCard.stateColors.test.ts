@@ -12,7 +12,7 @@ describe('NextWalkCard state colors', () => {
   it('allows Home to opt into a richer dashboard surface without changing ordinary cards', () => {
     expect(source).toContain("tone?: 'default' | 'dashboard'");
     expect(source).toContain("tone === 'dashboard' && styles.cardDashboard");
-    expect(source).toContain("cardDashboard: { backgroundColor: '#E5F7F6'");
+    expect(source).toContain("cardDashboard: { backgroundColor: '#FFFFFF'");
   });
 
   it('uses green for an active walk and gives it priority over overdue red', () => {
