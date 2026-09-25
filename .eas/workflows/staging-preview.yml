@@ -4,7 +4,7 @@ name: Deploy web staging
 on:
   push:
     branches:
-      - fix/urgent-master-batch-20260925
+      - feat/home-dog-photo-mascot
 
 jobs:
   deploy_web_staging:
