@@ -502,7 +502,22 @@ export class OfflineFirstRepository implements Repository {
   async getWalks(familyId: string): Promise<Walk[]> {
     if (await this.isOnline()) {
       try {
-        return await this.remote!.getWalks(familyId);
+        // Remote is authoritative while online. Mirror it into the local
+        // cache before returning so stale locally-generated walk IDs cannot
+        // survive a refresh and later reach start_walk()/finish_walk().
+        const remoteWalks = await this.remote!.getWalks(familyId);
+        const remoteIds = new Set(remoteWalks.map((walk) => walk.id));
+        const localWalks = await this.local.getWalks(familyId);
+
+        for (const walk of remoteWalks) {
+          await this.local.saveWalk(walk);
+        }
+        for (const walk of localWalks) {
+          if (!remoteIds.has(walk.id) && !(await this.queue.hasPendingSaveWalk(walk.id))) {
+            await this.local.deleteWalk(walk.id);
+          }
+        }
+        return remoteWalks;
       } catch {
         /* fall through */
       }
