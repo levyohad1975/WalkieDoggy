@@ -571,7 +571,7 @@ function SettingsScreenContent() {
               </RtlText>
               <RtlText style={styles.dogCardMeta}>לחצו לעריכת פרטי הכלב</RtlText>
             </View>
-            <DogPhoto photoUrl={dog.photoUrl} size={64} />
+            <DogPhoto photoUrl={dog.photoUrl} photoCutoutUrl={dog.photoCutoutUrl} size={64} />
           </Pressable>
         ) : null}
 
