@@ -11,5 +11,10 @@ jobs:
     name: Deploy web staging
     type: deploy
     environment: preview
+    env:
+      # Client-side staging config is intentionally public and is already embedded in the Vercel web bundle.
+      # Pin it here so EAS Hosting exports the same backend config even when the EAS preview env is empty.
+      EXPO_PUBLIC_SUPABASE_URL: https://czbxhsoxyawprqehkfit.supabase.co
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_eqvarDUtnu4WM3Oy8fXKsQ_2BrsPRwa
     params:
       alias: staging
