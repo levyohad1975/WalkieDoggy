@@ -9,7 +9,7 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('showDogPhoto');
     expect(home).toContain('style={styles.dashboardHero}');
     expect(home).toContain('style={styles.dashboardHeroShade}');
-    expect(home).toContain('height: 210');
+    expect(home).toContain('height: 180');
     expect(home).toContain('style={styles.dashboardHeroBloomOne}');
     expect(home).toContain('style={styles.dashboardHeroBloomTwo}');
     expect(home).toContain('style={styles.dashboardHeroGlow}');
@@ -27,11 +27,21 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('setRequestTimeChangeWalkId(nextWalk?.id ?? null)');
   });
 
-  it('keeps Home compact with one tappable three-stop timeline instead of a long list', () => {
-    expect(home).toContain('upcoming.slice(0, 3).map');
+  it('keeps a compact, always-present Dashboard timeline instead of a long list', () => {
+    expect(home).toContain('const dashboardTimelineWalks = useMemo');
+    expect(home).toContain('dashboardTimelineWalks.length > 0 ?');
+    expect(home).toContain('dashboardTimelineWalks.map');
+    expect(home).toContain('אין טיולים נוספים היום');
     expect(home).toContain('פתיחת לוח הזמנים להמשך היום');
     expect(home).toContain('scrollEnabled={false}');
     expect(home).not.toContain('style={styles.dashboardMoreButton}');
+  });
+
+  it('shows the orange approval prompt only for a real actionable request', () => {
+    expect(home).toContain('pendingForMe > 0 ?');
+    expect(home).toContain('style={styles.dashboardRequestAlert}');
+    expect(home).toContain('בקשה ממתינה לאישור');
+    expect(home).toContain('onPress={openRequestsInbox}');
   });
 
   it('exposes start and end walk as the primary lifecycle action', () => {

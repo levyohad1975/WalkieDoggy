@@ -487,6 +487,13 @@ export function HomeScreen() {
     () => upcomingWalks(visibleWalks).filter((w) => w.id !== nextWalk?.id),
     [visibleWalks, nextWalk, minuteTick]
   );
+  // The compact Home timeline is a Dashboard summary, not a list of only
+  // the walks *after* the primary card. Including the next walk means the
+  // section remains useful (and visibly present) on a day with one walk.
+  const dashboardTimelineWalks = useMemo(
+    () => upcomingWalks(visibleWalks).slice(0, 3),
+    [visibleWalks, minuteTick]
+  );
   const overduePending = useMemo(
     () =>
       visibleWalks
@@ -847,26 +854,41 @@ export function HomeScreen() {
               <RtlText style={styles.dashboardLastWalkMeta}>{lastWalk.scheduledTime} · {walkDateContextLabel(lastWalk.date)}</RtlText>
             </View>
             <View style={styles.dashboardLastWalkDog}>
-              <WalkieMascot state="success" size={62} accessibilityLabel="כלב Walkie Doggy" />
+              <WalkieMascot state="success" size={54} accessibilityLabel="כלב Walkie Doggy" />
             </View>
             <RtlText style={styles.dashboardLastWalkChevron}>‹</RtlText>
           </Pressable>
         ) : null}
 
-        {upcoming.length > 0 ? (
-          <Pressable style={styles.dashboardTimeline} onPress={() => navigation.navigate('Schedule')} accessibilityRole="button" accessibilityLabel="פתיחת לוח הזמנים להמשך היום">
-            <View style={styles.dashboardTimelineHeader}>
-              <RtlText style={styles.dashboardTimelineTitle}>בהמשך היום · {upcoming.length} טיולים</RtlText>
-              <RtlText style={styles.dashboardTimelineChevron}>‹</RtlText>
-            </View>
+        <Pressable style={styles.dashboardTimeline} onPress={() => navigation.navigate('Schedule')} accessibilityRole="button" accessibilityLabel="פתיחת לוח הזמנים להמשך היום">
+          <View style={styles.dashboardTimelineHeader}>
+            <RtlText style={styles.dashboardTimelineTitle}>
+              {dashboardTimelineWalks.length > 0
+                ? `בהמשך היום · ${dashboardTimelineWalks.length} ${dashboardTimelineWalks.length === 1 ? 'טיול' : 'טיולים'}`
+                : 'בהמשך היום'}
+            </RtlText>
+            <RtlText style={styles.dashboardTimelineChevron}>‹</RtlText>
+          </View>
+          {dashboardTimelineWalks.length > 0 ? (
             <View style={styles.dashboardTimelineStops}>
-              {upcoming.slice(0, 3).map((walk) => (
+              {dashboardTimelineWalks.map((walk) => (
                 <View key={walk.id} style={styles.dashboardTimelineStop}>
                   <RtlText style={styles.dashboardTimelineTime}>{walk.scheduledTime}</RtlText>
                   <Avatar emoji={usersById[walk.responsibleUserId]?.avatar ?? '🐾'} color={usersById[walk.responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[walk.responsibleUserId]?.photoUrl} size={28} />
                 </View>
               ))}
             </View>
+          ) : <RtlText style={styles.dashboardTimelineEmpty}>אין טיולים נוספים היום · לפתיחת לוח הזמנים</RtlText>}
+        </Pressable>
+
+        {pendingForMe > 0 ? (
+          <Pressable style={styles.dashboardRequestAlert} onPress={openRequestsInbox} accessibilityRole="button" accessibilityLabel={`${pendingForMe} בקשות ממתינות לאישור`}>
+            <RtlText style={styles.dashboardRequestAlertIcon}>🔔</RtlText>
+            <View style={styles.dashboardRequestAlertCopy}>
+              <RtlText style={styles.dashboardRequestAlertTitle}>בקשה ממתינה לאישור</RtlText>
+              <RtlText style={styles.dashboardRequestAlertSubtitle}>{pendingForMe === 1 ? 'בקשה אחת מחכה לטיפול שלך' : `${pendingForMe} בקשות מחכות לטיפול שלך`}</RtlText>
+            </View>
+            <RtlText style={styles.dashboardRequestAlertChevron}>‹</RtlText>
           </Pressable>
         ) : null}
 
@@ -1354,7 +1376,7 @@ const styles = StyleSheet.create({
   content: { flexGrow: 1, paddingHorizontal: spacing.md, paddingTop: spacing.xs, gap: 10, paddingBottom: spacing.md, width: '100%', backgroundColor: '#FBF8F3' },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: 14 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
-  nextWalkLift: { marginTop: -58, zIndex: 1, paddingHorizontal: spacing.xs },
+  nextWalkLift: { marginTop: -50, zIndex: 1, paddingHorizontal: spacing.xs },
   testModeBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1372,7 +1394,7 @@ const styles = StyleSheet.create({
   mascotHeaderButton: { position: 'absolute', right: 0, top: 8, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E4E7F4' },
   dashboardHero: {
     width: '100%',
-    height: 210,
+    height: 180,
     borderRadius: 32,
     backgroundColor: '#E8ECFF',
     overflow: 'hidden',
@@ -1392,26 +1414,33 @@ const styles = StyleSheet.create({
   dashboardHeroEyebrow: { fontSize: 16, color: '#27376F', fontWeight: '700', textAlign: 'right' },
   dashboardHeroName: { fontSize: 30, lineHeight: 36, color: '#16245B', fontWeight: '900', textAlign: 'right' },
   dashboardShortcuts: { flexDirection: 'row-reverse', gap: spacing.sm, width: '100%', marginTop: -2 },
-  dashboardShortcut: { flex: 1, minHeight: 84, borderRadius: 22, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, gap: 4, borderWidth: 1, borderColor: '#FFFFFFAA' },
+  dashboardShortcut: { flex: 1, minHeight: 72, borderRadius: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, gap: 2, borderWidth: 1, borderColor: '#FFFFFFAA' },
   dashboardShortcutMint: { backgroundColor: '#EDF2FF' },
   dashboardShortcutBlue: { backgroundColor: '#E6ECFF' },
   dashboardShortcutGold: { backgroundColor: '#FFF0C9' },
   dashboardShortcutPurple: { backgroundColor: '#F0EBFF' },
   dashboardShortcutLabel: { fontSize: 14, lineHeight: 19, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
   dashboardShortcutIcon: { fontSize: 26, lineHeight: 28 },
-  dashboardLastWalk: { minHeight: 96, borderRadius: radii.xl, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EAE5DD', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm, shadowColor: '#17245B', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  dashboardLastWalk: { minHeight: 78, borderRadius: radii.xl, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EAE5DD', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm, shadowColor: '#17245B', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
   dashboardLastWalkCopy: { flex: 1, alignItems: 'flex-end' },
   dashboardLastWalkTitle: { fontSize: 18, fontWeight: '900', color: '#17245B', textAlign: 'right' },
   dashboardLastWalkMeta: { marginTop: 5, fontSize: 14, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
-  dashboardLastWalkDog: { width: 82, height: 66, overflow: 'hidden', borderRadius: radii.lg, backgroundColor: '#EEF3FF', alignItems: 'center', justifyContent: 'center' },
+  dashboardLastWalkDog: { width: 70, height: 58, overflow: 'hidden', borderRadius: radii.lg, backgroundColor: '#EEF3FF', alignItems: 'center', justifyContent: 'center' },
   dashboardLastWalkChevron: { fontSize: 34, color: '#454B9E', writingDirection: 'ltr' },
-  dashboardTimeline: { minHeight: 88, borderRadius: radii.xl, backgroundColor: '#FBFBFF', borderWidth: 1, borderColor: '#E1E2F4', padding: spacing.md, gap: spacing.sm },
+  dashboardTimeline: { minHeight: 74, borderRadius: radii.xl, backgroundColor: '#FBFBFF', borderWidth: 1, borderColor: '#E1E2F4', paddingHorizontal: spacing.md, paddingVertical: 9, gap: 6 },
   dashboardTimelineHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   dashboardTimelineTitle: { fontSize: 16, fontWeight: '900', color: '#17245B', textAlign: 'right' },
   dashboardTimelineChevron: { fontSize: 24, color: '#454B9E', writingDirection: 'ltr' },
   dashboardTimelineStops: { flexDirection: 'row-reverse', justifyContent: 'space-around', alignItems: 'center' },
   dashboardTimelineStop: { alignItems: 'center', gap: 4 },
   dashboardTimelineTime: { fontSize: 13, fontWeight: '800', color: '#2E3170' },
+  dashboardTimelineEmpty: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, textAlign: 'right', paddingBottom: 2 },
+  dashboardRequestAlert: { minHeight: 62, borderRadius: radii.xl, backgroundColor: '#FFF0D9', borderWidth: 1, borderColor: '#F8DEC0', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
+  dashboardRequestAlertIcon: { fontSize: 25 },
+  dashboardRequestAlertCopy: { flex: 1, alignItems: 'flex-end' },
+  dashboardRequestAlertTitle: { fontSize: 16, fontWeight: '900', color: '#B66318', textAlign: 'right' },
+  dashboardRequestAlertSubtitle: { marginTop: 2, fontSize: 13, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
+  dashboardRequestAlertChevron: { fontSize: 28, color: '#C56C1D', writingDirection: 'ltr' },
   dashboardOverflow: { display: 'none' },
   notificationButton: { position: 'absolute', right: 52, top: 8, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF4D6', borderWidth: 1, borderColor: '#F2E5C2' },
   notificationIcon: { fontSize: 18 },
