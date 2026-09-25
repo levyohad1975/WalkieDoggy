@@ -218,6 +218,8 @@ export function NextWalkCard({
             ? `📍 ${liveDistanceMeters != null && liveDistanceMeters > 0 ? formatDistanceMeters(liveDistanceMeters) : 'ממתין לנתוני GPS…'}`
             : gpsStatus === 'denied'
               ? '📍 מיקום לא זמין — אפשר להפעיל בהגדרות המכשיר'
+              : gpsStatus === 'unavailable'
+                ? '📍 לא התקבל מיקום — ודאו ששירותי מיקום פעילים'
               : '📍 מפעיל GPS…'}
         </RtlText>
       ) : null}

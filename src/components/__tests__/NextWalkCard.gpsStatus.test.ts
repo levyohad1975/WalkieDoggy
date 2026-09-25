@@ -20,9 +20,10 @@ describe('NextWalkCard surfaces live GPS distance/status while active (structura
 
   it('explains the three user-visible GPS states instead of silently hiding the status', () => {
     const blockStart = source.indexOf("gpsStatus === 'granted'");
-    const block = source.slice(blockStart, blockStart + 400);
+    const block = source.slice(blockStart, blockStart + 600);
     expect(block).toContain('ממתין לנתוני GPS');
     expect(block).toContain('מיקום לא זמין');
+    expect(block).toContain('לא התקבל מיקום');
     expect(block).toContain('מפעיל GPS');
   });
 

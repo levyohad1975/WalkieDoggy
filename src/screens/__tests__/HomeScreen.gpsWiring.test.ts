@@ -17,4 +17,10 @@ describe('HomeScreen wires gpsStore\'s live tracking state into NextWalkCard (st
     expect(source).toMatch(/liveDistanceMeters=\{gpsTrackingWalkId === nextWalk\.id \? gpsDistanceMeters : null\}/);
     expect(source).toMatch(/gpsStatus=\{gpsTrackingWalkId === nextWalk\.id \? gpsPermissionStatus : null\}/);
   });
+
+  it('starts the foreground permission request from the Start button gesture before the walk RPC', () => {
+    expect(source).toMatch(/import \{ requestForegroundGpsPermission \} from '\.\.\/lib\/gpsTracking';/);
+    const startAction = source.slice(source.indexOf('onStartWalk='), source.indexOf('onEndWalk='));
+    expect(startAction).toMatch(/void requestForegroundGpsPermission\(\);[\s\S]*void startWalk\(nextWalk\.id\);/);
+  });
 });

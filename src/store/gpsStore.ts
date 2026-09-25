@@ -70,7 +70,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     }
     set({ trackingWalkId: walk.id, permissionStatus: null, trackingStartedAt: null, distanceMeters: 0, pointCount: 0, routePoints: [] });
 
-    const handle = await startGpsWatch((acc: GpsAccumulator) => {
+    const result = await startGpsWatch((acc: GpsAccumulator) => {
       // Ignore a late callback from a watch that's since been stopped/
       // superseded (e.g. the walk ended right as a fix arrived).
       if (get().trackingWalkId !== walk.id) return;
@@ -81,23 +81,17 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       // startTracking() was called again for a different walk while this
       // permission/start round-trip was in flight — this handle belongs to
       // an already-superseded session; tear it down instead of leaking it.
-      handle?.remove();
+      result.handle?.remove();
       return;
     }
-    if (!handle) {
+    if (!result.handle) {
       // Keep the active walk attached to the store even when the OS/browser
       // denies location or cannot create a watch. The Home card can then
       // explain the GPS state instead of silently losing the GPS section.
-      set({ trackingWalkId: walk.id, permissionStatus: 'denied' });
-      // requestForegroundGpsPermission() itself already distinguishes
-      // denied/unavailable, but startGpsWatch() collapses both to `null` —
-      // re-deriving here would need a second call. Re-checking isn't worth
-      // the round trip for a purely informational status; 'denied' is the
-      // more actionable message either way ("enable location" beats a
-      // generic "GPS unavailable" when the real cause could be either).
+      set({ trackingWalkId: walk.id, permissionStatus: result.permissionStatus });
       return;
     }
-    activeWatch = handle;
+    activeWatch = result.handle;
     set({ permissionStatus: 'granted', trackingStartedAt: new Date().toISOString() });
   },
 

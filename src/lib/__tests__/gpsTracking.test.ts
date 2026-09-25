@@ -7,8 +7,20 @@
  * static mock.
  */
 describe('gpsTracking', () => {
+  const originalNavigator = Object.getOwnPropertyDescriptor(global, 'navigator');
+  let platformOsDescriptor: PropertyDescriptor | undefined;
+
   beforeEach(() => {
     jest.resetModules();
+  });
+
+  afterEach(() => {
+    if (platformOsDescriptor) {
+      Object.defineProperty(require('react-native').Platform, 'OS', platformOsDescriptor);
+      platformOsDescriptor = undefined;
+    }
+    if (originalNavigator) Object.defineProperty(global, 'navigator', originalNavigator);
+    else delete (global as { navigator?: Navigator }).navigator;
   });
 
   function mockLocationModule(overrides: Record<string, jest.Mock> = {}) {
@@ -74,26 +86,58 @@ describe('gpsTracking', () => {
   });
 
   describe('startGpsWatch', () => {
-    it('returns null without starting a watch when permission is not granted', async () => {
+    it('uses the browser Geolocation API on Web without navigator.permissions (Safari regression)', async () => {
+      const { Platform } = require('react-native');
+      platformOsDescriptor = Object.getOwnPropertyDescriptor(Platform, 'OS');
+      Object.defineProperty(Platform, 'OS', { configurable: true, value: 'web' });
+      const getCurrentPosition = jest.fn((success: (position: any) => void) => {
+        success({ coords: { latitude: 32.0800, longitude: 34.7800, accuracy: 5 }, timestamp: 1 });
+      });
+      const watchPosition = jest.fn(() => 42);
+      const clearWatch = jest.fn();
+      Object.defineProperty(global, 'navigator', {
+        configurable: true,
+        value: { geolocation: { getCurrentPosition, watchPosition, clearWatch } },
+      });
+      // Safari's missing navigator.permissions must not make the browser
+      // path depend on expo-location's Web permission adapter.
+      jest.doMock('expo-location', () => {
+        throw new Error('must not load for Web GPS');
+      });
+      const { startGpsWatch } = require('../gpsTracking');
+
+      const updates: any[] = [];
+      const result = await startGpsWatch((acc: unknown) => updates.push(acc));
+
+      expect(result.permissionStatus).toBe('granted');
+      expect(result.handle).not.toBeNull();
+      expect(getCurrentPosition).toHaveBeenCalledTimes(1);
+      expect(watchPosition).toHaveBeenCalledTimes(1);
+      expect(updates).toHaveLength(1);
+      result.handle!.remove();
+      expect(clearWatch).toHaveBeenCalledWith(42);
+    });
+
+    it('returns a denied status without starting a watch when permission is not granted', async () => {
       const mocks = mockLocationModule({
         getForegroundPermissionsAsync: jest.fn().mockResolvedValue({ granted: false }),
         requestForegroundPermissionsAsync: jest.fn().mockResolvedValue({ granted: false }),
       });
       const { startGpsWatch } = require('../gpsTracking');
 
-      const handle = await startGpsWatch(jest.fn());
+      const result = await startGpsWatch(jest.fn());
 
-      expect(handle).toBeNull();
+      expect(result).toEqual({ handle: null, permissionStatus: 'denied' });
       expect(mocks.watchPositionAsync).not.toHaveBeenCalled();
     });
 
-    it('returns null when expo-location is unavailable', async () => {
+    it('returns unavailable when expo-location is unavailable', async () => {
       jest.doMock('expo-location', () => {
         throw new Error('unavailable');
       });
       const { startGpsWatch } = require('../gpsTracking');
 
-      expect(await startGpsWatch(jest.fn())).toBeNull();
+      await expect(startGpsWatch(jest.fn())).resolves.toEqual({ handle: null, permissionStatus: 'unavailable' });
     });
 
     it('starts watching, accumulates real movement across fed points, and calls onUpdate with the running total', async () => {
@@ -108,8 +152,9 @@ describe('gpsTracking', () => {
       const { startGpsWatch } = require('../gpsTracking');
 
       const updates: any[] = [];
-      const handle = await startGpsWatch((acc: unknown) => updates.push(acc));
-      expect(handle).not.toBeNull();
+      const result = await startGpsWatch((acc: unknown) => updates.push(acc));
+      expect(result.permissionStatus).toBe('granted');
+      expect(result.handle).not.toBeNull();
 
       feedPoint({ coords: { latitude: 32.0800, longitude: 34.7800, accuracy: 5 }, timestamp: 1 });
       feedPoint({ coords: { latitude: 32.0810, longitude: 34.7800, accuracy: 5 }, timestamp: 2 }); // ~111m
@@ -128,20 +173,20 @@ describe('gpsTracking', () => {
       });
       const { startGpsWatch } = require('../gpsTracking');
 
-      const handle = await startGpsWatch(jest.fn());
-      handle!.remove();
+      const result = await startGpsWatch(jest.fn());
+      result.handle!.remove();
 
       expect(removeMock).toHaveBeenCalledTimes(1);
     });
 
-    it('returns null (never throws) if watchPositionAsync itself throws', async () => {
+    it('returns unavailable (never throws) if watchPositionAsync itself throws', async () => {
       mockLocationModule({
         getForegroundPermissionsAsync: jest.fn().mockResolvedValue({ granted: true }),
         watchPositionAsync: jest.fn().mockRejectedValue(new Error('boom')),
       });
       const { startGpsWatch } = require('../gpsTracking');
 
-      await expect(startGpsWatch(jest.fn())).resolves.toBeNull();
+      await expect(startGpsWatch(jest.fn())).resolves.toEqual({ handle: null, permissionStatus: 'unavailable' });
     });
   });
 });

@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import type * as ExpoLocation from 'expo-location';
 import { accumulateDistance, createGpsAccumulator, type GpsAccumulator, type GpsPoint } from '../logic/gpsDistance';
 
@@ -11,15 +12,11 @@ import { accumulateDistance, createGpsAccumulator, type GpsAccumulator, type Gps
  * pattern for the same reason: a native module that might not be present
  * (a stripped-down test/CI environment, an unusual build) must degrade to
  * "unavailable" rather than crash at import time. UNLIKE notifications,
- * this does NOT blanket-disable in Expo Go or on Web — expo-location's
- * foreground APIs are not subject to the SDK-53 Expo-Go-Android regression
- * notificationService.ts works around (that was specific to
- * expo-notifications), and expo-location has genuine Web support (it wraps
- * the browser's own Geolocation API there) — so Web must not be excluded
- * the way local push notifications are. The lazy try/catch below is
- * sufficient on its own: any environment that genuinely can't load/use the
- * module resolves to `null`/'unavailable' safely, without a separate
- * environment-detection heuristic layered on top.
+ * this does NOT blanket-disable in Expo Go or on Web. Native keeps the lazy
+ * Expo adapter; Web uses the browser's Geolocation API directly because
+ * Safari does not consistently provide the Permissions API expected by
+ * expo-location's Web adapter. Any environment that genuinely cannot use
+ * location resolves to an explicit unavailable status rather than crashing.
  *
  * No raw position is ever exposed to a caller beyond one `onUpdate`
  * callback carrying the running ACCUMULATOR (distance + point count) — see
@@ -44,6 +41,33 @@ async function getLocation(): Promise<typeof ExpoLocation | null> {
 
 export type GpsPermissionStatus = 'granted' | 'denied' | 'unavailable';
 
+function browserGeolocation(): Geolocation | null {
+  if (typeof navigator === 'undefined' || !navigator.geolocation) return null;
+  return navigator.geolocation;
+}
+
+function browserErrorStatus(error: GeolocationPositionError): GpsPermissionStatus {
+  return error.code === error.PERMISSION_DENIED ? 'denied' : 'unavailable';
+}
+
+/**
+ * Safari does not consistently expose navigator.permissions, which
+ * expo-location's Web permission adapter requires before it asks for a
+ * position. Use the browser's actual Geolocation API for the Web path.
+ */
+function requestBrowserGpsPermission(): Promise<GpsPermissionStatus> {
+  const geolocation = browserGeolocation();
+  if (!geolocation) return Promise.resolve('unavailable');
+
+  return new Promise((resolve) => {
+    geolocation.getCurrentPosition(
+      () => resolve('granted'),
+      (error) => resolve(browserErrorStatus(error)),
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 }
+    );
+  });
+}
+
 /**
  * Foreground-only — PRD §7 requires "מצבי denied/limited/background" to be
  * distinguishable; background is simply never requested in this phase, so
@@ -53,6 +77,8 @@ export type GpsPermissionStatus = 'granted' | 'denied' | 'unavailable';
  * re-surface an OS prompt this device already answered).
  */
 export async function requestForegroundGpsPermission(): Promise<GpsPermissionStatus> {
+  if (Platform.OS === 'web') return requestBrowserGpsPermission();
+
   const Location = await getLocation();
   if (!Location) return 'unavailable';
   try {
@@ -69,14 +95,19 @@ export interface GpsWatchHandle {
   remove: () => void;
 }
 
+/** Result carries the actionable reason a foreground watch did not start. */
+export interface GpsWatchStartResult {
+  handle: GpsWatchHandle | null;
+  permissionStatus: GpsPermissionStatus;
+}
+
 /**
  * Starts watching position, folding every fix into a running
  * logic/gpsDistance.ts accumulator and handing the latest one to
- * `onUpdate`. Returns `null` (rather than throwing) if location is
- * unavailable or permission isn't granted — the caller (gpsStore) treats a
- * null return as "tracking didn't start" and falls back to letting the
- * walk proceed with no GPS data, never blocking the walk itself (PRD §7:
- * GPS is assistive, never a precondition for Start/End).
+ * `onUpdate`. It reports an actionable status rather than throwing if
+ * location is unavailable or permission isn't granted, so the caller can
+ * explain the absence of GPS without blocking Start/End (PRD §7: GPS is
+ * assistive, never a precondition for the walk lifecycle).
  *
  * `distanceInterval: 5` (meters) alongside a 5s `timeInterval` — the PRD's
  * own "צריכת סוללה סבירה" (reasonable battery use) requirement: sampling
@@ -84,12 +115,54 @@ export interface GpsWatchHandle {
  * just burn battery for noise logic/gpsDistance.ts's own movement floor
  * would discard anyway.
  */
-export async function startGpsWatch(onUpdate: (acc: GpsAccumulator) => void): Promise<GpsWatchHandle | null> {
+export async function startGpsWatch(onUpdate: (acc: GpsAccumulator) => void): Promise<GpsWatchStartResult> {
+  if (Platform.OS === 'web') {
+    const geolocation = browserGeolocation();
+    if (!geolocation) return { handle: null, permissionStatus: 'unavailable' };
+
+    let acc = createGpsAccumulator();
+    const accept = (location: GeolocationPosition) => {
+      const point: GpsPoint = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        timestamp: location.timestamp,
+        accuracy: location.coords.accuracy,
+      };
+      acc = accumulateDistance(acc, point);
+      onUpdate(acc);
+    };
+
+    // A first real fix makes the active card useful immediately instead of
+    // waiting indefinitely for a watch callback that Safari may never send.
+    const initialStatus = await new Promise<GpsPermissionStatus>((resolve) => {
+      geolocation.getCurrentPosition(
+        (location) => {
+          accept(location);
+          resolve('granted');
+        },
+        (error) => resolve(browserErrorStatus(error)),
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 }
+      );
+    });
+    if (initialStatus !== 'granted') return { handle: null, permissionStatus: initialStatus };
+
+    try {
+      const watchId = geolocation.watchPosition(
+        accept,
+        () => undefined,
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 }
+      );
+      return { handle: { remove: () => geolocation.clearWatch(watchId) }, permissionStatus: 'granted' };
+    } catch {
+      return { handle: null, permissionStatus: 'unavailable' };
+    }
+  }
+
   const Location = await getLocation();
-  if (!Location) return null;
+  if (!Location) return { handle: null, permissionStatus: 'unavailable' };
 
   const permission = await requestForegroundGpsPermission();
-  if (permission !== 'granted') return null;
+  if (permission !== 'granted') return { handle: null, permissionStatus: permission };
 
   try {
     let acc = createGpsAccumulator();
@@ -110,9 +183,9 @@ export async function startGpsWatch(onUpdate: (acc: GpsAccumulator) => void): Pr
         onUpdate(acc);
       }
     );
-    return { remove: () => subscription.remove() };
+    return { handle: { remove: () => subscription.remove() }, permissionStatus: 'granted' };
   } catch {
-    return null;
+    return { handle: null, permissionStatus: 'unavailable' };
   }
 }
 

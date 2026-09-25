@@ -17,7 +17,7 @@ describe('gpsStore', () => {
   it('startTracking with a granted handle sets trackingWalkId + permissionStatus "granted"', async () => {
     const { useGpsStore } = require('../gpsStore');
     const gpsTracking = require('../../lib/gpsTracking');
-    jest.spyOn(gpsTracking, 'startGpsWatch').mockResolvedValueOnce({ remove: jest.fn() });
+    jest.spyOn(gpsTracking, 'startGpsWatch').mockResolvedValueOnce({ handle: { remove: jest.fn() }, permissionStatus: 'granted' });
 
     await useGpsStore.getState().startTracking(walk);
 
@@ -29,7 +29,7 @@ describe('gpsStore', () => {
   it('startTracking with no handle keeps the active walk visible and sets permissionStatus "denied"', async () => {
     const { useGpsStore } = require('../gpsStore');
     const gpsTracking = require('../../lib/gpsTracking');
-    jest.spyOn(gpsTracking, 'startGpsWatch').mockResolvedValueOnce(null);
+    jest.spyOn(gpsTracking, 'startGpsWatch').mockResolvedValueOnce({ handle: null, permissionStatus: 'denied' });
 
     await useGpsStore.getState().startTracking(walk);
 
@@ -38,13 +38,23 @@ describe('gpsStore', () => {
     expect(state.permissionStatus).toBe('denied');
   });
 
+  it('keeps an unavailable browser/provider failure distinct from a denied permission', async () => {
+    const { useGpsStore } = require('../gpsStore');
+    const gpsTracking = require('../../lib/gpsTracking');
+    jest.spyOn(gpsTracking, 'startGpsWatch').mockResolvedValueOnce({ handle: null, permissionStatus: 'unavailable' });
+
+    await useGpsStore.getState().startTracking(walk);
+
+    expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: walk.id, permissionStatus: 'unavailable' });
+  });
+
   it('feeds live distance/pointCount updates from the onUpdate callback into state', async () => {
     const { useGpsStore } = require('../gpsStore');
     const gpsTracking = require('../../lib/gpsTracking');
     let feed: (acc: { distanceMeters: number; pointCount: number; routePoints: never[] }) => void = () => undefined;
     jest.spyOn(gpsTracking, 'startGpsWatch').mockImplementationOnce(async (onUpdate: any) => {
       feed = onUpdate;
-      return { remove: jest.fn() };
+      return { handle: { remove: jest.fn() }, permissionStatus: 'granted' };
     });
 
     await useGpsStore.getState().startTracking(walk);
@@ -60,8 +70,8 @@ describe('gpsStore', () => {
     const gpsTracking = require('../../lib/gpsTracking');
     const firstRemove = jest.fn();
     jest.spyOn(gpsTracking, 'startGpsWatch')
-      .mockResolvedValueOnce({ remove: firstRemove })
-      .mockResolvedValueOnce({ remove: jest.fn() });
+      .mockResolvedValueOnce({ handle: { remove: firstRemove }, permissionStatus: 'granted' })
+      .mockResolvedValueOnce({ handle: { remove: jest.fn() }, permissionStatus: 'granted' });
 
     await useGpsStore.getState().startTracking({ id: 'walk-a', familyId: 'family-1', dogId: 'dog-1' });
     await useGpsStore.getState().startTracking({ id: 'walk-b', familyId: 'family-1', dogId: 'dog-1' });
@@ -85,7 +95,7 @@ describe('gpsStore', () => {
     const { useGpsStore } = require('../gpsStore');
     const { repository } = require('../../data');
     const gpsTracking = require('../../lib/gpsTracking');
-    jest.spyOn(gpsTracking, 'startGpsWatch').mockResolvedValueOnce({ remove: jest.fn() });
+    jest.spyOn(gpsTracking, 'startGpsWatch').mockResolvedValueOnce({ handle: { remove: jest.fn() }, permissionStatus: 'granted' });
     const upsertSpy = jest.spyOn(repository, 'upsertGpsSession').mockResolvedValue(undefined);
 
     await useGpsStore.getState().startTracking(walk);
@@ -104,7 +114,7 @@ describe('gpsStore', () => {
     let feed: (acc: { distanceMeters: number; pointCount: number; routePoints: never[] }) => void = () => undefined;
     jest.spyOn(gpsTracking, 'startGpsWatch').mockImplementationOnce(async (onUpdate: any) => {
       feed = onUpdate;
-      return { remove: removeMock };
+      return { handle: { remove: removeMock }, permissionStatus: 'granted' };
     });
     const upsertSpy = jest.spyOn(repository, 'upsertGpsSession').mockResolvedValue(undefined);
 
@@ -129,7 +139,7 @@ describe('gpsStore', () => {
     let feed: (acc: { distanceMeters: number; pointCount: number; routePoints: never[] }) => void = () => undefined;
     jest.spyOn(gpsTracking, 'startGpsWatch').mockImplementationOnce(async (onUpdate: any) => {
       feed = onUpdate;
-      return { remove: jest.fn() };
+      return { handle: { remove: jest.fn() }, permissionStatus: 'granted' };
     });
 
     expect(useGpsStore.getState().trackingStartedAt).toBeNull();

@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 20142)
+Total output lines: 1597
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
@@ -54,6 +57,7 @@ import type { RootTabParamList } from '../navigation/RootNavigator';
 import { useHealthStore } from '../store/healthStore';
 import { getImportantHealthReminders, summarizeHealthTasksForHome } from '../logic/healthTasks';
 import { useGpsStore } from '../store/gpsStore';
+import { requestForegroundGpsPermission } from '../lib/gpsTracking';
 
 export function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
@@ -749,22 +753,7 @@ export function HomeScreen() {
                 : `${healthSummary.dueSoonCount} משימות בריאות קרובות`}
             </RtlText>
             <RtlText style={styles.healthSummaryChevron}>‹</RtlText>
-          </Pressable>
-        ) : null}
-
-        <View style={styles.nextWalkLift}>
-          {nextWalk ? (
-          <NextWalkCard
-            walk={nextWalk}
-            responsible={usersById[nextWalk.responsibleUserId]}
-            currentUserId={effectiveUserId}
-            dogName={dog?.name ?? 'הכלב/ה'}
-            dogPhotoUrl={dog?.photoUrl}
-            showDogPhoto={false}
-            showMascot={false}
-            dogSex={dog?.sex}
-            requestStatusLine={
-              computeWalkRequestStatusLine(nextWalk, swapRequests, timeChangeRequests, walksById, new Date(), effectiveUserId)?.text
+  …142 tokens truncated…s, walksById, new Date(), effectiveUserId)?.text
             }
             primaryLabel={isOverdue(nextWalk) ? 'ממתין לעדכון' : undefined}
             tone="dashboard"
@@ -774,7 +763,13 @@ export function HomeScreen() {
             gpsStatus={gpsTrackingWalkId === nextWalk.id ? gpsPermissionStatus : null}
             onStartWalk={
               effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId
-                ? () => void startWalk(nextWalk.id)
+                ? () => {
+                  // Start Safari's permission request inside the user gesture,
+                  // before the server walk RPC. GPS remains assistive: a
+                  // denial never prevents the walk lifecycle from starting.
+                  void requestForegroundGpsPermission();
+                  void startWalk(nextWalk.id);
+                }
                 : undefined
             }
             onEndWalk={
