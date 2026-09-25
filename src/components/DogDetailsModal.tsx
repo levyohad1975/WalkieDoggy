@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { DogPhoto } from './DogPhoto';
 import { Button } from './Button';
 import type { Dog } from '../types';
+import { DOG_BACKGROUNDS } from '../theme/dogBackgrounds';
 
 const SEX_OPTIONS: { value: Dog['sex'] | undefined; label: string }[] = [
   { value: 'male', label: 'זכר' },
@@ -58,6 +59,28 @@ export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, o
                     </Pressable>
                   ) : null}
                 </View>
+              </View>
+              <RtlText style={styles.label}>רקע במסך הבית</RtlText>
+              <View style={styles.backgroundGrid}>
+                {DOG_BACKGROUNDS.map((item) => {
+                  const selected = dog.heroBackgroundId === item.id;
+                  return (
+                    <Pressable
+                      key={item.id}
+                      onPress={() => onSave({ heroBackgroundId: item.id })}
+                      style={[styles.backgroundTile, selected && styles.backgroundTileSelected]}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={`בחירת רקע ${item.label}`}
+                    >
+                      <Image source={{ uri: item.uri }} style={styles.backgroundThumb} resizeMode="cover" />
+                      <View style={styles.backgroundLabelWrap}>
+                        <RtlText style={styles.backgroundLabel}>{item.label}</RtlText>
+                      </View>
+                      {selected ? <View style={styles.backgroundCheck}><RtlText style={styles.backgroundCheckText}>✓</RtlText></View> : null}
+                    </Pressable>
+                  );
+                })}
               </View>
               <RtlText style={styles.label}>שם</RtlText>
               <TextInput value={name} onChangeText={setName} onBlur={() => name.trim() && onSave({ name: name.trim() })} style={styles.input} textAlign="right" accessibilityLabel="שם הכלב" />
@@ -114,6 +137,14 @@ const styles = StyleSheet.create({
   removePhotoButton: { paddingVertical: spacing.xs, paddingHorizontal: spacing.md },
   removePhotoLink: { color: colors.statusOverdue, fontWeight: '600', fontSize: typography.meta.fontSize },
   label: { fontSize: typography.meta.fontSize, fontWeight: '700', color: colors.textSecondary, marginTop: spacing.md, textAlign: 'right' },
+  backgroundGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.xs },
+  backgroundTile: { width: '48%', height: 86, borderRadius: radii.md, overflow: 'hidden', borderWidth: 3, borderColor: 'transparent', position: 'relative' },
+  backgroundTileSelected: { borderColor: colors.primaryDark },
+  backgroundThumb: { ...StyleSheet.absoluteFillObject },
+  backgroundLabelWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#00000088', paddingVertical: 4 },
+  backgroundLabel: { color: '#fff', fontSize: 12, fontWeight: '800', textAlign: 'center' },
+  backgroundCheck: { position: 'absolute', top: 5, right: 5, width: 24, height: 24, borderRadius: 12, backgroundColor: colors.primaryDark, alignItems: 'center', justifyContent: 'center' },
+  backgroundCheckText: { color: '#fff', fontWeight: '900' },
   sexRow: { flexDirection: 'row', gap: spacing.sm, marginTop: 6 },
   sexChip: { flex: 1, paddingVertical: radii.sm, borderRadius: spacing.md, alignItems: 'center', backgroundColor: colors.surfaceMuted, borderWidth: 1, borderColor: 'transparent' },
   sexChipActive: { backgroundColor: colors.statusCurrentBg, borderColor: colors.primary },
