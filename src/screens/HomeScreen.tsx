@@ -59,6 +59,7 @@ export function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
   const [dogProfileVisible, setDogProfileVisible] = useState(false);
   const [heroBackgroundId, setHeroBackgroundId] = useState<string | undefined>(undefined);
+  const [heroPhotoFailed, setHeroPhotoFailed] = useState(false);
   const currentUserId = useAuthStore((s) => s.currentUserId)!;
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const effectiveRole = useEffectiveFamilyRole();
@@ -74,7 +75,9 @@ export function HomeScreen() {
   const heroBackground = getDogBackground(heroBackgroundId);
   useEffect(() => {
     setHeroBackgroundId(getDogBackgroundId(dog?.id));
-  }, [dog?.id]);
+    setHeroPhotoFailed(false);
+  }, [dog?.id, dog?.photoUrl]);
+  const showPersonalHero = Boolean(dog?.photoUrl) && !heroPhotoFailed;
 
   const {
     walks,
@@ -695,14 +698,21 @@ export function HomeScreen() {
           {/* A personal photo already contains its own scene. Do not stack it
               on top of a different selected backdrop: that creates the
               pasted-on look. The scenic gallery is the fallback only. */}
-          {!dog?.photoUrl ? (
+          {!showPersonalHero ? (
             <Image
               source={heroBackground ? { uri: heroBackground.uri } : require('../../assets/onboarding-hero.png')}
               style={styles.dashboardHeroImage}
               resizeMode="cover"
             />
           ) : null}
-          {dog?.photoUrl ? <Image source={{ uri: dog.photoUrl }} style={styles.dashboardHeroImage} resizeMode="cover" /> : null}
+          {showPersonalHero ? (
+            <Image
+              source={{ uri: dog!.photoUrl! }}
+              style={styles.dashboardHeroImage}
+              resizeMode="cover"
+              onError={() => setHeroPhotoFailed(true)}
+            />
+          ) : null}
           <View style={styles.dashboardHeroShade} />
           <View style={styles.dashboardHeroCopy}>
             <RtlText style={styles.dashboardHeroEyebrow}>היום עם</RtlText>
@@ -1358,7 +1368,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#DCE8FF',
     overflow: 'hidden',
     alignItems: 'flex-end',
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-start',
   },
   dashboardHeroImage: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
   dashboardHeroShade: { ...StyleSheet.absoluteFill, backgroundColor: '#FFFFFF18' },
