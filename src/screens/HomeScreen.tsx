@@ -685,6 +685,28 @@ export function HomeScreen() {
           <DogSelectorRow dogs={dogs} selectedDogId={selectedDogId} onSelect={(dogId) => void selectDog(dogId)} />
         ) : null}
 
+        <Pressable
+          style={styles.dogHero}
+          onPress={() => setDogProfileVisible(true)}
+          accessibilityRole="button"
+          accessibilityLabel="פתיחת פרופיל הכלב"
+        >
+          <View style={styles.dogHeroMedia}>
+            {dog?.photoUrl ? (
+              <Image source={{ uri: dog.photoUrl }} style={styles.dogHeroImage} resizeMode="cover" />
+            ) : (
+              <View style={styles.dogHeroMascot}>
+                <WalkieMascot state="idle" size={104} accessibilityLabel={dog?.name ?? 'Walkie Doggy'} />
+              </View>
+            )}
+            <View style={styles.dogHeroScrim} />
+            <View style={styles.dogHeroCopy}>
+              <RtlText style={styles.dogHeroName}>{dog?.name}</RtlText>
+              <RtlText style={styles.dogHeroMessage}>מחכה לטיול! 🐾</RtlText>
+            </View>
+          </View>
+        </Pressable>
+
         {/*
           Health & Grooming summary (PRD §10) — deliberately a single slim,
           dismissible-feeling pill, never a full list here: this screen's
@@ -1266,7 +1288,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: 14, paddingBottom: spacing.xxxl, width: '100%' },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: 14 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
-  nextWalkLift: { marginTop: 0, zIndex: 1, paddingHorizontal: 0 },
+  nextWalkLift: { marginTop: -34, zIndex: 2, paddingHorizontal: spacing.sm },
   unplannedButton: { marginTop: -2 },
   testModeBanner: {
     flexDirection: 'row',
@@ -1311,6 +1333,14 @@ const styles = StyleSheet.create({
   dogSummaryEyebrow: { ...typography.meta, color: colors.textSecondary, fontWeight: '700', textAlign: 'right' },
   dogSummaryName: { fontSize: 24, lineHeight: 30, color: colors.textPrimary, fontWeight: '900', textAlign: 'right' },
   dogSummaryLink: { ...typography.meta, color: colors.primaryDark, fontWeight: '900', textAlign: 'right', marginTop: 3 },
+  dogHero: { width: '100%', borderRadius: 26, overflow: 'hidden', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  dogHeroMedia: { width: '100%', height: Platform.OS === 'web' ? 220 : 190, position: 'relative', overflow: 'hidden', backgroundColor: '#CFEDE5' },
+  dogHeroImage: { width: '100%', height: '100%' },
+  dogHeroMascot: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 18 },
+  dogHeroScrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 92, backgroundColor: 'rgba(30,35,31,0.22)' },
+  dogHeroCopy: { position: 'absolute', right: spacing.lg, bottom: 42, alignItems: 'flex-end' },
+  dogHeroName: { fontSize: 26, lineHeight: 31, fontWeight: '900', color: '#FFFFFF', textAlign: 'right', textShadowColor: 'rgba(0,0,0,0.28)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
+  dogHeroMessage: { marginTop: 3, paddingHorizontal: 10, paddingVertical: 5, borderRadius: radii.round, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.92)', fontSize: 13, fontWeight: '800', color: colors.textPrimary },
   notificationButton: { position: 'absolute', left: 0, top: 11, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
   notificationIcon: { fontSize: 18 },
   requestsCountBadge: { minWidth: spacing.xl, height: spacing.xl, borderRadius: radii.sm, paddingHorizontal: spacing.xs, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryDark },
