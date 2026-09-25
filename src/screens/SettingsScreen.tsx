@@ -9,6 +9,7 @@ import { Button } from '../components/Button';
 import { DogPhoto } from '../components/DogPhoto';
 import { breakpoints, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { pickAndUploadImage } from '../lib/uploadImage';
+import { requestDogPhotoCutout } from '../lib/backgroundRemoval';
 import {
   isSupabaseConfigured,
   regenerateInviteCode,
@@ -166,7 +167,22 @@ export function SettingsScreen() {
     setUploadingPhoto(true);
     try {
       const uri = await pickAndUploadImage('dogs', familyId, dog.id);
-      if (uri) await persistDog({ photoUrl: uri });
+      if (uri) {
+        // Build the full next-dog object explicitly rather than two
+        // sequential persistDog() patches: persistDog spreads the ORIGINAL
+        // `dog` captured at render time, so a second patch after the first
+        // await would silently revert photoUrl back to the pre-upload
+        // value. Also clears any previous cutout immediately — it belongs
+        // to the old photo, and Home must never show a stale cutout next
+        // to a brand-new photo while the new one is (best-effort)
+        // processed in the background.
+        const updatedDog: Dog = { ...dog, photoUrl: uri, photoCutoutUrl: undefined };
+        await saveDog(updatedDog);
+        if (isSupabaseConfigured) {
+          const cutoutUrl = await requestDogPhotoCutout(uri);
+          if (cutoutUrl) await saveDog({ ...updatedDog, photoCutoutUrl: cutoutUrl });
+        }
+      }
     } catch {
       Alert.alert('לא הצלחנו להחליף תמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
     } finally {

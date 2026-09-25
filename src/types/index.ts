@@ -62,6 +62,14 @@ export interface Dog {
   familyId: string;
   name: string;
   photoUrl?: string;
+  /**
+   * Best-effort transparent background-removal cutout of `photoUrl`,
+   * produced server-side (supabase/functions/remove-photo-background) after
+   * upload. Never authoritative on its own — always paired with, and
+   * cleared alongside, `photoUrl`; a consumer must never show a cutout for
+   * a dog that currently has no `photoUrl`.
+   */
+  photoCutoutUrl?: string;
   walksPerDay: number;
   notes?: string;
   /**

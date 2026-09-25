@@ -61,18 +61,28 @@ export function HomeScreen() {
   const clearTestModeIfInvalid = useAuthStore((s) => s.clearTestModeIfInvalid);
   const clearImpersonationIfInvalid = useAuthStore((s) => s.clearImpersonationIfInvalid);
   const { users, dog, loading: familyLoading, error: familyError, load: loadFamily } = useFamilyStore();
-  // Scoped change: Home's header mascot shows the family dog's real photo
-  // (cutout, no circular frame/background) instead of the WalkieDoggy brand
-  // mascot when the dog has one — same subtle idle animation, reused as-is
-  // from WalkieMascot's existing `source` override. Falls back to the
-  // mascot immediately if the photo fails to load, same convention as
-  // DogPhoto.tsx's own onError handling; resets on every new photoUrl so a
-  // freshly-set photo always gets its own load attempt.
+  // Scoped change: Home's header mascot prefers, in order: (1) the dog's
+  // transparent background-removal cutout (photoCutoutUrl), (2) the dog's
+  // raw photo, (3) the animated WalkieDoggy brand mascot — reusing
+  // WalkieMascot's existing `source` override for all three, so every tier
+  // gets the same subtle idle animation and Reduced Motion handling for
+  // free. A cutout is never shown without its underlying photo (defense in
+  // depth: it belongs to that photo and must disappear the moment the photo
+  // does, however that happens) — see the Dog.photoCutoutUrl doc comment.
+  // Each tier falls back to the next immediately on load failure, same
+  // convention as DogPhoto.tsx's own onError handling; both failure flags
+  // reset whenever their own URL changes so a freshly-set photo/cutout
+  // always gets its own load attempt.
   const [dogPhotoFailed, setDogPhotoFailed] = useState(false);
+  const [dogCutoutFailed, setDogCutoutFailed] = useState(false);
   useEffect(() => {
     setDogPhotoFailed(false);
   }, [dog?.photoUrl]);
+  useEffect(() => {
+    setDogCutoutFailed(false);
+  }, [dog?.photoCutoutUrl]);
   const hasDogPhoto = Boolean(dog?.photoUrl) && !dogPhotoFailed;
+  const hasDogCutout = hasDogPhoto && Boolean(dog?.photoCutoutUrl) && !dogCutoutFailed;
   const {
     walks,
     loading: scheduleLoading,
@@ -491,7 +501,16 @@ export function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel={hasDogPhoto && dog?.name ? `פתיחת פרופיל ${dog.name}` : 'פתיחת פרופיל הכלב'}
           >
-            {hasDogPhoto ? (
+            {hasDogCutout ? (
+              <WalkieMascot
+                state="idle"
+                size={38}
+                source={{ uri: dog!.photoCutoutUrl }}
+                accessibilityLabel={dog?.name ? `תמונת ${dog.name}` : 'תמונת הכלב'}
+                onError={() => setDogCutoutFailed(true)}
+                testID="home-dog-cutout-mascot"
+              />
+            ) : hasDogPhoto ? (
               <WalkieMascot
                 state="idle"
                 size={38}
