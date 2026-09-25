@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from './authStore';
 import { create } from 'zustand';
 import type { Dog, Family, FamilyUser, UserDeletionImpact } from '../types';
@@ -9,15 +10,32 @@ import { resolveResponsibleForDate } from '../logic/rotation';
 import { localDateOnly } from '../logic/dateFormat';
 import { useScheduleStore } from './scheduleStore';
 import { DEMO_DOG, DEMO_FAMILY } from '../data/demoData';
-import { isSupabaseConfigured } from '../lib/supabase';
+import { isSupabaseConfigured, removeUnusedDog } from '../lib/supabase';
 import { guardTestModeMutation, TEST_MODE_READ_ONLY_MESSAGE } from '../lib/testModeGuard';
+import { pickAndUploadImage } from '../lib/uploadImage';
 import type { MemberPermissionOverride, PermissionKey, PermissionLoadStatus } from '../logic/permissions';
 import { clearMemberPermissionOverride, listMemberPermissionOverrides, setMemberPermissionOverride } from '../lib/permissions';
+
+// A device belongs to exactly one family (see authStore's FAMILY_ID_KEY) —
+// so, like FAMILY_ID_KEY/CURRENT_USER_KEY, a single un-namespaced key is
+// enough; re-selecting a dog after switching families is expected (the old
+// id simply won't be found in the new family's `dogs` and load() falls back
+// to the first dog — see load()'s selection resolution below).
+const SELECTED_DOG_KEY = 'dog-walk-family:selected-dog-id';
 
 interface FamilyState {
   family: Family | null;
   users: FamilyUser[];
+  /** The currently SELECTED/active dog (see `selectedDogId`/`selectDog` below) — every dog-dependent screen (Home, new walk/rule creation, ...) reads this one. Not simply `dogs[0]`. */
   dog: Dog | null;
+  /**
+   * Every dog belonging to this family (Phase 1B: arbitrary N dogs
+   * foundation — schedule_rules/schedule_entries/walks already carry their
+   * own dog_id at the DB layer, see supabase/schema.sql).
+   */
+  dogs: Dog[];
+  /** The id backing `dog` above. Kept alongside `dog` so a selector UI can compare against it directly without re-deriving it from `dog?.id`. */
+  selectedDogId: string | null;
   loading: boolean;
   error: string | null;
   actionError: string | null;
@@ -56,10 +74,18 @@ interface FamilyState {
   /** Reverts one member/permission back to the role default. Family-Admin-only server-side (clear_member_permission_override, 0023). */
   clearPermissionOverride: (userId: string, permissionKey: PermissionKey) => Promise<void>;
   setReminderEnabled: (userId: string, enabled: boolean) => Promise<void>;
+  /** PRD §9 gamification off-switch — same shape as setReminderEnabled. */
+  setGamificationEnabled: (userId: string, enabled: boolean) => Promise<void>;
   saveDog: (dog: Dog) => Promise<void>;
+  /** Makes `dogId` (must already be in `dogs`) the active dog and persists the choice locally so it survives an app restart. No-op if `dogId` isn't one of this family's dogs. */
+  selectDog: (dogId: string) => Promise<void>;
+  /** Admin-only safe removal; server refuses dogs with any history/dependencies. */
+  deleteUnusedDog: (dogId: string) => Promise<void>;
 
   addUser: (input: { name: string; avatar: string; color: string; photoUrl?: string }) => Promise<FamilyUser>;
   updateUser: (user: FamilyUser) => Promise<void>;
+  saveUserPhoto: (userId: string, familyId: string) => Promise<string | null>;
+
   getUserDeletionImpact: (userId: string) => UserDeletionImpact;
   /** Pass a replacementUserId to hand this person's future turns to someone else; pass null to just drop them from each rotation (requires at least one person left in it). */
   deleteUser: (userId: string, replacementUserId: string | null) => Promise<void>;
@@ -70,6 +96,8 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
   family: null,
   users: [],
   dog: null,
+  dogs: [],
+  selectedDogId: null,
   loading: false,
   error: null,
   actionError: null,
@@ -79,28 +107,59 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
   load: async (familyId: string) => {
     set({ loading: true, error: null });
     try {
-      const [family, users, dog] = await Promise.all([
+      const [family, users, dogs] = await Promise.all([
         repository.getFamily(familyId),
         repository.getUsers(familyId),
-        repository.getDog(familyId),
+        repository.getDogs(familyId),
       ]);
       // The dog must never be silently missing in local/demo mode: this is
       // the app's single seeded family, so if the repository came back with
-      // no dog for it (a stale cache from an earlier build, a not-yet-run
+      // no dogs for it (a stale cache from an earlier build, a not-yet-run
       // Supabase seed, etc.) fall back to the known demo dog rather than
-      // leaving `dog` null with no way for the UI to recover on its own.
+      // leaving `dogs` empty with no way for the UI to recover on its own.
       // Some verified-family onboarding rows can exist before a dogs row is
       // readable/created. Keep the Family profile usable by synthesizing the
       // family's known dog identity, then persist it when the photo is saved.
       const familyDogName = (family as any)?.dogName ?? (family as any)?.dog_name;
-      const resolvedDog =
-        dog ??
-        (familyDogName
-          ? { id: `dog-${familyId}`, familyId, name: familyDogName, walksPerDay: 0 }
-          : !isSupabaseConfigured && familyId === DEMO_FAMILY.id
-            ? DEMO_DOG
-            : undefined);
-      set({ family: family ?? null, users, dog: resolvedDog ?? null, loading: false });
+      const resolvedDogs: Dog[] =
+        dogs.length > 0
+          ? dogs
+          : familyDogName
+            ? [{ id: `dog-${familyId}`, familyId, name: familyDogName, walksPerDay: 0 }]
+            : !isSupabaseConfigured && familyId === DEMO_FAMILY.id
+              ? [DEMO_DOG]
+              : [];
+
+      // Resolve which dog is ACTIVE: prefer the device's persisted choice
+      // (e.g. a member switched to the family's second dog before closing
+      // the app) as long as it still refers to one of this family's dogs —
+      // a stale id (the dog was removed, or this is a different family than
+      // the one that id was saved for) falls back to the first dog instead
+      // of leaving `dog` pointing at nothing.
+      let persistedSelectedId: string | null = null;
+      try {
+        persistedSelectedId = await AsyncStorage.getItem(SELECTED_DOG_KEY);
+      } catch {
+        /* best-effort — falls back to the first dog below */
+      }
+      const selectedDog =
+        (persistedSelectedId && resolvedDogs.find((d) => d.id === persistedSelectedId)) || resolvedDogs[0] || null;
+      if (selectedDog && selectedDog.id !== persistedSelectedId) {
+        try {
+          await AsyncStorage.setItem(SELECTED_DOG_KEY, selectedDog.id);
+        } catch {
+          /* best-effort */
+        }
+      }
+
+      set({
+        family: family ?? null,
+        users,
+        dog: selectedDog,
+        dogs: resolvedDogs,
+        selectedDogId: selectedDog?.id ?? null,
+        loading: false,
+      });
 
       // If an admin removed the profile THIS device is currently signed in
       // as (soft-deleted, see FamilyUser.removedAt), send it back to "pick
@@ -189,10 +248,68 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
     }
   },
 
+  setGamificationEnabled: async (userId: string, enabled: boolean) => {
+    if (!guardTestModeMutation()) return;
+    const before = get().users.find((u) => u.id === userId);
+    set((s) => ({ users: s.users.map((u) => (u.id === userId ? { ...u, gamificationEnabled: enabled } : u)) }));
+    try {
+      await repository.updateUserGamificationSetting(userId, enabled);
+    } catch (e) {
+      // Same functional-merge-against-current-state rollback as
+      // setReminderEnabled above, for the same reason (a concurrent
+      // realtime reload must not be clobbered by a stale pre-await
+      // snapshot).
+      set((s) => ({
+        users: before ? s.users.map((u) => (u.id === userId ? { ...u, gamificationEnabled: before.gamificationEnabled } : u)) : s.users,
+        error: 'לא הצלחנו לעדכן את הגדרת הגיימיפיקציה',
+      }));
+    }
+  },
+
   saveDog: async (dog: Dog) => {
     if (!guardTestModeMutation()) return;
-    set({ dog });
+    // Upserts by id, so this doubles as "add a new dog" once a caller wants
+    // more than one — see `dogs`'s doc comment above. Deliberately does NOT
+    // change the selection on its own (a caller adding a brand-new dog
+    // calls selectDog() explicitly afterwards) — editing the CURRENTLY
+    // selected dog's photo/name must not silently reselect a different one.
+    set((s) => {
+      const idx = s.dogs.findIndex((d) => d.id === dog.id);
+      const dogs = idx >= 0 ? s.dogs.map((d, i) => (i === idx ? dog : d)) : [...s.dogs, dog];
+      // Nothing was selected yet (e.g. the family's very first dog) -> this
+      // one becomes it, so `dog` is never left null after a successful save.
+      const isSelected = s.selectedDogId === dog.id || s.selectedDogId === null;
+      return isSelected ? { dog, dogs, selectedDogId: dog.id } : { dogs };
+    });
     await repository.upsertDog(dog);
+  },
+
+  selectDog: async (dogId: string) => {
+    const target = get().dogs.find((d) => d.id === dogId);
+    if (!target) return;
+    set({ dog: target, selectedDogId: dogId });
+    try {
+      await AsyncStorage.setItem(SELECTED_DOG_KEY, dogId);
+    } catch {
+      // best-effort persistence — the in-memory selection already applied
+    }
+  },
+
+  deleteUnusedDog: async (dogId: string) => {
+    if (!guardTestModeMutation()) throw new Error(TEST_MODE_READ_ONLY_MESSAGE);
+    await removeUnusedDog(dogId);
+    set((s) => {
+      const dogs = s.dogs.filter((d) => d.id !== dogId);
+      const selected = s.selectedDogId === dogId ? (dogs[0] ?? null) : (s.dog ?? dogs[0] ?? null);
+      return { dogs, dog: selected, selectedDogId: selected?.id ?? null };
+    });
+    try {
+      const selectedId = get().selectedDogId;
+      if (selectedId) await AsyncStorage.setItem(SELECTED_DOG_KEY, selectedId);
+      else await AsyncStorage.removeItem(SELECTED_DOG_KEY);
+    } catch {
+      // best effort; authoritative server removal already succeeded
+    }
   },
 
   addUser: async ({ name, avatar, color, photoUrl }) => {
@@ -222,6 +339,7 @@ if (!familyId) {
       photoUrl,
       color,
       remindersEnabled: true,
+      gamificationEnabled: true,
       createdAt: new Date().toISOString(),
     };
     set((s) => ({ users: [...s.users, user] }));
@@ -237,6 +355,16 @@ if (!familyId) {
   }));
   throw e;
 }
+  },
+
+  saveUserPhoto: async (userId: string, familyId: string) => {
+    if (!guardTestModeMutation()) throw new Error(TEST_MODE_READ_ONLY_MESSAGE);
+    const user = get().users.find((candidate) => candidate.id === userId);
+    if (!user) throw new Error('לא נמצא בן המשפחה לעדכון התמונה');
+    const uri = await pickAndUploadImage('users', familyId, userId);
+    if (!uri) return null;
+    await get().updateUser({ ...user, photoUrl: uri });
+    return uri;
   },
 
   updateUser: async (user: FamilyUser) => {
@@ -255,6 +383,10 @@ if (!familyId) {
         users: before ? s.users.map((u) => (u.id === user.id ? before : u)) : s.users,
         actionError: 'לא הצלחנו לעדכן את בן המשפחה',
       }));
+      // Callers must be able to distinguish a persisted update from an
+      // optimistic update that was rolled back. In particular, photo upload
+      // must not close the editor and report success when photo_url failed.
+      throw e;
     }
   },
 

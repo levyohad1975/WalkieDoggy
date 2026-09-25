@@ -12,7 +12,7 @@ jest.mock('@react-native-community/netinfo', () => ({
 
 const user: FamilyUser = {
   id: 'first-profile', familyId: 'new-family', name: 'First', avatar: 'dog',
-  color: '#000', remindersEnabled: true, createdAt: '2026-09-09T00:00:00.000Z',
+  color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: '2026-09-09T00:00:00.000Z',
 };
 const online = () => (NetInfo.fetch as jest.Mock).mockResolvedValue({
   isConnected: true, isInternetReachable: true,

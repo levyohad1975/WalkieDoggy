@@ -208,7 +208,19 @@ export function AddUnplannedWalkModal({
               </View>
               <View style={styles.flex}>
                 <RtlText style={styles.label}>שעה</RtlText>
-                <RtlText style={[styles.input, styles.timeDisplay]}>{time}</RtlText>
+                {/* The app is also used from Safari. DateTimePicker has no
+                    visible Web control there, so render the browser's native
+                    time picker instead of a static-looking time label. */}
+                {Platform.OS === 'web' ? React.createElement('input', {
+                  type: 'time',
+                  value: time,
+                  step: 60,
+                  'aria-label': 'בחר שעת טיול',
+                  onChange: (event: { target: { value: string } }) => setTime(event.target.value),
+                  style: webTimeInputStyle,
+                }) : (
+                  <RtlText style={[styles.input, styles.timeDisplay]}>{time}</RtlText>
+                )}
               </View>
             </View>
 
@@ -308,12 +320,25 @@ export function AddUnplannedWalkModal({
                 style={styles.deleteButton}
                 accessibilityHint="יוצג אישור לפני מחיקה לצמיתות של הטיול"
                 onPress={() => {
+                  const confirmDelete = () => onDelete(editingWalk.id);
+
+                  // React Native Alert is not reliably shown in Safari Web.
+                  // Use the browser confirmation there so the delete button
+                  // is actually actionable on iPhone Safari.
+                  if (Platform.OS === 'web') {
+                    const confirm = (globalThis as typeof globalThis & { confirm?: (message?: string) => boolean }).confirm;
+                    if (confirm?.('למחוק את הטיול הזה?\\n\\nהפעולה תמחק לצמיתות את הטיול הספונטני הזה ואת כל הפרטים שלו.')) {
+                      void confirmDelete();
+                    }
+                    return;
+                  }
+
                   Alert.alert(
                     'למחוק את הטיול הזה?',
                     'הפעולה תמחק לצמיתות את הטיול הספונטני הזה ואת כל הפרטים שלו.',
                     [
                       { text: 'חזרה', style: 'cancel' },
-                      { text: 'מחק', style: 'destructive', onPress: () => onDelete(editingWalk.id) },
+                      { text: 'מחק', style: 'destructive', onPress: () => void confirmDelete() },
                     ]
                   );
                 }}
@@ -326,6 +351,12 @@ export function AddUnplannedWalkModal({
     </Modal>
   );
 }
+
+const webTimeInputStyle = {
+  display: 'block', width: '100%', minHeight: 52, boxSizing: 'border-box', padding: 12,
+  fontSize: 18, fontWeight: '700', borderRadius: radii.md, border: `1px solid ${colors.border}`,
+  backgroundColor: colors.surfaceMuted, color: colors.textPrimary, textAlign: 'center', direction: 'ltr', cursor: 'pointer',
+};
 
 const styles = StyleSheet.create({
   flexFull: { flex: 1 },

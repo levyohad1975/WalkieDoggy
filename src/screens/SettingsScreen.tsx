@@ -1,8 +1,10 @@
-﻿import React, { useEffect, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
+﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFamilyStore } from '../store/familyStore';
+import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { colors } from '../theme/colors';
 import { Button } from '../components/Button';
@@ -17,7 +19,7 @@ import {
 import { friendlyErrorMessage } from '../lib/errorMessages';
 import { copyToClipboard } from '../lib/clipboard';
 import { DEMO_FAMILY } from '../data/demoData';
-import type { Dog } from '../types';
+import type { Dog, Walk } from '../types';
 import { UserPickerModal } from '../components/UserPickerModal';
 import { PinEntryModal } from '../components/PinEntryModal';
 import { AdminAuditLogModal } from '../components/AdminAuditLogModal';
@@ -26,11 +28,36 @@ import { RemindersModal } from '../components/RemindersModal';
 import { FamilySharingModal } from '../components/FamilySharingModal';
 import { guardTestModeMutation } from '../lib/testModeGuard';
 import { decideChildModalToOpen, type SettingsChildModal } from '../logic/settingsModalTransitions';
+import { generateId } from '../lib/id';
+import { useHealthStore } from '../store/healthStore';
+import { HealthGroomingModal } from '../components/HealthGroomingModal';
+import { useAchievementStore } from '../store/achievementStore';
+import { AchievementsModal } from '../components/AchievementsModal';
+import { computeFamilyAchievementProgress, computePersonalAchievementProgress, preserveUnlockedAchievements } from '../logic/achievements';
+import { fetchHistoryWalks } from '../lib/permissionedWalks';
+import { listSwapRequests, type SwapRequestRow } from '../lib/requests';
+import { PrivacyAccessibilityInfoModal } from '../components/PrivacyAccessibilityInfoModal';
+import { useSystemAdminStore } from '../store/systemAdminStore';
+import { SystemAdminScreen } from './SystemAdminScreen';
+import { ScreenRecoveryBoundary } from '../components/ScreenRecoveryBoundary';
 
 export function SettingsScreen() {
-  const { family, users, dog, load: loadFamily, setReminderEnabled, saveDog } = useFamilyStore();
+  return (
+    <ScreenRecoveryBoundary screenName="הגדרות">
+      <SettingsScreenContent />
+    </ScreenRecoveryBoundary>
+  );
+}
+
+function SettingsScreenContent() {
+  const { family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, setGamificationEnabled, saveDog, selectDog, deleteUnusedDog } = useFamilyStore();
+  const healthTasks = useHealthStore((s) => s.tasks);
+  const loadHealthTasks = useHealthStore((s) => s.load);
+  const saveHealthTask = useHealthStore((s) => s.saveTask);
+  const completeHealthTask = useHealthStore((s) => s.completeTask);
   const { currentUserId, setFamilyId } = useAuthStore();
   const signInWithPin = useAuthStore((s) => s.signInWithPin);
+  const signOut = useAuthStore((s) => s.signOut);
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   // Single source of truth for admin/member permissions — see authStore.
   // REAL role — deliberately NOT the effective/simulated one. This gates
@@ -56,9 +83,32 @@ export function SettingsScreen() {
   // its own sub-screen (modal, matching this app's existing navigation
   // pattern) instead of all being visible on the main list at once.
   const [dogModalVisible, setDogModalVisible] = useState(false);
+  const [addingDog, setAddingDog] = useState(false);
+  const [deletingDog, setDeletingDog] = useState(false);
+  const [healthModalVisible, setHealthModalVisible] = useState(false);
+  const [achievementsModalVisible, setAchievementsModalVisible] = useState(false);
+  // PRD §9 gamification — the same permissioned bulk-historical read
+  // HomeScreen's checkForNewAchievementUnlocks() uses (see that file's own
+  // doc comment on why family-wide milestones need this instead of
+  // scheduleStore's RLS-windowed `walks`). Loaded lazily, only once the
+  // Achievements sheet is actually opened — same convention as
+  // healthModalVisible/loadHealthTasks below.
+  const [achievementWalks, setAchievementWalks] = useState<Walk[]>([]);
+  // "החלפה הוגנת" (fair swap) needs approved swap history — Supabase-only,
+  // same posture as achievementWalks above; simply stays empty in
+  // local/demo mode (lib/requests.ts's own doc comment: no swap-request
+  // concept exists there at all) rather than failing.
+  const [achievementSwapRequests, setAchievementSwapRequests] = useState<SwapRequestRow[]>([]);
+  const achievementUnlocks = useAchievementStore((s) => s.unlocks);
+  const loadedAchievementFamilyId = useAchievementStore((s) => s.loadedFamilyId);
+  const currentFamilyUnlocks = loadedAchievementFamilyId === familyId ? achievementUnlocks : [];
+  const [privacyAccessibilityModalVisible, setPrivacyAccessibilityModalVisible] = useState(false);
   const [remindersModalVisible, setRemindersModalVisible] = useState(false);
   const [sharingModalVisible, setSharingModalVisible] = useState(false);
   const [managementVisible, setManagementVisible] = useState(false);
+  const isSystemAdmin = useSystemAdminStore((state) => state.isSystemAdmin);
+  const systemObserverActive = useAuthStore((state) => state.systemObserverActive);
+  const [systemAdminVisible, setSystemAdminVisible] = useState(false);
   // NESTED-MODAL LIFECYCLE FIX (final QA round) — see
   // logic/settingsModalTransitions.ts's doc comment for the full mechanism.
   // "יומן פעילות" used to open its own Modal directly while the Management
@@ -100,6 +150,44 @@ export function SettingsScreen() {
   useEffect(() => {
     setInviteCode(family?.inviteCode);
   }, [family?.inviteCode]);
+
+  // Health/grooming records are per-DOG (0049) — only load once the modal
+  // is actually opened, and reload whenever the active dog changes while
+  // it's open (switching dogs via the selector strip above while this sheet
+  // is up must not keep showing the previous dog's records).
+  useEffect(() => {
+    if (healthModalVisible && dog) {
+      void loadHealthTasks(dog.id);
+    }
+  }, [healthModalVisible, dog?.id, loadHealthTasks]);
+
+  useEffect(() => {
+    if (!achievementsModalVisible) return;
+    void useAchievementStore.getState().load(familyId);
+    if (!isSupabaseConfigured) {
+      setAchievementWalks(useScheduleStore.getState().walks);
+      setAchievementSwapRequests([]);
+      return;
+    }
+    fetchHistoryWalks()
+      .then(setAchievementWalks)
+      .catch(() => setAchievementWalks([]));
+    listSwapRequests()
+      .then(setAchievementSwapRequests)
+      .catch(() => setAchievementSwapRequests([]));
+  }, [achievementsModalVisible, familyId]);
+
+  // Cross-tab "open Health & Grooming" signal from Home's summary badge —
+  // see healthStore's pendingOpenRequest doc comment. Consumed (and
+  // cleared) only while this tab actually has focus, so it can never fire
+  // while Settings merely happens to be mounted in the background.
+  useFocusEffect(
+    useCallback(() => {
+      if (useHealthStore.getState().consumePendingOpenRequest()) {
+        setHealthModalVisible(true);
+      }
+    }, [])
+  );
 
   // NESTED-MODAL LIFECYCLE FIX (final QA round), non-iOS path: Modal's
   // onDismiss is iOS-only, so on Android (or any other platform) there is
@@ -156,6 +244,15 @@ export function SettingsScreen() {
   // (visible && dog) { setName(dog.name); setNotes(...) } }, [visible,
   // dog])`, so nothing here needs replacing.
   const currentUser = currentUserId ? users.find((u) => u.id === currentUserId) : undefined;
+  const gamificationEnabled = currentUser?.gamificationEnabled ?? true;
+  const familyAchievementProgress = useMemo(
+    () => preserveUnlockedAchievements(computeFamilyAchievementProgress(achievementWalks), currentFamilyUnlocks),
+    [achievementWalks, currentFamilyUnlocks]
+  );
+  const personalAchievementProgress = useMemo(
+    () => (currentUserId ? preserveUnlockedAchievements(computePersonalAchievementProgress(achievementWalks, currentUserId, achievementSwapRequests), currentFamilyUnlocks) : []),
+    [achievementWalks, currentUserId, achievementSwapRequests, currentFamilyUnlocks]
+  );
 
   const persistDog = async (patch: Partial<Dog>) => {
     if (!dog) return;
@@ -188,6 +285,89 @@ export function SettingsScreen() {
     } finally {
       setUploadingPhoto(false);
     }
+  };
+
+  // Arbitrary-N multi-dog foundation (Phase 1B): creates a new dog for this
+  // family, selects it (so the existing dog card below — and every other
+  // dog-dependent screen reading `dog` from the store — immediately reflects
+  // it), and opens the same edit sheet used for any dog so the admin can
+  // rename it right away instead of living with a placeholder name.
+  const handleAddDog = async () => {
+    if (!guardTestModeMutation()) return;
+    setAddingDog(true);
+    try {
+      const newDog: Dog = {
+        id: generateId('dog'),
+        familyId,
+        name: 'כלב חדש',
+        walksPerDay: 4,
+      };
+      await saveDog(newDog);
+      await selectDog(newDog.id);
+      setDogModalVisible(true);
+    } catch {
+      Alert.alert('לא הצלחנו להוסיף כלב', 'נסו שוב בעוד רגע.');
+    } finally {
+      setAddingDog(false);
+    }
+  };
+
+  const confirmDeleteDog = () => {
+    if (!dog || effectiveFamilyRole !== 'admin' || systemObserverActive || deletingDog) return;
+    const remove = async () => {
+      setDeletingDog(true);
+      try {
+        await deleteUnusedDog(dog.id);
+        setDogModalVisible(false);
+      } catch (e) {
+        Alert.alert('לא ניתן למחוק את הכלב', friendlyErrorMessage(e) || 'אפשר למחוק רק כלב שנוסף בטעות ושעדיין אין לו טיולים, לוח זמנים או היסטוריה.');
+      } finally {
+        setDeletingDog(false);
+      }
+    };
+    const message = 'למחוק את הכלב מהמשפחה? ניתן למחוק רק כלב ללא טיולים, לוח זמנים או היסטוריה.';
+    if (Platform.OS === 'web') {
+      const confirm = (globalThis as typeof globalThis & { confirm?: (message?: string) => boolean }).confirm;
+      if (confirm?.(message)) void remove();
+      return;
+    }
+    Alert.alert('מחיקת כלב', message, [
+      { text: 'ביטול', style: 'cancel' },
+      { text: 'מחיקה', style: 'destructive', onPress: () => void remove() },
+    ]);
+  };
+
+  const removeDogPhoto = () => {
+    if (!dog?.photoUrl) return;
+    const remove = async () => {
+      try {
+        await persistDog({ photoUrl: undefined, photoCutoutUrl: undefined });
+      } catch {
+        Alert.alert('לא הצלחנו להסיר את התמונה', 'נסו שוב בעוד רגע.');
+      }
+    };
+
+    // React Native's Alert is not reliably presented by the Safari Web
+    // build. Use the browser confirmation there, so the visible control
+    // actually removes the photo instead of appearing unresponsive.
+    if (Platform.OS === 'web') {
+      const confirm = (globalThis as typeof globalThis & { confirm?: (message?: string) => boolean }).confirm;
+      if (confirm?.('להסיר את תמונת הכלב?')) void remove();
+      return;
+    }
+
+    Alert.alert(
+      'להסיר את תמונת הכלב?',
+      'התמונה תוסר והמסקוט של Walkie Doggy יוצג שוב במקום תמונת הכלב.',
+      [
+        { text: 'ביטול', style: 'cancel' },
+        {
+          text: 'הסר תמונה',
+          style: 'destructive',
+          onPress: () => void remove(),
+        },
+      ]
+    );
   };
 
   // BATCH 4 (item E — Copy Family Code). `copyFeedback` drives the inline
@@ -311,6 +491,44 @@ export function SettingsScreen() {
     setSwitchTargetUserId(null);
   };
 
+  // PRD §16: "keep a clear support channel from within the app; the final
+  // support address should come from configuration, not be scattered in
+  // code." The row itself is hidden entirely (see the section below) when
+  // this isn't set — never a broken mailto: link to a placeholder.
+  const supportEmail = process.env.EXPO_PUBLIC_SUPPORT_EMAIL;
+  const handleContactSupport = async () => {
+    if (!supportEmail) return;
+    try {
+      await Linking.openURL(`mailto:${supportEmail}`);
+    } catch {
+      Alert.alert('לא הצלחנו לפתוח את האימייל', `אפשר לפנות ידנית לכתובת ${supportEmail}.`);
+    }
+  };
+
+  // PRD §16 pairs "תמיכה ויציאה" (support AND sign-out) in the same
+  // sentence — a genuine full sign-out, distinct from "החלף משתמש" (which
+  // only ever switches to another profile, never leaves the app signed
+  // out entirely). authStore.signOut() already has its own fail-safe
+  // contract (always completes locally even offline/on RPC failure) — see
+  // its own doc comment — so this just needs the confirmation.
+  const handleSignOut = () => {
+    const performSignOut = () => void signOut();
+
+    // React Native's Alert is not reliably surfaced in the Safari Web
+    // build, which made the visible row appear inert. Use the browser's
+    // confirmation there; native iOS/Android retain the platform dialog.
+    if (Platform.OS === 'web') {
+      const confirm = (globalThis as typeof globalThis & { confirm?: (message?: string) => boolean }).confirm;
+      if (confirm?.('להתנתק מהמכשיר הזה? תצטרכו להזין קוד PIN כדי להתחבר שוב.')) performSignOut();
+      return;
+    }
+
+    Alert.alert('להתנתק מהמכשיר הזה?', 'תצטרכו להזין קוד PIN כדי להתחבר שוב.', [
+      { text: 'ביטול', style: 'cancel' },
+      { text: 'התנתקות', style: 'destructive', onPress: performSignOut },
+    ]);
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -327,6 +545,17 @@ export function SettingsScreen() {
           own bottom tab, so Settings does not duplicate it), with admin/QA kept as its own
           clearly separate advanced area (unchanged Management sheet below)
           rather than mixed into these rows.
+        */}
+        {/*
+          Arbitrary-N multi-dog foundation (Phase 1B): a compact selector
+          strip above the existing dog card — tapping a chip makes that dog
+          the ACTIVE one (selectDog(), persisted so it survives a restart),
+          which the card right below (and Home's dog card, next-walk
+          creation, etc. — every screen that reads `dog` from the store)
+          then reflects with no further change. Editing a specific dog is
+          "select it, then tap the card below" rather than a second edit
+          affordance per chip, to keep this one coherent interaction instead
+          of duplicating the edit entry point.
         */}
         {dog ? (
           <Pressable
@@ -348,28 +577,64 @@ export function SettingsScreen() {
 
 
 
-        {/* Ordinary settings rows — grouped, consistent row height/icon/
-            chevron, no admin/QA tools mixed in here (those live in the
-            separate "⚙️ ניהול" advanced area below). */}
+        {/* Ordinary settings rows — organized into clearly labeled areas
+            (family, walks & reminders, health & grooming, my account)
+            instead of one long undifferentiated list, so the growing
+            feature set stays scannable. Same rows/handlers/modals as
+            before this reorganization — purely grouped and labeled, no
+            admin/QA tools mixed in here (those stay their own separate
+            "⚙️ ניהול" advanced area below). */}
         <View style={styles.section}>
-          <Pressable style={styles.hubRow} onPress={() => setRemindersModalVisible(true)} accessibilityRole="button" accessibilityLabel="תזכורות">
-            <RtlText style={styles.hubChevron}>‹</RtlText>
-            <RtlText style={styles.hubLabel}>🔔 תזכורות</RtlText>
-          </Pressable>
-
+          <RtlText style={styles.sectionTitle}>👪 משפחה</RtlText>
           <Pressable style={styles.hubRow} onPress={() => setSharingModalVisible(true)} accessibilityRole="button" accessibilityLabel="שיתוף המשפחה">
             <RtlText style={styles.hubChevron}>‹</RtlText>
             <RtlText style={styles.hubLabel}>📤 שיתוף המשפחה</RtlText>
           </Pressable>
+        </View>
 
-          <Pressable style={styles.hubRow} onPress={handleSwitchUser} accessibilityRole="button" accessibilityLabel="החלף משתמש, מעבר לפרופיל אחר במכשיר הזה">
+        <View style={styles.section}>
+          <RtlText style={styles.sectionTitle}>🐾 טיולים ותזכורות</RtlText>
+          <Pressable style={styles.hubRow} onPress={() => setRemindersModalVisible(true)} accessibilityRole="button" accessibilityLabel="תזכורות">
             <RtlText style={styles.hubChevron}>‹</RtlText>
-            <View style={styles.hubLabelWithMeta}>
-              <RtlText style={styles.hubLabel}>🔁 החלף משתמש</RtlText>
-              <RtlText style={styles.hubRowMeta}>מעבר לפרופיל אחר במשפחה במכשיר הזה</RtlText>
-            </View>
+            <RtlText style={styles.hubLabel}>🔔 תזכורות</RtlText>
           </Pressable>
         </View>
+
+        {dog ? (
+          <View style={styles.section}>
+            <RtlText style={styles.sectionTitle}>בריאות וטיפוח</RtlText>
+            <Pressable style={styles.hubRow} onPress={() => setHealthModalVisible(true)} accessibilityRole="button" accessibilityLabel={`בריאות וטיפוח, ${dog.name}`}>
+              <RtlText style={styles.hubChevron}>‹</RtlText>
+              <RtlText style={styles.hubLabel}>🏥 בריאות וטיפוח</RtlText>
+            </Pressable>
+          </View>
+        ) : null}
+
+        <View style={styles.section}>
+          <Pressable style={styles.hubRow} onPress={() => setAchievementsModalVisible(true)} accessibilityRole="button" accessibilityLabel="הישגים">
+            <RtlText style={styles.hubChevron}>‹</RtlText>
+            <RtlText style={styles.hubLabel}>הישגים 🏆</RtlText>
+          </Pressable>
+        </View>
+
+        {/* PRD §16: Settings must include "פרטיות/GPS, נגישות/Reduced
+            Motion" as their own entries — both are informational facts
+            about this app's behavior (see PrivacyAccessibilityInfoModal's
+            own doc comment), not settings configured here, so this is a
+            single small entry point rather than a toggle-filled section. */}
+        <View style={styles.section}>
+          <RtlText style={styles.sectionTitle}>🔒 פרטיות ונגישות</RtlText>
+          <Pressable
+            style={styles.hubRow}
+            onPress={() => setPrivacyAccessibilityModalVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel="פרטיות ו-GPS, נגישות ותנועה מופחתת"
+          >
+            <RtlText style={styles.hubChevron}>‹</RtlText>
+            <RtlText style={styles.hubLabel}>🛰️ מיקום, GPS ונגישות</RtlText>
+          </Pressable>
+        </View>
+
         {familyRole === 'admin' ? (
           <View style={styles.section}>
             <RtlText style={styles.sectionTitle}>🛠️ מתקדם</RtlText>
@@ -385,6 +650,19 @@ export function SettingsScreen() {
 
       </ScrollView>
       </KeyboardAvoidingView>
+
+      {isSystemAdmin && !systemObserverActive ? (
+        <Pressable
+          style={styles.systemAdminFab}
+          onPress={() => setSystemAdminVisible(true)}
+          accessibilityRole="button"
+          accessibilityLabel="ניהול מערכת"
+        >
+          <RtlText style={styles.systemAdminFabText}>🛡️</RtlText>
+        </Pressable>
+      ) : null}
+
+      <SystemAdminScreen visible={systemAdminVisible} onClose={() => setSystemAdminVisible(false)} />
 
       <UserPickerModal
         visible={switchUserPickerVisible}
@@ -416,8 +694,39 @@ export function SettingsScreen() {
         dog={dog ?? null}
         uploadingPhoto={uploadingPhoto}
         onChangePhoto={changeDogPhoto}
+        onRemovePhoto={removeDogPhoto}
+        onAddDog={() => void handleAddDog()}
+        onDeleteDog={effectiveFamilyRole === 'admin' && !systemObserverActive ? confirmDeleteDog : undefined}
+        deletingDog={deletingDog}
         onSave={persistDog}
         onClose={() => setDogModalVisible(false)}
+      />
+
+      <HealthGroomingModal
+        visible={healthModalVisible}
+        dog={dog ?? null}
+        tasks={healthTasks}
+        users={users}
+        currentUserId={currentUserId}
+        onSave={saveHealthTask}
+        onComplete={(taskId) => completeHealthTask(taskId, currentUserId ?? '')}
+        onClose={() => setHealthModalVisible(false)}
+      />
+
+      <AchievementsModal
+        visible={achievementsModalVisible}
+        familyProgress={familyAchievementProgress}
+        personalProgress={personalAchievementProgress}
+        gamificationEnabled={gamificationEnabled}
+        onSetGamificationEnabled={(enabled) => {
+          if (currentUserId) void setGamificationEnabled(currentUserId, enabled);
+        }}
+        onClose={() => setAchievementsModalVisible(false)}
+      />
+
+      <PrivacyAccessibilityInfoModal
+        visible={privacyAccessibilityModalVisible}
+        onClose={() => setPrivacyAccessibilityModalVisible(false)}
       />
 
       <RemindersModal
@@ -470,6 +779,10 @@ export function SettingsScreen() {
               ) : (
                 <RtlText style={styles.dogMeta}>יומן פעילות זמין רק כשהאפליקציה מחוברת ל-Supabase.</RtlText>
               )}
+              {supportEmail ? (
+                <Button label="✉️ פנייה לתמיכה" variant="secondary" onPress={() => void handleContactSupport()} style={styles.addButton} />
+              ) : null}
+              <Button label="🚪 ניתוק המכשיר" variant="secondary" onPress={handleSignOut} style={styles.addButton} />
 
               <Button label="סגור" variant="secondary" onPress={() => setManagementVisible(false)} style={styles.addButton} />
             </ScrollView>
@@ -482,13 +795,18 @@ export function SettingsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  systemAdminFab: { position: 'absolute', right: spacing.lg, bottom: spacing.xl, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primaryDark, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8, elevation: 6 },
+  systemAdminFabText: { fontSize: 25 },
   flex: { flex: 1 },
   content: { padding: spacing.xl, gap: spacing.xxl, paddingBottom: spacing.xxxl },
   // Same desktop-containment pattern as HomeScreen's webContent: cap and
   // center the scroll content on web only — native is unaffected (RN's
   // ScrollView contentContainerStyle already renders full-width there, and
   // this repo's design intent is a bounded desktop column, not native).
-  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center' },
+  // `alignSelf: center` alone lets the Web ScrollView content shrink to its
+  // intrinsic width on a phone. Keep the desktop cap, but explicitly fill
+  // the mobile viewport so every settings card matches the other screens.
+  webContent: { width: '100%', maxWidth: breakpoints.desktopContent, alignSelf: 'center' },
   header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   section: { gap: spacing.sm },
   sectionTitle: { width: '100%', ...typography.sectionTitle, fontSize: 18, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
@@ -513,6 +831,9 @@ const styles = StyleSheet.create({
   hubLabelWithMeta: { flex: 1, gap: 2, alignItems: 'stretch' },
   hubRowMeta: { ...typography.meta, color: colors.textSecondary, textAlign: 'right' },
   hubChevron: { fontSize: 20, color: colors.textSecondary, writingDirection: 'ltr' }, // RTL: chevron points left toward the row's leading (right) edge
+  // Same footprint as hubChevron, for a non-tappable informational row that
+  // still needs its label aligned with the actionable rows around it.
+  hubChevronSpacer: { width: 20, height: 20 },
   // Deliverable 3C — dog card (identity-first, top of screen) and the
   // compact "המשפחה שלי" summary card right below it.
   dogCard: {
@@ -529,6 +850,39 @@ const styles = StyleSheet.create({
   dogCardBody: { flex: 1, gap: 2 },
   dogCardName: { ...typography.sectionTitle, fontSize: 18, color: colors.textPrimary, textAlign: 'right' },
   dogCardMeta: { ...typography.meta, color: colors.textSecondary, textAlign: 'right' },
+  // Multi-dog selector strip — same horizontal-filter-chip pattern as
+  // SystemAdminScreen's auditFamilyFilters (row-reverse content, no
+  // nativeDirection override: a horizontal ScrollView already flips its
+  // own scroll direction under RTL, so reversing the row keeps chip order
+  // matching natural reading order instead of double-flipping).
+  dogSelectorRow: { flexDirection: 'row-reverse', gap: spacing.sm, paddingBottom: spacing.xs },
+  dogSelectorChip: {
+    alignItems: 'center',
+    gap: 4,
+    width: 72,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  dogSelectorChipActive: { backgroundColor: colors.statusCurrentBg, borderColor: colors.primary },
+  dogSelectorChipName: { ...typography.meta, fontSize: 12, color: colors.textSecondary, textAlign: 'center' },
+  dogSelectorChipNameActive: { color: colors.primaryDark, fontWeight: '700' },
+  dogSelectorAddChip: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    width: 72,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+  },
+  dogSelectorAddPlus: { fontSize: 20, color: colors.primaryDark, fontWeight: '700' },
+  dogSelectorAddText: { ...typography.meta, fontSize: 12, color: colors.primaryDark, fontWeight: '700', textAlign: 'center' },
   familyCardHeader: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', justifyContent: 'space-between' },
   familyCardTitle: { ...typography.sectionTitle, fontSize: 17, color: colors.textPrimary, textAlign: 'right' },
   familyCard: {
@@ -555,12 +909,6 @@ const styles = StyleSheet.create({
   sheetScroll: { flexGrow: 0, flexShrink: 1 },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 8 },
 });
-
-
-
-
-
-
 
 
 

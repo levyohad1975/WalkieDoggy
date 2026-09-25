@@ -267,8 +267,8 @@ export function RootNavigator() {
             be reached via navigation.navigate('History'/...) from stale
             code, and FixedPhysicalTabBar's own `if (!route) return null`
             above already handles a route that doesn't exist this render. */}
-        <Tab.Screen name="History" component={HistoryScreen} />
-        <Tab.Screen name="Statistics" component={StatisticsScreen} />
+        {canSeeHistoryTab ? <Tab.Screen name="History" component={HistoryScreen} /> : null}
+        {canSeeStatisticsTab ? <Tab.Screen name="Statistics" component={StatisticsScreen} /> : null}
         <Tab.Screen name="Settings" component={SettingsScreen} />
       </Tab.Navigator>
       </NavigationContainer>

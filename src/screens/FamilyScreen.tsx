@@ -295,6 +295,15 @@ export function FamilyScreen() {
 
   const openDetails = (user: FamilyUser) => setDetailsTarget(user);
 
+  // Keep the save callback stable while the web photo cropper temporarily hides
+  // the form modal. A new inline callback identity caused the crop hand-off
+  // effect to clean itself up before it could persist photo_url.
+  const handleUserSave = useCallback(async (input: { name: string; avatar: string; color: string; photoUrl?: string }) => {
+    if (editingUser) await updateUser({ ...editingUser, ...input });
+    else await addUser(input);
+    setFormVisible(false);
+  }, [editingUser, updateUser, addUser]);
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
@@ -413,11 +422,7 @@ export function FamilyScreen() {
         visible={formVisible}
         editingUser={editingUser}
         familyId={familyId}
-        onSave={async (input) => {
-          if (editingUser) await updateUser({ ...editingUser, ...input });
-          else await addUser(input);
-          setFormVisible(false);
-        }}
+        onSave={handleUserSave}
         onClose={() => setFormVisible(false)}
       />
 

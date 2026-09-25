@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, ImageBackground, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Image, ImageBackground, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
 import { colors } from '../theme/colors';
-import { breakpoints, radii, spacing, typography } from '../theme/tokens';
+import { breakpoints, elevation, radii, spacing, typography } from '../theme/tokens';
 import { Button } from '../components/Button';
 import { ensureAnonymousSession, findFamilyByInviteCode, joinFamily } from '../lib/supabase';
 import {
@@ -22,7 +22,7 @@ import { DogPhoto } from '../components/DogPhoto';
 import { WalkieMascot } from '../components/WalkieMascot';
 import type { FamilyLookupResult } from '../types';
 
-type Mode = 'choose' | 'recover' | 'create' | 'join' | 'redeem';
+type Mode = 'choose' | 'pwaChoice' | 'recover' | 'create' | 'join' | 'redeem';
 
 /**
  * Shown once per device, only in Supabase (backend) mode, before this device
@@ -36,10 +36,24 @@ type Mode = 'choose' | 'recover' | 'create' | 'join' | 'redeem';
  * new family) and "pick who you are" (an existing family being joined) with
  * no changes needed here.
  */
+// True width/height ratio of assets/onboarding-welcome-final.png and
+// -wink.png (941x1671 px). Sizing the hero to this exact ratio — rather than
+// leaning on resizeMode alone inside a mismatched box — guarantees the full
+// composition (badges, speech bubble, both CTA buttons) is always visible
+// with no cropping, and confines any letterbox space to outside the image's
+// own bounds so it can be filled with the brand cream background instead of
+// the flat dark teal that read as a "green screen".
+const ONBOARDING_HERO_ASPECT = 941 / 1671;
+
 export function FamilyOnboardingScreen() {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const isDesktop = width >= 900;
   const setFamilyId = useAuthStore((s) => s.setFamilyId);
+  const heroMaxWidth = isDesktop ? Math.min(560, width) : width;
+  const heroHeightIfWidthConstrained = heroMaxWidth / ONBOARDING_HERO_ASPECT;
+  const isWidthConstrained = heroHeightIfWidthConstrained <= height;
+  const heroHeight = isWidthConstrained ? heroHeightIfWidthConstrained : height;
+  const heroWidth = isWidthConstrained ? heroMaxWidth : Math.min(heroHeight * ONBOARDING_HERO_ASPECT, heroMaxWidth);
   // Round 4 — set only when a redemption already succeeded server-side but
   // this device couldn't yet confirm it via whoami() (see authStore.ts's
   // completeInviteRedemption/restoreSession doc comments). Checked on mount
@@ -53,11 +67,41 @@ export function FamilyOnboardingScreen() {
     (s) => s.retryPendingInviteRedemptionVerification
   );
   const isInstalledWebApp = Platform.OS === 'web' && typeof window !== 'undefined' && Boolean(window.matchMedia?.('(display-mode: standalone)').matches || (typeof navigator !== 'undefined' && (navigator as typeof navigator & { standalone?: boolean }).standalone === true));
-  const [mode, setMode] = useState<Mode>(isInstalledWebApp ? 'recover' : 'choose');
+  // An installed PWA launch is ambiguous -- it's exactly as true for a
+  // returning device reopening the icon as for a brand-new install that
+  // just added the icon during setup (no reliable synchronous client-side
+  // signal distinguishes them; even a brand-new device already has an
+  // anonymous Supabase session by the time this screen renders). Previously
+  // this defaulted straight into 'recover', silently assuming "returning"
+  // for every case including first-time installs. Show a neutral 3-way
+  // choice instead and let the device tell us which it is.
+  const [mode, setMode] = useState<Mode>(isInstalledWebApp ? 'pwaChoice' : 'choose');
   const [showWelcomeWink, setShowWelcomeWink] = useState(false);
+  // Same fail-safe-static convention as WalkieMascot/MascotFrameAnimation:
+  // default true (no animation) until the OS setting is confirmed, so a
+  // Reduced Motion device never sees even one wink before this resolves.
+  const [reducedMotion, setReducedMotion] = useState(true);
 
   useEffect(() => {
-    if (mode !== 'choose') return;
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((enabled) => {
+        if (mounted) setReducedMotion(!!enabled);
+      })
+      .catch(() => {
+        if (mounted) setReducedMotion(false);
+      });
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', (enabled: boolean) =>
+      setReducedMotion(!!enabled)
+    );
+    return () => {
+      mounted = false;
+      subscription?.remove?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (mode !== 'choose' || reducedMotion) return;
     let winkTimer: ReturnType<typeof setTimeout> | undefined;
     const interval = setInterval(() => {
       setShowWelcomeWink(true);
@@ -67,7 +111,7 @@ export function FamilyOnboardingScreen() {
       clearInterval(interval);
       if (winkTimer) clearTimeout(winkTimer);
     };
-  }, [mode]);
+  }, [mode, reducedMotion]);
 
   // --- create ---
   const [familyName, setFamilyName] = useState('');
@@ -214,7 +258,7 @@ export function FamilyOnboardingScreen() {
       if (!result) setJoinError('לא נמצאה משפחה עם הקוד הזה — בדקו שהקוד הוקלד נכון');
       else setFound(result);
     } catch (e) {
-      setJoinError(e instanceof Error ? e.message : 'לא הצלחנו לחפש את הקוד');
+      setJoinError(friendlyErrorMessage(e));
     } finally {
       setLooking(false);
     }
@@ -326,6 +370,36 @@ export function FamilyOnboardingScreen() {
     }
   };
 
+  if (mode === 'pwaChoice') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <WalkieMascot state="ready" size={128} testID="onboarding-mascot-pwa-choice" />
+        <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">רגע לפני שממשיכים</RtlText>
+        <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
+          פתחתם את Walkie Doggy מהאייקון שנוסף למסך הבית. כדי לחבר את המכשיר הזה נכון, ספרו לנו קודם באיזה שלב אתם.
+        </RtlText>
+        <Button
+          label="המשפחה שלי כבר קיימת"
+          variant="secondary"
+          onPress={() => setMode('recover')}
+          style={styles.wideButton}
+        />
+        <Button
+          label="יש לי הזמנה"
+          variant="secondary"
+          onPress={() => setMode('redeem')}
+          style={styles.wideButton}
+        />
+        <Button
+          label="יצירת משפחה חדשה"
+          variant="secondary"
+          onPress={() => setMode('create')}
+          style={styles.wideButton}
+        />
+      </SafeAreaView>
+    );
+  }
+
   if (mode === 'recover') {
     return (
       <SafeAreaView style={styles.container}>
@@ -389,9 +463,13 @@ export function FamilyOnboardingScreen() {
       <View style={styles.welcomeContainer}>
         <ImageBackground
           source={require("../../assets/onboarding-welcome-final.png")}
-          style={[styles.referenceHero, isDesktop && styles.referenceHeroDesktop]}
-          imageStyle={[styles.referenceHeroImage, isDesktop && styles.referenceHeroImageDesktop]}
-          resizeMode={isDesktop ? "contain" : "cover"}
+          style={[
+            styles.referenceHero,
+            isDesktop && styles.referenceHeroDesktop,
+            { width: heroWidth, height: heroHeight },
+          ]}
+          imageStyle={styles.referenceHeroImage}
+          resizeMode="contain"
           accessibilityLabel="מסך הפתיחה של Walkie Doggy"
         >
           {showWelcomeWink ? (
@@ -428,7 +506,7 @@ export function FamilyOnboardingScreen() {
           <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
             הבקשה ליצירת {rejectedFamilyName} נדחתה על ידי מנהל המערכת. לפרטים נוספים, פנו לתמיכה.
           </RtlText>
-          <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
+          <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
         </SafeAreaView>
       );
     }
@@ -441,7 +519,7 @@ export function FamilyOnboardingScreen() {
           <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
             הבקשה ליצירת {pendingApprovalFamilyName} התקבלה. נשלח עדכון לאחר אישור מנהל המערכת.
           </RtlText>
-          <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
+          <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
         </SafeAreaView>
       );
     }
@@ -565,7 +643,7 @@ export function FamilyOnboardingScreen() {
                   {createError}
                 </RtlText>
               ) : null}
-              <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
+              <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -674,7 +752,7 @@ export function FamilyOnboardingScreen() {
                 variant="secondary"
                 onPress={() => {
                   resetRedeemMode();
-                  setMode('choose');
+                  setMode(isInstalledWebApp ? 'pwaChoice' : 'choose');
                 }}
                 style={styles.wideButton}
               />
@@ -745,7 +823,7 @@ export function FamilyOnboardingScreen() {
               />
             )}
 
-            <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
+            <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -754,8 +832,13 @@ export function FamilyOnboardingScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#173A36', overflow: 'hidden' },
-  welcomeContainer: { flex: 1, backgroundColor: '#173A36', overflow: 'hidden' },
+  container: { flex: 1, backgroundColor: colors.background, overflow: 'hidden' },
+  // width/height are set per-render to the artwork's exact aspect ratio (see
+  // ONBOARDING_HERO_ASPECT), so any leftover space is real letterboxing
+  // outside the image bounds, not a mismatched-container crop. Centering it
+  // here fills that leftover space with the brand cream background instead
+  // of the previous flat dark teal.
+  welcomeContainer: { flex: 1, backgroundColor: colors.background, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   winkFrame: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%' },
   createHotspot: { position: 'absolute', left: '12%', right: '12%', top: '72%', height: '7.5%', zIndex: 2 },
   joinHotspot: { position: 'absolute', left: '12%', right: '12%', top: '80%', height: '7.5%', zIndex: 2 },
@@ -764,10 +847,9 @@ const styles = StyleSheet.create({
   // so clicks appear dead. Keep the interactive areas centered on the 560px artwork.
   createHotspotDesktop: { left: '12%', right: '12%', top: '72%' },
   joinHotspotDesktop: { left: '12%', right: '12%', top: '80%' },
-  referenceHero: { flex: 1, width: '100%', minHeight: '100%' },
-  referenceHeroDesktop: { alignSelf: 'center', width: 560, maxWidth: '100%', backgroundColor: '#173A36' },
+  referenceHero: {},
+  referenceHeroDesktop: { alignSelf: 'center' },
   referenceHeroImage: { width: '100%', height: '100%' },
-  referenceHeroImageDesktop: { resizeMode: 'contain' },
   referenceOverlay: { flex: 1, justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 12, paddingBottom: 18 },
   referenceTopRow: { minHeight: 170, alignItems: 'center', justifyContent: 'center' },
   languagePill: { position: 'absolute', right: 0, top: 0, backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 28, paddingHorizontal: 18, paddingVertical: 11 },
@@ -790,13 +872,20 @@ const styles = StyleSheet.create({
   featureIcon: { color: '#102A5A', fontSize: 20, fontWeight: '900', lineHeight: 22 },
   featureLabel: { color: '#102A5A', fontSize: 10, lineHeight: 11, fontWeight: '800', textAlign: 'center' },
   smallWalks: { color: '#FFFFFF', fontSize: 13, lineHeight: 16, letterSpacing: 1.2, fontWeight: '700', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 5 },
-  formSafeArea: { flex: 1, backgroundColor: '#DFF5EE' },
-  formHero: { width: '100%', maxWidth: 560, minHeight: 82, borderRadius: 24, backgroundColor: '#BFE8DA', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 14, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#CBE9DF' },
+  // Same brand cream (colors.background) as the welcome screen's letterbox,
+  // so stepping from "choose" into create/join/redeem reads as one
+  // continuous surface rather than a hand-off into a different, pale-green
+  // page. formHero is a muted (not tinted-green) card floating on that
+  // cream, with turquoise kept to a controlled accent (the speech bubble's
+  // border) per BRAND_BIBLE's "calm cream backgrounds, turquoise as a
+  // controlled brand accent".
+  formSafeArea: { flex: 1, backgroundColor: colors.background },
+  formHero: { width: '100%', maxWidth: 560, minHeight: 82, borderRadius: 24, backgroundColor: colors.surfaceMuted, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 14, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
   formHeroDesktop: { maxWidth: 680, minHeight: 104 },
-  formSpeech: { flex: 1, maxWidth: 330, backgroundColor: '#FFFFFF', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 2, borderColor: '#2AA7B8' },
+  formSpeech: { flex: 1, maxWidth: 330, backgroundColor: colors.surface, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 2, borderColor: colors.primary },
   formSpeechText: { color: '#102A5A', fontSize: 16, lineHeight: 22, fontWeight: '800', textAlign: 'center' },
   flexFull: { flex: 1 },
-  formScrollContent: { alignItems: 'center', paddingTop: 14, paddingHorizontal: 18, paddingBottom: 34, minHeight: '100%', backgroundColor: '#DFF5EE' },
+  formScrollContent: { alignItems: 'center', paddingTop: 14, paddingHorizontal: 18, paddingBottom: 34, minHeight: '100%', backgroundColor: colors.background },
   formScrollContentDesktop: { paddingTop: 28, paddingHorizontal: 32, paddingBottom: 48 },
 
   eyebrow: { ...typography.caption, letterSpacing: 3.2, color: colors.primaryDark, fontWeight: '900', textAlign: 'center', marginBottom: spacing.md },
@@ -817,7 +906,7 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 14, lineHeight: 20, color: colors.textSecondary, marginTop: 4, marginBottom: 12, textAlign: 'center', maxWidth: 520 },
   subtitleDesktop: { fontSize: 16, marginBottom: 20 },
   wideButton: { width: '100%', marginTop: 8 },
-  form: { width: '100%', maxWidth: 560, alignSelf: 'center', backgroundColor: '#FDFBF4', borderRadius: 24, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 18, borderWidth: 1, borderColor: '#B8DCCF', shadowColor: '#173A36', shadowOpacity: 0.08, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
+  form: { width: '100%', maxWidth: 560, alignSelf: 'center', backgroundColor: colors.surface, borderRadius: 24, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 18, borderWidth: 1, borderColor: colors.border, ...elevation.card },
   formDesktop: { maxWidth: 680, paddingHorizontal: 28, paddingTop: 18, paddingBottom: 24 },
   label: { ...typography.meta, fontWeight: '800', color: '#6E675C', marginTop: 8, marginBottom: 5, textAlign: 'right' },
   stepHint: { fontSize: 14, lineHeight: 20, color: '#173A36', fontWeight: '800', textAlign: 'right', marginTop: 10, marginBottom: 2 },

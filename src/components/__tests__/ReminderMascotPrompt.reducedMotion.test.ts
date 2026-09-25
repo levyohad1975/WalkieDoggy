@@ -34,4 +34,20 @@ describe('ReminderMascotPrompt — Modal transition respects reduced motion (str
     expect(source).not.toMatch(/animationType="fade"/);
     expect(source).toMatch(/animationType=\{reducedMotion \? 'none' : 'fade'\}/);
   });
+
+  it('pairs accessibilityRole="alert" with accessibilityLiveRegion="polite" — Android TalkBack needs both (mascot audit, see WalkCompletionCelebration.accessibility.test.ts for the sibling coverage)', () => {
+    expect(source).toMatch(/accessibilityRole="alert" accessibilityLiveRegion="polite"/);
+  });
+
+  it('tracks screen-reader state and never auto-dismisses the reminder bubble while one is active', () => {
+    expect(source).toMatch(/AccessibilityInfo\.isScreenReaderEnabled\(\)/);
+    expect(source).toMatch(/addEventListener\('screenReaderChanged', setScreenReaderEnabled\)/);
+    expect(source).toMatch(/if \(screenReaderEnabled\) return;/);
+  });
+
+  it('passes a stable frames reference to MascotFrameAnimation, not a fresh `[]` literal per render (frame-reset regression guard)', () => {
+    expect(source).toMatch(/const EMPTY_FRAMES: ImageSourcePropType\[\] = \[\];/);
+    expect(source).toMatch(/frames=\{EMPTY_FRAMES\}/);
+    expect(source).not.toMatch(/frames=\{\[\]\}/);
+  });
 });

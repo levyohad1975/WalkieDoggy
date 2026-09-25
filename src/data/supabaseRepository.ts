@@ -1,12 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
+  AchievementUnlock,
   Dog,
   Family,
   FamilyUser,
+  HealthTask,
   NotificationSetting,
   ScheduleEntry,
   ScheduleRule,
   Walk,
+  WalkGpsSession,
 } from '../types';
 import { defaultNotificationSetting } from '../logic/reminders';
 import type { DeleteFamilyMemberPayload, Repository } from './repository';
@@ -22,6 +25,7 @@ function toUser(row: any): FamilyUser {
     photoUrl: row.photo_url ?? undefined,
     color: row.color,
     remindersEnabled: row.reminders_enabled,
+    gamificationEnabled: row.gamification_enabled,
     createdAt: row.created_at,
     removedAt: row.removed_at ?? undefined,
   };
@@ -52,6 +56,7 @@ function toDog(row: any): Dog {
     name: row.name,
     photoUrl: row.photo_url ?? undefined,
     photoCutoutUrl: row.photo_cutout_url ?? undefined,
+    heroBackgroundId: row.hero_background_id ?? undefined,
     walksPerDay: row.walks_per_day,
     notes: row.notes ?? undefined,
     sex: row.sex ?? undefined,
@@ -187,6 +192,105 @@ function fromEntry(entry: ScheduleEntry) {
   };
 }
 
+function toHealthTask(row: any): HealthTask {
+  return {
+    id: row.id,
+    familyId: row.family_id,
+    dogId: row.dog_id,
+    category: row.category,
+    title: row.title,
+    notes: row.notes ?? undefined,
+    weightKg: row.weight_kg ?? undefined,
+    recurrenceIntervalDays: row.recurrence_interval_days ?? undefined,
+    dueDate: row.due_date ?? undefined,
+    completedAt: row.completed_at ?? undefined,
+    completedByUserId: row.completed_by_user_id ?? undefined,
+    responsibleUserId: row.responsible_user_id ?? undefined,
+    createdByUserId: row.created_by_user_id ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function fromHealthTask(task: HealthTask) {
+  return {
+    id: task.id,
+    family_id: task.familyId,
+    dog_id: task.dogId,
+    category: task.category,
+    title: task.title,
+    notes: task.notes ?? null,
+    weight_kg: task.weightKg ?? null,
+    recurrence_interval_days: task.recurrenceIntervalDays ?? null,
+    due_date: task.dueDate ?? null,
+    completed_at: task.completedAt ?? null,
+    completed_by_user_id: task.completedByUserId ?? null,
+    responsible_user_id: task.responsibleUserId ?? null,
+    created_by_user_id: task.createdByUserId ?? null,
+  };
+}
+
+function toGpsSession(row: any): WalkGpsSession {
+  return {
+    id: row.id,
+    walkId: row.walk_id,
+    familyId: row.family_id,
+    dogId: row.dog_id,
+    distanceMeters: row.distance_meters ?? undefined,
+    pointCount: row.point_count,
+    routePoints: Array.isArray(row.route_points) ? row.route_points : undefined,
+    correctedDistanceMeters: row.corrected_distance_meters ?? undefined,
+    correctedByUserId: row.corrected_by_user_id ?? undefined,
+    startedAt: row.started_at ?? undefined,
+    endedAt: row.ended_at ?? undefined,
+    source: row.source,
+    createdByUserId: row.created_by_user_id ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function fromGpsSession(session: WalkGpsSession) {
+  return {
+    id: session.id,
+    walk_id: session.walkId,
+    family_id: session.familyId,
+    dog_id: session.dogId,
+    distance_meters: session.distanceMeters ?? null,
+    point_count: session.pointCount,
+    route_points: session.routePoints ?? null,
+    corrected_distance_meters: session.correctedDistanceMeters ?? null,
+    corrected_by_user_id: session.correctedByUserId ?? null,
+    started_at: session.startedAt ?? null,
+    ended_at: session.endedAt ?? null,
+    source: session.source,
+    created_by_user_id: session.createdByUserId ?? null,
+  };
+}
+
+function toAchievementUnlock(row: any): AchievementUnlock {
+  return {
+    id: row.id,
+    familyId: row.family_id,
+    achievementKey: row.achievement_key,
+    scope: row.scope,
+    userId: row.user_id ?? undefined,
+    unlockedAt: row.unlocked_at,
+    createdAt: row.created_at,
+  };
+}
+
+function fromAchievementUnlock(unlock: AchievementUnlock) {
+  return {
+    id: unlock.id,
+    family_id: unlock.familyId,
+    achievement_key: unlock.achievementKey,
+    scope: unlock.scope,
+    user_id: unlock.userId ?? null,
+    unlocked_at: unlock.unlockedAt,
+  };
+}
+
 function fromDog(dog: Dog) {
   return {
     id: dog.id,
@@ -194,6 +298,7 @@ function fromDog(dog: Dog) {
     name: dog.name,
     photo_url: dog.photoUrl ?? null,
     photo_cutout_url: dog.photoCutoutUrl ?? null,
+    hero_background_id: dog.heroBackgroundId ?? null,
     walks_per_day: dog.walksPerDay,
     notes: dog.notes ?? null,
     sex: dog.sex ?? null,
@@ -324,14 +429,75 @@ export class SupabaseRepository implements Repository {
     if (error) throw error;
   }
 
+  async updateUserGamificationSetting(userId: string, enabled: boolean): Promise<void> {
+    const { error } = await this.client.from('users').update({ gamification_enabled: enabled }).eq('id', userId);
+    if (error) throw error;
+  }
+
   async getDog(familyId: string): Promise<Dog | undefined> {
     const { data, error } = await this.client.from('dogs').select('*').eq('family_id', familyId).maybeSingle();
     if (error) throw error;
     return data ? toDog(data) : undefined;
   }
 
+  async getDogs(familyId: string): Promise<Dog[]> {
+    const { data, error } = await this.client.from('dogs').select('*').eq('family_id', familyId);
+    if (error) throw error;
+    return (data ?? []).map(toDog);
+  }
+
   async upsertDog(dog: Dog): Promise<void> {
     const { error } = await this.client.from('dogs').upsert(fromDog(dog));
+    if (error) throw error;
+  }
+
+  async getHealthTasks(dogId: string): Promise<HealthTask[]> {
+    const { data, error } = await this.client.from('health_tasks').select('*').eq('dog_id', dogId);
+    if (error) throw error;
+    return (data ?? []).map(toHealthTask);
+  }
+
+  async upsertHealthTask(task: HealthTask): Promise<void> {
+    const { error } = await this.client.from('health_tasks').upsert(fromHealthTask(task));
+    if (error) throw error;
+  }
+
+  async getGpsSession(walkId: string): Promise<WalkGpsSession | undefined> {
+    const { data, error } = await this.client.from('walk_gps_sessions').select('*').eq('walk_id', walkId).maybeSingle();
+    if (error) throw error;
+    return data ? toGpsSession(data) : undefined;
+  }
+
+  async upsertGpsSession(session: WalkGpsSession): Promise<void> {
+    // Conflict target is walk_id (its own unique constraint, 0051), not the
+    // primary key `id` — a re-save (e.g. recording a correction after the
+    // initial device-computed reading) must update the SAME row for this
+    // walk rather than erroring on walk_id's uniqueness with a fresh id.
+    const { error } = await this.client.from('walk_gps_sessions').upsert(fromGpsSession(session), { onConflict: 'walk_id' });
+    if (error) throw error;
+  }
+
+  async getGpsSessionsForWalkIds(walkIds: string[]): Promise<WalkGpsSession[]> {
+    if (walkIds.length === 0) return [];
+    const { data, error } = await this.client.from('walk_gps_sessions').select('*').in('walk_id', walkIds);
+    if (error) throw error;
+    return (data ?? []).map(toGpsSession);
+  }
+
+  async getAchievementUnlocks(familyId: string): Promise<AchievementUnlock[]> {
+    const { data, error } = await this.client.from('achievement_unlocks').select('*').eq('family_id', familyId);
+    if (error) throw error;
+    return (data ?? []).map(toAchievementUnlock);
+  }
+
+  async upsertAchievementUnlock(unlock: AchievementUnlock): Promise<void> {
+    // Conflict target is (family_id, dedupe_key) — 0052's generated column +
+    // unique constraint — so a duplicate unlock attempt (two devices
+    // crossing the same threshold, or a retried write) is silently a no-op
+    // rather than a constraint-violation error.
+    const { error } = await this.client
+      .from('achievement_unlocks')
+      .upsert(fromAchievementUnlock(unlock), { onConflict: 'family_id,dedupe_key', ignoreDuplicates: true });
     if (error) throw error;
   }
 

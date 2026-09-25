@@ -42,6 +42,8 @@ export interface FamilyUser {
   photoUrl?: string; // real profile photo (device URI in demo mode, Supabase Storage URL when configured)
   color: string; // hex, personal color used across the UI
   remindersEnabled: boolean;
+  /** PRD §9 gamification off-switch ("עם אפשרות לכיבוי") — per-user/device, same self-service-toggle shape as remindersEnabled, not a family-wide admin setting. */
+  gamificationEnabled: boolean;
   createdAt: string;
   /**
    * Set when an admin "deletes" this family member. The row is never
@@ -62,14 +64,11 @@ export interface Dog {
   familyId: string;
   name: string;
   photoUrl?: string;
-  /**
-   * Best-effort transparent background-removal cutout of `photoUrl`,
-   * produced server-side (supabase/functions/remove-photo-background) after
-   * upload. Never authoritative on its own — always paired with, and
-   * cleared alongside, `photoUrl`; a consumer must never show a cutout for
-   * a dog that currently has no `photoUrl`.
-   */
+  /** Best-effort transparent cutout of photoUrl for Home's hero. It is
+   * server-generated and must never be used once photoUrl has changed. */
   photoCutoutUrl?: string;
+  /** Family-shared visual choice for Home's hero. */
+  heroBackgroundId?: string;
   walksPerDay: number;
   notes?: string;
   /**
@@ -81,6 +80,58 @@ export interface Dog {
    * supabase/migrations/0022_family_timezone_and_dog_sex.sql.
    */
   sex?: 'male' | 'female';
+}
+
+/** The PRD §10 core category list for a health/grooming record. */
+export type HealthTaskCategory =
+  | 'vaccination'
+  | 'parasite_prevention'
+  | 'medication'
+  | 'vet_visit'
+  | 'weight'
+  | 'allergy'
+  | 'food'
+  | 'grooming'
+  | 'bath'
+  | 'nails'
+  | 'teeth'
+  | 'ears'
+  | 'other';
+
+/**
+ * A single row in a dog's health/grooming hub (PRD §10) — a journal entry
+ * AND task list unified onto one shape, exactly like `Walk` already unifies
+ * planned/unplanned. A record is a LOG entry once `completedAt` is set (e.g.
+ * "gave the heartworm pill today", a weight reading), a DUE task while
+ * `dueDate` is set and `completedAt` isn't (e.g. "next vet visit"), or both
+ * (a due task marked done keeps its dueDate). See
+ * supabase/migrations/0049_health_grooming_foundation.sql for the full
+ * rationale, and 0050_health_task_recurrence.sql for `recurrenceIntervalDays`.
+ */
+export interface HealthTask {
+  id: string;
+  familyId: string;
+  dogId: string;
+  category: HealthTaskCategory;
+  title: string;
+  notes?: string;
+  /** Only meaningful for category 'weight' — a weight-log entry's reading, in kg. */
+  weightKg?: number;
+  /**
+   * When set on a task, completing it auto-generates the NEXT occurrence
+   * (same category/title/notes/responsibleUserId/recurrenceIntervalDays,
+   * dueDate = this completion's date + this many days) — see
+   * healthStore.completeTask(). Undefined/absent = a one-off record, exactly
+   * today's behavior. See supabase/migrations/0050_health_task_recurrence.sql.
+   */
+  recurrenceIntervalDays?: number;
+  dueDate?: string; // "YYYY-MM-DD"
+  completedAt?: string; // ISO timestamp
+  completedByUserId?: string;
+  responsibleUserId?: string;
+  createdByUserId?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /**
@@ -148,12 +199,79 @@ export interface Walk {
   updatedAt: string;
 }
 
-export type NotificationKind = 'pre_walk_reminder' | 'overdue_reminder';
+/**
+ * PRD §7 (Phase 4, GPS foundation) — an optional, per-walk GPS distance
+ * capture. Deliberately holds only a DERIVED aggregate (distance + point
+ * count), never raw lat/lng history — the device computes distance from an
+ * in-memory position stream it never persists anywhere (see
+ * lib/gpsTracking.ts) — see supabase/migrations/0051_walk_gps_sessions.sql
+ * for the full privacy-by-design rationale. `distanceMeters` is the
+ * original device-computed reading; `correctedDistanceMeters`, once a
+ * family member sets it (the PRD's required "assistive, not sole source of
+ * truth" correction flow), is authoritative for display/statistics instead.
+ */
+export interface WalkGpsSession {
+  id: string;
+  walkId: string;
+  familyId: string;
+  dogId: string;
+  distanceMeters?: number;
+  pointCount: number;
+  /** GPS points retained for the in-app route preview/map. */
+  routePoints?: Array<{ latitude: number; longitude: number; timestamp: number }>;
+  correctedDistanceMeters?: number;
+  correctedByUserId?: string;
+  startedAt?: string; // ISO timestamp
+  endedAt?: string; // ISO timestamp
+  /** 'device_gps' today (this device's own foreground tracking) — an open list so a future external collar/tracker adapter adds a value here, not a schema rewrite. */
+  source: 'device_gps';
+  createdByUserId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * PRD §9 gamification ("גביעים ועידוד משפחתי"): an immutable unlock ledger
+ * row, not a mutable "achievement state" table — an achievement, once
+ * unlocked, stays unlocked forever, exactly like health_tasks/dogs' own
+ * no-DELETE posture (0049/0042). 'family' scope covers milestones that
+ * belong to the whole family (e.g. first walk ever, 10/25/50 walks
+ * total); 'personal' scope covers a specific member's own behavior (e.g.
+ * on-time streak, helping out). The achievement catalog itself
+ * (thresholds, Hebrew copy) lives in logic/achievements.ts, not the DB —
+ * this table only records WHEN each key was actually crossed, so a
+ * client never re-shows the same celebration twice.
+ */
+export type AchievementScope = 'personal' | 'family';
+
+export interface AchievementUnlock {
+  id: string;
+  familyId: string;
+  /** Matches a key in logic/achievements.ts' ACHIEVEMENT_CATALOG. */
+  achievementKey: string;
+  scope: AchievementScope;
+  /** Set for 'personal' scope (who earned it); undefined for 'family' scope. */
+  userId?: string;
+  unlockedAt: string; // ISO timestamp
+  createdAt: string;
+}
+
+/**
+ * PRD §8: "T-15, at walk time, T+15, and T+30" — the same four fixed
+ * stages the server-side scheduler already uses (see
+ * supabase/migrations/0025_walk_reminder_scheduler.sql's `stages` CTE and
+ * src/logic/reminderMessages.ts's REMINDER_STAGES, the single source of
+ * truth for these literal values on the client). This is a structural
+ * duplicate of `ReminderStage` from reminderMessages.ts, not an import of
+ * it: this file is the foundational types module (no other module in
+ * src/ imports FROM it into logic/), so the two string-literal unions are
+ * kept in sync by construction (same four literals) rather than a
+ * cross-layer dependency.
+ */
+export type NotificationKind = 'T-15' | 'T' | 'T+15' | 'T+30';
 
 export interface NotificationSetting {
   userId: string;
-  minutesBefore: number; // default 15
-  overdueMinutesAfter: number; // default 10
   enabled: boolean;
 }
 

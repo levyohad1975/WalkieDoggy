@@ -61,6 +61,8 @@ create table if not exists dogs (
   family_id uuid not null references families(id) on delete cascade,
   name text not null,
   photo_url text,
+  photo_cutout_url text,
+  hero_background_id text,
   walks_per_day int not null default 4 check (walks_per_day > 0),
   notes text,
   created_at timestamptz not null default now()
@@ -3372,4 +3374,3 @@ grant execute on function set_profile_pin(uuid, text) to authenticated;
 -- is_family_admin(), request RPCs, presence, or audit triggers: all of those
 -- already route through real_current_profile_id()/current_profile_id() in the
 -- final schema, so they automatically pick up the multi-device identity.
-

@@ -8,6 +8,7 @@ import {
   ruleNeedsEntryBackfill,
 } from '../logic/rotation';
 import { localDateOnly } from '../logic/dateFormat';
+import { pickerDateToTime } from '../logic/timeInput';
 import {
   editWalkDetails,
   markWalkDone,
@@ -24,6 +25,7 @@ import { hasActiveRemoteReminderChannel } from '../lib/remoteReminderChannel';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { adminRescheduleWalk, adminSwapWalks } from '../lib/walkAdmin';
 import { friendlyErrorMessage } from '../lib/errorMessages';
+import { useGpsStore } from './gpsStore';
 
 const GENERATE_DAYS_AHEAD = 14;
 
@@ -67,6 +69,30 @@ interface ScheduleState {
   swap: (walkId: string, newUserId: string, swappedByUserId: string) => Promise<void>;
   swapTwoWalks: (walkAId: string, walkBId: string, swappedByUserId: string) => Promise<void>;
   addUnplannedWalk: (input: UnplannedWalkInput) => Promise<boolean>;
+  /**
+   * Gives a spontaneous walk the same live start_walk/finish_walk lifecycle
+   * a planned walk gets ("case A" — see migration 0054), alongside (never
+   * instead of) addUnplannedWalk's existing after-the-fact logging ("case
+   * B", unchanged). Creates a brand-new `pending` walk row (isUnplanned,
+   * no scheduleEntryId — never touches the rotation/schedule) attributed
+   * to the caller, then immediately runs it through the existing
+   * startWalk() action so it goes through the SAME start_walk RPC,
+   * authorization, and GPS-tracking kickoff as any scheduled walk.
+   * Server-side authorization for the initial insert is migration 0054's
+   * trigger extension — any family member may insert their OWN pending,
+   * not-yet-started/completed unplanned walk; the actual pending-
+   * >in_progress->done transitions are only ever written by
+   * start_walk()/finish_walk() themselves, never by this insert.
+   * computeNextWalk() (see logic/nextWalk.ts) already picks the first
+   * `in_progress` walk regardless of isUnplanned, so this needs no
+   * Home-screen changes for the resulting walk to show up in the normal
+   * "current walk" card with its normal "סיים טיול" action, wired to the
+   * existing finishWalk(). Deliberately always attributed to the caller
+   * (never a picker for someone else) — starting a walk is "I am doing
+   * this right now", not a backfill.
+   */
+  startUnplannedWalk: (familyId: string, dogId: string, userId: string) => Promise<boolean>;
+  isStartingUnplannedWalk: boolean;
   /**
    * Section 2: edits an existing unplanned/spontaneous walk IN PLACE — same
    * record, never a duplicate. `patch` may include any subset of the fields
@@ -131,8 +157,15 @@ async function scheduleNotificationsForWalk(walk: Walk) {
     return;
   }
   const { useFamilyStore } = require('./familyStore') as typeof import('./familyStore');
-  const { users, dog } = useFamilyStore.getState();
+  const { users, dog: activeDog, dogs } = useFamilyStore.getState();
   const user = users.find((u) => u.id === walk.responsibleUserId);
+  // Multi-dog (PRD §11): resolve THIS walk's own dog by walk.dogId, never
+  // the globally-selected active dog — a walk being (re)scheduled can
+  // belong to any of the family's dogs regardless of which one is
+  // currently active in the UI. Falls back to the active dog only if
+  // walk.dogId somehow isn't in `dogs` (shouldn't normally happen), so a
+  // genuinely schedulable reminder is never silently dropped.
+  const dog = dogs.find((d) => d.id === walk.dogId) ?? activeDog;
   if (!user || !user.remindersEnabled || !dog) return;
   const settings = await repository.getNotificationSettings(walk.familyId);
   const setting = settings.find((s) => s.userId === user.id);
@@ -157,9 +190,14 @@ export async function reconcileScheduleNotifications(familyId: string, walks: Wa
     return;
   }
   const { useFamilyStore } = require('./familyStore') as typeof import('./familyStore');
-  const { users, dog } = useFamilyStore.getState();
-  if (!dog) return;
+  const { users, dog: activeDog, dogs } = useFamilyStore.getState();
+  if (!activeDog && dogs.length === 0) return;
   const usersById = new Map(users.map((u) => [u.id, u]));
+  // Multi-dog (PRD §11): per-walk dog resolution, same reasoning as
+  // scheduleNotificationsForWalk() above — this reconciliation pass runs
+  // over the family's WHOLE walk set, which can span every one of its
+  // dogs, not just whichever one is currently active.
+  const dogsById = new Map(dogs.map((d) => [d.id, d]));
   const settings = await repository.getNotificationSettings(familyId);
   const settingsByUserId = new Map(settings.map((s) => [s.userId, s]));
   await reconcileWalkNotifications(
@@ -170,8 +208,7 @@ export async function reconcileScheduleNotifications(familyId: string, walks: Wa
       return settingsByUserId.get(userId);
     },
     (userId) => usersById.get(userId)?.name,
-    dog.name,
-    dog.sex
+    (dogId) => dogsById.get(dogId) ?? activeDog ?? undefined
   );
 }
 
@@ -182,6 +219,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   loading: false,
   error: null,
   actionError: null,
+  isStartingUnplannedWalk: false,
 
   load: async (familyId: string): Promise<boolean> => {
     set({ loading: true, error: null });
@@ -524,6 +562,11 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       else updated = { ...walk, status: 'in_progress', startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
       await cancelWalkNotifications(walkId);
+      // Phase 4 (GPS foundation, PRD §7): best-effort, fire-and-forget —
+      // GPS is assistive, never a precondition for the walk lifecycle
+      // itself (permission denial/unavailability must never fail or delay
+      // Start). See gpsStore.startTracking's own doc comment.
+      void useGpsStore.getState().startTracking(updated);
       return true;
     } catch (e) {
       set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו להתחיל את הטיול') });
@@ -541,6 +584,10 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       else updated = markWalkDone(walk, completedByUserId, details);
       set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
       await cancelWalkNotifications(walkId);
+      // Best-effort, mirrors startWalk above — stops tracking (a no-op if
+      // this walk was never being tracked) and persists whatever distance
+      // was captured.
+      void useGpsStore.getState().stopTracking(updated, completedByUserId);
       return true;
     } catch (e) {
       set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו לסיים את הטיול') });
@@ -558,6 +605,12 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
       await repository.saveWalk(updated);
       await cancelWalkNotifications(walkId);
+      // markDone is the "✓ סמן כבוצע" fallback path someone might use
+      // instead of the formal "סיים טיול" action — stop tracking here too
+      // (a no-op if this walk was never being tracked, e.g. it was marked
+      // done without ever being started) so a GPS watch started via
+      // startWalk can never keep running past a walk that's already done.
+      void useGpsStore.getState().stopTracking(updated, completedByUserId);
 
       // A2 fix: OfflineFirstRepository.saveWalk() never throws even when the
       // remote write ultimately failed — it always writes locally first
@@ -754,6 +807,59 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     }
   },
 
+  startUnplannedWalk: async (familyId: string, dogId: string, userId: string) => {
+    if (!guardTestModeMutation()) return false;
+    // A second tap can arrive before the first async save has created its
+    // in-progress row. Keep this client-side guard until the action settles.
+    if (get().isStartingUnplannedWalk) return false;
+    set({ isStartingUnplannedWalk: true });
+    try {
+      const now = new Date().toISOString();
+      const walk: Walk = {
+        id: generateId('walk'),
+        familyId,
+        dogId,
+        date: localDateOnly(new Date()),
+        scheduledTime: pickerDateToTime(new Date()),
+        responsibleUserId: userId,
+        status: 'pending',
+        isUnplanned: true,
+        createdAt: now,
+        updatedAt: now,
+      };
+    // Optimistic, like addUnplannedWalk above — reverted below if the
+    // initial save fails. startWalk() (called next) does its own
+    // optimistic update/rollback for the pending->in_progress step, so
+    // this action only owns getting the new row to exist at all.
+      set((s) => ({ walks: [...s.walks, walk], actionError: null }));
+      try {
+        await repository.saveWalk(walk);
+      } catch (e) {
+        set((s) => ({ walks: s.walks.filter((w) => w.id !== walk.id), actionError: 'לא הצלחנו להתחיל את הטיול' }));
+        return false;
+      }
+      const started = await get().startWalk(walk.id);
+      if (!started) {
+      // startWalk() already set its own actionError (e.g. offline —
+      // startWalk/finishWalk are server-authoritative RPCs with no blind
+      // offline replay, same as a scheduled walk). Remove the now-orphaned
+      // pending row rather than leaving a phantom walk that would compete
+      // with the real next-scheduled-walk card — best-effort; if this also
+      // fails, the member can still remove it manually like any other
+      // unplanned walk (deleteUnplannedWalk).
+        try {
+          await repository.deleteWalk?.(walk.id);
+        } catch {
+          // Already-surfaced actionError from startWalk() above stands.
+        }
+        set((s) => ({ walks: s.walks.filter((w) => w.id !== walk.id) }));
+      }
+      return started;
+    } finally {
+      set({ isStartingUnplannedWalk: false });
+    }
+  },
+
   editUnplannedWalk: async (walkId, patch) => {
     if (!guardTestModeMutation()) return;
     const walk = get().walks.find((w) => w.id === walkId);
@@ -823,5 +929,4 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
 
   clearActionError: () => set({ actionError: null }),
 }));
-
 

@@ -4,7 +4,7 @@ import type { Repository } from '../repository';
 import type { FamilyUser } from '../../types';
 
 function fakeUser(id: string): FamilyUser {
-  return { id, familyId: 'family-main', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, createdAt: new Date().toISOString() };
+  return { id, familyId: 'family-main', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: new Date().toISOString() };
 }
 
 function stubRemote(overrides: Partial<Repository> = {}): Repository {
@@ -701,17 +701,25 @@ describe('SyncQueue — flush() re-entrant guard and remaining apply() routes', 
     setSyncQueueActorGetter(() => null);
   });
 
-  it('returns the current remaining count without touching remote when a flush is already in progress', async () => {
+  it('joins an in-progress flush instead of starting duplicate remote writes', async () => {
     const queue = new SyncQueue();
     await queue.enqueue({ type: 'upsertUser', payload: fakeUser('a') });
     await queue.enqueue({ type: 'upsertUser', payload: fakeUser('b') });
-    (queue as unknown as { flushing: boolean }).flushing = true;
+    let releaseFirst!: () => void;
+    const firstWrite = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const upsertUser = jest.fn().mockReturnValueOnce(firstWrite).mockResolvedValueOnce(undefined);
+    const remote = stubRemote({ upsertUser });
 
-    const upsertUser = jest.fn().mockResolvedValue(undefined);
-    const result = await queue.flush(stubRemote({ upsertUser }));
+    const active = queue.flush(remote);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const joined = queue.flush(remote);
 
-    expect(result).toEqual({ succeeded: 0, remaining: 2, conflicted: 0, quarantined: 0 });
-    expect(upsertUser).not.toHaveBeenCalled();
+    expect(upsertUser).toHaveBeenCalledTimes(1);
+    releaseFirst();
+
+    await expect(active).resolves.toEqual({ succeeded: 2, remaining: 0, conflicted: 0, quarantined: 0 });
+    await expect(joined).resolves.toEqual({ succeeded: 2, remaining: 0, conflicted: 0, quarantined: 0 });
+    expect(upsertUser).toHaveBeenCalledTimes(2);
   });
 
   it('routes deleteUser, upsertDog, upsertScheduleRule, deleteScheduleRule, addScheduleEntries, deleteScheduleEntry, and updateUserReminderSetting to their matching remote methods', async () => {

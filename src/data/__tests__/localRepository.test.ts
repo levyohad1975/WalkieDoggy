@@ -1,14 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LocalRepository } from '../localRepository';
 import { DEMO_DOG, DEMO_ENTRIES, DEMO_FAMILY, DEMO_RULES, DEMO_USERS, DEMO_WALKS } from '../demoData';
-import type { Dog, Family, FamilyUser, ScheduleEntry, Walk } from '../../types';
+import type { AchievementUnlock, Dog, Family, FamilyUser, HealthTask, ScheduleEntry, Walk, WalkGpsSession } from '../../types';
 
-const STORAGE_KEY = 'dog-walk-family:v2';
+const STORAGE_KEY = 'dog-walk-family:v3';
 
 function otherFamilySeed() {
   const family: Family = { id: 'family-other', name: 'משפחת לוי', createdAt: new Date().toISOString() };
   const users: FamilyUser[] = [
-    { id: 'user-other-1', familyId: family.id, name: 'אורי', avatar: '🧑', color: '#000', remindersEnabled: true, createdAt: new Date().toISOString() },
+    { id: 'user-other-1', familyId: family.id, name: 'אורי', avatar: '🧑', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: new Date().toISOString() },
   ];
   const dog: Dog = { id: 'dog-other', familyId: family.id, name: 'ריקי', walksPerDay: 2 };
   return { family, users, dog };
@@ -123,11 +123,221 @@ describe('LocalRepository — dog data (BUG 3: dog name must load in local/demo 
     expect(dog).toBeUndefined();
   });
 
+  it('foundation: upsertDog supports a second, distinct dog for the same family without clobbering the first (arbitrary N)', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers(DEMO_FAMILY.id); // trigger seed (one dog already present: DEMO_DOG)
+    const secondDog: Dog = { id: 'dog-second', familyId: DEMO_FAMILY.id, name: 'רעי', walksPerDay: 3 };
+
+    await repo.upsertDog(secondDog);
+
+    const dogs = await repo.getDogs(DEMO_FAMILY.id);
+    expect(dogs).toHaveLength(2);
+    expect(dogs.find((d) => d.id === DEMO_DOG.id)).toBeDefined();
+    expect(dogs.find((d) => d.id === secondDog.id)).toEqual(secondDog);
+  });
+
+  it('foundation: upsertDog updates an existing dog in place by id, rather than appending a duplicate', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+    const renamed: Dog = { ...DEMO_DOG, name: 'טופי החדש' };
+
+    await repo.upsertDog(renamed);
+
+    const dogs = await repo.getDogs(DEMO_FAMILY.id);
+    expect(dogs).toHaveLength(1);
+    expect(dogs[0].name).toBe('טופי החדש');
+  });
+
+  it('foundation: getHealthTasks/upsertHealthTask are scoped per dog_id, not mixed across a family\'s dogs', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+    const secondDog: Dog = { id: 'dog-second', familyId: DEMO_FAMILY.id, name: 'רעי', walksPerDay: 3 };
+    await repo.upsertDog(secondDog);
+
+    const topiTask: HealthTask = {
+      id: 'task-1',
+      familyId: DEMO_FAMILY.id,
+      dogId: DEMO_DOG.id,
+      category: 'vaccination',
+      title: 'חיסון כלבת',
+      dueDate: '2026-10-01',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const reiTask: HealthTask = {
+      id: 'task-2',
+      familyId: DEMO_FAMILY.id,
+      dogId: secondDog.id,
+      category: 'weight',
+      title: 'שקילה',
+      weightKg: 12.4,
+      completedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await repo.upsertHealthTask(topiTask);
+    await repo.upsertHealthTask(reiTask);
+
+    expect(await repo.getHealthTasks(DEMO_DOG.id)).toEqual([topiTask]);
+    expect(await repo.getHealthTasks(secondDog.id)).toEqual([reiTask]);
+  });
+
+  it('foundation: upsertHealthTask updates an existing task in place by id (e.g. marking it complete), not a duplicate row', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+    const task: HealthTask = {
+      id: 'task-1',
+      familyId: DEMO_FAMILY.id,
+      dogId: DEMO_DOG.id,
+      category: 'grooming',
+      title: 'תספורת',
+      dueDate: '2026-10-01',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await repo.upsertHealthTask(task);
+
+    const completed: HealthTask = { ...task, completedAt: new Date().toISOString(), completedByUserId: 'user-aba' };
+    await repo.upsertHealthTask(completed);
+
+    const tasks = await repo.getHealthTasks(DEMO_DOG.id);
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].completedAt).toBe(completed.completedAt);
+  });
+
+  it('foundation: getGpsSession/upsertGpsSession are keyed by walk_id — a re-save (e.g. recording a correction) updates the same row, never a duplicate', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+    const session: WalkGpsSession = {
+      id: 'gps-1',
+      walkId: 'walk-1',
+      familyId: DEMO_FAMILY.id,
+      dogId: DEMO_DOG.id,
+      distanceMeters: 900.5,
+      pointCount: 55,
+      source: 'device_gps',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await repo.upsertGpsSession(session);
+    expect(await repo.getGpsSession(session.walkId)).toEqual(session);
+
+    const corrected: WalkGpsSession = { ...session, correctedDistanceMeters: 850, correctedByUserId: 'user-aba' };
+    await repo.upsertGpsSession(corrected);
+
+    const result = await repo.getGpsSession(session.walkId);
+    expect(result).toEqual(corrected);
+    expect(result?.distanceMeters).toBe(900.5); // original reading preserved
+  });
+
+  it('getGpsSession returns undefined for a walk with no session at all', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+    expect(await repo.getGpsSession('walk-no-session')).toBeUndefined();
+  });
+
+  it('getGpsSessionsForWalkIds returns only sessions matching the given ids, in one bulk read', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+    const sessionA: WalkGpsSession = { id: 'gps-a', walkId: 'walk-a', familyId: DEMO_FAMILY.id, dogId: DEMO_DOG.id, distanceMeters: 500, pointCount: 10, source: 'device_gps', createdAt: 'c', updatedAt: 'u' };
+    const sessionB: WalkGpsSession = { id: 'gps-b', walkId: 'walk-b', familyId: DEMO_FAMILY.id, dogId: DEMO_DOG.id, distanceMeters: 700, pointCount: 15, source: 'device_gps', createdAt: 'c', updatedAt: 'u' };
+    const sessionC: WalkGpsSession = { id: 'gps-c', walkId: 'walk-c', familyId: DEMO_FAMILY.id, dogId: DEMO_DOG.id, distanceMeters: 300, pointCount: 5, source: 'device_gps', createdAt: 'c', updatedAt: 'u' };
+    await repo.upsertGpsSession(sessionA);
+    await repo.upsertGpsSession(sessionB);
+    await repo.upsertGpsSession(sessionC);
+
+    const result = await repo.getGpsSessionsForWalkIds(['walk-a', 'walk-c', 'walk-nonexistent']);
+
+    expect(result).toHaveLength(2);
+    expect(result.map((s) => s.walkId).sort()).toEqual(['walk-a', 'walk-c']);
+  });
+
   it('getFamily returns undefined for a family id that does not match the cached family', async () => {
     const repo = new LocalRepository();
     await repo.getUsers(DEMO_FAMILY.id); // trigger seed
     const family = await repo.getFamily('some-other-family-id');
     expect(family).toBeUndefined();
+  });
+
+  it('updateUserGamificationSetting toggles only the targeted user\'s flag', async () => {
+    const repo = new LocalRepository();
+    const users = await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+    await repo.updateUserGamificationSetting(users[0].id, false);
+    const reloaded = await repo.getUsers(DEMO_FAMILY.id);
+    expect(reloaded.find((u) => u.id === users[0].id)?.gamificationEnabled).toBe(false);
+    expect(reloaded.find((u) => u.id === users[1].id)?.gamificationEnabled).toBe(true);
+  });
+
+  it('getAchievementUnlocks/upsertAchievementUnlock: family-scope and personal-scope unlocks persist, scoped by familyId', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+    const familyUnlock: AchievementUnlock = {
+      id: 'unlock-1',
+      familyId: DEMO_FAMILY.id,
+      achievementKey: 'first_walk',
+      scope: 'family',
+      unlockedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+    const personalUnlock: AchievementUnlock = {
+      id: 'unlock-2',
+      familyId: DEMO_FAMILY.id,
+      achievementKey: 'long_walk',
+      scope: 'personal',
+      userId: 'user-aba',
+      unlockedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+    await repo.upsertAchievementUnlock(familyUnlock);
+    await repo.upsertAchievementUnlock(personalUnlock);
+
+    const unlocks = await repo.getAchievementUnlocks(DEMO_FAMILY.id);
+    expect(unlocks).toHaveLength(2);
+    expect(unlocks.map((u) => u.id).sort()).toEqual(['unlock-1', 'unlock-2']);
+  });
+
+  it('upsertAchievementUnlock is idempotent by (familyId, achievementKey, userId) — a repeat unlock attempt never duplicates', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+    const unlock: AchievementUnlock = {
+      id: 'unlock-1',
+      familyId: DEMO_FAMILY.id,
+      achievementKey: 'first_walk',
+      scope: 'family',
+      unlockedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+    await repo.upsertAchievementUnlock(unlock);
+    await repo.upsertAchievementUnlock({ ...unlock, id: 'unlock-1-retry' });
+
+    const unlocks = await repo.getAchievementUnlocks(DEMO_FAMILY.id);
+    expect(unlocks).toHaveLength(1);
+    expect(unlocks[0].id).toBe('unlock-1');
+  });
+
+  it('getAchievementUnlocks never leaks another family\'s unlocks', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers(DEMO_FAMILY.id); // trigger seed
+    const { family: otherFamily } = otherFamilySeed();
+    await repo.upsertAchievementUnlock({
+      id: 'unlock-mine',
+      familyId: DEMO_FAMILY.id,
+      achievementKey: 'first_walk',
+      scope: 'family',
+      unlockedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    });
+    await repo.upsertAchievementUnlock({
+      id: 'unlock-other',
+      familyId: otherFamily.id,
+      achievementKey: 'first_walk',
+      scope: 'family',
+      unlockedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    });
+
+    const mine = await repo.getAchievementUnlocks(DEMO_FAMILY.id);
+    expect(mine.map((u) => u.id)).toEqual(['unlock-mine']);
   });
 });
 
@@ -159,17 +369,20 @@ describe('LocalRepository — replaceAll / createUser', () => {
       name: 'חדש',
       avatar: '🐶',
       color: '#123456',
-      remindersEnabled: false,
+      remindersEnabled: false, gamificationEnabled: true,
       createdAt: new Date().toISOString(),
     };
 
     await repo.replaceAll({
       family: DEMO_FAMILY,
       users: [replacementUser],
-      dog: DEMO_DOG,
+      dogs: [DEMO_DOG],
       rules: DEMO_RULES,
       entries: DEMO_ENTRIES,
       walks: DEMO_WALKS,
+      healthTasks: [],
+      gpsSessions: [],
+      achievementUnlocks: [],
     });
 
     const users = await repo.getUsers(DEMO_FAMILY.id);
@@ -192,7 +405,7 @@ describe('LocalRepository — replaceAll / createUser', () => {
       name: 'נוצר',
       avatar: '🐾',
       color: '#abcdef',
-      remindersEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true,
       createdAt: new Date().toISOString(),
     };
 

@@ -16,19 +16,30 @@ describe('SettingsScreen — personal settings stay accessible to every member',
     'utf8'
   );
 
-  it('the ordinary settings section (reminders / family sharing / switch user) is NOT wrapped in an admin-only role check', () => {
+  it('the ordinary settings sections (family / walks & reminders / achievements) are NOT wrapped in an admin-only role check', () => {
+    // Statistics/Settings redesign batch: the single undifferentiated
+    // "ordinary settings rows" block was split into several clearly
+    // labeled <View style={styles.section}> areas (👪 משפחה, 🐾 טיולים
+    // ותזכורות, 📱 החשבון שלי, plus the dog-gated 🏥 בריאות וטיפוח) — same
+    // rows/handlers, purely reorganized. All of them must still open
+    // BEFORE the admin-only conditional starts, i.e. none is nested
+    // inside `familyRole === 'admin' ? (...)`.
     const sectionIdx = settingsSource.indexOf(
-      '{/* Ordinary settings rows — grouped, consistent row height/icon/'
+      '{/* Ordinary settings rows — organized into clearly labeled areas'
     );
     expect(sectionIdx).toBeGreaterThan(-1);
     const adminSectionIdx = settingsSource.indexOf("familyRole === 'admin' ? (");
     expect(adminSectionIdx).toBeGreaterThan(sectionIdx);
-    // The ordinary section's own <View style={styles.section}> must open
-    // BEFORE the admin-only conditional starts — i.e. it isn't nested
-    // inside `familyRole === 'admin' ? (...)`.
     const ordinarySectionOpenIdx = settingsSource.indexOf('<View style={styles.section}>', sectionIdx);
     expect(ordinarySectionOpenIdx).toBeGreaterThan(-1);
     expect(ordinarySectionOpenIdx).toBeLessThan(adminSectionIdx);
+    // Every labeled area between the ordinary-section comment and the
+    // admin conditional must itself sit before that conditional too.
+    for (const title of ['👪 משפחה', '🐾 טיולים ותזכורות', 'הישגים 🏆']) {
+      const titleIdx = settingsSource.indexOf(title, sectionIdx);
+      expect(titleIdx).toBeGreaterThan(-1);
+      expect(titleIdx).toBeLessThan(adminSectionIdx);
+    }
   });
 
   it('only the "🛠️ מתקדם" / admin management section is gated on familyRole === \'admin\' — 👥/📤/🔁 rows have no such gate', () => {
@@ -37,14 +48,14 @@ describe('SettingsScreen — personal settings stay accessible to every member',
     // opening (proving they render unconditionally within that section).
     const remindersRowIdx = settingsSource.indexOf("onPress={() => setRemindersModalVisible(true)}");
     const sharingRowIdx = settingsSource.indexOf('onPress={() => setSharingModalVisible(true)}');
-    const switchUserRowIdx = settingsSource.indexOf('onPress={handleSwitchUser}');
+    const achievementsRowIdx = settingsSource.indexOf('onPress={() => setAchievementsModalVisible(true)}');
     const adminSectionIdx = settingsSource.indexOf("familyRole === 'admin' ? (");
     expect(remindersRowIdx).toBeGreaterThan(-1);
     expect(sharingRowIdx).toBeGreaterThan(-1);
-    expect(switchUserRowIdx).toBeGreaterThan(-1);
+    expect(achievementsRowIdx).toBeGreaterThan(-1);
     expect(remindersRowIdx).toBeLessThan(adminSectionIdx);
     expect(sharingRowIdx).toBeLessThan(adminSectionIdx);
-    expect(switchUserRowIdx).toBeLessThan(adminSectionIdx);
+    expect(achievementsRowIdx).toBeLessThan(adminSectionIdx);
   });
 
   it("RemindersModal: a member can always toggle their OWN device's reminder switch, regardless of family role/permissions", () => {

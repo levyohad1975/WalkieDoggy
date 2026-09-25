@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-describe('Home header mascot — dog photo cutout priority', () => {
+describe('Home hero mascot — dog photo cutout priority', () => {
   const home = fs.readFileSync(path.join(__dirname, '..', 'HomeScreen.tsx'), 'utf8');
 
   it('prefers the cutout, then the raw photo, then the animated brand mascot', () => {
@@ -27,9 +27,11 @@ describe('Home header mascot — dog photo cutout priority', () => {
     expect(home).toMatch(/useEffect\(\(\) => \{\s*setDogCutoutFailed\(false\);\s*\}, \[dog\?\.photoCutoutUrl\]\);/);
   });
 
-  it('strips the circular frame/background for both the photo and cutout tiers', () => {
-    expect(home).toContain('hasDogPhoto && styles.mascotHeaderButtonPhoto');
-    expect(home).toContain("mascotHeaderButtonPhoto: { backgroundColor: 'transparent', borderWidth: 0 }");
+  it('renders the cutout in the Hero instead of putting the original photo in a framed image', () => {
+    const heroIdx = home.indexOf('style={styles.dashboardHeroMascot}');
+    expect(heroIdx).toBeGreaterThan(-1);
+    expect(home.indexOf('hasDogCutout ?', heroIdx)).toBeGreaterThan(heroIdx);
+    expect(home).not.toContain('dashboardHeroDogPhoto');
   });
 });
 

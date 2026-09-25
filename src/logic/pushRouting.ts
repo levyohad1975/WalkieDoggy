@@ -18,8 +18,12 @@
  * Rule (never broadcasts to the whole family):
  *   - A new request ("created")          -> pushes to whoever must ACT on it
  *     (the swap target, or every current admin for a time-change).
- *   - A decision ("approved"/"rejected") -> pushes back to the ORIGINAL
- *     REQUESTER only.
+ *   - A decision ("approved"/"rejected") -> pushes to the ORIGINAL
+ *     REQUESTER *and* every current Family Admin of the request's family
+ *     (product decision: admins must see every resolution, not just the
+ *     ones they personally acted on), deduplicated — a requester who is
+ *     also an admin, or an admin who is also in the admin list twice,
+ *     never gets two pushes for the same event.
  *   - The caller must actually be the party entitled to report that event
  *     (the requester reporting their own new request; the swap target or
  *     an admin reporting a decision they made), and the request's
@@ -51,7 +55,7 @@ export interface PushAuthContext {
   callerFamilyId: string;
   /** Resolved server-side (e.g. via the existing is_family_admin() RPC) — never trusted from the client. */
   callerIsAdmin: boolean;
-  /** Every active admin user id in the row's family — only consulted for a timeChange 'created' event's legitimate fan-out. */
+  /** Every active admin user id in the row's family — consulted for a timeChange 'created' event's fan-out, and for every 'approved'/'rejected' decision event (both kinds), which now also notify every admin alongside the requester. */
   familyAdminUserIds?: string[];
   /**
    * Requirement 7 (defense in depth): family_id for every candidate
@@ -113,14 +117,15 @@ export function validateAndRoutePushEvent(
   let recipientUserIds: string[];
 
   if (event === 'approved' || event === 'rejected') {
-    // A decision push always goes back to the original requester — but
-    // only the party who actually made that decision may trigger it.
+    // A decision push goes back to the original requester AND every
+    // current admin of this family — but only the party who actually made
+    // that decision may trigger it.
     if (row.kind === 'swap') {
       if (ctx.callerUserId !== row.targetUserId) return deny('only the swap target may report a decision on this request');
     } else if (!ctx.callerIsAdmin) {
       return deny('only an admin may report a decision on a time-change request');
     }
-    recipientUserIds = [row.requestedByUserId];
+    recipientUserIds = [...new Set([row.requestedByUserId, ...(ctx.familyAdminUserIds ?? [])].filter(Boolean))];
   } else {
     // event === 'created' — only the original requester may report their
     // own request as newly created.

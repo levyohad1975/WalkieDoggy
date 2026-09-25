@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Dog, FamilyUser, ScheduleEntry, ScheduleRule, Walk } from '../types';
+import type { AchievementUnlock, Dog, FamilyUser, HealthTask, ScheduleEntry, ScheduleRule, Walk, WalkGpsSession } from '../types';
 import type { DeleteFamilyMemberPayload, Repository } from './repository';
 
 const QUEUE_KEY = 'dog-walk-family:sync-queue:v4';
@@ -161,7 +161,14 @@ export interface QuarantinedItem {
  * forever, exactly like the 23xxx/42xxx/28xxx/P0xxx bugs above did before
  * their own fixes.
  */
-function isPermanentError(error: unknown): boolean {
+/**
+ * True when retrying the same request cannot fix the server rejection.
+ *
+ * Exported for direct-write callers as well as queued replay: converting an
+ * RLS/business-rule rejection into a queued "success" loses a user edit
+ * before SyncQueue ever gets a chance to surface its conflict record.
+ */
+export function isPermanentSyncError(error: unknown): boolean {
   const code = (error as { code?: string } | null | undefined)?.code;
   if (typeof code !== 'string') return false;
   return (
@@ -175,6 +182,9 @@ export type SyncOperation =
   | { type: 'deleteUser'; payload: { userId: string } }
   | { type: 'deleteFamilyMember'; payload: DeleteFamilyMemberPayload }
   | { type: 'upsertDog'; payload: Dog }
+  | { type: 'upsertHealthTask'; payload: HealthTask }
+  | { type: 'upsertGpsSession'; payload: WalkGpsSession }
+  | { type: 'upsertAchievementUnlock'; payload: AchievementUnlock }
   | { type: 'upsertScheduleRule'; payload: ScheduleRule }
   | { type: 'deleteScheduleRule'; payload: { ruleId: string } }
   | { type: 'addScheduleEntries'; payload: ScheduleEntry[] }
@@ -182,7 +192,10 @@ export type SyncOperation =
   | { type: 'deleteScheduleEntry'; payload: { entryId: string } }
   | { type: 'saveWalk'; payload: Walk }
   | { type: 'deleteWalk'; payload: { walkId: string } }
-  | { type: 'updateUserReminderSetting'; payload: { userId: string; enabled: boolean } };
+  | { type: 'updateUserReminderSetting'; payload: { userId: string; enabled: boolean } }
+  | { type: 'updateUserGamificationSetting'; payload: { userId: string; enabled: boolean } };
+
+type FlushResult = { succeeded: number; remaining: number; conflicted: number; quarantined: number };
 
 /**
  * Persistent FIFO queue of writes that couldn't reach Supabase yet (no
@@ -196,7 +209,8 @@ export class SyncQueue {
   private queue: QueuedItem[] | null = null;
   private conflicts: SyncConflict[] | null = null;
   private quarantined: QuarantinedItem[] | null = null;
-  private flushing = false;
+  /** A concurrent caller joins the active flush instead of receiving a misleading no-op. */
+  private flushPromise: Promise<FlushResult> | null = null;
 
   private async load(): Promise<QueuedItem[]> {
     if (this.queue) return this.queue;
@@ -404,6 +418,21 @@ export class SyncQueue {
     return q.some((item) => item.op.type === 'saveWalk' && item.op.payload.id === walkId);
   }
 
+  /** True while an older profile edit for this exact member is queued or in flight. */
+  async hasPendingUpsertUser(userId: string): Promise<boolean> {
+    const q = await this.load();
+    return q.some((item) => item.op.type === 'upsertUser' && item.op.payload.id === userId);
+  }
+
+  /** Drops only queued edits superseded by a newer authoritative write for this member. */
+  async discardPendingUpsertUser(userId: string): Promise<void> {
+    const q = await this.load();
+    const kept = q.filter((item) => item.op.type !== 'upsertUser' || item.op.payload.id !== userId);
+    if (kept.length === q.length) return;
+    this.queue = kept;
+    await this.persist();
+  }
+
   /**
    * Most recent recorded permanent-failure conflict for a `saveWalk` write of
    * this walk id, if any (see isPermanentError). Reflects only the CURRENT
@@ -511,18 +540,24 @@ export class SyncQueue {
    * foreground/mutation once restoreSession() has resolved — never a wrong
    * actor.
    */
-  async flush(remote: Repository): Promise<{ succeeded: number; remaining: number; conflicted: number; quarantined: number }> {
-    if (this.flushing) {
-      return { succeeded: 0, remaining: (await this.load()).length, conflicted: 0, quarantined: 0 };
-    }
-    this.flushing = true;
+  async flush(remote: Repository): Promise<FlushResult> {
+    if (this.flushPromise) return this.flushPromise;
+    const work = this.flushOnce(remote);
+    this.flushPromise = work;
     try {
-      const q = await this.load();
-      let succeeded = 0;
-      let conflicted = 0;
-      let quarantinedCount = 0;
-      let i = 0;
-      while (i < q.length) {
+      return await work;
+    } finally {
+      if (this.flushPromise === work) this.flushPromise = null;
+    }
+  }
+
+  private async flushOnce(remote: Repository): Promise<FlushResult> {
+    const q = await this.load();
+    let succeeded = 0;
+    let conflicted = 0;
+    let quarantinedCount = 0;
+    let i = 0;
+    while (i < q.length) {
         const item = q[i];
 
         if (item.claimedByUserId == null) {
@@ -582,7 +617,7 @@ export class SyncQueue {
             JSON.stringify(item.op.payload),
             error
           );
-          if (isPermanentError(error)) {
+          if (isPermanentSyncError(error)) {
             q.splice(i, 1);
             await this.persist();
             const conflicts = await this.loadConflicts();
@@ -598,11 +633,8 @@ export class SyncQueue {
           }
           break; // retryable: keep it queued, try again on next flush
         }
-      }
-      return { succeeded, remaining: q.length, conflicted, quarantined: quarantinedCount };
-    } finally {
-      this.flushing = false;
     }
+    return { succeeded, remaining: q.length, conflicted, quarantined: quarantinedCount };
   }
 
   private async apply(remote: Repository, op: SyncOperation): Promise<void> {
@@ -617,6 +649,12 @@ export class SyncQueue {
         return remote.deleteFamilyMember(op.payload);
       case 'upsertDog':
         return remote.upsertDog(op.payload);
+      case 'upsertHealthTask':
+        return remote.upsertHealthTask(op.payload);
+      case 'upsertGpsSession':
+        return remote.upsertGpsSession(op.payload);
+      case 'upsertAchievementUnlock':
+        return remote.upsertAchievementUnlock(op.payload);
       case 'upsertScheduleRule':
         return remote.upsertScheduleRule(op.payload);
       case 'deleteScheduleRule':
@@ -633,6 +671,8 @@ export class SyncQueue {
         return remote.deleteWalk?.(op.payload.walkId);
       case 'updateUserReminderSetting':
         return remote.updateUserReminderSetting(op.payload.userId, op.payload.enabled);
+      case 'updateUserGamificationSetting':
+        return remote.updateUserGamificationSetting(op.payload.userId, op.payload.enabled);
     }
   }
 }
