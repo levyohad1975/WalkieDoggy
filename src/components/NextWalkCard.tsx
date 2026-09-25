@@ -407,7 +407,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 2,
   },
-  cardDashboard: { backgroundColor: '#F7F6FF', borderColor: '#DEDDF5', borderRadius: 30, shadowOpacity: 0.12, shadowRadius: 16, elevation: 4, paddingVertical: 9, overflow: 'hidden' },
+  cardDashboard: { backgroundColor: '#F7F6FF', borderColor: '#DEDDF5', borderRadius: 28, shadowOpacity: 0.12, shadowRadius: 16, elevation: 4, paddingVertical: 6, overflow: 'hidden' },
   dashboardTexture: { ...StyleSheet.absoluteFillObject, opacity: 0.72 },
   webCard: { borderRadius: radii.xl, paddingHorizontal: 24, paddingVertical: 18 },
   cardActive: { backgroundColor: colors.successSoft, borderColor: colors.success + '55' },
@@ -465,14 +465,14 @@ const styles = StyleSheet.create({
   // the dashboard, especially on narrow phones.
   // Use an intentionally wider central gutter and inset both columns so the
   // assignee circle reads as its own block instead of touching the time.
-  dashboardMainRow: { gap: 28, paddingHorizontal: 8, marginBottom: 8 },
+  dashboardMainRow: { gap: 28, paddingHorizontal: 8, marginBottom: 4 },
   personBlock: { flex: 1, alignItems: 'flex-end', gap: 3, minWidth: 0 },
   personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'left' },
   responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'left' },
   doneButton: { marginTop: 2 },
   dashboardStartButton: { marginTop: 0, backgroundColor: '#4A43B6', borderColor: '#4A43B6' },
   markDoneFallbackButton: { marginTop: 8, borderWidth: 1.5, borderColor: colors.primaryDark },
-  dashboardMarkDoneButton: { marginTop: 6, minHeight: 34, paddingVertical: 5, borderWidth: 1.5, borderColor: '#4A43B6' },
+  dashboardMarkDoneButton: { marginTop: 4, minHeight: 32, paddingVertical: 3, borderWidth: 1.5, borderColor: '#4A43B6' },
   endWalkButton: { marginTop: 4, backgroundColor: colors.statusOverdue },
   resolveRow: { flexDirection: 'row-reverse', gap: 8, marginTop: 8, width: '100%' },
   resolveButton: { flex: 1, minWidth: 0 },
@@ -487,7 +487,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   requestStatusApproved: { color: colors.statusDone },
-  linkRow: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 10 },
+  linkRow: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 6 },
   linkText: { color: colors.primaryDark, fontSize: 14, fontWeight: '600' },
   linkDivider: { color: colors.textSecondary },
 });
