@@ -8,7 +8,7 @@ describe('Home integrated walk lifecycle', () => {
   it('moves the family dog identity into the next-walk card and removes the standalone profile card', () => {
     expect(home).toContain('showDogPhoto');
     expect(home).not.toContain('style={styles.dogSummaryCard}');
-    expect(home).toContain("style={styles.mascotHeaderButton}");
+    expect(home).toMatch(/style=\{\[?styles\.mascotHeaderButton\b/);
   });
 
   it('exposes start and end walk as the primary lifecycle action', () => {

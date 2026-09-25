@@ -61,6 +61,18 @@ export function HomeScreen() {
   const clearTestModeIfInvalid = useAuthStore((s) => s.clearTestModeIfInvalid);
   const clearImpersonationIfInvalid = useAuthStore((s) => s.clearImpersonationIfInvalid);
   const { users, dog, loading: familyLoading, error: familyError, load: loadFamily } = useFamilyStore();
+  // Scoped change: Home's header mascot shows the family dog's real photo
+  // (cutout, no circular frame/background) instead of the WalkieDoggy brand
+  // mascot when the dog has one — same subtle idle animation, reused as-is
+  // from WalkieMascot's existing `source` override. Falls back to the
+  // mascot immediately if the photo fails to load, same convention as
+  // DogPhoto.tsx's own onError handling; resets on every new photoUrl so a
+  // freshly-set photo always gets its own load attempt.
+  const [dogPhotoFailed, setDogPhotoFailed] = useState(false);
+  useEffect(() => {
+    setDogPhotoFailed(false);
+  }, [dog?.photoUrl]);
+  const hasDogPhoto = Boolean(dog?.photoUrl) && !dogPhotoFailed;
   const {
     walks,
     loading: scheduleLoading,
@@ -475,11 +487,22 @@ export function HomeScreen() {
           />
           <Pressable
             onPress={() => setDogProfileVisible(true)}
-            style={styles.mascotHeaderButton}
+            style={[styles.mascotHeaderButton, hasDogPhoto && styles.mascotHeaderButtonPhoto]}
             accessibilityRole="button"
-            accessibilityLabel="פתיחת פרופיל הכלב"
+            accessibilityLabel={hasDogPhoto && dog?.name ? `פתיחת פרופיל ${dog.name}` : 'פתיחת פרופיל הכלב'}
           >
-            <WalkieMascot state="idle" size={38} accessibilityLabel="Walkie Doggy" />
+            {hasDogPhoto ? (
+              <WalkieMascot
+                state="idle"
+                size={38}
+                source={{ uri: dog!.photoUrl }}
+                accessibilityLabel={dog?.name ? `תמונת ${dog.name}` : 'תמונת הכלב'}
+                onError={() => setDogPhotoFailed(true)}
+                testID="home-dog-photo-mascot"
+              />
+            ) : (
+              <WalkieMascot state="idle" size={38} accessibilityLabel="Walkie Doggy" testID="home-brand-mascot" />
+            )}
           </Pressable>
           {isSupabaseConfigured ? (
             <Pressable
@@ -1044,6 +1067,10 @@ const styles = StyleSheet.create({
   topRow: { position: 'relative', minHeight: 52, alignItems: 'center', justifyContent: 'center' },
   brandWordmark: { width: 132, height: 42 },
   mascotHeaderButton: { position: 'absolute', right: 0, top: 6, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  // Dog-photo variant: no circle/frame/background — the photo cutout sits
+  // directly in the Home scene, matching the brief's "no circle/frame/photo
+  // background" requirement. Position/size/tap-target are unchanged.
+  mascotHeaderButtonPhoto: { backgroundColor: 'transparent', borderWidth: 0 },
   dogSummaryCard: {
     width: '100%',
     minHeight: 112,

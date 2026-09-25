@@ -189,6 +189,8 @@ export interface WalkieMascotProps {
   source?: ImageSourcePropType;
   /** Static fallback used whenever the OS requests reduced motion. */
   reducedMotionSource?: ImageSourcePropType;
+  /** Forwarded to the underlying Image — lets a caller fall back away from a bad remote `source` (e.g. a broken dog photo URI), same convention as DogPhoto.tsx. */
+  onError?: () => void;
 }
 
 /**
@@ -197,7 +199,7 @@ export interface WalkieMascotProps {
  * no animation started at all — when the OS reduce-motion accessibility
  * setting is on, or before that check resolves on mount.
  */
-export function WalkieMascot({ state, size = 72, accessibilityLabel, testID, source = MASCOT_SOURCE, reducedMotionSource }: WalkieMascotProps) {
+export function WalkieMascot({ state, size = 72, accessibilityLabel, testID, source = MASCOT_SOURCE, reducedMotionSource, onError }: WalkieMascotProps) {
   const [reducedMotion, setReducedMotion] = useState(true); // fail-safe default: static until proven otherwise
   const translateY = useRef(new Animated.Value(0)).current;
   const rotateRaw = useRef(new Animated.Value(0)).current;
@@ -249,7 +251,7 @@ export function WalkieMascot({ state, size = 72, accessibilityLabel, testID, sou
       accessibilityLabel={accessibilityLabel}
       style={[styles.container, { width: size, height: size, transform: [{ translateY }, { rotate }, { scale }] }]}
     >
-      <Image source={reducedMotion && reducedMotionSource ? reducedMotionSource : source} style={styles.image} resizeMode="contain" />
+      <Image source={reducedMotion && reducedMotionSource ? reducedMotionSource : source} style={styles.image} resizeMode="contain" onError={onError} />
     </Animated.View>
   );
 }
