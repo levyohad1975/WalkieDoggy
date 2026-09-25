@@ -6,7 +6,7 @@ import { isOverdue, relativeTimeLabel, walkDateTime } from '../logic/nextWalk';
 import { isWalkRequiringAttention } from '../logic/walkAttention';
 import { walkDateContextLabel } from '../logic/walkDateContext';
 import { colors } from '../theme/colors';
-import { nativeDirection } from '../theme/tokens';
+import { nativeDirection, radii } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 import { DogPhoto } from './DogPhoto';
@@ -275,7 +275,7 @@ export function NextWalkCard({
         <Button label="סיים טיול" icon="■" onPress={onEndWalk} style={styles.endWalkButton} shrinkToFit />
       ) : onStartWalk ? (
         <>
-          <Button label={overdue ? 'התחל טיול עכשיו' : 'התחל טיול'} icon="▶" onPress={onStartWalk} style={styles.doneButton} shrinkToFit />
+          <Button label="התחל טיול עכשיו" icon="▶" onPress={onStartWalk} style={styles.doneButton} shrinkToFit />
           {overdue && onMarkNotDone ? (
             <View style={styles.resolveRow}>
               <Button
@@ -297,7 +297,7 @@ export function NextWalkCard({
             </View>
           ) : (
             <Button
-              label="✓ סמן כבוצע"
+              label="בוצע"
               variant="secondary"
               onPress={onMarkDone}
               style={styles.markDoneFallbackButton}
@@ -312,19 +312,19 @@ export function NextWalkCard({
           <Button label="לא בוצע" variant="secondary" onPress={onMarkNotDone} style={styles.resolveButton} compact shrinkToFit />
         </View>
       ) : (
-        <Button label="סמן כבוצע" icon="✓" onPress={onMarkDone} style={styles.doneButton} shrinkToFit />
+        <Button label="בוצע" icon="✓" onPress={onMarkDone} style={styles.doneButton} shrinkToFit />
       )}
       {onEdit || onSwap ? (
         <View style={styles.linkRow}>
           {onEdit ? (
             <RtlText style={styles.linkText} onPress={onEdit} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-              לערוך
+              עריכה
             </RtlText>
           ) : null}
           {onEdit && onSwap ? <RtlText style={styles.linkDivider} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>·</RtlText> : null}
           {onSwap ? (
             <RtlText style={styles.linkText} onPress={onSwap} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-              להחליף תור
+              החלפה
             </RtlText>
           ) : null}
         </View>
@@ -366,19 +366,19 @@ const CARD_MAX_FONT_SCALE = 1.35;
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.statusCurrentBg,
-    borderRadius: 28,
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderWidth: 1,
-    borderColor: colors.primary + '24',
+    borderColor: colors.border,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.10,
-    shadowRadius: 18,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
   },
-  webCard: { borderRadius: 22, paddingHorizontal: 22, paddingVertical: 15 },
+  webCard: { borderRadius: radii.xl, paddingHorizontal: 24, paddingVertical: 18 },
   cardActive: { backgroundColor: colors.successSoft, borderColor: colors.success + '55' },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
   eyebrowRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), alignItems: 'center', gap: 8, marginBottom: 6 },
