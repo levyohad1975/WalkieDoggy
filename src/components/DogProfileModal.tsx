@@ -85,14 +85,14 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
           {dog ? (
             <>
               <View style={styles.photoWrap}>
-                  {getDogBackground(selectedBackground) && !dog.photoUrl ? (
+                  {getDogBackground(selectedBackground) ? (
                     <Image source={{ uri: getDogBackground(selectedBackground)!.uri }} style={styles.previewBackground} resizeMode="cover" />
                   ) : null}
-                {dog.photoUrl && !photoLoadFailed ? (
+                {(dog.photoCutoutUrl || dog.photoUrl) && !photoLoadFailed ? (
                   <Image
-                    source={{ uri: dog.photoUrl }}
-                    style={styles.photo}
-                    resizeMode="cover"
+                    source={{ uri: dog.photoCutoutUrl || dog.photoUrl }}
+                    style={[styles.photo, dog.photoCutoutUrl ? styles.photoCutout : styles.photoScene]}
+                    resizeMode={dog.photoCutoutUrl ? "contain" : "cover"}
                     accessibilityLabel={`תמונה של ${dog.name}`}
                     onError={() => setPhotoLoadFailed(true)}
                   />
@@ -106,7 +106,7 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
               </View>
               <RtlText style={styles.name}>{dog.name}</RtlText>
               <RtlText style={styles.hint}>
-                {dog.photoUrl && !photoLoadFailed ? 'תמונה אישית' : 'תמונת הכלב אינה חובה — מוצג כלב Walkie Doggy כברירת מחדל'}
+                {(dog.photoCutoutUrl || dog.photoUrl) && !photoLoadFailed ? 'תמונה אישית' : 'תמונת הכלב אינה חובה — מוצג כלב Walkie Doggy כברירת מחדל'}
               </RtlText>
               {familyRole === 'admin' && !systemObserverActive ? (
                 <View style={styles.actions}>
@@ -189,6 +189,8 @@ const styles = StyleSheet.create({
   // The uploaded photo is shown as the complete preview scene. No secondary
   // background or visible frame is composited behind it.
   photo: { width: '100%', height: 210, borderRadius: 24, borderWidth: 0 },
+  photoCutout: { position: 'absolute', zIndex: 2 },
+  photoScene: { position: 'absolute', zIndex: 2 },
   name: { ...typography.screenTitle, color: colors.textPrimary, textAlign: 'center' },
   hint: { ...typography.meta, color: colors.textSecondary, textAlign: 'center' },
   actions: { width: '100%', maxWidth: 420, gap: spacing.sm, marginTop: spacing.sm },
