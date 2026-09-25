@@ -21,6 +21,8 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
   const [removeConfirmVisible, setRemoveConfirmVisible] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
+  const [backgroundPickerVisible, setBackgroundPickerVisible] = useState(false);
+  const [selectedBackground, setSelectedBackground] = useState(0);
 
   useEffect(() => {
     setPhotoLoadFailed(false);
@@ -101,6 +103,27 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
                       <RtlText style={styles.removeText}>הסרת תמונה</RtlText>
                     </Pressable>
                   ) : null}
+                  <Pressable onPress={() => setBackgroundPickerVisible((v) => !v)} style={styles.backgroundButton} accessibilityRole="button">
+                    <RtlText style={styles.backgroundButtonText}>🎨 בחירת רקע לתמונת הכלב</RtlText>
+                  </Pressable>
+                  {backgroundPickerVisible ? (
+                    <View style={styles.backgroundPicker}>
+                      <RtlText style={styles.backgroundTitle}>בחרו רקע</RtlText>
+                      <View style={styles.backgroundGrid}>
+                        {BACKGROUND_OPTIONS.map((backgroundStyle, index) => (
+                          <Pressable
+                            key={index}
+                            onPress={() => { setSelectedBackground(index); setBackgroundPickerVisible(false); }}
+                            style={[styles.backgroundSwatch, backgroundStyle, selectedBackground === index && styles.backgroundSelected]}
+                            accessibilityRole="button"
+                            accessibilityLabel={`בחירת רקע ${index + 1}`}
+                          >
+                            {selectedBackground === index ? <RtlText style={styles.backgroundCheck}>✓</RtlText> : null}
+                          </Pressable>
+                        ))}
+                      </View>
+                    </View>
+                  ) : null}
                 </View>
               ) : null}
               <View style={styles.card}>
@@ -130,6 +153,13 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
   );
 }
 
+const BACKGROUND_OPTIONS = [
+  { backgroundColor: '#78C9B5' }, { backgroundColor: '#F6C97A' }, { backgroundColor: '#A8C8F0' },
+  { backgroundColor: '#E8B7C8' }, { backgroundColor: '#B9D78B' }, { backgroundColor: '#C8B5E8' },
+  { backgroundColor: '#F0A98C' }, { backgroundColor: '#8FCFD8' }, { backgroundColor: '#D7C79B' },
+  { backgroundColor: '#AFC2A5' }, { backgroundColor: '#D9A9A9' }, { backgroundColor: '#9FB5D7' },
+];
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   topBar: { minHeight: 64, paddingHorizontal: spacing.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
@@ -144,6 +174,14 @@ const styles = StyleSheet.create({
   actions: { width: '100%', maxWidth: 420, gap: spacing.sm, marginTop: spacing.sm },
   primaryButton: { paddingVertical: spacing.md, paddingHorizontal: spacing.lg, borderRadius: radii.lg, backgroundColor: colors.primaryDark, alignItems: 'center' },
   primaryText: { ...typography.body, color: colors.surface, fontWeight: '800' },
+  backgroundButton: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.primaryDark, alignItems: 'center', backgroundColor: colors.surface },
+  backgroundButtonText: { ...typography.body, color: colors.primaryDark, fontWeight: '800' },
+  backgroundPicker: { width: '100%', padding: spacing.md, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: spacing.sm },
+  backgroundTitle: { ...typography.sectionTitle, color: colors.textPrimary, textAlign: 'right' },
+  backgroundGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: spacing.sm, justifyContent: 'flex-start' },
+  backgroundSwatch: { width: 58, height: 44, borderRadius: radii.md, borderWidth: 2, borderColor: colors.surface },
+  backgroundSelected: { borderColor: colors.primaryDark, borderWidth: 3 },
+  backgroundCheck: { fontSize: 20, fontWeight: '900', color: colors.surface, textAlign: 'center', lineHeight: 38 },
   removeButton: { paddingVertical: spacing.sm, alignItems: 'center' },
   removeText: { ...typography.body, color: colors.statusOverdue, fontWeight: '700' },
   card: { width: '100%', maxWidth: 520, marginTop: spacing.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radii.lg, padding: spacing.lg, gap: spacing.sm },
