@@ -108,7 +108,10 @@ export function NextWalkCard({
   const requiresAttention = isWalkRequiringAttention(walk);
   const isMine = walk.responsibleUserId === currentUserId;
   const isWeb = Platform.OS === 'web';
-  const isActive = Boolean(activeStartedAt);
+  // Status is authoritative for the lifecycle. Some remote responses omit
+  // startedAt even though start_walk succeeded; the card must still expose
+  // the active-walk/GPS state in that case.
+  const isActive = walk.status === 'in_progress' || Boolean(activeStartedAt);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const walkerBob = useRef(new Animated.Value(0)).current;
 
@@ -209,11 +212,13 @@ export function NextWalkCard({
           environments) is silently skipped — a persistent "GPS unavailable"
           line for every such device would be clutter with no action the
           person can take, unlike 'denied' (a real, correctable state). */}
-      {isActive && (gpsStatus === 'granted' || gpsStatus === 'denied') ? (
+      {isActive ? (
         <RtlText style={styles.gpsStatusLine} numberOfLines={1} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
           {gpsStatus === 'granted'
-            ? `📍 ${liveDistanceMeters != null ? formatDistanceMeters(liveDistanceMeters) : 'עוקב אחרי המסלול…'}`
-            : '📍 מיקום לא זמין — אפשר להפעיל בהגדרות המכשיר'}
+            ? `📍 ${liveDistanceMeters != null && liveDistanceMeters > 0 ? formatDistanceMeters(liveDistanceMeters) : 'ממתין לנתוני GPS…'}`
+            : gpsStatus === 'denied'
+              ? '📍 מיקום לא זמין — אפשר להפעיל בהגדרות המכשיר'
+              : '📍 מפעיל GPS…'}
         </RtlText>
       ) : null}
 

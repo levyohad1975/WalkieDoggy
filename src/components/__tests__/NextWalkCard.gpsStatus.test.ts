@@ -13,15 +13,17 @@ describe('NextWalkCard surfaces live GPS distance/status while active (structura
     expect(source).toMatch(/gpsStatus\?: 'granted' \| 'denied' \| 'unavailable' \| null;/);
   });
 
-  it('only ever renders the GPS line while the card is active (isActive)', () => {
-    const idx = source.indexOf("isActive && (gpsStatus === 'granted' || gpsStatus === 'denied')");
+  it('renders the GPS state while the card is active, including before permission resolves', () => {
+    const idx = source.indexOf('{isActive ? (');
     expect(idx).toBeGreaterThan(-1);
   });
 
-  it('silently skips an "unavailable" status — never a persistent, non-actionable warning line', () => {
-    const blockStart = source.indexOf("isActive && (gpsStatus === 'granted'");
+  it('explains the three user-visible GPS states instead of silently hiding the status', () => {
+    const blockStart = source.indexOf("gpsStatus === 'granted'");
     const block = source.slice(blockStart, blockStart + 400);
-    expect(block).not.toMatch(/unavailable/);
+    expect(block).toContain('ממתין לנתוני GPS');
+    expect(block).toContain('מיקום לא זמין');
+    expect(block).toContain('מפעיל GPS');
   });
 
   it('formats the live distance via the shared formatDistanceMeters (never a hand-rolled duplicate)', () => {

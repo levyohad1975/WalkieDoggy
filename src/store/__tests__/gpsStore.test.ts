@@ -26,7 +26,7 @@ describe('gpsStore', () => {
     expect(state.permissionStatus).toBe('granted');
   });
 
-  it('startTracking with no handle (denied/unavailable) leaves trackingWalkId null and sets permissionStatus "denied"', async () => {
+  it('startTracking with no handle keeps the active walk visible and sets permissionStatus "denied"', async () => {
     const { useGpsStore } = require('../gpsStore');
     const gpsTracking = require('../../lib/gpsTracking');
     jest.spyOn(gpsTracking, 'startGpsWatch').mockResolvedValueOnce(null);
@@ -34,7 +34,7 @@ describe('gpsStore', () => {
     await useGpsStore.getState().startTracking(walk);
 
     const state = useGpsStore.getState();
-    expect(state.trackingWalkId).toBeNull();
+    expect(state.trackingWalkId).toBe(walk.id);
     expect(state.permissionStatus).toBe('denied');
   });
 

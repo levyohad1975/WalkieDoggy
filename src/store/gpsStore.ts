@@ -85,7 +85,10 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       return;
     }
     if (!handle) {
-      set({ trackingWalkId: null, permissionStatus: 'denied' });
+      // Keep the active walk attached to the store even when the OS/browser
+      // denies location or cannot create a watch. The Home card can then
+      // explain the GPS state instead of silently losing the GPS section.
+      set({ trackingWalkId: walk.id, permissionStatus: 'denied' });
       // requestForegroundGpsPermission() itself already distinguishes
       // denied/unavailable, but startGpsWatch() collapses both to `null` —
       // re-deriving here would need a second call. Re-checking isn't worth

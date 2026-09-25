@@ -75,9 +75,9 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
           {dog ? (
             <>
               <View style={styles.photoWrap}>
-                  {getDogBackground(selectedBackground) && !dog.photoUrl ? (
-                    <Image source={{ uri: getDogBackground(selectedBackground)!.uri }} style={styles.previewBackground} resizeMode="cover" />
-                  ) : null}
+                {getDogBackground(selectedBackground) ? (
+                  <Image source={{ uri: getDogBackground(selectedBackground)!.uri }} style={styles.previewBackground} resizeMode="cover" />
+                ) : null}
                 {dog.photoUrl && !photoLoadFailed ? (
                   <Image
                     source={{ uri: dog.photoUrl }}
@@ -176,9 +176,9 @@ const styles = StyleSheet.create({
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
   photoWrap: { marginTop: spacing.md, width: 280, height: 210, borderRadius: radii.xl, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
   previewBackground: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
-  // The uploaded photo is shown as the complete preview scene. No secondary
-  // background or visible frame is composited behind it.
-  photo: { width: '100%', height: 210, borderRadius: 24, borderWidth: 0 },
+  // Keep the personal dog photo integrated with the selected scene. There is
+  // no visible frame or outline; upload/remove/crop persistence is unchanged.
+  photo: { width: 220, height: 170, borderRadius: 24, borderWidth: 0 },
   name: { ...typography.screenTitle, color: colors.textPrimary, textAlign: 'center' },
   hint: { ...typography.meta, color: colors.textSecondary, textAlign: 'center' },
   actions: { width: '100%', maxWidth: 420, gap: spacing.sm, marginTop: spacing.sm },
