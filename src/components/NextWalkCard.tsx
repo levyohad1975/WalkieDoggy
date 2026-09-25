@@ -441,7 +441,9 @@ const styles = StyleSheet.create({
   relativeOverdue: { color: colors.statusOverdue },
   // Keep the family-member circle visually separated from the large time on
   // the dashboard, especially on narrow phones.
-  dashboardMainRow: { gap: 22 },
+  // Use an intentionally wider central gutter and inset both columns so the
+  // assignee circle reads as its own block instead of touching the time.
+  dashboardMainRow: { gap: 36, paddingHorizontal: 8 },
   personBlock: { flex: 1, alignItems: 'flex-end', gap: 3, minWidth: 0 },
   personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'left' },
   responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'left' },
