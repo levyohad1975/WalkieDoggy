@@ -113,7 +113,7 @@ export function NextWalkCard({
 
   return (
     <View style={[styles.card, isWeb && styles.webCard, compact && styles.compactCard, overdue && styles.cardOverdue]}>
-      <View style={[styles.eyebrowRow, isWeb && styles.webEyebrowRow]}>
+      <View style={[styles.eyebrowRow, isWeb && styles.webEyebrowRow, compact && styles.compactEyebrowRow]}>
         {showDogPhoto ? <DogPhoto photoUrl={dogPhotoUrl} size={isWeb ? 60 : 72} /> : null}
         <RtlText style={styles.eyebrow} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
           {primaryLabel ?? `הטיול הבא של ${dogName}`}
@@ -137,7 +137,7 @@ export function NextWalkCard({
       ) : null}
 
       <View style={[styles.mainRow, isWeb && styles.webMainRow, compact && styles.compactMainRow]}>
-        <View style={styles.timeBlock}>
+        <View style={[styles.timeBlock, compact && styles.compactTimeBlock]}>
           <RtlText
             style={styles.time}
             numberOfLines={1}
@@ -165,7 +165,7 @@ export function NextWalkCard({
           )}
         </View>
 
-        <View style={styles.personBlock}>
+        <View style={[styles.personBlock, compact && styles.compactPersonBlock]}>
           {responsible ? (
             <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={isWeb ? 50 : 56} />
           ) : null}
@@ -208,7 +208,7 @@ export function NextWalkCard({
           />
         </View>
       ) : (
-        <Button label="סמן כבוצע" icon="✓" onPress={onMarkDone} style={styles.doneButton} shrinkToFit />
+          <Button label={compact ? '▶  התחל טיול' : 'סמן כבוצע'} icon={compact ? undefined : '✓'} onPress={onMarkDone} style={compact ? { ...styles.doneButton, ...styles.compactDoneButton } : styles.doneButton} shrinkToFit />
       )}
       {onEdit || onSwap ? (
         <View style={styles.linkRow}>
@@ -279,6 +279,7 @@ const styles = StyleSheet.create({
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
   eyebrowRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), alignItems: 'center', gap: 8, marginBottom: 6 },
   webEyebrowRow: { marginBottom: 2 },
+  compactEyebrowRow: { justifyContent: 'center', marginBottom: 2 },
   eyebrow: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
   mascotMessage: {
     fontSize: 13,
@@ -297,6 +298,7 @@ const styles = StyleSheet.create({
   webMainRow: { marginBottom: 8, minHeight: 68 },
   compactMainRow: { marginBottom: 8, gap: 8 },
   timeBlock: { flex: 1, alignItems: 'flex-start', minWidth: 0 },
+  compactTimeBlock: { width: '100%', alignItems: 'center', flex: 0 },
   // Reduced from 44 (BUG report: too large, wrapped to two lines on a
   // narrow iPhone and dwarfed the rest of the card). Still the single
   // biggest element on the card, so it stays the clear visual anchor next
@@ -306,9 +308,11 @@ const styles = StyleSheet.create({
   relative: { fontSize: 16, fontWeight: '600', color: colors.primary, marginTop: 2 },
   relativeOverdue: { color: colors.statusOverdue },
   personBlock: { flex: 1, alignItems: 'center', gap: 4, minWidth: 0 },
+  compactPersonBlock: { width: '100%', flexDirection: 'row-reverse', justifyContent: 'center', flex: 0, gap: 8 },
   personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
   responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'right' },
   doneButton: { marginTop: 4 },
+  compactDoneButton: { marginTop: 4, borderRadius: 22, minHeight: 48 },
   resolveRow: { flexDirection: 'row', gap: 8, marginTop: 4, width: '100%' },
   resolveButton: { flex: 1, minWidth: 0 },
   notMineNote: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: 6 },
