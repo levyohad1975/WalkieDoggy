@@ -57,6 +57,8 @@ import { useGpsStore } from '../store/gpsStore';
 export function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
   const [dogProfileVisible, setDogProfileVisible] = useState(false);
+  const [heroBackground, setHeroBackground] = useState(0);
+  const [backgroundPickerVisible, setBackgroundPickerVisible] = useState(false);
   const currentUserId = useAuthStore((s) => s.currentUserId)!;
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const effectiveRole = useEffectiveFamilyRole();
@@ -679,20 +681,47 @@ export function HomeScreen() {
             photo is a full-width, deliberately shallow hero; its only
             interaction remains opening the profile. No image persistence
             behaviour is changed here. */}
-        <Pressable
-          onPress={() => setDogProfileVisible(true)}
-          style={styles.dashboardHero}
-          accessibilityRole="button"
-          accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
-        >
+        <View style={[styles.dashboardHero, styles.heroBackgrounds[heroBackground]]}>
           {dog?.photoUrl ? <Image source={{ uri: dog.photoUrl }} style={styles.dashboardHeroImage} resizeMode="cover" /> : null}
           <View style={styles.dashboardHeroShade} />
-          <View style={styles.dashboardHeroCopy}>
+          <Pressable
+            onPress={() => setDogProfileVisible(true)}
+            style={StyleSheet.absoluteFill}
+            accessibilityRole="button"
+            accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
+          />
+          <View style={styles.dashboardHeroCopy} pointerEvents="none">
             <RtlText style={styles.dashboardHeroEyebrow}>היום עם</RtlText>
             <RtlText style={styles.dashboardHeroName} numberOfLines={1}>{dog?.name ?? 'הכלב/ה שלנו'}</RtlText>
           </View>
           {!dog?.photoUrl ? <WalkieMascot state="ready" size={124} accessibilityLabel="Walkie Doggy" /> : null}
-        </Pressable>
+          <Pressable
+            onPress={() => setBackgroundPickerVisible((visible) => !visible)}
+            style={styles.backgroundPickerButton}
+            accessibilityRole="button"
+            accessibilityLabel="בחירת רקע לתמונת הכלב"
+          >
+            <RtlText style={styles.backgroundPickerButtonText}>🎨 רקעים</RtlText>
+          </Pressable>
+        </View>
+        {backgroundPickerVisible ? (
+          <View style={styles.backgroundPickerPanel}>
+            <RtlText style={styles.backgroundPickerTitle}>בחרו רקע</RtlText>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.backgroundPickerRow}>
+              {styles.heroBackgrounds.map((backgroundStyle, index) => (
+                <Pressable
+                  key={index}
+                  onPress={() => { setHeroBackground(index); setBackgroundPickerVisible(false); }}
+                  style={[styles.backgroundSwatch, backgroundStyle, heroBackground === index && styles.backgroundSwatchSelected]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`בחירת רקע ${index + 1}`}
+                >
+                  {heroBackground === index ? <RtlText style={styles.backgroundCheck}>✓</RtlText> : null}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
 
         {/* PRD §11: "ב-Home יש בחירת כלב קלה כאשר יש יותר מכלב אחד" — an
             easy dog picker on Home whenever there's more than one dog.
@@ -1312,6 +1341,21 @@ export function HomeScreen() {
   );
 }
 
+const HERO_BACKGROUNDS = [
+  { backgroundColor: '#78C9B5' },
+  { backgroundColor: '#F6C97A' },
+  { backgroundColor: '#A8C8F0' },
+  { backgroundColor: '#E8B7C8' },
+  { backgroundColor: '#B9D78B' },
+  { backgroundColor: '#C8B5E8' },
+  { backgroundColor: '#F0A98C' },
+  { backgroundColor: '#8FCFD8' },
+  { backgroundColor: '#D7C79B' },
+  { backgroundColor: '#AFC2A5' },
+  { backgroundColor: '#D9A9A9' },
+  { backgroundColor: '#9FB5D7' },
+];
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#EEF7F4' },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
@@ -1345,6 +1389,15 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   dashboardHeroImage: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
+  heroBackgrounds: HERO_BACKGROUNDS,
+  backgroundPickerButton: { position: 'absolute', top: spacing.sm, left: spacing.sm, minHeight: 36, paddingHorizontal: spacing.sm, borderRadius: radii.round, backgroundColor: '#FFFFFFE8', alignItems: 'center', justifyContent: 'center' },
+  backgroundPickerButtonText: { fontSize: 13, fontWeight: '800', color: colors.textPrimary },
+  backgroundPickerPanel: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm, gap: spacing.xs },
+  backgroundPickerTitle: { fontSize: 14, fontWeight: '800', color: colors.textPrimary, textAlign: 'right', paddingHorizontal: spacing.md },
+  backgroundPickerRow: { flexDirection: 'row-reverse', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: 4 },
+  backgroundSwatch: { width: 54, height: 42, borderRadius: radii.md, borderWidth: 2, borderColor: '#FFFFFF' },
+  backgroundSwatchSelected: { borderColor: colors.primaryDark, borderWidth: 3 },
+  backgroundCheck: { fontSize: 20, fontWeight: '900', color: colors.textInverse, textAlign: 'center', lineHeight: 36 },
   dashboardHeroShade: { ...StyleSheet.absoluteFill, backgroundColor: '#00000026' },
   dashboardHeroCopy: { width: '100%', alignItems: 'center', paddingBottom: 76, paddingHorizontal: spacing.lg },
   dashboardHeroEyebrow: { fontSize: 16, color: colors.textInverse, fontWeight: '700', textAlign: 'center' },
