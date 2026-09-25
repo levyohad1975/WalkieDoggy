@@ -54,9 +54,26 @@ export class OfflineFirstRepository implements Repository {
         if (!(await this.isOnline())) {
           throw new Error('אין חיבור לשרת. כדי להתחיל מעקב טיול יש להתחבר לאינטרנט.');
         }
-        const walk = await this.remote!.startWalk!(walkId);
-        await this.local.saveWalk(walk);
-        return walk;
+        try {
+          const walk = await this.remote!.startWalk!(walkId);
+          await this.local.saveWalk(walk);
+          return walk;
+        } catch (error) {
+          // Recover legacy/stale local IDs by resolving the canonical server
+          // occurrence through its schedule_entry_id, then retry exactly once.
+          if (!(error instanceof Error) || !/walk not found/i.test(error.message)) throw error;
+          const localWalks = await this.local.getWalks('');
+          const stale = localWalks.find((walk) => walk.id === walkId);
+          if (!stale?.scheduleEntryId) throw error;
+          const remoteWalks = await this.remote!.getWalks(stale.familyId);
+          const canonical = remoteWalks.find((walk) => walk.scheduleEntryId === stale.scheduleEntryId);
+          if (!canonical) throw error;
+          await this.local.deleteWalk(stale.id);
+          await this.local.saveWalk(canonical);
+          const walk = await this.remote!.startWalk!(canonical.id);
+          await this.local.saveWalk(walk);
+          return walk;
+        }
       };
       this.finishWalk = async (walkId, actualWalkerId, details) => {
         if (!(await this.isOnline())) {
