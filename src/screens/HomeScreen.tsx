@@ -951,11 +951,19 @@ export function HomeScreen() {
 
         {upcoming.length > 0 ? (
           <View style={styles.section}>
-            <View style={styles.sectionTitlePhysicalRight}>
+            <View style={styles.upcomingHeader}>
               <RtlText style={styles.sectionTitle}>טיולים קרובים</RtlText>
+              <Pressable
+                onPress={() => navigation.navigate('Schedule')}
+                accessibilityRole="button"
+                accessibilityLabel="הצגת כל הטיולים בלוח הזמנים"
+                hitSlop={8}
+              >
+                <RtlText style={styles.showMoreLink}>עוד ‹</RtlText>
+              </Pressable>
             </View>
             <View style={styles.list}>
-              {upcoming.map((w) => (
+              {upcoming.slice(0, 2).map((w) => (
                 <WalkRow
                   key={w.id}
                   walk={w}
@@ -1330,10 +1338,10 @@ const styles = StyleSheet.create({
   dashboardHeroName: { fontSize: 30, lineHeight: 36, color: colors.textInverse, fontWeight: '900', textAlign: 'center' },
   dashboardShortcuts: { flexDirection: 'row-reverse', gap: spacing.sm, width: '100%', marginTop: -2 },
   dashboardShortcut: { flex: 1, minHeight: 106, borderRadius: radii.lg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, gap: 8 },
-  dashboardShortcutMint: { backgroundColor: '#DDF8F2' },
-  dashboardShortcutBlue: { backgroundColor: '#E7F1FF' },
-  dashboardShortcutGold: { backgroundColor: '#FFF4D5' },
-  dashboardShortcutPurple: { backgroundColor: '#F1E7FF' },
+  dashboardShortcutMint: { backgroundColor: '#CFF5EE' },
+  dashboardShortcutBlue: { backgroundColor: '#DBEAFF' },
+  dashboardShortcutGold: { backgroundColor: '#FFF0BF' },
+  dashboardShortcutPurple: { backgroundColor: '#E9D9FF' },
   dashboardShortcutLabel: { fontSize: 14, lineHeight: 19, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
   dashboardShortcutIcon: { fontSize: 26, lineHeight: 28 },
   notificationButton: { position: 'absolute', left: 0, top: 11, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
@@ -1361,6 +1369,8 @@ const styles = StyleSheet.create({
     ...nativeDirection('ltr'),
     alignItems: 'flex-end',
   },
+  upcomingHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  showMoreLink: { fontSize: 15, fontWeight: '800', color: colors.primary, writingDirection: 'rtl' },
   sectionTitle: {
     alignSelf: 'flex-end',
     ...typography.sectionTitle,

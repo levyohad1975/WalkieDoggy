@@ -21,6 +21,12 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('setAddUnplannedVisible(true)');
   });
 
+  it('keeps Home compact by showing two upcoming walks and linking to the full schedule', () => {
+    expect(home).toContain('upcoming.slice(0, 2).map');
+    expect(home).toContain('עוד ‹');
+    expect(home).toContain('הצגת כל הטיולים בלוח הזמנים');
+  });
+
   it('exposes start and end walk as the primary lifecycle action', () => {
     expect(card).toContain('label="התחל טיול עכשיו"');
     expect(card).toContain('label="סיים טיול"');
