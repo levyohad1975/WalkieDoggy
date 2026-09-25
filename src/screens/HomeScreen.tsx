@@ -692,8 +692,11 @@ export function HomeScreen() {
           accessibilityRole="button"
           accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
         >
-          {heroBackground ? <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" /> : null}
-          {dog?.photoUrl ? <Image source={{ uri: dog.photoUrl }} style={heroBackground ? styles.dashboardDogOverlay : styles.dashboardHeroImage} resizeMode="cover" /> : null}
+          {/* A personal photo already contains its own scene. Do not stack it
+              on top of a different selected backdrop: that creates the
+              pasted-on look. The scenic gallery is the fallback only. */}
+          {heroBackground && !dog?.photoUrl ? <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" /> : null}
+          {dog?.photoUrl ? <Image source={{ uri: dog.photoUrl }} style={styles.dashboardHeroImage} resizeMode="cover" /> : null}
           <View style={styles.dashboardHeroShade} />
           <View style={styles.dashboardHeroCopy}>
             <RtlText style={styles.dashboardHeroEyebrow}>היום עם</RtlText>
@@ -1353,10 +1356,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   dashboardHeroImage: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
-  // The family dog's own photo belongs to the scenic hero, not a framed
-  // avatar treatment. There is deliberately no border or outline: the
-  // photo is simply layered into the selected scene.
-  dashboardDogOverlay: { width: 196, height: 148, borderRadius: 24, borderWidth: 0, marginBottom: 24 },
   dashboardHeroShade: { ...StyleSheet.absoluteFill, backgroundColor: '#00000026' },
   dashboardHeroCopy: { width: '100%', alignItems: 'center', paddingBottom: 62, paddingHorizontal: spacing.lg },
   dashboardHeroEyebrow: { fontSize: 16, color: colors.textInverse, fontWeight: '700', textAlign: 'center' },
