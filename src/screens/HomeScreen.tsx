@@ -695,14 +695,19 @@ export function HomeScreen() {
           {/* A personal photo already contains its own scene. Do not stack it
               on top of a different selected backdrop: that creates the
               pasted-on look. The scenic gallery is the fallback only. */}
-          {heroBackground && !dog?.photoUrl ? <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" /> : null}
+          {!dog?.photoUrl ? (
+            <Image
+              source={heroBackground ? { uri: heroBackground.uri } : require('../../assets/onboarding-hero.png')}
+              style={styles.dashboardHeroImage}
+              resizeMode="cover"
+            />
+          ) : null}
           {dog?.photoUrl ? <Image source={{ uri: dog.photoUrl }} style={styles.dashboardHeroImage} resizeMode="cover" /> : null}
           <View style={styles.dashboardHeroShade} />
           <View style={styles.dashboardHeroCopy}>
             <RtlText style={styles.dashboardHeroEyebrow}>היום עם</RtlText>
             <RtlText style={styles.dashboardHeroName} numberOfLines={1}>{dog?.name ?? 'הכלב/ה שלנו'}</RtlText>
           </View>
-          {!dog?.photoUrl ? <WalkieMascot state="ready" size={124} accessibilityLabel="Walkie Doggy" /> : null}
         </Pressable>
 
         {/* PRD §11: "ב-Home יש בחירת כלב קלה כאשר יש יותר מכלב אחד" — an
