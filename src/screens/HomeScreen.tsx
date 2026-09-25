@@ -714,10 +714,11 @@ export function HomeScreen() {
             />
           ) : null}
           <View style={styles.dashboardHeroShade} />
-          <View style={styles.dashboardHeroCopy}>
-            <RtlText style={styles.dashboardHeroEyebrow}>היום עם</RtlText>
-            <RtlText style={styles.dashboardHeroName} numberOfLines={1}>{dog?.name ?? 'הכלב/ה שלנו'}</RtlText>
-          </View>
+          {!showPersonalHero ? (
+            <View style={styles.dashboardHeroMascot} pointerEvents="none">
+              <WalkieMascot state="idle" size={152} accessibilityLabel="כלב Walkie Doggy" />
+            </View>
+          ) : null}
         </Pressable>
 
         {/* PRD §11: "ב-Home יש בחירת כלב קלה כאשר יש יותר מכלב אחד" — an
@@ -1368,10 +1369,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#DCE8FF',
     overflow: 'hidden',
     alignItems: 'flex-end',
-    justifyContent: 'flex-start',
+    justifyContent: 'flex-end',
   },
   dashboardHeroImage: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
   dashboardHeroShade: { ...StyleSheet.absoluteFill, backgroundColor: '#FFFFFF18' },
+  dashboardHeroMascot: { position: 'absolute', right: 18, bottom: 8, zIndex: 2 },
   dashboardHeroCopy: { width: '52%', alignItems: 'flex-end', alignSelf: 'flex-start', paddingTop: 38, paddingHorizontal: spacing.md, zIndex: 2 },
   dashboardHeroEyebrow: { fontSize: 16, color: '#27376F', fontWeight: '700', textAlign: 'right' },
   dashboardHeroName: { fontSize: 30, lineHeight: 36, color: '#16245B', fontWeight: '900', textAlign: 'right' },
