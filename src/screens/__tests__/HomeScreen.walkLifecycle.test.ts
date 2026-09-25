@@ -15,11 +15,11 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain("style={styles.mascotHeaderButton}");
   });
 
-  it('keeps the approved four dashboard shortcuts wired to the existing flows', () => {
+  it('keeps the approved three dashboard shortcuts wired to the existing flows', () => {
     expect(home).toContain("navigation.navigate('Schedule')");
-    expect(home).toContain("navigation.navigate('History')");
-    expect(home).toContain("navigation.navigate('Family')");
     expect(home).toContain('setAddUnplannedVisible(true)');
+    expect(home).toContain('setRequestSwapWalkId(nextWalk?.id ?? null)');
+    expect(home).toContain('setRequestTimeChangeWalkId(nextWalk?.id ?? null)');
   });
 
   it('keeps Home compact by showing two upcoming walks and linking to the full schedule', () => {
@@ -32,7 +32,7 @@ describe('Home integrated walk lifecycle', () => {
   });
 
   it('exposes start and end walk as the primary lifecycle action', () => {
-    expect(card).toContain('label="התחל טיול עכשיו"');
+    expect(card).toContain("tone === 'dashboard' ? 'התחל טיול' : 'התחל טיול עכשיו'");
     expect(card).toContain('label="סיים טיול"');
     expect(card).toContain('label="בוצע"');
     expect(card).toContain('label="לא בוצע"');

@@ -14,7 +14,7 @@ describe('HomeScreen multi-dog wiring (structural)', () => {
 
   it('destructures dogs/selectedDogId/selectDog from familyStore and renders DogSelectorRow only for 2+ dogs', () => {
     expect(source).toContain(
-      "const { users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, error: familyError, load: loadFamily } = useFamilyStore();"
+      "const { family, users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, error: familyError, load: loadFamily } = useFamilyStore();"
     );
     expect(source).toContain("import { DogSelectorRow } from '../components/DogSelectorRow';");
     expect(source).toMatch(/\{dogs\.length > 1 \? \(\s*\n\s*<DogSelectorRow dogs=\{dogs\} selectedDogId=\{selectedDogId\} onSelect=\{\(dogId\) => void selectDog\(dogId\)\} \/>/);

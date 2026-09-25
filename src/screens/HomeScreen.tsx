@@ -30,6 +30,7 @@ import { ReminderMascotPrompt } from '../components/ReminderMascotPrompt';
 import { DogProfileModal } from '../components/DogProfileModal';
 import { DogSelectorRow } from '../components/DogSelectorRow';
 import { WalkieMascot } from '../components/WalkieMascot';
+import { Avatar } from '../components/Avatar';
 import { CELEBRATION_LIBRARY, selectWalkCompletionCelebration, type CompletionCelebration } from '../logic/walkCompletionCelebration';
 import { achievementDefinition, type AchievementProgress } from '../logic/achievements';
 import { useAchievementStore } from '../store/achievementStore';
@@ -71,7 +72,7 @@ export function HomeScreen() {
   // cause anymore).
   const clearTestModeIfInvalid = useAuthStore((s) => s.clearTestModeIfInvalid);
   const clearImpersonationIfInvalid = useAuthStore((s) => s.clearImpersonationIfInvalid);
-  const { users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, error: familyError, load: loadFamily } = useFamilyStore();
+  const { family, users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, error: familyError, load: loadFamily } = useFamilyStore();
   const heroBackground = getDogBackground(heroBackgroundId);
   useEffect(() => {
     setHeroBackgroundId(getDogBackgroundId(dog?.id));
@@ -668,21 +669,19 @@ export function HomeScreen() {
           >
             <WalkieMascot state="idle" size={38} accessibilityLabel="Walkie Doggy" />
           </Pressable>
-          {isSupabaseConfigured ? (
-            <Pressable
-              onPress={openRequestsInbox}
-              style={styles.notificationButton}
-              accessibilityRole="button"
-              accessibilityLabel={bellBadgeCount > 0 ? `התראות בקשות: ${bellBadgeCount}` : 'בקשות'}
-            >
-              <RtlText style={styles.notificationIcon}>🔔</RtlText>
-              {bellBadgeCount > 0 ? (
-                <View style={styles.requestsCountBadge}>
-                  <RtlText style={styles.requestsCountText}>{bellBadgeCount}</RtlText>
-                </View>
-              ) : null}
-            </Pressable>
-          ) : null}
+          <Pressable
+            onPress={openRequestsInbox}
+            style={styles.notificationButton}
+            accessibilityRole="button"
+            accessibilityLabel={bellBadgeCount > 0 ? `התראות בקשות: ${bellBadgeCount}` : 'בקשות'}
+          >
+            <RtlText style={styles.notificationIcon}>🔔</RtlText>
+            {bellBadgeCount > 0 ? (
+              <View style={styles.requestsCountBadge}>
+                <RtlText style={styles.requestsCountText}>{bellBadgeCount}</RtlText>
+              </View>
+            ) : null}
+          </Pressable>
         </View>
 
         {/* Issue #145 / approved Dashboard Option D. The real family-dog
@@ -714,6 +713,10 @@ export function HomeScreen() {
             />
           ) : null}
           <View style={styles.dashboardHeroShade} />
+          <View style={styles.dashboardHeroGreeting} pointerEvents="none">
+            <RtlText style={styles.dashboardHeroGreetingTitle}>שלום {family?.name ?? 'משפחה'}</RtlText>
+            <RtlText style={styles.dashboardHeroGreetingSubtitle}>{dog?.name ?? 'הכלב/ה'} מחכה לטיול הבא 🐾</RtlText>
+          </View>
           {!showPersonalHero ? (
             <View style={styles.dashboardHeroMascot} pointerEvents="none">
               <WalkieMascot state="idle" size={152} accessibilityLabel="כלב Walkie Doggy" />
@@ -836,22 +839,48 @@ export function HomeScreen() {
 
         <View style={styles.dashboardShortcuts} accessibilityLabel="קיצורי דרך">
           <Pressable onPress={() => setAddUnplannedVisible(true)} style={[styles.dashboardShortcut, styles.dashboardShortcutMint]} accessibilityRole="button" accessibilityLabel="הוסף טיול שבוצע">
-            <RtlText style={styles.dashboardShortcutIcon}>📍</RtlText>
-            <RtlText style={styles.dashboardShortcutLabel}>הוסף טיול{`\n`}שבוצע</RtlText>
+            <RtlText style={styles.dashboardShortcutIcon}>🚶</RtlText>
+            <RtlText style={styles.dashboardShortcutLabel}>טיול{`\n`}ספונטני</RtlText>
           </Pressable>
-          <Pressable onPress={() => navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutBlue]} accessibilityRole="button" accessibilityLabel="לוח זמנים">
-            <RtlText style={styles.dashboardShortcutIcon}>🗓️</RtlText>
-            <RtlText style={styles.dashboardShortcutLabel}>לוח זמנים</RtlText>
+          <Pressable onPress={() => nextWalkCardActions?.canRequestSwap ? setRequestSwapWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutBlue]} accessibilityRole="button" accessibilityLabel="בקשת החלפה">
+            <RtlText style={styles.dashboardShortcutIcon}>⇄</RtlText>
+            <RtlText style={styles.dashboardShortcutLabel}>בקשת{`\n`}החלפה</RtlText>
           </Pressable>
-          <Pressable onPress={() => navigation.navigate('History')} style={[styles.dashboardShortcut, styles.dashboardShortcutGold]} accessibilityRole="button" accessibilityLabel="היסטוריית טיולים">
-            <RtlText style={styles.dashboardShortcutIcon}>📊</RtlText>
-            <RtlText style={styles.dashboardShortcutLabel}>היסטוריית{`\n`}טיולים</RtlText>
-          </Pressable>
-          <Pressable onPress={() => navigation.navigate('Family')} style={[styles.dashboardShortcut, styles.dashboardShortcutPurple]} accessibilityRole="button" accessibilityLabel="משפחה">
-            <RtlText style={styles.dashboardShortcutIcon}>👥</RtlText>
-            <RtlText style={styles.dashboardShortcutLabel}>משפחה</RtlText>
+          <Pressable onPress={() => nextWalkCardActions?.canRequestTimeChange ? setRequestTimeChangeWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutPurple]} accessibilityRole="button" accessibilityLabel="בקשת שינוי שעה">
+            <RtlText style={styles.dashboardShortcutIcon}>◷</RtlText>
+            <RtlText style={styles.dashboardShortcutLabel}>שינוי{`\n`}שעה</RtlText>
           </Pressable>
         </View>
+
+        {lastWalk ? (
+          <Pressable style={styles.dashboardLastWalk} onPress={() => navigation.navigate('History')} accessibilityRole="button" accessibilityLabel="פתיחת הטיול האחרון">
+            <View style={styles.dashboardLastWalkCopy}>
+              <RtlText style={styles.dashboardLastWalkTitle}>✓ הטיול האחרון</RtlText>
+              <RtlText style={styles.dashboardLastWalkMeta}>{lastWalk.scheduledTime} · {walkDateContextLabel(lastWalk.date)}</RtlText>
+            </View>
+            <View style={styles.dashboardLastWalkDog}>
+              <WalkieMascot state="success" size={62} accessibilityLabel="כלב Walkie Doggy" />
+            </View>
+            <RtlText style={styles.dashboardLastWalkChevron}>‹</RtlText>
+          </Pressable>
+        ) : null}
+
+        {upcoming.length > 0 ? (
+          <Pressable style={styles.dashboardTimeline} onPress={() => navigation.navigate('Schedule')} accessibilityRole="button" accessibilityLabel="פתיחת לוח הזמנים להמשך היום">
+            <View style={styles.dashboardTimelineHeader}>
+              <RtlText style={styles.dashboardTimelineTitle}>בהמשך היום · {upcoming.length} טיולים</RtlText>
+              <RtlText style={styles.dashboardTimelineChevron}>‹</RtlText>
+            </View>
+            <View style={styles.dashboardTimelineStops}>
+              {upcoming.slice(0, 3).map((walk) => (
+                <View key={walk.id} style={styles.dashboardTimelineStop}>
+                  <RtlText style={styles.dashboardTimelineTime}>{walk.scheduledTime}</RtlText>
+                  <Avatar emoji={usersById[walk.responsibleUserId]?.avatar ?? '🐾'} color={usersById[walk.responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[walk.responsibleUserId]?.photoUrl} size={28} />
+                </View>
+              ))}
+            </View>
+          </Pressable>
+        ) : null}
 
         <Pressable
           onPress={() => navigation.navigate('Schedule')}
@@ -1343,10 +1372,10 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF9F2' },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   addFirstDogButton: { marginTop: spacing.md },
-  content: { flexGrow: 1, paddingHorizontal: spacing.md, paddingTop: spacing.xs, gap: 10, paddingBottom: spacing.md, width: '100%', backgroundColor: '#F7F8FF' },
+  content: { flexGrow: 1, paddingHorizontal: spacing.md, paddingTop: spacing.xs, gap: 10, paddingBottom: spacing.md, width: '100%', backgroundColor: '#FBF8F3' },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: 14 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
-  nextWalkLift: { marginTop: -34, zIndex: 1, paddingHorizontal: spacing.xs },
+  nextWalkLift: { marginTop: -58, zIndex: 1, paddingHorizontal: spacing.xs },
   testModeBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1360,7 +1389,7 @@ const styles = StyleSheet.create({
   testModeBannerButton: { backgroundColor: '#ffffff33', borderRadius: radii.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   testModeBannerButtonText: { color: colors.textInverse, fontWeight: '700', fontSize: 12 },
   topRow: { position: 'relative', minHeight: 58, alignItems: 'center', justifyContent: 'center' },
-  brandWordmark: { position: 'absolute', left: 0, width: 126, height: 40 },
+  brandWordmark: { position: 'absolute', left: '50%', width: 126, height: 40, transform: [{ translateX: -63 }] },
   mascotHeaderButton: { position: 'absolute', right: 0, top: 6, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E4E7F4' },
   dashboardHero: {
     width: '100%',
@@ -1372,23 +1401,39 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   dashboardHeroImage: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
-  dashboardHeroShade: { ...StyleSheet.absoluteFill, backgroundColor: '#FFFFFF18' },
+  dashboardHeroShade: { ...StyleSheet.absoluteFill, backgroundColor: '#1B1F5A10' },
+  dashboardHeroGreeting: { position: 'absolute', top: 20, left: 18, alignItems: 'flex-start', zIndex: 2 },
+  dashboardHeroGreetingTitle: { fontSize: 25, lineHeight: 30, color: '#17245B', fontWeight: '900', textAlign: 'left' },
+  dashboardHeroGreetingSubtitle: { marginTop: 3, fontSize: 15, color: '#2E3170', fontWeight: '700', textAlign: 'left' },
   dashboardHeroMascot: { position: 'absolute', right: 18, bottom: 8, zIndex: 2 },
   dashboardHeroCopy: { width: '52%', alignItems: 'flex-end', alignSelf: 'flex-start', paddingTop: 38, paddingHorizontal: spacing.md, zIndex: 2 },
   dashboardHeroEyebrow: { fontSize: 16, color: '#27376F', fontWeight: '700', textAlign: 'right' },
   dashboardHeroName: { fontSize: 30, lineHeight: 36, color: '#16245B', fontWeight: '900', textAlign: 'right' },
   dashboardShortcuts: { flexDirection: 'row-reverse', gap: spacing.sm, width: '100%', marginTop: -2 },
-  dashboardShortcut: { flex: 1, minHeight: 92, borderRadius: 22, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, gap: 6, borderWidth: 1, borderColor: '#FFFFFFAA' },
+  dashboardShortcut: { flex: 1, minHeight: 84, borderRadius: 22, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, gap: 4, borderWidth: 1, borderColor: '#FFFFFFAA' },
   dashboardShortcutMint: { backgroundColor: '#D5F5EE' },
   dashboardShortcutBlue: { backgroundColor: '#DCE8FF' },
   dashboardShortcutGold: { backgroundColor: '#FFF0C9' },
   dashboardShortcutPurple: { backgroundColor: '#EBDDFF' },
   dashboardShortcutLabel: { fontSize: 14, lineHeight: 19, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
   dashboardShortcutIcon: { fontSize: 26, lineHeight: 28 },
-  dashboardMoreButton: { minHeight: 38, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEE9FF', borderRadius: 18 },
-  dashboardMoreButtonText: { fontSize: 15, fontWeight: '800', color: colors.primaryDark },
+  dashboardMoreButton: { alignSelf: 'center', minHeight: 30, paddingHorizontal: spacing.md, alignItems: 'center', justifyContent: 'center' },
+  dashboardMoreButtonText: { fontSize: 15, fontWeight: '800', color: colors.primaryDark, textDecorationLine: 'underline' },
+  dashboardLastWalk: { minHeight: 96, borderRadius: radii.xl, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EAE5DD', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm, shadowColor: '#17245B', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  dashboardLastWalkCopy: { flex: 1, alignItems: 'flex-end' },
+  dashboardLastWalkTitle: { fontSize: 18, fontWeight: '900', color: '#17245B', textAlign: 'right' },
+  dashboardLastWalkMeta: { marginTop: 5, fontSize: 14, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
+  dashboardLastWalkDog: { width: 82, height: 66, overflow: 'hidden', borderRadius: radii.lg, backgroundColor: '#EEF3FF', alignItems: 'center', justifyContent: 'center' },
+  dashboardLastWalkChevron: { fontSize: 34, color: '#454B9E', writingDirection: 'ltr' },
+  dashboardTimeline: { minHeight: 88, borderRadius: radii.xl, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EAE5DD', padding: spacing.md, gap: spacing.sm },
+  dashboardTimelineHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  dashboardTimelineTitle: { fontSize: 16, fontWeight: '900', color: '#17245B', textAlign: 'right' },
+  dashboardTimelineChevron: { fontSize: 24, color: '#454B9E', writingDirection: 'ltr' },
+  dashboardTimelineStops: { flexDirection: 'row-reverse', justifyContent: 'space-around', alignItems: 'center' },
+  dashboardTimelineStop: { alignItems: 'center', gap: 4 },
+  dashboardTimelineTime: { fontSize: 13, fontWeight: '800', color: '#2E3170' },
   dashboardOverflow: { display: 'none' },
-  notificationButton: { position: 'absolute', right: 50, top: 11, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF0FF' },
+  notificationButton: { position: 'absolute', left: 0, top: 6, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF4D6', borderWidth: 1, borderColor: '#F2E5C2' },
   notificationIcon: { fontSize: 18 },
   requestsCountBadge: { minWidth: spacing.xl, height: spacing.xl, borderRadius: radii.sm, paddingHorizontal: spacing.xs, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryDark },
   requestsCountText: { fontSize: 11, fontWeight: '800', color: colors.textInverse },

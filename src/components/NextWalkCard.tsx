@@ -283,7 +283,7 @@ export function NextWalkCard({
         <Button label="סיים טיול" icon="■" onPress={onEndWalk} style={styles.endWalkButton} shrinkToFit />
       ) : onStartWalk ? (
         <>
-          <Button label="התחל טיול עכשיו" icon="▶" onPress={onStartWalk} style={styles.doneButton} shrinkToFit />
+          <Button label={tone === 'dashboard' ? 'התחל טיול' : 'התחל טיול עכשיו'} icon="▶" onPress={onStartWalk} style={tone === 'dashboard' ? styles.dashboardStartButton : styles.doneButton} shrinkToFit />
           {overdue && onMarkNotDone ? (
             <View style={styles.resolveRow}>
               <Button
@@ -308,7 +308,7 @@ export function NextWalkCard({
               label="בוצע"
               variant="secondary"
               onPress={onMarkDone}
-              style={styles.markDoneFallbackButton}
+              style={tone === 'dashboard' ? styles.dashboardMarkDoneButton : styles.markDoneFallbackButton}
               compact
               shrinkToFit
             />
@@ -386,7 +386,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 2,
   },
-  cardDashboard: { backgroundColor: '#FFFFFF', borderColor: '#E1E3F6', shadowOpacity: 0.12, shadowRadius: 16, elevation: 4, paddingVertical: 13 },
+  cardDashboard: { backgroundColor: '#FCFBFF', borderColor: '#DEDDF5', shadowOpacity: 0.12, shadowRadius: 16, elevation: 4, paddingVertical: 12 },
   webCard: { borderRadius: radii.xl, paddingHorizontal: 24, paddingVertical: 18 },
   cardActive: { backgroundColor: colors.successSoft, borderColor: colors.success + '55' },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
@@ -443,12 +443,14 @@ const styles = StyleSheet.create({
   // the dashboard, especially on narrow phones.
   // Use an intentionally wider central gutter and inset both columns so the
   // assignee circle reads as its own block instead of touching the time.
-  dashboardMainRow: { gap: 36, paddingHorizontal: 8 },
+  dashboardMainRow: { gap: 28, paddingHorizontal: 8, marginBottom: 8 },
   personBlock: { flex: 1, alignItems: 'flex-end', gap: 3, minWidth: 0 },
   personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'left' },
   responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'left' },
   doneButton: { marginTop: 2 },
+  dashboardStartButton: { marginTop: 0, backgroundColor: '#454B9E', borderColor: '#454B9E' },
   markDoneFallbackButton: { marginTop: 8, borderWidth: 1.5, borderColor: colors.primaryDark },
+  dashboardMarkDoneButton: { marginTop: 6, minHeight: 34, paddingVertical: 5, borderWidth: 1.5, borderColor: '#454B9E' },
   endWalkButton: { marginTop: 4, backgroundColor: colors.statusOverdue },
   resolveRow: { flexDirection: 'row-reverse', gap: 8, marginTop: 8, width: '100%' },
   resolveButton: { flex: 1, minWidth: 0 },
