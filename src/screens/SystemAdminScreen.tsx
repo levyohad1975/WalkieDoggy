@@ -367,7 +367,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                   accessibilityLabel={`סינון פעילות למשפחת ${family.familyName}${family.verifiedEmail ? `, אימייל יצירה ${family.verifiedEmail}` : ''}`}
                 >
                   <RtlText style={[styles.auditFilterText, auditFamilyId === family.familyId && styles.auditFilterTextSelected]}>
-                    {family.familyName}{familyCreatorNameById.get(family.familyId) ? ` · יוצר/ת: ${familyCreatorNameById.get(family.familyId)}` : ''}{family.verifiedEmail ? ` · ${family.verifiedEmail}` : ''}
+                    {family.familyName}
                   </RtlText>
                 </Pressable>
               ))}
