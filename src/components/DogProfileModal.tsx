@@ -85,7 +85,7 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
           {dog ? (
             <>
               <View style={styles.photoWrap}>
-                  {getDogBackground(selectedBackground) ? (
+                  {dog.photoCutoutUrl && getDogBackground(selectedBackground) ? (
                     <Image source={{ uri: getDogBackground(selectedBackground)!.uri }} style={styles.previewBackground} resizeMode="cover" />
                   ) : null}
                 {(dog.photoCutoutUrl || dog.photoUrl) && !photoLoadFailed ? (
@@ -125,6 +125,21 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
                     <View style={styles.backgroundPicker}>
                       <RtlText style={styles.backgroundTitle}>בחרו רקע</RtlText>
                       <View style={styles.backgroundGrid}>
+                        <Pressable
+                          onPress={() => {
+                            if (!dog) return;
+                            setSelectedBackground(undefined);
+                            void saveDog({ ...dog, heroBackgroundId: undefined });
+                          }}
+                          style={[styles.backgroundTile, !selectedBackground && styles.backgroundSelected]}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: !selectedBackground }}
+                          accessibilityLabel="ללא רקע"
+                        >
+                          <View style={[styles.backgroundThumb, { backgroundColor: colors.background }]} />
+                          <View style={styles.backgroundLabelWrap}><RtlText style={styles.backgroundLabel}>ללא רקע</RtlText></View>
+                          {!selectedBackground ? <View style={styles.backgroundCheckBadge}><RtlText style={styles.backgroundCheck}>✓</RtlText></View> : null}
+                        </Pressable>
                         {DOG_BACKGROUNDS.map((item) => (
                           <Pressable
                             key={item.id}
