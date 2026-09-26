@@ -166,7 +166,11 @@ export function ScheduleScreen() {
   );
 
   const grouped = useMemo(() => {
-    const filtered = visibleWalks.filter((w) => inRange(w.date, range));
+    // Schedule is forward-looking. Completed/skipped walks belong in History,
+    // not in this screen; keep only unresolved/active walks here.
+    const filtered = visibleWalks.filter(
+      (w) => (w.status === 'pending' || w.status === 'in_progress') && inRange(w.date, range)
+    );
     const byDate = new Map<string, Walk[]>();
     for (const w of filtered) {
       const list = byDate.get(w.date) ?? [];
