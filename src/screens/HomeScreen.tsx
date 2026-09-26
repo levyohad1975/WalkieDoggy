@@ -713,7 +713,7 @@ export function HomeScreen() {
             <View style={styles.dashboardHeroGlow} pointerEvents="none" />
             <View style={styles.dashboardHeroShade} />
             <View style={styles.dashboardHeroGreeting} pointerEvents="none">
-              <RtlText style={styles.dashboardHeroGreetingTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שלום {family?.name ?? 'משפחה'}</RtlText>
+              <RtlText style={styles.dashboardHeroGreetingTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שלום משפחת {family?.name ?? ''}</RtlText>
               <RtlText style={styles.dashboardHeroGreetingSubtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{dog?.name ?? 'הכלב/ה'} מחכה לטיול הבא 🐾</RtlText>
             </View>
             {showDogCutout ? <Image source={{ uri: dog!.photoCutoutUrl! }} style={styles.dashboardHeroDogCutout} resizeMode="contain" onError={() => setHeroCutoutFailed(true)} /> : null}
@@ -885,6 +885,7 @@ export function HomeScreen() {
           </View>
           {dashboardTimelineWalks.length > 0 ? (
             <View style={styles.dashboardTimelineStops}>
+              <View style={styles.dashboardTimelineLine} pointerEvents="none" />
               {dashboardTimelineWalks.map((walk) => (
                 <View key={walk.id} style={styles.dashboardTimelineStop}>
                   <RtlText style={styles.dashboardTimelineTime}>{walk.scheduledTime}</RtlText>
@@ -1452,8 +1453,9 @@ const styles = StyleSheet.create({
   dashboardTimelineHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   dashboardTimelineTitle: { fontSize: 16, fontWeight: '900', color: '#17245B', textAlign: 'right' },
   dashboardTimelineChevron: { fontSize: 24, color: '#454B9E', writingDirection: 'ltr' },
-  dashboardTimelineStops: { flexDirection: 'row-reverse', justifyContent: 'space-around', alignItems: 'center' },
-  dashboardTimelineStop: { alignItems: 'center', gap: 2 },
+  dashboardTimelineStops: { position: 'relative', flexDirection: 'row-reverse', justifyContent: 'space-around', alignItems: 'center' },
+  dashboardTimelineLine: { position: 'absolute', left: '16%', right: '16%', bottom: 14, height: 2, borderRadius: 1, backgroundColor: '#C7C9E8' },
+  dashboardTimelineStop: { alignItems: 'center', gap: 2, zIndex: 1 },
   dashboardTimelineTime: { fontSize: 12, fontWeight: '800', color: '#2E3170' },
   dashboardTimelineEmpty: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, textAlign: 'right', paddingBottom: 2 },
   dashboardRequestAlert: { minHeight: 62, borderRadius: radii.xl, backgroundColor: '#FFF0D9', borderWidth: 1, borderColor: '#F8DEC0', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
