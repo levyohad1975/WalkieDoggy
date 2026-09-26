@@ -192,7 +192,7 @@ export function NextWalkCard({
       {/* An overdue card is an operational decision, not a greeting. Keeping
           the mascot copy out of that state gives the time, assignee and the
           two resolution actions enough calm, predictable room on a phone. */}
-      {!overdue && !isActive ? (
+      {!overdue && !isActive && tone !== 'dashboard' ? (
         <RtlText style={styles.mascotMessage} numberOfLines={1} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
           {message}
         </RtlText>

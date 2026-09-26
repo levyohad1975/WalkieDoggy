@@ -9,7 +9,8 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('showDogPhoto');
     expect(home).toContain('style={styles.dashboardHero}');
     expect(home).toContain('style={styles.dashboardHeroShade}');
-    expect(home).toContain('height: 146');
+    expect(home).toContain('height: 208');
+    expect(home).toContain('style={styles.dashboardHeroShell}');
     expect(home).toContain('style={styles.dashboardHeroBloomOne}');
     expect(home).toContain('style={styles.dashboardHeroBloomTwo}');
     expect(home).toContain('style={styles.dashboardHeroGlow}');
@@ -47,6 +48,7 @@ describe('Home integrated walk lifecycle', () => {
   it('shows the orange approval prompt only for a real actionable request', () => {
     expect(home).toContain('pendingForMe > 0 ?');
     expect(home).toContain('style={styles.dashboardRequestAlert}');
+    expect(home.indexOf('style={styles.dashboardTimeline}')).toBeLessThan(home.indexOf('style={styles.dashboardRequestAlert}'));
     expect(home).toContain('בקשה ממתינה לאישור');
     expect(home).toContain('onPress={openRequestsInbox}');
   });

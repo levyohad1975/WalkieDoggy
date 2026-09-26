@@ -667,62 +667,64 @@ export function HomeScreen() {
         contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        <View style={styles.topRow}>
-          <Image
-            source={require('../../assets/walkie-doggy-link-wordmark-transparent.png')}
-            style={styles.brandWordmark}
-            resizeMode="contain"
-            accessibilityLabel="Walkie Doggy Link"
-          />
+        <View style={styles.dashboardHeroShell}>
+          <View style={[styles.topRow, styles.dashboardTopRow]}>
+            <Image
+              source={require('../../assets/walkie-doggy-link-wordmark-transparent.png')}
+              style={styles.brandWordmark}
+              resizeMode="contain"
+              accessibilityLabel="Walkie Doggy Link"
+            />
+            <Pressable
+              onPress={() => setDogProfileVisible(true)}
+              style={styles.mascotHeaderButton}
+              accessibilityRole="button"
+              accessibilityLabel="פתיחת פרופיל הכלב"
+            >
+              <WalkieMascot state="idle" size={38} accessibilityLabel="Walkie Doggy" />
+            </Pressable>
+            <Pressable
+              onPress={openRequestsInbox}
+              style={styles.notificationButton}
+              accessibilityRole="button"
+              accessibilityLabel={bellBadgeCount > 0 ? `התראות בקשות: ${bellBadgeCount}` : 'בקשות'}
+            >
+              <RtlText style={styles.notificationIcon}>🔔</RtlText>
+              {bellBadgeCount > 0 ? (
+                <View style={styles.requestsCountBadge}>
+                  <RtlText style={styles.requestsCountText}>{bellBadgeCount}</RtlText>
+                </View>
+              ) : null}
+            </Pressable>
+          </View>
+
+          {/* Issue #145: the approved lavender composition remains the default;
+              a manager-selected family scene replaces it and a transparent dog
+              cutout is composited over it when one exists. */}
           <Pressable
             onPress={() => setDogProfileVisible(true)}
-            style={styles.mascotHeaderButton}
+            style={styles.dashboardHero}
             accessibilityRole="button"
-            accessibilityLabel="פתיחת פרופיל הכלב"
+            accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
           >
-            <WalkieMascot state="idle" size={38} accessibilityLabel="Walkie Doggy" />
-          </Pressable>
-          <Pressable
-            onPress={openRequestsInbox}
-            style={styles.notificationButton}
-            accessibilityRole="button"
-            accessibilityLabel={bellBadgeCount > 0 ? `התראות בקשות: ${bellBadgeCount}` : 'בקשות'}
-          >
-            <RtlText style={styles.notificationIcon}>🔔</RtlText>
-            {bellBadgeCount > 0 ? (
-              <View style={styles.requestsCountBadge}>
-                <RtlText style={styles.requestsCountText}>{bellBadgeCount}</RtlText>
+            {heroBackground ? <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" /> : null}
+            <View style={styles.dashboardHeroBloomOne} pointerEvents="none" />
+            <View style={styles.dashboardHeroBloomTwo} pointerEvents="none" />
+            <View style={styles.dashboardHeroGlow} pointerEvents="none" />
+            <View style={styles.dashboardHeroShade} />
+            <View style={styles.dashboardHeroGreeting} pointerEvents="none">
+              <RtlText style={styles.dashboardHeroGreetingTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שלום {family?.name ?? 'משפחה'}</RtlText>
+              <RtlText style={styles.dashboardHeroGreetingSubtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{dog?.name ?? 'הכלב/ה'} מחכה לטיול הבא 🐾</RtlText>
+            </View>
+            {showDogCutout ? <Image source={{ uri: dog!.photoCutoutUrl! }} style={styles.dashboardHeroDogCutout} resizeMode="contain" onError={() => setHeroCutoutFailed(true)} /> : null}
+            {!showDogCutout && showPersonalHero ? <Image source={{ uri: dog!.photoUrl! }} style={styles.dashboardHeroDogPhoto} resizeMode="cover" onError={() => setHeroPhotoFailed(true)} /> : null}
+            {!showDogCutout && !showPersonalHero ? (
+              <View style={styles.dashboardHeroMascot} pointerEvents="none">
+                <WalkieMascot state="idle" size={168} accessibilityLabel="כלב Walkie Doggy" />
               </View>
             ) : null}
           </Pressable>
         </View>
-
-        {/* Issue #145: the approved lavender composition remains the default;
-            a manager-selected family scene replaces it and a transparent dog
-            cutout is composited over it when one exists. */}
-        <Pressable
-          onPress={() => setDogProfileVisible(true)}
-          style={styles.dashboardHero}
-          accessibilityRole="button"
-          accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
-        >
-          {heroBackground ? <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" /> : null}
-          <View style={styles.dashboardHeroBloomOne} pointerEvents="none" />
-          <View style={styles.dashboardHeroBloomTwo} pointerEvents="none" />
-          <View style={styles.dashboardHeroGlow} pointerEvents="none" />
-          <View style={styles.dashboardHeroShade} />
-          <View style={styles.dashboardHeroGreeting} pointerEvents="none">
-            <RtlText style={styles.dashboardHeroGreetingTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שלום {family?.name ?? 'משפחה'}</RtlText>
-            <RtlText style={styles.dashboardHeroGreetingSubtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{dog?.name ?? 'הכלב/ה'} מחכה לטיול הבא 🐾</RtlText>
-          </View>
-          {showDogCutout ? <Image source={{ uri: dog!.photoCutoutUrl! }} style={styles.dashboardHeroDogCutout} resizeMode="contain" onError={() => setHeroCutoutFailed(true)} /> : null}
-          {!showDogCutout && showPersonalHero ? <Image source={{ uri: dog!.photoUrl! }} style={styles.dashboardHeroDogPhoto} resizeMode="cover" onError={() => setHeroPhotoFailed(true)} /> : null}
-          {!showDogCutout && !showPersonalHero ? (
-            <View style={styles.dashboardHeroMascot} pointerEvents="none">
-              <WalkieMascot state="idle" size={144} accessibilityLabel="כלב Walkie Doggy" />
-            </View>
-          ) : null}
-        </Pressable>
 
         {/* PRD §11: "ב-Home יש בחירת כלב קלה כאשר יש יותר מכלב אחד" — an
             easy dog picker on Home whenever there's more than one dog.
@@ -845,17 +847,17 @@ export function HomeScreen() {
         </View>
 
         <View style={styles.dashboardShortcuts} accessibilityLabel="קיצורי דרך">
-          <Pressable onPress={() => setAddUnplannedVisible(true)} style={[styles.dashboardShortcut, styles.dashboardShortcutMint]} accessibilityRole="button" accessibilityLabel="הוסף טיול שבוצע">
-            <RtlText style={styles.dashboardShortcutIcon}>🚶</RtlText>
-            <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>טיול ספונטני</RtlText>
+          <Pressable onPress={() => nextWalkCardActions?.canRequestTimeChange ? setRequestTimeChangeWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutMint]} accessibilityRole="button" accessibilityLabel="בקשת שינוי שעה">
+            <RtlText style={styles.dashboardShortcutIcon}>◷</RtlText>
+            <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שינוי שעה</RtlText>
           </Pressable>
           <Pressable onPress={() => nextWalkCardActions?.canRequestSwap ? setRequestSwapWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutBlue]} accessibilityRole="button" accessibilityLabel="בקשת החלפה">
             <RtlText style={styles.dashboardShortcutIcon}>⇄</RtlText>
             <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>בקשת החלפה</RtlText>
           </Pressable>
-          <Pressable onPress={() => nextWalkCardActions?.canRequestTimeChange ? setRequestTimeChangeWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutPurple]} accessibilityRole="button" accessibilityLabel="בקשת שינוי שעה">
-            <RtlText style={styles.dashboardShortcutIcon}>◷</RtlText>
-            <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שינוי שעה</RtlText>
+          <Pressable onPress={() => setAddUnplannedVisible(true)} style={[styles.dashboardShortcut, styles.dashboardShortcutGold]} accessibilityRole="button" accessibilityLabel="הוסף טיול שבוצע">
+            <RtlText style={styles.dashboardShortcutIcon}>🚶</RtlText>
+            <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>טיול ספונטני</RtlText>
           </Pressable>
         </View>
 
@@ -1382,15 +1384,15 @@ export function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFF9F2' },
+  container: { flex: 1, backgroundColor: '#E8E5FF' },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   addFirstDogButton: { marginTop: spacing.md },
   // Leaves the final card clear of the persistent bottom tab bar on phones
   // and in Safari/PWA, instead of letting it end underneath the navigation.
-  content: { flexGrow: 1, paddingHorizontal: spacing.md, paddingTop: spacing.xs, gap: 6, paddingBottom: 120, width: '100%', backgroundColor: '#FBF8F3' },
+  content: { flexGrow: 1, paddingHorizontal: spacing.md, paddingTop: 0, gap: 8, paddingBottom: 120, width: '100%', backgroundColor: '#FBF8F3' },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: 14 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
-  nextWalkLift: { marginTop: -32, zIndex: 1, paddingHorizontal: spacing.xs },
+  nextWalkLift: { marginTop: -48, zIndex: 1, paddingHorizontal: spacing.xs },
   testModeBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1403,13 +1405,16 @@ const styles = StyleSheet.create({
   testModeBannerText: { flex: 1, color: colors.textInverse, fontWeight: '700', fontSize: typography.meta.fontSize, textAlign: 'right' },
   testModeBannerButton: { backgroundColor: '#ffffff33', borderRadius: radii.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   testModeBannerButtonText: { color: colors.textInverse, fontWeight: '700', fontSize: 12 },
+  dashboardHeroShell: { marginHorizontal: -spacing.md, backgroundColor: '#E8E5FF', overflow: 'hidden' },
   topRow: { position: 'relative', minHeight: 54, alignItems: 'center', justifyContent: 'center' },
-  brandWordmark: { position: 'absolute', left: 0, width: 132, height: 42 },
-  mascotHeaderButton: { position: 'absolute', right: 0, top: 8, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E4E7F4' },
+  dashboardTopRow: { minHeight: 68, paddingHorizontal: spacing.md },
+  brandWordmark: { width: 132, height: 42 },
+  mascotHeaderButton: { position: 'absolute', left: spacing.md, top: 12, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E4E7F4' },
   dashboardHero: {
     width: '100%',
-    height: 146,
-    borderRadius: 32,
+    height: 208,
+    borderBottomLeftRadius: 34,
+    borderBottomRightRadius: 34,
     backgroundColor: '#E8ECFF',
     overflow: 'hidden',
     alignItems: 'flex-end',
@@ -1420,19 +1425,19 @@ const styles = StyleSheet.create({
   dashboardHeroBloomTwo: { position: 'absolute', width: 250, height: 250, borderRadius: 125, right: -104, top: -132, backgroundColor: '#C9D7FF' },
   dashboardHeroGlow: { position: 'absolute', width: 260, height: 92, borderRadius: 130, left: 24, bottom: 16, backgroundColor: '#FFFFFF75', transform: [{ rotate: '-8deg' }] },
   dashboardHeroShade: { ...StyleSheet.absoluteFill, backgroundColor: '#FFFFFF12' },
-  dashboardHeroGreeting: { position: 'absolute', top: 22, left: 18, width: '54%', alignItems: 'flex-end', zIndex: 2 },
-  dashboardHeroGreetingTitle: { width: '100%', fontSize: 22, lineHeight: 26, color: '#253275', fontWeight: '900', textAlign: 'right' },
+  dashboardHeroGreeting: { position: 'absolute', top: 34, left: spacing.md, width: '52%', alignItems: 'flex-end', zIndex: 2 },
+  dashboardHeroGreetingTitle: { width: '100%', fontSize: 24, lineHeight: 29, color: '#253275', fontWeight: '900', textAlign: 'right' },
   dashboardHeroGreetingSubtitle: { width: '100%', marginTop: 4, fontSize: 13, lineHeight: 18, color: '#454E91', fontWeight: '700', textAlign: 'right' },
   dashboardHeroMascot: { position: 'absolute', right: -4, bottom: -4, zIndex: 2 },
-  dashboardHeroDogCutout: { position: 'absolute', right: -4, bottom: -6, width: 148, height: 146, zIndex: 2 },
-  dashboardHeroDogPhoto: { position: 'absolute', right: 10, bottom: 8, width: 112, height: 112, borderRadius: 56, zIndex: 2, borderWidth: 3, borderColor: '#FFFFFFCC' },
+  dashboardHeroDogCutout: { position: 'absolute', right: -4, bottom: -6, width: 214, height: 212, zIndex: 2 },
+  dashboardHeroDogPhoto: { position: 'absolute', right: 12, bottom: 10, width: 144, height: 144, borderRadius: 72, zIndex: 2, borderWidth: 3, borderColor: '#FFFFFFCC' },
   dashboardHeroCopy: { width: '52%', alignItems: 'flex-end', alignSelf: 'flex-start', paddingTop: 38, paddingHorizontal: spacing.md, zIndex: 2 },
   dashboardHeroEyebrow: { fontSize: 16, color: '#27376F', fontWeight: '700', textAlign: 'right' },
   dashboardHeroName: { fontSize: 30, lineHeight: 36, color: '#16245B', fontWeight: '900', textAlign: 'right' },
   dashboardShortcuts: { flexDirection: 'row-reverse', gap: spacing.sm, width: '100%', marginTop: -2 },
   dashboardShortcut: { flex: 1, minHeight: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, gap: 0, borderWidth: 1, borderColor: '#FFFFFFAA' },
-  dashboardShortcutMint: { backgroundColor: '#EDF2FF' },
-  dashboardShortcutBlue: { backgroundColor: '#E6ECFF' },
+  dashboardShortcutMint: { backgroundColor: '#E2F8E9' },
+  dashboardShortcutBlue: { backgroundColor: '#E2F4FF' },
   dashboardShortcutGold: { backgroundColor: '#FFF0C9' },
   dashboardShortcutPurple: { backgroundColor: '#F0EBFF' },
   dashboardShortcutLabel: { fontSize: 13, lineHeight: 16, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
@@ -1458,7 +1463,7 @@ const styles = StyleSheet.create({
   dashboardRequestAlertSubtitle: { marginTop: 2, fontSize: 13, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
   dashboardRequestAlertChevron: { fontSize: 28, color: '#C56C1D', writingDirection: 'ltr' },
   dashboardOverflow: { display: 'none' },
-  notificationButton: { position: 'absolute', right: 52, top: 8, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF4D6', borderWidth: 1, borderColor: '#F2E5C2' },
+  notificationButton: { position: 'absolute', right: spacing.md, top: 12, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF4D6', borderWidth: 1, borderColor: '#F2E5C2' },
   notificationIcon: { fontSize: 18 },
   requestsCountBadge: { minWidth: spacing.xl, height: spacing.xl, borderRadius: radii.sm, paddingHorizontal: spacing.xs, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryDark },
   requestsCountText: { fontSize: 11, fontWeight: '800', color: colors.textInverse },
