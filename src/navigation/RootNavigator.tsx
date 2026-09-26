@@ -88,8 +88,7 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
         if (!route) return null;
         if (name === 'History' && !canSeeHistoryTab) return null;
         if (name === 'Statistics' && !canSeeStatisticsTab) return null;
-        const routeIndex = state.routes.findIndex((r) => r.key === route.key);
-        const focused = state.index === routeIndex;
+        const focused = state.routes[state.index]?.key === route.key;
         const options = descriptors[route.key]?.options;
         const tint = focused ? colors.primary : colors.textSecondary;
         return (
@@ -97,7 +96,13 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
             key={route.key}
             onPress={() => {
               const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-              if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
+              if (!focused && !event.defaultPrevented) {
+                // Target the tab navigator by route key. With conditional
+                // History/Statistics routes, navigating only by name could
+                // be resolved against stale navigator state and fall back
+                // to the initial Home route after permission refreshes.
+                navigation.navigate({ key: route.key, name: route.name } as never);
+              }
             }}
             onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
             accessibilityRole="button"
