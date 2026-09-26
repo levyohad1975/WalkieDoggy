@@ -213,7 +213,7 @@ export function NextWalkCard({
 
       {isActive ? (
         <View style={styles.activeWalkBanner} accessibilityRole="timer" accessibilityLabel={`משך הטיול ${elapsedLabel}`}>
-          <Animated.Text style={[styles.walkerEmoji, { transform: [{ translateY: walkerBob }] }]}>🚶‍♂️‍➡️🐕‍🦺</Animated.Text>
+          <Animated.Text style={[styles.walkerEmoji, { transform: [{ translateY: walkerBob }] }]}>{responsible?.sex === 'female' ? '🚶‍♀️‍➡️🐕‍🦺' : responsible?.sex === 'male' ? '🚶‍♂️‍➡️🐕‍🦺' : '🚶🐕‍🦺'}</Animated.Text>
           <View style={styles.activeWalkCopy}>
             <RtlText style={styles.activeWalkTitle}>מטיילים עכשיו</RtlText>
             <RtlText style={styles.activeWalkSubtitle}>מטיילים יחד ברצועה</RtlText>
