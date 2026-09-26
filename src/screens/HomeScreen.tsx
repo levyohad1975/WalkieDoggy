@@ -858,8 +858,8 @@ export function HomeScreen() {
             // list already used — see that function's doc comment for the
             // full "responsible member / non-responsible member /
             // non-responsible admin" rule and its own unit tests.
-            onSwap={nextWalkCardActions?.canSwapDirect ? () => setSwapWalkId(nextWalk.id) : undefined}
-            onEdit={nextWalkCardActions?.canEditDirect ? () => setEditWalkId(nextWalk.id) : undefined}
+            onSwap={undefined}
+            onEdit={undefined}
             onRequestSwap={
               nextWalkCardActions?.canRequestSwap && !walkHasActiveSwapRequest(nextWalk.id, swapRequests, walksById)
                 ? () => setRequestSwapWalkId(nextWalk.id)
@@ -879,19 +879,30 @@ export function HomeScreen() {
         )}
         </View>
 
-        {/* Item 7: "בקשת החלפה" moved out of this row — it is now its own
-            standalone row at the very bottom of the Dashboard content (see
-            dashboardSwapRequestRow below, just above the bottom nav). This
-            row keeps the other two shortcuts. */}
         <View style={styles.dashboardShortcuts} accessibilityLabel="קיצורי דרך">
-          <Pressable onPress={() => nextWalkCardActions?.canRequestTimeChange ? setRequestTimeChangeWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutMint]} accessibilityRole="button" accessibilityLabel="בקשת שינוי שעה">
-            <RtlText style={styles.dashboardShortcutIcon}>◷</RtlText>
-            <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שינוי שעה</RtlText>
-          </Pressable>
-          <Pressable onPress={() => setAddUnplannedVisible(true)} style={[styles.dashboardShortcut, styles.dashboardShortcutGold]} accessibilityRole="button" accessibilityLabel="הוסף טיול שבוצע">
-            <RtlText style={styles.dashboardShortcutIcon}>🚶</RtlText>
-            <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>טיול ספונטני</RtlText>
-          </Pressable>
+          {effectiveRole === 'admin' ? (
+            <>
+              <Pressable onPress={() => nextWalk ? setEditWalkId(nextWalk.id) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutMint]} accessibilityRole="button" accessibilityLabel="עריכת הטיול הבא">
+                <RtlText style={styles.dashboardShortcutIcon}>✎</RtlText>
+                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1}>עריכה</RtlText>
+              </Pressable>
+              <Pressable onPress={() => nextWalk ? setSwapWalkId(nextWalk.id) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutGold]} accessibilityRole="button" accessibilityLabel="החלפת הטיול הבא">
+                <RtlText style={styles.dashboardShortcutIcon}>⇄</RtlText>
+                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1}>החלפה</RtlText>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Pressable onPress={() => nextWalkCardActions?.canRequestTimeChange ? setRequestTimeChangeWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutMint]} accessibilityRole="button" accessibilityLabel="בקשת שינוי שעה">
+                <RtlText style={styles.dashboardShortcutIcon}>◷</RtlText>
+                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שינוי שעה</RtlText>
+              </Pressable>
+              <Pressable onPress={() => setAddUnplannedVisible(true)} style={[styles.dashboardShortcut, styles.dashboardShortcutGold]} accessibilityRole="button" accessibilityLabel="הוסף טיול שבוצע">
+                <RtlText style={styles.dashboardShortcutIcon}>🚶</RtlText>
+                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>טיול ספונטני</RtlText>
+              </Pressable>
+            </>
+          )}
         </View>
 
         {lastWalk ? (
@@ -962,25 +973,6 @@ export function HomeScreen() {
             <RtlText style={styles.dashboardRequestAlertChevron}>‹</RtlText>
           </Pressable>
         ) : null}
-
-        {/* Item 7: "בקשת החלפה" is the LOWEST Dashboard content row, directly
-            above the bottom nav — moved here (out of dashboardShortcuts near
-            the top) per the requested reorder. Same action as before: an
-            approval-gated swap request for the next walk when one exists,
-            otherwise just opens the Schedule screen. */}
-        <Pressable
-          style={styles.dashboardSwapRequestRow}
-          onPress={() => (nextWalkCardActions?.canRequestSwap ? setRequestSwapWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule'))}
-          accessibilityRole="button"
-          accessibilityLabel="בקשת החלפה"
-        >
-          <RtlText style={styles.dashboardSwapRequestIcon}>⇄</RtlText>
-          <View style={styles.dashboardSwapRequestCopy}>
-            <RtlText style={styles.dashboardSwapRequestTitle}>בקשת החלפה</RtlText>
-            <RtlText style={styles.dashboardSwapRequestSubtitle}>לא פנויים לטיול? בקשו החלפה עם בן משפחה אחר</RtlText>
-          </View>
-          <RtlText style={styles.dashboardSwapRequestChevron}>‹</RtlText>
-        </Pressable>
 
         <View style={styles.dashboardOverflow}>
         {lastWalk ? (
