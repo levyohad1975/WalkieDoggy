@@ -62,6 +62,7 @@ interface ScheduleState {
   deleteEntry: (entryId: string) => Promise<void>;
 
   startWalk: (walkId: string) => Promise<boolean>;
+  cancelActiveWalk: (walkId: string) => Promise<boolean>;
   finishWalk: (walkId: string, completedByUserId: string, details?: WalkCompletionDetails) => Promise<boolean>;
   markDone: (walkId: string, completedByUserId: string, details?: WalkCompletionDetails) => Promise<boolean>;
   editDoneDetails: (walkId: string, details: WalkCompletionDetails) => Promise<void>;
@@ -608,6 +609,30 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       return true;
     } catch (e) {
       set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו להתחיל את הטיול') });
+      return false;
+    }
+  },
+
+  cancelActiveWalk: async (walkId: string) => {
+    if (!guardTestModeMutation()) return false;
+    const walk = get().walks.find((w) => w.id === walkId);
+    if (!walk || walk.status !== 'in_progress') return false;
+    try {
+      let restored: Walk | null;
+      if (repository.cancelWalk) restored = await repository.cancelWalk(walkId);
+      else restored = walk.isUnplanned ? null : { ...walk, status: 'pending', startedAt: undefined, startedByUserId: undefined, updatedAt: new Date().toISOString() };
+      useGpsStore.getState().discardTracking(walkId);
+      set((state) => ({
+        walks: restored
+          ? state.walks.map((candidate) => (candidate.id === walkId ? restored! : candidate))
+          : state.walks.filter((candidate) => candidate.id !== walkId),
+        actionError: null,
+      }));
+      if (restored) await scheduleNotificationsForWalk(restored);
+      else await cancelWalkNotifications(walkId);
+      return true;
+    } catch (e) {
+      set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו לבטל את הטיול') });
       return false;
     }
   },
