@@ -28,7 +28,7 @@ describe('ScheduleScreen multi-dog wiring (structural)', () => {
     expect(source).toMatch(
       /const visibleRules = useMemo\(\s*\n\s*\(\) => \(dogs\.length > 1 && dog \? rules\.filter\(\(r\) => r\.dogId === dog\.id\) : rules\),/
     );
-    expect(source).toContain('const filtered = visibleWalks.filter((w) => inRange(w.date, range));');
+    expect(source).toContain("(w) => (w.status === 'pending' || w.status === 'in_progress') && inRange(w.date, range)");
     expect(source).toContain('[...visibleRules].sort((a, b) => a.time.localeCompare(b.time))');
   });
 
