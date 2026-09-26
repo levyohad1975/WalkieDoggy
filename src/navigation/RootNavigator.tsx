@@ -1,7 +1,7 @@
-﻿import React, { useEffect } from 'react';
-import { Platform, Pressable, View } from 'react-native';
+﻿import React, { useEffect, useRef } from 'react';
+import { PanResponder, Platform, Pressable, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, useNavigation, useNavigationState } from '@react-navigation/native';
 import { createBottomTabNavigator, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
@@ -72,6 +72,58 @@ const PHYSICAL_TAB_ORDER: (keyof RootTabParamList)[] = [
   'Schedule',
   'History',
 ];
+
+const RTL_SWIPE_ORDER: (keyof RootTabParamList)[] = ['Home', 'Schedule', 'Family', 'History', 'Statistics', 'Settings'];
+
+function SwipeTabSurface({
+  children,
+  canSeeHistoryTab,
+  canSeeStatisticsTab,
+  canSeeSettingsTab,
+}: {
+  children: React.ReactNode;
+  canSeeHistoryTab: boolean;
+  canSeeStatisticsTab: boolean;
+  canSeeSettingsTab: boolean;
+}) {
+  const navigation = useNavigation<any>();
+  const navState = useNavigationState((state) => state);
+  const stateRef = useRef(navState);
+  stateRef.current = navState;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_event, gesture) => {
+        if (Platform.OS === 'web') return false;
+        const horizontal = Math.abs(gesture.dx);
+        const vertical = Math.abs(gesture.dy);
+        return horizontal > 18 && horizontal > vertical * 1.5;
+      },
+      onPanResponderRelease: (_event, gesture) => {
+        if (Math.abs(gesture.dx) < 55 || Math.abs(gesture.dx) < Math.abs(gesture.dy) * 1.5) return;
+        const currentState = stateRef.current;
+        const routeByName = Object.fromEntries(currentState.routes.map((route) => [route.name, route]));
+        const visibleOrder = RTL_SWIPE_ORDER.filter((name) => {
+          if (!routeByName[name]) return false;
+          if (name === 'History' && !canSeeHistoryTab) return false;
+          if (name === 'Statistics' && !canSeeStatisticsTab) return false;
+          if (name === 'Settings' && !canSeeSettingsTab) return false;
+          return true;
+        });
+        const currentName = currentState.routes[currentState.index]?.name as keyof RootTabParamList | undefined;
+        if (!currentName) return;
+        const currentIndex = visibleOrder.indexOf(currentName);
+        if (currentIndex < 0) return;
+        // Natural RTL paging: left drag advances, right drag returns.
+        const targetIndex = gesture.dx < 0 ? currentIndex + 1 : currentIndex - 1;
+        const targetName = visibleOrder[targetIndex];
+        if (targetName) navigation.navigate(targetName);
+      },
+    })
+  ).current;
+
+  return <View style={{ flex: 1 }} {...panResponder.panHandlers}>{children}</View>;
+}
 
 /**
  * A physically deterministic tab bar. React Navigation/iOS can re-evaluate
@@ -273,17 +325,17 @@ export function RootNavigator() {
             physical LEFT edge after a full app restart. Keeping navigation
             direction aligned with I18nManager also avoids the transient
             pre-restart/post-restart mismatch we saw during Dynamic Type tests. */}
-        <Tab.Screen name="Home" component={HomeScreen} />
-        <Tab.Screen name="Schedule" component={ScheduleScreen} />
-        <Tab.Screen name="Family" component={FamilyScreen} />
+        <Tab.Screen name="Home">{() => <SwipeTabSurface canSeeHistoryTab={canSeeHistoryTab} canSeeStatisticsTab={canSeeStatisticsTab} canSeeSettingsTab={canSeeSettingsTab}><HomeScreen /></SwipeTabSurface>}</Tab.Screen>
+        <Tab.Screen name="Schedule">{() => <SwipeTabSurface canSeeHistoryTab={canSeeHistoryTab} canSeeStatisticsTab={canSeeStatisticsTab} canSeeSettingsTab={canSeeSettingsTab}><ScheduleScreen /></SwipeTabSurface>}</Tab.Screen>
+        <Tab.Screen name="Family">{() => <SwipeTabSurface canSeeHistoryTab={canSeeHistoryTab} canSeeStatisticsTab={canSeeStatisticsTab} canSeeSettingsTab={canSeeSettingsTab}><FamilyScreen /></SwipeTabSurface>}</Tab.Screen>
         {/* BATCH 3 (Task 4): conditionally-rendered Tab.Screen — omitting it
             entirely (not just hiding a tab bar button) means it also can't
             be reached via navigation.navigate('History'/...) from stale
             code, and FixedPhysicalTabBar's own `if (!route) return null`
             above already handles a route that doesn't exist this render. */}
-        {canSeeHistoryTab ? <Tab.Screen name="History" component={HistoryScreen} /> : null}
-        {canSeeStatisticsTab ? <Tab.Screen name="Statistics" component={StatisticsScreen} /> : null}
-        {canSeeSettingsTab ? <Tab.Screen name="Settings" component={SettingsScreen} /> : null}
+        {canSeeHistoryTab ? <Tab.Screen name="History">{() => <SwipeTabSurface canSeeHistoryTab={canSeeHistoryTab} canSeeStatisticsTab={canSeeStatisticsTab} canSeeSettingsTab={canSeeSettingsTab}><HistoryScreen /></SwipeTabSurface>}</Tab.Screen> : null}
+        {canSeeStatisticsTab ? <Tab.Screen name="Statistics">{() => <SwipeTabSurface canSeeHistoryTab={canSeeHistoryTab} canSeeStatisticsTab={canSeeStatisticsTab} canSeeSettingsTab={canSeeSettingsTab}><StatisticsScreen /></SwipeTabSurface>}</Tab.Screen> : null}
+        {canSeeSettingsTab ? <Tab.Screen name="Settings">{() => <SwipeTabSurface canSeeHistoryTab={canSeeHistoryTab} canSeeStatisticsTab={canSeeStatisticsTab} canSeeSettingsTab={canSeeSettingsTab}><SettingsScreen /></SwipeTabSurface>}</Tab.Screen> : null}
       </Tab.Navigator>
       </NavigationContainer>
     </View>
