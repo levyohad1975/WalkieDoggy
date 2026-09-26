@@ -81,11 +81,9 @@ export class OfflineFirstRepository implements Repository {
           throw new Error('אין חיבור לשרת. כדי לבטל טיול פעיל יש להתחבר לאינטרנט.');
         }
         const result = await this.remote!.cancelWalk!(walkId);
-        const localWalks = await this.local.getWalks('');
-        const localWalk = localWalks.find((walk) => walk.id === walkId);
         if (result) {
           await this.local.saveWalk(result);
-        } else if (localWalk) {
+        } else {
           await this.local.deleteWalk(walkId);
         }
         return result;
