@@ -40,6 +40,8 @@ export interface FamilyUser {
   name: string;
   avatar: string; // emoji fallback, always shown if photoUrl is missing/fails to load
   photoUrl?: string; // real profile photo (device URI in demo mode, Supabase Storage URL when configured)
+  /** Used for Hebrew gendered copy and member-aware illustrations. Undefined for legacy profiles until edited. */
+  sex?: 'male' | 'female';
   color: string; // hex, personal color used across the UI
   remindersEnabled: boolean;
   /** PRD §9 gamification off-switch ("עם אפשרות לכיבוי") — per-user/device, same self-service-toggle shape as remindersEnabled, not a family-wide admin setting. */
