@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -83,6 +83,7 @@ export function HomeScreen() {
     actionError,
     load: loadSchedule,
     startWalk,
+    cancelActiveWalk,
     finishWalk,
     markDone,
     swap,
@@ -828,6 +829,18 @@ export function HomeScreen() {
             onEndWalk={
               nextWalk.status === 'in_progress' && (effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId)
                 ? () => setCompleteWalkId(nextWalk.id)
+                : undefined
+            }
+            onCancelWalk={
+              nextWalk.status === 'in_progress' && (effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId)
+                ? () => Alert.alert(
+                    'לבטל את הטיול?',
+                    'הטיול יחזור למצב לפני התחלה ונתוני ה-GPS שנאספו בטיול הזה לא יישמרו.',
+                    [
+                      { text: 'חזרה', style: 'cancel' },
+                      { text: 'בטל טיול', style: 'destructive', onPress: () => { void cancelActiveWalk(nextWalk.id); } },
+                    ],
+                  )
                 : undefined
             }
             // AUTHORIZATION CORRECTION: ✓/✕ resolution is admin-or-
