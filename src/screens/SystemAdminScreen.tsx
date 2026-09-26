@@ -154,10 +154,6 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
   // already shown on every family card below. Reused here (not a new
   // exposure — a System Admin already sees every family's invite code)
   // so two same-named families never look identical in the audit log.
-  const familyInviteCodeById = useMemo(
-    () => new Map(families.map((f) => [f.familyId, f.inviteCode])),
-    [families]
-  );
   const familyCreatorNameById = useMemo(() => {
     const result = new Map<string, string>();
     for (const entry of [...auditLog].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
