@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
+import { WalkieMascot } from '../components/WalkieMascot';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
@@ -255,7 +256,7 @@ export function ScheduleScreen() {
         </View>
 
         {loading && walks.length === 0 ? (
-          <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} accessibilityLabel="טוען…" />
+          <View style={{ marginTop: 40, alignItems: 'center' }}><WalkieMascot state="excited" size={96} accessibilityLabel="Walkie Doggy טוען" /></View>
         ) : error ? (
           <ErrorState message={error} onRetry={() => loadSchedule(familyId)} />
         ) : grouped.length === 0 ? (
