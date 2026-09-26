@@ -158,6 +158,15 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
     () => new Map(families.map((f) => [f.familyId, f.inviteCode])),
     [families]
   );
+  const familyCreatorNameById = useMemo(() => {
+    const result = new Map<string, string>();
+    for (const entry of [...auditLog].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
+      if (entry.familyId && entry.action === 'family.created' && entry.actorName && !result.has(entry.familyId)) {
+        result.set(entry.familyId, entry.actorName);
+      }
+    }
+    return result;
+  }, [auditLog]);
 
   const filteredAuditLog = useMemo(
     () =>
@@ -359,10 +368,10 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                   style={[styles.auditFilterChip, auditFamilyId === family.familyId && styles.auditFilterChipSelected]}
                   accessibilityRole="button"
                   accessibilityState={{ selected: auditFamilyId === family.familyId }}
-                  accessibilityLabel={`סינון פעילות למשפחת ${family.familyName}, קוד ${family.inviteCode}`}
+                  accessibilityLabel={`סינון פעילות למשפחת ${family.familyName}${family.verifiedEmail ? `, אימייל יצירה ${family.verifiedEmail}` : ''}`}
                 >
                   <RtlText style={[styles.auditFilterText, auditFamilyId === family.familyId && styles.auditFilterTextSelected]}>
-                    {family.familyName} · {family.inviteCode}
+                    {family.familyName}{familyCreatorNameById.get(family.familyId) ? ` · יוצר/ת: ${familyCreatorNameById.get(family.familyId)}` : ''}{family.verifiedEmail ? ` · ${family.verifiedEmail}` : ''}
                   </RtlText>
                 </Pressable>
               ))}
@@ -376,7 +385,8 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                 <RtlText style={styles.cardLine}>{new Date(entry.createdAt).toLocaleString('he-IL')}</RtlText>
                 <RtlText style={styles.cardLine}>
                   משפחה: {entry.familyName ?? 'מערכתי'}
-                  {entry.familyId && familyInviteCodeById.get(entry.familyId) ? ` · קוד ${familyInviteCodeById.get(entry.familyId)}` : ''}
+                  {entry.familyId && familyCreatorNameById.get(entry.familyId) ? ` · יוצר/ת: ${familyCreatorNameById.get(entry.familyId)}` : ''}
+                  {entry.familyId && families.find((family) => family.familyId === entry.familyId)?.verifiedEmail ? ` · ${families.find((family) => family.familyId === entry.familyId)?.verifiedEmail}` : ''}
                 </RtlText>
                 <RtlText style={styles.cardLine}>משתמש: {entry.actorName ?? '—'}</RtlText>
                 <RtlText style={styles.cardLine}>אימייל: {entry.actorEmail ?? '—'}</RtlText>
