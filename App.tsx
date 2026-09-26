@@ -391,6 +391,17 @@ export default function App() {
             <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} />
           ) : null}
 
+          {isSystemAdmin && !shouldEnterSystemAdminDirectly ? (
+            <Pressable
+              style={styles.systemAdminEntry}
+              onPress={() => setSystemAdminOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="ניהול מערכת"
+            >
+              <RtlText style={styles.systemAdminEntryText}>🛡️</RtlText>
+            </Pressable>
+          ) : null}
+
           {/* PRD §12 (profile-photo crop/zoom/pan) — web-only, no-op on
               native. See PhotoCropHost.tsx's doc comment for why this sits
               outside every other branch, same as the isSystemAdmin button
