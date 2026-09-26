@@ -927,11 +927,13 @@ export function HomeScreen() {
           </View>
           {dashboardTimelineWalks.length > 0 ? (
             <View style={styles.dashboardTimelineStops}>
-              {dashboardTimelineWalks.map((walk) => (
-                <View key={walk.id} style={styles.dashboardTimelineStop}>
-                  <Avatar emoji={usersById[walk.responsibleUserId]?.avatar ?? '🐾'} color={usersById[walk.responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[walk.responsibleUserId]?.photoUrl} size={34} />
-                </View>
-              ))}
+              <View style={styles.dashboardTimelinePeople}>
+                {dashboardTimelineWalks.map((walk) => (
+                  <View key={walk.id} style={styles.dashboardTimelineStop}>
+                    <Avatar emoji={usersById[walk.responsibleUserId]?.avatar ?? '🐾'} color={usersById[walk.responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[walk.responsibleUserId]?.photoUrl} size={34} />
+                  </View>
+                ))}
+              </View>
               <View style={styles.dashboardTimelineTrack} pointerEvents="none">
                 <View style={[styles.dashboardTimelineProgress, { width: `${dashboardTimelineProgress * 100}%` }]} />
                 {dashboardTimelineWalks.map((walk) => <View key={`dot-${walk.id}`} style={styles.dashboardTimelineDot} />)}
@@ -1507,6 +1509,7 @@ const styles = StyleSheet.create({
   dashboardTimelineTitle: { fontSize: 16, fontWeight: '900', color: '#17245B', textAlign: 'right' },
   dashboardTimelineChevron: { fontSize: 24, color: '#454B9E', writingDirection: 'ltr' },
   dashboardTimelineStops: { position: 'relative', gap: 4 },
+  dashboardTimelinePeople: { flexDirection: 'row-reverse', justifyContent: 'space-around' },
   dashboardTimelineStop: { flex: 1, alignItems: 'center' },
   dashboardTimelineTrack: { height: 8, marginHorizontal: '8%', borderRadius: 4, backgroundColor: '#D9DBE9', overflow: 'hidden', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   dashboardTimelineProgress: { position: 'absolute', right: 0, top: 0, bottom: 0, borderRadius: 4, backgroundColor: '#6967D8' },
