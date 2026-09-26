@@ -48,7 +48,7 @@ export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, o
             <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
               <RtlText style={styles.title} accessibilityRole="header">פרטי {dog.name}</RtlText>
               <View style={styles.photoRow}>
-                <DogPhoto photoUrl={dog.photoUrl} size={88} />
+                <DogPhoto photoUrl={dog.photoUrl} photoCutoutUrl={dog.photoCutoutUrl} size={88} />
                 <View style={styles.photoActions}>
                   <Pressable onPress={onChangePhoto} disabled={uploadingPhoto} style={styles.photoButton} accessibilityRole="button" accessibilityLabel="החלפת תמונת הכלב">
                     <RtlText style={styles.photoLink}>{uploadingPhoto ? 'מעלה תמונה...' : dog.photoUrl ? 'החלף תמונה' : 'הוסף תמונה מהגלריה'}</RtlText>
@@ -62,6 +62,19 @@ export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, o
               </View>
               <RtlText style={styles.label}>רקע במסך הבית</RtlText>
               <View style={styles.backgroundGrid}>
+                <Pressable
+                  onPress={() => onSave({ heroBackgroundId: undefined })}
+                  style={[styles.backgroundTile, !dog.heroBackgroundId && styles.backgroundTileSelected]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: !dog.heroBackgroundId }}
+                  accessibilityLabel="ללא רקע"
+                >
+                  <View style={[styles.backgroundThumb, { backgroundColor: colors.background }]} />
+                  <View style={styles.backgroundLabelWrap}>
+                    <RtlText style={styles.backgroundLabel}>ללא רקע</RtlText>
+                  </View>
+                  {!dog.heroBackgroundId ? <View style={styles.backgroundCheck}><RtlText style={styles.backgroundCheckText}>✓</RtlText></View> : null}
+                </Pressable>
                 {DOG_BACKGROUNDS.map((item) => {
                   const selected = dog.heroBackgroundId === item.id;
                   return (
