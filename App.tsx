@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Platform, Pressable, StyleSheet } from 'react-native';
+import { Alert, AppState, Platform, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from './src/store/authStore';
@@ -10,6 +10,7 @@ import { FamilyOnboardingScreen } from './src/screens/FamilyOnboardingScreen';
 import { SystemAdminScreen } from './src/screens/SystemAdminScreen';
 import { PhotoCropHost } from './src/components/PhotoCropHost';
 import { RtlText } from './src/components/RtlText';
+import { WalkieMascot } from './src/components/WalkieMascot';
 import { colors } from './src/theme/colors';
 import { requestNotificationPermissions, subscribeToWalkReminderResponses } from './src/notifications/notificationService';
 import { registerPushToken } from './src/lib/pushTokens';
@@ -349,7 +350,7 @@ export default function App() {
     <SafeAreaProvider>
       {!hydrated ? (
         <SafeAreaView style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <WalkieMascot state="excited" size={104} accessibilityLabel="Walkie Doggy טוען" testID="app-loading-mascot" />
         </SafeAreaView>
       ) : (
         <>
