@@ -560,7 +560,7 @@ const styles = StyleSheet.create({
   content: { padding: spacing.lg, paddingTop: spacing.sm, gap: spacing.sm, paddingBottom: spacing.xxxl },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
   header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl', paddingHorizontal: 4 },
-  tabs: { flexDirection: 'row', gap: spacing.sm, paddingVertical: spacing.sm },
+  tabs: { flexDirection: 'row-reverse', gap: spacing.sm, paddingVertical: spacing.sm },
   tab: {
     flex: 1,
     textAlign: 'center',
