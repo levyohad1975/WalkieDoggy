@@ -242,20 +242,51 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       const endDate = localDateOnly(new Date(Date.now() + GENERATE_DAYS_AHEAD * 86400000));
       const rulesMissingEntries = rules.filter((r) => ruleNeedsEntryBackfill(r, entries, today));
 
-      let finalEntries = entries;
-      let finalWalks = walks;
+      // Reconcile stale/generated future occurrences before backfill.
+      // Deleting all fixed-time rules must immediately clear only FUTURE
+      // pending scheduled occurrences while preserving done/skipped history.
+      // Also remove duplicate pending occurrences for the same rule/day/time
+      // (the regression that produced two 07:00/12:30/etc rows).
+      let finalEntries = [...entries];
+      let finalWalks = [...walks];
+      const activeRuleIds = new Set(rules.map((r) => r.id));
+      const seenPendingKeys = new Set<string>();
+      const staleEntryIds = new Set<string>();
+
+      for (const entry of entries) {
+        if (entry.date < today) continue;
+        const walk = walks.find((w) => w.scheduleEntryId === entry.id);
+        if (!walk || walk.status !== 'pending') continue;
+
+        const ruleWasDeleted = !activeRuleIds.has(entry.ruleId);
+        const duplicateKey = `${entry.ruleId}|${entry.dogId}|${entry.date}|${entry.time}`;
+        const duplicate = seenPendingKeys.has(duplicateKey);
+        if (!ruleWasDeleted && !duplicate) seenPendingKeys.add(duplicateKey);
+
+        if (ruleWasDeleted || duplicate) {
+          await cancelWalkNotifications(walk.id);
+          await repository.deleteScheduleEntry(entry.id);
+          staleEntryIds.add(entry.id);
+        }
+      }
+
+      if (staleEntryIds.size > 0) {
+        finalEntries = finalEntries.filter((e) => !staleEntryIds.has(e.id));
+        finalWalks = finalWalks.filter((w) => !(w.scheduleEntryId && staleEntryIds.has(w.scheduleEntryId)));
+      }
+
       if (rulesMissingEntries.length > 0) {
         const generatedEntries = rulesMissingEntries.flatMap((r) =>
           generateRotationSchedule(r, today, endDate, () => generateId('entry'))
         );
         if (generatedEntries.length > 0) {
           await repository.addScheduleEntries(generatedEntries);
-          const existingKeys = new Set(entries.map((e) => `${e.dogId}|${e.date}|${e.time}`));
+          const existingKeys = new Set(finalEntries.map((e) => `${e.dogId}|${e.date}|${e.time}`));
           const trulyNew = generatedEntries.filter((e) => !existingKeys.has(`${e.dogId}|${e.date}|${e.time}`));
           const generatedWalks = trulyNew.map((e) => walkFromEntry(e, familyId));
           for (const w of generatedWalks) await repository.saveWalk(w);
-          finalEntries = [...entries, ...trulyNew];
-          finalWalks = [...walks, ...generatedWalks];
+          finalEntries = [...finalEntries, ...trulyNew];
+          finalWalks = [...finalWalks, ...generatedWalks];
         }
       }
 
@@ -420,7 +451,14 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         }
       }
       await repository.deleteScheduleRule(ruleId);
-      const removedEntryIds = new Set(futureEntries.map((e) => e.id));
+      // Only entries whose pending walk was actually deleted disappear
+      // from local state. Completed/skipped occurrences are history and must
+      // survive removal of the recurring rule.
+      const removedEntryIds = new Set(
+        futureEntries
+          .filter((e) => walks.find((w) => w.scheduleEntryId === e.id)?.status === 'pending')
+          .map((e) => e.id)
+      );
       set((s) => ({
         rules: s.rules.filter((r) => r.id !== ruleId),
         entries: s.entries.filter((e) => !removedEntryIds.has(e.id)),
