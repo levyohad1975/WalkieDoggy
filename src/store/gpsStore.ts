@@ -45,6 +45,8 @@ interface GpsState {
    * would be a race waiting to happen; the caller already has the full walk.
    */
   stopTracking: (walk: Pick<Walk, 'id' | 'familyId' | 'dogId'>, userId: string | null | undefined) => Promise<WalkGpsSession | null>;
+  /** Cancels an accidental active walk without persisting route/distance. */
+  discardTracking: (walkId: string) => void;
   /** Loads a walk's already-persisted session (e.g. to show a past walk's distance) without starting any tracking. */
   loadSession: (walkId: string) => Promise<WalkGpsSession | undefined>;
   /** PRD §7's required correction flow: records a family member's confirmed/edited distance — see WalkGpsSession.correctedDistanceMeters' own doc comment for why this, not distanceMeters, then becomes authoritative. */
@@ -136,6 +138,22 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     set((s) => ({ sessionsByWalkId: { ...s.sessionsByWalkId, [walk.id]: session } }));
     set({ routePoints: [] });
     return session;
+  },
+
+  discardTracking: (walkId) => {
+    if (get().trackingWalkId !== walkId) return;
+    if (activeWatch) {
+      activeWatch.remove();
+      activeWatch = null;
+    }
+    set({
+      trackingWalkId: null,
+      trackingStartedAt: null,
+      permissionStatus: null,
+      distanceMeters: 0,
+      pointCount: 0,
+      routePoints: [],
+    });
   },
 
   loadSession: async (walkId) => {
