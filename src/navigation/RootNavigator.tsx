@@ -15,13 +15,13 @@ import { ImpersonationBanner } from '../components/ImpersonationBanner';
 import { SystemObserverBanner } from '../components/SystemObserverBanner';
 import { colors } from '../theme/colors';
 import { layout, nativeDirection, spacing } from '../theme/tokens';
-import { useAuthStore, useEffectiveUserId } from '../store/authStore';
+import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useRequestsStore } from '../store/requestsStore';
 import { subscribeToFamilyChanges } from '../lib/realtime';
 import { DEMO_FAMILY } from '../data/demoData';
-import { canAccessHistoryScreen, canAccessStatisticsScreen } from '../logic/permissions';
+import { canAccessHistoryScreen, canAccessStatisticsScreen, canAccessSettingsScreen } from '../logic/permissions';
 
 export type RootTabParamList = {
   Home: undefined;
@@ -79,7 +79,7 @@ const PHYSICAL_TAB_ORDER: (keyof RootTabParamList)[] = [
  * ourselves in an explicitly-LTR row prevents that transient flip while the
  * Hebrew labels themselves remain RTL text.
  */
-function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab, canSeeStatisticsTab }: BottomTabBarProps & { canSeeHistoryTab: boolean; canSeeStatisticsTab: boolean }) {
+function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab, canSeeStatisticsTab, canSeeSettingsTab }: BottomTabBarProps & { canSeeHistoryTab: boolean; canSeeStatisticsTab: boolean; canSeeSettingsTab: boolean }) {
   const insets = useSafeAreaInsets();
   const routeByName = Object.fromEntries(state.routes.map((route) => [route.name, route]));
 
@@ -88,6 +88,7 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
         if (!route) return null;
         if (name === 'History' && !canSeeHistoryTab) return null;
         if (name === 'Statistics' && !canSeeStatisticsTab) return null;
+        if (name === 'Settings' && !canSeeSettingsTab) return null;
         const focused = state.routes[state.index]?.key === route.key;
         const options = descriptors[route.key]?.options;
         const tint = focused ? colors.primary : colors.textSecondary;
@@ -175,6 +176,9 @@ export function RootNavigator() {
   const permissionOverridesStatus = useFamilyStore((s) => s.permissionOverridesStatus);
   const canSeeHistoryTab = canAccessHistoryScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus);
   const canSeeStatisticsTab = canAccessStatisticsScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus);
+  const effectiveFamilyRole = useEffectiveFamilyRole();
+  const canSeeSettingsTab = effectiveFamilyRole === 'admin' ||
+    canAccessSettingsScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus);
   // Gates the wrapping SafeAreaView itself (not just the banner's own
   // internal null-check) — otherwise an empty top-inset-padded View would
   // sit above every screen at all times, silently pushing everything down
@@ -241,7 +245,7 @@ export function RootNavigator() {
       <NavigationContainer direction="rtl">
       <Tab.Navigator
         initialRouteName="Home"
-        tabBar={(props) => <FixedPhysicalTabBar {...props} canSeeHistoryTab={canSeeHistoryTab} canSeeStatisticsTab={canSeeStatisticsTab} />}
+        tabBar={(props) => <FixedPhysicalTabBar {...props} canSeeHistoryTab={canSeeHistoryTab} canSeeStatisticsTab={canSeeStatisticsTab} canSeeSettingsTab={canSeeSettingsTab} />}
         screenOptions={({ route }) => ({
           headerShown: false,
           tabBarActiveTintColor: colors.primary,
@@ -274,7 +278,7 @@ export function RootNavigator() {
             above already handles a route that doesn't exist this render. */}
         {canSeeHistoryTab ? <Tab.Screen name="History" component={HistoryScreen} /> : null}
         {canSeeStatisticsTab ? <Tab.Screen name="Statistics" component={StatisticsScreen} /> : null}
-        <Tab.Screen name="Settings" component={SettingsScreen} />
+        {canSeeSettingsTab ? <Tab.Screen name="Settings" component={SettingsScreen} /> : null}
       </Tab.Navigator>
       </NavigationContainer>
     </View>
