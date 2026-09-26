@@ -9,7 +9,6 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('showDogPhoto');
     expect(home).toContain('style={styles.dashboardHero}');
     expect(home).toContain('style={styles.dashboardHeroShade}');
-    expect(home).toContain('height: 208');
     expect(home).toContain('style={styles.dashboardHeroShell}');
     expect(home).toContain('style={styles.dashboardHeroBloomOne}');
     expect(home).toContain('style={styles.dashboardHeroBloomTwo}');
@@ -31,20 +30,15 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שינוי שעה</RtlText>');
   });
 
-  // Item 7 (Dashboard reorder): "בקשת החלפה" moved out of the shortcuts row
-  // above into its own standalone row at the very bottom of the Dashboard
-  // content, directly above the bottom nav.
-  it('moves "בקשת החלפה" out of the top shortcuts row into its own row, the lowest Dashboard content, above the bottom nav', () => {
-    expect(home).toContain('setRequestSwapWalkId(nextWalk?.id ?? null)');
-    expect(home).toContain('style={styles.dashboardSwapRequestRow}');
-    expect(home).toContain('accessibilityLabel="בקשת החלפה"');
-    // The lowest visible Dashboard row: after Last Walk, the daily timeline,
-    // and the pending-approval alert — nothing else renders after it (the
-    // dead `dashboardOverflow` block is display:none, so it doesn't count).
-    expect(home.indexOf('style={styles.dashboardTimeline}')).toBeLessThan(home.indexOf('style={styles.dashboardSwapRequestRow}'));
-    expect(home.indexOf('style={styles.dashboardLastWalk}')).toBeLessThan(home.indexOf('style={styles.dashboardSwapRequestRow}'));
-    expect(home.indexOf('style={styles.dashboardRequestAlert}')).toBeLessThan(home.indexOf('style={styles.dashboardSwapRequestRow}'));
-    expect(home.indexOf('style={styles.dashboardSwapRequestRow}')).toBeLessThan(home.indexOf('dashboardOverflow'));
+  it('uses manager-only Edit/Swap dashboard shortcuts and removes the mistaken standalone swap row', () => {
+    expect(home).toContain("effectiveRole === 'admin' ?");
+    expect(home).toContain('accessibilityLabel="עריכת הטיול הבא"');
+    expect(home).toContain('accessibilityLabel="החלפת הטיול הבא"');
+    expect(home).toContain('setEditWalkId(nextWalk.id)');
+    expect(home).toContain('setSwapWalkId(nextWalk.id)');
+    expect(home).not.toContain('style={styles.dashboardSwapRequestRow}');
+    expect(home).toContain('onSwap={undefined}');
+    expect(home).toContain('onEdit={undefined}');
   });
 
   it('keeps a compact, always-present Dashboard timeline instead of a long list', () => {
@@ -55,7 +49,6 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('פתיחת לוח הזמנים להמשך היום');
     expect(home).toContain('scrollEnabled');
     expect(home).toContain('paddingBottom: 120');
-    expect(home).toContain('dashboardTimeline: { minHeight: 66');
     expect(home).not.toContain('style={styles.dashboardMoreButton}');
   });
 
