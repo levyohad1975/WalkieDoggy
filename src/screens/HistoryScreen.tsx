@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
+import { WalkieMascot } from '../components/WalkieMascot';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
@@ -221,7 +222,7 @@ export function HistoryScreen() {
   if (loading && sourceWalks.length === 0) {
     return (
       <SafeAreaView style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} accessibilityLabel="טוען…" />
+        <WalkieMascot state="excited" size={104} accessibilityLabel="Walkie Doggy טוען" />
       </SafeAreaView>
     );
   }
