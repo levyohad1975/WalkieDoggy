@@ -1,4 +1,4 @@
-﻿import React, { useEffect } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { NavigationContainer } from '@react-navigation/native';
@@ -182,6 +182,7 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
               left: '50%',
               marginLeft: -(HOME_SLOT_WIDTH / 2),
               top: 0,
+              bottom: 0,
               width: HOME_SLOT_WIDTH,
               alignItems: 'center',
               justifyContent: 'center',
@@ -202,6 +203,7 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
 
 
 export function RootNavigator() {
+  const [activeTabName, setActiveTabName] = useState<keyof RootTabParamList>('Home');
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   // BATCH 3 (Task 4 — navigation visibility): hide the History/Statistics
   // tabs when the current EFFECTIVE member (respects impersonation/Test
@@ -307,7 +309,7 @@ export function RootNavigator() {
           <ImpersonationBanner />
         </SafeAreaView>
       ) : null}
-      <NavigationContainer direction="rtl">
+      <NavigationContainer direction="rtl" onStateChange={(state) => { const name = state?.routes[state.index ?? 0]?.name as keyof RootTabParamList | undefined; if (name) setActiveTabName(name); }}>
       <Tab.Navigator
         initialRouteName="Home"
         tabBar={(props) => <FixedPhysicalTabBar {...props} canSeeHistoryTab={canSeeHistoryTab} canSeeStatisticsTab={canSeeStatisticsTab} canSeeSettingsTab={canSeeSettingsTab} />}
@@ -341,9 +343,9 @@ export function RootNavigator() {
             be reached via navigation.navigate('History'/...) from stale
             code, and FixedPhysicalTabBar's own `if (!route) return null`
             above already handles a route that doesn't exist this render. */}
-        {canSeeHistoryTab ? <Tab.Screen name="History" component={HistoryScreen} /> : null}
-        {canSeeStatisticsTab ? <Tab.Screen name="Statistics" component={StatisticsScreen} /> : null}
-        {canSeeSettingsTab ? <Tab.Screen name="Settings" component={SettingsScreen} /> : null}
+        {(canSeeHistoryTab || activeTabName === 'History') ? <Tab.Screen name="History" component={HistoryScreen} /> : null}
+        {(canSeeStatisticsTab || activeTabName === 'Statistics') ? <Tab.Screen name="Statistics" component={StatisticsScreen} /> : null}
+        {(canSeeSettingsTab || activeTabName === 'Settings') ? <Tab.Screen name="Settings" component={SettingsScreen} /> : null}
       </Tab.Navigator>
       </NavigationContainer>
     </View>
