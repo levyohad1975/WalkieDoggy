@@ -211,10 +211,10 @@ export function NextWalkCard({
 
       {isActive ? (
         <View style={styles.activeWalkBanner} accessibilityRole="timer" accessibilityLabel={`משך הטיול ${elapsedLabel}`}>
-          <Animated.Text style={[styles.walkerEmoji, { transform: [{ translateY: walkerBob }] }]}>🚶‍♂️</Animated.Text>
+          <Animated.Text style={[styles.walkerEmoji, { transform: [{ translateY: walkerBob }] }]}>🚶‍♂️‍➡️🐕‍🦺</Animated.Text>
           <View style={styles.activeWalkCopy}>
             <RtlText style={styles.activeWalkTitle}>מטיילים עכשיו</RtlText>
-            <RtlText style={styles.activeWalkSubtitle}>האדם והכלב בדרך 🐕</RtlText>
+            <RtlText style={styles.activeWalkSubtitle}>מטיילים יחד ברצועה</RtlText>
           </View>
           <View style={styles.elapsedBlock}>
             <RtlText style={styles.elapsedLabel}>זמן</RtlText>
