@@ -67,10 +67,10 @@ const TAB_LABEL: Record<keyof RootTabParamList, string> = {
 const PHYSICAL_TAB_ORDER: (keyof RootTabParamList)[] = [
   'Settings',
   'Statistics',
-  'History',
   'Family',
-  'Schedule',
   'Home',
+  'Schedule',
+  'History',
 ];
 
 /**
@@ -109,10 +109,15 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
             accessibilityRole="button"
             accessibilityState={focused ? { selected: true } : {}}
             accessibilityLabel={options?.tabBarAccessibilityLabel ?? TAB_LABEL[name]}
-            style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 1 }}
+            style={[
+              { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 1 },
+              name === 'Home' ? { transform: [{ translateY: -10 }] } : null,
+            ]}
           >
-            <TabIcon name={name} color={tint} />
-            <RtlText allowFontScaling={false} numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: tint, textAlign: 'center', writingDirection: 'rtl' }}>{TAB_LABEL[name]}</RtlText>
+            <View style={name === 'Home' ? { width: 50, height: 50, borderRadius: 25, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: colors.surface } : undefined}>
+              <TabIcon name={name} color={name === 'Home' ? colors.textInverse : tint} />
+            </View>
+            <RtlText allowFontScaling={false} numberOfLines={1} style={{ fontSize: 11, fontWeight: name === 'Home' ? '800' : '600', color: name === 'Home' ? colors.primary : tint, textAlign: 'center', writingDirection: 'rtl' }}>{TAB_LABEL[name]}</RtlText>
           </Pressable>
         );
       });
