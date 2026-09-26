@@ -29,6 +29,11 @@ import { useGpsStore } from './gpsStore';
 
 const GENERATE_DAYS_AHEAD = 14;
 
+// BUG FIX (duplicate schedule entries/walks) — see load()'s doc comment
+// below for the full race-condition this guards against. Keyed by
+// familyId so two different families' loads never block on each other.
+const loadPromiseByFamilyId: Record<string, Promise<boolean>> = {};
+
 interface ScheduleState {
   rules: ScheduleRule[];
   entries: ScheduleEntry[];
@@ -212,6 +217,76 @@ export async function reconcileScheduleNotifications(familyId: string, walks: Wa
   );
 }
 
+/**
+ * The actual body of load() — fetches this family's rules/entries/walks and
+ * self-heals any rule that's missing its upcoming entries. Extracted to a
+ * standalone function so load() itself can wrap a single in-flight call per
+ * familyId behind a promise guard (see load()'s doc comment) instead of
+ * re-running this whole fetch+backfill for every concurrent caller.
+ */
+async function loadScheduleForFamily(
+  familyId: string,
+  set: (partial: Partial<ScheduleState> | ((s: ScheduleState) => Partial<ScheduleState>)) => void
+): Promise<boolean> {
+  set({ loading: true, error: null });
+  try {
+    const [rules, entries, walks] = await Promise.all([
+      repository.getScheduleRules(familyId),
+      repository.getScheduleEntries(familyId),
+      repository.getWalks(familyId),
+    ]);
+
+    // Self-healing: an active rule with no upcoming entries (generation
+    // never ran, was interrupted, or entries were wiped some other way)
+    // must never just silently show an empty schedule — backfill it from
+    // the rule itself, right here, before the screen ever renders.
+    // Local calendar day, not UTC — `entries`/`walks` dates are the
+    // family's local "today" (see dateFormat.ts), and a UTC-anchored
+    // "today" would be wrong for a few hours after local midnight for
+    // anyone ahead of UTC (e.g. Israel), generating a day-early entry.
+    const today = localDateOnly(new Date());
+    const endDate = localDateOnly(new Date(Date.now() + GENERATE_DAYS_AHEAD * 86400000));
+    const rulesMissingEntries = rules.filter((r) => ruleNeedsEntryBackfill(r, entries, today));
+
+    let finalEntries = entries;
+    let finalWalks = walks;
+    if (rulesMissingEntries.length > 0) {
+      const generatedEntries = rulesMissingEntries.flatMap((r) =>
+        generateRotationSchedule(r, today, endDate, () => generateId('entry'))
+      );
+      if (generatedEntries.length > 0) {
+        await repository.addScheduleEntries(generatedEntries);
+        const existingKeys = new Set(entries.map((e) => `${e.dogId}|${e.date}|${e.time}`));
+        const trulyNew = generatedEntries.filter((e) => !existingKeys.has(`${e.dogId}|${e.date}|${e.time}`));
+        const generatedWalks = trulyNew.map((e) => walkFromEntry(e, familyId));
+        for (const w of generatedWalks) await repository.saveWalk(w);
+        finalEntries = [...entries, ...trulyNew];
+        finalWalks = [...walks, ...generatedWalks];
+      }
+    }
+
+    set({ rules, entries: finalEntries, walks: finalWalks, loading: false });
+    // Full reconciliation (A3): cancels anything stale for a
+    // done/skipped/removed walk and (re)schedules everything still
+    // pending from its CURRENT persisted data — not just "schedule the
+    // pending ones", which would leave a stale notification alive for a
+    // walk that is no longer pending after this reload.
+    void reconcileScheduleNotifications(familyId, finalWalks);
+    return true;
+  } catch (e) {
+    // Deliberately does NOT touch rules/entries/walks here — the previous,
+    // still-displayed schedule stays visible rather than being wiped out
+    // by a failed reload. Only `error`/`loading` change.
+    // NOTE: intentionally NOT friendlyErrorMessage() here (unlike the
+    // actionError sites below) — this field is the initial-load failure
+    // banner, and existing callers/tests rely on the raw Error.message
+    // surfacing unchanged (e.g. a real network failure reason), not a
+    // substring-mapped/generic Hebrew fallback.
+    set({ error: e instanceof Error ? e.message : 'שגיאה בטעינת התורנויות', loading: false });
+    return false;
+  }
+}
+
 export const useScheduleStore = create<ScheduleState>((set, get) => ({
   rules: [],
   entries: [],
@@ -222,57 +297,29 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   isStartingUnplannedWalk: false,
 
   load: async (familyId: string): Promise<boolean> => {
-    set({ loading: true, error: null });
+    // BUG FIX (duplicate schedule entries/walks): load() is called from
+    // several independent, unsynchronized places — ScheduleScreen's mount
+    // effect, RootNavigator's realtime-subscription callback, App.tsx's
+    // runForegroundSync, requestsStore's reloadScheduleAndNotifications —
+    // any of which can fire close together on a real device (app
+    // foregrounding right as a screen mounts, or a realtime event landing
+    // mid-navigation). Without a shared in-flight guard, two concurrent
+    // calls each fetch the same stale rules/entries snapshot, each
+    // independently decide the same rule "needs backfill", and each
+    // generate + save their own entry/walk for the same dog/date/time — the
+    // DB's unique(dog_id,date,time) constraint dedupes the schedule_entry
+    // row, but each call's own distinct client-generated Walk id still gets
+    // saved locally, producing a real, visible duplicate. Mirrors App.tsx's
+    // runForegroundSync in-flight-promise guard, keyed by familyId so two
+    // different families' loads never block on each other.
+    const inFlight = loadPromiseByFamilyId[familyId];
+    if (inFlight) return inFlight;
+    const promise = loadScheduleForFamily(familyId, set);
+    loadPromiseByFamilyId[familyId] = promise;
     try {
-      const [rules, entries, walks] = await Promise.all([
-        repository.getScheduleRules(familyId),
-        repository.getScheduleEntries(familyId),
-        repository.getWalks(familyId),
-      ]);
-
-      // Self-healing: an active rule with no upcoming entries (generation
-      // never ran, was interrupted, or entries were wiped some other way)
-      // must never just silently show an empty schedule — backfill it from
-      // the rule itself, right here, before the screen ever renders.
-      // Local calendar day, not UTC — `entries`/`walks` dates are the
-      // family's local "today" (see dateFormat.ts), and a UTC-anchored
-      // "today" would be wrong for a few hours after local midnight for
-      // anyone ahead of UTC (e.g. Israel), generating a day-early entry.
-      const today = localDateOnly(new Date());
-      const endDate = localDateOnly(new Date(Date.now() + GENERATE_DAYS_AHEAD * 86400000));
-      const rulesMissingEntries = rules.filter((r) => ruleNeedsEntryBackfill(r, entries, today));
-
-      let finalEntries = entries;
-      let finalWalks = walks;
-      if (rulesMissingEntries.length > 0) {
-        const generatedEntries = rulesMissingEntries.flatMap((r) =>
-          generateRotationSchedule(r, today, endDate, () => generateId('entry'))
-        );
-        if (generatedEntries.length > 0) {
-          await repository.addScheduleEntries(generatedEntries);
-          const existingKeys = new Set(entries.map((e) => `${e.dogId}|${e.date}|${e.time}`));
-          const trulyNew = generatedEntries.filter((e) => !existingKeys.has(`${e.dogId}|${e.date}|${e.time}`));
-          const generatedWalks = trulyNew.map((e) => walkFromEntry(e, familyId));
-          for (const w of generatedWalks) await repository.saveWalk(w);
-          finalEntries = [...entries, ...trulyNew];
-          finalWalks = [...walks, ...generatedWalks];
-        }
-      }
-
-      set({ rules, entries: finalEntries, walks: finalWalks, loading: false });
-      // Full reconciliation (A3): cancels anything stale for a
-      // done/skipped/removed walk and (re)schedules everything still
-      // pending from its CURRENT persisted data — not just "schedule the
-      // pending ones", which would leave a stale notification alive for a
-      // walk that is no longer pending after this reload.
-      void reconcileScheduleNotifications(familyId, finalWalks);
-      return true;
-    } catch (e) {
-      // Deliberately does NOT touch rules/entries/walks here — the previous,
-      // still-displayed schedule stays visible rather than being wiped out
-      // by a failed reload. Only `error`/`loading` change.
-      set({ error: e instanceof Error ? e.message : 'שגיאה בטעינת התורנויות', loading: false });
-      return false;
+      return await promise;
+    } finally {
+      delete loadPromiseByFamilyId[familyId];
     }
   },
 
@@ -305,7 +352,16 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // A thrown error here (storage failure, bad data, etc.) must never
       // leave the new rule invisible with no explanation — surface it the
       // same way every other schedule action in this store does.
-      set({ actionError: e instanceof Error ? e.message : 'לא הצלחנו להוסיף את שעת הטיול' });
+      // BUG FIX: offlineFirstRepository.saveWalk() deliberately rethrows a
+      // PERMANENT sync failure as the raw Postgrest error object it got
+      // from supabase-js — a plain {message,details,hint,code}, NOT an
+      // `instanceof Error`. The old `e instanceof Error ? e.message :
+      // '<generic fallback>'` check here always took the generic branch for
+      // exactly that case, discarding the one piece of information (the
+      // real Postgres/RLS rejection reason) that would let anyone diagnose
+      // why the add failed. friendlyErrorMessage()'s own rawMessageOf()
+      // already handles both shapes.
+      set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו להוסיף את שעת הטיול') });
     }
   },
 
@@ -397,7 +453,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       updatedWalks.forEach((w) => void scheduleNotificationsForWalk(w));
       newWalks.forEach((w) => void scheduleNotificationsForWalk(w));
     } catch (e) {
-      set({ actionError: e instanceof Error ? e.message : 'לא הצלחנו לעדכן את שעת הטיול' });
+      set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו לעדכן את שעת הטיול') });
     }
   },
 
@@ -433,7 +489,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         actionError: null,
       }));
     } catch (e) {
-      set({ actionError: e instanceof Error ? e.message : 'לא הצלחנו למחוק את שעת הטיול' });
+      set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו למחוק את שעת הטיול') });
     }
   },
 
@@ -449,7 +505,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       for (const rule of updated) await repository.upsertScheduleRule(rule);
       set((s) => ({ rules: s.rules.map((r) => updated.find((ur) => ur.id === r.id) ?? r), actionError: null }));
     } catch (e) {
-      set({ actionError: e instanceof Error ? e.message : 'לא הצלחנו לשנות את סדר השעות' });
+      set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו לשנות את סדר השעות') });
     }
   },
 

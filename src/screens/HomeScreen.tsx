@@ -879,14 +879,14 @@ export function HomeScreen() {
         )}
         </View>
 
+        {/* Item 7: "בקשת החלפה" moved out of this row — it is now its own
+            standalone row at the very bottom of the Dashboard content (see
+            dashboardSwapRequestRow below, just above the bottom nav). This
+            row keeps the other two shortcuts. */}
         <View style={styles.dashboardShortcuts} accessibilityLabel="קיצורי דרך">
           <Pressable onPress={() => nextWalkCardActions?.canRequestTimeChange ? setRequestTimeChangeWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutMint]} accessibilityRole="button" accessibilityLabel="בקשת שינוי שעה">
             <RtlText style={styles.dashboardShortcutIcon}>◷</RtlText>
             <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שינוי שעה</RtlText>
-          </Pressable>
-          <Pressable onPress={() => nextWalkCardActions?.canRequestSwap ? setRequestSwapWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutBlue]} accessibilityRole="button" accessibilityLabel="בקשת החלפה">
-            <RtlText style={styles.dashboardShortcutIcon}>⇄</RtlText>
-            <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>בקשת החלפה</RtlText>
           </Pressable>
           <Pressable onPress={() => setAddUnplannedVisible(true)} style={[styles.dashboardShortcut, styles.dashboardShortcutGold]} accessibilityRole="button" accessibilityLabel="הוסף טיול שבוצע">
             <RtlText style={styles.dashboardShortcutIcon}>🚶</RtlText>
@@ -962,6 +962,25 @@ export function HomeScreen() {
             <RtlText style={styles.dashboardRequestAlertChevron}>‹</RtlText>
           </Pressable>
         ) : null}
+
+        {/* Item 7: "בקשת החלפה" is the LOWEST Dashboard content row, directly
+            above the bottom nav — moved here (out of dashboardShortcuts near
+            the top) per the requested reorder. Same action as before: an
+            approval-gated swap request for the next walk when one exists,
+            otherwise just opens the Schedule screen. */}
+        <Pressable
+          style={styles.dashboardSwapRequestRow}
+          onPress={() => (nextWalkCardActions?.canRequestSwap ? setRequestSwapWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule'))}
+          accessibilityRole="button"
+          accessibilityLabel="בקשת החלפה"
+        >
+          <RtlText style={styles.dashboardSwapRequestIcon}>⇄</RtlText>
+          <View style={styles.dashboardSwapRequestCopy}>
+            <RtlText style={styles.dashboardSwapRequestTitle}>בקשת החלפה</RtlText>
+            <RtlText style={styles.dashboardSwapRequestSubtitle}>לא פנויים לטיול? בקשו החלפה עם בן משפחה אחר</RtlText>
+          </View>
+          <RtlText style={styles.dashboardSwapRequestChevron}>‹</RtlText>
+        </Pressable>
 
         <View style={styles.dashboardOverflow}>
         {lastWalk ? (
@@ -1449,7 +1468,12 @@ const styles = StyleSheet.create({
   content: { flexGrow: 1, paddingHorizontal: spacing.md, paddingTop: 0, gap: 8, paddingBottom: 120, width: '100%', backgroundColor: '#FBF8F3' },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: 14 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
-  nextWalkLift: { marginTop: -48, zIndex: 1, paddingHorizontal: spacing.xs },
+  // Item 6 (mobile polish): -42 (was -48) — the hero above is now 20px
+  // shorter, so keeping the same -48 overlap would push this card up
+  // further into the (shorter) hero than before; easing it to -42 nets a
+  // modest ~14px higher start overall while keeping roughly the same
+  // visual overlap relationship with the hero as before.
+  nextWalkLift: { marginTop: -42, zIndex: 1, paddingHorizontal: spacing.xs },
   testModeBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1464,12 +1488,20 @@ const styles = StyleSheet.create({
   testModeBannerButtonText: { color: colors.textInverse, fontWeight: '700', fontSize: 12 },
   dashboardHeroShell: { marginHorizontal: -spacing.md, backgroundColor: '#E8E5FF', overflow: 'hidden' },
   topRow: { position: 'relative', minHeight: 54, alignItems: 'center', justifyContent: 'center' },
-  dashboardTopRow: { minHeight: 58, paddingHorizontal: spacing.md, paddingTop: Platform.OS === 'web' ? 0 : 6 },
+  // Item 6 (mobile polish): trimmed from 58/6 — a shorter header row so the
+  // Dashboard's real content (Next Walk, timeline) starts higher on screen.
+  dashboardTopRow: { minHeight: 48, paddingHorizontal: spacing.md, paddingTop: Platform.OS === 'web' ? 0 : 4 },
   brandWordmark: { width: 132, height: 42 },
   mascotHeaderButton: { position: 'absolute', left: spacing.md, top: 7, width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   dashboardHero: {
     width: '100%',
-    height: 176,
+    // Item 6 (mobile polish): reduced from 176 — a shorter hero band so
+    // less of the screen is spent before the Next Walk card. The dog
+    // cutout/mascot below are shifted up by the SAME 20px delta (see their
+    // own comments) so this crops only a little more off their bottom
+    // (paws/tail), never their face/head — see docs/design/MASCOT_SPEC.md's
+    // identity rules on what must stay recognizable in every frame.
+    height: 156,
     borderBottomLeftRadius: 34,
     borderBottomRightRadius: 34,
     backgroundColor: '#E8ECFF',
@@ -1482,11 +1514,15 @@ const styles = StyleSheet.create({
   dashboardHeroBloomTwo: { position: 'absolute', width: 250, height: 250, borderRadius: 125, right: -104, top: -132, backgroundColor: '#C9D7FF' },
   dashboardHeroGlow: { position: 'absolute', width: 260, height: 92, borderRadius: 130, left: 24, bottom: 16, backgroundColor: '#FFFFFF75', transform: [{ rotate: '-8deg' }] },
   dashboardHeroShade: { ...StyleSheet.absoluteFill, backgroundColor: '#FFFFFF12' },
-  dashboardHeroGreeting: { position: 'absolute', top: 24, left: spacing.md, width: '52%', alignItems: 'flex-end', zIndex: 2 },
+  dashboardHeroGreeting: { position: 'absolute', top: 16, left: spacing.md, width: '52%', alignItems: 'flex-end', zIndex: 2 },
   dashboardHeroGreetingTitle: { width: '100%', fontSize: 22, lineHeight: 27, color: '#253275', fontWeight: '900', textAlign: 'right' },
   dashboardHeroGreetingSubtitle: { width: '100%', marginTop: 4, fontSize: 13, lineHeight: 18, color: '#454E91', fontWeight: '700', textAlign: 'right' },
-  dashboardHeroMascot: { position: 'absolute', right: -4, bottom: -4, zIndex: 2 },
-  dashboardHeroDogCutout: { position: 'absolute', right: -4, bottom: -6, width: 190, height: 188, zIndex: 2 },
+  // bottom offsets shifted up by 20 (the dashboardHero height reduction)
+  // so each image's TOP edge — where the mascot/dog's face/head sits —
+  // renders at the exact same position as before; only extra bottom
+  // (paws/tail) bleed is newly clipped by the shorter frame.
+  dashboardHeroMascot: { position: 'absolute', right: -4, bottom: -24, zIndex: 2 },
+  dashboardHeroDogCutout: { position: 'absolute', right: -4, bottom: -26, width: 190, height: 188, zIndex: 2 },
   dashboardHeroDogPhoto: { position: 'absolute', right: 12, bottom: 8, width: 126, height: 126, borderRadius: 63, zIndex: 2, borderWidth: 3, borderColor: '#FFFFFFCC' },
   dashboardHeroCopy: { width: '52%', alignItems: 'flex-end', alignSelf: 'flex-start', paddingTop: 38, paddingHorizontal: spacing.md, zIndex: 2 },
   dashboardHeroEyebrow: { fontSize: 16, color: '#27376F', fontWeight: '700', textAlign: 'right' },
@@ -1527,6 +1563,16 @@ const styles = StyleSheet.create({
   dashboardRequestAlertTitle: { fontSize: 16, fontWeight: '900', color: '#B66318', textAlign: 'right' },
   dashboardRequestAlertSubtitle: { marginTop: 2, fontSize: 13, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
   dashboardRequestAlertChevron: { fontSize: 28, color: '#C56C1D', writingDirection: 'ltr' },
+  // Item 7: standalone "בקשת החלפה" row, now the lowest Dashboard content
+  // row (directly above the bottom nav) — same blue tint the shortcut used
+  // before it moved here, laid out like the other full-width dashboard rows
+  // (dashboardLastWalk/dashboardRequestAlert) for visual consistency.
+  dashboardSwapRequestRow: { minHeight: 60, borderRadius: radii.xl, backgroundColor: '#E2F4FF', borderWidth: 1, borderColor: '#CFE9FB', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
+  dashboardSwapRequestIcon: { fontSize: 22 },
+  dashboardSwapRequestCopy: { flex: 1, alignItems: 'flex-end' },
+  dashboardSwapRequestTitle: { fontSize: 16, fontWeight: '900', color: '#1D5C8A', textAlign: 'right' },
+  dashboardSwapRequestSubtitle: { marginTop: 2, fontSize: 12, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
+  dashboardSwapRequestChevron: { fontSize: 26, color: '#2C7CB0', writingDirection: 'ltr' },
   dashboardOverflow: { display: 'none' },
   notificationButton: { position: 'absolute', right: spacing.md, top: 7, width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   notificationIcon: { fontSize: 18 },

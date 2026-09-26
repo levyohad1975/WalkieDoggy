@@ -396,11 +396,14 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 2,
   },
-  cardDashboard: { backgroundColor: '#FAFAFF', borderColor: '#DEDDF5', borderRadius: 30, shadowOpacity: 0.12, shadowRadius: 16, elevation: 4, paddingVertical: 5 },
+  // Item 6 (mobile polish): paddingVertical trimmed from 5 to 2 — a
+  // slightly more compact dashboard card. Never touches any button's own
+  // minHeight (tap targets stay exactly as large as before).
+  cardDashboard: { backgroundColor: '#FAFAFF', borderColor: '#DEDDF5', borderRadius: 30, shadowOpacity: 0.12, shadowRadius: 16, elevation: 4, paddingVertical: 2 },
   webCard: { borderRadius: radii.xl, paddingHorizontal: 24, paddingVertical: 18 },
   cardActive: { backgroundColor: colors.successSoft, borderColor: colors.success + '55' },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
-  eyebrowRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), alignItems: 'center', gap: 8, marginBottom: 6 },
+  eyebrowRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), alignItems: 'center', gap: 8, marginBottom: 4 },
   webEyebrowRow: { marginBottom: 2 },
   eyebrow: { flex: 1, fontSize: 15, fontWeight: '800', color: '#2E3170', textAlign: 'right' },
   mascotMessage: {

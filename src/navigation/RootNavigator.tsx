@@ -73,6 +73,22 @@ const PHYSICAL_TAB_ORDER: (keyof RootTabParamList)[] = [
   'History',
 ];
 
+// Item 8 (nav centering): Home must sit at the exact geometric center of the
+// bar regardless of how many of the OTHER destinations are currently visible
+// (History/Statistics/Settings are each permission-gated and can come and go
+// independently — see canSeeHistoryTab/canSeeStatisticsTab/canSeeSettingsTab
+// below). Splitting the non-Home destinations into two independent flex
+// groups (everything physically before Home, everything physically after)
+// and absolutely-positioning Home at left: 50% of the whole bar decouples
+// its position from either group's item count entirely — it is centered on
+// the bar itself, never on "whatever's left after subtracting N buttons".
+// This slot width only reserves layout space in the two flex groups (so
+// their buttons never render underneath the centered Home circle); it does
+// not constrain Home's own tap target, which stays exactly as large as
+// before (see HOME_BUTTON_SIZE below).
+const HOME_SLOT_WIDTH = 76;
+const HOME_BUTTON_SIZE = 50;
+
 /**
  * A physically deterministic tab bar. React Navigation/iOS can re-evaluate
  * RTL mirroring when Dynamic Type changes at runtime; rendering the buttons
@@ -82,45 +98,52 @@ const PHYSICAL_TAB_ORDER: (keyof RootTabParamList)[] = [
 function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab, canSeeStatisticsTab, canSeeSettingsTab }: BottomTabBarProps & { canSeeHistoryTab: boolean; canSeeStatisticsTab: boolean; canSeeSettingsTab: boolean }) {
   const insets = useSafeAreaInsets();
   const routeByName = Object.fromEntries(state.routes.map((route) => [route.name, route]));
+  const isVisible = (name: keyof RootTabParamList) => {
+    if (!routeByName[name]) return false;
+    if (name === 'History') return canSeeHistoryTab;
+    if (name === 'Statistics') return canSeeStatisticsTab;
+    if (name === 'Settings') return canSeeSettingsTab;
+    return true;
+  };
 
-  const buttons = PHYSICAL_TAB_ORDER.map((name) => {
-        const route = routeByName[name];
-        if (!route) return null;
-        if (name === 'History' && !canSeeHistoryTab) return null;
-        if (name === 'Statistics' && !canSeeStatisticsTab) return null;
-        if (name === 'Settings' && !canSeeSettingsTab) return null;
-        const focused = state.routes[state.index]?.key === route.key;
-        const options = descriptors[route.key]?.options;
-        const tint = focused ? colors.primary : colors.textSecondary;
-        return (
-          <Pressable
-            key={route.key}
-            onPress={() => {
-              const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-              if (!focused && !event.defaultPrevented) {
-                // Target the tab navigator by route key. With conditional
-                // History/Statistics routes, navigating only by name could
-                // be resolved against stale navigator state and fall back
-                // to the initial Home route after permission refreshes.
-                navigation.navigate({ key: route.key, name: route.name } as never);
-              }
-            }}
-            onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
-            accessibilityRole="button"
-            accessibilityState={focused ? { selected: true } : {}}
-            accessibilityLabel={options?.tabBarAccessibilityLabel ?? TAB_LABEL[name]}
-            style={[
-              { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 1 },
-              name === 'Home' ? { transform: [{ translateY: -10 }] } : null,
-            ]}
-          >
-            <View style={name === 'Home' ? { width: 50, height: 50, borderRadius: 25, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: colors.surface } : undefined}>
-              <TabIcon name={name} color={name === 'Home' ? colors.textInverse : tint} />
-            </View>
-            <RtlText allowFontScaling={false} numberOfLines={1} style={{ fontSize: 11, fontWeight: name === 'Home' ? '800' : '600', color: name === 'Home' ? colors.primary : tint, textAlign: 'center', writingDirection: 'rtl' }}>{TAB_LABEL[name]}</RtlText>
-          </Pressable>
-        );
-      });
+  const renderTabButton = (name: keyof RootTabParamList) => {
+    const route = routeByName[name];
+    if (!route) return null;
+    const focused = state.routes[state.index]?.key === route.key;
+    const options = descriptors[route.key]?.options;
+    const tint = focused ? colors.primary : colors.textSecondary;
+    return (
+      <Pressable
+        key={route.key}
+        onPress={() => {
+          const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+          if (!focused && !event.defaultPrevented) {
+            // Target the tab navigator by route key. With conditional
+            // History/Statistics routes, navigating only by name could
+            // be resolved against stale navigator state and fall back
+            // to the initial Home route after permission refreshes.
+            navigation.navigate({ key: route.key, name: route.name } as never);
+          }
+        }}
+        onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
+        accessibilityRole="button"
+        accessibilityState={focused ? { selected: true } : {}}
+        accessibilityLabel={options?.tabBarAccessibilityLabel ?? TAB_LABEL[name]}
+        style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 1 }}
+      >
+        <TabIcon name={name} color={tint} />
+        <RtlText allowFontScaling={false} numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: tint, textAlign: 'center', writingDirection: 'rtl' }}>{TAB_LABEL[name]}</RtlText>
+      </Pressable>
+    );
+  };
+
+  const homeIndex = PHYSICAL_TAB_ORDER.indexOf('Home');
+  const leftButtons = PHYSICAL_TAB_ORDER.slice(0, homeIndex).filter(isVisible).map(renderTabButton);
+  const rightButtons = PHYSICAL_TAB_ORDER.slice(homeIndex + 1).filter(isVisible).map(renderTabButton);
+
+  const homeRoute = routeByName.Home;
+  const homeFocused = homeRoute ? state.routes[state.index]?.key === homeRoute.key : false;
+  const homeOptions = homeRoute ? descriptors[homeRoute.key]?.options : undefined;
 
   return (
     <View style={{ height: layout.rowHeight + insets.bottom, paddingBottom: Math.max(spacing.sm, insets.bottom), paddingTop: 6, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }}>
@@ -131,10 +154,47 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
           maxWidth: Platform.OS === 'web' ? 1000 : undefined,
           alignSelf: 'center',
           flexDirection: 'row',
+          position: 'relative',
           ...nativeDirection('ltr'),
         }}
       >
-        {buttons}
+        <View style={{ flex: 1, flexDirection: 'row' }}>{leftButtons}</View>
+        {/* Reserves the centered Home button's own footprint so the two side
+            groups never render underneath it. */}
+        <View style={{ width: HOME_SLOT_WIDTH }} />
+        <View style={{ flex: 1, flexDirection: 'row' }}>{rightButtons}</View>
+
+        {homeRoute ? (
+          <Pressable
+            key={homeRoute.key}
+            onPress={() => {
+              const event = navigation.emit({ type: 'tabPress', target: homeRoute.key, canPreventDefault: true });
+              if (!homeFocused && !event.defaultPrevented) {
+                navigation.navigate({ key: homeRoute.key, name: homeRoute.name } as never);
+              }
+            }}
+            onLongPress={() => navigation.emit({ type: 'tabLongPress', target: homeRoute.key })}
+            accessibilityRole="button"
+            accessibilityState={homeFocused ? { selected: true } : {}}
+            accessibilityLabel={homeOptions?.tabBarAccessibilityLabel ?? TAB_LABEL.Home}
+            style={{
+              position: 'absolute',
+              left: '50%',
+              marginLeft: -(HOME_SLOT_WIDTH / 2),
+              top: 0,
+              width: HOME_SLOT_WIDTH,
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 1,
+              transform: [{ translateY: -10 }],
+            }}
+          >
+            <View style={{ width: HOME_BUTTON_SIZE, height: HOME_BUTTON_SIZE, borderRadius: HOME_BUTTON_SIZE / 2, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: colors.surface }}>
+              <TabIcon name="Home" color={colors.textInverse} />
+            </View>
+            <RtlText allowFontScaling={false} numberOfLines={1} style={{ fontSize: 11, fontWeight: '800', color: colors.primary, textAlign: 'center', writingDirection: 'rtl' }}>{TAB_LABEL.Home}</RtlText>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
