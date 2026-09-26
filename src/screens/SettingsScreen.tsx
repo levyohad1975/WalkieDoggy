@@ -651,7 +651,7 @@ function SettingsScreenContent() {
       </ScrollView>
       </KeyboardAvoidingView>
 
-      {isSystemAdmin && !systemObserverActive ? (
+      {isSystemAdmin ? (
         <Pressable
           style={styles.systemAdminFab}
           onPress={() => setSystemAdminVisible(true)}
