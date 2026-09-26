@@ -24,7 +24,7 @@ interface UserFormModalProps {
   editingUser: FamilyUser | null;
   /** Needed to build the Supabase Storage path ({familyId}/users/{userId}/...) — unused in local/demo mode. */
   familyId: string;
-  onSave: (input: { name: string; avatar: string; color: string; photoUrl?: string }) => void | Promise<void>;
+  onSave: (input: { name: string; avatar: string; color: string; photoUrl?: string; sex?: 'male' | 'female' }) => void | Promise<void>;
   onClose: () => void;
 }
 
@@ -34,13 +34,14 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
   const [avatar, setAvatar] = useState(EMOJI_OPTIONS[0]);
   const [color, setColor] = useState(userPalette[0]);
   const [photoUrl, setPhotoUrl] = useState<string | undefined>(undefined);
+  const [sex, setSex] = useState<'male' | 'female' | undefined>(undefined);
   const [uploading, setUploading] = useState(false);
   const [pendingPhotoPick, setPendingPhotoPick] = useState(false);
   const saveUserPhoto = useFamilyStore((s) => s.saveUserPhoto);
   // Keep latest values available while the hosted web cropper is open.
   // The upload effect must not restart/cancel just because the parent or form re-renders.
-  const webPhotoSaveRef = useRef({ editingUser, name, avatar, color, onSave, onClose });
-  webPhotoSaveRef.current = { editingUser, name, avatar, color, onSave, onClose };
+  const webPhotoSaveRef = useRef({ editingUser, name, avatar, color, sex, onSave, onClose });
+  webPhotoSaveRef.current = { editingUser, name, avatar, color, sex, onSave, onClose };
 
   useEffect(() => {
     if (visible) {
@@ -48,6 +49,7 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
       setAvatar(editingUser?.avatar ?? EMOJI_OPTIONS[0]);
       setColor(editingUser?.color ?? userPalette[0]);
       setPhotoUrl(editingUser?.photoUrl);
+      setSex(editingUser?.sex);
     }
   }, [visible, editingUser]);
 
@@ -69,7 +71,7 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
         // uploaded Storage object just because the user did not press the
         // separate form Save button afterwards.
         if (shouldAutoSaveUploadedMemberPhoto(editingUser, uri)) {
-          await onSave({ name: name.trim(), avatar, color, photoUrl: uri });
+          await onSave({ name: name.trim(), avatar, color, photoUrl: uri, sex });
         }
       }
     } catch {
@@ -99,6 +101,7 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
             avatar: latest.avatar,
             color: latest.color,
             photoUrl: uri,
+            sex: latest.sex,
           })).then(() => latest.onClose());
         }
       })
@@ -152,6 +155,22 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
               accessibilityLabel="שם"
             />
 
+            <RtlText style={styles.label}>מין</RtlText>
+            <View style={styles.sexRow}>
+              {([['male', 'זכר'], ['female', 'נקבה']] as const).map(([value, label]) => (
+                <Pressable
+                  key={value}
+                  onPress={() => setSex(value)}
+                  style={[styles.sexChip, sex === value && styles.sexChipActive]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: sex === value }}
+                  accessibilityLabel={label}
+                >
+                  <RtlText style={[styles.sexText, sex === value && styles.sexTextActive]}>{label}</RtlText>
+                </Pressable>
+              ))}
+            </View>
+
             <RtlText style={styles.label}>סמל (אם אין תמונה)</RtlText>
             <View style={styles.optionRow}>
               {EMOJI_OPTIONS.map((e) => (
@@ -186,7 +205,7 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
               <Button
                 label="שמירה"
                 disabled={!name.trim()}
-                onPress={() => onSave({ name: name.trim(), avatar, color, photoUrl })}
+                onPress={() => onSave({ name: name.trim(), avatar, color, photoUrl, sex })}
                 style={styles.flex}
               />
               <Button label="ביטול" onPress={onClose} variant="secondary" style={styles.flex} />
@@ -210,6 +229,11 @@ const styles = StyleSheet.create({
   label: { fontSize: typography.meta.fontSize, fontWeight: '700', color: colors.textSecondary, marginTop: spacing.lg, marginBottom: spacing.sm, textAlign: 'right' },
   input: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, padding: 14, fontSize: typography.body.fontSize, color: colors.textPrimary },
   optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  sexRow: { flexDirection: 'row-reverse', gap: spacing.sm },
+  sexChip: { flex: 1, minHeight: 44, borderRadius: radii.md, backgroundColor: colors.surfaceMuted, borderWidth: 2, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
+  sexChipActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  sexText: { fontSize: typography.body.fontSize, fontWeight: '700', color: colors.textSecondary },
+  sexTextActive: { color: colors.primaryDark },
   emojiChip: {
     width: 48,
     height: 48,
