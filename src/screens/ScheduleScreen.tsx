@@ -247,7 +247,7 @@ export function ScheduleScreen() {
         ) : null}
 
         <View style={styles.tabs}>
-          {(Object.keys(RANGE_LABELS) as RangeKey[]).map((key) => (
+          {(['today', 'tomorrow', 'week'] as RangeKey[]).map((key) => (
             <RtlText key={key} onPress={() => setRange(key)} style={[styles.tab, range === key && styles.tabActive]}>
               {RANGE_LABELS[key]}
             </RtlText>
