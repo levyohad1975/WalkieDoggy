@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -627,7 +627,7 @@ export function HomeScreen() {
   if (loading && walks.length === 0) {
     return (
       <SafeAreaView style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} accessibilityLabel="טוען…" />
+        <WalkieMascot state="excited" size={104} accessibilityLabel="Walkie Doggy טוען" />
       </SafeAreaView>
     );
   }
@@ -651,11 +651,9 @@ export function HomeScreen() {
   if (!dog && !familyLoading) {
     return (
       <SafeAreaView style={styles.center}>
-        <EmptyState
-          emoji="🐶"
-          title="עדיין אין כלב במשפחה"
-          subtitle="הוסיפו את הכלב הראשון כדי להתחיל לתכנן טיולים ותורנויות"
-        />
+        <WalkieMascot state="idle" size={112} accessibilityLabel="Walkie Doggy" />
+        <RtlText style={styles.emptyDogTitle}>עדיין אין כלב במשפחה</RtlText>
+        <RtlText style={styles.emptyDogSubtitle}>הוסיפו את הכלב הראשון כדי להתחיל לתכנן טיולים ותורנויות</RtlText>
         <Button label="הוספת כלב" onPress={() => navigation.navigate('Settings')} style={styles.addFirstDogButton} />
       </SafeAreaView>
     );
@@ -869,13 +867,13 @@ export function HomeScreen() {
             <RtlText style={styles.dashboardShortcutIcon}>🚶</RtlText>
             <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>טיול ספונטני</RtlText>
           </Pressable>
-          <Pressable onPress={() => nextWalkCardActions?.canRequestSwap ? setRequestSwapWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutBlue]} accessibilityRole="button" accessibilityLabel="בקשת החלפה">
+          <Pressable onPress={() => effectiveRole === 'admin' && nextWalk ? setSwapWalkId(nextWalk.id) : nextWalkCardActions?.canRequestSwap ? setRequestSwapWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutBlue]} accessibilityRole="button" accessibilityLabel={effectiveRole === 'admin' ? 'החלפת תור' : 'בקשת החלפה'}>
             <RtlText style={styles.dashboardShortcutIcon}>⇄</RtlText>
-            <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>בקשת החלפה</RtlText>
+            <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{effectiveRole === 'admin' ? 'החלפת תור' : 'בקשת החלפה'}</RtlText>
           </Pressable>
-          <Pressable onPress={() => nextWalkCardActions?.canRequestTimeChange ? setRequestTimeChangeWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutPurple]} accessibilityRole="button" accessibilityLabel="בקשת שינוי שעה">
+          <Pressable onPress={() => effectiveRole === 'admin' && nextWalk ? setEditWalkId(nextWalk.id) : nextWalkCardActions?.canRequestTimeChange ? setRequestTimeChangeWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutPurple]} accessibilityRole="button" accessibilityLabel={effectiveRole === 'admin' ? 'עריכת תור' : 'שינוי שעה'}>
             <RtlText style={styles.dashboardShortcutIcon}>◷</RtlText>
-            <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>שינוי שעה</RtlText>
+            <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{effectiveRole === 'admin' ? 'עריכת תור' : 'שינוי שעה'}</RtlText>
           </Pressable>
         </View>
 
@@ -1464,6 +1462,8 @@ const styles = StyleSheet.create({
   dashboardLastWalkMeta: { marginTop: 5, fontSize: 14, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
   dashboardLastWalkDog: { width: 58, height: 48, overflow: 'hidden', borderRadius: radii.lg, backgroundColor: '#EEF3FF', alignItems: 'center', justifyContent: 'center' },
   dashboardLastWalkChevron: { fontSize: 34, color: '#454B9E', writingDirection: 'ltr' },
+  emptyDogTitle: { fontSize: 20, fontWeight: '900', color: colors.textPrimary, textAlign: 'center', marginTop: spacing.md },
+  emptyDogSubtitle: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xs, marginBottom: spacing.md, paddingHorizontal: spacing.xl },
   dashboardTimeline: { minHeight: 68, borderRadius: radii.xl, backgroundColor: '#FBFBFF', borderWidth: 1, borderColor: '#E1E2F4', paddingHorizontal: spacing.md, paddingVertical: 9, gap: 6 },
   dashboardTimelineHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   dashboardTimelineTitle: { fontSize: 16, fontWeight: '900', color: '#17245B', textAlign: 'right' },
