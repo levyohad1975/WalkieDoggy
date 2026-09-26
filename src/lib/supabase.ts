@@ -306,6 +306,13 @@ export async function getCurrentFamilyRole(): Promise<FamilyRole | null> {
 
   return null;
 }
+/** Admin-only, server-authoritative removal for a dog that has never acquired history. */
+export async function removeUnusedDog(dogId: string): Promise<void> {
+  if (!supabase) throw new SupabaseNotConfiguredError();
+  const { error } = await supabase.rpc('admin_remove_unused_dog', { p_dog_id: dogId });
+  if (error) throw error;
+}
+
 export async function regenerateInviteCode(familyId: string): Promise<string> {
   if (!supabase) throw new SupabaseNotConfiguredError();
   const { data, error } = await supabase.rpc('regenerate_invite_code', { target_family_id: familyId });

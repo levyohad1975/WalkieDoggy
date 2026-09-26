@@ -34,7 +34,9 @@
     },
     "web": {
       "favicon": "./assets/favicon.png",
-      "output": "single"
+      "output": "single",
+      "themeColor": "#E8E5FF",
+      "backgroundColor": "#E8E5FF"
     },
     "plugins": [
       [
@@ -48,6 +50,12 @@
         "expo-image-picker",
         {
           "photosPermission": "כדי לבחור תמונה של הכלב/ה שלכם או של בן משפחה מהגלריה שלכם."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "כדי למדוד מרחק בזמן הטיול, נדרשת גישה למיקום כשהאפליקציה פתוחה. המיקום נשמר רק כמרחק כולל, לא כמסלול."
         }
       ],
       "@react-native-community/datetimepicker",

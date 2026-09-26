@@ -131,7 +131,7 @@ alter table family_invites enable row level security;
 -- (design §8).
 --
 -- Token: 32 cryptographically random bytes (256 bits) generated with
--- pgcrypto's gen_random_bytes(), base64url-encoded (no padding), returned to
+-- pgcrypto's extensions.gen_random_bytes(), base64url-encoded (no padding), returned to
 -- the caller exactly once. Only its sha-256 hash (hex-encoded) is persisted
 -- — the raw token itself never touches the table (design §5).
 -- ----------------------------------------------------------------------------
@@ -210,11 +210,11 @@ begin
   -- Generate the raw token server-side. base64url = standard base64 with
   -- '+' -> '-', '/' -> '_' and padding stripped, so it is URL-safe without
   -- any percent-encoding.
-  v_raw_token := encode(gen_random_bytes(32), 'base64');
+  v_raw_token := encode(extensions.gen_random_bytes(32), 'base64');
   v_raw_token := replace(replace(v_raw_token, '+', '-'), '/', '_');
   v_raw_token := rtrim(v_raw_token, '=');
 
-  v_token_hash := encode(digest(v_raw_token, 'sha256'), 'hex');
+  v_token_hash := encode(extensions.digest(v_raw_token, 'sha256'), 'hex');
   v_expires_at := now() + interval '72 hours';
 
   insert into family_invites (
@@ -374,7 +374,7 @@ begin
     raise exception 'invite not found';
   end if;
 
-  v_token_hash := encode(digest(p_token, 'sha256'), 'hex');
+  v_token_hash := encode(extensions.digest(p_token, 'sha256'), 'hex');
 
   return query
   select
@@ -433,7 +433,7 @@ begin
     raise exception 'invite not found';
   end if;
 
-  v_token_hash := encode(digest(p_token, 'sha256'), 'hex');
+  v_token_hash := encode(extensions.digest(p_token, 'sha256'), 'hex');
 
   -- Row-level lock: serializes concurrent redemption attempts of this exact
   -- token. The second (losing) transaction blocks here until the first

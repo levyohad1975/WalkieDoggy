@@ -2,6 +2,7 @@ import {
   computeRequestLifecycle,
   countActionableRequests,
   countPendingRequestsForViewer,
+  countRecentlyResolvedRequestsForAdmin,
   countUnreadRequestResults,
   isRequestActive,
   isRequestVisible,
@@ -277,6 +278,60 @@ describe('countUnreadRequestResults', () => {
       }),
     ];
     expect(countUnreadRequestResults(requests, {}, 'viewer')).toBe(1);
+  });
+});
+
+describe('countRecentlyResolvedRequestsForAdmin', () => {
+  it('counts a request resolved by/for someone else (in-app gap fix: admins must see results they did not personally request)', () => {
+    const requests: RequestLike[] = [
+      makeRequest({
+        status: 'approved',
+        resolved_at: NOW.toISOString(),
+        requested_by_user_id: 'someMember',
+      }),
+    ];
+    expect(countRecentlyResolvedRequestsForAdmin(requests, {}, 'admin1', NOW)).toBe(1);
+  });
+
+  it('excludes the admin viewer\'s own requests (already covered by countUnreadRequestResults — never double-count)', () => {
+    const requests: RequestLike[] = [
+      makeRequest({
+        status: 'approved',
+        resolved_at: NOW.toISOString(),
+        requested_by_user_id: 'admin1',
+      }),
+    ];
+    expect(countRecentlyResolvedRequestsForAdmin(requests, {}, 'admin1', NOW)).toBe(0);
+  });
+
+  it('excludes archived (>24h resolved) results, same window as everywhere else', () => {
+    const requests: RequestLike[] = [
+      makeRequest({
+        status: 'rejected',
+        resolved_at: new Date(NOW.getTime() - 25 * 60 * 60 * 1000).toISOString(),
+        requested_by_user_id: 'someMember',
+      }),
+    ];
+    expect(countRecentlyResolvedRequestsForAdmin(requests, {}, 'admin1', NOW)).toBe(0);
+  });
+
+  it('excludes still-pending requests, since they have no terminal outcome yet', () => {
+    const requests: RequestLike[] = [
+      makeRequest({
+        status: 'pending',
+        requested_by_user_id: 'someMember',
+      }),
+    ];
+    const walks = { w1: { status: 'pending' as const } };
+    expect(countRecentlyResolvedRequestsForAdmin(requests, walks, 'admin1', NOW)).toBe(0);
+  });
+
+  it('counts multiple other members\' resolved requests', () => {
+    const requests: RequestLike[] = [
+      makeRequest({ id: 'a', status: 'approved', resolved_at: NOW.toISOString(), requested_by_user_id: 'member1' }),
+      makeRequest({ id: 'b', status: 'rejected', resolved_at: NOW.toISOString(), requested_by_user_id: 'member2' }),
+    ];
+    expect(countRecentlyResolvedRequestsForAdmin(requests, {}, 'admin1', NOW)).toBe(2);
   });
 });
 

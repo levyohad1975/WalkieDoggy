@@ -18,7 +18,7 @@ describe('bottom tab RTL contract', () => {
     expect(source).toContain("const PHYSICAL_TAB_ORDER: (keyof RootTabParamList)[] = [");
     expect(source).toMatch(/'Settings',[\s\S]*'Statistics',[\s\S]*'History',[\s\S]*'Family',[\s\S]*'Schedule',[\s\S]*'Home'/);
     expect(source).toMatch(/flexDirection:\s*'row',[\s\S]*nativeDirection\('ltr'\)/);
-    expect(source).toContain('tabBar={(props) => <FixedPhysicalTabBar {...props} canSeeHistoryTab={canSeeHistoryTab} canSeeStatisticsTab={canSeeStatisticsTab} />}');
+    expect(source).toContain('tabBar={(props) => <FixedPhysicalTabBar {...props} canSeeHistoryTab={canSeeHistoryTab} canSeeStatisticsTab={canSeeStatisticsTab} canSeeSettingsTab={canSeeSettingsTab} />}');
   });
 
   it('starts on Home', () => {

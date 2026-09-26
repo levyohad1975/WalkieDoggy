@@ -4,8 +4,16 @@ import path from 'path';
 describe('NextWalkCard state colors', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'NextWalkCard.tsx'), 'utf8');
 
-  it('uses the colored current-walk background instead of the white surface', () => {
-    expect(source).toContain('backgroundColor: colors.statusCurrentBg');
+  it('uses the approved clean white surface for the ordinary next-walk card', () => {
+    expect(source).toContain('backgroundColor: colors.surface');
+    expect(source).toContain('borderColor: colors.border');
+  });
+
+  it('allows Home to opt into a richer dashboard surface without changing ordinary cards', () => {
+    expect(source).toContain("tone?: 'default' | 'dashboard'");
+    expect(source).toContain("tone === 'dashboard' && styles.cardDashboard");
+    expect(source).toContain("cardDashboard: { backgroundColor: '#FAFAFF'");
+    expect(source).toContain("backgroundColor: '#4A43B6'");
   });
 
   it('uses green for an active walk and gives it priority over overdue red', () => {

@@ -45,7 +45,7 @@ jest.mock('../../notifications/notificationService', () => ({
 }));
 
 jest.mock('../familyStore', () => ({
-  useFamilyStore: { getState: () => ({ users: [], dog: null }) },
+  useFamilyStore: { getState: () => ({ users: [], dog: null, dogs: [] }) },
 }));
 
 jest.mock('../../lib/testModeGuard', () => ({ guardTestModeMutation: () => true }));

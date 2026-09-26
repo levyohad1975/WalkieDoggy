@@ -4,9 +4,7 @@ import { colors } from '../theme/colors';
 import { motion, radii, spacing } from '../theme/tokens';
 import type { CompletionCelebration } from '../logic/walkCompletionCelebration';
 import { RtlText } from './RtlText';
-import { resolveCelebrationAsset } from './celebrationAssets';
-import { MascotFrameAnimation } from './MascotFrameAnimation';
-import { animationManifestFor } from '../mascot/celebrationAnimationManifest';
+import { WalkieMascot } from './WalkieMascot';
 
 interface WalkCompletionCelebrationProps {
   celebration: CompletionCelebration | null;
@@ -16,6 +14,10 @@ interface WalkCompletionCelebrationProps {
 /** A local, non-blocking post-completion moment. It has no persistence or sync role. */
 export function WalkCompletionCelebration({ celebration, onDismiss }: WalkCompletionCelebrationProps) {
   const [reducedMotion, setReducedMotion] = useState(true);
+  // Fail-safe default false: until confirmed on, behave as before (a
+  // screen reader user who somehow isn't detected in time still gets the
+  // explicit dismiss button/backdrop, never a permanently-stuck modal).
+  const [screenReaderEnabled, setScreenReaderEnabled] = useState(false);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(18)).current;
 
@@ -23,7 +25,9 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
     let mounted = true;
     AccessibilityInfo.isReduceMotionEnabled().then((enabled) => mounted && setReducedMotion(!!enabled)).catch(() => mounted && setReducedMotion(false));
     const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReducedMotion);
-    return () => { mounted = false; subscription?.remove?.(); };
+    AccessibilityInfo.isScreenReaderEnabled().then((enabled) => mounted && setScreenReaderEnabled(!!enabled)).catch(() => {});
+    const srSubscription = AccessibilityInfo.addEventListener('screenReaderChanged', setScreenReaderEnabled);
+    return () => { mounted = false; subscription?.remove?.(); srSubscription?.remove?.(); };
   }, []);
 
   useEffect(() => {
@@ -36,23 +40,32 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
         Animated.spring(translateY, { toValue: 0, damping: 16, stiffness: 180, mass: 0.8, useNativeDriver: true }),
       ]).start();
     }
-    const timer = setTimeout(onDismiss, 3600);
+    // VoiceOver/TalkBack narrating a dynamic Hebrew sentence (with
+    // dog/member-name substitutions) can easily run longer than this
+    // fixed window — with a screen reader active, never auto-dismiss out
+    // from under it; the explicit "המשך" button and backdrop tap remain
+    // available the whole time.
+    if (screenReaderEnabled) return;
+    // The celebration animation itself is ~1.8s. Give it a short beat to
+    // settle, then return to the app without asking the family to tap
+    // "המשך" after every walk.
+    const timer = setTimeout(onDismiss, 2400);
     return () => clearTimeout(timer);
-  }, [celebration, onDismiss, opacity, reducedMotion, translateY]);
+  }, [celebration, onDismiss, opacity, reducedMotion, translateY, screenReaderEnabled]);
 
   if (!celebration) return null;
-  const asset = resolveCelebrationAsset(celebration.asset);
-  const manifest = animationManifestFor(celebration);
   const message = celebration.title;
   return (
     <Modal visible transparent animationType="none" onRequestClose={onDismiss} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תגובת הקמע של Walkie Doggy Link">
-        <Animated.View style={[styles.moment, { opacity, transform: [{ translateY }] }]} accessibilityRole="alert">
+        <Animated.View style={[styles.moment, { opacity, transform: [{ translateY }] }]} accessibilityRole="alert" accessibilityLiveRegion="polite">
           <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
           <View style={styles.tail} />
-          <MascotFrameAnimation frames={asset.frames} fallback={asset.fallbackSource} fps={manifest?.fps ?? 12} size={220} accessibilityLabel="הקמע של Walkie Doggy Link מגיב לסיום הטיול" testID="completion-mascot-animation" />
+          <WalkieMascot state="success" size={220} accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול" testID="completion-mascot-animation" />
           {celebration.confetti ? <RtlText style={styles.confetti} accessible={false}>✦  ✦  ✦</RtlText> : null}
-          <Pressable onPress={onDismiss} style={styles.dismissButton} accessibilityRole="button" accessibilityLabel="המשך לאפליקציה"><RtlText style={styles.dismissText}>המשך</RtlText></Pressable>
+          {screenReaderEnabled ? (
+            <Pressable onPress={onDismiss} style={styles.dismissButton} accessibilityRole="button" accessibilityLabel="המשך לאפליקציה"><RtlText style={styles.dismissText}>המשך</RtlText></Pressable>
+          ) : null}
         </Animated.View>
       </Pressable>
     </Modal>

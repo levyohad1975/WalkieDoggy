@@ -1,5 +1,5 @@
 import { SupabaseRepository } from '../supabaseRepository';
-import type { Dog, Family, FamilyUser, ScheduleEntry, ScheduleRule, Walk } from '../../types';
+import type { AchievementUnlock, Dog, Family, FamilyUser, HealthTask, ScheduleEntry, ScheduleRule, Walk, WalkGpsSession } from '../../types';
 
 /**
  * Verifies the SupabaseRepository <-> Postgres row mapping — specifically
@@ -54,7 +54,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
       name: 'אבא',
       avatar: '👨',
       color: '#5B8DEF',
-      remindersEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true,
       createdAt: new Date().toISOString(),
     };
 
@@ -77,6 +77,28 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
    * genuinely new intended behavior, not a weakened assertion — the
    * family_id-is-correctly-mapped assertion it exists to check is unchanged.
    */
+  it('upsertUser persists member photo_url so a refresh can restore the uploaded photo', async () => {
+    const { client, calls } = makeMockClient({ updateMatches: true });
+    const repo = new SupabaseRepository(client);
+    const user: FamilyUser = {
+      id: 'user-photo',
+      familyId: 'fam-42',
+      name: 'עידן',
+      avatar: '🙂',
+      photoUrl: 'https://cdn.example/member.jpg',
+      color: '#5B8DEF',
+      remindersEnabled: true,
+      gamificationEnabled: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    await repo.upsertUser(user);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].method).toBe('update');
+    expect((calls[0].payload as any).photo_url).toBe('https://cdn.example/member.jpg');
+  });
+
   it('upsertUser calls .update() (not .upsert()/.insert()) for an existing row — the RLS 42501 fix', async () => {
     const { client, calls } = makeMockClient({ updateMatches: true });
     const repo = new SupabaseRepository(client);
@@ -86,7 +108,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
       name: 'אבא',
       avatar: '👨',
       color: '#5B8DEF',
-      remindersEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true,
       createdAt: new Date().toISOString(),
     };
 
@@ -107,7 +129,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
       name: 'בן משפחה חדש',
       avatar: '🙂',
       color: '#5B8DEF',
-      remindersEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true,
       createdAt: new Date().toISOString(),
     };
 
@@ -126,7 +148,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
       name: 'בן משפחה',
       avatar: '🙂',
       color: '#5B8DEF',
-      remindersEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true,
       createdAt: new Date().toISOString(),
     };
 
@@ -146,6 +168,312 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
 
     expect(calls[0].table).toBe('dogs');
     expect((calls[0].payload as any).family_id).toBe('fam-42');
+  });
+
+  it('upsertHealthTask sends dog_id/family_id mapped from task.dogId/familyId', async () => {
+    const { client, calls } = makeMockClient();
+    const repo = new SupabaseRepository(client);
+    const task: HealthTask = {
+      id: 'task-1',
+      familyId: 'fam-42',
+      dogId: 'dog-1',
+      category: 'vaccination',
+      title: 'חיסון',
+      createdAt: 'x',
+      updatedAt: 'x',
+      dueDate: '2026-10-01',
+    };
+
+    await repo.upsertHealthTask(task);
+
+    expect(calls[0].table).toBe('health_tasks');
+    expect((calls[0].payload as any).dog_id).toBe('dog-1');
+    expect((calls[0].payload as any).family_id).toBe('fam-42');
+  });
+
+  it('upsertHealthTask throws when the upsert errors', async () => {
+    const client: any = { from: () => ({ upsert: () => Promise.resolve({ error: { message: 'x' } }) }) };
+    const task: HealthTask = {
+      id: 'task-1', familyId: 'fam-42', dogId: 'dog-1', category: 'weight', title: 'שקילה',
+      createdAt: 'x', updatedAt: 'x', weightKg: 10,
+    };
+    await expect(new SupabaseRepository(client).upsertHealthTask(task)).rejects.toBeTruthy();
+  });
+
+  it('getHealthTasks maps rows via toHealthTask, including nullish fields -> undefined', async () => {
+    const client: any = {
+      from: () => ({
+        select: () => ({
+          eq: () =>
+            Promise.resolve({
+              data: [
+                {
+                  id: 'task-1', family_id: 'fam-42', dog_id: 'dog-1', category: 'grooming', title: 'תספורת',
+                  notes: null, weight_kg: null, due_date: '2026-10-01', completed_at: null,
+                  completed_by_user_id: null, responsible_user_id: null, created_by_user_id: null,
+                  created_at: 'c', updated_at: 'u',
+                },
+              ],
+              error: null,
+            }),
+        }),
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+    const tasks = await repo.getHealthTasks('dog-1');
+    expect(tasks).toEqual([
+      {
+        id: 'task-1', familyId: 'fam-42', dogId: 'dog-1', category: 'grooming', title: 'תספורת',
+        notes: undefined, weightKg: undefined, dueDate: '2026-10-01', completedAt: undefined,
+        completedByUserId: undefined, responsibleUserId: undefined, createdByUserId: undefined,
+        createdAt: 'c', updatedAt: 'u',
+      },
+    ]);
+  });
+
+  it('getHealthTasks throws when the query errors', async () => {
+    const client: any = {
+      from: () => ({ select: () => ({ eq: () => Promise.resolve({ data: null, error: { message: 'x' } }) }) }),
+    };
+    const repo = new SupabaseRepository(client);
+    await expect(repo.getHealthTasks('dog-1')).rejects.toBeTruthy();
+  });
+
+  it('upsertGpsSession sends walk_id/dog_id/family_id mapped correctly, with onConflict: walk_id (not the row id)', async () => {
+    const calls: { table: string; payload: unknown; options: unknown }[] = [];
+    const client: any = {
+      from: (table: string) => ({
+        upsert: (payload: unknown, options: unknown) => {
+          calls.push({ table, payload, options });
+          return Promise.resolve({ error: null });
+        },
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+    const session: WalkGpsSession = {
+      id: 'gps-1', walkId: 'walk-1', familyId: 'fam-42', dogId: 'dog-1',
+      distanceMeters: 640.2, pointCount: 30, source: 'device_gps',
+      createdAt: 'c', updatedAt: 'u',
+    };
+
+    await repo.upsertGpsSession(session);
+
+    expect(calls[0].table).toBe('walk_gps_sessions');
+    expect((calls[0].payload as any).walk_id).toBe('walk-1');
+    expect((calls[0].payload as any).dog_id).toBe('dog-1');
+    expect((calls[0].payload as any).family_id).toBe('fam-42');
+    expect(calls[0].options).toEqual({ onConflict: 'walk_id' });
+  });
+
+  it('upsertGpsSession throws when the upsert errors', async () => {
+    const client: any = { from: () => ({ upsert: () => Promise.resolve({ error: { message: 'x' } }) }) };
+    const session: WalkGpsSession = {
+      id: 'gps-1', walkId: 'walk-1', familyId: 'fam-42', dogId: 'dog-1',
+      pointCount: 0, source: 'device_gps', createdAt: 'c', updatedAt: 'u',
+    };
+    await expect(new SupabaseRepository(client).upsertGpsSession(session)).rejects.toBeTruthy();
+  });
+
+  it('getGpsSession maps a row via toGpsSession, including nullish correction fields -> undefined', async () => {
+    const client: any = {
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () =>
+              Promise.resolve({
+                data: {
+                  id: 'gps-1', walk_id: 'walk-1', family_id: 'fam-42', dog_id: 'dog-1',
+                  distance_meters: 640.2, point_count: 30, corrected_distance_meters: null,
+                  corrected_by_user_id: null, started_at: null, ended_at: null,
+                  source: 'device_gps', created_by_user_id: null, created_at: 'c', updated_at: 'u',
+                },
+                error: null,
+              }),
+          }),
+        }),
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+    const session = await repo.getGpsSession('walk-1');
+    expect(session).toEqual({
+      id: 'gps-1', walkId: 'walk-1', familyId: 'fam-42', dogId: 'dog-1',
+      distanceMeters: 640.2, pointCount: 30, correctedDistanceMeters: undefined,
+      correctedByUserId: undefined, startedAt: undefined, endedAt: undefined,
+      source: 'device_gps', createdByUserId: undefined, createdAt: 'c', updatedAt: 'u',
+    });
+  });
+
+  it('getGpsSession returns undefined when no row exists for that walk', async () => {
+    const client: any = {
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }) }) }),
+    };
+    const repo = new SupabaseRepository(client);
+    expect(await repo.getGpsSession('walk-1')).toBeUndefined();
+  });
+
+  it('getGpsSession throws when the query errors', async () => {
+    const client: any = {
+      from: () => ({ select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: { message: 'x' } }) }) }) }),
+    };
+    const repo = new SupabaseRepository(client);
+    await expect(repo.getGpsSession('walk-1')).rejects.toBeTruthy();
+  });
+
+  it('getGpsSessionsForWalkIds queries walk_gps_sessions with an .in(walk_id, ids) filter and maps every row', async () => {
+    const inCalls: unknown[] = [];
+    const client: any = {
+      from: () => ({
+        select: () => ({
+          in: (column: string, ids: string[]) => {
+            inCalls.push({ column, ids });
+            return Promise.resolve({
+              data: [
+                { id: 'gps-a', walk_id: 'walk-a', family_id: 'fam-42', dog_id: 'dog-1', distance_meters: 500, point_count: 10, corrected_distance_meters: null, corrected_by_user_id: null, started_at: null, ended_at: null, source: 'device_gps', created_by_user_id: null, created_at: 'c', updated_at: 'u' },
+              ],
+              error: null,
+            });
+          },
+        }),
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+
+    const result = await repo.getGpsSessionsForWalkIds(['walk-a', 'walk-b']);
+
+    expect(inCalls).toEqual([{ column: 'walk_id', ids: ['walk-a', 'walk-b'] }]);
+    expect(result).toEqual([
+      { id: 'gps-a', walkId: 'walk-a', familyId: 'fam-42', dogId: 'dog-1', distanceMeters: 500, pointCount: 10, correctedDistanceMeters: undefined, correctedByUserId: undefined, startedAt: undefined, endedAt: undefined, source: 'device_gps', createdByUserId: undefined, createdAt: 'c', updatedAt: 'u' },
+    ]);
+  });
+
+  it('getGpsSessionsForWalkIds returns [] without querying for an empty id list', async () => {
+    const fromMock = jest.fn();
+    const client: any = { from: fromMock };
+    const repo = new SupabaseRepository(client);
+
+    expect(await repo.getGpsSessionsForWalkIds([])).toEqual([]);
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  it('getGpsSessionsForWalkIds throws when the query errors', async () => {
+    const client: any = {
+      from: () => ({ select: () => ({ in: () => Promise.resolve({ data: null, error: { message: 'x' } }) }) }),
+    };
+    const repo = new SupabaseRepository(client);
+    await expect(repo.getGpsSessionsForWalkIds(['walk-1'])).rejects.toBeTruthy();
+  });
+
+  it('upsertAchievementUnlock sends family_id/achievement_key/scope/user_id mapped correctly, with onConflict: family_id,dedupe_key + ignoreDuplicates', async () => {
+    const calls: { table: string; payload: unknown; options: unknown }[] = [];
+    const client: any = {
+      from: (table: string) => ({
+        upsert: (payload: unknown, options: unknown) => {
+          calls.push({ table, payload, options });
+          return Promise.resolve({ error: null });
+        },
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+    const unlock: AchievementUnlock = {
+      id: 'unlock-1', familyId: 'fam-42', achievementKey: 'first_walk', scope: 'family',
+      unlockedAt: 'u', createdAt: 'c',
+    };
+
+    await repo.upsertAchievementUnlock(unlock);
+
+    expect(calls[0].table).toBe('achievement_unlocks');
+    expect((calls[0].payload as any).family_id).toBe('fam-42');
+    expect((calls[0].payload as any).achievement_key).toBe('first_walk');
+    expect((calls[0].payload as any).scope).toBe('family');
+    expect((calls[0].payload as any).user_id).toBeNull();
+    expect(calls[0].options).toEqual({ onConflict: 'family_id,dedupe_key', ignoreDuplicates: true });
+  });
+
+  it('upsertAchievementUnlock maps a personal-scope unlock\'s userId to user_id', async () => {
+    const calls: { payload: unknown }[] = [];
+    const client: any = {
+      from: () => ({
+        upsert: (payload: unknown) => {
+          calls.push({ payload });
+          return Promise.resolve({ error: null });
+        },
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+    const unlock: AchievementUnlock = {
+      id: 'unlock-2', familyId: 'fam-42', achievementKey: 'long_walk', scope: 'personal', userId: 'user-1',
+      unlockedAt: 'u', createdAt: 'c',
+    };
+
+    await repo.upsertAchievementUnlock(unlock);
+
+    expect((calls[0].payload as any).user_id).toBe('user-1');
+  });
+
+  it('upsertAchievementUnlock throws when the upsert errors', async () => {
+    const client: any = { from: () => ({ upsert: () => Promise.resolve({ error: { message: 'x' } }) }) };
+    const unlock: AchievementUnlock = {
+      id: 'unlock-1', familyId: 'fam-42', achievementKey: 'first_walk', scope: 'family', unlockedAt: 'u', createdAt: 'c',
+    };
+    await expect(new SupabaseRepository(client).upsertAchievementUnlock(unlock)).rejects.toBeTruthy();
+  });
+
+  it('getAchievementUnlocks queries achievement_unlocks filtered by family_id and maps every row', async () => {
+    const eqCalls: unknown[] = [];
+    const client: any = {
+      from: () => ({
+        select: () => ({
+          eq: (column: string, value: string) => {
+            eqCalls.push({ column, value });
+            return Promise.resolve({
+              data: [
+                { id: 'unlock-1', family_id: 'fam-42', achievement_key: 'first_walk', scope: 'family', user_id: null, unlocked_at: 'u', created_at: 'c' },
+                { id: 'unlock-2', family_id: 'fam-42', achievement_key: 'long_walk', scope: 'personal', user_id: 'user-1', unlocked_at: 'u2', created_at: 'c2' },
+              ],
+              error: null,
+            });
+          },
+        }),
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+
+    const result = await repo.getAchievementUnlocks('fam-42');
+
+    expect(eqCalls).toEqual([{ column: 'family_id', value: 'fam-42' }]);
+    expect(result).toEqual([
+      { id: 'unlock-1', familyId: 'fam-42', achievementKey: 'first_walk', scope: 'family', userId: undefined, unlockedAt: 'u', createdAt: 'c' },
+      { id: 'unlock-2', familyId: 'fam-42', achievementKey: 'long_walk', scope: 'personal', userId: 'user-1', unlockedAt: 'u2', createdAt: 'c2' },
+    ]);
+  });
+
+  it('getAchievementUnlocks throws when the query errors', async () => {
+    const client: any = {
+      from: () => ({ select: () => ({ eq: () => Promise.resolve({ data: null, error: { message: 'x' } }) }) }),
+    };
+    const repo = new SupabaseRepository(client);
+    await expect(repo.getAchievementUnlocks('fam-42')).rejects.toBeTruthy();
+  });
+
+  it('updateUserGamificationSetting updates gamification_enabled for the given userId', async () => {
+    const calls: { table: string; payload: unknown }[] = [];
+    const client: any = {
+      from: (table: string) => ({
+        update: (payload: unknown) => {
+          calls.push({ table, payload });
+          return { eq: () => Promise.resolve({ error: null }) };
+        },
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+    await repo.updateUserGamificationSetting('user-1', false);
+    expect(calls[0]).toEqual({ table: 'users', payload: { gamification_enabled: false } });
+  });
+
+  it('updateUserGamificationSetting throws on error', async () => {
+    const client: any = { from: () => ({ update: () => ({ eq: () => Promise.resolve({ error: { message: 'x' } }) }) }) };
+    const repo = new SupabaseRepository(client);
+    await expect(repo.updateUserGamificationSetting('user-1', true)).rejects.toBeTruthy();
   });
 
   it('upsertScheduleRule sends family_id mapped from rule.familyId', async () => {
@@ -296,13 +624,13 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
 
   it('createUser throws when the insert errors (e.g. a non-admin device)', async () => {
     const client: any = { from: () => ({ insert: () => Promise.resolve({ error: { message: '42501' } }) }) };
-    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, createdAt: 'x' };
+    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: 'x' };
     await expect(new SupabaseRepository(client).createUser(user)).rejects.toBeTruthy();
   });
 
   it('upsertUser throws when the conditional update itself errors', async () => {
     const client: any = { from: () => ({ update: () => ({ eq: () => ({ select: () => Promise.resolve({ data: null, error: { message: 'x' } }) }) }) }) };
-    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, createdAt: 'x' };
+    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: 'x' };
     await expect(new SupabaseRepository(client).upsertUser(user)).rejects.toBeTruthy();
   });
 
@@ -313,7 +641,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
         insert: () => Promise.resolve({ error: { message: 'x' } }),
       }),
     };
-    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, createdAt: 'x' };
+    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: 'x' };
     await expect(new SupabaseRepository(client).upsertUser(user)).rejects.toBeTruthy();
   });
 
@@ -412,6 +740,37 @@ describe('SupabaseRepository — reads map rows correctly (toDog/toRule/toEntry/
     expect(dog.photoUrl).toBe('https://x/y.png');
     expect(dog.notes).toBe('אוהב לרוץ');
     expect(dog.sex).toBe('male');
+  });
+
+  it('getDogs maps every row for the family via toDog (arbitrary N, not just one)', async () => {
+    const client: any = {
+      from: () => ({
+        select: () => ({
+          eq: () =>
+            Promise.resolve({
+              data: [
+                { id: 'dog-1', family_id: 'fam-42', name: 'טופי', photo_url: null, walks_per_day: 4, notes: null, sex: null },
+                { id: 'dog-2', family_id: 'fam-42', name: 'ריקי', photo_url: null, walks_per_day: 2, notes: null, sex: null },
+              ],
+              error: null,
+            }),
+        }),
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+    const dogs = await repo.getDogs('fam-42');
+    expect(dogs).toEqual([
+      { id: 'dog-1', familyId: 'fam-42', name: 'טופי', photoUrl: undefined, walksPerDay: 4, notes: undefined, sex: undefined },
+      { id: 'dog-2', familyId: 'fam-42', name: 'ריקי', photoUrl: undefined, walksPerDay: 2, notes: undefined, sex: undefined },
+    ]);
+  });
+
+  it('getDogs throws when the query errors', async () => {
+    const client: any = {
+      from: () => ({ select: () => ({ eq: () => Promise.resolve({ data: null, error: { message: 'x' } }) }) }),
+    };
+    const repo = new SupabaseRepository(client);
+    await expect(repo.getDogs('fam-42')).rejects.toBeTruthy();
   });
 
   it('getScheduleRules maps rows via toRule, including nullish label -> undefined and sort_order default 0', async () => {

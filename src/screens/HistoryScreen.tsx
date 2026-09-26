@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -10,9 +10,10 @@ import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../sto
 import { summarizeWalksByUser } from '../logic/walkActions';
 import { isOverdue } from '../logic/nextWalk';
 import { formatHistoryDate, localDateOnly } from '../logic/dateFormat';
-import { isWalkEligibleForHistory } from '../logic/history';
+import { isWalkEligibleForHistory, walkMatchesHistorySearch } from '../logic/history';
 import { canAccessHistoryScreen } from '../logic/permissions';
 import { isSupabaseConfigured } from '../lib/supabase';
+import { repository } from '../data';
 import { fetchHistoryWalks } from '../lib/permissionedWalks';
 import { colors } from '../theme/colors';
 import { breakpoints, nativeDirection, radii, spacing, typography } from '../theme/tokens';
@@ -23,7 +24,7 @@ import { EditDoneDetailsModal } from '../components/EditDoneDetailsModal';
 import { CompleteWalkModal } from '../components/CompleteWalkModal';
 import { AddUnplannedWalkModal, type UnplannedWalkResult } from '../components/AddUnplannedWalkModal';
 import { DEMO_FAMILY } from '../data/demoData';
-import type { Walk } from '../types';
+import type { Walk, WalkGpsSession } from '../types';
 
 type PlanFilter = 'all' | 'planned' | 'unplanned';
 // Section 11: replaces the old "up to 10 individual date chips" wall with a
@@ -40,7 +41,7 @@ const RANGE_LABELS: [RangeFilter, string][] = [
 
 export function HistoryScreen() {
   const { users, dog, loading: familyLoading, load: loadFamily, permissionOverrides, permissionOverridesStatus } = useFamilyStore();
-  const { walks, loading: scheduleLoading, error, load: loadSchedule, editDoneDetails, editUnplannedWalk, deleteUnplannedWalk, skip, markDone } = useScheduleStore();
+  const { walks, loading: scheduleLoading, error, load: loadSchedule, editDoneDetails, editUnplannedWalk, deleteUnplannedWalk, deleteScheduledWalkOccurrence, skip, markDone } = useScheduleStore();
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const effectiveRole = useEffectiveFamilyRole();
   const effectiveUserId = useEffectiveUserId();
@@ -55,6 +56,7 @@ export function HistoryScreen() {
   const [draftCustomDate, setDraftCustomDate] = useState<string | null>(null);
   const [resolveWalkId, setResolveWalkId] = useState<string | null>(null);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [historySearchQuery, setHistorySearchQuery] = useState('');
 
   // BATCH 3 CORRECTION #2 (review #2, post-review): HistoryScreen's actual
   // display/calculation dataset. list_history_walks() (migration 0027) is
@@ -70,6 +72,7 @@ export function HistoryScreen() {
   // independent of whatever the client-loaded permissionOverrides below
   // currently believes.
   const [historyDataset, setHistoryDataset] = useState<Walk[]>([]);
+  const [gpsSessions, setGpsSessions] = useState<Record<string, WalkGpsSession>>({});
   const [historyAccessStatus, setHistoryAccessStatus] = useState<'checking' | 'granted' | 'denied'>(
     isSupabaseConfigured ? 'checking' : 'granted'
   );
@@ -130,6 +133,21 @@ export function HistoryScreen() {
   // local/demo mode (see refreshHistoryDataset()'s own comment).
   const sourceWalks = isSupabaseConfigured ? historyDataset : walks;
 
+  useEffect(() => {
+    const ids = sourceWalks.filter((w) => w.status === 'done').map((w) => w.id);
+    if (ids.length === 0) {
+      setGpsSessions({});
+      return;
+    }
+    let cancelled = false;
+    void repository.getGpsSessionsForWalkIds(ids).then((sessions) => {
+      if (!cancelled) setGpsSessions(Object.fromEntries(sessions.map((session) => [session.walkId, session])));
+    }).catch(() => {
+      if (!cancelled) setGpsSessions({});
+    });
+    return () => { cancelled = true; };
+  }, [sourceWalks]);
+
   const usersById = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u])), [users]);
   const activeUsers = useMemo(() => users.filter((u) => !u.removedAt), [users]);
   const resolveWalk = resolveWalkId ? sourceWalks.find((w) => w.id === resolveWalkId) : undefined;
@@ -182,9 +200,10 @@ export function HistoryScreen() {
         if (rangeFilter === 'today' && w.date !== todayString) return false;
         if ((rangeFilter === '7d' || rangeFilter === '30d') && rangeStartDate && w.date < rangeStartDate) return false;
         if (rangeFilter === 'custom' && customDate && w.date !== customDate) return false;
+        if (!walkMatchesHistorySearch(w, historySearchQuery)) return false;
         return true;
       }),
-    [allHistory, userFilter, planFilter, rangeFilter, rangeStartDate, customDate, todayString]
+    [allHistory, userFilter, planFilter, rangeFilter, rangeStartDate, customDate, todayString, historySearchQuery]
   );
 
   const dailySummary = useMemo(() => {
@@ -276,6 +295,21 @@ export function HistoryScreen() {
               people actually touch) stays visible; the rest expands on
               demand. */}
           <RtlText style={styles.sectionTitle}>סינון</RtlText>
+
+          {/* PRD §14: "History displays ... with filtering AND SEARCH."
+              Free-text search over a walk's note — instant/client-side,
+              matching the instant-filter chips below rather than needing a
+              submit step. */}
+          <TextInput
+            value={historySearchQuery}
+            onChangeText={setHistorySearchQuery}
+            placeholder="חיפוש בהערות הטיול"
+            placeholderTextColor={colors.textSecondary}
+            style={styles.searchInput}
+            textAlign="right"
+            returnKeyType="search"
+            accessibilityLabel="חיפוש בהערות הטיול"
+          />
 
           <View style={styles.chipRow}>
             {RANGE_LABELS.map(([key, label]) => (
@@ -415,6 +449,7 @@ export function HistoryScreen() {
                     <View key={w.id} style={styles.historyItem}>
                       <WalkRow
                         walk={w}
+                        routeSession={gpsSessions[w.id]}
                         historyCompact
                         responsible={usersById[w.responsibleUserId]}
                         completedBy={w.completedByUserId ? usersById[w.completedByUserId] : undefined}
@@ -476,6 +511,7 @@ export function HistoryScreen() {
       <EditDoneDetailsModal
         visible={!!editWalkId}
         walk={editWalkId ? sourceWalks.find((w) => w.id === editWalkId) ?? null : null}
+        currentUserId={effectiveUserId}
         onSave={async (details) => {
           if (editWalkId) {
             await editDoneDetails(editWalkId, details);
@@ -483,6 +519,11 @@ export function HistoryScreen() {
           }
           setEditWalkId(null);
         }}
+        onDelete={effectiveRole === 'admin' ? async (walkId) => {
+          setEditWalkId(null);
+          await deleteScheduledWalkOccurrence(walkId);
+          await refreshHistoryDataset();
+        } : undefined}
         onClose={() => setEditWalkId(null)}
       />
 
@@ -509,11 +550,11 @@ export function HistoryScreen() {
             await refreshHistoryDataset();
           }
         }}
-        onDelete={async (walkId) => {
+        onDelete={effectiveRole === 'admin' ? async (walkId) => {
           setEditUnplannedWalkId(null);
           await deleteUnplannedWalk(walkId);
           await refreshHistoryDataset();
-        }}
+        } : undefined}
         onClose={() => setEditUnplannedWalkId(null)}
       />
     </SafeAreaView>
@@ -544,6 +585,16 @@ const styles = StyleSheet.create({
   // instead of pinned to the opposite end of a header row far from it.
   filterToggleRow: { width: '100%', marginTop: 4 },
   filterToggle: { width: '100%', fontSize: 13, fontWeight: '700', color: colors.primaryDark, textAlign: 'right', writingDirection: 'rtl' },
+  searchInput: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.sm,
+    padding: spacing.md,
+    fontSize: 14,
+    color: colors.textPrimary,
+    marginTop: spacing.sm,
+  },
   chipRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
   chip: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radii.md, backgroundColor: colors.surfaceMuted },
   chipActive: { backgroundColor: colors.primary },

@@ -9,9 +9,11 @@ import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { computeLastWalk, computeNextWalk, isOverdue, upcomingWalks } from '../logic/nextWalk';
 import { walkDateContextLabel } from '../logic/walkDateContext';
-import { canDeleteScheduledWalk, canRequestChangeForWalk, computeNextWalkCardActions, formatCompletedAtBadge } from '../logic/walkActions';
+import { localDateOnly } from '../logic/dateFormat';
+import { repository } from '../data';
+import { canRequestChangeForWalk, computeNextWalkCardActions, formatCompletedAtBadge } from '../logic/walkActions';
 import { colors } from '../theme/colors';
-import { breakpoints, radii, spacing, typography } from '../theme/tokens';
+import { breakpoints, elevation, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { NextWalkCard } from '../components/NextWalkCard';
 import { WalkRow } from '../components/WalkRow';
 import { EmptyState, ErrorState } from '../components/EmptyState';
@@ -28,27 +30,40 @@ import { Button } from '../components/Button';
 import { WalkCompletionCelebration } from '../components/WalkCompletionCelebration';
 import { ReminderMascotPrompt } from '../components/ReminderMascotPrompt';
 import { DogProfileModal } from '../components/DogProfileModal';
+import { DogSelectorRow } from '../components/DogSelectorRow';
 import { WalkieMascot } from '../components/WalkieMascot';
-import { selectWalkCompletionCelebration, type CompletionCelebration } from '../logic/walkCompletionCelebration';
+import { Avatar } from '../components/Avatar';
+import { CELEBRATION_LIBRARY, selectWalkCompletionCelebration, type CompletionCelebration } from '../logic/walkCompletionCelebration';
+import { achievementDefinition, type AchievementProgress } from '../logic/achievements';
+import { useAchievementStore } from '../store/achievementStore';
 import { DEMO_FAMILY } from '../data/demoData';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { fetchLastResolvedWalk } from '../lib/permissionedWalks';
+import { fetchHistoryWalks } from '../lib/permissionedWalks';
 import { useRequestsStore } from '../store/requestsStore';
 import {
   countPendingRequestsForViewer,
+  countRecentlyResolvedRequestsForAdmin,
   countUnreadRequestResults,
   walkHasActiveSwapRequest,
   walkHasActiveTimeChangeRequest,
 } from '../logic/requestLifecycle';
 import { computeWalkRequestStatusLine } from '../logic/walkRequestStatusLine';
-import type { Walk } from '../types';
+import type { Walk, WalkGpsSession } from '../types';
 import { renderMessageTemplate } from '../mascot/messageEngine';
 import { subscribeToReminderOpens, type ReminderOpenEvent } from '../notifications/reminderEntry';
 import type { RootTabParamList } from '../navigation/RootNavigator';
+import { useHealthStore } from '../store/healthStore';
+import { getImportantHealthReminders, summarizeHealthTasksForHome } from '../logic/healthTasks';
+import { getDogBackground } from '../theme/dogBackgrounds';
+import { useGpsStore } from '../store/gpsStore';
+import { requestForegroundGpsPermission } from '../lib/gpsTracking';
 
 export function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
   const [dogProfileVisible, setDogProfileVisible] = useState(false);
+  const [heroPhotoFailed, setHeroPhotoFailed] = useState(false);
+  const [heroCutoutFailed, setHeroCutoutFailed] = useState(false);
   const currentUserId = useAuthStore((s) => s.currentUserId)!;
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const effectiveRole = useEffectiveFamilyRole();
@@ -60,7 +75,15 @@ export function HomeScreen() {
   // cause anymore).
   const clearTestModeIfInvalid = useAuthStore((s) => s.clearTestModeIfInvalid);
   const clearImpersonationIfInvalid = useAuthStore((s) => s.clearImpersonationIfInvalid);
-  const { users, dog, loading: familyLoading, error: familyError, load: loadFamily } = useFamilyStore();
+  const { family, users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, error: familyError, load: loadFamily } = useFamilyStore();
+  const heroBackground = getDogBackground(dog?.heroBackgroundId);
+  useEffect(() => {
+    setHeroPhotoFailed(false);
+    setHeroCutoutFailed(false);
+  }, [dog?.id, dog?.photoUrl, dog?.photoCutoutUrl]);
+  const showPersonalHero = Boolean(dog?.photoUrl) && !heroPhotoFailed;
+  const showDogCutout = Boolean(dog?.photoCutoutUrl) && !heroCutoutFailed;
+
   const {
     walks,
     loading: scheduleLoading,
@@ -97,6 +120,26 @@ export function HomeScreen() {
     clearError: clearRequestsError,
   } = useRequestsStore();
 
+  const healthTasks = useHealthStore((s) => s.tasks);
+  const loadHealthTasks = useHealthStore((s) => s.load);
+  const requestOpenHealthModal = useHealthStore((s) => s.requestOpen);
+  const healthSummary = useMemo(() => summarizeHealthTasksForHome(healthTasks), [healthTasks]);
+  // PRD §15's "תזכורות חשובות" inbox item type — the same active-dog
+  // health tasks the Home summary pill already reads, just as a real list
+  // for the Inbox rather than a count.
+  const healthReminders = useMemo(() => getImportantHealthReminders(healthTasks), [healthTasks]);
+
+  // Phase 4 (GPS foundation, PRD §7) — live tracking state for whichever
+  // walk gpsStore is currently tracking. NextWalkCard below only ever
+  // shows these when THIS card's own walk is the one being tracked (see
+  // its liveDistanceMeters/gpsStatus wiring) — a different in-progress
+  // walk elsewhere (shouldn't normally happen; at most one walk is active
+  // at a time) would simply show nothing extra.
+  const gpsTrackingWalkId = useGpsStore((s) => s.trackingWalkId);
+  const gpsDistanceMeters = useGpsStore((s) => s.distanceMeters);
+  const gpsPointCount = useGpsStore((s) => s.pointCount);
+  const gpsPermissionStatus = useGpsStore((s) => s.permissionStatus);
+
   const [completeWalkId, setCompleteWalkId] = useState<string | null>(null);
   // BATCH 4 (C2/C3/C8) — brief "success" mascot + message shown right after
   // a walk is marked done. Purely presentational local state: never blocks
@@ -122,6 +165,7 @@ export function HomeScreen() {
       // Purely cosmetic — never block or interrupt a successfully saved walk.
     }
   }, [recentCelebrationIds]);
+
   const [swapWalkId, setSwapWalkId] = useState<string | null>(null);
   const [editWalkId, setEditWalkId] = useState<string | null>(null);
   const [addUnplannedVisible, setAddUnplannedVisible] = useState(false);
@@ -155,7 +199,20 @@ export function HomeScreen() {
     loadFamily(familyId);
     loadSchedule(familyId);
     if (isSupabaseConfigured) loadRequests();
+    // PRD §9 gamification — loads the family's persisted unlock ledger so
+    // checkForNewUnlocks() has a real "already unlocked" baseline to check
+    // against (see achievementStore's own doc comment on why it refuses to
+    // run before this resolves).
+    void useAchievementStore.getState().load(familyId);
   }, [loadFamily, loadSchedule, loadRequests, familyId]);
+
+  // Health & Grooming summary badge below needs this dog's tasks loaded —
+  // eagerly, on mount and whenever the ACTIVE dog changes (unlike Settings'
+  // Health sheet, which loads lazily only once opened), since the badge
+  // itself must be visible without the member ever opening that sheet.
+  useEffect(() => {
+    if (dog) void loadHealthTasks(dog.id);
+  }, [dog?.id, loadHealthTasks]);
 
   // Cross-device safety net: Realtime remains the fast path, but a tab can
   // miss an event during a transient reconnect. Every time Home becomes
@@ -200,6 +257,81 @@ export function HomeScreen() {
   // change, and are never used for mutations/RLS/audit either way.
   const effectiveUserId = useEffectiveUserId()!; // HomeScreen only renders once currentUserId is set (see the `!` above)
 
+  // PRD §9 gamification — an unlocked achievement reuses the SAME
+  // celebration modal/state as an ordinary walk-completion celebration
+  // (`celebration`/`setCelebration` above), sequenced through it rather
+  // than a second overlay: showNextAchievementCelebration() is called both
+  // from the walk-completion celebration's own onDismiss (so an
+  // achievement unlocked by that same walk shows right after) AND from the
+  // effect below (so one that resolves asynchronously, after the walk
+  // celebration was already dismissed, still gets shown instead of being
+  // silently lost). gamificationEnabled is this member's own PRD §9
+  // off-switch — an opted-out member still contributes to (and can later
+  // still open, via Settings) the family's shared achievement ledger; they
+  // just never see the popup.
+  const gamificationEnabled = usersById[effectiveUserId]?.gamificationEnabled ?? true;
+  const buildAchievementCelebration = useCallback((progress: AchievementProgress): CompletionCelebration => {
+    const definition = achievementDefinition(progress.key);
+    const base = CELEBRATION_LIBRARY.find((c) => c.id === (definition?.celebrationId ?? 'trophy-teaser')) ?? CELEBRATION_LIBRARY[0];
+    return {
+      ...base,
+      eyebrow: 'הישג חדש! 🏆',
+      title: definition?.title ?? base.title,
+      message: definition?.description ?? base.message,
+      reaction: definition?.icon ?? base.accent,
+    };
+  }, []);
+  const showNextAchievementCelebration = useCallback(() => {
+    if (!gamificationEnabled) {
+      // Opted out of the popup — drain the queue silently rather than
+      // leaving it to surface unexpectedly if the setting is re-enabled
+      // later mid-session.
+      while (useAchievementStore.getState().consumeNextUnlocked()) {
+        /* drain */
+      }
+      return;
+    }
+    const next = useAchievementStore.getState().consumeNextUnlocked();
+    if (next) setCelebration(buildAchievementCelebration(next));
+  }, [gamificationEnabled, buildAchievementCelebration]);
+  const newlyUnlockedAchievementCount = useAchievementStore((s) => s.newlyUnlocked.length);
+  useEffect(() => {
+    if (newlyUnlockedAchievementCount > 0 && !celebration) showNextAchievementCelebration();
+  }, [newlyUnlockedAchievementCount, celebration, showNextAchievementCelebration]);
+
+  /**
+   * The achievement catalog's family-wide milestones (e.g. 10/25/50 total
+   * walks) need the family's FULL history, not scheduleStore's own `walks`
+   * (RLS-restricted to an operational window — see StatisticsScreen.tsx's
+   * matching doc comment). Reuses fetchHistoryWalks() (migration 0027) —
+   * the same permissioned bulk-historical read HistoryScreen already
+   * relies on — rather than introducing a third one. Best-effort: a
+   * denied/offline/local-demo caller simply skips this check for now
+   * (falling back to scheduleStore's own walks in local/demo mode, where
+   * there is no such RLS window to begin with) — achievement detection is
+   * a bonus layered on top of the walk flow, never a reason to block or
+   * degrade it.
+   */
+  const fetchAchievementWalks = useCallback(async (): Promise<Walk[]> => {
+    if (!isSupabaseConfigured) return useScheduleStore.getState().walks;
+    try {
+      return await fetchHistoryWalks();
+    } catch {
+      return [];
+    }
+  }, []);
+  const checkForNewAchievementUnlocks = useCallback(() => {
+    void (async () => {
+      const achievementWalks = await fetchAchievementWalks();
+      if (achievementWalks.length === 0) return;
+      // swapRequests is already loaded by the mount effect above
+      // (`if (isSupabaseConfigured) loadRequests();`) — read fresh from
+      // the store rather than a possibly-stale closed-over value, same
+      // convention as fetchAchievementWalks itself.
+      await useAchievementStore.getState().checkForNewUnlocks(familyId, achievementWalks, effectiveUserId, useRequestsStore.getState().swapRequests);
+    })();
+  }, [fetchAchievementWalks, familyId, effectiveUserId]);
+
   // Minute-level refresh so "עוד X שעות ו-Y דקות" doesn't go stale while this
   // screen stays open, without re-rendering more often than that (see
   // nextWalk.ts's relativeTimeLabel doc comment on why per-second is
@@ -210,7 +342,22 @@ export function HomeScreen() {
     return () => clearInterval(id);
   }, []);
 
-  const nextWalk = useMemo(() => computeNextWalk(walks), [walks, minuteTick]);
+  // PRD §11: multi-dog families must see only the SELECTED dog's walks on
+  // this screen (next/last/upcoming/overdue) — `walks` itself is the raw,
+  // family-wide store, unfiltered by dog. Filtering here (rather than
+  // changing computeNextWalk/computeLastWalk/upcomingWalks themselves)
+  // keeps those pure functions generic and untouched; every "pick from the
+  // pool" usage below reads visibleWalks instead of walks. A single-dog
+  // family (dogs.length <= 1) sees everything unfiltered — no behavior
+  // change there. Walk lookups BY ID (walksById, walks.find(id)) stay on
+  // the unfiltered `walks` on purpose: those resolve one already-known
+  // walk regardless of which dog is currently selected (e.g. an edit modal
+  // opened before a dog switch, or a reminder tap for a different dog).
+  const visibleWalks = useMemo(
+    () => (dogs.length > 1 && dog ? walks.filter((w) => w.dogId === dog.id) : walks),
+    [walks, dogs.length, dog?.id]
+  );
+  const nextWalk = useMemo(() => computeNextWalk(visibleWalks), [visibleWalks, minuteTick]);
   useEffect(
     () =>
       subscribeToReminderOpens((event) => {
@@ -263,6 +410,7 @@ export function HomeScreen() {
   // after any family-change effect — where a family-B screen can ever read
   // a family-A row, because the read path itself refuses a mismatched
   // familyId, not just the write path.
+  const [lastWalkGps, setLastWalkGps] = useState<WalkGpsSession | null>(null);
   const [serverLastResolvedWalk, setServerLastResolvedWalk] = useState<{
     familyId: string;
     walk: Walk | null;
@@ -311,7 +459,7 @@ export function HomeScreen() {
     }, [refreshServerLastResolvedWalk, familyId])
   );
   const lastWalk = useMemo(() => {
-    const resolvedToday = computeLastWalk(walks);
+    const resolvedToday = computeLastWalk(visibleWalks);
     if (resolvedToday) return resolvedToday;
     if (!isSupabaseConfigured) return undefined;
     // The family-scoped gate: a fetched row is only ever usable when it was
@@ -320,8 +468,29 @@ export function HomeScreen() {
     // even a row that legitimately made it into state can never be
     // displayed for the wrong family.
     if (!serverLastResolvedWalk || serverLastResolvedWalk.familyId !== familyId) return undefined;
+    // NOTE (multi-dog, PRD §11): unlike resolvedToday above, this server
+    // fallback (get_last_resolved_walk()) is family-wide, not dog-scoped —
+    // it only kicks in when NOTHING was resolved today for ANY dog, so a
+    // multi-dog family could very rarely see another dog's last resolved
+    // walk here specifically in that edge case. Narrowing it further needs
+    // an RPC signature change (a new migration), out of scope for this
+    // client-only pass.
     return serverLastResolvedWalk.walk ?? undefined;
-  }, [walks, serverLastResolvedWalk, familyId]);
+  }, [visibleWalks, serverLastResolvedWalk, familyId]);
+  useEffect(() => {
+    if (!lastWalk || lastWalk.status !== 'done') {
+      setLastWalkGps(null);
+      return;
+    }
+    let cancelled = false;
+    void repository.getGpsSessionsForWalkIds([lastWalk.id]).then((sessions) => {
+      if (!cancelled) setLastWalkGps(sessions[0] ?? null);
+    }).catch(() => {
+      if (!cancelled) setLastWalkGps(null);
+    });
+    return () => { cancelled = true; };
+  }, [lastWalk?.id, lastWalk?.status]);
+
   // Whether `lastWalk` is present in the local, operational-window-limited
   // `walks` state — true for anything resolved today (or always, in
   // local/demo mode, where `walks` is unrestricted). Every mutation this
@@ -338,12 +507,35 @@ export function HomeScreen() {
   // met; edit/delete remain exactly where they can safely work.
   const lastWalkIsEditable = !isSupabaseConfigured || (!!lastWalk && walks.some((w) => w.id === lastWalk.id));
   const upcoming = useMemo(
-    () => upcomingWalks(walks).filter((w) => w.id !== nextWalk?.id),
-    [walks, nextWalk, minuteTick]
+    () => upcomingWalks(visibleWalks).filter((w) => w.id !== nextWalk?.id),
+    [visibleWalks, nextWalk, minuteTick]
   );
+  // The compact Home timeline is a Dashboard summary, not a list of only
+  // the walks *after* the primary card. Including the next walk means the
+  // section remains useful (and visibly present) on a day with one walk.
+  const dashboardTimelineWalks = useMemo(
+    () =>
+      visibleWalks
+        .filter((w) => w.status === 'pending' && w.date === localDateOnly(new Date()))
+        .sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime)),
+    [visibleWalks, minuteTick]
+  );
+  const dashboardTimelineProgress = useMemo(() => {
+    if (dashboardTimelineWalks.length < 2) return dashboardTimelineWalks.length === 1 ? 0 : 0;
+    const now = new Date();
+    const minutesNow = now.getHours() * 60 + now.getMinutes();
+    const toMinutes = (time: string) => {
+      const [h, m] = time.split(':').map(Number);
+      return h * 60 + m;
+    };
+    const first = toMinutes(dashboardTimelineWalks[0].scheduledTime);
+    const last = toMinutes(dashboardTimelineWalks[dashboardTimelineWalks.length - 1].scheduledTime);
+    if (last <= first) return 0;
+    return Math.max(0, Math.min(1, (minutesNow - first) / (last - first)));
+  }, [dashboardTimelineWalks, minuteTick]);
   const overduePending = useMemo(
     () =>
-      walks
+      visibleWalks
         .filter(
           (w) =>
             w.status === 'pending' &&
@@ -354,7 +546,7 @@ export function HomeScreen() {
         .sort((a, b) =>
           `${a.date}T${a.scheduledTime}`.localeCompare(`${b.date}T${b.scheduledTime}`)
         ),
-    [walks, nextWalk, minuteTick, effectiveRole, effectiveUserId]
+    [visibleWalks, nextWalk, minuteTick, effectiveRole, effectiveUserId]
   );
 
   // ADMIN TEST MODE mutation-blocking (requirement 1) now lives centrally in
@@ -366,16 +558,24 @@ export function HomeScreen() {
 
   const walksById = useMemo(() => Object.fromEntries(walks.map((w) => [w.id, w])), [walks]);
   const reminderPromptMessage = useMemo(() => {
-    if (!reminderPrompt || !dog) return null;
+    if (!reminderPrompt) return null;
     const walk = walksById[reminderPrompt.walkId];
     if (!walk || walk.status !== 'pending') return null;
+    // Multi-dog (PRD §11): a reminder can fire for ANY of the family's
+    // dogs, regardless of which one is currently selected in the UI — look
+    // the walk's actual dog up by walk.dogId rather than assuming it's the
+    // globally active `dog`. Falls back to the active dog only if the walk
+    // somehow references a dog no longer in `dogs` (shouldn't normally
+    // happen), so a genuinely resolvable prompt is never dropped.
+    const walkDog = dogs.find((d) => d.id === walk.dogId) ?? dog;
+    if (!walkDog) return null;
 
     return renderMessageTemplate('{responsibleName}, הגיע הזמן לטייל עם {dogNoun} 🐾', {
-      dogName: dog.name,
-      dogSex: dog.sex,
+      dogName: walkDog.name,
+      dogSex: walkDog.sex,
       responsibleName: usersById[walk.responsibleUserId]?.name,
     });
-  }, [dog, reminderPrompt, usersById, walksById]);
+  }, [dog, dogs, reminderPrompt, usersById, walksById]);
 
   // Badge counts: swap requests addressed to the viewer (a swap target can
   // be ANY active member, including one who also holds the Admin role —
@@ -395,7 +595,11 @@ export function HomeScreen() {
 
   const unreadResultsForMe =
     countUnreadRequestResults(swapRequests, walksById, effectiveUserId) +
-    countUnreadRequestResults(timeChangeRequests, walksById, effectiveUserId);
+    countUnreadRequestResults(timeChangeRequests, walksById, effectiveUserId) +
+    (effectiveRole === 'admin'
+      ? countRecentlyResolvedRequestsForAdmin(swapRequests, walksById, effectiveUserId) +
+        countRecentlyResolvedRequestsForAdmin(timeChangeRequests, walksById, effectiveUserId)
+      : 0);
   const bellBadgeCount = pendingForMe + unreadResultsForMe;
 
   const openRequestsInbox = () => {
@@ -415,8 +619,13 @@ export function HomeScreen() {
   const otherPendingWalks = useMemo(() => {
   if (!editingWalk) return [];
 
+  // Multi-dog (PRD §11): a swap target must belong to the SAME dog as the
+  // walk being edited — matching the dogId filter both SwapWalkPickerModal
+  // call sites below already apply. Without this, a multi-dog family could
+  // be offered to "swap" one dog's walk with a completely different dog's
+  // occurrence.
   return upcomingWalks(walks, new Date(), 50)
-    .filter((w) => w.id !== editingWalk.id)
+    .filter((w) => w.id !== editingWalk.id && w.dogId === editingWalk.dogId)
     .slice(0, 12)
     .map((w) => ({
       walk: w,
@@ -455,33 +664,58 @@ export function HomeScreen() {
     );
   }
 
+  // PRD §25's "no dog" state — a dog is genuinely optional at family
+  // creation (FamilyOnboardingScreen), so an admin can land here with a
+  // fully-loaded, dogless family. Previously this fell through to the
+  // generic "אין טיולים ממתינים" (no pending walks) empty state below,
+  // which misleadingly implies walks exist but happen to be scheduled
+  // elsewhere, rather than that there is nothing to walk at all yet.
+  // Gated on !familyLoading so this never flashes before the real family
+  // data (and its dog, if any) has actually loaded.
+  if (!dog && !familyLoading) {
+    return (
+      <SafeAreaView style={styles.center}>
+        <EmptyState
+          emoji="🐶"
+          title="עדיין אין כלב במשפחה"
+          subtitle="הוסיפו את הכלב הראשון כדי להתחיל לתכנן טיולים ותורנויות"
+        />
+        <Button label="הוספת כלב" onPress={() => navigation.navigate('Settings')} style={styles.addFirstDogButton} />
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={[]}>
       {/* QA/UX round, Part F2 fix: this used to be rendered here, only on
           Home — moved to a single persistent instance at the navigator
           root (RootNavigator.tsx's <ImpersonationBanner />) so it stays
           visible on every tab while impersonating, not just this one. See
           components/ImpersonationBanner.tsx's doc comment. */}
       <ScrollView
+        // The dashboard contains real, variable family data. It must remain
+        // reachable on Safari too: the bottom tab bar is fixed, so disabling
+        // Web scrolling cuts the schedule/approval cards off below it.
+        scrollEnabled
         contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        <View style={styles.topRow}>
-          <Image
-            source={require('../../assets/walkie-doggy-link-wordmark-transparent.png')}
-            style={styles.brandWordmark}
-            resizeMode="contain"
-            accessibilityLabel="Walkie Doggy Link"
-          />
-          <Pressable
-            onPress={() => setDogProfileVisible(true)}
-            style={styles.mascotHeaderButton}
-            accessibilityRole="button"
-            accessibilityLabel="פתיחת פרופיל הכלב"
-          >
-            <WalkieMascot state="idle" size={38} accessibilityLabel="Walkie Doggy" />
-          </Pressable>
-          {isSupabaseConfigured ? (
+        <View style={styles.dashboardHeroShell}>
+          <View style={[styles.topRow, styles.dashboardTopRow]}>
+            <Image
+              source={require('../../assets/walkie-doggy-link-wordmark-transparent.png')}
+              style={styles.brandWordmark}
+              resizeMode="contain"
+              accessibilityLabel="Walkie Doggy Link"
+            />
+            <Pressable
+              onPress={() => setDogProfileVisible(true)}
+              style={styles.mascotHeaderButton}
+              accessibilityRole="button"
+              accessibilityLabel="פתיחת פרופיל הכלב"
+            >
+              <WalkieMascot state="idle" size={38} accessibilityLabel="Walkie Doggy" />
+            </Pressable>
             <Pressable
               onPress={openRequestsInbox}
               style={styles.notificationButton}
@@ -495,8 +729,78 @@ export function HomeScreen() {
                 </View>
               ) : null}
             </Pressable>
-          ) : null}
+          </View>
+
+          {/* Issue #145: the approved lavender composition remains the default;
+              a manager-selected family scene replaces it and a transparent dog
+              cutout is composited over it when one exists. */}
+          <Pressable
+            onPress={() => setDogProfileVisible(true)}
+            style={styles.dashboardHero}
+            accessibilityRole="button"
+            accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
+          >
+            {heroBackground ? <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" /> : null}
+            <View style={styles.dashboardHeroBloomOne} pointerEvents="none" />
+            <View style={styles.dashboardHeroBloomTwo} pointerEvents="none" />
+            <View style={styles.dashboardHeroGlow} pointerEvents="none" />
+            <View style={styles.dashboardHeroShade} />
+            <View style={styles.dashboardHeroGreeting} pointerEvents="none">
+              <RtlText style={styles.dashboardHeroGreetingTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שלום משפחת {family?.name ?? ''}</RtlText>
+              <RtlText style={styles.dashboardHeroGreetingSubtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{dog?.name ?? 'הכלב/ה'} מחכה לטיול הבא 🐾</RtlText>
+            </View>
+            {showDogCutout ? <Image source={{ uri: dog!.photoCutoutUrl! }} style={styles.dashboardHeroDogCutout} resizeMode="contain" onError={() => setHeroCutoutFailed(true)} /> : null}
+            {!showDogCutout && showPersonalHero ? <Image source={{ uri: dog!.photoUrl! }} style={styles.dashboardHeroDogPhoto} resizeMode="cover" onError={() => setHeroPhotoFailed(true)} /> : null}
+            {!showDogCutout && !showPersonalHero ? (
+              <View style={styles.dashboardHeroMascot} pointerEvents="none">
+                <WalkieMascot state="idle" size={168} accessibilityLabel="כלב Walkie Doggy" />
+              </View>
+            ) : null}
+          </Pressable>
         </View>
+
+        {/* PRD §11: "ב-Home יש בחירת כלב קלה כאשר יש יותר מכלב אחד" — an
+            easy dog picker on Home whenever there's more than one dog.
+            Selecting a chip makes that dog active (selectDog(), persisted),
+            which visibleWalks above (and every card below) then reflects.
+            Hidden entirely for a single-dog family — no change there. */}
+        {dogs.length > 1 ? (
+          <DogSelectorRow dogs={dogs} selectedDogId={selectedDogId} onSelect={(dogId) => void selectDog(dogId)} />
+        ) : null}
+
+        {/*
+          Health & Grooming summary (PRD §10) — deliberately a single slim,
+          dismissible-feeling pill, never a full list here: this screen's
+          job is the walk experience, so the badge only ever tells the
+          member "something needs attention" and hands off to Settings'
+          Health sheet (via healthStore.requestOpen(), a cross-tab signal —
+          see that store's own doc comment) for the actual list. Rendered
+          only when there's genuinely something to flag, so a family with no
+          open tasks — or none due/overdue yet — sees nothing extra at all.
+        */}
+        {healthSummary.overdueCount + healthSummary.dueSoonCount > 0 ? (
+          <Pressable
+            style={[styles.healthSummaryPill, healthSummary.overdueCount > 0 && styles.healthSummaryPillOverdue]}
+            onPress={() => {
+              requestOpenHealthModal();
+              navigation.navigate('Settings');
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={
+              healthSummary.overdueCount > 0
+                ? `${healthSummary.overdueCount} משימות בריאות וטיפוח באיחור, מעבר להגדרות`
+                : `${healthSummary.dueSoonCount} משימות בריאות וטיפוח קרובות, מעבר להגדרות`
+            }
+          >
+            <RtlText style={styles.healthSummaryIcon}>🏥</RtlText>
+            <RtlText style={styles.healthSummaryText}>
+              {healthSummary.overdueCount > 0
+                ? `${healthSummary.overdueCount} משימות בריאות באיחור`
+                : `${healthSummary.dueSoonCount} משימות בריאות קרובות`}
+            </RtlText>
+            <RtlText style={styles.healthSummaryChevron}>‹</RtlText>
+          </Pressable>
+        ) : null}
 
         <View style={styles.nextWalkLift}>
           {nextWalk ? (
@@ -506,18 +810,28 @@ export function HomeScreen() {
             currentUserId={effectiveUserId}
             dogName={dog?.name ?? 'הכלב/ה'}
             dogPhotoUrl={dog?.photoUrl}
-            showDogPhoto
+            showDogPhoto={false}
             showMascot={false}
             dogSex={dog?.sex}
             requestStatusLine={
               computeWalkRequestStatusLine(nextWalk, swapRequests, timeChangeRequests, walksById, new Date(), effectiveUserId)?.text
             }
             primaryLabel={isOverdue(nextWalk) ? 'ממתין לעדכון' : undefined}
+            tone="dashboard"
             onMarkDone={() => setCompleteWalkId(nextWalk.id)}
             activeStartedAt={nextWalk.status === 'in_progress' ? nextWalk.startedAt ?? null : null}
+            liveDistanceMeters={gpsTrackingWalkId === nextWalk.id ? gpsDistanceMeters : null}
+            gpsPointCount={gpsTrackingWalkId === nextWalk.id ? gpsPointCount : null}
+            gpsStatus={gpsTrackingWalkId === nextWalk.id ? gpsPermissionStatus : null}
             onStartWalk={
               effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId
-                ? () => void startWalk(nextWalk.id)
+                ? () => {
+                  // Start Safari's permission request inside the user gesture,
+                  // before the server walk RPC. GPS remains assistive: a
+                  // denial never prevents the walk lifecycle from starting.
+                  void requestForegroundGpsPermission();
+                  void startWalk(nextWalk.id);
+                }
                 : undefined
             }
             onEndWalk={
@@ -544,8 +858,8 @@ export function HomeScreen() {
             // list already used — see that function's doc comment for the
             // full "responsible member / non-responsible member /
             // non-responsible admin" rule and its own unit tests.
-            onSwap={nextWalkCardActions?.canSwapDirect ? () => setSwapWalkId(nextWalk.id) : undefined}
-            onEdit={nextWalkCardActions?.canEditDirect ? () => setEditWalkId(nextWalk.id) : undefined}
+            onSwap={undefined}
+            onEdit={undefined}
             onRequestSwap={
               nextWalkCardActions?.canRequestSwap && !walkHasActiveSwapRequest(nextWalk.id, swapRequests, walksById)
                 ? () => setRequestSwapWalkId(nextWalk.id)
@@ -565,18 +879,106 @@ export function HomeScreen() {
         )}
         </View>
 
-        <Button
-          label="+ הוסף טיול שבוצע"
-          variant="secondary"
-          onPress={() => setAddUnplannedVisible(true)}
-          style={styles.unplannedButton}
-          shrinkToFit
-        />
+        <View style={styles.dashboardShortcuts} accessibilityLabel="קיצורי דרך">
+          {effectiveRole === 'admin' ? (
+            <>
+              <Pressable onPress={() => nextWalk ? setEditWalkId(nextWalk.id) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutMint]} accessibilityRole="button" accessibilityLabel="עריכת הטיול הבא">
+                <RtlText style={styles.dashboardShortcutIcon}>✎</RtlText>
+                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1}>עריכה</RtlText>
+              </Pressable>
+              <Pressable onPress={() => nextWalk ? setSwapWalkId(nextWalk.id) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutGold]} accessibilityRole="button" accessibilityLabel="החלפת הטיול הבא">
+                <RtlText style={styles.dashboardShortcutIcon}>⇄</RtlText>
+                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1}>החלפה</RtlText>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Pressable onPress={() => nextWalkCardActions?.canRequestTimeChange ? setRequestTimeChangeWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutMint]} accessibilityRole="button" accessibilityLabel="בקשת שינוי שעה">
+                <RtlText style={styles.dashboardShortcutIcon}>◷</RtlText>
+                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שינוי שעה</RtlText>
+              </Pressable>
+              <Pressable onPress={() => setAddUnplannedVisible(true)} style={[styles.dashboardShortcut, styles.dashboardShortcutGold]} accessibilityRole="button" accessibilityLabel="הוסף טיול שבוצע">
+                <RtlText style={styles.dashboardShortcutIcon}>🚶</RtlText>
+                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>טיול ספונטני</RtlText>
+              </Pressable>
+            </>
+          )}
+        </View>
 
+        {lastWalk ? (
+          <Pressable style={styles.dashboardLastWalk} onPress={() => navigation.navigate('History')} accessibilityRole="button" accessibilityLabel="פתיחת הטיול האחרון">
+            <View style={styles.dashboardLastWalkCopy}>
+              <RtlText style={styles.dashboardLastWalkTitle}>✓ הטיול האחרון</RtlText>
+              <RtlText style={styles.dashboardLastWalkMeta}>
+                בוצע ע״י {usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.name ?? 'בן משפחה'} · {lastWalk.completedAt ? new Date(lastWalk.completedAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : lastWalk.scheduledTime} · {walkDateContextLabel(lastWalk.date)}
+              </RtlText>
+              {lastWalkGps ? (
+                <RtlText style={styles.dashboardLastWalkGps}>
+                  {[
+                    lastWalk.durationMinutes ? `${lastWalk.durationMinutes} דק׳` : null,
+                    (lastWalkGps.correctedDistanceMeters ?? lastWalkGps.distanceMeters) != null
+                      ? `${((lastWalkGps.correctedDistanceMeters ?? lastWalkGps.distanceMeters ?? 0) / 1000).toFixed(1)} ק״מ`
+                      : null,
+                  ].filter(Boolean).join(' · ')}
+                </RtlText>
+              ) : null}
+            </View>
+            <Avatar
+              emoji={usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.avatar ?? '👤'}
+              color={usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.color ?? colors.primary}
+              photoUrl={usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.photoUrl}
+              size={38}
+            />
+            <RtlText style={styles.dashboardLastWalkChevron}>‹</RtlText>
+          </Pressable>
+        ) : null}
+
+        <Pressable style={styles.dashboardTimeline} onPress={() => navigation.navigate('Schedule')} accessibilityRole="button" accessibilityLabel="פתיחת לוח הזמנים להמשך היום">
+          <View style={styles.dashboardTimelineHeader}>
+            <RtlText style={styles.dashboardTimelineTitle}>בהמשך היום</RtlText>
+            <RtlText style={styles.dashboardTimelineChevron}>‹</RtlText>
+          </View>
+          {dashboardTimelineWalks.length > 0 ? (
+            <View style={styles.dashboardTimelineStops}>
+              <View style={styles.dashboardTimelinePeople}>
+                {dashboardTimelineWalks.map((walk) => (
+                  <View key={walk.id} style={styles.dashboardTimelineStop}>
+                    <Avatar emoji={usersById[walk.responsibleUserId]?.avatar ?? '🐾'} color={usersById[walk.responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[walk.responsibleUserId]?.photoUrl} size={34} />
+                  </View>
+                ))}
+              </View>
+              <View style={styles.dashboardTimelineTrack} pointerEvents="none">
+                <View style={[styles.dashboardTimelineProgress, { width: `${dashboardTimelineProgress * 100}%` }]} />
+                {dashboardTimelineWalks.map((walk) => <View key={`dot-${walk.id}`} style={styles.dashboardTimelineDot} />)}
+              </View>
+              <View style={styles.dashboardTimelineLabels}>
+                {dashboardTimelineWalks.map((walk) => (
+                  <View key={`label-${walk.id}`} style={styles.dashboardTimelineLabel}>
+                    <RtlText style={styles.dashboardTimelineTime}>{walk.scheduledTime}</RtlText>
+                    <RtlText style={styles.dashboardTimelineName} numberOfLines={1}>{usersById[walk.responsibleUserId]?.name ?? 'בן משפחה'}</RtlText>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : <RtlText style={styles.dashboardTimelineEmpty}>אין טיולים נוספים היום · לפתיחת לוח הזמנים</RtlText>}
+        </Pressable>
+
+        {pendingForMe > 0 ? (
+          <Pressable style={styles.dashboardRequestAlert} onPress={openRequestsInbox} accessibilityRole="button" accessibilityLabel={`${pendingForMe} בקשות ממתינות לאישור`}>
+            <RtlText style={styles.dashboardRequestAlertIcon}>🔔</RtlText>
+            <View style={styles.dashboardRequestAlertCopy}>
+              <RtlText style={styles.dashboardRequestAlertTitle}>בקשה ממתינה לאישור</RtlText>
+              <RtlText style={styles.dashboardRequestAlertSubtitle}>{pendingForMe === 1 ? 'בקשה אחת מחכה לטיפול שלך' : `${pendingForMe} בקשות מחכות לטיפול שלך`}</RtlText>
+            </View>
+            <RtlText style={styles.dashboardRequestAlertChevron}>‹</RtlText>
+          </Pressable>
+        ) : null}
+
+        <View style={styles.dashboardOverflow}>
         {lastWalk ? (
           <View style={styles.section}>
             <View style={styles.sectionTitlePhysicalRight}>
-              <RtlText style={styles.sectionTitle}>היסטוריה אחרונה</RtlText>
+              <RtlText style={styles.sectionTitle}>הטיול האחרון</RtlText>
             </View>
 
             {(() => {
@@ -700,11 +1102,19 @@ export function HomeScreen() {
 
         {upcoming.length > 0 ? (
           <View style={styles.section}>
-            <View style={styles.sectionTitlePhysicalRight}>
+            <View style={styles.upcomingHeader}>
               <RtlText style={styles.sectionTitle}>טיולים קרובים</RtlText>
+              <Pressable
+                onPress={() => navigation.navigate('Schedule')}
+                accessibilityRole="button"
+                accessibilityLabel="הצגת כל הטיולים בלוח הזמנים"
+                hitSlop={8}
+              >
+                <RtlText style={styles.showMoreLink}>עוד ‹</RtlText>
+              </Pressable>
             </View>
             <View style={styles.list}>
-              {upcoming.map((w) => (
+              {upcoming.slice(0, 2).map((w) => (
                 <WalkRow
                   key={w.id}
                   walk={w}
@@ -737,6 +1147,7 @@ export function HomeScreen() {
             </View>
           </View>
         ) : null}
+        </View>
       </ScrollView>
 
       <CompleteWalkModal
@@ -761,14 +1172,20 @@ export function HomeScreen() {
           // messageEngine.ts) still produce a grammatical message, and this
           // is purely cosmetic — never re-thrown, never blocks markDone's
           // own error handling.
-          if (completed) showWalkCompletionCelebration(walkBeingCompleted?.durationMinutes);
+          if (completed) {
+            showWalkCompletionCelebration(walkBeingCompleted?.durationMinutes);
+            checkForNewAchievementUnlocks();
+          }
         }}
         onCancel={() => setCompleteWalkId(null)}
       />
 
       <WalkCompletionCelebration
         celebration={celebration}
-        onDismiss={() => setCelebration(null)}
+        onDismiss={() => {
+          setCelebration(null);
+          showNextAchievementCelebration();
+        }}
       />
 
       <ReminderMascotPrompt visible={!!reminderPromptMessage} message={reminderPromptMessage ?? ''} onDismiss={() => setReminderPrompt(null)} />
@@ -847,7 +1264,10 @@ export function HomeScreen() {
               note: result.note || undefined,
               durationMinutes: result.durationMinutes,
             });
-            if (saved) showWalkCompletionCelebration(result.durationMinutes);
+            if (saved) {
+              showWalkCompletionCelebration(result.durationMinutes);
+              checkForNewAchievementUnlocks();
+            }
           } else {
             // Must never fail silently: without a loaded dog we have no
             // dogId to attach the walk to, but the person already tapped
@@ -885,10 +1305,14 @@ export function HomeScreen() {
             });
           }
         }}
-        onDelete={async (walkId) => {
-          setEditingLastUnplannedWalkId(null);
-          await deleteUnplannedWalk(walkId);
-        }}
+        onDelete={
+          effectiveRole === 'admin'
+            ? async (walkId) => {
+                setEditingLastUnplannedWalkId(null);
+                await deleteUnplannedWalk(walkId);
+              }
+            : undefined
+        }
         onClose={() => setEditingLastUnplannedWalkId(null)}
       />
 
@@ -907,15 +1331,14 @@ export function HomeScreen() {
         const editingLastScheduledWalk = editingLastDoneDetailsId
           ? walks.find((w) => w.id === editingLastDoneDetailsId) ?? null
           : null;
-        const canDeleteThisWalk =
-          !!editingLastScheduledWalk &&
-          canDeleteScheduledWalk(editingLastScheduledWalk, effectiveUserId, effectiveRole === 'admin');
+        const canDeleteThisWalk = !!editingLastScheduledWalk && effectiveRole === 'admin';
         return (
           <EditDoneDetailsModal
             visible={!!editingLastDoneDetailsId}
             walk={editingLastScheduledWalk}
             users={activeUsers}
             canReassignCompletedBy
+            currentUserId={effectiveUserId}
             onSave={async (details) => {
               const walkId = editingLastDoneDetailsId;
               setEditingLastDoneDetailsId(null);
@@ -996,6 +1419,13 @@ export function HomeScreen() {
         onRejectSwap={rejectSwap}
         onApproveTimeChange={approveTimeChange}
         onRejectTimeChange={rejectTimeChange}
+        healthReminders={healthReminders}
+        dogName={dog?.name}
+        onOpenHealthReminders={() => {
+          setRequestsInboxVisible(false);
+          requestOpenHealthModal();
+          navigation.navigate('Settings');
+        }}
         onClose={() => setRequestsInboxVisible(false)}
       />
 
@@ -1022,13 +1452,20 @@ export function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: '#E8E5FF' },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
-  content: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, gap: 14, paddingBottom: spacing.xxxl, width: '100%' },
+  addFirstDogButton: { marginTop: spacing.md },
+  // Leaves the final card clear of the persistent bottom tab bar on phones
+  // and in Safari/PWA, instead of letting it end underneath the navigation.
+  content: { flexGrow: 1, paddingHorizontal: spacing.md, paddingTop: 0, gap: 8, paddingBottom: 120, width: '100%', backgroundColor: '#FBF8F3' },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: 14 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
-  nextWalkLift: { marginTop: 0, zIndex: 1, paddingHorizontal: 0 },
-  unplannedButton: { marginTop: -2 },
+  // Item 6 (mobile polish): -42 (was -48) — the hero above is now 20px
+  // shorter, so keeping the same -48 overlap would push this card up
+  // further into the (shorter) hero than before; easing it to -42 nets a
+  // modest ~14px higher start overall while keeping roughly the same
+  // visual overlap relationship with the hero as before.
+  nextWalkLift: { marginTop: -42, zIndex: 1, paddingHorizontal: spacing.xs },
   testModeBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1038,50 +1475,124 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     gap: spacing.sm,
   },
-  testModeBannerText: { flex: 1, color: '#fff', fontWeight: '700', fontSize: typography.meta.fontSize, textAlign: 'right' },
+  testModeBannerText: { flex: 1, color: colors.textInverse, fontWeight: '700', fontSize: typography.meta.fontSize, textAlign: 'right' },
   testModeBannerButton: { backgroundColor: '#ffffff33', borderRadius: radii.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
-  testModeBannerButtonText: { color: '#fff', fontWeight: '700', fontSize: 12 },
-  topRow: { position: 'relative', minHeight: 52, alignItems: 'center', justifyContent: 'center' },
+  testModeBannerButtonText: { color: colors.textInverse, fontWeight: '700', fontSize: 12 },
+  dashboardHeroShell: { marginHorizontal: -spacing.md, backgroundColor: '#E8E5FF', overflow: 'hidden' },
+  topRow: { position: 'relative', minHeight: 54, alignItems: 'center', justifyContent: 'center' },
+  // Item 6 (mobile polish): trimmed from 58/6 — a shorter header row so the
+  // Dashboard's real content (Next Walk, timeline) starts higher on screen.
+  dashboardTopRow: { minHeight: 48, paddingHorizontal: spacing.md, paddingTop: Platform.OS === 'web' ? 0 : 4 },
   brandWordmark: { width: 132, height: 42 },
-  mascotHeaderButton: { position: 'absolute', right: 0, top: 6, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  dogSummaryCard: {
+  mascotHeaderButton: { position: 'absolute', left: spacing.md, top: 7, width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
+  dashboardHero: {
     width: '100%',
-    minHeight: 112,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    padding: 10,
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  dogSummaryMedia: {
-    width: 92,
-    height: 92,
-    borderRadius: 22,
+    // Item 6 (mobile polish): reduced from 176 — a shorter hero band so
+    // less of the screen is spent before the Next Walk card. The dog
+    // cutout/mascot below are shifted up by the SAME 20px delta (see their
+    // own comments) so this crops only a little more off their bottom
+    // (paws/tail), never their face/head — see docs/design/MASCOT_SPEC.md's
+    // identity rules on what must stay recognizable in every frame.
+    height: 156,
+    borderBottomLeftRadius: 34,
+    borderBottomRightRadius: 34,
+    backgroundColor: '#E8ECFF',
     overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#CFEDE5',
-    flexShrink: 0,
+    alignItems: 'flex-end',
+    justifyContent: 'flex-end',
   },
-  dogSummaryImage: { width: '100%', height: '100%' },
-  dogSummaryCopy: { flex: 1, alignItems: 'flex-end', justifyContent: 'center', gap: 2, paddingHorizontal: 4 },
-  dogSummaryEyebrow: { ...typography.meta, color: colors.textSecondary, fontWeight: '700', textAlign: 'right' },
-  dogSummaryName: { fontSize: 24, lineHeight: 30, color: colors.textPrimary, fontWeight: '900', textAlign: 'right' },
-  dogSummaryLink: { ...typography.meta, color: colors.primaryDark, fontWeight: '900', textAlign: 'right', marginTop: 3 },
-  notificationButton: { position: 'absolute', left: 0, top: 11, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
+  dashboardHeroImage: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
+  dashboardHeroBloomOne: { position: 'absolute', width: 270, height: 270, borderRadius: 135, left: -112, bottom: -174, backgroundColor: '#D8D4FF' },
+  dashboardHeroBloomTwo: { position: 'absolute', width: 250, height: 250, borderRadius: 125, right: -104, top: -132, backgroundColor: '#C9D7FF' },
+  dashboardHeroGlow: { position: 'absolute', width: 260, height: 92, borderRadius: 130, left: 24, bottom: 16, backgroundColor: '#FFFFFF75', transform: [{ rotate: '-8deg' }] },
+  dashboardHeroShade: { ...StyleSheet.absoluteFill, backgroundColor: '#FFFFFF12' },
+  dashboardHeroGreeting: { position: 'absolute', top: 16, left: spacing.md, width: '52%', alignItems: 'flex-end', zIndex: 2 },
+  dashboardHeroGreetingTitle: { width: '100%', fontSize: 22, lineHeight: 27, color: '#253275', fontWeight: '900', textAlign: 'right' },
+  dashboardHeroGreetingSubtitle: { width: '100%', marginTop: 4, fontSize: 13, lineHeight: 18, color: '#454E91', fontWeight: '700', textAlign: 'right' },
+  // bottom offsets shifted up by 20 (the dashboardHero height reduction)
+  // so each image's TOP edge — where the mascot/dog's face/head sits —
+  // renders at the exact same position as before; only extra bottom
+  // (paws/tail) bleed is newly clipped by the shorter frame.
+  dashboardHeroMascot: { position: 'absolute', right: -4, bottom: -24, zIndex: 2 },
+  dashboardHeroDogCutout: { position: 'absolute', right: -4, bottom: -26, width: 190, height: 188, zIndex: 2 },
+  dashboardHeroDogPhoto: { position: 'absolute', right: 12, bottom: 8, width: 126, height: 126, borderRadius: 63, zIndex: 2, borderWidth: 3, borderColor: '#FFFFFFCC' },
+  dashboardHeroCopy: { width: '52%', alignItems: 'flex-end', alignSelf: 'flex-start', paddingTop: 38, paddingHorizontal: spacing.md, zIndex: 2 },
+  dashboardHeroEyebrow: { fontSize: 16, color: '#27376F', fontWeight: '700', textAlign: 'right' },
+  dashboardHeroName: { fontSize: 30, lineHeight: 36, color: '#16245B', fontWeight: '900', textAlign: 'right' },
+  dashboardShortcuts: { flexDirection: 'row-reverse', gap: spacing.sm, width: '100%', marginTop: -2 },
+  dashboardShortcut: { flex: 1, minHeight: 48, borderRadius: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, gap: 0, borderWidth: 1, borderColor: '#FFFFFFAA' },
+  dashboardShortcutMint: { backgroundColor: '#E2F8E9' },
+  dashboardShortcutBlue: { backgroundColor: '#E2F4FF' },
+  dashboardShortcutGold: { backgroundColor: '#FFF0C9' },
+  dashboardShortcutPurple: { backgroundColor: '#F0EBFF' },
+  dashboardShortcutLabel: { fontSize: 13, lineHeight: 16, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
+  dashboardShortcutIcon: { fontSize: 17, lineHeight: 18 },
+  dashboardLastWalk: { minHeight: 52, borderRadius: radii.xl, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EAE5DD', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm, shadowColor: '#17245B', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  dashboardLastWalkCopy: { flex: 1, alignItems: 'flex-end' },
+  dashboardLastWalkTitle: { fontSize: 17, fontWeight: '900', color: '#17245B', textAlign: 'right' },
+  dashboardLastWalkMeta: { marginTop: 2, fontSize: 12, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
+  dashboardLastWalkGps: { marginTop: 2, fontSize: 12, fontWeight: '800', color: '#2F7F75', textAlign: 'right' },
+  dashboardLastWalkDog: { width: 46, height: 40, overflow: 'hidden', borderRadius: radii.lg, backgroundColor: '#EEF3FF', alignItems: 'center', justifyContent: 'center' },
+  dashboardLastWalkChevron: { fontSize: 30, color: '#454B9E', writingDirection: 'ltr' },
+  dashboardTimeline: { minHeight: 60, borderRadius: radii.xl, backgroundColor: '#FBFBFF', borderWidth: 1, borderColor: '#E1E2F4', paddingHorizontal: spacing.md, paddingVertical: 7, gap: 4 },
+  dashboardTimelineHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  dashboardTimelineTitle: { fontSize: 16, fontWeight: '900', color: '#17245B', textAlign: 'right' },
+  dashboardTimelineChevron: { fontSize: 24, color: '#454B9E', writingDirection: 'ltr' },
+  dashboardTimelineStops: { position: 'relative', gap: 4 },
+  dashboardTimelinePeople: { flexDirection: 'row-reverse', justifyContent: 'space-around' },
+  dashboardTimelineStop: { flex: 1, alignItems: 'center' },
+  dashboardTimelineTrack: { height: 8, marginHorizontal: '8%', borderRadius: 4, backgroundColor: '#D9DBE9', overflow: 'hidden', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  dashboardTimelineProgress: { position: 'absolute', right: 0, top: 0, bottom: 0, borderRadius: 4, backgroundColor: '#6967D8' },
+  dashboardTimelineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#6967D8', zIndex: 1 },
+  dashboardTimelineLabels: { flexDirection: 'row-reverse', justifyContent: 'space-around' },
+  dashboardTimelineLabel: { flex: 1, alignItems: 'center', minWidth: 0 },
+  dashboardTimelineTime: { fontSize: 12, fontWeight: '900', color: '#2E3170' },
+  dashboardTimelineName: { fontSize: 11, fontWeight: '700', color: colors.textSecondary, maxWidth: 72, textAlign: 'center' },
+  dashboardTimelineEmpty: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, textAlign: 'right', paddingBottom: 2 },
+  dashboardRequestAlert: { minHeight: 62, borderRadius: radii.xl, backgroundColor: '#FFF0D9', borderWidth: 1, borderColor: '#F8DEC0', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
+  dashboardRequestAlertIcon: { fontSize: 25 },
+  dashboardRequestAlertCopy: { flex: 1, alignItems: 'flex-end' },
+  dashboardRequestAlertTitle: { fontSize: 16, fontWeight: '900', color: '#B66318', textAlign: 'right' },
+  dashboardRequestAlertSubtitle: { marginTop: 2, fontSize: 13, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
+  dashboardRequestAlertChevron: { fontSize: 28, color: '#C56C1D', writingDirection: 'ltr' },
+  // Item 7: standalone "בקשת החלפה" row, now the lowest Dashboard content
+  // row (directly above the bottom nav) — same blue tint the shortcut used
+  // before it moved here, laid out like the other full-width dashboard rows
+  // (dashboardLastWalk/dashboardRequestAlert) for visual consistency.
+  dashboardSwapRequestRow: { minHeight: 60, borderRadius: radii.xl, backgroundColor: '#E2F4FF', borderWidth: 1, borderColor: '#CFE9FB', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
+  dashboardSwapRequestIcon: { fontSize: 22 },
+  dashboardSwapRequestCopy: { flex: 1, alignItems: 'flex-end' },
+  dashboardSwapRequestTitle: { fontSize: 16, fontWeight: '900', color: '#1D5C8A', textAlign: 'right' },
+  dashboardSwapRequestSubtitle: { marginTop: 2, fontSize: 12, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
+  dashboardSwapRequestChevron: { fontSize: 26, color: '#2C7CB0', writingDirection: 'ltr' },
+  dashboardOverflow: { display: 'none' },
+  notificationButton: { position: 'absolute', right: spacing.md, top: 7, width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   notificationIcon: { fontSize: 18 },
   requestsCountBadge: { minWidth: spacing.xl, height: spacing.xl, borderRadius: radii.sm, paddingHorizontal: spacing.xs, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryDark },
-  requestsCountText: { fontSize: 11, fontWeight: '800', color: '#fff' },
+  requestsCountText: { fontSize: 11, fontWeight: '800', color: colors.textInverse },
+  healthSummaryPill: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: spacing.xs,
+    alignSelf: 'flex-end',
+    marginTop: spacing.sm,
+    paddingVertical: 6,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.round,
+    backgroundColor: colors.statusCurrentBg,
+  },
+  healthSummaryPillOverdue: { backgroundColor: colors.statusOverdueBg },
+  healthSummaryIcon: { fontSize: 14 },
+  healthSummaryText: { ...typography.meta, fontSize: 12, fontWeight: '700', color: colors.textPrimary },
+  healthSummaryChevron: { fontSize: 14, color: colors.textSecondary, writingDirection: 'ltr' },
   section: { gap: spacing.sm },
   sectionTitlePhysicalRight: {
     width: '100%',
-    direction: 'ltr',
+    ...nativeDirection('ltr'),
     alignItems: 'flex-end',
   },
+  upcomingHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  showMoreLink: { fontSize: 15, fontWeight: '800', color: colors.primary, writingDirection: 'rtl' },
   sectionTitle: {
     alignSelf: 'flex-end',
     ...typography.sectionTitle,
@@ -1092,7 +1603,7 @@ const styles = StyleSheet.create({
   list: { gap: spacing.sm },
 
 lastWalkCard: {
-  backgroundColor: colors.surface,
+  backgroundColor: '#FFF7E8',
   borderRadius: radii.lg,
   borderWidth: 1,
   borderColor: colors.border,
@@ -1102,7 +1613,7 @@ lastWalkCard: {
 
 lastWalkTopRow: {
   flexDirection: 'row',
-  direction: 'ltr',
+  ...nativeDirection('ltr'),
   alignItems: 'center',
   justifyContent: 'space-between',
   gap: spacing.sm,
@@ -1145,7 +1656,7 @@ lastWalkSkippedBadge: {
 lastWalkActions: {
   width: 154,
   flexDirection: 'row',
-  direction: 'ltr',
+  ...nativeDirection('ltr'),
   alignItems: 'center',
   justifyContent: 'center',
   gap: 18,
@@ -1164,7 +1675,7 @@ lastWalkEditAction: {
 
 lastWalkNeedsGroup: {
   flexDirection: 'row',
-  direction: 'ltr',
+  ...nativeDirection('ltr'),
   alignItems: 'center',
   gap: 4,
   flexShrink: 0,

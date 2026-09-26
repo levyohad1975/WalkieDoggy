@@ -40,7 +40,7 @@ export function computeLastWalk(walks: Walk[], now: Date = new Date()): Walk | u
 
   const finished = walks.filter(
     (w) =>
-      w.status !== 'pending' &&
+      (w.status === 'done' || w.status === 'skipped') &&
       finishedTime(w) <= now.getTime()
   );
 

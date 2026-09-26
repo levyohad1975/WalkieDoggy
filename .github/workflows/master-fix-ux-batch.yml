@@ -1,0 +1,53 @@
+name: Master Fix & UX Batch
+
+on:
+  push:
+    branches:
+      - claude/walkie-doggy-desktop-continue-lhpei4
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: master-fix-ux-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality-gate:
+    name: P0-P2 Quality Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      - name: Tests
+        run: npm test -- --runInBand
+
+      - name: Master Batch checkpoint
+        if: always()
+        run: |
+          {
+            echo "## Master Fix & UX Batch"
+            echo ""
+            echo "- Branch: \`${GITHUB_REF_NAME}\`"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Automated gate: TypeScript + Jest"
+            echo "- Device/Staging verification remains a separate Definition-of-Done gate."
+          } >> "$GITHUB_STEP_SUMMARY"

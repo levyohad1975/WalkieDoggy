@@ -133,6 +133,50 @@ describe('scheduleStore', () => {
     expect(backfilledWalks.length).toBe(backfilledEntries.length);
   });
 
+  it('BUG FIX: two concurrent load() calls for the same family share one in-flight backfill instead of each generating their own duplicate entry/walk', async () => {
+    await useScheduleStore.getState().load(FAMILY_ID);
+
+    // Same orphan-rule setup as the self-heal test above — a rule with no
+    // upcoming entries that load() must backfill.
+    const { repository } = require('../../data');
+    const orphanRule: ScheduleRule = {
+      id: 'rule-orphan-race',
+      familyId: FAMILY_ID,
+      dogId: 'dog-topi',
+      time: '16:00',
+      daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+      rotationUserIds: ['user-aba'],
+      rotationAnchorDate: '2026-08-20',
+      sortOrder: 99,
+      active: true,
+      createdAt: new Date().toISOString(),
+    };
+    await repository.upsertScheduleRule(orphanRule);
+
+    // Two unsynchronized callers firing close together on a real device
+    // (e.g. a screen mount effect and App.tsx's foreground sync) — both
+    // must resolve, but only ONE should actually run the fetch+backfill;
+    // the second must just await the first's in-flight promise.
+    const [firstResult, secondResult] = await Promise.all([
+      useScheduleStore.getState().load(FAMILY_ID),
+      useScheduleStore.getState().load(FAMILY_ID),
+    ]);
+
+    expect(firstResult).toBe(true);
+    expect(secondResult).toBe(true);
+
+    const state = useScheduleStore.getState();
+    const backfilledEntries = state.entries.filter((e) => e.ruleId === 'rule-orphan-race');
+    expect(backfilledEntries.length).toBeGreaterThan(0);
+    // No duplicate walk rows: exactly one walk per backfilled entry, not two.
+    const backfilledWalks = state.walks.filter((w) => backfilledEntries.some((e) => e.id === w.scheduleEntryId));
+    expect(backfilledWalks.length).toBe(backfilledEntries.length);
+
+    // A subsequent load() (no longer in-flight-shared) still works normally.
+    const thirdResult = await useScheduleStore.getState().load(FAMILY_ID);
+    expect(thirdResult).toBe(true);
+  });
+
   it('addRule surfaces a visible actionError instead of silently doing nothing when the repository write fails', async () => {
     await useScheduleStore.getState().load(FAMILY_ID);
     const { repository } = require('../../data');

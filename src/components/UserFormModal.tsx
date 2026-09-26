@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from './RtlText';
 import type { FamilyUser } from '../types';
@@ -7,6 +7,15 @@ import { radii, spacing, typography } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 import { pickAndUploadImage } from '../lib/uploadImage';
+import { useFamilyStore } from '../store/familyStore';
+
+export function shouldRunPendingWebPhotoPick(pendingPhotoPick: boolean, platform: string): boolean {
+  return pendingPhotoPick && platform === 'web';
+}
+
+export function shouldAutoSaveUploadedMemberPhoto(editingUser: FamilyUser | null, uri: string | null): boolean {
+  return Boolean(editingUser && uri);
+}
 
 const EMOJI_OPTIONS = ['🧑', '👨', '👩', '🧒', '👦', '👧', '👴', '👵'];
 
@@ -15,7 +24,7 @@ interface UserFormModalProps {
   editingUser: FamilyUser | null;
   /** Needed to build the Supabase Storage path ({familyId}/users/{userId}/...) — unused in local/demo mode. */
   familyId: string;
-  onSave: (input: { name: string; avatar: string; color: string; photoUrl?: string }) => void;
+  onSave: (input: { name: string; avatar: string; color: string; photoUrl?: string }) => void | Promise<void>;
   onClose: () => void;
 }
 
@@ -26,6 +35,12 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
   const [color, setColor] = useState(userPalette[0]);
   const [photoUrl, setPhotoUrl] = useState<string | undefined>(undefined);
   const [uploading, setUploading] = useState(false);
+  const [pendingPhotoPick, setPendingPhotoPick] = useState(false);
+  const saveUserPhoto = useFamilyStore((s) => s.saveUserPhoto);
+  // Keep latest values available while the hosted web cropper is open.
+  // The upload effect must not restart/cancel just because the parent or form re-renders.
+  const webPhotoSaveRef = useRef({ editingUser, name, avatar, color, onSave, onClose });
+  webPhotoSaveRef.current = { editingUser, name, avatar, color, onSave, onClose };
 
   useEffect(() => {
     if (visible) {
@@ -37,16 +52,66 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
   }, [visible, editingUser]);
 
   const pickPhoto = async () => {
+    // On Web, the crop UI is hosted above this form modal. Hide the form
+    // first so the cropper is never trapped behind a React-Native-Web Modal.
+    // Native uses the OS editor and does not need this hand-off.
+    if (Platform.OS === 'web') {
+      setPendingPhotoPick(true);
+      return;
+    }
     setUploading(true);
     try {
       const uri = await pickAndUploadImage('users', familyId, editingUser?.id ?? 'new');
-      if (uri) setPhotoUrl(uri);
+      if (uri) {
+        setPhotoUrl(uri);
+        // Existing member photo uploads are complete mutations, not drafts.
+        // Persist immediately so a refresh cannot discard a successfully
+        // uploaded Storage object just because the user did not press the
+        // separate form Save button afterwards.
+        if (shouldAutoSaveUploadedMemberPhoto(editingUser, uri)) {
+          await onSave({ name: name.trim(), avatar, color, photoUrl: uri });
+        }
+      }
     } catch {
       Alert.alert('לא הצלחנו להחליף תמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
     } finally {
       setUploading(false);
     }
   };
+
+  useEffect(() => {
+    if (!shouldRunPendingWebPhotoPick(pendingPhotoPick, Platform.OS)) return;
+    setUploading(true);
+    const latest = webPhotoSaveRef.current;
+    void (latest.editingUser
+      ? saveUserPhoto(latest.editingUser.id, familyId)
+      : pickAndUploadImage('users', familyId, 'new'))
+      .then((uri) => {
+        if (!uri) return;
+        setPhotoUrl(uri);
+        if (latest.editingUser) {
+          // saveUserPhoto() persists the uploaded image for refresh safety,
+          // but it reads the currently stored member and therefore cannot
+          // include draft name/avatar/color edits still open in this form.
+          // Persist the complete latest draft before closing the hand-off.
+          return Promise.resolve(latest.onSave({
+            name: latest.name.trim(),
+            avatar: latest.avatar,
+            color: latest.color,
+            photoUrl: uri,
+          })).then(() => latest.onClose());
+        }
+      })
+      .catch(() => {
+        Alert.alert('לא הצלחנו להחליף תמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
+      })
+      .finally(() => {
+        setUploading(false);
+        setPendingPhotoPick(false);
+      });
+  }, [pendingPhotoPick, familyId, saveUserPhoto]);
+
+  if (pendingPhotoPick && Platform.OS === 'web') return null;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>

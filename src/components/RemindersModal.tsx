@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Alert, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
@@ -7,6 +7,11 @@ import { Avatar } from './Avatar';
 import { Button } from './Button';
 import type { FamilyUser } from '../types';
 import { enableWebPush, getWebPushStatus, type WebPushStatus } from '../lib/webPush';
+import {
+  getNativeNotificationPermissionStatus,
+  requestNotificationPermissions,
+  type NativeNotificationPermissionStatus,
+} from '../notifications/notificationService';
 
 interface RemindersModalProps {
   visible: boolean;
@@ -31,6 +36,29 @@ export function RemindersModal({
   const [iosSafariNeedsInstall, setIosSafariNeedsInstall] = useState(false);
   const [androidNeedsInstall, setAndroidNeedsInstall] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
+  // PRD §25's "notifications disabled" state, native side — Web already had
+  // its own denied/unsupported messaging below; a native device with OS
+  // notification permission denied previously had nothing explaining why
+  // local reminders never fire. 'granted' is the fail-safe default so this
+  // never briefly shows a denied/undetermined message before the real
+  // async status resolves.
+  const [nativePermissionStatus, setNativePermissionStatus] = useState<NativeNotificationPermissionStatus>('granted');
+  const [nativePermissionBusy, setNativePermissionBusy] = useState(false);
+
+  useEffect(() => {
+    if (!visible || Platform.OS === 'web') return;
+    void getNativeNotificationPermissionStatus().then(setNativePermissionStatus);
+  }, [visible]);
+
+  const handleRequestNativePermission = async () => {
+    setNativePermissionBusy(true);
+    try {
+      const granted = await requestNotificationPermissions();
+      setNativePermissionStatus(granted ? 'granted' : await getNativeNotificationPermissionStatus());
+    } finally {
+      setNativePermissionBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!visible || Platform.OS !== 'web') {
@@ -104,6 +132,26 @@ export function RemindersModal({
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <RtlText style={styles.title} accessibilityRole="header">🔔 תזכורות</RtlText>
           <ScrollView style={styles.scroll}>
+{Platform.OS !== 'web' && nativePermissionStatus !== 'granted' && nativePermissionStatus !== 'unavailable' && (
+  <View style={styles.webPushSection}>
+    <RtlText style={styles.webPushTitle}>התראות במכשיר הזה</RtlText>
+    <RtlText style={styles.webPushText}>
+      {nativePermissionStatus === 'denied'
+        ? 'ההתראות חסומות בהגדרות המכשיר, כך שתזכורות טיול לא יגיעו. אפשר להפעיל אותן מחדש בהגדרות.'
+        : 'עדיין לא אישרתם התראות במכשיר הזה — בלי זה תזכורות הטיול לא יגיעו.'}
+    </RtlText>
+    {nativePermissionStatus === 'denied' ? (
+      <Button label="פתיחת הגדרות המכשיר" onPress={() => void Linking.openSettings()} style={styles.webPushButton} />
+    ) : (
+      <Button
+        label={nativePermissionBusy ? 'מפעיל התראות...' : 'אפשר התראות'}
+        onPress={() => void handleRequestNativePermission()}
+        disabled={nativePermissionBusy}
+        style={styles.webPushButton}
+      />
+    )}
+  </View>
+)}
 {Platform.OS === 'web' && (
   <View style={styles.webPushSection}>
     <RtlText style={styles.webPushTitle}>התראות במכשיר הזה</RtlText>
