@@ -847,15 +847,15 @@ export function HomeScreen() {
         <View style={styles.dashboardShortcuts} accessibilityLabel="קיצורי דרך">
           <Pressable onPress={() => setAddUnplannedVisible(true)} style={[styles.dashboardShortcut, styles.dashboardShortcutMint]} accessibilityRole="button" accessibilityLabel="הוסף טיול שבוצע">
             <RtlText style={styles.dashboardShortcutIcon}>🚶</RtlText>
-            <RtlText style={styles.dashboardShortcutLabel}>טיול{`\n`}ספונטני</RtlText>
+            <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>טיול ספונטני</RtlText>
           </Pressable>
           <Pressable onPress={() => nextWalkCardActions?.canRequestSwap ? setRequestSwapWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutBlue]} accessibilityRole="button" accessibilityLabel="בקשת החלפה">
             <RtlText style={styles.dashboardShortcutIcon}>⇄</RtlText>
-            <RtlText style={styles.dashboardShortcutLabel}>בקשת{`\n`}החלפה</RtlText>
+            <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>בקשת החלפה</RtlText>
           </Pressable>
           <Pressable onPress={() => nextWalkCardActions?.canRequestTimeChange ? setRequestTimeChangeWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutPurple]} accessibilityRole="button" accessibilityLabel="בקשת שינוי שעה">
             <RtlText style={styles.dashboardShortcutIcon}>◷</RtlText>
-            <RtlText style={styles.dashboardShortcutLabel}>שינוי{`\n`}שעה</RtlText>
+            <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שינוי שעה</RtlText>
           </Pressable>
         </View>
 
@@ -1387,10 +1387,10 @@ const styles = StyleSheet.create({
   addFirstDogButton: { marginTop: spacing.md },
   // Leaves the final card clear of the persistent bottom tab bar on phones
   // and in Safari/PWA, instead of letting it end underneath the navigation.
-  content: { flexGrow: 1, paddingHorizontal: spacing.md, paddingTop: spacing.xs, gap: 10, paddingBottom: 120, width: '100%', backgroundColor: '#FBF8F3' },
+  content: { flexGrow: 1, paddingHorizontal: spacing.md, paddingTop: spacing.xs, gap: 8, paddingBottom: 120, width: '100%', backgroundColor: '#FBF8F3' },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: 14 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
-  nextWalkLift: { marginTop: -50, zIndex: 1, paddingHorizontal: spacing.xs },
+  nextWalkLift: { marginTop: -38, zIndex: 1, paddingHorizontal: spacing.xs },
   testModeBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1408,7 +1408,7 @@ const styles = StyleSheet.create({
   mascotHeaderButton: { position: 'absolute', right: 0, top: 8, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E4E7F4' },
   dashboardHero: {
     width: '100%',
-    height: 180,
+    height: 160,
     borderRadius: 32,
     backgroundColor: '#E8ECFF',
     overflow: 'hidden',
@@ -1420,29 +1420,29 @@ const styles = StyleSheet.create({
   dashboardHeroBloomTwo: { position: 'absolute', width: 250, height: 250, borderRadius: 125, right: -104, top: -132, backgroundColor: '#C9D7FF' },
   dashboardHeroGlow: { position: 'absolute', width: 260, height: 92, borderRadius: 130, left: 24, bottom: 16, backgroundColor: '#FFFFFF75', transform: [{ rotate: '-8deg' }] },
   dashboardHeroShade: { ...StyleSheet.absoluteFill, backgroundColor: '#FFFFFF12' },
-  dashboardHeroGreeting: { position: 'absolute', top: 35, left: 18, width: '54%', alignItems: 'flex-end', zIndex: 2 },
-  dashboardHeroGreetingTitle: { width: '100%', fontSize: 23, lineHeight: 28, color: '#253275', fontWeight: '900', textAlign: 'right' },
+  dashboardHeroGreeting: { position: 'absolute', top: 27, left: 18, width: '54%', alignItems: 'flex-end', zIndex: 2 },
+  dashboardHeroGreetingTitle: { width: '100%', fontSize: 22, lineHeight: 26, color: '#253275', fontWeight: '900', textAlign: 'right' },
   dashboardHeroGreetingSubtitle: { width: '100%', marginTop: 4, fontSize: 13, lineHeight: 18, color: '#454E91', fontWeight: '700', textAlign: 'right' },
   dashboardHeroMascot: { position: 'absolute', right: -4, bottom: -4, zIndex: 2 },
-  dashboardHeroDogCutout: { position: 'absolute', right: -4, bottom: -6, width: 180, height: 178, zIndex: 2 },
-  dashboardHeroDogPhoto: { position: 'absolute', right: 10, bottom: 9, width: 138, height: 138, borderRadius: 69, zIndex: 2, borderWidth: 3, borderColor: '#FFFFFFCC' },
+  dashboardHeroDogCutout: { position: 'absolute', right: -4, bottom: -6, width: 160, height: 158, zIndex: 2 },
+  dashboardHeroDogPhoto: { position: 'absolute', right: 10, bottom: 9, width: 120, height: 120, borderRadius: 60, zIndex: 2, borderWidth: 3, borderColor: '#FFFFFFCC' },
   dashboardHeroCopy: { width: '52%', alignItems: 'flex-end', alignSelf: 'flex-start', paddingTop: 38, paddingHorizontal: spacing.md, zIndex: 2 },
   dashboardHeroEyebrow: { fontSize: 16, color: '#27376F', fontWeight: '700', textAlign: 'right' },
   dashboardHeroName: { fontSize: 30, lineHeight: 36, color: '#16245B', fontWeight: '900', textAlign: 'right' },
   dashboardShortcuts: { flexDirection: 'row-reverse', gap: spacing.sm, width: '100%', marginTop: -2 },
-  dashboardShortcut: { flex: 1, minHeight: 72, borderRadius: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, gap: 2, borderWidth: 1, borderColor: '#FFFFFFAA' },
+  dashboardShortcut: { flex: 1, minHeight: 62, borderRadius: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, gap: 0, borderWidth: 1, borderColor: '#FFFFFFAA' },
   dashboardShortcutMint: { backgroundColor: '#EDF2FF' },
   dashboardShortcutBlue: { backgroundColor: '#E6ECFF' },
   dashboardShortcutGold: { backgroundColor: '#FFF0C9' },
   dashboardShortcutPurple: { backgroundColor: '#F0EBFF' },
-  dashboardShortcutLabel: { fontSize: 14, lineHeight: 19, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
-  dashboardShortcutIcon: { fontSize: 26, lineHeight: 28 },
-  dashboardLastWalk: { minHeight: 78, borderRadius: radii.xl, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EAE5DD', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm, shadowColor: '#17245B', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  dashboardShortcutLabel: { fontSize: 13, lineHeight: 16, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
+  dashboardShortcutIcon: { fontSize: 22, lineHeight: 24 },
+  dashboardLastWalk: { minHeight: 66, borderRadius: radii.xl, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EAE5DD', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm, shadowColor: '#17245B', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
   dashboardLastWalkCopy: { flex: 1, alignItems: 'flex-end' },
-  dashboardLastWalkTitle: { fontSize: 18, fontWeight: '900', color: '#17245B', textAlign: 'right' },
-  dashboardLastWalkMeta: { marginTop: 5, fontSize: 14, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
-  dashboardLastWalkDog: { width: 70, height: 58, overflow: 'hidden', borderRadius: radii.lg, backgroundColor: '#EEF3FF', alignItems: 'center', justifyContent: 'center' },
-  dashboardLastWalkChevron: { fontSize: 34, color: '#454B9E', writingDirection: 'ltr' },
+  dashboardLastWalkTitle: { fontSize: 17, fontWeight: '900', color: '#17245B', textAlign: 'right' },
+  dashboardLastWalkMeta: { marginTop: 2, fontSize: 13, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
+  dashboardLastWalkDog: { width: 58, height: 48, overflow: 'hidden', borderRadius: radii.lg, backgroundColor: '#EEF3FF', alignItems: 'center', justifyContent: 'center' },
+  dashboardLastWalkChevron: { fontSize: 30, color: '#454B9E', writingDirection: 'ltr' },
   dashboardTimeline: { minHeight: 74, borderRadius: radii.xl, backgroundColor: '#FBFBFF', borderWidth: 1, borderColor: '#E1E2F4', paddingHorizontal: spacing.md, paddingVertical: 9, gap: 6 },
   dashboardTimelineHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   dashboardTimelineTitle: { fontSize: 16, fontWeight: '900', color: '#17245B', textAlign: 'right' },

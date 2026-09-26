@@ -9,7 +9,7 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('showDogPhoto');
     expect(home).toContain('style={styles.dashboardHero}');
     expect(home).toContain('style={styles.dashboardHeroShade}');
-    expect(home).toContain('height: 180');
+    expect(home).toContain('height: 160');
     expect(home).toContain('style={styles.dashboardHeroBloomOne}');
     expect(home).toContain('style={styles.dashboardHeroBloomTwo}');
     expect(home).toContain('style={styles.dashboardHeroGlow}');
@@ -27,6 +27,9 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('setAddUnplannedVisible(true)');
     expect(home).toContain('setRequestSwapWalkId(nextWalk?.id ?? null)');
     expect(home).toContain('setRequestTimeChangeWalkId(nextWalk?.id ?? null)');
+    expect(home).toContain('numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>טיול ספונטני</RtlText>');
+    expect(home).toContain('numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>בקשת החלפה</RtlText>');
+    expect(home).toContain('numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שינוי שעה</RtlText>');
   });
 
   it('keeps a compact, always-present Dashboard timeline instead of a long list', () => {

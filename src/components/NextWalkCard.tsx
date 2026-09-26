@@ -396,7 +396,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 2,
   },
-  cardDashboard: { backgroundColor: '#FAFAFF', borderColor: '#DEDDF5', borderRadius: 30, shadowOpacity: 0.12, shadowRadius: 16, elevation: 4, paddingVertical: 9 },
+  cardDashboard: { backgroundColor: '#FAFAFF', borderColor: '#DEDDF5', borderRadius: 30, shadowOpacity: 0.12, shadowRadius: 16, elevation: 4, paddingVertical: 7 },
   webCard: { borderRadius: radii.xl, paddingHorizontal: 24, paddingVertical: 18 },
   cardActive: { backgroundColor: colors.successSoft, borderColor: colors.success + '55' },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
@@ -408,7 +408,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.primaryDark,
     textAlign: 'right',
-    marginBottom: 7,
+    marginBottom: 4,
   },
   gpsStatusLine: {
     fontSize: 12,
@@ -453,14 +453,14 @@ const styles = StyleSheet.create({
   // the dashboard, especially on narrow phones.
   // Use an intentionally wider central gutter and inset both columns so the
   // assignee circle reads as its own block instead of touching the time.
-  dashboardMainRow: { gap: 28, paddingHorizontal: 8, marginBottom: 8 },
+  dashboardMainRow: { gap: 22, paddingHorizontal: 8, marginBottom: 4 },
   personBlock: { flex: 1, alignItems: 'flex-end', gap: 3, minWidth: 0 },
   personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'left' },
   responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'left' },
   doneButton: { marginTop: 2 },
-  dashboardStartButton: { marginTop: 0, backgroundColor: '#4A43B6', borderColor: '#4A43B6' },
+  dashboardStartButton: { marginTop: 0, minHeight: 46, paddingVertical: 4, backgroundColor: '#4A43B6', borderColor: '#4A43B6' },
   markDoneFallbackButton: { marginTop: 8, borderWidth: 1.5, borderColor: colors.primaryDark },
-  dashboardMarkDoneButton: { marginTop: 6, minHeight: 34, paddingVertical: 5, borderWidth: 1.5, borderColor: '#4A43B6' },
+  dashboardMarkDoneButton: { marginTop: 5, minHeight: 42, paddingVertical: 4, borderWidth: 1.5, borderColor: '#4A43B6' },
   endWalkButton: { marginTop: 4, backgroundColor: colors.statusOverdue },
   resolveRow: { flexDirection: 'row-reverse', gap: 8, marginTop: 8, width: '100%' },
   resolveButton: { flex: 1, minWidth: 0 },
@@ -475,7 +475,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   requestStatusApproved: { color: colors.statusDone },
-  linkRow: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 10 },
+  linkRow: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 7 },
   linkText: { color: colors.primaryDark, fontSize: 14, fontWeight: '600' },
   linkDivider: { color: colors.textSecondary },
 });
