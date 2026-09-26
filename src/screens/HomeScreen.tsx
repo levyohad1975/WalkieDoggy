@@ -512,9 +512,25 @@ export function HomeScreen() {
   // the walks *after* the primary card. Including the next walk means the
   // section remains useful (and visibly present) on a day with one walk.
   const dashboardTimelineWalks = useMemo(
-    () => upcomingWalks(visibleWalks).slice(0, 3),
+    () =>
+      visibleWalks
+        .filter((w) => w.status === 'pending' && w.date === localDateOnly(new Date()))
+        .sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime)),
     [visibleWalks, minuteTick]
   );
+  const dashboardTimelineProgress = useMemo(() => {
+    if (dashboardTimelineWalks.length < 2) return dashboardTimelineWalks.length === 1 ? 0 : 0;
+    const now = new Date();
+    const minutesNow = now.getHours() * 60 + now.getMinutes();
+    const toMinutes = (time: string) => {
+      const [h, m] = time.split(':').map(Number);
+      return h * 60 + m;
+    };
+    const first = toMinutes(dashboardTimelineWalks[0].scheduledTime);
+    const last = toMinutes(dashboardTimelineWalks[dashboardTimelineWalks.length - 1].scheduledTime);
+    if (last <= first) return 0;
+    return Math.max(0, Math.min(1, (minutesNow - first) / (last - first)));
+  }, [dashboardTimelineWalks, minuteTick]);
   const overduePending = useMemo(
     () =>
       visibleWalks
@@ -906,22 +922,28 @@ export function HomeScreen() {
 
         <Pressable style={styles.dashboardTimeline} onPress={() => navigation.navigate('Schedule')} accessibilityRole="button" accessibilityLabel="פתיחת לוח הזמנים להמשך היום">
           <View style={styles.dashboardTimelineHeader}>
-            <RtlText style={styles.dashboardTimelineTitle}>
-              {dashboardTimelineWalks.length > 0
-                ? `בהמשך היום · ${dashboardTimelineWalks.length} ${dashboardTimelineWalks.length === 1 ? 'טיול' : 'טיולים'}`
-                : 'בהמשך היום'}
-            </RtlText>
+            <RtlText style={styles.dashboardTimelineTitle}>בהמשך היום</RtlText>
             <RtlText style={styles.dashboardTimelineChevron}>‹</RtlText>
           </View>
           {dashboardTimelineWalks.length > 0 ? (
             <View style={styles.dashboardTimelineStops}>
-              <View style={styles.dashboardTimelineLine} pointerEvents="none" />
               {dashboardTimelineWalks.map((walk) => (
                 <View key={walk.id} style={styles.dashboardTimelineStop}>
-                  <RtlText style={styles.dashboardTimelineTime}>{walk.scheduledTime}</RtlText>
-                  <Avatar emoji={usersById[walk.responsibleUserId]?.avatar ?? '🐾'} color={usersById[walk.responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[walk.responsibleUserId]?.photoUrl} size={28} />
+                  <Avatar emoji={usersById[walk.responsibleUserId]?.avatar ?? '🐾'} color={usersById[walk.responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[walk.responsibleUserId]?.photoUrl} size={34} />
                 </View>
               ))}
+              <View style={styles.dashboardTimelineTrack} pointerEvents="none">
+                <View style={[styles.dashboardTimelineProgress, { width: `${dashboardTimelineProgress * 100}%` }]} />
+                {dashboardTimelineWalks.map((walk) => <View key={`dot-${walk.id}`} style={styles.dashboardTimelineDot} />)}
+              </View>
+              <View style={styles.dashboardTimelineLabels}>
+                {dashboardTimelineWalks.map((walk) => (
+                  <View key={`label-${walk.id}`} style={styles.dashboardTimelineLabel}>
+                    <RtlText style={styles.dashboardTimelineTime}>{walk.scheduledTime}</RtlText>
+                    <RtlText style={styles.dashboardTimelineName} numberOfLines={1}>{usersById[walk.responsibleUserId]?.name ?? 'בן משפחה'}</RtlText>
+                  </View>
+                ))}
+              </View>
             </View>
           ) : <RtlText style={styles.dashboardTimelineEmpty}>אין טיולים נוספים היום · לפתיחת לוח הזמנים</RtlText>}
         </Pressable>
@@ -1484,10 +1506,15 @@ const styles = StyleSheet.create({
   dashboardTimelineHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   dashboardTimelineTitle: { fontSize: 16, fontWeight: '900', color: '#17245B', textAlign: 'right' },
   dashboardTimelineChevron: { fontSize: 24, color: '#454B9E', writingDirection: 'ltr' },
-  dashboardTimelineStops: { position: 'relative', flexDirection: 'row-reverse', justifyContent: 'space-around', alignItems: 'center' },
-  dashboardTimelineLine: { position: 'absolute', left: '16%', right: '16%', bottom: 14, height: 2, borderRadius: 1, backgroundColor: '#C7C9E8' },
-  dashboardTimelineStop: { alignItems: 'center', gap: 2, zIndex: 1 },
-  dashboardTimelineTime: { fontSize: 12, fontWeight: '800', color: '#2E3170' },
+  dashboardTimelineStops: { position: 'relative', gap: 4 },
+  dashboardTimelineStop: { flex: 1, alignItems: 'center' },
+  dashboardTimelineTrack: { height: 8, marginHorizontal: '8%', borderRadius: 4, backgroundColor: '#D9DBE9', overflow: 'hidden', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  dashboardTimelineProgress: { position: 'absolute', right: 0, top: 0, bottom: 0, borderRadius: 4, backgroundColor: '#6967D8' },
+  dashboardTimelineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#6967D8', zIndex: 1 },
+  dashboardTimelineLabels: { flexDirection: 'row-reverse', justifyContent: 'space-around' },
+  dashboardTimelineLabel: { flex: 1, alignItems: 'center', minWidth: 0 },
+  dashboardTimelineTime: { fontSize: 12, fontWeight: '900', color: '#2E3170' },
+  dashboardTimelineName: { fontSize: 11, fontWeight: '700', color: colors.textSecondary, maxWidth: 72, textAlign: 'center' },
   dashboardTimelineEmpty: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, textAlign: 'right', paddingBottom: 2 },
   dashboardRequestAlert: { minHeight: 62, borderRadius: radii.xl, backgroundColor: '#FFF0D9', borderWidth: 1, borderColor: '#F8DEC0', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
   dashboardRequestAlertIcon: { fontSize: 25 },
