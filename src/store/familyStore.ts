@@ -82,7 +82,7 @@ interface FamilyState {
   /** Admin-only safe removal; server refuses dogs with any history/dependencies. */
   deleteUnusedDog: (dogId: string) => Promise<void>;
 
-  addUser: (input: { name: string; avatar: string; color: string; photoUrl?: string }) => Promise<FamilyUser>;
+  addUser: (input: { name: string; avatar: string; color: string; photoUrl?: string; sex?: 'male' | 'female' }) => Promise<FamilyUser>;
   updateUser: (user: FamilyUser) => Promise<void>;
   saveUserPhoto: (userId: string, familyId: string) => Promise<string | null>;
 
@@ -312,7 +312,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
     }
   },
 
-  addUser: async ({ name, avatar, color, photoUrl }) => {
+  addUser: async ({ name, avatar, color, photoUrl, sex }) => {
     if (!guardTestModeMutation()) throw new Error(TEST_MODE_READ_ONLY_MESSAGE);
     // Falls back to the app's single demo family id when `family` hasn't
     // loaded yet (e.g. a corrupt/mismatched local cache, or this is called
@@ -337,6 +337,7 @@ if (!familyId) {
       name: name.trim(),
       avatar,
       photoUrl,
+      sex,
       color,
       remindersEnabled: true,
       gamificationEnabled: true,
