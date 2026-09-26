@@ -381,6 +381,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                 <RtlText style={styles.cardLine}>{new Date(entry.createdAt).toLocaleString('he-IL')}</RtlText>
                 <RtlText style={styles.cardLine}>
                   משפחה: {entry.familyName ?? 'מערכתי'}
+                  {entry.familyId && families.find((family) => family.familyId === entry.familyId)?.inviteCode ? ` · קוד: ${families.find((family) => family.familyId === entry.familyId)?.inviteCode}` : ''}
                   {entry.familyId && familyCreatorNameById.get(entry.familyId) ? ` · יוצר/ת: ${familyCreatorNameById.get(entry.familyId)}` : ''}
                   {entry.familyId && families.find((family) => family.familyId === entry.familyId)?.verifiedEmail ? ` · ${families.find((family) => family.familyId === entry.familyId)?.verifiedEmail}` : ''}
                 </RtlText>
