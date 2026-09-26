@@ -9,7 +9,7 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('showDogPhoto');
     expect(home).toContain('style={styles.dashboardHero}');
     expect(home).toContain('style={styles.dashboardHeroShade}');
-    expect(home).toContain('height: 160');
+    expect(home).toContain('height: 146');
     expect(home).toContain('style={styles.dashboardHeroBloomOne}');
     expect(home).toContain('style={styles.dashboardHeroBloomTwo}');
     expect(home).toContain('style={styles.dashboardHeroGlow}');
@@ -40,6 +40,7 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('פתיחת לוח הזמנים להמשך היום');
     expect(home).toContain('scrollEnabled');
     expect(home).toContain('paddingBottom: 120');
+    expect(home).toContain('dashboardTimeline: { minHeight: 66');
     expect(home).not.toContain('style={styles.dashboardMoreButton}');
   });
 
