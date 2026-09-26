@@ -5,7 +5,7 @@ describe('Home integrated walk lifecycle', () => {
   const home = fs.readFileSync(path.join(__dirname, '..', 'HomeScreen.tsx'), 'utf8');
   const card = fs.readFileSync(path.join(__dirname, '..', '..', 'components', 'NextWalkCard.tsx'), 'utf8');
 
-  it('keeps the approved lavender dashboard hero independent of family-photo persistence', () => {
+  it('keeps the approved lavender dashboard hero while using the persisted family-dog image safely', () => {
     expect(home).toContain('showDogPhoto');
     expect(home).toContain('style={styles.dashboardHero}');
     expect(home).toContain('style={styles.dashboardHeroShade}');
@@ -13,9 +13,10 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('style={styles.dashboardHeroBloomOne}');
     expect(home).toContain('style={styles.dashboardHeroBloomTwo}');
     expect(home).toContain('style={styles.dashboardHeroGlow}');
-    expect(home).not.toContain('heroBackground ? (');
+    expect(home).toContain('getDogBackground(dog?.heroBackgroundId)');
     expect(home).not.toContain('getDogBackgroundId');
-    expect(home).not.toContain('source={{ uri: dog!.photoUrl! }}');
+    expect(home).toContain('source={{ uri: dog!.photoCutoutUrl! }}');
+    expect(home).toContain('source={{ uri: dog!.photoUrl! }}');
     expect(home).toContain('tone="dashboard"');
     expect(home).toContain('setDogProfileVisible(true)');
     expect(home).toContain("style={styles.mascotHeaderButton}");

@@ -10,7 +10,8 @@ import { DEMO_FAMILY } from '../data/demoData';
 import { pickAndUploadImage } from '../lib/uploadImage';
 import { colors } from '../theme/colors';
 import { breakpoints, radii, spacing, typography } from '../theme/tokens';
-import { DOG_BACKGROUNDS, getDogBackground, getDogBackgroundId, setDogBackgroundId } from '../theme/dogBackgrounds';
+import { getDogBackground } from '../theme/dogBackgrounds';
+import { DogHeroBackgroundPicker } from './DogHeroBackgroundPicker';
 
 export function DogProfileModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const dog = useFamilyStore((s) => s.dog);
@@ -22,12 +23,9 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
   const [removeConfirmVisible, setRemoveConfirmVisible] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
-  const [backgroundPickerVisible, setBackgroundPickerVisible] = useState(false);
-  const [selectedBackground, setSelectedBackground] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     setPhotoLoadFailed(false);
-    setSelectedBackground(getDogBackgroundId(dog?.id));
   }, [dog?.id, dog?.photoUrl]);
 
   const changePhoto = async () => {
@@ -75,8 +73,8 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
           {dog ? (
             <>
               <View style={styles.photoWrap}>
-                  {getDogBackground(selectedBackground) && !dog.photoUrl ? (
-                    <Image source={{ uri: getDogBackground(selectedBackground)!.uri }} style={styles.previewBackground} resizeMode="cover" />
+                  {getDogBackground(dog.heroBackgroundId) && !dog.photoUrl ? (
+                    <Image source={{ uri: getDogBackground(dog.heroBackgroundId)!.uri }} style={styles.previewBackground} resizeMode="cover" />
                   ) : null}
                 {dog.photoUrl && !photoLoadFailed ? (
                   <Image
@@ -108,36 +106,7 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
                       <RtlText style={styles.removeText}>הסרת תמונה</RtlText>
                     </Pressable>
                   ) : null}
-                  <Pressable onPress={() => setBackgroundPickerVisible((v) => !v)} style={styles.backgroundButton} accessibilityRole="button">
-                    <RtlText style={styles.backgroundButtonText}>🎨 בחירת רקע לתמונת הכלב</RtlText>
-                  </Pressable>
-                  {backgroundPickerVisible ? (
-                    <View style={styles.backgroundPicker}>
-                      <RtlText style={styles.backgroundTitle}>בחרו רקע</RtlText>
-                      <View style={styles.backgroundGrid}>
-                        {DOG_BACKGROUNDS.map((item) => (
-                          <Pressable
-                            key={item.id}
-                            onPress={() => {
-                              if (!dog) return;
-                              setSelectedBackground(item.id);
-                              setDogBackgroundId(dog.id, item.id);
-                            }}
-                            style={[styles.backgroundTile, selectedBackground === item.id && styles.backgroundSelected]}
-                            accessibilityRole="button"
-                            accessibilityLabel={`בחירת רקע ${item.label}`}
-                          >
-                            <Image source={{ uri: item.uri }} style={styles.backgroundThumb} resizeMode="cover" />
-                            <View style={styles.backgroundLabelWrap}>
-                              <RtlText style={styles.backgroundLabel}>{item.label}</RtlText>
-                            </View>
-                            {selectedBackground === item.id ? <View style={styles.backgroundCheckBadge}><RtlText style={styles.backgroundCheck}>✓</RtlText></View> : null}
-                          </Pressable>
-                        ))}
-                      </View>
-                      <RtlText style={styles.backgroundHint}>הבחירה נשמרת אוטומטית. אפשר להחליף רקע בכל עת.</RtlText>
-                    </View>
-                  ) : null}
+                  <DogHeroBackgroundPicker dog={dog} onSave={(patch) => saveDog({ ...dog, ...patch })} />
                 </View>
               ) : null}
               <View style={styles.card}>

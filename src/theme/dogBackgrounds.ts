@@ -11,18 +11,6 @@ export const DOG_BACKGROUNDS: DogBackground[] = [
   { id: 'nature', label: 'טבע פתוח', uri: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=82' },
 ];
 
-const storageKey = (dogId: string) => `walkie-dog-background:${dogId}`;
-
-export function getDogBackgroundId(dogId?: string): string | undefined {
-  if (!dogId || typeof window === 'undefined') return undefined;
-  return window.localStorage.getItem(storageKey(dogId)) ?? undefined;
-}
-
-export function setDogBackgroundId(dogId: string, backgroundId: string) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(storageKey(dogId), backgroundId);
-}
-
 export function getDogBackground(backgroundId?: string) {
   return DOG_BACKGROUNDS.find((item) => item.id === backgroundId);
 }

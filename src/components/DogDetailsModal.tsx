@@ -5,6 +5,7 @@ import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { DogPhoto } from './DogPhoto';
 import { Button } from './Button';
+import { DogHeroBackgroundPicker } from './DogHeroBackgroundPicker';
 import type { Dog } from '../types';
 
 const SEX_OPTIONS: { value: Dog['sex'] | undefined; label: string }[] = [
@@ -22,11 +23,12 @@ interface DogDetailsModalProps {
   onAddDog?: () => void;
   onDeleteDog?: () => void;
   deletingDog?: boolean;
+  canManageDog?: boolean;
   onSave: (patch: Partial<Dog>) => void;
   onClose: () => void;
 }
 
-export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, onRemovePhoto, onAddDog, onDeleteDog, deletingDog = false, onSave, onClose }: DogDetailsModalProps) {
+export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, onRemovePhoto, onAddDog, onDeleteDog, deletingDog = false, canManageDog = false, onSave, onClose }: DogDetailsModalProps) {
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -82,6 +84,7 @@ export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, o
               <RtlText style={styles.label}>הערות</RtlText>
               <TextInput value={notes} onChangeText={setNotes} onBlur={() => onSave({ notes: notes.trim() || undefined })} style={styles.input} textAlign="right" placeholder="למשל: אוהב להריח כל עמוד" placeholderTextColor={colors.textSecondary} accessibilityLabel="הערות" />
               <RtlText style={styles.hint}>{dog.walksPerDay} טיולים ביום · שינוי בלוח זמנים</RtlText>
+              {canManageDog ? <DogHeroBackgroundPicker dog={dog} onSave={onSave} /> : null}
               {onAddDog ? (
                 <Pressable onPress={onAddDog} style={styles.addDogSecondary} accessibilityRole="button" accessibilityLabel="הוספת כלב נוסף למשפחה">
                   <RtlText style={styles.addDogSecondaryText}>＋ הוספת כלב נוסף למשפחה</RtlText>

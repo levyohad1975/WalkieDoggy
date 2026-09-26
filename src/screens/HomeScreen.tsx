@@ -53,12 +53,15 @@ import { subscribeToReminderOpens, type ReminderOpenEvent } from '../notificatio
 import type { RootTabParamList } from '../navigation/RootNavigator';
 import { useHealthStore } from '../store/healthStore';
 import { getImportantHealthReminders, summarizeHealthTasksForHome } from '../logic/healthTasks';
+import { getDogBackground } from '../theme/dogBackgrounds';
 import { useGpsStore } from '../store/gpsStore';
 import { requestForegroundGpsPermission } from '../lib/gpsTracking';
 
 export function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
   const [dogProfileVisible, setDogProfileVisible] = useState(false);
+  const [heroPhotoFailed, setHeroPhotoFailed] = useState(false);
+  const [heroCutoutFailed, setHeroCutoutFailed] = useState(false);
   const currentUserId = useAuthStore((s) => s.currentUserId)!;
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const effectiveRole = useEffectiveFamilyRole();
@@ -71,6 +74,13 @@ export function HomeScreen() {
   const clearTestModeIfInvalid = useAuthStore((s) => s.clearTestModeIfInvalid);
   const clearImpersonationIfInvalid = useAuthStore((s) => s.clearImpersonationIfInvalid);
   const { family, users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, error: familyError, load: loadFamily } = useFamilyStore();
+  const heroBackground = getDogBackground(dog?.heroBackgroundId);
+  useEffect(() => {
+    setHeroPhotoFailed(false);
+    setHeroCutoutFailed(false);
+  }, [dog?.id, dog?.photoUrl, dog?.photoCutoutUrl]);
+  const showPersonalHero = Boolean(dog?.photoUrl) && !heroPhotoFailed;
+  const showDogCutout = Boolean(dog?.photoCutoutUrl) && !heroCutoutFailed;
 
   const {
     walks,
@@ -687,16 +697,16 @@ export function HomeScreen() {
           </Pressable>
         </View>
 
-        {/* Issue #145 / approved Dashboard Option D. Home always uses the
-            soft lavender dashboard composition from the approved reference.
-            A previously saved dog-profile scene must never override this
-            layout. Photo upload, removal and sync are untouched. */}
+        {/* Issue #145: the approved lavender composition remains the default;
+            a manager-selected family scene replaces it and a transparent dog
+            cutout is composited over it when one exists. */}
         <Pressable
           onPress={() => setDogProfileVisible(true)}
           style={styles.dashboardHero}
           accessibilityRole="button"
           accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
         >
+          {heroBackground ? <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" /> : null}
           <View style={styles.dashboardHeroBloomOne} pointerEvents="none" />
           <View style={styles.dashboardHeroBloomTwo} pointerEvents="none" />
           <View style={styles.dashboardHeroGlow} pointerEvents="none" />
@@ -705,9 +715,13 @@ export function HomeScreen() {
             <RtlText style={styles.dashboardHeroGreetingTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שלום {family?.name ?? 'משפחה'}</RtlText>
             <RtlText style={styles.dashboardHeroGreetingSubtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{dog?.name ?? 'הכלב/ה'} מחכה לטיול הבא 🐾</RtlText>
           </View>
-          <View style={styles.dashboardHeroMascot} pointerEvents="none">
-            <WalkieMascot state="idle" size={144} accessibilityLabel="כלב Walkie Doggy" />
-          </View>
+          {showDogCutout ? <Image source={{ uri: dog!.photoCutoutUrl! }} style={styles.dashboardHeroDogCutout} resizeMode="contain" onError={() => setHeroCutoutFailed(true)} /> : null}
+          {!showDogCutout && showPersonalHero ? <Image source={{ uri: dog!.photoUrl! }} style={styles.dashboardHeroDogPhoto} resizeMode="cover" onError={() => setHeroPhotoFailed(true)} /> : null}
+          {!showDogCutout && !showPersonalHero ? (
+            <View style={styles.dashboardHeroMascot} pointerEvents="none">
+              <WalkieMascot state="idle" size={144} accessibilityLabel="כלב Walkie Doggy" />
+            </View>
+          ) : null}
         </Pressable>
 
         {/* PRD §11: "ב-Home יש בחירת כלב קלה כאשר יש יותר מכלב אחד" — an
@@ -1410,6 +1424,8 @@ const styles = StyleSheet.create({
   dashboardHeroGreetingTitle: { width: '100%', fontSize: 23, lineHeight: 28, color: '#253275', fontWeight: '900', textAlign: 'right' },
   dashboardHeroGreetingSubtitle: { width: '100%', marginTop: 4, fontSize: 13, lineHeight: 18, color: '#454E91', fontWeight: '700', textAlign: 'right' },
   dashboardHeroMascot: { position: 'absolute', right: -4, bottom: -4, zIndex: 2 },
+  dashboardHeroDogCutout: { position: 'absolute', right: -4, bottom: -6, width: 180, height: 178, zIndex: 2 },
+  dashboardHeroDogPhoto: { position: 'absolute', right: 10, bottom: 9, width: 138, height: 138, borderRadius: 69, zIndex: 2, borderWidth: 3, borderColor: '#FFFFFFCC' },
   dashboardHeroCopy: { width: '52%', alignItems: 'flex-end', alignSelf: 'flex-start', paddingTop: 38, paddingHorizontal: spacing.md, zIndex: 2 },
   dashboardHeroEyebrow: { fontSize: 16, color: '#27376F', fontWeight: '700', textAlign: 'right' },
   dashboardHeroName: { fontSize: 30, lineHeight: 36, color: '#16245B', fontWeight: '900', textAlign: 'right' },

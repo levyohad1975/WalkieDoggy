@@ -682,6 +682,7 @@ function SettingsScreenContent() {
         onAddDog={() => void handleAddDog()}
         onDeleteDog={effectiveFamilyRole === 'admin' && !systemObserverActive ? confirmDeleteDog : undefined}
         deletingDog={deletingDog}
+        canManageDog={effectiveFamilyRole === 'admin' && !systemObserverActive}
         onSave={persistDog}
         onClose={() => setDogModalVisible(false)}
       />
@@ -893,7 +894,6 @@ const styles = StyleSheet.create({
   sheetScroll: { flexGrow: 0, flexShrink: 1 },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 8 },
 });
-
 
 
 

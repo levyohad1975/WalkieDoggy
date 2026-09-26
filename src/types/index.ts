@@ -64,6 +64,10 @@ export interface Dog {
   familyId: string;
   name: string;
   photoUrl?: string;
+  /** Pre-processed transparent variant of photoUrl, when background removal is available. */
+  photoCutoutUrl?: string;
+  /** Family-shared Home hero scene selection (never a device-local preference). */
+  heroBackgroundId?: string;
   walksPerDay: number;
   notes?: string;
   /**
