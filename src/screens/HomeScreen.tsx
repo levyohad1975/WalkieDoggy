@@ -131,6 +131,8 @@ export function HomeScreen() {
   const gpsDistanceMeters = useGpsStore((s) => s.distanceMeters);
   const gpsPointCount = useGpsStore((s) => s.pointCount);
   const gpsPermissionStatus = useGpsStore((s) => s.permissionStatus);
+  const gpsSessionsByWalkId = useGpsStore((s) => s.sessionsByWalkId);
+  const loadGpsSession = useGpsStore((s) => s.loadSession);
   const heroBackground = getDogBackground(dog?.heroBackgroundId);
 
   useEffect(() => {
@@ -497,6 +499,12 @@ export function HomeScreen() {
   // read-only for that specific case — the display-fidelity requirement
   // ("show the most recent resolved walk even when older than today") is
   // met; edit/delete remain exactly where they can safely work.
+  useEffect(() => {
+    if (lastWalk?.status === 'done') void loadGpsSession(lastWalk.id);
+  }, [lastWalk?.id, lastWalk?.status, loadGpsSession]);
+  const lastWalkGpsSession = lastWalk ? gpsSessionsByWalkId[lastWalk.id] : undefined;
+  const lastWalkDistanceMeters = lastWalkGpsSession?.correctedDistanceMeters ?? lastWalkGpsSession?.distanceMeters;
+
   const lastWalkIsEditable = !isSupabaseConfigured || (!!lastWalk && walks.some((w) => w.id === lastWalk.id));
   const upcoming = useMemo(
     () => upcomingWalks(visibleWalks).filter((w) => w.id !== nextWalk?.id),
@@ -882,6 +890,11 @@ export function HomeScreen() {
             <View style={styles.dashboardLastWalkCopy}>
               <RtlText style={styles.dashboardLastWalkTitle}>✓ הטיול האחרון</RtlText>
               <RtlText style={styles.dashboardLastWalkMeta}>{lastWalk.scheduledTime} · {walkDateContextLabel(lastWalk.date)}</RtlText>
+              {(lastWalk.durationMinutes || (lastWalkDistanceMeters != null && lastWalkDistanceMeters > 0)) ? (
+                <RtlText style={styles.dashboardLastWalkGps}>
+                  {[lastWalk.durationMinutes ? `${lastWalk.durationMinutes} דק׳` : null, lastWalkDistanceMeters != null && lastWalkDistanceMeters > 0 ? `${(lastWalkDistanceMeters / 1000).toFixed(1)} ק״מ` : null].filter(Boolean).join(" · ")}
+                </RtlText>
+              ) : null}
             </View>
             <View style={styles.dashboardLastWalkDog}>
               <DogPhoto photoUrl={dog?.photoUrl} photoCutoutUrl={dog?.photoCutoutUrl} size={48} />
@@ -1464,6 +1477,7 @@ const styles = StyleSheet.create({
   dashboardLastWalkChevron: { fontSize: 34, color: '#454B9E', writingDirection: 'ltr' },
   emptyDogTitle: { fontSize: 20, fontWeight: '900', color: colors.textPrimary, textAlign: 'center', marginTop: spacing.md },
   emptyDogSubtitle: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xs, marginBottom: spacing.md, paddingHorizontal: spacing.xl },
+  dashboardLastWalkGps: { fontSize: 12, fontWeight: '800', color: colors.primaryDark, textAlign: 'right', marginTop: 2 },
   dashboardTimeline: { minHeight: 68, borderRadius: radii.xl, backgroundColor: '#FBFBFF', borderWidth: 1, borderColor: '#E1E2F4', paddingHorizontal: spacing.md, paddingVertical: 9, gap: 6 },
   dashboardTimelineHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   dashboardTimelineTitle: { fontSize: 16, fontWeight: '900', color: '#17245B', textAlign: 'right' },
