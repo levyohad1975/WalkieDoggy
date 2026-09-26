@@ -137,6 +137,7 @@ export interface Repository {
   saveWalk(walk: Walk): Promise<void>;
   /** Server-authoritative lifecycle operations; Supabase persists actor/time atomically. */
   startWalk?(walkId: string): Promise<Walk>;
+  cancelWalk?(walkId: string): Promise<Walk | null>;
   finishWalk?(walkId: string, actualWalkerId: string, details?: { hadPee?: boolean; hadPoop?: boolean; note?: string; completedAt?: string }): Promise<Walk>;
   /**
    * Section 2: permanently deletes an unplanned/spontaneous walk entered by
