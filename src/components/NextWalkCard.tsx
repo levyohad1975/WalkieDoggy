@@ -33,6 +33,7 @@ interface NextWalkCardProps {
   /** Primary lifecycle action. When omitted the legacy completion action remains available. */
   onStartWalk?: () => void;
   onEndWalk?: () => void;
+  onCancelWalk?: () => void;
   activeStartedAt?: string | null;
   /**
    * Phase 4 (GPS foundation, PRD §7 — "In Progress" card state: "מרחק/מצב
@@ -92,6 +93,7 @@ export function NextWalkCard({
   onMarkDone,
   onStartWalk,
   onEndWalk,
+  onCancelWalk,
   activeStartedAt,
   liveDistanceMeters,
   gpsPointCount,
@@ -301,7 +303,10 @@ export function NextWalkCard({
           {responsible?.name ?? 'האחראי/ת'}
         </RtlText>
       ) : isActive && onEndWalk ? (
-        <Button label="סיים טיול" icon="■" onPress={onEndWalk} style={styles.endWalkButton} shrinkToFit />
+        <View style={styles.resolveRow}>
+          <Button label="סיים טיול" icon="■" onPress={onEndWalk} style={styles.resolveButton} shrinkToFit />
+          {onCancelWalk ? <Button label="בטל טיול" variant="secondary" onPress={onCancelWalk} style={styles.resolveButton} compact shrinkToFit /> : null}
+        </View>
       ) : onStartWalk ? (
         <>
           <Button label={tone === 'dashboard' ? 'התחל טיול' : 'התחל טיול עכשיו'} icon="▶" onPress={onStartWalk} style={tone === 'dashboard' ? styles.dashboardStartButton : styles.doneButton} shrinkToFit />
