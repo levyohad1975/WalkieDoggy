@@ -42,6 +42,7 @@ export class OfflineFirstRepository implements Repository {
   // that merely throws in demo mode would always be truthy and break that
   // fallback instead of triggering it.
   startWalk?: (walkId: string) => Promise<Walk>;
+  cancelWalk?: (walkId: string) => Promise<Walk | null>;
   finishWalk?: (
     walkId: string,
     actualWalkerId: string,
@@ -74,6 +75,20 @@ export class OfflineFirstRepository implements Repository {
           await this.local.saveWalk(walk);
           return walk;
         }
+      };
+      this.cancelWalk = async (walkId: string) => {
+        if (!(await this.isOnline())) {
+          throw new Error('אין חיבור לשרת. כדי לבטל טיול פעיל יש להתחבר לאינטרנט.');
+        }
+        const result = await this.remote!.cancelWalk!(walkId);
+        const localWalks = await this.local.getWalks('');
+        const localWalk = localWalks.find((walk) => walk.id === walkId);
+        if (result) {
+          await this.local.saveWalk(result);
+        } else if (localWalk) {
+          await this.local.deleteWalk(walkId);
+        }
+        return result;
       };
       this.finishWalk = async (walkId, actualWalkerId, details) => {
         if (!(await this.isOnline())) {
