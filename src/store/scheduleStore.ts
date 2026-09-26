@@ -412,12 +412,17 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       const today = localDateOnly(new Date());
       const { entries, walks } = get();
       const futureEntries = entries.filter((e) => e.ruleId === ruleId && e.date >= today);
+      // A recurring rule owns its future schedule entries. Remove every
+      // future entry when the rule is deleted, even if its linked walk was
+      // already resolved. Keeping a resolved entry behind is what allowed
+      // stale/duplicate fixed times to reappear after deleting all rules.
+      // Historical walk rows themselves are preserved below.
       for (const entry of futureEntries) {
         const walk = walks.find((w) => w.scheduleEntryId === entry.id);
-        if (walk && walk.status === 'pending') {
+        if (walk?.status === 'pending') {
           await cancelWalkNotifications(walk.id);
-          await repository.deleteScheduleEntry(entry.id);
         }
+        await repository.deleteScheduleEntry(entry.id);
       }
       await repository.deleteScheduleRule(ruleId);
       const removedEntryIds = new Set(futureEntries.map((e) => e.id));
