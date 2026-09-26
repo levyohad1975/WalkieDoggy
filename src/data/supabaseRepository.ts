@@ -23,6 +23,7 @@ function toUser(row: any): FamilyUser {
     name: row.name,
     avatar: row.avatar,
     photoUrl: row.photo_url ?? undefined,
+    sex: row.sex ?? undefined,
     color: row.color,
     remindersEnabled: row.reminders_enabled,
     gamificationEnabled: row.gamification_enabled,
@@ -38,6 +39,7 @@ function fromUser(user: FamilyUser) {
     name: user.name,
     avatar: user.avatar,
     photo_url: user.photoUrl ?? null,
+    sex: user.sex ?? null,
     color: user.color,
     reminders_enabled: user.remindersEnabled,
     // Ordinary profile edits (name/photo/color) never go through this path
