@@ -47,7 +47,7 @@ import {
   walkHasActiveTimeChangeRequest,
 } from '../logic/requestLifecycle';
 import { computeWalkRequestStatusLine } from '../logic/walkRequestStatusLine';
-import type { Walk } from '../types';
+import type { Walk, WalkGpsSession } from '../types';
 import { renderMessageTemplate } from '../mascot/messageEngine';
 import { subscribeToReminderOpens, type ReminderOpenEvent } from '../notifications/reminderEntry';
 import type { RootTabParamList } from '../navigation/RootNavigator';
@@ -408,6 +408,7 @@ export function HomeScreen() {
   // after any family-change effect — where a family-B screen can ever read
   // a family-A row, because the read path itself refuses a mismatched
   // familyId, not just the write path.
+  const [lastWalkGps, setLastWalkGps] = useState<WalkGpsSession | null>(null);
   const [serverLastResolvedWalk, setServerLastResolvedWalk] = useState<{
     familyId: string;
     walk: Walk | null;
@@ -474,6 +475,20 @@ export function HomeScreen() {
     // client-only pass.
     return serverLastResolvedWalk.walk ?? undefined;
   }, [visibleWalks, serverLastResolvedWalk, familyId]);
+  useEffect(() => {
+    if (!lastWalk || lastWalk.status !== 'done') {
+      setLastWalkGps(null);
+      return;
+    }
+    let cancelled = false;
+    void repository.getGpsSessionsForWalkIds([lastWalk.id]).then((sessions) => {
+      if (!cancelled) setLastWalkGps(sessions[0] ?? null);
+    }).catch(() => {
+      if (!cancelled) setLastWalkGps(null);
+    });
+    return () => { cancelled = true; };
+  }, [lastWalk?.id, lastWalk?.status]);
+
   // Whether `lastWalk` is present in the local, operational-window-limited
   // `walks` state — true for anything resolved today (or always, in
   // local/demo mode, where `walks` is unrestricted). Every mutation this
@@ -865,11 +880,26 @@ export function HomeScreen() {
           <Pressable style={styles.dashboardLastWalk} onPress={() => navigation.navigate('History')} accessibilityRole="button" accessibilityLabel="פתיחת הטיול האחרון">
             <View style={styles.dashboardLastWalkCopy}>
               <RtlText style={styles.dashboardLastWalkTitle}>✓ הטיול האחרון</RtlText>
-              <RtlText style={styles.dashboardLastWalkMeta}>{lastWalk.scheduledTime} · {walkDateContextLabel(lastWalk.date)}</RtlText>
+              <RtlText style={styles.dashboardLastWalkMeta}>
+                בוצע ע״י {usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.name ?? 'בן משפחה'} · {lastWalk.completedAt ? new Date(lastWalk.completedAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : lastWalk.scheduledTime} · {walkDateContextLabel(lastWalk.date)}
+              </RtlText>
+              {lastWalkGps ? (
+                <RtlText style={styles.dashboardLastWalkGps}>
+                  {[
+                    lastWalk.durationMinutes ? `${lastWalk.durationMinutes} דק׳` : null,
+                    (lastWalkGps.correctedDistanceMeters ?? lastWalkGps.distanceMeters) != null
+                      ? `${((lastWalkGps.correctedDistanceMeters ?? lastWalkGps.distanceMeters ?? 0) / 1000).toFixed(1)} ק״מ`
+                      : null,
+                  ].filter(Boolean).join(' · ')}
+                </RtlText>
+              ) : null}
             </View>
-            <View style={styles.dashboardLastWalkDog}>
-              <WalkieMascot state="success" size={54} accessibilityLabel="כלב Walkie Doggy" />
-            </View>
+            <Avatar
+              emoji={usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.avatar ?? '👤'}
+              color={usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.color ?? colors.primary}
+              photoUrl={usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.photoUrl}
+              size={38}
+            />
             <RtlText style={styles.dashboardLastWalkChevron}>‹</RtlText>
           </Pressable>
         ) : null}
@@ -1446,7 +1476,8 @@ const styles = StyleSheet.create({
   dashboardLastWalk: { minHeight: 52, borderRadius: radii.xl, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EAE5DD', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm, shadowColor: '#17245B', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
   dashboardLastWalkCopy: { flex: 1, alignItems: 'flex-end' },
   dashboardLastWalkTitle: { fontSize: 17, fontWeight: '900', color: '#17245B', textAlign: 'right' },
-  dashboardLastWalkMeta: { marginTop: 2, fontSize: 13, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
+  dashboardLastWalkMeta: { marginTop: 2, fontSize: 12, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
+  dashboardLastWalkGps: { marginTop: 2, fontSize: 12, fontWeight: '800', color: '#2F7F75', textAlign: 'right' },
   dashboardLastWalkDog: { width: 46, height: 40, overflow: 'hidden', borderRadius: radii.lg, backgroundColor: '#EEF3FF', alignItems: 'center', justifyContent: 'center' },
   dashboardLastWalkChevron: { fontSize: 30, color: '#454B9E', writingDirection: 'ltr' },
   dashboardTimeline: { minHeight: 60, borderRadius: radii.xl, backgroundColor: '#FBFBFF', borderWidth: 1, borderColor: '#E1E2F4', paddingHorizontal: spacing.md, paddingVertical: 7, gap: 4 },
