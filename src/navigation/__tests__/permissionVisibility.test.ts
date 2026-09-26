@@ -27,7 +27,7 @@ describe('RootNavigator — History/Statistics tab visibility (permission-gated,
   const source = fs.readFileSync(path.resolve(__dirname, '../RootNavigator.tsx'), 'utf8');
 
   it('imports the fail-closed screen-access gates rather than the plain (fail-open-while-loading) resolvers', () => {
-    expect(source).toMatch(/import\s*\{\s*canAccessHistoryScreen,\s*canAccessStatisticsScreen\s*\}\s*from\s*'\.\.\/logic\/permissions'/);
+    expect(source).toMatch(/import\\s*\\{[\\s\\S]*canAccessHistoryScreen,[\\s\\S]*canAccessStatisticsScreen,[\\s\\S]*canAccessSettingsScreen[\\s\\S]*\\}\\s*from\s*'\.\.\/logic\/permissions'/);
     expect(source).not.toMatch(/import\s*\{\s*canViewHistory/);
   });
 
@@ -49,13 +49,14 @@ describe('RootNavigator — History/Statistics tab visibility (permission-gated,
     expect(source).toMatch(/const effectiveUserId = useEffectiveUserId\(\);/);
   });
 
-  it('Home, Schedule, Family, and Settings are never permission-gated — Settings (Personal Settings) always remains visible', () => {
+  it('keeps core tabs mounted and permission-gates Settings while preserving an active protected tab during refresh', () => {
     expect(source).toMatch(/<Tab\.Screen name="Home" component=\{HomeScreen\} \/>/);
     expect(source).toMatch(/<Tab\.Screen name="Schedule" component=\{ScheduleScreen\} \/>/);
     expect(source).toMatch(/<Tab\.Screen name="Family" component=\{FamilyScreen\} \/>/);
-    expect(source).toMatch(/<Tab\.Screen name="Settings" component=\{SettingsScreen\} \/>/);
-    // Never wrapped in a canSee.../conditional — unlike History/Statistics above.
-    expect(source).not.toMatch(/canSeeSettingsTab/);
+    expect(source).toMatch(/canSeeSettingsTab/);
+    expect(source).toContain("activeTabName === 'History'");
+    expect(source).toContain("activeTabName === 'Statistics'");
+    expect(source).toContain("activeTabName === 'Settings'");
   });
 });
 
