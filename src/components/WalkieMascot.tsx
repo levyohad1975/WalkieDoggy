@@ -100,7 +100,6 @@ export const MASCOT_ASSET_PRODUCTION_LIST: Record<MascotState, string> = {
 };
 
 const MASCOT_SOURCE = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
-const RUN_SOURCE = require('../../assets/branding/walkie-doggy-run.gif');
 
 interface AnimatedValues {
   translateX: Animated.Value;
@@ -130,8 +129,12 @@ function buildMascotAnimation(state: MascotState, values: AnimatedValues): Anima
     case 'runIn': {
       // The bundled GIF supplies the real 16-frame leg/body run cycle.
       // This bounded transform only moves that running dog into the center.
-      translateX.setValue(420);
-      return Animated.sequence([timing(translateX, -10, 1050), timing(translateX, 0, 220)]);
+      translateX.setValue(260);
+      scale.setValue(0.9);
+      return Animated.sequence([
+        Animated.parallel([timing(translateX, -8, 620), timing(scale, 1.08, 620)]),
+        Animated.parallel([timing(translateX, 0, 180), timing(scale, 1, 180)]),
+      ]);
     }
     case 'idle': {
       // Gentle head-bob-and-settle, continuous but small (4px) and slow
@@ -262,7 +265,7 @@ export function WalkieMascot({ state, size = 72, accessibilityLabel, testID, sou
       style={[styles.container, state === 'runIn' && styles.runContainer, { width: size, height: size, transform: [{ translateX }, { translateY }, { rotate }, { scale }] }]}
     >
       <Image
-        source={!reducedMotion && state === 'runIn' ? RUN_SOURCE : reducedMotion && reducedMotionSource ? reducedMotionSource : source}
+        source={reducedMotion && reducedMotionSource ? reducedMotionSource : source}
         style={styles.image}
         resizeMode="contain"
       />
