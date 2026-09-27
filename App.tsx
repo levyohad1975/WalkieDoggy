@@ -268,12 +268,6 @@ export default function App() {
   }, [hydrated, refreshSystemAdmin]);
 
   useEffect(() => {
-    if (hydrated && isSystemAdmin && systemAdminOpenRequestId > 0 && !shouldEnterSystemAdminDirectly) {
-      setSystemAdminOpen(true);
-    }
-  }, [hydrated, isSystemAdmin, systemAdminOpenRequestId, shouldEnterSystemAdminDirectly]);
-
-  useEffect(() => {
     if (!hydrated || Platform.OS !== 'web' || typeof navigator === 'undefined' || typeof window === 'undefined') return;
     const nav = navigator as typeof navigator & { standalone?: boolean };
     const isIos = /iphone|ipad|ipod/i.test(nav.userAgent) || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1);
@@ -289,6 +283,12 @@ export default function App() {
   // console from the header entry point.
   const shouldEnterSystemAdminDirectly =
     isSupabaseConfigured && isSystemAdmin && !familyId && !currentUserId && !systemObserverActive;
+
+  useEffect(() => {
+    if (hydrated && isSystemAdmin && systemAdminOpenRequestId > 0 && !shouldEnterSystemAdminDirectly) {
+      setSystemAdminOpen(true);
+    }
+  }, [hydrated, isSystemAdmin, systemAdminOpenRequestId, shouldEnterSystemAdminDirectly]);
 
   // Section 10: remote request-push token registration — completely
   // separate from requestNotificationPermissions() below (that's the
