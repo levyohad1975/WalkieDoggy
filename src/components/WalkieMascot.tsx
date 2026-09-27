@@ -58,9 +58,9 @@ import { AccessibilityInfo, Animated, Image, ImageSourcePropType, StyleSheet } f
  *      this component's public API.
  */
 
-export type MascotState = 'idle' | 'excited' | 'ready' | 'waiting' | 'concerned' | 'success';
+export type MascotState = 'idle' | 'excited' | 'ready' | 'waiting' | 'concerned' | 'success' | 'runIn';
 
-export const MASCOT_STATES: MascotState[] = ['idle', 'excited', 'ready', 'waiting', 'concerned', 'success'];
+export const MASCOT_STATES: MascotState[] = ['idle', 'excited', 'ready', 'waiting', 'concerned', 'success', 'runIn'];
 
 /**
  * BATCH 4 CORRECTION #1 (item 1) — a concrete, greppable/testable marker of
@@ -84,6 +84,7 @@ export const MASCOT_ANIMATION_STATUS = 'temporary-fallback-real-character-frames
  * is checked by a test to make sure every state is accounted for.
  */
 export const MASCOT_ASSET_PRODUCTION_LIST: Record<MascotState, string> = {
+  runIn: 'App-loading entrance (~1.4s): mascot enters quickly from off-screen, with a bounded running-like hop cadence, settles at center, then holds. A future true run-cycle sprite/Lottie can replace the flattened-art fallback behind the same state API.',
   idle:
     'Idle/welcome (seamless ~2s loop). NEEDS: eyes as a separate layer/frame — a closed-eyes (blink) frame held ~150-250ms, blinking roughly every 3-4s within the loop; a separate tail layer with 2-3 tail positions (center/left/right) for a small continuous wag; a subtle head-bob (can reuse the current whole-body bob as-is). Base pose (sitting, eyes open, soft/neutral mouth) can reuse the existing artwork.',
   excited:
@@ -124,6 +125,29 @@ function buildMascotAnimation(state: MascotState, values: AnimatedValues): Anima
   const { translateY, rotateDeg, scale } = values;
 
   switch (state) {
+    case 'runIn': {
+      // Dedicated loading entrance: start well outside the viewport, cross
+      // into the center with two quick bounded hops, then settle. This is
+      // intentionally NOT the old in-place "excited" bounce.
+      translateY.setValue(18);
+      rotateDeg.setValue(-0.35);
+      scale.setValue(0.9);
+      return Animated.parallel([
+        Animated.sequence([
+          timing(translateY, -12, 360),
+          timing(translateY, 7, 280),
+          timing(translateY, -5, 240),
+          timing(translateY, 0, 260),
+        ]),
+        Animated.sequence([
+          timing(rotateDeg, 0.35, 300),
+          timing(rotateDeg, -0.22, 300),
+          timing(rotateDeg, 0.12, 260),
+          timing(rotateDeg, 0, 280),
+        ]),
+        Animated.sequence([timing(scale, 1.08, 720), timing(scale, 1, 420)]),
+      ]);
+    }
     case 'idle': {
       // Gentle head-bob-and-settle, continuous but small (4px) and slow
       // (1.4s each way) — a living-but-calm resting pose.
