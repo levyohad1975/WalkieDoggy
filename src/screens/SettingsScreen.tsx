@@ -51,7 +51,7 @@ export function SettingsScreen() {
 }
 
 function SettingsScreenContent() {
-  const { family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, setGamificationEnabled, saveDog, selectDog, deleteUnusedDog } = useFamilyStore();
+  const { family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, setGamificationEnabled, saveDog, removeDogPhoto: clearDogPhoto, selectDog, deleteUnusedDog } = useFamilyStore();
   const healthTasks = useHealthStore((s) => s.tasks);
   const loadHealthTasks = useHealthStore((s) => s.load);
   const saveHealthTask = useHealthStore((s) => s.saveTask);
@@ -328,7 +328,7 @@ function SettingsScreenContent() {
     if (!dog?.photoUrl) return;
     const remove = async () => {
       try {
-        await persistDog({ photoUrl: undefined });
+        await clearDogPhoto(dog.id);
       } catch {
         Alert.alert('לא הצלחנו להסיר את התמונה', 'נסו שוב בעוד רגע.');
       }
