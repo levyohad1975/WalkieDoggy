@@ -42,6 +42,8 @@ interface AddUnplannedWalkModalProps {
   editingWalk?: Walk | null;
   onDelete?: (walkId: string) => void;
   onConfirm: (result: UnplannedWalkResult) => void;
+  /** Starts a live unplanned walk through the normal start/finish + GPS lifecycle. */
+  onStartNow?: () => void | Promise<void>;
   onClose: () => void;
 }
 
@@ -82,6 +84,7 @@ export function AddUnplannedWalkModal({
   editingWalk = null,
   onDelete,
   onConfirm,
+  onStartNow,
   onClose,
 }: AddUnplannedWalkModalProps) {
   const isEditing = !!editingWalk;
@@ -157,9 +160,13 @@ export function AddUnplannedWalkModal({
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView keyboardShouldPersistTaps="handled">
               <RtlText style={styles.title} accessibilityRole="header">
-                {isEditing ? `עריכת טיול ספונטני של ${dogName}` : `הוספת טיול ספונטני של ${dogName}`}
+                {isEditing ? `עריכת טיול של ${dogName}` : `הוסף טיול של ${dogName}`}
               </RtlText>
-            <RtlText style={styles.subtitle}>לטיול שכבר קרה, בלי לשנות את הסבב</RtlText>
+            <RtlText style={styles.subtitle}>{isEditing ? 'עדכון פרטי הטיול' : 'אפשר להתחיל טיול עכשיו או להזין טיול שכבר בוצע'}</RtlText>
+
+            {!isEditing && onStartNow ? (
+              <Button label="התחל טיול עכשיו" onPress={() => void onStartNow()} style={styles.startNowButton} />
+            ) : null}
 
             <RtlText style={styles.label}>מי טייל?</RtlText>
             {canChooseUser ? (
@@ -403,5 +410,6 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xl },
+  startNowButton: { marginTop: spacing.sm, marginBottom: spacing.md },
   deleteButton: { marginTop: spacing.md },
 });
