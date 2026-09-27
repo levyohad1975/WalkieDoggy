@@ -480,11 +480,29 @@ export class OfflineFirstRepository implements Repository {
   }
 
   async deleteScheduleRule(ruleId: string): Promise<void> {
-    await this.local.deleteScheduleRule(ruleId);
-    if (this.remote) {
-      await this.queue.enqueue({ type: 'deleteScheduleRule', payload: { ruleId } });
-      await this.trySync();
+    if (!this.remote) {
+      await this.local.deleteScheduleRule(ruleId);
+      return;
     }
+
+    // A fixed walk time is shared schedule configuration, not a best-effort
+    // activity log.  Previously this mutation was always applied locally and
+    // then hidden in SyncQueue.  If Supabase/RLS rejected it, the app looked
+    // empty until the next remote load, which still found the active rule;
+    // scheduleStore's legitimate missing-entry backfill then generated every
+    // occurrence again.  When online, wait for the authoritative delete
+    // first so a refusal reaches the confirmation UI and the local cache is
+    // never allowed to claim that a schedule was removed when it was not.
+    if (await this.isOnline()) {
+      await this.remote.deleteScheduleRule(ruleId);
+      await this.local.deleteScheduleRule(ruleId);
+      return;
+    }
+
+    // Genuine offline edits still retain the existing offline-first contract:
+    // local state is updated and replayed in the original order on reconnect.
+    await this.local.deleteScheduleRule(ruleId);
+    await this.queue.enqueue({ type: 'deleteScheduleRule', payload: { ruleId } });
   }
 
   async getScheduleEntries(familyId: string): Promise<ScheduleEntry[]> {
@@ -515,11 +533,22 @@ export class OfflineFirstRepository implements Repository {
   }
 
   async deleteScheduleEntry(entryId: string): Promise<void> {
-    await this.local.deleteScheduleEntry(entryId);
-    if (this.remote) {
-      await this.queue.enqueue({ type: 'deleteScheduleEntry', payload: { entryId } });
-      await this.trySync();
+    if (!this.remote) {
+      await this.local.deleteScheduleEntry(entryId);
+      return;
     }
+
+    // Keep schedule deletions consistent with deleteScheduleRule above: an
+    // online rejection must not be swallowed into the queue and later look
+    // like the user intentionally removed every generated occurrence.
+    if (await this.isOnline()) {
+      await this.remote.deleteScheduleEntry(entryId);
+      await this.local.deleteScheduleEntry(entryId);
+      return;
+    }
+
+    await this.local.deleteScheduleEntry(entryId);
+    await this.queue.enqueue({ type: 'deleteScheduleEntry', payload: { entryId } });
   }
 
   async getWalks(familyId: string): Promise<Walk[]> {
