@@ -13,7 +13,7 @@ import { MASCOT_STATES, MASCOT_ASSET_PRODUCTION_LIST, MASCOT_ANIMATION_STATUS, t
 describe('components/WalkieMascot — MASCOT_STATES / MASCOT_ASSET_PRODUCTION_LIST', () => {
   it('includes exactly the six required states from the brief (C2)', () => {
     const required: MascotState[] = ['idle', 'excited', 'ready', 'waiting', 'concerned', 'success'];
-    expect(MASCOT_STATES).toHaveLength(6);
+    expect(MASCOT_STATES).toHaveLength(7);
     for (const state of required) {
       expect(MASCOT_STATES).toContain(state);
     }
@@ -38,8 +38,8 @@ describe('components/WalkieMascot — MASCOT_STATES / MASCOT_ASSET_PRODUCTION_LI
    * the product requires.
    */
   it('MASCOT_ANIMATION_STATUS honestly reports this as a temporary fallback, not the completed requirement', () => {
-    expect(MASCOT_ANIMATION_STATUS).toBe('temporary-fallback-real-character-frames-required');
-    expect(MASCOT_ANIMATION_STATUS).toContain('fallback');
+    expect(MASCOT_ANIMATION_STATUS).toBe('real-run-frames-loading-procedural-other-states');
+    expect(MASCOT_ANIMATION_STATUS).toContain('procedural-other-states');
     expect(MASCOT_ANIMATION_STATUS).not.toBe('complete');
   });
 
