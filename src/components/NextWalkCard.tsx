@@ -399,7 +399,7 @@ const styles = StyleSheet.create({
   // Item 6 (mobile polish): paddingVertical trimmed from 5 to 2 — a
   // slightly more compact dashboard card. Never touches any button's own
   // minHeight (tap targets stay exactly as large as before).
-  cardDashboard: { backgroundColor: '#FAFAFF', borderColor: '#DEDDF5', borderRadius: 24, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3, paddingHorizontal: 18, paddingVertical: 12 },
+  cardDashboard: { backgroundColor: '#FAF7EF', borderColor: '#EAE3D6', borderRadius: 24, shadowOpacity: 0.06, shadowRadius: 12, elevation: 3, paddingHorizontal: 18, paddingVertical: 12 },
   webCard: { borderRadius: radii.xl, paddingHorizontal: 24, paddingVertical: 18 },
   cardActive: { backgroundColor: colors.successSoft, borderColor: colors.success + '55' },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
@@ -461,9 +461,9 @@ const styles = StyleSheet.create({
   personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'left' },
   responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'left' },
   doneButton: { marginTop: 2 },
-  dashboardStartButton: { marginTop: 2, minHeight: 48, paddingVertical: 5, borderRadius: 18, backgroundColor: '#4A43B6', borderColor: '#4A43B6' },
+  dashboardStartButton: { marginTop: 2, minHeight: 48, paddingVertical: 5, borderRadius: 18, backgroundColor: '#12A5AB', borderColor: '#12A5AB' },
   markDoneFallbackButton: { marginTop: 8, borderWidth: 1.5, borderColor: colors.primaryDark },
-  dashboardMarkDoneButton: { marginTop: 4, minHeight: 40, paddingVertical: 3, borderWidth: 1.5, borderColor: '#4A43B6' },
+  dashboardMarkDoneButton: { marginTop: 4, minHeight: 40, paddingVertical: 3, borderWidth: 1.5, borderColor: '#12A5AB' },
   endWalkButton: { marginTop: 4, backgroundColor: colors.statusOverdue },
   resolveRow: { flexDirection: 'row-reverse', gap: 8, marginTop: 8, width: '100%' },
   resolveButton: { flex: 1, minWidth: 0 },
@@ -478,7 +478,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   requestStatusApproved: { color: colors.statusDone },
-  linkRow: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 5 },
-  linkText: { color: colors.primaryDark, fontSize: 14, fontWeight: '600' },
+  linkRow: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 7, minHeight: 38, borderRadius: 16, backgroundColor: '#F2EFE8', paddingHorizontal: 12 },
+  linkText: { color: '#17345B', fontSize: 13, fontWeight: '600' },
   linkDivider: { color: colors.textSecondary },
 });
