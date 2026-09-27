@@ -53,5 +53,5 @@ export const useSystemAdminStore = create<SystemAdminState>((set, get) => ({
     }
   },
 
-  reset: () => set({ isSystemAdmin: false, checked: false, checking: false }),
+  reset: () => set({ isSystemAdmin: false, checked: false, checking: false, openRequestId: 0 }),
 }));
