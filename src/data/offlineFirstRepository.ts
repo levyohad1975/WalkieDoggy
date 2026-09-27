@@ -620,11 +620,24 @@ export class OfflineFirstRepository implements Repository {
   }
 
   async deleteWalk(walkId: string): Promise<void> {
-    await this.local.deleteWalk?.(walkId);
-    if (this.remote) {
-      await this.queue.enqueue({ type: 'deleteWalk', payload: { walkId } });
-      await this.trySync();
+    if (!this.remote) {
+      await this.local.deleteWalk?.(walkId);
+      return;
     }
+
+    // Walks linked to schedule entries must be removed authoritatively while
+    // online. Queueing the delete and immediately continuing lets the parent
+    // schedule entry disappear first, so a later queued child mutation can
+    // fail and surface a false "schedule delete failed" message even though
+    // the rule/entries were successfully removed.
+    if (await this.isOnline()) {
+      await this.remote.deleteWalk?.(walkId);
+      await this.local.deleteWalk?.(walkId);
+      return;
+    }
+
+    await this.local.deleteWalk?.(walkId);
+    await this.queue.enqueue({ type: 'deleteWalk', payload: { walkId } });
   }
 
   async getNotificationSettings(familyId: string): Promise<NotificationSetting[]> {
