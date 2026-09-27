@@ -49,11 +49,14 @@ export function FamilyOnboardingScreen() {
   const { width, height } = useWindowDimensions();
   const isDesktop = width >= 900;
   const setFamilyId = useAuthStore((s) => s.setFamilyId);
-  const heroMaxWidth = isDesktop ? Math.min(560, width) : width;
+  // Mobile keeps the approved full-screen artwork. Desktop must not render
+  // the mobile composition as a giant phone in the middle of the browser:
+  // use the same artwork as a wide, edge-to-edge cover surface instead.
+  const heroMaxWidth = isDesktop ? width : width;
   const heroHeightIfWidthConstrained = heroMaxWidth / ONBOARDING_HERO_ASPECT;
-  const isWidthConstrained = heroHeightIfWidthConstrained <= height;
-  const heroHeight = isWidthConstrained ? heroHeightIfWidthConstrained : height;
-  const heroWidth = isWidthConstrained ? heroMaxWidth : Math.min(heroHeight * ONBOARDING_HERO_ASPECT, heroMaxWidth);
+  const isWidthConstrained = !isDesktop && heroHeightIfWidthConstrained <= height;
+  const heroHeight = isDesktop ? height : isWidthConstrained ? heroHeightIfWidthConstrained : height;
+  const heroWidth = isDesktop ? width : isWidthConstrained ? heroMaxWidth : Math.min(heroHeight * ONBOARDING_HERO_ASPECT, heroMaxWidth);
   // Round 4 — set only when a redemption already succeeded server-side but
   // this device couldn't yet confirm it via whoami() (see authStore.ts's
   // completeInviteRedemption/restoreSession doc comments). Checked on mount
@@ -469,7 +472,7 @@ export function FamilyOnboardingScreen() {
             { width: heroWidth, height: heroHeight },
           ]}
           imageStyle={styles.referenceHeroImage}
-          resizeMode="contain"
+          resizeMode={isDesktop ? "cover" : "contain"}
           accessibilityLabel="מסך הפתיחה של Walkie Doggy"
         >
           {showWelcomeWink ? (
@@ -842,13 +845,12 @@ const styles = StyleSheet.create({
   winkFrame: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%' },
   createHotspot: { position: 'absolute', left: '12%', right: '12%', top: '72%', height: '7.5%', zIndex: 2 },
   joinHotspot: { position: 'absolute', left: '12%', right: '12%', top: '80%', height: '7.5%', zIndex: 2 },
-  // On desktop the reference image is contained inside a much wider ImageBackground.
-  // Percentage hotspots relative to that wide box land outside the visible phone artwork,
-  // so clicks appear dead. Keep the interactive areas centered on the 560px artwork.
-  createHotspotDesktop: { left: '12%', right: '12%', top: '72%' },
-  joinHotspotDesktop: { left: '12%', right: '12%', top: '80%' },
+  // Desktop uses the artwork as a wide cover. Keep the two onboarding CTAs
+  // in the lower centre where the approved composition places them.
+  createHotspotDesktop: { left: '35%', right: '35%', top: '72%' },
+  joinHotspotDesktop: { left: '35%', right: '35%', top: '80%' },
   referenceHero: {},
-  referenceHeroDesktop: { alignSelf: 'center' },
+  referenceHeroDesktop: { alignSelf: 'stretch' },
   referenceHeroImage: { width: '100%', height: '100%' },
   referenceOverlay: { flex: 1, justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 12, paddingBottom: 18 },
   referenceTopRow: { minHeight: 170, alignItems: 'center', justifyContent: 'center' },
