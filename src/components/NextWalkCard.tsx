@@ -396,7 +396,7 @@ const styles = StyleSheet.create({
   // Item 6 (mobile polish): paddingVertical trimmed from 5 to 2 — a
   // slightly more compact dashboard card. Never touches any button's own
   // minHeight (tap targets stay exactly as large as before).
-  cardDashboard: { backgroundColor: '#FFFDF8', borderColor: '#E6DDCE', borderRadius: 28, shadowOpacity: 0.10, shadowRadius: 14, elevation: 4, paddingHorizontal: 18, paddingVertical: 16 },
+  cardDashboard: { backgroundColor: '#EAF8FA', borderColor: '#B9E5E9', borderRadius: 28, shadowOpacity: 0.10, shadowRadius: 14, elevation: 4, paddingHorizontal: 18, paddingVertical: 16 },
   webCard: { borderRadius: radii.xl, paddingHorizontal: 24, paddingVertical: 18 },
   cardActive: { backgroundColor: colors.successSoft, borderColor: colors.success + '55' },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
@@ -458,7 +458,7 @@ const styles = StyleSheet.create({
   dashboardPersonColumn: { flex: 0.9, alignItems: 'center', justifyContent: 'center', gap: 3, minWidth: 0 },
   dashboardPersonName: { fontSize: 16, fontWeight: '800', color: '#17345B', textAlign: 'center' },
   dashboardColumnLabel: { fontSize: 11, fontWeight: '600', color: '#7B746B', textAlign: 'center' },
-  dashboardTimeColumn: { flex: 1.05, alignItems: 'center', justifyContent: 'center', minWidth: 0, borderLeftWidth: 1, borderRightWidth: 1, borderColor: '#E8E0D5', paddingHorizontal: 8 },
+  dashboardTimeColumn: { flex: 1.05, alignItems: 'center', justifyContent: 'center', minWidth: 0, borderLeftWidth: 1, borderRightWidth: 1, borderColor: '#CBE9EC', paddingHorizontal: 8 },
   dashboardTime: { fontSize: 38, fontWeight: '900', color: '#171717', fontVariant: ['tabular-nums'], textAlign: 'center' },
   dashboardDate: { fontSize: 13, fontWeight: '700', color: '#7B746B', marginTop: 2, textAlign: 'center' },
   dashboardCountdownColumn: { flex: 1.15, alignItems: 'center', justifyContent: 'center', minWidth: 0 },
@@ -483,7 +483,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   requestStatusApproved: { color: colors.statusDone },
-  linkRow: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 8, minHeight: 42, borderRadius: 18, backgroundColor: '#F5F2EC', paddingHorizontal: 12 },
+  linkRow: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 8, minHeight: 42, borderRadius: 18, backgroundColor: '#DDF2F4', paddingHorizontal: 12 },
   linkText: { color: '#17345B', fontSize: 13, fontWeight: '600' },
   linkDivider: { color: colors.textSecondary },
 });
