@@ -514,10 +514,7 @@ export function HomeScreen() {
   // the walks *after* the primary card. Including the next walk means the
   // section remains useful (and visibly present) on a day with one walk.
   const dashboardTimelineWalks = useMemo(
-    () =>
-      visibleWalks
-        .filter((w) => w.status === 'pending' && w.date === localDateOnly(new Date()))
-        .sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime)),
+    () => dailyWalkTimeline(visibleWalks, new Date()),
     [visibleWalks, minuteTick]
   );
   const dashboardTimelineProgress = useMemo(() => {
