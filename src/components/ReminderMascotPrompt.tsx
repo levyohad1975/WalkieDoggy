@@ -1,15 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { AccessibilityInfo, Modal, Pressable, StyleSheet, View, type ImageSourcePropType } from 'react-native';
+import { AccessibilityInfo, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { colors } from '../theme/colors';
 import { radii, spacing } from '../theme/tokens';
 import { RtlText } from './RtlText';
-import { MascotFrameAnimation } from './MascotFrameAnimation';
-
-// A stable reference, not a fresh `[]` literal per render — see
-// celebrationAssets.ts's identical EMPTY_FRAMES constant for why
-// (MascotFrameAnimation's playback effect depends on `frames` by
-// reference).
-const EMPTY_FRAMES: ImageSourcePropType[] = [];
+import { WalkieMascot } from './WalkieMascot';
 
 interface ReminderMascotPromptProps {
   visible: boolean;
@@ -44,14 +38,13 @@ export function ReminderMascotPrompt({ visible, message, onDismiss }: ReminderMa
     const timer = setTimeout(onDismiss, 3200);
     return () => clearTimeout(timer);
   }, [visible, onDismiss, screenReaderEnabled]);
-  const fallback = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
   return (
     <Modal visible={visible} transparent animationType={reducedMotion ? 'none' : 'fade'} onRequestClose={onDismiss} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תזכורת הקמע של Walkie Doggy Link">
         <View style={styles.moment} accessibilityRole="alert" accessibilityLiveRegion="polite">
           <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
           <View style={styles.tail} />
-          <MascotFrameAnimation frames={EMPTY_FRAMES} fallback={fallback} fps={10} size={190} accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול" />
+          <WalkieMascot state="ready" size={190} accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול" testID="reminder-mascot-animation" />
         </View>
       </Pressable>
     </Modal>
