@@ -11,6 +11,7 @@ import { colors } from '../theme/colors';
 import { breakpoints, radii, spacing, typography } from '../theme/tokens';
 import { getDogBackground } from '../theme/dogBackgrounds';
 import { DogHeroBackgroundPicker } from './DogHeroBackgroundPicker';
+import { Button } from './Button';
 
 export function DogProfileModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const dog = useFamilyStore((s) => s.dog);
@@ -40,11 +41,6 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
     } finally {
       setUploading(false);
     }
-  };
-
-  const removePhoto = () => {
-    if (!dog || !dog.photoUrl || familyRole !== 'admin' || systemObserverActive) return;
-    setRemoveConfirmVisible(true);
   };
 
   const confirmRemovePhoto = async () => {
