@@ -353,7 +353,7 @@ export default function App() {
       {!hydrated ? (
         <SafeAreaView style={styles.center}>
           <WalkieMascot state="runIn" size={150} accessibilityLabel="Walkie Doggy נכנס בריצה ופותח את האפליקציה" testID="app-loading-mascot" />
-          <RtlText style={styles.loadingText}>כבר יוצאים לדרך…</RtlText>
+          <RtlText style={styles.loadingText}>רק רגע, יוצאים לדרך…</RtlText>
         </SafeAreaView>
       ) : (
         <>
