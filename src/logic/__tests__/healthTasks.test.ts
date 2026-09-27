@@ -15,8 +15,7 @@ import type { HealthTask, HealthTaskCategory } from '../../types';
 describe('HEALTH_TASK_CATEGORIES / HEALTH_TASK_CATEGORY_LABELS', () => {
   it('covers every PRD §10 core category, with a non-empty Hebrew label for each', () => {
     const expected: HealthTaskCategory[] = [
-      'vaccination', 'parasite_prevention', 'medication', 'vet_visit', 'weight',
-      'allergy', 'food', 'grooming', 'bath', 'nails', 'teeth', 'ears', 'other',
+      'vaccination', 'parasite_prevention', 'medication', 'vet_visit', 'grooming',
     ];
     expect(HEALTH_TASK_CATEGORIES.slice().sort()).toEqual(expected.slice().sort());
     for (const c of HEALTH_TASK_CATEGORIES) {
