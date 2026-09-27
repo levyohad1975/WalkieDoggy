@@ -488,6 +488,14 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         if (walk?.status === 'pending') {
           await cancelWalkNotifications(walk.id);
         }
+        // The schedule entry owns its generated walk through the server FK.
+        // Delete the linked pending walk explicitly first. This avoids a
+        // later reconciliation/sync step trying to persist a child whose
+        // entry was just removed, while keeping resolved historical walks
+        // untouched.
+        if (walk?.status === 'pending') {
+          await repository.deleteWalk?.(walk.id);
+        }
         await repository.deleteScheduleEntry(entry.id);
       }
       await repository.deleteScheduleRule(ruleId);
