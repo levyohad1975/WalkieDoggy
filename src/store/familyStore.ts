@@ -281,7 +281,19 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
       const isSelected = s.selectedDogId === dog.id || s.selectedDogId === null;
       return isSelected ? { dog, dogs, selectedDogId: dog.id } : { dogs };
     });
-    await repository.upsertDog(dog);
+    try {
+      await repository.upsertDog(dog);
+    } catch (error) {
+      // Re-load the authoritative server value so a rejected setting does
+      // not remain visually selected and then mysteriously disappear later.
+      const familyId = dog.familyId;
+      try {
+        await get().load(familyId);
+      } catch {
+        // Preserve the original persistence error below.
+      }
+      throw error;
+    }
   },
 
   selectDog: async (dogId: string) => {
