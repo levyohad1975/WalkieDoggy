@@ -1669,9 +1669,9 @@ lastWalkDetailChip: {
   alignItems: 'center',
   justifyContent: 'center',
 },
-lastWalkDetailChipText: { fontSize: 12, fontWeight: '700', color: colors.textPrimary },
+lastWalkDetailChipText: { fontSize: 12, fontWeight: '600', color: colors.textPrimary },
 lastWalkNote: { backgroundColor: colors.surface, borderRadius: radii.md, padding: spacing.sm, gap: 2 },
-lastWalkNoteLabel: { fontSize: 11, fontWeight: '800', color: colors.textSecondary, textAlign: 'right' },
+lastWalkNoteLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary, textAlign: 'right' },
 lastWalkNoteText: { fontSize: 13, color: colors.textPrimary, textAlign: 'right', lineHeight: 19 },
 
 lastWalkTopRow: {
@@ -1691,7 +1691,7 @@ lastWalkTimeBlock: {
 
 lastWalkTime: {
   fontSize: 20,
-  fontWeight: '800',
+  fontWeight: '700',
   color: colors.textPrimary,
 },
 
@@ -1705,7 +1705,7 @@ lastWalkDateContext: {
 lastWalkDoneBadge: {
   marginTop: 2,
   fontSize: 12,
-  fontWeight: '700',
+  fontWeight: '600',
   color: '#2F9B72',
 },
 
@@ -1773,7 +1773,7 @@ lastWalkPerson: {
 
 lastWalkPersonName: {
   fontSize: 17,
-  fontWeight: '800',
+  fontWeight: '700',
   color: colors.textPrimary,
   textAlign: 'right',
 },
