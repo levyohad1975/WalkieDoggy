@@ -31,6 +31,7 @@ import { ReminderMascotPrompt } from '../components/ReminderMascotPrompt';
 import { DogProfileModal } from '../components/DogProfileModal';
 import { DogSelectorRow } from '../components/DogSelectorRow';
 import { WalkieMascot } from '../components/WalkieMascot';
+import { useSystemAdminStore } from '../store/systemAdminStore';
 import { Avatar } from '../components/Avatar';
 import { CELEBRATION_LIBRARY, selectWalkCompletionCelebration, type CompletionCelebration } from '../logic/walkCompletionCelebration';
 import { achievementDefinition, type AchievementProgress } from '../logic/achievements';
@@ -61,6 +62,31 @@ import { requestForegroundGpsPermission } from '../lib/gpsTracking';
 export function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
   const [dogProfileVisible, setDogProfileVisible] = useState(false);
+  const isSystemAdmin = useSystemAdminStore((s) => s.isSystemAdmin);
+  const requestOpenSystemAdmin = useSystemAdminStore((s) => s.requestOpen);
+  const mascotTapCountRef = useRef(0);
+  const mascotTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleHeaderMascotPress = useCallback(() => {
+    if (!isSystemAdmin) {
+      setDogProfileVisible(true);
+      return;
+    }
+    mascotTapCountRef.current += 1;
+    if (mascotTapTimerRef.current) clearTimeout(mascotTapTimerRef.current);
+    if (mascotTapCountRef.current >= 3) {
+      mascotTapCountRef.current = 0;
+      requestOpenSystemAdmin();
+      return;
+    }
+    mascotTapTimerRef.current = setTimeout(() => {
+      mascotTapCountRef.current = 0;
+      mascotTapTimerRef.current = null;
+    }, 700);
+  }, [isSystemAdmin, requestOpenSystemAdmin]);
+
+  useEffect(() => () => {
+    if (mascotTapTimerRef.current) clearTimeout(mascotTapTimerRef.current);
+  }, []);
   const [heroPhotoFailed, setHeroPhotoFailed] = useState(false);
   const [heroCutoutFailed, setHeroCutoutFailed] = useState(false);
   const currentUserId = useAuthStore((s) => s.currentUserId)!;
@@ -719,7 +745,7 @@ export function HomeScreen() {
               accessibilityLabel="Walkie Doggy Link"
             />
             <Pressable
-              onPress={() => setDogProfileVisible(true)}
+              onPress={handleHeaderMascotPress}
               style={styles.mascotHeaderButton}
               accessibilityRole="button"
               accessibilityLabel="פתיחת פרופיל הכלב"
