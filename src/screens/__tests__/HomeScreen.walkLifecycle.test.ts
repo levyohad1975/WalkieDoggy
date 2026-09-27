@@ -45,8 +45,8 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).not.toContain('style={styles.dashboardSwapRequestRow}');
     expect(home).toContain("onSwap={effectiveRole === 'admin' && nextWalk.status === 'pending'");
     expect(home).toContain("onEdit={effectiveRole === 'admin' && nextWalk.status === 'pending'");
-    expect(home).not.toContain('accessibilityLabel="עריכת הטיול הבא"');
-    expect(home).not.toContain('accessibilityLabel="החלפת הטיול הבא"');
+    expect(home).toContain('accessibilityLabel="עריכת הטיול הבא"');
+    expect(home).toContain('accessibilityLabel="החלפת הטיול הבא"');
     expect(card).toContain('{onEdit || onSwap ? (');
     expect(card).toContain('עריכה');
     expect(card).toContain('החלפה');
