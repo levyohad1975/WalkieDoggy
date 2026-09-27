@@ -682,11 +682,14 @@ export function HomeScreen() {
   if (!dog && !familyLoading) {
     return (
       <SafeAreaView style={styles.center}>
-        <EmptyState
-          emoji="🐶"
-          title="עדיין אין כלב במשפחה"
-          subtitle="הוסיפו את הכלב הראשון כדי להתחיל לתכנן טיולים ותורנויות"
+        <WalkieMascot
+          state="excited"
+          size={150}
+          accessibilityLabel="Walkie Doggy מזמין אתכם להוסיף את הכלב הראשון"
+          testID="no-dog-mascot"
         />
+        <RtlText style={styles.noDogTitle}>עדיין אין כלב במשפחה</RtlText>
+        <RtlText style={styles.noDogSubtitle}>בואו נכיר את החבר החדש שלנו 🐾 הוסיפו את הכלב הראשון כדי להתחיל לטייל עם Walkie Doggy</RtlText>
         <Button label="הוספת כלב" onPress={() => navigation.navigate('Settings')} style={styles.addFirstDogButton} />
       </SafeAreaView>
     );
@@ -1490,6 +1493,8 @@ export function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  noDogTitle: { fontSize: 24, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginTop: spacing.sm },
+  noDogSubtitle: { maxWidth: 360, fontSize: 15, fontWeight: '400', lineHeight: 22, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.sm, marginBottom: spacing.lg, paddingHorizontal: spacing.lg },
   onDemandTitle: { fontSize: 20, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginTop: 4 },
   onDemandSubtitle: { fontSize: 13, fontWeight: '400', lineHeight: 19, color: colors.textSecondary, textAlign: 'center', marginTop: 4, marginBottom: 10, paddingHorizontal: 12 },
   onDemandStartButton: { width: '100%', minHeight: 46, backgroundColor: '#4A43B6', borderColor: '#4A43B6' },
