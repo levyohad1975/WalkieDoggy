@@ -472,7 +472,7 @@ export function FamilyOnboardingScreen() {
             { width: heroWidth, height: heroHeight },
           ]}
           imageStyle={styles.referenceHeroImage}
-          resizeMode={isDesktop ? "cover" : "contain"}
+          resizeMode="contain"
           accessibilityLabel="מסך הפתיחה של Walkie Doggy"
         >
           {showWelcomeWink ? (
@@ -850,7 +850,7 @@ const styles = StyleSheet.create({
   createHotspotDesktop: { left: '35%', right: '35%', top: '72%' },
   joinHotspotDesktop: { left: '35%', right: '35%', top: '80%' },
   referenceHero: {},
-  referenceHeroDesktop: { alignSelf: 'stretch' },
+  referenceHeroDesktop: { alignSelf: 'stretch', backgroundColor: '#F7F3E9' },
   referenceHeroImage: { width: '100%', height: '100%' },
   referenceOverlay: { flex: 1, justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 12, paddingBottom: 18 },
   referenceTopRow: { minHeight: 170, alignItems: 'center', justifyContent: 'center' },
