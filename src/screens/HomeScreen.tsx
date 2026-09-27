@@ -934,34 +934,34 @@ export function HomeScreen() {
           </Pressable>
         ) : null}
 
-        <Pressable style={styles.dashboardTimeline} onPress={() => navigation.navigate('Schedule')} accessibilityRole="button" accessibilityLabel="פתיחת לוח הזמנים להמשך היום">
+        <Pressable style={styles.dashboardTimeline} onPress={() => navigation.navigate('Schedule')} accessibilityRole="button" accessibilityLabel="פתיחת ציר הטיולים של היום בלוח הזמנים">
           <View style={styles.dashboardTimelineHeader}>
-            <RtlText style={styles.dashboardTimelineTitle}>בהמשך היום</RtlText>
+            <RtlText style={styles.dashboardTimelineTitle}>ציר הטיולים היום</RtlText>
             <RtlText style={styles.dashboardTimelineChevron}>‹</RtlText>
           </View>
           {dashboardTimelineWalks.length > 0 ? (
             <View style={styles.dashboardTimelineStops}>
               <View style={styles.dashboardTimelinePeople}>
                 {dashboardTimelineWalks.map((walk) => (
-                  <View key={walk.id} style={styles.dashboardTimelineStop}>
+                  <View key={walk.id} style={[styles.dashboardTimelineStop, walk.status === 'done' && styles.dashboardTimelineStopDone, walk.status === 'skipped' && styles.dashboardTimelineStopSkipped, walk.status === 'in_progress' && styles.dashboardTimelineStopActive]}>
                     <Avatar emoji={usersById[walk.responsibleUserId]?.avatar ?? '🐾'} color={usersById[walk.responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[walk.responsibleUserId]?.photoUrl} size={34} />
                   </View>
                 ))}
               </View>
               <View style={styles.dashboardTimelineTrack} pointerEvents="none">
                 <View style={[styles.dashboardTimelineProgress, { width: `${dashboardTimelineProgress * 100}%` }]} />
-                {dashboardTimelineWalks.map((walk) => <View key={`dot-${walk.id}`} style={styles.dashboardTimelineDot} />)}
+                {dashboardTimelineWalks.map((walk) => <View key={`dot-${walk.id}`} style={[styles.dashboardTimelineDot, walk.status === 'done' && styles.dashboardTimelineDotDone, walk.status === 'skipped' && styles.dashboardTimelineDotSkipped, walk.status === 'in_progress' && styles.dashboardTimelineDotActive]} />)}
               </View>
               <View style={styles.dashboardTimelineLabels}>
                 {dashboardTimelineWalks.map((walk) => (
                   <View key={`label-${walk.id}`} style={styles.dashboardTimelineLabel}>
-                    <RtlText style={styles.dashboardTimelineTime}>{walk.scheduledTime}</RtlText>
+                    <RtlText style={[styles.dashboardTimelineTime, walk.status === 'done' && styles.dashboardTimelineTimeDone, walk.status === 'skipped' && styles.dashboardTimelineTimeSkipped, walk.status === 'in_progress' && styles.dashboardTimelineTimeActive]}>{walk.status === 'done' ? `✓ ${walk.scheduledTime}` : walk.status === 'skipped' ? `– ${walk.scheduledTime}` : walk.status === 'in_progress' ? `• ${walk.scheduledTime}` : walk.scheduledTime}</RtlText>
                     <RtlText style={styles.dashboardTimelineName} numberOfLines={1}>{usersById[walk.responsibleUserId]?.name ?? 'בן משפחה'}</RtlText>
                   </View>
                 ))}
               </View>
             </View>
-          ) : <RtlText style={styles.dashboardTimelineEmpty}>אין טיולים נוספים היום · לפתיחת לוח הזמנים</RtlText>}
+          ) : <RtlText style={styles.dashboardTimelineEmpty}>אין טיולים מתוכננים היום · לפתיחת לוח הזמנים</RtlText>}
         </Pressable>
 
         {pendingForMe > 0 ? (
@@ -1550,12 +1550,21 @@ const styles = StyleSheet.create({
   dashboardTimelineStops: { position: 'relative', gap: 4 },
   dashboardTimelinePeople: { flexDirection: 'row-reverse', justifyContent: 'space-around' },
   dashboardTimelineStop: { flex: 1, alignItems: 'center' },
+  dashboardTimelineStopDone: { opacity: 0.72 },
+  dashboardTimelineStopSkipped: { opacity: 0.48 },
+  dashboardTimelineStopActive: { transform: [{ scale: 1.06 }] },
   dashboardTimelineTrack: { height: 8, marginHorizontal: '8%', borderRadius: 4, backgroundColor: '#D9DBE9', overflow: 'hidden', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   dashboardTimelineProgress: { position: 'absolute', right: 0, top: 0, bottom: 0, borderRadius: 4, backgroundColor: '#6967D8' },
   dashboardTimelineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#6967D8', zIndex: 1 },
+  dashboardTimelineDotDone: { backgroundColor: colors.success, borderColor: colors.success },
+  dashboardTimelineDotSkipped: { backgroundColor: colors.statusPendingBg, borderColor: colors.statusPending },
+  dashboardTimelineDotActive: { backgroundColor: colors.info, borderColor: colors.info },
   dashboardTimelineLabels: { flexDirection: 'row-reverse', justifyContent: 'space-around' },
   dashboardTimelineLabel: { flex: 1, alignItems: 'center', minWidth: 0 },
   dashboardTimelineTime: { fontSize: 12, fontWeight: '900', color: '#2E3170' },
+  dashboardTimelineTimeDone: { color: colors.success },
+  dashboardTimelineTimeSkipped: { color: colors.textSecondary, textDecorationLine: 'line-through' },
+  dashboardTimelineTimeActive: { color: colors.info },
   dashboardTimelineName: { fontSize: 11, fontWeight: '700', color: colors.textSecondary, maxWidth: 72, textAlign: 'center' },
   dashboardTimelineEmpty: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, textAlign: 'right', paddingBottom: 2 },
   dashboardRequestAlert: { minHeight: 62, borderRadius: radii.xl, backgroundColor: '#FFF0D9', borderWidth: 1, borderColor: '#F8DEC0', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
