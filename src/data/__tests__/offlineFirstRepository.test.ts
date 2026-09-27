@@ -719,13 +719,16 @@ describe('OfflineFirstRepository — writes with a remote repository configured:
     expect(await repo.pendingSyncCount()).toBe(before + 1);
   });
 
-  it('upsertDog writes the local dog and enqueues a sync op', async () => {
-    const repo = await makeRepo(false, stubRemote());
+  it('upsertDog is server-authoritative and refuses an offline false-success write', async () => {
+    const remote = stubRemote();
+    const repo = await makeRepo(false, remote);
 
-    await repo.upsertDog(dog);
-
-    await expect(repo.getDog('family-1')).resolves.toEqual(dog);
-    expect(await repo.pendingSyncCount()).toBe(1);
+    await expect(repo.upsertDog(dog)).rejects.toThrow(
+      'dog profile changes require an internet connection and cannot be queued offline'
+    );
+    await expect(repo.getDog('family-1')).resolves.toBeUndefined();
+    expect(remote.upsertDog).not.toHaveBeenCalled();
+    expect(await repo.pendingSyncCount()).toBe(0);
   });
 
   it('upsertHealthTask writes the local task and enqueues a sync op', async () => {
