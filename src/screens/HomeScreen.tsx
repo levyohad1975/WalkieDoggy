@@ -887,7 +887,7 @@ export function HomeScreen() {
                 <RtlText style={styles.dashboardShortcutIcon}>⇄</RtlText>
                 <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>החלפה</RtlText>
               </Pressable>
-              <Pressable onPress={() => setAddUnplannedVisible(true)} style={[styles.dashboardShortcut, styles.dashboardShortcutMint]} accessibilityRole="button" accessibilityLabel="הוסף טיול">
+              <Pressable onPress={() => setAddUnplannedVisible(true)} style={[styles.dashboardShortcut, styles.dashboardShortcutAdd]} accessibilityRole="button" accessibilityLabel="הוסף טיול">
                 <RtlText style={styles.dashboardShortcutIcon}>＋</RtlText>
                 <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>הוסף טיול</RtlText>
               </Pressable>
@@ -1588,6 +1588,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     borderRadius: radii.round,
     backgroundColor: colors.statusCurrentBg,
+  },
+  dashboardShortcutAdd: {
+    backgroundColor: '#E9E1F5',
   },
   healthSummaryPillOverdue: { backgroundColor: colors.statusOverdueBg },
   healthSummaryIcon: { fontSize: 14 },
