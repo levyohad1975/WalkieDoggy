@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Platform, Pressable, StyleSheet } from 'react-native';
+import { Alert, AppState, Platform, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from './src/store/authStore';
@@ -8,6 +8,7 @@ import { RootNavigator } from './src/navigation/RootNavigator';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { FamilyOnboardingScreen } from './src/screens/FamilyOnboardingScreen';
 import { SystemAdminScreen } from './src/screens/SystemAdminScreen';
+import { SystemAdminLoginScreen } from './src/screens/SystemAdminLoginScreen';
 import { PhotoCropHost } from './src/components/PhotoCropHost';
 import { RtlText } from './src/components/RtlText';
 import { colors } from './src/theme/colors';
@@ -259,6 +260,7 @@ export default function App() {
   const isSystemAdmin = useSystemAdminStore((s) => s.isSystemAdmin);
   const refreshSystemAdmin = useSystemAdminStore((s) => s.refresh);
   const [systemAdminOpen, setSystemAdminOpen] = useState(false);
+  const [systemAdminLoginOpen, setSystemAdminLoginOpen] = useState(false);
   const [showIosInstallPrompt, setShowIosInstallPrompt] = useState(false);
   useEffect(() => {
     if (hydrated) void refreshSystemAdmin();
@@ -389,6 +391,17 @@ export default function App() {
               turn only ever came from am_i_system_admin() — a fresh,
               server-side check of the real auth identity, not a locally
               cached/guessed value. */}
+          {Platform.OS === 'web' && !isSystemAdmin ? (
+            <Pressable
+              style={styles.systemAdminLoginEntry}
+              onPress={() => setSystemAdminLoginOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="כניסת מנהל מערכת"
+            >
+              <RtlText style={styles.systemAdminLoginEntryText}>כניסת מנהל מערכת</RtlText>
+            </Pressable>
+          ) : null}
+          <SystemAdminLoginScreen visible={systemAdminLoginOpen} onClose={() => setSystemAdminLoginOpen(false)} />
           {isSystemAdmin && !shouldEnterSystemAdminDirectly ? (
             <Pressable
               style={styles.systemAdminEntry}
@@ -417,6 +430,8 @@ export default function App() {
 const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', gap: 12 },
   loadingText: { color: colors.textSecondary, fontSize: 16, fontWeight: '700', textAlign: 'center' },
+  systemAdminLoginEntry: { position: 'absolute', top: 18, left: 18, minHeight: 40, paddingHorizontal: 14, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', zIndex: 100 },
+  systemAdminLoginEntryText: { color: colors.primaryDark, fontSize: 13, fontWeight: '800' },
   systemAdminEntry: {
     position: 'absolute',
     // Keep the platform-admin shortcut below the branded header so it can
