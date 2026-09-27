@@ -954,8 +954,26 @@ export function HomeScreen() {
                   ) : null}
                   {lastWalk.status === 'done' ? (
                     <>
-                      <RtlText style={[styles.dashboardLastWalkNeed, !lastWalk.hadPee && styles.dashboardLastWalkNeedMuted]}>💧</RtlText>
-                      <RtlText style={[styles.dashboardLastWalkNeed, !lastWalk.hadPoop && styles.dashboardLastWalkNeedMuted]}>💩</RtlText>
+                      <Pressable
+                        onPress={canEditLastWalk ? () => void editDoneDetails(lastWalk.id, { hadPee: !lastWalk.hadPee }) : undefined}
+                        disabled={!canEditLastWalk}
+                        hitSlop={10}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: !!lastWalk.hadPee, disabled: !canEditLastWalk }}
+                        accessibilityLabel="סימון פיפי בטיול האחרון"
+                      >
+                        <RtlText style={[styles.dashboardLastWalkNeed, !lastWalk.hadPee && styles.dashboardLastWalkNeedMuted]}>💧</RtlText>
+                      </Pressable>
+                      <Pressable
+                        onPress={canEditLastWalk ? () => void editDoneDetails(lastWalk.id, { hadPoop: !lastWalk.hadPoop }) : undefined}
+                        disabled={!canEditLastWalk}
+                        hitSlop={10}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: !!lastWalk.hadPoop, disabled: !canEditLastWalk }}
+                        accessibilityLabel="סימון קקי בטיול האחרון"
+                      >
+                        <RtlText style={[styles.dashboardLastWalkNeed, !lastWalk.hadPoop && styles.dashboardLastWalkNeedMuted]}>💩</RtlText>
+                      </Pressable>
                     </>
                   ) : null}
                 </View>
