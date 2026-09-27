@@ -1,4 +1,4 @@
-import { computeLastWalk, computeNextWalk, formatDuration, isOverdue, minutesUntil, relativeTimeLabel, upcomingWalks } from '../nextWalk';
+import { computeLastWalk, computeNextWalk, dailyWalkTimeline, formatDuration, isOverdue, minutesUntil, relativeTimeLabel, upcomingWalks } from '../nextWalk';
 import type { Walk } from '../../types';
 
 function makeWalk(overrides: Partial<Walk>): Walk {
