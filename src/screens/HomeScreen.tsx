@@ -8,7 +8,7 @@ import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { computeLastWalk, computeNextWalk, dailyWalkTimeline, isOverdue, upcomingWalks } from '../logic/nextWalk';
-import { walkDateContextLabel } from '../logic/walkDateContext';
+import { resolvedWalkDateContextLabel, walkDateContextLabel } from '../logic/walkDateContext';
  import { repository } from '../data';
 import { canRequestChangeForWalk, computeNextWalkCardActions, formatCompletedAtBadge } from '../logic/walkActions';
 import { colors } from '../theme/colors';
@@ -855,8 +855,8 @@ export function HomeScreen() {
             // list already used — see that function's doc comment for the
             // full "responsible member / non-responsible member /
             // non-responsible admin" rule and its own unit tests.
-            onSwap={undefined}
-            onEdit={undefined}
+            onSwap={effectiveRole === 'admin' && nextWalk.status === 'pending' ? () => setSwapWalkId(nextWalk.id) : undefined}
+            onEdit={effectiveRole === 'admin' && nextWalk.status === 'pending' ? () => setEditWalkId(nextWalk.id) : undefined}
             onRequestSwap={
               nextWalkCardActions?.canRequestSwap && !walkHasActiveSwapRequest(nextWalk.id, swapRequests, walksById)
                 ? () => setRequestSwapWalkId(nextWalk.id)
@@ -876,23 +876,8 @@ export function HomeScreen() {
         )}
         </View>
 
-        <View style={styles.dashboardShortcuts} accessibilityLabel="קיצורי דרך">
-          {effectiveRole === 'admin' ? (
-            <>
-              <Pressable onPress={() => nextWalk ? setEditWalkId(nextWalk.id) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutMint]} accessibilityRole="button" accessibilityLabel="עריכת הטיול הבא">
-                <RtlText style={styles.dashboardShortcutIcon}>✎</RtlText>
-                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1}>עריכה</RtlText>
-              </Pressable>
-              <Pressable onPress={() => nextWalk ? setSwapWalkId(nextWalk.id) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutGold]} accessibilityRole="button" accessibilityLabel="החלפת הטיול הבא">
-                <RtlText style={styles.dashboardShortcutIcon}>⇄</RtlText>
-                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1}>החלפה</RtlText>
-              </Pressable>
-              <Pressable onPress={() => setAddUnplannedVisible(true)} style={[styles.dashboardShortcut, styles.dashboardShortcutBlue]} accessibilityRole="button" accessibilityLabel="הוסף טיול שבוצע">
-                <RtlText style={styles.dashboardShortcutIcon}>＋</RtlText>
-                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.68}>הוסף טיול</RtlText>
-              </Pressable>
-            </>
-          ) : (
+        {effectiveRole !== 'admin' ? (
+          <View style={styles.dashboardShortcuts} accessibilityLabel="קיצורי דרך">
             <>
               <Pressable onPress={() => nextWalkCardActions?.canRequestTimeChange ? setRequestTimeChangeWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutMint]} accessibilityRole="button" accessibilityLabel="בקשת שינוי שעה">
                 <RtlText style={styles.dashboardShortcutIcon}>◷</RtlText>
@@ -903,15 +888,15 @@ export function HomeScreen() {
                 <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>טיול ספונטני</RtlText>
               </Pressable>
             </>
-          )}
-        </View>
+          </View>
+        ) : null}
 
         {lastWalk ? (
           <Pressable style={styles.dashboardLastWalk} onPress={() => navigation.navigate('History')} accessibilityRole="button" accessibilityLabel="פתיחת הטיול האחרון">
             <View style={styles.dashboardLastWalkCopy}>
               <RtlText style={styles.dashboardLastWalkTitle}>✓ הטיול האחרון</RtlText>
               <RtlText style={styles.dashboardLastWalkMeta}>
-                בוצע ע״י {usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.name ?? 'בן משפחה'} · {lastWalk.completedAt ? new Date(lastWalk.completedAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : lastWalk.scheduledTime} · {walkDateContextLabel(lastWalk.date)}
+                בוצע ע״י {usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.name ?? 'בן משפחה'} · {lastWalk.completedAt ? new Date(lastWalk.completedAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : lastWalk.scheduledTime} · {resolvedWalkDateContextLabel(lastWalk)}
               </RtlText>
               {lastWalkGps ? (
                 <RtlText style={styles.dashboardLastWalkGps}>
@@ -997,7 +982,7 @@ export function HomeScreen() {
                         {lastWalk.scheduledTime}
                       </RtlText>
                       <RtlText style={styles.lastWalkDateContext} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} maxFontSizeMultiplier={1.35}>
-                        {walkDateContextLabel(lastWalk.date)}
+                        {resolvedWalkDateContextLabel(lastWalk)}
                       </RtlText>
                       {lastWalk.status === 'skipped' ? (
                         <RtlText style={styles.lastWalkSkippedBadge} numberOfLines={1} maxFontSizeMultiplier={1.35}>✕ לא בוצע</RtlText>
@@ -1573,16 +1558,6 @@ const styles = StyleSheet.create({
   dashboardRequestAlertTitle: { fontSize: 16, fontWeight: '900', color: '#B66318', textAlign: 'right' },
   dashboardRequestAlertSubtitle: { marginTop: 2, fontSize: 13, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
   dashboardRequestAlertChevron: { fontSize: 28, color: '#C56C1D', writingDirection: 'ltr' },
-  // Item 7: standalone "בקשת החלפה" row, now the lowest Dashboard content
-  // row (directly above the bottom nav) — same blue tint the shortcut used
-  // before it moved here, laid out like the other full-width dashboard rows
-  // (dashboardLastWalk/dashboardRequestAlert) for visual consistency.
-  dashboardSwapRequestRow: { minHeight: 60, borderRadius: radii.xl, backgroundColor: '#E2F4FF', borderWidth: 1, borderColor: '#CFE9FB', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
-  dashboardSwapRequestIcon: { fontSize: 22 },
-  dashboardSwapRequestCopy: { flex: 1, alignItems: 'flex-end' },
-  dashboardSwapRequestTitle: { fontSize: 16, fontWeight: '900', color: '#1D5C8A', textAlign: 'right' },
-  dashboardSwapRequestSubtitle: { marginTop: 2, fontSize: 12, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
-  dashboardSwapRequestChevron: { fontSize: 26, color: '#2C7CB0', writingDirection: 'ltr' },
   dashboardOverflow: { display: 'none' },
   notificationButton: { position: 'absolute', right: spacing.md, top: 7, width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   notificationIcon: { fontSize: 18 },
