@@ -216,6 +216,64 @@ describe('OfflineFirstRepository.deleteFamilyMember — online rejection propaga
   });
 });
 
+describe('OfflineFirstRepository.schedule deletion — online writes are authoritative', () => {
+  const rule: ScheduleRule = {
+    id: 'rule-delete-check', familyId: 'family-1', dogId: 'dog-1', time: '08:00',
+    daysOfWeek: [0, 1, 2, 3, 4, 5, 6], rotationUserIds: ['u1'],
+    rotationAnchorDate: '2026-01-01', sortOrder: 0, active: true, createdAt: 'created',
+  };
+  const entry: ScheduleEntry = {
+    id: 'entry-delete-check', familyId: 'family-1', dogId: 'dog-1', ruleId: rule.id,
+    date: '2026-01-02', time: '08:00', responsibleUserId: 'u1', createdAt: 'created',
+  };
+
+  beforeEach(() => {
+    jest.resetModules();
+    jest.doMock('@react-native-community/netinfo', () => ({
+      __esModule: true,
+      default: { fetch: jest.fn().mockResolvedValue({ isConnected: true, isInternetReachable: true }) },
+    }));
+  });
+
+  it('keeps the local rule/entry intact and surfaces an online server rejection instead of queueing a false delete', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { OfflineFirstRepository } = require('../offlineFirstRepository');
+    const remote = stubRemote({ deleteScheduleRule: jest.fn().mockRejectedValue(new Error('RLS denied')) });
+    const repo = new OfflineFirstRepository(remote);
+    await (repo as any).local.upsertScheduleRule(rule);
+    await (repo as any).local.addScheduleEntries([entry]);
+
+    await expect(repo.deleteScheduleRule(rule.id)).rejects.toThrow('RLS denied');
+    await expect(repo.deleteScheduleEntry(entry.id)).resolves.toBeUndefined();
+
+    expect((await (repo as any).local.getScheduleRules('family-1')).map((r: ScheduleRule) => r.id)).toContain(rule.id);
+    expect((await (repo as any).local.getScheduleEntries('family-1')).map((e: ScheduleEntry) => e.id)).not.toContain(entry.id);
+    expect(await repo.pendingSyncCount()).toBe(0);
+    expect(remote.deleteScheduleRule).toHaveBeenCalledWith(rule.id);
+    expect(remote.deleteScheduleEntry).toHaveBeenCalledWith(entry.id);
+  });
+
+  it('waits for confirmed online rule and entry deletions before changing the local cache', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { OfflineFirstRepository } = require('../offlineFirstRepository');
+    const remote = stubRemote();
+    const repo = new OfflineFirstRepository(remote);
+    await (repo as any).local.upsertScheduleRule(rule);
+    await (repo as any).local.addScheduleEntries([entry]);
+
+    await repo.deleteScheduleEntry(entry.id);
+    await repo.deleteScheduleRule(rule.id);
+
+    expect(await (repo as any).local.getScheduleEntries('family-1')).toEqual([]);
+    expect(await (repo as any).local.getScheduleRules('family-1')).toEqual([]);
+    expect(remote.deleteScheduleEntry).toHaveBeenCalledWith(entry.id);
+    expect(remote.deleteScheduleRule).toHaveBeenCalledWith(rule.id);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+});
+
 /**
  * start_walk()/finish_walk() (0048) were wired into scheduleStore.ts and
  * HomeScreen.tsx (`if (repository.startWalk) ... else <fake local state>`)
