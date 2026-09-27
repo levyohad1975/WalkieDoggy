@@ -495,7 +495,15 @@ export class OfflineFirstRepository implements Repository {
     // never allowed to claim that a schedule was removed when it was not.
     if (await this.isOnline()) {
       await this.remote.deleteScheduleRule(ruleId);
-      await this.local.deleteScheduleRule(ruleId);
+      // Supabase is authoritative online. A local cache cleanup failure after
+      // the server has already confirmed the delete must not turn a successful
+      // user action into a false error modal; the next online read re-mirrors
+      // authoritative remote state anyway.
+      try {
+        await this.local.deleteScheduleRule(ruleId);
+      } catch {
+        // Best-effort cache cleanup only after confirmed remote success.
+      }
       return;
     }
 
@@ -558,7 +566,13 @@ export class OfflineFirstRepository implements Repository {
     // like the user intentionally removed every generated occurrence.
     if (await this.isOnline()) {
       await this.remote.deleteScheduleEntry(entryId);
-      await this.local.deleteScheduleEntry(entryId);
+      // Do not surface a false delete failure when only the disposable local
+      // cache cleanup fails after Supabase already deleted the occurrence.
+      try {
+        await this.local.deleteScheduleEntry(entryId);
+      } catch {
+        // Best-effort cache cleanup only after confirmed remote success.
+      }
       return;
     }
 
@@ -632,7 +646,14 @@ export class OfflineFirstRepository implements Repository {
     // the rule/entries were successfully removed.
     if (await this.isOnline()) {
       await this.remote.deleteWalk?.(walkId);
-      await this.local.deleteWalk?.(walkId);
+      // Same authoritative-online contract as schedule entry/rule deletion:
+      // once the server confirms deletion, local cache cleanup cannot make
+      // the whole action report failure to the user.
+      try {
+        await this.local.deleteWalk?.(walkId);
+      } catch {
+        // Best-effort cache cleanup only after confirmed remote success.
+      }
       return;
     }
 
