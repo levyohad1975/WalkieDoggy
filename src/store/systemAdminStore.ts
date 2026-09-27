@@ -23,6 +23,8 @@ interface SystemAdminState {
   checked: boolean;
   checking: boolean;
   refresh: () => Promise<void>;
+  openRequestId: number;
+  requestOpen: () => void;
   reset: () => void;
 }
 
@@ -30,6 +32,8 @@ export const useSystemAdminStore = create<SystemAdminState>((set, get) => ({
   isSystemAdmin: false,
   checked: false,
   checking: false,
+  openRequestId: 0,
+  requestOpen: () => set((state) => ({ openRequestId: state.openRequestId + 1 })),
 
   refresh: async () => {
     if (!isSupabaseConfigured) {
