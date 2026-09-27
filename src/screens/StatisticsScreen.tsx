@@ -118,6 +118,7 @@ export function StatisticsScreen() {
   const [rangePickerOpen, setRangePickerOpen] = useState<'start' | 'end' | null>(null);
   const [draftRangeDate, setDraftRangeDate] = useState<string | null>(null);
   const [gpsSessions, setGpsSessions] = useState<WalkGpsSession[]>([]);
+  const [insightsPage, setInsightsPage] = useState(0);
 
   // BATCH 3 CORRECTION #2 (review #2): the actual display/calculation
   // dataset — see this file's own doc comment above. statisticsAccessStatus
@@ -226,6 +227,13 @@ export function StatisticsScreen() {
   const distanceStats = useMemo(() => computeDistanceStats(gpsSessions), [gpsSessions]);
   const trend = useMemo(() => computeDailyTrend(filteredWalks), [filteredWalks]);
   const insights = useMemo(() => computeInsights(filteredWalks, usersById, dogsById), [filteredWalks, usersById, dogsById]);
+  const insightCards = useMemo(() => {
+    const cards: { key: string; title: string; content: React.ReactNode }[] = [];
+    if (trend.length > 1) cards.push({ key: 'trend', title: 'מגמה יומית', content: <TrendChart points={trend} /> });
+    cards.push({ key: 'plan', title: 'מתוכנן לעומת ספונטני', content: <><View style={styles.rowBetween}><View style={styles.inlineStat}><RtlText style={[styles.metaText, styles.rtlText]}>ספונטני</RtlText><RtlText style={[styles.metaTextStrong, styles.ltrText]}>{plannedVsSpontaneous.spontaneous}</RtlText></View><View style={styles.inlineStat}><RtlText style={[styles.metaText, styles.rtlText]}>מתוכנן</RtlText><RtlText style={[styles.metaTextStrong, styles.ltrText]}>{plannedVsSpontaneous.planned}</RtlText></View></View><Bar percent={plannedVsSpontaneous.planned + plannedVsSpontaneous.spontaneous === 0 ? 0 : (plannedVsSpontaneous.planned / (plannedVsSpontaneous.planned + plannedVsSpontaneous.spontaneous)) * 100} color={colors.primary} /></> });
+    if (insights.length > 0) cards.push({ key: 'insights', title: 'תובנות', content: <>{insights.map((line, i) => <RtlText key={i} style={[styles.insightText, styles.rtlText]}>{line}</RtlText>)}</> });
+    return cards;
+  }, [trend, plannedVsSpontaneous, insights]);
 
   const loading = familyLoading || scheduleLoading;
   const error = familyError || scheduleError;
@@ -298,7 +306,7 @@ export function StatisticsScreen() {
           <RtlText style={styles.headerSubtitle}>תמונה ברורה של הטיולים, הזמנים והחלוקה המשפחתית</RtlText>
         </View>
 
-        <RtlText style={styles.filterLabel}>טווח זמן</RtlText>
+        <View style={styles.filterHeaderRow}><RtlText style={styles.filterLabel}>טווח זמן</RtlText><RtlText style={styles.filterHint}>בחרו תקופה להצגת הנתונים</RtlText></View>
         <View style={styles.periodRow}>
           {PERIOD_LABELS.map(([key, label]) => (
             <Pressable
@@ -314,7 +322,8 @@ export function StatisticsScreen() {
           ))}
         </View>
 
-        <View style={styles.customRangeRow}>
+        <Pressable style={styles.customRangeToggle} onPress={() => openRangePicker('start')} accessibilityRole="button"><RtlText style={styles.customRangeToggleText}>בחירת טווח תאריכים מותאם אישית</RtlText></Pressable>
+        <View style={[styles.customRangeRow, !customRange && styles.customRangeRowCompact]}>
           <Pressable style={styles.customRangeButton} onPress={() => openRangePicker('start')} accessibilityRole="button">
             <RtlText style={styles.customRangeButtonText}>
               מ: {customRange?.start ?? '—'}
@@ -511,6 +520,7 @@ export function StatisticsScreen() {
               </View>
             </View>
 
+            <RtlText style={styles.sectionHeading}>פירוט ותובנות</RtlText>
             {trend.length > 1 ? (
               <View style={styles.card}>
                 <RtlText style={styles.cardTitle}>מגמה יומית</RtlText>
@@ -601,6 +611,7 @@ export function StatisticsScreen() {
 }
 
 const styles = StyleSheet.create({
+  sectionHeading: { width: '100%', fontSize: 18, fontWeight: '600', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl', marginTop: spacing.sm },
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   content: { padding: spacing.xl, gap: spacing.lg, paddingBottom: spacing.xxxl },
@@ -608,13 +619,18 @@ const styles = StyleSheet.create({
   hero: { width: '100%', gap: spacing.xs, paddingTop: spacing.xs },
   header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   headerSubtitle: { width: '100%', ...typography.meta, color: colors.textSecondary, textAlign: 'right', writingDirection: 'rtl' },
-  filterLabel: { width: '100%', ...typography.meta, fontWeight: '700', color: colors.textSecondary, textAlign: 'right', writingDirection: 'rtl', marginBottom: -spacing.sm },
+  filterHeaderRow: { width: '100%', gap: 2 },
+  filterLabel: { width: '100%', ...typography.meta, fontWeight: '600', color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  filterHint: { fontSize: 11, fontWeight: '400', color: colors.textSecondary, textAlign: 'right', writingDirection: 'rtl' },
   periodRow: { flexDirection: 'row', ...nativeDirection('rtl'), gap: spacing.xs, backgroundColor: colors.surfaceMuted, borderRadius: radii.lg, padding: spacing.xs },
   periodChip: { flex: 1, backgroundColor: 'transparent', borderRadius: radii.md, paddingVertical: spacing.sm, alignItems: 'center' },
   periodChipActive: { backgroundColor: colors.primary },
   periodChipText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
   periodChipTextActive: { color: colors.textInverse },
+  customRangeToggle: { alignSelf: 'flex-end', paddingVertical: 2 },
+  customRangeToggleText: { fontSize: 12, fontWeight: '600', color: colors.primaryDark, textAlign: 'right', writingDirection: 'rtl' },
   customRangeRow: { flexDirection: 'row', ...nativeDirection('rtl'), gap: spacing.sm, alignItems: 'center' },
+  customRangeRowCompact: { display: 'none' },
   customRangeButton: { flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.sm, alignItems: 'center' },
   customRangeButtonText: { fontSize: 12, fontWeight: '700', color: colors.textPrimary, writingDirection: 'rtl' },
   customRangeClear: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surfaceMuted, alignItems: 'center', justifyContent: 'center' },
