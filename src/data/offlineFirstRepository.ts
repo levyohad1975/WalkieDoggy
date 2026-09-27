@@ -517,11 +517,26 @@ export class OfflineFirstRepository implements Repository {
   }
 
   async addScheduleEntries(entries: ScheduleEntry[]): Promise<void> {
-    await this.local.addScheduleEntries(entries);
-    if (this.remote) {
-      await this.queue.enqueue({ type: 'addScheduleEntries', payload: entries });
-      await this.trySync();
+    if (entries.length === 0) return;
+
+    if (!this.remote) {
+      await this.local.addScheduleEntries(entries);
+      return;
     }
+
+    // Schedule entries are FK parents of planned walks. While online they
+    // must exist on the server before saveWalk() is allowed to persist a
+    // walk that references them. Queueing the entries and immediately
+    // continuing used to let a failed/unfinished queue replay race the walk
+    // insert, producing walks_schedule_entry_id_fkey (23503) in Staging.
+    if (await this.isOnline()) {
+      await this.remote.addScheduleEntries(entries);
+      await this.local.addScheduleEntries(entries);
+      return;
+    }
+
+    await this.local.addScheduleEntries(entries);
+    await this.queue.enqueue({ type: 'addScheduleEntries', payload: entries });
   }
 
   async updateScheduleEntry(entry: ScheduleEntry): Promise<void> {
