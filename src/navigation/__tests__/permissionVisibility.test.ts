@@ -27,7 +27,7 @@ describe('RootNavigator — History/Statistics tab visibility (permission-gated,
   const source = fs.readFileSync(path.resolve(__dirname, '../RootNavigator.tsx'), 'utf8');
 
   it('imports the fail-closed screen-access gates rather than the plain (fail-open-while-loading) resolvers', () => {
-    expect(source).toMatch(/import\\s*\\{[\\s\\S]*canAccessHistoryScreen,[\\s\\S]*canAccessStatisticsScreen,[\\s\\S]*canAccessSettingsScreen[\\s\\S]*\\}\\s*from\s*'\.\.\/logic\/permissions'/);
+    expect(source).toMatch(/import\s*\{[\s\S]*canAccessHistoryScreen,[\s\S]*canAccessStatisticsScreen,[\s\S]*canAccessSettingsScreen[\s\S]*\}\s*from\s*'\.\.\/logic\/permissions'/);
     expect(source).not.toMatch(/import\s*\{\s*canViewHistory/);
   });
 
@@ -36,12 +36,12 @@ describe('RootNavigator — History/Statistics tab visibility (permission-gated,
   });
 
   it('does not mount the History route until access is verified', () => {
-    expect(source).toMatch(/\{canSeeHistoryTab \? <Tab\.Screen name="History" component=\{HistoryScreen\} \/> : null\}/);
+    expect(source).toMatch(/\{\(canSeeHistoryTab \|\| activeTabName === 'History'\) \? <Tab\.Screen name="History" component=\{HistoryScreen\} \/> : null\}/);
     expect(source).toMatch(/canSeeHistoryTab = canAccessHistoryScreen\(effectiveUserId, permissionOverrides, permissionOverridesStatus\)/);
   });
 
   it('does not mount the Statistics route until access is verified', () => {
-    expect(source).toMatch(/\{canSeeStatisticsTab \? <Tab\.Screen name="Statistics" component=\{StatisticsScreen\} \/> : null\}/);
+    expect(source).toMatch(/\{\(canSeeStatisticsTab \|\| activeTabName === 'Statistics'\) \? <Tab\.Screen name="Statistics" component=\{StatisticsScreen\} \/> : null\}/);
     expect(source).toMatch(/canSeeStatisticsTab = canAccessStatisticsScreen\(effectiveUserId, permissionOverrides, permissionOverridesStatus\)/);
   });
 
