@@ -313,12 +313,12 @@ export function NextWalkCard({
                 shrinkToFit
               />
             </View>
-          ) : (
+          ) : tone === 'dashboard' ? null : (
             <Button
               label="בוצע"
               variant="secondary"
               onPress={onMarkDone}
-              style={tone === 'dashboard' ? styles.dashboardMarkDoneButton : styles.markDoneFallbackButton}
+              style={styles.markDoneFallbackButton}
               compact
               shrinkToFit
             />
@@ -399,7 +399,7 @@ const styles = StyleSheet.create({
   // Item 6 (mobile polish): paddingVertical trimmed from 5 to 2 — a
   // slightly more compact dashboard card. Never touches any button's own
   // minHeight (tap targets stay exactly as large as before).
-  cardDashboard: { backgroundColor: '#FAFAFF', borderColor: '#DEDDF5', borderRadius: 30, shadowOpacity: 0.12, shadowRadius: 16, elevation: 4, paddingVertical: 2 },
+  cardDashboard: { backgroundColor: '#FAFAFF', borderColor: '#DEDDF5', borderRadius: 24, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3, paddingHorizontal: 18, paddingVertical: 12 },
   webCard: { borderRadius: radii.xl, paddingHorizontal: 24, paddingVertical: 18 },
   cardActive: { backgroundColor: colors.successSoft, borderColor: colors.success + '55' },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
@@ -456,12 +456,12 @@ const styles = StyleSheet.create({
   // the dashboard, especially on narrow phones.
   // Use an intentionally wider central gutter and inset both columns so the
   // assignee circle reads as its own block instead of touching the time.
-  dashboardMainRow: { gap: 28, paddingHorizontal: 12, marginBottom: 2 },
+  dashboardMainRow: { gap: 34, paddingHorizontal: 10, marginTop: 4, marginBottom: 10, minHeight: 82 },
   personBlock: { flex: 1, alignItems: 'flex-end', gap: 5, minWidth: 0, paddingStart: 8 },
   personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'left' },
   responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'left' },
   doneButton: { marginTop: 2 },
-  dashboardStartButton: { marginTop: 0, minHeight: 44, paddingVertical: 3, backgroundColor: '#4A43B6', borderColor: '#4A43B6' },
+  dashboardStartButton: { marginTop: 2, minHeight: 48, paddingVertical: 5, borderRadius: 18, backgroundColor: '#4A43B6', borderColor: '#4A43B6' },
   markDoneFallbackButton: { marginTop: 8, borderWidth: 1.5, borderColor: colors.primaryDark },
   dashboardMarkDoneButton: { marginTop: 4, minHeight: 40, paddingVertical: 3, borderWidth: 1.5, borderColor: '#4A43B6' },
   endWalkButton: { marginTop: 4, backgroundColor: colors.statusOverdue },
