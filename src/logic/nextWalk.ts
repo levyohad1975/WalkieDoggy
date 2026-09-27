@@ -109,3 +109,16 @@ export function upcomingWalks(walks: Walk[], now: Date = new Date(), limit = 10)
     .slice(0, limit);
 }
 
+
+/**
+ * Returns every walk scheduled for the viewer's local calendar day in
+ * chronological order. Unlike `upcomingWalks`, this deliberately retains
+ * completed, skipped and in-progress walks so a Home dashboard can show the
+ * day's actual timeline rather than only future pending work.
+ */
+export function dailyWalkTimeline(walks: Walk[], now: Date = new Date()): Walk[] {
+  const today = localDateOnly(now);
+  return walks
+    .filter((walk) => walk.date === today)
+    .sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
+}
