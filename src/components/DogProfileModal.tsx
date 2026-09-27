@@ -47,9 +47,14 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
     if (!dog || !dog.photoUrl || familyRole !== 'admin' || systemObserverActive || removing) return;
     setRemoving(true);
     try {
-      setPendingPhotoUrl('');
+      // Removal is an explicit destructive action: persist it immediately.
+      // Do not leave the user in a hidden draft state that requires a second
+      // "save photo" tap and makes the old photo reappear after refresh.
+      await clearDogPhoto(dog.id);
+      setPendingPhotoUrl(null);
+      setPhotoLoadFailed(false);
     } catch {
-      Alert.alert('לא הצלחנו להסיר את התמונה', 'נסו שוב בעוד רגע.');
+      Alert.alert('לא הצלחנו להסיר את התמונה', 'בדקו את החיבור ונסו שוב.');
     } finally {
       setRemoving(false);
     }
