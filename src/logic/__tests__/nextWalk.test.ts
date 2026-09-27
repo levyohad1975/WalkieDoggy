@@ -229,3 +229,17 @@ describe('upcomingWalks', () => {
     expect(upcomingWalks(walks).map((w) => w.id)).toEqual(['future']);
   });
 });
+
+describe('dailyWalkTimeline', () => {
+  it('keeps every local-today status in chronological order instead of hiding resolved walks', () => {
+    const walks = [
+      makeWalk({ id: 'future', scheduledTime: '20:00', status: 'pending' }),
+      makeWalk({ id: 'done', scheduledTime: '07:00', status: 'done', completedAt: '2026-08-26T07:18:00' }),
+      makeWalk({ id: 'skipped', scheduledTime: '12:00', status: 'skipped' }),
+      makeWalk({ id: 'active', scheduledTime: '16:00', status: 'in_progress' }),
+      makeWalk({ id: 'tomorrow', date: '2026-08-27', scheduledTime: '08:00', status: 'pending' }),
+    ];
+
+    expect(dailyWalkTimeline(walks, NOW).map((item) => item.id)).toEqual(['done', 'skipped', 'active', 'future']);
+  });
+});
