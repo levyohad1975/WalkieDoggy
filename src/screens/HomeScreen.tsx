@@ -927,7 +927,7 @@ export function HomeScreen() {
               emoji={usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.avatar ?? '👤'}
               color={usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.color ?? colors.primary}
               photoUrl={usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.photoUrl}
-              size={38}
+              size={34}
             />
             <RtlText style={styles.dashboardLastWalkChevron}>‹</RtlText>
           </Pressable>
@@ -1527,13 +1527,13 @@ const styles = StyleSheet.create({
   dashboardShortcutPurple: { backgroundColor: '#F0EBFF' },
   dashboardShortcutLabel: { fontSize: 13, lineHeight: 16, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
   dashboardShortcutIcon: { fontSize: 17, lineHeight: 18 },
-  dashboardLastWalk: { minHeight: 52, borderRadius: radii.xl, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EAE5DD', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm, shadowColor: '#17245B', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  dashboardLastWalk: { minHeight: 46, borderRadius: radii.xl, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EAE5DD', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm, shadowColor: '#17245B', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
   dashboardLastWalkCopy: { flex: 1, alignItems: 'flex-end' },
-  dashboardLastWalkTitle: { fontSize: 17, fontWeight: '900', color: '#17245B', textAlign: 'right' },
-  dashboardLastWalkMeta: { marginTop: 2, fontSize: 12, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
-  dashboardLastWalkGps: { marginTop: 2, fontSize: 12, fontWeight: '800', color: '#2F7F75', textAlign: 'right' },
+  dashboardLastWalkTitle: { fontSize: 16, fontWeight: '900', color: '#17245B', textAlign: 'right' },
+  dashboardLastWalkMeta: { marginTop: 1, fontSize: 11, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
+  dashboardLastWalkGps: { marginTop: 1, fontSize: 11, fontWeight: '800', color: '#2F7F75', textAlign: 'right' },
   dashboardLastWalkDog: { width: 46, height: 40, overflow: 'hidden', borderRadius: radii.lg, backgroundColor: '#EEF3FF', alignItems: 'center', justifyContent: 'center' },
-  dashboardLastWalkChevron: { fontSize: 30, color: '#454B9E', writingDirection: 'ltr' },
+  dashboardLastWalkChevron: { fontSize: 26, color: '#454B9E', writingDirection: 'ltr' },
   dashboardTimeline: { minHeight: 60, borderRadius: radii.xl, backgroundColor: '#FBFBFF', borderWidth: 1, borderColor: '#E1E2F4', paddingHorizontal: spacing.md, paddingVertical: 7, gap: 4 },
   dashboardTimelineHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   dashboardTimelineTitle: { fontSize: 16, fontWeight: '900', color: '#17245B', textAlign: 'right' },
