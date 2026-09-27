@@ -855,8 +855,8 @@ export function HomeScreen() {
             // list already used — see that function's doc comment for the
             // full "responsible member / non-responsible member /
             // non-responsible admin" rule and its own unit tests.
-            onSwap={effectiveRole === 'admin' && nextWalk.status === 'pending' ? () => setSwapWalkId(nextWalk.id) : undefined}
-            onEdit={effectiveRole === 'admin' && nextWalk.status === 'pending' ? () => setEditWalkId(nextWalk.id) : undefined}
+            onSwap={undefined}
+            onEdit={undefined}
             onRequestSwap={
               nextWalkCardActions?.canRequestSwap && !walkHasActiveSwapRequest(nextWalk.id, swapRequests, walksById)
                 ? () => setRequestSwapWalkId(nextWalk.id)
@@ -934,9 +934,9 @@ export function HomeScreen() {
           </Pressable>
         ) : null}
 
-        <Pressable style={styles.dashboardTimeline} onPress={() => navigation.navigate('Schedule')} accessibilityRole="button" accessibilityLabel="פתיחת ציר הטיולים של היום בלוח הזמנים">
+        <Pressable style={styles.dashboardTimeline} onPress={() => navigation.navigate('Schedule')} accessibilityRole="button" accessibilityLabel="פתיחת המשך הטיולים של היום בלוח הזמנים">
           <View style={styles.dashboardTimelineHeader}>
-            <RtlText style={styles.dashboardTimelineTitle}>ציר הטיולים היום</RtlText>
+            <RtlText style={styles.dashboardTimelineTitle}>בהמשך היום</RtlText>
             <RtlText style={styles.dashboardTimelineChevron}>‹</RtlText>
           </View>
           {dashboardTimelineWalks.length > 0 ? (
