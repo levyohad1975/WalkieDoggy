@@ -22,7 +22,7 @@ import { generateId } from '../lib/id';
 import { cancelWalkNotifications, reconcileWalkNotifications, scheduleWalkNotifications } from '../notifications/notificationService';
 import { guardTestModeMutation } from '../lib/testModeGuard';
 import { hasActiveRemoteReminderChannel } from '../lib/remoteReminderChannel';
-import { isSupabaseConfigured } from '../lib/supabase';
+import { deleteScheduleRuleWithOccurrences, isSupabaseConfigured } from '../lib/supabase';
 import { adminRescheduleWalk, adminSwapWalks } from '../lib/walkAdmin';
 import { friendlyErrorMessage } from '../lib/errorMessages';
 import { useGpsStore } from './gpsStore';
@@ -461,49 +461,27 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   deleteRule: async (ruleId: string) => {
     if (!guardTestModeMutation()) return;
     try {
-      // Local calendar day, not UTC — `entries`/`walks` dates are the
-      // family's local "today" (see dateFormat.ts), and a UTC-anchored
-      // "today" would be wrong for a few hours after local midnight for
-      // anyone ahead of UTC (e.g. Israel), generating a day-early entry.
-      const today = localDateOnly(new Date());
-      const { entries, walks, rules } = get();
-      const rule = rules.find((candidate) => candidate.id === ruleId);
-      const futureEntries = entries.filter((e) => e.ruleId === ruleId && e.date >= today);
+      const { entries, walks } = get();
+      const removedEntryIds = new Set(entries.filter((e) => e.ruleId === ruleId).map((e) => e.id));
 
-      // Disable the generator before deleting the occurrences.  The normal
-      // successful path removes the rule immediately afterwards, but this
-      // ordering keeps a partially completed server operation safe: if an
-      // entry deletion or the final rule deletion fails, the persisted rule
-      // can no longer be mistaken for an active rule whose entries simply
-      // need backfill.  A later retry can finish the deletion without a
-      // deleted schedule reappearing in the meantime.
-      if (rule?.active) await repository.upsertScheduleRule({ ...rule, active: false });
-      // A recurring rule owns its future schedule entries. Remove every
-      // future entry when the rule is deleted, even if its linked walk was
-      // already resolved. Keeping a resolved entry behind is what allowed
-      // stale/duplicate fixed times to reappear after deleting all rules.
-      // Historical walk rows themselves are preserved below.
-      for (const entry of futureEntries) {
-        const walk = walks.find((w) => w.scheduleEntryId === entry.id);
-        if (walk?.status === 'pending') {
-          await cancelWalkNotifications(walk.id);
+      if (isSupabaseConfigured()) {
+        // One server transaction owns the FK-sensitive delete ordering.
+        await deleteScheduleRuleWithOccurrences(ruleId);
+      } else {
+        const today = localDateOnly(new Date());
+        const futureEntries = entries.filter((e) => e.ruleId === ruleId && e.date >= today);
+        for (const entry of futureEntries) {
+          const walk = walks.find((w) => w.scheduleEntryId === entry.id);
+          if (walk?.status === 'pending') await repository.deleteWalk?.(walk.id);
+          await repository.deleteScheduleEntry(entry.id);
         }
-        // The schedule entry owns its generated walk through the server FK.
-        // Delete the linked pending walk explicitly first. This avoids a
-        // later reconciliation/sync step trying to persist a child whose
-        // entry was just removed, while keeping resolved historical walks
-        // untouched.
-        if (walk?.status === 'pending') {
-          await repository.deleteWalk?.(walk.id);
-        }
-        await repository.deleteScheduleEntry(entry.id);
+        await repository.deleteScheduleRule(ruleId);
       }
-      await repository.deleteScheduleRule(ruleId);
-      const removedEntryIds = new Set(futureEntries.map((e) => e.id));
+
       set((s) => ({
         rules: s.rules.filter((r) => r.id !== ruleId),
         entries: s.entries.filter((e) => !removedEntryIds.has(e.id)),
-        walks: s.walks.filter((w) => !(w.scheduleEntryId && removedEntryIds.has(w.scheduleEntryId))),
+        walks: s.walks.filter((w) => !(w.scheduleEntryId && removedEntryIds.has(w.scheduleEntryId) && w.status === 'pending')),
         actionError: null,
       }));
     } catch (e) {
