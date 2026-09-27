@@ -456,8 +456,8 @@ const styles = StyleSheet.create({
   // the dashboard, especially on narrow phones.
   // Use an intentionally wider central gutter and inset both columns so the
   // assignee circle reads as its own block instead of touching the time.
-  dashboardMainRow: { gap: 20, paddingHorizontal: 8, marginBottom: 2 },
-  personBlock: { flex: 1, alignItems: 'flex-end', gap: 3, minWidth: 0 },
+  dashboardMainRow: { gap: 28, paddingHorizontal: 12, marginBottom: 2 },
+  personBlock: { flex: 1, alignItems: 'flex-end', gap: 5, minWidth: 0, paddingStart: 8 },
   personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'left' },
   responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'left' },
   doneButton: { marginTop: 2 },
