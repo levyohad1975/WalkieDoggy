@@ -875,7 +875,12 @@ describe('OfflineFirstRepository — sync conflicts/quarantine surfaced for revi
     const { setSyncQueueActorGetter } = require('../syncQueue');
     setSyncQueueActorGetter(() => 'test-user');
 
-    await repo.upsertDog(dog);
+    // upsertDog is intentionally server-authoritative while online and now
+    // propagates a rejected save directly. Seed the queue explicitly here:
+    // this test is about repository conflict delegation, not upsertDog's
+    // online write policy.
+    await (repo as any).queue.enqueue({ type: 'upsertDog', payload: dog });
+    await repo.trySync();
 
     const conflicts = await repo.getSyncConflicts!();
     expect(conflicts).toHaveLength(1);
@@ -894,7 +899,8 @@ describe('OfflineFirstRepository — sync conflicts/quarantine surfaced for revi
     const repo = await makeRepo(true, stubRemote({ upsertDog: jest.fn().mockRejectedValue(conflictError) }));
     const { setSyncQueueActorGetter } = require('../syncQueue');
     setSyncQueueActorGetter(() => 'test-user');
-    await repo.upsertDog(dog);
+    await (repo as any).queue.enqueue({ type: 'upsertDog', payload: dog });
+    await repo.trySync();
     expect(await repo.getSyncConflicts!()).toHaveLength(1);
 
     await repo.clearSyncConflicts!();
