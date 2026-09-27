@@ -102,6 +102,7 @@ export const MASCOT_ASSET_PRODUCTION_LIST: Record<MascotState, string> = {
 const MASCOT_SOURCE = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
 
 interface AnimatedValues {
+  translateX: Animated.Value;
   translateY: Animated.Value;
   rotateDeg: Animated.Value;
   scale: Animated.Value;
@@ -122,17 +123,19 @@ function timing(value: Animated.Value, toValue: number, duration: number) {
  * forever).
  */
 function buildMascotAnimation(state: MascotState, values: AnimatedValues): Animated.CompositeAnimation {
-  const { translateY, rotateDeg, scale } = values;
+  const { translateX, translateY, rotateDeg, scale } = values;
 
   switch (state) {
     case 'runIn': {
       // Dedicated loading entrance: start well outside the viewport, cross
       // into the center with two quick bounded hops, then settle. This is
       // intentionally NOT the old in-place "excited" bounce.
+      translateX.setValue(420);
       translateY.setValue(18);
       rotateDeg.setValue(-0.35);
       scale.setValue(0.9);
       return Animated.parallel([
+        Animated.sequence([timing(translateX, -14, 820), timing(translateX, 0, 320)]),
         Animated.sequence([
           timing(translateY, -12, 360),
           timing(translateY, 7, 280),
@@ -223,6 +226,7 @@ export interface WalkieMascotProps {
  */
 export function WalkieMascot({ state, size = 72, accessibilityLabel, testID, source = MASCOT_SOURCE, reducedMotionSource }: WalkieMascotProps) {
   const [reducedMotion, setReducedMotion] = useState(true); // fail-safe default: static until proven otherwise
+  const translateX = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(0)).current;
   const rotateRaw = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(1)).current;
@@ -246,9 +250,11 @@ export function WalkieMascot({ state, size = 72, accessibilityLabel, testID, sou
   }, []);
 
   useEffect(() => {
+    translateX.stopAnimation();
     translateY.stopAnimation();
     rotateRaw.stopAnimation();
     scale.stopAnimation();
+    translateX.setValue(0);
     translateY.setValue(0);
     rotateRaw.setValue(0);
     scale.setValue(1);
@@ -258,10 +264,10 @@ export function WalkieMascot({ state, size = 72, accessibilityLabel, testID, sou
       return;
     }
 
-    const animation = buildMascotAnimation(state, { translateY, rotateDeg: rotateRaw, scale });
+    const animation = buildMascotAnimation(state, { translateX, translateY, rotateDeg: rotateRaw, scale });
     animation.start();
     return () => animation.stop();
-  }, [state, reducedMotion, translateY, rotateRaw, scale]);
+  }, [state, reducedMotion, translateX, translateY, rotateRaw, scale]);
 
   const rotate = rotateRaw.interpolate({ inputRange: [-1, 1], outputRange: ['-8deg', '8deg'] });
 
@@ -271,7 +277,7 @@ export function WalkieMascot({ state, size = 72, accessibilityLabel, testID, sou
       accessibilityElementsHidden={!accessibilityLabel}
       importantForAccessibility={accessibilityLabel ? 'yes' : 'no-hide-descendants'}
       accessibilityLabel={accessibilityLabel}
-      style={[styles.container, { width: size, height: size, transform: [{ translateY }, { rotate }, { scale }] }]}
+      style={[styles.container, { width: size, height: size, transform: [{ translateX }, { translateY }, { rotate }, { scale }] }]}
     >
       <Image source={reducedMotion && reducedMotionSource ? reducedMotionSource : source} style={styles.image} resizeMode="contain" />
     </Animated.View>
