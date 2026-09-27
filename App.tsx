@@ -259,12 +259,19 @@ export default function App() {
   // cannot affect which family this device is a member of.
   const isSystemAdmin = useSystemAdminStore((s) => s.isSystemAdmin);
   const refreshSystemAdmin = useSystemAdminStore((s) => s.refresh);
+  const systemAdminOpenRequestId = useSystemAdminStore((s) => s.openRequestId);
   const [systemAdminOpen, setSystemAdminOpen] = useState(false);
   const [systemAdminLoginOpen, setSystemAdminLoginOpen] = useState(false);
   const [showIosInstallPrompt, setShowIosInstallPrompt] = useState(false);
   useEffect(() => {
     if (hydrated) void refreshSystemAdmin();
   }, [hydrated, refreshSystemAdmin]);
+
+  useEffect(() => {
+    if (hydrated && isSystemAdmin && systemAdminOpenRequestId > 0 && !shouldEnterSystemAdminDirectly) {
+      setSystemAdminOpen(true);
+    }
+  }, [hydrated, isSystemAdmin, systemAdminOpenRequestId, shouldEnterSystemAdminDirectly]);
 
   useEffect(() => {
     if (!hydrated || Platform.OS !== 'web' || typeof navigator === 'undefined' || typeof window === 'undefined') return;
@@ -402,16 +409,6 @@ export default function App() {
             </Pressable>
           ) : null}
           <SystemAdminLoginScreen visible={systemAdminLoginOpen} onClose={() => setSystemAdminLoginOpen(false)} />
-          {isSystemAdmin && !shouldEnterSystemAdminDirectly ? (
-            <Pressable
-              style={styles.systemAdminEntry}
-              onPress={() => setSystemAdminOpen(true)}
-              accessibilityRole="button"
-              accessibilityLabel="פתיחת ניהול המערכת"
-            >
-              <RtlText style={styles.systemAdminEntryText}>🛡️</RtlText>
-            </Pressable>
-          ) : null}
           {!shouldEnterSystemAdminDirectly ? (
             <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} />
           ) : null}
