@@ -445,7 +445,7 @@ it('swapTwoWalks exchanges both walk owners and backing schedule-entry owners', 
   expect(persistedEntries.find((e: { id: string }) => e.id === walkB!.scheduleEntryId)?.responsibleUserId).toBe(userA);
 });
 
-it('deleteRule removes the rule plus its future pending entries/walks, and leaves other rules untouched', async () => {
+it('deleteRule persists through the next reload instead of letting backfill recreate the deleted schedule', async () => {
   await useScheduleStore.getState().load(FAMILY_ID);
   const before = useScheduleStore.getState();
   expect(before.rules.some((r) => r.id === 'rule-1700')).toBe(true);
@@ -467,6 +467,16 @@ it('deleteRule removes the rule plus its future pending entries/walks, and leave
   const { repository } = require('../../data');
   const persistedEntries = await repository.getScheduleEntries(FAMILY_ID);
   expect(persistedEntries.some((e: { id: string }) => e.id === 'entry-1700')).toBe(false);
+
+  // Regression: scheduleStore legitimately repairs a *still-active* rule
+  // with no occurrences (covered separately by the active-rule backfill
+  // test). A deliberately deleted rule must be absent before that logic runs,
+  // so refresh/reload cannot put its whole schedule back.
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const reloaded = useScheduleStore.getState();
+  expect(reloaded.rules.some((r) => r.id === 'rule-1700')).toBe(false);
+  expect(reloaded.entries.some((e) => e.ruleId === 'rule-1700')).toBe(false);
+  expect(reloaded.walks.some((w) => w.scheduleEntryId === 'entry-1700')).toBe(false);
 });
 
 it('deleteRule surfaces a visible actionError instead of silently doing nothing when the repository write fails', async () => {
