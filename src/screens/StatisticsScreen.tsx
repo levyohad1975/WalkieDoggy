@@ -272,7 +272,7 @@ export function StatisticsScreen() {
   if (permissionStillChecking) {
     return (
       <SafeAreaView style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} accessibilityLabel="בודק הרשאות…" />
+        <ActivityIndicator size="large" color={colors.primary} accessibilityLabel="טוען…" />
       </SafeAreaView>
     );
   }
