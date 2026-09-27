@@ -226,6 +226,22 @@ export function HistoryScreen() {
     );
   }
 
+  // Permission hydration and the server-authoritative RPC can resolve a fraction
+  // after navigation. Treat that interval as loading, never as a denial, so an
+  // authorized member does not see a false "no access" flash.
+  const permissionStillChecking =
+    permissionOverridesStatus === 'loading' ||
+    permissionOverridesStatus === 'idle' ||
+    (historyAccessStatus === 'checking' && !hasEverGrantedRef.current);
+
+  if (permissionStillChecking) {
+    return (
+      <SafeAreaView style={styles.center}>
+        <ActivityIndicator size="large" color={colors.primary} accessibilityLabel="בודק הרשאות…" />
+      </SafeAreaView>
+    );
+  }
+
   if (error) {
     return (
       <SafeAreaView style={styles.center}>
