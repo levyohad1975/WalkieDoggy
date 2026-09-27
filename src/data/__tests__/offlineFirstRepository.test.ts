@@ -393,6 +393,23 @@ describe('OfflineFirstRepository.upsertUser — online direct write during queue
   });
 });
 
+describe('OfflineFirstRepository.upsertScheduleRule — confirmed shared-setting persistence', () => {
+  it('surfaces an online server rejection instead of queueing an edit that will disappear after refresh', async () => {
+    const denied = Object.assign(new Error('new row violates row-level security policy'), { code: '42501' });
+    const remote = stubRemote({ upsertScheduleRule: jest.fn().mockRejectedValue(denied) });
+    const repo = await makeRepo(true, remote);
+    const rule: ScheduleRule = {
+      id: 'rule-rejected', familyId: 'family-1', dogId: 'dog-1', time: '08:00',
+      daysOfWeek: [0], rotationUserIds: ['user-1'], rotationAnchorDate: '2026-01-01',
+      sortOrder: 0, active: true, createdAt: 'now',
+    };
+
+    await expect(repo.upsertScheduleRule(rule)).rejects.toBe(denied);
+    expect(remote.upsertScheduleRule).toHaveBeenCalledWith(rule);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+});
+
 describe('OfflineFirstRepository — trySync', () => {
   it('is a no-op when no remote repository is configured (e.g. App.tsx calling it opportunistically in local/demo mode)', async () => {
     const repo = await makeRepo(true, null);
