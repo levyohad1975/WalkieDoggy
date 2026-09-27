@@ -881,7 +881,10 @@ export function HomeScreen() {
           />
         ) : (
           <View style={styles.emptyCard}>
-            <EmptyState emoji="🎉" title="אין טיולים ממתינים" subtitle="אפשר להוסיף שעות טיול במסך לוח הזמנים" />
+            <WalkieMascot state="ready" size={72} accessibilityLabel="Walkie Doggy מוכן לטיול" />
+            <RtlText style={styles.onDemandTitle}>יוצאים לטיול?</RtlText>
+            <RtlText style={styles.onDemandSubtitle}>לא חייבים לקבוע לו״ז מראש. אפשר להתחיל עכשיו ו-Walkie Doggy יתעד את הטיול וה-GPS.</RtlText>
+            <Button label="התחל טיול" icon="▶" onPress={() => setAddUnplannedVisible(true)} style={styles.onDemandStartButton} shrinkToFit />
           </View>
         )}
         </View>
@@ -1487,6 +1490,9 @@ export function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  onDemandTitle: { fontSize: 20, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginTop: 4 },
+  onDemandSubtitle: { fontSize: 13, fontWeight: '400', lineHeight: 19, color: colors.textSecondary, textAlign: 'center', marginTop: 4, marginBottom: 10, paddingHorizontal: 12 },
+  onDemandStartButton: { width: '100%', minHeight: 46, backgroundColor: '#4A43B6', borderColor: '#4A43B6' },
   container: { flex: 1, backgroundColor: '#E8E5FF' },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   addFirstDogButton: { marginTop: spacing.md },
