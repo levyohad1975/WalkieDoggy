@@ -6,7 +6,7 @@ describe('DogProfileModal — broken photo fallback', () => {
     const source = fs.readFileSync(path.resolve(__dirname, '../DogProfileModal.tsx'), 'utf8');
     expect(source).toContain('const [photoLoadFailed, setPhotoLoadFailed] = useState(false);');
     expect(source).toContain('}, [dog?.id, dog?.photoUrl]);');
-    expect(source).toContain('{dog.photoUrl && !photoLoadFailed ? (');
+    expect(source).toContain('{displayedPhotoUrl && !photoLoadFailed ? (');
     expect(source).toContain('onError={() => setPhotoLoadFailed(true)}');
     expect(source).toContain('<WalkieMascot');
   });
