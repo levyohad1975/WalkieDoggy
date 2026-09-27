@@ -139,6 +139,7 @@ export function HomeScreen() {
   const gpsDistanceMeters = useGpsStore((s) => s.distanceMeters);
   const gpsPointCount = useGpsStore((s) => s.pointCount);
   const gpsPermissionStatus = useGpsStore((s) => s.permissionStatus);
+  const gpsSessionsByWalkId = useGpsStore((s) => s.sessionsByWalkId);
 
   const [completeWalkId, setCompleteWalkId] = useState<string | null>(null);
   // BATCH 4 (C2/C3/C8) — brief "success" mascot + message shown right after
@@ -482,6 +483,15 @@ export function HomeScreen() {
       setLastWalkGps(null);
       return;
     }
+    // A just-finished walk can publish its GPS session a fraction after the
+    // walk row flips to done. Prefer the gpsStore cache when it arrives so
+    // the summary refreshes immediately instead of getting stuck on the
+    // first repository read that raced the final GPS persistence.
+    const cachedSession = gpsSessionsByWalkId[lastWalk.id];
+    if (cachedSession) {
+      setLastWalkGps(cachedSession);
+      return;
+    }
     let cancelled = false;
     void repository.getGpsSessionsForWalkIds([lastWalk.id]).then((sessions) => {
       if (!cancelled) setLastWalkGps(sessions[0] ?? null);
@@ -489,7 +499,7 @@ export function HomeScreen() {
       if (!cancelled) setLastWalkGps(null);
     });
     return () => { cancelled = true; };
-  }, [lastWalk?.id, lastWalk?.status]);
+  }, [lastWalk?.id, lastWalk?.status, gpsSessionsByWalkId]);
 
   // Whether `lastWalk` is present in the local, operational-window-limited
   // `walks` state — true for anything resolved today (or always, in
