@@ -272,6 +272,10 @@ export function WalkieMascot({ state, size = 72, accessibilityLabel, testID, sou
 
 const styles = StyleSheet.create({
   container: { overflow: 'hidden' },
+  // The run-in GIF starts off-screen and translates into place. Allow the
+  // animated frames to remain visible while crossing the container edge;
+  // all other mascot states keep the original clipped/static behavior.
+  runContainer: { overflow: 'visible' },
   image: { width: '100%', height: '100%' },
 });
 
