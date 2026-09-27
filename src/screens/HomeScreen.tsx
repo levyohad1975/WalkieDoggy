@@ -890,6 +890,10 @@ export function HomeScreen() {
                 <RtlText style={styles.dashboardShortcutIcon}>⇄</RtlText>
                 <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1}>החלפה</RtlText>
               </Pressable>
+              <Pressable onPress={() => setAddUnplannedVisible(true)} style={[styles.dashboardShortcut, styles.dashboardShortcutBlue]} accessibilityRole="button" accessibilityLabel="הוסף טיול שבוצע">
+                <RtlText style={styles.dashboardShortcutIcon}>＋</RtlText>
+                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.68}>הוסף טיול שבוצע</RtlText>
+              </Pressable>
             </>
           ) : (
             <>
