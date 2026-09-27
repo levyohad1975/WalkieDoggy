@@ -930,12 +930,13 @@ export function HomeScreen() {
             ? new Date(lastWalk.completedAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
             : lastWalk.scheduledTime;
           return (
-            <View style={styles.dashboardLastWalk}>
-              <View style={styles.dashboardLastWalkHeader}>
-                <RtlText style={styles.dashboardLastWalkTitle}>הטיול האחרון</RtlText>
+            <View style={styles.dashboardSection}>
+              <View style={styles.dashboardExternalHeading}>
+                <RtlText style={styles.dashboardExternalTitle}>הטיול האחרון</RtlText>
                 <RtlText style={styles.dashboardLastWalkDate}>{resolvedWalkDateContextLabel(lastWalk)}</RtlText>
               </View>
-              <View style={styles.dashboardLastWalkRow}>
+              <View style={styles.dashboardLastWalk}>
+                <View style={styles.dashboardLastWalkRow}>
                 <View style={styles.dashboardLastWalkTimeBlock}>
                   <RtlText style={styles.dashboardLastWalkTime}>{actualCompletedTime}</RtlText>
                   <RtlText style={styles.dashboardLastWalkDone}>✓ בוצע {actualCompletedTime}</RtlText>
@@ -982,16 +983,17 @@ export function HomeScreen() {
                   <RtlText style={styles.dashboardLastWalkPersonName}>{completedByName}</RtlText>
                 </View>
               </View>
-              {lastWalkGps ? (
-                <RtlText style={styles.dashboardLastWalkGps}>
-                  {[
-                    lastWalk.durationMinutes ? `${lastWalk.durationMinutes} דק׳` : null,
-                    (lastWalkGps.correctedDistanceMeters ?? lastWalkGps.distanceMeters) != null
-                      ? `${((lastWalkGps.correctedDistanceMeters ?? lastWalkGps.distanceMeters ?? 0) / 1000).toFixed(1)} ק״מ`
-                      : null,
-                  ].filter(Boolean).join(' · ')}
-                </RtlText>
-              ) : null}
+                {lastWalkGps ? (
+                  <RtlText style={styles.dashboardLastWalkGps}>
+                    {[
+                      lastWalk.durationMinutes ? `${lastWalk.durationMinutes} דק׳` : null,
+                      (lastWalkGps.correctedDistanceMeters ?? lastWalkGps.distanceMeters) != null
+                        ? `${((lastWalkGps.correctedDistanceMeters ?? lastWalkGps.distanceMeters ?? 0) / 1000).toFixed(1)} ק״מ`
+                        : null,
+                    ].filter(Boolean).join(' · ')}
+                  </RtlText>
+                ) : null}
+              </View>
             </View>
           );
         })() : null}
@@ -1021,11 +1023,12 @@ export function HomeScreen() {
           </Pressable>
         ) : null}
 
-        <Pressable style={styles.dashboardTimeline} onPress={() => navigation.navigate('Schedule')} accessibilityRole="button" accessibilityLabel="פתיחת המשך הטיולים של היום בלוח הזמנים">
-          <View style={styles.dashboardTimelineHeader}>
-            <RtlText style={styles.dashboardTimelineTitle}>בהמשך היום</RtlText>
+        <View style={styles.dashboardSection}>
+          <View style={styles.dashboardExternalHeading}>
+            <RtlText style={styles.dashboardExternalTitle}>בהמשך היום</RtlText>
             <RtlText style={styles.dashboardTimelineChevron}>‹</RtlText>
           </View>
+          <Pressable style={styles.dashboardTimeline} onPress={() => navigation.navigate('Schedule')} accessibilityRole="button" accessibilityLabel="פתיחת המשך הטיולים של היום בלוח הזמנים">
           {dashboardTimelineWalks.length > 0 ? (
             <View style={styles.dashboardTimelineStops}>
               <View style={styles.dashboardTimelinePeople}>
@@ -1049,7 +1052,8 @@ export function HomeScreen() {
               </View>
             </View>
           ) : <RtlText style={styles.dashboardTimelineEmpty}>אין טיולים מתוכננים היום · לפתיחת לוח הזמנים</RtlText>}
-        </Pressable>
+          </Pressable>
+        </View>
 
         <View style={styles.dashboardOverflow}>
         {lastWalk ? (
@@ -1631,7 +1635,10 @@ const styles = StyleSheet.create({
   dashboardAddWalkTitle: { fontSize: 17, lineHeight: 21, fontWeight: '700', color: '#0E7E84', textAlign: 'right' },
   dashboardAddWalkSubtitle: { marginTop: 1, fontSize: 11, lineHeight: 15, fontWeight: '500', color: colors.textSecondary, textAlign: 'right' },
   dashboardAddWalkChevron: { fontSize: 22, color: '#0E7E84' },
-  dashboardLastWalk: { minHeight: 108, borderRadius: 24, backgroundColor: '#FAF7EF', borderWidth: 1, borderColor: '#EAE3D6', paddingHorizontal: spacing.md, paddingVertical: 10, shadowColor: '#6A5D45', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  dashboardSection: { gap: 5 },
+  dashboardExternalHeading: { minHeight: 24, paddingHorizontal: 4, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  dashboardExternalTitle: { fontSize: 17, fontWeight: '800', color: '#17345B', textAlign: 'right' },
+  dashboardLastWalk: { minHeight: 92, borderRadius: 24, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EAE3D6', paddingHorizontal: spacing.md, paddingVertical: 10, shadowColor: '#6A5D45', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
   dashboardLastWalkHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
   dashboardLastWalkTitle: { fontSize: 17, fontWeight: '700', color: '#17345B', textAlign: 'right' },
   dashboardLastWalkDate: { fontSize: 11, fontWeight: '500', color: colors.textSecondary },
@@ -1649,7 +1656,7 @@ const styles = StyleSheet.create({
   dashboardLastWalkPersonLabel: { fontSize: 10, fontWeight: '500', color: colors.textSecondary, textAlign: 'right' },
   dashboardLastWalkPersonName: { marginTop: 1, fontSize: 15, fontWeight: '700', color: '#17345B', textAlign: 'right' },
   dashboardLastWalkGps: { marginTop: 5, fontSize: 10, fontWeight: '600', color: '#2F7F75', textAlign: 'left' },
-  dashboardTimeline: { minHeight: 52, borderRadius: 22, backgroundColor: '#FAF7EF', borderWidth: 1, borderColor: '#EAE3D6', paddingHorizontal: spacing.md, paddingTop: 6, paddingBottom: 4, gap: 2 },
+  dashboardTimeline: { minHeight: 52, borderRadius: 22, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EAE3D6', paddingHorizontal: spacing.md, paddingTop: 6, paddingBottom: 4, gap: 2 },
   dashboardTimelineHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   dashboardTimelineTitle: { fontSize: 16, fontWeight: '700', color: '#17345B', textAlign: 'right' },
   dashboardTimelineChevron: { fontSize: 24, color: '#129EA5', writingDirection: 'ltr' },
@@ -1661,7 +1668,7 @@ const styles = StyleSheet.create({
   dashboardTimelineStopActive: { transform: [{ scale: 1.06 }] },
   dashboardTimelineTrack: { height: 2, marginHorizontal: '8%', borderRadius: 1, backgroundColor: '#D4D4CF', overflow: 'visible', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   dashboardTimelineProgress: { position: 'absolute', right: 0, top: 0, bottom: 0, borderRadius: 1, backgroundColor: '#12A5AB' },
-  dashboardTimelineDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FAF7EF', borderWidth: 1.5, borderColor: '#12A5AB', zIndex: 1 },
+  dashboardTimelineDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFFFFF', borderWidth: 1.5, borderColor: '#12A5AB', zIndex: 1 },
   dashboardTimelineDotDone: { backgroundColor: colors.success, borderColor: colors.success },
   dashboardTimelineDotSkipped: { backgroundColor: colors.statusPendingBg, borderColor: colors.statusPending },
   dashboardTimelineDotActive: { backgroundColor: colors.info, borderColor: colors.info },
