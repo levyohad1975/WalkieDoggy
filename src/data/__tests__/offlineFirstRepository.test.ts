@@ -216,6 +216,62 @@ describe('OfflineFirstRepository.deleteFamilyMember — online rejection propaga
   });
 });
 
+describe('OfflineFirstRepository.schedule creation — FK parents are authoritative online', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    jest.doMock('@react-native-community/netinfo', () => ({
+      __esModule: true,
+      default: { fetch: jest.fn().mockResolvedValue({ isConnected: true, isInternetReachable: true }) },
+    }));
+  });
+
+  it('persists schedule entries remotely before returning so a dependent walk cannot race a missing FK parent', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { OfflineFirstRepository } = require('../offlineFirstRepository');
+    const order: string[] = [];
+    const remote = stubRemote({
+      addScheduleEntries: jest.fn().mockImplementation(async () => { order.push('entry'); }),
+      saveWalk: jest.fn().mockImplementation(async () => { order.push('walk'); }),
+    });
+    const repo = new OfflineFirstRepository(remote);
+    const entry: ScheduleEntry = {
+      id: 'entry-fk-parent', familyId: 'family-1', dogId: 'dog-1', ruleId: 'rule-1',
+      date: '2026-01-02', time: '08:00', responsibleUserId: 'u1', createdAt: 'created',
+    };
+    const walk: Walk = {
+      id: 'walk-fk-child', familyId: 'family-1', dogId: 'dog-1',
+      scheduleEntryId: entry.id, date: entry.date, scheduledTime: entry.time,
+      responsibleUserId: 'u1', status: 'pending', createdAt: 'created', updatedAt: 'created',
+    };
+
+    await repo.addScheduleEntries([entry]);
+    await repo.saveWalk(walk);
+
+    expect(order).toEqual(['entry', 'walk']);
+    expect(remote.addScheduleEntries).toHaveBeenCalledWith([entry]);
+    expect(remote.saveWalk).toHaveBeenCalledWith(walk);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+
+  it('does not cache or queue an online schedule entry when the authoritative server write is rejected', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { OfflineFirstRepository } = require('../offlineFirstRepository');
+    const remote = stubRemote({ addScheduleEntries: jest.fn().mockRejectedValue(new Error('entry rejected')) });
+    const repo = new OfflineFirstRepository(remote);
+    const entry: ScheduleEntry = {
+      id: 'entry-rejected', familyId: 'family-1', dogId: 'dog-1', ruleId: 'rule-1',
+      date: '2026-01-02', time: '08:00', responsibleUserId: 'u1', createdAt: 'created',
+    };
+
+    await expect(repo.addScheduleEntries([entry])).rejects.toThrow('entry rejected');
+
+    expect(await (repo as any).local.getScheduleEntries('family-1')).toEqual([]);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+});
+
 describe('OfflineFirstRepository.schedule deletion — online writes are authoritative', () => {
   const rule: ScheduleRule = {
     id: 'rule-delete-check', familyId: 'family-1', dogId: 'dog-1', time: '08:00',
