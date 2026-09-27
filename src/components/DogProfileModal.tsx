@@ -3,7 +3,6 @@ import { Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, View 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RtlText } from './RtlText';
 import { WalkieMascot } from './WalkieMascot';
-import { ConfirmModal } from './ConfirmModal';
 import { useFamilyStore } from '../store/familyStore';
 import { useAuthStore, useEffectiveFamilyRole } from '../store/authStore';
 import { DEMO_FAMILY } from '../data/demoData';
@@ -21,7 +20,6 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
   const familyRole = useEffectiveFamilyRole();
   const systemObserverActive = useAuthStore((s) => s.systemObserverActive);
   const [uploading, setUploading] = useState(false);
-  const [removeConfirmVisible, setRemoveConfirmVisible] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
   const [pendingPhotoUrl, setPendingPhotoUrl] = useState<string | null>(null);
@@ -54,7 +52,6 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
     setRemoving(true);
     try {
       setPendingPhotoUrl('');
-      setRemoveConfirmVisible(false);
     } catch {
       Alert.alert('לא הצלחנו להסיר את התמונה', 'נסו שוב בעוד רגע.');
     } finally {
