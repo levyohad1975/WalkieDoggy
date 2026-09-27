@@ -98,6 +98,7 @@ export function HomeScreen() {
     rescheduleWalk,
     skip,
     addUnplannedWalk,
+    startUnplannedWalk,
     editDoneDetails,
     editUnplannedWalk,
     deleteUnplannedWalk,
@@ -892,7 +893,7 @@ export function HomeScreen() {
               </Pressable>
               <Pressable onPress={() => setAddUnplannedVisible(true)} style={[styles.dashboardShortcut, styles.dashboardShortcutBlue]} accessibilityRole="button" accessibilityLabel="הוסף טיול שבוצע">
                 <RtlText style={styles.dashboardShortcutIcon}>＋</RtlText>
-                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.68}>הוסף טיול שבוצע</RtlText>
+                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.68}>הוסף טיול</RtlText>
               </Pressable>
             </>
           ) : (
@@ -1253,6 +1254,14 @@ export function HomeScreen() {
         // to themselves — only a real Admin may pick someone else
         // (requirement 5).
         canChooseUser={effectiveRole === 'admin'}
+        onStartNow={async () => {
+          if (!dog) {
+            useScheduleStore.setState({ actionError: 'עדיין טוענים את פרטי הכלב/ה — נסו שוב בעוד רגע' });
+            return;
+          }
+          const started = await startUnplannedWalk(familyId, dog.id, effectiveUserId);
+          if (started) setAddUnplannedVisible(false);
+        }}
         onConfirm={async (result: UnplannedWalkResult) => {
           setAddUnplannedVisible(false);
           // addUnplannedWalk() itself refuses while Test Mode is active.
