@@ -346,19 +346,15 @@ export class OfflineFirstRepository implements Repository {
   async upsertDog(dog: Dog): Promise<void> {
     await this.local.upsertDog(dog);
     if (this.remote) {
-      // Make profile edits authoritative before another screen reloads the
-      // dog. Queue-only writes could let Home immediately fetch the older
-      // remote row and replace an optimistic photoUrl with a stale value.
+      // Profile/background changes are user-visible settings. When online,
+      // do not report success and silently queue a rejected server write:
+      // the caller must know the save failed instead of showing a selection
+      // that disappears on the next reload.
       if (await this.isOnline()) {
-        try {
-          await this.remote.upsertDog(dog);
-          return;
-        } catch {
-          // Preserve offline-first behaviour: retry through the sync queue.
-        }
+        await this.remote.upsertDog(dog);
+        return;
       }
       await this.queue.enqueue({ type: 'upsertDog', payload: dog });
-      await this.trySync();
     }
   }
 
