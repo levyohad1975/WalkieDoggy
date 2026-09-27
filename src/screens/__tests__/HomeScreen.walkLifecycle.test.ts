@@ -5,7 +5,7 @@ describe('Home integrated walk lifecycle', () => {
   const home = fs.readFileSync(path.join(__dirname, '..', 'HomeScreen.tsx'), 'utf8');
   const card = fs.readFileSync(path.join(__dirname, '..', '..', 'components', 'NextWalkCard.tsx'), 'utf8');
 
-  it('keeps the approved lavender dashboard hero while using the persisted family-dog image safely', () => {
+  it('keeps the approved calm Dashboard hero while using the persisted family-dog image safely', () => {
     expect(home).toContain('showDogPhoto');
     expect(home).toContain('style={styles.dashboardHero}');
     expect(home).toContain('style={styles.dashboardHeroShade}');
@@ -29,12 +29,11 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('dashboardHeroGreetingTitle: { width: \'100%\', flexShrink: 1');
   });
 
-  it('keeps the approved two member dashboard shortcuts (שינוי שעה / טיול ספונטני) wired to the existing flows', () => {
-    expect(home).toContain("navigation.navigate('Schedule')");
+  it('keeps one compact add-walk action wired to the existing completed/spontaneous flow', () => {
     expect(home).toContain('setAddUnplannedVisible(true)');
-    expect(home).toContain('setRequestTimeChangeWalkId(nextWalk?.id ?? null)');
-    expect(home).toContain('numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>טיול ספונטני</RtlText>');
-    expect(home).toContain('numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שינוי שעה</RtlText>');
+    expect(home).toContain('accessibilityLabel="הוסף טיול"');
+    expect(home).toContain('>הוסף טיול</RtlText>');
+    expect(home).not.toContain('dashboardMemberShortcuts');
   });
 
   it('renders manager-only Edit/Swap directly under Next Walk and no standalone swap row', () => {
@@ -43,13 +42,13 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('setEditWalkId(nextWalk.id)');
     expect(home).toContain('setSwapWalkId(nextWalk.id)');
     expect(home).not.toContain('style={styles.dashboardSwapRequestRow}');
-    expect(home).toContain('onSwap={undefined}');
-    expect(home).toContain('onEdit={undefined}');
-    expect(home).toContain('accessibilityLabel="עריכת הטיול הבא"');
-    expect(home).toContain('accessibilityLabel="החלפת הטיול הבא"');
+    expect(home).toContain("onSwap={effectiveRole === 'admin' && nextWalk.status === 'pending'");
+    expect(home).toContain("onEdit={effectiveRole === 'admin' && nextWalk.status === 'pending'");
     expect(card).toContain('{onEdit || onSwap ? (');
     expect(card).toContain('עריכה');
     expect(card).toContain('החלפה');
+    expect(card).toContain('בקשה לשינוי');
+    expect(card).toContain('בקשת החלפה');
   });
 
   it('uses the actual completion date in the last-walk dashboard card', () => {
@@ -75,9 +74,22 @@ describe('Home integrated walk lifecycle', () => {
   it('shows the orange approval prompt only for a real actionable request', () => {
     expect(home).toContain('pendingForMe > 0 ?');
     expect(home).toContain('style={styles.dashboardRequestAlert}');
-    expect(home.indexOf('style={styles.dashboardTimeline}')).toBeLessThan(home.indexOf('style={styles.dashboardRequestAlert}'));
+    expect(home.indexOf('style={styles.dashboardRequestAlert}')).toBeLessThan(home.indexOf('style={styles.dashboardTimeline}'));
     expect(home).toContain('בקשה ממתינה לאישור');
     expect(home).toContain('onPress={openRequestsInbox}');
+  });
+
+  it('keeps the approved Home content order and calm cream/teal dashboard direction', () => {
+    const lastWalkIndex = home.indexOf('style={styles.dashboardLastWalk}');
+    const addWalkIndex = home.indexOf('style={styles.dashboardAddWalk}');
+    const timelineIndex = home.indexOf('style={styles.dashboardTimeline}');
+    expect(lastWalkIndex).toBeGreaterThan(-1);
+    expect(lastWalkIndex).toBeLessThan(addWalkIndex);
+    expect(addWalkIndex).toBeLessThan(timelineIndex);
+    expect(home).toContain("dashboardLastWalk: { minHeight: 108, borderRadius: 24, backgroundColor: '#FAF7EF'");
+    expect(home).toContain("dashboardAddWalk: { minHeight: 58, borderRadius: 22, backgroundColor: '#FAF7EF'");
+    expect(home).toContain("backgroundColor: '#12A5AB'");
+    expect(home).not.toContain('#4A43B6');
   });
 
   it('exposes start and end walk as the primary lifecycle action', () => {

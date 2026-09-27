@@ -1,5 +1,6 @@
 import type { ScheduleRule, Walk } from '../../types';
 import { computeNextWalk } from '../../logic/nextWalk';
+import { localDateOnly } from '../../logic/dateFormat';
 
 /**
  * Regression tests for BUG 1 (round-2 bug report): a schedule rule added or
@@ -81,7 +82,7 @@ describe('scheduleStore', () => {
     const updatedRule = state.rules.find((r) => r.id === 'rule-1230');
     expect(updatedRule?.time).toBe('07:30');
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDateOnly(new Date());
     const todaysEntry = state.entries.find((e) => e.ruleId === 'rule-1230' && e.date === today);
     expect(todaysEntry?.time).toBe('07:30');
     expect(todaysEntry?.id).toBe('entry-1230'); // scheduleEntryId is preserved, not replaced

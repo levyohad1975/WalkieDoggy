@@ -351,13 +351,13 @@ export function NextWalkCard({
         <View style={styles.linkRow}>
           {onRequestSwap ? (
             <RtlText style={styles.linkText} onPress={onRequestSwap} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-              בקש החלפה
+              בקשת החלפה
             </RtlText>
           ) : null}
           {onRequestSwap && onRequestTimeChange ? <RtlText style={styles.linkDivider} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>·</RtlText> : null}
           {onRequestTimeChange ? (
             <RtlText style={styles.linkText} onPress={onRequestTimeChange} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-              בקש שינוי שעה
+              בקשה לשינוי
             </RtlText>
           ) : null}
         </View>

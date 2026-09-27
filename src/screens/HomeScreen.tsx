@@ -767,7 +767,7 @@ export function HomeScreen() {
             </Pressable>
           </View>
 
-          {/* Issue #145: the approved lavender composition remains the default;
+          {/* Issue #145: the approved calm composition remains the default;
               a manager-selected family scene replaces it and a transparent dog
               cutout is composited over it when one exists. */}
           <Pressable
@@ -918,20 +918,6 @@ export function HomeScreen() {
         )}
         </View>
 
-        <Pressable
-          onPress={() => setAddUnplannedVisible(true)}
-          style={styles.dashboardAddWalk}
-          accessibilityRole="button"
-          accessibilityLabel="הוסף טיול"
-        >
-          <RtlText style={styles.dashboardAddWalkIcon}>＋</RtlText>
-          <View style={styles.dashboardAddWalkCopy}>
-            <RtlText style={styles.dashboardAddWalkTitle}>הוסף טיול</RtlText>
-            <RtlText style={styles.dashboardAddWalkSubtitle}>טיול ספונטני עכשיו או הזנת טיול שבוצע</RtlText>
-          </View>
-          <RtlText style={styles.dashboardAddWalkChevron}>⌄</RtlText>
-        </Pressable>
-
         {lastWalk ? (() => {
           const canEditLastWalk =
             lastWalkIsEditable &&
@@ -991,6 +977,20 @@ export function HomeScreen() {
             </View>
           );
         })() : null}
+
+        <Pressable
+          onPress={() => setAddUnplannedVisible(true)}
+          style={styles.dashboardAddWalk}
+          accessibilityRole="button"
+          accessibilityLabel="הוסף טיול"
+        >
+          <RtlText style={styles.dashboardAddWalkIcon}>＋</RtlText>
+          <View style={styles.dashboardAddWalkCopy}>
+            <RtlText style={styles.dashboardAddWalkTitle}>הוסף טיול</RtlText>
+            <RtlText style={styles.dashboardAddWalkSubtitle}>טיול ספונטני עכשיו או הזנת טיול שבוצע</RtlText>
+          </View>
+          <RtlText style={styles.dashboardAddWalkChevron}>⌄</RtlText>
+        </Pressable>
 
         {pendingForMe > 0 ? (
           <Pressable style={styles.dashboardRequestAlert} onPress={openRequestsInbox} accessibilityRole="button" accessibilityLabel={`${pendingForMe} בקשות ממתינות לאישור`}>
@@ -1539,8 +1539,8 @@ const styles = StyleSheet.create({
   noDogSubtitle: { maxWidth: 360, fontSize: 15, fontWeight: '400', lineHeight: 22, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.sm, marginBottom: spacing.lg, paddingHorizontal: spacing.lg },
   onDemandTitle: { fontSize: 20, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginTop: 4 },
   onDemandSubtitle: { fontSize: 13, fontWeight: '400', lineHeight: 19, color: colors.textSecondary, textAlign: 'center', marginTop: 4, marginBottom: 10, paddingHorizontal: 12 },
-  onDemandStartButton: { width: '100%', minHeight: 46, backgroundColor: '#4A43B6', borderColor: '#4A43B6' },
-  container: { flex: 1, backgroundColor: '#E8E5FF' },
+  onDemandStartButton: { width: '100%', minHeight: 46, backgroundColor: '#12A5AB', borderColor: '#12A5AB' },
+  container: { flex: 1, backgroundColor: '#FBF8F3' },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   addFirstDogButton: { marginTop: spacing.md },
   // Leaves the final card clear of the persistent bottom tab bar on phones
@@ -1607,8 +1607,8 @@ const styles = StyleSheet.create({
   dashboardHeroCopy: { width: '52%', alignItems: 'flex-end', alignSelf: 'flex-start', paddingTop: 38, paddingHorizontal: spacing.md, zIndex: 2 },
   dashboardHeroEyebrow: { fontSize: 16, color: '#27376F', fontWeight: '700', textAlign: 'right' },
   dashboardHeroName: { fontSize: 30, lineHeight: 36, color: '#16245B', fontWeight: '900', textAlign: 'right' },
-  dashboardAddWalk: { minHeight: 58, borderRadius: 22, backgroundColor: '#DDF5EF', borderWidth: 1, borderColor: '#C8EAE2', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
-  dashboardAddWalkIcon: { width: 34, height: 34, borderRadius: 17, textAlign: 'center', lineHeight: 34, fontSize: 25, fontWeight: '500', color: '#FFFFFF', backgroundColor: '#129EA5' },
+  dashboardAddWalk: { minHeight: 58, borderRadius: 22, backgroundColor: '#FAF7EF', borderWidth: 1, borderColor: '#EAE3D6', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
+  dashboardAddWalkIcon: { width: 34, height: 34, borderRadius: 17, textAlign: 'center', lineHeight: 34, fontSize: 25, fontWeight: '500', color: '#FFFFFF', backgroundColor: '#12A5AB' },
   dashboardAddWalkCopy: { flex: 1, alignItems: 'flex-end' },
   dashboardAddWalkTitle: { fontSize: 17, lineHeight: 21, fontWeight: '700', color: '#0E7E84', textAlign: 'right' },
   dashboardAddWalkSubtitle: { marginTop: 1, fontSize: 11, lineHeight: 15, fontWeight: '500', color: colors.textSecondary, textAlign: 'right' },
