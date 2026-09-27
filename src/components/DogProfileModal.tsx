@@ -16,6 +16,7 @@ import { DogHeroBackgroundPicker } from './DogHeroBackgroundPicker';
 export function DogProfileModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const dog = useFamilyStore((s) => s.dog);
   const saveDog = useFamilyStore((s) => s.saveDog);
+  const clearDogPhoto = useFamilyStore((s) => s.removeDogPhoto);
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const familyRole = useEffectiveFamilyRole();
   const systemObserverActive = useAuthStore((s) => s.systemObserverActive);
@@ -50,7 +51,7 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
     if (!dog || !dog.photoUrl || familyRole !== 'admin' || systemObserverActive || removing) return;
     setRemoving(true);
     try {
-      await saveDog({ ...dog, photoUrl: undefined });
+      await clearDogPhoto(dog.id);
       setRemoveConfirmVisible(false);
     } catch {
       Alert.alert('לא הצלחנו להסיר את התמונה', 'נסו שוב בעוד רגע.');
