@@ -259,7 +259,7 @@ export function WalkieMascot({ state, size = 72, accessibilityLabel, testID, sou
       accessibilityElementsHidden={!accessibilityLabel}
       importantForAccessibility={accessibilityLabel ? 'yes' : 'no-hide-descendants'}
       accessibilityLabel={accessibilityLabel}
-      style={[styles.container, { width: size, height: size, transform: [{ translateX }, { translateY }, { rotate }, { scale }] }]}
+      style={[styles.container, state === 'runIn' && styles.runContainer, { width: size, height: size, transform: [{ translateX }, { translateY }, { rotate }, { scale }] }]}
     >
       <Image
         source={!reducedMotion && state === 'runIn' ? RUN_SOURCE : reducedMotion && reducedMotionSource ? reducedMotionSource : source}
