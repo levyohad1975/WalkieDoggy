@@ -382,6 +382,13 @@ export async function endImpersonation(): Promise<void> {
 }
 
 
+/** Admin-only atomic removal of one recurring schedule slot and its generated future occurrences. */
+export async function deleteScheduleRuleWithOccurrences(ruleId: string): Promise<void> {
+  if (!supabase) throw new SupabaseNotConfiguredError();
+  const { error } = await supabase.rpc('admin_delete_schedule_rule', { p_rule_id: ruleId });
+  if (error) throw error;
+}
+
 /** Admin-only destructive reset: removes family walk/activity history while preserving family, members, dogs and schedule. */
 export async function resetFamilyActivity(): Promise<number> {
   if (!supabase) throw new SupabaseNotConfiguredError();
