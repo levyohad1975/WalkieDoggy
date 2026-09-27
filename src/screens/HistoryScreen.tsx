@@ -57,6 +57,8 @@ export function HistoryScreen() {
   const [resolveWalkId, setResolveWalkId] = useState<string | null>(null);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [historySearchQuery, setHistorySearchQuery] = useState('');
+  const [historyPage, setHistoryPage] = useState(0);
+  const HISTORY_PAGE_SIZE = 4;
 
   // BATCH 3 CORRECTION #2 (review #2, post-review): HistoryScreen's actual
   // display/calculation dataset. list_history_walks() (migration 0027) is
@@ -206,15 +208,22 @@ export function HistoryScreen() {
     [allHistory, userFilter, planFilter, rangeFilter, rangeStartDate, customDate, todayString, historySearchQuery]
   );
 
+  useEffect(() => {
+    setHistoryPage(0);
+  }, [userFilter, planFilter, rangeFilter, customDate, historySearchQuery]);
+
+  const historyPageCount = Math.max(1, Math.ceil(history.length / HISTORY_PAGE_SIZE));
+  const pagedHistory = useMemo(() => history.slice(historyPage * HISTORY_PAGE_SIZE, (historyPage + 1) * HISTORY_PAGE_SIZE), [history, historyPage]);
+
   const dailySummary = useMemo(() => {
     const byDate = new Map<string, Walk[]>();
-    for (const w of history) {
+    for (const w of pagedHistory) {
       const list = byDate.get(w.date) ?? [];
       list.push(w);
       byDate.set(w.date, list);
     }
     return [...byDate.entries()].sort(([a], [b]) => b.localeCompare(a));
-  }, [history]);
+  }, [pagedHistory]);
 
   const loading = familyLoading || scheduleLoading;
 
@@ -505,6 +514,29 @@ export function HistoryScreen() {
               ))}
             </View>
           )}
+          {history.length > HISTORY_PAGE_SIZE ? (
+            <View style={styles.historyPager} accessibilityLabel="דפדוף בהיסטוריה">
+              <Pressable
+                style={[styles.historyPagerButton, historyPage === 0 && styles.historyPagerButtonDisabled]}
+                disabled={historyPage === 0}
+                onPress={() => setHistoryPage((page) => Math.max(0, page - 1))}
+                accessibilityRole="button"
+                accessibilityLabel="לטיולים חדשים יותר"
+              >
+                <RtlText style={styles.historyPagerArrow}>›</RtlText>
+              </Pressable>
+              <RtlText style={styles.historyPagerLabel}>{historyPage + 1} / {historyPageCount}</RtlText>
+              <Pressable
+                style={[styles.historyPagerButton, historyPage >= historyPageCount - 1 && styles.historyPagerButtonDisabled]}
+                disabled={historyPage >= historyPageCount - 1}
+                onPress={() => setHistoryPage((page) => Math.min(historyPageCount - 1, page + 1))}
+                accessibilityRole="button"
+                accessibilityLabel="לטיולים ישנים יותר"
+              >
+                <RtlText style={styles.historyPagerArrow}>‹</RtlText>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       </ScrollView>
 
@@ -578,6 +610,11 @@ export function HistoryScreen() {
 }
 
 const styles = StyleSheet.create({
+  historyPager: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 18, marginTop: spacing.md },
+  historyPagerButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  historyPagerButtonDisabled: { opacity: 0.3 },
+  historyPagerArrow: { fontSize: 28, lineHeight: 30, color: colors.primaryDark, fontWeight: '600' },
+  historyPagerLabel: { minWidth: 54, textAlign: 'center', fontSize: 13, fontWeight: '600', color: colors.textSecondary },
   container: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   // Bottom padding increased (final QA round, item F: bottom safe-area/
