@@ -464,7 +464,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       const { entries, walks } = get();
       const removedEntryIds = new Set(entries.filter((e) => e.ruleId === ruleId).map((e) => e.id));
 
-      if (isSupabaseConfigured()) {
+      if (isSupabaseConfigured) {
         // One server transaction owns the FK-sensitive delete ordering.
         await deleteScheduleRuleWithOccurrences(ruleId);
       } else {
