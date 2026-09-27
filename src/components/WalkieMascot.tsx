@@ -70,7 +70,7 @@ export const MASCOT_STATES: MascotState[] = ['idle', 'excited', 'ready', 'waitin
  * character animation the product requirement describes. See the module doc
  * comment above and MASCOT_ASSET_PRODUCTION_LIST below.
  */
-export const MASCOT_ANIMATION_STATUS = 'temporary-fallback-real-character-frames-required' as const;
+export const MASCOT_ANIMATION_STATUS = 'real-run-frames-loading-procedural-other-states' as const;
 
 /**
  * C2, requirement 4 (expanded per Batch 4 correction #1, item 1D) — an
@@ -100,6 +100,7 @@ export const MASCOT_ASSET_PRODUCTION_LIST: Record<MascotState, string> = {
 };
 
 const MASCOT_SOURCE = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
+const RUN_SOURCE = require('../../assets/branding/walkie-doggy-run.gif');
 
 interface AnimatedValues {
   translateX: Animated.Value;
@@ -127,29 +128,10 @@ function buildMascotAnimation(state: MascotState, values: AnimatedValues): Anima
 
   switch (state) {
     case 'runIn': {
-      // Dedicated loading entrance: start well outside the viewport, cross
-      // into the center with two quick bounded hops, then settle. This is
-      // intentionally NOT the old in-place "excited" bounce.
+      // The bundled GIF supplies the real 16-frame leg/body run cycle.
+      // This bounded transform only moves that running dog into the center.
       translateX.setValue(420);
-      translateY.setValue(18);
-      rotateDeg.setValue(-0.35);
-      scale.setValue(0.9);
-      return Animated.parallel([
-        Animated.sequence([timing(translateX, -14, 820), timing(translateX, 0, 320)]),
-        Animated.sequence([
-          timing(translateY, -12, 360),
-          timing(translateY, 7, 280),
-          timing(translateY, -5, 240),
-          timing(translateY, 0, 260),
-        ]),
-        Animated.sequence([
-          timing(rotateDeg, 0.35, 300),
-          timing(rotateDeg, -0.22, 300),
-          timing(rotateDeg, 0.12, 260),
-          timing(rotateDeg, 0, 280),
-        ]),
-        Animated.sequence([timing(scale, 1.08, 720), timing(scale, 1, 420)]),
-      ]);
+      return Animated.sequence([timing(translateX, -10, 1050), timing(translateX, 0, 220)]);
     }
     case 'idle': {
       // Gentle head-bob-and-settle, continuous but small (4px) and slow
@@ -279,7 +261,11 @@ export function WalkieMascot({ state, size = 72, accessibilityLabel, testID, sou
       accessibilityLabel={accessibilityLabel}
       style={[styles.container, { width: size, height: size, transform: [{ translateX }, { translateY }, { rotate }, { scale }] }]}
     >
-      <Image source={reducedMotion && reducedMotionSource ? reducedMotionSource : source} style={styles.image} resizeMode="contain" />
+      <Image
+        source={!reducedMotion && state === 'runIn' ? RUN_SOURCE : reducedMotion && reducedMotionSource ? reducedMotionSource : source}
+        style={styles.image}
+        resizeMode="contain"
+      />
     </Animated.View>
   );
 }
