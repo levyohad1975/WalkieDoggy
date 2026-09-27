@@ -986,27 +986,30 @@ describe('SupabaseRepository — deletes and simple updates', () => {
     });
   });
 
-  it('deleteScheduleRule calls .from("schedule_rules").delete().eq("id", ruleId) and throws on error', async () => {
+  it('deleteScheduleRule confirms exactly one returned id, so an RLS-hidden zero-row delete cannot look successful', async () => {
     const calls: string[] = [];
     const okClient: any = {
-      from: (table: string) => ({ delete: () => ({ eq: (col: string, val: string) => { calls.push(`${table}.${col}.${val}`); return Promise.resolve({ error: null }); } }) }),
+      from: (table: string) => ({ delete: () => ({ eq: (col: string, val: string) => ({ select: (columns: string) => { calls.push(`${table}.${col}.${val}.${columns}`); return Promise.resolve({ data: [{ id: val }], error: null }); } }) }) }),
     };
     await new SupabaseRepository(okClient).deleteScheduleRule('rule-1');
-    expect(calls).toEqual(['schedule_rules.id.rule-1']);
+    expect(calls).toEqual(['schedule_rules.id.rule-1.id']);
 
-    const errClient: any = { from: () => ({ delete: () => ({ eq: () => Promise.resolve({ error: { message: 'x' } }) }) }) };
+    const errClient: any = { from: () => ({ delete: () => ({ eq: () => ({ select: () => Promise.resolve({ data: null, error: { message: 'x' } }) }) }) }) };
     await expect(new SupabaseRepository(errClient).deleteScheduleRule('rule-1')).rejects.toBeTruthy();
+
+    const hiddenClient: any = { from: () => ({ delete: () => ({ eq: () => ({ select: () => Promise.resolve({ data: [], error: null }) }) }) }) };
+    await expect(new SupabaseRepository(hiddenClient).deleteScheduleRule('rule-1')).rejects.toThrow('not deleted');
   });
 
-  it('deleteScheduleEntry calls .from("schedule_entries").delete().eq("id", entryId) and throws on error', async () => {
+  it('deleteScheduleEntry confirms exactly one returned id and throws on error', async () => {
     const calls: string[] = [];
     const okClient: any = {
-      from: (table: string) => ({ delete: () => ({ eq: (col: string, val: string) => { calls.push(`${table}.${col}.${val}`); return Promise.resolve({ error: null }); } }) }),
+      from: (table: string) => ({ delete: () => ({ eq: (col: string, val: string) => ({ select: (columns: string) => { calls.push(`${table}.${col}.${val}.${columns}`); return Promise.resolve({ data: [{ id: val }], error: null }); } }) }) }),
     };
     await new SupabaseRepository(okClient).deleteScheduleEntry('entry-1');
-    expect(calls).toEqual(['schedule_entries.id.entry-1']);
+    expect(calls).toEqual(['schedule_entries.id.entry-1.id']);
 
-    const errClient: any = { from: () => ({ delete: () => ({ eq: () => Promise.resolve({ error: { message: 'x' } }) }) }) };
+    const errClient: any = { from: () => ({ delete: () => ({ eq: () => ({ select: () => Promise.resolve({ data: null, error: { message: 'x' } }) }) }) }) };
     await expect(new SupabaseRepository(errClient).deleteScheduleEntry('entry-1')).rejects.toBeTruthy();
   });
 
