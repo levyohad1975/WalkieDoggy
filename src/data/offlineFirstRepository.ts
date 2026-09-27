@@ -344,18 +344,22 @@ export class OfflineFirstRepository implements Repository {
   }
 
   async upsertDog(dog: Dog): Promise<void> {
-    await this.local.upsertDog(dog);
-    if (this.remote) {
-      // Profile/background changes are user-visible settings. When online,
-      // do not report success and silently queue a rejected server write:
-      // the caller must know the save failed instead of showing a selection
-      // that disappears on the next reload.
-      if (await this.isOnline()) {
-        await this.remote.upsertDog(dog);
-        return;
-      }
-      await this.queue.enqueue({ type: 'upsertDog', payload: dog });
+    if (!this.remote) {
+      await this.local.upsertDog(dog);
+      return;
     }
+
+    // Dog profile/background/photo changes must be confirmed by Staging
+    // before the local cache is mutated. Otherwise an RLS/server rejection
+    // looks successful until the next reload, which is exactly the failure
+    // mode users see as a background that "doesn't save" or a removed photo
+    // that immediately comes back.
+    if (!(await this.isOnline())) {
+      throw new Error('dog profile changes require an internet connection and cannot be queued offline');
+    }
+
+    await this.remote.upsertDog(dog);
+    await this.local.upsertDog(dog);
   }
 
   async getHealthTasks(dogId: string): Promise<HealthTask[]> {
