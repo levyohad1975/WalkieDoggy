@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RtlText } from '../components/RtlText';
 import { Button } from '../components/Button';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { supabase } from '../lib/supabase';
+import { useSystemAdminStore } from '../store/systemAdminStore';
 
 interface Props {
   visible: boolean;
@@ -13,43 +14,55 @@ interface Props {
 }
 
 /**
- * Desktop/web entry for the platform administrator.
- * Authentication is Supabase email OTP/magic-link; authorization remains
- * entirely server-side through am_i_system_admin() and the admin RPCs.
+ * Standalone platform-admin login. Authentication uses Supabase password
+ * auth; authorization remains server-side through am_i_system_admin().
+ * A valid ordinary account therefore cannot gain platform-admin access.
  */
 export function SystemAdminLoginScreen({ visible, onClose }: Props) {
   const [email, setEmail] = useState('');
-  const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const refreshSystemAdmin = useSystemAdminStore((s) => s.refresh);
 
-  const sendLink = async () => {
+  const signIn = async () => {
     const normalized = email.trim().toLowerCase();
-    if (!normalized || !normalized.includes('@')) {
-      setError('יש להזין כתובת אימייל תקינה.');
+    if (!normalized || !normalized.includes('@') || !password) {
+      setError('יש להזין אימייל וסיסמה.');
       return;
     }
     if (!supabase) {
       setError('החיבור לשרת אינו זמין כרגע.');
       return;
     }
-    setSending(true);
+
+    setSigningIn(true);
     setError(null);
     try {
-      const redirectTo =
-        Platform.OS === 'web' && typeof window !== 'undefined'
-          ? window.location.origin
-          : undefined;
-      const { error: authError } = await supabase.auth.signInWithOtp({
+      const { error: authError } = await supabase.auth.signInWithPassword({
         email: normalized,
-        options: { emailRedirectTo: redirectTo, shouldCreateUser: false },
+        password,
       });
       if (authError) throw authError;
-      setSent(true);
+
+      // Authentication alone is never enough: refresh() asks the backend
+      // whether this authenticated identity is actually a System Admin.
+      await refreshSystemAdmin();
+      if (!useSystemAdminStore.getState().isSystemAdmin) {
+        await supabase.auth.signOut();
+        setPassword('');
+        setError('פרטי הכניסה אינם מורשים לניהול המערכת.');
+        return;
+      }
+
+      setPassword('');
+      onClose();
     } catch {
-      setError('לא הצלחנו לשלוח קישור כניסה. ודאו שזהו אימייל מנהל המערכת ונסו שוב.');
+      setPassword('');
+      setError('אימייל או סיסמה שגויים, או שאין לחשבון הרשאת מנהל מערכת.');
     } finally {
-      setSending(false);
+      setSigningIn(false);
     }
   };
 
@@ -63,32 +76,61 @@ export function SystemAdminLoginScreen({ visible, onClose }: Props) {
               <RtlText style={styles.close}>סגירה</RtlText>
             </Pressable>
           </View>
+
           <RtlText style={styles.copy}>
-            הכניסה מיועדת למנהל המערכת ואינה דורשת הצטרפות למשפחה. נשלח קישור מאובטח לאימייל המורשה.
+            הכניסה מיועדת למנהל המערכת בלבד.
           </RtlText>
-          {sent ? (
-            <View style={styles.success}>
-              <RtlText style={styles.successText}>קישור הכניסה נשלח. פתחו אותו במחשב הזה כדי להיכנס לדשבורד הניהול.</RtlText>
-            </View>
-          ) : (
-            <>
-              <TextInput
-                value={email}
-                onChangeText={setEmail}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="email-address"
-                placeholder="אימייל מנהל המערכת"
-                placeholderTextColor={colors.textSecondary}
-                style={styles.input}
-                textAlign="right"
-                accessibilityLabel="אימייל מנהל המערכת"
-                onSubmitEditing={() => void sendLink()}
-              />
-              {error ? <RtlText style={styles.error} accessibilityRole="alert">{error}</RtlText> : null}
-              <Button label="שליחת קישור כניסה" onPress={() => void sendLink()} loading={sending} disabled={sending} />
-            </>
-          )}
+
+          <TextInput
+            value={email}
+            onChangeText={(value) => {
+              setEmail(value);
+              setError(null);
+            }}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            placeholder="אימייל מנהל המערכת"
+            placeholderTextColor={colors.textSecondary}
+            style={styles.input}
+            textAlign="right"
+            accessibilityLabel="אימייל מנהל המערכת"
+          />
+
+          <View style={styles.passwordRow}>
+            <TextInput
+              value={password}
+              onChangeText={(value) => {
+                setPassword(value);
+                setError(null);
+              }}
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="סיסמה"
+              placeholderTextColor={colors.textSecondary}
+              style={styles.passwordInput}
+              textAlign="right"
+              accessibilityLabel="סיסמה"
+              onSubmitEditing={() => void signIn()}
+            />
+            <Pressable
+              onPress={() => setShowPassword((value) => !value)}
+              accessibilityRole="button"
+              accessibilityLabel={showPassword ? 'הסתרת סיסמה' : 'הצגת סיסמה'}
+              style={styles.showPassword}
+            >
+              <RtlText style={styles.showPasswordText}>{showPassword ? 'הסתר' : 'הצג'}</RtlText>
+            </Pressable>
+          </View>
+
+          {error ? <RtlText style={styles.error} accessibilityRole="alert">{error}</RtlText> : null}
+          <Button
+            label={signingIn ? 'מתחבר…' : 'כניסה למערכת'}
+            onPress={() => void signIn()}
+            loading={signingIn}
+            disabled={signingIn || !email.trim() || !password}
+          />
         </SafeAreaView>
       </View>
     </Modal>
@@ -103,7 +145,9 @@ const styles = StyleSheet.create({
   close: { color: colors.primaryDark, fontWeight: '800' },
   copy: { ...typography.body, color: colors.textSecondary, textAlign: 'right', lineHeight: 24 },
   input: { minHeight: 50, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, backgroundColor: colors.background, paddingHorizontal: spacing.md, color: colors.textPrimary, fontSize: 16 },
+  passwordRow: { minHeight: 50, flexDirection: 'row-reverse', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, backgroundColor: colors.background, overflow: 'hidden' },
+  passwordInput: { flex: 1, minHeight: 50, paddingHorizontal: spacing.md, color: colors.textPrimary, fontSize: 16 },
+  showPassword: { minHeight: 50, justifyContent: 'center', paddingHorizontal: spacing.md },
+  showPasswordText: { color: colors.primaryDark, fontWeight: '700', fontSize: 13 },
   error: { color: colors.statusOverdue, fontWeight: '700', textAlign: 'right' },
-  success: { backgroundColor: colors.primarySoft, borderRadius: radii.lg, padding: spacing.lg },
-  successText: { color: colors.textPrimary, fontWeight: '700', textAlign: 'right', lineHeight: 22 },
 });
