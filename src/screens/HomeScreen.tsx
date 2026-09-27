@@ -1093,7 +1093,7 @@ export function HomeScreen() {
                       <View style={styles.lastWalkDetailChips}>
                         <View style={styles.lastWalkDetailChip}><RtlText style={styles.lastWalkDetailChipText}>💧 {lastWalk.hadPee ? '✓' : '—'}</RtlText></View>
                         <View style={styles.lastWalkDetailChip}><RtlText style={styles.lastWalkDetailChipText}>💩 {lastWalk.hadPoop ? '✓' : '—'}</RtlText></View>
-                        {lastWalkGps?.durationSeconds != null ? <View style={styles.lastWalkDetailChip}><RtlText style={styles.lastWalkDetailChipText}>⏱️ {Math.max(1, Math.round(lastWalkGps.durationSeconds / 60))} דק׳</RtlText></View> : null}
+                        {lastWalkGps?.startedAt && lastWalkGps?.endedAt ? <View style={styles.lastWalkDetailChip}><RtlText style={styles.lastWalkDetailChipText}>⏱️ {Math.max(1, Math.round((new Date(lastWalkGps.endedAt).getTime() - new Date(lastWalkGps.startedAt).getTime()) / 60000))} דק׳</RtlText></View> : null}
                         {lastWalkGps?.distanceMeters != null ? <View style={styles.lastWalkDetailChip}><RtlText style={styles.lastWalkDetailChipText}>📍 {lastWalkGps.distanceMeters >= 1000 ? `${(lastWalkGps.distanceMeters / 1000).toFixed(1)} ק״מ` : `${Math.round(lastWalkGps.distanceMeters)} מ׳`}</RtlText></View> : null}
                       </View>
                       {lastWalk.note?.trim() ? (
