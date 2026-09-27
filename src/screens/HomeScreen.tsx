@@ -876,8 +876,23 @@ export function HomeScreen() {
         )}
         </View>
 
-        {effectiveRole !== 'admin' ? (
-          <View style={styles.dashboardShortcuts} accessibilityLabel="קיצורי דרך">
+        <View style={styles.dashboardShortcuts} accessibilityLabel="קיצורי דרך">
+          {effectiveRole === 'admin' ? (
+            <>
+              <Pressable onPress={() => nextWalk?.status === 'pending' && setEditWalkId(nextWalk.id)} style={[styles.dashboardShortcut, styles.dashboardShortcutMint]} accessibilityRole="button" accessibilityLabel="עריכת הטיול הבא">
+                <RtlText style={styles.dashboardShortcutIcon}>✎</RtlText>
+                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>עריכה</RtlText>
+              </Pressable>
+              <Pressable onPress={() => nextWalk?.status === 'pending' && setSwapWalkId(nextWalk.id)} style={[styles.dashboardShortcut, styles.dashboardShortcutGold]} accessibilityRole="button" accessibilityLabel="החלפת הטיול הבא">
+                <RtlText style={styles.dashboardShortcutIcon}>⇄</RtlText>
+                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>החלפה</RtlText>
+              </Pressable>
+              <Pressable onPress={() => setAddUnplannedVisible(true)} style={[styles.dashboardShortcut, styles.dashboardShortcutMint]} accessibilityRole="button" accessibilityLabel="הוסף טיול">
+                <RtlText style={styles.dashboardShortcutIcon}>＋</RtlText>
+                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>הוסף טיול</RtlText>
+              </Pressable>
+            </>
+          ) : (
             <>
               <Pressable onPress={() => nextWalkCardActions?.canRequestTimeChange ? setRequestTimeChangeWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutMint]} accessibilityRole="button" accessibilityLabel="בקשת שינוי שעה">
                 <RtlText style={styles.dashboardShortcutIcon}>◷</RtlText>
@@ -888,8 +903,8 @@ export function HomeScreen() {
                 <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>טיול ספונטני</RtlText>
               </Pressable>
             </>
-          </View>
-        ) : null}
+          )}
+        </View>
 
         {lastWalk ? (
           <Pressable style={styles.dashboardLastWalk} onPress={() => navigation.navigate('History')} accessibilityRole="button" accessibilityLabel="פתיחת הטיול האחרון">
