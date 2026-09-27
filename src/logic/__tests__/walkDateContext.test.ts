@@ -1,4 +1,4 @@
-import { walkDateContextLabel, walkTimeWithDateContext } from '../walkDateContext';
+import { resolvedWalkDateContextLabel, walkDateContextLabel, walkTimeWithDateContext } from '../walkDateContext';
 
 const NOW = new Date('2026-09-04T12:00:00'); // Friday
 
@@ -46,5 +46,20 @@ describe('walkTimeWithDateContext', () => {
   it('defaults to the real current moment when called with no `now` argument', () => {
     const today = new Date().toISOString().slice(0, 10);
     expect(walkTimeWithDateContext(today, '07:00')).toBe('היום · 07:00');
+  });
+});
+
+
+describe('resolvedWalkDateContextLabel', () => {
+  it('uses the actual local completion day instead of a future scheduled date', () => {
+    expect(resolvedWalkDateContextLabel({
+      date: '2026-09-05',
+      status: 'done',
+      completedAt: '2026-09-04T21:15:00.000Z',
+    }, NOW)).toBe('היום');
+  });
+
+  it('keeps the scheduled date for a skipped walk with no completion timestamp', () => {
+    expect(resolvedWalkDateContextLabel({ date: '2026-09-05', status: 'skipped' }, NOW)).toBe('מחר');
   });
 });
