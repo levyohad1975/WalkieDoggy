@@ -22,7 +22,7 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain("style={styles.mascotHeaderButton}");
   });
 
-  it('keeps the approved two dashboard shortcuts (שינוי שעה / טיול ספונטני) wired to the existing flows', () => {
+  it('keeps the approved two member dashboard shortcuts (שינוי שעה / טיול ספונטני) wired to the existing flows', () => {
     expect(home).toContain("navigation.navigate('Schedule')");
     expect(home).toContain('setAddUnplannedVisible(true)');
     expect(home).toContain('setRequestTimeChangeWalkId(nextWalk?.id ?? null)');
@@ -30,15 +30,23 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שינוי שעה</RtlText>');
   });
 
-  it('uses manager-only Edit/Swap dashboard shortcuts and removes the mistaken standalone swap row', () => {
-    expect(home).toContain("effectiveRole === 'admin' ?");
-    expect(home).toContain('accessibilityLabel="עריכת הטיול הבא"');
-    expect(home).toContain('accessibilityLabel="החלפת הטיול הבא"');
+  it('renders manager-only Edit/Swap directly under Next Walk and no standalone swap row', () => {
+    expect(home).toContain("effectiveRole !== 'admin' ?");
     expect(home).toContain('setEditWalkId(nextWalk.id)');
     expect(home).toContain('setSwapWalkId(nextWalk.id)');
     expect(home).not.toContain('style={styles.dashboardSwapRequestRow}');
-    expect(home).toContain('onSwap={undefined}');
-    expect(home).toContain('onEdit={undefined}');
+    expect(home).toContain("onSwap={effectiveRole === 'admin' && nextWalk.status === 'pending'");
+    expect(home).toContain("onEdit={effectiveRole === 'admin' && nextWalk.status === 'pending'");
+    expect(home).not.toContain('accessibilityLabel="עריכת הטיול הבא"');
+    expect(home).not.toContain('accessibilityLabel="החלפת הטיול הבא"');
+    expect(card).toContain('{onEdit || onSwap ? (');
+    expect(card).toContain('עריכה');
+    expect(card).toContain('החלפה');
+  });
+
+  it('uses the actual completion date in the last-walk dashboard card', () => {
+    expect(home).toContain('resolvedWalkDateContextLabel(lastWalk)');
+    expect(home).not.toContain('walkDateContextLabel(lastWalk.date)');
   });
 
   it('keeps a compact, always-present full daily Dashboard timeline instead of a future-only list', () => {
