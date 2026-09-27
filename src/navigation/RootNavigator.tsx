@@ -129,10 +129,10 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
         accessibilityRole="button"
         accessibilityState={focused ? { selected: true } : {}}
         accessibilityLabel={options?.tabBarAccessibilityLabel ?? TAB_LABEL[name]}
-        style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 1 }}
+        style={{ flex: 1, minWidth: 0, paddingHorizontal: 2, alignItems: 'center', justifyContent: 'center', gap: 1 }}
       >
         <TabIcon name={name} color={tint} />
-        <RtlText allowFontScaling={false} numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: tint, textAlign: 'center', writingDirection: 'rtl' }}>{TAB_LABEL[name]}</RtlText>
+        <RtlText allowFontScaling={false} numberOfLines={1} style={{ fontSize: 10, lineHeight: 13, fontWeight: '600', color: tint, textAlign: 'center', writingDirection: 'rtl', maxWidth: '100%' }}>{TAB_LABEL[name]}</RtlText>
       </Pressable>
     );
   };
@@ -146,7 +146,7 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
   const homeOptions = homeRoute ? descriptors[homeRoute.key]?.options : undefined;
 
   return (
-    <View style={{ height: layout.rowHeight + insets.bottom, paddingBottom: Math.max(spacing.sm, insets.bottom), paddingTop: 6, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }}>
+    <View style={{ height: layout.rowHeight + insets.bottom, paddingBottom: Math.max(spacing.sm, insets.bottom), paddingTop: 6, paddingHorizontal: Math.max(spacing.sm, insets.left, insets.right), backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }}>
       <View
         style={{
           flex: 1,
