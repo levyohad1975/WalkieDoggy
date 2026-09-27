@@ -466,8 +466,18 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // "today" would be wrong for a few hours after local midnight for
       // anyone ahead of UTC (e.g. Israel), generating a day-early entry.
       const today = localDateOnly(new Date());
-      const { entries, walks } = get();
+      const { entries, walks, rules } = get();
+      const rule = rules.find((candidate) => candidate.id === ruleId);
       const futureEntries = entries.filter((e) => e.ruleId === ruleId && e.date >= today);
+
+      // Disable the generator before deleting the occurrences.  The normal
+      // successful path removes the rule immediately afterwards, but this
+      // ordering keeps a partially completed server operation safe: if an
+      // entry deletion or the final rule deletion fails, the persisted rule
+      // can no longer be mistaken for an active rule whose entries simply
+      // need backfill.  A later retry can finish the deletion without a
+      // deleted schedule reappearing in the meantime.
+      if (rule?.active) await repository.upsertScheduleRule({ ...rule, active: false });
       // A recurring rule owns its future schedule entries. Remove every
       // future entry when the rule is deleted, even if its linked walk was
       // already resolved. Keeping a resolved entry behind is what allowed
@@ -990,4 +1000,3 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
 
   clearActionError: () => set({ actionError: null }),
 }));
-
