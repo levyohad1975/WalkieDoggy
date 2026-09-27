@@ -463,10 +463,20 @@ export class OfflineFirstRepository implements Repository {
 
   async upsertScheduleRule(rule: ScheduleRule): Promise<void> {
     await this.local.upsertScheduleRule(rule);
-    if (this.remote) {
-      await this.queue.enqueue({ type: 'upsertScheduleRule', payload: rule });
-      await this.trySync();
+    if (!this.remote) return;
+
+    // Schedule changes are a shared, user-visible setting. When the device
+    // is online, wait for Supabase to accept the write so an RLS/schema
+    // rejection is not presented as a successful edit until the next refresh.
+    if (await this.isOnline()) {
+      await this.remote.upsertScheduleRule(rule);
+      return;
     }
+
+    // Offline remains supported: persist locally and replay when a network
+    // connection returns. This path is deliberately reserved for a genuine
+    // offline state, not for an online server-side rejection.
+    await this.queue.enqueue({ type: 'upsertScheduleRule', payload: rule });
   }
 
   async deleteScheduleRule(ruleId: string): Promise<void> {
