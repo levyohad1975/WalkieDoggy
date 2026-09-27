@@ -380,3 +380,12 @@ export async function endImpersonation(): Promise<void> {
   const { error } = await supabase.rpc('end_impersonation');
   if (error) throw error;
 }
+
+
+/** Admin-only destructive reset: removes family walk/activity history while preserving family, members, dogs and schedule. */
+export async function resetFamilyActivity(): Promise<number> {
+  if (!supabase) throw new SupabaseNotConfiguredError();
+  const { data, error } = await supabase.rpc('admin_reset_family_activity');
+  if (error) throw error;
+  return Number((data as { deleted_walks?: number } | null)?.deleted_walks ?? 0);
+}
