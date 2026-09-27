@@ -41,12 +41,16 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('onEdit={undefined}');
   });
 
-  it('keeps a compact, always-present Dashboard timeline instead of a long list', () => {
+  it('keeps a compact, always-present full daily Dashboard timeline instead of a future-only list', () => {
     expect(home).toContain('const dashboardTimelineWalks = useMemo');
+    expect(home).toContain('dailyWalkTimeline(visibleWalks, new Date())');
     expect(home).toContain('dashboardTimelineWalks.length > 0 ?');
     expect(home).toContain('dashboardTimelineWalks.map');
-    expect(home).toContain('אין טיולים נוספים היום');
-    expect(home).toContain('פתיחת לוח הזמנים להמשך היום');
+    expect(home).toContain('ציר הטיולים היום');
+    expect(home).toContain('אין טיולים מתוכננים היום');
+    expect(home).toContain("walk.status === 'done'");
+    expect(home).toContain("walk.status === 'skipped'");
+    expect(home).toContain("walk.status === 'in_progress'");
     expect(home).toContain('scrollEnabled');
     expect(home).toContain('paddingBottom: 120');
     expect(home).not.toContain('style={styles.dashboardMoreButton}');
