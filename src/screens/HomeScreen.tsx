@@ -966,12 +966,6 @@ export function HomeScreen() {
                 </RtlText>
               ) : null}
             </View>
-            <Avatar
-              emoji={usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.avatar ?? '👤'}
-              color={usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.color ?? colors.primary}
-              photoUrl={usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.photoUrl}
-              size={34}
-            />
             <RtlText style={styles.dashboardLastWalkChevron}>‹</RtlText>
           </Pressable>
         ) : null}
