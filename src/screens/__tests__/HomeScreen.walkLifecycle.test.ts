@@ -43,8 +43,8 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('setEditWalkId(nextWalk.id)');
     expect(home).toContain('setSwapWalkId(nextWalk.id)');
     expect(home).not.toContain('style={styles.dashboardSwapRequestRow}');
-    expect(home).toContain("onSwap={effectiveRole === 'admin' && nextWalk.status === 'pending'");
-    expect(home).toContain("onEdit={effectiveRole === 'admin' && nextWalk.status === 'pending'");
+    expect(home).toContain('onSwap={undefined}');
+    expect(home).toContain('onEdit={undefined}');
     expect(home).toContain('accessibilityLabel="עריכת הטיול הבא"');
     expect(home).toContain('accessibilityLabel="החלפת הטיול הבא"');
     expect(card).toContain('{onEdit || onSwap ? (');
@@ -62,7 +62,7 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('dailyWalkTimeline(visibleWalks, new Date())');
     expect(home).toContain('dashboardTimelineWalks.length > 0 ?');
     expect(home).toContain('dashboardTimelineWalks.map');
-    expect(home).toContain('ציר הטיולים היום');
+    expect(home).toContain('בהמשך היום');
     expect(home).toContain('אין טיולים מתוכננים היום');
     expect(home).toContain("walk.status === 'done'");
     expect(home).toContain("walk.status === 'skipped'");
