@@ -12,8 +12,8 @@ describe('NextWalkCard state colors', () => {
   it('allows Home to opt into the approved calm cream dashboard surface without changing ordinary cards', () => {
     expect(source).toContain("tone?: 'default' | 'dashboard'");
     expect(source).toContain("tone === 'dashboard' && styles.cardDashboard");
-    expect(source).toContain("cardDashboard: { backgroundColor: '#FAF7EF'");
-    expect(source).toContain("backgroundColor: '#12A5AB'");
+    expect(source).toContain("cardDashboard: { backgroundColor: '#FFFDF8'");
+    expect(source).toContain("backgroundColor: '#0EA8B2'");
   });
 
   it('keeps the approved role-aware actions inside the dashboard card', () => {
