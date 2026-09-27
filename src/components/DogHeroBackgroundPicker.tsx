@@ -1,24 +1,45 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 import type { Dog } from '../types';
 import { DOG_BACKGROUNDS } from '../theme/dogBackgrounds';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { RtlText } from './RtlText';
+import { Button } from './Button';
 
-/** One shared, persisted picker for both dog-profile entry points. */
+/**
+ * Shared background picker. Selection is deliberately a draft until the
+ * explicit Save button is pressed — changing a visual preference should
+ * never silently persist just because a thumbnail was tapped.
+ */
 export function DogHeroBackgroundPicker({ dog, onSave }: { dog: Dog; onSave: (patch: Partial<Dog>) => void | Promise<void> }) {
+  const [draftId, setDraftId] = useState<string | undefined>(dog.heroBackgroundId);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => setDraftId(dog.heroBackgroundId), [dog.id, dog.heroBackgroundId]);
+
+  const dirty = draftId !== dog.heroBackgroundId;
+  const save = async () => {
+    if (!dirty || saving) return;
+    setSaving(true);
+    try {
+      await onSave({ heroBackgroundId: draftId });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <View style={styles.container} testID="dog-hero-background-picker">
       <RtlText style={styles.title}>רקע למסך הבית</RtlText>
-      <RtlText style={styles.hint}>הרקע משותף לכל המשפחה ומופיע מאחורי הכלב במסך הבית.</RtlText>
+      <RtlText style={styles.hint}>בחרו רקע ואז לחצו שמור. הרקע משותף לכל המשפחה.</RtlText>
       <View style={styles.grid}>
         {DOG_BACKGROUNDS.map((item) => {
-          const selected = dog.heroBackgroundId === item.id;
+          const selected = draftId === item.id;
           return (
             <Pressable
               key={item.id}
-              onPress={() => void onSave({ heroBackgroundId: item.id })}
+              onPress={() => setDraftId(item.id)}
               style={[styles.tile, selected && styles.selected]}
               accessibilityRole="button"
               accessibilityState={{ selected }}
@@ -31,6 +52,7 @@ export function DogHeroBackgroundPicker({ dog, onSave }: { dog: Dog; onSave: (pa
           );
         })}
       </View>
+      <Button label={saving ? 'שומר…' : 'שמור רקע'} onPress={() => void save()} disabled={!dirty || saving} />
     </View>
   );
 }
