@@ -447,8 +447,23 @@ export class SupabaseRepository implements Repository {
   }
 
   async upsertDog(dog: Dog): Promise<void> {
-    const { error } = await this.client.from('dogs').upsert(fromDog(dog));
-    if (error) throw error;
+    // Existing dog profile edits (including the shared Home background) are
+    // UPDATEs, not INSERTs. Using UPSERT here made every edit also require
+    // the table's INSERT policy; on staging that can reject an otherwise
+    // valid admin edit, leaving OfflineFirstRepository to queue it while a
+    // subsequent online reload fetches the old background again.
+    const row = fromDog(dog);
+    const { data, error: updateError } = await this.client
+      .from('dogs')
+      .update(row)
+      .eq('id', dog.id)
+      .select('id');
+    if (updateError) throw updateError;
+    if ((data ?? []).length > 0) return;
+
+    // No existing row: this is genuinely a newly-added dog.
+    const { error: insertError } = await this.client.from('dogs').insert(row);
+    if (insertError) throw insertError;
   }
 
   async getHealthTasks(dogId: string): Promise<HealthTask[]> {
@@ -508,8 +523,20 @@ export class SupabaseRepository implements Repository {
   }
 
   async upsertScheduleRule(rule: ScheduleRule): Promise<void> {
-    const { error } = await this.client.from('schedule_rules').upsert(fromRule(rule));
-    if (error) throw error;
+    // Editing an existing rule must only require UPDATE permission. UPSERT
+    // also exercises INSERT policy and could therefore make a valid edit
+    // appear saved locally, then disappear after the next server reload.
+    const row = fromRule(rule);
+    const { data, error: updateError } = await this.client
+      .from('schedule_rules')
+      .update(row)
+      .eq('id', rule.id)
+      .select('id');
+    if (updateError) throw updateError;
+    if ((data ?? []).length > 0) return;
+
+    const { error: insertError } = await this.client.from('schedule_rules').insert(row);
+    if (insertError) throw insertError;
   }
 
   async deleteScheduleRule(ruleId: string): Promise<void> {
