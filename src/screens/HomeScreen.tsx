@@ -743,7 +743,7 @@ export function HomeScreen() {
             <View style={styles.dashboardHeroGlow} pointerEvents="none" />
             <View style={styles.dashboardHeroShade} />
             <View style={styles.dashboardHeroGreeting} pointerEvents="none">
-              <RtlText style={styles.dashboardHeroGreetingTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שלום משפחת {family?.name ?? ''}</RtlText>
+              <RtlText style={styles.dashboardHeroGreetingTitle} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.78}>שלום משפחת {family?.name ?? ''}</RtlText>
               <RtlText style={styles.dashboardHeroGreetingSubtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{dog?.name ?? 'הכלב/ה'} מחכה לטיול הבא 🐾</RtlText>
             </View>
             {showDogCutout ? <Image source={{ uri: dog!.photoCutoutUrl! }} style={styles.dashboardHeroDogCutout} resizeMode="contain" onError={() => setHeroCutoutFailed(true)} /> : null}
@@ -1500,8 +1500,8 @@ const styles = StyleSheet.create({
   dashboardHeroBloomTwo: { position: 'absolute', width: 250, height: 250, borderRadius: 125, right: -104, top: -132, backgroundColor: '#C9D7FF' },
   dashboardHeroGlow: { position: 'absolute', width: 260, height: 92, borderRadius: 130, left: 24, bottom: 16, backgroundColor: '#FFFFFF75', transform: [{ rotate: '-8deg' }] },
   dashboardHeroShade: { ...StyleSheet.absoluteFill, backgroundColor: '#FFFFFF12' },
-  dashboardHeroGreeting: { position: 'absolute', top: 16, left: spacing.md, width: '52%', alignItems: 'flex-end', zIndex: 2 },
-  dashboardHeroGreetingTitle: { width: '100%', fontSize: 22, lineHeight: 27, color: '#253275', fontWeight: '900', textAlign: 'right' },
+  dashboardHeroGreeting: { position: 'absolute', top: 12, left: spacing.md, right: '42%', alignItems: 'flex-end', zIndex: 2 },
+  dashboardHeroGreetingTitle: { width: '100%', flexShrink: 1, fontSize: 22, lineHeight: 27, color: '#253275', fontWeight: '900', textAlign: 'right' },
   dashboardHeroGreetingSubtitle: { width: '100%', marginTop: 4, fontSize: 13, lineHeight: 18, color: '#454E91', fontWeight: '700', textAlign: 'right' },
   // bottom offsets shifted up by 20 (the dashboardHero height reduction)
   // so each image's TOP edge — where the mascot/dog's face/head sits —
