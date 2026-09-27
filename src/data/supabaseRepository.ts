@@ -540,8 +540,12 @@ export class SupabaseRepository implements Repository {
   }
 
   async deleteScheduleRule(ruleId: string): Promise<void> {
-    const { error } = await this.client.from('schedule_rules').delete().eq('id', ruleId);
+    // Supabase DELETE with RLS can resolve without an error while deleting
+    // zero rows.  Select the id back and require exactly one deletion so the
+    // caller never presents a rejected schedule deletion as successful.
+    const { data, error } = await this.client.from('schedule_rules').delete().eq('id', ruleId).select('id');
     if (error) throw error;
+    if ((data ?? []).length !== 1) throw new Error('Schedule rule was not deleted or is no longer authorized');
   }
 
   async getScheduleEntries(familyId: string): Promise<ScheduleEntry[]> {
@@ -565,8 +569,11 @@ export class SupabaseRepository implements Repository {
   }
 
   async deleteScheduleEntry(entryId: string): Promise<void> {
-    const { error } = await this.client.from('schedule_entries').delete().eq('id', entryId);
+    // See deleteScheduleRule: a zero-row RLS delete is otherwise invisible
+    // to the caller and can be mistaken for an intentional removal.
+    const { data, error } = await this.client.from('schedule_entries').delete().eq('id', entryId).select('id');
     if (error) throw error;
+    if ((data ?? []).length !== 1) throw new Error('Schedule entry was not deleted or is no longer authorized');
   }
 
   async getWalks(familyId: string): Promise<Walk[]> {
