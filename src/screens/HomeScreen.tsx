@@ -1088,6 +1088,22 @@ export function HomeScreen() {
                       </RtlText>
                     </View>
                   </View>
+                  {lastWalk.status === 'done' ? (
+                    <View style={styles.lastWalkDetails}>
+                      <View style={styles.lastWalkDetailChips}>
+                        <View style={styles.lastWalkDetailChip}><RtlText style={styles.lastWalkDetailChipText}>💧 {lastWalk.hadPee ? '✓' : '—'}</RtlText></View>
+                        <View style={styles.lastWalkDetailChip}><RtlText style={styles.lastWalkDetailChipText}>💩 {lastWalk.hadPoop ? '✓' : '—'}</RtlText></View>
+                        {lastWalkGps?.durationSeconds != null ? <View style={styles.lastWalkDetailChip}><RtlText style={styles.lastWalkDetailChipText}>⏱️ {Math.max(1, Math.round(lastWalkGps.durationSeconds / 60))} דק׳</RtlText></View> : null}
+                        {lastWalkGps?.distanceMeters != null ? <View style={styles.lastWalkDetailChip}><RtlText style={styles.lastWalkDetailChipText}>📍 {lastWalkGps.distanceMeters >= 1000 ? `${(lastWalkGps.distanceMeters / 1000).toFixed(1)} ק״מ` : `${Math.round(lastWalkGps.distanceMeters)} מ׳`}</RtlText></View> : null}
+                      </View>
+                      {lastWalk.note?.trim() ? (
+                        <View style={styles.lastWalkNote}>
+                          <RtlText style={styles.lastWalkNoteLabel}>הערה</RtlText>
+                          <RtlText style={styles.lastWalkNoteText}>{lastWalk.note.trim()}</RtlText>
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : null}
                 </View>
               );
             })()}
@@ -1629,8 +1645,34 @@ lastWalkCard: {
   borderWidth: 1,
   borderColor: colors.border,
   paddingHorizontal: spacing.md,
-  paddingVertical: spacing.sm,
+  paddingVertical: spacing.md,
+  minHeight: 126,
 },
+
+lastWalkDetails: {
+  borderTopWidth: 1,
+  borderTopColor: colors.border,
+  marginTop: spacing.sm,
+  paddingTop: spacing.sm,
+  gap: spacing.sm,
+},
+lastWalkDetailChips: {
+  flexDirection: 'row-reverse',
+  flexWrap: 'wrap',
+  gap: spacing.sm,
+},
+lastWalkDetailChip: {
+  minHeight: 30,
+  paddingHorizontal: spacing.sm,
+  borderRadius: radii.md,
+  backgroundColor: colors.surface,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+lastWalkDetailChipText: { fontSize: 12, fontWeight: '700', color: colors.textPrimary },
+lastWalkNote: { backgroundColor: colors.surface, borderRadius: radii.md, padding: spacing.sm, gap: 2 },
+lastWalkNoteLabel: { fontSize: 11, fontWeight: '800', color: colors.textSecondary, textAlign: 'right' },
+lastWalkNoteText: { fontSize: 13, color: colors.textPrimary, textAlign: 'right', lineHeight: 19 },
 
 lastWalkTopRow: {
   flexDirection: 'row',
