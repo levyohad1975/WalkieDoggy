@@ -47,8 +47,14 @@ begin
     raise exception 'family admin required';
   end if;
 
-  -- walk_gps_sessions cascade through walks. Schedule rules/entries, family,
-  -- users, dogs and health/grooming records intentionally survive.
+  -- Drop generated occurrences as part of the activity reset, but preserve
+  -- schedule_rules themselves. The next normal schedule load regenerates
+  -- fresh upcoming entries/walks from those rules, so the family's future
+  -- schedule configuration survives while all historical occurrence data
+  -- starts clean. Linked GPS sessions cascade through walks.
+  delete from schedule_entries where family_id = fid;
+
+  -- Also remove unplanned/orphan walks which have no schedule entry.
   delete from walks where family_id = fid;
   get diagnostics deleted_walks = row_count;
 
