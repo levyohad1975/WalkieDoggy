@@ -19,6 +19,7 @@ import { touchLastSeen } from './src/lib/requests';
 import { useRequestsStore } from './src/store/requestsStore';
 import { useScheduleStore, reconcileScheduleNotifications } from './src/store/scheduleStore';
 import { useFamilyStore } from './src/store/familyStore';
+import { WalkieMascot } from './src/components/WalkieMascot';
 
 // Reconciles local notifications against the currently loaded schedule store
 // state (A3's authoritative rule: notification content always comes from the
@@ -349,7 +350,8 @@ export default function App() {
     <SafeAreaProvider>
       {!hydrated ? (
         <SafeAreaView style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <WalkieMascot state="excited" size={132} accessibilityLabel="Walkie Doggy טוען את האפליקציה" testID="app-loading-mascot" />
+          <RtlText style={styles.loadingText}>כבר יוצאים לדרך…</RtlText>
         </SafeAreaView>
       ) : (
         <>
@@ -387,6 +389,16 @@ export default function App() {
               turn only ever came from am_i_system_admin() — a fresh,
               server-side check of the real auth identity, not a locally
               cached/guessed value. */}
+          {isSystemAdmin && !shouldEnterSystemAdminDirectly ? (
+            <Pressable
+              style={styles.systemAdminEntry}
+              onPress={() => setSystemAdminOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="פתיחת ניהול המערכת"
+            >
+              <RtlText style={styles.systemAdminEntryText}>🛡️</RtlText>
+            </Pressable>
+          ) : null}
           {!shouldEnterSystemAdminDirectly ? (
             <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} />
           ) : null}
@@ -403,7 +415,8 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
+  center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  loadingText: { color: colors.textSecondary, fontSize: 16, fontWeight: '700', textAlign: 'center' },
   systemAdminEntry: {
     position: 'absolute',
     // Keep the platform-admin shortcut below the branded header so it can
