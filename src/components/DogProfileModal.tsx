@@ -121,7 +121,7 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
                     <RtlText style={styles.primaryText}>{uploading ? 'מעלה…' : displayedPhotoUrl ? 'החלפת תמונה' : 'הוספת תמונה'}</RtlText>
                   </Pressable>
                   {displayedPhotoUrl ? (
-                    <Pressable onPress={() => setRemoveConfirmVisible(true)} disabled={uploading || removing} style={styles.removeButton} accessibilityRole="button">
+                    <Pressable onPress={() => void confirmRemovePhoto()} disabled={uploading || removing} style={styles.removeButton} accessibilityRole="button">
                       <RtlText style={styles.removeText}>הסרת תמונה</RtlText>
                     </Pressable>
                   ) : null}
@@ -142,16 +142,7 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
         </ScrollView>
       </SafeAreaView>
     </Modal>
-    <ConfirmModal
-      visible={removeConfirmVisible}
-      title="הסרת תמונת הכלב"
-      message="להסיר את התמונה ולחזור לכלב של Walkie Doggy?"
-      confirmLabel="הסרה"
-      cancelLabel="ביטול"
-      onConfirm={() => void confirmRemovePhoto()}
-      onCancel={() => !removing && setRemoveConfirmVisible(false)}
-      loading={removing}
-    />
+
     </>
   );
 }
