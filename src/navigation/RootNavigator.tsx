@@ -132,7 +132,7 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
         style={{ flex: 1, minWidth: 0, paddingHorizontal: 2, alignItems: 'center', justifyContent: 'center', gap: 1 }}
       >
         <TabIcon name={name} color={tint} />
-        <RtlText allowFontScaling={false} numberOfLines={1} style={{ fontSize: 10, lineHeight: 13, fontWeight: '600', color: tint, textAlign: 'center', writingDirection: 'rtl', maxWidth: '100%' }}>{TAB_LABEL[name]}</RtlText>
+        <RtlText allowFontScaling={false} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={{ fontSize: 10, lineHeight: 13, fontWeight: '600', color: tint, textAlign: 'center', writingDirection: 'rtl', width: '100%', paddingHorizontal: 1 }}>{TAB_LABEL[name]}</RtlText>
       </Pressable>
     );
   };
