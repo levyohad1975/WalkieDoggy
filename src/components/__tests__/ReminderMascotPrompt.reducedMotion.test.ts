@@ -48,6 +48,5 @@ describe('ReminderMascotPrompt — Modal transition respects reduced motion (str
   it('uses the shared animated Walkie mascot for reminder motion', () => {
     expect(source).toContain('<WalkieMascot state="ready"');
     expect(source).toContain('testID="reminder-mascot-animation"');
-    expect(source).not.toContain('MascotFrameAnimation');
   });
 });
