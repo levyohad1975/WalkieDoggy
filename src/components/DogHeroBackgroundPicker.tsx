@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, View } from 'react-native';
 import type { Dog } from '../types';
 import { DOG_BACKGROUNDS } from '../theme/dogBackgrounds';
 import { colors } from '../theme/colors';
@@ -24,6 +24,8 @@ export function DogHeroBackgroundPicker({ dog, onSave }: { dog: Dog; onSave: (pa
     setSaving(true);
     try {
       await onSave({ heroBackgroundId: draftId });
+    } catch {
+      Alert.alert('לא הצלחנו לשמור את הרקע', 'הרקע לא נשמר בשרת. בדקו את החיבור ונסו שוב.');
     } finally {
       setSaving(false);
     }
