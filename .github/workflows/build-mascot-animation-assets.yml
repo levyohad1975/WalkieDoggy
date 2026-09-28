@@ -5,6 +5,7 @@ on:
     paths:
       - scripts/build_mascot_animation_assets.py
       - .github/workflows/build-mascot-animation-assets.yml
+      - '!assets/mascot-animations/**'
 permissions:
   contents: write
 jobs:
