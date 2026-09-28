@@ -5,6 +5,10 @@ import { motion, radii, spacing } from '../theme/tokens';
 import type { CompletionCelebration } from '../logic/walkCompletionCelebration';
 import { RtlText } from './RtlText';
 import { WalkieMascot } from './WalkieMascot';
+import { MascotSpriteAnimation } from './MascotFrameAnimation';
+import { curatedSpriteForCelebration } from '../mascot/celebrationAnimationManifest';
+
+const FALLBACK_MASCOT = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
 
 interface WalkCompletionCelebrationProps {
   celebration: CompletionCelebration | null;
@@ -55,13 +59,29 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
 
   if (!celebration) return null;
   const message = celebration.title;
+  const sprite = curatedSpriteForCelebration(celebration.id);
   return (
     <Modal visible transparent animationType="none" onRequestClose={onDismiss} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תגובת הקמע של Walkie Doggy Link">
         <Animated.View style={[styles.moment, { opacity, transform: [{ translateY }] }]} accessibilityRole="alert" accessibilityLiveRegion="polite">
           <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
           <View style={styles.tail} />
-          <WalkieMascot state={celebration.mascotState} size={220} accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול" testID="completion-mascot-animation" />
+          {sprite ? (
+            <MascotSpriteAnimation
+              source={sprite.source}
+              columns={sprite.columns}
+              rows={sprite.rows}
+              frameSize={sprite.frameSize}
+              frameCount={sprite.frameCount}
+              fps={sprite.fps}
+              size={220}
+              fallback={FALLBACK_MASCOT}
+              accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול"
+              testID="completion-mascot-animation"
+            />
+          ) : (
+            <WalkieMascot state={celebration.mascotState} size={220} accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול" testID="completion-mascot-animation" />
+          )}
           {celebration.confetti ? <RtlText style={styles.confetti} accessible={false}>✦  ✦  ✦</RtlText> : null}
           {screenReaderEnabled ? (
             <Pressable onPress={onDismiss} style={styles.dismissButton} accessibilityRole="button" accessibilityLabel="המשך לאפליקציה"><RtlText style={styles.dismissText}>המשך</RtlText></Pressable>
