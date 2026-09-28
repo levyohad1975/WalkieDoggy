@@ -777,9 +777,9 @@ export function HomeScreen() {
             accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
           >
             {heroBackground ? <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" /> : null}
-            <View style={styles.dashboardHeroBloomOne} pointerEvents="none" />
-            <View style={styles.dashboardHeroBloomTwo} pointerEvents="none" />
-            <View style={styles.dashboardHeroGlow} pointerEvents="none" />
+            {!heroBackground ? <View style={styles.dashboardHeroBloomOne} pointerEvents="none" /> : null}
+            {!heroBackground ? <View style={styles.dashboardHeroBloomTwo} pointerEvents="none" /> : null}
+            {!heroBackground ? <View style={styles.dashboardHeroGlow} pointerEvents="none" /> : null}
             <View style={styles.dashboardHeroShade} />
             <View style={styles.dashboardHeroGreeting} pointerEvents="none">
               <RtlText style={styles.dashboardHeroGreetingTitle} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.78}>שלום משפחת {family?.name ?? ''}</RtlText>
