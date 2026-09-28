@@ -619,7 +619,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   // Bottom padding increased (final QA round, item F: bottom safe-area/
   // list padding so the last history item isn't hidden behind the tab bar).
-  content: { padding: spacing.xl, gap: spacing.xxl, paddingBottom: spacing.xxxl },
+  content: { paddingHorizontal: spacing.xl, paddingTop: spacing.md, gap: spacing.lg, paddingBottom: spacing.lg },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
   header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   sectionTitle: { width: '100%', ...typography.sectionTitle, fontSize: 18, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
@@ -648,7 +648,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     marginTop: spacing.sm,
   },
-  chipRow: { flexDirection: 'row', ...nativeDirection('rtl'), flexWrap: 'wrap', justifyContent: 'flex-start', gap: spacing.sm, marginTop: spacing.sm },
+  chipRow: { width: '100%', flexDirection: 'row-reverse', flexWrap: 'wrap', justifyContent: 'flex-start', alignSelf: 'stretch', gap: spacing.sm, marginTop: spacing.sm },
   chip: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radii.md, backgroundColor: colors.surfaceMuted },
   chipActive: { backgroundColor: colors.primary },
   chipText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
