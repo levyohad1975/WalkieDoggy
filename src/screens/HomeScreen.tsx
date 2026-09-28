@@ -776,11 +776,16 @@ export function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
           >
-            {heroBackground ? <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" /> : null}
-            {!heroBackground ? <View style={styles.dashboardHeroBloomOne} pointerEvents="none" /> : null}
-            {!heroBackground ? <View style={styles.dashboardHeroBloomTwo} pointerEvents="none" /> : null}
-            {!heroBackground ? <View style={styles.dashboardHeroGlow} pointerEvents="none" /> : null}
-            <View style={styles.dashboardHeroShade} />
+            {heroBackground ? (
+              <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" />
+            ) : (
+              <>
+                <View style={styles.dashboardHeroBloomOne} pointerEvents="none" />
+                <View style={styles.dashboardHeroBloomTwo} pointerEvents="none" />
+                <View style={styles.dashboardHeroGlow} pointerEvents="none" />
+                <View style={styles.dashboardHeroShade} pointerEvents="none" />
+              </>
+            )}
             <View style={styles.dashboardHeroGreeting} pointerEvents="none">
               <RtlText style={styles.dashboardHeroGreetingTitle} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.78}>שלום משפחת {family?.name ?? ''}</RtlText>
               <RtlText style={styles.dashboardHeroGreetingSubtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{dog?.name ?? 'הכלב/ה'} מחכה לטיול הבא 🐾</RtlText>
@@ -1629,7 +1634,7 @@ const styles = StyleSheet.create({
   dashboardHeroCopy: { width: '52%', alignItems: 'flex-end', alignSelf: 'flex-start', paddingTop: 38, paddingHorizontal: spacing.md, zIndex: 2 },
   dashboardHeroEyebrow: { fontSize: 16, color: '#27376F', fontWeight: '700', textAlign: 'right' },
   dashboardHeroName: { fontSize: 30, lineHeight: 36, color: '#16245B', fontWeight: '900', textAlign: 'right' },
-  dashboardAddWalk: { minHeight: 58, borderRadius: 22, backgroundColor: '#FAF7EF', borderWidth: 1, borderColor: '#EAE3D6', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
+  dashboardAddWalk: { minHeight: 58, borderRadius: 22, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EAE3D6', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
   dashboardAddWalkIcon: { width: 34, height: 34, borderRadius: 17, textAlign: 'center', lineHeight: 34, fontSize: 25, fontWeight: '500', color: '#FFFFFF', backgroundColor: '#12A5AB' },
   dashboardAddWalkCopy: { flex: 1, alignItems: 'flex-end' },
   dashboardAddWalkTitle: { fontSize: 17, lineHeight: 21, fontWeight: '700', color: '#0E7E84', textAlign: 'right' },
