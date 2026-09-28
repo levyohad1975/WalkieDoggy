@@ -9,6 +9,7 @@ import { useGpsStore } from '../store/gpsStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { colors } from '../theme/colors';
 import { Button } from '../components/Button';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { DogPhoto } from '../components/DogPhoto';
 import { breakpoints, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { pickAndUploadImage } from '../lib/uploadImage';
@@ -108,6 +109,7 @@ function SettingsScreenContent() {
   const [sharingModalVisible, setSharingModalVisible] = useState(false);
   const [managementVisible, setManagementVisible] = useState(false);
   const [resettingActivity, setResettingActivity] = useState(false);
+  const [resetConfirmStep, setResetConfirmStep] = useState<0 | 1 | 2>(0);
   const isSystemAdmin = useSystemAdminStore((state) => state.isSystemAdmin);
   const systemObserverActive = useAuthStore((state) => state.systemObserverActive);
   const [systemAdminVisible, setSystemAdminVisible] = useState(false);
@@ -520,23 +522,10 @@ function SettingsScreenContent() {
 
   const confirmFamilyActivityReset = () => {
     if (familyRole !== 'admin' || systemObserverActive || resettingActivity) return;
-    const message = 'הפעולה תמחק לצמיתות את כל הטיולים, ההיסטוריה ונתוני ה-GPS של המשפחה. בני המשפחה, הכלבים והגדרת הלו״ז יישמרו. לא ניתן לבטל את הפעולה.';
-    if (Platform.OS === 'web') {
-      const confirm = (globalThis as typeof globalThis & { confirm?: (message?: string) => boolean }).confirm;
-      if (confirm?.(message) && confirm?.('אישור אחרון: לאפס עכשיו את כל נתוני הפעילות של המשפחה?')) void performFamilyActivityReset();
-      return;
-    }
-    Alert.alert('איפוס נתוני המשפחה?', message, [
-      { text: 'ביטול', style: 'cancel' },
-      {
-        text: 'המשך לאישור אחרון',
-        style: 'destructive',
-        onPress: () => Alert.alert('אישור אחרון', 'למחוק עכשיו את כל היסטוריית הפעילות?', [
-          { text: 'ביטול', style: 'cancel' },
-          { text: 'אפס נתונים', style: 'destructive', onPress: () => void performFamilyActivityReset() },
-        ]),
-      },
-    ]);
+    // Use the app's own confirmation modal on every platform. Safari/PWA can
+    // suppress or inconsistently surface nested window.confirm/Alert flows,
+    // which made the destructive reset button appear to do nothing.
+    setResetConfirmStep(1);
   };
 
   const handleSignOut = () => {
@@ -689,6 +678,27 @@ function SettingsScreenContent() {
           <RtlText style={styles.systemAdminFabText}>🛡️</RtlText>
         </Pressable>
       ) : null}
+
+      <ConfirmModal
+        visible={resetConfirmStep === 1}
+        title="איפוס נתוני המשפחה?"
+        message="הפעולה תמחק לצמיתות את כל הטיולים, ההיסטוריה ונתוני ה-GPS של המשפחה. בני המשפחה, הכלבים והגדרת הלו״ז יישמרו. לא ניתן לבטל את הפעולה."
+        confirmLabel="המשך לאישור אחרון"
+        onConfirm={() => setResetConfirmStep(2)}
+        onCancel={() => setResetConfirmStep(0)}
+      />
+      <ConfirmModal
+        visible={resetConfirmStep === 2}
+        title="אישור אחרון"
+        message="למחוק עכשיו את כל היסטוריית הפעילות?"
+        confirmLabel="אפס נתונים"
+        loading={resettingActivity}
+        onConfirm={() => {
+          setResetConfirmStep(0);
+          void performFamilyActivityReset();
+        }}
+        onCancel={() => setResetConfirmStep(0)}
+      />
 
       <SystemAdminScreen visible={systemAdminVisible} onClose={() => setSystemAdminVisible(false)} />
 
