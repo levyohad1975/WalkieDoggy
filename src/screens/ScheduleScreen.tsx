@@ -187,7 +187,19 @@ export function ScheduleScreen() {
   // `sortOrder` column itself is left alone (no migration needed; nothing
   // still reads it for ordering, but other code/back-compat may still rely
   // on the column existing).
-  const sortedRules = useMemo(() => [...visibleRules].sort((a, b) => a.time.localeCompare(b.time)), [visibleRules]);
+  const sortedRules = useMemo(() => {
+    // Defensive UI de-duplication: legacy/raced writes may have persisted
+    // multiple identical recurring slots. A schedule slot is defined by
+    // dog + time + active weekdays; show it once while the server data is
+    // repaired, instead of presenting duplicate editable rows to the user.
+    const unique = new Map<string, ScheduleRule>();
+    for (const rule of visibleRules) {
+      const days = [...(rule.daysOfWeek ?? [])].sort((a, b) => a - b).join(',');
+      const key = `${rule.dogId}|${rule.time}|${days}`;
+      if (!unique.has(key)) unique.set(key, rule);
+    }
+    return [...unique.values()].sort((a, b) => a.time.localeCompare(b.time));
+  }, [visibleRules]);
 
   const editingWalk = editingWalkId ? walks.find((w) => w.id === editingWalkId) ?? null : null;
   const otherPendingWalks = useMemo(() => {
