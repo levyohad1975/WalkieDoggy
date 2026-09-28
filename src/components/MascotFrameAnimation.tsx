@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Image, type ImageSourcePropType } from 'react-native';
+import { AccessibilityInfo, Image, View, type ImageSourcePropType } from 'react-native';
 
 export interface MascotFrameAnimationProps {
   frames: ImageSourcePropType[];
@@ -97,16 +97,16 @@ export function MascotSpriteAnimation({ source, columns, rows, frameSize, frameC
   const column = frameIndex % columns;
   const row = Math.floor(frameIndex / columns);
   return (
-    <Image
-      testID={testID}
-      source={source}
-      accessibilityLabel={accessibilityLabel}
-      resizeMode="stretch"
-      style={{
-        width: columns * size,
-        height: rows * size,
-        transform: [{ translateX: -column * size }, { translateY: -row * size }],
-      }}
-    />
+    <View testID={testID} accessibilityLabel={accessibilityLabel} style={{ width: size, height: size, overflow: 'hidden' }}>
+      <Image
+        source={source}
+        resizeMode="stretch"
+        style={{
+          width: columns * size,
+          height: rows * size,
+          transform: [{ translateX: -column * size }, { translateY: -row * size }],
+        }}
+      />
+    </View>
   );
 }
