@@ -454,14 +454,14 @@ const styles = StyleSheet.create({
   // Use an intentionally wider central gutter and inset both columns so the
   // assignee circle reads as its own block instead of touching the time.
   dashboardMainRow: { gap: 34, paddingHorizontal: 10, marginTop: 4, marginBottom: 10, minHeight: 82 },
-  dashboardThreeColumnRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, marginBottom: 14, minHeight: 96, gap: 10 },
-  dashboardPersonColumn: { flex: 0.9, alignItems: 'center', justifyContent: 'center', gap: 3, minWidth: 0 },
+  dashboardThreeColumnRow: { flexDirection: 'row', alignItems: 'stretch', justifyContent: 'space-between', marginTop: 8, marginBottom: 14, minHeight: 112, gap: 0 },
+  dashboardPersonColumn: { flex: 0.9, alignItems: 'center', justifyContent: 'center', gap: 3, minWidth: 0, paddingHorizontal: 8 },
   dashboardPersonName: { fontSize: 16, fontWeight: '800', color: '#17345B', textAlign: 'center' },
   dashboardColumnLabel: { fontSize: 11, fontWeight: '600', color: '#7B746B', textAlign: 'center' },
-  dashboardTimeColumn: { flex: 1.05, alignItems: 'center', justifyContent: 'center', minWidth: 0, borderLeftWidth: 1, borderRightWidth: 1, borderColor: '#CBE9EC', paddingHorizontal: 8 },
+  dashboardTimeColumn: { flex: 1.05, alignItems: 'center', justifyContent: 'center', minWidth: 0, borderLeftWidth: 1, borderRightWidth: 1, borderColor: '#D9D3C8', paddingHorizontal: 12 },
   dashboardTime: { fontSize: 38, fontWeight: '900', color: '#171717', fontVariant: ['tabular-nums'], textAlign: 'center' },
   dashboardDate: { fontSize: 13, fontWeight: '700', color: '#7B746B', marginTop: 2, textAlign: 'center' },
-  dashboardCountdownColumn: { flex: 1.15, alignItems: 'center', justifyContent: 'center', minWidth: 0 },
+  dashboardCountdownColumn: { flex: 1.15, alignItems: 'center', justifyContent: 'center', minWidth: 0, paddingHorizontal: 8 },
   personBlock: { flex: 1, alignItems: 'flex-end', gap: 5, minWidth: 0, paddingStart: 8 },
   personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'left' },
   responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'left' },
@@ -483,7 +483,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   requestStatusApproved: { color: colors.statusDone },
-  linkRow: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 8, minHeight: 42, borderRadius: 18, backgroundColor: '#DDF2F4', paddingHorizontal: 12 },
+  linkRow: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 10, minHeight: 50, borderRadius: 22, backgroundColor: '#F7F4EE', paddingHorizontal: 14 },
   linkText: { color: '#17345B', fontSize: 13, fontWeight: '600' },
   linkDivider: { color: colors.textSecondary },
 });
