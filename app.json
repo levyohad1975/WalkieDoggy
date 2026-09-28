@@ -63,7 +63,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/splash.png",
+          "image": "./assets/branding/walkie-doggy-mascot-transparent.png",
           "backgroundColor": "#FBF8F3",
           "resizeMode": "contain",
           "imageWidth": 320
