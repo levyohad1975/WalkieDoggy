@@ -56,7 +56,7 @@ function two(n: number): string {
  * zero behavior change on either platform (web already dropped the key;
  * native still gets it).
  */
-export function Countdown({ target, now }: { target: Date; now?: Date }) {
+export function Countdown({ target, now, compact = false }: { target: Date; now?: Date; compact?: boolean }) {
   const [tick, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setTick((n) => n + 1), 1000);
@@ -73,32 +73,32 @@ export function Countdown({ target, now }: { target: Date; now?: Date }) {
   const LRM = '‎';
 
   return (
-    <View style={styles.wrapper}>
+    <View style={[styles.wrapper, compact && styles.compactWrapper]}>
       <View style={styles.row}>
-        <RtlText style={styles.segment} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
+        <RtlText style={[styles.segment, compact && styles.compactSegment]} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
           {LRM}{two(hours)}{LRM}
         </RtlText>
-        <RtlText style={styles.colon} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
+        <RtlText style={[styles.colon, compact && styles.compactColon]} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
           :
         </RtlText>
-        <RtlText style={styles.segment} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
+        <RtlText style={[styles.segment, compact && styles.compactSegment]} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
           {LRM}{two(minutes)}{LRM}
         </RtlText>
         <RtlText style={styles.colon} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
           :
         </RtlText>
-        <RtlText style={styles.segment} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
+        <RtlText style={[styles.segment, compact && styles.compactSegment]} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
           {LRM}{two(seconds)}{LRM}
         </RtlText>
       </View>
       <View style={styles.labelRow}>
-        <RtlText style={styles.label} maxFontSizeMultiplier={LABEL_MAX_FONT_SCALE}>
+        <RtlText style={[styles.label, compact && styles.compactLabel]} maxFontSizeMultiplier={LABEL_MAX_FONT_SCALE}>
           שעות
         </RtlText>
-        <RtlText style={styles.label} maxFontSizeMultiplier={LABEL_MAX_FONT_SCALE}>
+        <RtlText style={[styles.label, compact && styles.compactLabel]} maxFontSizeMultiplier={LABEL_MAX_FONT_SCALE}>
           דקות
         </RtlText>
-        <RtlText style={styles.label} maxFontSizeMultiplier={LABEL_MAX_FONT_SCALE}>
+        <RtlText style={[styles.label, compact && styles.compactLabel]} maxFontSizeMultiplier={LABEL_MAX_FONT_SCALE}>
           שניות
         </RtlText>
       </View>
@@ -163,6 +163,10 @@ const styles = StyleSheet.create({
   // so the labels row can never end up reversed relative to the digits
   // row it must stay aligned under.
   labelRow: { flexDirection: 'row', ...nativeDirection('ltr'), justifyContent: 'space-between', marginTop: 2 },
+  compactWrapper: { alignItems: 'center' },
+  compactSegment: { fontSize: 18, minWidth: 30 },
+  compactColon: { fontSize: 16, marginHorizontal: 0 },
+  compactLabel: { fontSize: 9, minWidth: 30 },
   label: {
     fontSize: 10,
     color: colors.textSecondary,
