@@ -1285,8 +1285,9 @@ export function HomeScreen() {
       <WalkCompletionCelebration
         celebration={celebration}
         onDismiss={() => {
+          // A walk completion is one brief, self-closing moment. Do not
+          // chain another mascot overlay from the dismiss action.
           setCelebration(null);
-          showNextAchievementCelebration();
         }}
       />
 
