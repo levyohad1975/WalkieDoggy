@@ -74,7 +74,7 @@ export function Countdown({ target, now, compact = false }: { target: Date; now?
 
   return (
     <View style={[styles.wrapper, compact && styles.compactWrapper]}>
-      <View style={styles.row}>
+      <View style={[styles.row, compact && styles.compactRow]}>
         <RtlText style={[styles.segment, compact && styles.compactSegment]} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
           {LRM}{two(hours)}{LRM}
         </RtlText>
@@ -84,14 +84,14 @@ export function Countdown({ target, now, compact = false }: { target: Date; now?
         <RtlText style={[styles.segment, compact && styles.compactSegment]} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
           {LRM}{two(minutes)}{LRM}
         </RtlText>
-        <RtlText style={styles.colon} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
+        <RtlText style={[styles.colon, compact && styles.compactColon]} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
           :
         </RtlText>
         <RtlText style={[styles.segment, compact && styles.compactSegment]} maxFontSizeMultiplier={SEGMENT_MAX_FONT_SCALE}>
           {LRM}{two(seconds)}{LRM}
         </RtlText>
       </View>
-      <View style={styles.labelRow}>
+      <View style={[styles.labelRow, compact && styles.compactLabelRow]}>
         <RtlText style={[styles.label, compact && styles.compactLabel]} maxFontSizeMultiplier={LABEL_MAX_FONT_SCALE}>
           שעות
         </RtlText>
@@ -163,10 +163,12 @@ const styles = StyleSheet.create({
   // so the labels row can never end up reversed relative to the digits
   // row it must stay aligned under.
   labelRow: { flexDirection: 'row', ...nativeDirection('ltr'), justifyContent: 'space-between', marginTop: 2 },
-  compactWrapper: { alignItems: 'center' },
-  compactSegment: { fontSize: 18, minWidth: 30 },
-  compactColon: { fontSize: 16, marginHorizontal: 0 },
-  compactLabel: { fontSize: 9, minWidth: 30 },
+  compactWrapper: { alignItems: 'center', width: '100%' },
+  compactRow: { width: '100%', justifyContent: 'space-between', alignItems: 'center' },
+  compactLabelRow: { width: '100%', justifyContent: 'space-between', marginTop: 4 },
+  compactSegment: { fontSize: 20, minWidth: 34, backgroundColor: '#DDEFFC', borderRadius: 9, paddingVertical: 5, overflow: 'hidden' },
+  compactColon: { fontSize: 18, marginHorizontal: 0, color: '#17345B' },
+  compactLabel: { fontSize: 9, minWidth: 34 },
   label: {
     fontSize: 10,
     color: colors.textSecondary,
