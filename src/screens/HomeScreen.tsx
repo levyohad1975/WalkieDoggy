@@ -1039,7 +1039,7 @@ export function HomeScreen() {
               <View style={styles.dashboardTimelinePeople}>
                 {dashboardTimelineWalks.map((walk) => (
                   <View key={walk.id} style={[styles.dashboardTimelineStop, walk.status === 'done' && styles.dashboardTimelineStopDone, walk.status === 'skipped' && styles.dashboardTimelineStopSkipped, walk.status === 'in_progress' && styles.dashboardTimelineStopActive]}>
-                    <Avatar emoji={usersById[walk.responsibleUserId]?.avatar ?? '🐾'} color={usersById[walk.responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[walk.responsibleUserId]?.photoUrl} size={34} />
+                    <Avatar emoji={usersById[walk.responsibleUserId]?.avatar ?? '🐾'} color={usersById[walk.responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[walk.responsibleUserId]?.photoUrl} size={26} />
                   </View>
                 ))}
               </View>
