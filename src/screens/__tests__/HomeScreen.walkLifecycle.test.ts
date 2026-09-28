@@ -67,7 +67,7 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain("walk.status === 'skipped'");
     expect(home).toContain("walk.status === 'in_progress'");
     expect(home).toContain('scrollEnabled');
-    expect(home).toContain('paddingBottom: 120');
+    expect(home).toContain('paddingBottom: 24');
     expect(home).not.toContain('style={styles.dashboardMoreButton}');
   });
 
@@ -79,15 +79,15 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('onPress={openRequestsInbox}');
   });
 
-  it('keeps the approved Home content order and calm cream/teal dashboard direction', () => {
+  it('keeps the approved Home content order with white supporting cards and teal actions', () => {
     const lastWalkIndex = home.indexOf('style={styles.dashboardLastWalk}');
     const addWalkIndex = home.indexOf('style={styles.dashboardAddWalk}');
     const timelineIndex = home.indexOf('style={styles.dashboardTimeline}');
     expect(lastWalkIndex).toBeGreaterThan(-1);
     expect(lastWalkIndex).toBeLessThan(addWalkIndex);
     expect(addWalkIndex).toBeLessThan(timelineIndex);
-    expect(home).toContain("dashboardLastWalk: { minHeight: 108, borderRadius: 24, backgroundColor: '#FAF7EF'");
-    expect(home).toContain("dashboardAddWalk: { minHeight: 58, borderRadius: 22, backgroundColor: '#FAF7EF'");
+    expect(home).toContain("dashboardLastWalk: { minHeight: 92, borderRadius: 24, backgroundColor: '#FFFFFF'");
+    expect(home).toContain("dashboardAddWalk: { minHeight: 58, borderRadius: 22, backgroundColor: '#FFFFFF'");
     expect(home).toContain("backgroundColor: '#12A5AB'");
     expect(home).not.toContain('#4A43B6');
   });
