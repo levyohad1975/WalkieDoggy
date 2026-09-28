@@ -29,7 +29,8 @@ describe('ScheduleScreen multi-dog wiring (structural)', () => {
       /const visibleRules = useMemo\(\s*\n\s*\(\) => \(dogs\.length > 1 && dog \? rules\.filter\(\(r\) => r\.dogId === dog\.id\) : rules\),/
     );
     expect(source).toContain("(w) => (w.status === 'pending' || w.status === 'in_progress') && inRange(w.date, range)");
-    expect(source).toContain('[...visibleRules].sort((a, b) => a.time.localeCompare(b.time))');
+    expect(source).toContain('for (const rule of visibleRules)');
+    expect(source).toContain('return [...unique.values()].sort((a, b) => a.time.localeCompare(b.time))');
   });
 
   it('the edit-walk "swap with" candidate list only offers walks belonging to the SAME dog as the one being edited', () => {
