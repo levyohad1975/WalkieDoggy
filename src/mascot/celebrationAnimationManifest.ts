@@ -53,3 +53,39 @@ export const CELEBRATION_ANIMATION_MANIFEST: CelebrationAnimationManifestEntry[]
 export function animationManifestFor(definition: Pick<CelebrationDefinition, 'id'>) {
   return CELEBRATION_ANIMATION_MANIFEST.find((entry) => entry.id === definition.id);
 }
+
+
+/**
+ * Curated sprite sheets generated from the approved OpenArt source videos.
+ * Each sheet is 6 columns x 4 rows, 256px cells, 24 frames with alpha.
+ * Only QA-approved source clips are listed here; rejected lick/anatomy clips
+ * intentionally have no production entry.
+ */
+export const CURATED_MASCOT_SPRITE_SHEETS = {
+  'high-five': {
+    source: require('../../assets/mascot-animations/high-five.png'),
+    columns: 6,
+    rows: 4,
+    frameSize: 256,
+    frameCount: 24,
+    fps: 12,
+    transparent: true,
+  },
+  'tail-wag': {
+    source: require('../../assets/mascot-animations/tail-wag.png'),
+    columns: 6,
+    rows: 4,
+    frameSize: 256,
+    frameCount: 24,
+    fps: 12,
+    transparent: true,
+  },
+} as const;
+
+export type CuratedMascotSpriteId = keyof typeof CURATED_MASCOT_SPRITE_SHEETS;
+
+export function curatedSpriteForCelebration(id: string) {
+  if (id === 'high-five') return CURATED_MASCOT_SPRITE_SHEETS['high-five'];
+  if (id === 'paw-party' || id === 'happy-jump' || id === 'thank-you-heart') return CURATED_MASCOT_SPRITE_SHEETS['tail-wag'];
+  return undefined;
+}
