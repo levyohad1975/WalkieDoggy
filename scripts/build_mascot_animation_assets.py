@@ -1,5 +1,5 @@
 from pathlib import Path
-from urllib.request import urlretrieve
+from urllib.request import Request, urlopen
 import math
 import cv2
 import numpy as np
@@ -46,7 +46,9 @@ def dark_alpha(image):
 
 def build(name, url, key):
     source = TMP / f"{name}.mp4"
-    urlretrieve(url, source)
+    request = Request(url, headers={'User-Agent': 'Mozilla/5.0', 'Referer': 'https://openart.ai/'})
+    with urlopen(request, timeout=60) as response, source.open('wb') as target:
+        target.write(response.read())
     capture = cv2.VideoCapture(str(source))
     frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
     # 24 evenly spaced frames across the useful first ~82% avoids vendor outro artifacts.
