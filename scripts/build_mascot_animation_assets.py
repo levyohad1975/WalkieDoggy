@@ -12,6 +12,12 @@ TMP.mkdir(parents=True, exist_ok=True)
 SOURCES = {
     "high-five": ("https://cdn.openart.ai/openart-ai/production/2026-09/create-video/f6N0OYGzjtkDgE5CBQMe/a95872e1-65a2-466c-b6ab-cf1d51af6ef3_seed1544010566_1790576483873_24f3dace.mp4", "dark"),
     "tail-wag": ("https://cdn.openart.ai/openart-ai/production/2026-09/create-video/f6N0OYGzjtkDgE5CBQMe/1762dc12-8b4c-47fa-a3ac-d5ecbfb47016_seed1537550348_1790583184633_44f147e4.mp4", "green"),
+    "leash-ready": ("https://cdn.openart.ai/openart-ai/production/2026-09/create-video/f6N0OYGzjtkDgE5CBQMe/9ac857d9-8928-40e6-8594-a4cac4aced9b_seed1707045533_1790584487866_7c84f43b.mp4", "green"),
+    "trophy-winner": ("https://cdn.openart.ai/openart-ai/production/2026-09/create-video/f6N0OYGzjtkDgE5CBQMe/1a651d11-7ebf-4743-b728-484209cea004_seed656266642_1790585581824_f54f9367.mp4", "green"),
+    "peek-a-boo": ("https://cdn.openart.ai/openart-ai/production/2026-09/create-video/f6N0OYGzjtkDgE5CBQMe/f73698f8-98e8-49a0-a56c-39d884fad374_seed617026751_1790591188848_aadd073a.mp4", "green"),
+    "sleepy-good-night": ("https://cdn.openart.ai/openart-ai/production/2026-09/create-video/f6N0OYGzjtkDgE5CBQMe/7328898d-6285-4c1c-9197-32feee01da9f_seed405260667_1790592881657_7c9869fc.mp4", "green"),
+    "curious-listen": ("https://cdn.openart.ai/openart-ai/production/2026-09/create-video/f6N0OYGzjtkDgE5CBQMe/dd0a4381-0264-41c5-9871-8cbeb27274d5_seed2034952831_1790599243295_77eb8a7a.mp4", "green"),
+    "happy-spin": ("https://cdn.openart.ai/openart-ai/production/2026-09/create-video/f6N0OYGzjtkDgE5CBQMe/0773194a-06de-407d-8b32-a7abf5afba75_seed1350518569_1790602193521_3cdb302f.mp4", "green"),
 }
 
 def connected_border(mask):
