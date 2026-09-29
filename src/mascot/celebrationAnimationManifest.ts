@@ -86,6 +86,8 @@ export type CuratedMascotSpriteId = keyof typeof CURATED_MASCOT_SPRITE_SHEETS;
 
 export function curatedSpriteForCelebration(id: string) {
   if (id === 'high-five') return CURATED_MASCOT_SPRITE_SHEETS['high-five'];
-  if (id === 'paw-party' || id === 'happy-jump' || id === 'thank-you-heart') return CURATED_MASCOT_SPRITE_SHEETS['tail-wag'];
+  // Tail-wag is intentionally not reused as a stand-in for unrelated
+  // celebrations. Distinct moments keep their branded static fallback until
+  // their own QA-approved animation asset is available.
   return undefined;
 }
