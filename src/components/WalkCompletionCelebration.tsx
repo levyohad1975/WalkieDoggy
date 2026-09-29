@@ -79,13 +79,13 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
               frameSize={sprite.frameSize}
               frameCount={sprite.frameCount}
               fps={sprite.fps}
-              size={220}
+              size={138}
               fallback={FALLBACK_MASCOT}
               accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול"
               testID="completion-mascot-animation"
             />
           ) : (
-            <WalkieMascot state={celebration.mascotState} size={220} accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול" testID="completion-mascot-animation" />
+            <WalkieMascot state={celebration.mascotState} size={138} accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול" testID="completion-mascot-animation" />
           )}
           {celebration.confetti ? <RtlText style={styles.confetti} accessible={false}>✦  ✦  ✦</RtlText> : null}
           {screenReaderEnabled ? (
@@ -98,12 +98,12 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(11, 39, 48, 0.34)', alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
-  moment: { width: '100%', maxWidth: 420, alignItems: 'center' },
-  bubble: { maxWidth: 285, backgroundColor: colors.surface, borderRadius: radii.xl, paddingHorizontal: spacing.xl, paddingVertical: 13, shadowColor: '#0B5C75', shadowOpacity: 0.16, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 6 },
-  message: { color: colors.textPrimary, fontSize: 20, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
+  backdrop: { flex: 1, backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'flex-start', paddingHorizontal: spacing.xl, paddingTop: 210 },
+  moment: { width: '100%', maxWidth: 300, alignItems: 'center' },
+  bubble: { maxWidth: 250, backgroundColor: colors.surface, borderRadius: radii.xl, paddingHorizontal: spacing.lg, paddingVertical: 9, shadowColor: '#0B5C75', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 4 },
+  message: { color: colors.textPrimary, fontSize: 17, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
   tail: { width: 20, height: 20, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }, { translateY: -10 }], marginBottom: -12 },
-  confetti: { position: 'absolute', top: 85, color: colors.primary, fontSize: 24, letterSpacing: 10 },
+  confetti: { position: 'absolute', top: 64, color: colors.primary, fontSize: 24, letterSpacing: 10 },
   dismissButton: { minHeight: 44, paddingHorizontal: 18, justifyContent: 'center', marginTop: -6 },
   dismissText: { color: colors.textInverse, fontWeight: '700', fontSize: 14 },
 });
