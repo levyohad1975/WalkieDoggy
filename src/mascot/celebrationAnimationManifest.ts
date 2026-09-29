@@ -102,6 +102,6 @@ export type CuratedMascotSpriteId = keyof typeof CURATED_MASCOT_SPRITE_SHEETS;
  * React Native style; using the approved transparent mascot is the safe
  * runtime fallback and guarantees no black rectangle behind the character.
  */
-export function curatedSpriteForCelebration(_id: string) {
+export function curatedSpriteForCelebration(_id: string): (typeof CURATED_MASCOT_SPRITE_SHEETS)[CuratedMascotSpriteId] | undefined {
   return undefined;
 }
