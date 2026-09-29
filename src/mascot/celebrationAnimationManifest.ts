@@ -65,21 +65,46 @@ export function animationManifestFor(definition: Pick<CelebrationDefinition, 'id
 export const CURATED_MASCOT_SPRITE_SHEETS = {
   'high-five': {
     source: require('../../assets/mascot-animations/high-five.png'),
-    columns: 6,
-    rows: 4,
-    frameSize: 256,
-    frameCount: 24,
-    fps: 12,
-    transparent: true,
+    columns: 6, rows: 4, frameSize: 256, frameCount: 24, fps: 12, transparent: true,
+  },
+  'happy-spin': {
+    source: require('../../assets/mascot-animations/happy-spin.png'),
+    columns: 6, rows: 4, frameSize: 256, frameCount: 24, fps: 12, transparent: true,
+  },
+  'trophy-winner': {
+    source: require('../../assets/mascot-animations/trophy-winner.png'),
+    columns: 6, rows: 4, frameSize: 256, frameCount: 24, fps: 12, transparent: true,
+  },
+  'sleepy-good-night': {
+    source: require('../../assets/mascot-animations/sleepy-good-night.png'),
+    columns: 6, rows: 4, frameSize: 256, frameCount: 24, fps: 12, transparent: true,
+  },
+  'peek-a-boo': {
+    source: require('../../assets/mascot-animations/peek-a-boo.png'),
+    columns: 6, rows: 4, frameSize: 256, frameCount: 24, fps: 12, transparent: true,
+  },
+  'leash-ready': {
+    source: require('../../assets/mascot-animations/leash-ready.png'),
+    columns: 6, rows: 4, frameSize: 256, frameCount: 24, fps: 12, transparent: true,
+  },
+  'curious-listen': {
+    source: require('../../assets/mascot-animations/curious-listen.png'),
+    columns: 6, rows: 4, frameSize: 256, frameCount: 24, fps: 12, transparent: true,
   },
 } as const;
 
 export type CuratedMascotSpriteId = keyof typeof CURATED_MASCOT_SPRITE_SHEETS;
 
 export function curatedSpriteForCelebration(id: string) {
-  if (id === 'high-five') return CURATED_MASCOT_SPRITE_SHEETS['high-five'];
-  // Tail-wag is intentionally not reused as a stand-in for unrelated
-  // celebrations. Distinct moments keep their branded static fallback until
-  // their own QA-approved animation asset is available.
-  return undefined;
+  switch (id) {
+    case 'high-five': return CURATED_MASCOT_SPRITE_SHEETS['high-five'];
+    case 'happy-jump':
+    case 'paw-party': return CURATED_MASCOT_SPRITE_SHEETS['happy-spin'];
+    case 'trophy-teaser': return CURATED_MASCOT_SPRITE_SHEETS['trophy-winner'];
+    case 'sleepy-good-night': return CURATED_MASCOT_SPRITE_SHEETS['sleepy-good-night'];
+    case 'special-surprise': return CURATED_MASCOT_SPRITE_SHEETS['peek-a-boo'];
+    case 'long-walk': return CURATED_MASCOT_SPRITE_SHEETS['leash-ready'];
+    case 'confetti': return CURATED_MASCOT_SPRITE_SHEETS['curious-listen'];
+    default: return undefined;
+  }
 }
