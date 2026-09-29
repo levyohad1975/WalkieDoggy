@@ -98,11 +98,11 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'flex-start', paddingHorizontal: spacing.xl, paddingTop: 210 },
-  moment: { width: '100%', maxWidth: 300, alignItems: 'center' },
-  bubble: { maxWidth: 250, backgroundColor: colors.surface, borderRadius: radii.xl, paddingHorizontal: spacing.lg, paddingVertical: 9, shadowColor: '#0B5C75', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 4 },
-  message: { color: colors.textPrimary, fontSize: 17, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
-  tail: { width: 20, height: 20, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }, { translateY: -10 }], marginBottom: -12 },
+  backdrop: { flex: 1, backgroundColor: 'transparent', alignItems: 'flex-end', justifyContent: 'flex-start', paddingHorizontal: 14, paddingTop: 150 },
+  moment: { width: 150, alignItems: 'center' },
+  bubble: { maxWidth: 150, backgroundColor: colors.surface, borderRadius: radii.lg, paddingHorizontal: 10, paddingVertical: 7, shadowColor: '#0B5C75', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
+  message: { color: colors.textPrimary, fontSize: 14, lineHeight: 18, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
+  tail: { width: 14, height: 14, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }, { translateY: -10 }], marginBottom: -12 },
   confetti: { position: 'absolute', top: 64, color: colors.primary, fontSize: 24, letterSpacing: 10 },
   dismissButton: { minHeight: 44, paddingHorizontal: 18, justifyContent: 'center', marginTop: -6 },
   dismissText: { color: colors.textInverse, fontWeight: '700', fontSize: 14 },
