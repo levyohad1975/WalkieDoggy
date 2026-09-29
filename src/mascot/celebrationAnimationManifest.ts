@@ -95,16 +95,13 @@ export const CURATED_MASCOT_SPRITE_SHEETS = {
 
 export type CuratedMascotSpriteId = keyof typeof CURATED_MASCOT_SPRITE_SHEETS;
 
-export function curatedSpriteForCelebration(id: string) {
-  switch (id) {
-    case 'high-five': return CURATED_MASCOT_SPRITE_SHEETS['high-five'];
-    case 'happy-jump':
-    case 'paw-party': return CURATED_MASCOT_SPRITE_SHEETS['happy-spin'];
-    case 'trophy-teaser': return CURATED_MASCOT_SPRITE_SHEETS['trophy-winner'];
-    case 'sleepy-good-night': return CURATED_MASCOT_SPRITE_SHEETS['sleepy-good-night'];
-    case 'special-surprise': return CURATED_MASCOT_SPRITE_SHEETS['peek-a-boo'];
-    case 'long-walk': return CURATED_MASCOT_SPRITE_SHEETS['leash-ready'];
-    case 'confetti': return CURATED_MASCOT_SPRITE_SHEETS['curious-listen'];
-    default: return undefined;
-  }
+/**
+ * The generated sprite sheets are retained as source/QA assets, but are not
+ * served at runtime until every frame pack passes transparent-alpha visual QA
+ * on Safari/iOS. A sheet with flattened black pixels cannot be repaired by a
+ * React Native style; using the approved transparent mascot is the safe
+ * runtime fallback and guarantees no black rectangle behind the character.
+ */
+export function curatedSpriteForCelebration(_id: string) {
+  return undefined;
 }
