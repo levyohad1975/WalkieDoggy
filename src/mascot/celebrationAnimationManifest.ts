@@ -58,21 +58,13 @@ export function animationManifestFor(definition: Pick<CelebrationDefinition, 'id
 /**
  * Curated sprite sheets generated from the approved OpenArt source videos.
  * Each sheet is 6 columns x 4 rows, 256px cells, 24 frames with alpha.
- * Only QA-approved source clips are listed here; rejected lick/anatomy clips
- * intentionally have no production entry.
+ * Only animations that have a distinct production use are exposed here.
+ * Extracted source sprites can remain in assets for QA without becoming
+ * runtime celebrations.
  */
 export const CURATED_MASCOT_SPRITE_SHEETS = {
   'high-five': {
     source: require('../../assets/mascot-animations/high-five.png'),
-    columns: 6,
-    rows: 4,
-    frameSize: 256,
-    frameCount: 24,
-    fps: 12,
-    transparent: true,
-  },
-  'tail-wag': {
-    source: require('../../assets/mascot-animations/tail-wag.png'),
     columns: 6,
     rows: 4,
     frameSize: 256,
