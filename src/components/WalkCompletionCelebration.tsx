@@ -22,6 +22,11 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
   // screen reader user who somehow isn't detected in time still gets the
   // explicit dismiss button/backdrop, never a permanently-stuck modal).
   const [screenReaderEnabled, setScreenReaderEnabled] = useState(false);
+  const dismissRef = useRef(onDismiss);
+
+  useEffect(() => {
+    dismissRef.current = onDismiss;
+  }, [onDismiss]);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(18)).current;
 
@@ -53,9 +58,9 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
     // The celebration animation itself is ~1.8s. Give it a short beat to
     // settle, then return to the app without asking the family to tap
     // "המשך" after every walk.
-    const timer = setTimeout(onDismiss, 2400);
+    const timer = setTimeout(() => dismissRef.current(), 2400);
     return () => clearTimeout(timer);
-  }, [celebration, onDismiss, opacity, reducedMotion, translateY, screenReaderEnabled]);
+  }, [celebration, opacity, reducedMotion, translateY, screenReaderEnabled]);
 
   if (!celebration) return null;
   const message = celebration.title;
