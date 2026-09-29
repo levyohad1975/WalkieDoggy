@@ -556,11 +556,38 @@ export class SupabaseRepository implements Repository {
 
   async addScheduleEntries(entries: ScheduleEntry[]): Promise<void> {
     if (entries.length === 0) return;
-    const { error } = await this.client.from('schedule_entries').upsert(entries.map(fromEntry), {
+    const rows = entries.map(fromEntry);
+    const { error } = await this.client.from('schedule_entries').upsert(rows, {
       onConflict: 'dog_id,date,time',
       ignoreDuplicates: true,
     });
     if (error) throw error;
+
+    // The unique key is (dog_id,date,time), so ignoreDuplicates can keep an
+    // already-existing canonical row whose id differs from the locally
+    // generated id. A dependent walk must reference that canonical server id,
+    // not the discarded generated id. Re-read the touched keys and copy the
+    // authoritative ids back into the caller's entry objects before
+    // scheduleStore creates child walks from them.
+    const dogIds = [...new Set(rows.map((row) => row.dog_id))];
+    const dates = [...new Set(rows.map((row) => row.date))];
+    const times = [...new Set(rows.map((row) => row.time))];
+    const { data: canonicalRows, error: readError } = await this.client
+      .from('schedule_entries')
+      .select('id,dog_id,date,time')
+      .in('dog_id', dogIds)
+      .in('date', dates)
+      .in('time', times);
+    if (readError) throw readError;
+
+    const canonicalByKey = new Map(
+      (canonicalRows ?? []).map((row) => [`${row.dog_id}|${row.date}|${row.time}`, row.id])
+    );
+    for (const entry of entries) {
+      const canonicalId = canonicalByKey.get(`${entry.dogId}|${entry.date}|${entry.time}`);
+      if (!canonicalId) throw new Error('Schedule entry was not persisted authoritatively');
+      entry.id = canonicalId;
+    }
   }
 
   async updateScheduleEntry(entry: ScheduleEntry): Promise<void> {
