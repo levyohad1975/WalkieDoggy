@@ -82,7 +82,7 @@ const styles = StyleSheet.create({
   tile: { width: '48%', height: 88, borderRadius: radii.md, overflow: 'hidden', borderWidth: 3, borderColor: 'transparent', position: 'relative' },
   selected: { borderColor: colors.primaryDark },
   defaultTile: { backgroundColor: '#F8F4EA' },
-  defaultPreview: { ...StyleSheet.absoluteFillObject, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  defaultPreview: { ...StyleSheet.absoluteFill, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   defaultBloomOne: { position: 'absolute', width: 110, height: 110, borderRadius: 55, left: -30, bottom: -55, backgroundColor: '#E8F3E8' },
   defaultBloomTwo: { position: 'absolute', width: 100, height: 100, borderRadius: 50, right: -28, top: -52, backgroundColor: '#DDEFE8' },
   defaultIcon: { fontSize: 28 },
