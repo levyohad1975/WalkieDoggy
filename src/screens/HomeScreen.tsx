@@ -799,10 +799,6 @@ export function HomeScreen() {
                 <View style={styles.dashboardHeroShade} pointerEvents="none" />
               </>
             )}
-            <View style={styles.dashboardHeroGreeting} pointerEvents="none">
-              <RtlText style={styles.dashboardHeroGreetingTitle} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.78}>שלום משפחת {family?.name ?? ''}</RtlText>
-              <RtlText style={styles.dashboardHeroGreetingSubtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{dog?.name ?? 'הכלב/ה'} מחכה לטיול הבא 🐾</RtlText>
-            </View>
             {showDogCutout ? <Image source={{ uri: dog!.photoCutoutUrl! }} style={styles.dashboardHeroDogCutout} resizeMode="contain" onError={() => setHeroCutoutFailed(true)} /> : null}
             {!showDogCutout && showPersonalHero ? <Image source={{ uri: dog!.photoUrl! }} style={styles.dashboardHeroDogPhoto} resizeMode="cover" onError={() => setHeroPhotoFailed(true)} /> : null}
             {!showDogCutout && !showPersonalHero ? (
