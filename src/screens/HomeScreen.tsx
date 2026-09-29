@@ -173,6 +173,7 @@ export function HomeScreen() {
   // navigation or the completion action itself (markDone already resolved
   // by the time this is set), auto-dismisses on its own.
   const [celebration, setCelebration] = useState<CompletionCelebration | null>(null);
+  const suppressAchievementPopupRef = useRef(false);
   const [recentCelebrationIds, setRecentCelebrationIds] = useState<string[]>([]);
   // A notification response can arrive before Home's family/schedule data is
   // ready on a cold start. Keep the validated event, not a prematurely built
@@ -186,6 +187,7 @@ export function HomeScreen() {
         durationMinutes,
         recentIds: recentCelebrationIds,
       });
+      suppressAchievementPopupRef.current = true;
       setCelebration(picked);
       setRecentCelebrationIds((previous) => [picked.id, ...previous.filter((id) => id !== picked.id)].slice(0, 3));
     } catch {
@@ -323,7 +325,18 @@ export function HomeScreen() {
   }, [gamificationEnabled, buildAchievementCelebration]);
   const newlyUnlockedAchievementCount = useAchievementStore((s) => s.newlyUnlocked.length);
   useEffect(() => {
-    if (newlyUnlockedAchievementCount > 0 && !celebration) showNextAchievementCelebration();
+    if (celebration || newlyUnlockedAchievementCount === 0) return;
+    if (suppressAchievementPopupRef.current) {
+      // A walk-completion animation is the only automatic post-walk overlay.
+      // Drain achievements unlocked by that walk silently; they remain in the
+      // achievement ledger but must not immediately open a second modal.
+      while (useAchievementStore.getState().consumeNextUnlocked()) {
+        /* drain */
+      }
+      suppressAchievementPopupRef.current = false;
+      return;
+    }
+    showNextAchievementCelebration();
   }, [newlyUnlockedAchievementCount, celebration, showNextAchievementCelebration]);
 
   /**
