@@ -110,6 +110,7 @@ function SettingsScreenContent() {
   const [managementVisible, setManagementVisible] = useState(false);
   const [resettingActivity, setResettingActivity] = useState(false);
   const [resetConfirmStep, setResetConfirmStep] = useState<0 | 1 | 2>(0);
+  const [pendingResetConfirmation, setPendingResetConfirmation] = useState(false);
   const isSystemAdmin = useSystemAdminStore((state) => state.isSystemAdmin);
   const systemObserverActive = useAuthStore((state) => state.systemObserverActive);
   const [systemAdminVisible, setSystemAdminVisible] = useState(false);
@@ -222,6 +223,11 @@ function SettingsScreenContent() {
 
   /** iOS path: wired to the Management Modal's own onDismiss prop below. */
   const handleManagementDismissed = () => {
+    if (pendingResetConfirmation) {
+      setPendingResetConfirmation(false);
+      setResetConfirmStep(1);
+      return;
+    }
     const toOpen = decideChildModalToOpen(
       { managementVisible: false, pendingChildModal },
       'ios-native-dismiss'
@@ -522,11 +528,18 @@ function SettingsScreenContent() {
 
   const confirmFamilyActivityReset = () => {
     if (familyRole !== 'admin' || systemObserverActive || resettingActivity) return;
-    // Use the app's own confirmation modal on every platform. Safari/PWA can
-    // suppress or inconsistently surface nested window.confirm/Alert flows,
-    // which made the destructive reset button appear to do nothing.
-    setResetConfirmStep(1);
+    // Never stack the destructive confirmation underneath Management's
+    // native Modal. Close Management first, then surface the confirmation
+    // only after that modal has actually dismissed.
+    setPendingResetConfirmation(true);
+    setManagementVisible(false);
   };
+
+  useEffect(() => {
+    if (Platform.OS === 'ios' || managementVisible || !pendingResetConfirmation) return;
+    setPendingResetConfirmation(false);
+    setResetConfirmStep(1);
+  }, [managementVisible, pendingResetConfirmation]);
 
   const handleSignOut = () => {
     const performSignOut = () => void signOut();
