@@ -1038,21 +1038,32 @@ describe('SupabaseRepository — schedule entry writes', () => {
     expect(client.from).not.toHaveBeenCalled();
   });
 
-  it('addScheduleEntries upserts mapped rows with the dog_id,date,time conflict target, ignoring duplicates', async () => {
+  it('addScheduleEntries upserts mapped rows and resolves the canonical server id after dedupe', async () => {
     let captured: { payload: unknown; opts: unknown } | undefined;
+    const query: any = {};
+    query.in = jest.fn()
+      .mockReturnValueOnce(query)
+      .mockReturnValueOnce(query)
+      .mockResolvedValueOnce({
+        data: [{ id: 'canonical-entry', dog_id: 'dog-1', date: '2026-08-30', time: '07:00' }],
+        error: null,
+      });
     const client: any = {
       from: () => ({
         upsert: (payload: unknown, opts: unknown) => {
           captured = { payload, opts };
           return Promise.resolve({ error: null });
         },
+        select: () => query,
       }),
     };
-    await new SupabaseRepository(client).addScheduleEntries([entry]);
+    const generated = { ...entry };
+    await new SupabaseRepository(client).addScheduleEntries([generated]);
     expect(captured?.opts).toEqual({ onConflict: 'dog_id,date,time', ignoreDuplicates: true });
     expect((captured?.payload as any[])[0]).toEqual({
       id: 'entry-1', family_id: 'fam-42', dog_id: 'dog-1', rule_id: 'rule-1', date: '2026-08-30', time: '07:00', responsible_user_id: 'user-1',
     });
+    expect(generated.id).toBe('canonical-entry');
   });
 
   it('addScheduleEntries throws on error', async () => {
