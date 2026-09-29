@@ -22,11 +22,10 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain("style={styles.mascotHeaderButton}");
   });
 
-  it('gives the family greeting enough RTL-safe room to wrap on a narrow iPhone without changing the Dashboard Option D hero', () => {
-    expect(home).toContain('style={styles.dashboardHeroGreeting}');
-    expect(home).toContain('numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.78}>שלום משפחת');
-    expect(home).toContain("right: '42%'");
-    expect(home).toContain('dashboardHeroGreetingTitle: { width: \'100%\', flexShrink: 1');
+  it('keeps the Dashboard hero unobstructed by the removed family greeting overlay', () => {
+    expect(home).not.toContain('style={styles.dashboardHeroGreeting}');
+    expect(home).not.toContain('>שלום משפחת');
+    expect(home).not.toContain('מחכה לטיול הבא 🐾');
   });
 
   it('keeps one compact add-walk action wired to the existing completed/spontaneous flow', () => {
