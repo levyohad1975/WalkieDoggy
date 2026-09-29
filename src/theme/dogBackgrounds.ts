@@ -1,18 +1,12 @@
 export type DogBackground = { id: string; label: string; uri: string };
 
 export const DOG_BACKGROUNDS: DogBackground[] = [
-  { id: 'park', label: 'פארק ירוק', uri: 'https://images.unsplash.com/photo-1768058238839-46e6aded1437?auto=format&fit=crop&w=1200&q=82' },
-  { id: 'forest', label: 'יער', uri: 'https://images.unsplash.com/photo-1765894518476-f183d3774129?auto=format&fit=crop&w=1200&q=82' },
-  { id: 'flowers', label: 'פרחים', uri: 'https://images.unsplash.com/photo-1552764040-3001daba7d81?auto=format&fit=crop&w=1200&q=82' },
-  { id: 'beach', label: 'חוף ים', uri: 'https://images.unsplash.com/photo-1497240299146-17ff4089466a?auto=format&fit=crop&w=1200&q=82' },
-  { id: 'trail', label: 'שביל בטבע', uri: 'https://images.unsplash.com/photo-1501684990103-81819e5be7c3?auto=format&fit=crop&w=1200&q=82' },
-  { id: 'lake', label: 'אגם והרים', uri: 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=1200&q=82' },
-  { id: 'mountains', label: 'נוף הרים', uri: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1200&q=82' },
-  { id: 'nature', label: 'טבע פתוח', uri: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=82' },
-  { id: 'family-park', label: 'פארק משפחתי', uri: 'https://images.unsplash.com/photo-1768058238839-46e6aded1437?auto=format&fit=crop&w=1200&q=82' },
-  { id: 'playground', label: 'גינת שעשועים', uri: 'https://images.unsplash.com/photo-1552764040-3001daba7d81?auto=format&fit=crop&w=1200&q=82' },
-  { id: 'dog-park', label: 'פארק כלבים', uri: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=82' },
-  { id: 'park-path', label: 'שביל בפארק', uri: 'https://images.unsplash.com/photo-1501684990103-81819e5be7c3?auto=format&fit=crop&w=1200&q=82' },
+  { id: 'dog-park', label: 'גינת כלבים מוארת', uri: 'https://images.unsplash.com/photo-1602684379319-1de467ca74e5?auto=format&fit=crop&w=1200&q=84' },
+  { id: 'neighborhood-park', label: 'פארק שכונתי', uri: 'https://images.unsplash.com/photo-1774921665173-832f122fe44b?auto=format&fit=crop&w=1200&q=84' },
+  { id: 'sunny-walk', label: 'טיול בפארק', uri: 'https://images.unsplash.com/photo-1779804152118-6ce4fda1c963?auto=format&fit=crop&w=1200&q=84' },
+  { id: 'green-path', label: 'שביל ירוק', uri: 'https://images.unsplash.com/photo-1771187058704-3f594fc464a0?auto=format&fit=crop&w=1200&q=84' },
+  { id: 'flowers', label: 'פארק ופרחים', uri: 'https://images.unsplash.com/photo-1552764040-3001daba7d81?auto=format&fit=crop&w=1200&q=84' },
+  { id: 'park', label: 'דשא ושמיים', uri: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=84' },
 ];
 
 export function getDogBackground(backgroundId?: string) {
