@@ -13,7 +13,7 @@ begin
     raise exception 'explicit confirmation required';
   end if;
   fid := current_family_id();
-  if fid is null or not is_family_admin() then
+  if fid is null or not is_family_admin(fid) then
     raise exception 'family admin required';
   end if;
   delete from walks where family_id = fid;
