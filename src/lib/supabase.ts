@@ -392,7 +392,7 @@ export async function deleteScheduleRuleWithOccurrences(ruleId: string): Promise
 /** Admin-only destructive reset: removes family walk/activity history while preserving family, members, dogs and schedule. */
 export async function resetFamilyActivity(): Promise<number> {
   if (!supabase) throw new SupabaseNotConfiguredError();
-  const { data, error } = await supabase.rpc('admin_reset_family_activity');
+  const { data, error } = await supabase.rpc('admin_reset_family_activity', { p_confirm: true });
   if (error) throw error;
   return Number((data as { deleted_walks?: number } | null)?.deleted_walks ?? 0);
 }
