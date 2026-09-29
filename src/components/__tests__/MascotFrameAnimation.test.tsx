@@ -158,7 +158,10 @@ describe('MascotSpriteAnimation', () => {
     const screen = render(
       <MascotSpriteAnimation source={SHEET} columns={6} rows={4} frameSize={256} frameCount={24} fps={10} size={100} fallback={FALLBACK} accessibilityLabel="sprite" testID="sprite" />
     );
-    await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
+    await waitFor(() => {
+      const sheet = screen.UNSAFE_getAllByType(require('react-native').Image)[0];
+      expect(sheet.props.source).toBe(SHEET);
+    });
     act(() => { jest.advanceTimersByTime(700); });
     const sheet = screen.UNSAFE_getAllByType(require('react-native').Image)[0];
     expect(sheet.props.style).toEqual(expect.objectContaining({
