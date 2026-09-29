@@ -37,9 +37,9 @@ import { fetchStatisticsWalks } from '../lib/permissionedWalks';
 import type { Walk, WalkGpsSession, WalkStatus } from '../types';
 
 const PERIOD_LABELS: [StatsPeriod, string][] = [
-  ['7d', '7 ימים'],
-  ['30d', '30 ימים'],
   ['all', 'הכל'],
+  ['30d', '30 ימים'],
+  ['7d', '7 ימים'],
 ];
 
 const STATUS_LABELS: [WalkStatus | 'all', string][] = [
