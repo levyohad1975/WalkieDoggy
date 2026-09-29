@@ -23,9 +23,29 @@ def connected_border(mask):
 def green_alpha(image):
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     h, s, v = cv2.split(hsv)
-    background = (((h > 45) & (h < 110) & (s > 45) & (v > 35)).astype(np.uint8) * 255)
+    # OpenArt's green plate shifts substantially between frames because of
+    # compression and lighting. Seed the mask with definite green, then use
+    # GrabCut to classify the border-connected plate instead of relying on a
+    # single hard HSV threshold.
+    definite_green = ((h > 32) & (h < 105) & (s > 35) & (v > 25))
+    probable_green = ((h > 25) & (h < 120) & (s > 18) & (v > 18))
+    height, width = image.shape[:2]
+    mask = np.full((height, width), cv2.GC_PR_FGD, np.uint8)
+    mask[probable_green] = cv2.GC_PR_BGD
+    mask[definite_green] = cv2.GC_BGD
+    border = 8
+    mask[:border, :] = mask[-border:, :] = mask[:, :border] = mask[:, -border:] = cv2.GC_BGD
+    bgd = np.zeros((1, 65), np.float64)
+    fgd = np.zeros((1, 65), np.float64)
+    try:
+        cv2.grabCut(image, mask, None, bgd, fgd, 3, cv2.GC_INIT_WITH_MASK)
+        background = np.where(
+            (mask == cv2.GC_BGD) | (mask == cv2.GC_PR_BGD), 255, 0
+        ).astype(np.uint8)
+    except cv2.error:
+        background = (probable_green.astype(np.uint8) * 255)
     background = connected_border(background)
-    background = cv2.dilate(background, np.ones((5, 5), np.uint8), iterations=1)
+    background = cv2.dilate(background, np.ones((3, 3), np.uint8), iterations=1)
     background = cv2.GaussianBlur(background, (5, 5), 0)
     return 255 - background
 
