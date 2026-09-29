@@ -251,9 +251,16 @@ async function loadScheduleForFamily(
     let finalEntries = entries;
     let finalWalks = walks;
     if (rulesMissingEntries.length > 0) {
-      const generatedEntries = rulesMissingEntries.flatMap((r) =>
-        generateRotationSchedule(r, today, endDate, () => generateId('entry'))
-      );
+      const now = new Date();
+      const currentLocalTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const generatedEntries = rulesMissingEntries
+        .flatMap((r) => generateRotationSchedule(r, today, endDate, () => generateId('entry')))
+        // A reset deliberately removes activity history while preserving the
+        // recurring rules. When load() self-heals the now-empty schedule,
+        // never recreate occurrences whose scheduled time has already
+        // passed today; only still-actionable today/future walks belong in
+        // the rebuilt schedule.
+        .filter((entry) => entry.date > today || (entry.date === today && entry.time > currentLocalTime));
       if (generatedEntries.length > 0) {
         await repository.addScheduleEntries(generatedEntries);
         const existingKeys = new Set(entries.map((e) => `${e.dogId}|${e.date}|${e.time}`));
