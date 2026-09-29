@@ -21,7 +21,6 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
   // Fail-safe default false: until confirmed on, behave as before (a
   // screen reader user who somehow isn't detected in time still gets the
   // explicit dismiss button/backdrop, never a permanently-stuck modal).
-  const [screenReaderEnabled, setScreenReaderEnabled] = useState(false);
   const dismissRef = useRef(onDismiss);
 
   useEffect(() => {
@@ -34,9 +33,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
     let mounted = true;
     AccessibilityInfo.isReduceMotionEnabled().then((enabled) => mounted && setReducedMotion(!!enabled)).catch(() => mounted && setReducedMotion(false));
     const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReducedMotion);
-    AccessibilityInfo.isScreenReaderEnabled().then((enabled) => mounted && setScreenReaderEnabled(!!enabled)).catch(() => {});
-    const srSubscription = AccessibilityInfo.addEventListener('screenReaderChanged', setScreenReaderEnabled);
-    return () => { mounted = false; subscription?.remove?.(); srSubscription?.remove?.(); };
+    return () => { mounted = false; subscription?.remove?.(); };
   }, []);
 
   useEffect(() => {
@@ -49,18 +46,12 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
         Animated.spring(translateY, { toValue: 0, damping: 16, stiffness: 180, mass: 0.8, useNativeDriver: true }),
       ]).start();
     }
-    // VoiceOver/TalkBack narrating a dynamic Hebrew sentence (with
-    // dog/member-name substitutions) can easily run longer than this
-    // fixed window — with a screen reader active, never auto-dismiss out
-    // from under it; the explicit "המשך" button and backdrop tap remain
-    // available the whole time.
-    if (screenReaderEnabled) return;
     // The celebration animation itself is ~1.8s. Give it a short beat to
     // settle, then return to the app without asking the family to tap
     // "המשך" after every walk.
     const timer = setTimeout(() => dismissRef.current(), 2400);
     return () => clearTimeout(timer);
-  }, [celebration, opacity, reducedMotion, translateY, screenReaderEnabled]);
+  }, [celebration, opacity, reducedMotion, translateY]);
 
   if (!celebration) return null;
   const message = celebration.title;
@@ -88,9 +79,6 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
             <WalkieMascot state={celebration.mascotState} size={138} accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול" testID="completion-mascot-animation" />
           )}
           {celebration.confetti ? <RtlText style={styles.confetti} accessible={false}>✦  ✦  ✦</RtlText> : null}
-          {screenReaderEnabled ? (
-            <Pressable onPress={onDismiss} style={styles.dismissButton} accessibilityRole="button" accessibilityLabel="המשך לאפליקציה"><RtlText style={styles.dismissText}>המשך</RtlText></Pressable>
-          ) : null}
         </Animated.View>
       </Pressable>
     </Modal>
