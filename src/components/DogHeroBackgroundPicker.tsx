@@ -36,6 +36,21 @@ export function DogHeroBackgroundPicker({ dog, onSave }: { dog: Dog; onSave: (pa
       <RtlText style={styles.title}>רקע למסך הבית</RtlText>
       <RtlText style={styles.hint}>בחרו רקע ואז לחצו שמור. הרקע משותף לכל המשפחה.</RtlText>
       <View style={styles.grid}>
+        <Pressable
+          onPress={() => setDraftId(undefined)}
+          style={[styles.tile, styles.defaultTile, draftId === undefined && styles.selected]}
+          accessibilityRole="button"
+          accessibilityState={{ selected: draftId === undefined }}
+          accessibilityLabel="ברירת מחדל, ללא תמונת רקע"
+        >
+          <View style={styles.defaultPreview}>
+            <View style={styles.defaultBloomOne} />
+            <View style={styles.defaultBloomTwo} />
+            <RtlText style={styles.defaultIcon}>🐾</RtlText>
+          </View>
+          <View style={styles.labelWrap}><RtlText style={styles.label}>ברירת מחדל · ללא רקע</RtlText></View>
+          {draftId === undefined ? <View style={styles.check}><RtlText style={styles.checkText}>✓</RtlText></View> : null}
+        </Pressable>
         {DOG_BACKGROUNDS.map((item) => {
           const selected = draftId === item.id;
           return (
@@ -66,6 +81,11 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: spacing.sm, justifyContent: 'space-between' },
   tile: { width: '48%', height: 88, borderRadius: radii.md, overflow: 'hidden', borderWidth: 3, borderColor: 'transparent', position: 'relative' },
   selected: { borderColor: colors.primaryDark },
+  defaultTile: { backgroundColor: '#F8F4EA' },
+  defaultPreview: { ...StyleSheet.absoluteFillObject, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  defaultBloomOne: { position: 'absolute', width: 110, height: 110, borderRadius: 55, left: -30, bottom: -55, backgroundColor: '#E8F3E8' },
+  defaultBloomTwo: { position: 'absolute', width: 100, height: 100, borderRadius: 50, right: -28, top: -52, backgroundColor: '#DDEFE8' },
+  defaultIcon: { fontSize: 28 },
   thumb: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
   labelWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#00000088', paddingVertical: 4, paddingHorizontal: 6 },
   label: { color: '#fff', fontSize: 12, fontWeight: '800', textAlign: 'center' },
