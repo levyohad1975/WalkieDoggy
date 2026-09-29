@@ -44,6 +44,26 @@ def dark_alpha(image):
     alpha = cv2.GaussianBlur(alpha, (3, 3), 0)
     return alpha
 
+def validate_alpha(name, frames):
+    ratios = [float(np.count_nonzero(frame[:, :, 3] > 8)) / frame[:, :, 3].size for frame in frames]
+    if min(ratios) <= 0.01:
+        raise RuntimeError(f"{name}: alpha extraction erased a frame ({min(ratios):.3f})")
+    if max(ratios) >= 0.92:
+        raise RuntimeError(f"{name}: background remains in a frame ({max(ratios):.3f})")
+    # Transparent corners are a cheap but effective guard against shipping a
+    # keyed square/rectangle around the mascot.
+    for i, frame in enumerate(frames):
+        alpha = frame[:, :, 3]
+        corner = 18
+        samples = np.concatenate((
+            alpha[:corner, :corner].ravel(),
+            alpha[:corner, -corner:].ravel(),
+            alpha[-corner:, :corner].ravel(),
+            alpha[-corner:, -corner:].ravel(),
+        ))
+        if float(np.mean(samples)) > 24:
+            raise RuntimeError(f"{name}: frame {i} still has opaque background corners")
+
 def build(name, url, key):
     source = TMP / f"{name}.mp4"
     request = Request(url, headers={'User-Agent': 'Mozilla/5.0', 'Referer': 'https://openart.ai/'})
@@ -66,6 +86,7 @@ def build(name, url, key):
         frames.append(rgba)
     if len(frames) != 24:
         raise RuntimeError(f"{name}: expected 24 frames, got {len(frames)}")
+    validate_alpha(name, frames)
     columns = 6
     rows = math.ceil(len(frames) / columns)
     sheet = np.zeros((rows * 256, columns * 256, 4), np.uint8)
