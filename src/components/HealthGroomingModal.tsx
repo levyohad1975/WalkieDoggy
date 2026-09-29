@@ -5,8 +5,11 @@ import { Button } from './Button';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { generateId } from '../lib/id';
-import { HEALTH_TASK_CATEGORIES as CATEGORIES, HEALTH_TASK_CATEGORY_LABELS as CATEGORY_LABELS, getHealthTaskLifecycle } from '../logic/healthTasks';
+import { HEALTH_TASK_CATEGORY_LABELS as CATEGORY_LABELS, getHealthTaskLifecycle } from '../logic/healthTasks';
 import type { Dog, FamilyUser, HealthTask, HealthTaskCategory } from '../types';
+
+const APPOINTMENT_CATEGORIES: HealthTaskCategory[] = ['vet_visit', 'grooming'];
+const VET_PURPOSES = ['בדיקה', 'חיסון כלבת', 'חיסון משושה', 'תילוע', 'תולעת הפארק', 'פרעושים/קרציות', 'בדיקות/מעבדה', 'אחר'] as const;
 
 interface HealthGroomingModalProps {
   visible: boolean;
@@ -193,6 +196,7 @@ interface HealthTaskFormModalProps {
 function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave, onClose }: HealthTaskFormModalProps) {
   const [category, setCategory] = useState<HealthTaskCategory>('vaccination');
   const [title, setTitle] = useState('');
+  const [vetPurposes, setVetPurposes] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [weightKg, setWeightKg] = useState('');
@@ -204,6 +208,7 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
     if (!visible) return;
     setCategory(task?.category ?? 'vaccination');
     setTitle(task?.title ?? '');
+    setVetPurposes(task?.category === 'vet_visit' ? (task.title ?? '').split(' · ').filter(Boolean) : []);
     setNotes(task?.notes ?? '');
     setDueDate(task?.dueDate ?? '');
     setWeightKg(task?.weightKg != null ? String(task.weightKg) : '');
@@ -212,8 +217,13 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
   }, [visible, task]);
 
   const handleSave = async () => {
-    if (!title.trim()) {
-      Alert.alert('חסר שם', 'יש להזין שם לרשומה.');
+    const effectiveTitle = category === 'vet_visit' ? vetPurposes.join(' · ') : 'תספורת';
+    if (category === 'vet_visit' && vetPurposes.length === 0) {
+      Alert.alert('חסרה מטרת התור', 'יש לבחור לפחות מטרה אחת לתור הווטרינר.');
+      return;
+    }
+    if (category === 'vet_visit' && vetPurposes.includes('אחר') && !title.trim()) {
+      Alert.alert('חסר פירוט', 'יש לפרט את מטרת התור האחרת.');
       return;
     }
     if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
@@ -244,7 +254,9 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
         familyId: dog.familyId,
         dogId: dog.id,
         category,
-        title: title.trim(),
+        title: category === 'vet_visit' && vetPurposes.includes('אחר') && title.trim()
+          ? `${effectiveTitle.replace(/(?:^| · )אחר(?: · |$)/, (match) => match.replace('אחר', `אחר: ${title.trim()}`))}`
+          : effectiveTitle,
         notes: notes.trim() || undefined,
         weightKg: category === 'weight' ? parsedWeight : undefined,
         recurrenceIntervalDays: parsedRecurrence,
@@ -273,7 +285,7 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
 
               <RtlText style={styles.label}>קטגוריה</RtlText>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
-                {CATEGORIES.map((c) => {
+                {APPOINTMENT_CATEGORIES.map((c) => {
                   const selected = category === c;
                   return (
                     <Pressable
@@ -290,30 +302,46 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
                 })}
               </ScrollView>
 
-              <RtlText style={styles.label}>שם</RtlText>
-              <TextInput
-                value={title}
-                onChangeText={setTitle}
-                style={styles.input}
-                textAlign="right"
-                placeholder="למשל: חיסון כלבת"
-                placeholderTextColor={colors.textSecondary}
-                accessibilityLabel="שם הרשומה"
-              />
-
-              {category === 'weight' ? (
+              {category === 'vet_visit' ? (
                 <>
-                  <RtlText style={styles.label}>משקל (ק״ג)</RtlText>
-                  <TextInput
-                    value={weightKg}
-                    onChangeText={setWeightKg}
-                    style={styles.input}
-                    textAlign="right"
-                    keyboardType="decimal-pad"
-                    accessibilityLabel="משקל בקילוגרם"
-                  />
+                  <RtlText style={styles.label}>מטרת התור (אפשר לבחור כמה)</RtlText>
+                  <View style={styles.purposeWrap}>
+                    {VET_PURPOSES.map((purpose) => {
+                      const selected = vetPurposes.includes(purpose);
+                      return (
+                        <Pressable
+                          key={purpose}
+                          onPress={() => setVetPurposes((current) => selected ? current.filter((item) => item !== purpose) : [...current, purpose])}
+                          style={[styles.categoryChip, selected && styles.categoryChipActive]}
+                          accessibilityRole="checkbox"
+                          accessibilityState={{ checked: selected }}
+                          accessibilityLabel={purpose}
+                        >
+                          <RtlText style={[styles.categoryChipText, selected && styles.categoryChipTextActive]}>
+                            {selected ? '✓ ' : ''}{purpose}
+                          </RtlText>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  {vetPurposes.includes('אחר') ? (
+                    <>
+                      <RtlText style={styles.label}>פירוט אחר</RtlText>
+                      <TextInput
+                        value={title}
+                        onChangeText={setTitle}
+                        style={styles.input}
+                        textAlign="right"
+                        placeholder="מה מטרת התור?"
+                        placeholderTextColor={colors.textSecondary}
+                        accessibilityLabel="פירוט מטרת התור"
+                      />
+                    </>
+                  ) : null}
                 </>
-              ) : null}
+              ) : (
+                <RtlText style={styles.appointmentHint}>תור לתספורת</RtlText>
+              )}
 
               <RtlText style={styles.label}>תאריך יעד (ריק = רשומה שהושלמה כעת)</RtlText>
               <TextInput
@@ -419,6 +447,8 @@ const styles = StyleSheet.create({
   input: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, padding: radii.md, fontSize: typography.body.fontSize, color: colors.textPrimary },
   notesInput: { minHeight: 72, textAlignVertical: 'top' },
   categoryRow: { flexDirection: 'row-reverse', gap: spacing.sm, paddingVertical: spacing.xs },
+  purposeWrap: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: spacing.sm, paddingVertical: spacing.xs },
+  appointmentHint: { ...typography.body, color: colors.textPrimary, textAlign: 'right', marginTop: spacing.md },
   categoryChip: { paddingVertical: radii.sm, paddingHorizontal: spacing.md, borderRadius: radii.round, backgroundColor: colors.surfaceMuted, borderWidth: 1, borderColor: 'transparent' },
   categoryChipActive: { backgroundColor: colors.statusCurrentBg, borderColor: colors.primary },
   categoryChipText: { ...typography.meta, color: colors.textSecondary, fontWeight: '600' },
