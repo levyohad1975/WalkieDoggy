@@ -657,6 +657,18 @@ export class SupabaseRepository implements Repository {
       if (insertError) throw insertError;
       return;
     }
+    if (walk.scheduleEntryId) {
+      const { data: existing, error: lookupError } = await this.client
+        .from('walks')
+        .select('id, status')
+        .eq('schedule_entry_id', walk.scheduleEntryId)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
+      if (existing) {
+        walk.id = existing.id;
+        if (existing.status === 'done' && walk.status !== 'done') return;
+      }
+    }
     const { error } = await this.client.from('walks').upsert(fromWalk(walk));
     if (error) throw error;
   }
