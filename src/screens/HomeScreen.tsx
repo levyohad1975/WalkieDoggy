@@ -1636,7 +1636,7 @@ const styles = StyleSheet.create({
   // (paws/tail) bleed is newly clipped by the shorter frame.
   dashboardHeroMascot: { position: 'absolute', right: -4, bottom: -24, zIndex: 2 },
   dashboardHeroDogCutout: { position: 'absolute', right: -4, bottom: -26, width: 190, height: 188, zIndex: 2 },
-  dashboardHeroDogPhoto: { position: 'absolute', right: 12, bottom: 6, width: 112, height: 112, borderRadius: 56, zIndex: 2, borderWidth: 3, borderColor: '#FFFFFFCC' },
+  dashboardHeroDogPhoto: { position: 'absolute', right: 4, bottom: -16, width: 136, height: 136, borderRadius: 22, zIndex: 2 },
   dashboardHeroCopy: { width: '52%', alignItems: 'flex-end', alignSelf: 'flex-start', paddingTop: 38, paddingHorizontal: spacing.md, zIndex: 2 },
   dashboardHeroEyebrow: { fontSize: 16, color: '#27376F', fontWeight: '700', textAlign: 'right' },
   dashboardHeroName: { fontSize: 30, lineHeight: 36, color: '#16245B', fontWeight: '900', textAlign: 'right' },
