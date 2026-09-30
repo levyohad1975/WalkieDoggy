@@ -1583,7 +1583,7 @@ const styles = StyleSheet.create({
   // Leaves the final card clear of the persistent bottom tab bar on phones
   // and in Safari/PWA, instead of letting it end underneath the navigation.
   content: { flexGrow: 1, paddingHorizontal: spacing.md, paddingTop: 0, gap: 7, paddingBottom: 96, width: '100%', backgroundColor: '#FBF8F3' },
-  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: 14 },
+  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: 0, gap: 7 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
   // Item 6 (mobile polish): -42 (was -48) — the hero above is now 20px
   // shorter, so keeping the same -48 overlap would push this card up
