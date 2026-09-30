@@ -5,14 +5,11 @@ describe('Home integrated walk lifecycle', () => {
   const home = fs.readFileSync(path.join(__dirname, '..', 'HomeScreen.tsx'), 'utf8');
   const card = fs.readFileSync(path.join(__dirname, '..', '..', 'components', 'NextWalkCard.tsx'), 'utf8');
 
-  it('keeps the approved calm Dashboard hero while using the persisted family-dog image safely', () => {
+  it('keeps the branded Walkie Park default hero while using persisted family-dog imagery safely', () => {
     expect(home).toContain('showDogPhoto');
     expect(home).toContain('style={styles.dashboardHero}');
-    expect(home).toContain('style={styles.dashboardHeroShade}');
     expect(home).toContain('style={styles.dashboardHeroShell}');
-    expect(home).toContain('style={styles.dashboardHeroBloomOne}');
-    expect(home).toContain('style={styles.dashboardHeroBloomTwo}');
-    expect(home).toContain('style={styles.dashboardHeroGlow}');
+    expect(home).toContain('<WalkieParkBackground />');
     expect(home).toContain('getDogBackground(dog?.heroBackgroundId)');
     expect(home).not.toContain('getDogBackgroundId');
     expect(home).toContain('source={{ uri: dog!.photoCutoutUrl! }}');
