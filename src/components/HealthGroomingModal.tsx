@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { TimePickerField } from './TimePickerField';
 import { RtlText } from './RtlText';
 import { Button } from './Button';
 import { colors } from '../theme/colors';
@@ -120,7 +121,7 @@ export function HealthGroomingModal({ visible, dog, tasks, users, currentUserId,
                         <RtlText style={styles.rowMeta}>
                           {CATEGORY_LABELS[t.category]}
                           {t.dueDate ? ` · יעד: ${t.dueDate}` : ''}
-                          {responsibleName ? ` · אחראי/ת: ${responsibleName}` : ''}
+                          {responsibleName ? ` · באחריות: ${responsibleName}` : ''}
                           {t.recurrenceIntervalDays ? ` · חוזר כל ${t.recurrenceIntervalDays} ימים` : ''}
                         </RtlText>
                       </Pressable>
@@ -365,49 +366,65 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
               )}
 
               <RtlText style={styles.label}>תאריך התור</RtlText>
-              <Pressable
-                onPress={() => setShowDatePicker(true)}
-                style={styles.pickerButton}
-                accessibilityRole="button"
-                accessibilityLabel="בחירת תאריך התור"
-              >
-                <RtlText style={styles.pickerButtonText}>{formatDisplayDate(dueDate)}</RtlText>
-              </Pressable>
-              {showDatePicker ? (
-                <DateTimePicker
-                  value={dueDate ? new Date(`${dueDate}T12:00:00`) : new Date()}
-                  mode="date"
-                  display={Platform.OS === 'ios' ? 'inline' : 'default'}
-                  onChange={(event: DateTimePickerEvent, value?: Date) => {
-                    if (Platform.OS !== 'ios') setShowDatePicker(false);
-                    if (event.type === 'set' && value) setDueDate(dateOnlyFromDate(value));
-                  }}
-                />
-              ) : null}
+              {Platform.OS === 'web' ? React.createElement('input', {
+                type: 'date',
+                value: dueDate,
+                'aria-label': 'בחירת תאריך התור',
+                onChange: (event: { target: { value: string } }) => setDueDate(event.target.value),
+                style: webDateInputStyle,
+              }) : (
+                <>
+                  <Pressable
+                    onPress={() => setShowDatePicker(true)}
+                    style={styles.pickerButton}
+                    accessibilityRole="button"
+                    accessibilityLabel="בחירת תאריך התור"
+                  >
+                    <RtlText style={styles.pickerButtonText}>{formatDisplayDate(dueDate)}</RtlText>
+                  </Pressable>
+                  {showDatePicker ? (
+                    <DateTimePicker
+                      value={dueDate ? new Date(`${dueDate}T12:00:00`) : new Date()}
+                      mode="date"
+                      display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                      onChange={(event: DateTimePickerEvent, value?: Date) => {
+                        if (Platform.OS !== 'ios') setShowDatePicker(false);
+                        if (event.type === 'set' && value) setDueDate(dateOnlyFromDate(value));
+                      }}
+                    />
+                  ) : null}
+                </>
+              )}
 
               <RtlText style={styles.label}>שעת התור</RtlText>
-              <Pressable
-                onPress={() => setShowTimePicker(true)}
-                style={styles.pickerButton}
-                accessibilityRole="button"
-                accessibilityLabel="בחירת שעת התור"
-              >
-                <RtlText style={styles.pickerButtonText}>{appointmentTime}</RtlText>
-              </Pressable>
-              {showTimePicker ? (
-                <DateTimePicker
-                  value={new Date(`2000-01-01T${appointmentTime}:00`)}
-                  mode="time"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  is24Hour
-                  onChange={(event: DateTimePickerEvent, value?: Date) => {
-                    if (Platform.OS !== 'ios') setShowTimePicker(false);
-                    if (event.type === 'set' && value) {
-                      setAppointmentTime(`${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`);
-                    }
-                  }}
-                />
-              ) : null}
+              {Platform.OS === 'web' ? (
+                <TimePickerField value={appointmentTime} onChange={setAppointmentTime} webLabel="בחירת שעת התור" />
+              ) : (
+                <>
+                  <Pressable
+                    onPress={() => setShowTimePicker(true)}
+                    style={styles.pickerButton}
+                    accessibilityRole="button"
+                    accessibilityLabel="בחירת שעת התור"
+                  >
+                    <RtlText style={styles.pickerButtonText}>{appointmentTime}</RtlText>
+                  </Pressable>
+                  {showTimePicker ? (
+                    <DateTimePicker
+                      value={new Date(`2000-01-01T${appointmentTime}:00`)}
+                      mode="time"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      is24Hour
+                      onChange={(event: DateTimePickerEvent, value?: Date) => {
+                        if (Platform.OS !== 'ios') setShowTimePicker(false);
+                        if (event.type === 'set' && value) {
+                          setAppointmentTime(`${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`);
+                        }
+                      }}
+                    />
+                  ) : null}
+                </>
+              )}
 
               <RtlText style={styles.label}>חוזר כל כמה ימים (ריק = חד-פעמי)</RtlText>
               <TextInput
@@ -421,14 +438,14 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
                 accessibilityLabel="תדירות חזרה בימים"
               />
 
-              <RtlText style={styles.label}>אחראי/ת (לא חובה)</RtlText>
+              <RtlText style={styles.label}>באחריות (לא חובה)</RtlText>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
                 <Pressable
                   onPress={() => setResponsibleUserId(undefined)}
                   style={[styles.categoryChip, !responsibleUserId && styles.categoryChipActive]}
                   accessibilityRole="button"
                   accessibilityState={{ selected: !responsibleUserId }}
-                  accessibilityLabel="ללא אחראי/ת"
+                  accessibilityLabel="ללא אחראי"
                 >
                   <RtlText style={[styles.categoryChipText, !responsibleUserId && styles.categoryChipTextActive]}>ללא</RtlText>
                 </Pressable>
@@ -512,3 +529,9 @@ const styles = StyleSheet.create({
   categoryChipTextActive: { color: colors.primaryDark, fontWeight: '700' },
   saveButton: { marginTop: spacing.xl },
 });
+
+const webDateInputStyle = {
+  display: 'block', width: '100%', minHeight: 52, boxSizing: 'border-box' as const, padding: 12, fontSize: 18, fontWeight: '700',
+  borderRadius: 14, border: `1px solid ${colors.border}`, backgroundColor: colors.surface,
+  color: colors.textPrimary, textAlign: 'center' as const, direction: 'ltr' as const, cursor: 'pointer',
+};
