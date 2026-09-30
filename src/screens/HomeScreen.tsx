@@ -1618,7 +1618,7 @@ const styles = StyleSheet.create({
     // own comments) so this crops only a little more off their bottom
     // (paws/tail), never their face/head — see docs/design/MASCOT_SPEC.md's
     // identity rules on what must stay recognizable in every frame.
-    height: 136,
+    height: 152,
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 34,
     backgroundColor: '#F8F4EA',
