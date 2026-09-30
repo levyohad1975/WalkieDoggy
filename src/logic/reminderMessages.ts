@@ -12,12 +12,10 @@
  * time), and increasing urgency by stage.
  *
  * HEBREW GRAMMAR NOTE: this codebase's existing convention for a
- * gender-unknown HUMAN is a literal "אחראי/ת" slash form (see
- * supabase/functions/send-request-push/index.ts's Hebrew templates) — reused
- * here unchanged for the responsible member. For the DOG's sex (new in this
- * batch — see migrations/0022_family_timezone_and_dog_sex.sql), use the
- * single correct verb when sex is known. When sex is unknown, use a separate
- * neutral sentence rather than a slash-form or a guessed gender.
+ * Human copy stays gender-neutral until member gender is explicitly stored,
+ * so notification text never guesses and never exposes slash-form wording.
+ * For the DOG's sex (see migrations/0022_family_timezone_and_dog_sex.sql),
+ * use the single correct verb when sex is known; otherwise use a neutral sentence.
  */
 
 import type { Dog } from '../types';
@@ -195,8 +193,8 @@ export function buildWalkAttentionEscalationMessage(
     {
       title: '🚨 עדכון למשפחה',
       body: wentOut
-        ? `${noun} עדיין לא ${wentOut} לטיול (${scheduledTime}) — ${responsibleName} היה/תה — באחריות`
-        : `הטיול של ${dogName} משעה ${scheduledTime} עדיין ממתין — ${responsibleName} היה/תה — באחריות`,
+        ? `${noun} עדיין לא ${wentOut} לטיול (${scheduledTime}) — באחריות ${responsibleName}`
+        : `הטיול של ${dogName} משעה ${scheduledTime} עדיין ממתין — באחריות ${responsibleName}`,
     },
   ];
   return pick(variants, seed);
