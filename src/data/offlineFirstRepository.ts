@@ -178,11 +178,30 @@ export class OfflineFirstRepository implements Repository {
       return;
     }
 
-    await this.local.upsertUser(user);
-    if (this.remote) {
-      await this.queue.enqueue({ type: 'createUser', payload: user });
-      await this.trySync();
+    if (!this.remote) {
+      await this.local.upsertUser(user);
+      return;
     }
+
+    // A new member is an admin-authorized server operation. Do not report
+    // success merely because a local optimistic row and queue item exist:
+    // SyncQueue deliberately records permanent RLS/constraint failures and
+    // returns, which used to make a rejected INSERT look successful until the
+    // next reload. Confirm the INSERT while online; queue only connectivity
+    // failures so the caller can roll back on real authorization/data errors.
+    if (await this.isOnline()) {
+      try {
+        await this.remote.createUser(user);
+        await this.local.upsertUser(user);
+        return;
+      } catch (error) {
+        if (isPermanentSyncError(error)) throw error;
+      }
+    }
+
+    await this.local.upsertUser(user);
+    await this.queue.enqueue({ type: 'createUser', payload: user });
+    await this.trySync();
   }
 
   /**

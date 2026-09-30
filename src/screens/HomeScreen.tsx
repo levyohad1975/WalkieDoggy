@@ -1026,17 +1026,6 @@ export function HomeScreen() {
           <RtlText style={styles.dashboardAddWalkChevron}>⌄</RtlText>
         </Pressable>
 
-        {pendingForMe > 0 ? (
-          <Pressable style={styles.dashboardRequestAlert} onPress={openRequestsInbox} accessibilityRole="button" accessibilityLabel={`${pendingForMe} בקשות ממתינות לאישור`}>
-            <RtlText style={styles.dashboardRequestAlertIcon}>🔔</RtlText>
-            <View style={styles.dashboardRequestAlertCopy}>
-              <RtlText style={styles.dashboardRequestAlertTitle}>בקשה ממתינה לאישור</RtlText>
-              <RtlText style={styles.dashboardRequestAlertSubtitle}>{pendingForMe === 1 ? 'בקשה אחת מחכה לטיפול שלך' : `${pendingForMe} בקשות מחכות לטיפול שלך`}</RtlText>
-            </View>
-            <RtlText style={styles.dashboardRequestAlertChevron}>‹</RtlText>
-          </Pressable>
-        ) : null}
-
         <View style={styles.dashboardSection}>
           <View style={styles.dashboardExternalHeading}>
             <RtlText style={styles.dashboardExternalTitle}>בהמשך היום</RtlText>
@@ -1068,6 +1057,17 @@ export function HomeScreen() {
           ) : <RtlText style={styles.dashboardTimelineEmpty}>אין טיולים מתוכננים היום · לפתיחת לוח הזמנים</RtlText>}
           </Pressable>
         </View>
+
+        {pendingForMe > 0 ? (
+          <Pressable style={styles.dashboardRequestAlert} onPress={openRequestsInbox} accessibilityRole="button" accessibilityLabel={`${pendingForMe} בקשות ממתינות לאישור`}>
+            <RtlText style={styles.dashboardRequestAlertIcon}>🔔</RtlText>
+            <View style={styles.dashboardRequestAlertCopy}>
+              <RtlText style={styles.dashboardRequestAlertTitle}>בקשה ממתינה לאישור</RtlText>
+              <RtlText style={styles.dashboardRequestAlertSubtitle}>{pendingForMe === 1 ? 'בקשה אחת מחכה לטיפול שלך' : `${pendingForMe} בקשות מחכות לטיפול שלך`}</RtlText>
+            </View>
+            <RtlText style={styles.dashboardRequestAlertChevron}>‹</RtlText>
+          </Pressable>
+        ) : null}
 
         <View style={styles.dashboardOverflow}>
         {lastWalk ? (

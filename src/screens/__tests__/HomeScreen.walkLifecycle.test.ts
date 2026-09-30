@@ -73,7 +73,9 @@ describe('Home integrated walk lifecycle', () => {
   it('shows the orange approval prompt only for a real actionable request', () => {
     expect(home).toContain('pendingForMe > 0 ?');
     expect(home).toContain('style={styles.dashboardRequestAlert}');
-    expect(home.indexOf('style={styles.dashboardRequestAlert}')).toBeLessThan(home.indexOf('style={styles.dashboardTimeline}'));
+    // The approval request is deliberately rendered after the timeline so it
+    // remains the lowest Dashboard row on mobile.
+    expect(home.indexOf('style={styles.dashboardRequestAlert}')).toBeGreaterThan(home.indexOf('style={styles.dashboardTimeline}'));
     expect(home).toContain('בקשה ממתינה לאישור');
     expect(home).toContain('onPress={openRequestsInbox}');
   });
