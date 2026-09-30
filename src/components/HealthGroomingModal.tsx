@@ -182,6 +182,7 @@ export function HealthGroomingModal({ visible, dog, tasks, users, currentUserId,
         onSave={async (task) => {
           await onSave(task);
           setFormVisible(false);
+          onClose();
         }}
         onClose={() => setFormVisible(false)}
       />
