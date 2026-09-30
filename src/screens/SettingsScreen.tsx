@@ -15,6 +15,7 @@ import { breakpoints, nativeDirection, radii, spacing, typography } from '../the
 import { pickAndUploadImage } from '../lib/uploadImage';
 import {
   isSupabaseConfigured,
+  generateDogPhotoCutout,
   regenerateInviteCode,
   resetFamilyActivity,
 } from '../lib/supabase';
@@ -274,7 +275,23 @@ function SettingsScreenContent() {
     setUploadingPhoto(true);
     try {
       const uri = await pickAndUploadImage('dogs', familyId, dog.id);
-      if (uri) await persistDog({ photoUrl: uri });
+      if (uri) {
+        // A new source photo invalidates any cutout generated for the old
+        // image. Persist the source first so the server-side cutout job reads
+        // exactly this upload, then generate the transparent version. The
+        // source remains usable if processing fails.
+        await persistDog({ photoUrl: uri, photoCutoutUrl: undefined });
+        if (isSupabaseConfigured) {
+          try {
+            await generateDogPhotoCutout(dog.id);
+            await loadFamily(familyId);
+          } catch (cutoutError) {
+            if (process.env.NODE_ENV !== 'production') {
+              console.warn('Dog cutout generation failed; keeping source photo fallback:', cutoutError);
+            }
+          }
+        }
+      }
     } catch {
       Alert.alert('לא הצלחנו להחליף תמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
     } finally {
