@@ -307,6 +307,29 @@ export async function getCurrentFamilyRole(): Promise<FamilyRole | null> {
   return null;
 }
 /** Admin-only, server-authoritative removal for a dog that has never acquired history. */
+/**
+ * Generates a transparent dog cutout for the current uploaded dog photo.
+ *
+ * The Edge Function re-authorizes the caller against the dog row under RLS,
+ * performs background removal server-side, stores the PNG in the family's
+ * existing Storage namespace, and updates dogs.photo_cutout_url. Keeping the
+ * provider call server-side means no provider details/credentials are ever
+ * shipped in the mobile/web bundle.
+ *
+ * A failure is non-destructive: photo_url remains authoritative and Home
+ * simply falls back to the original photo until a cutout exists.
+ */
+export async function generateDogPhotoCutout(dogId: string): Promise<string> {
+  if (!supabase) throw new SupabaseNotConfiguredError();
+  const { data, error } = await supabase.functions.invoke('generate-dog-cutout', {
+    body: { dogId },
+  });
+  if (error) throw error;
+  const cutoutUrl = (data as { cutoutUrl?: string } | null)?.cutoutUrl;
+  if (!cutoutUrl) throw new Error('cutout generation returned no URL');
+  return cutoutUrl;
+}
+
 export async function removeUnusedDog(dogId: string): Promise<void> {
   if (!supabase) throw new SupabaseNotConfiguredError();
   const { error } = await supabase.rpc('admin_remove_unused_dog', { p_dog_id: dogId });
