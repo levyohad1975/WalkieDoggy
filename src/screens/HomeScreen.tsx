@@ -31,6 +31,7 @@ import { ReminderMascotPrompt } from '../components/ReminderMascotPrompt';
 import { DogProfileModal } from '../components/DogProfileModal';
 import { DogSelectorRow } from '../components/DogSelectorRow';
 import { WalkieMascot } from '../components/WalkieMascot';
+import { WalkieParkBackground } from '../components/WalkieParkBackground';
 import { useSystemAdminStore } from '../store/systemAdminStore';
 import { Avatar } from '../components/Avatar';
 import { CELEBRATION_LIBRARY, selectWalkCompletionCelebration, type CompletionCelebration } from '../logic/walkCompletionCelebration';
@@ -792,12 +793,7 @@ export function HomeScreen() {
             {heroBackground ? (
               <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" />
             ) : (
-              <>
-                <View style={styles.dashboardHeroBloomOne} pointerEvents="none" />
-                <View style={styles.dashboardHeroBloomTwo} pointerEvents="none" />
-                <View style={styles.dashboardHeroGlow} pointerEvents="none" />
-                <View style={styles.dashboardHeroShade} pointerEvents="none" />
-              </>
+              <WalkieParkBackground />
             )}
             {showDogCutout ? <Image source={{ uri: dog!.photoCutoutUrl! }} style={styles.dashboardHeroDogCutout} resizeMode="contain" onError={() => setHeroCutoutFailed(true)} /> : null}
             {!showDogCutout && showPersonalHero ? <Image source={{ uri: dog!.photoUrl! }} style={styles.dashboardHeroDogPhoto} resizeMode="cover" onError={() => setHeroPhotoFailed(true)} /> : null}
