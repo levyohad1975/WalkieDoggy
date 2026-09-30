@@ -301,7 +301,7 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel="סגירת טופס">
+        <View style={styles.backdrop}>
           <Pressable style={styles.formSheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
               <RtlText style={styles.title} accessibilityRole="header">{task ? 'עריכת רשומה' : 'רשומה חדשה'}</RtlText>
@@ -481,7 +481,7 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
               <Button label="ביטול" variant="secondary" onPress={onClose} style={styles.closeButton} />
             </ScrollView>
           </Pressable>
-        </Pressable>
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );
