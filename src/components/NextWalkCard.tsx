@@ -396,7 +396,7 @@ const styles = StyleSheet.create({
   // Item 6 (mobile polish): paddingVertical trimmed from 5 to 2 — a
   // slightly more compact dashboard card. Never touches any button's own
   // minHeight (tap targets stay exactly as large as before).
-  cardDashboard: { backgroundColor: '#FFFDF8', borderColor: '#EFE8DA', borderRadius: 28, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3, paddingHorizontal: 14, paddingVertical: 9 },
+  cardDashboard: { backgroundColor: '#EAF6FD', borderColor: '#BFE3F4', borderRadius: 28, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3, paddingHorizontal: 14, paddingVertical: 9 },
   webCard: { borderRadius: radii.xl, paddingHorizontal: 24, paddingVertical: 18 },
   cardActive: { backgroundColor: colors.successSoft, borderColor: colors.success + '55' },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
