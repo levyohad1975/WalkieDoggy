@@ -68,7 +68,10 @@ describe('HealthGroomingModal (structural)', () => {
     expect(source).toMatch(/dogId: dog\.id/);
   });
 
-  it('never offers a delete/remove action — a health record is family history (0049), not client-erasable', () => {
-    expect(source).not.toMatch(/delete|מחיק|הסר/i);
+  it('offers deletion only for an existing open task and requires confirmation', () => {
+    expect(source).toContain('task && !task.completedAt');
+    expect(source).toContain('label="מחיקת משימה"');
+    expect(source).toContain("Alert.alert('מחיקת משימה'");
+    expect(source).toContain('onDelete(task.id)');
   });
 });
