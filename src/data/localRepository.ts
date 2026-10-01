@@ -257,6 +257,14 @@ export class LocalRepository implements Repository {
     await this.persist();
   }
 
+  async deleteHealthTask(taskId: string): Promise<void> {
+    const s = await this.load();
+    const task = s.healthTasks.find((t) => t.id === taskId);
+    if (task?.completedAt) throw new Error('Completed health history cannot be deleted');
+    s.healthTasks = s.healthTasks.filter((t) => t.id !== taskId);
+    await this.persist();
+  }
+
   async getGpsSession(walkId: string): Promise<WalkGpsSession | undefined> {
     const s = await this.load();
     return s.gpsSessions.find((g) => g.walkId === walkId);
