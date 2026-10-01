@@ -335,10 +335,10 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
         <View style={styles.backdrop}>
           <Pressable style={styles.formSheet} onPress={(e) => e.stopPropagation()}>
-            <ScrollView style={styles.scroll} contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
+            <ScrollView style={styles.formScroll} contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} showsVerticalScrollIndicator>
               <RtlText style={styles.title} accessibilityRole="header">{task ? 'עריכת רשומה' : 'רשומה חדשה'}</RtlText>
 
               <RtlText style={styles.label}>קטגוריה</RtlText>
@@ -529,9 +529,10 @@ const styles = StyleSheet.create({
   flexFull: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: radii.xl, maxHeight: '85%' },
-  formSheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: radii.xl, maxHeight: '88%' },
+  formSheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: radii.xl, height: '88%', maxHeight: '88%' },
   scroll: { flexGrow: 0, flexShrink: 1 },
-  formScrollContent: { paddingBottom: spacing.xl },
+  formScroll: { flex: 1 },
+  formScrollContent: { paddingBottom: spacing.xl * 3 },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: spacing.sm },
   sectionLabel: { ...typography.sectionTitle, fontSize: 15, color: colors.textPrimary, textAlign: 'right', marginTop: spacing.md, marginBottom: spacing.xs },
   emptyHint: { ...typography.meta, color: colors.textSecondary, textAlign: 'right' },
