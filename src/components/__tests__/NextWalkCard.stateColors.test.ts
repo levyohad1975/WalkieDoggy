@@ -12,7 +12,7 @@ describe('NextWalkCard state colors', () => {
   it('allows Home to opt into the approved warm off-white dashboard surface without changing ordinary cards', () => {
     expect(source).toContain("tone?: 'default' | 'dashboard'");
     expect(source).toContain("tone === 'dashboard' && styles.cardDashboard");
-    expect(source).toContain("cardDashboard: { backgroundColor: '#FFFDF8'");
+    expect(source).toContain("cardDashboard: { backgroundColor: '#EAF6FD'");
     expect(source).toContain("backgroundColor: '#0EA8B2'");
   });
 
