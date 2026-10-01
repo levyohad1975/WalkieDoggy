@@ -129,10 +129,12 @@ export function HealthGroomingModal({ visible, dog, tasks, users, currentUserId,
                           </View>
                         </View>
                         <RtlText style={styles.rowMeta}>
-                          {taskTypeLabel(t) !== t.title.trim() ? taskTypeLabel(t) : ''}
-                          {t.dueDate ? ` · יעד: ${formatDisplayDate(t.dueDate)}` : ''}
-                          {responsibleName ? ` · באחריות: ${responsibleName}` : ''}
-                          {t.recurrenceIntervalDays ? ` · חוזר כל ${t.recurrenceIntervalDays} ימים` : ''}
+                          {[
+                            taskTypeLabel(t) !== t.title.trim() ? taskTypeLabel(t) : '',
+                            t.dueDate ? `יעד: ${formatDisplayDate(t.dueDate)}` : '',
+                            responsibleName ? `באחריות: ${responsibleName}` : '',
+                            t.recurrenceIntervalDays ? `חוזר כל ${t.recurrenceIntervalDays} ימים` : '',
+                          ].filter(Boolean).join(' · ')}
                         </RtlText>
                       </Pressable>
                       <Pressable
