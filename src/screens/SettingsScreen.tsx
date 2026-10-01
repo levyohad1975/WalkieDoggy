@@ -289,6 +289,10 @@ function SettingsScreenContent() {
           await loadFamily(familyId);
         } catch (cutoutError) {
           console.warn('Dog cutout generation failed; keeping source photo fallback:', cutoutError);
+          Alert.alert(
+            'התמונה נשמרה ללא הסרת רקע',
+            'התמונה המקורית נשמרה. לא הצלחנו להסיר את הרקע אוטומטית כרגע, ואפשר לנסות שוב בהחלפת התמונה.',
+          );
         }
       }
     } catch {
