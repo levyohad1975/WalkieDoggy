@@ -75,6 +75,17 @@ describe('computeNextWalk', () => {
     expect(computeNextWalk(walks, NOW)?.id).toBe('old-pending');
   });
 
+  it('uses the latest missed walk when several pending walks are overdue', () => {
+    const walks = [
+      makeWalk({ id: 'morning', scheduledTime: '08:00' }),
+      makeWalk({ id: 'noon', scheduledTime: '12:00' }),
+      makeWalk({ id: 'afternoon', scheduledTime: '16:00' }),
+      makeWalk({ id: 'future', scheduledTime: '20:00' }),
+    ];
+
+    expect(computeNextWalk(walks, new Date('2026-08-26T18:00:00'))?.id).toBe('afternoon');
+  });
+
   it('keeps the only unresolved overdue walk actionable', () => {
     const walk = makeWalk({ id: 'old-pending', scheduledTime: '07:00' });
 
