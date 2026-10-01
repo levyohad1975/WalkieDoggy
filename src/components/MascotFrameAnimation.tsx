@@ -96,7 +96,7 @@ export function MascotSpriteAnimation({ source, columns, rows, frameSize, frameC
   const column = frameIndex % columns;
   const row = Math.floor(frameIndex / columns);
   return (
-    <View testID={testID} accessibilityLabel={accessibilityLabel} style={{ width: size, height: size, overflow: 'hidden' }}>
+    <View testID={testID} accessibilityLabel={accessibilityLabel} style={{ width: size, height: size, overflow: 'hidden', backgroundColor: 'transparent' }}>
       <Image
         source={source}
         resizeMode="stretch"
@@ -106,6 +106,7 @@ export function MascotSpriteAnimation({ source, columns, rows, frameSize, frameC
           height: rows * size,
           left: -column * size,
           top: -row * size,
+          backgroundColor: 'transparent',
         }}
       />
     </View>
