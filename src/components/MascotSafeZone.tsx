@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Dimensions, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, Animated, StyleSheet, View, useWindowDimensions } from 'react-native';
 
 interface MascotSafeZoneProps {
   children: React.ReactNode;
@@ -19,7 +19,7 @@ interface MascotSafeZoneProps {
  */
 export function MascotSafeZone({ children, from = 'right', testID }: MascotSafeZoneProps) {
   const [reducedMotion, setReducedMotion] = useState(true);
-  const width = Dimensions.get('window').width;
+  const { width } = useWindowDimensions();
   const travel = Math.max(260, width * 0.78);
   const translateX = useRef(new Animated.Value(from === 'right' ? travel : -travel)).current;
   const opacity = useRef(new Animated.Value(0)).current;
