@@ -125,6 +125,7 @@ export function ScheduleScreen() {
   );
 
   const [range, setRange] = useState<RangeKey>('week');
+  const [selectedDate, setSelectedDate] = useState(() => toLocalDateOnly(new Date()));
   const [editingWalkId, setEditingWalkId] = useState<string | null>(null);
   const [ruleFormVisible, setRuleFormVisible] = useState(false);
   const [editingRule, setEditingRule] = useState<ScheduleRule | null>(null);
@@ -166,21 +167,32 @@ export function ScheduleScreen() {
     [rules, dogs.length, dog?.id]
   );
 
-  const grouped = useMemo(() => {
-    // The weekly board is an operational truth view, not only a list of
-    // unresolved work: keep completed/skipped occurrences visible so a
-    // mistaken future completion is immediately obvious instead of silently
-    // making a whole day disappear from "next walk".
-    const filtered = visibleWalks.filter((w) => inCurrentWeek(w.date));
-    const byDate = new Map<string, Walk[]>();
-    for (const w of filtered) {
-      const list = byDate.get(w.date) ?? [];
-      list.push(w);
-      byDate.set(w.date, list);
-    }
-    for (const list of byDate.values()) list.sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
-    return [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [visibleWalks]);
+  const weekDates = useMemo(() => {
+    const now = new Date();
+    const start = new Date(now);
+    start.setDate(now.getDate() - now.getDay());
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + index);
+      return toLocalDateOnly(date);
+    });
+  }, []);
+
+  const selectedDayWalks = useMemo(
+    () => visibleWalks
+      .filter((w) => w.date === selectedDate && inCurrentWeek(w.date))
+      .sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime)),
+    [visibleWalks, selectedDate]
+  );
+
+  const formatDayChip = (dateStr: string) => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    return {
+      weekday: date.toLocaleDateString('he-IL', { weekday: 'short' }).replace('יום ', ''),
+      day: String(d).padStart(2, '0'),
+    };
+  };
 
   // Chronological by actual walk time, not the old manual sort_order — the
   // ▲/▼ reordering UI only ever changed display order while the times
@@ -271,46 +283,58 @@ export function ScheduleScreen() {
           ))}
         </View>
 
-        {range === 'week' && (loading && walks.length === 0 ? (
-          <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} accessibilityLabel="טוען…" />
-        ) : error ? (
-          <ErrorState message={error} onRetry={() => loadSchedule(familyId)} />
-        ) : grouped.length === 0 ? (
-          <EmptyState title="אין תורנויות בטווח הזה" subtitle="אפשר להוסיף שעת טיול למטה" />
-        ) : (
-          <View style={styles.daysList}>
-            {grouped.map(([date, dayWalks]) => (
-              <View key={date} style={styles.daySection}>
-                <RtlText style={styles.dayTitle}>{formatDateLabel(date)}</RtlText>
-                <View style={styles.list}>
-                  {dayWalks.map((w) => (
-                    <WalkRow
-                      key={w.id}
-                      walk={w}
-                      responsible={usersById[w.responsibleUserId]}
-                      completedBy={w.completedByUserId ? usersById[w.completedByUserId] : undefined}
-                      // Reaching EditWalkModal (change time/responsible,
-                      // cancel the walk) is Admin-only — requirement 6.
-                      // Previously reachable here for anyone; now consistent
-                      // with Home's gating.
-                      onPress={w.status === 'pending' && familyRole === 'admin' ? () => setEditingWalkId(w.id) : undefined}
-                      // ROUND-5, Part 2: request actions for ANY eligible
-                      // future walk, not just Home's "next walk" — see
-                      // canRequestForWalk() above for the exact filter.
-                      onRequestSwap={canRequestSwapForWalk(w) ? () => setRequestSwapWalkId(w.id) : undefined}
-                      onRequestTimeChange={canRequestTimeChangeForWalk(w) ? () => setRequestTimeChangeWalkId(w.id) : undefined}
-                      onMarkDone={canResolveWalk(w) ? () => setResolveWalkId(w.id) : undefined}
-                      onMarkNotDone={canResolveWalk(w) ? () => skip(w.id) : undefined}
-                      requestStatusLine={
-                        computeWalkRequestStatusLine(w, swapRequests, timeChangeRequests, walksById, new Date(), effectiveUserId)?.text
-                      }
-                    />
-                  ))}
-                </View>
+        {range === 'week' ? (
+          <>
+            <View style={styles.weekStrip}>
+              {weekDates.map((date) => {
+                const chip = formatDayChip(date);
+                const active = date === selectedDate;
+                const today = date === toLocalDateOnly(new Date());
+                return (
+                  <Pressable
+                    key={date}
+                    onPress={() => setSelectedDate(date)}
+                    style={[styles.dayChip, active && styles.dayChipActive]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    accessibilityLabel={`${chip.weekday} ${chip.day}${today ? ', היום' : ''}`}
+                  >
+                    <RtlText style={[styles.dayChipWeekday, active && styles.dayChipTextActive]}>{chip.weekday}</RtlText>
+                    <RtlText style={[styles.dayChipNumber, active && styles.dayChipTextActive]}>{chip.day}</RtlText>
+                    {today ? <View style={[styles.todayDot, active && styles.todayDotActive]} /> : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+            <RtlText style={styles.selectedDayTitle}>
+              {selectedDate === toLocalDateOnly(new Date()) ? 'היום' : formatDateLabel(selectedDate)}
+            </RtlText>
+            {loading && walks.length === 0 ? (
+              <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} accessibilityLabel="טוען…" />
+            ) : error ? (
+              <ErrorState message={error} onRetry={() => loadSchedule(familyId)} />
+            ) : selectedDayWalks.length === 0 ? (
+              <EmptyState title="אין טיולים ביום הזה" subtitle="אפשר לבחור יום אחר או לנהל את שגרת הטיולים" />
+            ) : (
+              <View style={styles.list}>
+                {selectedDayWalks.map((w) => (
+                  <WalkRow
+                    key={w.id}
+                    walk={w}
+                    responsible={usersById[w.responsibleUserId]}
+                    completedBy={w.completedByUserId ? usersById[w.completedByUserId] : undefined}
+                    onPress={w.status === 'pending' && familyRole === 'admin' ? () => setEditingWalkId(w.id) : undefined}
+                    onRequestSwap={canRequestSwapForWalk(w) ? () => setRequestSwapWalkId(w.id) : undefined}
+                    onRequestTimeChange={canRequestTimeChangeForWalk(w) ? () => setRequestTimeChangeWalkId(w.id) : undefined}
+                    onMarkDone={canResolveWalk(w) ? () => setResolveWalkId(w.id) : undefined}
+                    onMarkNotDone={canResolveWalk(w) ? () => skip(w.id) : undefined}
+                    requestStatusLine={computeWalkRequestStatusLine(w, swapRequests, timeChangeRequests, walksById, new Date(), effectiveUserId)?.text}
+                  />
+                ))}
               </View>
-            ))}
-          </View>
-        ))}
+            )}
+          </>
+        ) : null}
 
         <View style={[styles.section, range !== 'routine' && styles.routineCollapsed]}>
           <View style={styles.sectionHeaderRow}>
@@ -592,6 +616,15 @@ const styles = StyleSheet.create({
   },
   tabActive: { backgroundColor: colors.primary, color: colors.textInverse },
   daysList: { gap: spacing.xl },
+  weekStrip: { flexDirection: 'row-reverse', gap: 5, width: '100%', justifyContent: 'space-between' },
+  dayChip: { flex: 1, minWidth: 0, minHeight: 64, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', gap: 2 },
+  dayChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  dayChipWeekday: { fontSize: 11, fontWeight: '700', color: colors.textSecondary },
+  dayChipNumber: { fontSize: 17, fontWeight: '800', color: colors.textPrimary },
+  dayChipTextActive: { color: colors.textInverse },
+  todayDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.primary },
+  todayDotActive: { backgroundColor: colors.textInverse },
+  selectedDayTitle: { width: '100%', ...typography.sectionTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl', marginTop: spacing.sm },
   routineCollapsed: { display: 'none' },
   manageRoutineButton: { minHeight: 48, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', marginTop: spacing.sm },
   manageRoutineText: { color: colors.primaryDark, fontWeight: '800', fontSize: 15 },
