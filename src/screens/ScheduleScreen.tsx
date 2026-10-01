@@ -29,12 +29,11 @@ import { computeWalkRequestStatusLine } from '../logic/walkRequestStatusLine';
 import { isSupabaseConfigured } from '../lib/supabase';
 import type { ScheduleRule, Walk } from '../types';
 
-type RangeKey = 'today' | 'tomorrow' | 'week';
+type RangeKey = 'week' | 'routine';
 
 const RANGE_LABELS: Record<RangeKey, string> = {
-  today: 'היום',
-  tomorrow: 'מחר',
-  week: 'השבוע',
+  week: 'לוח השבוע',
+  routine: 'ניהול שגרה',
 };
 
 // Local (not UTC) date-only, shared with dateFormat.ts — see that file's
@@ -42,12 +41,14 @@ const RANGE_LABELS: Record<RangeKey, string> = {
 // calendar day rather than toDateOnly()'s UTC anchor.
 const toLocalDateOnly = localDateOnly;
 
-function inRange(dateStr: string, range: RangeKey): boolean {
-  const today = toLocalDateOnly(new Date());
-  if (range === 'today') return dateStr === today;
-  if (range === 'tomorrow') return dateStr === toLocalDateOnly(new Date(Date.now() + 86400000));
-  const weekEnd = toLocalDateOnly(new Date(Date.now() + 7 * 86400000));
-  return dateStr >= today && dateStr <= weekEnd;
+function inCurrentWeek(dateStr: string): boolean {
+  const now = new Date();
+  const day = now.getDay();
+  const start = new Date(now);
+  start.setDate(now.getDate() - day);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return dateStr >= toLocalDateOnly(start) && dateStr <= toLocalDateOnly(end);
 }
 
 function formatDateLabel(dateStr: string): string {
@@ -123,7 +124,7 @@ export function ScheduleScreen() {
     [walks]
   );
 
-  const [range, setRange] = useState<RangeKey>('today');
+  const [range, setRange] = useState<RangeKey>('week');
   const [editingWalkId, setEditingWalkId] = useState<string | null>(null);
   const [ruleFormVisible, setRuleFormVisible] = useState(false);
   const [editingRule, setEditingRule] = useState<ScheduleRule | null>(null);
@@ -166,11 +167,11 @@ export function ScheduleScreen() {
   );
 
   const grouped = useMemo(() => {
-    // Schedule is forward-looking. Completed/skipped walks belong in History,
-    // not in this screen; keep only unresolved/active walks here.
-    const filtered = visibleWalks.filter(
-      (w) => (w.status === 'pending' || w.status === 'in_progress') && inRange(w.date, range)
-    );
+    // The weekly board is an operational truth view, not only a list of
+    // unresolved work: keep completed/skipped occurrences visible so a
+    // mistaken future completion is immediately obvious instead of silently
+    // making a whole day disappear from "next walk".
+    const filtered = visibleWalks.filter((w) => inCurrentWeek(w.date));
     const byDate = new Map<string, Walk[]>();
     for (const w of filtered) {
       const list = byDate.get(w.date) ?? [];
@@ -179,7 +180,7 @@ export function ScheduleScreen() {
     }
     for (const list of byDate.values()) list.sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
     return [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [visibleWalks, range]);
+  }, [visibleWalks]);
 
   // Chronological by actual walk time, not the old manual sort_order — the
   // ▲/▼ reordering UI only ever changed display order while the times
@@ -263,14 +264,14 @@ export function ScheduleScreen() {
         ) : null}
 
         <View style={styles.tabs}>
-          {(['today', 'tomorrow', 'week'] as RangeKey[]).map((key) => (
+          {(['week', 'routine'] as RangeKey[]).map((key) => (
             <RtlText key={key} onPress={() => setRange(key)} style={[styles.tab, range === key && styles.tabActive]}>
               {RANGE_LABELS[key]}
             </RtlText>
           ))}
         </View>
 
-        {loading && walks.length === 0 ? (
+        {range === 'week' && (loading && walks.length === 0 ? (
           <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} accessibilityLabel="טוען…" />
         ) : error ? (
           <ErrorState message={error} onRetry={() => loadSchedule(familyId)} />
@@ -309,9 +310,10 @@ export function ScheduleScreen() {
               </View>
             ))}
           </View>
-        )}
+        ))}
 
-        <View style={styles.section}>
+        {range === 'routine' ? <View style={styles.section}> : null}
+        <View style={[styles.section, range !== 'routine' && styles.routineCollapsed]}>
           <View style={styles.sectionHeaderRow}>
             {/*
               FINAL CORRECTION PASS — Deliverable 3H: removed
@@ -393,6 +395,11 @@ export function ScheduleScreen() {
 
           )}
         </View>
+        {range === 'routine' ? null : (
+          <Pressable onPress={() => setRange('routine')} style={styles.manageRoutineButton} accessibilityRole="button">
+            <RtlText style={styles.manageRoutineText}>ניהול שגרת הטיולים</RtlText>
+          </Pressable>
+        )}
       </ScrollView>
 
       <EditWalkModal
@@ -586,6 +593,9 @@ const styles = StyleSheet.create({
   },
   tabActive: { backgroundColor: colors.primary, color: colors.textInverse },
   daysList: { gap: spacing.xl },
+  routineCollapsed: { display: 'none' },
+  manageRoutineButton: { minHeight: 48, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', marginTop: spacing.sm },
+  manageRoutineText: { color: colors.primaryDark, fontWeight: '800', fontSize: 15 },
   daySection: { gap: spacing.sm },
   dayTitle: { width: '100%', ...typography.sectionTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   list: { gap: spacing.sm },
