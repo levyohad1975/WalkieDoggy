@@ -4,6 +4,7 @@ import { colors } from '../theme/colors';
 import { radii, spacing } from '../theme/tokens';
 import { RtlText } from './RtlText';
 import { WalkieMascot } from './WalkieMascot';
+import { MascotSafeZone } from './MascotSafeZone';
 
 interface ReminderMascotPromptProps {
   visible: boolean;
@@ -41,18 +42,20 @@ export function ReminderMascotPrompt({ visible, message, onDismiss }: ReminderMa
   return (
     <Modal visible={visible} transparent animationType={reducedMotion ? 'none' : 'fade'} onRequestClose={onDismiss} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תזכורת הקמע של Walkie Doggy Link">
-        <View style={styles.moment} accessibilityRole="alert" accessibilityLiveRegion="polite">
-          <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
-          <View style={styles.tail} />
-          <WalkieMascot state="ready" size={190} accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול" testID="reminder-mascot-animation" />
-        </View>
+        <MascotSafeZone from="right" testID="reminder-mascot-safe-zone">
+          <View style={styles.moment} accessibilityRole="alert" accessibilityLiveRegion="polite">
+            <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
+            <View style={styles.tail} />
+            <WalkieMascot state="ready" size={154} accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול" testID="reminder-mascot-animation" />
+          </View>
+        </MascotSafeZone>
       </Pressable>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(11, 39, 48, 0.28)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  backdrop: { flex: 1, backgroundColor: 'transparent' },
   moment: { alignItems: 'center', maxWidth: 340 },
   bubble: { backgroundColor: colors.surface, borderRadius: radii.xl, paddingHorizontal: 18, paddingVertical: spacing.md },
   message: { color: colors.textPrimary, fontSize: 19, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
