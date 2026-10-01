@@ -19,6 +19,7 @@ interface WalkCompletionCelebrationProps {
 /** A local, non-blocking post-completion moment. It has no persistence or sync role. */
 export function WalkCompletionCelebration({ celebration, onDismiss }: WalkCompletionCelebrationProps) {
   const [reducedMotion, setReducedMotion] = useState(true);
+  const [screenReaderEnabled, setScreenReaderEnabled] = useState(false);
   // Fail-safe default false: until confirmed on, behave as before (a
   // screen reader user who somehow isn't detected in time still gets the
   // explicit dismiss button/backdrop, never a permanently-stuck modal).
@@ -34,7 +35,9 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
     let mounted = true;
     AccessibilityInfo.isReduceMotionEnabled().then((enabled) => mounted && setReducedMotion(!!enabled)).catch(() => mounted && setReducedMotion(false));
     const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReducedMotion);
-    return () => { mounted = false; subscription?.remove?.(); };
+    AccessibilityInfo.isScreenReaderEnabled().then((enabled) => mounted && setScreenReaderEnabled(!!enabled)).catch(() => {});
+    const srSubscription = AccessibilityInfo.addEventListener('screenReaderChanged', setScreenReaderEnabled);
+    return () => { mounted = false; subscription?.remove?.(); srSubscription?.remove?.(); };
   }, []);
 
   useEffect(() => {
@@ -50,9 +53,10 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
     // The celebration animation itself is ~1.8s. Give it a short beat to
     // settle, then return to the app without asking the family to tap
     // "המשך" after every walk.
+    if (screenReaderEnabled) return;
     const timer = setTimeout(() => dismissRef.current(), 2400);
     return () => clearTimeout(timer);
-  }, [celebration, opacity, reducedMotion, translateY]);
+  }, [celebration, opacity, reducedMotion, screenReaderEnabled, translateY]);
 
   if (!celebration) return null;
   const message = celebration.title;
