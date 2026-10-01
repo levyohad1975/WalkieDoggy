@@ -1367,8 +1367,9 @@ export function HomeScreen() {
           if (started) setAddUnplannedVisible(false);
         }}
         onConfirm={async (result: UnplannedWalkResult) => {
-          setAddUnplannedVisible(false);
-          // addUnplannedWalk() itself refuses while Test Mode is active.
+          // Keep the form visible until persistence succeeds. Closing it before
+          // awaiting save made a successful tap look like "nothing happened"
+          // and made failures impossible to correct without re-entering data.
           if (dog) {
             const saved = await addUnplannedWalk({
               familyId: familyId,
@@ -1382,6 +1383,7 @@ export function HomeScreen() {
               durationMinutes: result.durationMinutes,
             });
             if (saved) {
+              setAddUnplannedVisible(false);
               showWalkCompletionCelebration(result.durationMinutes);
               checkForNewAchievementUnlocks();
             }
