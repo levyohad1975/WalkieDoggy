@@ -312,7 +312,6 @@ export function ScheduleScreen() {
           </View>
         ))}
 
-        {range === 'routine' ? <View style={styles.section}> : null}
         <View style={[styles.section, range !== 'routine' && styles.routineCollapsed]}>
           <View style={styles.sectionHeaderRow}>
             {/*
