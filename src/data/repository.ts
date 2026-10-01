@@ -108,8 +108,10 @@ export interface Repository {
 
   /** Every health/grooming record (log entries + due tasks, PRD §10) for one specific dog — never the whole family, since these are always per-dog. */
   getHealthTasks(dogId: string): Promise<HealthTask[]>;
-  /** Upserts by task.id — covers both creating a new log/task entry and marking one complete (patch + save). No delete: see 0049's migration comment for why a health record is never client-erasable. */
+  /** Upserts by task.id — covers creating and updating health/grooming entries. */
   upsertHealthTask(task: HealthTask): Promise<void>;
+  /** Deletes an OPEN health/grooming task entered by mistake. Completed history remains immutable. */
+  deleteHealthTask(taskId: string): Promise<void>;
 
   /** The GPS session for one walk (PRD §7), if any tracking was attempted — undefined if the walk has no session at all. */
   getGpsSession(walkId: string): Promise<WalkGpsSession | undefined>;
