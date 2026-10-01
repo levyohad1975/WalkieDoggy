@@ -38,14 +38,13 @@ export function MascotSafeZone({ children, from = 'right', testID }: MascotSafeZ
     opacity.setValue(reducedMotion ? 1 : 0);
     if (reducedMotion) return;
     Animated.parallel([
-      Animated.spring(translateX, {
+      Animated.timing(translateX, {
         toValue: 0,
-        damping: 18,
-        stiffness: 120,
-        mass: 0.9,
+        duration: 850,
+        easing: (t) => 1 - Math.pow(1 - t, 3),
         useNativeDriver: true,
       }),
-      Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 1, duration: 420, useNativeDriver: true }),
     ]).start();
   }, [from, opacity, reducedMotion, translateX, travel]);
 
