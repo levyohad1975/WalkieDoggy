@@ -369,12 +369,39 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       const newWalks = trulyNew.map((e) => walkFromEntry(e, rule.familyId));
       for (const w of newWalks) await repository.saveWalk(w);
 
-      set((s) => ({
-        rules: [...s.rules.filter((r) => r.id !== rule.id), rule],
-        entries: [...s.entries, ...trulyNew],
-        walks: [...s.walks, ...newWalks],
-        actionError: null,
-      }));
+      set((s) => {
+        // saveWalk() may replace a freshly generated local walk id with the
+        // canonical server id when this occurrence already exists remotely.
+        // Never append that canonical occurrence beside the stale/local copy:
+        // one schedule_entry_id represents exactly one planned walk.
+        const newEntryIds = new Set(trulyNew.map((entry) => entry.id));
+        const newWalkIds = new Set(newWalks.map((walk) => walk.id));
+        const newWalkEntryIds = new Set(
+          newWalks.map((walk) => walk.scheduleEntryId).filter((id): id is string => Boolean(id))
+        );
+        return {
+          rules: [...s.rules.filter((r) => r.id !== rule.id), rule],
+          entries: [
+            ...s.entries.filter(
+              (entry) =>
+                !newEntryIds.has(entry.id) &&
+                !trulyNew.some(
+                  (fresh) => fresh.dogId === entry.dogId && fresh.date === entry.date && fresh.time === entry.time
+                )
+            ),
+            ...trulyNew,
+          ],
+          walks: [
+            ...s.walks.filter(
+              (walk) =>
+                !newWalkIds.has(walk.id) &&
+                !(walk.scheduleEntryId && newWalkEntryIds.has(walk.scheduleEntryId))
+            ),
+            ...newWalks,
+          ],
+          actionError: null,
+        };
+      });
       newWalks.forEach((w) => void scheduleNotificationsForWalk(w));
     } catch (e) {
       // A thrown error here (storage failure, bad data, etc.) must never
