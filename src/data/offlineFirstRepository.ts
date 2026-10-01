@@ -392,6 +392,13 @@ export class OfflineFirstRepository implements Repository {
     return this.local.getHealthTasks(dogId);
   }
 
+  async deleteHealthTask(taskId: string): Promise<void> {
+    if (!this.remote) return this.local.deleteHealthTask(taskId);
+    if (!(await this.isOnline())) throw new Error('health task deletion requires an internet connection');
+    await this.remote.deleteHealthTask(taskId);
+    await this.local.deleteHealthTask(taskId);
+  }
+
   async upsertHealthTask(task: HealthTask): Promise<void> {
     await this.local.upsertHealthTask(task);
     if (this.remote) {
