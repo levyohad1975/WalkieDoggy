@@ -15,10 +15,11 @@ describe('WalkCompletionCelebration (structural)', () => {
     expect(source).toMatch(/accessibilityRole="alert" accessibilityLiveRegion="polite"/);
   });
 
-  it('always auto-dismisses after the brief celebration and does not require a screen-reader-only continue action', () => {
+  it('auto-dismisses normally but never removes the Hebrew message while VoiceOver/TalkBack is reading it', () => {
     expect(source).toMatch(/setTimeout\(\(\) => dismissRef\.current\(\), 2400\)/);
-    expect(source).not.toMatch(/if \(screenReaderEnabled\) return;/);
-    expect(source).not.toMatch(/accessibilityLabel="המשך לאפליקציה"/);
+    expect(source).toMatch(/AccessibilityInfo\.isScreenReaderEnabled\(\)/);
+    expect(source).toMatch(/AccessibilityInfo\.addEventListener\('screenReaderChanged', setScreenReaderEnabled\)/);
+    expect(source).toMatch(/if \(screenReaderEnabled\) return;/);
   });
 
   it('still allows an immediate explicit dismiss by tapping the celebration backdrop', () => {
