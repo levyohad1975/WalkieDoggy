@@ -60,7 +60,11 @@ export function MascotSafeZone({ children, from = 'right', testID }: MascotSafeZ
 
 const styles = StyleSheet.create({
   stage: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
     // Keep event animation in the visual center, below the large next-walk
     // card and above the persistent bottom navigation on compact phones.
     paddingTop: '48%',
