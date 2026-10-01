@@ -406,7 +406,8 @@ export function ScheduleScreen() {
         }}
         onChangeResponsible={async (newUserId) => {
           if (editingWalk) await swap(editingWalk.id, newUserId, currentUserId);
-          setEditingWalkId(null);
+          // Keep the editor open so the same one-off edit can continue
+          // (for example, change the responsible member and then the time).
         }}
         onSwapWithWalk={async (otherWalkId) => {
           if (editingWalk) await swapTwoWalks(editingWalk.id, otherWalkId, currentUserId);
