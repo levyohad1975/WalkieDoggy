@@ -34,6 +34,7 @@ interface HealthGroomingModalProps {
   currentUserId: string | null | undefined;
   onSave: (task: HealthTask) => Promise<void>;
   onComplete: (taskId: string) => Promise<void>;
+  onDelete: (taskId: string) => Promise<void>;
   onClose: () => void;
 }
 
@@ -51,7 +52,7 @@ const LIFECYCLE_BADGE: Record<'upcoming' | 'due' | 'overdue', { label: string; c
  * family-wide list, since every record is attributed to one specific dog
  * (supabase/migrations/0049_health_grooming_foundation.sql).
  */
-export function HealthGroomingModal({ visible, dog, tasks, users, currentUserId, onSave, onComplete, onClose }: HealthGroomingModalProps) {
+export function HealthGroomingModal({ visible, dog, tasks, users, currentUserId, onSave, onComplete, onDelete, onClose }: HealthGroomingModalProps) {
   const [formVisible, setFormVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<HealthTask | null>(null);
   const [completingId, setCompletingId] = useState<string | null>(null);
@@ -179,6 +180,10 @@ export function HealthGroomingModal({ visible, dog, tasks, users, currentUserId,
         task={editingTask}
         users={users}
         currentUserId={currentUserId}
+        onDelete={async (taskId) => {
+          await onDelete(taskId);
+          setFormVisible(false);
+        }}
         onSave={async (task) => {
           await onSave(task);
           setFormVisible(false);
@@ -197,6 +202,7 @@ interface HealthTaskFormModalProps {
   users: FamilyUser[];
   currentUserId: string | null | undefined;
   onSave: (task: HealthTask) => Promise<void>;
+  onDelete: (taskId: string) => Promise<void>;
   onClose: () => void;
 }
 
@@ -209,7 +215,7 @@ interface HealthTaskFormModalProps {
  * this modal's parent's dedicated "✓ בוצע" row action, not something this
  * form does.
  */
-function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave, onClose }: HealthTaskFormModalProps) {
+function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave, onDelete, onClose }: HealthTaskFormModalProps) {
   const [category, setCategory] = useState<HealthTaskCategory>('vaccination');
   const [title, setTitle] = useState('');
   const [vetPurposes, setVetPurposes] = useState<string[]>([]);
@@ -222,13 +228,14 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
   const [responsibleUserId, setResponsibleUserId] = useState<string | undefined>(undefined);
   const [recurrenceDays, setRecurrenceDays] = useState('');
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
     setCategory(task?.category ?? 'vaccination');
     setTitle(task?.title ?? '');
     setVetPurposes(task?.category === 'vet_visit' ? (task.title ?? '').split(' · ').filter(Boolean) : []);
-    setNotes(task?.notes ?? '');
+    setNotes((task?.notes ?? '').replace(/(?:^|\n)שעת תור: \d{2}:\d{2}(?=\n|$)/g, '').replace(/^\n+|\n+$/g, ''));
     setDueDate(task?.dueDate ?? '');
     const savedTime = task?.notes?.match(/(?:^|\n)שעת תור: (\d{2}:\d{2})(?:\n|$)/)?.[1];
     setAppointmentTime(savedTime ?? '09:00');
@@ -298,12 +305,29 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
     }
   };
 
+  const confirmDelete = () => {
+    if (!task || task.completedAt) return;
+    Alert.alert('מחיקת משימה', 'למחוק את המשימה הפתוחה? פעולה זו אינה ניתנת לביטול.', [
+      { text: 'ביטול', style: 'cancel' },
+      {
+        text: 'מחיקה',
+        style: 'destructive',
+        onPress: () => {
+          setDeleting(true);
+          void onDelete(task.id)
+            .catch(() => Alert.alert('לא הצלחנו למחוק', 'נסו שוב בעוד רגע.'))
+            .finally(() => setDeleting(false));
+        },
+      },
+    ]);
+  };
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.backdrop}>
           <Pressable style={styles.formSheet} onPress={(e) => e.stopPropagation()}>
-            <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
+            <ScrollView style={styles.scroll} contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
               <RtlText style={styles.title} accessibilityRole="header">{task ? 'עריכת רשומה' : 'רשומה חדשה'}</RtlText>
 
               <RtlText style={styles.label}>קטגוריה</RtlText>
@@ -478,6 +502,9 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
               />
 
               <Button label="שמירה" onPress={() => void handleSave()} loading={saving} style={styles.saveButton} />
+              {task && !task.completedAt ? (
+                <Button label="מחיקת משימה" variant="secondary" onPress={confirmDelete} loading={deleting} style={styles.deleteButton} />
+              ) : null}
               <Button label="ביטול" variant="secondary" onPress={onClose} style={styles.closeButton} />
             </ScrollView>
           </Pressable>
@@ -493,6 +520,7 @@ const styles = StyleSheet.create({
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: radii.xl, maxHeight: '85%' },
   formSheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: radii.xl, maxHeight: '88%' },
   scroll: { flexGrow: 0, flexShrink: 1 },
+  formScrollContent: { paddingBottom: spacing.xl },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: spacing.sm },
   sectionLabel: { ...typography.sectionTitle, fontSize: 15, color: colors.textPrimary, textAlign: 'right', marginTop: spacing.md, marginBottom: spacing.xs },
   emptyHint: { ...typography.meta, color: colors.textSecondary, textAlign: 'right' },
@@ -529,6 +557,7 @@ const styles = StyleSheet.create({
   categoryChipText: { ...typography.meta, color: colors.textSecondary, fontWeight: '600' },
   categoryChipTextActive: { color: colors.primaryDark, fontWeight: '700' },
   saveButton: { marginTop: spacing.xl },
+  deleteButton: { marginTop: spacing.sm },
 });
 
 const webDateInputStyle = {
