@@ -2,6 +2,10 @@ name: Fix mascot sprite alpha
 
 on:
   workflow_dispatch:
+  push:
+    branches: [fix/urgent-master-batch-20260925]
+    paths:
+      - '.github/workflows/fix-mascot-sprite-alpha.yml'
 
 permissions:
   contents: write
