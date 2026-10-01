@@ -19,10 +19,20 @@ describe('scheduleStore', () => {
   let useScheduleStore: typeof import('../scheduleStore').useScheduleStore;
 
   beforeEach(async () => {
+    // The demo seed intentionally auto-finalizes older pending walks once a
+    // later scheduled walk becomes due. Keep this suite at a deterministic
+    // pre-noon instant so tests that exercise editing/deleting a *pending*
+    // 12:30 occurrence do not change meaning depending on CI wall-clock.
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-10-01T10:00:00.000Z'));
     jest.resetModules();
     const AsyncStorage = require('@react-native-async-storage/async-storage');
     await AsyncStorage.clear();
     ({ useScheduleStore } = require('../scheduleStore'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('creating a schedule rule adds it to state and immediately generates entries + walks for it', async () => {
