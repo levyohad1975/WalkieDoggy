@@ -1319,7 +1319,7 @@ export function HomeScreen() {
         onSelect={async (otherWalkId) => {
           const sourceWalkId = swapWalkId;
           setSwapWalkId(null);
-          if (sourceWalkId) await swapTwoWalks(sourceWalkId, otherWalkId, currentUserId);
+          if (sourceWalkId) await swapTwoWalks(sourceWalkId, otherWalkId, effectiveUserId);
         }}
         onClose={() => setSwapWalkId(null)}
       />
