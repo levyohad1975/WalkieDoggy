@@ -45,15 +45,17 @@ export function EditWalkModal({
   onClose,
 }: EditWalkModalProps) {
   const [time, setTime] = useState(walk?.scheduledTime ?? '');
+  const [selectedResponsibleUserId, setSelectedResponsibleUserId] = useState(walk?.responsibleUserId ?? '');
   const [swapMode, setSwapMode] = useState(false);
   const [cancelConfirmVisible, setCancelConfirmVisible] = useState(false);
 
   useEffect(() => {
     if (visible) {
       setTime(walk?.scheduledTime ?? '');
+      setSelectedResponsibleUserId(walk?.responsibleUserId ?? '');
       setSwapMode(false);
     }
-  }, [visible, walk?.scheduledTime]);
+  }, [visible, walk?.id]);
 
   if (!walk) return null;
 
@@ -114,8 +116,12 @@ export function EditWalkModal({
               {users.map((u) => (
                 <Pressable
                   key={u.id}
-                  onPress={() => u.id !== walk.responsibleUserId && onChangeResponsible(u.id)}
-                  style={[styles.userChip, u.id === walk.responsibleUserId && styles.userChipActive]}
+                  onPress={async () => {
+                    if (u.id === selectedResponsibleUserId) return;
+                    setSelectedResponsibleUserId(u.id);
+                    await onChangeResponsible(u.id);
+                  }}
+                  style={[styles.userChip, u.id === selectedResponsibleUserId && styles.userChipActive]}
                 >
                   <Avatar emoji={u.avatar} color={u.color} photoUrl={u.photoUrl} size={40} />
                   <RtlText style={styles.userChipName} numberOfLines={1}>
