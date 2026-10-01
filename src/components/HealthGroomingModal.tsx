@@ -120,7 +120,7 @@ export function HealthGroomingModal({ visible, dog, tasks, users, currentUserId,
                         </View>
                         <RtlText style={styles.rowMeta}>
                           {CATEGORY_LABELS[t.category]}
-                          {t.dueDate ? ` · יעד: ${t.dueDate}` : ''}
+                          {t.dueDate ? ` · יעד: ${formatDisplayDate(t.dueDate)}` : ''}
                           {responsibleName ? ` · באחריות: ${responsibleName}` : ''}
                           {t.recurrenceIntervalDays ? ` · חוזר כל ${t.recurrenceIntervalDays} ימים` : ''}
                         </RtlText>
