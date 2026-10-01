@@ -12,9 +12,10 @@ export function walkDateTime(walk: Pick<Walk, 'date' | 'scheduledTime'>): Date {
 
 /**
  * Finds the "next walk" to surface on the Home screen:
- * an unresolved overdue walk first, otherwise the earliest future pending
- * walk. An overdue status decision is the most urgent action on Home; it
- * must never be hidden behind a later upcoming walk.
+ * the most recently scheduled unresolved overdue walk first, otherwise the
+ * earliest future pending walk. When several walks were missed, the latest
+ * missed occurrence is the current actionable context; older missed walks
+ * must not make the red card count lateness indefinitely.
  */
 export function computeNextWalk(walks: Walk[], now: Date = new Date()): Walk | undefined {
   const active = walks.find((w) => w.status === 'in_progress');
@@ -24,9 +25,10 @@ export function computeNextWalk(walks: Walk[], now: Date = new Date()): Walk | u
   const overdue = pending.filter((w) => walkDateTime(w).getTime() < now.getTime());
   const candidates = overdue.length ? overdue : pending.filter((w) => walkDateTime(w).getTime() >= now.getTime());
   if (candidates.length === 0) return undefined;
-  return [...candidates].sort(
-    (a, b) => walkDateTime(a).getTime() - walkDateTime(b).getTime()
-  )[0];
+  return [...candidates].sort((a, b) => {
+    const delta = walkDateTime(a).getTime() - walkDateTime(b).getTime();
+    return overdue.length ? -delta : delta;
+  })[0];
 }
 
 /** Finds the most recently completed (or skipped) walk, for the "last walk" home card. */
