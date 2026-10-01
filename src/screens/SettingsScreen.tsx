@@ -14,7 +14,6 @@ import { DogPhoto } from '../components/DogPhoto';
 import { breakpoints, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { pickAndUploadImage } from '../lib/uploadImage';
 import {
-  isSupabaseConfigured,
   generateDogPhotoCutout,
   regenerateInviteCode,
   resetFamilyActivity,
@@ -281,15 +280,15 @@ function SettingsScreenContent() {
         // exactly this upload, then generate the transparent version. The
         // source remains usable if processing fails.
         await persistDog({ photoUrl: uri, photoCutoutUrl: undefined });
-        if (isSupabaseConfigured) {
-          try {
-            await generateDogPhotoCutout(dog.id);
-            await loadFamily(familyId);
-          } catch (cutoutError) {
-            if (process.env.NODE_ENV !== 'production') {
-              console.warn('Dog cutout generation failed; keeping source photo fallback:', cutoutError);
-            }
-          }
+        // Always request processing after the source is persisted. The helper
+        // itself is the single source of truth for whether Supabase is
+        // configured; avoiding a second client-side environment gate prevents
+        // deployed web builds from silently skipping the Edge Function call.
+        try {
+          await generateDogPhotoCutout(dog.id);
+          await loadFamily(familyId);
+        } catch (cutoutError) {
+          console.warn('Dog cutout generation failed; keeping source photo fallback:', cutoutError);
         }
       }
     } catch {
