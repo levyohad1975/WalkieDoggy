@@ -31,6 +31,37 @@ export function computeNextWalk(walks: Walk[], now: Date = new Date()): Walk | u
   })[0];
 }
 
+/**
+ * Finalizes stale planned walks once a later planned occurrence for the same
+ * dog has become due. The newest due occurrence stays actionable; any older
+ * pending occurrence is no longer an open question and becomes "skipped".
+ *
+ * In-progress walks are never touched. Unplanned walks neither trigger nor
+ * receive automatic skipping.
+ */
+export function finalizeSupersededPendingWalks(walks: Walk[], now: Date = new Date()): Walk[] {
+  const latestDueByDog = new Map<string, number>();
+
+  for (const walk of walks) {
+    if (walk.isUnplanned) continue;
+    const scheduledAt = walkDateTime(walk).getTime();
+    if (scheduledAt > now.getTime()) continue;
+    const latest = latestDueByDog.get(walk.dogId);
+    if (latest == null || scheduledAt > latest) latestDueByDog.set(walk.dogId, scheduledAt);
+  }
+
+  let changed = false;
+  const finalized = walks.map((walk) => {
+    if (walk.isUnplanned || walk.status !== 'pending') return walk;
+    const latestDue = latestDueByDog.get(walk.dogId);
+    if (latestDue == null || walkDateTime(walk).getTime() >= latestDue) return walk;
+    changed = true;
+    return { ...walk, status: 'skipped' as const, updatedAt: now.toISOString() };
+  });
+
+  return changed ? finalized : walks;
+}
+
 /** Finds the most recently completed (or skipped) walk, for the "last walk" home card. */
 export function computeLastWalk(walks: Walk[], now: Date = new Date()): Walk | undefined {
   const finishedTime = (walk: Walk): number => {
