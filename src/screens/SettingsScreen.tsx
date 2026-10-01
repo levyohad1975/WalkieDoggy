@@ -14,6 +14,7 @@ import { DogPhoto } from '../components/DogPhoto';
 import { breakpoints, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { pickAndUploadImage } from '../lib/uploadImage';
 import {
+  isSupabaseConfigured,
   generateDogPhotoCutout,
   regenerateInviteCode,
   resetFamilyActivity,
