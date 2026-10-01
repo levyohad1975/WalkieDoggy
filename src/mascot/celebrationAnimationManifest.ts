@@ -102,6 +102,25 @@ export type CuratedMascotSpriteId = keyof typeof CURATED_MASCOT_SPRITE_SHEETS;
  * React Native style; using the approved transparent mascot is the safe
  * runtime fallback and guarantees no black rectangle behind the character.
  */
-export function curatedSpriteForCelebration(_id: string): (typeof CURATED_MASCOT_SPRITE_SHEETS)[CuratedMascotSpriteId] | undefined {
-  return undefined;
+const CELEBRATION_SPRITE_MAP: Record<string, CuratedMascotSpriteId> = {
+  'thank-you-heart': 'high-five',
+  'happy-jump': 'happy-spin',
+  'high-five': 'high-five',
+  'confetti': 'happy-spin',
+  'paw-party': 'happy-spin',
+  'trophy-teaser': 'trophy-winner',
+  'sleepy-good-night': 'sleepy-good-night',
+  'long-walk': 'leash-ready',
+  'special-surprise': 'peek-a-boo',
+};
+
+/**
+ * These runtime sheets are the post-processed PNG exports with real alpha
+ * (transparent pixels), not the original flattened video frames that caused
+ * the black rectangle on Safari/iOS. Keep the mapping explicit so every
+ * celebration has a reviewed transparent animation or falls back safely.
+ */
+export function curatedSpriteForCelebration(id: string): (typeof CURATED_MASCOT_SPRITE_SHEETS)[CuratedMascotSpriteId] | undefined {
+  const spriteId = CELEBRATION_SPRITE_MAP[id];
+  return spriteId ? CURATED_MASCOT_SPRITE_SHEETS[spriteId] : undefined;
 }
