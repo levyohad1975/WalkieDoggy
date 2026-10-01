@@ -6,6 +6,7 @@ import type { CompletionCelebration } from '../logic/walkCompletionCelebration';
 import { RtlText } from './RtlText';
 import { WalkieMascot } from './WalkieMascot';
 import { MascotSpriteAnimation } from './MascotFrameAnimation';
+import { MascotSafeZone } from './MascotSafeZone';
 import { curatedSpriteForCelebration } from '../mascot/celebrationAnimationManifest';
 
 const FALLBACK_MASCOT = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
@@ -59,34 +60,36 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
   return (
     <Modal visible transparent animationType="none" onRequestClose={onDismiss} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תגובת הקמע של Walkie Doggy Link">
-        <Animated.View style={[styles.moment, { opacity, transform: [{ translateY }] }]} accessibilityRole="alert" accessibilityLiveRegion="polite">
-          <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
-          <View style={styles.tail} />
-          {sprite ? (
-            <MascotSpriteAnimation
-              source={sprite.source}
-              columns={sprite.columns}
-              rows={sprite.rows}
-              frameSize={sprite.frameSize}
-              frameCount={sprite.frameCount}
-              fps={sprite.fps}
-              size={138}
-              fallback={FALLBACK_MASCOT}
-              accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול"
-              testID="completion-mascot-animation"
-            />
-          ) : (
-            <WalkieMascot state={celebration.mascotState} size={138} accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול" testID="completion-mascot-animation" />
-          )}
-          {celebration.confetti ? <RtlText style={styles.confetti} accessible={false}>✦  ✦  ✦</RtlText> : null}
-        </Animated.View>
+        <MascotSafeZone from="left" testID="completion-mascot-safe-zone">
+          <Animated.View style={[styles.moment, { opacity, transform: [{ translateY }] }]} accessibilityRole="alert" accessibilityLiveRegion="polite">
+            <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
+            <View style={styles.tail} />
+            {sprite ? (
+              <MascotSpriteAnimation
+                source={sprite.source}
+                columns={sprite.columns}
+                rows={sprite.rows}
+                frameSize={sprite.frameSize}
+                frameCount={sprite.frameCount}
+                fps={sprite.fps}
+                size={128}
+                fallback={FALLBACK_MASCOT}
+                accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול"
+                testID="completion-mascot-animation"
+              />
+            ) : (
+              <WalkieMascot state={celebration.mascotState} size={128} accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול" testID="completion-mascot-animation" />
+            )}
+            {celebration.confetti ? <RtlText style={styles.confetti} accessible={false}>✦  ✦  ✦</RtlText> : null}
+          </Animated.View>
+        </MascotSafeZone>
       </Pressable>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'transparent', alignItems: 'flex-end', justifyContent: 'flex-start', paddingHorizontal: 14, paddingTop: 150 },
+  backdrop: { flex: 1, backgroundColor: 'transparent' },
   moment: { width: 150, alignItems: 'center' },
   bubble: { maxWidth: 150, backgroundColor: colors.surface, borderRadius: radii.lg, paddingHorizontal: 10, paddingVertical: 7, shadowColor: '#0B5C75', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
   message: { color: colors.textPrimary, fontSize: 14, lineHeight: 18, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
