@@ -477,6 +477,12 @@ export class SupabaseRepository implements Repository {
     if (error) throw error;
   }
 
+  async deleteHealthTask(taskId: string): Promise<void> {
+    const { data, error } = await this.client.from('health_tasks').delete().eq('id', taskId).is('completed_at', null).select('id');
+    if (error) throw error;
+    if ((data ?? []).length !== 1) throw new Error('Open health task was not deleted or is no longer authorized');
+  }
+
   async getGpsSession(walkId: string): Promise<WalkGpsSession | undefined> {
     const { data, error } = await this.client.from('walk_gps_sessions').select('*').eq('walk_id', walkId).maybeSingle();
     if (error) throw error;
