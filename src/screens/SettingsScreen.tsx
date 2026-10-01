@@ -57,6 +57,7 @@ function SettingsScreenContent() {
   const healthTasks = useHealthStore((s) => s.tasks);
   const loadHealthTasks = useHealthStore((s) => s.load);
   const saveHealthTask = useHealthStore((s) => s.saveTask);
+  const deleteHealthTask = useHealthStore((s) => s.deleteTask);
   const completeHealthTask = useHealthStore((s) => s.completeTask);
   const { currentUserId, setFamilyId } = useAuthStore();
   const signInWithPin = useAuthStore((s) => s.signInWithPin);
@@ -783,6 +784,7 @@ function SettingsScreenContent() {
         currentUserId={currentUserId}
         onSave={saveHealthTask}
         onComplete={(taskId) => completeHealthTask(taskId, currentUserId ?? '')}
+        onDelete={deleteHealthTask}
         onClose={() => setHealthModalVisible(false)}
       />
 
