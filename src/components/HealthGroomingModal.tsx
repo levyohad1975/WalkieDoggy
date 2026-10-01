@@ -13,6 +13,15 @@ import type { Dog, FamilyUser, HealthTask, HealthTaskCategory } from '../types';
 const APPOINTMENT_CATEGORIES: HealthTaskCategory[] = ['vet_visit', 'grooming'];
 const VET_PURPOSES = ['בדיקה', 'חיסון כלבת', 'חיסון משושה', 'תילוע', 'תולעת הפארק', 'פרעושים/קרציות', 'בדיקות/מעבדה', 'אחר'] as const;
 
+function taskTypeLabel(task: HealthTask): string {
+  // Appointment rows use their explicit title/purpose as the human-facing
+  // type. Showing the broad persisted category as well (for example a
+  // haircut titled "תספורת" but carrying a legacy vaccination category)
+  // creates a contradictory subtitle in the list.
+  if (task.title.trim()) return task.title.trim();
+  return CATEGORY_LABELS[task.category];
+}
+
 function formatDisplayDate(value: string): string {
   if (!value) return 'בחירת תאריך';
   const [year, month, day] = value.split('-');
@@ -120,7 +129,7 @@ export function HealthGroomingModal({ visible, dog, tasks, users, currentUserId,
                           </View>
                         </View>
                         <RtlText style={styles.rowMeta}>
-                          {CATEGORY_LABELS[t.category]}
+                          {taskTypeLabel(t) !== t.title.trim() ? taskTypeLabel(t) : ''}
                           {t.dueDate ? ` · יעד: ${formatDisplayDate(t.dueDate)}` : ''}
                           {responsibleName ? ` · באחריות: ${responsibleName}` : ''}
                           {t.recurrenceIntervalDays ? ` · חוזר כל ${t.recurrenceIntervalDays} ימים` : ''}
@@ -157,7 +166,7 @@ export function HealthGroomingModal({ visible, dog, tasks, users, currentUserId,
                       <View style={styles.rowBody}>
                         <RtlText style={styles.rowTitle} numberOfLines={1}>{t.title}</RtlText>
                         <RtlText style={styles.rowMeta}>
-                          {CATEGORY_LABELS[t.category]}
+                          {taskTypeLabel(t) !== t.title.trim() ? taskTypeLabel(t) : ''}
                           {t.category === 'weight' && t.weightKg != null ? ` · ${t.weightKg} ק"ג` : ''}
                           {t.completedAt ? ` · הושלם ${t.completedAt.slice(0, 10)}` : ''}
                           {completedByName ? ` · ע"י ${completedByName}` : ''}
