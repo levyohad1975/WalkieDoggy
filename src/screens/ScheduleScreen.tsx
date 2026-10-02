@@ -354,9 +354,9 @@ export function ScheduleScreen() {
                     historyCompact
                     hidePendingStatus
                   />
-                ))}
+                )) : null}
 
-              </View>     )}
+              </View>
           </>
         ) : null}
 
