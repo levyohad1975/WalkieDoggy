@@ -33,6 +33,7 @@ export function RemindersModal({
 }: RemindersModalProps) {
   const [webPushStatus, setWebPushStatus] = useState<WebPushStatus>('default');
   const [webPushBusy, setWebPushBusy] = useState(false);
+  const [webPushError, setWebPushError] = useState<string | null>(null);
   const [iosSafariNeedsInstall, setIosSafariNeedsInstall] = useState(false);
   const [androidNeedsInstall, setAndroidNeedsInstall] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
@@ -95,6 +96,7 @@ export function RemindersModal({
   const handleEnableWebPush = async () => {
     try {
       setWebPushBusy(true);
+      setWebPushError(null);
       const status = await enableWebPush();
       setWebPushStatus(status);
 
@@ -113,9 +115,11 @@ export function RemindersModal({
       }
     } catch (error) {
       console.error('Failed to enable Web Push', error);
+      const message = error instanceof Error ? error.message : String(error);
+      setWebPushError(message);
       Alert.alert(
         'לא ניתן להפעיל התראות',
-        'אירעה שגיאה בעת רישום המכשיר להתראות.'
+        message || 'אירעה שגיאה בעת רישום המכשיר להתראות.'
       );
     } finally {
       setWebPushBusy(false);
@@ -169,6 +173,10 @@ export function RemindersModal({
               ? 'המכשיר או הדפדפן הזה אינם תומכים ב-Web Push.'
               : 'אפשר לקבל התראות גם כשהאפליקציה אינה פתוחה.'}
     </RtlText>
+
+    {webPushError ? (
+      <RtlText style={styles.webPushError} accessibilityRole="alert">{`שגיאת רישום: ${webPushError}`}</RtlText>
+    ) : null}
 
     {iosSafariNeedsInstall ? (
       <View style={styles.installGuide}>
@@ -272,6 +280,12 @@ installGuideStep: {
 },
 webPushButton: {
   marginTop: 10,
+},
+webPushError: {
+  marginTop: 8,
+  fontSize: 13,
+  color: colors.danger ?? '#B42318',
+  textAlign: 'right',
 },  
 closeButton: { marginTop: 14 },
 });
