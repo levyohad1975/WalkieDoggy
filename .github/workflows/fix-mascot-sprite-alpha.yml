@@ -32,7 +32,7 @@ jobs:
           files = [
             "high-five.png","happy-spin.png","trophy-winner.png",
             "sleepy-good-night.png","peek-a-boo.png","leash-ready.png",
-            "curious-listen.png"
+            "curious-listen.png","tail-wag.png"
           ]
           CELL=256
           # Only remove dark, near-neutral pixels connected to each frame edge.
@@ -40,9 +40,12 @@ jobs:
           # Generated source videos were flattened over near-black backgrounds.
           # Use a wider neutral threshold, but still only flood-fill pixels connected
           # to each cell edge so dark eyes/nose inside the mascot remain untouched.
-          HARD=55
-          SOFT=105
-          NEUTRAL=32
+          HARD=72
+          SOFT=145
+          NEUTRAL=48
+          # Only edge-connected pixels are removed. The wider threshold catches
+          # the compressed charcoal/grey remnants visible on iPhone without
+          # touching enclosed mascot details.
 
           for name in files:
             p=root/name
@@ -56,6 +59,8 @@ jobs:
                 q=deque()
                 def candidate(x,y,limit=SOFT):
                   r,g,b,a=px[x,y]
+                  # Background remnants are dark-to-mid neutral greys. Requiring
+                  # near-neutral RGB prevents brown/orange fur from joining the flood.
                   return a and max(r,g,b)<=limit and max(r,g,b)-min(r,g,b)<=NEUTRAL
                 for x in range(ox,ox+CELL):
                   for y in (oy,oy+CELL-1):
@@ -73,7 +78,7 @@ jobs:
                   # fringe fades smoothly instead of leaving a black halo.
                   na=0 if v<=HARD else round(255*(v-HARD)/(SOFT-HARD))
                   px[x,y]=(r,g,b,min(a,na))
-                  for nx,ny in ((x-1,y),(x+1,y),(x,y-1),(x,y+1)):
+                  for nx,ny in ((x-1,y),(x+1,y),(x,y-1),(x,y+1),(x-1,y-1),(x+1,y-1),(x-1,y+1),(x+1,y+1)):
                     if ox<=nx<ox+CELL and oy<=ny<oy+CELL and (nx,ny) not in seen:
                       q.append((nx,ny))
             im.save(p, optimize=True)
