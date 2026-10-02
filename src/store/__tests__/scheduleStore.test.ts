@@ -111,7 +111,7 @@ describe('scheduleStore', () => {
     expect(untouchedDoneWalk?.scheduledTime).toBe('07:00');
   });
 
-  it('reload preserves a recurring rule with no generated occurrences without recreating reset activity', async () => {
+  it('reload rebuilds future occurrences for a recurring rule preserved by activity reset', async () => {
     await useScheduleStore.getState().load(FAMILY_ID);
 
     // Activity reset deliberately removes generated entries/walks while
@@ -136,7 +136,7 @@ describe('scheduleStore', () => {
 
     const state = useScheduleStore.getState();
     expect(state.rules.some((r) => r.id === orphanRule.id)).toBe(true);
-    expect(state.entries.filter((e) => e.ruleId === orphanRule.id)).toHaveLength(0);
+    expect(state.entries.filter((e) => e.ruleId === orphanRule.id).length).toBeGreaterThan(0);
     expect(state.walks.filter((w) => {
       const entry = state.entries.find((e) => e.id === w.scheduleEntryId);
       return entry?.ruleId === orphanRule.id;
@@ -169,7 +169,7 @@ describe('scheduleStore', () => {
     expect(secondResult).toBe(true);
     let state = useScheduleStore.getState();
     expect(state.rules.some((r) => r.id === resetRule.id)).toBe(true);
-    expect(state.entries.filter((e) => e.ruleId === resetRule.id)).toHaveLength(0);
+    expect(state.entries.filter((e) => e.ruleId === resetRule.id).length).toBeGreaterThan(0);
 
     const thirdResult = await useScheduleStore.getState().load(FAMILY_ID);
     expect(thirdResult).toBe(true);
