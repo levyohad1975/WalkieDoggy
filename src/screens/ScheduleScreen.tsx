@@ -126,6 +126,7 @@ export function ScheduleScreen() {
 
   const [range, setRange] = useState<RangeKey>('week');
   const [selectedDate, setSelectedDate] = useState(() => toLocalDateOnly(new Date()));
+  const [completedExpanded, setCompletedExpanded] = useState(false);
   const [editingWalkId, setEditingWalkId] = useState<string | null>(null);
   const [ruleFormVisible, setRuleFormVisible] = useState(false);
   const [editingRule, setEditingRule] = useState<ScheduleRule | null>(null);
@@ -293,7 +294,7 @@ export function ScheduleScreen() {
                 return (
                   <Pressable
                     key={date}
-                    onPress={() => setSelectedDate(date)}
+                    onPress={() => { setSelectedDate(date); setCompletedExpanded(false); }}
                     style={[styles.dayChip, active && styles.dayChipActive]}
                     accessibilityRole="button"
                     accessibilityState={{ selected: active }}
@@ -333,8 +334,18 @@ export function ScheduleScreen() {
                   />
                 ))}
 
-                {selectedDayWalks.some((w) => w.status === 'done' || w.status === 'skipped') ? <RtlText style={styles.walkGroupTitle}>{'הושלמו היום (' + selectedDayWalks.filter((w) => w.status === 'done' || w.status === 'skipped').length + ')'}</RtlText> : null}
-                {selectedDayWalks.filter((w) => w.status === 'done' || w.status === 'skipped').map((w) => (
+                {selectedDayWalks.some((w) => w.status === 'done' || w.status === 'skipped') ? (
+                  <Pressable
+                    onPress={() => setCompletedExpanded((value) => !value)}
+                    style={styles.completedGroupHeader}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: completedExpanded }}
+                  >
+                    <RtlText style={styles.walkGroupTitle}>{'הושלמו היום (' + selectedDayWalks.filter((w) => w.status === 'done' || w.status === 'skipped').length + ')'}</RtlText>
+                    <RtlText style={styles.completedChevron}>{completedExpanded ? '⌃' : '⌄'}</RtlText>
+                  </Pressable>
+                ) : null}
+                {completedExpanded ? selectedDayWalks.filter((w) => w.status === 'done' || w.status === 'skipped').map((w) => (
                   <WalkRow
                     key={w.id}
                     walk={w}
@@ -643,6 +654,8 @@ const styles = StyleSheet.create({
   manageRoutineText: { color: colors.primaryDark, fontWeight: '800', fontSize: 15 },
   daySection: { gap: spacing.sm },
   dayTitle: { width: '100%', ...typography.sectionTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  completedGroupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44, paddingHorizontal: 4, marginTop: 4 },
+  completedChevron: { fontSize: 22, fontWeight: '700', color: colors.primaryDark },
   walkGroupTitle: { fontSize: 14, fontWeight: '800', color: colors.textSecondary, textAlign: 'right', marginTop: 6, marginBottom: 2, paddingHorizontal: 4 },
   list: { gap: spacing.sm },
   empty: { fontSize: 14, color: colors.textSecondary, textAlign: 'right' },
