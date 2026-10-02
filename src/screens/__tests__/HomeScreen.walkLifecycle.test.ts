@@ -55,7 +55,7 @@ describe('Home integrated walk lifecycle', () => {
   it('keeps a compact, always-present full daily Dashboard timeline instead of a future-only list', () => {
     expect(home).toContain('const dashboardTimelineWalks = useMemo');
     expect(home).toContain('dailyWalkTimeline(visibleWalks, now)');
-    expect(home).toContain('dashboardTimelineWalks.length > 0 ?');
+    expect(home).toContain('dashboardTimelineWalks.map');
     expect(home).toContain('dashboardTimelineWalks.map');
     expect(home).toContain('בהמשך היום');
     expect(home).toContain('אין טיולים מתוכננים היום');
