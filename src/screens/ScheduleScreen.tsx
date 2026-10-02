@@ -317,7 +317,8 @@ export function ScheduleScreen() {
               <EmptyState title="אין טיולים ביום הזה" subtitle="אפשר לבחור יום אחר או לנהל את שגרת הטיולים" />
             ) : (
               <View style={styles.list}>
-                {selectedDayWalks.map((w) => (
+                {selectedDayWalks.some((w) => w.status !== 'done' && w.status !== 'skipped') ? <RtlText style={styles.walkGroupTitle}>ממתינים / בהמשך</RtlText> : null}
+                {selectedDayWalks.filter((w) => w.status !== 'done' && w.status !== 'skipped').map((w) => (
                   <WalkRow
                     key={w.id}
                     walk={w}
@@ -331,8 +332,20 @@ export function ScheduleScreen() {
                     requestStatusLine={computeWalkRequestStatusLine(w, swapRequests, timeChangeRequests, walksById, new Date(), effectiveUserId)?.text}
                   />
                 ))}
-              </View>
-            )}
+
+                {selectedDayWalks.some((w) => w.status === 'done' || w.status === 'skipped') ? <RtlText style={styles.walkGroupTitle}>{'הושלמו היום (' + selectedDayWalks.filter((w) => w.status === 'done' || w.status === 'skipped').length + ')'}</RtlText> : null}
+                {selectedDayWalks.filter((w) => w.status === 'done' || w.status === 'skipped').map((w) => (
+                  <WalkRow
+                    key={w.id}
+                    walk={w}
+                    responsible={usersById[w.responsibleUserId]}
+                    completedBy={w.completedByUserId ? usersById[w.completedByUserId] : undefined}
+                    historyCompact
+                    hidePendingStatus
+                  />
+                ))}
+
+              </View>     )}
           </>
         ) : null}
 
@@ -630,6 +643,7 @@ const styles = StyleSheet.create({
   manageRoutineText: { color: colors.primaryDark, fontWeight: '800', fontSize: 15 },
   daySection: { gap: spacing.sm },
   dayTitle: { width: '100%', ...typography.sectionTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  walkGroupTitle: { fontSize: 14, fontWeight: '800', color: colors.textSecondary, textAlign: 'right', marginTop: 6, marginBottom: 2, paddingHorizontal: 4 },
   list: { gap: spacing.sm },
   empty: { fontSize: 14, color: colors.textSecondary, textAlign: 'right' },
   section: { gap: spacing.sm, marginTop: spacing.xl, width: '100%' },
