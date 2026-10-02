@@ -13,6 +13,9 @@ export function WalkieParkBackground() {
       <View style={styles.hillBack} />
       <View style={styles.hillMid} />
       <View style={styles.hillFront} />
+      <View style={styles.shrubLeft} />
+      <View style={styles.shrubLeftSmall} />
+      <View style={styles.shrubRight} />
       <View style={styles.ground} />
       <View style={styles.paw}>
         <View style={styles.pawPad} />
@@ -30,7 +33,10 @@ const styles = StyleSheet.create({
   hillBack: { position: 'absolute', left: -70, right: 250, height: 92, bottom: 18, borderRadius: 90, backgroundColor: '#E7F2D8', transform: [{ rotate: '5deg' }] },
   hillMid: { position: 'absolute', left: 150, right: -80, height: 84, bottom: 12, borderRadius: 88, backgroundColor: '#DDEFD3', transform: [{ rotate: '-5deg' }] },
   hillFront: { position: 'absolute', left: -90, right: 320, height: 62, bottom: -8, borderRadius: 70, backgroundColor: '#D3E9C4' },
-  ground: { position: 'absolute', left: 0, right: 0, height: 18, bottom: 0, backgroundColor: '#F5E7C7', opacity: 0.72 },
+  shrubLeft: { position: 'absolute', left: -18, bottom: 4, width: 92, height: 34, borderRadius: 46, backgroundColor: '#C5E2B7', opacity: 0.72 },
+  shrubLeftSmall: { position: 'absolute', left: 46, bottom: 8, width: 52, height: 24, borderRadius: 28, backgroundColor: '#D6EBC8', opacity: 0.8 },
+  shrubRight: { position: 'absolute', right: -28, bottom: 3, width: 104, height: 38, borderRadius: 52, backgroundColor: '#CBE5BC', opacity: 0.7 },
+  ground: { position: 'absolute', left: 0, right: 0, height: 16, bottom: 0, backgroundColor: '#F3E5C5', opacity: 0.68 },
   paw: { position: 'absolute', left: 78, top: 72, width: 30, height: 26, opacity: 0.16 },
   pawPad: { position: 'absolute', left: 8, top: 11, width: 15, height: 12, borderRadius: 8, backgroundColor: '#77B98B' },
   pawToe: { position: 'absolute', width: 7, height: 8, borderRadius: 5, backgroundColor: '#77B98B' },
