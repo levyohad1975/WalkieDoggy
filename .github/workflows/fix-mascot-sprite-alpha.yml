@@ -37,9 +37,12 @@ jobs:
           CELL=256
           # Only remove dark, near-neutral pixels connected to each frame edge.
           # This preserves enclosed dark mascot details such as eyes/nose.
-          HARD=42
-          SOFT=78
-          NEUTRAL=20
+          # Generated source videos were flattened over near-black backgrounds.
+          # Use a wider neutral threshold, but still only flood-fill pixels connected
+          # to each cell edge so dark eyes/nose inside the mascot remain untouched.
+          HARD=55
+          SOFT=105
+          NEUTRAL=32
 
           for name in files:
             p=root/name
