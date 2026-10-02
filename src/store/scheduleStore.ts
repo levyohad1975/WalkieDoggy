@@ -237,13 +237,27 @@ async function loadScheduleForFamily(
       repository.getWalks(familyId),
     ]);
 
-    // Do not regenerate missing occurrences during a normal load. A family-admin
-    // activity reset intentionally clears generated schedule entries while
-    // preserving recurring rules; load-time backfill used to recreate those
-    // future occurrences immediately and made reset appear broken. Rule create/
-    // edit flows remain responsible for generating their own occurrences.
+    // Recurring rules are configuration and survive an activity reset. Rebuild
+    // only the FUTURE occurrence horizon when a surviving active rule has no
+    // upcoming entries, so Home can still resolve "next walk" after reset.
+    // Existing future entries are never duplicated; the repository/DB identity
+    // constraints remain the final concurrency guard.
     let finalEntries = entries;
     let finalWalks = walks;
+    const today = localDateOnly(new Date());
+    const endDate = localDateOnly(new Date(Date.now() + GENERATE_DAYS_AHEAD * 86400000));
+    const rulesNeedingFuture = rules.filter((rule) => ruleNeedsEntryBackfill(rule, finalEntries, today));
+    for (const rule of rulesNeedingFuture) {
+      const generated = generateRotationSchedule(rule, today, endDate, () => generateId('entry'));
+      if (generated.length === 0) continue;
+      await repository.addScheduleEntries(generated);
+      const existingKeys = new Set(finalEntries.map((e) => `${e.dogId}|${e.date}|${e.time}`));
+      const trulyNew = generated.filter((e) => !existingKeys.has(`${e.dogId}|${e.date}|${e.time}`));
+      const generatedWalks = trulyNew.map((e) => walkFromEntry(e, rule.familyId));
+      for (const walk of generatedWalks) await repository.saveWalk(walk);
+      finalEntries = [...finalEntries, ...trulyNew];
+      finalWalks = [...finalWalks, ...generatedWalks];
+    }
 
     // Once a later planned occurrence for the same dog is due, older
     // unresolved planned walks are no longer actionable questions. Close
