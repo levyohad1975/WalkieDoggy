@@ -1048,7 +1048,16 @@ export function HomeScreen() {
             <RtlText style={styles.dashboardTimelineChevron}>‹</RtlText>
           </View>
           <Pressable style={styles.dashboardTimeline} onPress={() => navigation.navigate('Schedule')} accessibilityRole="button" accessibilityLabel="פתיחת המשך הטיולים של היום בלוח הזמנים">
-          {dashboardTimelineWalks.length > 0 ? (
+          {dashboardTimelineWalks.length === 1 ? (
+            <View style={styles.dashboardSingleUpcoming}>
+              <Avatar emoji={usersById[dashboardTimelineWalks[0].responsibleUserId]?.avatar ?? '🐾'} color={usersById[dashboardTimelineWalks[0].responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[dashboardTimelineWalks[0].responsibleUserId]?.photoUrl} size={34} />
+              <View style={styles.dashboardSingleUpcomingText}>
+                <RtlText style={styles.dashboardSingleUpcomingTime}>{dashboardTimelineWalks[0].scheduledTime}</RtlText>
+                <RtlText style={styles.dashboardSingleUpcomingName}>{usersById[dashboardTimelineWalks[0].responsibleUserId]?.name ?? 'בן משפחה'}</RtlText>
+              </View>
+              <RtlText style={styles.dashboardSingleUpcomingHint}>הטיול הבא היום</RtlText>
+            </View>
+          ) : dashboardTimelineWalks.length > 1 ? (
             <View style={styles.dashboardTimelineStops}>
               <View style={styles.dashboardTimelinePeople}>
                 {dashboardTimelineWalks.map((walk) => (
@@ -1698,6 +1707,11 @@ const styles = StyleSheet.create({
   dashboardTimelineHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   dashboardTimelineTitle: { fontSize: 16, fontWeight: '700', color: '#17345B', textAlign: 'right' },
   dashboardTimelineChevron: { fontSize: 24, color: '#129EA5', writingDirection: 'ltr' },
+  dashboardSingleUpcoming: { minHeight: 46, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 2 },
+  dashboardSingleUpcomingText: { alignItems: 'flex-end', minWidth: 54 },
+  dashboardSingleUpcomingTime: { fontSize: 17, fontWeight: '800', color: '#17345B' },
+  dashboardSingleUpcomingName: { fontSize: 11, fontWeight: '600', color: colors.textSecondary },
+  dashboardSingleUpcomingHint: { fontSize: 11, fontWeight: '600', color: '#129EA5', marginRight: 8 },
   dashboardTimelineStops: { position: 'relative', gap: 4, paddingTop: 2 },
   dashboardTimelinePeople: { flexDirection: 'row-reverse', justifyContent: 'space-around', marginBottom: 2 },
   dashboardTimelineStop: { flex: 1, alignItems: 'center' },
