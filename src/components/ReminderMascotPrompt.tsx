@@ -4,8 +4,6 @@ import { colors } from '../theme/colors';
 import { radii, spacing } from '../theme/tokens';
 import { RtlText } from './RtlText';
 import { WalkieMascot } from './WalkieMascot';
-import { MascotSpriteAnimation } from './MascotFrameAnimation';
-import { CURATED_MASCOT_SPRITE_SHEETS } from '../mascot/celebrationAnimationManifest';
 import { MascotSafeZone } from './MascotSafeZone';
 
 interface ReminderMascotPromptProps {
@@ -50,22 +48,7 @@ export function ReminderMascotPrompt({ visible, message, onDismiss }: ReminderMa
           <View style={styles.moment} accessibilityRole="alert" accessibilityLiveRegion="polite">
             <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
             <View style={styles.tail} />
-            {reducedMotion ? (
-              <WalkieMascot state="ready" size={154} accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול" testID="reminder-mascot-animation" />
-            ) : (
-              <MascotSpriteAnimation
-                source={CURATED_MASCOT_SPRITE_SHEETS['leash-ready'].source}
-                columns={CURATED_MASCOT_SPRITE_SHEETS['leash-ready'].columns}
-                rows={CURATED_MASCOT_SPRITE_SHEETS['leash-ready'].rows}
-                frameSize={CURATED_MASCOT_SPRITE_SHEETS['leash-ready'].frameSize}
-                frameCount={CURATED_MASCOT_SPRITE_SHEETS['leash-ready'].frameCount}
-                fps={CURATED_MASCOT_SPRITE_SHEETS['leash-ready'].fps}
-                size={154}
-                fallback={FALLBACK_MASCOT}
-                accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול"
-                testID="reminder-mascot-animation"
-              />
-            )}
+            <WalkieMascot state="ready" size={154} accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול" testID="reminder-mascot-animation" />
           </View>
         </MascotSafeZone>
       </Pressable>
