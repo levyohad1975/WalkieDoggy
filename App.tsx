@@ -258,6 +258,7 @@ export default function App() {
   // familyId or currentUserId. This never sets/reads familyId itself, so it
   // cannot affect which family this device is a member of.
   const isSystemAdmin = useSystemAdminStore((s) => s.isSystemAdmin);
+  const systemAdminChecked = useSystemAdminStore((s) => s.checked);
   const refreshSystemAdmin = useSystemAdminStore((s) => s.refresh);
   const systemAdminOpenRequestId = useSystemAdminStore((s) => s.openRequestId);
   const [systemAdminOpen, setSystemAdminOpen] = useState(false);
@@ -398,7 +399,7 @@ export default function App() {
               turn only ever came from am_i_system_admin() — a fresh,
               server-side check of the real auth identity, not a locally
               cached/guessed value. */}
-          {Platform.OS === 'web' && !isSystemAdmin ? (
+          {Platform.OS === 'web' && systemAdminChecked && !isSystemAdmin ? (
             <Pressable
               style={styles.systemAdminLoginEntry}
               onPress={() => setSystemAdminLoginOpen(true)}
