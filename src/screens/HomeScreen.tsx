@@ -1869,7 +1869,7 @@ lastWalkSkippedBadge: {
 },
 
 lastWalkActions: {
-  width: 154,
+  width: 174,
   flexDirection: 'row',
   ...nativeDirection('ltr'),
   alignItems: 'center',
