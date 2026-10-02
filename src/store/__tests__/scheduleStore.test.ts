@@ -114,9 +114,8 @@ describe('scheduleStore', () => {
   it('reload rebuilds future occurrences for a recurring rule preserved by activity reset', async () => {
     await useScheduleStore.getState().load(FAMILY_ID);
 
-    // Activity reset deliberately removes generated entries/walks while
-    // preserving recurring routine rules. A normal load must not undo that
-    // reset by backfilling the missing occurrences.
+    // Activity reset preserves recurring routine rules. A normal load rebuilds
+    // the future horizon so Home can resolve the next walk.
     const { repository } = require('../../data');
     const orphanRule: ScheduleRule = {
       id: 'rule-reset-preserved',
@@ -140,10 +139,10 @@ describe('scheduleStore', () => {
     expect(state.walks.filter((w) => {
       const entry = state.entries.find((e) => e.id === w.scheduleEntryId);
       return entry?.ruleId === orphanRule.id;
-    })).toHaveLength(0);
+    }).length).toBeGreaterThan(0);
   });
 
-  it('two concurrent load() calls share one in-flight read without recreating missing reset occurrences', async () => {
+  it('two concurrent load() calls share one in-flight read without duplicating rebuilt future occurrences', async () => {
     await useScheduleStore.getState().load(FAMILY_ID);
     const { repository } = require('../../data');
     const resetRule: ScheduleRule = {
@@ -169,12 +168,13 @@ describe('scheduleStore', () => {
     expect(secondResult).toBe(true);
     let state = useScheduleStore.getState();
     expect(state.rules.some((r) => r.id === resetRule.id)).toBe(true);
-    expect(state.entries.filter((e) => e.ruleId === resetRule.id).length).toBeGreaterThan(0);
+    const rebuiltEntries = state.entries.filter((e) => e.ruleId === resetRule.id);
+    expect(rebuiltEntries.length).toBeGreaterThan(0);
 
     const thirdResult = await useScheduleStore.getState().load(FAMILY_ID);
     expect(thirdResult).toBe(true);
     state = useScheduleStore.getState();
-    expect(state.entries.filter((e) => e.ruleId === resetRule.id)).toHaveLength(0);
+    expect(state.entries.filter((e) => e.ruleId === resetRule.id)).toHaveLength(rebuiltEntries.length);
   });
 
   it('addRule surfaces a visible actionError instead of silently doing nothing when the repository write fails', async () => {
