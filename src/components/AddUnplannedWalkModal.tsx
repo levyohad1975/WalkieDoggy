@@ -223,13 +223,18 @@ export function AddUnplannedWalkModal({
             <View style={styles.row}>
               <View style={styles.flex}>
                 <RtlText style={styles.label}>תאריך</RtlText>
-                {Platform.OS === 'web' ? React.createElement('input', {
-                  type: 'date',
-                  value: date,
-                  'aria-label': 'בחר תאריך טיול',
-                  onChange: (event: { target: { value: string } }) => setDate(event.target.value),
-                  style: webTimeInputStyle,
-                }) : (
+                {Platform.OS === 'web' ? (
+                  <View style={styles.webDateField}>
+                    <RtlText style={styles.webDateDisplay} pointerEvents="none">{displayDate(date)}</RtlText>
+                    {React.createElement('input', {
+                      type: 'date',
+                      value: date,
+                      'aria-label': `בחר תאריך טיול, ${displayDate(date)}`,
+                      onChange: (event: { target: { value: string } }) => setDate(event.target.value),
+                      style: webDatePickerOverlayStyle,
+                    })}
+                  </View>
+                ) : (
                   <Pressable
                     style={styles.input}
                     onPress={() => setDatePickerOpen(true)}
@@ -400,8 +405,15 @@ const webTimeInputStyle = {
   backgroundColor: colors.surfaceMuted, color: colors.textPrimary, textAlign: 'center', direction: 'ltr', cursor: 'pointer',
 };
 
+const webDatePickerOverlayStyle = {
+  position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0,
+  cursor: 'pointer',
+};
+
 const styles = StyleSheet.create({
   flexFull: { flex: 1 },
+  webDateField: { position: 'relative', minHeight: 52, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceMuted, alignItems: 'center', justifyContent: 'center' },
+  webDateDisplay: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, maxHeight: '90%' },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
