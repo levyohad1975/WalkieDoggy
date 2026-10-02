@@ -645,19 +645,23 @@ function SettingsScreenContent() {
         </View>
 
         <View style={styles.section}>
-          <RtlText style={styles.sectionTitle}>🐾 טיולים ותזכורות</RtlText>
-          <Pressable style={styles.hubRow} onPress={() => setRemindersModalVisible(true)} accessibilityRole="button" accessibilityLabel="תזכורות">
+          <Pressable style={styles.hubRow} onPress={() => setRemindersModalVisible(true)} accessibilityRole="button" accessibilityLabel="תזכורות והתראות">
             <RtlText style={styles.hubChevron}>‹</RtlText>
-            <RtlText style={styles.hubLabel}>🔔 תזכורות</RtlText>
+            <View style={styles.hubLabelWithMeta}>
+              <RtlText style={styles.hubLabel}>🔔 תזכורות והתראות</RtlText>
+              <RtlText style={styles.hubRowMeta}>הגדרת תזכורות לפני טיולים ואירועים</RtlText>
+            </View>
           </Pressable>
         </View>
 
         {dog ? (
           <View style={styles.section}>
-            <RtlText style={styles.sectionTitle}>בריאות וטיפוח</RtlText>
             <Pressable style={styles.hubRow} onPress={() => setHealthModalVisible(true)} accessibilityRole="button" accessibilityLabel={`בריאות וטיפוח, ${dog.name}`}>
               <RtlText style={styles.hubChevron}>‹</RtlText>
-              <RtlText style={styles.hubLabel}>🏥 בריאות וטיפוח</RtlText>
+              <View style={styles.hubLabelWithMeta}>
+                <RtlText style={styles.hubLabel}>🏥 בריאות וטיפוח</RtlText>
+                <RtlText style={styles.hubRowMeta}>חיסונים, טיפולים ותזכורות</RtlText>
+              </View>
             </Pressable>
           </View>
         ) : null}
@@ -878,10 +882,10 @@ function SettingsScreenContent() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  systemAdminFab: { position: 'absolute', right: spacing.lg, bottom: spacing.xl, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primaryDark, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8, elevation: 6 },
+  systemAdminFab: { position: 'absolute', right: spacing.lg, bottom: 92, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primaryDark, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8, elevation: 6 },
   systemAdminFabText: { fontSize: 25 },
   flex: { flex: 1 },
-  content: { padding: spacing.xl, gap: spacing.xxl, paddingBottom: spacing.xxxl },
+  content: { padding: spacing.xl, gap: spacing.lg, paddingBottom: 128 },
   // Same desktop-containment pattern as HomeScreen's webContent: cap and
   // center the scroll content on web only — native is unaffected (RN's
   // ScrollView contentContainerStyle already renders full-width there, and
@@ -891,7 +895,7 @@ const styles = StyleSheet.create({
   // the mobile viewport so every settings card matches the other screens.
   webContent: { width: '100%', maxWidth: breakpoints.desktopContent, alignSelf: 'center' },
   header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
-  section: { gap: spacing.sm },
+  section: { gap: spacing.xs },
   sectionTitle: { width: '100%', ...typography.sectionTitle, fontSize: 18, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   dogMeta: { fontSize: 14, color: colors.textSecondary, textAlign: 'right' },
   addButton: { marginTop: spacing.xs },
@@ -906,9 +910,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.md,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
-    minHeight: 56,
+    minHeight: 52,
   },
   hubLabel: { flex: 1, ...typography.body, fontSize: 16, color: colors.textPrimary, textAlign: 'right' },
   hubLabelWithMeta: { flex: 1, gap: 2, alignItems: 'stretch' },
@@ -928,7 +932,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.lg,
-    padding: spacing.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
   },
   dogCardBody: { flex: 1, gap: 2 },
   dogCardName: { ...typography.sectionTitle, fontSize: 18, color: colors.textPrimary, textAlign: 'right' },
