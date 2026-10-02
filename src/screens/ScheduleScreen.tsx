@@ -357,6 +357,7 @@ export function ScheduleScreen() {
                 )) : null}
 
               </View>
+            )}
           </>
         ) : null}
 
