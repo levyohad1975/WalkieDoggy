@@ -563,10 +563,23 @@ export function HomeScreen() {
   // The compact Home timeline is a Dashboard summary, not a list of only
   // the walks *after* the primary card. Including the next walk means the
   // section remains useful (and visibly present) on a day with one walk.
-  const dashboardTimelineWalks = useMemo(
-    () => dailyWalkTimeline(visibleWalks, new Date()),
-    [visibleWalks, minuteTick]
-  );
+  const dashboardTimelineWalks = useMemo(() => {
+    const now = new Date();
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const timeline = dailyWalkTimeline(visibleWalks, now);
+    // Home is a forward-looking summary, not today's full history. Keep the
+    // unresolved/current walk visible, then only the nearest future walks.
+    // This also makes the dashboard resilient to large volumes of Staging
+    // test walks without squeezing dozens of stops into one phone width.
+    return timeline
+      .filter((walk) => {
+        if (walk.status === 'in_progress') return true;
+        if (walk.status !== 'pending') return false;
+        const [hour, minute] = walk.scheduledTime.split(':').map(Number);
+        return hour * 60 + minute >= nowMinutes;
+      })
+      .slice(0, 4);
+  }, [visibleWalks, minuteTick]);
   const dashboardTimelineProgress = useMemo(() => {
     if (dashboardTimelineWalks.length < 2) return dashboardTimelineWalks.length === 1 ? 0 : 0;
     const now = new Date();
