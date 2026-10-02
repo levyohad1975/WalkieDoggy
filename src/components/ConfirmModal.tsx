@@ -40,7 +40,7 @@ export function ConfirmModal({
                 `compact` prop doc comment). Applied to BOTH buttons, so
                 they stay the same size as each other — no lopsided
                 confirm/cancel pair. */}
-            <Button label={confirmLabel} onPress={onConfirm} loading={loading} style={styles.flex} compact />
+            <Button label={confirmLabel} onPress={onConfirm} loading={loading} style={styles.flex} compact wrap />
             <Button label={cancelLabel} onPress={onCancel} variant="secondary" style={styles.flex} compact />
           </View>
         </View>
