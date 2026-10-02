@@ -237,41 +237,13 @@ async function loadScheduleForFamily(
       repository.getWalks(familyId),
     ]);
 
-    // Self-healing: an active rule with no upcoming entries (generation
-    // never ran, was interrupted, or entries were wiped some other way)
-    // must never just silently show an empty schedule — backfill it from
-    // the rule itself, right here, before the screen ever renders.
-    // Local calendar day, not UTC — `entries`/`walks` dates are the
-    // family's local "today" (see dateFormat.ts), and a UTC-anchored
-    // "today" would be wrong for a few hours after local midnight for
-    // anyone ahead of UTC (e.g. Israel), generating a day-early entry.
-    const today = localDateOnly(new Date());
-    const endDate = localDateOnly(new Date(Date.now() + GENERATE_DAYS_AHEAD * 86400000));
-    const rulesMissingEntries = rules.filter((r) => ruleNeedsEntryBackfill(r, entries, today));
-
+    // Do not regenerate missing occurrences during a normal load. A family-admin
+    // activity reset intentionally clears generated schedule entries while
+    // preserving recurring rules; load-time backfill used to recreate those
+    // future occurrences immediately and made reset appear broken. Rule create/
+    // edit flows remain responsible for generating their own occurrences.
     let finalEntries = entries;
     let finalWalks = walks;
-    if (rulesMissingEntries.length > 0) {
-      const now = new Date();
-      const currentLocalTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      const generatedEntries = rulesMissingEntries
-        .flatMap((r) => generateRotationSchedule(r, today, endDate, () => generateId('entry')))
-        // A reset deliberately removes activity history while preserving the
-        // recurring rules. When load() self-heals the now-empty schedule,
-        // never recreate occurrences whose scheduled time has already
-        // passed today; only still-actionable today/future walks belong in
-        // the rebuilt schedule.
-        .filter((entry) => entry.date > today || (entry.date === today && entry.time > currentLocalTime));
-      if (generatedEntries.length > 0) {
-        await repository.addScheduleEntries(generatedEntries);
-        const existingKeys = new Set(entries.map((e) => `${e.dogId}|${e.date}|${e.time}`));
-        const trulyNew = generatedEntries.filter((e) => !existingKeys.has(`${e.dogId}|${e.date}|${e.time}`));
-        const generatedWalks = trulyNew.map((e) => walkFromEntry(e, familyId));
-        for (const w of generatedWalks) await repository.saveWalk(w);
-        finalEntries = [...entries, ...trulyNew];
-        finalWalks = [...walks, ...generatedWalks];
-      }
-    }
 
     // Once a later planned occurrence for the same dog is due, older
     // unresolved planned walks are no longer actionable questions. Close
