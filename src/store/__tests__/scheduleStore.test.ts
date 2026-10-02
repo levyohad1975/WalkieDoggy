@@ -111,15 +111,15 @@ describe('scheduleStore', () => {
     expect(untouchedDoneWalk?.scheduledTime).toBe('07:00');
   });
 
-  it('reload (load) self-heals: an active rule with no upcoming entries gets them backfilled instead of showing empty', async () => {
+  it('reload preserves a recurring rule with no generated occurrences without recreating reset activity', async () => {
     await useScheduleStore.getState().load(FAMILY_ID);
 
-    // Simulate a rule that exists in the repository but whose entries were
-    // never generated (e.g. an interrupted save) — persist it directly,
-    // bypassing addRule/its entry-generation step.
+    // Activity reset deliberately removes generated entries/walks while
+    // preserving recurring routine rules. A normal load must not undo that
+    // reset by backfilling the missing occurrences.
     const { repository } = require('../../data');
     const orphanRule: ScheduleRule = {
-      id: 'rule-orphan',
+      id: 'rule-reset-preserved',
       familyId: FAMILY_ID,
       dogId: 'dog-topi',
       time: '15:00',
@@ -132,26 +132,22 @@ describe('scheduleStore', () => {
     };
     await repository.upsertScheduleRule(orphanRule);
 
-    // A fresh load (as the Schedule screen does on mount) must notice the
-    // active rule has no matching entries and backfill them itself.
     await useScheduleStore.getState().load(FAMILY_ID);
 
     const state = useScheduleStore.getState();
-    expect(state.rules.some((r) => r.id === 'rule-orphan')).toBe(true);
-    const backfilledEntries = state.entries.filter((e) => e.ruleId === 'rule-orphan');
-    expect(backfilledEntries.length).toBeGreaterThan(0);
-    const backfilledWalks = state.walks.filter((w) => backfilledEntries.some((e) => e.id === w.scheduleEntryId));
-    expect(backfilledWalks.length).toBe(backfilledEntries.length);
+    expect(state.rules.some((r) => r.id === orphanRule.id)).toBe(true);
+    expect(state.entries.filter((e) => e.ruleId === orphanRule.id)).toHaveLength(0);
+    expect(state.walks.filter((w) => {
+      const entry = state.entries.find((e) => e.id === w.scheduleEntryId);
+      return entry?.ruleId === orphanRule.id;
+    })).toHaveLength(0);
   });
 
-  it('BUG FIX: two concurrent load() calls for the same family share one in-flight backfill instead of each generating their own duplicate entry/walk', async () => {
+  it('two concurrent load() calls share one in-flight read without recreating missing reset occurrences', async () => {
     await useScheduleStore.getState().load(FAMILY_ID);
-
-    // Same orphan-rule setup as the self-heal test above — a rule with no
-    // upcoming entries that load() must backfill.
     const { repository } = require('../../data');
-    const orphanRule: ScheduleRule = {
-      id: 'rule-orphan-race',
+    const resetRule: ScheduleRule = {
+      id: 'rule-reset-race',
       familyId: FAMILY_ID,
       dogId: 'dog-topi',
       time: '16:00',
@@ -162,12 +158,8 @@ describe('scheduleStore', () => {
       active: true,
       createdAt: new Date().toISOString(),
     };
-    await repository.upsertScheduleRule(orphanRule);
+    await repository.upsertScheduleRule(resetRule);
 
-    // Two unsynchronized callers firing close together on a real device
-    // (e.g. a screen mount effect and App.tsx's foreground sync) — both
-    // must resolve, but only ONE should actually run the fetch+backfill;
-    // the second must just await the first's in-flight promise.
     const [firstResult, secondResult] = await Promise.all([
       useScheduleStore.getState().load(FAMILY_ID),
       useScheduleStore.getState().load(FAMILY_ID),
@@ -175,17 +167,14 @@ describe('scheduleStore', () => {
 
     expect(firstResult).toBe(true);
     expect(secondResult).toBe(true);
+    let state = useScheduleStore.getState();
+    expect(state.rules.some((r) => r.id === resetRule.id)).toBe(true);
+    expect(state.entries.filter((e) => e.ruleId === resetRule.id)).toHaveLength(0);
 
-    const state = useScheduleStore.getState();
-    const backfilledEntries = state.entries.filter((e) => e.ruleId === 'rule-orphan-race');
-    expect(backfilledEntries.length).toBeGreaterThan(0);
-    // No duplicate walk rows: exactly one walk per backfilled entry, not two.
-    const backfilledWalks = state.walks.filter((w) => backfilledEntries.some((e) => e.id === w.scheduleEntryId));
-    expect(backfilledWalks.length).toBe(backfilledEntries.length);
-
-    // A subsequent load() (no longer in-flight-shared) still works normally.
     const thirdResult = await useScheduleStore.getState().load(FAMILY_ID);
     expect(thirdResult).toBe(true);
+    state = useScheduleStore.getState();
+    expect(state.entries.filter((e) => e.ruleId === resetRule.id)).toHaveLength(0);
   });
 
   it('addRule surfaces a visible actionError instead of silently doing nothing when the repository write fails', async () => {
