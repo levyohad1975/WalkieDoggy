@@ -171,6 +171,7 @@ export function WalkRow({
         ) : null}
 
         <View style={styles.middle}>
+          <View style={styles.identityLine}>
           {/* Fixed size, one line, ellipsis only for a genuinely long name —
               never `adjustsFontSizeToFit` (that was the source of the
               inconsistent-font-size bug this redesign fixes). */}
@@ -178,11 +179,14 @@ export function WalkRow({
             {responsible?.name ?? 'לא הוגדר'}
             {responsible?.removedAt ? ' (הוסר)' : ''}
           </RtlText>
-          {metadataLine ? (
-            <RtlText style={[styles.metadata, historyCompact && styles.metadataHistory]} numberOfLines={1}>
-              {metadataLine}
-            </RtlText>
-          ) : null}
+          </View>
+          <View style={styles.metadataSlot}>
+            {metadataLine ? (
+              <RtlText style={[styles.metadata, historyCompact && styles.metadataHistory]} numberOfLines={1}>
+                {metadataLine}
+              </RtlText>
+            ) : null}
+          </View>
         </View>
 
         {hidePendingStatus && walk.status === 'pending' && !overdue ? null : (
@@ -342,8 +346,19 @@ const styles = StyleSheet.create({
 
   middle: {
     flex: 1,
-    gap: 4,
     minWidth: 0,
+    alignItems: 'flex-end',
+  },
+  identityLine: {
+    width: '100%',
+    minHeight: 22,
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+  },
+  metadataSlot: {
+    width: '100%',
+    height: 18,
+    justifyContent: 'center',
     alignItems: 'flex-end',
   },
   timeHistory: { fontSize: 18 },
@@ -363,6 +378,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     alignSelf: 'flex-end',
     flexShrink: 0,
+    lineHeight: 16,
   },
 
   // LEFT column: status badge + (optional) compact completion line, capped
