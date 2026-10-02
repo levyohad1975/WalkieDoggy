@@ -7,7 +7,7 @@ import { RtlText } from './RtlText';
 import { WalkieMascot } from './WalkieMascot';
 import { MascotSafeZone } from './MascotSafeZone';
 
-const COMPLETION_MASCOT_ANIMATION = require('../../assets/branding/walkie-doggy-run.gif');
+const COMPLETION_MASCOT = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
 
 interface WalkCompletionCelebrationProps {
   celebration: CompletionCelebration | null;
@@ -18,6 +18,7 @@ interface WalkCompletionCelebrationProps {
 export function WalkCompletionCelebration({ celebration, onDismiss }: WalkCompletionCelebrationProps) {
   const [reducedMotion, setReducedMotion] = useState(true);
   const [screenReaderEnabled, setScreenReaderEnabled] = useState(false);
+  const autoDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Fail-safe default false: until confirmed on, behave as before (a
   // screen reader user who somehow isn't detected in time still gets the
   // explicit dismiss button/backdrop, never a permanently-stuck modal).
@@ -64,9 +65,14 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
     }
     // Auto-dismiss is keyed to the celebration id rather than object identity,
     // so harmless parent re-renders cannot restart the timer indefinitely.
-    const timer = setTimeout(() => dismissRef.current(), screenReaderEnabled ? 5000 : 2200);
-    return () => { clearTimeout(timer); mascotAnimation?.stop(); };
+    if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
+    autoDismissTimerRef.current = setTimeout(() => dismissRef.current(), screenReaderEnabled ? 5000 : 2200);
+    return () => mascotAnimation?.stop();
   }, [celebration?.id, mascotBounce, opacity, reducedMotion, screenReaderEnabled, translateY]);
+
+  useEffect(() => () => {
+    if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
+  }, []);
 
   if (!celebration) return null;
   const message = celebration.title;
@@ -78,7 +84,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
             <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
             <View style={styles.tail} />
             <Animated.View style={{ transform: [{ translateY: mascotBounce }, { scale: opacity.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }] }}>
-              <WalkieMascot state={celebration.mascotState} size={104} source={COMPLETION_MASCOT_ANIMATION} accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול" testID="completion-mascot-animation" />
+              <WalkieMascot state={celebration.mascotState} size={104} source={COMPLETION_MASCOT} accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול" testID="completion-mascot-animation" />
             </Animated.View>
             {celebration.confetti ? <RtlText style={styles.confetti} accessible={false}>✦  ✦  ✦</RtlText> : null}
           </Animated.View>
