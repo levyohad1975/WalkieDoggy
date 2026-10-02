@@ -657,7 +657,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     marginTop: 2,
   },
-  chipRow: { width: '100%', flexDirection: 'row-reverse', flexWrap: 'wrap', justifyContent: 'flex-start', alignSelf: 'stretch', gap: 6, marginTop: 4 },
+  chipRow: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', alignSelf: 'stretch', gap: 6, marginTop: 4 },
   chip: { paddingHorizontal: spacing.md, paddingVertical: 7, borderRadius: radii.md, backgroundColor: colors.surfaceMuted },
   chipActive: { backgroundColor: colors.primary },
   chipText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
