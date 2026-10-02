@@ -235,7 +235,7 @@ export function NextWalkCard({
       {tone === 'dashboard' ? (
         <View style={[styles.dashboardThreeColumnRow, isWeb && styles.webMainRow]}>
           <View style={styles.dashboardPersonColumn}>
-            {responsible ? <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={isWeb ? 50 : 56} /> : null}
+            {responsible ? <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={isWeb ? 46 : 50} /> : null}
             <RtlText style={styles.dashboardPersonName} numberOfLines={1}>{responsible?.name ?? '—'}</RtlText>
             <RtlText style={styles.dashboardColumnLabel}>אחראי לטיול</RtlText>
           </View>
@@ -396,7 +396,7 @@ const styles = StyleSheet.create({
   // Item 6 (mobile polish): paddingVertical trimmed from 5 to 2 — a
   // slightly more compact dashboard card. Never touches any button's own
   // minHeight (tap targets stay exactly as large as before).
-  cardDashboard: { backgroundColor: '#EAF6FD', borderColor: '#BFE3F4', borderRadius: 28, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3, paddingHorizontal: 14, paddingVertical: 9 },
+  cardDashboard: { backgroundColor: '#EAF6FD', borderColor: '#BFE3F4', borderRadius: 28, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3, paddingHorizontal: 14, paddingVertical: 6 },
   webCard: { borderRadius: radii.xl, paddingHorizontal: 24, paddingVertical: 18 },
   cardActive: { backgroundColor: colors.successSoft, borderColor: colors.success + '55' },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
@@ -454,7 +454,7 @@ const styles = StyleSheet.create({
   // Use an intentionally wider central gutter and inset both columns so the
   // assignee circle reads as its own block instead of touching the time.
   dashboardMainRow: { gap: 34, paddingHorizontal: 10, marginTop: 4, marginBottom: 10, minHeight: 82 },
-  dashboardThreeColumnRow: { flexDirection: 'row', alignItems: 'stretch', justifyContent: 'space-between', marginTop: 2, marginBottom: 5, minHeight: 82, gap: 0 },
+  dashboardThreeColumnRow: { flexDirection: 'row', alignItems: 'stretch', justifyContent: 'space-between', marginTop: 1, marginBottom: 3, minHeight: 70, gap: 0 },
   dashboardPersonColumn: { flex: 0.82, alignItems: 'center', justifyContent: 'center', gap: 2, minWidth: 0, paddingHorizontal: 4 },
   dashboardPersonName: { fontSize: 16, fontWeight: '800', color: '#17345B', textAlign: 'center' },
   dashboardColumnLabel: { fontSize: 11, fontWeight: '600', color: '#7B746B', textAlign: 'center' },
@@ -466,11 +466,11 @@ const styles = StyleSheet.create({
   personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'left' },
   responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'left' },
   doneButton: { marginTop: 2 },
-  dashboardStartButton: { marginTop: 1, minHeight: 48, paddingVertical: 3, borderRadius: 24, backgroundColor: '#0EA8B2', borderColor: '#0EA8B2' },
+  dashboardStartButton: { marginTop: 1, minHeight: 44, paddingVertical: 3, borderRadius: 24, backgroundColor: '#0EA8B2', borderColor: '#0EA8B2' },
   markDoneFallbackButton: { marginTop: 8, borderWidth: 1.5, borderColor: colors.primaryDark },
   dashboardMarkDoneButton: { marginTop: 4, minHeight: 40, paddingVertical: 3, borderWidth: 1.5, borderColor: '#12A5AB' },
   endWalkButton: { marginTop: 4, backgroundColor: colors.statusOverdue },
-  resolveRow: { flexDirection: 'row-reverse', gap: 8, marginTop: 5, width: '100%' },
+  resolveRow: { flexDirection: 'row-reverse', gap: 8, marginTop: 3, width: '100%' },
   resolveButton: { flex: 1, minWidth: 0 },
   notMineNote: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: 6 },
   requestStatusLine: {
@@ -483,7 +483,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   requestStatusApproved: { color: colors.statusDone },
-  linkRow: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 5, minHeight: 40, borderRadius: 20, backgroundColor: '#F7F4EE', paddingHorizontal: 14 },
+  linkRow: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 3, minHeight: 34, borderRadius: 20, backgroundColor: '#F7F4EE', paddingHorizontal: 14 },
   linkText: { color: '#17345B', fontSize: 13, fontWeight: '600' },
   linkDivider: { color: colors.textSecondary },
 });
