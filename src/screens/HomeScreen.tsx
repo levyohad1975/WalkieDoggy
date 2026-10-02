@@ -1670,8 +1670,8 @@ const styles = StyleSheet.create({
   // so each image's TOP edge — where the mascot/dog's face/head sits —
   // renders at the exact same position as before; only extra bottom
   // (paws/tail) bleed is newly clipped by the shorter frame.
-  dashboardHeroMascot: { position: 'absolute', right: -4, bottom: -30, zIndex: 2 },
-  dashboardHeroDogCutout: { position: 'absolute', right: -4, bottom: -30, width: 190, height: 188, zIndex: 2 },
+  dashboardHeroMascot: { position: 'absolute', right: -4, bottom: -12, zIndex: 2 },
+  dashboardHeroDogCutout: { position: 'absolute', right: -4, bottom: -12, width: 190, height: 188, zIndex: 2 },
   dashboardHeroDogPhoto: { position: 'absolute', right: 4, bottom: -36, width: 136, height: 136, borderRadius: 22, zIndex: 2 },
   dashboardHeroCopy: { width: '52%', alignItems: 'flex-end', alignSelf: 'flex-start', paddingTop: 38, paddingHorizontal: spacing.md, zIndex: 2 },
   dashboardHeroEyebrow: { fontSize: 16, color: '#27376F', fontWeight: '700', textAlign: 'right' },
