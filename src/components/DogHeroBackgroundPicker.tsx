@@ -42,14 +42,15 @@ export function DogHeroBackgroundPicker({ dog, onSave }: { dog: Dog; onSave: (pa
           style={[styles.tile, styles.defaultTile, draftId === undefined && styles.selected]}
           accessibilityRole="button"
           accessibilityState={{ selected: draftId === undefined }}
-          accessibilityLabel="ברירת מחדל, ללא תמונת רקע"
+          accessibilityLabel="בחירת רקע ברירת המחדל החם והנקי"
         >
           <View style={styles.defaultPreview}>
-            <View style={styles.defaultBloomOne} />
-            <View style={styles.defaultBloomTwo} />
-            <RtlText style={styles.defaultIcon}>🐾</RtlText>
+            <View style={styles.defaultSun} />
+            <View style={styles.defaultHillBack} />
+            <View style={styles.defaultHillFront} />
+            <View style={styles.defaultGround} />
           </View>
-          <View style={styles.labelWrap}><RtlText style={styles.label}>ברירת מחדל · ללא רקע</RtlText></View>
+          <View style={styles.labelWrap}><RtlText style={styles.label}>ברירת מחדל · חם ונקי</RtlText></View>
           {draftId === undefined ? <View style={styles.check}><RtlText style={styles.checkText}>✓</RtlText></View> : null}
         </Pressable>
         <Pressable
@@ -95,9 +96,10 @@ const styles = StyleSheet.create({
   selected: { borderColor: colors.primaryDark },
   defaultTile: { backgroundColor: '#F8F4EA' },
   defaultPreview: { ...StyleSheet.absoluteFill, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
-  defaultBloomOne: { position: 'absolute', width: 110, height: 110, borderRadius: 55, left: -30, bottom: -55, backgroundColor: '#E8F3E8' },
-  defaultBloomTwo: { position: 'absolute', width: 100, height: 100, borderRadius: 50, right: -28, top: -52, backgroundColor: '#DDEFE8' },
-  defaultIcon: { fontSize: 28 },
+  defaultSun: { position: 'absolute', width: 48, height: 48, borderRadius: 24, right: 18, top: 8, backgroundColor: '#FFF1C7' },
+  defaultHillBack: { position: 'absolute', width: 170, height: 78, borderRadius: 85, left: -48, bottom: -40, backgroundColor: '#E8F1DF' },
+  defaultHillFront: { position: 'absolute', width: 165, height: 74, borderRadius: 82, right: -48, bottom: -43, backgroundColor: '#DCEAD7' },
+  defaultGround: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 16, backgroundColor: '#F2E4C9' },
   thumb: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
   labelWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#00000088', paddingVertical: 4, paddingHorizontal: 6 },
   label: { color: '#fff', fontSize: 12, fontWeight: '800', textAlign: 'center' },
