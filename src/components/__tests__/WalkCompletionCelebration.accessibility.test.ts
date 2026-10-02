@@ -15,11 +15,10 @@ describe('WalkCompletionCelebration (structural)', () => {
     expect(source).toMatch(/accessibilityRole="alert" accessibilityLiveRegion="polite"/);
   });
 
-  it('auto-dismisses normally but never removes the Hebrew message while VoiceOver/TalkBack is reading it', () => {
-    expect(source).toMatch(/setTimeout\(\(\) => dismissRef\.current\(\), 2400\)/);
+  it('gives VoiceOver/TalkBack extra reading time while preserving explicit dismissal', () => {
+    expect(source).toMatch(/setTimeout\(\(\) => dismissRef\.current\(\), screenReaderEnabled \? 5000 : 2200\)/);
     expect(source).toMatch(/AccessibilityInfo\.isScreenReaderEnabled\(\)/);
     expect(source).toMatch(/AccessibilityInfo\.addEventListener\('screenReaderChanged', setScreenReaderEnabled\)/);
-    expect(source).toMatch(/if \(screenReaderEnabled\) return;/);
   });
 
   it('still allows an immediate explicit dismiss by tapping the celebration backdrop', () => {
