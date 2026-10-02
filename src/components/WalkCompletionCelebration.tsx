@@ -28,6 +28,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
   }, [onDismiss]);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(18)).current;
+  const mascotBounce = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     let mounted = true;
@@ -48,13 +49,25 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
         Animated.spring(translateY, { toValue: 0, damping: 16, stiffness: 180, mass: 0.8, useNativeDriver: true }),
       ]).start();
     }
-    // The celebration animation itself is ~1.8s. Give it a short beat to
-    // settle, then return to the app without asking the family to tap
-    // "המשך" after every walk.
-    if (screenReaderEnabled) return;
-    const timer = setTimeout(() => dismissRef.current(), 2000);
-    return () => clearTimeout(timer);
-  }, [celebration, opacity, reducedMotion, screenReaderEnabled, translateY]);
+    mascotBounce.setValue(0);
+    let mascotAnimation: Animated.CompositeAnimation | undefined;
+    if (!reducedMotion) {
+      mascotAnimation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(mascotBounce, { toValue: -8, duration: 260, useNativeDriver: true }),
+          Animated.timing(mascotBounce, { toValue: 0, duration: 260, useNativeDriver: true }),
+          Animated.delay(180),
+        ]),
+        { iterations: 2 },
+      );
+      mascotAnimation.start();
+    }
+    // Auto-dismiss is keyed to the celebration id rather than object identity,
+    // so harmless parent re-renders cannot restart the timer indefinitely.
+    if (screenReaderEnabled) return () => mascotAnimation?.stop();
+    const timer = setTimeout(() => dismissRef.current(), 2200);
+    return () => { clearTimeout(timer); mascotAnimation?.stop(); };
+  }, [celebration?.id, mascotBounce, opacity, reducedMotion, screenReaderEnabled, translateY]);
 
   if (!celebration) return null;
   const message = celebration.title;
@@ -65,8 +78,8 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
           <Animated.View style={[styles.moment, { opacity, transform: [{ translateY }] }]} accessibilityRole="alert" accessibilityLiveRegion="polite">
             <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
             <View style={styles.tail} />
-            <Animated.View style={{ transform: [{ translateY: opacity.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }, { scale: opacity.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1] }) }] }}>
-              <WalkieMascot state={celebration.mascotState} size={128} accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול" testID="completion-mascot-animation" />
+            <Animated.View style={{ transform: [{ translateY: mascotBounce }, { scale: opacity.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }] }}>
+              <WalkieMascot state={celebration.mascotState} size={104} accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול" testID="completion-mascot-animation" />
             </Animated.View>
             {celebration.confetti ? <RtlText style={styles.confetti} accessible={false}>✦  ✦  ✦</RtlText> : null}
           </Animated.View>
@@ -78,10 +91,10 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'transparent' },
-  moment: { width: 150, alignItems: 'center' },
-  bubble: { maxWidth: 150, backgroundColor: colors.surface, borderRadius: radii.lg, paddingHorizontal: 10, paddingVertical: 7, shadowColor: '#0B5C75', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
-  message: { color: colors.textPrimary, fontSize: 14, lineHeight: 18, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
-  tail: { width: 14, height: 14, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }, { translateY: -10 }], marginBottom: -12 },
+  moment: { width: 132, alignItems: 'center' },
+  bubble: { maxWidth: 132, backgroundColor: colors.surface, borderRadius: radii.lg, paddingHorizontal: 10, paddingVertical: 7, shadowColor: '#0B5C75', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
+  message: { color: colors.textPrimary, fontSize: 13, lineHeight: 17, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
+  tail: { width: 14, height: 14, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }], marginTop: -7, marginBottom: -3 },
   confetti: { position: 'absolute', top: 64, color: colors.primary, fontSize: 24, letterSpacing: 10 },
   dismissButton: { minHeight: 44, paddingHorizontal: 18, justifyContent: 'center', marginTop: -6 },
   dismissText: { color: colors.textInverse, fontWeight: '700', fontSize: 14 },
