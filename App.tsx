@@ -8,7 +8,6 @@ import { RootNavigator } from './src/navigation/RootNavigator';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { FamilyOnboardingScreen } from './src/screens/FamilyOnboardingScreen';
 import { SystemAdminScreen } from './src/screens/SystemAdminScreen';
-import { SystemAdminLoginScreen } from './src/screens/SystemAdminLoginScreen';
 import { PhotoCropHost } from './src/components/PhotoCropHost';
 import { RtlText } from './src/components/RtlText';
 import { colors } from './src/theme/colors';
@@ -258,11 +257,9 @@ export default function App() {
   // familyId or currentUserId. This never sets/reads familyId itself, so it
   // cannot affect which family this device is a member of.
   const isSystemAdmin = useSystemAdminStore((s) => s.isSystemAdmin);
-  const systemAdminChecked = useSystemAdminStore((s) => s.checked);
   const refreshSystemAdmin = useSystemAdminStore((s) => s.refresh);
   const systemAdminOpenRequestId = useSystemAdminStore((s) => s.openRequestId);
   const [systemAdminOpen, setSystemAdminOpen] = useState(false);
-  const [systemAdminLoginOpen, setSystemAdminLoginOpen] = useState(false);
   const [showIosInstallPrompt, setShowIosInstallPrompt] = useState(false);
   useEffect(() => {
     if (hydrated) void refreshSystemAdmin();
@@ -391,25 +388,6 @@ export default function App() {
           ) : (
             <LoginScreen />
           )}
-
-          {/* BATCH 4 (item A) — see the isSystemAdmin comment above for why
-              this sits outside every other branch. A small, unobtrusive
-              corner entry point; NEVER shown unless
-              useSystemAdminStore().isSystemAdmin resolved true, and that in
-              turn only ever came from am_i_system_admin() — a fresh,
-              server-side check of the real auth identity, not a locally
-              cached/guessed value. */}
-          {Platform.OS === 'web' && systemAdminChecked && !isSystemAdmin ? (
-            <Pressable
-              style={styles.systemAdminLoginEntry}
-              onPress={() => setSystemAdminLoginOpen(true)}
-              accessibilityRole="button"
-              accessibilityLabel="כניסת מנהל מערכת"
-            >
-              <RtlText style={styles.systemAdminLoginEntryText}>כניסת מנהל מערכת</RtlText>
-            </Pressable>
-          ) : null}
-          <SystemAdminLoginScreen visible={systemAdminLoginOpen} onClose={() => setSystemAdminLoginOpen(false)} />
           {!shouldEnterSystemAdminDirectly ? (
             <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} />
           ) : null}
@@ -428,8 +406,6 @@ export default function App() {
 const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', gap: 12 },
   loadingText: { color: colors.textSecondary, fontSize: 16, fontWeight: '700', textAlign: 'center' },
-  systemAdminLoginEntry: { position: 'absolute', top: 18, left: 18, minHeight: 40, paddingHorizontal: 14, borderRadius: 20, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', zIndex: 100 },
-  systemAdminLoginEntryText: { color: colors.primaryDark, fontSize: 13, fontWeight: '800' },
   systemAdminEntry: {
     position: 'absolute',
     // Keep the platform-admin shortcut below the branded header so it can
