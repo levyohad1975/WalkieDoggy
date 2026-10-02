@@ -991,7 +991,7 @@ export function HomeScreen() {
                       <RtlText style={styles.dashboardLastWalkEditText}>עריכה</RtlText>
                     </Pressable>
                   ) : null}
-                  {lastWalk.status === 'done' ? (
+                  {lastWalk.status !== 'skipped' ? (
                     <>
                       <Pressable
                         onPress={canEditLastWalk ? () => void editDoneDetails(lastWalk.id, { hadPee: !lastWalk.hadPee }) : undefined}
@@ -1001,7 +1001,7 @@ export function HomeScreen() {
                         accessibilityState={{ checked: !!lastWalk.hadPee, disabled: !canEditLastWalk }}
                         accessibilityLabel="סימון פיפי בטיול האחרון"
                       >
-                        <RtlText style={styles.dashboardLastWalkNeed}>💧</RtlText>
+                        <RtlText style={[styles.dashboardLastWalkNeed, !lastWalk.hadPee && styles.dashboardLastWalkNeedMuted]}>💧</RtlText>
                       </Pressable>
                       <Pressable
                         onPress={canEditLastWalk ? () => void editDoneDetails(lastWalk.id, { hadPoop: !lastWalk.hadPoop }) : undefined}
@@ -1011,7 +1011,7 @@ export function HomeScreen() {
                         accessibilityState={{ checked: !!lastWalk.hadPoop, disabled: !canEditLastWalk }}
                         accessibilityLabel="סימון קקי בטיול האחרון"
                       >
-                        <RtlText style={styles.dashboardLastWalkNeed}>💩</RtlText>
+                        <RtlText style={[styles.dashboardLastWalkNeed, !lastWalk.hadPoop && styles.dashboardLastWalkNeedMuted]}>💩</RtlText>
                       </Pressable>
                     </>
                   ) : null}
