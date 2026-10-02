@@ -35,7 +35,7 @@ describe('SettingsScreen — personal settings stay accessible to every member',
     expect(ordinarySectionOpenIdx).toBeLessThan(adminSectionIdx);
     // Every labeled area between the ordinary-section comment and the
     // admin conditional must itself sit before that conditional too.
-    for (const title of ['👪 משפחה', '🐾 טיולים ותזכורות', 'הישגים 🏆']) {
+    for (const title of ['👪 משפחה', '🔔 תזכורות והתראות', 'הישגים 🏆']) {
       const titleIdx = settingsSource.indexOf(title, sectionIdx);
       expect(titleIdx).toBeGreaterThan(-1);
       expect(titleIdx).toBeLessThan(adminSectionIdx);
