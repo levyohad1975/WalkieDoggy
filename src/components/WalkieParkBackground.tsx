@@ -1,32 +1,40 @@
 import React from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 /**
- * Walkie Park — approved default Home hero artwork.
- * The source artwork is landscape while the mobile hero is intentionally
- * shallow. A slightly oversized image anchored toward its lower half keeps
- * the path/flowers visible instead of showing mostly sky and treetops.
+ * Walkie hills — lightweight default Home hero background.
+ * Deliberately calm: the official mascot is rendered separately by HomeScreen,
+ * so this scene never replaces or competes with the product mascot.
  */
 export function WalkieParkBackground() {
   return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill} accessibilityElementsHidden>
-      <Image
-        source={require('../../assets/walkie-park-default.jpg')}
-        style={styles.artwork}
-        resizeMode="cover"
-        accessibilityIgnoresInvertColors
-      />
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.sky]} accessibilityElementsHidden>
+      <View style={styles.sunGlow} />
+      <View style={styles.hillBack} />
+      <View style={styles.hillMid} />
+      <View style={styles.hillFront} />
+      <View style={styles.ground} />
+      <View style={styles.paw}>
+        <View style={styles.pawPad} />
+        <View style={[styles.pawToe, styles.pawToeOne]} />
+        <View style={[styles.pawToe, styles.pawToeTwo]} />
+        <View style={[styles.pawToe, styles.pawToeThree]} />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  artwork: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    width: '100%',
-    height: '178%',
-    bottom: '-24%',
-  },
+  sky: { backgroundColor: '#FFF9EA', overflow: 'hidden' },
+  sunGlow: { position: 'absolute', width: 190, height: 190, borderRadius: 95, backgroundColor: '#FFF2C8', right: 76, top: -108, opacity: 0.62 },
+  hillBack: { position: 'absolute', left: -70, right: 250, height: 92, bottom: 18, borderRadius: 90, backgroundColor: '#E7F2D8', transform: [{ rotate: '5deg' }] },
+  hillMid: { position: 'absolute', left: 150, right: -80, height: 84, bottom: 12, borderRadius: 88, backgroundColor: '#DDEFD3', transform: [{ rotate: '-5deg' }] },
+  hillFront: { position: 'absolute', left: -90, right: 320, height: 62, bottom: -8, borderRadius: 70, backgroundColor: '#D3E9C4' },
+  ground: { position: 'absolute', left: 0, right: 0, height: 18, bottom: 0, backgroundColor: '#F5E7C7', opacity: 0.72 },
+  paw: { position: 'absolute', left: 78, top: 72, width: 30, height: 26, opacity: 0.16 },
+  pawPad: { position: 'absolute', left: 8, top: 11, width: 15, height: 12, borderRadius: 8, backgroundColor: '#77B98B' },
+  pawToe: { position: 'absolute', width: 7, height: 8, borderRadius: 5, backgroundColor: '#77B98B' },
+  pawToeOne: { left: 2, top: 4, transform: [{ rotate: '-22deg' }] },
+  pawToeTwo: { left: 11, top: 0 },
+  pawToeThree: { right: 2, top: 4, transform: [{ rotate: '22deg' }] },
 });
