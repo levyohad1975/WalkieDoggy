@@ -58,7 +58,7 @@ export function HistoryScreen() {
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [historySearchQuery, setHistorySearchQuery] = useState('');
   const [historyPage, setHistoryPage] = useState(0);
-  const HISTORY_PAGE_SIZE = 4;
+  const HISTORY_PAGE_SIZE = 8;
 
   // BATCH 3 CORRECTION #2 (review #2, post-review): HistoryScreen's actual
   // display/calculation dataset. list_history_walks() (migration 0027) is
@@ -298,9 +298,11 @@ export function HistoryScreen() {
       <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
         <RtlText style={styles.header} accessibilityRole="header" maxFontSizeMultiplier={1.35}>היסטוריה</RtlText>
 
-        <View>
-          <RtlText style={styles.sectionTitle}>סיכום שבועי</RtlText>
-          <RtlText style={styles.sectionSubtitle}>שקיפות משפחתית, לא תחרות 💛</RtlText>
+        <View style={styles.summarySection}>
+          <View style={styles.summaryHeadingRow}>
+            <RtlText style={styles.sectionTitle}>סיכום שבועי</RtlText>
+            <RtlText style={styles.sectionSubtitle}>שקיפות משפחתית 💛</RtlText>
+          </View>
           <View style={styles.summaryCard}>
             {summaryRanked.map(({ user, count }) => (
               <View key={user.id} style={styles.summaryRow}>
@@ -319,7 +321,16 @@ export function HistoryScreen() {
               always-open wall of controls — the range row (the one most
               people actually touch) stays visible; the rest expands on
               demand. */}
-          <RtlText style={styles.sectionTitle}>סינון</RtlText>
+          <View style={styles.filterHeaderRow}>
+            <RtlText style={styles.sectionTitle}>סינון</RtlText>
+            <Pressable
+              onPress={() => setFiltersExpanded((v) => !v)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: filtersExpanded }}
+            >
+              <RtlText style={styles.filterToggle}>{filtersExpanded ? 'פחות ⌃' : 'עוד ⌄'}</RtlText>
+            </Pressable>
+          </View>
 
           {/* PRD §14: "History displays ... with filtering AND SEARCH."
               Free-text search over a walk's note — instant/client-side,
@@ -412,14 +423,7 @@ export function HistoryScreen() {
             directly above that expandable content instead, so the toggle
             and what it toggles read as one connected control.
           */}
-          <Pressable
-            style={styles.filterToggleRow}
-            onPress={() => setFiltersExpanded((v) => !v)}
-            accessibilityRole="button"
-            accessibilityState={{ expanded: filtersExpanded }}
-          >
-            <RtlText style={styles.filterToggle}>{filtersExpanded ? 'הסתר ⌃' : 'עוד ⌄'}</RtlText>
-          </Pressable>
+
 
           {filtersExpanded ? (
             <>
@@ -619,44 +623,49 @@ const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   // Bottom padding increased (final QA round, item F: bottom safe-area/
   // list padding so the last history item isn't hidden behind the tab bar).
-  content: { paddingHorizontal: spacing.xl, paddingTop: spacing.md, gap: spacing.lg, paddingBottom: spacing.lg },
+  content: { paddingHorizontal: spacing.xl, paddingTop: spacing.sm, gap: spacing.md, paddingBottom: spacing.lg },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
   header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   sectionTitle: { width: '100%', ...typography.sectionTitle, fontSize: 18, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
-  sectionSubtitle: { width: '100%', fontSize: 13, color: colors.textSecondary, marginTop: 2, marginBottom: 12, textAlign: 'right', writingDirection: 'rtl' },
-  summaryCard: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.sm },
-  summaryRow: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 8 },
+  sectionSubtitle: { fontSize: 12, color: colors.textSecondary, textAlign: 'right', writingDirection: 'rtl' },
+  summarySection: { gap: 6 },
+  summaryHeadingRow: { width: '100%', gap: 2, alignItems: 'flex-end' },
+  filterHeaderRow: { width: '100%', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  summaryCard: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, paddingHorizontal: spacing.sm, paddingVertical: 2 },
+  summaryRow: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', gap: 10, paddingVertical: 6, paddingHorizontal: 8 },
   // RTL fix (final QA round, item F): member names had no explicit
   // textAlign at all.
   summaryName: { flex: 1, fontSize: 15, fontWeight: '600', color: colors.textPrimary, textAlign: 'right' },
   summaryCount: { fontSize: 14, fontWeight: '700', color: colors.primary },
-  section: { gap: spacing.sm },
+  section: { gap: 6 },
   filterLabel: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, textAlign: 'right', marginTop: 6 },
   // RTL/visual polish (final QA round): the toggle now sits directly above
   // the collapsible content it controls (see the JSX comment above its
   // usage) — right-aligned, matching this screen's own reading direction,
   // instead of pinned to the opposite end of a header row far from it.
-  filterToggleRow: { width: '100%', marginTop: 4 },
+  filterToggleRow: { width: '100%', marginTop: 2 },
   filterToggle: { width: '100%', fontSize: 13, fontWeight: '700', color: colors.primaryDark, textAlign: 'right', writingDirection: 'rtl' },
   searchInput: {
+    minHeight: 44,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.sm,
-    padding: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     fontSize: 14,
     color: colors.textPrimary,
-    marginTop: spacing.sm,
+    marginTop: 2,
   },
-  chipRow: { width: '100%', flexDirection: 'row-reverse', flexWrap: 'wrap', justifyContent: 'flex-start', alignSelf: 'stretch', gap: spacing.sm, marginTop: spacing.sm },
-  chip: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radii.md, backgroundColor: colors.surfaceMuted },
+  chipRow: { width: '100%', flexDirection: 'row-reverse', flexWrap: 'wrap', justifyContent: 'flex-start', alignSelf: 'stretch', gap: 6, marginTop: 4 },
+  chip: { paddingHorizontal: spacing.md, paddingVertical: 7, borderRadius: radii.md, backgroundColor: colors.surfaceMuted },
   chipActive: { backgroundColor: colors.primary },
   chipText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
   chipTextActive: { color: colors.textInverse },
-  list: { gap: spacing.xl },
-  dayGroup: { gap: spacing.sm },
+  list: { gap: spacing.md },
+  dayGroup: { gap: 6 },
   dayLabel: { width: '100%', fontSize: 12, color: colors.textSecondary, fontWeight: '500', textAlign: 'right' },
-  historyItem: { gap: 4 },
+  historyItem: { gap: 2 },
   note: { fontSize: 12, fontWeight: '400', color: colors.textSecondary, textAlign: 'right', paddingHorizontal: 8 },
   dateModalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.38)', alignItems: 'center', justifyContent: 'center', padding: 20 },
   dateModalCard: { width: '100%', maxWidth: 380, backgroundColor: colors.surface, borderRadius: radii.xl, padding: spacing.lg, gap: spacing.md },
