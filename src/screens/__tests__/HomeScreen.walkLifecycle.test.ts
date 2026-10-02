@@ -54,7 +54,7 @@ describe('Home integrated walk lifecycle', () => {
 
   it('keeps a compact, always-present full daily Dashboard timeline instead of a future-only list', () => {
     expect(home).toContain('const dashboardTimelineWalks = useMemo');
-    expect(home).toContain('dailyWalkTimeline(visibleWalks, new Date())');
+    expect(home).toContain('dailyWalkTimeline(visibleWalks, now)');
     expect(home).toContain('dashboardTimelineWalks.length > 0 ?');
     expect(home).toContain('dashboardTimelineWalks.map');
     expect(home).toContain('בהמשך היום');
@@ -84,8 +84,8 @@ describe('Home integrated walk lifecycle', () => {
     expect(lastWalkIndex).toBeGreaterThan(-1);
     expect(lastWalkIndex).toBeLessThan(addWalkIndex);
     expect(addWalkIndex).toBeLessThan(timelineIndex);
-    expect(home).toContain("dashboardLastWalk: { minHeight: 92, borderRadius: 24, backgroundColor: '#F4FAFD'");
-    expect(home).toContain("dashboardAddWalk: { minHeight: 58, borderRadius: 22, backgroundColor: '#F0FAF8'");
+    expect(home).toContain("dashboardLastWalk: { minHeight: 82, borderRadius: 24, backgroundColor: '#F4FAFD'");
+    expect(home).toContain("dashboardAddWalk: { minHeight: 52, borderRadius: 22, backgroundColor: '#F0FAF8'");
     expect(home).toContain("backgroundColor: '#12A5AB'");
     expect(home).not.toContain('#4A43B6');
   });
