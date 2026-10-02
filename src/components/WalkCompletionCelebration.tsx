@@ -52,7 +52,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
     // settle, then return to the app without asking the family to tap
     // "המשך" after every walk.
     if (screenReaderEnabled) return;
-    const timer = setTimeout(() => dismissRef.current(), 2400);
+    const timer = setTimeout(() => dismissRef.current(), 2000);
     return () => clearTimeout(timer);
   }, [celebration, opacity, reducedMotion, screenReaderEnabled, translateY]);
 
@@ -65,7 +65,9 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
           <Animated.View style={[styles.moment, { opacity, transform: [{ translateY }] }]} accessibilityRole="alert" accessibilityLiveRegion="polite">
             <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
             <View style={styles.tail} />
-            <WalkieMascot state={celebration.mascotState} size={128} accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול" testID="completion-mascot-animation" />
+            <Animated.View style={{ transform: [{ translateY: opacity.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }, { scale: opacity.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1] }) }] }}>
+              <WalkieMascot state={celebration.mascotState} size={128} accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול" testID="completion-mascot-animation" />
+            </Animated.View>
             {celebration.confetti ? <RtlText style={styles.confetti} accessible={false}>✦  ✦  ✦</RtlText> : null}
           </Animated.View>
         </MascotSafeZone>
