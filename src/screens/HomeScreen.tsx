@@ -1706,7 +1706,7 @@ const styles = StyleSheet.create({
   dashboardLastWalkTimeBlock: { width: 104, alignItems: 'flex-start', flexShrink: 0 },
   dashboardLastWalkTime: { fontSize: 24, lineHeight: 29, fontWeight: '700', color: '#17345B' },
   dashboardLastWalkDone: { marginTop: 1, fontSize: 12, lineHeight: 16, fontWeight: '600', color: '#15966D' },
-  dashboardLastWalkActions: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', justifyContent: 'center', gap: 10, flex: 1 },
+  dashboardLastWalkActions: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', justifyContent: 'center', gap: 8, flex: 1, minWidth: 118 },
   dashboardLastWalkEdit: { alignItems: 'center', justifyContent: 'center', minWidth: 46, minHeight: 40 },
   dashboardLastWalkEditIcon: { fontSize: 17, color: '#E6B422' },
   dashboardLastWalkEditText: { fontSize: 11, fontWeight: '600', color: '#17345B' },
