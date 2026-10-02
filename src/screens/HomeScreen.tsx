@@ -987,7 +987,7 @@ export function HomeScreen() {
                       accessibilityLabel="עריכת הטיול האחרון"
                       style={styles.dashboardLastWalkEdit}
                     >
-                      <RtlText style={styles.dashboardLastWalkEditIcon}>✎</RtlText>
+                      <RtlText style={styles.dashboardLastWalkEditIcon}>✏️</RtlText>
                       <RtlText style={styles.dashboardLastWalkEditText}>עריכה</RtlText>
                     </Pressable>
                   ) : null}
