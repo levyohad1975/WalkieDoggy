@@ -40,8 +40,6 @@ import { computeFamilyAchievementProgress, computePersonalAchievementProgress, p
 import { fetchHistoryWalks } from '../lib/permissionedWalks';
 import { listSwapRequests, type SwapRequestRow } from '../lib/requests';
 import { PrivacyAccessibilityInfoModal } from '../components/PrivacyAccessibilityInfoModal';
-import { useSystemAdminStore } from '../store/systemAdminStore';
-import { SystemAdminScreen } from './SystemAdminScreen';
 import { ScreenRecoveryBoundary } from '../components/ScreenRecoveryBoundary';
 
 export function SettingsScreen() {
@@ -113,9 +111,7 @@ function SettingsScreenContent() {
   const [resettingActivity, setResettingActivity] = useState(false);
   const [resetConfirmStep, setResetConfirmStep] = useState<0 | 1 | 2>(0);
   const [pendingResetConfirmation, setPendingResetConfirmation] = useState(false);
-  const isSystemAdmin = useSystemAdminStore((state) => state.isSystemAdmin);
   const systemObserverActive = useAuthStore((state) => state.systemObserverActive);
-  const [systemAdminVisible, setSystemAdminVisible] = useState(false);
   // NESTED-MODAL LIFECYCLE FIX (final QA round) — see
   // logic/settingsModalTransitions.ts's doc comment for the full mechanism.
   // "יומן פעילות" used to open its own Modal directly while the Management
@@ -707,16 +703,6 @@ function SettingsScreenContent() {
       </ScrollView>
       </KeyboardAvoidingView>
 
-      {isSystemAdmin && !systemObserverActive ? (
-        <Pressable
-          style={styles.systemAdminFab}
-          onPress={() => setSystemAdminVisible(true)}
-          accessibilityRole="button"
-          accessibilityLabel="ניהול מערכת"
-        >
-          <RtlText style={styles.systemAdminFabText}>🛡️</RtlText>
-        </Pressable>
-      ) : null}
 
       <ConfirmModal
         visible={resetConfirmStep === 1}
@@ -738,8 +724,6 @@ function SettingsScreenContent() {
         }}
         onCancel={() => setResetConfirmStep(0)}
       />
-
-      <SystemAdminScreen visible={systemAdminVisible} onClose={() => setSystemAdminVisible(false)} />
 
       <UserPickerModal
         visible={switchUserPickerVisible}
@@ -882,8 +866,6 @@ function SettingsScreenContent() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  systemAdminFab: { position: 'absolute', right: spacing.lg, bottom: 92, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primaryDark, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8, elevation: 6 },
-  systemAdminFabText: { fontSize: 25 },
   flex: { flex: 1 },
   content: { padding: spacing.xl, gap: spacing.lg, paddingBottom: 128 },
   // Same desktop-containment pattern as HomeScreen's webContent: cap and
