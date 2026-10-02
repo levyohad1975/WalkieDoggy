@@ -826,6 +826,7 @@ export function HomeScreen() {
               <View pointerEvents="none" style={styles.dashboardHeroForeground}>
                 <View style={styles.dashboardHeroForegroundLeft} />
                 <View style={styles.dashboardHeroForegroundMid} />
+                <View style={styles.dashboardHeroForegroundDogBase} />
                 <View style={styles.dashboardHeroForegroundRight} />
               </View>
             ) : null}
@@ -1678,10 +1679,11 @@ const styles = StyleSheet.create({
   // renders at the exact same position as before; only extra bottom
   // (paws/tail) bleed is newly clipped by the shorter frame.
   dashboardHeroMascot: { position: 'absolute', right: 2, bottom: -4, zIndex: 2 },
-  dashboardHeroForeground: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 30, zIndex: 3, overflow: 'hidden' },
-  dashboardHeroForegroundLeft: { position: 'absolute', left: -16, bottom: -14, width: 128, height: 40, borderRadius: 64, backgroundColor: '#C5E2B7', opacity: 0.88 },
-  dashboardHeroForegroundMid: { position: 'absolute', right: 72, bottom: -17, width: 116, height: 38, borderRadius: 58, backgroundColor: '#D6EBC8', opacity: 0.92 },
-  dashboardHeroForegroundRight: { position: 'absolute', right: -24, bottom: -12, width: 132, height: 42, borderRadius: 66, backgroundColor: '#CBE5BC', opacity: 0.88 },
+  dashboardHeroForeground: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 52, zIndex: 3, overflow: 'hidden' },
+  dashboardHeroForegroundLeft: { position: 'absolute', left: -22, bottom: -23, width: 126, height: 52, borderRadius: 63, backgroundColor: '#C5E2B7', opacity: 0.72, transform: [{ rotate: '-4deg' }] },
+  dashboardHeroForegroundMid: { position: 'absolute', right: 118, bottom: -31, width: 106, height: 48, borderRadius: 53, backgroundColor: '#D6EBC8', opacity: 0.78, transform: [{ rotate: '5deg' }] },
+  dashboardHeroForegroundDogBase: { position: 'absolute', right: -2, bottom: -25, width: 182, height: 58, borderRadius: 91, backgroundColor: '#D1E8C4', opacity: 0.94, transform: [{ rotate: '-2deg' }] },
+  dashboardHeroForegroundRight: { position: 'absolute', right: -42, bottom: -17, width: 104, height: 46, borderRadius: 52, backgroundColor: '#BFDDB1', opacity: 0.86, transform: [{ rotate: '7deg' }] },
   dashboardHeroDogCutout: { position: 'absolute', right: 2, bottom: -4, width: 180, height: 178, zIndex: 2 },
   dashboardHeroDogPhoto: { position: 'absolute', right: 4, bottom: -36, width: 136, height: 136, borderRadius: 22, zIndex: 2 },
   dashboardHeroCopy: { width: '52%', alignItems: 'flex-end', alignSelf: 'flex-start', paddingTop: 38, paddingHorizontal: spacing.md, zIndex: 2 },
