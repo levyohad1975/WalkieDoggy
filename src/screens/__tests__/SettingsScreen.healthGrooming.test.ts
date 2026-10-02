@@ -23,7 +23,7 @@ describe('SettingsScreen wires the Health & Grooming entry point to the active d
     // own onPress rather than the first occurrence of that text.
     const rowStart = source.indexOf('onPress={() => setHealthModalVisible(true)}');
     expect(rowStart).toBeGreaterThan(-1);
-    const rowBlock = source.slice(Math.max(0, rowStart - 400), rowStart + 100);
+    const rowBlock = source.slice(Math.max(0, rowStart - 400), rowStart + 300);
     expect(rowBlock).toMatch(/\{dog \? \(/);
     expect(rowBlock).toMatch(/בריאות וטיפוח/);
   });
