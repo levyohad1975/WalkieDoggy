@@ -1580,8 +1580,8 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   noDogTitle: { fontSize: 24, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginTop: spacing.sm },
   noDogSubtitle: { maxWidth: 360, fontSize: 15, fontWeight: '400', lineHeight: 22, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.sm, marginBottom: spacing.lg, paddingHorizontal: spacing.lg },
-  onDemandTitle: { fontSize: 20, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginTop: 4 },
-  onDemandSubtitle: { fontSize: 13, fontWeight: '400', lineHeight: 19, color: colors.textSecondary, textAlign: 'center', marginTop: 4, marginBottom: 10, paddingHorizontal: 12 },
+  onDemandTitle: { fontSize: 20, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginTop: 0 },
+  onDemandSubtitle: { fontSize: 13, fontWeight: '400', lineHeight: 18, color: colors.textSecondary, textAlign: 'center', marginTop: 2, marginBottom: 8, paddingHorizontal: 12 },
   onDemandStartButton: { width: '100%', minHeight: 46, backgroundColor: '#12A5AB', borderColor: '#12A5AB' },
   container: { flex: 1, backgroundColor: '#FBF8F3' },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
@@ -1590,7 +1590,7 @@ const styles = StyleSheet.create({
   // and in Safari/PWA, instead of letting it end underneath the navigation.
   content: { flexGrow: 1, paddingHorizontal: spacing.md, paddingTop: 0, gap: 7, paddingBottom: 96, width: '100%', backgroundColor: '#FBF8F3' },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: 0, gap: 7 },
-  emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
+  emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: 10, paddingHorizontal: 10 },
   // Item 6 (mobile polish): -42 (was -48) — the hero above is now 20px
   // shorter, so keeping the same -48 overlap would push this card up
   // further into the (shorter) hero than before; easing it to -42 nets a
@@ -1648,8 +1648,8 @@ const styles = StyleSheet.create({
   // so each image's TOP edge — where the mascot/dog's face/head sits —
   // renders at the exact same position as before; only extra bottom
   // (paws/tail) bleed is newly clipped by the shorter frame.
-  dashboardHeroMascot: { position: 'absolute', right: -4, bottom: -24, zIndex: 2 },
-  dashboardHeroDogCutout: { position: 'absolute', right: -4, bottom: -26, width: 190, height: 188, zIndex: 2 },
+  dashboardHeroMascot: { position: 'absolute', right: -4, bottom: -10, zIndex: 2 },
+  dashboardHeroDogCutout: { position: 'absolute', right: -4, bottom: -10, width: 190, height: 188, zIndex: 2 },
   dashboardHeroDogPhoto: { position: 'absolute', right: 4, bottom: -16, width: 136, height: 136, borderRadius: 22, zIndex: 2 },
   dashboardHeroCopy: { width: '52%', alignItems: 'flex-end', alignSelf: 'flex-start', paddingTop: 38, paddingHorizontal: spacing.md, zIndex: 2 },
   dashboardHeroEyebrow: { fontSize: 16, color: '#27376F', fontWeight: '700', textAlign: 'right' },
