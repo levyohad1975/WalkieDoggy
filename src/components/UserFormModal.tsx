@@ -148,6 +148,9 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
               onChangeText={setName}
               style={styles.input}
               placeholder="שם"
+              keyboardType="default"
+              autoCorrect={false}
+              autoCapitalize="words"
               textAlign="right"
               accessibilityLabel="שם"
             />

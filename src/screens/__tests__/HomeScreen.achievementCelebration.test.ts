@@ -52,10 +52,9 @@ describe('HomeScreen wires achievement-unlock detection + celebration (structura
     expect(fn).toMatch(/if \(!gamificationEnabled\) \{/);
   });
 
-  it('sequences an achievement celebration through the SAME shared celebration state as the walk-completion one, not a second overlay', () => {
-    const dismissIdx = source.indexOf('onDismiss={() => {\n          setCelebration(null);\n          showNextAchievementCelebration();');
-    expect(dismissIdx).toBeGreaterThan(-1);
-    // Only one WalkCompletionCelebration element in the whole file.
+  it('keeps a single shared celebration overlay and does not chain another popup from walk-completion dismiss', () => {
+    expect(source).toMatch(/onDismiss=\{\(\) => \{[\s\S]*?setCelebration\(null\);[\s\S]*?\}\}/);
+    expect(source).not.toContain('setCelebration(null);\n          showNextAchievementCelebration();');
     const matches = source.match(/<WalkCompletionCelebration/g) ?? [];
     expect(matches.length).toBe(1);
   });

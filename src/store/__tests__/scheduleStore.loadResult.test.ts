@@ -78,13 +78,22 @@ describe('scheduleStore.load() success/failure signal', () => {
   it('resolves true and sets fresh rules/entries/walks on success', async () => {
     mockRepository.getScheduleRules.mockResolvedValue([]);
     mockRepository.getScheduleEntries.mockResolvedValue([]);
-    mockRepository.getWalks.mockResolvedValue([{ id: 'walk-fresh', familyId: FAMILY_ID, status: 'pending' }]);
+    const freshWalk = {
+      id: 'walk-fresh',
+      familyId: FAMILY_ID,
+      dogId: 'dog-topi',
+      date: '2099-01-01',
+      scheduledTime: '08:00',
+      responsibleUserId: 'user-aba',
+      status: 'pending',
+    };
+    mockRepository.getWalks.mockResolvedValue([freshWalk]);
 
     const result = await useScheduleStore.getState().load(FAMILY_ID);
 
     expect(result).toBe(true);
     expect(useScheduleStore.getState().error).toBeNull();
-    expect(useScheduleStore.getState().walks).toEqual([{ id: 'walk-fresh', familyId: FAMILY_ID, status: 'pending' }]);
+    expect(useScheduleStore.getState().walks).toEqual([freshWalk]);
   });
 
   it('resolves false, sets the friendly error, and never rejects, on a repository failure', async () => {

@@ -99,6 +99,7 @@ export function EditDoneDetailsModal({
     });
   };
   const showDistanceField = gpsDistanceMeters != null;
+  const displayDate = walk.date.split('-').reverse().join('.');
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -116,7 +117,7 @@ export function EditDoneDetailsModal({
             <ScrollView keyboardShouldPersistTaps="handled">
               <RtlText style={styles.title} accessibilityRole="header">עריכת פרטי הטיול</RtlText>
             <RtlText style={styles.subtitle}>
-              {walk.date} · {walk.scheduledTime}
+              {displayDate} · {walk.scheduledTime}
             </RtlText>
 
             <View style={styles.toggleRow}>
@@ -145,7 +146,7 @@ export function EditDoneDetailsModal({
                   src/logic/walkActions.ts for why reassigning
                   responsibleUserId stays out of this modal entirely.
                 */}
-                <RtlText style={styles.label}>מי הוציא/ה בפועל</RtlText>
+                <RtlText style={styles.label}>מי ביצע את הטיול</RtlText>
                 <View style={styles.memberRow}>
                   {users!.map((u) => (
                     <Pressable
@@ -263,14 +264,14 @@ export function EditDoneDetailsModal({
 const styles = StyleSheet.create({
   flexFull: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, maxHeight: '80%' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, paddingHorizontal: 24, paddingTop: 20, paddingBottom: 18, maxHeight: '86%' },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
-  subtitle: { fontSize: typography.meta.fontSize, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xs, marginBottom: spacing.md },
-  label: { fontSize: typography.meta.fontSize, fontWeight: '700', color: colors.textSecondary, marginTop: spacing.lg, marginBottom: spacing.sm, textAlign: 'right' },
-  toggleRow: { flexDirection: 'row', gap: spacing.md },
+  subtitle: { fontSize: typography.meta.fontSize, color: colors.textSecondary, textAlign: 'center', marginTop: 4, marginBottom: 12 },
+  label: { fontSize: typography.meta.fontSize, fontWeight: '700', color: colors.textSecondary, marginTop: 14, marginBottom: 6, textAlign: 'right' },
+  toggleRow: { flexDirection: 'row', gap: spacing.sm },
   toggle: {
     flex: 1,
-    minHeight: 72,
+    minHeight: 56,
     borderRadius: radii.lg,
     backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
@@ -281,7 +282,7 @@ const styles = StyleSheet.create({
   },
   toggleActivePee: { backgroundColor: colors.statusCurrentBg, borderColor: colors.primary },
   toggleActivePoop: { backgroundColor: colors.statusSkippedBg, borderColor: colors.statusSkipped },
-  toggleEmoji: { fontSize: 28 },
+  toggleEmoji: { fontSize: 24 },
   toggleLabel: { fontSize: typography.cardTitle.fontSize, fontWeight: typography.cardTitle.fontWeight, color: colors.textSecondary },
   toggleLabelActive: { color: colors.textPrimary },
   memberRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
@@ -308,7 +309,7 @@ const styles = StyleSheet.create({
     minHeight: 60,
     textAlignVertical: 'top',
   },
-  actions: { flexDirection: 'row', gap: spacing.md, marginTop: 22 },
+  actions: { flexDirection: 'row', gap: spacing.md, marginTop: 18 },
   flex: { flex: 1 },
-  deleteButton: { marginTop: spacing.md },
+  deleteButton: { marginTop: 10, opacity: 0.88 },
 });

@@ -1,4 +1,5 @@
 ﻿import type { Walk } from '../types';
+import { localDateOnly } from './dateFormat';
 
 /**
  * Combines a walk's date + "HH:mm" scheduled time into a Date object (local time).
@@ -11,9 +12,10 @@ export function walkDateTime(walk: Pick<Walk, 'date' | 'scheduledTime'>): Date {
 
 /**
  * Finds the "next walk" to surface on the Home screen:
- * an unresolved overdue walk first, otherwise the earliest future pending
- * walk. An overdue status decision is the most urgent action on Home; it
- * must never be hidden behind a later upcoming walk.
+ * the most recently scheduled unresolved overdue walk first, otherwise the
+ * earliest future pending walk. When several walks were missed, the latest
+ * missed occurrence is the current actionable context; older missed walks
+ * must not make the red card count lateness indefinitely.
  */
 export function computeNextWalk(walks: Walk[], now: Date = new Date()): Walk | undefined {
   const active = walks.find((w) => w.status === 'in_progress');
@@ -23,9 +25,41 @@ export function computeNextWalk(walks: Walk[], now: Date = new Date()): Walk | u
   const overdue = pending.filter((w) => walkDateTime(w).getTime() < now.getTime());
   const candidates = overdue.length ? overdue : pending.filter((w) => walkDateTime(w).getTime() >= now.getTime());
   if (candidates.length === 0) return undefined;
-  return [...candidates].sort(
-    (a, b) => walkDateTime(a).getTime() - walkDateTime(b).getTime()
-  )[0];
+  return [...candidates].sort((a, b) => {
+    const delta = walkDateTime(a).getTime() - walkDateTime(b).getTime();
+    return overdue.length ? -delta : delta;
+  })[0];
+}
+
+/**
+ * Finalizes stale planned walks once a later planned occurrence for the same
+ * dog has become due. The newest due occurrence stays actionable; any older
+ * pending occurrence is no longer an open question and becomes "skipped".
+ *
+ * In-progress walks are never touched. Unplanned walks neither trigger nor
+ * receive automatic skipping.
+ */
+export function finalizeSupersededPendingWalks(walks: Walk[], now: Date = new Date()): Walk[] {
+  const latestDueByDog = new Map<string, number>();
+
+  for (const walk of walks) {
+    if (walk.isUnplanned) continue;
+    const scheduledAt = walkDateTime(walk).getTime();
+    if (scheduledAt > now.getTime()) continue;
+    const latest = latestDueByDog.get(walk.dogId);
+    if (latest == null || scheduledAt > latest) latestDueByDog.set(walk.dogId, scheduledAt);
+  }
+
+  let changed = false;
+  const finalized = walks.map((walk) => {
+    if (walk.isUnplanned || walk.status !== 'pending') return walk;
+    const latestDue = latestDueByDog.get(walk.dogId);
+    if (latestDue == null || walkDateTime(walk).getTime() >= latestDue) return walk;
+    changed = true;
+    return { ...walk, status: 'skipped' as const, updatedAt: now.toISOString() };
+  });
+
+  return changed ? finalized : walks;
 }
 
 /** Finds the most recently completed (or skipped) walk, for the "last walk" home card. */
@@ -108,3 +142,16 @@ export function upcomingWalks(walks: Walk[], now: Date = new Date(), limit = 10)
     .slice(0, limit);
 }
 
+
+/**
+ * Returns every walk scheduled for the viewer's local calendar day in
+ * chronological order. Unlike `upcomingWalks`, this deliberately retains
+ * completed, skipped and in-progress walks so a Home dashboard can show the
+ * day's actual timeline rather than only future pending work.
+ */
+export function dailyWalkTimeline(walks: Walk[], now: Date = new Date()): Walk[] {
+  const today = localDateOnly(now);
+  return walks
+    .filter((walk) => walk.date === today)
+    .sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
+}

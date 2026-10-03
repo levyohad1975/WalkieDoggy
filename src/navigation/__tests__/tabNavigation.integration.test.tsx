@@ -87,7 +87,7 @@ describe('bottom tab navigation — real render + tap (item 1 regression guard)'
     renderApp();
     await waitFor(() => expect(screen.getByText('HOME_SCREEN')).toBeTruthy());
 
-    fireEvent.press(screen.getByLabelText('סטטיסטיקה'));
+    fireEvent.press(screen.getByLabelText('נתונים'));
 
     await waitFor(() => expect(screen.getByText('STATISTICS_SCREEN')).toBeTruthy());
     expect(screen.queryByText('HOME_SCREEN')).toBeNull();
@@ -107,7 +107,7 @@ describe('bottom tab navigation — real render + tap (item 1 regression guard)'
     renderApp();
     await waitFor(() => expect(screen.getByText('HOME_SCREEN')).toBeTruthy());
 
-    fireEvent.press(screen.getByLabelText('לוח זמנים'));
+    fireEvent.press(screen.getByLabelText('לו״ז'));
     await waitFor(() => expect(screen.getByText('SCHEDULE_SCREEN')).toBeTruthy());
 
     fireEvent.press(screen.getByLabelText('בית'));

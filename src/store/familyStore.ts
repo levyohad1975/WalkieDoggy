@@ -77,6 +77,8 @@ interface FamilyState {
   /** PRD §9 gamification off-switch — same shape as setReminderEnabled. */
   setGamificationEnabled: (userId: string, enabled: boolean) => Promise<void>;
   saveDog: (dog: Dog) => Promise<void>;
+  /** Clears uploaded/cutout photo fields authoritatively so every surface falls back to the Walkie mascot. */
+  removeDogPhoto: (dogId: string) => Promise<void>;
   /** Makes `dogId` (must already be in `dogs`) the active dog and persists the choice locally so it survives an app restart. No-op if `dogId` isn't one of this family's dogs. */
   selectDog: (dogId: string) => Promise<void>;
   /** Admin-only safe removal; server refuses dogs with any history/dependencies. */
@@ -281,7 +283,29 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
       const isSelected = s.selectedDogId === dog.id || s.selectedDogId === null;
       return isSelected ? { dog, dogs, selectedDogId: dog.id } : { dogs };
     });
-    await repository.upsertDog(dog);
+    try {
+      await repository.upsertDog(dog);
+    } catch (error) {
+      // Re-load the authoritative server value so a rejected setting does
+      // not remain visually selected and then mysteriously disappear later.
+      const familyId = dog.familyId;
+      try {
+        await get().load(familyId);
+      } catch {
+        // Preserve the original persistence error below.
+      }
+      throw error;
+    }
+  },
+
+  removeDogPhoto: async (dogId: string) => {
+    if (!guardTestModeMutation()) return;
+    const dog = get().dogs.find((candidate) => candidate.id === dogId);
+    if (!dog) return;
+    // Clear BOTH representations. A generated cutout can otherwise keep the
+    // old uploaded dog visible on Home even after photo_url was removed.
+    const cleared: Dog = { ...dog, photoUrl: undefined, photoCutoutUrl: undefined };
+    await get().saveDog(cleared);
   },
 
   selectDog: async (dogId: string) => {

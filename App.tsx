@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Platform, Pressable, StyleSheet } from 'react-native';
+import { Alert, AppState, Platform, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from './src/store/authStore';
@@ -19,6 +19,7 @@ import { touchLastSeen } from './src/lib/requests';
 import { useRequestsStore } from './src/store/requestsStore';
 import { useScheduleStore, reconcileScheduleNotifications } from './src/store/scheduleStore';
 import { useFamilyStore } from './src/store/familyStore';
+import { WalkieMascot } from './src/components/WalkieMascot';
 
 // Reconciles local notifications against the currently loaded schedule store
 // state (A3's authoritative rule: notification content always comes from the
@@ -257,6 +258,7 @@ export default function App() {
   // cannot affect which family this device is a member of.
   const isSystemAdmin = useSystemAdminStore((s) => s.isSystemAdmin);
   const refreshSystemAdmin = useSystemAdminStore((s) => s.refresh);
+  const systemAdminOpenRequestId = useSystemAdminStore((s) => s.openRequestId);
   const [systemAdminOpen, setSystemAdminOpen] = useState(false);
   const [showIosInstallPrompt, setShowIosInstallPrompt] = useState(false);
   useEffect(() => {
@@ -279,6 +281,12 @@ export default function App() {
   // console from the header entry point.
   const shouldEnterSystemAdminDirectly =
     isSupabaseConfigured && isSystemAdmin && !familyId && !currentUserId && !systemObserverActive;
+
+  useEffect(() => {
+    if (hydrated && isSystemAdmin && systemAdminOpenRequestId > 0 && !shouldEnterSystemAdminDirectly) {
+      setSystemAdminOpen(true);
+    }
+  }, [hydrated, isSystemAdmin, systemAdminOpenRequestId, shouldEnterSystemAdminDirectly]);
 
   // Section 10: remote request-push token registration — completely
   // separate from requestNotificationPermissions() below (that's the
@@ -349,7 +357,8 @@ export default function App() {
     <SafeAreaProvider>
       {!hydrated ? (
         <SafeAreaView style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <WalkieMascot state="runIn" size={150} accessibilityLabel="Walkie Doggy טוען את האפליקציה" testID="app-loading-mascot" />
+          <RtlText style={styles.loadingText}>רק רגע, יוצאים לדרך…</RtlText>
         </SafeAreaView>
       ) : (
         <>
@@ -379,14 +388,6 @@ export default function App() {
           ) : (
             <LoginScreen />
           )}
-
-          {/* BATCH 4 (item A) — see the isSystemAdmin comment above for why
-              this sits outside every other branch. A small, unobtrusive
-              corner entry point; NEVER shown unless
-              useSystemAdminStore().isSystemAdmin resolved true, and that in
-              turn only ever came from am_i_system_admin() — a fresh,
-              server-side check of the real auth identity, not a locally
-              cached/guessed value. */}
           {!shouldEnterSystemAdminDirectly ? (
             <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} />
           ) : null}
@@ -403,7 +404,8 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
+  center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  loadingText: { color: colors.textSecondary, fontSize: 16, fontWeight: '700', textAlign: 'center' },
   systemAdminEntry: {
     position: 'absolute',
     // Keep the platform-admin shortcut below the branded header so it can

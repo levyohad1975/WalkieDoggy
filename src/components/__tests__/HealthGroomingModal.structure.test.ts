@@ -8,8 +8,9 @@ import fs from 'fs';
 describe('HealthGroomingModal (structural)', () => {
   const source = fs.readFileSync(require.resolve('../HealthGroomingModal'), 'utf8').replace(/\r\n/g, '\n');
 
-  it('imports the shared category list/labels from logic/healthTasks (single source of truth with the reminder service) rather than a local duplicate', () => {
-    expect(source).toMatch(/HEALTH_TASK_CATEGORIES as CATEGORIES, HEALTH_TASK_CATEGORY_LABELS as CATEGORY_LABELS/);
+  it('uses the focused appointment categories while keeping shared health labels', () => {
+    expect(source).toMatch(/HEALTH_TASK_CATEGORY_LABELS as CATEGORY_LABELS/);
+    expect(source).toContain("const APPOINTMENT_CATEGORIES: HealthTaskCategory[] = ['vet_visit', 'grooming']");
   });
 
   it('shows a lifecycle badge (upcoming/due/overdue) on every open task row via getHealthTaskLifecycle', () => {
@@ -51,9 +52,15 @@ describe('HealthGroomingModal (structural)', () => {
     expect(form).toMatch(/completedAt: logNow \? now : task\?\.completedAt/);
   });
 
-  it('the weight field only appears for category === \'weight\'', () => {
-    const idx = source.indexOf("category === 'weight' ?");
-    expect(idx).toBeGreaterThan(-1);
+  it('offers the approved multi-select veterinary purposes and an optional custom purpose', () => {
+    expect(source).toContain("'חיסון כלבת'");
+    expect(source).toContain("'חיסון משושה'");
+    expect(source).toContain("'תילוע'");
+    expect(source).toContain("'תולעת הפארק'");
+    expect(source).toContain("'פרעושים/קרציות'");
+    expect(source).toContain("'בדיקות/מעבדה'");
+    expect(source).toMatch(/accessibilityRole="checkbox"/);
+    expect(source).toMatch(/vetPurposes\.includes\('אחר'\)/);
   });
 
   it('every record is scoped to dog.familyId/dog.id — never a family-wide list', () => {
@@ -61,7 +68,10 @@ describe('HealthGroomingModal (structural)', () => {
     expect(source).toMatch(/dogId: dog\.id/);
   });
 
-  it('never offers a delete/remove action — a health record is family history (0049), not client-erasable', () => {
-    expect(source).not.toMatch(/delete|מחיק|הסר/i);
+  it('offers deletion only for an existing open task and requires confirmation', () => {
+    expect(source).toContain('task && !task.completedAt');
+    expect(source).toContain('label="מחיקת משימה"');
+    expect(source).toContain("Alert.alert('מחיקת משימה'");
+    expect(source).toContain('onDelete(task.id)');
   });
 });

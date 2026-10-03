@@ -7,26 +7,20 @@ export const HEALTH_TASK_CATEGORIES: HealthTaskCategory[] = [
   'parasite_prevention',
   'medication',
   'vet_visit',
-  'weight',
-  'allergy',
-  'food',
   'grooming',
-  'bath',
-  'nails',
-  'teeth',
-  'ears',
-  'other',
 ];
 
 export const HEALTH_TASK_CATEGORY_LABELS: Record<HealthTaskCategory, string> = {
-  vaccination: 'חיסון',
-  parasite_prevention: 'תילוע/פרעושים/קרציות',
-  medication: 'תרופה',
-  vet_visit: 'ביקור וטרינר',
+  vaccination: 'חיסונים',
+  parasite_prevention: 'טיפול וטרינרי מונע',
+  medication: 'תרופות',
+  vet_visit: 'וטרינר',
+  grooming: 'תספורת',
+  // Legacy values remain readable for records created before the UI was
+  // intentionally narrowed to veterinary care/vaccinations and haircuts.
   weight: 'משקל',
   allergy: 'אלרגיה/רגישות',
   food: 'מזון והנחיות',
-  grooming: 'טיפוח/ספר',
   bath: 'מקלחת',
   nails: 'ציפורניים',
   teeth: 'שיניים',

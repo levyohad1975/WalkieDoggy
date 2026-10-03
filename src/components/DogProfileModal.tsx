@@ -3,7 +3,6 @@ import { Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, View 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RtlText } from './RtlText';
 import { WalkieMascot } from './WalkieMascot';
-import { ConfirmModal } from './ConfirmModal';
 import { useFamilyStore } from '../store/familyStore';
 import { useAuthStore, useEffectiveFamilyRole } from '../store/authStore';
 import { DEMO_FAMILY } from '../data/demoData';
@@ -12,20 +11,23 @@ import { colors } from '../theme/colors';
 import { breakpoints, radii, spacing, typography } from '../theme/tokens';
 import { getDogBackground } from '../theme/dogBackgrounds';
 import { DogHeroBackgroundPicker } from './DogHeroBackgroundPicker';
+import { Button } from './Button';
 
 export function DogProfileModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const dog = useFamilyStore((s) => s.dog);
   const saveDog = useFamilyStore((s) => s.saveDog);
+  const clearDogPhoto = useFamilyStore((s) => s.removeDogPhoto);
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const familyRole = useEffectiveFamilyRole();
   const systemObserverActive = useAuthStore((s) => s.systemObserverActive);
   const [uploading, setUploading] = useState(false);
-  const [removeConfirmVisible, setRemoveConfirmVisible] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
+  const [pendingPhotoUrl, setPendingPhotoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     setPhotoLoadFailed(false);
+    setPendingPhotoUrl(null);
   }, [dog?.id, dog?.photoUrl]);
 
   const changePhoto = async () => {
@@ -33,7 +35,7 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
     setUploading(true);
     try {
       const uri = await pickAndUploadImage('dogs', familyId, dog.id);
-      if (uri) await saveDog({ ...dog, photoUrl: uri });
+      if (uri) setPendingPhotoUrl(uri);
     } catch {
       Alert.alert('לא הצלחנו לשמור את התמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
     } finally {
@@ -41,19 +43,34 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
     }
   };
 
-  const removePhoto = () => {
-    if (!dog || !dog.photoUrl || familyRole !== 'admin' || systemObserverActive) return;
-    setRemoveConfirmVisible(true);
-  };
-
   const confirmRemovePhoto = async () => {
     if (!dog || !dog.photoUrl || familyRole !== 'admin' || systemObserverActive || removing) return;
     setRemoving(true);
     try {
-      await saveDog({ ...dog, photoUrl: undefined });
-      setRemoveConfirmVisible(false);
+      // Removal is an explicit destructive action: persist it immediately.
+      // Do not leave the user in a hidden draft state that requires a second
+      // "save photo" tap and makes the old photo reappear after refresh.
+      await clearDogPhoto(dog.id);
+      setPendingPhotoUrl(null);
+      setPhotoLoadFailed(false);
     } catch {
-      Alert.alert('לא הצלחנו להסיר את התמונה', 'נסו שוב בעוד רגע.');
+      Alert.alert('לא הצלחנו להסיר את התמונה', 'בדקו את החיבור ונסו שוב.');
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  const displayedPhotoUrl = pendingPhotoUrl === null ? dog?.photoUrl : (pendingPhotoUrl || undefined);
+  const photoDirty = pendingPhotoUrl !== null;
+  const savePhoto = async () => {
+    if (!dog || !photoDirty || removing || uploading) return;
+    setRemoving(true);
+    try {
+      if (pendingPhotoUrl) await saveDog({ ...dog, photoUrl: pendingPhotoUrl, photoCutoutUrl: undefined });
+      else await clearDogPhoto(dog.id);
+      setPendingPhotoUrl(null);
+    } catch {
+      Alert.alert('לא הצלחנו לשמור את התמונה', 'נסו שוב בעוד רגע.');
     } finally {
       setRemoving(false);
     }
@@ -76,9 +93,9 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
                   {getDogBackground(dog.heroBackgroundId) && !dog.photoUrl ? (
                     <Image source={{ uri: getDogBackground(dog.heroBackgroundId)!.uri }} style={styles.previewBackground} resizeMode="cover" />
                   ) : null}
-                {dog.photoUrl && !photoLoadFailed ? (
+                {displayedPhotoUrl && !photoLoadFailed ? (
                   <Image
-                    source={{ uri: dog.photoUrl }}
+                    source={{ uri: displayedPhotoUrl }}
                     style={styles.photo}
                     resizeMode="cover"
                     accessibilityLabel={`תמונה של ${dog.name}`}
@@ -94,18 +111,19 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
               </View>
               <RtlText style={styles.name}>{dog.name}</RtlText>
               <RtlText style={styles.hint}>
-                {dog.photoUrl && !photoLoadFailed ? 'תמונה אישית' : 'תמונת הכלב אינה חובה — מוצג כלב Walkie Doggy כברירת מחדל'}
+                {displayedPhotoUrl && !photoLoadFailed ? 'תמונה אישית' : 'תמונת הכלב אינה חובה — מוצג כלב Walkie Doggy כברירת מחדל'}
               </RtlText>
               {familyRole === 'admin' && !systemObserverActive ? (
                 <View style={styles.actions}>
                   <Pressable onPress={changePhoto} disabled={uploading || removing} style={styles.primaryButton} accessibilityRole="button">
-                    <RtlText style={styles.primaryText}>{uploading ? 'מעלה…' : dog.photoUrl ? 'החלפת תמונה' : 'הוספת תמונה'}</RtlText>
+                    <RtlText style={styles.primaryText}>{uploading ? 'מעלה…' : displayedPhotoUrl ? 'החלפת תמונה' : 'הוספת תמונה'}</RtlText>
                   </Pressable>
-                  {dog.photoUrl ? (
-                    <Pressable onPress={removePhoto} disabled={uploading || removing} style={styles.removeButton} accessibilityRole="button">
+                  {displayedPhotoUrl ? (
+                    <Pressable onPress={() => void confirmRemovePhoto()} disabled={uploading || removing} style={styles.removeButton} accessibilityRole="button">
                       <RtlText style={styles.removeText}>הסרת תמונה</RtlText>
                     </Pressable>
                   ) : null}
+                  {photoDirty ? <Button label={removing ? 'שומר…' : 'שמור תמונה'} onPress={() => void savePhoto()} disabled={removing || uploading} /> : null}
                   <DogHeroBackgroundPicker dog={dog} onSave={(patch) => saveDog({ ...dog, ...patch })} />
                 </View>
               ) : null}
@@ -122,16 +140,7 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
         </ScrollView>
       </SafeAreaView>
     </Modal>
-    <ConfirmModal
-      visible={removeConfirmVisible}
-      title="הסרת תמונת הכלב"
-      message="להסיר את התמונה ולחזור לכלב של Walkie Doggy?"
-      confirmLabel="הסרה"
-      cancelLabel="ביטול"
-      onConfirm={() => void confirmRemovePhoto()}
-      onCancel={() => !removing && setRemoveConfirmVisible(false)}
-      loading={removing}
-    />
+
     </>
   );
 }

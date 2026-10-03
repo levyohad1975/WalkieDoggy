@@ -5,15 +5,19 @@ import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
+import { useGpsStore } from '../store/gpsStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { colors } from '../theme/colors';
 import { Button } from '../components/Button';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { DogPhoto } from '../components/DogPhoto';
 import { breakpoints, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { pickAndUploadImage } from '../lib/uploadImage';
 import {
   isSupabaseConfigured,
+  generateDogPhotoCutout,
   regenerateInviteCode,
+  resetFamilyActivity,
 } from '../lib/supabase';
 import { friendlyErrorMessage } from '../lib/errorMessages';
 import { copyToClipboard } from '../lib/clipboard';
@@ -36,8 +40,6 @@ import { computeFamilyAchievementProgress, computePersonalAchievementProgress, p
 import { fetchHistoryWalks } from '../lib/permissionedWalks';
 import { listSwapRequests, type SwapRequestRow } from '../lib/requests';
 import { PrivacyAccessibilityInfoModal } from '../components/PrivacyAccessibilityInfoModal';
-import { useSystemAdminStore } from '../store/systemAdminStore';
-import { SystemAdminScreen } from './SystemAdminScreen';
 import { ScreenRecoveryBoundary } from '../components/ScreenRecoveryBoundary';
 
 export function SettingsScreen() {
@@ -49,10 +51,11 @@ export function SettingsScreen() {
 }
 
 function SettingsScreenContent() {
-  const { family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, setGamificationEnabled, saveDog, selectDog, deleteUnusedDog } = useFamilyStore();
+  const { family, users, dog, dogs, selectedDogId, load: loadFamily, setReminderEnabled, setGamificationEnabled, saveDog, removeDogPhoto: clearDogPhoto, selectDog, deleteUnusedDog } = useFamilyStore();
   const healthTasks = useHealthStore((s) => s.tasks);
   const loadHealthTasks = useHealthStore((s) => s.load);
   const saveHealthTask = useHealthStore((s) => s.saveTask);
+  const deleteHealthTask = useHealthStore((s) => s.deleteTask);
   const completeHealthTask = useHealthStore((s) => s.completeTask);
   const { currentUserId, setFamilyId } = useAuthStore();
   const signInWithPin = useAuthStore((s) => s.signInWithPin);
@@ -105,9 +108,10 @@ function SettingsScreenContent() {
   const [remindersModalVisible, setRemindersModalVisible] = useState(false);
   const [sharingModalVisible, setSharingModalVisible] = useState(false);
   const [managementVisible, setManagementVisible] = useState(false);
-  const isSystemAdmin = useSystemAdminStore((state) => state.isSystemAdmin);
+  const [resettingActivity, setResettingActivity] = useState(false);
+  const [resetConfirmStep, setResetConfirmStep] = useState<0 | 1 | 2>(0);
+  const [pendingResetConfirmation, setPendingResetConfirmation] = useState(false);
   const systemObserverActive = useAuthStore((state) => state.systemObserverActive);
-  const [systemAdminVisible, setSystemAdminVisible] = useState(false);
   // NESTED-MODAL LIFECYCLE FIX (final QA round) — see
   // logic/settingsModalTransitions.ts's doc comment for the full mechanism.
   // "יומן פעילות" used to open its own Modal directly while the Management
@@ -217,6 +221,11 @@ function SettingsScreenContent() {
 
   /** iOS path: wired to the Management Modal's own onDismiss prop below. */
   const handleManagementDismissed = () => {
+    if (pendingResetConfirmation) {
+      setPendingResetConfirmation(false);
+      setResetConfirmStep(1);
+      return;
+    }
     const toOpen = decideChildModalToOpen(
       { managementVisible: false, pendingChildModal },
       'ios-native-dismiss'
@@ -263,7 +272,27 @@ function SettingsScreenContent() {
     setUploadingPhoto(true);
     try {
       const uri = await pickAndUploadImage('dogs', familyId, dog.id);
-      if (uri) await persistDog({ photoUrl: uri });
+      if (uri) {
+        // A new source photo invalidates any cutout generated for the old
+        // image. Persist the source first so the server-side cutout job reads
+        // exactly this upload, then generate the transparent version. The
+        // source remains usable if processing fails.
+        await persistDog({ photoUrl: uri, photoCutoutUrl: undefined });
+        // Always request processing after the source is persisted. The helper
+        // itself is the single source of truth for whether Supabase is
+        // configured; avoiding a second client-side environment gate prevents
+        // deployed web builds from silently skipping the Edge Function call.
+        try {
+          await generateDogPhotoCutout(dog.id);
+          await loadFamily(familyId);
+        } catch (cutoutError) {
+          console.warn('Dog cutout generation failed; keeping source photo fallback:', cutoutError);
+          Alert.alert(
+            'התמונה נשמרה ללא הסרת רקע',
+            'התמונה המקורית נשמרה. לא הצלחנו להסיר את הרקע אוטומטית כרגע, ואפשר לנסות שוב בהחלפת התמונה.',
+          );
+        }
+      }
     } catch {
       Alert.alert('לא הצלחנו להחליף תמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
     } finally {
@@ -325,7 +354,7 @@ function SettingsScreenContent() {
     if (!dog?.photoUrl) return;
     const remove = async () => {
       try {
-        await persistDog({ photoUrl: undefined });
+        await clearDogPhoto(dog.id);
       } catch {
         Alert.alert('לא הצלחנו להסיר את התמונה', 'נסו שוב בעוד רגע.');
       }
@@ -495,6 +524,41 @@ function SettingsScreenContent() {
   // out entirely). authStore.signOut() already has its own fail-safe
   // contract (always completes locally even offline/on RPC failure) — see
   // its own doc comment — so this just needs the confirmation.
+  const performFamilyActivityReset = async () => {
+    if (resettingActivity || familyRole !== 'admin' || systemObserverActive) return;
+    setResettingActivity(true);
+    try {
+      await resetFamilyActivity();
+      // Clear stale client caches immediately, then rebuild upcoming walks
+      // from the preserved schedule rules/entries generated by load().
+      useGpsStore.setState({ sessionsByWalkId: {}, routePoints: [], distanceMeters: 0, pointCount: 0 });
+      useScheduleStore.setState({ walks: [], entries: [], actionError: null, error: null });
+      await useScheduleStore.getState().load(familyId);
+      setAchievementWalks([]);
+      setManagementVisible(false);
+      Alert.alert('האיפוס הושלם', 'היסטוריית הטיולים ונתוני הפעילות אופסו. המשפחה, הכלבים, בני המשפחה והלו״ז נשמרו.');
+    } catch (e) {
+      Alert.alert('האיפוס לא בוצע', friendlyErrorMessage(e) || 'לא הצלחנו לאפס את נתוני הפעילות. נסו שוב.');
+    } finally {
+      setResettingActivity(false);
+    }
+  };
+
+  const confirmFamilyActivityReset = () => {
+    if (familyRole !== 'admin' || systemObserverActive || resettingActivity) return;
+    // Never stack the destructive confirmation underneath Management's
+    // native Modal. Close Management first, then surface the confirmation
+    // only after that modal has actually dismissed.
+    setPendingResetConfirmation(true);
+    setManagementVisible(false);
+  };
+
+  useEffect(() => {
+    if (Platform.OS === 'ios' || managementVisible || !pendingResetConfirmation) return;
+    setPendingResetConfirmation(false);
+    setResetConfirmStep(1);
+  }, [managementVisible, pendingResetConfirmation]);
+
   const handleSignOut = () => {
     const performSignOut = () => void signOut();
 
@@ -577,19 +641,23 @@ function SettingsScreenContent() {
         </View>
 
         <View style={styles.section}>
-          <RtlText style={styles.sectionTitle}>🐾 טיולים ותזכורות</RtlText>
-          <Pressable style={styles.hubRow} onPress={() => setRemindersModalVisible(true)} accessibilityRole="button" accessibilityLabel="תזכורות">
+          <Pressable style={styles.hubRow} onPress={() => setRemindersModalVisible(true)} accessibilityRole="button" accessibilityLabel="תזכורות והתראות">
             <RtlText style={styles.hubChevron}>‹</RtlText>
-            <RtlText style={styles.hubLabel}>🔔 תזכורות</RtlText>
+            <View style={styles.hubLabelWithMeta}>
+              <RtlText style={styles.hubLabel}>🔔 תזכורות והתראות</RtlText>
+              <RtlText style={styles.hubRowMeta}>הגדרת תזכורות לפני טיולים ואירועים</RtlText>
+            </View>
           </Pressable>
         </View>
 
         {dog ? (
           <View style={styles.section}>
-            <RtlText style={styles.sectionTitle}>בריאות וטיפוח</RtlText>
             <Pressable style={styles.hubRow} onPress={() => setHealthModalVisible(true)} accessibilityRole="button" accessibilityLabel={`בריאות וטיפוח, ${dog.name}`}>
               <RtlText style={styles.hubChevron}>‹</RtlText>
-              <RtlText style={styles.hubLabel}>🏥 בריאות וטיפוח</RtlText>
+              <View style={styles.hubLabelWithMeta}>
+                <RtlText style={styles.hubLabel}>🏥 בריאות וטיפוח</RtlText>
+                <RtlText style={styles.hubRowMeta}>חיסונים, טיפולים ותזכורות</RtlText>
+              </View>
             </Pressable>
           </View>
         ) : null}
@@ -635,18 +703,27 @@ function SettingsScreenContent() {
       </ScrollView>
       </KeyboardAvoidingView>
 
-      {isSystemAdmin && !systemObserverActive ? (
-        <Pressable
-          style={styles.systemAdminFab}
-          onPress={() => setSystemAdminVisible(true)}
-          accessibilityRole="button"
-          accessibilityLabel="ניהול מערכת"
-        >
-          <RtlText style={styles.systemAdminFabText}>🛡️</RtlText>
-        </Pressable>
-      ) : null}
 
-      <SystemAdminScreen visible={systemAdminVisible} onClose={() => setSystemAdminVisible(false)} />
+      <ConfirmModal
+        visible={resetConfirmStep === 1}
+        title="איפוס נתוני המשפחה?"
+        message="הפעולה תמחק לצמיתות את כל הטיולים, ההיסטוריה ונתוני ה-GPS של המשפחה. בני המשפחה, הכלבים והגדרת הלו״ז יישמרו. לא ניתן לבטל את הפעולה."
+        confirmLabel="המשך לאישור אחרון"
+        onConfirm={() => setResetConfirmStep(2)}
+        onCancel={() => setResetConfirmStep(0)}
+      />
+      <ConfirmModal
+        visible={resetConfirmStep === 2}
+        title="אישור אחרון"
+        message="למחוק עכשיו את כל היסטוריית הפעילות?"
+        confirmLabel="אפס נתונים"
+        loading={resettingActivity}
+        onConfirm={() => {
+          setResetConfirmStep(0);
+          void performFamilyActivityReset();
+        }}
+        onCancel={() => setResetConfirmStep(0)}
+      />
 
       <UserPickerModal
         visible={switchUserPickerVisible}
@@ -695,6 +772,7 @@ function SettingsScreenContent() {
         currentUserId={currentUserId}
         onSave={saveHealthTask}
         onComplete={(taskId) => completeHealthTask(taskId, currentUserId ?? '')}
+        onDelete={deleteHealthTask}
         onClose={() => setHealthModalVisible(false)}
       />
 
@@ -769,6 +847,14 @@ function SettingsScreenContent() {
               ) : null}
               <Button label="🚪 ניתוק המכשיר" variant="secondary" onPress={handleSignOut} style={styles.addButton} />
 
+              {isSupabaseConfigured && !systemObserverActive ? (
+                <View style={styles.dangerZone}>
+                  <RtlText style={styles.dangerTitle}>איפוס נתוני פעילות</RtlText>
+                  <RtlText style={styles.dangerText}>מוחק לצמיתות טיולים, היסטוריה ונתוני GPS. המשפחה, הכלבים, בני המשפחה והגדרת הלו״ז נשמרים.</RtlText>
+                  <Button label={resettingActivity ? 'מאפס נתונים…' : '🗑️ איפוס נתונים'} variant="secondary" onPress={confirmFamilyActivityReset} disabled={resettingActivity} style={styles.addButton} />
+                </View>
+              ) : null}
+
               <Button label="סגור" variant="secondary" onPress={() => setManagementVisible(false)} style={styles.addButton} />
             </ScrollView>
           </Pressable>
@@ -780,10 +866,8 @@ function SettingsScreenContent() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  systemAdminFab: { position: 'absolute', right: spacing.lg, bottom: spacing.xl, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primaryDark, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8, elevation: 6 },
-  systemAdminFabText: { fontSize: 25 },
   flex: { flex: 1 },
-  content: { padding: spacing.xl, gap: spacing.xxl, paddingBottom: spacing.xxxl },
+  content: { padding: spacing.xl, gap: spacing.lg, paddingBottom: 128 },
   // Same desktop-containment pattern as HomeScreen's webContent: cap and
   // center the scroll content on web only — native is unaffected (RN's
   // ScrollView contentContainerStyle already renders full-width there, and
@@ -793,7 +877,7 @@ const styles = StyleSheet.create({
   // the mobile viewport so every settings card matches the other screens.
   webContent: { width: '100%', maxWidth: breakpoints.desktopContent, alignSelf: 'center' },
   header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
-  section: { gap: spacing.sm },
+  section: { gap: spacing.xs },
   sectionTitle: { width: '100%', ...typography.sectionTitle, fontSize: 18, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
   dogMeta: { fontSize: 14, color: colors.textSecondary, textAlign: 'right' },
   addButton: { marginTop: spacing.xs },
@@ -808,9 +892,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.md,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
-    minHeight: 56,
+    minHeight: 52,
   },
   hubLabel: { flex: 1, ...typography.body, fontSize: 16, color: colors.textPrimary, textAlign: 'right' },
   hubLabelWithMeta: { flex: 1, gap: 2, alignItems: 'stretch' },
@@ -830,7 +914,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.lg,
-    padding: spacing.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
   },
   dogCardBody: { flex: 1, gap: 2 },
   dogCardName: { ...typography.sectionTitle, fontSize: 18, color: colors.textPrimary, textAlign: 'right' },
@@ -893,6 +978,9 @@ const styles = StyleSheet.create({
   // admin/audit-log button list.
   sheetScroll: { flexGrow: 0, flexShrink: 1 },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: 8 },
+  dangerZone: { marginTop: spacing.lg, padding: spacing.md, borderWidth: 1, borderColor: '#D7A3A3', borderRadius: radii.md, gap: spacing.xs },
+  dangerTitle: { fontSize: 16, fontWeight: '700', color: '#8A2424', textAlign: 'right' },
+  dangerText: { ...typography.meta, color: colors.textSecondary, textAlign: 'right', lineHeight: 20 },
 });
 
 

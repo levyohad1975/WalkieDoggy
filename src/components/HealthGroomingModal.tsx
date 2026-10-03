@@ -1,12 +1,39 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { TimePickerField } from './TimePickerField';
 import { RtlText } from './RtlText';
 import { Button } from './Button';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { generateId } from '../lib/id';
-import { HEALTH_TASK_CATEGORIES as CATEGORIES, HEALTH_TASK_CATEGORY_LABELS as CATEGORY_LABELS, getHealthTaskLifecycle } from '../logic/healthTasks';
+import { HEALTH_TASK_CATEGORY_LABELS as CATEGORY_LABELS, getHealthTaskLifecycle } from '../logic/healthTasks';
 import type { Dog, FamilyUser, HealthTask, HealthTaskCategory } from '../types';
+
+const APPOINTMENT_CATEGORIES: HealthTaskCategory[] = ['vet_visit', 'grooming'];
+const VET_PURPOSES = ['בדיקה', 'חיסון כלבת', 'חיסון משושה', 'תילוע', 'תולעת הפארק', 'פרעושים/קרציות', 'בדיקות/מעבדה', 'אחר'] as const;
+
+function taskTypeLabel(task: HealthTask): string {
+  // Appointment rows use their explicit title/purpose as the human-facing
+  // type. Showing the broad persisted category as well (for example a
+  // haircut titled "תספורת" but carrying a legacy vaccination category)
+  // creates a contradictory subtitle in the list.
+  if (task.title.trim()) return task.title.trim();
+  return CATEGORY_LABELS[task.category];
+}
+
+function formatDisplayDate(value: string): string {
+  if (!value) return 'בחירת תאריך';
+  const [year, month, day] = value.split('-');
+  return `${day}-${month}-${year}`;
+}
+
+function dateOnlyFromDate(value: Date): string {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 interface HealthGroomingModalProps {
   visible: boolean;
@@ -16,6 +43,7 @@ interface HealthGroomingModalProps {
   currentUserId: string | null | undefined;
   onSave: (task: HealthTask) => Promise<void>;
   onComplete: (taskId: string) => Promise<void>;
+  onDelete: (taskId: string) => Promise<void>;
   onClose: () => void;
 }
 
@@ -33,7 +61,7 @@ const LIFECYCLE_BADGE: Record<'upcoming' | 'due' | 'overdue', { label: string; c
  * family-wide list, since every record is attributed to one specific dog
  * (supabase/migrations/0049_health_grooming_foundation.sql).
  */
-export function HealthGroomingModal({ visible, dog, tasks, users, currentUserId, onSave, onComplete, onClose }: HealthGroomingModalProps) {
+export function HealthGroomingModal({ visible, dog, tasks, users, currentUserId, onSave, onComplete, onDelete, onClose }: HealthGroomingModalProps) {
   const [formVisible, setFormVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<HealthTask | null>(null);
   const [completingId, setCompletingId] = useState<string | null>(null);
@@ -101,10 +129,12 @@ export function HealthGroomingModal({ visible, dog, tasks, users, currentUserId,
                           </View>
                         </View>
                         <RtlText style={styles.rowMeta}>
-                          {CATEGORY_LABELS[t.category]}
-                          {t.dueDate ? ` · יעד: ${t.dueDate}` : ''}
-                          {responsibleName ? ` · אחראי/ת: ${responsibleName}` : ''}
-                          {t.recurrenceIntervalDays ? ` · חוזר כל ${t.recurrenceIntervalDays} ימים` : ''}
+                          {[
+                            taskTypeLabel(t) !== t.title.trim() ? taskTypeLabel(t) : '',
+                            t.dueDate ? `יעד: ${formatDisplayDate(t.dueDate)}` : '',
+                            responsibleName ? `באחריות: ${responsibleName}` : '',
+                            t.recurrenceIntervalDays ? `חוזר כל ${t.recurrenceIntervalDays} ימים` : '',
+                          ].filter(Boolean).join(' · ')}
                         </RtlText>
                       </Pressable>
                       <Pressable
@@ -138,7 +168,7 @@ export function HealthGroomingModal({ visible, dog, tasks, users, currentUserId,
                       <View style={styles.rowBody}>
                         <RtlText style={styles.rowTitle} numberOfLines={1}>{t.title}</RtlText>
                         <RtlText style={styles.rowMeta}>
-                          {CATEGORY_LABELS[t.category]}
+                          {taskTypeLabel(t) !== t.title.trim() ? taskTypeLabel(t) : ''}
                           {t.category === 'weight' && t.weightKg != null ? ` · ${t.weightKg} ק"ג` : ''}
                           {t.completedAt ? ` · הושלם ${t.completedAt.slice(0, 10)}` : ''}
                           {completedByName ? ` · ע"י ${completedByName}` : ''}
@@ -161,9 +191,14 @@ export function HealthGroomingModal({ visible, dog, tasks, users, currentUserId,
         task={editingTask}
         users={users}
         currentUserId={currentUserId}
+        onDelete={async (taskId) => {
+          await onDelete(taskId);
+          setFormVisible(false);
+        }}
         onSave={async (task) => {
           await onSave(task);
           setFormVisible(false);
+          onClose();
         }}
         onClose={() => setFormVisible(false)}
       />
@@ -178,6 +213,7 @@ interface HealthTaskFormModalProps {
   users: FamilyUser[];
   currentUserId: string | null | undefined;
   onSave: (task: HealthTask) => Promise<void>;
+  onDelete: (taskId: string) => Promise<void>;
   onClose: () => void;
 }
 
@@ -190,34 +226,49 @@ interface HealthTaskFormModalProps {
  * this modal's parent's dedicated "✓ בוצע" row action, not something this
  * form does.
  */
-function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave, onClose }: HealthTaskFormModalProps) {
+function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave, onDelete, onClose }: HealthTaskFormModalProps) {
   const [category, setCategory] = useState<HealthTaskCategory>('vaccination');
   const [title, setTitle] = useState('');
+  const [vetPurposes, setVetPurposes] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [appointmentTime, setAppointmentTime] = useState('09:00');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [weightKg, setWeightKg] = useState('');
   const [responsibleUserId, setResponsibleUserId] = useState<string | undefined>(undefined);
   const [recurrenceDays, setRecurrenceDays] = useState('');
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
     setCategory(task?.category ?? 'vaccination');
     setTitle(task?.title ?? '');
-    setNotes(task?.notes ?? '');
+    setVetPurposes(task?.category === 'vet_visit' ? (task.title ?? '').split(' · ').filter(Boolean) : []);
+    setNotes((task?.notes ?? '').replace(/(?:^|\n)שעת תור: \d{2}:\d{2}(?=\n|$)/g, '').replace(/^\n+|\n+$/g, ''));
     setDueDate(task?.dueDate ?? '');
+    const savedTime = task?.notes?.match(/(?:^|\n)שעת תור: (\d{2}:\d{2})(?:\n|$)/)?.[1];
+    setAppointmentTime(savedTime ?? '09:00');
+    setShowDatePicker(false);
+    setShowTimePicker(false);
     setWeightKg(task?.weightKg != null ? String(task.weightKg) : '');
     setResponsibleUserId(task?.responsibleUserId);
     setRecurrenceDays(task?.recurrenceIntervalDays != null ? String(task.recurrenceIntervalDays) : '');
   }, [visible, task]);
 
   const handleSave = async () => {
-    if (!title.trim()) {
-      Alert.alert('חסר שם', 'יש להזין שם לרשומה.');
+    const effectiveTitle = category === 'vet_visit' ? vetPurposes.join(' · ') : 'תספורת';
+    if (category === 'vet_visit' && vetPurposes.length === 0) {
+      Alert.alert('חסרה מטרת התור', 'יש לבחור לפחות מטרה אחת לתור הווטרינר.');
       return;
     }
-    if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
-      Alert.alert('תאריך לא תקין', 'יש להזין תאריך בפורמט YYYY-MM-DD, או להשאיר ריק לרשומה שהושלמה כעת.');
+    if (category === 'vet_visit' && vetPurposes.includes('אחר') && !title.trim()) {
+      Alert.alert('חסר פירוט', 'יש לפרט את מטרת התור האחרת.');
+      return;
+    }
+    if (!dueDate) {
+      Alert.alert('חסר תאריך', 'יש לבחור תאריך לתור.');
       return;
     }
     const trimmedWeight = weightKg.trim();
@@ -244,8 +295,10 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
         familyId: dog.familyId,
         dogId: dog.id,
         category,
-        title: title.trim(),
-        notes: notes.trim() || undefined,
+        title: category === 'vet_visit' && vetPurposes.includes('אחר') && title.trim()
+          ? `${effectiveTitle.replace(/(?:^| · )אחר(?: · |$)/, (match) => match.replace('אחר', `אחר: ${title.trim()}`))}`
+          : effectiveTitle,
+        notes: [`שעת תור: ${appointmentTime}`, notes.trim()].filter(Boolean).join('\n'),
         weightKg: category === 'weight' ? parsedWeight : undefined,
         recurrenceIntervalDays: parsedRecurrence,
         dueDate: dueDate || undefined,
@@ -263,17 +316,34 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
     }
   };
 
+  const confirmDelete = () => {
+    if (!task || task.completedAt) return;
+    Alert.alert('מחיקת משימה', 'למחוק את המשימה הפתוחה? פעולה זו אינה ניתנת לביטול.', [
+      { text: 'ביטול', style: 'cancel' },
+      {
+        text: 'מחיקה',
+        style: 'destructive',
+        onPress: () => {
+          setDeleting(true);
+          void onDelete(task.id)
+            .catch(() => Alert.alert('לא הצלחנו למחוק', 'נסו שוב בעוד רגע.'))
+            .finally(() => setDeleting(false));
+        },
+      },
+    ]);
+  };
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel="סגירת טופס">
+      <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
+        <View style={styles.backdrop}>
           <Pressable style={styles.formSheet} onPress={(e) => e.stopPropagation()}>
-            <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
+            <ScrollView style={styles.formScroll} contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} showsVerticalScrollIndicator>
               <RtlText style={styles.title} accessibilityRole="header">{task ? 'עריכת רשומה' : 'רשומה חדשה'}</RtlText>
 
               <RtlText style={styles.label}>קטגוריה</RtlText>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
-                {CATEGORIES.map((c) => {
+                {APPOINTMENT_CATEGORIES.map((c) => {
                   const selected = category === c;
                   return (
                     <Pressable
@@ -290,41 +360,107 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
                 })}
               </ScrollView>
 
-              <RtlText style={styles.label}>שם</RtlText>
-              <TextInput
-                value={title}
-                onChangeText={setTitle}
-                style={styles.input}
-                textAlign="right"
-                placeholder="למשל: חיסון כלבת"
-                placeholderTextColor={colors.textSecondary}
-                accessibilityLabel="שם הרשומה"
-              />
-
-              {category === 'weight' ? (
+              {category === 'vet_visit' ? (
                 <>
-                  <RtlText style={styles.label}>משקל (ק״ג)</RtlText>
-                  <TextInput
-                    value={weightKg}
-                    onChangeText={setWeightKg}
-                    style={styles.input}
-                    textAlign="right"
-                    keyboardType="decimal-pad"
-                    accessibilityLabel="משקל בקילוגרם"
-                  />
+                  <RtlText style={styles.label}>מטרת התור (אפשר לבחור כמה)</RtlText>
+                  <View style={styles.purposeWrap}>
+                    {VET_PURPOSES.map((purpose) => {
+                      const selected = vetPurposes.includes(purpose);
+                      return (
+                        <Pressable
+                          key={purpose}
+                          onPress={() => setVetPurposes((current) => selected ? current.filter((item) => item !== purpose) : [...current, purpose])}
+                          style={[styles.categoryChip, selected && styles.categoryChipActive]}
+                          accessibilityRole="checkbox"
+                          accessibilityState={{ checked: selected }}
+                          accessibilityLabel={purpose}
+                        >
+                          <RtlText style={[styles.categoryChipText, selected && styles.categoryChipTextActive]}>
+                            {selected ? '✓ ' : ''}{purpose}
+                          </RtlText>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  {vetPurposes.includes('אחר') ? (
+                    <>
+                      <RtlText style={styles.label}>פירוט אחר</RtlText>
+                      <TextInput
+                        value={title}
+                        onChangeText={setTitle}
+                        style={styles.input}
+                        textAlign="right"
+                        placeholder="מה מטרת התור?"
+                        placeholderTextColor={colors.textSecondary}
+                        accessibilityLabel="פירוט מטרת התור"
+                      />
+                    </>
+                  ) : null}
                 </>
-              ) : null}
+              ) : (
+                <RtlText style={styles.appointmentHint}>תור לתספורת</RtlText>
+              )}
 
-              <RtlText style={styles.label}>תאריך יעד (ריק = רשומה שהושלמה כעת)</RtlText>
-              <TextInput
-                value={dueDate}
-                onChangeText={setDueDate}
-                style={styles.input}
-                textAlign="right"
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={colors.textSecondary}
-                accessibilityLabel="תאריך יעד"
-              />
+              <RtlText style={styles.label}>תאריך התור</RtlText>
+              {Platform.OS === 'web' ? React.createElement('input', {
+                type: 'date',
+                value: dueDate,
+                'aria-label': 'בחירת תאריך התור',
+                onChange: (event: { target: { value: string } }) => setDueDate(event.target.value),
+                style: webDateInputStyle,
+              }) : (
+                <>
+                  <Pressable
+                    onPress={() => setShowDatePicker(true)}
+                    style={styles.pickerButton}
+                    accessibilityRole="button"
+                    accessibilityLabel="בחירת תאריך התור"
+                  >
+                    <RtlText style={styles.pickerButtonText}>{formatDisplayDate(dueDate)}</RtlText>
+                  </Pressable>
+                  {showDatePicker ? (
+                    <DateTimePicker
+                      value={dueDate ? new Date(`${dueDate}T12:00:00`) : new Date()}
+                      mode="date"
+                      display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                      onChange={(event: DateTimePickerEvent, value?: Date) => {
+                        if (Platform.OS !== 'ios') setShowDatePicker(false);
+                        if (event.type === 'set' && value) setDueDate(dateOnlyFromDate(value));
+                      }}
+                    />
+                  ) : null}
+                </>
+              )}
+
+              <RtlText style={styles.label}>שעת התור</RtlText>
+              {Platform.OS === 'web' ? (
+                <TimePickerField value={appointmentTime} onChange={setAppointmentTime} webLabel="בחירת שעת התור" />
+              ) : (
+                <>
+                  <Pressable
+                    onPress={() => setShowTimePicker(true)}
+                    style={styles.pickerButton}
+                    accessibilityRole="button"
+                    accessibilityLabel="בחירת שעת התור"
+                  >
+                    <RtlText style={styles.pickerButtonText}>{appointmentTime}</RtlText>
+                  </Pressable>
+                  {showTimePicker ? (
+                    <DateTimePicker
+                      value={new Date(`2000-01-01T${appointmentTime}:00`)}
+                      mode="time"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      is24Hour
+                      onChange={(event: DateTimePickerEvent, value?: Date) => {
+                        if (Platform.OS !== 'ios') setShowTimePicker(false);
+                        if (event.type === 'set' && value) {
+                          setAppointmentTime(`${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`);
+                        }
+                      }}
+                    />
+                  ) : null}
+                </>
+              )}
 
               <RtlText style={styles.label}>חוזר כל כמה ימים (ריק = חד-פעמי)</RtlText>
               <TextInput
@@ -338,14 +474,14 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
                 accessibilityLabel="תדירות חזרה בימים"
               />
 
-              <RtlText style={styles.label}>אחראי/ת (לא חובה)</RtlText>
+              <RtlText style={styles.label}>באחריות (לא חובה)</RtlText>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
                 <Pressable
                   onPress={() => setResponsibleUserId(undefined)}
                   style={[styles.categoryChip, !responsibleUserId && styles.categoryChipActive]}
                   accessibilityRole="button"
                   accessibilityState={{ selected: !responsibleUserId }}
-                  accessibilityLabel="ללא אחראי/ת"
+                  accessibilityLabel="ללא אחראי"
                 >
                   <RtlText style={[styles.categoryChipText, !responsibleUserId && styles.categoryChipTextActive]}>ללא</RtlText>
                 </Pressable>
@@ -377,10 +513,13 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
               />
 
               <Button label="שמירה" onPress={() => void handleSave()} loading={saving} style={styles.saveButton} />
+              {task && !task.completedAt ? (
+                <Button label="מחיקת משימה" variant="secondary" onPress={confirmDelete} loading={deleting} style={styles.deleteButton} />
+              ) : null}
               <Button label="ביטול" variant="secondary" onPress={onClose} style={styles.closeButton} />
             </ScrollView>
           </Pressable>
-        </Pressable>
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -390,8 +529,10 @@ const styles = StyleSheet.create({
   flexFull: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: radii.xl, maxHeight: '85%' },
-  formSheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: radii.xl, maxHeight: '88%' },
+  formSheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: radii.xl, height: '88%', maxHeight: '88%' },
   scroll: { flexGrow: 0, flexShrink: 1 },
+  formScroll: { flex: 1 },
+  formScrollContent: { paddingBottom: spacing.xl * 3 },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: spacing.sm },
   sectionLabel: { ...typography.sectionTitle, fontSize: 15, color: colors.textPrimary, textAlign: 'right', marginTop: spacing.md, marginBottom: spacing.xs },
   emptyHint: { ...typography.meta, color: colors.textSecondary, textAlign: 'right' },
@@ -417,11 +558,22 @@ const styles = StyleSheet.create({
   closeButton: { marginTop: spacing.sm },
   label: { fontSize: typography.meta.fontSize, fontWeight: '700', color: colors.textSecondary, marginTop: spacing.md, textAlign: 'right' },
   input: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, padding: radii.md, fontSize: typography.body.fontSize, color: colors.textPrimary },
+  pickerButton: { minHeight: 52, justifyContent: 'center', backgroundColor: colors.surfaceMuted, borderRadius: radii.md, paddingHorizontal: spacing.md },
+  pickerButtonText: { ...typography.body, color: colors.textPrimary, textAlign: 'right', fontWeight: '600' },
   notesInput: { minHeight: 72, textAlignVertical: 'top' },
   categoryRow: { flexDirection: 'row-reverse', gap: spacing.sm, paddingVertical: spacing.xs },
+  purposeWrap: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: spacing.sm, paddingVertical: spacing.xs },
+  appointmentHint: { ...typography.body, color: colors.textPrimary, textAlign: 'right', marginTop: spacing.md },
   categoryChip: { paddingVertical: radii.sm, paddingHorizontal: spacing.md, borderRadius: radii.round, backgroundColor: colors.surfaceMuted, borderWidth: 1, borderColor: 'transparent' },
   categoryChipActive: { backgroundColor: colors.statusCurrentBg, borderColor: colors.primary },
   categoryChipText: { ...typography.meta, color: colors.textSecondary, fontWeight: '600' },
   categoryChipTextActive: { color: colors.primaryDark, fontWeight: '700' },
   saveButton: { marginTop: spacing.xl },
+  deleteButton: { marginTop: spacing.sm },
 });
+
+const webDateInputStyle = {
+  display: 'block', width: '100%', minHeight: 52, boxSizing: 'border-box' as const, padding: 12, fontSize: 18, fontWeight: '700',
+  borderRadius: 14, border: `1px solid ${colors.border}`, backgroundColor: colors.surface,
+  color: colors.textPrimary, textAlign: 'center' as const, direction: 'ltr' as const, cursor: 'pointer',
+};

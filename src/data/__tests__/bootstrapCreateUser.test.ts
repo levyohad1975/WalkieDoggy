@@ -101,11 +101,11 @@ describe('first-profile creation and queue ownership', () => {
     expect(await repo.pendingSyncCount()).toBe(0);
   });
 
-  it('also queues online creates when a profile is claimed', async () => {
+  it('confirms online creates directly when a profile is claimed', async () => {
     setSyncQueueActorGetter(() => 'admin');
     const enqueue = jest.spyOn(SyncQueue.prototype, 'enqueue');
     await repo.createUser(user);
-    expect(enqueue).toHaveBeenCalledWith({ type: 'createUser', payload: user });
+    expect(enqueue).not.toHaveBeenCalled();
     expect(remote.createUser).toHaveBeenCalledTimes(1);
     expect(await repo.pendingSyncCount()).toBe(0);
   });

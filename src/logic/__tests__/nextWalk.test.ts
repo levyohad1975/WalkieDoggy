@@ -1,4 +1,4 @@
-import { computeLastWalk, computeNextWalk, formatDuration, isOverdue, minutesUntil, relativeTimeLabel, upcomingWalks } from '../nextWalk';
+import { computeLastWalk, computeNextWalk, dailyWalkTimeline, finalizeSupersededPendingWalks, formatDuration, isOverdue, minutesUntil, relativeTimeLabel, upcomingWalks } from '../nextWalk';
 import type { Walk } from '../../types';
 
 function makeWalk(overrides: Partial<Walk>): Walk {
@@ -75,6 +75,17 @@ describe('computeNextWalk', () => {
     expect(computeNextWalk(walks, NOW)?.id).toBe('old-pending');
   });
 
+  it('uses the latest missed walk when several pending walks are overdue', () => {
+    const walks = [
+      makeWalk({ id: 'morning', scheduledTime: '08:00' }),
+      makeWalk({ id: 'noon', scheduledTime: '12:00' }),
+      makeWalk({ id: 'afternoon', scheduledTime: '16:00' }),
+      makeWalk({ id: 'future', scheduledTime: '20:00' }),
+    ];
+
+    expect(computeNextWalk(walks, new Date('2026-08-26T18:00:00'))?.id).toBe('afternoon');
+  });
+
   it('keeps the only unresolved overdue walk actionable', () => {
     const walk = makeWalk({ id: 'old-pending', scheduledTime: '07:00' });
 
@@ -96,6 +107,57 @@ describe('computeNextWalk', () => {
     expect(computeNextWalk([walk])?.id).toBe('future');
   });
 });
+describe('finalizeSupersededPendingWalks', () => {
+  it('closes an older pending walk as not done when the next planned walk becomes due', () => {
+    const walks = [
+      makeWalk({ id: 'morning', scheduledTime: '08:00' }),
+      makeWalk({ id: 'noon', scheduledTime: '11:00' }),
+      makeWalk({ id: 'afternoon', scheduledTime: '16:00' }),
+    ];
+
+    const result = finalizeSupersededPendingWalks(walks, new Date('2026-08-26T11:00:00'));
+
+    expect(result.find((walk) => walk.id === 'morning')?.status).toBe('skipped');
+    expect(result.find((walk) => walk.id === 'noon')?.status).toBe('pending');
+    expect(result.find((walk) => walk.id === 'afternoon')?.status).toBe('pending');
+  });
+
+  it('keeps the latest due pending walk open until another planned walk becomes due', () => {
+    const walks = [
+      makeWalk({ id: 'morning', scheduledTime: '08:00' }),
+      makeWalk({ id: 'noon', scheduledTime: '11:00' }),
+    ];
+
+    const result = finalizeSupersededPendingWalks(walks, new Date('2026-08-26T10:59:00'));
+
+    expect(result.find((walk) => walk.id === 'morning')?.status).toBe('pending');
+  });
+
+  it('never auto-closes an in-progress or unplanned walk', () => {
+    const walks = [
+      makeWalk({ id: 'active', scheduledTime: '08:00', status: 'in_progress' }),
+      makeWalk({ id: 'unplanned', scheduledTime: '07:00', isUnplanned: true }),
+      makeWalk({ id: 'next', scheduledTime: '11:00' }),
+    ];
+
+    const result = finalizeSupersededPendingWalks(walks, new Date('2026-08-26T11:00:00'));
+
+    expect(result.find((walk) => walk.id === 'active')?.status).toBe('in_progress');
+    expect(result.find((walk) => walk.id === 'unplanned')?.status).toBe('pending');
+  });
+
+  it('does not let another dog\'s schedule close this dog\'s pending walk', () => {
+    const walks = [
+      makeWalk({ id: 'dog-a-old', dogId: 'dog-a', scheduledTime: '08:00' }),
+      makeWalk({ id: 'dog-b-next', dogId: 'dog-b', scheduledTime: '11:00' }),
+    ];
+
+    const result = finalizeSupersededPendingWalks(walks, new Date('2026-08-26T11:00:00'));
+
+    expect(result.find((walk) => walk.id === 'dog-a-old')?.status).toBe('pending');
+  });
+});
+
 describe('computeLastWalk', () => {
   it('returns the most recently completed/skipped walk up to now', () => {
     const walks = [
@@ -227,5 +289,19 @@ describe('upcomingWalks', () => {
     ];
 
     expect(upcomingWalks(walks).map((w) => w.id)).toEqual(['future']);
+  });
+});
+
+describe('dailyWalkTimeline', () => {
+  it('keeps every local-today status in chronological order instead of hiding resolved walks', () => {
+    const walks = [
+      makeWalk({ id: 'future', scheduledTime: '20:00', status: 'pending' }),
+      makeWalk({ id: 'done', scheduledTime: '07:00', status: 'done', completedAt: '2026-08-26T07:18:00' }),
+      makeWalk({ id: 'skipped', scheduledTime: '12:00', status: 'skipped' }),
+      makeWalk({ id: 'active', scheduledTime: '16:00', status: 'in_progress' }),
+      makeWalk({ id: 'tomorrow', date: '2026-08-27', scheduledTime: '08:00', status: 'pending' }),
+    ];
+
+    expect(dailyWalkTimeline(walks, NOW).map((item) => item.id)).toEqual(['done', 'skipped', 'active', 'future']);
   });
 });

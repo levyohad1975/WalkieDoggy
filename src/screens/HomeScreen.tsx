@@ -7,10 +7,9 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
-import { computeLastWalk, computeNextWalk, isOverdue, upcomingWalks } from '../logic/nextWalk';
-import { walkDateContextLabel } from '../logic/walkDateContext';
-import { localDateOnly } from '../logic/dateFormat';
-import { repository } from '../data';
+import { computeLastWalk, computeNextWalk, dailyWalkTimeline, isOverdue, upcomingWalks } from '../logic/nextWalk';
+import { resolvedWalkDateContextLabel, walkDateContextLabel } from '../logic/walkDateContext';
+ import { repository } from '../data';
 import { canRequestChangeForWalk, computeNextWalkCardActions, formatCompletedAtBadge } from '../logic/walkActions';
 import { colors } from '../theme/colors';
 import { breakpoints, elevation, nativeDirection, radii, spacing, typography } from '../theme/tokens';
@@ -32,6 +31,7 @@ import { ReminderMascotPrompt } from '../components/ReminderMascotPrompt';
 import { DogProfileModal } from '../components/DogProfileModal';
 import { DogSelectorRow } from '../components/DogSelectorRow';
 import { WalkieMascot } from '../components/WalkieMascot';
+import { useSystemAdminStore } from '../store/systemAdminStore';
 import { Avatar } from '../components/Avatar';
 import { CELEBRATION_LIBRARY, selectWalkCompletionCelebration, type CompletionCelebration } from '../logic/walkCompletionCelebration';
 import { achievementDefinition, type AchievementProgress } from '../logic/achievements';
@@ -62,6 +62,31 @@ import { requestForegroundGpsPermission } from '../lib/gpsTracking';
 export function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
   const [dogProfileVisible, setDogProfileVisible] = useState(false);
+  const isSystemAdmin = useSystemAdminStore((s) => s.isSystemAdmin);
+  const requestOpenSystemAdmin = useSystemAdminStore((s) => s.requestOpen);
+  const mascotTapCountRef = useRef(0);
+  const mascotTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleHeaderMascotPress = useCallback(() => {
+    if (!isSystemAdmin) {
+      setDogProfileVisible(true);
+      return;
+    }
+    mascotTapCountRef.current += 1;
+    if (mascotTapTimerRef.current) clearTimeout(mascotTapTimerRef.current);
+    if (mascotTapCountRef.current >= 3) {
+      mascotTapCountRef.current = 0;
+      requestOpenSystemAdmin();
+      return;
+    }
+    mascotTapTimerRef.current = setTimeout(() => {
+      mascotTapCountRef.current = 0;
+      mascotTapTimerRef.current = null;
+    }, 700);
+  }, [isSystemAdmin, requestOpenSystemAdmin]);
+
+  useEffect(() => () => {
+    if (mascotTapTimerRef.current) clearTimeout(mascotTapTimerRef.current);
+  }, []);
   const [heroPhotoFailed, setHeroPhotoFailed] = useState(false);
   const [heroCutoutFailed, setHeroCutoutFailed] = useState(false);
   const currentUserId = useAuthStore((s) => s.currentUserId)!;
@@ -98,6 +123,7 @@ export function HomeScreen() {
     rescheduleWalk,
     skip,
     addUnplannedWalk,
+    startUnplannedWalk,
     editDoneDetails,
     editUnplannedWalk,
     deleteUnplannedWalk,
@@ -139,6 +165,7 @@ export function HomeScreen() {
   const gpsDistanceMeters = useGpsStore((s) => s.distanceMeters);
   const gpsPointCount = useGpsStore((s) => s.pointCount);
   const gpsPermissionStatus = useGpsStore((s) => s.permissionStatus);
+  const gpsSessionsByWalkId = useGpsStore((s) => s.sessionsByWalkId);
 
   const [completeWalkId, setCompleteWalkId] = useState<string | null>(null);
   // BATCH 4 (C2/C3/C8) — brief "success" mascot + message shown right after
@@ -146,6 +173,7 @@ export function HomeScreen() {
   // navigation or the completion action itself (markDone already resolved
   // by the time this is set), auto-dismisses on its own.
   const [celebration, setCelebration] = useState<CompletionCelebration | null>(null);
+  const suppressAchievementPopupRef = useRef(false);
   const [recentCelebrationIds, setRecentCelebrationIds] = useState<string[]>([]);
   // A notification response can arrive before Home's family/schedule data is
   // ready on a cold start. Keep the validated event, not a prematurely built
@@ -159,6 +187,7 @@ export function HomeScreen() {
         durationMinutes,
         recentIds: recentCelebrationIds,
       });
+      suppressAchievementPopupRef.current = true;
       setCelebration(picked);
       setRecentCelebrationIds((previous) => [picked.id, ...previous.filter((id) => id !== picked.id)].slice(0, 3));
     } catch {
@@ -296,7 +325,18 @@ export function HomeScreen() {
   }, [gamificationEnabled, buildAchievementCelebration]);
   const newlyUnlockedAchievementCount = useAchievementStore((s) => s.newlyUnlocked.length);
   useEffect(() => {
-    if (newlyUnlockedAchievementCount > 0 && !celebration) showNextAchievementCelebration();
+    if (celebration || newlyUnlockedAchievementCount === 0) return;
+    if (suppressAchievementPopupRef.current) {
+      // A walk-completion animation is the only automatic post-walk overlay.
+      // Drain achievements unlocked by that walk silently; they remain in the
+      // achievement ledger but must not immediately open a second modal.
+      while (useAchievementStore.getState().consumeNextUnlocked()) {
+        /* drain */
+      }
+      suppressAchievementPopupRef.current = false;
+      return;
+    }
+    showNextAchievementCelebration();
   }, [newlyUnlockedAchievementCount, celebration, showNextAchievementCelebration]);
 
   /**
@@ -482,6 +522,15 @@ export function HomeScreen() {
       setLastWalkGps(null);
       return;
     }
+    // A just-finished walk can publish its GPS session a fraction after the
+    // walk row flips to done. Prefer the gpsStore cache when it arrives so
+    // the summary refreshes immediately instead of getting stuck on the
+    // first repository read that raced the final GPS persistence.
+    const cachedSession = gpsSessionsByWalkId[lastWalk.id];
+    if (cachedSession) {
+      setLastWalkGps(cachedSession);
+      return;
+    }
     let cancelled = false;
     void repository.getGpsSessionsForWalkIds([lastWalk.id]).then((sessions) => {
       if (!cancelled) setLastWalkGps(sessions[0] ?? null);
@@ -489,7 +538,7 @@ export function HomeScreen() {
       if (!cancelled) setLastWalkGps(null);
     });
     return () => { cancelled = true; };
-  }, [lastWalk?.id, lastWalk?.status]);
+  }, [lastWalk?.id, lastWalk?.status, gpsSessionsByWalkId]);
 
   // Whether `lastWalk` is present in the local, operational-window-limited
   // `walks` state — true for anything resolved today (or always, in
@@ -505,7 +554,34 @@ export function HomeScreen() {
   // read-only for that specific case — the display-fidelity requirement
   // ("show the most recent resolved walk even when older than today") is
   // met; edit/delete remain exactly where they can safely work.
+  // Keep the server fallback interactive when the same resolved walk is available
+  // through the authorized history RPC but falls outside the operational walks window.
+  // Home hydrates that one row into the local schedule store so the existing
+  // editDoneDetails quick toggles keep their offline-first mutation semantics.
   const lastWalkIsEditable = !isSupabaseConfigured || (!!lastWalk && walks.some((w) => w.id === lastWalk.id));
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !lastWalk || lastWalk.status !== 'done' || lastWalkIsEditable) return;
+    let cancelled = false;
+    void fetchHistoryWalks()
+      .then((history) => {
+        if (cancelled) return;
+        const authorized = history.find((w) => w.id === lastWalk.id);
+        if (!authorized) return;
+        useScheduleStore.setState((state) =>
+          state.walks.some((w) => w.id === authorized.id)
+            ? state
+            : { walks: [...state.walks, authorized] }
+        );
+      })
+      .catch(() => {
+        // History permission can legitimately be absent; the fallback card then
+        // remains read-only rather than widening access client-side.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [lastWalk?.id, lastWalk?.status, lastWalkIsEditable]);
   const upcoming = useMemo(
     () => upcomingWalks(visibleWalks).filter((w) => w.id !== nextWalk?.id),
     [visibleWalks, nextWalk, minuteTick]
@@ -513,13 +589,23 @@ export function HomeScreen() {
   // The compact Home timeline is a Dashboard summary, not a list of only
   // the walks *after* the primary card. Including the next walk means the
   // section remains useful (and visibly present) on a day with one walk.
-  const dashboardTimelineWalks = useMemo(
-    () =>
-      visibleWalks
-        .filter((w) => w.status === 'pending' && w.date === localDateOnly(new Date()))
-        .sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime)),
-    [visibleWalks, minuteTick]
-  );
+  const dashboardTimelineWalks = useMemo(() => {
+    const now = new Date();
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const timeline = dailyWalkTimeline(visibleWalks, now);
+    // Home is a forward-looking summary, not today's full history. Keep the
+    // unresolved/current walk visible, then only the nearest future walks.
+    // This also makes the dashboard resilient to large volumes of Staging
+    // test walks without squeezing dozens of stops into one phone width.
+    return timeline
+      .filter((walk) => {
+        if (walk.status === 'in_progress') return true;
+        if (walk.status !== 'pending') return false;
+        const [hour, minute] = walk.scheduledTime.split(':').map(Number);
+        return hour * 60 + minute >= nowMinutes;
+      })
+      .slice(0, 4);
+  }, [visibleWalks, minuteTick]);
   const dashboardTimelineProgress = useMemo(() => {
     if (dashboardTimelineWalks.length < 2) return dashboardTimelineWalks.length === 1 ? 0 : 0;
     const now = new Date();
@@ -675,11 +761,14 @@ export function HomeScreen() {
   if (!dog && !familyLoading) {
     return (
       <SafeAreaView style={styles.center}>
-        <EmptyState
-          emoji="🐶"
-          title="עדיין אין כלב במשפחה"
-          subtitle="הוסיפו את הכלב הראשון כדי להתחיל לתכנן טיולים ותורנויות"
+        <WalkieMascot
+          state="excited"
+          size={150}
+          accessibilityLabel="Walkie Doggy מזמין אתכם להוסיף את הכלב הראשון"
+          testID="no-dog-mascot"
         />
+        <RtlText style={styles.noDogTitle}>עדיין אין כלב במשפחה</RtlText>
+        <RtlText style={styles.noDogSubtitle}>בואו נכיר את החבר החדש שלנו 🐾 הוסיפו את הכלב הראשון כדי להתחיל לטייל עם Walkie Doggy</RtlText>
         <Button label="הוספת כלב" onPress={() => navigation.navigate('Settings')} style={styles.addFirstDogButton} />
       </SafeAreaView>
     );
@@ -701,6 +790,18 @@ export function HomeScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <View style={styles.dashboardHeroShell}>
+          <View pointerEvents="none" style={styles.dashboardHeroBackdrop}>
+            {heroBackground ? (
+              <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" />
+            ) : (
+              <>
+                <View style={styles.dashboardHeroDefaultSun} />
+                <View style={styles.dashboardHeroDefaultHillBack} />
+                <View style={styles.dashboardHeroDefaultHillFront} />
+                <View style={styles.dashboardHeroDefaultGround} />
+              </>
+            )}
+          </View>
           <View style={[styles.topRow, styles.dashboardTopRow]}>
             <Image
               source={require('../../assets/walkie-doggy-link-wordmark-transparent.png')}
@@ -709,7 +810,7 @@ export function HomeScreen() {
               accessibilityLabel="Walkie Doggy Link"
             />
             <Pressable
-              onPress={() => setDogProfileVisible(true)}
+              onPress={handleHeaderMascotPress}
               style={styles.mascotHeaderButton}
               accessibilityRole="button"
               accessibilityLabel="פתיחת פרופיל הכלב"
@@ -731,7 +832,7 @@ export function HomeScreen() {
             </Pressable>
           </View>
 
-          {/* Issue #145: the approved lavender composition remains the default;
+          {/* Issue #145: the approved calm composition remains the default;
               a manager-selected family scene replaces it and a transparent dog
               cutout is composited over it when one exists. */}
           <Pressable
@@ -740,30 +841,19 @@ export function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
           >
-            {heroBackground ? <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" /> : null}
-            <View style={styles.dashboardHeroBloomOne} pointerEvents="none" />
-            <View style={styles.dashboardHeroBloomTwo} pointerEvents="none" />
-            <View style={styles.dashboardHeroGlow} pointerEvents="none" />
-            <View style={styles.dashboardHeroShade} />
-            <View style={styles.dashboardHeroGreeting} pointerEvents="none">
-              {/* Item 3 fix: a realistic Hebrew family name plus "שלום
-                  משפחת " routinely exceeds this column's width at full
-                  size. numberOfLines={1} previously forced an ellipsis the
-                  instant adjustsFontSizeToFit's shrink floor (0.72) still
-                  wasn't enough for a longer name. Allowing a natural wrap
-                  to a second line — combined with the same shrink-to-fit
-                  floor as a secondary safety net — means a normal-length
-                  name still renders identically on one line (unchanged
-                  Option D hierarchy), while a longer one gracefully wraps
-                  instead of being cut off. */}
-              <RtlText style={styles.dashboardHeroGreetingTitle} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.72}>שלום משפחת {family?.name ?? ''}</RtlText>
-              <RtlText style={styles.dashboardHeroGreetingSubtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{dog?.name ?? 'הכלב/ה'} מחכה לטיול הבא 🐾</RtlText>
-            </View>
             {showDogCutout ? <Image source={{ uri: dog!.photoCutoutUrl! }} style={styles.dashboardHeroDogCutout} resizeMode="contain" onError={() => setHeroCutoutFailed(true)} /> : null}
             {!showDogCutout && showPersonalHero ? <Image source={{ uri: dog!.photoUrl! }} style={styles.dashboardHeroDogPhoto} resizeMode="cover" onError={() => setHeroPhotoFailed(true)} /> : null}
             {!showDogCutout && !showPersonalHero ? (
               <View style={styles.dashboardHeroMascot} pointerEvents="none">
-                <WalkieMascot state="idle" size={168} accessibilityLabel="כלב Walkie Doggy" />
+                <WalkieMascot state="idle" size={158} accessibilityLabel="כלב Walkie Doggy" />
+              </View>
+            ) : null}
+            {dog?.heroBackgroundId === 'walkie-park' && !showPersonalHero ? (
+              <View pointerEvents="none" style={styles.dashboardHeroForeground}>
+                <View style={styles.dashboardHeroForegroundLeft} />
+                <View style={styles.dashboardHeroForegroundMid} />
+                <View style={styles.dashboardHeroForegroundDogBase} />
+                <View style={styles.dashboardHeroForegroundRight} />
               </View>
             ) : null}
           </Pressable>
@@ -869,12 +959,11 @@ export function HomeScreen() {
             // full "responsible member / non-responsible member /
             // non-responsible admin" rule and its own unit tests.
             //
-            // Item 10 (final consolidated pass): onEdit/onSwap deliberately
-            // NOT passed here anymore — that redundant internal "עריכה ·
-            // החלפה" link row is gone; the same canEditDirect/canSwapDirect
-            // actions now live in the two quick-action buttons directly
-            // below this card (dashboardShortcuts, manager-only). Nothing
-            // about who CAN edit/swap changed, only where the button lives.
+            // onEdit/onSwap below also require `nextWalk.status ===
+            // 'pending'` — an admin editing/swapping a walk that's already
+            // in_progress/done doesn't make sense.
+            onSwap={effectiveRole === 'admin' && nextWalk.status === 'pending' ? () => setSwapWalkId(nextWalk.id) : undefined}
+            onEdit={effectiveRole === 'admin' && nextWalk.status === 'pending' ? () => setEditWalkId(nextWalk.id) : undefined}
             onRequestSwap={
               nextWalkCardActions?.canRequestSwap && !walkHasActiveSwapRequest(nextWalk.id, swapRequests, walksById)
                 ? () => setRequestSwapWalkId(nextWalk.id)
@@ -889,120 +978,148 @@ export function HomeScreen() {
           />
         ) : (
           <View style={styles.emptyCard}>
-            <EmptyState emoji="🎉" title="אין טיולים ממתינים" subtitle="אפשר להוסיף שעות טיול במסך לוח הזמנים" />
+            <WalkieMascot state="ready" size={72} accessibilityLabel="Walkie Doggy מוכן לטיול" />
+            <RtlText style={styles.onDemandTitle}>יוצאים לטיול?</RtlText>
+            <RtlText style={styles.onDemandSubtitle}>לא חייבים לקבוע לו״ז מראש. אפשר להתחיל עכשיו ו-Walkie Doggy יתעד את הטיול וה-GPS.</RtlText>
+            <Button label="התחל טיול" icon="▶" onPress={() => setAddUnplannedVisible(true)} style={styles.onDemandStartButton} shrinkToFit />
           </View>
         )}
         </View>
 
-        {/* Item 10 (final consolidated pass — corrects item 7, which was a
-            misunderstanding): restored to its original position directly
-            below the Next Walk card, no standalone bottom row.
-            MANAGER-ONLY layout change (mid-turn clarification): for a
-            Family Manager (admin), the first two slots become direct
-            actions — עריכה/החלפה — replacing the request-based שינוי
-            שעה/בקשת החלפה slots (same canEditDirect/canSwapDirect actions
-            that used to live in the card's own now-removed link row, see
-            above). For a REGULAR MEMBER, this row is completely untouched
-            from before any of this batch's changes — same שינוי
-            שעה/בקשת החלפה request actions, same permissions. טיול ספונטני
-            (log an already-completed walk) is unchanged for everyone. */}
-        <View style={styles.dashboardShortcuts} accessibilityLabel="קיצורי דרך">
-          {effectiveRole === 'admin' ? (
-            <>
-              <Pressable
-                onPress={() => (nextWalkCardActions?.canEditDirect && nextWalk ? setEditWalkId(nextWalk.id) : navigation.navigate('Schedule'))}
-                style={[styles.dashboardShortcut, styles.dashboardShortcutMint]}
-                accessibilityRole="button"
-                accessibilityLabel="עריכת הטיול"
-              >
-                <RtlText style={styles.dashboardShortcutIcon}>✎</RtlText>
-                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>עריכה</RtlText>
-              </Pressable>
-              <Pressable
-                onPress={() => (nextWalkCardActions?.canSwapDirect && nextWalk ? setSwapWalkId(nextWalk.id) : navigation.navigate('Schedule'))}
-                style={[styles.dashboardShortcut, styles.dashboardShortcutBlue]}
-                accessibilityRole="button"
-                accessibilityLabel="החלפת הטיול"
-              >
-                <RtlText style={styles.dashboardShortcutIcon}>⇄</RtlText>
-                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>החלפה</RtlText>
-              </Pressable>
-            </>
-          ) : (
-            <>
-              <Pressable onPress={() => nextWalkCardActions?.canRequestTimeChange ? setRequestTimeChangeWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutMint]} accessibilityRole="button" accessibilityLabel="בקשת שינוי שעה">
-                <RtlText style={styles.dashboardShortcutIcon}>◷</RtlText>
-                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שינוי שעה</RtlText>
-              </Pressable>
-              <Pressable onPress={() => nextWalkCardActions?.canRequestSwap ? setRequestSwapWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutBlue]} accessibilityRole="button" accessibilityLabel="בקשת החלפה">
-                <RtlText style={styles.dashboardShortcutIcon}>⇄</RtlText>
-                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>בקשת החלפה</RtlText>
-              </Pressable>
-            </>
-          )}
-          <Pressable onPress={() => setAddUnplannedVisible(true)} style={[styles.dashboardShortcut, styles.dashboardShortcutGold]} accessibilityRole="button" accessibilityLabel="הוסף טיול שבוצע">
-            <RtlText style={styles.dashboardShortcutIcon}>🚶</RtlText>
-            <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>טיול ספונטני</RtlText>
-          </Pressable>
-        </View>
-
-        {lastWalk ? (
-          <Pressable style={styles.dashboardLastWalk} onPress={() => navigation.navigate('History')} accessibilityRole="button" accessibilityLabel="פתיחת הטיול האחרון">
-            <View style={styles.dashboardLastWalkCopy}>
-              <RtlText style={styles.dashboardLastWalkTitle}>✓ הטיול האחרון</RtlText>
-              <RtlText style={styles.dashboardLastWalkMeta}>
-                בוצע ע״י {usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.name ?? 'בן משפחה'} · {lastWalk.completedAt ? new Date(lastWalk.completedAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : lastWalk.scheduledTime} · {walkDateContextLabel(lastWalk.date)}
-              </RtlText>
-              {lastWalkGps ? (
-                <RtlText style={styles.dashboardLastWalkGps}>
-                  {[
-                    lastWalk.durationMinutes ? `${lastWalk.durationMinutes} דק׳` : null,
-                    (lastWalkGps.correctedDistanceMeters ?? lastWalkGps.distanceMeters) != null
-                      ? `${((lastWalkGps.correctedDistanceMeters ?? lastWalkGps.distanceMeters ?? 0) / 1000).toFixed(1)} ק״מ`
-                      : null,
-                  ].filter(Boolean).join(' · ')}
-                </RtlText>
-              ) : null}
+        {lastWalk ? (() => {
+          const canEditLastWalk =
+            lastWalkIsEditable &&
+            (effectiveRole === 'admin' ||
+              lastWalk.responsibleUserId === effectiveUserId ||
+              (lastWalk.isUnplanned && lastWalk.completedByUserId === effectiveUserId));
+          const completedByName =
+            usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.name ?? 'בן משפחה';
+          const actualCompletedTime = lastWalk.completedAt
+            ? new Date(lastWalk.completedAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
+            : lastWalk.scheduledTime;
+          return (
+            <View style={styles.dashboardSection}>
+              <View style={styles.dashboardExternalHeading}>
+                <RtlText style={styles.dashboardExternalTitle}>הטיול האחרון</RtlText>
+                <RtlText style={styles.dashboardLastWalkDate}>{resolvedWalkDateContextLabel(lastWalk)}</RtlText>
+              </View>
+              <View style={styles.dashboardLastWalk}>
+                <View style={styles.dashboardLastWalkRow}>
+                <View style={styles.dashboardLastWalkTimeBlock}>
+                  <RtlText style={styles.dashboardLastWalkTime}>{actualCompletedTime}</RtlText>
+                  <RtlText style={styles.dashboardLastWalkDone}>✓ בוצע {actualCompletedTime}</RtlText>
+                </View>
+                <View style={styles.dashboardLastWalkActions}>
+                  {canEditLastWalk ? (
+                    <Pressable
+                      onPress={() => lastWalk.isUnplanned ? setEditingLastUnplannedWalkId(lastWalk.id) : setEditingLastDoneDetailsId(lastWalk.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel="עריכת הטיול האחרון"
+                      style={styles.dashboardLastWalkEdit}
+                    >
+                      <RtlText style={styles.dashboardLastWalkEditIcon}>✏️</RtlText>
+                      <RtlText style={styles.dashboardLastWalkEditText}>עריכה</RtlText>
+                    </Pressable>
+                  ) : null}
+                  {lastWalk.status !== 'skipped' ? (
+                    <>
+                      <Pressable
+                        onPress={canEditLastWalk ? () => void editDoneDetails(lastWalk.id, { hadPee: !lastWalk.hadPee }) : undefined}
+                        disabled={!canEditLastWalk}
+                        hitSlop={10}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: !!lastWalk.hadPee, disabled: !canEditLastWalk }}
+                        accessibilityLabel="סימון פיפי בטיול האחרון"
+                      >
+                        <RtlText style={[styles.dashboardLastWalkNeed, !lastWalk.hadPee && styles.dashboardLastWalkNeedMuted]}>💧</RtlText>
+                      </Pressable>
+                      <Pressable
+                        onPress={canEditLastWalk ? () => void editDoneDetails(lastWalk.id, { hadPoop: !lastWalk.hadPoop }) : undefined}
+                        disabled={!canEditLastWalk}
+                        hitSlop={10}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: !!lastWalk.hadPoop, disabled: !canEditLastWalk }}
+                        accessibilityLabel="סימון קקי בטיול האחרון"
+                      >
+                        <RtlText style={[styles.dashboardLastWalkNeed, !lastWalk.hadPoop && styles.dashboardLastWalkNeedMuted]}>💩</RtlText>
+                      </Pressable>
+                    </>
+                  ) : null}
+                </View>
+                <View style={styles.dashboardLastWalkPerson}>
+                  <RtlText style={styles.dashboardLastWalkPersonLabel}>בוצע ע״י</RtlText>
+                  <RtlText style={styles.dashboardLastWalkPersonName}>{completedByName}</RtlText>
+                </View>
+              </View>
+                {lastWalkGps ? (
+                  <RtlText style={styles.dashboardLastWalkGps}>
+                    {[
+                      lastWalk.durationMinutes ? `${lastWalk.durationMinutes} דק׳` : null,
+                      (lastWalkGps.correctedDistanceMeters ?? lastWalkGps.distanceMeters) != null
+                        ? `${((lastWalkGps.correctedDistanceMeters ?? lastWalkGps.distanceMeters ?? 0) / 1000).toFixed(1)} ק״מ`
+                        : null,
+                    ].filter(Boolean).join(' · ')}
+                  </RtlText>
+                ) : null}
+              </View>
             </View>
-            <Avatar
-              emoji={usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.avatar ?? '👤'}
-              color={usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.color ?? colors.primary}
-              photoUrl={usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.photoUrl}
-              size={38}
-            />
-            <RtlText style={styles.dashboardLastWalkChevron}>‹</RtlText>
-          </Pressable>
-        ) : null}
+          );
+        })() : null}
 
-        <Pressable style={styles.dashboardTimeline} onPress={() => navigation.navigate('Schedule')} accessibilityRole="button" accessibilityLabel="פתיחת לוח הזמנים להמשך היום">
-          <View style={styles.dashboardTimelineHeader}>
-            <RtlText style={styles.dashboardTimelineTitle}>בהמשך היום</RtlText>
+        <Pressable
+          onPress={() => setAddUnplannedVisible(true)}
+          style={styles.dashboardAddWalk}
+          accessibilityRole="button"
+          accessibilityLabel="הוסף טיול"
+        >
+          <RtlText style={styles.dashboardAddWalkIcon}>＋</RtlText>
+          <View style={styles.dashboardAddWalkCopy}>
+            <RtlText style={styles.dashboardAddWalkTitle}>הוסף טיול</RtlText>
+            <RtlText style={styles.dashboardAddWalkSubtitle}>טיול ספונטני עכשיו או הזנת טיול שבוצע</RtlText>
+          </View>
+          <RtlText style={styles.dashboardAddWalkChevron}>⌄</RtlText>
+        </Pressable>
+
+        <View style={styles.dashboardSection}>
+          <View style={styles.dashboardExternalHeading}>
+            <RtlText style={styles.dashboardExternalTitle}>בהמשך היום</RtlText>
             <RtlText style={styles.dashboardTimelineChevron}>‹</RtlText>
           </View>
-          {dashboardTimelineWalks.length > 0 ? (
+          <Pressable style={styles.dashboardTimeline} onPress={() => navigation.navigate('Schedule')} accessibilityRole="button" accessibilityLabel="פתיחת המשך הטיולים של היום בלוח הזמנים">
+          {dashboardTimelineWalks.length === 1 ? (
+            <View style={styles.dashboardSingleUpcoming}>
+              <Avatar emoji={usersById[dashboardTimelineWalks[0].responsibleUserId]?.avatar ?? '🐾'} color={usersById[dashboardTimelineWalks[0].responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[dashboardTimelineWalks[0].responsibleUserId]?.photoUrl} size={34} />
+              <View style={styles.dashboardSingleUpcomingText}>
+                <RtlText style={styles.dashboardSingleUpcomingTime}>{dashboardTimelineWalks[0].scheduledTime}</RtlText>
+                <RtlText style={styles.dashboardSingleUpcomingName}>{usersById[dashboardTimelineWalks[0].responsibleUserId]?.name ?? 'בן משפחה'}</RtlText>
+              </View>
+              <RtlText style={styles.dashboardSingleUpcomingHint}>הטיול הבא היום</RtlText>
+            </View>
+          ) : dashboardTimelineWalks.length > 1 ? (
             <View style={styles.dashboardTimelineStops}>
               <View style={styles.dashboardTimelinePeople}>
                 {dashboardTimelineWalks.map((walk) => (
-                  <View key={walk.id} style={styles.dashboardTimelineStop}>
-                    <Avatar emoji={usersById[walk.responsibleUserId]?.avatar ?? '🐾'} color={usersById[walk.responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[walk.responsibleUserId]?.photoUrl} size={34} />
+                  <View key={walk.id} style={[styles.dashboardTimelineStop, walk.status === 'done' && styles.dashboardTimelineStopDone, walk.status === 'skipped' && styles.dashboardTimelineStopSkipped, walk.status === 'in_progress' && styles.dashboardTimelineStopActive]}>
+                    <Avatar emoji={usersById[walk.responsibleUserId]?.avatar ?? '🐾'} color={usersById[walk.responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[walk.responsibleUserId]?.photoUrl} size={26} />
                   </View>
                 ))}
               </View>
               <View style={styles.dashboardTimelineTrack} pointerEvents="none">
                 <View style={[styles.dashboardTimelineProgress, { width: `${dashboardTimelineProgress * 100}%` }]} />
-                {dashboardTimelineWalks.map((walk) => <View key={`dot-${walk.id}`} style={styles.dashboardTimelineDot} />)}
+                {dashboardTimelineWalks.map((walk) => <View key={`dot-${walk.id}`} style={[styles.dashboardTimelineDot, walk.status === 'done' && styles.dashboardTimelineDotDone, walk.status === 'skipped' && styles.dashboardTimelineDotSkipped, walk.status === 'in_progress' && styles.dashboardTimelineDotActive]} />)}
               </View>
               <View style={styles.dashboardTimelineLabels}>
                 {dashboardTimelineWalks.map((walk) => (
                   <View key={`label-${walk.id}`} style={styles.dashboardTimelineLabel}>
-                    <RtlText style={styles.dashboardTimelineTime}>{walk.scheduledTime}</RtlText>
+                    <RtlText style={[styles.dashboardTimelineTime, walk.status === 'done' && styles.dashboardTimelineTimeDone, walk.status === 'skipped' && styles.dashboardTimelineTimeSkipped, walk.status === 'in_progress' && styles.dashboardTimelineTimeActive]}>{walk.status === 'done' ? `✓ ${walk.scheduledTime}` : walk.status === 'skipped' ? `– ${walk.scheduledTime}` : walk.status === 'in_progress' ? `• ${walk.scheduledTime}` : walk.scheduledTime}</RtlText>
                     <RtlText style={styles.dashboardTimelineName} numberOfLines={1}>{usersById[walk.responsibleUserId]?.name ?? 'בן משפחה'}</RtlText>
                   </View>
                 ))}
               </View>
             </View>
-          ) : <RtlText style={styles.dashboardTimelineEmpty}>אין טיולים נוספים היום · לפתיחת לוח הזמנים</RtlText>}
-        </Pressable>
+          ) : <RtlText style={styles.dashboardTimelineEmpty}>אין טיולים מתוכננים היום · לפתיחת לוח הזמנים</RtlText>}
+          </Pressable>
+        </View>
 
         {pendingForMe > 0 ? (
           <Pressable style={styles.dashboardRequestAlert} onPress={openRequestsInbox} accessibilityRole="button" accessibilityLabel={`${pendingForMe} בקשות ממתינות לאישור`}>
@@ -1037,7 +1154,7 @@ export function HomeScreen() {
                         {lastWalk.scheduledTime}
                       </RtlText>
                       <RtlText style={styles.lastWalkDateContext} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} maxFontSizeMultiplier={1.35}>
-                        {walkDateContextLabel(lastWalk.date)}
+                        {resolvedWalkDateContextLabel(lastWalk)}
                       </RtlText>
                       {lastWalk.status === 'skipped' ? (
                         <RtlText style={styles.lastWalkSkippedBadge} numberOfLines={1} maxFontSizeMultiplier={1.35}>✕ לא בוצע</RtlText>
@@ -1118,6 +1235,22 @@ export function HomeScreen() {
                       </RtlText>
                     </View>
                   </View>
+                  {lastWalk.status === 'done' ? (
+                    <View style={styles.lastWalkDetails}>
+                      <View style={styles.lastWalkDetailChips}>
+                        <View style={styles.lastWalkDetailChip}><RtlText style={styles.lastWalkDetailChipText}>💧 {lastWalk.hadPee ? '✓' : '—'}</RtlText></View>
+                        <View style={styles.lastWalkDetailChip}><RtlText style={styles.lastWalkDetailChipText}>💩 {lastWalk.hadPoop ? '✓' : '—'}</RtlText></View>
+                        {lastWalkGps?.startedAt && lastWalkGps?.endedAt ? <View style={styles.lastWalkDetailChip}><RtlText style={styles.lastWalkDetailChipText}>⏱️ {Math.max(1, Math.round((new Date(lastWalkGps.endedAt).getTime() - new Date(lastWalkGps.startedAt).getTime()) / 60000))} דק׳</RtlText></View> : null}
+                        {lastWalkGps?.distanceMeters != null ? <View style={styles.lastWalkDetailChip}><RtlText style={styles.lastWalkDetailChipText}>📍 {lastWalkGps.distanceMeters >= 1000 ? `${(lastWalkGps.distanceMeters / 1000).toFixed(1)} ק״מ` : `${Math.round(lastWalkGps.distanceMeters)} מ׳`}</RtlText></View> : null}
+                      </View>
+                      {lastWalk.note?.trim() ? (
+                        <View style={styles.lastWalkNote}>
+                          <RtlText style={styles.lastWalkNoteLabel}>הערה</RtlText>
+                          <RtlText style={styles.lastWalkNoteText}>{lastWalk.note.trim()}</RtlText>
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : null}
                 </View>
               );
             })()}
@@ -1224,8 +1357,9 @@ export function HomeScreen() {
       <WalkCompletionCelebration
         celebration={celebration}
         onDismiss={() => {
+          // A walk completion is one brief, self-closing moment. Do not
+          // chain another mascot overlay from the dismiss action.
           setCelebration(null);
-          showNextAchievementCelebration();
         }}
       />
 
@@ -1252,7 +1386,7 @@ export function HomeScreen() {
         onSelect={async (otherWalkId) => {
           const sourceWalkId = swapWalkId;
           setSwapWalkId(null);
-          if (sourceWalkId) await swapTwoWalks(sourceWalkId, otherWalkId, currentUserId);
+          if (sourceWalkId) await swapTwoWalks(sourceWalkId, otherWalkId, effectiveUserId);
         }}
         onClose={() => setSwapWalkId(null)}
       />
@@ -1268,7 +1402,8 @@ export function HomeScreen() {
         }}
         onChangeResponsible={async (newUserId) => {
           if (editingWalk) await swap(editingWalk.id, newUserId, currentUserId);
-          setEditWalkId(null);
+          // Keep the editor open so the same one-off edit can continue
+          // (for example, change the responsible member and then the time).
         }}
         onSwapWithWalk={async (otherWalkId) => {
           if (editingWalk) await swapTwoWalks(editingWalk.id, otherWalkId, currentUserId);
@@ -1290,9 +1425,18 @@ export function HomeScreen() {
         // to themselves — only a real Admin may pick someone else
         // (requirement 5).
         canChooseUser={effectiveRole === 'admin'}
+        onStartNow={async () => {
+          if (!dog) {
+            useScheduleStore.setState({ actionError: 'עדיין טוענים את פרטי הכלב/ה — נסו שוב בעוד רגע' });
+            return;
+          }
+          const started = await startUnplannedWalk(familyId, dog.id, effectiveUserId);
+          if (started) setAddUnplannedVisible(false);
+        }}
         onConfirm={async (result: UnplannedWalkResult) => {
-          setAddUnplannedVisible(false);
-          // addUnplannedWalk() itself refuses while Test Mode is active.
+          // Keep the form visible until persistence succeeds. Closing it before
+          // awaiting save made a successful tap look like "nothing happened"
+          // and made failures impossible to correct without re-entering data.
           if (dog) {
             const saved = await addUnplannedWalk({
               familyId: familyId,
@@ -1306,6 +1450,7 @@ export function HomeScreen() {
               durationMinutes: result.durationMinutes,
             });
             if (saved) {
+              setAddUnplannedVisible(false);
               showWalkCompletionCelebration(result.durationMinutes);
               checkForNewAchievementUnlocks();
             }
@@ -1493,20 +1638,25 @@ export function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#E8E5FF' },
+  noDogTitle: { fontSize: 24, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginTop: spacing.sm },
+  noDogSubtitle: { maxWidth: 360, fontSize: 15, fontWeight: '400', lineHeight: 22, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.sm, marginBottom: spacing.lg, paddingHorizontal: spacing.lg },
+  onDemandTitle: { fontSize: 20, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginTop: 0 },
+  onDemandSubtitle: { fontSize: 13, fontWeight: '400', lineHeight: 18, color: colors.textSecondary, textAlign: 'center', marginTop: 2, marginBottom: 8, paddingHorizontal: 12 },
+  onDemandStartButton: { width: '100%', minHeight: 46, backgroundColor: '#12A5AB', borderColor: '#12A5AB' },
+  container: { flex: 1, backgroundColor: '#FBF8F3' },
   center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
   addFirstDogButton: { marginTop: spacing.md },
   // Leaves the final card clear of the persistent bottom tab bar on phones
   // and in Safari/PWA, instead of letting it end underneath the navigation.
-  content: { flexGrow: 1, paddingHorizontal: spacing.md, paddingTop: 0, gap: 8, paddingBottom: 120, width: '100%', backgroundColor: '#FBF8F3' },
-  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: spacing.md, gap: 14 },
-  emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: spacing.sm },
+  content: { flexGrow: 1, paddingHorizontal: spacing.md, paddingTop: 0, gap: 7, paddingBottom: 96, width: '100%', backgroundColor: '#FBF8F3' },
+  webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: 0, gap: 7 },
+  emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: 10, paddingHorizontal: 10 },
   // Item 6 (mobile polish): -42 (was -48) — the hero above is now 20px
   // shorter, so keeping the same -48 overlap would push this card up
   // further into the (shorter) hero than before; easing it to -42 nets a
   // modest ~14px higher start overall while keeping roughly the same
   // visual overlap relationship with the hero as before.
-  nextWalkLift: { marginTop: -42, zIndex: 1, paddingHorizontal: spacing.xs },
+  nextWalkLift: { marginTop: -34, zIndex: 1, paddingHorizontal: spacing.xs },
   testModeBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1519,11 +1669,12 @@ const styles = StyleSheet.create({
   testModeBannerText: { flex: 1, color: colors.textInverse, fontWeight: '700', fontSize: typography.meta.fontSize, textAlign: 'right' },
   testModeBannerButton: { backgroundColor: '#ffffff33', borderRadius: radii.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   testModeBannerButtonText: { color: colors.textInverse, fontWeight: '700', fontSize: 12 },
-  dashboardHeroShell: { marginHorizontal: -spacing.md, backgroundColor: '#E8E5FF', overflow: 'hidden' },
+  dashboardHeroShell: { marginHorizontal: -spacing.md, marginTop: Platform.OS === 'web' ? 'calc(-1 * env(safe-area-inset-top, 0px))' as any : -56, paddingTop: Platform.OS === 'web' ? 'env(safe-area-inset-top, 0px)' as any : 56, backgroundColor: '#F7F3E9', overflow: 'hidden' },
+  dashboardHeroBackdrop: { ...StyleSheet.absoluteFill, bottom: 0 },
   topRow: { position: 'relative', minHeight: 54, alignItems: 'center', justifyContent: 'center' },
   // Item 6 (mobile polish): trimmed from 58/6 — a shorter header row so the
   // Dashboard's real content (Next Walk, timeline) starts higher on screen.
-  dashboardTopRow: { minHeight: 48, paddingHorizontal: spacing.md, paddingTop: Platform.OS === 'web' ? 0 : 4 },
+  dashboardTopRow: { minHeight: 48, paddingHorizontal: spacing.md, paddingTop: Platform.OS === 'web' ? 0 : 4, zIndex: 4 },
   brandWordmark: { width: 132, height: 42 },
   mascotHeaderButton: { position: 'absolute', left: spacing.md, top: 7, width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   dashboardHero: {
@@ -1534,68 +1685,105 @@ const styles = StyleSheet.create({
     // own comments) so this crops only a little more off their bottom
     // (paws/tail), never their face/head — see docs/design/MASCOT_SPEC.md's
     // identity rules on what must stay recognizable in every frame.
-    height: 156,
-    borderBottomLeftRadius: 34,
+    height: 148,
+    borderBottomLeftRadius: 30,
     borderBottomRightRadius: 34,
-    backgroundColor: '#E8ECFF',
+    // The scene is rendered once by dashboardHeroBackdrop across the entire top shell.
+    // Keep the hero transparent so it cannot mask that full-bleed scene.
+    backgroundColor: 'transparent',
     overflow: 'hidden',
     alignItems: 'flex-end',
     justifyContent: 'flex-end',
   },
   dashboardHeroImage: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
-  dashboardHeroBloomOne: { position: 'absolute', width: 270, height: 270, borderRadius: 135, left: -112, bottom: -174, backgroundColor: '#D8D4FF' },
-  dashboardHeroBloomTwo: { position: 'absolute', width: 250, height: 250, borderRadius: 125, right: -104, top: -132, backgroundColor: '#C9D7FF' },
-  dashboardHeroGlow: { position: 'absolute', width: 260, height: 92, borderRadius: 130, left: 24, bottom: 16, backgroundColor: '#FFFFFF75', transform: [{ rotate: '-8deg' }] },
-  dashboardHeroShade: { ...StyleSheet.absoluteFill, backgroundColor: '#FFFFFF12' },
-  dashboardHeroGreeting: { position: 'absolute', top: 16, left: spacing.md, width: '52%', alignItems: 'flex-end', zIndex: 2 },
-  dashboardHeroGreetingTitle: { width: '100%', fontSize: 22, lineHeight: 27, color: '#253275', fontWeight: '900', textAlign: 'right' },
-  dashboardHeroGreetingSubtitle: { width: '100%', marginTop: 4, fontSize: 13, lineHeight: 18, color: '#454E91', fontWeight: '700', textAlign: 'right' },
+  dashboardHeroDefaultSun: { position: 'absolute', width: 86, height: 86, borderRadius: 43, right: 30, top: 18, backgroundColor: '#FFF1C7' },
+  dashboardHeroDefaultHillBack: { position: 'absolute', width: 330, height: 150, borderRadius: 165, left: -95, bottom: -88, backgroundColor: '#E8F1DF' },
+  dashboardHeroDefaultHillFront: { position: 'absolute', width: 320, height: 142, borderRadius: 160, right: -98, bottom: -94, backgroundColor: '#DCEAD7' },
+  dashboardHeroDefaultGround: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 32, backgroundColor: '#F2E4C9' },
+  dashboardHeroBloomOne: { position: 'absolute', width: 270, height: 270, borderRadius: 135, left: -112, bottom: -174, backgroundColor: '#E8F3E8' },
+  dashboardHeroBloomTwo: { position: 'absolute', width: 250, height: 250, borderRadius: 125, right: -104, top: -132, backgroundColor: '#DDEFE8' },
+  dashboardHeroGlow: { position: 'absolute', width: 260, height: 92, borderRadius: 130, left: 24, bottom: 16, backgroundColor: '#FFFDF2A8', transform: [{ rotate: '-8deg' }] },
+  dashboardHeroShade: { ...StyleSheet.absoluteFill, backgroundColor: '#FFFFFF22' },
+  dashboardHeroGreeting: { position: 'absolute', top: 10, left: spacing.md, right: '42%', alignItems: 'flex-end', zIndex: 2, backgroundColor: '#FFFDF0CC', borderRadius: 14, paddingHorizontal: 8, paddingVertical: 5 },
+  dashboardHeroGreetingTitle: { width: '100%', flexShrink: 1, fontSize: 21, lineHeight: 26, color: '#142B50', fontWeight: '900', textAlign: 'right' },
+  dashboardHeroGreetingSubtitle: { width: '100%', marginTop: 2, fontSize: 12, lineHeight: 17, color: '#344A62', fontWeight: '700', textAlign: 'right' },
   // bottom offsets shifted up by 20 (the dashboardHero height reduction)
   // so each image's TOP edge — where the mascot/dog's face/head sits —
   // renders at the exact same position as before; only extra bottom
   // (paws/tail) bleed is newly clipped by the shorter frame.
-  dashboardHeroMascot: { position: 'absolute', right: -4, bottom: -24, zIndex: 2 },
-  dashboardHeroDogCutout: { position: 'absolute', right: -4, bottom: -26, width: 190, height: 188, zIndex: 2 },
-  dashboardHeroDogPhoto: { position: 'absolute', right: 12, bottom: 8, width: 126, height: 126, borderRadius: 63, zIndex: 2, borderWidth: 3, borderColor: '#FFFFFFCC' },
+  dashboardHeroMascot: { position: 'absolute', right: 4, bottom: 2, zIndex: 2 },
+  dashboardHeroForeground: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 52, zIndex: 3, overflow: 'hidden' },
+  dashboardHeroForegroundLeft: { position: 'absolute', left: -22, bottom: -23, width: 126, height: 52, borderRadius: 63, backgroundColor: '#C5E2B7', opacity: 0.72, transform: [{ rotate: '-4deg' }] },
+  dashboardHeroForegroundMid: { position: 'absolute', right: 118, bottom: -31, width: 106, height: 48, borderRadius: 53, backgroundColor: '#D6EBC8', opacity: 0.78, transform: [{ rotate: '5deg' }] },
+  dashboardHeroForegroundDogBase: { position: 'absolute', right: -2, bottom: -25, width: 182, height: 58, borderRadius: 91, backgroundColor: '#D1E8C4', opacity: 0.94, transform: [{ rotate: '-2deg' }] },
+  dashboardHeroForegroundRight: { position: 'absolute', right: -42, bottom: -17, width: 104, height: 46, borderRadius: 52, backgroundColor: '#BFDDB1', opacity: 0.86, transform: [{ rotate: '7deg' }] },
+  dashboardHeroDogCutout: { position: 'absolute', right: 4, bottom: 2, width: 166, height: 158, zIndex: 2 },
+  dashboardHeroDogPhoto: { position: 'absolute', right: 4, bottom: -36, width: 136, height: 136, borderRadius: 22, zIndex: 2 },
   dashboardHeroCopy: { width: '52%', alignItems: 'flex-end', alignSelf: 'flex-start', paddingTop: 38, paddingHorizontal: spacing.md, zIndex: 2 },
   dashboardHeroEyebrow: { fontSize: 16, color: '#27376F', fontWeight: '700', textAlign: 'right' },
   dashboardHeroName: { fontSize: 30, lineHeight: 36, color: '#16245B', fontWeight: '900', textAlign: 'right' },
-  dashboardShortcuts: { flexDirection: 'row-reverse', gap: spacing.sm, width: '100%', marginTop: -2 },
-  dashboardShortcut: { flex: 1, minHeight: 48, borderRadius: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, gap: 0, borderWidth: 1, borderColor: '#FFFFFFAA' },
-  dashboardShortcutMint: { backgroundColor: '#E2F8E9' },
-  dashboardShortcutBlue: { backgroundColor: '#E2F4FF' },
-  dashboardShortcutGold: { backgroundColor: '#FFF0C9' },
-  dashboardShortcutPurple: { backgroundColor: '#F0EBFF' },
-  dashboardShortcutLabel: { fontSize: 13, lineHeight: 16, fontWeight: '800', color: colors.textPrimary, textAlign: 'center' },
-  dashboardShortcutIcon: { fontSize: 17, lineHeight: 18 },
-  dashboardLastWalk: { minHeight: 52, borderRadius: radii.xl, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EAE5DD', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm, shadowColor: '#17245B', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
-  dashboardLastWalkCopy: { flex: 1, alignItems: 'flex-end' },
-  dashboardLastWalkTitle: { fontSize: 17, fontWeight: '900', color: '#17245B', textAlign: 'right' },
-  dashboardLastWalkMeta: { marginTop: 2, fontSize: 12, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
-  dashboardLastWalkGps: { marginTop: 2, fontSize: 12, fontWeight: '800', color: '#2F7F75', textAlign: 'right' },
-  dashboardLastWalkDog: { width: 46, height: 40, overflow: 'hidden', borderRadius: radii.lg, backgroundColor: '#EEF3FF', alignItems: 'center', justifyContent: 'center' },
-  dashboardLastWalkChevron: { fontSize: 30, color: '#454B9E', writingDirection: 'ltr' },
-  dashboardTimeline: { minHeight: 60, borderRadius: radii.xl, backgroundColor: '#FBFBFF', borderWidth: 1, borderColor: '#E1E2F4', paddingHorizontal: spacing.md, paddingVertical: 7, gap: 4 },
+  dashboardAddWalk: { minHeight: 52, borderRadius: 22, backgroundColor: '#F0FAF8', borderWidth: 1, borderColor: '#D5EEE9', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
+  dashboardAddWalkIcon: { width: 34, height: 34, borderRadius: 17, textAlign: 'center', lineHeight: 34, fontSize: 25, fontWeight: '500', color: '#FFFFFF', backgroundColor: '#12A5AB' },
+  dashboardAddWalkCopy: { flex: 1, alignItems: 'flex-end' },
+  dashboardAddWalkTitle: { fontSize: 17, lineHeight: 21, fontWeight: '700', color: '#0E7E84', textAlign: 'right' },
+  dashboardAddWalkSubtitle: { marginTop: 1, fontSize: 11, lineHeight: 15, fontWeight: '500', color: colors.textSecondary, textAlign: 'right' },
+  dashboardAddWalkChevron: { fontSize: 22, color: '#0E7E84' },
+  dashboardSection: { gap: 5 },
+  dashboardExternalHeading: { minHeight: 24, paddingHorizontal: 4, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  dashboardExternalTitle: { fontSize: 17, fontWeight: '800', color: '#17345B', textAlign: 'right' },
+  dashboardLastWalk: { minHeight: 82, borderRadius: 24, backgroundColor: '#F4FAFD', borderWidth: 1, borderColor: '#DCECF2', paddingHorizontal: spacing.md, paddingVertical: 7, shadowColor: '#6A5D45', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  dashboardLastWalkHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  dashboardLastWalkTitle: { fontSize: 17, fontWeight: '700', color: '#17345B', textAlign: 'right' },
+  dashboardLastWalkDate: { fontSize: 11, fontWeight: '500', color: colors.textSecondary },
+  dashboardLastWalkRow: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  dashboardLastWalkTimeBlock: { width: 104, alignItems: 'flex-start', flexShrink: 0 },
+  dashboardLastWalkTime: { fontSize: 24, lineHeight: 29, fontWeight: '700', color: '#17345B' },
+  dashboardLastWalkDone: { marginTop: 1, fontSize: 12, lineHeight: 16, fontWeight: '600', color: '#15966D' },
+  dashboardLastWalkActions: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', justifyContent: 'center', gap: 8, flex: 1, minWidth: 118 },
+  dashboardLastWalkEdit: { alignItems: 'center', justifyContent: 'center', minWidth: 46, minHeight: 40 },
+  dashboardLastWalkEditIcon: { fontSize: 17, color: '#E6B422' },
+  dashboardLastWalkEditText: { fontSize: 11, fontWeight: '600', color: '#17345B' },
+  dashboardLastWalkNeed: { fontSize: 18 },
+  dashboardLastWalkNeedMuted: { opacity: 0.28 },
+  dashboardLastWalkPerson: { width: 86, alignItems: 'flex-end', flexShrink: 0 },
+  dashboardLastWalkPersonLabel: { fontSize: 10, fontWeight: '500', color: colors.textSecondary, textAlign: 'right' },
+  dashboardLastWalkPersonName: { marginTop: 1, fontSize: 15, fontWeight: '700', color: '#17345B', textAlign: 'right' },
+  dashboardLastWalkGps: { marginTop: 5, fontSize: 10, fontWeight: '600', color: '#2F7F75', textAlign: 'left' },
+  dashboardTimeline: { minHeight: 58, borderRadius: 22, backgroundColor: '#F5F9FC', borderWidth: 1, borderColor: '#DCECF2', paddingHorizontal: spacing.md, paddingTop: 6, paddingBottom: 4, gap: 2 },
   dashboardTimelineHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
-  dashboardTimelineTitle: { fontSize: 16, fontWeight: '900', color: '#17245B', textAlign: 'right' },
-  dashboardTimelineChevron: { fontSize: 24, color: '#454B9E', writingDirection: 'ltr' },
-  dashboardTimelineStops: { position: 'relative', gap: 4 },
-  dashboardTimelinePeople: { flexDirection: 'row-reverse', justifyContent: 'space-around' },
+  dashboardTimelineTitle: { fontSize: 16, fontWeight: '700', color: '#17345B', textAlign: 'right' },
+  dashboardTimelineChevron: { fontSize: 24, color: '#129EA5', writingDirection: 'ltr' },
+  dashboardSingleUpcoming: { minHeight: 46, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 2 },
+  dashboardSingleUpcomingText: { alignItems: 'flex-end', minWidth: 54 },
+  dashboardSingleUpcomingTime: { fontSize: 17, fontWeight: '800', color: '#17345B' },
+  dashboardSingleUpcomingName: { fontSize: 11, fontWeight: '600', color: colors.textSecondary },
+  dashboardSingleUpcomingHint: { fontSize: 11, fontWeight: '600', color: '#129EA5', marginRight: 8 },
+  dashboardTimelineStops: { position: 'relative', gap: 4, paddingTop: 2 },
+  dashboardTimelinePeople: { flexDirection: 'row-reverse', justifyContent: 'space-around', marginBottom: 2 },
   dashboardTimelineStop: { flex: 1, alignItems: 'center' },
-  dashboardTimelineTrack: { height: 8, marginHorizontal: '8%', borderRadius: 4, backgroundColor: '#D9DBE9', overflow: 'hidden', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
-  dashboardTimelineProgress: { position: 'absolute', right: 0, top: 0, bottom: 0, borderRadius: 4, backgroundColor: '#6967D8' },
-  dashboardTimelineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#6967D8', zIndex: 1 },
-  dashboardTimelineLabels: { flexDirection: 'row-reverse', justifyContent: 'space-around' },
+  dashboardTimelineStopDone: { opacity: 0.72 },
+  dashboardTimelineStopSkipped: { opacity: 0.48 },
+  dashboardTimelineStopActive: { transform: [{ scale: 1.06 }] },
+  dashboardTimelineTrack: { height: 2, marginHorizontal: '8%', borderRadius: 1, backgroundColor: '#D4D4CF', overflow: 'visible', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  dashboardTimelineProgress: { position: 'absolute', right: 0, top: 0, bottom: 0, borderRadius: 1, backgroundColor: '#12A5AB' },
+  dashboardTimelineDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFFFFF', borderWidth: 1.5, borderColor: '#12A5AB', zIndex: 1 },
+  dashboardTimelineDotDone: { backgroundColor: colors.success, borderColor: colors.success },
+  dashboardTimelineDotSkipped: { backgroundColor: colors.statusPendingBg, borderColor: colors.statusPending },
+  dashboardTimelineDotActive: { backgroundColor: colors.info, borderColor: colors.info },
+  dashboardTimelineLabels: { flexDirection: 'row-reverse', justifyContent: 'space-around', marginTop: 2 },
   dashboardTimelineLabel: { flex: 1, alignItems: 'center', minWidth: 0 },
-  dashboardTimelineTime: { fontSize: 12, fontWeight: '900', color: '#2E3170' },
-  dashboardTimelineName: { fontSize: 11, fontWeight: '700', color: colors.textSecondary, maxWidth: 72, textAlign: 'center' },
-  dashboardTimelineEmpty: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, textAlign: 'right', paddingBottom: 2 },
-  dashboardRequestAlert: { minHeight: 62, borderRadius: radii.xl, backgroundColor: '#FFF0D9', borderWidth: 1, borderColor: '#F8DEC0', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
-  dashboardRequestAlertIcon: { fontSize: 25 },
+  dashboardTimelineTime: { fontSize: 12, fontWeight: '700', color: '#17345B' },
+  dashboardTimelineTimeDone: { color: colors.success },
+  dashboardTimelineTimeSkipped: { color: colors.textSecondary, textDecorationLine: 'line-through' },
+  dashboardTimelineTimeActive: { color: colors.info },
+  dashboardTimelineName: { fontSize: 10, fontWeight: '500', color: colors.textSecondary, maxWidth: 72, textAlign: 'center' },
+  dashboardTimelineEmpty: { fontSize: 13, fontWeight: '600', color: colors.textSecondary, textAlign: 'right', paddingBottom: 2 },
+  dashboardRequestAlert: { minHeight: 42, borderRadius: 18, backgroundColor: '#FFF3DE', borderWidth: 1, borderColor: '#F1DFC2', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.xs },
+  dashboardRequestAlertIcon: { fontSize: 17 },
   dashboardRequestAlertCopy: { flex: 1, alignItems: 'flex-end' },
-  dashboardRequestAlertTitle: { fontSize: 16, fontWeight: '900', color: '#B66318', textAlign: 'right' },
-  dashboardRequestAlertSubtitle: { marginTop: 2, fontSize: 13, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
-  dashboardRequestAlertChevron: { fontSize: 28, color: '#C56C1D', writingDirection: 'ltr' },
+  dashboardRequestAlertTitle: { fontSize: 13, fontWeight: '700', color: '#A65F18', textAlign: 'right' },
+  dashboardRequestAlertSubtitle: { marginTop: 0, fontSize: 11, fontWeight: '500', color: colors.textSecondary, textAlign: 'right' },
+  dashboardRequestAlertChevron: { fontSize: 21, color: '#B66A20', writingDirection: 'ltr' },
   dashboardOverflow: { display: 'none' },
   notificationButton: { position: 'absolute', right: spacing.md, top: 7, width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   notificationIcon: { fontSize: 18 },
@@ -1611,6 +1799,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     borderRadius: radii.round,
     backgroundColor: colors.statusCurrentBg,
+  },
+  dashboardShortcutAdd: {
+    backgroundColor: '#E9E1F5',
   },
   healthSummaryPillOverdue: { backgroundColor: colors.statusOverdueBg },
   healthSummaryIcon: { fontSize: 14 },
@@ -1639,8 +1830,34 @@ lastWalkCard: {
   borderWidth: 1,
   borderColor: colors.border,
   paddingHorizontal: spacing.md,
-  paddingVertical: spacing.sm,
+  paddingVertical: spacing.md,
+  minHeight: 126,
 },
+
+lastWalkDetails: {
+  borderTopWidth: 1,
+  borderTopColor: colors.border,
+  marginTop: spacing.sm,
+  paddingTop: spacing.sm,
+  gap: spacing.sm,
+},
+lastWalkDetailChips: {
+  flexDirection: 'row-reverse',
+  flexWrap: 'wrap',
+  gap: spacing.sm,
+},
+lastWalkDetailChip: {
+  minHeight: 30,
+  paddingHorizontal: spacing.sm,
+  borderRadius: radii.md,
+  backgroundColor: colors.surface,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+lastWalkDetailChipText: { fontSize: 12, fontWeight: '600', color: colors.textPrimary },
+lastWalkNote: { backgroundColor: colors.surface, borderRadius: radii.md, padding: spacing.sm, gap: 2 },
+lastWalkNoteLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary, textAlign: 'right' },
+lastWalkNoteText: { fontSize: 13, color: colors.textPrimary, textAlign: 'right', lineHeight: 19 },
 
 lastWalkTopRow: {
   flexDirection: 'row',
@@ -1659,7 +1876,7 @@ lastWalkTimeBlock: {
 
 lastWalkTime: {
   fontSize: 20,
-  fontWeight: '800',
+  fontWeight: '700',
   color: colors.textPrimary,
 },
 
@@ -1673,7 +1890,7 @@ lastWalkDateContext: {
 lastWalkDoneBadge: {
   marginTop: 2,
   fontSize: 12,
-  fontWeight: '700',
+  fontWeight: '600',
   color: '#2F9B72',
 },
 
@@ -1685,7 +1902,7 @@ lastWalkSkippedBadge: {
 },
 
 lastWalkActions: {
-  width: 154,
+  width: 174,
   flexDirection: 'row',
   ...nativeDirection('ltr'),
   alignItems: 'center',
@@ -1741,7 +1958,7 @@ lastWalkPerson: {
 
 lastWalkPersonName: {
   fontSize: 17,
-  fontWeight: '800',
+  fontWeight: '700',
   color: colors.textPrimary,
   textAlign: 'right',
 },

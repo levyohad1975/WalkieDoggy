@@ -15,14 +15,13 @@ describe('WalkCompletionCelebration (structural)', () => {
     expect(source).toMatch(/accessibilityRole="alert" accessibilityLiveRegion="polite"/);
   });
 
-  it('tracks screen-reader state and never auto-dismisses while one is active — VoiceOver/TalkBack narrating a dynamic Hebrew sentence can outlast a fixed timer', () => {
+  it('gives VoiceOver/TalkBack extra reading time while preserving explicit dismissal', () => {
+    expect(source).toMatch(/setTimeout\(\(\) => dismissRef\.current\(\), screenReaderEnabled \? 5000 : 2200\)/);
     expect(source).toMatch(/AccessibilityInfo\.isScreenReaderEnabled\(\)/);
-    expect(source).toMatch(/addEventListener\('screenReaderChanged', setScreenReaderEnabled\)/);
-    expect(source).toMatch(/if \(screenReaderEnabled\) return;/);
+    expect(source).toMatch(/AccessibilityInfo\.addEventListener\('screenReaderChanged', setScreenReaderEnabled\)/);
   });
 
-  it('still offers an explicit, always-available dismiss action regardless of the auto-timer', () => {
-    expect(source).toMatch(/accessibilityLabel="המשך לאפליקציה"/);
+  it('still allows an immediate explicit dismiss by tapping the celebration backdrop', () => {
     expect(source).toMatch(/onPress=\{onDismiss\}/);
   });
 

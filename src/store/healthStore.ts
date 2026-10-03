@@ -4,7 +4,7 @@ import { repository } from '../data';
 import { guardTestModeMutation } from '../lib/testModeGuard';
 import { generateId } from '../lib/id';
 import { buildNextRecurringTask } from '../logic/healthTasks';
-import { reconcileHealthTaskNotifications, scheduleHealthTaskNotifications } from '../notifications/healthReminderService';
+import { cancelHealthTaskNotifications, reconcileHealthTaskNotifications, scheduleHealthTaskNotifications } from '../notifications/healthReminderService';
 import { useFamilyStore } from './familyStore';
 
 // Not store state — an internal request-ordering token only load() itself
@@ -29,6 +29,8 @@ interface HealthState {
   load: (dogId: string) => Promise<void>;
   /** Upserts by task.id — covers creating a new log/task entry AND patch-and-save (e.g. marking one complete). No delete: see 0049's migration comment for why a health record is never client-erasable. */
   saveTask: (task: HealthTask) => Promise<void>;
+  /** Deletes only an open task; completed health history remains immutable. */
+  deleteTask: (taskId: string) => Promise<void>;
   /**
    * Marks a task done and, when it has recurrenceIntervalDays set (0050),
    * generates the next occurrence as a fresh row due that many days later
@@ -89,6 +91,14 @@ export const useHealthStore = create<HealthState>((set, get) => ({
     if (task.dogId === get().loadedDogId) {
       void scheduleHealthTaskNotifications(task, activeDogName());
     }
+  },
+
+  deleteTask: async (taskId: string) => {
+    const task = get().tasks.find((t) => t.id === taskId);
+    if (!task || task.completedAt) return;
+    await repository.deleteHealthTask(taskId);
+    set((s) => ({ tasks: s.tasks.filter((t) => t.id !== taskId) }));
+    void cancelHealthTaskNotifications(taskId);
   },
 
   completeTask: async (taskId: string, userId: string) => {

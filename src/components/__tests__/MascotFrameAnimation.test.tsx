@@ -1,7 +1,7 @@
 import React from 'react';
 import { AccessibilityInfo } from 'react-native';
 import { render, waitFor, act } from '@testing-library/react-native';
-import { MascotFrameAnimation } from '../MascotFrameAnimation';
+import { MascotFrameAnimation, MascotSpriteAnimation } from '../MascotFrameAnimation';
 
 /**
  * MASCOT_SPEC.md's own rule: "MascotFrameAnimation plays only when it has
@@ -135,5 +135,49 @@ describe('MascotFrameAnimation', () => {
     );
     await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
     expect(screen.getByTestId('mascot').props.accessibilityLabel).toBe('הקמע מגיב');
+  });
+});
+
+
+describe('MascotSpriteAnimation', () => {
+  const FALLBACK = { uri: 'fallback.png' };
+  const SHEET = { uri: 'sheet.png' };
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(false);
+    jest.spyOn(AccessibilityInfo, 'addEventListener').mockReturnValue({ remove: jest.fn() } as any);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  it('clips each sprite frame with absolute left/top offsets', async () => {
+    const screen = render(
+      <MascotSpriteAnimation source={SHEET} columns={6} rows={4} frameSize={256} frameCount={24} fps={10} size={100} fallback={FALLBACK} accessibilityLabel="sprite" testID="sprite" />
+    );
+    await waitFor(() => {
+      const sheet = screen.UNSAFE_getAllByType(require('react-native').Image)[0];
+      expect(sheet.props.source).toBe(SHEET);
+    });
+    act(() => { jest.advanceTimersByTime(700); });
+    const sheet = screen.UNSAFE_getAllByType(require('react-native').Image)[0];
+    expect(sheet.props.style).toEqual(expect.objectContaining({
+      position: 'absolute',
+      width: 600,
+      height: 400,
+      left: -100,
+      top: -100,
+    }));
+  });
+
+  it('uses the static fallback when Reduced Motion is enabled', async () => {
+    (AccessibilityInfo.isReduceMotionEnabled as jest.Mock).mockResolvedValue(true);
+    const screen = render(
+      <MascotSpriteAnimation source={SHEET} columns={6} rows={4} frameSize={256} frameCount={24} fps={12} size={100} fallback={FALLBACK} accessibilityLabel="sprite" testID="sprite" />
+    );
+    await waitFor(() => expect(screen.getByTestId('sprite').props.source).toBe(FALLBACK));
   });
 });

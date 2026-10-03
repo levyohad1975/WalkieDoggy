@@ -447,8 +447,23 @@ export class SupabaseRepository implements Repository {
   }
 
   async upsertDog(dog: Dog): Promise<void> {
-    const { error } = await this.client.from('dogs').upsert(fromDog(dog));
-    if (error) throw error;
+    // Existing dog profile edits (including the shared Home background) are
+    // UPDATEs, not INSERTs. Using UPSERT here made every edit also require
+    // the table's INSERT policy; on staging that can reject an otherwise
+    // valid admin edit, leaving OfflineFirstRepository to queue it while a
+    // subsequent online reload fetches the old background again.
+    const row = fromDog(dog);
+    const { data, error: updateError } = await this.client
+      .from('dogs')
+      .update(row)
+      .eq('id', dog.id)
+      .select('id');
+    if (updateError) throw updateError;
+    if ((data ?? []).length > 0) return;
+
+    // No existing row: this is genuinely a newly-added dog.
+    const { error: insertError } = await this.client.from('dogs').insert(row);
+    if (insertError) throw insertError;
   }
 
   async getHealthTasks(dogId: string): Promise<HealthTask[]> {
@@ -460,6 +475,12 @@ export class SupabaseRepository implements Repository {
   async upsertHealthTask(task: HealthTask): Promise<void> {
     const { error } = await this.client.from('health_tasks').upsert(fromHealthTask(task));
     if (error) throw error;
+  }
+
+  async deleteHealthTask(taskId: string): Promise<void> {
+    const { data, error } = await this.client.from('health_tasks').delete().eq('id', taskId).is('completed_at', null).select('id');
+    if (error) throw error;
+    if ((data ?? []).length !== 1) throw new Error('Open health task was not deleted or is no longer authorized');
   }
 
   async getGpsSession(walkId: string): Promise<WalkGpsSession | undefined> {
@@ -508,13 +529,29 @@ export class SupabaseRepository implements Repository {
   }
 
   async upsertScheduleRule(rule: ScheduleRule): Promise<void> {
-    const { error } = await this.client.from('schedule_rules').upsert(fromRule(rule));
-    if (error) throw error;
+    // Editing an existing rule must only require UPDATE permission. UPSERT
+    // also exercises INSERT policy and could therefore make a valid edit
+    // appear saved locally, then disappear after the next server reload.
+    const row = fromRule(rule);
+    const { data, error: updateError } = await this.client
+      .from('schedule_rules')
+      .update(row)
+      .eq('id', rule.id)
+      .select('id');
+    if (updateError) throw updateError;
+    if ((data ?? []).length > 0) return;
+
+    const { error: insertError } = await this.client.from('schedule_rules').insert(row);
+    if (insertError) throw insertError;
   }
 
   async deleteScheduleRule(ruleId: string): Promise<void> {
-    const { error } = await this.client.from('schedule_rules').delete().eq('id', ruleId);
+    // Supabase DELETE with RLS can resolve without an error while deleting
+    // zero rows.  Select the id back and require exactly one deletion so the
+    // caller never presents a rejected schedule deletion as successful.
+    const { data, error } = await this.client.from('schedule_rules').delete().eq('id', ruleId).select('id');
     if (error) throw error;
+    if ((data ?? []).length !== 1) throw new Error('Schedule rule was not deleted or is no longer authorized');
   }
 
   async getScheduleEntries(familyId: string): Promise<ScheduleEntry[]> {
@@ -525,11 +562,38 @@ export class SupabaseRepository implements Repository {
 
   async addScheduleEntries(entries: ScheduleEntry[]): Promise<void> {
     if (entries.length === 0) return;
-    const { error } = await this.client.from('schedule_entries').upsert(entries.map(fromEntry), {
+    const rows = entries.map(fromEntry);
+    const { error } = await this.client.from('schedule_entries').upsert(rows, {
       onConflict: 'dog_id,date,time',
       ignoreDuplicates: true,
     });
     if (error) throw error;
+
+    // The unique key is (dog_id,date,time), so ignoreDuplicates can keep an
+    // already-existing canonical row whose id differs from the locally
+    // generated id. A dependent walk must reference that canonical server id,
+    // not the discarded generated id. Re-read the touched keys and copy the
+    // authoritative ids back into the caller's entry objects before
+    // scheduleStore creates child walks from them.
+    const dogIds = [...new Set(rows.map((row) => row.dog_id))];
+    const dates = [...new Set(rows.map((row) => row.date))];
+    const times = [...new Set(rows.map((row) => row.time))];
+    const { data: canonicalRows, error: readError } = await this.client
+      .from('schedule_entries')
+      .select('id,dog_id,date,time')
+      .in('dog_id', dogIds)
+      .in('date', dates)
+      .in('time', times);
+    if (readError) throw readError;
+
+    const canonicalByKey = new Map(
+      (canonicalRows ?? []).map((row) => [`${row.dog_id}|${row.date}|${row.time}`, row.id])
+    );
+    for (const entry of entries) {
+      const canonicalId = canonicalByKey.get(`${entry.dogId}|${entry.date}|${entry.time}`);
+      if (!canonicalId) throw new Error('Schedule entry was not persisted authoritatively');
+      entry.id = canonicalId;
+    }
   }
 
   async updateScheduleEntry(entry: ScheduleEntry): Promise<void> {
@@ -538,8 +602,11 @@ export class SupabaseRepository implements Repository {
   }
 
   async deleteScheduleEntry(entryId: string): Promise<void> {
-    const { error } = await this.client.from('schedule_entries').delete().eq('id', entryId);
+    // See deleteScheduleRule: a zero-row RLS delete is otherwise invisible
+    // to the caller and can be mistaken for an intentional removal.
+    const { data, error } = await this.client.from('schedule_entries').delete().eq('id', entryId).select('id');
     if (error) throw error;
+    if ((data ?? []).length !== 1) throw new Error('Schedule entry was not deleted or is no longer authorized');
   }
 
   async getWalks(familyId: string): Promise<Walk[]> {
@@ -595,6 +662,18 @@ export class SupabaseRepository implements Repository {
         .upsert(fromWalk(walk), { onConflict: 'id', ignoreDuplicates: true });
       if (insertError) throw insertError;
       return;
+    }
+    if (walk.scheduleEntryId) {
+      const { data: existing, error: lookupError } = await this.client
+        .from('walks')
+        .select('id, status')
+        .eq('schedule_entry_id', walk.scheduleEntryId)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
+      if (existing) {
+        walk.id = existing.id;
+        if (existing.status === 'done') return;
+      }
     }
     const { error } = await this.client.from('walks').upsert(fromWalk(walk));
     if (error) throw error;

@@ -15,7 +15,7 @@ describe('SettingsScreen keeps multi-dog support secondary to the common single-
 
   it('destructures dogs/selectedDogId/selectDog from familyStore alongside the existing dog/saveDog', () => {
     expect(source).toContain('dogs, selectedDogId');
-    expect(source).toContain('saveDog, selectDog, deleteUnusedDog');
+    expect(source).toContain('saveDog, removeDogPhoto: clearDogPhoto, selectDog, deleteUnusedDog');
     expect(source).toContain('= useFamilyStore();');
   });
 

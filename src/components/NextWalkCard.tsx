@@ -175,7 +175,7 @@ export function NextWalkCard({
       <View style={[styles.eyebrowRow, isWeb && styles.webEyebrowRow]}>
         {showDogPhoto ? <DogPhoto photoUrl={dogPhotoUrl} size={isWeb ? 60 : 72} /> : null}
         <RtlText style={styles.eyebrow} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-          {isActive ? `בזמן טיול · ${dogName}` : (primaryLabel ?? `הטיול הבא של ${dogName}`)}
+          {isActive ? `בזמן טיול · ${dogName}` : (primaryLabel ?? `🐾 הטיול הבא של ${dogName}`)}
         </RtlText>
         {/* The Walkie Doggy MASCOT (brand character) — deliberately separate
             from DogPhoto above (the family's REAL dog), never interchanged,
@@ -232,59 +232,41 @@ export function NextWalkCard({
         </RtlText>
       ) : null}
 
-      <View style={[styles.mainRow, tone === 'dashboard' && styles.dashboardMainRow, isWeb && styles.webMainRow]}>
-        <View style={styles.timeBlock}>
-          <RtlText
-            style={styles.time}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.7}
-            maxFontSizeMultiplier={TIME_MAX_FONT_SCALE}
-          >
-            {walk.scheduledTime}
-          </RtlText>
-          {/* P1 — Home today/tomorrow date ambiguity: the countdown/overdue
-              text below already implies "soon", but for a walk further out
-              (e.g. tomorrow morning shown tonight) it doesn't say WHICH day
-              — this one compact label removes that ambiguity, using the
-              same shared helper the last-walk card below uses. */}
-          <RtlText style={styles.dateContext} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-            {walkDateContextLabel(walk.date)}
-          </RtlText>
-          {!overdue ? (
-            <Countdown target={walkDateTime(walk)} />
-          ) : null}
+      {tone === 'dashboard' ? (
+        <View style={[styles.dashboardThreeColumnRow, isWeb && styles.webMainRow]}>
+          <View style={styles.dashboardPersonColumn}>
+            {responsible ? <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={isWeb ? 46 : 50} /> : null}
+            <RtlText style={styles.dashboardPersonName} numberOfLines={1}>{responsible?.name ?? '—'}</RtlText>
+            <RtlText style={styles.dashboardColumnLabel}>אחראי לטיול</RtlText>
+          </View>
+          <View style={styles.dashboardTimeColumn}>
+            <RtlText style={styles.dashboardTime} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{walk.scheduledTime}</RtlText>
+            <RtlText style={styles.dashboardDate}>{walkDateContextLabel(walk.date)}</RtlText>
+          </View>
+          <View style={styles.dashboardCountdownColumn}>
+            {!overdue ? <Countdown target={walkDateTime(walk)} compact /> : null}
+          </View>
         </View>
-
-        <View style={styles.personBlock}>
-          {responsible ? (
-            <Avatar
-              emoji={responsible.avatar}
-              color={responsible.color}
-              photoUrl={responsible.photoUrl}
-              // Item 11 (balance): a dashboard-tone avatar reads slightly
-              // larger so the assignee side carries visual weight closer to
-              // the big scheduled-time number opposite it, instead of
-              // looking like an afterthought next to it.
-              size={tone === 'dashboard' ? (isWeb ? 54 : 60) : isWeb ? 50 : 56}
-            />
-          ) : null}
-          <RtlText
-            style={[styles.personName, tone === 'dashboard' && styles.dashboardPersonName]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.8}
-            maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}
-          >
-            {responsible?.name ?? '—'}
-          </RtlText>
-          {overdue ? (
-            <RtlText style={styles.responsibleLabel} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-              באחריות {responsible?.name}
+      ) : (
+        <View style={[styles.mainRow, isWeb && styles.webMainRow]}>
+          <View style={styles.timeBlock}>
+            <RtlText style={styles.time} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} maxFontSizeMultiplier={TIME_MAX_FONT_SCALE}>
+              {walk.scheduledTime}
             </RtlText>
-          ) : null}
+            <RtlText style={styles.dateContext} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+              {walkDateContextLabel(walk.date)}
+            </RtlText>
+            {!overdue ? <Countdown target={walkDateTime(walk)} /> : null}
+          </View>
+          <View style={styles.personBlock}>
+            {responsible ? <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={isWeb ? 50 : 56} /> : null}
+            <RtlText style={styles.personName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+              {responsible?.name ?? '—'}
+            </RtlText>
+            {overdue ? <RtlText style={styles.responsibleLabel}>באחריות {responsible?.name}</RtlText> : null}
+          </View>
         </View>
-      </View>
+      )}
 
       {overdue ? (
         <RtlText style={[styles.relative, styles.relativeOverdue]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
@@ -328,12 +310,12 @@ export function NextWalkCard({
                 shrinkToFit
               />
             </View>
-          ) : (
+          ) : tone === 'dashboard' ? null : (
             <Button
               label="בוצע"
               variant="secondary"
               onPress={onMarkDone}
-              style={tone === 'dashboard' ? styles.dashboardMarkDoneButton : styles.markDoneFallbackButton}
+              style={styles.markDoneFallbackButton}
               compact
               shrinkToFit
             />
@@ -366,13 +348,13 @@ export function NextWalkCard({
         <View style={styles.linkRow}>
           {onRequestSwap ? (
             <RtlText style={styles.linkText} onPress={onRequestSwap} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-              בקש החלפה
+              בקשת החלפה
             </RtlText>
           ) : null}
           {onRequestSwap && onRequestTimeChange ? <RtlText style={styles.linkDivider} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>·</RtlText> : null}
           {onRequestTimeChange ? (
             <RtlText style={styles.linkText} onPress={onRequestTimeChange} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-              בקש שינוי שעה
+              בקשה לשינוי
             </RtlText>
           ) : null}
         </View>
@@ -414,13 +396,13 @@ const styles = StyleSheet.create({
   // Item 6 (mobile polish): paddingVertical trimmed from 5 to 2 — a
   // slightly more compact dashboard card. Never touches any button's own
   // minHeight (tap targets stay exactly as large as before).
-  cardDashboard: { backgroundColor: '#FAFAFF', borderColor: '#DEDDF5', borderRadius: 30, shadowOpacity: 0.12, shadowRadius: 16, elevation: 4, paddingVertical: 2 },
+  cardDashboard: { backgroundColor: '#EAF6FD', borderColor: '#BFE3F4', borderRadius: 28, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3, paddingHorizontal: 14, paddingVertical: 6 },
   webCard: { borderRadius: radii.xl, paddingHorizontal: 24, paddingVertical: 18 },
   cardActive: { backgroundColor: colors.successSoft, borderColor: colors.success + '55' },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
   eyebrowRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), alignItems: 'center', gap: 8, marginBottom: 4 },
   webEyebrowRow: { marginBottom: 2 },
-  eyebrow: { flex: 1, fontSize: 15, fontWeight: '800', color: '#2E3170', textAlign: 'right' },
+  eyebrow: { flex: 1, fontSize: 18, fontWeight: '900', color: '#17345B', textAlign: 'right' },
   mascotMessage: {
     fontSize: 13,
     fontWeight: '600',
@@ -471,19 +453,24 @@ const styles = StyleSheet.create({
   // the dashboard, especially on narrow phones.
   // Use an intentionally wider central gutter and inset both columns so the
   // assignee circle reads as its own block instead of touching the time.
-  dashboardMainRow: { gap: 20, paddingHorizontal: 8, marginBottom: 2 },
-  personBlock: { flex: 1, alignItems: 'flex-end', gap: 3, minWidth: 0 },
+  dashboardMainRow: { gap: 34, paddingHorizontal: 10, marginTop: 4, marginBottom: 10, minHeight: 82 },
+  dashboardThreeColumnRow: { flexDirection: 'row', alignItems: 'stretch', justifyContent: 'space-between', marginTop: 1, marginBottom: 3, minHeight: 70, gap: 0 },
+  dashboardPersonColumn: { flex: 0.82, alignItems: 'center', justifyContent: 'center', gap: 2, minWidth: 0, paddingHorizontal: 4 },
+  dashboardPersonName: { fontSize: 16, fontWeight: '800', color: '#17345B', textAlign: 'center' },
+  dashboardColumnLabel: { fontSize: 11, fontWeight: '600', color: '#7B746B', textAlign: 'center' },
+  dashboardTimeColumn: { flex: 1.13, alignItems: 'center', justifyContent: 'center', minWidth: 0, borderLeftWidth: 1, borderRightWidth: 1, borderColor: '#D9D3C8', paddingHorizontal: 4 },
+  dashboardTime: { width: '100%', fontSize: 31, lineHeight: 38, fontWeight: '900', color: '#111111', fontVariant: ['tabular-nums'], textAlign: 'center' },
+  dashboardDate: { fontSize: 13, fontWeight: '700', color: '#7B746B', marginTop: 2, textAlign: 'center' },
+  dashboardCountdownColumn: { flex: 1.32, alignItems: 'center', justifyContent: 'center', minWidth: 0, paddingHorizontal: 2 },
+  personBlock: { flex: 1, alignItems: 'flex-end', gap: 5, minWidth: 0, paddingStart: 8 },
   personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'left' },
-  // Item 11 (balance): a touch bolder/larger on the dashboard specifically,
-  // closing some of the visual-weight gap with the time block opposite it.
-  dashboardPersonName: { fontSize: 19, fontWeight: '800' },
   responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'left' },
   doneButton: { marginTop: 2 },
-  dashboardStartButton: { marginTop: 0, minHeight: 44, paddingVertical: 3, backgroundColor: '#4A43B6', borderColor: '#4A43B6' },
+  dashboardStartButton: { marginTop: 1, minHeight: 44, paddingVertical: 3, borderRadius: 24, backgroundColor: '#0EA8B2', borderColor: '#0EA8B2' },
   markDoneFallbackButton: { marginTop: 8, borderWidth: 1.5, borderColor: colors.primaryDark },
-  dashboardMarkDoneButton: { marginTop: 4, minHeight: 40, paddingVertical: 3, borderWidth: 1.5, borderColor: '#4A43B6' },
+  dashboardMarkDoneButton: { marginTop: 4, minHeight: 40, paddingVertical: 3, borderWidth: 1.5, borderColor: '#12A5AB' },
   endWalkButton: { marginTop: 4, backgroundColor: colors.statusOverdue },
-  resolveRow: { flexDirection: 'row-reverse', gap: 8, marginTop: 8, width: '100%' },
+  resolveRow: { flexDirection: 'row-reverse', gap: 8, marginTop: 3, width: '100%' },
   resolveButton: { flex: 1, minWidth: 0 },
   notMineNote: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: 6 },
   requestStatusLine: {
@@ -496,7 +483,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   requestStatusApproved: { color: colors.statusDone },
-  linkRow: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 5 },
-  linkText: { color: colors.primaryDark, fontSize: 14, fontWeight: '600' },
+  linkRow: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 3, minHeight: 34, borderRadius: 20, backgroundColor: '#F7F4EE', paddingHorizontal: 14 },
+  linkText: { color: '#17345B', fontSize: 13, fontWeight: '600' },
   linkDivider: { color: colors.textSecondary },
 });

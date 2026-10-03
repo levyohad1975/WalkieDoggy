@@ -1,15 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { AccessibilityInfo, Modal, Pressable, StyleSheet, View, type ImageSourcePropType } from 'react-native';
+import { AccessibilityInfo, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { colors } from '../theme/colors';
 import { radii, spacing } from '../theme/tokens';
 import { RtlText } from './RtlText';
-import { MascotFrameAnimation } from './MascotFrameAnimation';
-
-// A stable reference, not a fresh `[]` literal per render — see
-// celebrationAssets.ts's identical EMPTY_FRAMES constant for why
-// (MascotFrameAnimation's playback effect depends on `frames` by
-// reference).
-const EMPTY_FRAMES: ImageSourcePropType[] = [];
+import { WalkieMascot } from './WalkieMascot';
+import { MascotSafeZone } from './MascotSafeZone';
 
 interface ReminderMascotPromptProps {
   visible: boolean;
@@ -18,6 +13,8 @@ interface ReminderMascotPromptProps {
 }
 
 /** A notification-open prompt, intentionally distinct from completion gratitude. */
+const FALLBACK_MASCOT = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
+
 export function ReminderMascotPrompt({ visible, message, onDismiss }: ReminderMascotPromptProps) {
   // Fail-safe default true, same convention as WalkieMascot/MascotFrameAnimation/
   // WalkCompletionCelebration: static until the OS setting is confirmed off.
@@ -44,24 +41,25 @@ export function ReminderMascotPrompt({ visible, message, onDismiss }: ReminderMa
     const timer = setTimeout(onDismiss, 3200);
     return () => clearTimeout(timer);
   }, [visible, onDismiss, screenReaderEnabled]);
-  const fallback = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
   return (
     <Modal visible={visible} transparent animationType={reducedMotion ? 'none' : 'fade'} onRequestClose={onDismiss} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תזכורת הקמע של Walkie Doggy Link">
-        <View style={styles.moment} accessibilityRole="alert" accessibilityLiveRegion="polite">
-          <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
-          <View style={styles.tail} />
-          <MascotFrameAnimation frames={EMPTY_FRAMES} fallback={fallback} fps={10} size={190} accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול" />
-        </View>
+        <MascotSafeZone from="right" testID="reminder-mascot-safe-zone">
+          <View style={styles.moment} accessibilityRole="alert" accessibilityLiveRegion="polite">
+            <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
+            <View style={styles.tail} />
+            <WalkieMascot state="ready" size={154} accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול" testID="reminder-mascot-animation" />
+          </View>
+        </MascotSafeZone>
       </Pressable>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(11, 39, 48, 0.28)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  backdrop: { flex: 1, backgroundColor: 'transparent' },
   moment: { alignItems: 'center', maxWidth: 340 },
-  bubble: { backgroundColor: colors.surface, borderRadius: radii.xl, paddingHorizontal: 18, paddingVertical: spacing.md },
+  bubble: { backgroundColor: colors.surface, borderRadius: radii.xl, paddingHorizontal: 18, paddingVertical: spacing.md, marginBottom: -6, zIndex: 2 },
   message: { color: colors.textPrimary, fontSize: 19, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
-  tail: { width: 18, height: 18, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }, { translateY: -9 }], marginBottom: -10 },
+  tail: { width: 18, height: 18, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }], marginTop: -9, marginBottom: -3, zIndex: 1 },
 });

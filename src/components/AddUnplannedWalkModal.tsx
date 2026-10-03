@@ -42,6 +42,8 @@ interface AddUnplannedWalkModalProps {
   editingWalk?: Walk | null;
   onDelete?: (walkId: string) => void;
   onConfirm: (result: UnplannedWalkResult) => void;
+  /** Starts a live unplanned walk through the normal start/finish + GPS lifecycle. */
+  onStartNow?: () => void | Promise<void>;
   onClose: () => void;
 }
 
@@ -64,6 +66,17 @@ function timeStringToDate(t: string): Date {
   return d;
 }
 
+function isoDateToLocalDate(value: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return new Date();
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0, 0);
+}
+
+function displayDate(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : value;
+}
+
 function dateToTimeString(d: Date): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
@@ -82,6 +95,7 @@ export function AddUnplannedWalkModal({
   editingWalk = null,
   onDelete,
   onConfirm,
+  onStartNow,
   onClose,
 }: AddUnplannedWalkModalProps) {
   const isEditing = !!editingWalk;
@@ -95,6 +109,7 @@ export function AddUnplannedWalkModal({
   // always open (inline spinner) on iOS, closed until the "שנה שעה" button is
   // tapped on Android. The date field below is completely unaffected.
   const [pickerOpen, setPickerOpen] = useState(Platform.OS === 'ios');
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [hadPee, setHadPee] = useState(false);
   const [hadPoop, setHadPoop] = useState(false);
   const [note, setNote] = useState('');
@@ -136,6 +151,12 @@ export function AddUnplannedWalkModal({
   // so this just converts and stores it — the existing timeIsValid() gate
   // above (feeding `valid`) is left in place unchanged. Android dismissal
   // (event.type === 'dismissed') leaves `time` unchanged.
+  const handleDateChange = (event: DateTimePickerEvent, selected?: Date) => {
+    if (Platform.OS === 'android') setDatePickerOpen(false);
+    if (event.type === 'dismissed') return;
+    if (selected) setDate(localDateOnly(selected));
+  };
+
   const handleTimeChange = (event: DateTimePickerEvent, selected?: Date) => {
     if (Platform.OS === 'android') setPickerOpen(false);
     if (event.type === 'dismissed') return;
@@ -148,18 +169,23 @@ export function AddUnplannedWalkModal({
           RequestTimeChangeModal.tsx — wraps the existing backdrop/sheet/
           ScrollView structure unchanged. */}
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <Pressable
-          style={styles.backdrop}
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel={isEditing ? `סגירת עריכת טיול ספונטני של ${dogName}` : `סגירת הוספת טיול ספונטני של ${dogName}`}
-        >
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+        <View style={styles.backdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel={isEditing ? `סגירת עריכת טיול ספונטני של ${dogName}` : `סגירת הוספת טיול ספונטני של ${dogName}`}
+          />
+          <View style={styles.sheet}>
             <ScrollView keyboardShouldPersistTaps="handled">
               <RtlText style={styles.title} accessibilityRole="header">
-                {isEditing ? `עריכת טיול ספונטני של ${dogName}` : `הוספת טיול ספונטני של ${dogName}`}
+                {isEditing ? `עריכת טיול של ${dogName}` : `הוסף טיול של ${dogName}`}
               </RtlText>
-            <RtlText style={styles.subtitle}>לטיול שכבר קרה, בלי לשנות את הסבב</RtlText>
+            <RtlText style={styles.subtitle}>{isEditing ? 'עדכון פרטי הטיול' : 'אפשר להתחיל טיול עכשיו או להזין טיול שכבר בוצע'}</RtlText>
+
+            {!isEditing && onStartNow ? (
+              <Button label="התחל טיול עכשיו" onPress={() => void onStartNow()} style={styles.startNowButton} />
+            ) : null}
 
             <RtlText style={styles.label}>מי טייל?</RtlText>
             {canChooseUser ? (
@@ -197,14 +223,27 @@ export function AddUnplannedWalkModal({
             <View style={styles.row}>
               <View style={styles.flex}>
                 <RtlText style={styles.label}>תאריך</RtlText>
-                <TextInput
-                  value={date}
-                  onChangeText={setDate}
-                  style={styles.input}
-                  placeholder="YYYY-MM-DD"
-                  textAlign="center"
-                  accessibilityLabel="תאריך"
-                />
+                {Platform.OS === 'web' ? (
+                  <View style={styles.webDateField}>
+                    <RtlText style={styles.webDateDisplay} pointerEvents="none">{displayDate(date)}</RtlText>
+                    {React.createElement('input', {
+                      type: 'date',
+                      value: date,
+                      'aria-label': `בחר תאריך טיול, ${displayDate(date)}`,
+                      onChange: (event: { target: { value: string } }) => setDate(event.target.value),
+                      style: webDatePickerOverlayStyle,
+                    })}
+                  </View>
+                ) : (
+                  <Pressable
+                    style={styles.input}
+                    onPress={() => setDatePickerOpen(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`בחר תאריך טיול, ${displayDate(date)}`}
+                  >
+                    <RtlText style={styles.timeDisplay}>{displayDate(date)}</RtlText>
+                  </Pressable>
+                )}
               </View>
               <View style={styles.flex}>
                 <RtlText style={styles.label}>שעה</RtlText>
@@ -224,8 +263,16 @@ export function AddUnplannedWalkModal({
               </View>
             </View>
 
-            {/* Round 6C-time: date field above is unchanged (still a plain
-                TextInput). Time is now picked via the native time picker —
+            {datePickerOpen && Platform.OS !== 'web' ? (
+              <DateTimePicker
+                value={isoDateToLocalDate(date)}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={handleDateChange}
+              />
+            ) : null}
+
+            {/* Time is picked via the native time picker —
                 the trigger button opens it on Android; on iOS the picker is
                 always shown inline below, mirroring
                 RequestTimeChangeModal.tsx's platform split. */}
@@ -345,8 +392,8 @@ export function AddUnplannedWalkModal({
               />
             ) : null}
             </ScrollView>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -358,8 +405,15 @@ const webTimeInputStyle = {
   backgroundColor: colors.surfaceMuted, color: colors.textPrimary, textAlign: 'center', direction: 'ltr', cursor: 'pointer',
 };
 
+const webDatePickerOverlayStyle = {
+  position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0,
+  cursor: 'pointer',
+};
+
 const styles = StyleSheet.create({
   flexFull: { flex: 1 },
+  webDateField: { position: 'relative', minHeight: 52, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceMuted, alignItems: 'center', justifyContent: 'center' },
+  webDateDisplay: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, maxHeight: '90%' },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
@@ -403,5 +457,6 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xl },
+  startNowButton: { marginTop: spacing.sm, marginBottom: spacing.md },
   deleteButton: { marginTop: spacing.md },
 });

@@ -68,27 +68,32 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
           RequestTimeChangeModal.tsx — wraps the existing backdrop/sheet/
           ScrollView structure unchanged. */}
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <Pressable
-          style={styles.backdrop}
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel={editingRule ? 'סגירת עריכת שעת טיול' : 'סגירת הוספת שעת טיול'}
-        >
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+        <View style={styles.backdrop}>
+          {/* Keep the dismiss target as a sibling behind the sheet instead of
+              wrapping the form. This prevents TextInput/keyboard events from
+              bubbling into the backdrop and closing the walk-properties
+              editor while a label/note is being typed. */}
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel={editingRule ? 'סגירת עריכת שעת טיול' : 'סגירת הוספת שעת טיול'}
+          />
+          <View style={styles.sheet}>
             <ScrollView keyboardShouldPersistTaps="handled">
               <RtlText style={styles.title} accessibilityRole="header">{editingRule ? 'עריכת שעת טיול' : 'הוספת שעת טיול'}</RtlText>
 
             <RtlText style={styles.label}>שעה</RtlText>
             <TimePickerField value={time} onChange={setTime} webLabel="בחירת שעת טיול" />
 
-            <RtlText style={styles.label}>שם (אופציונלי)</RtlText>
+            <RtlText style={styles.label}>הערה / שם לטיול (אופציונלי)</RtlText>
             <TextInput
               value={label}
               onChangeText={setLabel}
-              placeholder="למשל: טיול בוקר"
+              placeholder="למשל: טיול בוקר או הערה"
               style={styles.input}
               textAlign="right"
-              accessibilityLabel="שם (אופציונלי)"
+              accessibilityLabel="הערה או שם לטיול (אופציונלי)"
             />
 
             <RtlText style={styles.label}>ימים</RtlText>
@@ -163,8 +168,8 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
               <Button label="ביטול" onPress={onClose} variant="secondary" style={styles.flex} />
             </View>
             </ScrollView>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );

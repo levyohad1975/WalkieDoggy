@@ -986,27 +986,30 @@ describe('SupabaseRepository — deletes and simple updates', () => {
     });
   });
 
-  it('deleteScheduleRule calls .from("schedule_rules").delete().eq("id", ruleId) and throws on error', async () => {
+  it('deleteScheduleRule confirms exactly one returned id, so an RLS-hidden zero-row delete cannot look successful', async () => {
     const calls: string[] = [];
     const okClient: any = {
-      from: (table: string) => ({ delete: () => ({ eq: (col: string, val: string) => { calls.push(`${table}.${col}.${val}`); return Promise.resolve({ error: null }); } }) }),
+      from: (table: string) => ({ delete: () => ({ eq: (col: string, val: string) => ({ select: (columns: string) => { calls.push(`${table}.${col}.${val}.${columns}`); return Promise.resolve({ data: [{ id: val }], error: null }); } }) }) }),
     };
     await new SupabaseRepository(okClient).deleteScheduleRule('rule-1');
-    expect(calls).toEqual(['schedule_rules.id.rule-1']);
+    expect(calls).toEqual(['schedule_rules.id.rule-1.id']);
 
-    const errClient: any = { from: () => ({ delete: () => ({ eq: () => Promise.resolve({ error: { message: 'x' } }) }) }) };
+    const errClient: any = { from: () => ({ delete: () => ({ eq: () => ({ select: () => Promise.resolve({ data: null, error: { message: 'x' } }) }) }) }) };
     await expect(new SupabaseRepository(errClient).deleteScheduleRule('rule-1')).rejects.toBeTruthy();
+
+    const hiddenClient: any = { from: () => ({ delete: () => ({ eq: () => ({ select: () => Promise.resolve({ data: [], error: null }) }) }) }) };
+    await expect(new SupabaseRepository(hiddenClient).deleteScheduleRule('rule-1')).rejects.toThrow('not deleted');
   });
 
-  it('deleteScheduleEntry calls .from("schedule_entries").delete().eq("id", entryId) and throws on error', async () => {
+  it('deleteScheduleEntry confirms exactly one returned id and throws on error', async () => {
     const calls: string[] = [];
     const okClient: any = {
-      from: (table: string) => ({ delete: () => ({ eq: (col: string, val: string) => { calls.push(`${table}.${col}.${val}`); return Promise.resolve({ error: null }); } }) }),
+      from: (table: string) => ({ delete: () => ({ eq: (col: string, val: string) => ({ select: (columns: string) => { calls.push(`${table}.${col}.${val}.${columns}`); return Promise.resolve({ data: [{ id: val }], error: null }); } }) }) }),
     };
     await new SupabaseRepository(okClient).deleteScheduleEntry('entry-1');
-    expect(calls).toEqual(['schedule_entries.id.entry-1']);
+    expect(calls).toEqual(['schedule_entries.id.entry-1.id']);
 
-    const errClient: any = { from: () => ({ delete: () => ({ eq: () => Promise.resolve({ error: { message: 'x' } }) }) }) };
+    const errClient: any = { from: () => ({ delete: () => ({ eq: () => ({ select: () => Promise.resolve({ data: null, error: { message: 'x' } }) }) }) }) };
     await expect(new SupabaseRepository(errClient).deleteScheduleEntry('entry-1')).rejects.toBeTruthy();
   });
 
@@ -1035,21 +1038,32 @@ describe('SupabaseRepository — schedule entry writes', () => {
     expect(client.from).not.toHaveBeenCalled();
   });
 
-  it('addScheduleEntries upserts mapped rows with the dog_id,date,time conflict target, ignoring duplicates', async () => {
+  it('addScheduleEntries upserts mapped rows and resolves the canonical server id after dedupe', async () => {
     let captured: { payload: unknown; opts: unknown } | undefined;
+    const query: any = {};
+    query.in = jest.fn()
+      .mockReturnValueOnce(query)
+      .mockReturnValueOnce(query)
+      .mockResolvedValueOnce({
+        data: [{ id: 'canonical-entry', dog_id: 'dog-1', date: '2026-08-30', time: '07:00' }],
+        error: null,
+      });
     const client: any = {
       from: () => ({
         upsert: (payload: unknown, opts: unknown) => {
           captured = { payload, opts };
           return Promise.resolve({ error: null });
         },
+        select: () => query,
       }),
     };
-    await new SupabaseRepository(client).addScheduleEntries([entry]);
+    const generated = { ...entry };
+    await new SupabaseRepository(client).addScheduleEntries([generated]);
     expect(captured?.opts).toEqual({ onConflict: 'dog_id,date,time', ignoreDuplicates: true });
     expect((captured?.payload as any[])[0]).toEqual({
       id: 'entry-1', family_id: 'fam-42', dog_id: 'dog-1', rule_id: 'rule-1', date: '2026-08-30', time: '07:00', responsible_user_id: 'user-1',
     });
+    expect(generated.id).toBe('canonical-entry');
   });
 
   it('addScheduleEntries throws on error', async () => {

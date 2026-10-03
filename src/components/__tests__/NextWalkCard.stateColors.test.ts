@@ -9,11 +9,18 @@ describe('NextWalkCard state colors', () => {
     expect(source).toContain('borderColor: colors.border');
   });
 
-  it('allows Home to opt into a richer dashboard surface without changing ordinary cards', () => {
+  it('allows Home to opt into the approved warm off-white dashboard surface without changing ordinary cards', () => {
     expect(source).toContain("tone?: 'default' | 'dashboard'");
     expect(source).toContain("tone === 'dashboard' && styles.cardDashboard");
-    expect(source).toContain("cardDashboard: { backgroundColor: '#FAFAFF'");
-    expect(source).toContain("backgroundColor: '#4A43B6'");
+    expect(source).toContain("cardDashboard: { backgroundColor: '#EAF6FD'");
+    expect(source).toContain("backgroundColor: '#0EA8B2'");
+  });
+
+  it('keeps the approved role-aware actions inside the dashboard card', () => {
+    expect(source).toContain('עריכה');
+    expect(source).toContain('החלפה');
+    expect(source).toContain('בקשה לשינוי');
+    expect(source).toContain('בקשת החלפה');
   });
 
   it('uses green for an active walk and gives it priority over overdue red', () => {

@@ -178,11 +178,30 @@ export class OfflineFirstRepository implements Repository {
       return;
     }
 
-    await this.local.upsertUser(user);
-    if (this.remote) {
-      await this.queue.enqueue({ type: 'createUser', payload: user });
-      await this.trySync();
+    if (!this.remote) {
+      await this.local.upsertUser(user);
+      return;
     }
+
+    // A new member is an admin-authorized server operation. Do not report
+    // success merely because a local optimistic row and queue item exist:
+    // SyncQueue deliberately records permanent RLS/constraint failures and
+    // returns, which used to make a rejected INSERT look successful until the
+    // next reload. Confirm the INSERT while online; queue only connectivity
+    // failures so the caller can roll back on real authorization/data errors.
+    if (await this.isOnline()) {
+      try {
+        await this.remote.createUser(user);
+        await this.local.upsertUser(user);
+        return;
+      } catch (error) {
+        if (isPermanentSyncError(error)) throw error;
+      }
+    }
+
+    await this.local.upsertUser(user);
+    await this.queue.enqueue({ type: 'createUser', payload: user });
+    await this.trySync();
   }
 
   /**
@@ -344,22 +363,22 @@ export class OfflineFirstRepository implements Repository {
   }
 
   async upsertDog(dog: Dog): Promise<void> {
-    await this.local.upsertDog(dog);
-    if (this.remote) {
-      // Make profile edits authoritative before another screen reloads the
-      // dog. Queue-only writes could let Home immediately fetch the older
-      // remote row and replace an optimistic photoUrl with a stale value.
-      if (await this.isOnline()) {
-        try {
-          await this.remote.upsertDog(dog);
-          return;
-        } catch {
-          // Preserve offline-first behaviour: retry through the sync queue.
-        }
-      }
-      await this.queue.enqueue({ type: 'upsertDog', payload: dog });
-      await this.trySync();
+    if (!this.remote) {
+      await this.local.upsertDog(dog);
+      return;
     }
+
+    // Dog profile/background/photo changes must be confirmed by Staging
+    // before the local cache is mutated. Otherwise an RLS/server rejection
+    // looks successful until the next reload, which is exactly the failure
+    // mode users see as a background that "doesn't save" or a removed photo
+    // that immediately comes back.
+    if (!(await this.isOnline())) {
+      throw new Error('dog profile changes require an internet connection and cannot be queued offline');
+    }
+
+    await this.remote.upsertDog(dog);
+    await this.local.upsertDog(dog);
   }
 
   async getHealthTasks(dogId: string): Promise<HealthTask[]> {
@@ -371,6 +390,13 @@ export class OfflineFirstRepository implements Repository {
       }
     }
     return this.local.getHealthTasks(dogId);
+  }
+
+  async deleteHealthTask(taskId: string): Promise<void> {
+    if (!this.remote) return this.local.deleteHealthTask(taskId);
+    if (!(await this.isOnline())) throw new Error('health task deletion requires an internet connection');
+    await this.remote.deleteHealthTask(taskId);
+    await this.local.deleteHealthTask(taskId);
   }
 
   async upsertHealthTask(task: HealthTask): Promise<void> {
@@ -467,18 +493,54 @@ export class OfflineFirstRepository implements Repository {
 
   async upsertScheduleRule(rule: ScheduleRule): Promise<void> {
     await this.local.upsertScheduleRule(rule);
-    if (this.remote) {
-      await this.queue.enqueue({ type: 'upsertScheduleRule', payload: rule });
-      await this.trySync();
+    if (!this.remote) return;
+
+    // Schedule changes are a shared, user-visible setting. When the device
+    // is online, wait for Supabase to accept the write so an RLS/schema
+    // rejection is not presented as a successful edit until the next refresh.
+    if (await this.isOnline()) {
+      await this.remote.upsertScheduleRule(rule);
+      return;
     }
+
+    // Offline remains supported: persist locally and replay when a network
+    // connection returns. This path is deliberately reserved for a genuine
+    // offline state, not for an online server-side rejection.
+    await this.queue.enqueue({ type: 'upsertScheduleRule', payload: rule });
   }
 
   async deleteScheduleRule(ruleId: string): Promise<void> {
-    await this.local.deleteScheduleRule(ruleId);
-    if (this.remote) {
-      await this.queue.enqueue({ type: 'deleteScheduleRule', payload: { ruleId } });
-      await this.trySync();
+    if (!this.remote) {
+      await this.local.deleteScheduleRule(ruleId);
+      return;
     }
+
+    // A fixed walk time is shared schedule configuration, not a best-effort
+    // activity log.  Previously this mutation was always applied locally and
+    // then hidden in SyncQueue.  If Supabase/RLS rejected it, the app looked
+    // empty until the next remote load, which still found the active rule;
+    // scheduleStore's legitimate missing-entry backfill then generated every
+    // occurrence again.  When online, wait for the authoritative delete
+    // first so a refusal reaches the confirmation UI and the local cache is
+    // never allowed to claim that a schedule was removed when it was not.
+    if (await this.isOnline()) {
+      await this.remote.deleteScheduleRule(ruleId);
+      // Supabase is authoritative online. A local cache cleanup failure after
+      // the server has already confirmed the delete must not turn a successful
+      // user action into a false error modal; the next online read re-mirrors
+      // authoritative remote state anyway.
+      try {
+        await this.local.deleteScheduleRule(ruleId);
+      } catch {
+        // Best-effort cache cleanup only after confirmed remote success.
+      }
+      return;
+    }
+
+    // Genuine offline edits still retain the existing offline-first contract:
+    // local state is updated and replayed in the original order on reconnect.
+    await this.local.deleteScheduleRule(ruleId);
+    await this.queue.enqueue({ type: 'deleteScheduleRule', payload: { ruleId } });
   }
 
   async getScheduleEntries(familyId: string): Promise<ScheduleEntry[]> {
@@ -493,11 +555,26 @@ export class OfflineFirstRepository implements Repository {
   }
 
   async addScheduleEntries(entries: ScheduleEntry[]): Promise<void> {
-    await this.local.addScheduleEntries(entries);
-    if (this.remote) {
-      await this.queue.enqueue({ type: 'addScheduleEntries', payload: entries });
-      await this.trySync();
+    if (entries.length === 0) return;
+
+    if (!this.remote) {
+      await this.local.addScheduleEntries(entries);
+      return;
     }
+
+    // Schedule entries are FK parents of planned walks. While online they
+    // must exist on the server before saveWalk() is allowed to persist a
+    // walk that references them. Queueing the entries and immediately
+    // continuing used to let a failed/unfinished queue replay race the walk
+    // insert, producing walks_schedule_entry_id_fkey (23503) in Staging.
+    if (await this.isOnline()) {
+      await this.remote.addScheduleEntries(entries);
+      await this.local.addScheduleEntries(entries);
+      return;
+    }
+
+    await this.local.addScheduleEntries(entries);
+    await this.queue.enqueue({ type: 'addScheduleEntries', payload: entries });
   }
 
   async updateScheduleEntry(entry: ScheduleEntry): Promise<void> {
@@ -509,11 +586,28 @@ export class OfflineFirstRepository implements Repository {
   }
 
   async deleteScheduleEntry(entryId: string): Promise<void> {
-    await this.local.deleteScheduleEntry(entryId);
-    if (this.remote) {
-      await this.queue.enqueue({ type: 'deleteScheduleEntry', payload: { entryId } });
-      await this.trySync();
+    if (!this.remote) {
+      await this.local.deleteScheduleEntry(entryId);
+      return;
     }
+
+    // Keep schedule deletions consistent with deleteScheduleRule above: an
+    // online rejection must not be swallowed into the queue and later look
+    // like the user intentionally removed every generated occurrence.
+    if (await this.isOnline()) {
+      await this.remote.deleteScheduleEntry(entryId);
+      // Do not surface a false delete failure when only the disposable local
+      // cache cleanup fails after Supabase already deleted the occurrence.
+      try {
+        await this.local.deleteScheduleEntry(entryId);
+      } catch {
+        // Best-effort cache cleanup only after confirmed remote success.
+      }
+      return;
+    }
+
+    await this.local.deleteScheduleEntry(entryId);
+    await this.queue.enqueue({ type: 'deleteScheduleEntry', payload: { entryId } });
   }
 
   async getWalks(familyId: string): Promise<Walk[]> {
@@ -570,11 +664,31 @@ export class OfflineFirstRepository implements Repository {
   }
 
   async deleteWalk(walkId: string): Promise<void> {
-    await this.local.deleteWalk?.(walkId);
-    if (this.remote) {
-      await this.queue.enqueue({ type: 'deleteWalk', payload: { walkId } });
-      await this.trySync();
+    if (!this.remote) {
+      await this.local.deleteWalk?.(walkId);
+      return;
     }
+
+    // Walks linked to schedule entries must be removed authoritatively while
+    // online. Queueing the delete and immediately continuing lets the parent
+    // schedule entry disappear first, so a later queued child mutation can
+    // fail and surface a false "schedule delete failed" message even though
+    // the rule/entries were successfully removed.
+    if (await this.isOnline()) {
+      await this.remote.deleteWalk?.(walkId);
+      // Same authoritative-online contract as schedule entry/rule deletion:
+      // once the server confirms deletion, local cache cleanup cannot make
+      // the whole action report failure to the user.
+      try {
+        await this.local.deleteWalk?.(walkId);
+      } catch {
+        // Best-effort cache cleanup only after confirmed remote success.
+      }
+      return;
+    }
+
+    await this.local.deleteWalk?.(walkId);
+    await this.queue.enqueue({ type: 'deleteWalk', payload: { walkId } });
   }
 
   async getNotificationSettings(familyId: string): Promise<NotificationSetting[]> {

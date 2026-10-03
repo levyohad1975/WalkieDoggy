@@ -5,15 +5,14 @@ describe('Home integrated walk lifecycle', () => {
   const home = fs.readFileSync(path.join(__dirname, '..', 'HomeScreen.tsx'), 'utf8');
   const card = fs.readFileSync(path.join(__dirname, '..', '..', 'components', 'NextWalkCard.tsx'), 'utf8');
 
-  it('keeps the approved lavender dashboard hero while using the persisted family-dog image safely', () => {
+  it('keeps the branded Walkie Park default hero while using persisted family-dog imagery safely', () => {
     expect(home).toContain('showDogPhoto');
     expect(home).toContain('style={styles.dashboardHero}');
-    expect(home).toContain('style={styles.dashboardHeroShade}');
-    expect(home).toContain('height: 208');
     expect(home).toContain('style={styles.dashboardHeroShell}');
-    expect(home).toContain('style={styles.dashboardHeroBloomOne}');
-    expect(home).toContain('style={styles.dashboardHeroBloomTwo}');
-    expect(home).toContain('style={styles.dashboardHeroGlow}');
+    expect(home).toContain("{heroBackground ? (");
+    expect(home).toContain("source={{ uri: heroBackground.uri }}");
+    expect(home).not.toContain("require('../../assets/walkie-park-default.jpg')");
+    expect(home).not.toContain('<WalkieParkBackground />');
     expect(home).toContain('getDogBackground(dog?.heroBackgroundId)');
     expect(home).not.toContain('getDogBackgroundId');
     expect(home).toContain('source={{ uri: dog!.photoCutoutUrl! }}');
@@ -23,63 +22,75 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain("style={styles.mascotHeaderButton}");
   });
 
-  // Item 10 (final consolidated pass — corrects item 7, which moved
-  // "בקשת החלפה" to a standalone bottom row; that move is undone here).
-  // MANAGER-ONLY clarification: a Family Manager (admin) sees עריכה/החלפה
-  // (direct actions) in the first two slots; a regular member sees the
-  // ORIGINAL request-based שינוי שעה/בקשת החלפה slots, completely
-  // untouched. טיול ספונטני is unchanged for everyone. The whole row is
-  // restored to directly below the Next Walk card — no standalone row
-  // anywhere else in the Dashboard.
-  it('shows managers direct עריכה/החלפה actions, directly below the Next Walk card', () => {
-    expect(home).toContain("effectiveRole === 'admin'");
-    expect(home).toContain('accessibilityLabel="עריכת הטיול"');
-    expect(home).toContain('accessibilityLabel="החלפת הטיול"');
-    expect(home).toContain('nextWalkCardActions?.canEditDirect && nextWalk ? setEditWalkId(nextWalk.id) : navigation.navigate(\'Schedule\')');
-    expect(home).toContain('nextWalkCardActions?.canSwapDirect && nextWalk ? setSwapWalkId(nextWalk.id) : navigation.navigate(\'Schedule\')');
-    expect(home).not.toContain('style={styles.dashboardSwapRequestRow}');
-    // Directly below the Next Walk card: dashboardShortcuts is the very
-    // next content after the nextWalkLift-wrapped card, before Last Walk.
-    expect(home.indexOf('nextWalkLift')).toBeLessThan(home.indexOf('style={styles.dashboardShortcuts}'));
-    expect(home.indexOf('style={styles.dashboardShortcuts}')).toBeLessThan(home.indexOf('style={styles.dashboardLastWalk}'));
+  it('keeps the Dashboard hero unobstructed by the removed family greeting overlay', () => {
+    expect(home).not.toContain('style={styles.dashboardHeroGreeting}');
+    expect(home).not.toContain('>שלום משפחת');
+    expect(home).not.toContain('מחכה לטיול הבא 🐾');
   });
 
-  it('keeps a regular member\'s original request-based שינוי שעה / בקשת החלפה / טיול ספונטני shortcuts fully untouched', () => {
-    expect(home).toContain("navigation.navigate('Schedule')");
+  it('keeps one compact add-walk action wired to the existing completed/spontaneous flow', () => {
     expect(home).toContain('setAddUnplannedVisible(true)');
-    expect(home).toContain('setRequestTimeChangeWalkId(nextWalk?.id ?? null)');
-    expect(home).toContain('setRequestSwapWalkId(nextWalk?.id ?? null)');
-    expect(home).toContain('numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>טיול ספונטני</RtlText>');
-    expect(home).toContain('numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שינוי שעה</RtlText>');
-    expect(home).toContain('numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>בקשת החלפה</RtlText>');
+    expect(home).toContain('accessibilityLabel="הוסף טיול"');
+    expect(home).toContain('>הוסף טיול</RtlText>');
+    expect(home).not.toContain('dashboardMemberShortcuts');
   });
 
-  it('removes the now-redundant internal "עריכה · החלפה" link row from the Next Walk card itself (those actions live in the row below it now)', () => {
-    expect(home).not.toContain('onSwap={nextWalkCardActions?.canSwapDirect');
-    expect(home).not.toContain('onEdit={nextWalkCardActions?.canEditDirect');
-    // The member-facing request link row (a DIFFERENT row) must remain untouched.
-    expect(home).toContain('onRequestSwap={');
-    expect(home).toContain('onRequestTimeChange={');
+  it('renders manager-only Edit/Swap directly under Next Walk and no standalone swap row', () => {
+    expect(home).toContain("effectiveRole === 'admin' ?");
+    expect(home).toContain('>הוסף טיול</RtlText>');
+    expect(home).toContain('setEditWalkId(nextWalk.id)');
+    expect(home).toContain('setSwapWalkId(nextWalk.id)');
+    expect(home).not.toContain('style={styles.dashboardSwapRequestRow}');
+    expect(home).toContain("onSwap={effectiveRole === 'admin' && nextWalk.status === 'pending'");
+    expect(home).toContain("onEdit={effectiveRole === 'admin' && nextWalk.status === 'pending'");
+    expect(card).toContain('{onEdit || onSwap ? (');
+    expect(card).toContain('עריכה');
+    expect(card).toContain('החלפה');
+    expect(card).toContain('בקשה לשינוי');
+    expect(card).toContain('בקשת החלפה');
   });
 
-  it('keeps a compact, always-present Dashboard timeline instead of a long list', () => {
+  it('uses the actual completion date in the last-walk dashboard card', () => {
+    expect(home).toContain('resolvedWalkDateContextLabel(lastWalk)');
+    expect(home).not.toContain('walkDateContextLabel(lastWalk.date)');
+  });
+
+  it('keeps a compact, always-present full daily Dashboard timeline instead of a future-only list', () => {
     expect(home).toContain('const dashboardTimelineWalks = useMemo');
-    expect(home).toContain('dashboardTimelineWalks.length > 0 ?');
+    expect(home).toContain('dailyWalkTimeline(visibleWalks, now)');
     expect(home).toContain('dashboardTimelineWalks.map');
-    expect(home).toContain('אין טיולים נוספים היום');
-    expect(home).toContain('פתיחת לוח הזמנים להמשך היום');
+    expect(home).toContain('dashboardTimelineWalks.map');
+    expect(home).toContain('בהמשך היום');
+    expect(home).toContain('אין טיולים מתוכננים היום');
+    expect(home).toContain("walk.status === 'done'");
+    expect(home).toContain("walk.status === 'skipped'");
+    expect(home).toContain("walk.status === 'in_progress'");
     expect(home).toContain('scrollEnabled');
-    expect(home).toContain('paddingBottom: 120');
-    expect(home).toContain('dashboardTimeline: { minHeight: 66');
+    expect(home).toContain('paddingBottom: 96');
     expect(home).not.toContain('style={styles.dashboardMoreButton}');
   });
 
   it('shows the orange approval prompt only for a real actionable request', () => {
     expect(home).toContain('pendingForMe > 0 ?');
     expect(home).toContain('style={styles.dashboardRequestAlert}');
-    expect(home.indexOf('style={styles.dashboardTimeline}')).toBeLessThan(home.indexOf('style={styles.dashboardRequestAlert}'));
+    // The approval request is deliberately rendered after the timeline so it
+    // remains the lowest Dashboard row on mobile.
+    expect(home.indexOf('style={styles.dashboardRequestAlert}')).toBeGreaterThan(home.indexOf('style={styles.dashboardTimeline}'));
     expect(home).toContain('בקשה ממתינה לאישור');
     expect(home).toContain('onPress={openRequestsInbox}');
+  });
+
+  it('keeps the approved Home content order with white supporting cards and teal actions', () => {
+    const lastWalkIndex = home.indexOf('style={styles.dashboardLastWalk}');
+    const addWalkIndex = home.indexOf('style={styles.dashboardAddWalk}');
+    const timelineIndex = home.indexOf('style={styles.dashboardTimeline}');
+    expect(lastWalkIndex).toBeGreaterThan(-1);
+    expect(lastWalkIndex).toBeLessThan(addWalkIndex);
+    expect(addWalkIndex).toBeLessThan(timelineIndex);
+    expect(home).toContain("dashboardLastWalk: { minHeight: 82, borderRadius: 24, backgroundColor: '#F4FAFD'");
+    expect(home).toContain("dashboardAddWalk: { minHeight: 52, borderRadius: 22, backgroundColor: '#F0FAF8'");
+    expect(home).toContain("backgroundColor: '#12A5AB'");
+    expect(home).not.toContain('#4A43B6');
   });
 
   it('exposes start and end walk as the primary lifecycle action', () => {

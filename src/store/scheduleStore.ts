@@ -8,6 +8,7 @@ import {
   ruleNeedsEntryBackfill,
 } from '../logic/rotation';
 import { localDateOnly } from '../logic/dateFormat';
+import { finalizeSupersededPendingWalks } from '../logic/nextWalk';
 import { pickerDateToTime } from '../logic/timeInput';
 import {
   editWalkDetails,
@@ -22,7 +23,7 @@ import { generateId } from '../lib/id';
 import { cancelWalkNotifications, reconcileWalkNotifications, scheduleWalkNotifications } from '../notifications/notificationService';
 import { guardTestModeMutation } from '../lib/testModeGuard';
 import { hasActiveRemoteReminderChannel } from '../lib/remoteReminderChannel';
-import { isSupabaseConfigured } from '../lib/supabase';
+import { deleteScheduleRuleWithOccurrences, isSupabaseConfigured } from '../lib/supabase';
 import { adminRescheduleWalk, adminSwapWalks } from '../lib/walkAdmin';
 import { friendlyErrorMessage } from '../lib/errorMessages';
 import { useGpsStore } from './gpsStore';
@@ -236,36 +237,49 @@ async function loadScheduleForFamily(
       repository.getWalks(familyId),
     ]);
 
-    // Self-healing: an active rule with no upcoming entries (generation
-    // never ran, was interrupted, or entries were wiped some other way)
-    // must never just silently show an empty schedule — backfill it from
-    // the rule itself, right here, before the screen ever renders.
-    // Local calendar day, not UTC — `entries`/`walks` dates are the
-    // family's local "today" (see dateFormat.ts), and a UTC-anchored
-    // "today" would be wrong for a few hours after local midnight for
-    // anyone ahead of UTC (e.g. Israel), generating a day-early entry.
-    const today = localDateOnly(new Date());
-    const endDate = localDateOnly(new Date(Date.now() + GENERATE_DAYS_AHEAD * 86400000));
-    const rulesMissingEntries = rules.filter((r) => ruleNeedsEntryBackfill(r, entries, today));
-
+    // Recurring rules are configuration and survive an activity reset. Rebuild
+    // only the FUTURE occurrence horizon when a surviving active rule has no
+    // upcoming entries, so Home can still resolve "next walk" after reset.
+    // Existing future entries are never duplicated; the repository/DB identity
+    // constraints remain the final concurrency guard.
     let finalEntries = entries;
     let finalWalks = walks;
-    if (rulesMissingEntries.length > 0) {
-      const generatedEntries = rulesMissingEntries.flatMap((r) =>
-        generateRotationSchedule(r, today, endDate, () => generateId('entry'))
-      );
-      if (generatedEntries.length > 0) {
-        await repository.addScheduleEntries(generatedEntries);
-        const existingKeys = new Set(entries.map((e) => `${e.dogId}|${e.date}|${e.time}`));
-        const trulyNew = generatedEntries.filter((e) => !existingKeys.has(`${e.dogId}|${e.date}|${e.time}`));
-        const generatedWalks = trulyNew.map((e) => walkFromEntry(e, familyId));
-        for (const w of generatedWalks) await repository.saveWalk(w);
-        finalEntries = [...entries, ...trulyNew];
-        finalWalks = [...walks, ...generatedWalks];
-      }
+    const today = localDateOnly(new Date());
+    const endDate = localDateOnly(new Date(Date.now() + GENERATE_DAYS_AHEAD * 86400000));
+    const rulesNeedingFuture = rules.filter((rule) => ruleNeedsEntryBackfill(rule, finalEntries, today));
+    for (const rule of rulesNeedingFuture) {
+      const generated = generateRotationSchedule(rule, today, endDate, () => generateId('entry'));
+      if (generated.length === 0) continue;
+      await repository.addScheduleEntries(generated);
+      const existingKeys = new Set(finalEntries.map((e) => `${e.dogId}|${e.date}|${e.time}`));
+      const trulyNew = generated.filter((e) => !existingKeys.has(`${e.dogId}|${e.date}|${e.time}`));
+      const generatedWalks = trulyNew.map((e) => walkFromEntry(e, rule.familyId));
+      for (const walk of generatedWalks) await repository.saveWalk(walk);
+      finalEntries = [...finalEntries, ...trulyNew];
+      finalWalks = [...finalWalks, ...generatedWalks];
     }
 
+    // Once a later planned occurrence for the same dog is due, older
+    // unresolved planned walks are no longer actionable questions. Close
+    // them as "not done" so History contains final facts instead of an
+    // ever-growing pending backlog. In-progress/unplanned walks are excluded
+    // by the pure helper. Persist best-effort: every client derives the same
+    // display state immediately, while an authorized online client also
+    // makes the final status authoritative on the server.
+    const reconciledWalks = finalizeSupersededPendingWalks(finalWalks, new Date());
+    const autoSkipped = reconciledWalks.filter((walk) => {
+      const before = finalWalks.find((candidate) => candidate.id === walk.id);
+      return before?.status === 'pending' && walk.status === 'skipped';
+    });
+    finalWalks = reconciledWalks;
     set({ rules, entries: finalEntries, walks: finalWalks, loading: false });
+    void Promise.allSettled(
+      autoSkipped.map(async (walk) => {
+        await repository.saveWalk(walk);
+        await cancelWalkNotifications(walk.id);
+      })
+    );
+
     // Full reconciliation (A3): cancels anything stale for a
     // done/skipped/removed walk and (re)schedules everything still
     // pending from its CURRENT persisted data — not just "schedule the
@@ -341,12 +355,39 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       const newWalks = trulyNew.map((e) => walkFromEntry(e, rule.familyId));
       for (const w of newWalks) await repository.saveWalk(w);
 
-      set((s) => ({
-        rules: [...s.rules.filter((r) => r.id !== rule.id), rule],
-        entries: [...s.entries, ...trulyNew],
-        walks: [...s.walks, ...newWalks],
-        actionError: null,
-      }));
+      set((s) => {
+        // saveWalk() may replace a freshly generated local walk id with the
+        // canonical server id when this occurrence already exists remotely.
+        // Never append that canonical occurrence beside the stale/local copy:
+        // one schedule_entry_id represents exactly one planned walk.
+        const newEntryIds = new Set(trulyNew.map((entry) => entry.id));
+        const newWalkIds = new Set(newWalks.map((walk) => walk.id));
+        const newWalkEntryIds = new Set(
+          newWalks.map((walk) => walk.scheduleEntryId).filter((id): id is string => Boolean(id))
+        );
+        return {
+          rules: [...s.rules.filter((r) => r.id !== rule.id), rule],
+          entries: [
+            ...s.entries.filter(
+              (entry) =>
+                !newEntryIds.has(entry.id) &&
+                !trulyNew.some(
+                  (fresh) => fresh.dogId === entry.dogId && fresh.date === entry.date && fresh.time === entry.time
+                )
+            ),
+            ...trulyNew,
+          ],
+          walks: [
+            ...s.walks.filter(
+              (walk) =>
+                !newWalkIds.has(walk.id) &&
+                !(walk.scheduleEntryId && newWalkEntryIds.has(walk.scheduleEntryId))
+            ),
+            ...newWalks,
+          ],
+          actionError: null,
+        };
+      });
       newWalks.forEach((w) => void scheduleNotificationsForWalk(w));
     } catch (e) {
       // A thrown error here (storage failure, bad data, etc.) must never
@@ -461,31 +502,27 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   deleteRule: async (ruleId: string) => {
     if (!guardTestModeMutation()) return;
     try {
-      // Local calendar day, not UTC — `entries`/`walks` dates are the
-      // family's local "today" (see dateFormat.ts), and a UTC-anchored
-      // "today" would be wrong for a few hours after local midnight for
-      // anyone ahead of UTC (e.g. Israel), generating a day-early entry.
-      const today = localDateOnly(new Date());
       const { entries, walks } = get();
-      const futureEntries = entries.filter((e) => e.ruleId === ruleId && e.date >= today);
-      // A recurring rule owns its future schedule entries. Remove every
-      // future entry when the rule is deleted, even if its linked walk was
-      // already resolved. Keeping a resolved entry behind is what allowed
-      // stale/duplicate fixed times to reappear after deleting all rules.
-      // Historical walk rows themselves are preserved below.
-      for (const entry of futureEntries) {
-        const walk = walks.find((w) => w.scheduleEntryId === entry.id);
-        if (walk?.status === 'pending') {
-          await cancelWalkNotifications(walk.id);
+      const removedEntryIds = new Set(entries.filter((e) => e.ruleId === ruleId).map((e) => e.id));
+
+      if (isSupabaseConfigured) {
+        // One server transaction owns the FK-sensitive delete ordering.
+        await deleteScheduleRuleWithOccurrences(ruleId);
+      } else {
+        const today = localDateOnly(new Date());
+        const futureEntries = entries.filter((e) => e.ruleId === ruleId && e.date >= today);
+        for (const entry of futureEntries) {
+          const walk = walks.find((w) => w.scheduleEntryId === entry.id);
+          if (walk?.status === 'pending') await repository.deleteWalk?.(walk.id);
+          await repository.deleteScheduleEntry(entry.id);
         }
-        await repository.deleteScheduleEntry(entry.id);
+        await repository.deleteScheduleRule(ruleId);
       }
-      await repository.deleteScheduleRule(ruleId);
-      const removedEntryIds = new Set(futureEntries.map((e) => e.id));
+
       set((s) => ({
         rules: s.rules.filter((r) => r.id !== ruleId),
         entries: s.entries.filter((e) => !removedEntryIds.has(e.id)),
-        walks: s.walks.filter((w) => !(w.scheduleEntryId && removedEntryIds.has(w.scheduleEntryId))),
+        walks: s.walks.filter((w) => !(w.scheduleEntryId && removedEntryIds.has(w.scheduleEntryId) && w.status === 'pending')),
         actionError: null,
       }));
     } catch (e) {
@@ -990,4 +1027,3 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
 
   clearActionError: () => set({ actionError: null }),
 }));
-
