@@ -56,6 +56,7 @@ import type { RootTabParamList } from '../navigation/RootNavigator';
 import { useHealthStore } from '../store/healthStore';
 import { getImportantHealthReminders, summarizeHealthTasksForHome } from '../logic/healthTasks';
 import { getDogBackground } from '../theme/dogBackgrounds';
+import { WalkieParkBackground } from '../components/WalkieParkBackground';
 import { useGpsStore } from '../store/gpsStore';
 import { requestForegroundGpsPermission } from '../lib/gpsTracking';
 
@@ -791,7 +792,9 @@ export function HomeScreen() {
       >
         <View style={styles.dashboardHeroShell}>
           <View pointerEvents="none" style={styles.dashboardHeroBackdrop}>
-            {heroBackground ? (
+            {dog?.heroBackgroundId === 'walkie-park' ? (
+              <WalkieParkBackground />
+            ) : heroBackground ? (
               <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" />
             ) : (
               <>
