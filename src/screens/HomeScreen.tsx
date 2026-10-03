@@ -791,6 +791,8 @@ export function HomeScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <View style={styles.dashboardHeroShell}>
+          <View pointerEvents="none" style={styles.dashboardHeroBackdrop}>
+          </View>
           <View style={[styles.topRow, styles.dashboardTopRow]}>
             <Image
               source={require('../../assets/walkie-doggy-link-wordmark-transparent.png')}
@@ -1666,11 +1668,12 @@ const styles = StyleSheet.create({
   testModeBannerText: { flex: 1, color: colors.textInverse, fontWeight: '700', fontSize: typography.meta.fontSize, textAlign: 'right' },
   testModeBannerButton: { backgroundColor: '#ffffff33', borderRadius: radii.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   testModeBannerButtonText: { color: colors.textInverse, fontWeight: '700', fontSize: 12 },
-  dashboardHeroShell: { marginHorizontal: -spacing.md, backgroundColor: '#F7F3E9', overflow: 'hidden' },
+  dashboardHeroShell: { marginHorizontal: -spacing.md, marginTop: Platform.OS === 'web' ? 0 : -56, paddingTop: Platform.OS === 'web' ? 0 : 56, backgroundColor: '#F7F3E9', overflow: 'hidden' },
+  dashboardHeroBackdrop: { ...StyleSheet.absoluteFill, bottom: 0 },
   topRow: { position: 'relative', minHeight: 54, alignItems: 'center', justifyContent: 'center' },
   // Item 6 (mobile polish): trimmed from 58/6 — a shorter header row so the
   // Dashboard's real content (Next Walk, timeline) starts higher on screen.
-  dashboardTopRow: { minHeight: 48, paddingHorizontal: spacing.md, paddingTop: Platform.OS === 'web' ? 0 : 4 },
+  dashboardTopRow: { minHeight: 48, paddingHorizontal: spacing.md, paddingTop: Platform.OS === 'web' ? 0 : 4, zIndex: 4 },
   brandWordmark: { width: 132, height: 42 },
   mascotHeaderButton: { position: 'absolute', left: spacing.md, top: 7, width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   dashboardHero: {
