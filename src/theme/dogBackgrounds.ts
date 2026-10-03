@@ -8,6 +8,9 @@ const unsplash = (photoId: string) =>
  * families can choose a mood without making the Dashboard feel dark/heavy.
  */
 export const DOG_BACKGROUNDS: DogBackground[] = [
+  // Walkie Park is the branded default park treatment: a real photographic park,
+  // rendered by the same full-bleed image path as every other selectable background.
+  { id: 'walkie-park', label: 'Walkie Park', uri: unsplash('photo-1500530855697-b586d89ba3ee') },
   { id: 'dog-park', label: 'גינת כלבים מוארת', uri: unsplash('photo-1602684379319-1de467ca74e5') },
   { id: 'neighborhood-park', label: 'פארק שכונתי', uri: unsplash('photo-1774921665173-832f122fe44b') },
   { id: 'sunny-walk', label: 'טיול בפארק', uri: unsplash('photo-1779804152118-6ce4fda1c963') },
