@@ -202,6 +202,36 @@ describe('lib/supabase — family create/join/lookup (Supabase mode)', () => {
     await expect(getCurrentFamilyRole()).rejects.toBeTruthy();
   });
 
+  it('getWhoAmI falls back to profile_id as the real profile for a non-impersonating legacy response', async () => {
+    const rpc = jest.fn().mockResolvedValue({
+      data: [{ profile_id: 'user-1', family_role: 'member', is_impersonating: false }],
+      error: null,
+    });
+    mockSupabaseClient(rpc);
+    const { getWhoAmI } = require('../supabase');
+
+    await expect(getWhoAmI()).resolves.toMatchObject({
+      profileId: 'user-1',
+      realProfileId: 'user-1',
+      isImpersonating: false,
+    });
+  });
+
+  it('getWhoAmI never treats an impersonated profile_id as the real profile when real_profile_id is absent', async () => {
+    const rpc = jest.fn().mockResolvedValue({
+      data: [{ profile_id: 'impersonated-user', family_role: 'member', is_impersonating: true, impersonated_user_id: 'impersonated-user' }],
+      error: null,
+    });
+    mockSupabaseClient(rpc);
+    const { getWhoAmI } = require('../supabase');
+
+    await expect(getWhoAmI()).resolves.toMatchObject({
+      profileId: 'impersonated-user',
+      realProfileId: null,
+      isImpersonating: true,
+    });
+  });
+
   /**
    * claimFamilyProfile is a thin wrapper over the claim_family_profile
    * SECURITY DEFINER RPC (migrations/0004_*.sql) — it used to be a plain
