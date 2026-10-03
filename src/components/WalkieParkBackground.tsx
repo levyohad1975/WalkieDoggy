@@ -11,83 +11,103 @@ export function WalkieParkBackground() {
     <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.sky]} accessibilityElementsHidden>
       <View style={styles.sunGlow} />
       <View style={styles.sun} />
+      <View style={styles.cloudOne} />
+      <View style={styles.cloudTwo} />
 
-      <View style={styles.cloudLeft}>
-        <View style={[styles.cloudPuff, styles.cloudPuffLeft]} />
-        <View style={[styles.cloudPuff, styles.cloudPuffMid]} />
-        <View style={[styles.cloudPuff, styles.cloudPuffRight]} />
-      </View>
-
-      <View style={styles.hillFarLeft} />
-      <View style={styles.hillFarRight} />
-      <View style={styles.hillNear} />
+      <View style={styles.distantLawn} />
+      <View style={styles.lawn} />
+      <View style={styles.path} />
+      <View style={styles.pathHighlight} />
 
       <View style={styles.treeLeft}>
-        <View style={styles.treeTrunk} />
-        <View style={[styles.treeCrown, styles.treeCrownOne]} />
-        <View style={[styles.treeCrown, styles.treeCrownTwo]} />
-        <View style={[styles.treeCrown, styles.treeCrownThree]} />
+        <View style={styles.trunk} />
+        <View style={[styles.crown, styles.crownA]} />
+        <View style={[styles.crown, styles.crownB]} />
+        <View style={[styles.crown, styles.crownC]} />
+      </View>
+      <View style={styles.treeFar}>
+        <View style={styles.farTrunk} />
+        <View style={styles.farCrown} />
       </View>
 
-      <View style={styles.path} />
-      <View style={styles.ground} />
+      <View style={styles.fence}>
+        <View style={[styles.fencePost, { left: 0 }]} />
+        <View style={[styles.fencePost, { left: 52 }]} />
+        <View style={[styles.fencePost, { left: 104 }]} />
+        <View style={styles.fenceRailTop} />
+        <View style={styles.fenceRailBottom} />
+      </View>
+
+      <View style={styles.lamp}>
+        <View style={styles.lampPost} />
+        <View style={styles.lampArm} />
+        <View style={styles.lampHead} />
+      </View>
+
+      <View style={styles.bench}>
+        <View style={styles.benchBack} />
+        <View style={styles.benchSeat} />
+        <View style={[styles.benchLeg, { left: 10 }]} />
+        <View style={[styles.benchLeg, { right: 10 }]} />
+      </View>
 
       <View style={styles.shrubLeft} />
-      <View style={styles.shrubMid} />
       <View style={styles.shrubRight} />
-
-      <View style={styles.flowerOne}><View style={styles.flowerDot} /></View>
-      <View style={styles.flowerTwo}><View style={styles.flowerDot} /></View>
-      <View style={styles.flowerThree}><View style={styles.flowerDot} /></View>
-
-      <View style={styles.paw}>
-        <View style={styles.pawPad} />
-        <View style={[styles.pawToe, styles.pawToeOne]} />
-        <View style={[styles.pawToe, styles.pawToeTwo]} />
-        <View style={[styles.pawToe, styles.pawToeThree]} />
-      </View>
+      <View style={[styles.flower, styles.flowerA]} />
+      <View style={[styles.flower, styles.flowerB]} />
+      <View style={[styles.flower, styles.flowerC]} />
+      <View style={[styles.paw, styles.pawA]} />
+      <View style={[styles.paw, styles.pawB]} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  sky: { backgroundColor: '#FFF8E8', overflow: 'hidden' },
-  sunGlow: { position: 'absolute', width: 210, height: 210, borderRadius: 105, right: 42, top: -42, backgroundColor: '#FFF0B8', opacity: 0.5 },
-  sun: { position: 'absolute', width: 38, height: 38, borderRadius: 19, right: 92, top: 30, backgroundColor: '#FFD97A', opacity: 0.78 },
+  sky: { backgroundColor: '#FFF5D9', overflow: 'hidden' },
+  sunGlow: { position: 'absolute', width: 230, height: 230, borderRadius: 115, right: 34, top: -76, backgroundColor: '#FFE9A6', opacity: 0.58 },
+  sun: { position: 'absolute', width: 42, height: 42, borderRadius: 21, right: 86, top: 42, backgroundColor: '#FFD36A', opacity: 0.9 },
+  cloudOne: { position: 'absolute', width: 90, height: 22, borderRadius: 20, left: 30, top: 64, backgroundColor: '#FFFFFF', opacity: 0.58 },
+  cloudTwo: { position: 'absolute', width: 64, height: 17, borderRadius: 18, left: 116, top: 92, backgroundColor: '#FFFFFF', opacity: 0.42 },
 
-  cloudLeft: { position: 'absolute', left: 42, top: 38, width: 82, height: 30, opacity: 0.72 },
-  cloudPuff: { position: 'absolute', backgroundColor: '#FFFFFF', borderRadius: 20 },
-  cloudPuffLeft: { width: 36, height: 19, left: 0, top: 9 },
-  cloudPuffMid: { width: 42, height: 25, left: 22, top: 2 },
-  cloudPuffRight: { width: 31, height: 17, left: 51, top: 11 },
+  distantLawn: { position: 'absolute', left: -80, right: -80, top: 118, height: 155, borderRadius: 120, backgroundColor: '#DDECCB', transform: [{ rotate: '-2deg' }] },
+  lawn: { position: 'absolute', left: -40, right: -40, bottom: -18, height: 170, borderRadius: 90, backgroundColor: '#B9DFA8' },
+  path: { position: 'absolute', width: 430, height: 112, borderRadius: 210, left: 66, bottom: -42, backgroundColor: '#F2D4AA', transform: [{ rotate: '-10deg' }] },
+  pathHighlight: { position: 'absolute', width: 330, height: 38, borderRadius: 170, left: 118, bottom: 17, backgroundColor: '#F8E4C7', opacity: 0.72, transform: [{ rotate: '-10deg' }] },
 
-  hillFarLeft: { position: 'absolute', left: -72, bottom: 42, width: 300, height: 116, borderRadius: 150, backgroundColor: '#E6F1D7', transform: [{ rotate: '5deg' }] },
-  hillFarRight: { position: 'absolute', right: -86, bottom: 44, width: 326, height: 122, borderRadius: 163, backgroundColor: '#DDECCF', transform: [{ rotate: '-5deg' }] },
-  hillNear: { position: 'absolute', left: 72, bottom: 16, width: 340, height: 108, borderRadius: 170, backgroundColor: '#CFE6BE', transform: [{ rotate: '2deg' }] },
+  treeLeft: { position: 'absolute', left: 20, bottom: 72, width: 112, height: 154 },
+  trunk: { position: 'absolute', width: 16, height: 74, left: 46, bottom: 0, borderRadius: 8, backgroundColor: '#A97952' },
+  crown: { position: 'absolute', borderRadius: 50, backgroundColor: '#69B979' },
+  crownA: { width: 72, height: 72, left: 0, top: 25 },
+  crownB: { width: 78, height: 78, right: 0, top: 18, backgroundColor: '#58AD6D' },
+  crownC: { width: 66, height: 66, left: 24, top: 0, backgroundColor: '#7BC786' },
+  treeFar: { position: 'absolute', left: 154, bottom: 101, width: 54, height: 88, opacity: 0.78 },
+  farTrunk: { position: 'absolute', width: 8, height: 42, left: 23, bottom: 0, borderRadius: 4, backgroundColor: '#AE805C' },
+  farCrown: { position: 'absolute', width: 54, height: 54, borderRadius: 27, top: 0, backgroundColor: '#8BCB8D' },
 
-  treeLeft: { position: 'absolute', left: 18, bottom: 58, width: 82, height: 104 },
-  treeTrunk: { position: 'absolute', width: 12, height: 47, left: 31, bottom: 0, borderRadius: 6, backgroundColor: '#B9875D', transform: [{ rotate: '3deg' }] },
-  treeCrown: { position: 'absolute', borderRadius: 40, backgroundColor: '#8FCB91' },
-  treeCrownOne: { width: 45, height: 45, left: 4, top: 14 },
-  treeCrownTwo: { width: 49, height: 49, right: 0, top: 7, backgroundColor: '#7FC486' },
-  treeCrownThree: { width: 40, height: 40, left: 18, top: 0, backgroundColor: '#9BD39A' },
+  fence: { position: 'absolute', left: 12, bottom: 38, width: 124, height: 48, opacity: 0.78 },
+  fencePost: { position: 'absolute', bottom: 0, width: 7, height: 46, borderRadius: 4, backgroundColor: '#FFF4DE' },
+  fenceRailTop: { position: 'absolute', left: 0, right: 0, top: 12, height: 7, borderRadius: 4, backgroundColor: '#FFF4DE' },
+  fenceRailBottom: { position: 'absolute', left: 0, right: 0, top: 30, height: 7, borderRadius: 4, backgroundColor: '#FFF4DE' },
 
-  path: { position: 'absolute', width: 270, height: 70, borderRadius: 135, left: 62, bottom: -2, backgroundColor: '#F4DFC0', transform: [{ rotate: '-6deg' }] },
-  ground: { position: 'absolute', left: 0, right: 0, bottom: 24, height: 24, backgroundColor: '#D7EBC8', opacity: 0.92 },
+  lamp: { position: 'absolute', left: 218, bottom: 92, width: 32, height: 98, opacity: 0.82 },
+  lampPost: { position: 'absolute', width: 5, height: 78, left: 13, bottom: 0, borderRadius: 3, backgroundColor: '#365F5C' },
+  lampArm: { position: 'absolute', width: 19, height: 5, left: 13, top: 17, borderRadius: 3, backgroundColor: '#365F5C' },
+  lampHead: { position: 'absolute', width: 18, height: 16, right: 0, top: 18, borderRadius: 7, backgroundColor: '#FFD97A', borderWidth: 3, borderColor: '#365F5C' },
 
-  shrubLeft: { position: 'absolute', left: -17, bottom: 39, width: 96, height: 31, borderRadius: 48, backgroundColor: '#AED7A4' },
-  shrubMid: { position: 'absolute', left: 96, bottom: 35, width: 82, height: 25, borderRadius: 41, backgroundColor: '#BEDFAF', opacity: 0.9 },
-  shrubRight: { position: 'absolute', right: -30, bottom: 37, width: 116, height: 34, borderRadius: 58, backgroundColor: '#A8D39E', opacity: 0.86 },
+  bench: { position: 'absolute', left: 148, bottom: 54, width: 86, height: 48, opacity: 0.9 },
+  benchBack: { position: 'absolute', left: 0, right: 0, top: 4, height: 17, borderRadius: 6, backgroundColor: '#C98D58' },
+  benchSeat: { position: 'absolute', left: 2, right: 2, top: 25, height: 9, borderRadius: 5, backgroundColor: '#B97B49' },
+  benchLeg: { position: 'absolute', top: 31, width: 6, height: 16, borderRadius: 3, backgroundColor: '#365F5C' },
 
-  flowerOne: { position: 'absolute', left: 104, bottom: 52, width: 8, height: 8, borderRadius: 4, backgroundColor: '#F7A7A0' },
-  flowerTwo: { position: 'absolute', left: 130, bottom: 44, width: 7, height: 7, borderRadius: 4, backgroundColor: '#F6C56F' },
-  flowerThree: { position: 'absolute', left: 155, bottom: 54, width: 8, height: 8, borderRadius: 4, backgroundColor: '#BCA7E8' },
-  flowerDot: { position: 'absolute', width: 3, height: 3, borderRadius: 2, left: 2.5, top: 2.5, backgroundColor: '#FFF8DE' },
+  shrubLeft: { position: 'absolute', left: -20, bottom: 23, width: 116, height: 40, borderRadius: 58, backgroundColor: '#7FC487' },
+  shrubRight: { position: 'absolute', right: -26, bottom: 18, width: 132, height: 43, borderRadius: 66, backgroundColor: '#76BD80', opacity: 0.92 },
+  flower: { position: 'absolute', width: 9, height: 9, borderRadius: 5, backgroundColor: '#F08E88', borderWidth: 2, borderColor: '#FFF2C7' },
+  flowerA: { left: 108, bottom: 48 },
+  flowerB: { left: 137, bottom: 39, backgroundColor: '#A88ADD' },
+  flowerC: { left: 260, bottom: 62, backgroundColor: '#F1B85D' },
 
-  paw: { position: 'absolute', left: 198, top: 28, width: 28, height: 24, opacity: 0.1, transform: [{ rotate: '12deg' }] },
-  pawPad: { position: 'absolute', left: 8, top: 11, width: 14, height: 11, borderRadius: 7, backgroundColor: '#4F9B75' },
-  pawToe: { position: 'absolute', width: 6, height: 7, borderRadius: 4, backgroundColor: '#4F9B75' },
-  pawToeOne: { left: 2, top: 5, transform: [{ rotate: '-22deg' }] },
-  pawToeTwo: { left: 11, top: 0 },
-  pawToeThree: { right: 2, top: 5, transform: [{ rotate: '22deg' }] },
+  paw: { position: 'absolute', width: 18, height: 13, borderRadius: 8, backgroundColor: '#D2A878', opacity: 0.22, transform: [{ rotate: '-18deg' }] },
+  pawA: { left: 278, bottom: 40 },
+  pawB: { left: 310, bottom: 28, opacity: 0.16 },
 });
+
