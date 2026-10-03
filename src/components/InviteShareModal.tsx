@@ -91,7 +91,7 @@ export function InviteShareModal({ visible, targetName, invite, onRevoked, onClo
   const shareLink = async () => {
     try {
       await Share.share({
-        message: `הוזמנת להצטרף למשפחה באפליקציית Walkie Doggy Link! קישור ההזמנה: ${link}`,
+        message: `הוזמנת להצטרף למשפחה באפליקציית Walkie Doggy Link!\n\nקישור ההזמנה:\n${link}\n\nאפשר להעתיק ולהדביק באפליקציה גם את כל ההודעה הזו.`,
       });
     } catch {
       // best-effort — sharing is a convenience, not critical (matches
@@ -127,8 +127,9 @@ export function InviteShareModal({ visible, targetName, invite, onRevoked, onClo
           {expiryText ? <RtlText style={styles.expiry}>ההזמנה בתוקף עד {expiryText}</RtlText> : null}
 
           <RtlText style={styles.explainer}>
-            שלחו את הקישור לבן/בת המשפחה כדי שיוכלו להצטרף. הקישור הזה תקף למכשיר חדש בלבד ואינו ניתן לשחזור לאחר
-            סגירת המסך הזה — במידת הצורך ניתן ליצור הזמנה חדשה בכל עת.
+            שלחו את ההזמנה לבן/בת המשפחה כדי שיוכלו להצטרף. אפשר להדביק במסך "יש לי הזמנה" את הקישור בלבד או את
+            כל הודעת השיתוף — האפליקציה תחלץ את ההזמנה אוטומטית. הקישור תקף למכשיר חדש בלבד ואינו ניתן לשחזור
+            לאחר סגירת המסך הזה — במידת הצורך ניתן ליצור הזמנה חדשה בכל עת.
           </RtlText>
           <RtlText style={styles.notYetOpenable}>
             שימו לב: בשלב זה הקישור מיועד להעתקה/שיתוף בלבד ואינו נפתח אוטומטית באפליקציה בעת לחיצה או סריקה.
