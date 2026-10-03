@@ -366,11 +366,16 @@ export async function getWhoAmI(): Promise<WhoAmI | null> {
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) return null;
+  const isImpersonating = Boolean(row.is_impersonating);
   return {
     profileId: row.profile_id ?? null,
-    realProfileId: row.real_profile_id ?? null,
+    // Backward-compatible Staging recovery: older whoami() deployments may
+    // not expose real_profile_id yet. Outside impersonation, profile_id is
+    // the real claimed profile, so it is safe to use as the verification
+    // fallback. Never use that fallback while impersonating.
+    realProfileId: row.real_profile_id ?? (!isImpersonating ? row.profile_id ?? null : null),
     familyRole: row.family_role === 'admin' || row.family_role === 'member' ? row.family_role : null,
-    isImpersonating: Boolean(row.is_impersonating),
+    isImpersonating,
     impersonatedUserId: row.impersonated_user_id ?? null,
   };
 }
