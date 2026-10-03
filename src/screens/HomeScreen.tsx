@@ -31,7 +31,6 @@ import { ReminderMascotPrompt } from '../components/ReminderMascotPrompt';
 import { DogProfileModal } from '../components/DogProfileModal';
 import { DogSelectorRow } from '../components/DogSelectorRow';
 import { WalkieMascot } from '../components/WalkieMascot';
-import { WalkieParkBackground } from '../components/WalkieParkBackground';
 import { useSystemAdminStore } from '../store/systemAdminStore';
 import { Avatar } from '../components/Avatar';
 import { CELEBRATION_LIBRARY, selectWalkCompletionCelebration, type CompletionCelebration } from '../logic/walkCompletionCelebration';
@@ -792,9 +791,7 @@ export function HomeScreen() {
       >
         <View style={styles.dashboardHeroShell}>
           <View pointerEvents="none" style={styles.dashboardHeroBackdrop}>
-            {dog?.heroBackgroundId === 'walkie-park' ? (
-              <WalkieParkBackground />
-            ) : heroBackground ? (
+            {heroBackground ? (
               <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" />
             ) : (
               <>
