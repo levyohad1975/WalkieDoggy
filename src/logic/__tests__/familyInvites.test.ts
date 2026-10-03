@@ -183,6 +183,16 @@ describe('parseInviteInput', () => {
     expect(parseInviteInput('  dogwalkfamily://invite/abc123XYZ  ')).toBe('abc123XYZ');
   });
 
+  it('extracts an invite token when the entire shared message is pasted', () => {
+    expect(
+      parseInviteInput('הוזמנת להצטרף למשפחה באפליקציית Walkie Doggy Link!\\n\\nקישור ההזמנה:\\ndogwalkfamily://invite/abc123XYZ\\n\\nאפשר להדביק את כל ההודעה')
+    ).toBe('abc123XYZ');
+  });
+
+  it('extracts a link embedded inline in surrounding message text', () => {
+    expect(parseInviteInput('קישור ההזמנה: dogwalkfamily://invite/abc123XYZ תודה')).toBe('abc123XYZ');
+  });
+
   it('returns null for empty input', () => {
     expect(parseInviteInput('')).toBeNull();
   });
