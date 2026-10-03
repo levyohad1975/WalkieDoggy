@@ -185,7 +185,12 @@ describe('parseInviteInput', () => {
 
   it('extracts an invite token when the entire shared message is pasted', () => {
     expect(
-      parseInviteInput('הוזמנת להצטרף למשפחה באפליקציית Walkie Doggy Link!\\n\\nקישור ההזמנה:\\ndogwalkfamily://invite/abc123XYZ\\n\\nאפשר להדביק את כל ההודעה')
+      parseInviteInput(`הוזמנת להצטרף למשפחה באפליקציית Walkie Doggy Link!
+
+קישור ההזמנה:
+dogwalkfamily://invite/abc123XYZ
+
+אפשר להדביק את כל ההודעה`)
     ).toBe('abc123XYZ');
   });
 
