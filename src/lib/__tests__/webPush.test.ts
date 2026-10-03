@@ -343,3 +343,141 @@ describe('lib/webPush — enableWebPush', () => {
     await expect(enableWebPush()).rejects.toBe(rpcError);
   });
 });
+
+/**
+ * Request-notifications repair — "refresh/reopen recovery". This repairs
+ * the exact gap a real-device QA pass found: web_push_subscriptions stayed
+ * empty even though notification permission was already granted, because
+ * getWebPushStatus() only ever trusted the browser's local state and never
+ * verified/repaired server-side persistence. These tests cover fresh
+ * subscribe, repair-on-reopen, and re-subscribe-after-expiry — the three
+ * P0 scenarios explicitly required: "fresh supported device → permission
+ * granted → subscription persisted" and "reopening an already-subscribed
+ * PWA preserves/repairs registration".
+ */
+describe('lib/webPush — reconcileWebPushSubscription (refresh/reopen recovery)', () => {
+  function mockSupabase(overrides: { isSupabaseConfigured: boolean; rpc?: jest.Mock }) {
+    jest.doMock('../supabase', () => ({
+      isSupabaseConfigured: overrides.isSupabaseConfigured,
+      supabase: overrides.isSupabaseConfigured ? { rpc: overrides.rpc } : null,
+    }));
+  }
+
+  function requireReconcile() {
+    return require('../webPush').reconcileWebPushSubscription as typeof import('../webPush').reconcileWebPushSubscription;
+  }
+
+  beforeEach(() => {
+    jest.resetModules();
+  });
+
+  it('is a complete no-op (never prompts) when permission has not been granted yet', async () => {
+    setPlatformOS('web');
+    stubBrowserGlobals({ permission: 'default' });
+    const register = jest.fn();
+    setNavigatorServiceWorker({ register });
+    mockSupabase({ isSupabaseConfigured: true, rpc: jest.fn() });
+
+    const reconcile = requireReconcile();
+    await expect(reconcile()).resolves.toBe('default');
+    expect(register).not.toHaveBeenCalled();
+  });
+
+  it('FRESH DEVICE: permission already granted, no subscription yet -> subscribes and persists it', async () => {
+    setPlatformOS('web');
+    stubBrowserGlobals({ permission: 'granted' });
+    const subscribe = jest.fn().mockResolvedValue({
+      toJSON: () => ({ endpoint: 'https://push.example/fresh', keys: { p256dh: 'p1', auth: 'a1' } }),
+    });
+    const getSubscription = jest.fn().mockResolvedValue(null);
+    const register = jest.fn().mockResolvedValue({ pushManager: { getSubscription, subscribe } });
+    setNavigatorServiceWorker({ register, ready: Promise.resolve() });
+    const rpc = jest.fn().mockResolvedValue({ error: null });
+    mockSupabase({ isSupabaseConfigured: true, rpc });
+    process.env = { ...ORIGINAL_ENV, EXPO_PUBLIC_VAPID_PUBLIC_KEY: VAPID_KEY };
+
+    const reconcile = requireReconcile();
+    await expect(reconcile()).resolves.toBe('subscribed');
+    expect(subscribe).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenCalledWith('upsert_web_push_subscription', {
+      p_endpoint: 'https://push.example/fresh',
+      p_p256dh: 'p1',
+      p_auth: 'a1',
+    });
+  });
+
+  it('REOPEN REPAIR: an existing local subscription is RE-persisted even though the browser already considers it subscribed — repairs a silently-failed prior upsert', async () => {
+    setPlatformOS('web');
+    stubBrowserGlobals({ permission: 'granted' });
+    const subscribe = jest.fn();
+    const getSubscription = jest.fn().mockResolvedValue({
+      toJSON: () => ({ endpoint: 'https://push.example/already-subscribed', keys: { p256dh: 'p2', auth: 'a2' } }),
+    });
+    const register = jest.fn().mockResolvedValue({ pushManager: { getSubscription, subscribe } });
+    setNavigatorServiceWorker({ register, ready: Promise.resolve() });
+    const rpc = jest.fn().mockResolvedValue({ error: null });
+    mockSupabase({ isSupabaseConfigured: true, rpc });
+    process.env = { ...ORIGINAL_ENV, EXPO_PUBLIC_VAPID_PUBLIC_KEY: VAPID_KEY };
+
+    const reconcile = requireReconcile();
+    await expect(reconcile()).resolves.toBe('subscribed');
+    // Never re-subscribes when a local subscription already exists —
+    // only re-persists it.
+    expect(subscribe).not.toHaveBeenCalled();
+    expect(rpc).toHaveBeenCalledWith('upsert_web_push_subscription', {
+      p_endpoint: 'https://push.example/already-subscribed',
+      p_p256dh: 'p2',
+      p_auth: 'a2',
+    });
+  });
+
+  it('EXPIRY/REPLACEMENT: permission granted but the browser no longer has a subscription (expired/invalidated) -> re-subscribes without needing a fresh user gesture', async () => {
+    setPlatformOS('web');
+    stubBrowserGlobals({ permission: 'granted' });
+    const subscribe = jest.fn().mockResolvedValue({
+      toJSON: () => ({ endpoint: 'https://push.example/replacement', keys: { p256dh: 'p3', auth: 'a3' } }),
+    });
+    const getSubscription = jest.fn().mockResolvedValue(null);
+    const register = jest.fn().mockResolvedValue({ pushManager: { getSubscription, subscribe } });
+    setNavigatorServiceWorker({ register, ready: Promise.resolve() });
+    const rpc = jest.fn().mockResolvedValue({ error: null });
+    mockSupabase({ isSupabaseConfigured: true, rpc });
+    process.env = { ...ORIGINAL_ENV, EXPO_PUBLIC_VAPID_PUBLIC_KEY: VAPID_KEY };
+
+    const reconcile = requireReconcile();
+    await expect(reconcile()).resolves.toBe('subscribed');
+    expect(subscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it('never throws when persistence fails — falls back to a plain status read instead', async () => {
+    setPlatformOS('web');
+    stubBrowserGlobals({ permission: 'granted' });
+    const getSubscription = jest.fn().mockResolvedValue({
+      toJSON: () => ({ endpoint: 'https://push.example/x', keys: { p256dh: 'p', auth: 'a' } }),
+    });
+    const registration = { pushManager: { getSubscription, subscribe: jest.fn() } };
+    const register = jest.fn().mockResolvedValue(registration);
+    // getWebPushStatus()'s own fallback read uses getRegistration(), a
+    // separate call from reconcile's own register() — both must agree on
+    // the same (still-local) subscription for the fallback to correctly
+    // report 'subscribed' rather than 'granted'.
+    const getRegistration = jest.fn().mockResolvedValue(registration);
+    setNavigatorServiceWorker({ register, getRegistration, ready: Promise.resolve() });
+    const rpc = jest.fn().mockResolvedValue({ error: new Error('network error') });
+    mockSupabase({ isSupabaseConfigured: true, rpc });
+    process.env = { ...ORIGINAL_ENV, EXPO_PUBLIC_VAPID_PUBLIC_KEY: VAPID_KEY };
+
+    const reconcile = requireReconcile();
+    await expect(reconcile()).resolves.toBe('subscribed');
+  });
+
+  it('is a no-op when Supabase is not configured (local/demo mode) — never throws', async () => {
+    setPlatformOS('web');
+    stubBrowserGlobals({ permission: 'granted' });
+    setNavigatorServiceWorker({ register: jest.fn() });
+    mockSupabase({ isSupabaseConfigured: false });
+
+    const reconcile = requireReconcile();
+    await expect(reconcile()).resolves.toBe('granted');
+  });
+});

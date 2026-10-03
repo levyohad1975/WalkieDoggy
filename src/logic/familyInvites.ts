@@ -133,41 +133,55 @@ export function createInviteButtonLabel(existingInvite: FamilyInviteListItem | n
 }
 
 // ----------------------------------------------------------------------------
-// Invite link (display/share only — Round 3 does not implement deep linking)
+// Invite link
 // ----------------------------------------------------------------------------
 
-/**
- * The design-approved opaque-token URL form (FAMILY_INVITE_DESIGN.md's "An
- * opaque token only" — `dogwalkfamily://invite/<opaque-token>`; no
- * family_id/target_user_id/names, ever — inspect_family_invite() is what
- * resolves display fields server-side after redemption-time validation).
- *
- * IMPORTANT — Round 3 scope: the `dogwalkfamily://` scheme is NOT
- * registered in app.json yet, and nothing in this app currently listens for
- * or opens it. This string is for DISPLAY/COPY/SHARE ONLY in this round —
- * tapping or scanning it does not open the app. The calling UI
- * (InviteShareModal) must make that explicit to the admin rather than
- * imply a working deep link exists yet (deep-link handling, app.json's
- * scheme, and QR scanning are all explicitly out of scope for Round 3).
- */
-export function buildInviteLinkText(rawToken: string): string {
-  return `dogwalkfamily://invite/${rawToken}`;
-}
-
-// ----------------------------------------------------------------------------
-// Round 4 — invited-user redemption: manual link/token entry
-// ----------------------------------------------------------------------------
-
-/** The exact prefix buildInviteLinkText() produces — recognized (and stripped) here so pasting either the full link or just the token works identically. */
+/** The exact prefix buildInviteLinkText() produced before the HTTPS redesign — still recognized (and stripped) by parseInviteInput() below so old links/shares already out in the wild, or a native build with no web origin, keep working. */
 const INVITE_LINK_PREFIX = 'dogwalkfamily://invite/';
 
+/** The query-param name a real HTTPS invite URL carries the opaque token under — e.g. `https://<domain>/?invite=<token>`. */
+const INVITE_LINK_QUERY_PARAM = 'invite';
+
 /**
- * Round 4 — parses whatever a person pastes into the "יש לי הזמנה" box on
- * FamilyOnboardingScreen: either the full `dogwalkfamily://invite/<token>`
- * link (as shown/shared by InviteShareModal, Round 3) or just the raw token
- * portion. Trims whitespace and strips the known link prefix if present;
- * returns null for empty input so the caller can disable the next step
- * rather than attempting an RPC with nothing to send.
+ * Family Lifecycle repair — the real, clickable invite link. An opaque
+ * token only (no family_id/target_user_id/names, ever — inspect_family_invite()
+ * is what resolves display fields server-side after redemption-time
+ * validation), carried as a query param at the site root so it needs no new
+ * Vercel SPA rewrite rule and no change to the PWA manifest's
+ * `start_url: "/"` scope/launch matching.
+ *
+ * `origin` is the caller's own `window.location.origin` (web only — this
+ * file stays framework-agnostic/no DOM access, so the caller resolves it).
+ * When `origin` is null (native, or web before `window` exists) this falls
+ * back to the legacy `dogwalkfamily://` form: still recognized by
+ * parseInviteInput() below, and explicitly allowed as an internal/
+ * backward-compatible fallback — just never the primary user-facing link.
+ */
+export function buildInviteLinkText(rawToken: string, origin?: string | null): string {
+  if (origin) {
+    return `${origin}/?${INVITE_LINK_QUERY_PARAM}=${encodeURIComponent(rawToken)}`;
+  }
+  return `${INVITE_LINK_PREFIX}${rawToken}`;
+}
+
+/** Strips trailing punctuation a human might have left attached while copying ("token." or "token)") — shared by every extraction path below. */
+function stripTrailingPunctuation(token: string): string {
+  return token.replace(/["'<>.,;:!?)}\]]+$/, '').trim();
+}
+
+/** The first whitespace-delimited word of `s` — people commonly paste an entire share message, not just the link/token. */
+function firstWord(s: string): string {
+  return s.trim().split(/[\s\n\r\t]/)[0] ?? '';
+}
+
+/**
+ * Parses whatever a person pastes into the "יש לי הזמנה" box on
+ * FamilyOnboardingScreen, or whatever a launch URL's query string carries:
+ * a real HTTPS invite link (`.../?invite=<token>`, anywhere in a larger
+ * pasted message too), the legacy `dogwalkfamily://invite/<token>` link, or
+ * just the raw token portion. Trims whitespace; returns null for empty
+ * input so the caller can disable the next step rather than attempting an
+ * RPC with nothing to send.
  *
  * Deliberately does NOT validate the token's shape/length beyond
  * non-emptiness — inspect_family_invite() (0008) is the actual authority on
@@ -181,10 +195,34 @@ const INVITE_LINK_PREFIX = 'dogwalkfamily://invite/';
 export function parseInviteInput(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
-  if (trimmed.startsWith(INVITE_LINK_PREFIX)) {
-    const token = trimmed.slice(INVITE_LINK_PREFIX.length).trim();
+
+  // Legacy scheme first (unchanged behavior/regression protection — people
+  // may still have an old share message, or a native build with no web
+  // origin may still emit this form).
+  const prefixIndex = trimmed.indexOf(INVITE_LINK_PREFIX);
+  if (prefixIndex >= 0) {
+    const afterPrefix = trimmed.slice(prefixIndex + INVITE_LINK_PREFIX.length);
+    const token = stripTrailingPunctuation(firstWord(afterPrefix));
     return token || null;
   }
+
+  // The new HTTPS form — recognized anywhere in a larger pasted message
+  // (a full share, or a bare "invite=<token>" fragment) just like the
+  // legacy scheme above, not only as a complete standalone URL.
+  const queryMatch = trimmed.match(/[?&]invite=([^&\s"'<>]+)/);
+  if (queryMatch) {
+    let token = queryMatch[1];
+    try {
+      token = decodeURIComponent(token);
+    } catch {
+      // Malformed percent-encoding — fall back to the raw captured text
+      // rather than throwing; inspect_family_invite() will simply reject
+      // whatever this turns out to be.
+    }
+    token = stripTrailingPunctuation(token);
+    return token || null;
+  }
+
   return trimmed;
 }
 

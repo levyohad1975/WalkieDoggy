@@ -3,7 +3,8 @@ import { AccessibilityInfo, Modal, Pressable, StyleSheet, View } from 'react-nat
 import { colors } from '../theme/colors';
 import { radii, spacing } from '../theme/tokens';
 import { RtlText } from './RtlText';
-import { MascotFrameAnimation } from './MascotFrameAnimation';
+import { WalkieMascot } from './WalkieMascot';
+import { MascotSafeZone } from './MascotSafeZone';
 
 interface ReminderMascotPromptProps {
   visible: boolean;
@@ -12,41 +13,53 @@ interface ReminderMascotPromptProps {
 }
 
 /** A notification-open prompt, intentionally distinct from completion gratitude. */
+const FALLBACK_MASCOT = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
+
 export function ReminderMascotPrompt({ visible, message, onDismiss }: ReminderMascotPromptProps) {
   // Fail-safe default true, same convention as WalkieMascot/MascotFrameAnimation/
   // WalkCompletionCelebration: static until the OS setting is confirmed off.
   const [reducedMotion, setReducedMotion] = useState(true);
+  // Fail-safe default false — see WalkCompletionCelebration's identical
+  // state for why (never a permanently-stuck modal if detection is slow).
+  const [screenReaderEnabled, setScreenReaderEnabled] = useState(false);
 
   useEffect(() => {
     let mounted = true;
     AccessibilityInfo.isReduceMotionEnabled().then((enabled) => mounted && setReducedMotion(!!enabled)).catch(() => mounted && setReducedMotion(false));
     const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReducedMotion);
-    return () => { mounted = false; subscription?.remove?.(); };
+    AccessibilityInfo.isScreenReaderEnabled().then((enabled) => mounted && setScreenReaderEnabled(!!enabled)).catch(() => {});
+    const srSubscription = AccessibilityInfo.addEventListener('screenReaderChanged', setScreenReaderEnabled);
+    return () => { mounted = false; subscription?.remove?.(); srSubscription?.remove?.(); };
   }, []);
 
   useEffect(() => {
     if (!visible) return;
+    // Same reasoning as WalkCompletionCelebration: never auto-dismiss a
+    // dynamic Hebrew reminder sentence out from under VoiceOver/TalkBack —
+    // the backdrop tap stays available as the explicit dismiss.
+    if (screenReaderEnabled) return;
     const timer = setTimeout(onDismiss, 3200);
     return () => clearTimeout(timer);
-  }, [visible, onDismiss]);
-  const fallback = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
+  }, [visible, onDismiss, screenReaderEnabled]);
   return (
     <Modal visible={visible} transparent animationType={reducedMotion ? 'none' : 'fade'} onRequestClose={onDismiss} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תזכורת הקמע של Walkie Doggy Link">
-        <View style={styles.moment} accessibilityRole="alert">
-          <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
-          <View style={styles.tail} />
-          <MascotFrameAnimation frames={[]} fallback={fallback} fps={10} size={190} accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול" />
-        </View>
+        <MascotSafeZone from="right" testID="reminder-mascot-safe-zone">
+          <View style={styles.moment} accessibilityRole="alert" accessibilityLiveRegion="polite">
+            <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
+            <View style={styles.tail} />
+            <WalkieMascot state="ready" size={154} accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול" testID="reminder-mascot-animation" />
+          </View>
+        </MascotSafeZone>
       </Pressable>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(11, 39, 48, 0.28)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  backdrop: { flex: 1, backgroundColor: 'transparent' },
   moment: { alignItems: 'center', maxWidth: 340 },
-  bubble: { backgroundColor: colors.surface, borderRadius: radii.xl, paddingHorizontal: 18, paddingVertical: spacing.md },
+  bubble: { backgroundColor: colors.surface, borderRadius: radii.xl, paddingHorizontal: 18, paddingVertical: spacing.md, marginBottom: -6, zIndex: 2 },
   message: { color: colors.textPrimary, fontSize: 19, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
-  tail: { width: 18, height: 18, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }, { translateY: -9 }], marginBottom: -10 },
+  tail: { width: 18, height: 18, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }], marginTop: -9, marginBottom: -3, zIndex: 1 },
 });

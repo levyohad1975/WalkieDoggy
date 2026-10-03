@@ -4,9 +4,11 @@ import { colors } from '../theme/colors';
 import { motion, radii, spacing } from '../theme/tokens';
 import type { CompletionCelebration } from '../logic/walkCompletionCelebration';
 import { RtlText } from './RtlText';
-import { resolveCelebrationAsset } from './celebrationAssets';
-import { MascotFrameAnimation } from './MascotFrameAnimation';
-import { animationManifestFor } from '../mascot/celebrationAnimationManifest';
+import { MascotSpriteAnimation } from './MascotFrameAnimation';
+import { curatedSpriteForCelebration } from '../mascot/celebrationAnimationManifest';
+import { MascotSafeZone } from './MascotSafeZone';
+
+const COMPLETION_MASCOT = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
 
 interface WalkCompletionCelebrationProps {
   celebration: CompletionCelebration | null;
@@ -16,14 +18,27 @@ interface WalkCompletionCelebrationProps {
 /** A local, non-blocking post-completion moment. It has no persistence or sync role. */
 export function WalkCompletionCelebration({ celebration, onDismiss }: WalkCompletionCelebrationProps) {
   const [reducedMotion, setReducedMotion] = useState(true);
+  const [screenReaderEnabled, setScreenReaderEnabled] = useState(false);
+  const autoDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Fail-safe default false: until confirmed on, behave as before (a
+  // screen reader user who somehow isn't detected in time still gets the
+  // explicit dismiss button/backdrop, never a permanently-stuck modal).
+  const dismissRef = useRef(onDismiss);
+
+  useEffect(() => {
+    dismissRef.current = onDismiss;
+  }, [onDismiss]);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(18)).current;
+  const mascotBounce = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     let mounted = true;
     AccessibilityInfo.isReduceMotionEnabled().then((enabled) => mounted && setReducedMotion(!!enabled)).catch(() => mounted && setReducedMotion(false));
     const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReducedMotion);
-    return () => { mounted = false; subscription?.remove?.(); };
+    AccessibilityInfo.isScreenReaderEnabled().then((enabled) => mounted && setScreenReaderEnabled(!!enabled)).catch(() => {});
+    const srSubscription = AccessibilityInfo.addEventListener('screenReaderChanged', setScreenReaderEnabled);
+    return () => { mounted = false; subscription?.remove?.(); srSubscription?.remove?.(); };
   }, []);
 
   useEffect(() => {
@@ -36,36 +51,71 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
         Animated.spring(translateY, { toValue: 0, damping: 16, stiffness: 180, mass: 0.8, useNativeDriver: true }),
       ]).start();
     }
-    const timer = setTimeout(onDismiss, 3600);
-    return () => clearTimeout(timer);
-  }, [celebration, onDismiss, opacity, reducedMotion, translateY]);
+    mascotBounce.setValue(0);
+    let mascotAnimation: Animated.CompositeAnimation | undefined;
+    if (!reducedMotion) {
+      mascotAnimation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(mascotBounce, { toValue: -8, duration: 260, useNativeDriver: true }),
+          Animated.timing(mascotBounce, { toValue: 0, duration: 260, useNativeDriver: true }),
+          Animated.delay(180),
+        ]),
+        { iterations: 2 },
+      );
+      mascotAnimation.start();
+    }
+    // Auto-dismiss is keyed to the celebration id rather than object identity,
+    // so harmless parent re-renders cannot restart the timer indefinitely.
+    if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
+    autoDismissTimerRef.current = setTimeout(() => dismissRef.current(), screenReaderEnabled ? 5000 : 2200);
+    return () => mascotAnimation?.stop();
+  }, [celebration?.id, mascotBounce, opacity, reducedMotion, screenReaderEnabled, translateY]);
+
+  useEffect(() => () => {
+    if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
+  }, []);
 
   if (!celebration) return null;
-  const asset = resolveCelebrationAsset(celebration.asset);
-  const manifest = animationManifestFor(celebration);
   const message = celebration.title;
+  const sprite = curatedSpriteForCelebration(celebration.id);
   return (
     <Modal visible transparent animationType="none" onRequestClose={onDismiss} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תגובת הקמע של Walkie Doggy Link">
-        <Animated.View style={[styles.moment, { opacity, transform: [{ translateY }] }]} accessibilityRole="alert">
-          <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
-          <View style={styles.tail} />
-          <MascotFrameAnimation frames={asset.frames} fallback={asset.fallbackSource} fps={manifest?.fps ?? 12} size={220} accessibilityLabel="הקמע של Walkie Doggy Link מגיב לסיום הטיול" testID="completion-mascot-animation" />
-          {celebration.confetti ? <RtlText style={styles.confetti} accessible={false}>✦  ✦  ✦</RtlText> : null}
-          <Pressable onPress={onDismiss} style={styles.dismissButton} accessibilityRole="button" accessibilityLabel="המשך לאפליקציה"><RtlText style={styles.dismissText}>המשך</RtlText></Pressable>
-        </Animated.View>
+        <MascotSafeZone from="left" testID="completion-mascot-safe-zone">
+          <Animated.View style={[styles.moment, { opacity, transform: [{ translateY }] }]} accessibilityRole="alert" accessibilityLiveRegion="polite">
+            <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
+            <View style={styles.tail} />
+            <Animated.View style={{ transform: [{ translateY: mascotBounce }, { scale: opacity.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }] }}>
+              {sprite ? (
+                <MascotSpriteAnimation
+                  source={sprite.source}
+                  columns={sprite.columns}
+                  rows={sprite.rows}
+                  frameSize={sprite.frameSize}
+                  frameCount={sprite.frameCount}
+                  fps={sprite.fps}
+                  size={104}
+                  fallback={COMPLETION_MASCOT}
+                  accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול"
+                  testID="completion-mascot-animation"
+                />
+              ) : null}
+            </Animated.View>
+            {celebration.confetti ? <RtlText style={styles.confetti} accessible={false}>✦  ✦  ✦</RtlText> : null}
+          </Animated.View>
+        </MascotSafeZone>
       </Pressable>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(11, 39, 48, 0.34)', alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
-  moment: { width: '100%', maxWidth: 420, alignItems: 'center' },
-  bubble: { maxWidth: 285, backgroundColor: colors.surface, borderRadius: radii.xl, paddingHorizontal: spacing.xl, paddingVertical: 13, shadowColor: '#0B5C75', shadowOpacity: 0.16, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 6 },
-  message: { color: colors.textPrimary, fontSize: 20, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
-  tail: { width: 20, height: 20, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }, { translateY: -10 }], marginBottom: -12 },
-  confetti: { position: 'absolute', top: 85, color: colors.primary, fontSize: 24, letterSpacing: 10 },
+  backdrop: { flex: 1, backgroundColor: 'transparent' },
+  moment: { width: 132, alignItems: 'center' },
+  bubble: { maxWidth: 132, backgroundColor: colors.surface, borderRadius: radii.lg, paddingHorizontal: 10, paddingVertical: 7, shadowColor: '#0B5C75', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
+  message: { color: colors.textPrimary, fontSize: 13, lineHeight: 17, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
+  tail: { width: 14, height: 14, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }], marginTop: -7, marginBottom: -3 },
+  confetti: { position: 'absolute', top: 64, color: colors.primary, fontSize: 24, letterSpacing: 10 },
   dismissButton: { minHeight: 44, paddingHorizontal: 18, justifyContent: 'center', marginTop: -6 },
   dismissText: { color: colors.textInverse, fontWeight: '700', fontSize: 14 },
 });

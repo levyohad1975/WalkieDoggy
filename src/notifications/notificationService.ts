@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import type { Dog, NotificationSetting, Walk } from '../types';
 import { planWalkNotifications, shouldSendNotification } from '../logic/reminders';
-import { dogNoun, wentOutForm } from '../logic/reminderMessages';
+import { REMINDER_STAGES, buildWalkReminderMessage, type ReminderStage } from '../logic/reminderMessages';
 import { mapExecutionEnvironment } from '../lib/expoRuntime';
 // TYPE-ONLY import — fully erased at compile time (both tsc and babel strip
 // `import type`), so this does NOT reintroduce the module-scope
@@ -111,7 +111,12 @@ async function detectCapability(): Promise<NotificationCapability> {
  * can't be loaded (e.g. this test sandbox, or a bare RN environment with no
  * native modules at all) so callers can no-op instead of throwing.
  */
-async function getNotifications(): Promise<typeof ExpoNotifications | null> {
+// Exported (Phase 3, Health & Grooming): healthReminderService.ts reuses
+// this exact lazy-load + Expo-Go-crash-avoidance guard rather than
+// reimplementing it — see this function's own doc comment for why that
+// guard is safety-critical (P0 Android Expo Go crash) and must not be
+// duplicated with a second, possibly-drifting copy.
+export async function getNotifications(): Promise<typeof ExpoNotifications | null> {
   const capability = await detectCapability();
   if (capability === 'unavailable') return null;
 
@@ -179,7 +184,7 @@ export async function subscribeToWalkReminderResponses(): Promise<() => void> {
  * delivery/behavior (heads-up, sound, a dedicated entry in the system
  * notification settings) rather than falling back to an implicit/default
  * channel. There is exactly one notification "kind" of urgency in this app
- * (walk reminders — both pre_walk_reminder and overdue_reminder share the
+ * (walk reminders — all four PRD §8 stages, T-15/T/T+15/T+30, share the
  * same importance), so a single dedicated channel is used rather than one
  * per kind. iOS has no channel concept, so ensureAndroidNotificationChannel()
  * is a no-op there — see below.
@@ -207,13 +212,16 @@ export async function ensureAndroidNotificationChannel(): Promise<void> {
 
 /**
  * The full set of notification "kinds" a walk can ever have scheduled — see
- * src/logic/reminders.ts's planWalkNotifications(). Kept as an explicit list
- * (rather than derived at runtime) so cancelWalkNotifications() can always
- * compute the deterministic identifiers to cancel even for a walk it has no
- * other information about (e.g. one that no longer exists locally).
+ * src/logic/reminders.ts's planWalkNotifications(). Sourced directly from
+ * REMINDER_STAGES (reminderMessages.ts) — the same single source of truth
+ * the server-side scheduler's fixed 4-stage list (migration 0025) already
+ * uses — rather than a second, independently-maintained literal list, so
+ * cancelWalkNotifications() can always compute the deterministic
+ * identifiers to cancel even for a walk it has no other information about
+ * (e.g. one that no longer exists locally).
  */
-const NOTIFICATION_KINDS = ['pre_walk_reminder', 'overdue_reminder'] as const;
-type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
+const NOTIFICATION_KINDS = REMINDER_STAGES;
+type NotificationKind = ReminderStage;
 
 /**
  * STABLE, DETERMINISTIC notification id for a given walk occurrence + kind —
@@ -272,6 +280,29 @@ export async function requestNotificationPermissions(): Promise<boolean> {
   return requested.granted;
 }
 
+export type NativeNotificationPermissionStatus = 'granted' | 'denied' | 'undetermined' | 'unavailable';
+
+/**
+ * PRD §25's "notifications disabled" state, native (iOS/Android) side —
+ * RemindersModal.tsx previously only ever surfaced permission status for
+ * Web (Web Push denied/unsupported messaging); a native device with OS
+ * notification permission denied had nothing telling the person why local
+ * reminders never fire. Read-only: unlike requestNotificationPermissions()
+ * above, this NEVER calls requestPermissionsAsync() — checking status must
+ * never itself trigger an OS prompt (which, once denied, doesn't re-show
+ * anyway, but the point is this is purely a status read, not a request).
+ * 'undetermined' means the person has never been asked — a caller should
+ * offer requestNotificationPermissions() rather than a "go to Settings"
+ * link, since the OS can still prompt them directly at that point.
+ */
+export async function getNativeNotificationPermissionStatus(): Promise<NativeNotificationPermissionStatus> {
+  const Notifications = await getNotifications();
+  if (!Notifications) return 'unavailable';
+  const current = await Notifications.getPermissionsAsync();
+  if (current.granted) return 'granted';
+  return current.canAskAgain ? 'undetermined' : 'denied';
+}
+
 /**
  * Schedules (or reschedules) the pre-walk + overdue reminders for one walk,
  * per src/logic/reminders.ts. Call this whenever a walk is created, its
@@ -318,17 +349,20 @@ export async function scheduleWalkNotifications(
     const fireDate = new Date(item.fireAt);
     if (fireDate.getTime() <= Date.now()) continue; // don't schedule reminders in the past
 
-    const title = item.kind === 'pre_walk_reminder' ? `🐶 עוד ${setting.minutesBefore} דקות לטיול` : `⏰ הטיול עדיין לא סומן כבוצע`;
-    // Reuse the same dog-sex grammar helpers as the server-side scheduler
-    // (reminderMessages.ts) and the mascot message engine, rather than
-    // hard-coding gender-neutral text — see Dog['sex']'s own doc comment.
-    const wentOut = wentOutForm(dogSex);
-    const body =
-      item.kind === 'pre_walk_reminder'
-        ? `${responsibleName} אחראי/ת על הטיול של ${dogNoun(dogName, dogSex)} בשעה ${walk.scheduledTime}`
-        : wentOut
-          ? `${dogNoun(dogName, dogSex)} עדיין לא ${wentOut} לטיול בשעה ${walk.scheduledTime}. אפשר לסמן כבוצע באפליקציה.`
-          : `הטיול של ${dogName} בשעה ${walk.scheduledTime} עדיין ממתין. אפשר לסמן כבוצע באפליקציה.`;
+    // Same message generator as the authoritative server-side scheduler
+    // (reminderMessages.ts / supabase/functions/send-walk-reminders) — one
+    // canonical set of stage copy for all four T-15/T/T+15/T+30 points,
+    // whichever delivery path (server push or this local fallback) ends up
+    // actually sending it. varietySeed is the walk id, matching the
+    // server's own convention (see buildWalkReminderMessage's doc comment).
+    const { title, body } = buildWalkReminderMessage({
+      stage: item.kind,
+      dogName,
+      dogSex,
+      responsibleName,
+      scheduledTime: walk.scheduledTime,
+      varietySeed: walk.id,
+    });
 
     await Notifications.scheduleNotificationAsync({
       identifier: notificationIdentifier(walk.id, item.kind as NotificationKind),
@@ -460,13 +494,21 @@ async function cancelOrphanedWalkNotifications(currentWalkIds: Set<string>): Pro
  * In Expo Go every underlying call above is already a no-op, so this whole
  * pass degrades to "does nothing, returns normally" — safe to call
  * unconditionally from every call site without an Expo-Go check at each one.
+ *
+ * `getDog` resolves EACH walk's own dog by its `dogId` — PRD §11's
+ * multi-dog requirement means a batch of walks passed here can belong to
+ * more than one of the family's dogs, so a single fixed dogName/dogSex
+ * (this function's pre-multi-dog-fix signature) would silently mislabel
+ * every walk whose dog isn't whichever one the caller happened to pass. A
+ * walk whose dog can't be resolved is treated exactly like a missing
+ * setting/username above — cancelled rather than scheduled with a guessed
+ * or wrong dog identity.
  */
 export async function reconcileWalkNotifications(
   walks: Walk[],
   getSetting: (userId: string) => Promise<NotificationSetting | undefined>,
   getUserName: (userId: string) => string | undefined,
-  dogName: string,
-  dogSex?: Dog['sex'] | null
+  getDog: (dogId: string) => { name: string; sex?: Dog['sex'] | null } | undefined
 ): Promise<void> {
   for (const walk of walks) {
     if (walk.status !== 'pending') {
@@ -475,11 +517,12 @@ export async function reconcileWalkNotifications(
     }
     const setting = await getSetting(walk.responsibleUserId);
     const userName = getUserName(walk.responsibleUserId);
-    if (!setting || !setting.enabled || !userName) {
+    const dog = getDog(walk.dogId);
+    if (!setting || !setting.enabled || !userName || !dog) {
       await cancelWalkNotifications(walk.id);
       continue;
     }
-    await scheduleWalkNotifications(walk, setting, userName, dogName, dogSex);
+    await scheduleWalkNotifications(walk, setting, userName, dog.name, dog.sex);
   }
 
   await cancelOrphanedWalkNotifications(new Set(walks.map((w) => w.id)));

@@ -1,12 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
+  AchievementUnlock,
   Dog,
   Family,
   FamilyUser,
+  HealthTask,
   NotificationSetting,
   ScheduleEntry,
   ScheduleRule,
   Walk,
+  WalkGpsSession,
 } from '../types';
 import { defaultNotificationSetting } from '../logic/reminders';
 import type { DeleteFamilyMemberPayload, Repository } from './repository';
@@ -22,6 +25,7 @@ function toUser(row: any): FamilyUser {
     photoUrl: row.photo_url ?? undefined,
     color: row.color,
     remindersEnabled: row.reminders_enabled,
+    gamificationEnabled: row.gamification_enabled,
     createdAt: row.created_at,
     removedAt: row.removed_at ?? undefined,
   };
@@ -51,6 +55,8 @@ function toDog(row: any): Dog {
     familyId: row.family_id,
     name: row.name,
     photoUrl: row.photo_url ?? undefined,
+    photoCutoutUrl: row.photo_cutout_url ?? undefined,
+    heroBackgroundId: row.hero_background_id ?? undefined,
     walksPerDay: row.walks_per_day,
     notes: row.notes ?? undefined,
     sex: row.sex ?? undefined,
@@ -186,12 +192,113 @@ function fromEntry(entry: ScheduleEntry) {
   };
 }
 
+function toHealthTask(row: any): HealthTask {
+  return {
+    id: row.id,
+    familyId: row.family_id,
+    dogId: row.dog_id,
+    category: row.category,
+    title: row.title,
+    notes: row.notes ?? undefined,
+    weightKg: row.weight_kg ?? undefined,
+    recurrenceIntervalDays: row.recurrence_interval_days ?? undefined,
+    dueDate: row.due_date ?? undefined,
+    completedAt: row.completed_at ?? undefined,
+    completedByUserId: row.completed_by_user_id ?? undefined,
+    responsibleUserId: row.responsible_user_id ?? undefined,
+    createdByUserId: row.created_by_user_id ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function fromHealthTask(task: HealthTask) {
+  return {
+    id: task.id,
+    family_id: task.familyId,
+    dog_id: task.dogId,
+    category: task.category,
+    title: task.title,
+    notes: task.notes ?? null,
+    weight_kg: task.weightKg ?? null,
+    recurrence_interval_days: task.recurrenceIntervalDays ?? null,
+    due_date: task.dueDate ?? null,
+    completed_at: task.completedAt ?? null,
+    completed_by_user_id: task.completedByUserId ?? null,
+    responsible_user_id: task.responsibleUserId ?? null,
+    created_by_user_id: task.createdByUserId ?? null,
+  };
+}
+
+function toGpsSession(row: any): WalkGpsSession {
+  return {
+    id: row.id,
+    walkId: row.walk_id,
+    familyId: row.family_id,
+    dogId: row.dog_id,
+    distanceMeters: row.distance_meters ?? undefined,
+    pointCount: row.point_count,
+    routePoints: Array.isArray(row.route_points) ? row.route_points : undefined,
+    correctedDistanceMeters: row.corrected_distance_meters ?? undefined,
+    correctedByUserId: row.corrected_by_user_id ?? undefined,
+    startedAt: row.started_at ?? undefined,
+    endedAt: row.ended_at ?? undefined,
+    source: row.source,
+    createdByUserId: row.created_by_user_id ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function fromGpsSession(session: WalkGpsSession) {
+  return {
+    id: session.id,
+    walk_id: session.walkId,
+    family_id: session.familyId,
+    dog_id: session.dogId,
+    distance_meters: session.distanceMeters ?? null,
+    point_count: session.pointCount,
+    route_points: session.routePoints ?? null,
+    corrected_distance_meters: session.correctedDistanceMeters ?? null,
+    corrected_by_user_id: session.correctedByUserId ?? null,
+    started_at: session.startedAt ?? null,
+    ended_at: session.endedAt ?? null,
+    source: session.source,
+    created_by_user_id: session.createdByUserId ?? null,
+  };
+}
+
+function toAchievementUnlock(row: any): AchievementUnlock {
+  return {
+    id: row.id,
+    familyId: row.family_id,
+    achievementKey: row.achievement_key,
+    scope: row.scope,
+    userId: row.user_id ?? undefined,
+    unlockedAt: row.unlocked_at,
+    createdAt: row.created_at,
+  };
+}
+
+function fromAchievementUnlock(unlock: AchievementUnlock) {
+  return {
+    id: unlock.id,
+    family_id: unlock.familyId,
+    achievement_key: unlock.achievementKey,
+    scope: unlock.scope,
+    user_id: unlock.userId ?? null,
+    unlocked_at: unlock.unlockedAt,
+  };
+}
+
 function fromDog(dog: Dog) {
   return {
     id: dog.id,
     family_id: dog.familyId,
     name: dog.name,
     photo_url: dog.photoUrl ?? null,
+    photo_cutout_url: dog.photoCutoutUrl ?? null,
+    hero_background_id: dog.heroBackgroundId ?? null,
     walks_per_day: dog.walksPerDay,
     notes: dog.notes ?? null,
     sex: dog.sex ?? null,
@@ -322,14 +429,96 @@ export class SupabaseRepository implements Repository {
     if (error) throw error;
   }
 
+  async updateUserGamificationSetting(userId: string, enabled: boolean): Promise<void> {
+    const { error } = await this.client.from('users').update({ gamification_enabled: enabled }).eq('id', userId);
+    if (error) throw error;
+  }
+
   async getDog(familyId: string): Promise<Dog | undefined> {
     const { data, error } = await this.client.from('dogs').select('*').eq('family_id', familyId).maybeSingle();
     if (error) throw error;
     return data ? toDog(data) : undefined;
   }
 
+  async getDogs(familyId: string): Promise<Dog[]> {
+    const { data, error } = await this.client.from('dogs').select('*').eq('family_id', familyId);
+    if (error) throw error;
+    return (data ?? []).map(toDog);
+  }
+
   async upsertDog(dog: Dog): Promise<void> {
-    const { error } = await this.client.from('dogs').upsert(fromDog(dog));
+    // Existing dog profile edits (including the shared Home background) are
+    // UPDATEs, not INSERTs. Using UPSERT here made every edit also require
+    // the table's INSERT policy; on staging that can reject an otherwise
+    // valid admin edit, leaving OfflineFirstRepository to queue it while a
+    // subsequent online reload fetches the old background again.
+    const row = fromDog(dog);
+    const { data, error: updateError } = await this.client
+      .from('dogs')
+      .update(row)
+      .eq('id', dog.id)
+      .select('id');
+    if (updateError) throw updateError;
+    if ((data ?? []).length > 0) return;
+
+    // No existing row: this is genuinely a newly-added dog.
+    const { error: insertError } = await this.client.from('dogs').insert(row);
+    if (insertError) throw insertError;
+  }
+
+  async getHealthTasks(dogId: string): Promise<HealthTask[]> {
+    const { data, error } = await this.client.from('health_tasks').select('*').eq('dog_id', dogId);
+    if (error) throw error;
+    return (data ?? []).map(toHealthTask);
+  }
+
+  async upsertHealthTask(task: HealthTask): Promise<void> {
+    const { error } = await this.client.from('health_tasks').upsert(fromHealthTask(task));
+    if (error) throw error;
+  }
+
+  async deleteHealthTask(taskId: string): Promise<void> {
+    const { data, error } = await this.client.from('health_tasks').delete().eq('id', taskId).is('completed_at', null).select('id');
+    if (error) throw error;
+    if ((data ?? []).length !== 1) throw new Error('Open health task was not deleted or is no longer authorized');
+  }
+
+  async getGpsSession(walkId: string): Promise<WalkGpsSession | undefined> {
+    const { data, error } = await this.client.from('walk_gps_sessions').select('*').eq('walk_id', walkId).maybeSingle();
+    if (error) throw error;
+    return data ? toGpsSession(data) : undefined;
+  }
+
+  async upsertGpsSession(session: WalkGpsSession): Promise<void> {
+    // Conflict target is walk_id (its own unique constraint, 0051), not the
+    // primary key `id` — a re-save (e.g. recording a correction after the
+    // initial device-computed reading) must update the SAME row for this
+    // walk rather than erroring on walk_id's uniqueness with a fresh id.
+    const { error } = await this.client.from('walk_gps_sessions').upsert(fromGpsSession(session), { onConflict: 'walk_id' });
+    if (error) throw error;
+  }
+
+  async getGpsSessionsForWalkIds(walkIds: string[]): Promise<WalkGpsSession[]> {
+    if (walkIds.length === 0) return [];
+    const { data, error } = await this.client.from('walk_gps_sessions').select('*').in('walk_id', walkIds);
+    if (error) throw error;
+    return (data ?? []).map(toGpsSession);
+  }
+
+  async getAchievementUnlocks(familyId: string): Promise<AchievementUnlock[]> {
+    const { data, error } = await this.client.from('achievement_unlocks').select('*').eq('family_id', familyId);
+    if (error) throw error;
+    return (data ?? []).map(toAchievementUnlock);
+  }
+
+  async upsertAchievementUnlock(unlock: AchievementUnlock): Promise<void> {
+    // Conflict target is (family_id, dedupe_key) — 0052's generated column +
+    // unique constraint — so a duplicate unlock attempt (two devices
+    // crossing the same threshold, or a retried write) is silently a no-op
+    // rather than a constraint-violation error.
+    const { error } = await this.client
+      .from('achievement_unlocks')
+      .upsert(fromAchievementUnlock(unlock), { onConflict: 'family_id,dedupe_key', ignoreDuplicates: true });
     if (error) throw error;
   }
 
@@ -340,13 +529,29 @@ export class SupabaseRepository implements Repository {
   }
 
   async upsertScheduleRule(rule: ScheduleRule): Promise<void> {
-    const { error } = await this.client.from('schedule_rules').upsert(fromRule(rule));
-    if (error) throw error;
+    // Editing an existing rule must only require UPDATE permission. UPSERT
+    // also exercises INSERT policy and could therefore make a valid edit
+    // appear saved locally, then disappear after the next server reload.
+    const row = fromRule(rule);
+    const { data, error: updateError } = await this.client
+      .from('schedule_rules')
+      .update(row)
+      .eq('id', rule.id)
+      .select('id');
+    if (updateError) throw updateError;
+    if ((data ?? []).length > 0) return;
+
+    const { error: insertError } = await this.client.from('schedule_rules').insert(row);
+    if (insertError) throw insertError;
   }
 
   async deleteScheduleRule(ruleId: string): Promise<void> {
-    const { error } = await this.client.from('schedule_rules').delete().eq('id', ruleId);
+    // Supabase DELETE with RLS can resolve without an error while deleting
+    // zero rows.  Select the id back and require exactly one deletion so the
+    // caller never presents a rejected schedule deletion as successful.
+    const { data, error } = await this.client.from('schedule_rules').delete().eq('id', ruleId).select('id');
     if (error) throw error;
+    if ((data ?? []).length !== 1) throw new Error('Schedule rule was not deleted or is no longer authorized');
   }
 
   async getScheduleEntries(familyId: string): Promise<ScheduleEntry[]> {
@@ -357,11 +562,38 @@ export class SupabaseRepository implements Repository {
 
   async addScheduleEntries(entries: ScheduleEntry[]): Promise<void> {
     if (entries.length === 0) return;
-    const { error } = await this.client.from('schedule_entries').upsert(entries.map(fromEntry), {
+    const rows = entries.map(fromEntry);
+    const { error } = await this.client.from('schedule_entries').upsert(rows, {
       onConflict: 'dog_id,date,time',
       ignoreDuplicates: true,
     });
     if (error) throw error;
+
+    // The unique key is (dog_id,date,time), so ignoreDuplicates can keep an
+    // already-existing canonical row whose id differs from the locally
+    // generated id. A dependent walk must reference that canonical server id,
+    // not the discarded generated id. Re-read the touched keys and copy the
+    // authoritative ids back into the caller's entry objects before
+    // scheduleStore creates child walks from them.
+    const dogIds = [...new Set(rows.map((row) => row.dog_id))];
+    const dates = [...new Set(rows.map((row) => row.date))];
+    const times = [...new Set(rows.map((row) => row.time))];
+    const { data: canonicalRows, error: readError } = await this.client
+      .from('schedule_entries')
+      .select('id,dog_id,date,time')
+      .in('dog_id', dogIds)
+      .in('date', dates)
+      .in('time', times);
+    if (readError) throw readError;
+
+    const canonicalByKey = new Map(
+      (canonicalRows ?? []).map((row) => [`${row.dog_id}|${row.date}|${row.time}`, row.id])
+    );
+    for (const entry of entries) {
+      const canonicalId = canonicalByKey.get(`${entry.dogId}|${entry.date}|${entry.time}`);
+      if (!canonicalId) throw new Error('Schedule entry was not persisted authoritatively');
+      entry.id = canonicalId;
+    }
   }
 
   async updateScheduleEntry(entry: ScheduleEntry): Promise<void> {
@@ -370,8 +602,11 @@ export class SupabaseRepository implements Repository {
   }
 
   async deleteScheduleEntry(entryId: string): Promise<void> {
-    const { error } = await this.client.from('schedule_entries').delete().eq('id', entryId);
+    // See deleteScheduleRule: a zero-row RLS delete is otherwise invisible
+    // to the caller and can be mistaken for an intentional removal.
+    const { data, error } = await this.client.from('schedule_entries').delete().eq('id', entryId).select('id');
     if (error) throw error;
+    if ((data ?? []).length !== 1) throw new Error('Schedule entry was not deleted or is no longer authorized');
   }
 
   async getWalks(familyId: string): Promise<Walk[]> {
@@ -427,6 +662,18 @@ export class SupabaseRepository implements Repository {
         .upsert(fromWalk(walk), { onConflict: 'id', ignoreDuplicates: true });
       if (insertError) throw insertError;
       return;
+    }
+    if (walk.scheduleEntryId) {
+      const { data: existing, error: lookupError } = await this.client
+        .from('walks')
+        .select('id, status')
+        .eq('schedule_entry_id', walk.scheduleEntryId)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
+      if (existing) {
+        walk.id = existing.id;
+        if (existing.status === 'done') return;
+      }
     }
     const { error } = await this.client.from('walks').upsert(fromWalk(walk));
     if (error) throw error;

@@ -1,16 +1,19 @@
 import NetInfo from '@react-native-community/netinfo';
 import type {
+  AchievementUnlock,
   Dog,
   Family,
   FamilyUser,
+  HealthTask,
   NotificationSetting,
   ScheduleEntry,
   ScheduleRule,
   Walk,
+  WalkGpsSession,
 } from '../types';
 import type { DeleteFamilyMemberPayload, Repository } from './repository';
 import { LocalRepository } from './localRepository';
-import { SyncQueue } from './syncQueue';
+import { isPermanentSyncError, SyncQueue } from './syncQueue';
 
 /**
  * The repository the app actually uses. Reads always come from the local
@@ -23,6 +26,8 @@ import { SyncQueue } from './syncQueue';
 export class OfflineFirstRepository implements Repository {
   private local = new LocalRepository();
   private queue = new SyncQueue();
+  /** Serializes writes for one member so an earlier edit cannot finish after a newer photo. */
+  private userWriteTails = new Map<string, Promise<void>>();
 
   // start_walk()/finish_walk() (0048) are server-authoritative,
   // authorization-checked RPCs (admin-or-responsible-member only) — the
@@ -47,15 +52,32 @@ export class OfflineFirstRepository implements Repository {
     if (this.remote) {
       this.startWalk = async (walkId: string): Promise<Walk> => {
         if (!(await this.isOnline())) {
-          throw new Error('startWalk requires an internet connection and cannot be queued offline');
+          throw new Error('אין חיבור לשרת. כדי להתחיל מעקב טיול יש להתחבר לאינטרנט.');
         }
-        const walk = await this.remote!.startWalk!(walkId);
-        await this.local.saveWalk(walk);
-        return walk;
+        try {
+          const walk = await this.remote!.startWalk!(walkId);
+          await this.local.saveWalk(walk);
+          return walk;
+        } catch (error) {
+          // Recover legacy/stale local IDs by resolving the canonical server
+          // occurrence through its schedule_entry_id, then retry exactly once.
+          if (!(error instanceof Error) || !/walk not found/i.test(error.message)) throw error;
+          const localWalks = await this.local.getWalks('');
+          const stale = localWalks.find((walk) => walk.id === walkId);
+          if (!stale?.scheduleEntryId) throw error;
+          const remoteWalks = await this.remote!.getWalks(stale.familyId);
+          const canonical = remoteWalks.find((walk) => walk.scheduleEntryId === stale.scheduleEntryId);
+          if (!canonical) throw error;
+          await this.local.deleteWalk(stale.id);
+          await this.local.saveWalk(canonical);
+          const walk = await this.remote!.startWalk!(canonical.id);
+          await this.local.saveWalk(walk);
+          return walk;
+        }
       };
       this.finishWalk = async (walkId, actualWalkerId, details) => {
         if (!(await this.isOnline())) {
-          throw new Error('finishWalk requires an internet connection and cannot be queued offline');
+          throw new Error('אין חיבור לשרת. כדי לסיים מעקב טיול יש להתחבר לאינטרנט.');
         }
         const walk = await this.remote!.finishWalk!(walkId, actualWalkerId, details);
         await this.local.saveWalk(walk);
@@ -97,6 +119,19 @@ export class OfflineFirstRepository implements Repository {
   /** See SyncQueue.getConflictForWalk's doc comment (A2 fix). */
   async getConflictForWalk(walkId: string) {
     return this.queue.getConflictForWalk(walkId);
+  }
+
+  /** See Repository.getSyncConflicts's doc comment (PRD §20). */
+  async getSyncConflicts() {
+    return this.queue.getConflicts();
+  }
+
+  async getQuarantinedSyncItems() {
+    return this.queue.getQuarantined();
+  }
+
+  async clearSyncConflicts(): Promise<void> {
+    await this.queue.clearConflicts();
   }
 
   async getFamily(familyId: string): Promise<Family | undefined> {
@@ -143,11 +178,30 @@ export class OfflineFirstRepository implements Repository {
       return;
     }
 
-    await this.local.upsertUser(user);
-    if (this.remote) {
-      await this.queue.enqueue({ type: 'createUser', payload: user });
-      await this.trySync();
+    if (!this.remote) {
+      await this.local.upsertUser(user);
+      return;
     }
+
+    // A new member is an admin-authorized server operation. Do not report
+    // success merely because a local optimistic row and queue item exist:
+    // SyncQueue deliberately records permanent RLS/constraint failures and
+    // returns, which used to make a rejected INSERT look successful until the
+    // next reload. Confirm the INSERT while online; queue only connectivity
+    // failures so the caller can roll back on real authorization/data errors.
+    if (await this.isOnline()) {
+      try {
+        await this.remote.createUser(user);
+        await this.local.upsertUser(user);
+        return;
+      } catch (error) {
+        if (isPermanentSyncError(error)) throw error;
+      }
+    }
+
+    await this.local.upsertUser(user);
+    await this.queue.enqueue({ type: 'createUser', payload: user });
+    await this.trySync();
   }
 
   /**
@@ -161,9 +215,42 @@ export class OfflineFirstRepository implements Repository {
    */
   async upsertUser(user: FamilyUser): Promise<void> {
     await this.local.upsertUser(user);
-    if (this.remote) {
+    if (!this.remote) return;
+
+    // A queued pre-photo profile edit can be actively flushing here. The
+    // direct write introduced for refresh safety used to race that older
+    // operation, allowing its late completion to restore a stale photo_url.
+    const previous = this.userWriteTails.get(user.id) ?? Promise.resolve();
+    const current = previous.catch(() => undefined).then(async () => {
+      if (await this.isOnline()) {
+        if (await this.queue.hasPendingUpsertUser(user.id)) {
+          await this.queue.flush(this.remote!);
+          // A retryable older edit may still be queued after flush(). It is
+          // superseded by this complete newer row and must not replay later.
+          await this.queue.discardPendingUpsertUser(user.id);
+        }
+        try {
+          await this.remote!.upsertUser(user);
+          return;
+        } catch (error) {
+          // A rejected RLS/business-rule write is not an offline write. If
+          // we enqueue it, the UI reports success while the later flush
+          // drops it as a conflict — exactly how a successfully uploaded
+          // member photo could disappear after refresh. Surface permanent
+          // server rejections to familyStore so it rolls back and informs
+          // the user; keep only genuinely transient failures offline-first.
+          if (isPermanentSyncError(error)) throw error;
+          // Preserve offline-first behaviour for connectivity/timeouts.
+        }
+      }
       await this.queue.enqueue({ type: 'upsertUser', payload: user });
       await this.trySync();
+    });
+    this.userWriteTails.set(user.id, current);
+    try {
+      await current;
+    } finally {
+      if (this.userWriteTails.get(user.id) === current) this.userWriteTails.delete(user.id);
     }
   }
 
@@ -245,6 +332,14 @@ export class OfflineFirstRepository implements Repository {
     }
   }
 
+  async updateUserGamificationSetting(userId: string, enabled: boolean): Promise<void> {
+    await this.local.updateUserGamificationSetting(userId, enabled);
+    if (this.remote) {
+      await this.queue.enqueue({ type: 'updateUserGamificationSetting', payload: { userId, enabled } });
+      await this.trySync();
+    }
+  }
+
   async getDog(familyId: string): Promise<Dog | undefined> {
     if (await this.isOnline()) {
       try {
@@ -256,21 +351,131 @@ export class OfflineFirstRepository implements Repository {
     return this.local.getDog(familyId);
   }
 
+  async getDogs(familyId: string): Promise<Dog[]> {
+    if (await this.isOnline()) {
+      try {
+        return await this.remote!.getDogs(familyId);
+      } catch {
+        /* fall through */
+      }
+    }
+    return this.local.getDogs(familyId);
+  }
+
   async upsertDog(dog: Dog): Promise<void> {
+    if (!this.remote) {
+      await this.local.upsertDog(dog);
+      return;
+    }
+
+    // Dog profile/background/photo changes must be confirmed by Staging
+    // before the local cache is mutated. Otherwise an RLS/server rejection
+    // looks successful until the next reload, which is exactly the failure
+    // mode users see as a background that "doesn't save" or a removed photo
+    // that immediately comes back.
+    if (!(await this.isOnline())) {
+      throw new Error('dog profile changes require an internet connection and cannot be queued offline');
+    }
+
+    await this.remote.upsertDog(dog);
     await this.local.upsertDog(dog);
+  }
+
+  async getHealthTasks(dogId: string): Promise<HealthTask[]> {
+    if (await this.isOnline()) {
+      try {
+        return await this.remote!.getHealthTasks(dogId);
+      } catch {
+        /* fall through */
+      }
+    }
+    return this.local.getHealthTasks(dogId);
+  }
+
+  async deleteHealthTask(taskId: string): Promise<void> {
+    if (!this.remote) return this.local.deleteHealthTask(taskId);
+    if (!(await this.isOnline())) throw new Error('health task deletion requires an internet connection');
+    await this.remote.deleteHealthTask(taskId);
+    await this.local.deleteHealthTask(taskId);
+  }
+
+  async upsertHealthTask(task: HealthTask): Promise<void> {
+    await this.local.upsertHealthTask(task);
     if (this.remote) {
-      // Make profile edits authoritative before another screen reloads the
-      // dog. Queue-only writes could let Home immediately fetch the older
-      // remote row and replace an optimistic photoUrl with a stale value.
       if (await this.isOnline()) {
         try {
-          await this.remote.upsertDog(dog);
+          await this.remote.upsertHealthTask(task);
           return;
         } catch {
           // Preserve offline-first behaviour: retry through the sync queue.
         }
       }
-      await this.queue.enqueue({ type: 'upsertDog', payload: dog });
+      await this.queue.enqueue({ type: 'upsertHealthTask', payload: task });
+      await this.trySync();
+    }
+  }
+
+  async getGpsSession(walkId: string): Promise<WalkGpsSession | undefined> {
+    if (await this.isOnline()) {
+      try {
+        return await this.remote!.getGpsSession(walkId);
+      } catch {
+        /* fall through */
+      }
+    }
+    return this.local.getGpsSession(walkId);
+  }
+
+  async upsertGpsSession(session: WalkGpsSession): Promise<void> {
+    await this.local.upsertGpsSession(session);
+    if (this.remote) {
+      if (await this.isOnline()) {
+        try {
+          await this.remote.upsertGpsSession(session);
+          return;
+        } catch {
+          // Preserve offline-first behaviour: retry through the sync queue.
+        }
+      }
+      await this.queue.enqueue({ type: 'upsertGpsSession', payload: session });
+      await this.trySync();
+    }
+  }
+
+  async getGpsSessionsForWalkIds(walkIds: string[]): Promise<WalkGpsSession[]> {
+    if (await this.isOnline()) {
+      try {
+        return await this.remote!.getGpsSessionsForWalkIds(walkIds);
+      } catch {
+        /* fall through */
+      }
+    }
+    return this.local.getGpsSessionsForWalkIds(walkIds);
+  }
+
+  async getAchievementUnlocks(familyId: string): Promise<AchievementUnlock[]> {
+    if (await this.isOnline()) {
+      try {
+        return await this.remote!.getAchievementUnlocks(familyId);
+      } catch {
+        /* fall through */
+      }
+    }
+    return this.local.getAchievementUnlocks(familyId);
+  }
+
+  async upsertAchievementUnlock(unlock: AchievementUnlock): Promise<void> {
+    await this.local.upsertAchievementUnlock(unlock);
+    if (this.remote) {
+      if (await this.isOnline()) {
+        try {
+          await this.remote.upsertAchievementUnlock(unlock);
+          return;
+        } catch {
+          // Preserve offline-first behaviour: retry through the sync queue.
+        }
+      }
+      await this.queue.enqueue({ type: 'upsertAchievementUnlock', payload: unlock });
       await this.trySync();
     }
   }
@@ -288,18 +493,54 @@ export class OfflineFirstRepository implements Repository {
 
   async upsertScheduleRule(rule: ScheduleRule): Promise<void> {
     await this.local.upsertScheduleRule(rule);
-    if (this.remote) {
-      await this.queue.enqueue({ type: 'upsertScheduleRule', payload: rule });
-      await this.trySync();
+    if (!this.remote) return;
+
+    // Schedule changes are a shared, user-visible setting. When the device
+    // is online, wait for Supabase to accept the write so an RLS/schema
+    // rejection is not presented as a successful edit until the next refresh.
+    if (await this.isOnline()) {
+      await this.remote.upsertScheduleRule(rule);
+      return;
     }
+
+    // Offline remains supported: persist locally and replay when a network
+    // connection returns. This path is deliberately reserved for a genuine
+    // offline state, not for an online server-side rejection.
+    await this.queue.enqueue({ type: 'upsertScheduleRule', payload: rule });
   }
 
   async deleteScheduleRule(ruleId: string): Promise<void> {
-    await this.local.deleteScheduleRule(ruleId);
-    if (this.remote) {
-      await this.queue.enqueue({ type: 'deleteScheduleRule', payload: { ruleId } });
-      await this.trySync();
+    if (!this.remote) {
+      await this.local.deleteScheduleRule(ruleId);
+      return;
     }
+
+    // A fixed walk time is shared schedule configuration, not a best-effort
+    // activity log.  Previously this mutation was always applied locally and
+    // then hidden in SyncQueue.  If Supabase/RLS rejected it, the app looked
+    // empty until the next remote load, which still found the active rule;
+    // scheduleStore's legitimate missing-entry backfill then generated every
+    // occurrence again.  When online, wait for the authoritative delete
+    // first so a refusal reaches the confirmation UI and the local cache is
+    // never allowed to claim that a schedule was removed when it was not.
+    if (await this.isOnline()) {
+      await this.remote.deleteScheduleRule(ruleId);
+      // Supabase is authoritative online. A local cache cleanup failure after
+      // the server has already confirmed the delete must not turn a successful
+      // user action into a false error modal; the next online read re-mirrors
+      // authoritative remote state anyway.
+      try {
+        await this.local.deleteScheduleRule(ruleId);
+      } catch {
+        // Best-effort cache cleanup only after confirmed remote success.
+      }
+      return;
+    }
+
+    // Genuine offline edits still retain the existing offline-first contract:
+    // local state is updated and replayed in the original order on reconnect.
+    await this.local.deleteScheduleRule(ruleId);
+    await this.queue.enqueue({ type: 'deleteScheduleRule', payload: { ruleId } });
   }
 
   async getScheduleEntries(familyId: string): Promise<ScheduleEntry[]> {
@@ -314,11 +555,26 @@ export class OfflineFirstRepository implements Repository {
   }
 
   async addScheduleEntries(entries: ScheduleEntry[]): Promise<void> {
-    await this.local.addScheduleEntries(entries);
-    if (this.remote) {
-      await this.queue.enqueue({ type: 'addScheduleEntries', payload: entries });
-      await this.trySync();
+    if (entries.length === 0) return;
+
+    if (!this.remote) {
+      await this.local.addScheduleEntries(entries);
+      return;
     }
+
+    // Schedule entries are FK parents of planned walks. While online they
+    // must exist on the server before saveWalk() is allowed to persist a
+    // walk that references them. Queueing the entries and immediately
+    // continuing used to let a failed/unfinished queue replay race the walk
+    // insert, producing walks_schedule_entry_id_fkey (23503) in Staging.
+    if (await this.isOnline()) {
+      await this.remote.addScheduleEntries(entries);
+      await this.local.addScheduleEntries(entries);
+      return;
+    }
+
+    await this.local.addScheduleEntries(entries);
+    await this.queue.enqueue({ type: 'addScheduleEntries', payload: entries });
   }
 
   async updateScheduleEntry(entry: ScheduleEntry): Promise<void> {
@@ -330,17 +586,49 @@ export class OfflineFirstRepository implements Repository {
   }
 
   async deleteScheduleEntry(entryId: string): Promise<void> {
-    await this.local.deleteScheduleEntry(entryId);
-    if (this.remote) {
-      await this.queue.enqueue({ type: 'deleteScheduleEntry', payload: { entryId } });
-      await this.trySync();
+    if (!this.remote) {
+      await this.local.deleteScheduleEntry(entryId);
+      return;
     }
+
+    // Keep schedule deletions consistent with deleteScheduleRule above: an
+    // online rejection must not be swallowed into the queue and later look
+    // like the user intentionally removed every generated occurrence.
+    if (await this.isOnline()) {
+      await this.remote.deleteScheduleEntry(entryId);
+      // Do not surface a false delete failure when only the disposable local
+      // cache cleanup fails after Supabase already deleted the occurrence.
+      try {
+        await this.local.deleteScheduleEntry(entryId);
+      } catch {
+        // Best-effort cache cleanup only after confirmed remote success.
+      }
+      return;
+    }
+
+    await this.local.deleteScheduleEntry(entryId);
+    await this.queue.enqueue({ type: 'deleteScheduleEntry', payload: { entryId } });
   }
 
   async getWalks(familyId: string): Promise<Walk[]> {
     if (await this.isOnline()) {
       try {
-        return await this.remote!.getWalks(familyId);
+        // Remote is authoritative while online. Mirror it into the local
+        // cache before returning so stale locally-generated walk IDs cannot
+        // survive a refresh and later reach start_walk()/finish_walk().
+        const remoteWalks = await this.remote!.getWalks(familyId);
+        const remoteIds = new Set(remoteWalks.map((walk) => walk.id));
+        const localWalks = await this.local.getWalks(familyId);
+
+        for (const walk of remoteWalks) {
+          await this.local.saveWalk(walk);
+        }
+        for (const walk of localWalks) {
+          if (!remoteIds.has(walk.id) && !(await this.queue.hasPendingSaveWalk(walk.id))) {
+            await this.local.deleteWalk(walk.id);
+          }
+        }
+        return remoteWalks;
       } catch {
         /* fall through */
       }
@@ -348,21 +636,59 @@ export class OfflineFirstRepository implements Repository {
     return this.local.getWalks(familyId);
   }
 
-  /** Always writable offline: saved locally immediately, then queued/synced when possible. */
+  /**
+   * Saves locally immediately. When online, persist the walk to Supabase
+   * before returning so lifecycle RPCs (start_walk/finish_walk) can never
+   * race a still-queued creation and fail with "walk not found".
+   * Transient failures keep the normal offline-first queue fallback.
+   */
   async saveWalk(walk: Walk): Promise<void> {
     await this.local.saveWalk(walk);
-    if (this.remote) {
-      await this.queue.enqueue({ type: 'saveWalk', payload: walk });
-      await this.trySync();
+    if (!this.remote) return;
+
+    if (await this.isOnline()) {
+      try {
+        await this.remote.saveWalk(walk);
+        return;
+      } catch (error) {
+        // A permanent server rejection must reach the caller; queueing the
+        // exact same invalid write would only hide the failure and make a
+        // later lifecycle RPC operate on a row that was never created.
+        if (isPermanentSyncError(error)) throw error;
+        // Connectivity/transient failure: preserve offline-first behaviour.
+      }
     }
+
+    await this.queue.enqueue({ type: 'saveWalk', payload: walk });
+    await this.trySync();
   }
 
   async deleteWalk(walkId: string): Promise<void> {
-    await this.local.deleteWalk?.(walkId);
-    if (this.remote) {
-      await this.queue.enqueue({ type: 'deleteWalk', payload: { walkId } });
-      await this.trySync();
+    if (!this.remote) {
+      await this.local.deleteWalk?.(walkId);
+      return;
     }
+
+    // Walks linked to schedule entries must be removed authoritatively while
+    // online. Queueing the delete and immediately continuing lets the parent
+    // schedule entry disappear first, so a later queued child mutation can
+    // fail and surface a false "schedule delete failed" message even though
+    // the rule/entries were successfully removed.
+    if (await this.isOnline()) {
+      await this.remote.deleteWalk?.(walkId);
+      // Same authoritative-online contract as schedule entry/rule deletion:
+      // once the server confirms deletion, local cache cleanup cannot make
+      // the whole action report failure to the user.
+      try {
+        await this.local.deleteWalk?.(walkId);
+      } catch {
+        // Best-effort cache cleanup only after confirmed remote success.
+      }
+      return;
+    }
+
+    await this.local.deleteWalk?.(walkId);
+    await this.queue.enqueue({ type: 'deleteWalk', payload: { walkId } });
   }
 
   async getNotificationSettings(familyId: string): Promise<NotificationSetting[]> {

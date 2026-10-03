@@ -56,14 +56,27 @@ describe('InviteShareModal — QR token safety (structural)', () => {
     const buildCalls = code.match(/buildInviteLinkText\(/g) ?? [];
     expect(buildCalls.length).toBe(1);
 
-    // That one call assigns the canonical `link` variable exactly as designed.
-    expect(code).toMatch(/const link = buildInviteLinkText\(invite\.rawToken\);/);
+    // That one call assigns the canonical `link` variable exactly as
+    // designed — Family Lifecycle repair: now also passes a resolved web
+    // origin (webOrigin) so the SAME call produces a real, clickable HTTPS
+    // URL on web and falls back to the legacy opaque-token form elsewhere,
+    // but it remains the single construction site either way.
+    expect(code).toMatch(/const link = buildInviteLinkText\(invite\.rawToken, webOrigin\);/);
 
     // QR, Copy, and Share all consume that same `link` variable — no
     // QR-specific or otherwise second token/link builder exists.
     expect(code).toMatch(/<QRCode[^>]*\bvalue=\{link\}/);
     expect(code).toMatch(/copyToClipboard\(link\)/);
     expect(code).toMatch(/\$\{link\}/); // Share.share's message template literal
+  });
+
+  it('webOrigin is derived once from window.location.origin on web, and link is never built from any other origin/host source', () => {
+    const code = stripComments(readSource());
+    expect(code).toMatch(/const webOrigin = Platform\.OS === 'web' && typeof window !== 'undefined' \? window\.location\.origin : null;/);
+    // Exactly one read of window.location.origin — no second, possibly
+    // divergent, origin source feeding the link.
+    const originReads = code.match(/window\.location\.origin/g) ?? [];
+    expect(originReads.length).toBe(1);
   });
 
   it('never imports AsyncStorage directly, and never references SyncQueue/LocalRepository/OfflineFirstRepository/zustand', () => {
@@ -95,12 +108,29 @@ describe('InviteShareModal — QR token safety (structural)', () => {
     expect(source).not.toMatch(/toDataURL/);
   });
 
-  it('does not branch on Platform.OS anywhere in the executable code (platform-neutral QR rendering)', () => {
+  it('Platform.OS is used only to resolve webOrigin for the link — the QR/Copy/Share payload itself stays a single shared `link` value on every platform', () => {
     const code = stripComments(readSource());
-    expect(code).not.toMatch(/Platform\.OS/);
-    // Stronger than the OS-branch check alone: Platform itself is never
-    // even imported from react-native in executable code.
-    expect(code).not.toMatch(/from ['"]react-native['"][^;]*\bPlatform\b/);
+    // Family Lifecycle repair: Platform.OS is now intentionally read, but
+    // ONLY as part of resolving webOrigin — never as a second branch that
+    // could make QR/Copy/Share diverge from each other.
+    const platformOsUses = code.match(/Platform\.OS/g) ?? [];
+    expect(platformOsUses.length).toBe(1);
+    expect(code).toMatch(/const webOrigin = Platform\.OS === 'web'/);
+  });
+
+  // Family Lifecycle repair, item 4 — "the QR must encode exactly the same
+  // active HTTPS invite URL used by Share/Copy" and "regenerating/revoking
+  // an invite must never leave the QR pointing to an obsolete token." Both
+  // are guaranteed structurally: the QR's `value` prop, Copy's argument,
+  // and Share's message all read the SAME `link` local variable, which is
+  // itself derived fresh from this component's own `invite` prop on every
+  // render — there is no cached/memoized link that could outlive a
+  // revoke/regenerate (which replaces the `invite` prop via the parent's
+  // setCreatedInvite(), remounting this modal's content with a fresh token).
+  it('active invite -> generated URL -> QR payload are the same value by construction (regenerate/revoke can never leave a stale QR)', () => {
+    const code = stripComments(readSource());
+    expect(code).not.toMatch(/useMemo|useCallback/); // no memoization that could cache a stale link across a token change
+    expect(code).toMatch(/const link = buildInviteLinkText\(invite\.rawToken, webOrigin\);[\s\S]*<QRCode[^>]*\bvalue=\{link\}/);
   });
 
   it('the QR payload prop never receives a token_hash, family id, target user id, role, auth id, or expiry field directly', () => {

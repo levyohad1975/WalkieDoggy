@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import type { FamilyUser, Walk } from '../types';
 import { colors } from '../theme/colors';
@@ -9,6 +9,7 @@ import { Button } from './Button';
 import { SwapWalkPickerModal } from './SwapWalkPickerModal';
 import { TimePickerField } from './TimePickerField';
 import { is24HourTime } from '../logic/timeInput';
+import { ConfirmModal } from './ConfirmModal';
 
 export interface SwappableWalkOption {
   walk: Walk;
@@ -44,14 +45,17 @@ export function EditWalkModal({
   onClose,
 }: EditWalkModalProps) {
   const [time, setTime] = useState(walk?.scheduledTime ?? '');
+  const [selectedResponsibleUserId, setSelectedResponsibleUserId] = useState(walk?.responsibleUserId ?? '');
   const [swapMode, setSwapMode] = useState(false);
+  const [cancelConfirmVisible, setCancelConfirmVisible] = useState(false);
 
   useEffect(() => {
     if (visible) {
       setTime(walk?.scheduledTime ?? '');
+      setSelectedResponsibleUserId(walk?.responsibleUserId ?? '');
       setSwapMode(false);
     }
-  }, [visible, walk?.scheduledTime]);
+  }, [visible, walk?.id]);
 
   if (!walk) return null;
 
@@ -112,8 +116,12 @@ export function EditWalkModal({
               {users.map((u) => (
                 <Pressable
                   key={u.id}
-                  onPress={() => u.id !== walk.responsibleUserId && onChangeResponsible(u.id)}
-                  style={[styles.userChip, u.id === walk.responsibleUserId && styles.userChipActive]}
+                  onPress={async () => {
+                    if (u.id === selectedResponsibleUserId) return;
+                    setSelectedResponsibleUserId(u.id);
+                    await onChangeResponsible(u.id);
+                  }}
+                  style={[styles.userChip, u.id === selectedResponsibleUserId && styles.userChipActive]}
                 >
                   <Avatar emoji={u.avatar} color={u.color} photoUrl={u.photoUrl} size={40} />
                   <RtlText style={styles.userChipName} numberOfLines={1}>
@@ -134,23 +142,7 @@ export function EditWalkModal({
   label="בטל את הטיול הזה"
   variant="danger"
   accessibilityHint="יוצג אישור לפני ביטול הטיול"
-  onPress={() => {
-    Alert.alert(
-      'לבטל את הטיול הזה?',
-      `הטיול של ${walk.scheduledTime} יבוטל רק הפעם. שאר הסבב לא ישתנה.`,
-      [
-        {
-          text: 'חזרה',
-          style: 'cancel',
-        },
-        {
-          text: 'בטל טיול',
-          style: 'destructive',
-          onPress: onCancelWalk,
-        },
-      ]
-    );
-  }}
+  onPress={() => setCancelConfirmVisible(true)}
   style={styles.cancelButton}
 />
             <Button label="סגור" variant="secondary" onPress={onClose} style={styles.closeButton} />
@@ -172,6 +164,17 @@ export function EditWalkModal({
           onSwapWithWalk?.(otherWalkId);
         }}
         onClose={() => setSwapMode(false)}
+      />
+      <ConfirmModal
+        visible={cancelConfirmVisible}
+        title="לבטל את הטיול הזה?"
+        message={`הטיול של ${walk.scheduledTime} יבוטל רק הפעם. שאר הסבב לא ישתנה.`}
+        confirmLabel="בטל טיול"
+        onConfirm={() => {
+          setCancelConfirmVisible(false);
+          onCancelWalk();
+        }}
+        onCancel={() => setCancelConfirmVisible(false)}
       />
     </Modal>
   );

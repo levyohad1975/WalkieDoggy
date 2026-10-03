@@ -1,13 +1,14 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
-import type { FamilyUser, Walk } from '../types';
+import type { FamilyUser, Walk, WalkGpsSession } from '../types';
 import { isOverdue } from '../logic/nextWalk';
 import { walkCompletionLine, walkHistoryTimingLine, walkMetadataLine } from '../logic/walkActions';
 import { colors } from '../theme/colors';
 import { nativeDirection } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { StatusBadge } from './StatusBadge';
+import { RoutePreview } from './RoutePreview';
 
 interface WalkRowProps {
   walk: Walk;
@@ -61,6 +62,7 @@ interface WalkRowProps {
   /** History-only visual density: keep time prominent, soften identity text, and omit redundant completion copy. */
   historyCompact?: boolean;
   hidePendingStatus?: boolean;
+  routeSession?: WalkGpsSession;
 }
 
 /**
@@ -128,6 +130,7 @@ export function WalkRow({
   requestStatusLine,
   historyCompact = false,
   hidePendingStatus = false,
+  routeSession,
 }: WalkRowProps) {
   const overdue = isOverdue(walk);
   const metadataLine = historyCompact ? (walk.isUnplanned ? 'ספונטני' : 'מתוכנן') : walkMetadataLine(walk);
@@ -147,7 +150,7 @@ export function WalkRow({
       disabled={!onPress}
       style={[styles.row, isCurrent && styles.rowCurrent, walk.status === 'done' && styles.rowDone]}
     >
-      <View style={styles.mainRow}>
+        <View style={styles.mainRow}>
         <View style={styles.dateTimeBlock}>
           <RtlText style={[styles.time, historyCompact && styles.timeHistory]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82} maxFontSizeMultiplier={WALK_ROW_DATE_TIME_MAX_SCALE}>
             {walk.scheduledTime}
@@ -161,12 +164,14 @@ export function WalkRow({
             })}`}
           </RtlText>
         </View>
+        {routeSession?.routePoints && routeSession.routePoints.length > 1 ? <RoutePreview session={routeSession} /> : null}
 
         {responsible ? (
           <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={32} />
         ) : null}
 
         <View style={styles.middle}>
+          <View style={styles.identityLine}>
           {/* Fixed size, one line, ellipsis only for a genuinely long name —
               never `adjustsFontSizeToFit` (that was the source of the
               inconsistent-font-size bug this redesign fixes). */}
@@ -174,11 +179,14 @@ export function WalkRow({
             {responsible?.name ?? 'לא הוגדר'}
             {responsible?.removedAt ? ' (הוסר)' : ''}
           </RtlText>
-          {metadataLine ? (
-            <RtlText style={[styles.metadata, historyCompact && styles.metadataHistory]} numberOfLines={1}>
-              {metadataLine}
-            </RtlText>
-          ) : null}
+          </View>
+          <View style={styles.metadataSlot}>
+            {metadataLine ? (
+              <RtlText style={[styles.metadata, historyCompact && styles.metadataHistory]} numberOfLines={1}>
+                {metadataLine}
+              </RtlText>
+            ) : null}
+          </View>
         </View>
 
         {hidePendingStatus && walk.status === 'pending' && !overdue ? null : (
@@ -338,8 +346,19 @@ const styles = StyleSheet.create({
 
   middle: {
     flex: 1,
-    gap: 4,
     minWidth: 0,
+    alignItems: 'flex-end',
+  },
+  identityLine: {
+    width: '100%',
+    minHeight: 22,
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+  },
+  metadataSlot: {
+    width: '100%',
+    height: 18,
+    justifyContent: 'center',
     alignItems: 'flex-end',
   },
   timeHistory: { fontSize: 18 },
@@ -359,6 +378,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     alignSelf: 'flex-end',
     flexShrink: 0,
+    lineHeight: 16,
   },
 
   // LEFT column: status badge + (optional) compact completion line, capped
@@ -458,4 +478,3 @@ const styles = StyleSheet.create({
     opacity: 0.35,
   },
 });
-

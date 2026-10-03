@@ -1,4 +1,4 @@
-import { isWalkEligibleForHistory } from '../history';
+import { isWalkEligibleForHistory, walkMatchesHistorySearch } from '../history';
 import type { Walk } from '../../types';
 
 function walk(overrides: Partial<Walk> = {}): Walk {
@@ -42,5 +42,29 @@ describe('isWalkEligibleForHistory', () => {
   it('defaults to the real current moment when called with no `now` argument', () => {
     const today = new Date().toISOString().slice(0, 10);
     expect(isWalkEligibleForHistory(walk({ date: today, status: 'done' }))).toBe(true);
+  });
+});
+
+describe('walkMatchesHistorySearch (PRD §14 — History "filtering and search")', () => {
+  it('matches a case-insensitive substring of the walk note', () => {
+    expect(walkMatchesHistorySearch(walk({ note: 'רץ מהר בפארק' }), 'פארק')).toBe(true);
+    expect(walkMatchesHistorySearch(walk({ note: 'Ran in the Park' }), 'park')).toBe(true);
+  });
+
+  it('ignores leading/trailing whitespace in the query', () => {
+    expect(walkMatchesHistorySearch(walk({ note: 'פגש כלב אחר' }), '  כלב  ')).toBe(true);
+  });
+
+  it('does not match unrelated note text', () => {
+    expect(walkMatchesHistorySearch(walk({ note: 'טיול רגיל' }), 'גשם')).toBe(false);
+  });
+
+  it('a walk with no note never matches a non-empty query', () => {
+    expect(walkMatchesHistorySearch(walk({ note: undefined }), 'כלב')).toBe(false);
+  });
+
+  it('an empty or whitespace-only query matches every walk, including one with no note', () => {
+    expect(walkMatchesHistorySearch(walk({ note: undefined }), '')).toBe(true);
+    expect(walkMatchesHistorySearch(walk({ note: 'משהו' }), '   ')).toBe(true);
   });
 });

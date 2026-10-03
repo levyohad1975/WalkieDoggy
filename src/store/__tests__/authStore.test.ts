@@ -56,6 +56,7 @@ function rpcRouter(handlers: Record<string, (args?: unknown) => { data: unknown;
 function whoAmIRow(overrides: Partial<{
   profile_id: string | null;
   real_profile_id: string | null;
+  family_id: string | null;
   family_role: string | null;
   is_impersonating: boolean;
   impersonated_user_id: string | null;
@@ -65,6 +66,7 @@ function whoAmIRow(overrides: Partial<{
       {
         profile_id: null,
         real_profile_id: null,
+        family_id: null,
         family_role: null,
         is_impersonating: false,
         impersonated_user_id: null,
@@ -2363,6 +2365,196 @@ describe('authStore — Round 4 invite redemption (completeInviteRedemption / pe
     expect(await AsyncStorage.getItem(PENDING_KEY)).toBeNull();
   });
 
+  /**
+   * P0 real-device QA fix — see migration 0101's header comment for the
+   * full root cause: redeem_family_invite() succeeded server-side (status
+   * 'redeemed', users.auth_user_id set) but never wrote a
+   * profile_auth_sessions row, which real_current_profile_id() has
+   * required exclusively since migration 0020. whoami() therefore
+   * reported realProfileId: null, and the OLD code here treated "null"
+   * exactly like "a confirmed different profile" — permanently discarding
+   * the recovery marker over what was actually an in-between, still-
+   * resolvable state (migration 0101 also self-heals the server side, but
+   * this client-side distinction must hold regardless of the exact
+   * transient cause).
+   */
+  it('P0 FIX — whoami() succeeds but realProfileId is null (not a different profile) -> stays "unverified", marker is PRESERVED, never treated as a confirmed mismatch', async () => {
+    const rpc = rpcRouter({
+      whoami: () => whoAmIRow({ profile_id: null, real_profile_id: null, family_id: null }),
+    });
+    setupSupabaseModeForRedemption(rpc);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useAuthStore } = require('../authStore');
+
+    const outcome = await useAuthStore
+      .getState()
+      .completeInviteRedemption({ familyId: 'fam-invited', targetUserId: TARGET_ID });
+
+    expect(outcome).toBe('unverified');
+    expect(useAuthStore.getState().familyId).toBeNull();
+    expect(useAuthStore.getState().currentUserId).toBeNull();
+    expect(useAuthStore.getState().pendingInviteRedemption).toEqual({
+      familyId: 'fam-invited',
+      targetUserId: TARGET_ID,
+    });
+    // The marker must survive this exact case — a future retry (whoami()
+    // call) is what gets this device to "verified" once resolvable.
+    expect(await AsyncStorage.getItem(PENDING_KEY)).toBe(
+      JSON.stringify({ familyId: 'fam-invited', targetUserId: TARGET_ID })
+    );
+  });
+
+  it('a GENUINE different, non-null profile id is still a confirmed "mismatch" — the null-handling fix does not weaken this case', async () => {
+    const rpc = rpcRouter({
+      whoami: () => whoAmIRow({ profile_id: 'someone-else', real_profile_id: 'someone-else', family_id: 'fam-invited', family_role: 'member' }),
+    });
+    setupSupabaseModeForRedemption(rpc);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useAuthStore } = require('../authStore');
+
+    const outcome = await useAuthStore
+      .getState()
+      .completeInviteRedemption({ familyId: 'fam-invited', targetUserId: TARGET_ID });
+
+    expect(outcome).toBe('mismatch');
+    expect(useAuthStore.getState().familyId).toBeNull();
+    expect(useAuthStore.getState().currentUserId).toBeNull();
+    expect(useAuthStore.getState().pendingInviteRedemption).toBeNull();
+    expect(await AsyncStorage.getItem(PENDING_KEY)).toBeNull();
+  });
+
+  /**
+   * Full end-to-end sequence requested in the P0 report: fresh recipient ->
+   * HTTPS invite -> inspect succeeds -> correct target member shown -> tap
+   * Join -> redeem -> whoami verification -> local family/member commit ->
+   * Home. The inspect/redeem RPC layer is covered separately
+   * (lib/__tests__/invites.test.ts); this is the authStore half — the
+   * exact completeInviteRedemption() call FamilyOnboardingScreen.confirmRedeem()
+   * makes once redeemFamilyInvite() has already resolved.
+   */
+  it('END-TO-END: redemption succeeds and whoami immediately confirms the right profile+family -> commits and is ready for Home, in one pass', async () => {
+    const rpc = rpcRouter({
+      current_family_role: () => ({ data: 'member', error: null }),
+      whoami: () => whoAmIRow({ profile_id: TARGET_ID, real_profile_id: TARGET_ID, family_id: 'fam-invited', family_role: 'member' }),
+    });
+    setupSupabaseModeForRedemption(rpc);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useAuthStore } = require('../authStore');
+
+    // redeemFamilyInvite() (lib/invites.ts) already resolved by this point
+    // in the real flow — FamilyOnboardingScreen passes its result straight
+    // through, never the raw token.
+    const outcome = await useAuthStore
+      .getState()
+      .completeInviteRedemption({ familyId: 'fam-invited', targetUserId: TARGET_ID });
+
+    expect(outcome).toBe('verified');
+    expect(useAuthStore.getState().familyId).toBe('fam-invited');
+    expect(useAuthStore.getState().currentUserId).toBe(TARGET_ID);
+    expect(useAuthStore.getState().familyRole).toBe('member');
+    // App.tsx swaps to RootNavigator (Home) purely from familyId/currentUserId
+    // both being set — nothing further required from this layer.
+  });
+
+  /**
+   * Failure-boundary requested in the P0 report: server redemption
+   * succeeds -> client verification fails (realProfileId resolves null,
+   * e.g. the exact pre-0101 gap) -> next launch safely recovers the SAME
+   * membership without requiring a new invite. Two shapes, both covered:
+   * (a) the pending marker survived the failed attempt (this fix's own
+   * correction — see the 'unverified' test above) and restoreSession()'s
+   * EXISTING marker-based recovery picks it up; (b) even if the marker was
+   * already lost (the exact state a device following the OLD, pre-fix
+   * code is stuck in today), restoreSession()'s NEW last-resort
+   * server-truth recovery still completes the local session with no
+   * marker and no new invite at all.
+   */
+  it('FAILURE BOUNDARY (a): marker survives an "unverified" attempt -> next restoreSession() recovers the same membership once whoami resolves, no new invite', async () => {
+    // Stateful whoami: first call (the failed redemption attempt) resolves
+    // nothing yet; every call after that (the "relaunch") resolves cleanly
+    // — e.g. 0101's self-heal already ran on an earlier whoami() call, or
+    // replication simply caught up in the meantime.
+    let whoamiCalls = 0;
+    const rpc = rpcRouter({
+      current_family_role: () => ({ data: 'member', error: null }),
+      whoami: () => {
+        whoamiCalls += 1;
+        return whoamiCalls === 1
+          ? whoAmIRow({ profile_id: null, real_profile_id: null, family_id: null })
+          : whoAmIRow({ profile_id: TARGET_ID, real_profile_id: TARGET_ID, family_id: 'fam-invited', family_role: 'member' });
+      },
+    });
+    setupSupabaseModeForRedemption(rpc);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useAuthStore } = require('../authStore');
+
+    const firstAttempt = await useAuthStore
+      .getState()
+      .completeInviteRedemption({ familyId: 'fam-invited', targetUserId: TARGET_ID });
+    expect(firstAttempt).toBe('unverified');
+    expect(await AsyncStorage.getItem(PENDING_KEY)).not.toBeNull();
+
+    // Simulate the app relaunching against the SAME persisted AsyncStorage:
+    // reset only the in-memory zustand state back to its cold-start
+    // defaults (exactly what a fresh process would have before
+    // restoreSession() rehydrates it) — this is the one piece restarting
+    // the process actually changes; the persisted storage itself (which
+    // jest.resetModules() would otherwise also wipe, unlike a real device)
+    // must stay untouched for this to be a faithful simulation.
+    useAuthStore.setState({ familyId: null, currentUserId: null, pendingInviteRedemption: null });
+
+    await useAuthStore.getState().restoreSession();
+
+    expect(useAuthStore.getState().familyId).toBe('fam-invited');
+    expect(useAuthStore.getState().currentUserId).toBe(TARGET_ID);
+    expect(await AsyncStorage.getItem(PENDING_KEY)).toBeNull();
+    // Never re-redeemed, never re-joined — recovered purely from the
+    // already-successful server-side claim.
+    expect(rpc).not.toHaveBeenCalledWith('redeem_family_invite', expect.anything());
+    expect(rpc).not.toHaveBeenCalledWith('join_family', expect.anything());
+    expect(rpc).not.toHaveBeenCalledWith('claim_family_profile', expect.anything());
+  });
+
+  it('FAILURE BOUNDARY (b): even with NO marker at all (the pre-fix stuck state), restoreSession() recovers the same membership purely from whoami() — no new invite, no manual action', async () => {
+    const rpc = rpcRouter({
+      current_family_role: () => ({ data: 'member', error: null }),
+      whoami: () => whoAmIRow({ profile_id: TARGET_ID, real_profile_id: TARGET_ID, family_id: 'fam-invited', family_role: 'member' }),
+    });
+    setupSupabaseModeForRedemption(rpc);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    // Nothing cached at all: no FAMILY_KEY, no USER_KEY, no PENDING_KEY —
+    // exactly the state a device is left in once the OLD code's confirmed-
+    // "mismatch" path already wiped the marker on an earlier launch.
+    const { useAuthStore } = require('../authStore');
+
+    await useAuthStore.getState().restoreSession();
+
+    expect(useAuthStore.getState().familyId).toBe('fam-invited');
+    expect(useAuthStore.getState().currentUserId).toBe(TARGET_ID);
+    expect(await AsyncStorage.getItem(FAMILY_KEY)).toBe('fam-invited');
+    expect(await AsyncStorage.getItem(USER_KEY)).toBe(TARGET_ID);
+    expect(rpc).not.toHaveBeenCalledWith('redeem_family_invite', expect.anything());
+    expect(rpc).not.toHaveBeenCalledWith('join_family', expect.anything());
+  });
+
+  it('restoreSession last-resort recovery is a harmless no-op for a genuinely fresh device (whoami resolves nothing)', async () => {
+    const rpc = rpcRouter({}); // default whoami stub: no claim ever made -> all null
+    setupSupabaseModeForRedemption(rpc);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useAuthStore } = require('../authStore');
+
+    await useAuthStore.getState().restoreSession();
+
+    expect(useAuthStore.getState().familyId).toBeNull();
+    expect(useAuthStore.getState().currentUserId).toBeNull();
+  });
+
   it('the pending marker written to AsyncStorage contains ONLY familyId/targetUserId — never a token/rawToken field', async () => {
     const rpc = rpcRouter({
       whoami: () => ({ data: null, error: { message: 'network error' } }), // stays pending -> marker persists
@@ -2549,7 +2741,14 @@ describe('authStore — Round 4 invite redemption (completeInviteRedemption / pe
     expect(useAuthStore.getState().familyId).toBeNull();
     expect(useAuthStore.getState().currentUserId).toBeNull();
     expect(await AsyncStorage.getItem(PENDING_KEY)).toBeNull();
-    expect(rpc).not.toHaveBeenCalledWith('whoami');
+    // P0 FIX — after dropping the unusable marker, this device has nothing
+    // cached at all (no familyId, no currentUserId), so the new last-resort
+    // server-truth recovery (restoreSession's own doc comment) DOES call
+    // whoami() once more — a cheap, harmless check. The default rpcRouter
+    // whoami stub resolves to no claimed profile (no claim RPC ran in this
+    // test), so it correctly no-ops: familyId/currentUserId stay null,
+    // asserted above.
+    expect(rpc).toHaveBeenCalledWith('whoami');
   });
 
   it('restoreSession drops a pending-redemption marker that parses successfully to a falsy value (e.g. JSON "null"), same as a corrupted one', async () => {
@@ -2564,7 +2763,12 @@ describe('authStore — Round 4 invite redemption (completeInviteRedemption / pe
 
     expect(useAuthStore.getState().pendingInviteRedemption).toBeNull();
     expect(await AsyncStorage.getItem(PENDING_KEY)).toBeNull();
-    expect(rpc).not.toHaveBeenCalledWith('whoami');
+    // Same last-resort recovery check as the corrupted-marker test above —
+    // nothing cached locally, so whoami() is consulted once more and
+    // correctly no-ops (no claim RPC ran in this test).
+    expect(rpc).toHaveBeenCalledWith('whoami');
+    expect(useAuthStore.getState().familyId).toBeNull();
+    expect(useAuthStore.getState().currentUserId).toBeNull();
   });
 
   it('retryPendingInviteRedemptionVerification: a mismatch also clears an already-surfaced pendingInviteRedemption in the live store, not just the AsyncStorage marker', async () => {

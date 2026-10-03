@@ -33,7 +33,7 @@ describe('StatisticsScreen — enforces view_statistics itself, not just via hid
 
   it('every downstream computation reads from sourceWalks (statisticsDataset in Supabase mode), not the raw scheduleStore walks', () => {
     expect(source).toMatch(/const sourceWalks = isSupabaseConfigured \? statisticsDataset : walks;/);
-    expect(source).toMatch(/const periodWalks = useMemo\(\(\) => filterWalksByPeriod\(sourceWalks, period\), \[sourceWalks, period\]\);/);
+    expect(source).toMatch(/const filteredWalks = useMemo\(\(\) => applyStatisticsFilters\(sourceWalks, effectiveFilters\), \[sourceWalks, effectiveFilters\]\);/);
     // Bare `walks` (not `sourceWalks`) should only remain in the
     // useScheduleStore() destructure itself and the sourceWalks fallback
     // expression — never as a second, competing data source downstream.
@@ -55,7 +55,7 @@ describe('StatisticsScreen — enforces view_statistics itself, not just via hid
       '!canAccessStatisticsScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus) ||'
     );
     expect(guardIdx).toBeGreaterThan(-1);
-    const mainReturnIdx = source.indexOf('>סטטיסטיקה</RtlText>');
+    const mainReturnIdx = source.indexOf('>סטטיסטיקה ותובנות</RtlText>');
     expect(mainReturnIdx).toBeGreaterThan(-1);
     expect(guardIdx).toBeLessThan(mainReturnIdx);
   });
@@ -82,7 +82,7 @@ describe('StatisticsScreen — enforces view_statistics itself, not just via hid
     const guardClause = source.slice(guardIdx, guardClauseEnd);
     expect(guardClause).toContain("statisticsAccessStatus !== 'granted'");
     expect(guardClause).toContain("statisticsAccessStatus === 'checking' && hasEverGrantedRef.current");
-    const mainReturnIdx = source.indexOf('>סטטיסטיקה</RtlText>');
+    const mainReturnIdx = source.indexOf('>סטטיסטיקה ותובנות</RtlText>');
     expect(mainReturnIdx).toBeGreaterThan(guardClauseEnd);
   });
 });

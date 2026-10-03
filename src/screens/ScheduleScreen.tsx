@@ -16,6 +16,7 @@ import { RuleFormModal, type RuleFormResult } from '../components/RuleFormModal'
 import { ConfirmModal } from '../components/ConfirmModal';
 import { UserPickerModal } from '../components/UserPickerModal';
 import { SwapWalkPickerModal } from '../components/SwapWalkPickerModal';
+import { DogSelectorRow } from '../components/DogSelectorRow';
 import { RequestTimeChangeModal } from '../components/RequestTimeChangeModal';
 import { DEMO_FAMILY } from '../data/demoData';
 import { generateId } from '../lib/id';
@@ -28,12 +29,11 @@ import { computeWalkRequestStatusLine } from '../logic/walkRequestStatusLine';
 import { isSupabaseConfigured } from '../lib/supabase';
 import type { ScheduleRule, Walk } from '../types';
 
-type RangeKey = 'today' | 'tomorrow' | 'week';
+type RangeKey = 'week' | 'routine';
 
 const RANGE_LABELS: Record<RangeKey, string> = {
-  today: 'היום',
-  tomorrow: 'מחר',
-  week: 'השבוע',
+  week: 'לוח השבוע',
+  routine: 'ניהול שגרה',
 };
 
 // Local (not UTC) date-only, shared with dateFormat.ts — see that file's
@@ -41,12 +41,14 @@ const RANGE_LABELS: Record<RangeKey, string> = {
 // calendar day rather than toDateOnly()'s UTC anchor.
 const toLocalDateOnly = localDateOnly;
 
-function inRange(dateStr: string, range: RangeKey): boolean {
-  const today = toLocalDateOnly(new Date());
-  if (range === 'today') return dateStr === today;
-  if (range === 'tomorrow') return dateStr === toLocalDateOnly(new Date(Date.now() + 86400000));
-  const weekEnd = toLocalDateOnly(new Date(Date.now() + 7 * 86400000));
-  return dateStr >= today && dateStr <= weekEnd;
+function inCurrentWeek(dateStr: string): boolean {
+  const now = new Date();
+  const day = now.getDay();
+  const start = new Date(now);
+  start.setDate(now.getDate() - day);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return dateStr >= toLocalDateOnly(start) && dateStr <= toLocalDateOnly(end);
 }
 
 function formatDateLabel(dateStr: string): string {
@@ -58,7 +60,7 @@ function formatDateLabel(dateStr: string): string {
 }
 
 export function ScheduleScreen() {
-  const { users, dog, loading: familyLoading, load: loadFamily } = useFamilyStore();
+  const { users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, load: loadFamily } = useFamilyStore();
   const {
     walks,
     rules,
@@ -122,7 +124,9 @@ export function ScheduleScreen() {
     [walks]
   );
 
-  const [range, setRange] = useState<RangeKey>('today');
+  const [range, setRange] = useState<RangeKey>('week');
+  const [selectedDate, setSelectedDate] = useState(() => toLocalDateOnly(new Date()));
+  const [completedExpanded, setCompletedExpanded] = useState(false);
   const [editingWalkId, setEditingWalkId] = useState<string | null>(null);
   const [ruleFormVisible, setRuleFormVisible] = useState(false);
   const [editingRule, setEditingRule] = useState<ScheduleRule | null>(null);
@@ -149,17 +153,47 @@ export function ScheduleScreen() {
   // "hand this walk to"): a removed member must never be offered here.
   const activeUsers = useMemo(() => users.filter((u) => !u.removedAt), [users]);
 
-  const grouped = useMemo(() => {
-    const filtered = walks.filter((w) => inRange(w.date, range));
-    const byDate = new Map<string, Walk[]>();
-    for (const w of filtered) {
-      const list = byDate.get(w.date) ?? [];
-      list.push(w);
-      byDate.set(w.date, list);
-    }
-    for (const list of byDate.values()) list.sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
-    return [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [walks, range]);
+  // PRD §11: multi-dog families must see only the SELECTED dog's schedule
+  // here — `walks`/`rules` themselves are the raw, family-wide store,
+  // unfiltered by dog. A single-dog family (dogs.length <= 1) is
+  // unaffected. ID-based lookups (walksById, walks.find) stay on the
+  // unfiltered `walks` on purpose — they resolve one already-known walk
+  // regardless of which dog is currently selected.
+  const visibleWalks = useMemo(
+    () => (dogs.length > 1 && dog ? walks.filter((w) => w.dogId === dog.id) : walks),
+    [walks, dogs.length, dog?.id]
+  );
+  const visibleRules = useMemo(
+    () => (dogs.length > 1 && dog ? rules.filter((r) => r.dogId === dog.id) : rules),
+    [rules, dogs.length, dog?.id]
+  );
+
+  const weekDates = useMemo(() => {
+    const now = new Date();
+    const start = new Date(now);
+    start.setDate(now.getDate() - now.getDay());
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + index);
+      return toLocalDateOnly(date);
+    });
+  }, []);
+
+  const selectedDayWalks = useMemo(
+    () => visibleWalks
+      .filter((w) => w.date === selectedDate && inCurrentWeek(w.date))
+      .sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime)),
+    [visibleWalks, selectedDate]
+  );
+
+  const formatDayChip = (dateStr: string) => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    return {
+      weekday: date.toLocaleDateString('he-IL', { weekday: 'short' }).replace('יום ', ''),
+      day: String(d).padStart(2, '0'),
+    };
+  };
 
   // Chronological by actual walk time, not the old manual sort_order — the
   // ▲/▼ reordering UI only ever changed display order while the times
@@ -167,13 +201,28 @@ export function ScheduleScreen() {
   // `sortOrder` column itself is left alone (no migration needed; nothing
   // still reads it for ordering, but other code/back-compat may still rely
   // on the column existing).
-  const sortedRules = useMemo(() => [...rules].sort((a, b) => a.time.localeCompare(b.time)), [rules]);
+  const sortedRules = useMemo(() => {
+    // Defensive UI de-duplication: legacy/raced writes may have persisted
+    // multiple identical recurring slots. A schedule slot is defined by
+    // dog + time + active weekdays; show it once while the server data is
+    // repaired, instead of presenting duplicate editable rows to the user.
+    const unique = new Map<string, ScheduleRule>();
+    for (const rule of visibleRules) {
+      const days = [...(rule.daysOfWeek ?? [])].sort((a, b) => a - b).join(',');
+      const key = `${rule.dogId}|${rule.time}|${days}`;
+      if (!unique.has(key)) unique.set(key, rule);
+    }
+    return [...unique.values()].sort((a, b) => a.time.localeCompare(b.time));
+  }, [visibleRules]);
 
   const editingWalk = editingWalkId ? walks.find((w) => w.id === editingWalkId) ?? null : null;
   const otherPendingWalks = useMemo(() => {
     if (!editingWalk) return [];
+    // Multi-dog (PRD §11): a swap target must belong to the SAME dog as
+    // the walk being edited — matching HomeScreen's identical fix and the
+    // dogId filter SwapWalkPickerModal's other call sites already apply.
     return walks
-      .filter((w) => w.id !== editingWalk.id && w.status === 'pending')
+      .filter((w) => w.id !== editingWalk.id && w.status === 'pending' && w.dogId === editingWalk.dogId)
       .sort((a, b) => (a.date + a.scheduledTime).localeCompare(b.date + b.scheduledTime))
       .slice(0, 12)
       .map((w) => ({ walk: w, responsible: usersById[w.responsibleUserId] }));
@@ -220,56 +269,99 @@ export function ScheduleScreen() {
       <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
         <RtlText style={styles.header} accessibilityRole="header">לוח הזמנים של {dog?.name ?? 'הכלב/ה שלנו'}</RtlText>
 
+        {/* PRD §11: easy dog picker whenever there's more than one dog —
+            same widget/placement pattern as HomeScreen's own fix. Hidden
+            entirely for a single-dog family. */}
+        {dogs.length > 1 ? (
+          <DogSelectorRow dogs={dogs} selectedDogId={selectedDogId} onSelect={(dogId) => void selectDog(dogId)} />
+        ) : null}
+
         <View style={styles.tabs}>
-          {(Object.keys(RANGE_LABELS) as RangeKey[]).map((key) => (
+          {(['week', 'routine'] as RangeKey[]).map((key) => (
             <RtlText key={key} onPress={() => setRange(key)} style={[styles.tab, range === key && styles.tabActive]}>
               {RANGE_LABELS[key]}
             </RtlText>
           ))}
         </View>
 
-        {loading && walks.length === 0 ? (
-          <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} accessibilityLabel="טוען…" />
-        ) : error ? (
-          <ErrorState message={error} onRetry={() => loadSchedule(familyId)} />
-        ) : grouped.length === 0 ? (
-          <EmptyState title="אין תורנויות בטווח הזה" subtitle="אפשר להוסיף שעת טיול למטה" />
-        ) : (
-          <View style={styles.daysList}>
-            {grouped.map(([date, dayWalks]) => (
-              <View key={date} style={styles.daySection}>
-                <RtlText style={styles.dayTitle}>{formatDateLabel(date)}</RtlText>
-                <View style={styles.list}>
-                  {dayWalks.map((w) => (
-                    <WalkRow
-                      key={w.id}
-                      walk={w}
-                      responsible={usersById[w.responsibleUserId]}
-                      completedBy={w.completedByUserId ? usersById[w.completedByUserId] : undefined}
-                      // Reaching EditWalkModal (change time/responsible,
-                      // cancel the walk) is Admin-only — requirement 6.
-                      // Previously reachable here for anyone; now consistent
-                      // with Home's gating.
-                      onPress={w.status === 'pending' && familyRole === 'admin' ? () => setEditingWalkId(w.id) : undefined}
-                      // ROUND-5, Part 2: request actions for ANY eligible
-                      // future walk, not just Home's "next walk" — see
-                      // canRequestForWalk() above for the exact filter.
-                      onRequestSwap={canRequestSwapForWalk(w) ? () => setRequestSwapWalkId(w.id) : undefined}
-                      onRequestTimeChange={canRequestTimeChangeForWalk(w) ? () => setRequestTimeChangeWalkId(w.id) : undefined}
-                      onMarkDone={canResolveWalk(w) ? () => setResolveWalkId(w.id) : undefined}
-                      onMarkNotDone={canResolveWalk(w) ? () => skip(w.id) : undefined}
-                      requestStatusLine={
-                        computeWalkRequestStatusLine(w, swapRequests, timeChangeRequests, walksById, new Date(), effectiveUserId)?.text
-                      }
-                    />
-                  ))}
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
+        {range === 'week' ? (
+          <>
+            <View style={styles.weekStrip}>
+              {weekDates.map((date) => {
+                const chip = formatDayChip(date);
+                const active = date === selectedDate;
+                const today = date === toLocalDateOnly(new Date());
+                return (
+                  <Pressable
+                    key={date}
+                    onPress={() => { setSelectedDate(date); setCompletedExpanded(false); }}
+                    style={[styles.dayChip, active && styles.dayChipActive]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    accessibilityLabel={`${chip.weekday} ${chip.day}${today ? ', היום' : ''}`}
+                  >
+                    <RtlText style={[styles.dayChipWeekday, active && styles.dayChipTextActive]}>{chip.weekday}</RtlText>
+                    <RtlText style={[styles.dayChipNumber, active && styles.dayChipTextActive]}>{chip.day}</RtlText>
+                    {today ? <View style={[styles.todayDot, active && styles.todayDotActive]} /> : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+            <RtlText style={styles.selectedDayTitle}>
+              {selectedDate === toLocalDateOnly(new Date()) ? 'היום' : formatDateLabel(selectedDate)}
+            </RtlText>
+            {loading && walks.length === 0 ? (
+              <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} accessibilityLabel="טוען…" />
+            ) : error ? (
+              <ErrorState message={error} onRetry={() => loadSchedule(familyId)} />
+            ) : selectedDayWalks.length === 0 ? (
+              <EmptyState title="אין טיולים ביום הזה" subtitle="אפשר לבחור יום אחר או לנהל את שגרת הטיולים" />
+            ) : (
+              <View style={styles.list}>
+                {selectedDayWalks.some((w) => w.status !== 'done' && w.status !== 'skipped') ? <RtlText style={styles.walkGroupTitle}>ממתינים / בהמשך</RtlText> : null}
+                {selectedDayWalks.filter((w) => w.status !== 'done' && w.status !== 'skipped').map((w) => (
+                  <WalkRow
+                    key={w.id}
+                    walk={w}
+                    responsible={usersById[w.responsibleUserId]}
+                    completedBy={w.completedByUserId ? usersById[w.completedByUserId] : undefined}
+                    onPress={w.status === 'pending' && familyRole === 'admin' ? () => setEditingWalkId(w.id) : undefined}
+                    onRequestSwap={canRequestSwapForWalk(w) ? () => setRequestSwapWalkId(w.id) : undefined}
+                    onRequestTimeChange={canRequestTimeChangeForWalk(w) ? () => setRequestTimeChangeWalkId(w.id) : undefined}
+                    onMarkDone={canResolveWalk(w) ? () => setResolveWalkId(w.id) : undefined}
+                    onMarkNotDone={canResolveWalk(w) ? () => skip(w.id) : undefined}
+                    requestStatusLine={computeWalkRequestStatusLine(w, swapRequests, timeChangeRequests, walksById, new Date(), effectiveUserId)?.text}
+                  />
+                ))}
 
-        <View style={styles.section}>
+                {selectedDayWalks.some((w) => w.status === 'done' || w.status === 'skipped') ? (
+                  <Pressable
+                    onPress={() => setCompletedExpanded((value) => !value)}
+                    style={styles.completedGroupHeader}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: completedExpanded }}
+                  >
+                    <RtlText style={styles.walkGroupTitle}>{'הושלמו היום (' + selectedDayWalks.filter((w) => w.status === 'done' || w.status === 'skipped').length + ')'}</RtlText>
+                    <RtlText style={styles.completedChevron}>{completedExpanded ? '⌃' : '⌄'}</RtlText>
+                  </Pressable>
+                ) : null}
+                {completedExpanded ? selectedDayWalks.filter((w) => w.status === 'done' || w.status === 'skipped').map((w) => (
+                  <WalkRow
+                    key={w.id}
+                    walk={w}
+                    responsible={usersById[w.responsibleUserId]}
+                    completedBy={w.completedByUserId ? usersById[w.completedByUserId] : undefined}
+                    historyCompact
+                    hidePendingStatus
+                  />
+                )) : null}
+
+              </View>
+            )}
+          </>
+        ) : null}
+
+        <View style={[styles.section, range !== 'routine' && styles.routineCollapsed]}>
           <View style={styles.sectionHeaderRow}>
             {/*
               FINAL CORRECTION PASS — Deliverable 3H: removed
@@ -351,6 +443,11 @@ export function ScheduleScreen() {
 
           )}
         </View>
+        {range === 'routine' ? null : (
+          <Pressable onPress={() => setRange('routine')} style={styles.manageRoutineButton} accessibilityRole="button">
+            <RtlText style={styles.manageRoutineText}>ניהול שגרת הטיולים</RtlText>
+          </Pressable>
+        )}
       </ScrollView>
 
       <EditWalkModal
@@ -364,7 +461,8 @@ export function ScheduleScreen() {
         }}
         onChangeResponsible={async (newUserId) => {
           if (editingWalk) await swap(editingWalk.id, newUserId, currentUserId);
-          setEditingWalkId(null);
+          // Keep the editor open so the same one-off edit can continue
+          // (for example, change the responsible member and then the time).
         }}
         onSwapWithWalk={async (otherWalkId) => {
           if (editingWalk) await swapTwoWalks(editingWalk.id, otherWalkId, currentUserId);
@@ -530,7 +628,16 @@ const styles = StyleSheet.create({
   content: { padding: spacing.lg, paddingTop: spacing.sm, gap: spacing.sm, paddingBottom: spacing.xxxl },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
   header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl', paddingHorizontal: 4 },
-  tabs: { flexDirection: 'row', gap: spacing.sm, paddingVertical: spacing.sm },
+  // Item 9 fix: was plain 'row' — on this web build that renders the array
+  // order ['today','tomorrow','week'] physically LEFT-to-right regardless
+  // of the app's RTL setting, putting היום (which should read first, i.e.
+  // rightmost in RTL) on the wrong side. 'row-reverse' is a REAL layout
+  // reversal (not a cosmetic transform/mirror), so onPress stays correctly
+  // bound to whichever element now sits in each visual position — visual
+  // order and touch mapping move together. Matches this codebase's own
+  // established convention for every other RTL-ordered row (see e.g.
+  // HomeScreen's dashboardShortcuts/dashboardTimelineLabels).
+  tabs: { flexDirection: 'row-reverse', gap: spacing.sm, paddingVertical: spacing.sm },
   tab: {
     flex: 1,
     textAlign: 'center',
@@ -543,8 +650,23 @@ const styles = StyleSheet.create({
   },
   tabActive: { backgroundColor: colors.primary, color: colors.textInverse },
   daysList: { gap: spacing.xl },
+  weekStrip: { flexDirection: 'row-reverse', gap: 5, width: '100%', justifyContent: 'space-between' },
+  dayChip: { flex: 1, minWidth: 0, minHeight: 64, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', gap: 2 },
+  dayChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  dayChipWeekday: { fontSize: 11, fontWeight: '700', color: colors.textSecondary },
+  dayChipNumber: { fontSize: 17, fontWeight: '800', color: colors.textPrimary },
+  dayChipTextActive: { color: colors.textInverse },
+  todayDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.primary },
+  todayDotActive: { backgroundColor: colors.textInverse },
+  selectedDayTitle: { width: '100%', ...typography.sectionTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl', marginTop: spacing.sm },
+  routineCollapsed: { display: 'none' },
+  manageRoutineButton: { minHeight: 48, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', marginTop: spacing.sm },
+  manageRoutineText: { color: colors.primaryDark, fontWeight: '800', fontSize: 15 },
   daySection: { gap: spacing.sm },
   dayTitle: { width: '100%', ...typography.sectionTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl' },
+  completedGroupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44, paddingHorizontal: 4, marginTop: 4 },
+  completedChevron: { fontSize: 22, fontWeight: '700', color: colors.primaryDark },
+  walkGroupTitle: { fontSize: 14, fontWeight: '800', color: colors.textSecondary, textAlign: 'right', marginTop: 6, marginBottom: 2, paddingHorizontal: 4 },
   list: { gap: spacing.sm },
   empty: { fontSize: 14, color: colors.textSecondary, textAlign: 'right' },
   section: { gap: spacing.sm, marginTop: spacing.xl, width: '100%' },

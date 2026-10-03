@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
@@ -39,9 +39,16 @@ const ACTION_LABEL: Record<string, string> = {
   member_permission_override_cleared: 'הרשאת בן משפחה הוחזרה לברירת המחדל',
   walk_admin_rescheduled: 'שעת הטיול שונתה על ידי מנהל',
   walk_admin_swapped: 'שני טיולים הוחלפו על ידי מנהל',
-  impersonation_started: 'בדיקה כבן משפחה התחילה',
-  impersonation_ended: 'בדיקה כבן משפחה הסתיימה',
 };
+
+const HIDDEN_ADMIN_ACTIONS = new Set([
+  'impersonation_started',
+  'impersonation_ended',
+  'system_observer.started',
+  'system_observer.ended',
+  'system_admin_view_family_detail',
+  'system_admin.view_family_detail',
+]);
 
 const PAGE_SIZE = 50;
 
@@ -58,6 +65,7 @@ export function AdminAuditLogModal({ visible, onClose }: AdminAuditLogModalProps
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
+  const visibleRows = useMemo(() => rows.filter((r) => !HIDDEN_ADMIN_ACTIONS.has(r.action)), [rows]);
 
   useEffect(() => {
     if (!visible) {
@@ -103,7 +111,7 @@ export function AdminAuditLogModal({ visible, onClose }: AdminAuditLogModalProps
             </RtlText>
           ) : null}
           <ScrollView style={styles.list}>
-            {rows.map((r) => (
+            {visibleRows.map((r) => (
               <View key={r.id} style={styles.row}>
                 <RtlText style={styles.rowAction}>{ACTION_LABEL[r.action] ?? r.action}</RtlText>
                 <RtlText style={styles.rowMeta}>
@@ -136,5 +144,3 @@ const styles = StyleSheet.create({
   moreButton: { marginTop: 10 },
   closeButton: { marginTop: 10 },
 });
-
-

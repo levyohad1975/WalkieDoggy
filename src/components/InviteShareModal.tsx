@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, Modal, Pressable, Share, StyleSheet, View } from 'react-native';
+import { Alert, Modal, Platform, Pressable, Share, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import QRCode from 'react-native-qrcode-svg';
 import { copyToClipboard } from '../lib/clipboard';
@@ -43,28 +43,31 @@ interface InviteShareModalProps {
 }
 
 /**
- * Round 3 — the one-time "here is the new invite" sheet shown immediately
- * after createFamilyInvite() succeeds. Shows the raw token's link
- * representation for copy/share, and lets the admin revoke it again from
- * the same place. Does NOT implement real deep-link handling or app.json's
- * URL scheme (out of scope through Round 5A) — the link shown is the
- * design-approved opaque-token form (buildInviteLinkText()) for
- * display/copy/share only; no round through 5A makes any claim that
- * tapping or scanning it opens the app.
+ * The one-time "here is the new invite" sheet shown immediately after
+ * createFamilyInvite() succeeds. Shows the real, clickable invite link for
+ * copy/share, a QR encoding that same link, and lets the admin revoke it
+ * again from the same place.
  *
- * Round 5A — adds a QR rendering of the SAME `link` value already used by
- * Copy/Share, as a fourth, purely visual representation. The QR encodes
- * nothing beyond the opaque invite link string already shown as text: no
- * family id, target user id, role, auth id, token_hash, or expiry
- * metadata. It is rendered live from component state on every render (via
- * the react-native-qrcode-svg + react-native-svg pair) — never cached,
- * never written to a file/Photos, never persisted to AsyncStorage/the
- * Zustand store/LocalRepository/SyncQueue, and never logged. Closing this
- * modal is still the only way the raw token becomes unreachable (via the
- * parent's setCreatedInvite(null)), and the QR unmounts along with
- * everything else in this component — there is no separate
- * reopen/recovery path for the QR image itself. Platform-neutral: no
- * Platform.OS branching anywhere in this file.
+ * Family Lifecycle repair — on web this is a real HTTPS URL
+ * (buildInviteLinkText(rawToken, window.location.origin)) that the
+ * recipient's device resolves server-side on tap: opening it routes
+ * straight into the invite-confirmation flow (see
+ * FamilyOnboardingScreen's launch-URL detection), no manual paste or
+ * generic onboarding required. On native, where there is no web origin to
+ * build a URL from, this falls back to the legacy `dogwalkfamily://`
+ * display/copy/share-only form (not yet a working deep link there — see
+ * buildInviteLinkText()'s own doc comment).
+ *
+ * The QR renders the SAME `link` value already used by Copy/Share, as a
+ * purely visual fourth representation — by construction, a stale/obsolete
+ * QR cannot exist: it is rendered live from this component's own `invite`
+ * prop on every render (via the react-native-qrcode-svg + react-native-svg
+ * pair), never cached, never written to a file/Photos, never persisted to
+ * AsyncStorage/the Zustand store/LocalRepository/SyncQueue, and never
+ * logged. Closing this modal is still the only way the raw token becomes
+ * unreachable (via the parent's setCreatedInvite(null)), and the QR
+ * unmounts along with everything else in this component — there is no
+ * separate reopen/recovery path for the QR image itself.
  */
 export function InviteShareModal({ visible, targetName, invite, onRevoked, onClose }: InviteShareModalProps) {
   const [revoking, setRevoking] = useState(false);
@@ -73,7 +76,9 @@ export function InviteShareModal({ visible, targetName, invite, onRevoked, onClo
 
   if (!invite) return null;
 
-  const link = buildInviteLinkText(invite.rawToken);
+  const webOrigin = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : null;
+  const link = buildInviteLinkText(invite.rawToken, webOrigin);
+  const isClickableLink = Boolean(webOrigin);
   const expiryText = formatInviteExpiry(invite.expiresAt);
 
   const copyLink = async () => {
@@ -90,8 +95,14 @@ export function InviteShareModal({ visible, targetName, invite, onRevoked, onClo
 
   const shareLink = async () => {
     try {
+      // A clean, directly-clickable message: the link stands alone on its
+      // own line with no trailing punctuation/text immediately beside it,
+      // so WhatsApp/SMS/email reliably render it as a tappable link.
+      // parseInviteInput() still recognizes the link anywhere inside a
+      // larger pasted message as a fallback, in case a recipient copies
+      // the whole text instead of tapping it directly.
       await Share.share({
-        message: `הוזמנת להצטרף למשפחה באפליקציית Walkie Doggy Link! קישור ההזמנה: ${link}`,
+        message: `הוזמנת להצטרף למשפחה באפליקציית Walkie Doggy!\n\n${link}`,
       });
     } catch {
       // best-effort — sharing is a convenience, not critical (matches
@@ -127,12 +138,15 @@ export function InviteShareModal({ visible, targetName, invite, onRevoked, onClo
           {expiryText ? <RtlText style={styles.expiry}>ההזמנה בתוקף עד {expiryText}</RtlText> : null}
 
           <RtlText style={styles.explainer}>
-            שלחו את הקישור לבן/בת המשפחה כדי שיוכלו להצטרף. הקישור הזה תקף למכשיר חדש בלבד ואינו ניתן לשחזור לאחר
-            סגירת המסך הזה — במידת הצורך ניתן ליצור הזמנה חדשה בכל עת.
+            {isClickableLink
+              ? 'שלחו את ההזמנה לבן/בת המשפחה — לחיצה על הקישור (או סריקת הקוד) פותחת את ההזמנה אוטומטית, בלי להדביק או להקליד כלום. הקישור תקף למכשיר חדש בלבד ואינו ניתן לשחזור לאחר סגירת המסך הזה — במידת הצורך ניתן ליצור הזמנה חדשה בכל עת.'
+              : 'שלחו את ההזמנה לבן/בת המשפחה כדי שיוכלו להצטרף. אפשר להדביק במסך "יש לי הזמנה" את הקישור בלבד או את כל הודעת השיתוף — האפליקציה תחלץ את ההזמנה אוטומטית. הקישור תקף למכשיר חדש בלבד ואינו ניתן לשחזור לאחר סגירת המסך הזה — במידת הצורך ניתן ליצור הזמנה חדשה בכל עת.'}
           </RtlText>
-          <RtlText style={styles.notYetOpenable}>
-            שימו לב: בשלב זה הקישור מיועד להעתקה/שיתוף בלבד ואינו נפתח אוטומטית באפליקציה בעת לחיצה או סריקה.
-          </RtlText>
+          {!isClickableLink ? (
+            <RtlText style={styles.notYetOpenable}>
+              שימו לב: במכשיר הזה הקישור מיועד להעתקה/שיתוף בלבד ואינו נפתח אוטומטית באפליקציה בעת לחיצה או סריקה.
+            </RtlText>
+          ) : null}
 
           <View style={styles.linkCard}>
             <RtlText style={styles.linkText} selectable numberOfLines={3}>

@@ -2,9 +2,11 @@ import {
   computeRequestLifecycle,
   countActionableRequests,
   countPendingRequestsForViewer,
+  countRecentlyResolvedRequestsForAdmin,
   countUnreadRequestResults,
   isRequestActive,
   isRequestVisible,
+  selectActionablePendingRequestsForViewer,
   walkHasActiveSwapRequest,
   walkHasActiveTimeChangeRequest,
   type RequestLike,
@@ -280,6 +282,60 @@ describe('countUnreadRequestResults', () => {
   });
 });
 
+describe('countRecentlyResolvedRequestsForAdmin', () => {
+  it('counts a request resolved by/for someone else (in-app gap fix: admins must see results they did not personally request)', () => {
+    const requests: RequestLike[] = [
+      makeRequest({
+        status: 'approved',
+        resolved_at: NOW.toISOString(),
+        requested_by_user_id: 'someMember',
+      }),
+    ];
+    expect(countRecentlyResolvedRequestsForAdmin(requests, {}, 'admin1', NOW)).toBe(1);
+  });
+
+  it('excludes the admin viewer\'s own requests (already covered by countUnreadRequestResults — never double-count)', () => {
+    const requests: RequestLike[] = [
+      makeRequest({
+        status: 'approved',
+        resolved_at: NOW.toISOString(),
+        requested_by_user_id: 'admin1',
+      }),
+    ];
+    expect(countRecentlyResolvedRequestsForAdmin(requests, {}, 'admin1', NOW)).toBe(0);
+  });
+
+  it('excludes archived (>24h resolved) results, same window as everywhere else', () => {
+    const requests: RequestLike[] = [
+      makeRequest({
+        status: 'rejected',
+        resolved_at: new Date(NOW.getTime() - 25 * 60 * 60 * 1000).toISOString(),
+        requested_by_user_id: 'someMember',
+      }),
+    ];
+    expect(countRecentlyResolvedRequestsForAdmin(requests, {}, 'admin1', NOW)).toBe(0);
+  });
+
+  it('excludes still-pending requests, since they have no terminal outcome yet', () => {
+    const requests: RequestLike[] = [
+      makeRequest({
+        status: 'pending',
+        requested_by_user_id: 'someMember',
+      }),
+    ];
+    const walks = { w1: { status: 'pending' as const } };
+    expect(countRecentlyResolvedRequestsForAdmin(requests, walks, 'admin1', NOW)).toBe(0);
+  });
+
+  it('counts multiple other members\' resolved requests', () => {
+    const requests: RequestLike[] = [
+      makeRequest({ id: 'a', status: 'approved', resolved_at: NOW.toISOString(), requested_by_user_id: 'member1' }),
+      makeRequest({ id: 'b', status: 'rejected', resolved_at: NOW.toISOString(), requested_by_user_id: 'member2' }),
+    ];
+    expect(countRecentlyResolvedRequestsForAdmin(requests, {}, 'admin1', NOW)).toBe(2);
+  });
+});
+
 describe('countPendingRequestsForViewer', () => {
   const walks = { w1: { status: 'pending' as const } };
 
@@ -376,5 +432,55 @@ describe('walkHasActiveTimeChangeRequest', () => {
   it('defaults now to the current time when omitted', () => {
     const timeChanges: RequestLike[] = [makeRequest({ id: 't1', walk_id: 'w1' })];
     expect(walkHasActiveTimeChangeRequest('w1', timeChanges, walks)).toBe(true);
+  });
+});
+
+/**
+ * Home Dashboard pending-request card data source. Uses the exact same
+ * authorization filters as countPendingRequestsForViewer (above) — these
+ * tests exist specifically to prove that reuse: a viewer must never see an
+ * item here they aren't also counted as able to act on there.
+ */
+describe('selectActionablePendingRequestsForViewer', () => {
+  const walks = { w1: { status: 'pending' as const }, w2: { status: 'pending' as const } };
+
+  it('includes a swap request targeting the viewer, with its raw fields carried through untouched', () => {
+    const swap = makeRequest({ id: 's1', walk_id: 'w1', target_walk_id: 'w2', requested_by_user_id: 'alice', target_user_id: 'bob' });
+    const result = selectActionablePendingRequestsForViewer([swap], [], walks, 'bob', false, NOW);
+    expect(result).toEqual([
+      { kind: 'swap', id: 's1', walkId: 'w1', requestedByUserId: 'alice', targetUserId: 'bob', targetWalkId: 'w2', createdAt: NOW.toISOString() },
+    ]);
+  });
+
+  it('excludes a swap request NOT targeting the viewer', () => {
+    const swap = makeRequest({ id: 's1', walk_id: 'w1', target_walk_id: 'w2', requested_by_user_id: 'alice', target_user_id: 'bob' });
+    expect(selectActionablePendingRequestsForViewer([swap], [], walks, 'carol', false, NOW)).toEqual([]);
+  });
+
+  it('includes a time-change request only for an admin viewer, regardless of who requested it', () => {
+    const tc = makeRequest({ id: 't1', walk_id: 'w1', requested_by_user_id: 'alice', proposed_time: '18:00', expected_time: '17:00' });
+    expect(selectActionablePendingRequestsForViewer([], [tc], walks, 'alice', false, NOW)).toEqual([]);
+    expect(selectActionablePendingRequestsForViewer([], [tc], walks, 'some-admin', true, NOW)).toEqual([
+      { kind: 'timeChange', id: 't1', walkId: 'w1', requestedByUserId: 'alice', proposedTime: '18:00', expectedTime: '17:00', createdAt: NOW.toISOString() },
+    ]);
+  });
+
+  it('excludes an expired or already-resolved request from either kind', () => {
+    const expiredSwap = makeRequest({ id: 's1', walk_id: 'w1', target_walk_id: 'w2', target_user_id: 'bob' });
+    const resolvedTc = makeRequest({ id: 't1', walk_id: 'w1', status: 'approved', resolved_at: NOW.toISOString() });
+    const walksWithGoneTarget = { w1: { status: 'pending' as const } }; // w2 missing -> swap expired
+    const result = selectActionablePendingRequestsForViewer([expiredSwap], [resolvedTc], walksWithGoneTarget, 'bob', true, NOW);
+    expect(result).toEqual([]);
+  });
+
+  it('mixes both kinds in one list, oldest first by created_at', () => {
+    const swap = makeRequest({ id: 's1', walk_id: 'w1', target_walk_id: 'w2', target_user_id: 'admin-1', created_at: '2026-08-26T12:00:00Z' });
+    const tc = makeRequest({ id: 't1', walk_id: 'w1', created_at: '2026-08-26T10:00:00Z' });
+    const result = selectActionablePendingRequestsForViewer([swap], [tc], walks, 'admin-1', true, NOW);
+    expect(result.map((r) => r.id)).toEqual(['t1', 's1']);
+  });
+
+  it('returns an empty array when nothing is actionable for this viewer', () => {
+    expect(selectActionablePendingRequestsForViewer([], [], walks, 'anyone', true, NOW)).toEqual([]);
   });
 });

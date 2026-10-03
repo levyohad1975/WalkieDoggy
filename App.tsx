@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Platform, Pressable, StyleSheet } from 'react-native';
+import { Alert, AppState, Platform, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from './src/store/authStore';
@@ -8,16 +8,19 @@ import { RootNavigator } from './src/navigation/RootNavigator';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { FamilyOnboardingScreen } from './src/screens/FamilyOnboardingScreen';
 import { SystemAdminScreen } from './src/screens/SystemAdminScreen';
+import { PhotoCropHost } from './src/components/PhotoCropHost';
 import { RtlText } from './src/components/RtlText';
 import { colors } from './src/theme/colors';
 import { requestNotificationPermissions, subscribeToWalkReminderResponses } from './src/notifications/notificationService';
 import { registerPushToken } from './src/lib/pushTokens';
+import { reconcileWebPushSubscription } from './src/lib/webPush';
 import { repository, setSyncQueueActorGetter } from './src/data';
 import { isSupabaseConfigured } from './src/lib/supabase';
 import { touchLastSeen } from './src/lib/requests';
 import { useRequestsStore } from './src/store/requestsStore';
 import { useScheduleStore, reconcileScheduleNotifications } from './src/store/scheduleStore';
 import { useFamilyStore } from './src/store/familyStore';
+import { WalkieMascot } from './src/components/WalkieMascot';
 
 // Reconciles local notifications against the currently loaded schedule store
 // state (A3's authoritative rule: notification content always comes from the
@@ -256,6 +259,7 @@ export default function App() {
   // cannot affect which family this device is a member of.
   const isSystemAdmin = useSystemAdminStore((s) => s.isSystemAdmin);
   const refreshSystemAdmin = useSystemAdminStore((s) => s.refresh);
+  const systemAdminOpenRequestId = useSystemAdminStore((s) => s.openRequestId);
   const [systemAdminOpen, setSystemAdminOpen] = useState(false);
   const [showIosInstallPrompt, setShowIosInstallPrompt] = useState(false);
   useEffect(() => {
@@ -279,6 +283,12 @@ export default function App() {
   const shouldEnterSystemAdminDirectly =
     isSupabaseConfigured && isSystemAdmin && !familyId && !currentUserId && !systemObserverActive;
 
+  useEffect(() => {
+    if (hydrated && isSystemAdmin && systemAdminOpenRequestId > 0 && !shouldEnterSystemAdminDirectly) {
+      setSystemAdminOpen(true);
+    }
+  }, [hydrated, isSystemAdmin, systemAdminOpenRequestId, shouldEnterSystemAdminDirectly]);
+
   // Section 10: remote request-push token registration — completely
   // separate from requestNotificationPermissions() below (that's the
   // LOCAL scheduled-walk-reminder permission flow / Android
@@ -297,6 +307,20 @@ export default function App() {
   useEffect(() => {
     if (currentUserId && !systemObserverActive) {
       void registerPushTokenAndReconcile();
+    }
+  }, [currentUserId, systemObserverActive]);
+
+  // Request-notifications repair — "refresh/reopen recovery" for Web Push,
+  // the exact web-platform counterpart of registerPushTokenAndReconcile()
+  // above. Silent and best-effort (reconcileWebPushSubscription() never
+  // throws): repairs a subscription that exists in this browser but was
+  // never (or no longer) persisted server-side, or re-subscribes if the
+  // browser invalidated it, without requiring the person to open Reminders
+  // and tap "אפשר התראות" again. A no-op whenever permission isn't already
+  // 'granted' — this never prompts on its own.
+  useEffect(() => {
+    if (Platform.OS === 'web' && currentUserId && !systemObserverActive) {
+      void reconcileWebPushSubscription();
     }
   }, [currentUserId, systemObserverActive]);
 
@@ -348,7 +372,8 @@ export default function App() {
     <SafeAreaProvider>
       {!hydrated ? (
         <SafeAreaView style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <WalkieMascot state="runIn" size={150} accessibilityLabel="Walkie Doggy טוען את האפליקציה" testID="app-loading-mascot" />
+          <RtlText style={styles.loadingText}>רק רגע, יוצאים לדרך…</RtlText>
         </SafeAreaView>
       ) : (
         <>
@@ -378,27 +403,15 @@ export default function App() {
           ) : (
             <LoginScreen />
           )}
-
-          {/* BATCH 4 (item A) — see the isSystemAdmin comment above for why
-              this sits outside every other branch. A small, unobtrusive
-              corner entry point; NEVER shown unless
-              useSystemAdminStore().isSystemAdmin resolved true, and that in
-              turn only ever came from am_i_system_admin() — a fresh,
-              server-side check of the real auth identity, not a locally
-              cached/guessed value. */}
-          {isSystemAdmin && !systemObserverActive ? (
-            <Pressable
-              onPress={() => setSystemAdminOpen(true)}
-              style={styles.systemAdminEntry}
-              accessibilityRole="button"
-              accessibilityLabel="ניהול מערכת"
-            >
-              <RtlText style={styles.systemAdminEntryText}>🛡️</RtlText>
-            </Pressable>
-          ) : null}
           {!shouldEnterSystemAdminDirectly ? (
             <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} />
           ) : null}
+
+          {/* PRD §12 (profile-photo crop/zoom/pan) — web-only, no-op on
+              native. See PhotoCropHost.tsx's doc comment for why this sits
+              outside every other branch, same as the isSystemAdmin button
+              above. */}
+          <PhotoCropHost />
         </>
       )}
     </SafeAreaProvider>
@@ -406,10 +419,13 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
+  center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  loadingText: { color: colors.textSecondary, fontSize: 16, fontWeight: '700', textAlign: 'center' },
   systemAdminEntry: {
     position: 'absolute',
-    top: 14,
+    // Keep the platform-admin shortcut below the branded header so it can
+    // never cover/compete with the Walkie Doggy mascot on narrow phones.
+    top: 72,
     right: 18,
     width: 44,
     height: 44,

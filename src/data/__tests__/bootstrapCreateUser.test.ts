@@ -12,7 +12,7 @@ jest.mock('@react-native-community/netinfo', () => ({
 
 const user: FamilyUser = {
   id: 'first-profile', familyId: 'new-family', name: 'First', avatar: 'dog',
-  color: '#000', remindersEnabled: true, createdAt: '2026-09-09T00:00:00.000Z',
+  color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: '2026-09-09T00:00:00.000Z',
 };
 const online = () => (NetInfo.fetch as jest.Mock).mockResolvedValue({
   isConnected: true, isInternetReachable: true,
@@ -101,11 +101,11 @@ describe('first-profile creation and queue ownership', () => {
     expect(await repo.pendingSyncCount()).toBe(0);
   });
 
-  it('also queues online creates when a profile is claimed', async () => {
+  it('confirms online creates directly when a profile is claimed', async () => {
     setSyncQueueActorGetter(() => 'admin');
     const enqueue = jest.spyOn(SyncQueue.prototype, 'enqueue');
     await repo.createUser(user);
-    expect(enqueue).toHaveBeenCalledWith({ type: 'createUser', payload: user });
+    expect(enqueue).not.toHaveBeenCalled();
     expect(remote.createUser).toHaveBeenCalledTimes(1);
     expect(await repo.pendingSyncCount()).toBe(0);
   });

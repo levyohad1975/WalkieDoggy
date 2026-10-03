@@ -93,6 +93,10 @@ describe('FamilyOnboardingScreen recovers onboarding status on mount (structural
     expect(blockStart).toBeGreaterThan(-1);
     expect(blockEnd).toBeGreaterThan(blockStart);
     const block = source.slice(blockStart, blockEnd);
-    expect(block).toMatch(/setMode\('choose'\)/);
+    // A device that arrived via the installed-PWA neutral choice screen goes
+    // back there instead of the generic (non-PWA) choose screen -- see
+    // isInstalledWebApp/'pwaChoice' -- but every path still lands somewhere,
+    // never a dead end.
+    expect(block).toMatch(/setMode\(isInstalledWebApp \? 'pwaChoice' : 'choose'\)/);
   });
 });

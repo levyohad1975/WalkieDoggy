@@ -1,4 +1,4 @@
-﻿import React, { useEffect } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { NavigationContainer } from '@react-navigation/native';
@@ -15,13 +15,13 @@ import { ImpersonationBanner } from '../components/ImpersonationBanner';
 import { SystemObserverBanner } from '../components/SystemObserverBanner';
 import { colors } from '../theme/colors';
 import { layout, nativeDirection, spacing } from '../theme/tokens';
-import { useAuthStore, useEffectiveUserId } from '../store/authStore';
+import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useRequestsStore } from '../store/requestsStore';
 import { subscribeToFamilyChanges } from '../lib/realtime';
 import { DEMO_FAMILY } from '../data/demoData';
-import { canAccessHistoryScreen, canAccessStatisticsScreen } from '../logic/permissions';
+import { canAccessHistoryScreen, canAccessStatisticsScreen, canAccessSettingsScreen } from '../logic/permissions';
 
 export type RootTabParamList = {
   Home: undefined;
@@ -57,21 +57,37 @@ function TabIcon({ name, color }: { name: keyof RootTabParamList; color: string 
 
 const TAB_LABEL: Record<keyof RootTabParamList, string> = {
   Home: 'בית',
-  Schedule: 'לוח זמנים',
+  Schedule: 'לו״ז',
   Family: 'משפחה',
   History: 'היסטוריה',
-  Statistics: 'סטטיסטיקה',
+  Statistics: 'נתונים',
   Settings: 'הגדרות',
 };
 
 const PHYSICAL_TAB_ORDER: (keyof RootTabParamList)[] = [
   'Settings',
   'Statistics',
-  'History',
   'Family',
-  'Schedule',
   'Home',
+  'Schedule',
+  'History',
 ];
+
+// Item 8 (nav centering): Home must sit at the exact geometric center of the
+// bar regardless of how many of the OTHER destinations are currently visible
+// (History/Statistics/Settings are each permission-gated and can come and go
+// independently — see canSeeHistoryTab/canSeeStatisticsTab/canSeeSettingsTab
+// below). Splitting the non-Home destinations into two independent flex
+// groups (everything physically before Home, everything physically after)
+// and absolutely-positioning Home at left: 50% of the whole bar decouples
+// its position from either group's item count entirely — it is centered on
+// the bar itself, never on "whatever's left after subtracting N buttons".
+// This slot width only reserves layout space in the two flex groups (so
+// their buttons never render underneath the centered Home circle); it does
+// not constrain Home's own tap target, which stays exactly as large as
+// before (see HOME_BUTTON_SIZE below).
+const HOME_SLOT_WIDTH = 76;
+const HOME_BUTTON_SIZE = 50;
 
 /**
  * A physically deterministic tab bar. React Navigation/iOS can re-evaluate
@@ -79,40 +95,65 @@ const PHYSICAL_TAB_ORDER: (keyof RootTabParamList)[] = [
  * ourselves in an explicitly-LTR row prevents that transient flip while the
  * Hebrew labels themselves remain RTL text.
  */
-function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab, canSeeStatisticsTab }: BottomTabBarProps & { canSeeHistoryTab: boolean; canSeeStatisticsTab: boolean }) {
+function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab, canSeeStatisticsTab, canSeeSettingsTab }: BottomTabBarProps & { canSeeHistoryTab: boolean; canSeeStatisticsTab: boolean; canSeeSettingsTab: boolean }) {
   const insets = useSafeAreaInsets();
   const routeByName = Object.fromEntries(state.routes.map((route) => [route.name, route]));
+  const isVisible = (name: keyof RootTabParamList) => {
+    if (!routeByName[name]) return false;
+    // Item 1 fix: never hide the tab BUTTON for the route the user is
+    // actually standing on right now, even if its permission just went
+    // fail-closed mid-visit (see RootNavigator()'s own activeTabName
+    // comment for why that happens and why it's safe to ignore here —
+    // the destination screen's own canAccessXScreen() gate still protects
+    // the real content during that blip).
+    if (state.routes[state.index]?.name === name) return true;
+    if (name === 'History') return canSeeHistoryTab;
+    if (name === 'Statistics') return canSeeStatisticsTab;
+    if (name === 'Settings') return canSeeSettingsTab;
+    return true;
+  };
 
-  const buttons = PHYSICAL_TAB_ORDER.map((name) => {
-        const route = routeByName[name];
-        if (!route) return null;
-        if (name === 'History' && !canSeeHistoryTab) return null;
-        if (name === 'Statistics' && !canSeeStatisticsTab) return null;
-        const routeIndex = state.routes.findIndex((r) => r.key === route.key);
-        const focused = state.index === routeIndex;
-        const options = descriptors[route.key]?.options;
-        const tint = focused ? colors.primary : colors.textSecondary;
-        return (
-          <Pressable
-            key={route.key}
-            onPress={() => {
-              const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-              if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
-            }}
-            onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
-            accessibilityRole="button"
-            accessibilityState={focused ? { selected: true } : {}}
-            accessibilityLabel={options?.tabBarAccessibilityLabel ?? TAB_LABEL[name]}
-            style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 1 }}
-          >
-            <TabIcon name={name} color={tint} />
-            <RtlText allowFontScaling={false} numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: tint, textAlign: 'center', writingDirection: 'rtl' }}>{TAB_LABEL[name]}</RtlText>
-          </Pressable>
-        );
-      });
+  const renderTabButton = (name: keyof RootTabParamList) => {
+    const route = routeByName[name];
+    if (!route) return null;
+    const focused = state.routes[state.index]?.key === route.key;
+    const options = descriptors[route.key]?.options;
+    const tint = focused ? colors.primary : colors.textSecondary;
+    return (
+      <Pressable
+        key={route.key}
+        onPress={() => {
+          const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+          if (!focused && !event.defaultPrevented) {
+            // Target the tab navigator by route key. With conditional
+            // History/Statistics routes, navigating only by name could
+            // be resolved against stale navigator state and fall back
+            // to the initial Home route after permission refreshes.
+            navigation.navigate({ key: route.key, name: route.name } as never);
+          }
+        }}
+        onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
+        accessibilityRole="button"
+        accessibilityState={focused ? { selected: true } : {}}
+        accessibilityLabel={options?.tabBarAccessibilityLabel ?? TAB_LABEL[name]}
+        style={{ flex: 1, minWidth: 0, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', gap: 1 }}
+      >
+        <TabIcon name={name} color={tint} />
+        <RtlText allowFontScaling={false} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={{ fontSize: 10, lineHeight: 13, fontWeight: '600', color: tint, textAlign: 'center', writingDirection: 'rtl', width: '100%', paddingHorizontal: 1 }}>{TAB_LABEL[name]}</RtlText>
+      </Pressable>
+    );
+  };
+
+  const homeIndex = PHYSICAL_TAB_ORDER.indexOf('Home');
+  const leftButtons = PHYSICAL_TAB_ORDER.slice(0, homeIndex).filter(isVisible).map(renderTabButton);
+  const rightButtons = PHYSICAL_TAB_ORDER.slice(homeIndex + 1).filter(isVisible).map(renderTabButton);
+
+  const homeRoute = routeByName.Home;
+  const homeFocused = homeRoute ? state.routes[state.index]?.key === homeRoute.key : false;
+  const homeOptions = homeRoute ? descriptors[homeRoute.key]?.options : undefined;
 
   return (
-    <View style={{ height: layout.rowHeight + insets.bottom, paddingBottom: Math.max(spacing.sm, insets.bottom), paddingTop: 6, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }}>
+    <View style={{ height: layout.rowHeight + insets.bottom, paddingBottom: Math.max(spacing.sm, insets.bottom), paddingTop: 6, paddingHorizontal: Math.max(spacing.sm, insets.left, insets.right), backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }}>
       <View
         style={{
           flex: 1,
@@ -120,10 +161,59 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
           maxWidth: Platform.OS === 'web' ? 1000 : undefined,
           alignSelf: 'center',
           flexDirection: 'row',
+          position: 'relative',
           ...nativeDirection('ltr'),
         }}
       >
-        {buttons}
+        <View style={{ flex: 1, flexDirection: 'row' }}>{leftButtons}</View>
+        {/* Reserves the centered Home button's own footprint so the two side
+            groups never render underneath it. */}
+        <View style={{ width: HOME_SLOT_WIDTH }} />
+        <View style={{ flex: 1, flexDirection: 'row' }}>{rightButtons}</View>
+
+        {homeRoute ? (
+          <Pressable
+            key={homeRoute.key}
+            onPress={() => {
+              const event = navigation.emit({ type: 'tabPress', target: homeRoute.key, canPreventDefault: true });
+              if (!homeFocused && !event.defaultPrevented) {
+                navigation.navigate({ key: homeRoute.key, name: homeRoute.name } as never);
+              }
+            }}
+            onLongPress={() => navigation.emit({ type: 'tabLongPress', target: homeRoute.key })}
+            accessibilityRole="button"
+            accessibilityState={homeFocused ? { selected: true } : {}}
+            accessibilityLabel={homeOptions?.tabBarAccessibilityLabel ?? TAB_LABEL.Home}
+            style={{
+              position: 'absolute',
+              left: '50%',
+              marginLeft: -(HOME_SLOT_WIDTH / 2),
+              // Item 2 fix: stretch to the FULL row height (top:0 AND
+              // bottom:0), not just top-anchored — the previous top-only
+              // anchor meant the circle+label content (taller than the row
+              // itself) hung down top-first instead of being centered, so
+              // the -10 raise pushed the label past the row's bottom edge
+              // instead of lifting a vertically-centered block. Matches
+              // what every OTHER tab button already gets for free from the
+              // row's default flex `alignItems: 'stretch'` (they are flex
+              // children of a stretch parent; this one is absolutely
+              // positioned, so it needs top+bottom set explicitly to get
+              // the same full-height box before centering).
+              top: 0,
+              bottom: 0,
+              width: HOME_SLOT_WIDTH,
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 1,
+              transform: [{ translateY: -10 }],
+            }}
+          >
+            <View style={{ width: HOME_BUTTON_SIZE, height: HOME_BUTTON_SIZE, borderRadius: HOME_BUTTON_SIZE / 2, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: colors.surface }}>
+              <TabIcon name="Home" color={colors.textInverse} />
+            </View>
+            <RtlText allowFontScaling={false} numberOfLines={1} style={{ fontSize: 11, fontWeight: '800', color: colors.primary, textAlign: 'center', writingDirection: 'rtl' }}>{TAB_LABEL.Home}</RtlText>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -131,6 +221,29 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
 
 
 export function RootNavigator() {
+  // Item 1 fix (real bug, not the stale-navigate-by-name issue 20dcc49
+  // already fixed): History/Statistics/Settings each reload family data on
+  // their OWN mount/focus (loadFamily -> familyStore.load() ->
+  // loadPermissionOverrides(), which resets permissionOverridesStatus to
+  // 'loading' the instant it starts — see familyStore.ts). That flips
+  // canSeeHistoryTab/canSeeStatisticsTab/canSeeSettingsTab to false
+  // (fail-closed) for the split second the reload is in flight — including
+  // while the user is SITTING ON that exact tab, having just navigated
+  // there. The conditional `{canSeeXTab ? <Tab.Screen .../> : null}` below
+  // then unmounts the CURRENTLY FOCUSED route out from under the Tab
+  // Navigator, which falls back to the first declared screen — Home. That
+  // is the actual mechanism behind "Statistics/History still open Home".
+  // Fix: track which route is currently focused (both here AND in
+  // FixedPhysicalTabBar's own isVisible(), so the tab bar BUTTON doesn't
+  // flicker away either) and never let a conditional screen/button
+  // disappear while it IS the active one — the destination screen's own
+  // canAccessXScreen() gate (HistoryScreen.tsx / StatisticsScreen.tsx)
+  // already re-verifies access independently and shows its own
+  // locked/blocked state during that same reload, so no protected content
+  // is ever exposed by keeping the route mounted through the blip. Once
+  // the user navigates AWAY, a genuinely revoked permission still hides
+  // the tab correctly on the next render, exactly as before.
+  const [activeTabName, setActiveTabName] = useState<keyof RootTabParamList>('Home');
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   // BATCH 3 (Task 4 — navigation visibility): hide the History/Statistics
   // tabs when the current EFFECTIVE member (respects impersonation/Test
@@ -170,6 +283,9 @@ export function RootNavigator() {
   const permissionOverridesStatus = useFamilyStore((s) => s.permissionOverridesStatus);
   const canSeeHistoryTab = canAccessHistoryScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus);
   const canSeeStatisticsTab = canAccessStatisticsScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus);
+  const effectiveFamilyRole = useEffectiveFamilyRole();
+  const canSeeSettingsTab = effectiveFamilyRole === 'admin' ||
+    canAccessSettingsScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus);
   // Gates the wrapping SafeAreaView itself (not just the banner's own
   // internal null-check) — otherwise an empty top-inset-padded View would
   // sit above every screen at all times, silently pushing everything down
@@ -233,10 +349,10 @@ export function RootNavigator() {
           <ImpersonationBanner />
         </SafeAreaView>
       ) : null}
-      <NavigationContainer direction="rtl">
+      <NavigationContainer direction="rtl" onStateChange={(state) => { const name = state?.routes[state.index ?? 0]?.name as keyof RootTabParamList | undefined; if (name) setActiveTabName(name); }}>
       <Tab.Navigator
         initialRouteName="Home"
-        tabBar={(props) => <FixedPhysicalTabBar {...props} canSeeHistoryTab={canSeeHistoryTab} canSeeStatisticsTab={canSeeStatisticsTab} />}
+        tabBar={(props) => <FixedPhysicalTabBar {...props} canSeeHistoryTab={canSeeHistoryTab} canSeeStatisticsTab={canSeeStatisticsTab} canSeeSettingsTab={canSeeSettingsTab} />}
         screenOptions={({ route }) => ({
           headerShown: false,
           tabBarActiveTintColor: colors.primary,
@@ -267,9 +383,9 @@ export function RootNavigator() {
             be reached via navigation.navigate('History'/...) from stale
             code, and FixedPhysicalTabBar's own `if (!route) return null`
             above already handles a route that doesn't exist this render. */}
-        <Tab.Screen name="History" component={HistoryScreen} />
-        <Tab.Screen name="Statistics" component={StatisticsScreen} />
-        <Tab.Screen name="Settings" component={SettingsScreen} />
+        {(canSeeHistoryTab || activeTabName === 'History') ? <Tab.Screen name="History" component={HistoryScreen} /> : null}
+        {(canSeeStatisticsTab || activeTabName === 'Statistics') ? <Tab.Screen name="Statistics" component={StatisticsScreen} /> : null}
+        {(canSeeSettingsTab || activeTabName === 'Settings') ? <Tab.Screen name="Settings" component={SettingsScreen} /> : null}
       </Tab.Navigator>
       </NavigationContainer>
     </View>
