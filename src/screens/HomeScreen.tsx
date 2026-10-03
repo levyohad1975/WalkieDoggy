@@ -792,6 +792,18 @@ export function HomeScreen() {
       >
         <View style={styles.dashboardHeroShell}>
           <View pointerEvents="none" style={styles.dashboardHeroBackdrop}>
+            {dog?.heroBackgroundId === 'walkie-park' ? (
+              <WalkieParkBackground />
+            ) : heroBackground ? (
+              <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" />
+            ) : (
+              <>
+                <View style={styles.dashboardHeroDefaultSun} />
+                <View style={styles.dashboardHeroDefaultHillBack} />
+                <View style={styles.dashboardHeroDefaultHillFront} />
+                <View style={styles.dashboardHeroDefaultGround} />
+              </>
+            )}
           </View>
           <View style={[styles.topRow, styles.dashboardTopRow]}>
             <Image
@@ -832,18 +844,6 @@ export function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
           >
-            {dog?.heroBackgroundId === 'walkie-park' ? (
-              <WalkieParkBackground />
-            ) : heroBackground ? (
-              <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" />
-            ) : (
-              <>
-                <View style={styles.dashboardHeroDefaultSun} />
-                <View style={styles.dashboardHeroDefaultHillBack} />
-                <View style={styles.dashboardHeroDefaultHillFront} />
-                <View style={styles.dashboardHeroDefaultGround} />
-              </>
-            )}
             {showDogCutout ? <Image source={{ uri: dog!.photoCutoutUrl! }} style={styles.dashboardHeroDogCutout} resizeMode="contain" onError={() => setHeroCutoutFailed(true)} /> : null}
             {!showDogCutout && showPersonalHero ? <Image source={{ uri: dog!.photoUrl! }} style={styles.dashboardHeroDogPhoto} resizeMode="cover" onError={() => setHeroPhotoFailed(true)} /> : null}
             {!showDogCutout && !showPersonalHero ? (
