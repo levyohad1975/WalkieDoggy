@@ -791,13 +791,7 @@ export function HomeScreen() {
       >
         <View style={styles.dashboardHeroShell}>
           <View pointerEvents="none" style={styles.dashboardHeroBackdrop}>
-            {dog?.heroBackgroundId === 'walkie-park' ? (
-              <Image
-                source={require('../../assets/walkie-park-default.jpg')}
-                style={styles.dashboardHeroImage}
-                resizeMode="cover"
-              />
-            ) : heroBackground ? (
+            {heroBackground ? (
               <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" />
             ) : (
               <>
