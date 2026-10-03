@@ -555,7 +555,34 @@ export function HomeScreen() {
   // read-only for that specific case — the display-fidelity requirement
   // ("show the most recent resolved walk even when older than today") is
   // met; edit/delete remain exactly where they can safely work.
+  // Keep the server fallback interactive when the same resolved walk is available
+  // through the authorized history RPC but falls outside the operational walks window.
+  // Home hydrates that one row into the local schedule store so the existing
+  // editDoneDetails quick toggles keep their offline-first mutation semantics.
   const lastWalkIsEditable = !isSupabaseConfigured || (!!lastWalk && walks.some((w) => w.id === lastWalk.id));
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !lastWalk || lastWalk.status !== 'done' || lastWalkIsEditable) return;
+    let cancelled = false;
+    void fetchHistoryWalks()
+      .then((history) => {
+        if (cancelled) return;
+        const authorized = history.find((w) => w.id === lastWalk.id);
+        if (!authorized) return;
+        useScheduleStore.setState((state) =>
+          state.walks.some((w) => w.id === authorized.id)
+            ? state
+            : { walks: [...state.walks, authorized] }
+        );
+      })
+      .catch(() => {
+        // History permission can legitimately be absent; the fallback card then
+        // remains read-only rather than widening access client-side.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [lastWalk?.id, lastWalk?.status, lastWalkIsEditable]);
   const upcoming = useMemo(
     () => upcomingWalks(visibleWalks).filter((w) => w.id !== nextWalk?.id),
     [visibleWalks, nextWalk, minuteTick]
