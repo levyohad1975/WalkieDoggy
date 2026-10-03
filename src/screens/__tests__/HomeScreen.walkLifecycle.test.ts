@@ -10,7 +10,8 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('style={styles.dashboardHero}');
     expect(home).toContain('style={styles.dashboardHeroShell}');
     expect(home).toContain("dog?.heroBackgroundId === 'walkie-park' ?");
-    expect(home).toContain('<WalkieParkBackground />');
+    expect(home).toContain("require('../../assets/walkie-park-default.jpg')");
+    expect(home).not.toContain('<WalkieParkBackground />');
     expect(home).toContain("source={{ uri: heroBackground.uri }}");
     expect(home).toContain('getDogBackground(dog?.heroBackgroundId)');
     expect(home).not.toContain('getDogBackgroundId');
