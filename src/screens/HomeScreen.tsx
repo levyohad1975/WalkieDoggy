@@ -1668,7 +1668,7 @@ const styles = StyleSheet.create({
   testModeBannerText: { flex: 1, color: colors.textInverse, fontWeight: '700', fontSize: typography.meta.fontSize, textAlign: 'right' },
   testModeBannerButton: { backgroundColor: '#ffffff33', borderRadius: radii.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   testModeBannerButtonText: { color: colors.textInverse, fontWeight: '700', fontSize: 12 },
-  dashboardHeroShell: { marginHorizontal: -spacing.md, marginTop: -56, paddingTop: 56, backgroundColor: '#F7F3E9', overflow: 'hidden' },
+  dashboardHeroShell: { marginHorizontal: -spacing.md, marginTop: Platform.OS === 'web' ? 'calc(-1 * env(safe-area-inset-top, 0px))' as any : -56, paddingTop: Platform.OS === 'web' ? 'env(safe-area-inset-top, 0px)' as any : 56, backgroundColor: '#F7F3E9', overflow: 'hidden' },
   dashboardHeroBackdrop: { ...StyleSheet.absoluteFill, bottom: 0 },
   topRow: { position: 'relative', minHeight: 54, alignItems: 'center', justifyContent: 'center' },
   // Item 6 (mobile polish): trimmed from 58/6 — a shorter header row so the
