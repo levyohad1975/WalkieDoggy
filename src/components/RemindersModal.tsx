@@ -6,7 +6,7 @@ import { radii, spacing, typography } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 import type { FamilyUser } from '../types';
-import { enableWebPush, getWebPushStatus, type WebPushStatus } from '../lib/webPush';
+import { enableWebPush, reconcileWebPushSubscription, type WebPushStatus } from '../lib/webPush';
 import {
   getNativeNotificationPermissionStatus,
   requestNotificationPermissions,
@@ -76,7 +76,13 @@ export function RemindersModal({
     const isAndroid = Boolean(nav && /android/i.test(nav.userAgent));
     setIosSafariNeedsInstall(isIos && !isStandalone);
     setAndroidNeedsInstall(isAndroid && !isStandalone);
-    void getWebPushStatus().then(setWebPushStatus);
+    // Reconcile rather than a plain status read: repairs a subscription
+    // that exists in this browser but was never (or no longer) persisted
+    // server-side — see reconcileWebPushSubscription()'s own doc comment.
+    // A no-op (same report as getWebPushStatus()) whenever permission
+    // isn't already 'granted', so this never prompts just by opening the
+    // modal.
+    void reconcileWebPushSubscription().then(setWebPushStatus);
 
     const handleBeforeInstallPrompt = (event: any) => {
       event.preventDefault();

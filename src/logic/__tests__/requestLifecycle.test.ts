@@ -6,6 +6,7 @@ import {
   countUnreadRequestResults,
   isRequestActive,
   isRequestVisible,
+  selectActionablePendingRequestsForViewer,
   walkHasActiveSwapRequest,
   walkHasActiveTimeChangeRequest,
   type RequestLike,
@@ -431,5 +432,55 @@ describe('walkHasActiveTimeChangeRequest', () => {
   it('defaults now to the current time when omitted', () => {
     const timeChanges: RequestLike[] = [makeRequest({ id: 't1', walk_id: 'w1' })];
     expect(walkHasActiveTimeChangeRequest('w1', timeChanges, walks)).toBe(true);
+  });
+});
+
+/**
+ * Home Dashboard pending-request card data source. Uses the exact same
+ * authorization filters as countPendingRequestsForViewer (above) — these
+ * tests exist specifically to prove that reuse: a viewer must never see an
+ * item here they aren't also counted as able to act on there.
+ */
+describe('selectActionablePendingRequestsForViewer', () => {
+  const walks = { w1: { status: 'pending' as const }, w2: { status: 'pending' as const } };
+
+  it('includes a swap request targeting the viewer, with its raw fields carried through untouched', () => {
+    const swap = makeRequest({ id: 's1', walk_id: 'w1', target_walk_id: 'w2', requested_by_user_id: 'alice', target_user_id: 'bob' });
+    const result = selectActionablePendingRequestsForViewer([swap], [], walks, 'bob', false, NOW);
+    expect(result).toEqual([
+      { kind: 'swap', id: 's1', walkId: 'w1', requestedByUserId: 'alice', targetUserId: 'bob', targetWalkId: 'w2', createdAt: NOW.toISOString() },
+    ]);
+  });
+
+  it('excludes a swap request NOT targeting the viewer', () => {
+    const swap = makeRequest({ id: 's1', walk_id: 'w1', target_walk_id: 'w2', requested_by_user_id: 'alice', target_user_id: 'bob' });
+    expect(selectActionablePendingRequestsForViewer([swap], [], walks, 'carol', false, NOW)).toEqual([]);
+  });
+
+  it('includes a time-change request only for an admin viewer, regardless of who requested it', () => {
+    const tc = makeRequest({ id: 't1', walk_id: 'w1', requested_by_user_id: 'alice', proposed_time: '18:00', expected_time: '17:00' });
+    expect(selectActionablePendingRequestsForViewer([], [tc], walks, 'alice', false, NOW)).toEqual([]);
+    expect(selectActionablePendingRequestsForViewer([], [tc], walks, 'some-admin', true, NOW)).toEqual([
+      { kind: 'timeChange', id: 't1', walkId: 'w1', requestedByUserId: 'alice', proposedTime: '18:00', expectedTime: '17:00', createdAt: NOW.toISOString() },
+    ]);
+  });
+
+  it('excludes an expired or already-resolved request from either kind', () => {
+    const expiredSwap = makeRequest({ id: 's1', walk_id: 'w1', target_walk_id: 'w2', target_user_id: 'bob' });
+    const resolvedTc = makeRequest({ id: 't1', walk_id: 'w1', status: 'approved', resolved_at: NOW.toISOString() });
+    const walksWithGoneTarget = { w1: { status: 'pending' as const } }; // w2 missing -> swap expired
+    const result = selectActionablePendingRequestsForViewer([expiredSwap], [resolvedTc], walksWithGoneTarget, 'bob', true, NOW);
+    expect(result).toEqual([]);
+  });
+
+  it('mixes both kinds in one list, oldest first by created_at', () => {
+    const swap = makeRequest({ id: 's1', walk_id: 'w1', target_walk_id: 'w2', target_user_id: 'admin-1', created_at: '2026-08-26T12:00:00Z' });
+    const tc = makeRequest({ id: 't1', walk_id: 'w1', created_at: '2026-08-26T10:00:00Z' });
+    const result = selectActionablePendingRequestsForViewer([swap], [tc], walks, 'admin-1', true, NOW);
+    expect(result.map((r) => r.id)).toEqual(['t1', 's1']);
+  });
+
+  it('returns an empty array when nothing is actionable for this viewer', () => {
+    expect(selectActionablePendingRequestsForViewer([], [], walks, 'anyone', true, NOW)).toEqual([]);
   });
 });

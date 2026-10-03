@@ -70,14 +70,24 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).not.toContain('style={styles.dashboardMoreButton}');
   });
 
-  it('shows the orange approval prompt only for a real actionable request', () => {
-    expect(home).toContain('pendingForMe > 0 ?');
-    expect(home).toContain('style={styles.dashboardRequestAlert}');
-    // The approval request is deliberately rendered after the timeline so it
-    // remains the lowest Dashboard row on mobile.
-    expect(home.indexOf('style={styles.dashboardRequestAlert}')).toBeGreaterThan(home.indexOf('style={styles.dashboardTimeline}'));
-    expect(home).toContain('בקשה ממתינה לאישור');
-    expect(home).toContain('onPress={openRequestsInbox}');
+  // Request-notifications repair, item B — the generic "N requests
+  // waiting" banner was replaced with PendingRequestsCard, which renders
+  // the actual actionable items (who requested what from whom) with
+  // inline approve/decline, reusing the same requestsStore actions
+  // RequestsInboxModal already uses — see PendingRequestsCard.tsx and
+  // logic/requestLifecycle.ts's selectActionablePendingRequestsForViewer().
+  it('renders the actionable pending-request card (not a bare count banner) wired to the real approve/decline actions', () => {
+    expect(home).toContain('selectActionablePendingRequestsForViewer(');
+    expect(home).toContain('<PendingRequestsCard');
+    expect(home).toContain('items={actionablePendingRequests}');
+    expect(home).toContain('onApproveSwap={approveSwap}');
+    expect(home).toContain('onRejectSwap={rejectSwap}');
+    expect(home).toContain('onApproveTimeChange={approveTimeChange}');
+    expect(home).toContain('onRejectTimeChange={rejectTimeChange}');
+    expect(home).toContain('onOpenInbox={openRequestsInbox}');
+    // Deliberately rendered after the timeline so it remains the lowest
+    // Dashboard row on mobile, same positioning as the banner it replaced.
+    expect(home.indexOf('<PendingRequestsCard')).toBeGreaterThan(home.indexOf('style={styles.dashboardTimeline}'));
   });
 
   it('keeps the approved Home content order with white supporting cards and teal actions', () => {

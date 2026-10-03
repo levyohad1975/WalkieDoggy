@@ -512,9 +512,12 @@ Deno.serve(async (req: Request) => {
       const webSubscriptions = webPushRows ?? [];
 
       if (expoTokens.length === 0 && webSubscriptions.length === 0) {
+        // 0102 FIX: a distinct terminal status — never 'sent', which
+        // implies a real delivery happened. See that migration's header
+        // comment for the real-device QA finding this corrects.
         await serviceClient.rpc('mark_request_push_event', {
           p_dedupe_key: dedupeKey,
-          p_status: 'sent',
+          p_status: 'no_destination',
         });
 
         return new Response(

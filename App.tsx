@@ -13,6 +13,7 @@ import { RtlText } from './src/components/RtlText';
 import { colors } from './src/theme/colors';
 import { requestNotificationPermissions, subscribeToWalkReminderResponses } from './src/notifications/notificationService';
 import { registerPushToken } from './src/lib/pushTokens';
+import { reconcileWebPushSubscription } from './src/lib/webPush';
 import { repository, setSyncQueueActorGetter } from './src/data';
 import { isSupabaseConfigured } from './src/lib/supabase';
 import { touchLastSeen } from './src/lib/requests';
@@ -306,6 +307,20 @@ export default function App() {
   useEffect(() => {
     if (currentUserId && !systemObserverActive) {
       void registerPushTokenAndReconcile();
+    }
+  }, [currentUserId, systemObserverActive]);
+
+  // Request-notifications repair — "refresh/reopen recovery" for Web Push,
+  // the exact web-platform counterpart of registerPushTokenAndReconcile()
+  // above. Silent and best-effort (reconcileWebPushSubscription() never
+  // throws): repairs a subscription that exists in this browser but was
+  // never (or no longer) persisted server-side, or re-subscribes if the
+  // browser invalidated it, without requiring the person to open Reminders
+  // and tap "אפשר התראות" again. A no-op whenever permission isn't already
+  // 'granted' — this never prompts on its own.
+  useEffect(() => {
+    if (Platform.OS === 'web' && currentUserId && !systemObserverActive) {
+      void reconcileWebPushSubscription();
     }
   }, [currentUserId, systemObserverActive]);
 

@@ -45,9 +45,11 @@ import {
   countPendingRequestsForViewer,
   countRecentlyResolvedRequestsForAdmin,
   countUnreadRequestResults,
+  selectActionablePendingRequestsForViewer,
   walkHasActiveSwapRequest,
   walkHasActiveTimeChangeRequest,
 } from '../logic/requestLifecycle';
+import { PendingRequestsCard } from '../components/PendingRequestsCard';
 import { computeWalkRequestStatusLine } from '../logic/walkRequestStatusLine';
 import type { Walk, WalkGpsSession } from '../types';
 import { renderMessageTemplate } from '../mascot/messageEngine';
@@ -679,6 +681,18 @@ export function HomeScreen() {
     effectiveRole === 'admin'
   );
 
+  // Request-notifications repair, item B — the actual actionable items for
+  // the Home Dashboard pending-request card (PendingRequestsCard), using
+  // the exact same authorization filters as pendingForMe above so the
+  // count and the detailed cards can never disagree.
+  const actionablePendingRequests = selectActionablePendingRequestsForViewer(
+    swapRequests,
+    timeChangeRequests,
+    walksById,
+    effectiveUserId,
+    effectiveRole === 'admin'
+  );
+
   const unreadResultsForMe =
     countUnreadRequestResults(swapRequests, walksById, effectiveUserId) +
     countUnreadRequestResults(timeChangeRequests, walksById, effectiveUserId) +
@@ -1121,16 +1135,17 @@ export function HomeScreen() {
           </Pressable>
         </View>
 
-        {pendingForMe > 0 ? (
-          <Pressable style={styles.dashboardRequestAlert} onPress={openRequestsInbox} accessibilityRole="button" accessibilityLabel={`${pendingForMe} בקשות ממתינות לאישור`}>
-            <RtlText style={styles.dashboardRequestAlertIcon}>🔔</RtlText>
-            <View style={styles.dashboardRequestAlertCopy}>
-              <RtlText style={styles.dashboardRequestAlertTitle}>בקשה ממתינה לאישור</RtlText>
-              <RtlText style={styles.dashboardRequestAlertSubtitle}>{pendingForMe === 1 ? 'בקשה אחת מחכה לטיפול שלך' : `${pendingForMe} בקשות מחכות לטיפול שלך`}</RtlText>
-            </View>
-            <RtlText style={styles.dashboardRequestAlertChevron}>‹</RtlText>
-          </Pressable>
-        ) : null}
+        <PendingRequestsCard
+          items={actionablePendingRequests}
+          usersById={usersById}
+          walksById={walksById}
+          dogName={dog?.name}
+          onApproveSwap={approveSwap}
+          onRejectSwap={rejectSwap}
+          onApproveTimeChange={approveTimeChange}
+          onRejectTimeChange={rejectTimeChange}
+          onOpenInbox={openRequestsInbox}
+        />
 
         <View style={styles.dashboardOverflow}>
         {lastWalk ? (
@@ -1778,12 +1793,6 @@ const styles = StyleSheet.create({
   dashboardTimelineTimeActive: { color: colors.info },
   dashboardTimelineName: { fontSize: 10, fontWeight: '500', color: colors.textSecondary, maxWidth: 72, textAlign: 'center' },
   dashboardTimelineEmpty: { fontSize: 13, fontWeight: '600', color: colors.textSecondary, textAlign: 'right', paddingBottom: 2 },
-  dashboardRequestAlert: { minHeight: 42, borderRadius: 18, backgroundColor: '#FFF3DE', borderWidth: 1, borderColor: '#F1DFC2', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.xs },
-  dashboardRequestAlertIcon: { fontSize: 17 },
-  dashboardRequestAlertCopy: { flex: 1, alignItems: 'flex-end' },
-  dashboardRequestAlertTitle: { fontSize: 13, fontWeight: '700', color: '#A65F18', textAlign: 'right' },
-  dashboardRequestAlertSubtitle: { marginTop: 0, fontSize: 11, fontWeight: '500', color: colors.textSecondary, textAlign: 'right' },
-  dashboardRequestAlertChevron: { fontSize: 21, color: '#B66A20', writingDirection: 'ltr' },
   dashboardOverflow: { display: 'none' },
   notificationButton: { position: 'absolute', right: spacing.md, top: 7, width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   notificationIcon: { fontSize: 18 },
