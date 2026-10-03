@@ -1096,7 +1096,11 @@ export function HomeScreen() {
 
         <View style={styles.dashboardSection}>
           <View style={styles.dashboardExternalHeading}>
-            <RtlText style={styles.dashboardExternalTitle}>בהמשך היום</RtlText>
+            <RtlText style={styles.dashboardExternalTitle}>
+              {dashboardTimelineWalks.length > 0
+                ? `בהמשך היום · ${dashboardTimelineWalks.length === 1 ? 'טיול אחד' : `${dashboardTimelineWalks.length} טיולים`}`
+                : 'בהמשך היום'}
+            </RtlText>
             <RtlText style={styles.dashboardTimelineChevron}>‹</RtlText>
           </View>
           <Pressable style={styles.dashboardTimeline} onPress={() => navigation.navigate('Schedule')} accessibilityRole="button" accessibilityLabel="פתיחת המשך הטיולים של היום בלוח הזמנים">
@@ -1148,130 +1152,16 @@ export function HomeScreen() {
         />
 
         <View style={styles.dashboardOverflow}>
-        {lastWalk ? (
-          <View style={styles.section}>
-            <View style={styles.sectionTitlePhysicalRight}>
-              <RtlText style={styles.sectionTitle}>הטיול האחרון</RtlText>
-            </View>
-
-            {(() => {
-              const canEditLastWalk =
-                lastWalkIsEditable &&
-                (effectiveRole === 'admin' ||
-                  lastWalk.responsibleUserId === effectiveUserId ||
-                  (lastWalk.isUnplanned && lastWalk.completedByUserId === effectiveUserId));
-
-              return (
-                <View style={styles.lastWalkCard}>
-                  <View style={styles.lastWalkTopRow}>
-                    <View style={styles.lastWalkTimeBlock}>
-                      <RtlText style={styles.lastWalkTime} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} maxFontSizeMultiplier={1.35}>
-                        {lastWalk.scheduledTime}
-                      </RtlText>
-                      <RtlText style={styles.lastWalkDateContext} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} maxFontSizeMultiplier={1.35}>
-                        {resolvedWalkDateContextLabel(lastWalk)}
-                      </RtlText>
-                      {lastWalk.status === 'skipped' ? (
-                        <RtlText style={styles.lastWalkSkippedBadge} numberOfLines={1} maxFontSizeMultiplier={1.35}>✕ לא בוצע</RtlText>
-                      ) : (
-                        // BATCH 4 (item F — completedAt UX): show the actual
-                        // completion-click time, not just the label — the
-                        // Master Specification's exact example is
-                        // "✓ בוצע · 07:18". formatCompletedAtBadge() falls
-                        // back to the plain label alone for legacy data with
-                        // no recorded completedAt.
-                        <RtlText style={styles.lastWalkDoneBadge} numberOfLines={1} maxFontSizeMultiplier={1.35}>
-                          {formatCompletedAtBadge(lastWalk)}
-                        </RtlText>
-                      )}
-                    </View>
-
-                    <View style={styles.lastWalkActions}>
-                      <View style={styles.lastWalkEditGroup}>
-                        {canEditLastWalk ? (
-                          <Pressable
-                            onPress={() =>
-                              lastWalk.isUnplanned
-                                ? setEditingLastUnplannedWalkId(lastWalk.id)
-                                : setEditingLastDoneDetailsId(lastWalk.id)
-                            }
-                            hitSlop={8}
-                            style={styles.lastWalkEditAction}
-                            accessibilityRole="button"
-                            accessibilityLabel="עריכת הטיול האחרון"
-                          >
-                            <RtlText style={styles.lastWalkEditLink} numberOfLines={1} maxFontSizeMultiplier={1.25}>עריכה ✏️</RtlText>
-                          </Pressable>
-                        ) : null}
-                      </View>
-
-                      <View style={styles.lastWalkNeedsGroup}>
-                        {lastWalk.status === 'done' ? (
-                          canEditLastWalk ? (
-                            <>
-                              <Pressable
-                                onPress={() => editDoneDetails(lastWalk.id, { hadPoop: !lastWalk.hadPoop })}
-                                hitSlop={8}
-                                style={styles.lastWalkNeedAction}
-                                accessibilityRole="checkbox"
-                                accessibilityState={{ checked: !!lastWalk.hadPoop }}
-                                accessibilityLabel="סימון קקי בטיול האחרון"
-                              >
-                                <RtlText style={[styles.lastWalkActionEmoji, !lastWalk.hadPoop && styles.lastWalkToggleEmojiMuted]} maxFontSizeMultiplier={1.15}>💩</RtlText>
-                              </Pressable>
-                              <Pressable
-                                onPress={() => editDoneDetails(lastWalk.id, { hadPee: !lastWalk.hadPee })}
-                                hitSlop={8}
-                                style={styles.lastWalkNeedAction}
-                                accessibilityRole="checkbox"
-                                accessibilityState={{ checked: !!lastWalk.hadPee }}
-                                accessibilityLabel="סימון פיפי בטיול האחרון"
-                              >
-                                <RtlText style={[styles.lastWalkActionEmoji, !lastWalk.hadPee && styles.lastWalkToggleEmojiMuted]} maxFontSizeMultiplier={1.15}>💧</RtlText>
-                              </Pressable>
-                            </>
-                          ) : (
-                            <>
-                              {lastWalk.hadPoop ? <View style={styles.lastWalkNeedAction}><RtlText style={styles.lastWalkActionEmoji}>💩</RtlText></View> : null}
-                              {lastWalk.hadPee ? <View style={styles.lastWalkNeedAction}><RtlText style={styles.lastWalkActionEmoji}>💧</RtlText></View> : null}
-                            </>
-                          )
-                        ) : null}
-                      </View>
-                    </View>
-                    <View style={styles.lastWalkPerson}>
-                      <RtlText style={styles.lastWalkPersonName} numberOfLines={1} ellipsizeMode="tail" maxFontSizeMultiplier={1.35}>
-                        {lastWalk.completedByUserId
-                          ? usersById[lastWalk.completedByUserId]?.name ?? 'לא ידוע'
-                          : usersById[lastWalk.responsibleUserId]?.name ?? 'לא ידוע'}
-                      </RtlText>
-                      <RtlText style={styles.lastWalkMeta} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} maxFontSizeMultiplier={1.35}>
-                        {lastWalk.isUnplanned ? 'ספונטני' : 'מתוכנן'}
-                      </RtlText>
-                    </View>
-                  </View>
-                  {lastWalk.status === 'done' ? (
-                    <View style={styles.lastWalkDetails}>
-                      <View style={styles.lastWalkDetailChips}>
-                        <View style={styles.lastWalkDetailChip}><RtlText style={styles.lastWalkDetailChipText}>💧 {lastWalk.hadPee ? '✓' : '—'}</RtlText></View>
-                        <View style={styles.lastWalkDetailChip}><RtlText style={styles.lastWalkDetailChipText}>💩 {lastWalk.hadPoop ? '✓' : '—'}</RtlText></View>
-                        {lastWalkGps?.startedAt && lastWalkGps?.endedAt ? <View style={styles.lastWalkDetailChip}><RtlText style={styles.lastWalkDetailChipText}>⏱️ {Math.max(1, Math.round((new Date(lastWalkGps.endedAt).getTime() - new Date(lastWalkGps.startedAt).getTime()) / 60000))} דק׳</RtlText></View> : null}
-                        {lastWalkGps?.distanceMeters != null ? <View style={styles.lastWalkDetailChip}><RtlText style={styles.lastWalkDetailChipText}>📍 {lastWalkGps.distanceMeters >= 1000 ? `${(lastWalkGps.distanceMeters / 1000).toFixed(1)} ק״מ` : `${Math.round(lastWalkGps.distanceMeters)} מ׳`}</RtlText></View> : null}
-                      </View>
-                      {lastWalk.note?.trim() ? (
-                        <View style={styles.lastWalkNote}>
-                          <RtlText style={styles.lastWalkNoteLabel}>הערה</RtlText>
-                          <RtlText style={styles.lastWalkNoteText}>{lastWalk.note.trim()}</RtlText>
-                        </View>
-                      ) : null}
-                    </View>
-                  ) : null}
-                </View>
-              );
-            })()}
-          </View>
-        ) : null}
-
+        {/* Real-device QA fix: "ממתינים לעדכון"/"טיולים קרובים" below were
+            accidentally hidden entirely — this wrapper (`dashboardOverflow`)
+            used to also hold a now-superseded, fully redundant duplicate of
+            the "הטיול האחרון" card (the compact version above, rendered via
+            the same `lastWalk`, already replaced it). That dead duplicate
+            card is removed here; the two sections actually unique to this
+            wrapper (overdue walks, further upcoming walks) are kept and —
+            via dashboardOverflow's own style fix below — are visible again,
+            closing the gap where an overdue-but-not-yet-done walk for today
+            had nowhere on Home to appear at all. */}
         {overduePending.length > 0 ? (
           <View style={styles.section}>
             <RtlText style={styles.sectionTitle}>ממתינים לעדכון</RtlText>
@@ -1793,7 +1683,11 @@ const styles = StyleSheet.create({
   dashboardTimelineTimeActive: { color: colors.info },
   dashboardTimelineName: { fontSize: 10, fontWeight: '500', color: colors.textSecondary, maxWidth: 72, textAlign: 'center' },
   dashboardTimelineEmpty: { fontSize: 13, fontWeight: '600', color: colors.textSecondary, textAlign: 'right', paddingBottom: 2 },
-  dashboardOverflow: { display: 'none' },
+  // Real-device QA fix: this used to be `{ display: 'none' }`, unconditionally
+  // hiding everything inside it — including "ממתינים לעדכון" (overdue walks)
+  // and "טיולים קרובים" (further upcoming walks), neither of which is shown
+  // anywhere else on Home. See the JSX comment at this wrapper's usage.
+  dashboardOverflow: {},
   notificationButton: { position: 'absolute', right: spacing.md, top: 7, width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   notificationIcon: { fontSize: 18 },
   requestsCountBadge: { minWidth: spacing.xl, height: spacing.xl, borderRadius: radii.sm, paddingHorizontal: spacing.xs, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryDark },

@@ -70,6 +70,33 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).not.toContain('style={styles.dashboardMoreButton}');
   });
 
+  // Real-device QA fix — the approved Dashboard Option D spec is
+  // "בהמשך היום · X טיולים", but the header never actually included the
+  // walk count. This asserts the header text includes it whenever there
+  // is at least one timeline walk, and degrades gracefully (plain title,
+  // no "0 טיולים") when there are none — the empty-state card below
+  // already conveys that.
+  // Real-device QA ask: "verify the pending-request card disappears/
+  // updates immediately after approve/reject". Guaranteed structurally by
+  // NOT memoizing this computation — it re-derives from the live
+  // swapRequests/timeChangeRequests store state on every render, the same
+  // pattern pendingForMe (the pre-existing bell-badge count) already
+  // relies on. A useMemo with a stale/incomplete dependency array here
+  // would be exactly the kind of bug that could leave an approved/
+  // rejected request lingering on Home after its status already changed.
+  it('actionablePendingRequests is recomputed directly from live store state every render — never a stale useMemo', () => {
+    expect(home).toContain(
+      'const actionablePendingRequests = selectActionablePendingRequestsForViewer(\n    swapRequests,\n    timeChangeRequests,\n    walksById,\n    effectiveUserId,\n    effectiveRole === \'admin\'\n  );'
+    );
+    expect(home).not.toMatch(/const actionablePendingRequests = useMemo/);
+  });
+
+  it('"בהמשך היום" header includes the live walk count, matching the approved Dashboard Option D spec', () => {
+    expect(home).toMatch(
+      /\{dashboardTimelineWalks\.length > 0\s*\n\s*\? `בהמשך היום · \$\{dashboardTimelineWalks\.length === 1 \? 'טיול אחד' : `\$\{dashboardTimelineWalks\.length\} טיולים`\}`\s*\n\s*: 'בהמשך היום'\}/
+    );
+  });
+
   // Request-notifications repair, item B — the generic "N requests
   // waiting" banner was replaced with PendingRequestsCard, which renders
   // the actual actionable items (who requested what from whom) with
