@@ -355,6 +355,17 @@ export async function regenerateInviteCode(familyId: string): Promise<string> {
 export interface WhoAmI {
   profileId: string | null;
   realProfileId: string | null;
+  /**
+   * Family Lifecycle repair (migration 0101) — the server's own
+   * current_family_id() for this caller, alongside realProfileId. Lets a
+   * client-side recovery path (authStore.restoreSession()) re-derive a
+   * complete local session (familyId + currentUserId) from server truth
+   * alone, with no second round trip, when local storage has nothing
+   * cached (e.g. a device whose prior invite redemption left no local
+   * commit). Null in local/demo mode or for a device whoami() cannot
+   * resolve a family for.
+   */
+  familyId: string | null;
   familyRole: FamilyRole | null;
   isImpersonating: boolean;
   impersonatedUserId: string | null;
@@ -374,6 +385,10 @@ export async function getWhoAmI(): Promise<WhoAmI | null> {
     // the real claimed profile, so it is safe to use as the verification
     // fallback. Never use that fallback while impersonating.
     realProfileId: row.real_profile_id ?? (!isImpersonating ? row.profile_id ?? null : null),
+    // row.family_id is only present once migration 0101 is deployed —
+    // older deployments simply report null here (no backward-compat
+    // fallback needed: callers already treat null as "couldn't resolve").
+    familyId: row.family_id ?? null,
     familyRole: row.family_role === 'admin' || row.family_role === 'member' ? row.family_role : null,
     isImpersonating,
     impersonatedUserId: row.impersonated_user_id ?? null,
