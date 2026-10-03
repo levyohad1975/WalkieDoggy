@@ -52,20 +52,20 @@ export function WalkieParkBackground() {
 
 const styles = StyleSheet.create({
   sky: { backgroundColor: '#FFF8E8', overflow: 'hidden' },
-  sunGlow: { position: 'absolute', width: 210, height: 210, borderRadius: 105, right: 42, top: -92, backgroundColor: '#FFF0B8', opacity: 0.5 },
-  sun: { position: 'absolute', width: 38, height: 38, borderRadius: 19, right: 92, top: 17, backgroundColor: '#FFD97A', opacity: 0.78 },
+  sunGlow: { position: 'absolute', width: 210, height: 210, borderRadius: 105, right: 42, top: -18, backgroundColor: '#FFF0B8', opacity: 0.5 },
+  sun: { position: 'absolute', width: 38, height: 38, borderRadius: 19, right: 92, top: 54, backgroundColor: '#FFD97A', opacity: 0.78 },
 
-  cloudLeft: { position: 'absolute', left: 42, top: 22, width: 82, height: 30, opacity: 0.72 },
+  cloudLeft: { position: 'absolute', left: 42, top: 62, width: 82, height: 30, opacity: 0.72 },
   cloudPuff: { position: 'absolute', backgroundColor: '#FFFFFF', borderRadius: 20 },
   cloudPuffLeft: { width: 36, height: 19, left: 0, top: 9 },
   cloudPuffMid: { width: 42, height: 25, left: 22, top: 2 },
   cloudPuffRight: { width: 31, height: 17, left: 51, top: 11 },
 
-  hillFarLeft: { position: 'absolute', left: -72, bottom: 38, width: 300, height: 116, borderRadius: 150, backgroundColor: '#E6F1D7', transform: [{ rotate: '5deg' }] },
-  hillFarRight: { position: 'absolute', right: -86, bottom: 40, width: 326, height: 122, borderRadius: 163, backgroundColor: '#DDECCF', transform: [{ rotate: '-5deg' }] },
-  hillNear: { position: 'absolute', left: 72, bottom: -16, width: 340, height: 108, borderRadius: 170, backgroundColor: '#CFE6BE', transform: [{ rotate: '2deg' }] },
+  hillFarLeft: { position: 'absolute', left: -72, bottom: 18, width: 300, height: 116, borderRadius: 150, backgroundColor: '#E6F1D7', transform: [{ rotate: '5deg' }] },
+  hillFarRight: { position: 'absolute', right: -86, bottom: 20, width: 326, height: 122, borderRadius: 163, backgroundColor: '#DDECCF', transform: [{ rotate: '-5deg' }] },
+  hillNear: { position: 'absolute', left: 72, bottom: -8, width: 340, height: 108, borderRadius: 170, backgroundColor: '#CFE6BE', transform: [{ rotate: '2deg' }] },
 
-  treeLeft: { position: 'absolute', left: 18, bottom: 31, width: 82, height: 104 },
+  treeLeft: { position: 'absolute', left: 18, bottom: 34, width: 82, height: 104 },
   treeTrunk: { position: 'absolute', width: 12, height: 47, left: 31, bottom: 0, borderRadius: 6, backgroundColor: '#B9875D', transform: [{ rotate: '3deg' }] },
   treeCrown: { position: 'absolute', borderRadius: 40, backgroundColor: '#8FCB91' },
   treeCrownOne: { width: 45, height: 45, left: 4, top: 14 },
