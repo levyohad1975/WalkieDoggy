@@ -189,7 +189,7 @@ export function parseInviteInput(raw: string): string | null {
   const prefixIndex = trimmed.indexOf(INVITE_LINK_PREFIX);
   if (prefixIndex >= 0) {
     const afterPrefix = trimmed.slice(prefixIndex + INVITE_LINK_PREFIX.length);
-    const token = afterPrefix.split(/\\s/, 1)[0]?.replace(/[\"'<>.,;:!?)}\\]]+$/, '').trim();
+    const token = afterPrefix.trim().split(' ')[0]?.split('\n')[0]?.split('\r')[0]?.split('\t')[0]?.replace(/[\"'<>.,;:!?)}\]]+$/, '').trim();
     return token || null;
   }
 
