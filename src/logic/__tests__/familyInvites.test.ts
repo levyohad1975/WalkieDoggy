@@ -139,14 +139,30 @@ describe('shouldOfferRegenerate / createInviteButtonLabel', () => {
 });
 
 describe('buildInviteLinkText', () => {
-  it('builds the design-approved opaque-token dogwalkfamily:// form', () => {
+  it('without an origin, falls back to the legacy opaque-token dogwalkfamily:// form', () => {
     expect(buildInviteLinkText('abc123XYZ')).toBe('dogwalkfamily://invite/abc123XYZ');
+    expect(buildInviteLinkText('abc123XYZ', null)).toBe('dogwalkfamily://invite/abc123XYZ');
   });
 
-  it('never embeds anything beyond the token itself (no family/user data)', () => {
+  it('never embeds anything beyond the token itself (no family/user data) in the legacy form', () => {
     const link = buildInviteLinkText('the-raw-token');
     expect(link).toBe('dogwalkfamily://invite/the-raw-token');
     expect(link.split('/').length).toBe(4); // 'dogwalkfamily:', '', 'invite', '<token>'
+  });
+
+  it('with a web origin, builds a real clickable HTTPS invite URL carrying only the opaque token', () => {
+    const link = buildInviteLinkText('abc123XYZ', 'https://walkie-doggy-staging.vercel.app');
+    expect(link).toBe('https://walkie-doggy-staging.vercel.app/?invite=abc123XYZ');
+  });
+
+  it('percent-encodes the token in the HTTPS form so a URL-unsafe token still produces a valid link', () => {
+    const link = buildInviteLinkText('a b&c', 'https://example.com');
+    expect(link).toBe('https://example.com/?invite=a%20b%26c');
+  });
+
+  it('never embeds anything beyond the token itself in the HTTPS form either', () => {
+    const link = buildInviteLinkText('the-raw-token', 'https://example.com');
+    expect(link).toBe('https://example.com/?invite=the-raw-token');
   });
 });
 
@@ -212,5 +228,44 @@ dogwalkfamily://invite/abc123XYZ
 
   it('does not validate token shape/length — any non-empty leftover string is returned, leaving validation to inspect_family_invite() server-side', () => {
     expect(parseInviteInput('not-a-real-token-at-all')).toBe('not-a-real-token-at-all');
+  });
+
+  // Family Lifecycle repair — the real HTTPS link form (buildInviteLinkText()
+  // with an origin). Regression coverage per item 12: "HTTPS invite
+  // parsing/routing" and "full-message paste fallback".
+  describe('HTTPS invite URL recognition (fallback paste, alongside launch-URL auto-detection)', () => {
+    it('extracts the token from a full HTTPS invite URL', () => {
+      expect(parseInviteInput('https://walkie-doggy-staging.vercel.app/?invite=abc123XYZ')).toBe('abc123XYZ');
+    });
+
+    it('extracts the token when the invite param is not the first query param', () => {
+      expect(parseInviteInput('https://example.com/?utm_source=whatsapp&invite=abc123XYZ')).toBe('abc123XYZ');
+    });
+
+    it('extracts the token when the whole share message (HTTPS variant) is pasted', () => {
+      expect(
+        parseInviteInput(`הוזמנת להצטרף למשפחה באפליקציית Walkie Doggy!
+
+https://walkie-doggy-staging.vercel.app/?invite=abc123XYZ`)
+      ).toBe('abc123XYZ');
+    });
+
+    it('extracts an HTTPS link embedded inline in surrounding message text', () => {
+      expect(parseInviteInput('קישור ההזמנה: https://example.com/?invite=abc123XYZ תודה')).toBe('abc123XYZ');
+    });
+
+    it('decodes a percent-encoded token from the query string', () => {
+      expect(parseInviteInput('https://example.com/?invite=a%20b%26c')).toBe('a b&c');
+    });
+
+    it('still prefers the legacy dogwalkfamily:// prefix when both forms somehow appear (legacy checked first)', () => {
+      expect(parseInviteInput('dogwalkfamily://invite/legacy-token https://example.com/?invite=https-token')).toBe('legacy-token');
+    });
+
+    it('the HTTPS form round-trips through buildInviteLinkText -> parseInviteInput back to the original token', () => {
+      const rawToken = 'round-trip-token-123';
+      const link = buildInviteLinkText(rawToken, 'https://walkie-doggy-staging.vercel.app');
+      expect(parseInviteInput(link)).toBe(rawToken);
+    });
   });
 });

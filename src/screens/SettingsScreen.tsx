@@ -31,6 +31,7 @@ import { RemindersModal } from '../components/RemindersModal';
 import { FamilySharingModal } from '../components/FamilySharingModal';
 import { guardTestModeMutation } from '../lib/testModeGuard';
 import { decideChildModalToOpen, type SettingsChildModal } from '../logic/settingsModalTransitions';
+import { buildJoinLinkText } from '../logic/familyJoinCode';
 import { generateId } from '../lib/id';
 import { useHealthStore } from '../store/healthStore';
 import { HealthGroomingModal } from '../components/HealthGroomingModal';
@@ -392,12 +393,21 @@ function SettingsScreenContent() {
   // the modal's code card as a manual-copy fallback (FamilySharingModal
   // renders the code inside a selectable Text/TextInput — see that file).
   const [copyFeedback, setCopyFeedback] = useState<'idle' | 'success' | 'error'>('idle');
+  // Family Lifecycle repair, item 6 — prefer a real, directly-clickable
+  // HTTPS link here too (same treatment as InviteShareModal's personal
+  // invite link), with the bare code remaining only as the visible,
+  // selectable manual-entry fallback in FamilySharingModal's code card.
+  // See logic/familyJoinCode.ts's doc comment for why this stays a
+  // separate helper/query-param from the personal invite link rather than
+  // merging the two mechanisms.
+  const webOrigin = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : null;
   const copyInviteCode = async () => {
     if (!inviteCode) return;
-    const ok = await copyToClipboard(inviteCode);
+    const link = buildJoinLinkText(inviteCode, webOrigin);
+    const ok = await copyToClipboard(link);
     if (ok) {
       setCopyFeedback('success');
-      Alert.alert('הקוד הועתק', `קוד המשפחה ${inviteCode} הועתק ללוח.`);
+      Alert.alert('הקישור הועתק', 'קישור ההצטרפות למשפחה הועתק ללוח.');
     } else {
       setCopyFeedback('error');
       Alert.alert(
@@ -410,9 +420,10 @@ function SettingsScreenContent() {
 
   const shareInviteCode = async () => {
     if (!inviteCode) return;
+    const link = buildJoinLinkText(inviteCode, webOrigin);
     try {
       await Share.share({
-        message: `הצטרפו למשפחה שלנו באפליקציית Walkie Doggy Link! קוד ההצטרפות: ${inviteCode}`,
+        message: `הצטרפו למשפחה שלנו באפליקציית Walkie Doggy!\n\n${link}`,
       });
     } catch {
       // best-effort — sharing is a convenience, not critical

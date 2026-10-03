@@ -80,7 +80,7 @@ describe('FamilyOnboardingScreen — create/join auth guard and error mapping (s
   });
 
   it('lookup() maps backend errors through friendlyErrorMessage(), never raw e.message', () => {
-    const lookupStart = source.indexOf('const lookup = async () =>');
+    const lookupStart = source.indexOf('const lookup = async (overrideCode?: string) =>');
     const lookupEnd = source.indexOf('const confirmJoin = async () =>', lookupStart);
     const lookupBody = source.slice(lookupStart, lookupEnd);
     expect(lookupBody).toMatch(/setJoinError\(friendlyErrorMessage\(e\)\)/);

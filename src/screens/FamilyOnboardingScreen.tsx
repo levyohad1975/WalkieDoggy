@@ -16,6 +16,7 @@ import {
 } from '../lib/verifiedAdminOnboarding';
 import { inspectFamilyInviteDetail, redeemFamilyInvite, type FamilyInvitePreviewDetail } from '../lib/invites';
 import { formatInviteExpiry, inviteStatusLabel, parseInviteInput } from '../logic/familyInvites';
+import { parseJoinInput } from '../logic/familyJoinCode';
 import { friendlyErrorMessage } from '../lib/errorMessages';
 import { Avatar } from '../components/Avatar';
 import { DogPhoto } from '../components/DogPhoto';
@@ -70,6 +71,40 @@ export function FamilyOnboardingScreen() {
     (s) => s.retryPendingInviteRedemptionVerification
   );
   const isInstalledWebApp = Platform.OS === 'web' && typeof window !== 'undefined' && Boolean(window.matchMedia?.('(display-mode: standalone)').matches || (typeof navigator !== 'undefined' && (navigator as typeof navigator & { standalone?: boolean }).standalone === true));
+  // Family Lifecycle repair (item 1/2) — a valid invite token arriving
+  // through the URL (the HTTPS link built by buildInviteLinkText() and
+  // shared/QR'd by InviteShareModal) must take precedence over every
+  // generic onboarding screen: computed once, synchronously, before the
+  // very first render, so an invited recipient never sees 'pwaChoice' or
+  // 'choose' flash by first. Read directly off window.location rather than
+  // through parseInviteInput()'s full-message-paste path (that remains the
+  // manual-entry fallback) — this is specifically the query string of the
+  // page the recipient's device actually navigated to.
+  const [initialInviteToken] = useState<string | null>(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
+    try {
+      const raw = new URLSearchParams(window.location.search).get('invite');
+      return raw && raw.trim() ? raw.trim() : null;
+    } catch {
+      return null;
+    }
+  });
+  // Item 6 — the general family-wide sharing link (buildJoinLinkText(),
+  // Settings' FamilySharingModal), a lower-priority sibling of the above:
+  // a personal invite always claims a specific pre-created member profile
+  // and is the required primary flow (item 1), so it wins if a URL somehow
+  // carries both params. Kept on its own `join` query param (never
+  // `invite`) so the two mechanisms' launch detection can never collide or
+  // be mistaken for one another — see logic/familyJoinCode.ts.
+  const [initialJoinCode] = useState<string | null>(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
+    try {
+      const raw = new URLSearchParams(window.location.search).get('join');
+      return raw && raw.trim() ? raw.trim() : null;
+    } catch {
+      return null;
+    }
+  });
   // An installed PWA launch is ambiguous -- it's exactly as true for a
   // returning device reopening the icon as for a brand-new install that
   // just added the icon during setup (no reliable synchronous client-side
@@ -77,8 +112,13 @@ export function FamilyOnboardingScreen() {
   // anonymous Supabase session by the time this screen renders). Previously
   // this defaulted straight into 'recover', silently assuming "returning"
   // for every case including first-time installs. Show a neutral 3-way
-  // choice instead and let the device tell us which it is.
-  const [mode, setMode] = useState<Mode>(isInstalledWebApp ? 'pwaChoice' : 'choose');
+  // choice instead and let the device tell us which it is — UNLESS a valid
+  // invite/join link is already present, in which case that takes
+  // precedence over this ambiguity entirely (see initialInviteToken/
+  // initialJoinCode above).
+  const [mode, setMode] = useState<Mode>(
+    initialInviteToken ? 'redeem' : initialJoinCode ? 'join' : isInstalledWebApp ? 'pwaChoice' : 'choose'
+  );
   const [showWelcomeWink, setShowWelcomeWink] = useState(false);
   // Same fail-safe-static convention as WalkieMascot/MascotFrameAnimation:
   // default true (no animation) until the OS setting is confirmed, so a
@@ -245,8 +285,8 @@ export function FamilyOnboardingScreen() {
   const [found, setFound] = useState<FamilyLookupResult | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
 
-  const lookup = async () => {
-    const trimmed = code.trim();
+  const lookup = async (overrideCode?: string) => {
+    const trimmed = (overrideCode ?? code).trim();
     if (trimmed.length < 4) return;
     setLooking(true);
     setJoinError(null);
@@ -266,6 +306,28 @@ export function FamilyOnboardingScreen() {
       setLooking(false);
     }
   };
+
+  // Family Lifecycle repair (item 6) — a family-wide join link arrived via
+  // the launch URL: pre-fill the (now bypassed) manual code box with it and
+  // look it up automatically, same treatment as initialInviteToken above.
+  // Runs once on mount only, and only when there's no higher-priority
+  // invite token already handling the launch.
+  useEffect(() => {
+    if (!initialJoinCode || initialInviteToken) return;
+    const normalized = initialJoinCode.toUpperCase();
+    setCode(normalized);
+    void lookup(normalized);
+    if (typeof window !== 'undefined' && window.history?.replaceState) {
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('join');
+        window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+      } catch {
+        // best-effort URL cleanup only.
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const confirmJoin = async () => {
     if (!found) return;
@@ -314,8 +376,8 @@ export function FamilyOnboardingScreen() {
     setRedeemError(null);
   };
 
-  const inspectInvite = async () => {
-    const parsed = parseInviteInput(redeemInput);
+  const inspectInvite = async (overrideInput?: string) => {
+    const parsed = parseInviteInput(overrideInput ?? redeemInput);
     if (!parsed) return;
     setInspecting(true);
     setInspectError(null);
@@ -330,6 +392,30 @@ export function FamilyOnboardingScreen() {
       setInspecting(false);
     }
   };
+
+  // Family Lifecycle repair (item 1/2) — a token arrived via the launch URL:
+  // pre-fill the (now bypassed) manual box with it and inspect it
+  // automatically, so the recipient lands straight on the family/member
+  // confirmation card with nothing to paste or type. Runs once on mount
+  // only; strips the query param from the visible URL right away so a
+  // later refresh (e.g. after redemption already consumed the token)
+  // doesn't re-trigger the same now-stale token automatically.
+  useEffect(() => {
+    if (!initialInviteToken) return;
+    setRedeemInput(initialInviteToken);
+    void inspectInvite(initialInviteToken);
+    if (typeof window !== 'undefined' && window.history?.replaceState) {
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('invite');
+        window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+      } catch {
+        // best-effort URL cleanup only — leaving the param in place is
+        // harmless (parseInviteInput() will just see it again on refresh).
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const confirmRedeem = async () => {
     if (!redeemToken) return;
@@ -673,7 +759,7 @@ export function FamilyOnboardingScreen() {
                   setInspectError(null);
                   setRedeemError(null);
                 }}
-                placeholder="dogwalkfamily://invite/... או הקוד עצמו"
+                placeholder="https://... או הקוד עצמו"
                 placeholderTextColor={colors.textSecondary}
                 style={[styles.input, styles.ltrInput]}
                 textAlign="left"
@@ -783,7 +869,15 @@ export function FamilyOnboardingScreen() {
             <TextInput
               value={code}
               onChangeText={(v) => {
-                setCode(v.toUpperCase());
+                // Family Lifecycle repair (item 6) — forgiving like
+                // redeem mode's parseInviteInput(): a pasted full join
+                // link/share message is recognized and reduced to the
+                // bare code, not truncated to garbage by a naive
+                // character cap. No TextInput `maxLength` here for
+                // exactly that reason — the cap is applied ourselves,
+                // after parsing, below.
+                const parsed = parseJoinInput(v) ?? '';
+                setCode(parsed.toUpperCase().slice(0, 8));
                 setFound(null);
                 setJoinError(null);
               }}
@@ -793,7 +887,6 @@ export function FamilyOnboardingScreen() {
               textAlign="center"
               autoCapitalize="characters"
               autoCorrect={false}
-              maxLength={8}
               accessibilityLabel="קוד הזמנה"
             />
 

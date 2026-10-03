@@ -6,7 +6,6 @@ import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { RtlText } from './RtlText';
 import { Button } from './Button';
-import { WalkieParkBackground } from './WalkieParkBackground';
 
 /**
  * Shared background picker. Selection is deliberately a draft until the
@@ -52,17 +51,6 @@ export function DogHeroBackgroundPicker({ dog, onSave }: { dog: Dog; onSave: (pa
           </View>
           <View style={styles.labelWrap}><RtlText style={styles.label}>ברירת מחדל · חם ונקי</RtlText></View>
           {draftId === undefined ? <View style={styles.check}><RtlText style={styles.checkText}>✓</RtlText></View> : null}
-        </Pressable>
-        <Pressable
-          onPress={() => setDraftId('walkie-park')}
-          style={[styles.tile, draftId === 'walkie-park' && styles.selected]}
-          accessibilityRole="button"
-          accessibilityState={{ selected: draftId === 'walkie-park' }}
-          accessibilityLabel="בחירת רקע Walkie Park"
-        >
-          <WalkieParkBackground />
-          <View style={styles.labelWrap}><RtlText style={styles.label}>Walkie Park</RtlText></View>
-          {draftId === 'walkie-park' ? <View style={styles.check}><RtlText style={styles.checkText}>✓</RtlText></View> : null}
         </Pressable>
         {DOG_BACKGROUNDS.map((item) => {
           const selected = draftId === item.id;

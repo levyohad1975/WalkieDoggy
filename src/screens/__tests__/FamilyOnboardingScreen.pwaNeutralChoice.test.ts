@@ -25,8 +25,10 @@ import fs from 'fs';
 describe('FamilyOnboardingScreen offers a neutral choice for installed-PWA launches (structural)', () => {
   const source = fs.readFileSync(require.resolve('../FamilyOnboardingScreen'), 'utf8').replace(/\r\n/g, '\n');
 
-  it('defaults an installed-PWA launch to pwaChoice, not recover', () => {
-    expect(source).toMatch(/useState<Mode>\(isInstalledWebApp \? 'pwaChoice' : 'choose'\)/);
+  it('defaults an installed-PWA launch to pwaChoice, not recover — unless a valid invite/join link is already present (see FamilyOnboardingScreen.inviteLaunchRouting.test.ts), in which case that takes precedence over this ambiguity entirely', () => {
+    expect(source).toMatch(
+      /useState<Mode>\(\s*initialInviteToken \? 'redeem' : initialJoinCode \? 'join' : isInstalledWebApp \? 'pwaChoice' : 'choose'\s*\)/
+    );
   });
 
   it('renders a pwaChoice branch offering all three onward modes', () => {
