@@ -56,7 +56,6 @@ import type { RootTabParamList } from '../navigation/RootNavigator';
 import { useHealthStore } from '../store/healthStore';
 import { getImportantHealthReminders, summarizeHealthTasksForHome } from '../logic/healthTasks';
 import { getDogBackground } from '../theme/dogBackgrounds';
-import { WalkieParkBackground } from '../components/WalkieParkBackground';
 import { useGpsStore } from '../store/gpsStore';
 import { requestForegroundGpsPermission } from '../lib/gpsTracking';
 
