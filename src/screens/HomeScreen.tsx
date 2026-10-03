@@ -1687,7 +1687,9 @@ const styles = StyleSheet.create({
     height: 148,
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 34,
-    backgroundColor: '#F8F4EA',
+    // The scene is rendered once by dashboardHeroBackdrop across the entire top shell.
+    // Keep the hero transparent so it cannot mask that full-bleed scene.
+    backgroundColor: 'transparent',
     overflow: 'hidden',
     alignItems: 'flex-end',
     justifyContent: 'flex-end',
