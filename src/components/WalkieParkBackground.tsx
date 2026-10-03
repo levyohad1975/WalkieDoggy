@@ -52,7 +52,7 @@ export function WalkieParkBackground() {
 
 const styles = StyleSheet.create({
   sky: { backgroundColor: '#FFF8E8', overflow: 'hidden' },
-  sunGlow: { position: 'absolute', width: 150, height: 150, borderRadius: 75, right: 66, top: -70, backgroundColor: '#FFF0B8', opacity: 0.38 },
+  sunGlow: { position: 'absolute', width: 210, height: 210, borderRadius: 105, right: 42, top: -92, backgroundColor: '#FFF0B8', opacity: 0.5 },
   sun: { position: 'absolute', width: 38, height: 38, borderRadius: 19, right: 92, top: 17, backgroundColor: '#FFD97A', opacity: 0.78 },
 
   cloudLeft: { position: 'absolute', left: 42, top: 22, width: 82, height: 30, opacity: 0.72 },
@@ -61,18 +61,18 @@ const styles = StyleSheet.create({
   cloudPuffMid: { width: 42, height: 25, left: 22, top: 2 },
   cloudPuffRight: { width: 31, height: 17, left: 51, top: 11 },
 
-  hillFarLeft: { position: 'absolute', left: -72, bottom: 22, width: 260, height: 96, borderRadius: 130, backgroundColor: '#E6F1D7', transform: [{ rotate: '5deg' }] },
-  hillFarRight: { position: 'absolute', right: -86, bottom: 24, width: 286, height: 102, borderRadius: 143, backgroundColor: '#DDECCF', transform: [{ rotate: '-5deg' }] },
-  hillNear: { position: 'absolute', left: 92, bottom: -20, width: 300, height: 90, borderRadius: 150, backgroundColor: '#CFE6BE', transform: [{ rotate: '2deg' }] },
+  hillFarLeft: { position: 'absolute', left: -72, bottom: 38, width: 300, height: 116, borderRadius: 150, backgroundColor: '#E6F1D7', transform: [{ rotate: '5deg' }] },
+  hillFarRight: { position: 'absolute', right: -86, bottom: 40, width: 326, height: 122, borderRadius: 163, backgroundColor: '#DDECCF', transform: [{ rotate: '-5deg' }] },
+  hillNear: { position: 'absolute', left: 72, bottom: -16, width: 340, height: 108, borderRadius: 170, backgroundColor: '#CFE6BE', transform: [{ rotate: '2deg' }] },
 
-  treeLeft: { position: 'absolute', left: 18, bottom: 25, width: 72, height: 86 },
+  treeLeft: { position: 'absolute', left: 18, bottom: 31, width: 82, height: 104 },
   treeTrunk: { position: 'absolute', width: 12, height: 47, left: 31, bottom: 0, borderRadius: 6, backgroundColor: '#B9875D', transform: [{ rotate: '3deg' }] },
   treeCrown: { position: 'absolute', borderRadius: 40, backgroundColor: '#8FCB91' },
   treeCrownOne: { width: 45, height: 45, left: 4, top: 14 },
   treeCrownTwo: { width: 49, height: 49, right: 0, top: 7, backgroundColor: '#7FC486' },
   treeCrownThree: { width: 40, height: 40, left: 18, top: 0, backgroundColor: '#9BD39A' },
 
-  path: { position: 'absolute', width: 210, height: 54, borderRadius: 105, left: 82, bottom: -23, backgroundColor: '#F4DFC0', transform: [{ rotate: '-6deg' }] },
+  path: { position: 'absolute', width: 270, height: 70, borderRadius: 135, left: 62, bottom: -26, backgroundColor: '#F4DFC0', transform: [{ rotate: '-6deg' }] },
   ground: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 24, backgroundColor: '#D7EBC8', opacity: 0.92 },
 
   shrubLeft: { position: 'absolute', left: -17, bottom: 15, width: 96, height: 31, borderRadius: 48, backgroundColor: '#AED7A4' },
