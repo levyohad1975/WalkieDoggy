@@ -181,10 +181,18 @@ const INVITE_LINK_PREFIX = 'dogwalkfamily://invite/';
 export function parseInviteInput(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
-  if (trimmed.startsWith(INVITE_LINK_PREFIX)) {
-    const token = trimmed.slice(INVITE_LINK_PREFIX.length).trim();
+
+  // People commonly copy the entire WhatsApp/SMS share message rather than
+  // selecting only the link. Extract our opaque invite token wherever the
+  // known scheme appears, stopping at whitespace/punctuation. This keeps the
+  // server authoritative for token validity while making paste forgiving.
+  const prefixIndex = trimmed.indexOf(INVITE_LINK_PREFIX);
+  if (prefixIndex >= 0) {
+    const afterPrefix = trimmed.slice(prefixIndex + INVITE_LINK_PREFIX.length);
+    const token = afterPrefix.match(/^[^\\s"'<>]+/)?.[0]?.replace(/[.,;:!?)}\\]]+$/, '').trim();
     return token || null;
   }
+
   return trimmed;
 }
 
