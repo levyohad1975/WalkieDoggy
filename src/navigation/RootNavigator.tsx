@@ -1,4 +1,4 @@
-﻿import React, { useEffect } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { Platform, Pressable, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { NavigationContainer } from '@react-navigation/native';
@@ -100,6 +100,13 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
   const routeByName = Object.fromEntries(state.routes.map((route) => [route.name, route]));
   const isVisible = (name: keyof RootTabParamList) => {
     if (!routeByName[name]) return false;
+    // Item 1 fix: never hide the tab BUTTON for the route the user is
+    // actually standing on right now, even if its permission just went
+    // fail-closed mid-visit (see RootNavigator()'s own activeRouteName
+    // comment for why that happens and why it's safe to ignore here —
+    // the destination screen's own canAccessXScreen() gate still protects
+    // the real content during that blip).
+    if (state.routes[state.index]?.name === name) return true;
     if (name === 'History') return canSeeHistoryTab;
     if (name === 'Statistics') return canSeeStatisticsTab;
     if (name === 'Settings') return canSeeSettingsTab;
@@ -181,7 +188,19 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
               position: 'absolute',
               left: '50%',
               marginLeft: -(HOME_SLOT_WIDTH / 2),
+              // Item 2 fix: stretch to the FULL row height (top:0 AND
+              // bottom:0), not just top-anchored — the previous top-only
+              // anchor meant the circle+label content (taller than the row
+              // itself) hung down top-first instead of being centered, so
+              // the -10 raise pushed the label past the row's bottom edge
+              // instead of lifting a vertically-centered block. Matches
+              // what every OTHER tab button already gets for free from the
+              // row's default flex `alignItems: 'stretch'` (they are flex
+              // children of a stretch parent; this one is absolutely
+              // positioned, so it needs top+bottom set explicitly to get
+              // the same full-height box before centering).
               top: 0,
+              bottom: 0,
               width: HOME_SLOT_WIDTH,
               alignItems: 'center',
               justifyContent: 'center',
@@ -260,6 +279,28 @@ export function RootNavigator() {
   // concrete safe-area bug, not a destination/structure change.
   const insets = useSafeAreaInsets();
 
+  // Item 1 fix (real bug, not the stale-navigate-by-name issue 20dcc49
+  // already fixed): History/Statistics/Settings each reload family data on
+  // their OWN mount/focus (loadFamily -> familyStore.load() ->
+  // loadPermissionOverrides(), which resets permissionOverridesStatus to
+  // 'loading' the instant it starts — see familyStore.ts). That flips
+  // canSeeHistoryTab/canSeeStatisticsTab/canSeeSettingsTab to false
+  // (fail-closed) for the split second the reload is in flight — including
+  // while the user is SITTING ON that exact tab, having just navigated
+  // there. The conditional `{canSeeXTab ? <Tab.Screen .../> : null}` below
+  // then unmounts the CURRENTLY FOCUSED route out from under the Tab
+  // Navigator, which falls back to the first declared screen — Home. That
+  // is the actual mechanism behind "Statistics/History still open Home".
+  // Fix: track which route is currently focused and never let a
+  // conditional screen disappear while it IS the active one — the
+  // destination screen's own canAccessXScreen() gate (HistoryScreen.tsx /
+  // StatisticsScreen.tsx) already re-verifies access independently and
+  // shows its own locked/blocked state during that same reload, so no
+  // protected content is ever exposed by keeping the route mounted through
+  // the blip. Once the user navigates AWAY, a genuinely revoked permission
+  // still hides the tab correctly on the next render, exactly as before.
+  const [activeRouteName, setActiveRouteName] = useState<string | undefined>('Home');
+
   // Best-effort multi-device live sync (no-op, and safe, in local/demo mode
   // — see subscribeToFamilyChanges). Every screen also loads on its own
   // mount/pull-to-refresh regardless, so a failed/unavailable subscription
@@ -307,7 +348,10 @@ export function RootNavigator() {
           <ImpersonationBanner />
         </SafeAreaView>
       ) : null}
-      <NavigationContainer direction="rtl">
+      <NavigationContainer
+        direction="rtl"
+        onStateChange={(navState) => setActiveRouteName(navState?.routes[navState.index]?.name)}
+      >
       <Tab.Navigator
         initialRouteName="Home"
         tabBar={(props) => <FixedPhysicalTabBar {...props} canSeeHistoryTab={canSeeHistoryTab} canSeeStatisticsTab={canSeeStatisticsTab} canSeeSettingsTab={canSeeSettingsTab} />}
@@ -341,9 +385,9 @@ export function RootNavigator() {
             be reached via navigation.navigate('History'/...) from stale
             code, and FixedPhysicalTabBar's own `if (!route) return null`
             above already handles a route that doesn't exist this render. */}
-        {canSeeHistoryTab ? <Tab.Screen name="History" component={HistoryScreen} /> : null}
-        {canSeeStatisticsTab ? <Tab.Screen name="Statistics" component={StatisticsScreen} /> : null}
-        {canSeeSettingsTab ? <Tab.Screen name="Settings" component={SettingsScreen} /> : null}
+        {canSeeHistoryTab || activeRouteName === 'History' ? <Tab.Screen name="History" component={HistoryScreen} /> : null}
+        {canSeeStatisticsTab || activeRouteName === 'Statistics' ? <Tab.Screen name="Statistics" component={StatisticsScreen} /> : null}
+        {canSeeSettingsTab || activeRouteName === 'Settings' ? <Tab.Screen name="Settings" component={SettingsScreen} /> : null}
       </Tab.Navigator>
       </NavigationContainer>
     </View>

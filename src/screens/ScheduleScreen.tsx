@@ -560,7 +560,16 @@ const styles = StyleSheet.create({
   content: { padding: spacing.lg, paddingTop: spacing.sm, gap: spacing.sm, paddingBottom: spacing.xxxl },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
   header: { width: '100%', ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl', paddingHorizontal: 4 },
-  tabs: { flexDirection: 'row', gap: spacing.sm, paddingVertical: spacing.sm },
+  // Item 9 fix: was plain 'row' — on this web build that renders the array
+  // order ['today','tomorrow','week'] physically LEFT-to-right regardless
+  // of the app's RTL setting, putting היום (which should read first, i.e.
+  // rightmost in RTL) on the wrong side. 'row-reverse' is a REAL layout
+  // reversal (not a cosmetic transform/mirror), so onPress stays correctly
+  // bound to whichever element now sits in each visual position — visual
+  // order and touch mapping move together. Matches this codebase's own
+  // established convention for every other RTL-ordered row (see e.g.
+  // HomeScreen's dashboardShortcuts/dashboardTimelineLabels).
+  tabs: { flexDirection: 'row-reverse', gap: spacing.sm, paddingVertical: spacing.sm },
   tab: {
     flex: 1,
     textAlign: 'center',

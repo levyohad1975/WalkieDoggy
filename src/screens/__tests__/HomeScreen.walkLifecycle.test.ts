@@ -23,28 +23,43 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain("style={styles.mascotHeaderButton}");
   });
 
-  it('keeps the approved two dashboard shortcuts (שינוי שעה / טיול ספונטני) wired to the existing flows', () => {
+  // Item 10 (final consolidated pass — corrects item 7, which moved
+  // "בקשת החלפה" to a standalone bottom row; that move is undone here).
+  // MANAGER-ONLY clarification: a Family Manager (admin) sees עריכה/החלפה
+  // (direct actions) in the first two slots; a regular member sees the
+  // ORIGINAL request-based שינוי שעה/בקשת החלפה slots, completely
+  // untouched. טיול ספונטני is unchanged for everyone. The whole row is
+  // restored to directly below the Next Walk card — no standalone row
+  // anywhere else in the Dashboard.
+  it('shows managers direct עריכה/החלפה actions, directly below the Next Walk card', () => {
+    expect(home).toContain("effectiveRole === 'admin'");
+    expect(home).toContain('accessibilityLabel="עריכת הטיול"');
+    expect(home).toContain('accessibilityLabel="החלפת הטיול"');
+    expect(home).toContain('nextWalkCardActions?.canEditDirect && nextWalk ? setEditWalkId(nextWalk.id) : navigation.navigate(\'Schedule\')');
+    expect(home).toContain('nextWalkCardActions?.canSwapDirect && nextWalk ? setSwapWalkId(nextWalk.id) : navigation.navigate(\'Schedule\')');
+    expect(home).not.toContain('style={styles.dashboardSwapRequestRow}');
+    // Directly below the Next Walk card: dashboardShortcuts is the very
+    // next content after the nextWalkLift-wrapped card, before Last Walk.
+    expect(home.indexOf('nextWalkLift')).toBeLessThan(home.indexOf('style={styles.dashboardShortcuts}'));
+    expect(home.indexOf('style={styles.dashboardShortcuts}')).toBeLessThan(home.indexOf('style={styles.dashboardLastWalk}'));
+  });
+
+  it('keeps a regular member\'s original request-based שינוי שעה / בקשת החלפה / טיול ספונטני shortcuts fully untouched', () => {
     expect(home).toContain("navigation.navigate('Schedule')");
     expect(home).toContain('setAddUnplannedVisible(true)');
     expect(home).toContain('setRequestTimeChangeWalkId(nextWalk?.id ?? null)');
+    expect(home).toContain('setRequestSwapWalkId(nextWalk?.id ?? null)');
     expect(home).toContain('numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>טיול ספונטני</RtlText>');
     expect(home).toContain('numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שינוי שעה</RtlText>');
+    expect(home).toContain('numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>בקשת החלפה</RtlText>');
   });
 
-  // Item 7 (Dashboard reorder): "בקשת החלפה" moved out of the shortcuts row
-  // above into its own standalone row at the very bottom of the Dashboard
-  // content, directly above the bottom nav.
-  it('moves "בקשת החלפה" out of the top shortcuts row into its own row, the lowest Dashboard content, above the bottom nav', () => {
-    expect(home).toContain('setRequestSwapWalkId(nextWalk?.id ?? null)');
-    expect(home).toContain('style={styles.dashboardSwapRequestRow}');
-    expect(home).toContain('accessibilityLabel="בקשת החלפה"');
-    // The lowest visible Dashboard row: after Last Walk, the daily timeline,
-    // and the pending-approval alert — nothing else renders after it (the
-    // dead `dashboardOverflow` block is display:none, so it doesn't count).
-    expect(home.indexOf('style={styles.dashboardTimeline}')).toBeLessThan(home.indexOf('style={styles.dashboardSwapRequestRow}'));
-    expect(home.indexOf('style={styles.dashboardLastWalk}')).toBeLessThan(home.indexOf('style={styles.dashboardSwapRequestRow}'));
-    expect(home.indexOf('style={styles.dashboardRequestAlert}')).toBeLessThan(home.indexOf('style={styles.dashboardSwapRequestRow}'));
-    expect(home.indexOf('style={styles.dashboardSwapRequestRow}')).toBeLessThan(home.indexOf('dashboardOverflow'));
+  it('removes the now-redundant internal "עריכה · החלפה" link row from the Next Walk card itself (those actions live in the row below it now)', () => {
+    expect(home).not.toContain('onSwap={nextWalkCardActions?.canSwapDirect');
+    expect(home).not.toContain('onEdit={nextWalkCardActions?.canEditDirect');
+    // The member-facing request link row (a DIFFERENT row) must remain untouched.
+    expect(home).toContain('onRequestSwap={');
+    expect(home).toContain('onRequestTimeChange={');
   });
 
   it('keeps a compact, always-present Dashboard timeline instead of a long list', () => {

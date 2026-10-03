@@ -35,13 +35,32 @@ describe('RootNavigator — History/Statistics tab visibility (permission-gated,
     expect(source).toMatch(/const permissionOverridesStatus = useFamilyStore\(\(s\) => s\.permissionOverridesStatus\);/);
   });
 
-  it('does not mount the History route until access is verified', () => {
-    expect(source).toMatch(/\{canSeeHistoryTab \? <Tab\.Screen name="History" component=\{HistoryScreen\} \/> : null\}/);
+  /**
+   * Item 1 fix (final consolidated pass): a permission-status reload
+   * triggered by History/Statistics/Settings' OWN mount/focus effect
+   * (loadFamily -> familyStore.load() -> loadPermissionOverrides(), which
+   * resets permissionOverridesStatus to 'loading' the instant it starts)
+   * used to fail canSeeXTab closed WHILE THE USER WAS STANDING ON that
+   * exact tab, unmounting its Tab.Screen and bouncing the navigator back
+   * to Home (the first declared screen) — a real regression, not the
+   * stale-navigate-by-name issue an earlier fix (20dcc49) already
+   * addressed. `|| activeRouteName === 'History'` (etc.) keeps the route
+   * mounted while it IS the active one; the destination screen's own
+   * canAccessXScreen() gate still independently re-verifies access and
+   * shows its own locked state during that same blip, so nothing is
+   * exposed by keeping it mounted through a transient status reset — see
+   * src/navigation/__tests__/tabNavigation.integration.test.tsx for the
+   * actual render+tap regression test proving both halves of this (stays
+   * put during a transient reload; still hides once a REAL revocation
+   * settles and the user navigates away).
+   */
+  it('does not mount the History route until access is verified, EXCEPT while it is the currently active route (never yank the active tab out from under the user)', () => {
+    expect(source).toMatch(/\{canSeeHistoryTab \|\| activeRouteName === 'History' \? <Tab\.Screen name="History" component=\{HistoryScreen\} \/> : null\}/);
     expect(source).toMatch(/canSeeHistoryTab = canAccessHistoryScreen\(effectiveUserId, permissionOverrides, permissionOverridesStatus\)/);
   });
 
-  it('does not mount the Statistics route until access is verified', () => {
-    expect(source).toMatch(/\{canSeeStatisticsTab \? <Tab\.Screen name="Statistics" component=\{StatisticsScreen\} \/> : null\}/);
+  it('does not mount the Statistics route until access is verified, EXCEPT while it is the currently active route', () => {
+    expect(source).toMatch(/\{canSeeStatisticsTab \|\| activeRouteName === 'Statistics' \? <Tab\.Screen name="Statistics" component=\{StatisticsScreen\} \/> : null\}/);
     expect(source).toMatch(/canSeeStatisticsTab = canAccessStatisticsScreen\(effectiveUserId, permissionOverrides, permissionOverridesStatus\)/);
   });
 

@@ -746,7 +746,17 @@ export function HomeScreen() {
             <View style={styles.dashboardHeroGlow} pointerEvents="none" />
             <View style={styles.dashboardHeroShade} />
             <View style={styles.dashboardHeroGreeting} pointerEvents="none">
-              <RtlText style={styles.dashboardHeroGreetingTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שלום משפחת {family?.name ?? ''}</RtlText>
+              {/* Item 3 fix: a realistic Hebrew family name plus "שלום
+                  משפחת " routinely exceeds this column's width at full
+                  size. numberOfLines={1} previously forced an ellipsis the
+                  instant adjustsFontSizeToFit's shrink floor (0.72) still
+                  wasn't enough for a longer name. Allowing a natural wrap
+                  to a second line — combined with the same shrink-to-fit
+                  floor as a secondary safety net — means a normal-length
+                  name still renders identically on one line (unchanged
+                  Option D hierarchy), while a longer one gracefully wraps
+                  instead of being cut off. */}
+              <RtlText style={styles.dashboardHeroGreetingTitle} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.72}>שלום משפחת {family?.name ?? ''}</RtlText>
               <RtlText style={styles.dashboardHeroGreetingSubtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{dog?.name ?? 'הכלב/ה'} מחכה לטיול הבא 🐾</RtlText>
             </View>
             {showDogCutout ? <Image source={{ uri: dog!.photoCutoutUrl! }} style={styles.dashboardHeroDogCutout} resizeMode="contain" onError={() => setHeroCutoutFailed(true)} /> : null}
@@ -858,8 +868,13 @@ export function HomeScreen() {
             // list already used — see that function's doc comment for the
             // full "responsible member / non-responsible member /
             // non-responsible admin" rule and its own unit tests.
-            onSwap={nextWalkCardActions?.canSwapDirect ? () => setSwapWalkId(nextWalk.id) : undefined}
-            onEdit={nextWalkCardActions?.canEditDirect ? () => setEditWalkId(nextWalk.id) : undefined}
+            //
+            // Item 10 (final consolidated pass): onEdit/onSwap deliberately
+            // NOT passed here anymore — that redundant internal "עריכה ·
+            // החלפה" link row is gone; the same canEditDirect/canSwapDirect
+            // actions now live in the two quick-action buttons directly
+            // below this card (dashboardShortcuts, manager-only). Nothing
+            // about who CAN edit/swap changed, only where the button lives.
             onRequestSwap={
               nextWalkCardActions?.canRequestSwap && !walkHasActiveSwapRequest(nextWalk.id, swapRequests, walksById)
                 ? () => setRequestSwapWalkId(nextWalk.id)
@@ -879,15 +894,52 @@ export function HomeScreen() {
         )}
         </View>
 
-        {/* Item 7: "בקשת החלפה" moved out of this row — it is now its own
-            standalone row at the very bottom of the Dashboard content (see
-            dashboardSwapRequestRow below, just above the bottom nav). This
-            row keeps the other two shortcuts. */}
+        {/* Item 10 (final consolidated pass — corrects item 7, which was a
+            misunderstanding): restored to its original position directly
+            below the Next Walk card, no standalone bottom row.
+            MANAGER-ONLY layout change (mid-turn clarification): for a
+            Family Manager (admin), the first two slots become direct
+            actions — עריכה/החלפה — replacing the request-based שינוי
+            שעה/בקשת החלפה slots (same canEditDirect/canSwapDirect actions
+            that used to live in the card's own now-removed link row, see
+            above). For a REGULAR MEMBER, this row is completely untouched
+            from before any of this batch's changes — same שינוי
+            שעה/בקשת החלפה request actions, same permissions. טיול ספונטני
+            (log an already-completed walk) is unchanged for everyone. */}
         <View style={styles.dashboardShortcuts} accessibilityLabel="קיצורי דרך">
-          <Pressable onPress={() => nextWalkCardActions?.canRequestTimeChange ? setRequestTimeChangeWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutMint]} accessibilityRole="button" accessibilityLabel="בקשת שינוי שעה">
-            <RtlText style={styles.dashboardShortcutIcon}>◷</RtlText>
-            <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שינוי שעה</RtlText>
-          </Pressable>
+          {effectiveRole === 'admin' ? (
+            <>
+              <Pressable
+                onPress={() => (nextWalkCardActions?.canEditDirect && nextWalk ? setEditWalkId(nextWalk.id) : navigation.navigate('Schedule'))}
+                style={[styles.dashboardShortcut, styles.dashboardShortcutMint]}
+                accessibilityRole="button"
+                accessibilityLabel="עריכת הטיול"
+              >
+                <RtlText style={styles.dashboardShortcutIcon}>✎</RtlText>
+                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>עריכה</RtlText>
+              </Pressable>
+              <Pressable
+                onPress={() => (nextWalkCardActions?.canSwapDirect && nextWalk ? setSwapWalkId(nextWalk.id) : navigation.navigate('Schedule'))}
+                style={[styles.dashboardShortcut, styles.dashboardShortcutBlue]}
+                accessibilityRole="button"
+                accessibilityLabel="החלפת הטיול"
+              >
+                <RtlText style={styles.dashboardShortcutIcon}>⇄</RtlText>
+                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>החלפה</RtlText>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Pressable onPress={() => nextWalkCardActions?.canRequestTimeChange ? setRequestTimeChangeWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutMint]} accessibilityRole="button" accessibilityLabel="בקשת שינוי שעה">
+                <RtlText style={styles.dashboardShortcutIcon}>◷</RtlText>
+                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>שינוי שעה</RtlText>
+              </Pressable>
+              <Pressable onPress={() => nextWalkCardActions?.canRequestSwap ? setRequestSwapWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule')} style={[styles.dashboardShortcut, styles.dashboardShortcutBlue]} accessibilityRole="button" accessibilityLabel="בקשת החלפה">
+                <RtlText style={styles.dashboardShortcutIcon}>⇄</RtlText>
+                <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>בקשת החלפה</RtlText>
+              </Pressable>
+            </>
+          )}
           <Pressable onPress={() => setAddUnplannedVisible(true)} style={[styles.dashboardShortcut, styles.dashboardShortcutGold]} accessibilityRole="button" accessibilityLabel="הוסף טיול שבוצע">
             <RtlText style={styles.dashboardShortcutIcon}>🚶</RtlText>
             <RtlText style={styles.dashboardShortcutLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>טיול ספונטני</RtlText>
@@ -962,25 +1014,6 @@ export function HomeScreen() {
             <RtlText style={styles.dashboardRequestAlertChevron}>‹</RtlText>
           </Pressable>
         ) : null}
-
-        {/* Item 7: "בקשת החלפה" is the LOWEST Dashboard content row, directly
-            above the bottom nav — moved here (out of dashboardShortcuts near
-            the top) per the requested reorder. Same action as before: an
-            approval-gated swap request for the next walk when one exists,
-            otherwise just opens the Schedule screen. */}
-        <Pressable
-          style={styles.dashboardSwapRequestRow}
-          onPress={() => (nextWalkCardActions?.canRequestSwap ? setRequestSwapWalkId(nextWalk?.id ?? null) : navigation.navigate('Schedule'))}
-          accessibilityRole="button"
-          accessibilityLabel="בקשת החלפה"
-        >
-          <RtlText style={styles.dashboardSwapRequestIcon}>⇄</RtlText>
-          <View style={styles.dashboardSwapRequestCopy}>
-            <RtlText style={styles.dashboardSwapRequestTitle}>בקשת החלפה</RtlText>
-            <RtlText style={styles.dashboardSwapRequestSubtitle}>לא פנויים לטיול? בקשו החלפה עם בן משפחה אחר</RtlText>
-          </View>
-          <RtlText style={styles.dashboardSwapRequestChevron}>‹</RtlText>
-        </Pressable>
 
         <View style={styles.dashboardOverflow}>
         {lastWalk ? (
@@ -1563,16 +1596,6 @@ const styles = StyleSheet.create({
   dashboardRequestAlertTitle: { fontSize: 16, fontWeight: '900', color: '#B66318', textAlign: 'right' },
   dashboardRequestAlertSubtitle: { marginTop: 2, fontSize: 13, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
   dashboardRequestAlertChevron: { fontSize: 28, color: '#C56C1D', writingDirection: 'ltr' },
-  // Item 7: standalone "בקשת החלפה" row, now the lowest Dashboard content
-  // row (directly above the bottom nav) — same blue tint the shortcut used
-  // before it moved here, laid out like the other full-width dashboard rows
-  // (dashboardLastWalk/dashboardRequestAlert) for visual consistency.
-  dashboardSwapRequestRow: { minHeight: 60, borderRadius: radii.xl, backgroundColor: '#E2F4FF', borderWidth: 1, borderColor: '#CFE9FB', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
-  dashboardSwapRequestIcon: { fontSize: 22 },
-  dashboardSwapRequestCopy: { flex: 1, alignItems: 'flex-end' },
-  dashboardSwapRequestTitle: { fontSize: 16, fontWeight: '900', color: '#1D5C8A', textAlign: 'right' },
-  dashboardSwapRequestSubtitle: { marginTop: 2, fontSize: 12, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
-  dashboardSwapRequestChevron: { fontSize: 26, color: '#2C7CB0', writingDirection: 'ltr' },
   dashboardOverflow: { display: 'none' },
   notificationButton: { position: 'absolute', right: spacing.md, top: 7, width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   notificationIcon: { fontSize: 18 },

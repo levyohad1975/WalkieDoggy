@@ -258,9 +258,24 @@ export function NextWalkCard({
 
         <View style={styles.personBlock}>
           {responsible ? (
-            <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={isWeb ? 50 : 56} />
+            <Avatar
+              emoji={responsible.avatar}
+              color={responsible.color}
+              photoUrl={responsible.photoUrl}
+              // Item 11 (balance): a dashboard-tone avatar reads slightly
+              // larger so the assignee side carries visual weight closer to
+              // the big scheduled-time number opposite it, instead of
+              // looking like an afterthought next to it.
+              size={tone === 'dashboard' ? (isWeb ? 54 : 60) : isWeb ? 50 : 56}
+            />
           ) : null}
-          <RtlText style={styles.personName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+          <RtlText
+            style={[styles.personName, tone === 'dashboard' && styles.dashboardPersonName]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+            maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}
+          >
             {responsible?.name ?? '—'}
           </RtlText>
           {overdue ? (
@@ -459,6 +474,9 @@ const styles = StyleSheet.create({
   dashboardMainRow: { gap: 20, paddingHorizontal: 8, marginBottom: 2 },
   personBlock: { flex: 1, alignItems: 'flex-end', gap: 3, minWidth: 0 },
   personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'left' },
+  // Item 11 (balance): a touch bolder/larger on the dashboard specifically,
+  // closing some of the visual-weight gap with the time block opposite it.
+  dashboardPersonName: { fontSize: 19, fontWeight: '800' },
   responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'left' },
   doneButton: { marginTop: 2 },
   dashboardStartButton: { marginTop: 0, minHeight: 44, paddingVertical: 3, backgroundColor: '#4A43B6', borderColor: '#4A43B6' },
