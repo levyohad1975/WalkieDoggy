@@ -831,16 +831,16 @@ export function HomeScreen() {
             accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
           >
             {dog?.heroBackgroundId === 'walkie-park' ? (
+              <WalkieParkBackground />
+            ) : heroBackground ? (
+              <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" />
+            ) : (
               <>
                 <View style={styles.dashboardHeroDefaultSun} />
                 <View style={styles.dashboardHeroDefaultHillBack} />
                 <View style={styles.dashboardHeroDefaultHillFront} />
                 <View style={styles.dashboardHeroDefaultGround} />
               </>
-            ) : heroBackground ? (
-              <Image source={{ uri: heroBackground.uri }} style={styles.dashboardHeroImage} resizeMode="cover" />
-            ) : (
-              <WalkieParkBackground />
             )}
             {showDogCutout ? <Image source={{ uri: dog!.photoCutoutUrl! }} style={styles.dashboardHeroDogCutout} resizeMode="contain" onError={() => setHeroCutoutFailed(true)} /> : null}
             {!showDogCutout && showPersonalHero ? <Image source={{ uri: dog!.photoUrl! }} style={styles.dashboardHeroDogPhoto} resizeMode="cover" onError={() => setHeroPhotoFailed(true)} /> : null}
@@ -1681,7 +1681,7 @@ const styles = StyleSheet.create({
     // own comments) so this crops only a little more off their bottom
     // (paws/tail), never their face/head — see docs/design/MASCOT_SPEC.md's
     // identity rules on what must stay recognizable in every frame.
-    height: 132,
+    height: 148,
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 34,
     backgroundColor: '#F8F4EA',
@@ -1705,13 +1705,13 @@ const styles = StyleSheet.create({
   // so each image's TOP edge — where the mascot/dog's face/head sits —
   // renders at the exact same position as before; only extra bottom
   // (paws/tail) bleed is newly clipped by the shorter frame.
-  dashboardHeroMascot: { position: 'absolute', right: 2, bottom: 0, zIndex: 2 },
+  dashboardHeroMascot: { position: 'absolute', right: 4, bottom: 2, zIndex: 2 },
   dashboardHeroForeground: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 52, zIndex: 3, overflow: 'hidden' },
   dashboardHeroForegroundLeft: { position: 'absolute', left: -22, bottom: -23, width: 126, height: 52, borderRadius: 63, backgroundColor: '#C5E2B7', opacity: 0.72, transform: [{ rotate: '-4deg' }] },
   dashboardHeroForegroundMid: { position: 'absolute', right: 118, bottom: -31, width: 106, height: 48, borderRadius: 53, backgroundColor: '#D6EBC8', opacity: 0.78, transform: [{ rotate: '5deg' }] },
   dashboardHeroForegroundDogBase: { position: 'absolute', right: -2, bottom: -25, width: 182, height: 58, borderRadius: 91, backgroundColor: '#D1E8C4', opacity: 0.94, transform: [{ rotate: '-2deg' }] },
   dashboardHeroForegroundRight: { position: 'absolute', right: -42, bottom: -17, width: 104, height: 46, borderRadius: 52, backgroundColor: '#BFDDB1', opacity: 0.86, transform: [{ rotate: '7deg' }] },
-  dashboardHeroDogCutout: { position: 'absolute', right: 2, bottom: 0, width: 172, height: 166, zIndex: 2 },
+  dashboardHeroDogCutout: { position: 'absolute', right: 4, bottom: 2, width: 166, height: 158, zIndex: 2 },
   dashboardHeroDogPhoto: { position: 'absolute', right: 4, bottom: -36, width: 136, height: 136, borderRadius: 22, zIndex: 2 },
   dashboardHeroCopy: { width: '52%', alignItems: 'flex-end', alignSelf: 'flex-start', paddingTop: 38, paddingHorizontal: spacing.md, zIndex: 2 },
   dashboardHeroEyebrow: { fontSize: 16, color: '#27376F', fontWeight: '700', textAlign: 'right' },
