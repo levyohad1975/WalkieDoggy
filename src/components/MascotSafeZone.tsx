@@ -77,8 +77,11 @@ const styles = StyleSheet.create({
     // last-walk action row (between edit on the physical left and relief
     // toggles on the physical right). Keep this symmetric so the mascot
     // lands in the lane's centre rather than drifting toward either control.
-    paddingTop: '47%',
-    paddingBottom: '35%',
+    // Real-device Home QA: the previous percentage band placed the mascot
+    // over the "בהמשך היום" timeline on tall iPhones. Anchor the celebration
+    // higher, over the free centre of the last-walk card/action lane.
+    paddingTop: '34%',
+    paddingBottom: '46%',
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
