@@ -10,7 +10,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 TMP.mkdir(parents=True, exist_ok=True)
 
 SOURCES = {
-    "high-five": ("https://cdn.openart.ai/openart-ai/production/2026-09/create-video/f6N0OYGzjtkDgE5CBQMe/a95872e1-65a2-466c-b6ab-cf1d51af6ef3_seed1544010566_1790576483873_24f3dace.mp4", "dark"),
+    "high-five": ("https://cdn.openart.ai/openart-ai/production/2026-10/create-video/f6N0OYGzjtkDgE5CBQMe/eaa8a4d5d7a7fe6542b14a50b53a4cc7-a2947f1e-75fb-45e2-9413-14c9b27a890c_1790923413950_8d9c5753.mp4", "green"),
     "tail-wag": ("https://cdn.openart.ai/openart-ai/production/2026-09/create-video/f6N0OYGzjtkDgE5CBQMe/1762dc12-8b4c-47fa-a3ac-d5ecbfb47016_seed1537550348_1790583184633_44f147e4.mp4", "green"),
     "leash-ready": ("https://cdn.openart.ai/openart-ai/production/2026-09/create-video/f6N0OYGzjtkDgE5CBQMe/9ac857d9-8928-40e6-8594-a4cac4aced9b_seed1707045533_1790584487866_7c84f43b.mp4", "green"),
     "trophy-winner": ("https://cdn.openart.ai/openart-ai/production/2026-09/create-video/f6N0OYGzjtkDgE5CBQMe/1a651d11-7ebf-4743-b728-484209cea004_seed656266642_1790585581824_f54f9367.mp4", "green"),
