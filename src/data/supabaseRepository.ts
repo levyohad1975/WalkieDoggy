@@ -13,6 +13,7 @@ import type {
 } from '../types';
 import { defaultNotificationSetting } from '../logic/reminders';
 import type { DeleteFamilyMemberPayload, Repository } from './repository';
+import { SUPABASE_CALL_TIMEOUT_MS, withTimeout } from '../lib/withTimeout';
 
 /** Maps between the app's camelCase domain types and Supabase's snake_case rows. */
 
@@ -532,16 +533,23 @@ export class SupabaseRepository implements Repository {
     // Editing an existing rule must only require UPDATE permission. UPSERT
     // also exercises INSERT policy and could therefore make a valid edit
     // appear saved locally, then disappear after the next server reload.
+    // Real-device QA fix — see withTimeout.ts's own doc comment: a stalled
+    // call here must reject (and surface/queue like any other transient
+    // failure), never hang the caller's `saving` state forever.
     const row = fromRule(rule);
-    const { data, error: updateError } = await this.client
-      .from('schedule_rules')
-      .update(row)
-      .eq('id', rule.id)
-      .select('id');
+    const { data, error: updateError } = await withTimeout(
+      this.client.from('schedule_rules').update(row).eq('id', rule.id).select('id'),
+      SUPABASE_CALL_TIMEOUT_MS,
+      'schedule_rules update'
+    );
     if (updateError) throw updateError;
     if ((data ?? []).length > 0) return;
 
-    const { error: insertError } = await this.client.from('schedule_rules').insert(row);
+    const { error: insertError } = await withTimeout(
+      this.client.from('schedule_rules').insert(row),
+      SUPABASE_CALL_TIMEOUT_MS,
+      'schedule_rules insert'
+    );
     if (insertError) throw insertError;
   }
 
@@ -562,11 +570,19 @@ export class SupabaseRepository implements Repository {
 
   async addScheduleEntries(entries: ScheduleEntry[]): Promise<void> {
     if (entries.length === 0) return;
+    // Real-device QA fix — see withTimeout.ts's own doc comment. This is
+    // called once per addRule()/updateRule(), but is itself two sequential
+    // network calls — either one stalling with no timeout is one of the
+    // concrete hang points identified in that bug.
     const rows = entries.map(fromEntry);
-    const { error } = await this.client.from('schedule_entries').upsert(rows, {
-      onConflict: 'dog_id,date,time',
-      ignoreDuplicates: true,
-    });
+    const { error } = await withTimeout(
+      this.client.from('schedule_entries').upsert(rows, {
+        onConflict: 'dog_id,date,time',
+        ignoreDuplicates: true,
+      }),
+      SUPABASE_CALL_TIMEOUT_MS,
+      'schedule_entries upsert'
+    );
     if (error) throw error;
 
     // The unique key is (dog_id,date,time), so ignoreDuplicates can keep an
@@ -578,12 +594,16 @@ export class SupabaseRepository implements Repository {
     const dogIds = [...new Set(rows.map((row) => row.dog_id))];
     const dates = [...new Set(rows.map((row) => row.date))];
     const times = [...new Set(rows.map((row) => row.time))];
-    const { data: canonicalRows, error: readError } = await this.client
-      .from('schedule_entries')
-      .select('id,dog_id,date,time')
-      .in('dog_id', dogIds)
-      .in('date', dates)
-      .in('time', times);
+    const { data: canonicalRows, error: readError } = await withTimeout(
+      this.client
+        .from('schedule_entries')
+        .select('id,dog_id,date,time')
+        .in('dog_id', dogIds)
+        .in('date', dates)
+        .in('time', times),
+      SUPABASE_CALL_TIMEOUT_MS,
+      'schedule_entries canonical-id read-back'
+    );
     if (readError) throw readError;
 
     const canonicalByKey = new Map(
@@ -641,13 +661,19 @@ export class SupabaseRepository implements Repository {
   }
 
   async saveWalk(walk: Walk): Promise<void> {
+    // Real-device QA fix — see withTimeout.ts's own doc comment.
+    // addRule()/updateRule() call this once PER generated occurrence (up
+    // to GENERATE_DAYS_AHEAD of them), each itself up to two sequential
+    // network calls below — this is the single highest-probability hang
+    // point identified for "the Save spinner never stops" on a real
+    // mobile connection, since it is the one call site in that chain that
+    // can run many times in a row.
     if (walk.status === 'done') {
-      const { data, error } = await this.client
-        .from('walks')
-        .update(fromWalk(walk))
-        .eq('id', walk.id)
-        .eq('status', 'pending')
-        .select('id');
+      const { data, error } = await withTimeout(
+        this.client.from('walks').update(fromWalk(walk)).eq('id', walk.id).eq('status', 'pending').select('id'),
+        SUPABASE_CALL_TIMEOUT_MS,
+        'walks update (done)'
+      );
       if (error) throw error;
       if (data && data.length > 0) return; // updated the existing pending walk
 
@@ -657,25 +683,31 @@ export class SupabaseRepository implements Repository {
       // upsert with ignoreDuplicates handles both: inserts if the id is new,
       // and is a harmless no-op if it already exists (never overwrites the
       // other person's completion).
-      const { error: insertError } = await this.client
-        .from('walks')
-        .upsert(fromWalk(walk), { onConflict: 'id', ignoreDuplicates: true });
+      const { error: insertError } = await withTimeout(
+        this.client.from('walks').upsert(fromWalk(walk), { onConflict: 'id', ignoreDuplicates: true }),
+        SUPABASE_CALL_TIMEOUT_MS,
+        'walks upsert (done, no pending match)'
+      );
       if (insertError) throw insertError;
       return;
     }
     if (walk.scheduleEntryId) {
-      const { data: existing, error: lookupError } = await this.client
-        .from('walks')
-        .select('id, status')
-        .eq('schedule_entry_id', walk.scheduleEntryId)
-        .maybeSingle();
+      const { data: existing, error: lookupError } = await withTimeout(
+        this.client.from('walks').select('id, status').eq('schedule_entry_id', walk.scheduleEntryId).maybeSingle(),
+        SUPABASE_CALL_TIMEOUT_MS,
+        'walks lookup by schedule_entry_id'
+      );
       if (lookupError) throw lookupError;
       if (existing) {
         walk.id = existing.id;
         if (existing.status === 'done') return;
       }
     }
-    const { error } = await this.client.from('walks').upsert(fromWalk(walk));
+    const { error } = await withTimeout(
+      this.client.from('walks').upsert(fromWalk(walk)),
+      SUPABASE_CALL_TIMEOUT_MS,
+      'walks upsert'
+    );
     if (error) throw error;
   }
 
