@@ -36,7 +36,7 @@ describe('Home integrated walk lifecycle', () => {
   });
 
   it('renders manager-only Edit/Swap directly under Next Walk and no standalone swap row', () => {
-    expect(home).toContain("effectiveRole === 'admin' ?");
+    expect(home).toContain("effectiveRole === 'admin' && nextWalk.status === 'pending'");
     expect(home).toContain('>הוסף טיול</RtlText>');
     expect(home).toContain('setEditWalkId(nextWalk.id)');
     expect(home).toContain('setSwapWalkId(nextWalk.id)');
