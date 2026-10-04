@@ -65,7 +65,7 @@ export function animationManifestFor(definition: Pick<CelebrationDefinition, 'id
 export const CURATED_MASCOT_SPRITE_SHEETS = {
   'high-five': {
     source: require('../../assets/mascot-animations/high-five.png'),
-    columns: 6, rows: 4, frameSize: 256, frameCount: 24, fps: 12, transparent: true,
+    columns: 6, rows: 4, frameSize: 256, frameCount: 24, fps: 8, transparent: true,
   },
   'happy-spin': {
     source: require('../../assets/mascot-animations/happy-spin.png'),
