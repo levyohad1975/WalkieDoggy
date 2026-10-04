@@ -70,8 +70,11 @@ const styles = StyleSheet.create({
     // merge with the yellow walk-edit pencil on Home, especially on iPhone.
     // The inset also keeps the character clear of the screen edge while the
     // bottom padding protects the persistent navigation.
-    paddingTop: '48%',
-    paddingBottom: '30%',
+    // The last-walk action row now has a deliberate empty centre lane.
+    // Keep the celebration in that central band instead of covering the
+    // timeline/upcoming content lower on Home.
+    paddingTop: '43%',
+    paddingBottom: '39%',
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
