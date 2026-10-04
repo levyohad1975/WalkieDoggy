@@ -400,6 +400,18 @@ export function HomeScreen() {
     [walks, dogs.length, dog?.id]
   );
   const nextWalk = useMemo(() => computeNextWalk(visibleWalks), [visibleWalks, minuteTick]);
+  // Planned walks may be started from 30 minutes before their scheduled time.
+  // Spontaneous walks keep their separate always-available flow.
+  const nextWalkStartGate = useMemo(() => {
+    if (!nextWalk || nextWalk.status !== 'pending' || nextWalk.isUnplanned) return { disabled: false, label: undefined as string | undefined };
+    const scheduledAt = new Date(`${nextWalk.date}T${nextWalk.scheduledTime}:00`);
+    const unlockAt = scheduledAt.getTime() - 30 * 60 * 1000;
+    if (!Number.isFinite(unlockAt) || Date.now() >= unlockAt) return { disabled: false, label: undefined as string | undefined };
+    const unlock = new Date(unlockAt);
+    const hh = String(unlock.getHours()).padStart(2, '0');
+    const mm = String(unlock.getMinutes()).padStart(2, '0');
+    return { disabled: true, label: `ניתן להתחיל את הטיול החל מ־${hh}:${mm}` };
+  }, [nextWalk, minuteTick]);
   useEffect(
     () =>
       subscribeToReminderOpens((event) => {
@@ -948,6 +960,8 @@ export function HomeScreen() {
                 }
                 : undefined
             }
+            startWalkDisabled={nextWalkStartGate.disabled}
+            startWalkAvailableLabel={nextWalkStartGate.label}
             onEndWalk={
               nextWalk.status === 'in_progress' && (effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId)
                 ? () => setCompleteWalkId(nextWalk.id)
