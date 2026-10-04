@@ -294,15 +294,27 @@ async function loadScheduleForFamily(
     // as a repairable derived-data gap: Home renders walks, not bare entries.
     // Recreate only occurrences in the active horizon and only when no walk
     // already references the canonical schedule-entry id.
-    const activeRuleIds = new Set(rules.filter((rule) => rule.active).map((rule) => rule.id));
+    const activeRules = rules.filter((rule) => rule.active);
+    const activeRuleIds = new Set(activeRules.map((rule) => rule.id));
     const walkEntryIds = new Set(
       finalWalks.map((walk) => walk.scheduleEntryId).filter((id): id is string => Boolean(id))
     );
+    const entryBelongsToActiveRule = (entry: ScheduleEntry): boolean => {
+      if (entry.ruleId) return activeRuleIds.has(entry.ruleId);
+      // Legacy/preserved schedule entries can predate rule_id linkage. They are
+      // still canonical occurrences after Activity Reset, so recover them by
+      // the active rule identity instead of dropping today's walk from Home.
+      return activeRules.some((rule) => {
+        const days = rule.daysOfWeek.length > 0 ? rule.daysOfWeek : [0, 1, 2, 3, 4, 5, 6];
+        const day = new Date(`${entry.date}T00:00:00Z`).getUTCDay();
+        return rule.dogId === entry.dogId && rule.time === entry.time && days.includes(day);
+      });
+    };
     const orphanFutureEntries = finalEntries.filter(
       (entry) =>
         entry.date >= today &&
         entry.date <= endDate &&
-        Boolean(entry.ruleId && activeRuleIds.has(entry.ruleId)) &&
+        entryBelongsToActiveRule(entry) &&
         !walkEntryIds.has(entry.id)
     );
     if (orphanFutureEntries.length > 0) {
