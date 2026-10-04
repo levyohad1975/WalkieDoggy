@@ -55,14 +55,18 @@ export function TimePickerField({ value, onChange, webLabel, androidLabel = 'ש�
   if (Platform.OS === 'web') {
     return (
       <>
-        <Pressable
-          onPress={() => setWebSheetOpen(true)}
-          accessibilityRole="button"
-          accessibilityLabel={webLabel}
-          style={webStyles.field}
-        >
-          <RtlText style={webStyles.fieldText}>{value}</RtlText>
-        </Pressable>
+        <View style={webStyles.webFieldRow}>
+          <View style={webStyles.field}>
+            <RtlText style={webStyles.fieldText}>{value}</RtlText>
+          </View>
+          <Button
+            label={androidLabel}
+            variant="secondary"
+            onPress={() => setWebSheetOpen(true)}
+            accessibilityLabel={webLabel}
+            style={webStyles.changeButton}
+          />
+        </View>
         <WebTimePickerSheet
           visible={webSheetOpen}
           value={value}
@@ -199,7 +203,9 @@ const styles = StyleSheet.create({
 const COLUMN_ROW_HEIGHT = 44;
 
 const webStyles = StyleSheet.create({
+  webFieldRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'stretch' },
   field: {
+    flex: 1,
     minHeight: 52,
     borderRadius: 14,
     borderWidth: 1,
@@ -210,6 +216,7 @@ const webStyles = StyleSheet.create({
     padding: 12,
   },
   fieldText: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', writingDirection: 'ltr' },
+  changeButton: { flex: 1.1 },
   // Centered dialog, not a bottom sheet anchored under RuleFormModal's own
   // sheet — a deliberately separate, self-contained step (see the
   // web-branch doc comment above): while it is open there is nothing
