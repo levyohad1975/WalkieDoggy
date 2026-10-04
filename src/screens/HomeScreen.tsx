@@ -1176,16 +1176,10 @@ export function HomeScreen() {
         </View>
 
         <View style={styles.dashboardOverflow}>
-        {/* Real-device QA fix: "ממתינים לעדכון"/"טיולים קרובים" below were
-            accidentally hidden entirely — this wrapper (`dashboardOverflow`)
-            used to also hold a now-superseded, fully redundant duplicate of
-            the "הטיול האחרון" card (the compact version above, rendered via
-            the same `lastWalk`, already replaced it). That dead duplicate
-            card is removed here; the two sections actually unique to this
-            wrapper (overdue walks, further upcoming walks) are kept and —
-            via dashboardOverflow's own style fix below — are visible again,
-            closing the gap where an overdue-but-not-yet-done walk for today
-            had nowhere on Home to appear at all. */}
+        {/* Keep only unresolved overdue walks here. Future walks are already
+            represented by the compact "בהמשך היום" timeline above; rendering
+            them again as "טיולים קרובים" duplicated the same information and
+            unnecessarily lengthened Home. */}
         {overduePending.length > 0 ? (
           <View style={styles.section}>
             <RtlText style={styles.sectionTitle}>ממתינים לעדכון</RtlText>
@@ -1203,53 +1197,6 @@ export function HomeScreen() {
           </View>
         ) : null}
 
-        {upcoming.length > 0 ? (
-          <View style={styles.section}>
-            <View style={styles.upcomingHeader}>
-              <RtlText style={styles.sectionTitle}>טיולים קרובים</RtlText>
-              <Pressable
-                onPress={() => navigation.navigate('Schedule')}
-                accessibilityRole="button"
-                accessibilityLabel="הצגת כל הטיולים בלוח הזמנים"
-                hitSlop={8}
-              >
-                <RtlText style={styles.showMoreLink}>עוד ‹</RtlText>
-              </Pressable>
-            </View>
-            <View style={styles.list}>
-              {upcoming.slice(0, 2).map((w) => (
-                <WalkRow
-                  key={w.id}
-                  walk={w}
-                  hidePendingStatus
-                  responsible={usersById[w.responsibleUserId]}
-                  // Reaching EditWalkModal (the administrative edit flow) is
-                  // Admin-only — see requirement 6. A Member still sees this
-                  // list, just without the tap-to-edit affordance.
-                  onPress={effectiveRole === 'admin' ? () => setEditWalkId(w.id) : undefined}
-                  // QA/UX round, Part A fix: Home's upcoming-walks list had
-                  // no request-action wiring at all — a Member had no way
-                  // to request a swap/time-change for their OWN future
-                  // walk from here, only from ScheduleScreen. Same shared
-                  // predicate ScheduleScreen uses (logic/walkActions.ts),
-                  // so eligibility is identical on both screens.
-                  onRequestSwap={
-                    canRequestChangeForWalk(w, effectiveUserId, effectiveRole, isSupabaseConfigured) &&
-                    !walkHasActiveSwapRequest(w.id, swapRequests, walksById)
-                      ? () => setRequestSwapWalkId(w.id)
-                      : undefined
-                  }
-                  onRequestTimeChange={
-                    canRequestChangeForWalk(w, effectiveUserId, effectiveRole, isSupabaseConfigured) &&
-                    !walkHasActiveTimeChangeRequest(w.id, timeChangeRequests, walksById)
-                      ? () => setRequestTimeChangeWalkId(w.id)
-                      : undefined
-                  }
-                />
-              ))}
-            </View>
-          </View>
-        ) : null}
         </View>
       </ScrollView>
 
