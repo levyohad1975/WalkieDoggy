@@ -1655,10 +1655,13 @@ const styles = StyleSheet.create({
   dashboardLastWalkTimeBlock: { width: 104, alignItems: 'flex-start', flexShrink: 0 },
   dashboardLastWalkTime: { fontSize: 24, lineHeight: 29, fontWeight: '700', color: '#17345B' },
   dashboardLastWalkDone: { marginTop: 1, fontSize: 12, lineHeight: 16, fontWeight: '600', color: '#15966D' },
-  dashboardLastWalkActions: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', justifyContent: 'space-between', gap: 20, flex: 1, minWidth: 138 },
-  dashboardLastWalkEdit: { alignItems: 'center', justifyContent: 'center', minWidth: 44, minHeight: 44, marginLeft: 2 },
-  dashboardLastWalkNeeds: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', gap: 10, marginRight: 2 },
-  dashboardLastWalkNeedButton: { width: 34, height: 44, alignItems: 'center', justifyContent: 'center' },
+  dashboardLastWalkActions: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', justifyContent: 'space-between', flex: 1, minWidth: 154, paddingHorizontal: 2 },
+  // Keep edit on the physical left edge of the action lane, while the relief
+  // toggles stay together on its physical right edge. This creates a real
+  // empty centre lane instead of merely adding a few pixels between controls.
+  dashboardLastWalkEdit: { alignItems: 'center', justifyContent: 'center', width: 48, minHeight: 44, marginLeft: -8 },
+  dashboardLastWalkNeeds: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', gap: 6, marginRight: -4 },
+  dashboardLastWalkNeedButton: { width: 32, height: 44, alignItems: 'center', justifyContent: 'center' },
   dashboardLastWalkEditIcon: { fontSize: 17, color: '#E6B422' },
   dashboardLastWalkEditText: { fontSize: 11, fontWeight: '600', color: '#17345B' },
   dashboardLastWalkNeed: { fontSize: 18 },
