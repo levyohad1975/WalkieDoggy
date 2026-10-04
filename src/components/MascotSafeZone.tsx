@@ -73,11 +73,14 @@ const styles = StyleSheet.create({
     // The last-walk action row now has a deliberate empty centre lane.
     // Keep the celebration in that central band instead of covering the
     // timeline/upcoming content lower on Home.
-    paddingTop: '43%',
-    paddingBottom: '39%',
+    // Anchor the character over the deliberately empty centre lane of the
+    // last-walk action row (between edit on the physical left and relief
+    // toggles on the physical right). Keep this symmetric so the mascot
+    // lands in the lane's centre rather than drifting toward either control.
+    paddingTop: '47%',
+    paddingBottom: '35%',
     justifyContent: 'center',
-    alignItems: 'flex-start',
-    paddingLeft: 42,
+    alignItems: 'center',
     overflow: 'hidden',
   },
   character: {
