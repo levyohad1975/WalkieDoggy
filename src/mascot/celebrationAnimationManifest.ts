@@ -102,14 +102,20 @@ export type CuratedMascotSpriteId = keyof typeof CURATED_MASCOT_SPRITE_SHEETS;
  * React Native style; using the approved transparent mascot is the safe
  * runtime fallback and guarantees no black rectangle behind the character.
  */
-const CELEBRATION_SPRITE_MAP: Partial<Record<string, CuratedMascotSpriteId>> = {
-  // Only the rebuilt Kling high-five sheet has passed the current alpha
-  // processing gate. Keep every other legacy sheet out of Safari/iOS runtime
-  // until it is regenerated and visually approved; the celebration component
-  // will render the clean transparent mascot fallback instead.
+const CELEBRATION_SPRITE_MAP: Record<string, CuratedMascotSpriteId> = {
+  // Only the rebuilt Kling high-five sheet has passed the current Safari/iOS
+  // alpha gate. Until the remaining distinct clips pass the same gate, route
+  // every celebration through this verified animated sheet instead of
+  // returning undefined (which rendered the text bubble with no mascot).
   'thank-you-heart': 'high-five',
+  'happy-jump': 'high-five',
   'high-five': 'high-five',
+  'confetti': 'high-five',
   'paw-party': 'high-five',
+  'trophy-teaser': 'high-five',
+  'sleepy-good-night': 'high-five',
+  'long-walk': 'high-five',
+  'special-surprise': 'high-five',
 };
 
 /**
