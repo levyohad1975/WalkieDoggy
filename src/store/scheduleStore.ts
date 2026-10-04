@@ -289,6 +289,32 @@ async function loadScheduleForFamily(
       finalWalks = [...finalWalks, ...generatedWalks];
     }
 
+    // Activity reset deliberately preserves recurring schedule entries. That can
+    // leave a valid today/future entry without its derived walk row. Treat that
+    // as a repairable derived-data gap: Home renders walks, not bare entries.
+    // Recreate only occurrences in the active horizon and only when no walk
+    // already references the canonical schedule-entry id.
+    const activeRuleIds = new Set(rules.filter((rule) => rule.active).map((rule) => rule.id));
+    const walkEntryIds = new Set(
+      finalWalks.map((walk) => walk.scheduleEntryId).filter((id): id is string => Boolean(id))
+    );
+    const orphanFutureEntries = finalEntries.filter(
+      (entry) =>
+        entry.date >= today &&
+        entry.date <= endDate &&
+        activeRuleIds.has(entry.ruleId) &&
+        !walkEntryIds.has(entry.id)
+    );
+    if (orphanFutureEntries.length > 0) {
+      const repairedWalks = orphanFutureEntries.map((entry) => walkFromEntry(entry, familyId));
+      if (repository.queueWalksForBackgroundSync) {
+        await repository.queueWalksForBackgroundSync(repairedWalks);
+      } else {
+        for (const walk of repairedWalks) await repository.saveWalk(walk);
+      }
+      finalWalks = [...finalWalks, ...repairedWalks];
+    }
+
     // Once a later planned occurrence for the same dog is due, older
     // unresolved planned walks are no longer actionable questions. Close
     // them as "not done" so History contains final facts instead of an
