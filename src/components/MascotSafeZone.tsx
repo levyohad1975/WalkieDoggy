@@ -66,10 +66,15 @@ const styles = StyleSheet.create({
     left: 0,
     // Keep event animation in the visual center, below the large next-walk
     // card and above the persistent bottom navigation on compact phones.
-    paddingTop: '48%',
-    paddingBottom: 92,
-    justifyContent: 'center',
-    alignItems: 'center',
+    // Keep the mascot in its own lower-right lane. Center placement can visually
+    // merge with the yellow walk-edit pencil on Home, especially on iPhone.
+    // The inset also keeps the character clear of the screen edge while the
+    // bottom padding protects the persistent navigation.
+    paddingTop: '42%',
+    paddingRight: 22,
+    paddingBottom: 112,
+    justifyContent: 'flex-end',
+    alignItems: 'flex-end',
     overflow: 'hidden',
   },
   character: {
