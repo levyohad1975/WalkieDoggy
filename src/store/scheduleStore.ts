@@ -740,6 +740,20 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     if (!guardTestModeMutation()) return false;
     const walk = get().walks.find((w) => w.id === walkId);
     if (!walk) return false;
+    // Defense in depth: the Home button is disabled before this point, but
+    // no other caller may start a planned walk more than 30 minutes early.
+    // Unplanned/spontaneous walks are intentionally exempt.
+    if (!walk.isUnplanned && walk.status === 'pending') {
+      const scheduledAt = new Date(`${walk.date}T${walk.scheduledTime}:00`).getTime();
+      const unlockAt = scheduledAt - 30 * 60 * 1000;
+      if (Number.isFinite(unlockAt) && Date.now() < unlockAt) {
+        const unlock = new Date(unlockAt);
+        const hh = String(unlock.getHours()).padStart(2, '0');
+        const mm = String(unlock.getMinutes()).padStart(2, '0');
+        set({ actionError: `ניתן להתחיל את הטיול החל מ־${hh}:${mm}` });
+        return false;
+      }
+    }
     try {
       let updated: Walk;
       if (repository.startWalk) updated = await repository.startWalk(walkId);
