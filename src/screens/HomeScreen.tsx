@@ -1053,7 +1053,6 @@ export function HomeScreen() {
                       style={styles.dashboardLastWalkEdit}
                     >
                       <RtlText style={styles.dashboardLastWalkEditIcon}>✏️</RtlText>
-                      <RtlText style={styles.dashboardLastWalkEditText}>עריכה</RtlText>
                     </Pressable>
                   ) : null}
                   {lastWalk.status !== 'skipped' ? (
@@ -1659,7 +1658,7 @@ const styles = StyleSheet.create({
   // Keep edit on the physical left edge of the action lane, while the relief
   // toggles stay together on its physical right edge. This creates a real
   // empty centre lane instead of merely adding a few pixels between controls.
-  dashboardLastWalkEdit: { alignItems: 'center', justifyContent: 'center', width: 48, minHeight: 44, marginLeft: -8 },
+  dashboardLastWalkEdit: { alignItems: 'center', justifyContent: 'center', width: 44, minHeight: 44, marginLeft: -14 },
   dashboardLastWalkNeeds: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', gap: 6, marginRight: -4 },
   dashboardLastWalkNeedButton: { width: 32, height: 44, alignItems: 'center', justifyContent: 'center' },
   dashboardLastWalkEditIcon: { fontSize: 17, color: '#E6B422' },
