@@ -27,7 +27,15 @@ interface RuleFormModalProps {
   visible: boolean;
   editingRule: ScheduleRule | null;
   users: FamilyUser[];
-  onSave: (result: RuleFormResult) => void;
+  /**
+   * Real-device QA fix (double-tap "שמירה" false-failure bug) — this is
+   * now awaited (see `submit` below), so a caller's async add/update work
+   * actually gates this modal's own saving state instead of firing and
+   * forgetting it. Every existing caller (ScheduleScreen.tsx) already
+   * passes an async function here; this is a type correction, not a
+   * behavior change for them.
+   */
+  onSave: (result: RuleFormResult) => Promise<void>;
   onClose: () => void;
 }
 
@@ -38,6 +46,17 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
   const [days, setDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
   const [rotation, setRotation] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Real-device QA fix: the "double-tap שמירה" bug — tapping Save twice
+  // before the first addRule() resolved fired TWO concurrent, independent
+  // adds for the identical time slot (no busy/disabled state stopped the
+  // second tap), so the first succeeded and the second hit
+  // schedule_rules_active_identity_uidx (migration 0099) and surfaced a
+  // misleading "couldn't add" error for a save that had already worked.
+  // `saving` makes one tap enough: the Save button disables (and shows a
+  // spinner, via Button's own `loading` prop) for the whole duration of
+  // the caller's async onSave(), so a second tap in that window is simply
+  // impossible from this modal.
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -46,6 +65,7 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
       setDays(editingRule?.daysOfWeek ?? [0, 1, 2, 3, 4, 5, 6]);
       setRotation(editingRule?.rotationUserIds ?? []);
       setError(null);
+      setSaving(false);
     }
   }, [visible, editingRule]);
 
@@ -55,11 +75,18 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
 
   const usersById = Object.fromEntries(users.map((u) => [u.id, u]));
 
-  const submit = () => {
+  const submit = async () => {
+    if (saving) return; // re-entrancy guard — belt-and-suspenders alongside the disabled Button below.
     if (!is24HourTime(time)) return setError('שעה לא תקינה — פורמט HH:mm, למשל 08:00');
     if (days.length === 0) return setError('יש לבחור לפחות יום אחד');
     if (rotation.length === 0) return setError('יש לבחור לפחות בן משפחה אחד לתורנות');
-    onSave({ time, label: label.trim(), daysOfWeek: days, rotationUserIds: rotation });
+    setError(null);
+    setSaving(true);
+    try {
+      await onSave({ time, label: label.trim(), daysOfWeek: days, rotationUserIds: rotation });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -164,7 +191,7 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
             ) : null}
 
             <View style={styles.actions}>
-              <Button label="שמירה" onPress={submit} style={styles.flex} />
+              <Button label="שמירה" onPress={submit} loading={saving} style={styles.flex} />
               <Button label="ביטול" onPress={onClose} variant="secondary" style={styles.flex} />
             </View>
             </ScrollView>

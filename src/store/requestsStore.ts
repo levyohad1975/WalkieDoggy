@@ -205,6 +205,27 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
     }
   },
 
+  /**
+   * Real-device QA fix ("bell opens an error dialog") — root cause: this
+   * previously treated a failed read-receipt write exactly like a failed
+   * mutation, setting the SAME `error` field approveSwap/rejectSwap/etc.
+   * use — so a person tapping the bell to OPEN their requests (this is
+   * the only call site, via HomeScreen's openRequestsInbox) could get an
+   * "אופס" dialog stacked on top of the inbox they were just trying to
+   * read, even though RequestsInboxModal itself opened and rendered fine
+   * underneath it (it needs no server round-trip — it reads the already-
+   * loaded swapRequests/timeChangeRequests straight from props).
+   *
+   * Marking results "seen" is exactly the same kind of best-effort,
+   * non-blocking housekeeping as touchLastSeen() (see requests.ts's own
+   * doc comment: "a failure here ... must never interrupt anything else
+   * the app is doing") — nobody's action should ever fail or alarm
+   * because a read-receipt couldn't be written. Failures are now
+   * swallowed the same way (dev-only diagnostic, no user-facing error);
+   * the bell badge simply stays as it was and will clear next time this
+   * succeeds (next open, next foreground reconcile, etc.) — never worse
+   * than before, just never a false alarm either.
+   */
   markResultsSeen: async () => {
     if (!guardTestModeMutation()) return;
     if (!isSupabaseConfigured) return;
@@ -212,7 +233,9 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
       await markMyRequestResultsSeen();
       await get().load();
     } catch (error) {
-      set({ error: messageFor(error) });
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('markResultsSeen failed (best-effort, not shown to the user):', error);
+      }
     }
   },
 

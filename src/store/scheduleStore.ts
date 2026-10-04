@@ -25,10 +25,35 @@ import { guardTestModeMutation } from '../lib/testModeGuard';
 import { hasActiveRemoteReminderChannel } from '../lib/remoteReminderChannel';
 import { deleteScheduleRuleWithOccurrences, isSupabaseConfigured } from '../lib/supabase';
 import { adminRescheduleWalk, adminSwapWalks } from '../lib/walkAdmin';
-import { friendlyErrorMessage } from '../lib/errorMessages';
+import { friendlyErrorMessage, rawMessageOf } from '../lib/errorMessages';
 import { useGpsStore } from './gpsStore';
 
 const GENERATE_DAYS_AHEAD = 14;
+
+/**
+ * Real-device QA fix (double-tap "שמירה" false-failure bug) — migration
+ * 0099's schedule_rules_active_identity_uidx is a unique index on
+ * (family_id, dog_id, time, days_of_week, rotation_user_ids,
+ * rotation_anchor_date) where active = true, meant to stop a duplicate
+ * active rule from generating duplicate future walk occurrences.
+ * RuleFormModal.tsx now disables its own Save button for the duration of
+ * addRule() (see its own `saving` state), which closes off the original
+ * trigger — tapping Save twice before the first add had resolved used to
+ * fire two independent addRule() calls with the SAME data (each gets its
+ * own fresh rule id from generateId('rule') in ScheduleScreen.tsx, so the
+ * id itself never collides — only this index's other columns do). The
+ * FIRST insert always won; the SECOND hit this constraint and surfaced a
+ * raw Postgres "duplicate key" error with no entry in errorMessages.ts's
+ * table, falling back to the generic "לא הצלחנו להוסיף את שעת הטיול" for
+ * a save that, from the end state's perspective, had already succeeded.
+ * This check stays as defense-in-depth for any other path that could
+ * still race two identical inserts (a retried network request, a future
+ * caller that doesn't go through RuleFormModal) — see addRule()'s own use
+ * of it below.
+ */
+function isDuplicateActiveScheduleRuleError(error: unknown): boolean {
+  return rawMessageOf(error).includes('schedule_rules_active_identity_uidx');
+}
 
 // BUG FIX (duplicate schedule entries/walks) — see load()'s doc comment
 // below for the full race-condition this guards against. Keyed by
@@ -402,6 +427,18 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // real Postgres/RLS rejection reason) that would let anyone diagnose
       // why the add failed. friendlyErrorMessage()'s own rawMessageOf()
       // already handles both shapes.
+      //
+      // Real-device QA fix: a duplicate-active-rule constraint violation
+      // (see isDuplicateActiveScheduleRuleError's own doc comment above)
+      // means this exact time slot already exists — most likely a racing
+      // duplicate of a call that already succeeded. Reload from the
+      // server and report success; never show a scary "couldn't add"
+      // error for a save whose end state is already correct.
+      if (isDuplicateActiveScheduleRuleError(e)) {
+        await get().load(rule.familyId);
+        set({ actionError: null });
+        return;
+      }
       set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו להוסיף את שעת הטיול') });
     }
   },
