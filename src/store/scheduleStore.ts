@@ -446,12 +446,21 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // this optional method (none in production — repository is always
       // OfflineFirstRepository — only a hypothetical bare test double).
       perfMark(`A7 handing off ${newWalks.length} generated walks for background sync`);
-      if (repository.queueWalksForBackgroundSync) {
-        await repository.queueWalksForBackgroundSync(newWalks);
-      } else {
-        for (const w of newWalks) await repository.saveWalk(w);
+      // Today's occurrence is immediately user-visible on Home. Persist it
+      // authoritatively before returning so a foreground reload cannot replace
+      // it with the still-stale remote snapshot while the background queue is
+      // catching up. Future occurrences remain safe to hand off in bulk.
+      const todayWalks = newWalks.filter((w) => w.scheduledDate === today);
+      const futureWalks = newWalks.filter((w) => w.scheduledDate !== today);
+      for (const w of todayWalks) await repository.saveWalk(w);
+      if (futureWalks.length > 0) {
+        if (repository.queueWalksForBackgroundSync) {
+          await repository.queueWalksForBackgroundSync(futureWalks);
+        } else {
+          for (const w of futureWalks) await repository.saveWalk(w);
+        }
       }
-      perfMark('A8 queueWalksForBackgroundSync (or fallback loop) returned');
+      perfMark('A8 generated walks persisted/queued');
 
       set((s) => {
         // saveWalk() may replace a freshly generated local walk id with the
@@ -595,10 +604,15 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // network-round-trips bottleneck this fix targets.
       if (toAdd.length > 0) await repository.addScheduleEntries(toAdd);
       const newWalks = toAdd.map((e) => walkFromEntry(e, updatedRule.familyId));
-      if (repository.queueWalksForBackgroundSync) {
-        await repository.queueWalksForBackgroundSync(newWalks);
-      } else {
-        for (const w of newWalks) await repository.saveWalk(w);
+      const todayNewWalks = newWalks.filter((w) => w.scheduledDate === today);
+      const futureNewWalks = newWalks.filter((w) => w.scheduledDate !== today);
+      for (const w of todayNewWalks) await repository.saveWalk(w);
+      if (futureNewWalks.length > 0) {
+        if (repository.queueWalksForBackgroundSync) {
+          await repository.queueWalksForBackgroundSync(futureNewWalks);
+        } else {
+          for (const w of futureNewWalks) await repository.saveWalk(w);
+        }
       }
 
       set((s) => ({
