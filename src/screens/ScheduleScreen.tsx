@@ -28,6 +28,10 @@ import { walkHasActiveSwapRequest, walkHasActiveTimeChangeRequest } from '../log
 import { computeWalkRequestStatusLine } from '../logic/walkRequestStatusLine';
 import { isSupabaseConfigured } from '../lib/supabase';
 import type { ScheduleRule, Walk } from '../types';
+// TEMPORARY DIAGNOSTIC INSTRUMENTATION — see perfTrace.ts's own doc
+// comment. Remove this import once the real ~10s Schedule-save
+// bottleneck is confirmed fixed by an actual real-device measurement.
+import { perfMark } from '../lib/perfTrace';
 
 type RangeKey = 'week' | 'routine';
 
@@ -506,6 +510,10 @@ export function ScheduleScreen() {
               actionError: 'עדיין טוענים את פרטי הכלב/ה — נסו שוב בעוד רגע',
             });
           }
+          // TEMPORARY DIAGNOSTIC INSTRUMENTATION — see perfTrace.ts's own
+          // doc comment. Remove once the real ~10s Schedule-save
+          // bottleneck is confirmed fixed.
+          perfMark('T3 modal closing (ScheduleScreen onSave)');
           setRuleFormVisible(false);
         }}
         onClose={() => setRuleFormVisible(false)}

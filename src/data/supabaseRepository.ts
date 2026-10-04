@@ -14,6 +14,12 @@ import type {
 import { defaultNotificationSetting } from '../logic/reminders';
 import type { DeleteFamilyMemberPayload, Repository } from './repository';
 import { SUPABASE_CALL_TIMEOUT_MS, withTimeout } from '../lib/withTimeout';
+// TEMPORARY DIAGNOSTIC INSTRUMENTATION — see perfTrace.ts's own doc
+// comment. Remove this import and every perfMark call in
+// upsertScheduleRule()/addScheduleEntries() once the real ~10s
+// Schedule-save bottleneck is confirmed fixed by an actual real-device
+// measurement.
+import { perfMark } from '../lib/perfTrace';
 
 /** Maps between the app's camelCase domain types and Supabase's snake_case rows. */
 
@@ -537,19 +543,23 @@ export class SupabaseRepository implements Repository {
     // call here must reject (and surface/queue like any other transient
     // failure), never hang the caller's `saving` state forever.
     const row = fromRule(rule);
+    perfMark('SR.upsertScheduleRule: update request start');
     const { data, error: updateError } = await withTimeout(
       this.client.from('schedule_rules').update(row).eq('id', rule.id).select('id'),
       SUPABASE_CALL_TIMEOUT_MS,
       'schedule_rules update'
     );
+    perfMark('SR.upsertScheduleRule: update request complete');
     if (updateError) throw updateError;
     if ((data ?? []).length > 0) return;
 
+    perfMark('SR.upsertScheduleRule: insert request start');
     const { error: insertError } = await withTimeout(
       this.client.from('schedule_rules').insert(row),
       SUPABASE_CALL_TIMEOUT_MS,
       'schedule_rules insert'
     );
+    perfMark('SR.upsertScheduleRule: insert request complete');
     if (insertError) throw insertError;
   }
 
@@ -575,6 +585,7 @@ export class SupabaseRepository implements Repository {
     // network calls — either one stalling with no timeout is one of the
     // concrete hang points identified in that bug.
     const rows = entries.map(fromEntry);
+    perfMark(`SR.addScheduleEntries: upsert request start (${rows.length} rows)`);
     const { error } = await withTimeout(
       this.client.from('schedule_entries').upsert(rows, {
         onConflict: 'dog_id,date,time',
@@ -583,6 +594,7 @@ export class SupabaseRepository implements Repository {
       SUPABASE_CALL_TIMEOUT_MS,
       'schedule_entries upsert'
     );
+    perfMark('SR.addScheduleEntries: upsert request complete');
     if (error) throw error;
 
     // The unique key is (dog_id,date,time), so ignoreDuplicates can keep an
@@ -594,6 +606,7 @@ export class SupabaseRepository implements Repository {
     const dogIds = [...new Set(rows.map((row) => row.dog_id))];
     const dates = [...new Set(rows.map((row) => row.date))];
     const times = [...new Set(rows.map((row) => row.time))];
+    perfMark('SR.addScheduleEntries: canonical-id read-back start');
     const { data: canonicalRows, error: readError } = await withTimeout(
       this.client
         .from('schedule_entries')
@@ -604,6 +617,7 @@ export class SupabaseRepository implements Repository {
       SUPABASE_CALL_TIMEOUT_MS,
       'schedule_entries canonical-id read-back'
     );
+    perfMark('SR.addScheduleEntries: canonical-id read-back complete');
     if (readError) throw readError;
 
     const canonicalByKey = new Map(

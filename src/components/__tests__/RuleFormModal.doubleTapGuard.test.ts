@@ -34,10 +34,13 @@ describe('RuleFormModal — double-tap "שמירה" guard (structural)', () => {
   it('submit() is async, re-entrancy-guarded, and awaits onSave() inside a try/finally that always clears `saving`', () => {
     const submitIdx = source.indexOf('const submit = async () => {');
     expect(submitIdx).toBeGreaterThan(-1);
-    const submitBody = source.slice(submitIdx, submitIdx + 700);
+    const submitBody = source.slice(submitIdx, submitIdx + 900);
     expect(submitBody).toContain('if (saving) return;');
     expect(submitBody).toContain('setSaving(true);');
-    expect(submitBody).toMatch(/try\s*\{\s*\n\s*await onSave\(/);
+    // Allows an intervening line (e.g. the temporary perf-trace mark —
+    // see perfTrace.ts) between `try {` and the actual `await onSave(`
+    // call, without caring about its exact content.
+    expect(submitBody).toMatch(/try\s*\{[^]*?await onSave\(/);
     expect(submitBody).toMatch(/finally\s*\{\s*\n\s*setSaving\(false\);/);
   });
 

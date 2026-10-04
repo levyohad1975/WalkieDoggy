@@ -383,6 +383,47 @@ export class LocalRepository implements Repository {
   }
 
   /**
+   * Real-device QA fix — "Schedule save spinner lingers ~10s", round 2.
+   * On-device timestamped instrumentation (see perfTrace.ts) traced the
+   * delay past the earlier network-round-trip fixes (6a369d8, e42936f) to
+   * HERE: persist() (below) does a FULL read-modify-write of this
+   * repository's entire single-blob cache — every user, dog, rule, entry,
+   * walk, health task, GPS session, and achievement unlock in the family —
+   * on every single call. saveWalk() above calls persist() once per walk;
+   * queueWalksForBackgroundSync() (offlineFirstRepository.ts) used to call
+   * saveWalk() once per generated future occurrence (up to
+   * GENERATE_DAYS_AHEAD = 14), so adding one rule re-serialized and
+   * rewrote that ENTIRE blob to AsyncStorage up to 14 times in a row — on
+   * a real device, with a real family's accumulated history, this is the
+   * actual dominant cost neither earlier fix touched (both targeted the
+   * REMOTE network calls, which were never the bottleneck once they
+   * stopped being awaited).
+   *
+   * This updates every given walk in memory first and calls persist()
+   * EXACTLY ONCE for the whole batch, regardless of how many walks are in
+   * it — same upsert-by-id-or-append and same "don't overwrite a
+   * concurrent completion" semantics as saveWalk() above, just applied to
+   * N walks before the one persist() instead of after each one.
+   */
+  async saveWalks(walks: Walk[]): Promise<void> {
+    if (walks.length === 0) return;
+    const s = await this.load();
+    for (const walk of walks) {
+      const idx = s.walks.findIndex((w) => w.id === walk.id);
+      if (idx >= 0) {
+        const current = s.walks[idx];
+        if (current.status === 'done' && walk.status === 'done' && current.completedByUserId !== walk.completedByUserId) {
+          continue; // someone else already completed it first — don't overwrite the record
+        }
+        s.walks[idx] = walk;
+      } else {
+        s.walks.push(walk);
+      }
+    }
+    await this.persist();
+  }
+
+  /**
    * Section 2: deletes an unplanned/spontaneous walk entered by mistake.
    * Callers (scheduleStore.deleteUnplannedWalk) are responsible for the
    * is_unplanned/ownership check before calling this — this local

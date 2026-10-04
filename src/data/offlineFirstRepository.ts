@@ -14,6 +14,11 @@ import type {
 import type { DeleteFamilyMemberPayload, Repository } from './repository';
 import { LocalRepository } from './localRepository';
 import { isPermanentSyncError, SyncQueue } from './syncQueue';
+// TEMPORARY DIAGNOSTIC INSTRUMENTATION — see perfTrace.ts's own doc
+// comment. Remove this import and every perfMark call in
+// queueWalksForBackgroundSync() once the real ~10s Schedule-save
+// bottleneck is confirmed fixed by an actual real-device measurement.
+import { perfMark } from '../lib/perfTrace';
 
 /**
  * The repository the app actually uses. Reads always come from the local
@@ -690,16 +695,31 @@ export class OfflineFirstRepository implements Repository {
    * goes through (reliable, retryable, idempotent — a walk already
    * enqueued or already persisted is never re-applied twice, same
    * dedup guarantees saveWalk() always had).
+   *
+   * ROUND 2 FIX: real-device instrumentation after the above still
+   * measured ~10s proved THIS function's own local-write loop was the
+   * actual dominant cost, not the network round trips this doc comment
+   * originally targeted — LocalRepository.saveWalk() does a FULL
+   * read-modify-write of the entire single-blob local cache on every
+   * call (see its own and saveWalks()'s doc comments), so calling it once
+   * per walk here re-serialized and rewrote that whole blob up to
+   * GENERATE_DAYS_AHEAD times in a row. Now calls the batched
+   * saveWalks() once for the whole array instead — one local persist
+   * total, regardless of how many walks are in the batch.
    */
   async queueWalksForBackgroundSync(walks: Walk[]): Promise<void> {
-    for (const walk of walks) {
-      await this.local.saveWalk(walk);
-    }
+    perfMark(`OFR.queueWalksForBackgroundSync: local batch write start (${walks.length} walks)`);
+    await this.local.saveWalks(walks);
+    perfMark('OFR.queueWalksForBackgroundSync: local batch write end');
     if (!this.remote) return;
+    perfMark('OFR.queueWalksForBackgroundSync: SyncQueue enqueue start');
     for (const walk of walks) {
       await this.queue.enqueue({ type: 'saveWalk', payload: walk });
     }
+    perfMark('OFR.queueWalksForBackgroundSync: SyncQueue enqueue end');
+    perfMark('OFR.queueWalksForBackgroundSync: calling trySync (void, not awaited)');
     void this.trySync();
+    perfMark('OFR.queueWalksForBackgroundSync: returning (confirms trySync did not block)');
   }
 
   async deleteWalk(walkId: string): Promise<void> {

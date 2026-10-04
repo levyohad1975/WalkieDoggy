@@ -27,6 +27,11 @@ import { deleteScheduleRuleWithOccurrences, isSupabaseConfigured } from '../lib/
 import { adminRescheduleWalk, adminSwapWalks } from '../lib/walkAdmin';
 import { friendlyErrorMessage, rawMessageOf } from '../lib/errorMessages';
 import { useGpsStore } from './gpsStore';
+// TEMPORARY DIAGNOSTIC INSTRUMENTATION — see perfTrace.ts's own doc
+// comment. Remove this import and every perfMark call in addRule()/
+// updateRule() once the real ~10s Schedule-save bottleneck is confirmed
+// fixed by an actual real-device measurement.
+import { perfMark } from '../lib/perfTrace';
 
 const GENERATE_DAYS_AHEAD = 14;
 
@@ -363,9 +368,13 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   },
 
   addRule: async (rule: ScheduleRule) => {
+    perfMark('A0 addRule entered');
     if (!guardTestModeMutation()) return;
+    perfMark('A1 local validation complete');
     try {
+      perfMark('A2 upsertScheduleRule start');
       await repository.upsertScheduleRule(rule);
+      perfMark('A3 upsertScheduleRule complete');
       // Local calendar day, not UTC — `entries`/`walks` dates are the
       // family's local "today" (see dateFormat.ts), and a UTC-anchored
       // "today" would be wrong for a few hours after local midnight for
@@ -373,7 +382,9 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       const today = localDateOnly(new Date());
       const endDate = localDateOnly(new Date(Date.now() + GENERATE_DAYS_AHEAD * 86400000));
       const newEntries = generateRotationSchedule(rule, today, endDate, () => generateId('entry'));
+      perfMark('A4 addScheduleEntries start');
       await repository.addScheduleEntries(newEntries);
+      perfMark('A6 addScheduleEntries complete (upsert + canonical-id readback)');
 
       const existingKeys = new Set(get().entries.map((e) => `${e.dogId}|${e.date}|${e.time}`));
       const trulyNew = newEntries.filter((e) => !existingKeys.has(`${e.dogId}|${e.date}|${e.time}`));
@@ -396,11 +407,13 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // await for any Repository implementation that doesn't provide
       // this optional method (none in production — repository is always
       // OfflineFirstRepository — only a hypothetical bare test double).
+      perfMark(`A7 handing off ${newWalks.length} generated walks for background sync`);
       if (repository.queueWalksForBackgroundSync) {
         await repository.queueWalksForBackgroundSync(newWalks);
       } else {
         for (const w of newWalks) await repository.saveWalk(w);
       }
+      perfMark('A8 queueWalksForBackgroundSync (or fallback loop) returned');
 
       set((s) => {
         // saveWalk() may replace a freshly generated local walk id with the
@@ -436,6 +449,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         };
       });
       newWalks.forEach((w) => void scheduleNotificationsForWalk(w));
+      perfMark('A11 addRule returning (success)');
     } catch (e) {
       // A thrown error here (storage failure, bad data, etc.) must never
       // leave the new rule invisible with no explanation — surface it the
@@ -457,10 +471,14 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // server and report success; never show a scary "couldn't add"
       // error for a save whose end state is already correct.
       if (isDuplicateActiveScheduleRuleError(e)) {
+        perfMark('A9 load() start (duplicate-constraint recovery path)');
         await get().load(rule.familyId);
+        perfMark('A10 load() complete');
         set({ actionError: null });
+        perfMark('A11 addRule returning (duplicate-constraint recovery)');
         return;
       }
+      perfMark('A11 addRule returning (error)');
       set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו להוסיף את שעת הטיול') });
     }
   },

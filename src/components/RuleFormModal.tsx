@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from './RtlText';
 import type { FamilyUser, ScheduleRule } from '../types';
 import { colors } from '../theme/colors';
@@ -8,6 +8,11 @@ import { Avatar } from '../components/Avatar';
 import { Button } from './Button';
 import { TimePickerField } from './TimePickerField';
 import { is24HourTime } from '../logic/timeInput';
+// TEMPORARY DIAGNOSTIC INSTRUMENTATION — see perfTrace.ts's own doc
+// comment. Remove this import and every perfMark/perfReset/perfReport
+// call in this file once the real ~10s Schedule-save bottleneck is
+// confirmed fixed by an actual real-device measurement.
+import { perfMark, perfReport, perfReset } from '../lib/perfTrace';
 
 const DAY_LABELS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
 // Round 6F: full spoken day names for the day chips' accessibilityLabel —
@@ -107,13 +112,25 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
     if (!is24HourTime(time)) return setError('שעה לא תקינה — פורמט HH:mm, למשל 08:00');
     if (days.length === 0) return setError('יש לבחור לפחות יום אחד');
     if (rotation.length === 0) return setError('יש לבחור אחראי/ת לטיול');
+    // TEMPORARY DIAGNOSTIC INSTRUMENTATION — see perfTrace.ts's own doc
+    // comment. perfReset() here starts a fresh trace for exactly this one
+    // save attempt.
+    perfReset();
+    perfMark('T0 submit entered (validated)');
     setError(null);
     setSaving(true);
     try {
+      perfMark('T1 onSave called');
       await onSave({ time, label: label.trim(), daysOfWeek: days, rotationUserIds: rotation });
+      perfMark('T2 onSave resolved');
     } finally {
       setSaving(false);
     }
+    // TEMPORARY: surfaces the full timestamped breakdown directly on the
+    // device via a plain Alert — readable without Safari's remote
+    // debugger. Remove this call (and the import above) once the real
+    // bottleneck is found and fixed.
+    Alert.alert('⏱ Diagnostics (temp)', perfReport());
   };
 
   return (
