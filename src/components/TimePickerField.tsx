@@ -72,8 +72,13 @@ export function TimePickerField({ value, onChange, webLabel, androidLabel = '×©×
           value={value}
           title={webLabel}
           onConfirm={(next) => {
-            onChange(next);
+            // Close first so Safari/PWA fully unmounts the nested picker
+            // modal before the parent edit form re-renders with its new
+            // controlled value. Real-iPhone QA showed that updating the
+            // parent while this nested Modal was still mounted could leave
+            // the visible field on the old time even though Confirm fired.
             setWebSheetOpen(false);
+            onChange(next);
           }}
           onCancel={() => setWebSheetOpen(false)}
         />
