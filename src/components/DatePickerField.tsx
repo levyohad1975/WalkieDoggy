@@ -13,7 +13,7 @@ interface DatePickerFieldProps {
   allowEmpty?: boolean;
 }
 
-const MONTHS = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
+
 const pad2 = (n:number) => String(n).padStart(2,'0');
 
 function parse(value:string): Date {
@@ -22,7 +22,7 @@ function parse(value:string): Date {
 }
 function display(value:string) {
   if (!value) return 'בחירת תאריך';
-  const d=parse(value); return `${pad2(d.getDate())} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+  const d=parse(value); return `${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.${d.getFullYear()}`;
 }
 export function DatePickerField({value,onChange,label='בחירת תאריך',allowEmpty=false}:DatePickerFieldProps) {
   const [open,setOpen]=useState(false);
@@ -43,7 +43,7 @@ export function DatePickerField({value,onChange,label='בחירת תאריך',al
           <View style={s.quick}><Button compact label="אתמול" variant="secondary" onPress={()=>quick(-1)} style={s.flex}/><Button compact label="היום" variant="secondary" onPress={()=>quick(0)} style={s.flex}/><Button compact label="מחר" variant="secondary" onPress={()=>quick(1)} style={s.flex}/></View>
           <View style={s.columns}>
             <Column values={days} selected={draft.getDate()} text={n=>String(n)} onSelect={d=>setPart(draft.getFullYear(),draft.getMonth(),d)}/>
-            <Column values={Array.from({length:12},(_,i)=>i)} selected={draft.getMonth()} text={m=>MONTHS[m]} wide onSelect={m=>setPart(draft.getFullYear(),m,draft.getDate())}/>
+            <Column values={Array.from({length:12},(_,i)=>i)} selected={draft.getMonth()} text={m=>pad2(m+1)} wide onSelect={m=>setPart(draft.getFullYear(),m,draft.getDate())}/>
             <Column values={years} selected={draft.getFullYear()} text={y=>String(y)} onSelect={y=>setPart(y,draft.getMonth(),draft.getDate())}/>
           </View>
           <View style={s.actions}><Button label="אישור" onPress={()=>{onChange(localDateOnly(draft));setOpen(false)}} style={s.flex}/><Button label="ביטול" variant="secondary" onPress={()=>setOpen(false)} style={s.flex}/></View>
