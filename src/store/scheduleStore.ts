@@ -450,8 +450,8 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // authoritatively before returning so a foreground reload cannot replace
       // it with the still-stale remote snapshot while the background queue is
       // catching up. Future occurrences remain safe to hand off in bulk.
-      const todayWalks = newWalks.filter((w) => w.scheduledDate === today);
-      const futureWalks = newWalks.filter((w) => w.scheduledDate !== today);
+      const todayWalks = newWalks.filter((w) => w.scheduleEntryId && trulyNew.some((e) => e.id === w.scheduleEntryId && e.date === today));
+      const futureWalks = newWalks.filter((w) => !w.scheduleEntryId || !trulyNew.some((e) => e.id === w.scheduleEntryId && e.date === today));
       for (const w of todayWalks) await repository.saveWalk(w);
       if (futureWalks.length > 0) {
         if (repository.queueWalksForBackgroundSync) {
@@ -604,8 +604,8 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // network-round-trips bottleneck this fix targets.
       if (toAdd.length > 0) await repository.addScheduleEntries(toAdd);
       const newWalks = toAdd.map((e) => walkFromEntry(e, updatedRule.familyId));
-      const todayNewWalks = newWalks.filter((w) => w.scheduledDate === today);
-      const futureNewWalks = newWalks.filter((w) => w.scheduledDate !== today);
+      const todayNewWalks = newWalks.filter((w) => w.scheduleEntryId && toAdd.some((e) => e.id === w.scheduleEntryId && e.date === today));
+      const futureNewWalks = newWalks.filter((w) => !w.scheduleEntryId || !toAdd.some((e) => e.id === w.scheduleEntryId && e.date === today));
       for (const w of todayNewWalks) await repository.saveWalk(w);
       if (futureNewWalks.length > 0) {
         if (repository.queueWalksForBackgroundSync) {
