@@ -94,7 +94,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
                   frameSize={sprite.frameSize}
                   frameCount={sprite.frameCount}
                   fps={sprite.fps}
-                  size={104}
+                  size={132}
                   fallback={COMPLETION_MASCOT}
                   accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול"
                   testID="completion-mascot-animation"
@@ -111,8 +111,8 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'transparent' },
-  moment: { width: 132, alignItems: 'center' },
-  bubble: { maxWidth: 132, backgroundColor: colors.surface, borderRadius: radii.lg, paddingHorizontal: 10, paddingVertical: 7, shadowColor: '#0B5C75', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
+  moment: { width: 160, alignItems: 'center' },
+  bubble: { maxWidth: 154, backgroundColor: colors.surface, borderRadius: radii.lg, paddingHorizontal: 10, paddingVertical: 7, shadowColor: '#0B5C75', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
   message: { color: colors.textPrimary, fontSize: 13, lineHeight: 17, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
   tail: { width: 14, height: 14, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }], marginTop: -7, marginBottom: -3 },
   confetti: { position: 'absolute', top: 64, color: colors.primary, fontSize: 24, letterSpacing: 10 },
