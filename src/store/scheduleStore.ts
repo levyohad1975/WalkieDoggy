@@ -302,7 +302,7 @@ async function loadScheduleForFamily(
       (entry) =>
         entry.date >= today &&
         entry.date <= endDate &&
-        activeRuleIds.has(entry.ruleId) &&
+        Boolean(entry.ruleId && activeRuleIds.has(entry.ruleId)) &&
         !walkEntryIds.has(entry.id)
     );
     if (orphanFutureEntries.length > 0) {
