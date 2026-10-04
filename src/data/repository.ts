@@ -191,6 +191,19 @@ export interface Repository {
    * repositories with no queue have nothing to count.
    */
   pendingSyncCount?(): Promise<number>;
+  /**
+   * Real-device QA fix — "Schedule save spinner lingers ~10s". Durably
+   * hands off a batch of freshly-generated future walk occurrences
+   * (scheduleStore.addRule()/updateRule()) for background persistence,
+   * instead of the caller awaiting one saveWalk() network round trip per
+   * walk in sequence. See OfflineFirstRepository's own implementation doc
+   * comment for the full rationale and durability guarantee. Optional for
+   * the same reason as the other sync-queue methods above: a repository
+   * with no queue (LocalRepository, a bare SupabaseRepository) has
+   * nothing to defer — callers fall back to their own original
+   * sequential saveWalk() loop when this is absent.
+   */
+  queueWalksForBackgroundSync?(walks: Walk[]): Promise<void>;
 }
 
 export class RepositoryError extends Error {}

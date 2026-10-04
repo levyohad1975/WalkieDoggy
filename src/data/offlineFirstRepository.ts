@@ -663,6 +663,45 @@ export class OfflineFirstRepository implements Repository {
     await this.trySync();
   }
 
+  /**
+   * Real-device QA fix — "Schedule save spinner lingers ~10s". Real-iPhone
+   * measurement: addRule() for a full-week rule (GENERATE_DAYS_AHEAD = 14
+   * generated occurrences) awaited one saveWalk() call per walk IN
+   * SEQUENCE — each itself up to two network round trips (a lookup, then
+   * an upsert) — roughly 28 sequential round trips just for the walks,
+   * on top of the rule + schedule-entries writes. At ~300-350ms per round
+   * trip on a real mobile connection that is the whole ~10s the Save
+   * button's spinner was stuck showing, for a write the person had
+   * already effectively finished (the rule itself, and its entries, are
+   * both confirmed server-side by the time this is ever called).
+   *
+   * Unlike saveWalk() above — which deliberately waits for the online
+   * write so a lifecycle RPC (start_walk/finish_walk) moments later can
+   * never race a still-queued creation — these are FUTURE occurrences
+   * nobody can start/finish yet, so that race does not apply here. This
+   * writes each walk to the LOCAL cache and the SyncQueue (both fast,
+   * AsyncStorage-only operations — no network wait) so the data is
+   * DURABLE — safe against the PWA being closed a moment later — the
+   * instant this resolves, then kicks off ONE best-effort trySync() to
+   * opportunistically flush to the server immediately on good
+   * connectivity, WITHOUT the caller waiting for that network activity.
+   * This is not a new sync path: it reuses the exact same queue/flush/
+   * retry/conflict machinery every other queued offline write already
+   * goes through (reliable, retryable, idempotent — a walk already
+   * enqueued or already persisted is never re-applied twice, same
+   * dedup guarantees saveWalk() always had).
+   */
+  async queueWalksForBackgroundSync(walks: Walk[]): Promise<void> {
+    for (const walk of walks) {
+      await this.local.saveWalk(walk);
+    }
+    if (!this.remote) return;
+    for (const walk of walks) {
+      await this.queue.enqueue({ type: 'saveWalk', payload: walk });
+    }
+    void this.trySync();
+  }
+
   async deleteWalk(walkId: string): Promise<void> {
     if (!this.remote) {
       await this.local.deleteWalk?.(walkId);

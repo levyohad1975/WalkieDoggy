@@ -378,7 +378,29 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       const existingKeys = new Set(get().entries.map((e) => `${e.dogId}|${e.date}|${e.time}`));
       const trulyNew = newEntries.filter((e) => !existingKeys.has(`${e.dogId}|${e.date}|${e.time}`));
       const newWalks = trulyNew.map((e) => walkFromEntry(e, rule.familyId));
-      for (const w of newWalks) await repository.saveWalk(w);
+      // Real-device QA fix — "Save spinner lingers ~10s": this used to be
+      // `for (const w of newWalks) await repository.saveWalk(w);` — up to
+      // GENERATE_DAYS_AHEAD (14) SEQUENTIAL network round trips (each
+      // saveWalk() itself up to two calls), measured at ~10s on a real
+      // iPhone for a full-week rule. The rule itself and its schedule
+      // entries (the two awaited calls above) are the only parts of this
+      // save the person is actually watching; these generated FUTURE
+      // occurrence walks are a derived background effect. See
+      // queueWalksForBackgroundSync()'s own doc comment
+      // (offlineFirstRepository.ts) for why this is a durable queue
+      // handoff, never a bare fire-and-forget: both the local write and
+      // the SyncQueue enqueue happen here, so the data survives a PWA
+      // restart even if the opportunistic trySync() it kicks off hasn't
+      // reached the server yet — exactly like any other queued offline
+      // write already behaves. Falls back to the original sequential
+      // await for any Repository implementation that doesn't provide
+      // this optional method (none in production — repository is always
+      // OfflineFirstRepository — only a hypothetical bare test double).
+      if (repository.queueWalksForBackgroundSync) {
+        await repository.queueWalksForBackgroundSync(newWalks);
+      } else {
+        for (const w of newWalks) await repository.saveWalk(w);
+      }
 
       set((s) => {
         // saveWalk() may replace a freshly generated local walk id with the
@@ -509,10 +531,19 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       }
 
       // Days newly added to the rule: generate entries/walks for them now,
-      // same as addRule.
+      // same as addRule. Real-device QA fix — same deferred-background
+      // handoff as addRule() uses for its own newly generated walks (see
+      // that function's own comment and queueWalksForBackgroundSync()'s
+      // doc comment in offlineFirstRepository.ts): a rule edit that adds
+      // several days back would otherwise hit the exact same sequential-
+      // network-round-trips bottleneck this fix targets.
       if (toAdd.length > 0) await repository.addScheduleEntries(toAdd);
       const newWalks = toAdd.map((e) => walkFromEntry(e, updatedRule.familyId));
-      for (const w of newWalks) await repository.saveWalk(w);
+      if (repository.queueWalksForBackgroundSync) {
+        await repository.queueWalksForBackgroundSync(newWalks);
+      } else {
+        for (const w of newWalks) await repository.saveWalk(w);
+      }
 
       set((s) => ({
         rules: s.rules.map((r) => (r.id === ruleId ? updatedRule : r)),
