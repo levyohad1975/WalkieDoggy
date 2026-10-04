@@ -45,7 +45,7 @@ describe('scheduleStore — generated future-occurrence walks are handed off for
     };
   }
 
-  it('addRule() with a full-week rule hands its ~14 generated occurrences to queueWalksForBackgroundSync in ONE call, never N sequential repository.saveWalk() awaits', async () => {
+  it("addRule() persists today's occurrence authoritatively and hands future occurrences to background sync in ONE call", async () => {
     await useScheduleStore.getState().load(FAMILY_ID);
     const { repository } = require('../../data');
     const before = useScheduleStore.getState().rules.length;
@@ -58,9 +58,13 @@ describe('scheduleStore — generated future-occurrence walks are handed off for
     expect(queueSpy).toHaveBeenCalledTimes(1);
     const handedOffWalks = queueSpy.mock.calls[0][0] as Walk[];
     expect(handedOffWalks.length).toBeGreaterThanOrEqual(10); // GENERATE_DAYS_AHEAD = 14, every day active
-    // The old bottleneck: a sequential `for (const w of newWalks) await
-    // repository.saveWalk(w);` is gone from this path entirely.
-    expect(saveWalkSpy).not.toHaveBeenCalled();
+    // Today's occurrence is deliberately persisted before returning so a
+    // foreground reload cannot replace it with a stale remote snapshot.
+    // Future occurrences still use the single deferred batch path.
+    expect(saveWalkSpy).toHaveBeenCalledTimes(1);
+    const todayWalk = saveWalkSpy.mock.calls[0][0] as Walk;
+    expect(todayWalk.date).toBe('2026-10-01');
+    expect(handedOffWalks.every((w) => w.date !== '2026-10-01')).toBe(true);
 
     // The walks are still visible in state immediately — handing them off
     // for background sync is not the same as not generating them at all.
