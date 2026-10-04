@@ -1658,8 +1658,8 @@ const styles = StyleSheet.create({
   // Keep edit on the physical left edge of the action lane, while the relief
   // toggles stay together on its physical right edge. This creates a real
   // empty centre lane instead of merely adding a few pixels between controls.
-  dashboardLastWalkEdit: { alignItems: 'center', justifyContent: 'center', width: 44, minHeight: 44, marginLeft: -14 },
-  dashboardLastWalkNeeds: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', gap: 6, marginRight: -4 },
+  dashboardLastWalkEdit: { alignItems: 'center', justifyContent: 'center', width: 44, height: 44, marginLeft: -14 },
+  dashboardLastWalkNeeds: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', alignSelf: 'center', gap: 6, marginRight: -4 },
   dashboardLastWalkNeedButton: { width: 32, height: 44, alignItems: 'center', justifyContent: 'center' },
   dashboardLastWalkEditIcon: { fontSize: 17, color: '#E6B422' },
   dashboardLastWalkEditText: { fontSize: 11, fontWeight: '600', color: '#17345B' },
