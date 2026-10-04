@@ -76,7 +76,8 @@ const styles = StyleSheet.create({
     paddingTop: '43%',
     paddingBottom: '39%',
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    paddingLeft: 42,
     overflow: 'hidden',
   },
   character: {
