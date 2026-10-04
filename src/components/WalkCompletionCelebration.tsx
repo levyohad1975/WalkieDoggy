@@ -83,8 +83,10 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
       <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תגובת הקמע של Walkie Doggy Link">
         <MascotSafeZone from="left" testID="completion-mascot-safe-zone">
           <Animated.View style={[styles.moment, { opacity, transform: [{ translateY }] }]} accessibilityRole="alert" accessibilityLiveRegion="polite">
-            <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
-            <View style={styles.tail} />
+            <View style={styles.speechBubbleWrap}>
+              <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
+              <View style={styles.tail} />
+            </View>
             <Animated.View style={{ transform: [{ translateY: mascotBounce }, { scale: opacity.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }] }}>
               {sprite ? (
                 <MascotSpriteAnimation
@@ -112,9 +114,13 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'transparent' },
   moment: { width: 160, alignItems: 'center' },
-  bubble: { maxWidth: 154, backgroundColor: colors.surface, borderRadius: radii.lg, paddingHorizontal: 10, paddingVertical: 7, shadowColor: '#0B5C75', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
+  // Compact diagonal speech bubble: it sits above-left of the mascot, over
+  // the free space above the last-walk time, while the mascot itself remains
+  // exactly centred in the gap between edit and pee/poop controls.
+  speechBubbleWrap: { position: 'absolute', left: -72, top: -34, alignItems: 'flex-end', zIndex: 3 },
+  bubble: { maxWidth: 154, backgroundColor: colors.surface, borderRadius: 22, paddingHorizontal: 12, paddingVertical: 8, shadowColor: '#0B5C75', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
   message: { color: colors.textPrimary, fontSize: 13, lineHeight: 17, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
-  tail: { width: 14, height: 14, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }], marginTop: -7, marginBottom: -3 },
+  tail: { width: 13, height: 13, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }], marginTop: -7, marginRight: 18 },
   confetti: { position: 'absolute', top: 64, color: colors.primary, fontSize: 24, letterSpacing: 10 },
   dismissButton: { minHeight: 44, paddingHorizontal: 18, justifyContent: 'center', marginTop: -6 },
   dismissText: { color: colors.textInverse, fontWeight: '700', fontSize: 14 },
