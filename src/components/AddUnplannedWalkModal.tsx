@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from './RtlText';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { DatePickerField } from './DatePickerField';
 import type { FamilyUser, Walk } from '../types';
 import { colors } from '../theme/colors';
 import { radii, spacing } from '../theme/tokens';
@@ -109,7 +110,6 @@ export function AddUnplannedWalkModal({
   // always open (inline spinner) on iOS, closed until the "שנה שעה" button is
   // tapped on Android. The date field below is completely unaffected.
   const [pickerOpen, setPickerOpen] = useState(Platform.OS === 'ios');
-  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [hadPee, setHadPee] = useState(false);
   const [hadPoop, setHadPoop] = useState(false);
   const [note, setNote] = useState('');
@@ -151,12 +151,6 @@ export function AddUnplannedWalkModal({
   // so this just converts and stores it — the existing timeIsValid() gate
   // above (feeding `valid`) is left in place unchanged. Android dismissal
   // (event.type === 'dismissed') leaves `time` unchanged.
-  const handleDateChange = (event: DateTimePickerEvent, selected?: Date) => {
-    if (Platform.OS === 'android') setDatePickerOpen(false);
-    if (event.type === 'dismissed') return;
-    if (selected) setDate(localDateOnly(selected));
-  };
-
   const handleTimeChange = (event: DateTimePickerEvent, selected?: Date) => {
     if (Platform.OS === 'android') setPickerOpen(false);
     if (event.type === 'dismissed') return;
@@ -223,27 +217,7 @@ export function AddUnplannedWalkModal({
             <View style={styles.row}>
               <View style={styles.flex}>
                 <RtlText style={styles.label}>תאריך</RtlText>
-                {Platform.OS === 'web' ? (
-                  <View style={styles.webDateField}>
-                    <RtlText style={styles.webDateDisplay} pointerEvents="none">{displayDate(date)}</RtlText>
-                    {React.createElement('input', {
-                      type: 'date',
-                      value: date,
-                      'aria-label': `בחר תאריך טיול, ${displayDate(date)}`,
-                      onChange: (event: { target: { value: string } }) => setDate(event.target.value),
-                      style: webDatePickerOverlayStyle,
-                    })}
-                  </View>
-                ) : (
-                  <Pressable
-                    style={styles.input}
-                    onPress={() => setDatePickerOpen(true)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`בחר תאריך טיול, ${displayDate(date)}`}
-                  >
-                    <RtlText style={styles.timeDisplay}>{displayDate(date)}</RtlText>
-                  </Pressable>
-                )}
+                <DatePickerField value={date} onChange={setDate} label="בחירת תאריך הטיול" />
               </View>
               <View style={styles.flex}>
                 <RtlText style={styles.label}>שעה</RtlText>
@@ -262,15 +236,6 @@ export function AddUnplannedWalkModal({
                 )}
               </View>
             </View>
-
-            {datePickerOpen && Platform.OS !== 'web' ? (
-              <DateTimePicker
-                value={isoDateToLocalDate(date)}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={handleDateChange}
-              />
-            ) : null}
 
             {/* Time is picked via the native time picker —
                 the trigger button opens it on Android; on iOS the picker is
