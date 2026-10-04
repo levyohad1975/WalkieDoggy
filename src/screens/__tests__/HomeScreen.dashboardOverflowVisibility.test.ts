@@ -15,11 +15,13 @@ import path from 'path';
  *      else on Home. Hiding it meant an overdue-but-not-yet-done walk for
  *      today had nowhere to appear at all: excluded from the "בהמשך היום"
  *      timeline by design (future-only), and now invisible here too.
- *   3. "טיולים קרובים" (further upcoming walks beyond the timeline/next-
- *      walk card) — also not shown elsewhere.
+ *   3. "טיולים קרובים" used to repeat the same future walks already shown
+ *      by the approved "בהמשך היום" timeline and was removed after real-
+ *      device QA found the duplicate content unnecessarily lengthened Home.
  *
- * Fix: delete the dead duplicate card, and drop `display: 'none'` from
- * `dashboardOverflow` so the two genuinely unique sections render again.
+ * Fix: keep dashboardOverflow visible for the genuinely unique overdue
+ * section, while the duplicate last-walk and upcoming-walk sections stay
+ * removed.
  * Source-scan convention: this repo has no render-test harness for
  * screens.
  */
@@ -37,9 +39,10 @@ describe('HomeScreen — dashboardOverflow is no longer unconditionally hidden (
     expect(home).toContain('{overduePending.length > 0 ? (');
   });
 
-  it('the further-upcoming-walks section ("טיולים קרובים") is present', () => {
-    expect(home).toContain('טיולים קרובים');
-    expect(home).toContain('{upcoming.length > 0 ? (');
+  it('does not duplicate the daily timeline with a second "טיולים קרובים" section', () => {
+    expect(home).not.toContain('>טיולים קרובים</RtlText>');
+    expect(home).not.toContain('{upcoming.length > 0 ? (');
+    expect(home).toContain('בהמשך היום');
   });
 
   it('removed the dead, fully-redundant duplicate "הטיול האחרון" card — the compact one (dashboardLastWalk styles) is the only one left', () => {
