@@ -31,6 +31,9 @@ interface NextWalkCardProps {
   onMarkDone: () => void;
   /** Primary lifecycle action. When omitted the legacy completion action remains available. */
   onStartWalk?: () => void;
+  /** Planned walks unlock shortly before their scheduled time. */
+  startWalkDisabled?: boolean;
+  startWalkAvailableLabel?: string;
   onEndWalk?: () => void;
   activeStartedAt?: string | null;
   /**
@@ -90,6 +93,8 @@ export function NextWalkCard({
   dogSex,
   onMarkDone,
   onStartWalk,
+  startWalkDisabled = false,
+  startWalkAvailableLabel,
   onEndWalk,
   activeStartedAt,
   liveDistanceMeters,
@@ -290,7 +295,18 @@ export function NextWalkCard({
         <Button label="סיים טיול" icon="■" onPress={onEndWalk} style={styles.endWalkButton} shrinkToFit />
       ) : onStartWalk ? (
         <>
-          <Button label={tone === 'dashboard' ? 'התחל טיול' : 'התחל טיול עכשיו'} icon="▶" onPress={onStartWalk} style={tone === 'dashboard' ? styles.dashboardStartButton : styles.doneButton} shrinkToFit />
+          <Button
+            label={tone === 'dashboard' ? 'התחל טיול' : 'התחל טיול עכשיו'}
+            icon="▶"
+            onPress={onStartWalk}
+            disabled={startWalkDisabled}
+            accessibilityHint={startWalkDisabled ? startWalkAvailableLabel : undefined}
+            style={tone === 'dashboard' ? styles.dashboardStartButton : styles.doneButton}
+            shrinkToFit
+          />
+          {startWalkDisabled && startWalkAvailableLabel ? (
+            <RtlText style={styles.startWalkLockedNote}>{startWalkAvailableLabel}</RtlText>
+          ) : null}
           {overdue && onMarkNotDone ? (
             <View style={styles.resolveRow}>
               <Button
@@ -467,6 +483,7 @@ const styles = StyleSheet.create({
   responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'left' },
   doneButton: { marginTop: 2 },
   dashboardStartButton: { marginTop: 1, minHeight: 44, paddingVertical: 3, borderRadius: 24, backgroundColor: '#0EA8B2', borderColor: '#0EA8B2' },
+  startWalkLockedNote: { marginTop: 5, fontSize: 12, fontWeight: '600', color: colors.textSecondary, textAlign: 'center' },
   markDoneFallbackButton: { marginTop: 8, borderWidth: 1.5, borderColor: colors.primaryDark },
   dashboardMarkDoneButton: { marginTop: 4, minHeight: 40, paddingVertical: 3, borderWidth: 1.5, borderColor: '#12A5AB' },
   endWalkButton: { marginTop: 4, backgroundColor: colors.statusOverdue },
