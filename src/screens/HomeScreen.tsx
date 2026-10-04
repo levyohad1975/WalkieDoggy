@@ -1057,28 +1057,30 @@ export function HomeScreen() {
                     </Pressable>
                   ) : null}
                   {lastWalk.status !== 'skipped' ? (
-                    <>
+                    <View style={styles.dashboardLastWalkNeeds}>
                       <Pressable
                         onPress={canEditLastWalk ? () => void editDoneDetails(lastWalk.id, { hadPee: !lastWalk.hadPee }) : undefined}
                         disabled={!canEditLastWalk}
-                        hitSlop={10}
+                        hitSlop={6}
                         accessibilityRole="checkbox"
                         accessibilityState={{ checked: !!lastWalk.hadPee, disabled: !canEditLastWalk }}
                         accessibilityLabel="סימון פיפי בטיול האחרון"
+                        style={styles.dashboardLastWalkNeedButton}
                       >
                         <RtlText style={[styles.dashboardLastWalkNeed, !lastWalk.hadPee && styles.dashboardLastWalkNeedMuted]}>💧</RtlText>
                       </Pressable>
                       <Pressable
                         onPress={canEditLastWalk ? () => void editDoneDetails(lastWalk.id, { hadPoop: !lastWalk.hadPoop }) : undefined}
                         disabled={!canEditLastWalk}
-                        hitSlop={10}
+                        hitSlop={6}
                         accessibilityRole="checkbox"
                         accessibilityState={{ checked: !!lastWalk.hadPoop, disabled: !canEditLastWalk }}
                         accessibilityLabel="סימון קקי בטיול האחרון"
+                        style={styles.dashboardLastWalkNeedButton}
                       >
                         <RtlText style={[styles.dashboardLastWalkNeed, !lastWalk.hadPoop && styles.dashboardLastWalkNeedMuted]}>💩</RtlText>
                       </Pressable>
-                    </>
+                    </View>
                   ) : null}
                 </View>
                 <View style={styles.dashboardLastWalkPerson}>
@@ -1653,8 +1655,10 @@ const styles = StyleSheet.create({
   dashboardLastWalkTimeBlock: { width: 104, alignItems: 'flex-start', flexShrink: 0 },
   dashboardLastWalkTime: { fontSize: 24, lineHeight: 29, fontWeight: '700', color: '#17345B' },
   dashboardLastWalkDone: { marginTop: 1, fontSize: 12, lineHeight: 16, fontWeight: '600', color: '#15966D' },
-  dashboardLastWalkActions: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', justifyContent: 'center', gap: 8, flex: 1, minWidth: 118 },
-  dashboardLastWalkEdit: { alignItems: 'center', justifyContent: 'center', minWidth: 46, minHeight: 40 },
+  dashboardLastWalkActions: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', justifyContent: 'space-between', gap: 20, flex: 1, minWidth: 138 },
+  dashboardLastWalkEdit: { alignItems: 'center', justifyContent: 'center', minWidth: 44, minHeight: 44, marginLeft: 2 },
+  dashboardLastWalkNeeds: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', gap: 10, marginRight: 2 },
+  dashboardLastWalkNeedButton: { width: 34, height: 44, alignItems: 'center', justifyContent: 'center' },
   dashboardLastWalkEditIcon: { fontSize: 17, color: '#E6B422' },
   dashboardLastWalkEditText: { fontSize: 11, fontWeight: '600', color: '#17345B' },
   dashboardLastWalkNeed: { fontSize: 18 },
