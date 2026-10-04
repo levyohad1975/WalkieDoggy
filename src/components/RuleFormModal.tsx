@@ -8,7 +8,6 @@ import { Avatar } from '../components/Avatar';
 import { Button } from './Button';
 import { TimePickerField } from './TimePickerField';
 import { is24HourTime } from '../logic/timeInput';
-import { previewRotation } from '../logic/rotation';
 
 const DAY_LABELS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
 // Round 6F: full spoken day names for the day chips' accessibilityLabel —
@@ -39,7 +38,7 @@ interface RuleFormModalProps {
   onClose: () => void;
 }
 
-/** Add or edit one of the family's daily walk time slots: time, optional label, active days, and who rotates through it. */
+/** Add or edit one of the family's daily walk time slots: time, optional label, active days, and the single family member responsible for it. */
 export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: RuleFormModalProps) {
   const [time, setTime] = useState('08:00');
   const [label, setLabel] = useState('');
@@ -63,23 +62,51 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
       setTime(editingRule?.time ?? '08:00');
       setLabel(editingRule?.label ?? '');
       setDays(editingRule?.daysOfWeek ?? [0, 1, 2, 3, 4, 5, 6]);
-      setRotation(editingRule?.rotationUserIds ?? []);
+      // Real-device QA fix — single assignee per scheduled walk/rule (see
+      // selectResponsibleUser's own doc comment below). An existing rule
+      // from BEFORE this fix may still carry more than one id in
+      // rotationUserIds (the demo seed's default rules do, by design, for
+      // the now-retired multi-member "family rotation" authoring flow) —
+      // this shows exactly ITS CURRENT assignee by taking only the first
+      // id, never all of them. Saving this rule again (even unchanged)
+      // collapses it to that one member going forward; the underlying
+      // column is untouched otherwise.
+      setRotation(editingRule?.rotationUserIds?.slice(0, 1) ?? []);
       setError(null);
       setSaving(false);
     }
   }, [visible, editingRule]);
 
   const toggleDay = (d: number) => setDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()));
-  const toggleRotationUser = (id: string) =>
-    setRotation((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-
-  const usersById = Object.fromEntries(users.map((u) => [u.id, u]));
+  /**
+   * Real-device QA fix — a scheduled walk/rule has exactly ONE responsible
+   * family member, never more. The previous toggleRotationUser() ADDED to
+   * `rotation` (a real, deliberate "family rotation" feature —
+   * rotation.ts's resolveResponsibleForDate() cycles through MULTIPLE ids
+   * across different days when more than one is present), which let this
+   * screen select several members for one time slot — not the intended
+   * behavior going forward. This always REPLACES the selection with
+   * exactly the tapped member; it is a plain single-select/radio action,
+   * never a toggle, so there is never a way to end up with zero OR more
+   * than one selected via this control (tapping the already-selected
+   * member is a harmless no-op, not a deselect — a rule must always have
+   * someone responsible).
+   *
+   * Deliberately UI-only: `rotationUserIds` on ScheduleRule/the
+   * schedule_rules column is untouched (still a string array) — this
+   * never widens or narrows what the DATA MODEL can store, only what this
+   * screen ever WRITES into it (always a single-element array). Multi-
+   * member rotation logic in rotation.ts is untouched and still correctly
+   * resolves a single-element array (resolveResponsibleForDate() already
+   * special-cases length 1 — no rotation math needed).
+   */
+  const selectResponsibleUser = (id: string) => setRotation([id]);
 
   const submit = async () => {
     if (saving) return; // re-entrancy guard — belt-and-suspenders alongside the disabled Button below.
     if (!is24HourTime(time)) return setError('שעה לא תקינה — פורמט HH:mm, למשל 08:00');
     if (days.length === 0) return setError('יש לבחור לפחות יום אחד');
-    if (rotation.length === 0) return setError('יש לבחור לפחות בן משפחה אחד לתורנות');
+    if (rotation.length === 0) return setError('יש לבחור אחראי/ת לטיול');
     setError(null);
     setSaving(true);
     try {
@@ -145,44 +172,31 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
               ))}
             </View>
 
-            <RtlText style={styles.label}>סבב משפחתי (לחיצה לפי סדר)</RtlText>
+            <RtlText style={styles.label}>אחראי/ת לטיול</RtlText>
             <View style={styles.rotationRow}>
               {users.map((u) => {
-                const idx = rotation.indexOf(u.id);
+                const isSelected = rotation[0] === u.id;
                 return (
                   <Pressable
                     key={u.id}
-                    onPress={() => toggleRotationUser(u.id)}
-                    style={styles.rotationChip}
-                    // Round 6F: the order-number badge below is otherwise the
-                    // ONLY thing conveying "in rotation, and at what
-                    // position" — a small floating number a screen reader
-                    // can't meaningfully interpret on its own.
-                    // accessibilityState.selected exposes membership in the
-                    // rotation, and the label spells out the position in
-                    // words using the same idx already computed above (no
-                    // rotation-logic change).
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: idx >= 0 }}
-                    accessibilityLabel={idx >= 0 ? `${u.name}, מספר ${idx + 1} בסבב` : u.name}
+                    onPress={() => selectResponsibleUser(u.id)}
+                    style={[styles.rotationChip, isSelected && styles.rotationChipActive]}
+                    // Single-select (radio) semantics: at most one member is
+                    // ever selected, so a screen reader needs only
+                    // selected/unselected — no position/order to convey
+                    // anymore (no badge is rendered either, below).
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: isSelected, checked: isSelected }}
+                    accessibilityLabel={u.name}
                   >
                     <Avatar emoji={u.avatar} color={u.color} photoUrl={u.photoUrl} size={40} />
-                    <RtlText style={styles.rotationName} numberOfLines={1}>
+                    <RtlText style={[styles.rotationName, isSelected && styles.rotationNameActive]} numberOfLines={1}>
                       {u.name}
                     </RtlText>
-                    {idx >= 0 ? <RtlText style={styles.rotationBadge}>{idx + 1}</RtlText> : null}
                   </Pressable>
                 );
               })}
             </View>
-            {rotation.length > 0 ? (
-              <RtlText style={styles.rotationPreview}>
-                {previewRotation(
-                  rotation.map((id) => usersById[id]?.name ?? '?'),
-                  rotation.length > 1 ? rotation.length + 1 : rotation.length
-                )}
-              </RtlText>
-            ) : null}
 
             {error ? (
               <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
@@ -221,24 +235,14 @@ const styles = StyleSheet.create({
   dayChipText: { fontWeight: '700', color: colors.textSecondary },
   dayChipTextActive: { color: colors.textInverse },
   rotationRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.lg },
-  rotationChip: { alignItems: 'center', minWidth: 64 },
+  rotationChip: { alignItems: 'center', minWidth: 64, padding: 6, borderRadius: 14 },
+  // Real-device QA fix — single-select now needs its own visible
+  // selected/unselected contrast (the removed numeric badge used to be
+  // the only such indicator, which no longer makes sense once at most
+  // one member can ever be selected).
+  rotationChipActive: { backgroundColor: colors.surfaceMuted },
   rotationName: { fontSize: 12, color: colors.textPrimary, marginTop: spacing.xs },
-  rotationBadge: {
-    position: 'absolute',
-    top: -4,
-    end: -4,
-    backgroundColor: colors.primary,
-    color: colors.textInverse,
-    fontSize: typography.caption.fontSize,
-    fontWeight: '800',
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    textAlign: 'center',
-    lineHeight: 18,
-    overflow: 'hidden',
-  },
-  rotationPreview: { fontSize: typography.meta.fontSize, color: colors.primaryDark, fontWeight: '600', marginTop: spacing.sm, textAlign: 'right' },
+  rotationNameActive: { fontWeight: '700', color: colors.primaryDark },
   error: { fontSize: typography.meta.fontSize, color: colors.statusOverdue, fontWeight: '600', marginTop: 10, textAlign: 'right' },
   actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xl },
   flex: { flex: 1 },

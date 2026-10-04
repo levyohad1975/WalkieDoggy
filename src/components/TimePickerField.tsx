@@ -35,7 +35,25 @@ export function TimePickerField({ value, onChange, webLabel, androidLabel = 'ש�
       value,
       step: 60,
       'aria-label': webLabel,
-      onChange: (event: { target: { value: string } }) => onChange(event.target.value),
+      // Real-device QA fix — "first tap on שמירה does nothing, second tap
+      // works": picking a time leaves this native <input type="time">
+      // focused, with iOS Safari's own on-screen time picker/keyboard still
+      // showing. On iOS Safari, the FIRST tap on another control (the Save
+      // button, here) while a focused input's picker/keyboard is still open
+      // is consumed by the OS to dismiss that picker — it never reaches the
+      // tapped element as a real click. Only a SECOND tap, now that nothing
+      // is focused, actually reaches the button. That exactly matches the
+      // reported sequence (select time -> select assignee -> tap Save once
+      // -> nothing visibly happens -> tap again -> saving finally starts).
+      // Blurring immediately once a time is actually chosen dismisses the
+      // picker/keyboard right then, as the natural, expected end of
+      // interacting with this control — not as a side effect of whatever
+      // the person taps next — so by the time they reach "שמירה" nothing is
+      // focused and the very first tap on it is a real click.
+      onChange: (event: { target: { value: string; blur?: () => void } }) => {
+        onChange(event.target.value);
+        event.target.blur?.();
+      },
       style: webInputStyle,
     });
   }
