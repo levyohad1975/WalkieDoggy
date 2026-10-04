@@ -70,11 +70,10 @@ const styles = StyleSheet.create({
     // merge with the yellow walk-edit pencil on Home, especially on iPhone.
     // The inset also keeps the character clear of the screen edge while the
     // bottom padding protects the persistent navigation.
-    paddingTop: '42%',
-    paddingRight: 22,
-    paddingBottom: 112,
-    justifyContent: 'flex-end',
-    alignItems: 'flex-end',
+    paddingTop: '48%',
+    paddingBottom: '30%',
+    justifyContent: 'center',
+    alignItems: 'center',
     overflow: 'hidden',
   },
   character: {
