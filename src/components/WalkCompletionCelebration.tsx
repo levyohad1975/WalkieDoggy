@@ -19,6 +19,7 @@ interface WalkCompletionCelebrationProps {
 export function WalkCompletionCelebration({ celebration, onDismiss }: WalkCompletionCelebrationProps) {
   const [reducedMotion, setReducedMotion] = useState(true);
   const [screenReaderEnabled, setScreenReaderEnabled] = useState(false);
+  const [bubbleVisible, setBubbleVisible] = useState(false);
   const autoDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Fail-safe default false: until confirmed on, behave as before (a
   // screen reader user who somehow isn't detected in time still gets the
@@ -43,6 +44,8 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
 
   useEffect(() => {
     if (!celebration) return;
+    setBubbleVisible(reducedMotion);
+    const bubbleTimer = reducedMotion ? null : setTimeout(() => setBubbleVisible(true), 650);
     opacity.setValue(reducedMotion ? 1 : 0);
     translateY.setValue(reducedMotion ? 0 : 18);
     if (!reducedMotion) {
@@ -68,7 +71,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
     // so harmless parent re-renders cannot restart the timer indefinitely.
     if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
     autoDismissTimerRef.current = setTimeout(() => dismissRef.current(), screenReaderEnabled ? 5000 : 2200);
-    return () => mascotAnimation?.stop();
+    return () => { mascotAnimation?.stop(); if (bubbleTimer) clearTimeout(bubbleTimer); };
   }, [celebration?.id, mascotBounce, opacity, reducedMotion, screenReaderEnabled, translateY]);
 
   useEffect(() => () => {
@@ -83,10 +86,12 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
       <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תגובת הקמע של Walkie Doggy Link">
         <MascotSafeZone from="left" testID="completion-mascot-safe-zone">
           <Animated.View style={[styles.moment, { opacity, transform: [{ translateY }] }]} accessibilityRole="alert" accessibilityLiveRegion="polite">
-            <View style={styles.speechBubbleWrap}>
-              <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
-              <View style={styles.tail} />
-            </View>
+            {bubbleVisible ? (
+              <View style={styles.speechBubbleWrap}>
+                <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
+                <View style={styles.tail} />
+              </View>
+            ) : null}
             <Animated.View style={{ transform: [{ translateY: mascotBounce }, { scale: opacity.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }] }}>
               {sprite ? (
                 <MascotSpriteAnimation
