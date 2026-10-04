@@ -20,10 +20,10 @@ const pad2 = (n: number) => String(n).padStart(2, '0');
 
 /** Native picker on iOS/Android and a fully custom, app-controlled picker sheet on Web (see this file's own web-branch doc comment for why). */
 export function TimePickerField({ value, onChange, webLabel, androidLabel = 'שנה שעה' }: TimePickerFieldProps) {
-  const [pickerOpen, setPickerOpen] = useState(Platform.OS === 'ios');
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [webSheetOpen, setWebSheetOpen] = useState(false);
 
-  useEffect(() => setPickerOpen(Platform.OS === 'ios'), [value]);
+  useEffect(() => setPickerOpen(false), [value]);
 
   const handleNativeChange = (event: DateTimePickerEvent, selected?: Date) => {
     if (Platform.OS === 'android') setPickerOpen(false);
@@ -81,7 +81,7 @@ export function TimePickerField({ value, onChange, webLabel, androidLabel = 'ש�
     <>
       <View style={styles.row}>
         <RtlText style={styles.value}>{value}</RtlText>
-        {Platform.OS === 'android' ? <Button label={androidLabel} variant="secondary" onPress={() => setPickerOpen(true)} style={styles.button} /> : null}
+        <Button label={androidLabel} variant="secondary" onPress={() => setPickerOpen(true)} style={styles.button} />
       </View>
       {pickerOpen ? (
         <DateTimePicker value={timeToPickerDate(value)} mode="time" is24Hour display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={handleNativeChange} />
