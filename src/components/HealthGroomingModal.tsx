@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { TimePickerField } from './TimePickerField';
+import { DatePickerField } from './DatePickerField';
 import { RtlText } from './RtlText';
 import { Button } from './Button';
 import { colors } from '../theme/colors';
@@ -233,7 +234,6 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
   const [notes, setNotes] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [appointmentTime, setAppointmentTime] = useState('09:00');
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [weightKg, setWeightKg] = useState('');
   const [responsibleUserId, setResponsibleUserId] = useState<string | undefined>(undefined);
@@ -250,7 +250,6 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
     setDueDate(task?.dueDate ?? '');
     const savedTime = task?.notes?.match(/(?:^|\n)שעת תור: (\d{2}:\d{2})(?:\n|$)/)?.[1];
     setAppointmentTime(savedTime ?? '09:00');
-    setShowDatePicker(false);
     setShowTimePicker(false);
     setWeightKg(task?.weightKg != null ? String(task.weightKg) : '');
     setResponsibleUserId(task?.responsibleUserId);
@@ -402,35 +401,7 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
               )}
 
               <RtlText style={styles.label}>תאריך התור</RtlText>
-              {Platform.OS === 'web' ? React.createElement('input', {
-                type: 'date',
-                value: dueDate,
-                'aria-label': 'בחירת תאריך התור',
-                onChange: (event: { target: { value: string } }) => setDueDate(event.target.value),
-                style: webDateInputStyle,
-              }) : (
-                <>
-                  <Pressable
-                    onPress={() => setShowDatePicker(true)}
-                    style={styles.pickerButton}
-                    accessibilityRole="button"
-                    accessibilityLabel="בחירת תאריך התור"
-                  >
-                    <RtlText style={styles.pickerButtonText}>{formatDisplayDate(dueDate)}</RtlText>
-                  </Pressable>
-                  {showDatePicker ? (
-                    <DateTimePicker
-                      value={dueDate ? new Date(`${dueDate}T12:00:00`) : new Date()}
-                      mode="date"
-                      display={Platform.OS === 'ios' ? 'inline' : 'default'}
-                      onChange={(event: DateTimePickerEvent, value?: Date) => {
-                        if (Platform.OS !== 'ios') setShowDatePicker(false);
-                        if (event.type === 'set' && value) setDueDate(dateOnlyFromDate(value));
-                      }}
-                    />
-                  ) : null}
-                </>
-              )}
+              <DatePickerField value={dueDate} onChange={setDueDate} label="בחירת תאריך התור" allowEmpty />
 
               <RtlText style={styles.label}>שעת התור</RtlText>
               {Platform.OS === 'web' ? (
