@@ -82,7 +82,20 @@ export function RemindersModal({
     // A no-op (same report as getWebPushStatus()) whenever permission
     // isn't already 'granted', so this never prompts just by opening the
     // modal.
-    void reconcileWebPushSubscription().then(setWebPushStatus);
+    //
+    // Real-device QA fix: an 'error' result means persistence to the
+    // server failed just now (logged by reconcileWebPushSubscription()
+    // itself) — surface that via the same webPushError text the explicit
+    // "אפשר התראות" tap already uses, rather than leaving the person with
+    // no explanation while nothing was actually registered server-side.
+    void reconcileWebPushSubscription().then((status) => {
+      setWebPushStatus(status);
+      setWebPushError(
+        status === 'error'
+          ? 'לא הצלחנו לאשר שהמכשיר נרשם להתראות בשרת. נסו ללחוץ על "אפשר התראות" שוב.'
+          : null
+      );
+    });
 
     const handleBeforeInstallPrompt = (event: any) => {
       event.preventDefault();
@@ -177,7 +190,9 @@ export function RemindersModal({
             ? 'ההתראות חסומות בהגדרות הדפדפן או המכשיר.'
             : webPushStatus === 'unsupported'
               ? 'המכשיר או הדפדפן הזה אינם תומכים ב-Web Push.'
-              : 'אפשר לקבל התראות גם כשהאפליקציה אינה פתוחה.'}
+              : webPushStatus === 'error'
+                ? 'ההתראות אושרו במכשיר, אך הרישום בשרת נכשל — התראות לא יגיעו עדיין.'
+                : 'אפשר לקבל התראות גם כשהאפליקציה אינה פתוחה.'}
     </RtlText>
 
     {webPushError ? (

@@ -152,6 +152,29 @@ async function runForegroundSyncOnce(): Promise<void> {
   // 5. Presence + claim housekeeping.
   await touchLastSeen().catch(() => undefined);
   await useAuthStore.getState().revalidateClaim();
+
+  // 6. Real-device QA fix — "recovery after refresh/reopen" for Web Push.
+  // reconcileWebPushSubscription() was previously only ever called once,
+  // from a currentUserId-keyed effect in App() below (covers sign-in/
+  // mount) and from RemindersModal's own mount effect (covers explicitly
+  // reopening that modal). Neither re-runs on an ordinary foreground
+  // transition — reopening an already-signed-in installed PWA from the
+  // Home Screen resumes the SAME app instance (no remount, currentUserId
+  // never changes), so a persistence failure on the very first attempt
+  // had no other retry point short of the person manually reopening
+  // Reminders. This is the actual "every app launch/foreground" behavior
+  // reconcileWebPushSubscription()'s own doc comment already claimed —
+  // now actually wired here, matching registerPushTokenAndReconcile()'s
+  // equivalent step for native push tokens. Platform-gated (web only) the
+  // same way the standalone effect below is; web is a no-op instantly on
+  // every other platform (isWebPushSupported() short-circuits).
+  if (Platform.OS === 'web') {
+    const webPushStatus = await reconcileWebPushSubscription();
+    if (webPushStatus === 'error') {
+      // eslint-disable-next-line no-console
+      console.error('[webPush] foreground reconcile failed to persist this device\'s subscription');
+    }
+  }
 }
 
 /**
@@ -320,7 +343,12 @@ export default function App() {
   // 'granted' — this never prompts on its own.
   useEffect(() => {
     if (Platform.OS === 'web' && currentUserId && !systemObserverActive) {
-      void reconcileWebPushSubscription();
+      void reconcileWebPushSubscription().then((status) => {
+        if (status === 'error') {
+          // eslint-disable-next-line no-console
+          console.error('[webPush] mount-time reconcile failed to persist this device\'s subscription');
+        }
+      });
     }
   }, [currentUserId, systemObserverActive]);
 

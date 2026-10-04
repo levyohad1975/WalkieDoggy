@@ -112,9 +112,31 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('onApproveTimeChange={approveTimeChange}');
     expect(home).toContain('onRejectTimeChange={rejectTimeChange}');
     expect(home).toContain('onOpenInbox={openRequestsInbox}');
-    // Deliberately rendered after the timeline so it remains the lowest
-    // Dashboard row on mobile, same positioning as the banner it replaced.
-    expect(home.indexOf('<PendingRequestsCard')).toBeGreaterThan(home.indexOf('style={styles.dashboardTimeline}'));
+    // Real-device QA fix: an actionable request must be visible the moment
+    // Home opens, without scrolling — so this now renders directly under
+    // the next-walk hero (`nextWalkLift`) and BEFORE every lower-priority
+    // section (last walk, add walk, the daily timeline, further upcoming
+    // walks), not after them.
+    const cardIndex = home.indexOf('<PendingRequestsCard');
+    expect(cardIndex).toBeGreaterThan(home.indexOf('style={styles.nextWalkLift}'));
+    expect(cardIndex).toBeLessThan(home.indexOf('style={styles.dashboardLastWalk}'));
+    expect(cardIndex).toBeLessThan(home.indexOf('style={styles.dashboardAddWalk}'));
+    expect(cardIndex).toBeLessThan(home.indexOf('style={styles.dashboardTimeline}'));
+  });
+
+  // Real-device QA fix, continued — moving the card up must not (a) leave a
+  // fixed-height/padded wrapper reserving empty space on a quiet Home with
+  // nothing pending (PendingRequestsCard already renders null in that case
+  // — see PendingRequestsCard.structure.test.ts — so it must be a plain
+  // sibling here, never wrapped in its own styled View), and must not (b)
+  // remove/hide the "בהמשך היום" timeline the previous real-device QA round
+  // already fixed.
+  it('renders PendingRequestsCard as a plain sibling (no wrapping styled View that would reserve empty space when it renders null), and keeps the timeline intact', () => {
+    const cardIndex = home.indexOf('<PendingRequestsCard');
+    const precedingLine = home.slice(0, cardIndex).split('\n').slice(-2).join('\n');
+    expect(precedingLine).not.toMatch(/<View style=\{styles\.\w+\}>\s*$/);
+    expect(home).toContain('const dashboardTimelineWalks = useMemo');
+    expect(home).toContain('בהמשך היום');
   });
 
   it('keeps the approved Home content order with white supporting cards and teal actions', () => {

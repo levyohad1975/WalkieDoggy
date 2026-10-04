@@ -1000,6 +1000,27 @@ export function HomeScreen() {
         )}
         </View>
 
+        {/* Real-device QA fix — an actionable swap/time-change request is
+            urgent and must be visible the moment Home opens, without
+            scrolling past lower-priority sections (last walk, add walk,
+            the daily timeline, further upcoming walks) to find it. Moved
+            directly under the next-walk hero, which is itself always the
+            first thing on the Dashboard. PendingRequestsCard renders
+            nothing (see its own `items.length === 0 -> return null`) when
+            there is nothing actionable, so this never reserves empty
+            space on an otherwise-quiet Home. */}
+        <PendingRequestsCard
+          items={actionablePendingRequests}
+          usersById={usersById}
+          walksById={walksById}
+          dogName={dog?.name}
+          onApproveSwap={approveSwap}
+          onRejectSwap={rejectSwap}
+          onApproveTimeChange={approveTimeChange}
+          onRejectTimeChange={rejectTimeChange}
+          onOpenInbox={openRequestsInbox}
+        />
+
         {lastWalk ? (() => {
           const canEditLastWalk =
             lastWalkIsEditable &&
@@ -1138,18 +1159,6 @@ export function HomeScreen() {
           ) : <RtlText style={styles.dashboardTimelineEmpty}>אין טיולים מתוכננים היום · לפתיחת לוח הזמנים</RtlText>}
           </Pressable>
         </View>
-
-        <PendingRequestsCard
-          items={actionablePendingRequests}
-          usersById={usersById}
-          walksById={walksById}
-          dogName={dog?.name}
-          onApproveSwap={approveSwap}
-          onRejectSwap={rejectSwap}
-          onApproveTimeChange={approveTimeChange}
-          onRejectTimeChange={rejectTimeChange}
-          onOpenInbox={openRequestsInbox}
-        />
 
         <View style={styles.dashboardOverflow}>
         {/* Real-device QA fix: "ממתינים לעדכון"/"טיולים קרובים" below were

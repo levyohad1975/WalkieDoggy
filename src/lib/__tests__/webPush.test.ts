@@ -449,7 +449,16 @@ describe('lib/webPush — reconcileWebPushSubscription (refresh/reopen recovery)
     expect(subscribe).toHaveBeenCalledTimes(1);
   });
 
-  it('never throws when persistence fails — falls back to a plain status read instead', async () => {
+  // REAL-DEVICE QA FIX: this used to assert the OLD, buggy behavior —
+  // persistence failing silently fell back to a local-only status read,
+  // which reported 'subscribed' purely because the browser already held a
+  // local subscription, with the actual server-side failure discarded
+  // entirely. That is precisely the bug a real iPhone pass found: zero
+  // rows in web_push_subscriptions while the device looked fully
+  // "subscribed". Persistence failure must now be its own distinct,
+  // observable, retryable 'error' status — never silently reported as
+  // success just because the local browser state looks fine.
+  it('PERSISTENCE FAILURE: never throws, but reports a distinct "error" status (never "subscribed") and logs the failure for diagnosis', async () => {
     setPlatformOS('web');
     stubBrowserGlobals({ permission: 'granted' });
     const getSubscription = jest.fn().mockResolvedValue({
@@ -457,18 +466,40 @@ describe('lib/webPush — reconcileWebPushSubscription (refresh/reopen recovery)
     });
     const registration = { pushManager: { getSubscription, subscribe: jest.fn() } };
     const register = jest.fn().mockResolvedValue(registration);
-    // getWebPushStatus()'s own fallback read uses getRegistration(), a
-    // separate call from reconcile's own register() — both must agree on
-    // the same (still-local) subscription for the fallback to correctly
-    // report 'subscribed' rather than 'granted'.
-    const getRegistration = jest.fn().mockResolvedValue(registration);
-    setNavigatorServiceWorker({ register, getRegistration, ready: Promise.resolve() });
-    const rpc = jest.fn().mockResolvedValue({ error: new Error('network error') });
+    setNavigatorServiceWorker({ register, ready: Promise.resolve() });
+    const rpcError = new Error('network error');
+    const rpc = jest.fn().mockResolvedValue({ error: rpcError });
     mockSupabase({ isSupabaseConfigured: true, rpc });
     process.env = { ...ORIGINAL_ENV, EXPO_PUBLIC_VAPID_PUBLIC_KEY: VAPID_KEY };
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
     const reconcile = requireReconcile();
-    await expect(reconcile()).resolves.toBe('subscribed');
+    await expect(reconcile()).resolves.toBe('error');
+    expect(rpc).toHaveBeenCalledWith('upsert_web_push_subscription', {
+      p_endpoint: 'https://push.example/x',
+      p_p256dh: 'p',
+      p_auth: 'a',
+    });
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it('REGISTRATION FAILURE: a genuine local/browser-capability failure (never reached persistence) still falls back to a plain local status read', async () => {
+    setPlatformOS('web');
+    stubBrowserGlobals({ permission: 'granted' });
+    const register = jest.fn().mockRejectedValue(new Error('registration failed'));
+    const getRegistration = jest.fn().mockResolvedValue(undefined);
+    setNavigatorServiceWorker({ register, getRegistration, ready: Promise.resolve() });
+    const rpc = jest.fn();
+    mockSupabase({ isSupabaseConfigured: true, rpc });
+    process.env = { ...ORIGINAL_ENV, EXPO_PUBLIC_VAPID_PUBLIC_KEY: VAPID_KEY };
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const reconcile = requireReconcile();
+    await expect(reconcile()).resolves.toBe('granted');
+    expect(rpc).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 
   it('is a no-op when Supabase is not configured (local/demo mode) — never throws', async () => {
