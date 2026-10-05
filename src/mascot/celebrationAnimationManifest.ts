@@ -87,6 +87,10 @@ export const CURATED_MASCOT_SPRITE_SHEETS = {
     source: require('../../assets/mascot-animations/leash-ready.png'),
     columns: 6, rows: 4, frameSize: 256, frameCount: 24, fps: 12, transparent: true,
   },
+  'tail-wag': {
+    source: require('../../assets/mascot-animations/tail-wag.png'),
+    columns: 6, rows: 4, frameSize: 256, frameCount: 24, fps: 12, transparent: true,
+  },
   'curious-listen': {
     source: require('../../assets/mascot-animations/curious-listen.png'),
     columns: 6, rows: 4, frameSize: 256, frameCount: 24, fps: 12, transparent: true,
@@ -103,19 +107,17 @@ export type CuratedMascotSpriteId = keyof typeof CURATED_MASCOT_SPRITE_SHEETS;
  * runtime fallback and guarantees no black rectangle behind the character.
  */
 const CELEBRATION_SPRITE_MAP: Record<string, CuratedMascotSpriteId> = {
-  // Only the rebuilt Kling high-five sheet has passed the current Safari/iOS
-  // alpha gate. Until the remaining distinct clips pass the same gate, route
-  // every celebration through this verified animated sheet instead of
-  // returning undefined (which rendered the text bubble with no mascot).
-  'thank-you-heart': 'high-five',
-  'happy-jump': 'high-five',
+  // Use the distinct transparent sprite packs already bundled in the app.
+  // The static approved mascot remains the reduced-motion fallback.
+  'thank-you-heart': 'tail-wag',
+  'happy-jump': 'happy-spin',
   'high-five': 'high-five',
-  'confetti': 'high-five',
+  'confetti': 'happy-spin',
   'paw-party': 'high-five',
-  'trophy-teaser': 'high-five',
-  'sleepy-good-night': 'high-five',
-  'long-walk': 'high-five',
-  'special-surprise': 'high-five',
+  'trophy-teaser': 'trophy-winner',
+  'sleepy-good-night': 'sleepy-good-night',
+  'long-walk': 'leash-ready',
+  'special-surprise': 'peek-a-boo',
 };
 
 /**
