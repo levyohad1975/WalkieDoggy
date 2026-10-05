@@ -1613,6 +1613,9 @@ const styles = StyleSheet.create({
   // renders at the exact same position as before; only extra bottom
   // (paws/tail) bleed is newly clipped by the shorter frame.
   dashboardHeroMascot: { position: 'absolute', right: 4, bottom: 2, zIndex: 2 },
+  // Preserve the hero mascot's mounted layout slot during a completion moment,
+  // but make only its pixels disappear so there is never a second mascot.
+  dashboardHeroMascotCelebrating: { opacity: 0 },
   dashboardHeroForeground: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 52, zIndex: 3, overflow: 'hidden' },
   dashboardHeroForegroundLeft: { position: 'absolute', left: -22, bottom: -23, width: 126, height: 52, borderRadius: 63, backgroundColor: '#C5E2B7', opacity: 0.72, transform: [{ rotate: '-4deg' }] },
   dashboardHeroForegroundMid: { position: 'absolute', right: 118, bottom: -31, width: 106, height: 48, borderRadius: 53, backgroundColor: '#D6EBC8', opacity: 0.78, transform: [{ rotate: '5deg' }] },
