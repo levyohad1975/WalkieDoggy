@@ -60,7 +60,11 @@ export function MascotSafeZone({ children, from = 'right', anchor, testID, onEnt
     ? (from === 'right' ? width - anchorCenterX : anchorCenterX) + width
     : Math.max(260, width * 0.78);
   const translateX = useRef(new Animated.Value(from === 'right' ? travel : -travel)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
+  // Keep the mascot fully opaque throughout the slide. Fading from 0 while
+  // travelling from off-screen made the first visible frame appear only after
+  // most of the horizontal journey had already completed on iPhone, so the
+  // entrance looked like an in-card pop instead of an edge entrance.
+  const opacity = useRef(new Animated.Value(1)).current;
   const onEntranceCompleteRef = useRef(onEntranceComplete);
   const entranceFiredRef = useRef(false);
 
@@ -80,7 +84,7 @@ export function MascotSafeZone({ children, from = 'right', anchor, testID, onEnt
   useEffect(() => {
     if (!motionChecked) return;
     translateX.setValue(reducedMotion ? 0 : (from === 'right' ? travel : -travel));
-    opacity.setValue(reducedMotion ? 1 : 0);
+    opacity.setValue(1);
     if (reducedMotion) {
       if (!entranceFiredRef.current) {
         entranceFiredRef.current = true;
@@ -88,15 +92,12 @@ export function MascotSafeZone({ children, from = 'right', anchor, testID, onEnt
       }
       return;
     }
-    Animated.parallel([
-      Animated.timing(translateX, {
-        toValue: 0,
-        duration: 850,
-        easing: (t) => 1 - Math.pow(1 - t, 3),
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacity, { toValue: 1, duration: 420, useNativeDriver: true }),
-    ]).start(() => {
+    Animated.timing(translateX, {
+      toValue: 0,
+      duration: 850,
+      easing: (t) => 1 - Math.pow(1 - t, 3),
+      useNativeDriver: true,
+    }).start(() => {
       if (!entranceFiredRef.current) {
         entranceFiredRef.current = true;
         onEntranceCompleteRef.current?.();
