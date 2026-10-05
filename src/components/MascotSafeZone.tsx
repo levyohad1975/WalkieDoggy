@@ -5,6 +5,8 @@ interface MascotSafeZoneProps {
   children: React.ReactNode;
   /** Entrance edge alternates naturally without ever covering fixed chrome. */
   from?: 'left' | 'right';
+  /** Optional measured anchor supplied by Home's last-walk action lane. */
+  anchor?: { x: number; y: number; width: number; height: number } | null;
   testID?: string;
 }
 
@@ -17,7 +19,7 @@ interface MascotSafeZoneProps {
  * bottom navigation below. Event overlays can therefore feel playful without
  * obscuring the controls that caused them.
  */
-export function MascotSafeZone({ children, from = 'right', testID }: MascotSafeZoneProps) {
+export function MascotSafeZone({ children, from = 'right', anchor, testID }: MascotSafeZoneProps) {
   const [reducedMotion, setReducedMotion] = useState(true);
   const { width } = useWindowDimensions();
   const travel = Math.max(260, width * 0.78);
@@ -49,7 +51,7 @@ export function MascotSafeZone({ children, from = 'right', testID }: MascotSafeZ
   }, [from, opacity, reducedMotion, translateX, travel]);
 
   return (
-    <View pointerEvents="box-none" style={styles.stage} testID={testID}>
+    <View pointerEvents="box-none" style={[styles.stage, anchor ? { top: anchor.y, left: anchor.x, width: anchor.width, height: anchor.height, right: undefined, bottom: undefined } : null]} testID={testID}>
       <Animated.View style={[styles.character, { opacity, transform: [{ translateX }] }]}>
         {children}
       </Animated.View>
@@ -80,8 +82,8 @@ const styles = StyleSheet.create({
     // Real-device Home QA: the previous percentage band placed the mascot
     // over the "בהמשך היום" timeline on tall iPhones. Anchor the celebration
     // higher, over the free centre of the last-walk card/action lane.
-    paddingTop: '34%',
-    paddingBottom: '46%',
+    paddingTop: 0,
+    paddingBottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
