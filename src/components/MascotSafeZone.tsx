@@ -22,7 +22,7 @@ interface MascotSafeZoneProps {
 export function MascotSafeZone({ children, from = 'right', anchor, testID }: MascotSafeZoneProps) {
   const [reducedMotion, setReducedMotion] = useState(true);
   const { width } = useWindowDimensions();
-  const travel = Math.max(260, width * 0.78);
+  const travel = anchor ? Math.max(56, anchor.width * 0.7) : Math.max(260, width * 0.78);
   const translateX = useRef(new Animated.Value(from === 'right' ? travel : -travel)).current;
   const opacity = useRef(new Animated.Value(0)).current;
 
@@ -51,7 +51,7 @@ export function MascotSafeZone({ children, from = 'right', anchor, testID }: Mas
   }, [from, opacity, reducedMotion, translateX, travel]);
 
   return (
-    <View pointerEvents="box-none" style={[styles.stage, anchor ? { top: anchor.y, left: anchor.x, width: anchor.width, height: anchor.height, right: undefined, bottom: undefined } : null]} testID={testID}>
+    <View pointerEvents="box-none" style={[styles.stage, anchor ? styles.anchoredStage : null, anchor ? { top: anchor.y, left: anchor.x, width: anchor.width, height: anchor.height, right: undefined, bottom: undefined } : null]} testID={testID}>
       <Animated.View style={[styles.character, { opacity, transform: [{ translateX }] }]}>
         {children}
       </Animated.View>
@@ -88,6 +88,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
   },
+  anchoredStage: { overflow: 'visible' },
   character: {
     alignItems: 'center',
     justifyContent: 'center',
