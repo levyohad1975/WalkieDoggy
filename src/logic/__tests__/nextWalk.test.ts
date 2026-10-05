@@ -1,4 +1,4 @@
-import { computeLastWalk, computeNextWalk, dailyWalkTimeline, finalizeSupersededPendingWalks, formatDuration, isOverdue, minutesUntil, relativeTimeLabel, upcomingWalks } from '../nextWalk';
+import { computeLastWalk, computeNextWalk, dailyWalkTimeline, dedupeCanonicalWalks, finalizeSupersededPendingWalks, formatDuration, isOverdue, minutesUntil, relativeTimeLabel, upcomingWalks } from '../nextWalk';
 import type { Walk } from '../../types';
 
 function makeWalk(overrides: Partial<Walk>): Walk {
@@ -289,6 +289,81 @@ describe('upcomingWalks', () => {
     ];
 
     expect(upcomingWalks(walks).map((w) => w.id)).toEqual(['future']);
+  });
+});
+
+/**
+ * P0 real-device fix — after a scheduled occurrence's Walk was legitimately
+ * finished (status 'done'), the SAME occurrence reappeared as a second,
+ * separately startable pending Walk. See dedupeCanonicalWalks's own doc
+ * comment (nextWalk.ts) and offlineFirstRepository.ts's
+ * pruneAndDedupeCanonicalWalks for the full mechanism: a stale local
+ * duplicate Walk (never its own row on the server — see
+ * resolveCanonicalWalkId) can survive in the local cache under a different
+ * id than the real, already-completed canonical Walk for the same
+ * schedule_entry_id.
+ */
+describe('dedupeCanonicalWalks', () => {
+  it('collapses a stale pending duplicate down to the already-done canonical walk for the same schedule_entry_id', () => {
+    const walks = [
+      makeWalk({ id: 'walk-stale-pending', scheduleEntryId: 'entry-1', status: 'pending' }),
+      makeWalk({ id: 'walk-canonical-done', scheduleEntryId: 'entry-1', status: 'done', completedAt: NOW.toISOString() }),
+    ];
+
+    const deduped = dedupeCanonicalWalks(walks);
+    expect(deduped).toHaveLength(1);
+    expect(deduped[0].id).toBe('walk-canonical-done');
+    expect(deduped[0].status).toBe('done');
+  });
+
+  it('is stable across repeated calls — a reload after the first prune never re-surfaces the stale duplicate', () => {
+    const walks = [
+      makeWalk({ id: 'walk-stale-pending', scheduleEntryId: 'entry-1', status: 'pending' }),
+      makeWalk({ id: 'walk-canonical-done', scheduleEntryId: 'entry-1', status: 'done' }),
+    ];
+
+    const first = dedupeCanonicalWalks(walks);
+    const second = dedupeCanonicalWalks(first);
+    expect(first).toHaveLength(1);
+    expect(second).toHaveLength(1);
+    expect(second[0].id).toBe('walk-canonical-done');
+  });
+
+  it('an in-progress canonical walk still outranks a stale pending duplicate', () => {
+    const walks = [
+      makeWalk({ id: 'walk-stale-pending', scheduleEntryId: 'entry-1', status: 'pending' }),
+      makeWalk({ id: 'walk-canonical-active', scheduleEntryId: 'entry-1', status: 'in_progress', startedAt: NOW.toISOString() }),
+    ];
+
+    expect(dedupeCanonicalWalks(walks).map((w) => w.id)).toEqual(['walk-canonical-active']);
+  });
+
+  it('leaves unplanned walks (no schedule_entry_id) untouched — this bug class cannot apply to them', () => {
+    const walks = [
+      makeWalk({ id: 'unplanned-1', scheduleEntryId: undefined, isUnplanned: true, status: 'done' }),
+      makeWalk({ id: 'unplanned-2', scheduleEntryId: undefined, isUnplanned: true, status: 'pending' }),
+    ];
+
+    expect(dedupeCanonicalWalks(walks)).toHaveLength(2);
+  });
+
+  it('leaves a schedule with no duplicates completely unchanged', () => {
+    const walks = [
+      makeWalk({ id: 'w1', scheduleEntryId: 'entry-1', status: 'pending' }),
+      makeWalk({ id: 'w2', scheduleEntryId: 'entry-2', status: 'done' }),
+    ];
+
+    expect(dedupeCanonicalWalks(walks)).toEqual(walks);
+  });
+
+  it('a completed occurrence never becomes selectable as the next walk once deduped — the exact reported symptom', () => {
+    const walks = [
+      makeWalk({ id: 'walk-stale-pending', scheduleEntryId: 'entry-1', scheduledTime: '07:00', status: 'pending' }),
+      makeWalk({ id: 'walk-canonical-done', scheduleEntryId: 'entry-1', scheduledTime: '07:00', status: 'done', completedAt: NOW.toISOString() }),
+    ];
+
+    const deduped = dedupeCanonicalWalks(walks);
+    expect(computeNextWalk(deduped, NOW)).toBeUndefined();
   });
 });
 

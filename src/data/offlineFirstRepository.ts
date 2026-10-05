@@ -19,6 +19,7 @@ import { isPermanentSyncError, SyncQueue } from './syncQueue';
 // queueWalksForBackgroundSync() once the real ~10s Schedule-save
 // bottleneck is confirmed fixed by an actual real-device measurement.
 import { perfMark } from '../lib/perfTrace';
+import { dedupeCanonicalWalks } from '../logic/nextWalk';
 
 /**
  * The repository the app actually uses. Reads always come from the local
@@ -738,12 +739,46 @@ export class OfflineFirstRepository implements Repository {
           }
           await this.local.deleteWalk(walk.id);
         }
-        return [...remoteWalks, ...pendingLocalOnly];
+        return await this.pruneAndDedupeCanonicalWalks([...remoteWalks, ...pendingLocalOnly]);
       } catch {
         /* fall through */
       }
     }
-    return this.local.getWalks(familyId);
+    return await this.pruneAndDedupeCanonicalWalks(await this.local.getWalks(familyId));
+  }
+
+  /**
+   * P0 real-device fix — a scheduled occurrence's Walk was legitimately
+   * finished, then reappeared as a second, separately startable pending
+   * Walk. See dedupeCanonicalWalks's own doc comment (src/logic/
+   * nextWalk.ts) for the full mechanism: this device's local cache can
+   * end up holding a stale PENDING duplicate for a schedule_entry_id whose
+   * canonical row has since moved on to in_progress/done — most sharply
+   * when getWalks() falls back to the raw local cache (isOnline() false
+   * right after foregrounding, before connectivity is confirmed), which
+   * has no deduplication of its own.
+   *
+   * Applied on EVERY getWalks() return (not just when a duplicate is
+   * suspected) so this invariant — one schedule_entry_id, one canonical
+   * Walk — holds everywhere this repository is read from, not only
+   * scheduleStore.loadScheduleForFamily. Any local-only loser this
+   * collapses is also deleted from the local cache (best-effort — a
+   * failure here never fails the read) so it does not keep resurfacing on
+   * every subsequent call; it was never a row on the server anyway.
+   */
+  private async pruneAndDedupeCanonicalWalks(walks: Walk[]): Promise<Walk[]> {
+    const deduped = dedupeCanonicalWalks(walks);
+    if (deduped.length === walks.length) return deduped;
+    const kept = new Set(deduped.map((w) => w.id));
+    const losers = walks.filter((w) => !kept.has(w.id));
+    await Promise.all(
+      losers.map((loser) =>
+        this.local.deleteWalk(loser.id).catch(() => {
+          /* best-effort cache cleanup only */
+        })
+      )
+    );
+    return deduped;
   }
 
   /**

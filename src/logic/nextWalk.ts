@@ -62,6 +62,46 @@ export function finalizeSupersededPendingWalks(walks: Walk[], now: Date = new Da
   return changed ? finalized : walks;
 }
 
+/**
+ * P0 real-device fix — after a scheduled occurrence's Walk was legitimately
+ * finished (status 'done'), the SAME occurrence reappeared as a second,
+ * separately startable pending Walk. Root cause: `walks.schedule_entry_id`
+ * is UNIQUE server-side (supabase/schema.sql), so there can only ever be
+ * ONE canonical server row per occurrence — but the OFFLINE-FIRST local
+ * cache can still end up holding a stale PENDING duplicate for the same
+ * schedule_entry_id left over from the exact local-id race
+ * resolveCanonicalWalkId (offlineFirstRepository.ts) resolves for Start.
+ * That duplicate is normally excluded once a remote row for the same
+ * schedule_entry_id is known, but a reload that happens to read the raw
+ * local cache (e.g. a transient `isOnline()` false right after
+ * foregrounding, before connectivity is confirmed) returns it with no
+ * such filtering at all, and nothing before this point otherwise prevents
+ * more than one Walk per schedule_entry_id from ever reaching display.
+ *
+ * Collapses every group of walks that share a `scheduleEntryId` down to
+ * exactly one: whichever is furthest along the pending -> in_progress ->
+ * done/skipped lifecycle (a `pending` leftover can never outrank an
+ * already-`done` or already-`in_progress` canonical row for the same
+ * occurrence). Walks with no `scheduleEntryId` (unplanned/spontaneous)
+ * are never deduplicated against each other — each is independently real,
+ * and this bug class cannot apply to them (no shared unique constraint).
+ * Pure and order-preserving otherwise, so it is safe to call on every
+ * schedule load, not just when a duplicate is suspected.
+ */
+export function dedupeCanonicalWalks(walks: Walk[]): Walk[] {
+  const statusRank: Record<Walk['status'], number> = { pending: 0, in_progress: 1, skipped: 2, done: 3 };
+  const canonicalByEntry = new Map<string, Walk>();
+  for (const walk of walks) {
+    if (!walk.scheduleEntryId) continue;
+    const current = canonicalByEntry.get(walk.scheduleEntryId);
+    if (!current || statusRank[walk.status] > statusRank[current.status]) {
+      canonicalByEntry.set(walk.scheduleEntryId, walk);
+    }
+  }
+  const kept = new Set(canonicalByEntry.values());
+  return walks.filter((walk) => !walk.scheduleEntryId || kept.has(walk));
+}
+
 /** Finds the most recently completed (or skipped) walk, for the "last walk" home card. */
 export function computeLastWalk(walks: Walk[], now: Date = new Date()): Walk | undefined {
   const finishedTime = (walk: Walk): number => {
