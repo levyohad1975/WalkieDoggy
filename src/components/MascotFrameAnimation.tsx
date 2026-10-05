@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Image, Platform, StyleSheet, View, type ImageSourcePropType } from 'react-native';
 
 export interface MascotFrameAnimationProps {
@@ -114,27 +114,51 @@ export function MascotFrameAnimation({ frames, fallback, fps, size, accessibilit
 
   const source = framesReady ? frames[Math.min(frameIndex, frames.length - 1)] : fallback;
 
+  // Root cause (real-device QA round 3) — this used to be a fresh closure
+  // created inline inside the frames.map() below, so every preload <Image>
+  // got a BRAND NEW onLoad/onError function identity on every re-render of
+  // this component (including the very re-renders its own setLoadedCount
+  // calls triggered). react-native-web's own Image implementation
+  // (node_modules/react-native-web/src/exports/Image) keys its internal
+  // load-tracking useEffect on `[uri, ..., onError, onLoad, ...]` — i.e. on
+  // the callback's IDENTITY, not just the source URI — so a changing
+  // onLoad/onError prop makes it abort whatever request was in flight and
+  // start a brand new one. The result was a cascading restart loop: frame 1
+  // finishing preload re-rendered this component, which hands EVERY one of
+  // the ~24 preload Images (including frame 1 itself, and every other frame
+  // still mid-flight) a new onLoad/onError, aborting and restarting their
+  // loads. On a real iPhone, where each image's fetch/decode genuinely spans
+  // multiple event-loop turns (unlike a synchronous test mock), this loop
+  // could burn through most or all of WalkCompletionCelebration's 2.6s
+  // auto-dismiss window before `framesReady` ever turned true — the mascot
+  // sat on the static fallback for virtually the whole celebration, with
+  // the speech bubble (gated on this same onReady) appearing late and the
+  // High-Five frames barely getting a chance to play, if at all, before
+  // dismissal. Using ONE stable callback (identical reference across every
+  // render) for every preload Image's onLoad/onError removes the one thing
+  // that was triggering react-native-web's effect to restart: each frame
+  // now loads exactly once, and `loadedCount` advances by exactly one per
+  // frame instead of being inflated/delayed by repeated restarts.
+  const handleFrameLoaded = useCallback(() => {
+    if (!mountedRef.current) return;
+    setLoadedCount((count) => count + 1);
+  }, []);
+
   return (
     <>
       <Image testID={testID} source={source} accessibilityLabel={accessibilityLabel} style={{ width: size, height: size, backgroundColor: 'transparent' }} resizeMode="contain" />
       {canAnimate && !framesReady
-        ? frames.map((frame, index) => {
-            const markLoaded = () => {
-              if (!mountedRef.current) return;
-              setLoadedCount((count) => count + 1);
-            };
-            return (
-              <Image
-                key={index}
-                source={frame}
-                onLoad={markLoaded}
-                onError={markLoaded}
-                accessibilityElementsHidden
-                importantForAccessibility="no-hide-descendants"
-                style={preloadStyles.hidden}
-              />
-            );
-          })
+        ? frames.map((frame, index) => (
+            <Image
+              key={index}
+              source={frame}
+              onLoad={handleFrameLoaded}
+              onError={handleFrameLoaded}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              style={preloadStyles.hidden}
+            />
+          ))
         : null}
     </>
   );

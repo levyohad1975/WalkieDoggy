@@ -221,6 +221,73 @@ describe('MascotFrameAnimation', () => {
     await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
     expect(screen.getByTestId('mascot').props.accessibilityLabel).toBe('הקמע מגיב');
   });
+
+  /**
+   * Real-device QA round 3 — the actual failure mode. Each preload Image's
+   * onLoad/onError used to be a fresh closure created inline inside the
+   * frames.map() on every render of this component, so every re-render
+   * (including the ones its own setLoadedCount(...) calls triggered)
+   * handed every preload Image a BRAND NEW onLoad/onError reference.
+   * react-native-web's real Image implementation keys its own internal
+   * load-tracking effect on that exact callback identity (not just the
+   * source URI) — see node_modules/react-native-web/src/exports/Image —
+   * so a changing onLoad/onError prop made it abort whatever request was
+   * in flight and start loading again from scratch. On a real device,
+   * where each frame's fetch/decode genuinely spans multiple separate
+   * event-loop turns (unlike this suite's single-batch completePreload
+   * helper), that meant every single frame finishing retriggered a reload
+   * of every OTHER still-pending frame too — a cascading restart loop that
+   * could burn through the celebration's entire auto-dismiss window
+   * before preloading ever finished, leaving the mascot stuck on the
+   * static fallback. This test reproduces the real multi-tick shape (one
+   * frame resolving per act(), not all of them batched in one act() like
+   * completePreload) and is the precise, assertable regression check: the
+   * callback identity handed to every still-pending preload Image must
+   * never change across intermediate re-renders.
+   */
+  it('gives every preload Image a referentially stable onLoad/onError across intermediate re-renders (regression: an unstable callback caused react-native-web\'s Image to restart its load on every other frame finishing)', async () => {
+    mockReducedMotion(false);
+    const frames = [frame(1), frame(2), frame(3), frame(4)];
+    const onReady = jest.fn();
+    const screen = render(
+      <MascotFrameAnimation frames={frames} fallback={FALLBACK} fps={10} size={100} accessibilityLabel="mascot" testID="mascot" onReady={onReady} />
+    );
+    await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
+
+    let preloaders = screen.UNSAFE_getAllByType(RNImage).slice(1);
+    expect(preloaders).toHaveLength(4);
+    let onLoadRefs = preloaders.map((img: any) => img.props.onLoad);
+    let onErrorRefs = preloaders.map((img: any) => img.props.onError);
+
+    // Resolve one frame at a time, each in its own act() — this is what a
+    // real device's independently-resolving network/decode cycles look
+    // like (each one its own render), unlike completePreload's
+    // single-batch resolution. After each single resolution, every
+    // STILL-PENDING preload Image's onLoad/onError must be the exact same
+    // function reference it had before — never replaced.
+    for (let i = 0; i < frames.length - 1; i++) {
+      act(() => { preloaders[i].props.onLoad(); });
+      const stillPending = screen.UNSAFE_getAllByType(RNImage).slice(1);
+      expect(stillPending).toHaveLength(frames.length);
+      stillPending.forEach((img: any, index: number) => {
+        expect(img.props.onLoad).toBe(onLoadRefs[index]);
+        expect(img.props.onError).toBe(onErrorRefs[index]);
+      });
+      preloaders = stillPending;
+      onLoadRefs = preloaders.map((img: any) => img.props.onLoad);
+      onErrorRefs = preloaders.map((img: any) => img.props.onError);
+    }
+
+    expect(onReady).not.toHaveBeenCalled();
+    act(() => { preloaders[frames.length - 1].props.onLoad(); });
+
+    // Preloading finished cleanly after exactly one onLoad per frame — no
+    // inflation/delay from spurious restarts — onReady fires exactly once
+    // and playback begins at frame 0.
+    expect(onReady).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('mascot').props.source).toBe(frames[0]);
+    expect(screen.UNSAFE_getAllByType(RNImage)).toHaveLength(1); // preload Images unmounted
+  });
 });
 
 
