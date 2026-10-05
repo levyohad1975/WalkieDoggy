@@ -16,7 +16,7 @@ describe('WalkCompletionCelebration (structural)', () => {
   });
 
   it('gives VoiceOver/TalkBack extra reading time while preserving explicit dismissal', () => {
-    expect(source).toMatch(/setTimeout\(\(\) => dismissRef\.current\(\), screenReaderEnabled \? 5000 : 2200\)/);
+    expect(source).toMatch(/setTimeout\(\(\) => dismissRef\.current\(\), screenReaderEnabled \? 5000 : 2600\)/);
     expect(source).toMatch(/AccessibilityInfo\.isScreenReaderEnabled\(\)/);
     expect(source).toMatch(/AccessibilityInfo\.addEventListener\('screenReaderChanged', setScreenReaderEnabled\)/);
   });
