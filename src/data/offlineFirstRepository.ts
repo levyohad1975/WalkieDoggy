@@ -60,6 +60,10 @@ export class OfflineFirstRepository implements Repository {
           throw new Error('אין חיבור לשרת. כדי להתחיל מעקב טיול יש להתחבר לאינטרנט.');
         }
         try {
+          // Same-day generated occurrences may still be queued locally when
+          // the user taps Start. Flush pending writes first so start_walk()
+          // never races the occurrence's server upsert.
+          await this.queue.flush(this.remote!);
           const walk = await this.remote!.startWalk!(walkId);
           await this.local.saveWalk(walk);
           return walk;
