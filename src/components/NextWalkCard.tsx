@@ -412,7 +412,7 @@ const styles = StyleSheet.create({
   // Item 6 (mobile polish): paddingVertical trimmed from 5 to 2 — a
   // slightly more compact dashboard card. Never touches any button's own
   // minHeight (tap targets stay exactly as large as before).
-  cardDashboard: { backgroundColor: '#EAF6FD', borderColor: '#BFE3F4', borderRadius: 28, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3, paddingHorizontal: 14, paddingVertical: 6 },
+  cardDashboard: { backgroundColor: '#E9EFFD', borderColor: '#BFE3F4', borderRadius: 28, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3, paddingHorizontal: 14, paddingVertical: 6 },
   webCard: { borderRadius: radii.xl, paddingHorizontal: 24, paddingVertical: 18 },
   cardActive: { backgroundColor: colors.successSoft, borderColor: colors.success + '55' },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
@@ -500,7 +500,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   requestStatusApproved: { color: colors.statusDone },
-  linkRow: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 3, minHeight: 34, borderRadius: 20, backgroundColor: '#F7F4EE', paddingHorizontal: 14 },
+  linkRow: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 3, minHeight: 34, paddingHorizontal: 14 },
   linkText: { color: '#17345B', fontSize: 13, fontWeight: '600' },
   linkDivider: { color: colors.textSecondary },
 });
