@@ -52,6 +52,10 @@ export function MascotPoseCelebration({ pose, fallback, size, accessibilityLabel
   const [reducedMotion, setReducedMotion] = useState(true);
   const [motionChecked, setMotionChecked] = useState(false);
   const [poseLoaded, setPoseLoaded] = useState(false);
+  // The raised-paw art is a gesture, not a resting pose. Once the transform
+  // choreography completes, return to the approved neutral mascot instead
+  // of freezing the character with one paw held in the air.
+  const [gestureComplete, setGestureComplete] = useState(false);
   const readyFiredRef = useRef(false);
   const onReadyRef = useRef(onReady);
   const translateY = useRef(new Animated.Value(0)).current;
@@ -86,6 +90,7 @@ export function MascotPoseCelebration({ pose, fallback, size, accessibilityLabel
     if (!ready || reducedMotion) return;
     const timing = (value: Animated.Value, toValue: number, duration: number) =>
       Animated.timing(value, { toValue, duration, useNativeDriver: true });
+    setGestureComplete(false);
     translateY.setValue(0);
     rotateRaw.setValue(0);
     scale.setValue(0.92);
@@ -101,12 +106,14 @@ export function MascotPoseCelebration({ pose, fallback, size, accessibilityLabel
       Animated.sequence([timing(rotateRaw, 1, 180), timing(rotateRaw, -1, 360), timing(rotateRaw, 0, 180)]),
       Animated.parallel([timing(translateY, 0, 400), timing(scale, 1, 400)]),
     ]);
-    animation.start();
+    animation.start(({ finished }) => {
+      if (finished) setGestureComplete(true);
+    });
     return () => animation.stop();
   }, [ready, reducedMotion, translateY, rotateRaw, scale]);
 
   const rotate = rotateRaw.interpolate({ inputRange: [-1, 1], outputRange: ['-6deg', '6deg'] });
-  const source = reducedMotion ? fallback : poseLoaded ? pose : fallback;
+  const source = reducedMotion || gestureComplete ? fallback : poseLoaded ? pose : fallback;
 
   return (
     <>
