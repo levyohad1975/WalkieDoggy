@@ -314,4 +314,102 @@ describe('planRuleDaysReconciliation', () => {
     expect(plan.toRemove).toEqual([]);
     expect(plan.toUpdate).toEqual([]);
   });
+
+  /**
+   * P0 real-device fix — real-iPhone QA: editing a rule's time (09:00 ->
+   * 14:00) after today's occurrence under the OLD time had already been
+   * completed left today's entry stuck at 09:00 forever, with no new
+   * actionable occurrence ever created. Root cause: the pre-fix version of
+   * this function blindly mutated EVERY future entry's time in place,
+   * including one whose walk was already 'done' — rewriting completed
+   * history — while the caller (scheduleStore.updateRule) correctly
+   * refuses to touch a non-'pending' walk, leaving the entry and its done
+   * walk disagreeing with no new occurrence to show. These tests cover the
+   * `currentWalks` parameter that fixes it.
+   */
+  describe('with currentWalks — locked (already-resolved) entries are never mutated', () => {
+    it('a date whose only entry has a done walk is left untouched, and a fresh pending entry is regenerated for it instead', () => {
+      const previousRule = makeRule({ time: '09:00' });
+      const updatedRule = makeRule({ time: '14:00' });
+      const entries = [makeEntry({ id: 'entry-today', date: today, time: '09:00' })];
+      const walks = [{ scheduleEntryId: 'entry-today', status: 'done' as const }];
+
+      const plan = planRuleDaysReconciliation(previousRule, updatedRule, entries, today, endDate, () => 'entry-fresh', walks);
+
+      expect(plan.toUpdate).toEqual([]);
+      expect(plan.toRegenerate).toHaveLength(1);
+      expect(plan.toRegenerate[0]).toMatchObject({ id: 'entry-fresh', date: today, time: '14:00' });
+      // The original entry is not present anywhere in the output — it was
+      // never touched, matching the "never rewrite completed history" requirement.
+      expect(plan.toRemove.find((e) => e.id === 'entry-today')).toBeUndefined();
+    });
+
+    it('a date whose only entry has an in_progress walk is also locked', () => {
+      const previousRule = makeRule({ time: '09:00' });
+      const updatedRule = makeRule({ time: '14:00' });
+      const entries = [makeEntry({ id: 'entry-today', date: today, time: '09:00' })];
+      const walks = [{ scheduleEntryId: 'entry-today', status: 'in_progress' as const }];
+
+      const plan = planRuleDaysReconciliation(previousRule, updatedRule, entries, today, endDate, () => 'entry-fresh', walks);
+
+      expect(plan.toUpdate).toEqual([]);
+      expect(plan.toRegenerate).toHaveLength(1);
+    });
+
+    it('a pending walk is still updated in place, same as with no currentWalks given at all', () => {
+      const previousRule = makeRule({ time: '09:00' });
+      const updatedRule = makeRule({ time: '14:00' });
+      const entries = [makeEntry({ id: 'entry-today', date: today, time: '09:00' })];
+      const walks = [{ scheduleEntryId: 'entry-today', status: 'pending' as const }];
+
+      const plan = planRuleDaysReconciliation(previousRule, updatedRule, entries, today, endDate, () => 'entry-fresh', walks);
+
+      expect(plan.toRegenerate).toEqual([]);
+      expect(plan.toUpdate).toHaveLength(1);
+      expect(plan.toUpdate[0]).toMatchObject({ id: 'entry-today', time: '14:00' });
+    });
+
+    it('an entry with no matching walk at all is treated as freely mutable (not locked)', () => {
+      const previousRule = makeRule({ time: '09:00' });
+      const updatedRule = makeRule({ time: '14:00' });
+      const entries = [makeEntry({ id: 'entry-today', date: today, time: '09:00' })];
+
+      const plan = planRuleDaysReconciliation(previousRule, updatedRule, entries, today, endDate, () => 'entry-fresh', []);
+
+      expect(plan.toRegenerate).toEqual([]);
+      expect(plan.toUpdate).toHaveLength(1);
+    });
+
+    it('re-editing the rule again after a regenerated entry exists updates the NEW pending entry in place, never regenerating a second one', () => {
+      const previousRule = makeRule({ time: '14:00' });
+      const updatedRule = makeRule({ time: '18:00' });
+      // Simulates the state right after the FIRST edit's regeneration: the
+      // old done entry is still there (history), plus the fresh pending one.
+      const entries = [
+        makeEntry({ id: 'entry-today-old', date: today, time: '09:00' }),
+        makeEntry({ id: 'entry-today-fresh', date: today, time: '14:00' }),
+      ];
+      const walks = [
+        { scheduleEntryId: 'entry-today-old', status: 'done' as const },
+        { scheduleEntryId: 'entry-today-fresh', status: 'pending' as const },
+      ];
+
+      const plan = planRuleDaysReconciliation(previousRule, updatedRule, entries, today, endDate, () => 'entry-should-not-be-used', walks);
+
+      expect(plan.toRegenerate).toEqual([]);
+      expect(plan.toUpdate).toHaveLength(1);
+      expect(plan.toUpdate[0]).toMatchObject({ id: 'entry-today-fresh', time: '18:00' });
+    });
+
+    it('omitting currentWalks entirely (legacy call shape) behaves exactly as if nothing were locked', () => {
+      const previousRule = makeRule({ time: '09:00' });
+      const updatedRule = makeRule({ time: '14:00' });
+      const entries = [makeEntry({ id: 'entry-today', date: today, time: '09:00' })];
+
+      const plan = planRuleDaysReconciliation(previousRule, updatedRule, entries, today, endDate);
+
+      expect(plan.toRegenerate).toEqual([]);
+      expect(plan.toUpdate).toHaveLength(1);
+    });
+  });
 });

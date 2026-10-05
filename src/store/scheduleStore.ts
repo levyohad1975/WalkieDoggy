@@ -560,13 +560,23 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // anyone ahead of UTC (e.g. Israel), generating a day-early entry.
       const today = localDateOnly(new Date());
       const endDate = localDateOnly(new Date(Date.now() + GENERATE_DAYS_AHEAD * 86400000));
-      const { toRemove, toUpdate, toAdd } = planRuleDaysReconciliation(
+      // P0 real-device fix: `get().walks` lets planRuleDaysReconciliation
+      // tell a freely-mutable entry (pending, or no walk yet) apart from a
+      // LOCKED one (done/in_progress/skipped) per date — see its own doc
+      // comment. Without this, a rule time edit after today's occurrence
+      // was already completed either silently rewrote that completed
+      // walk's historical time, or (since the walk-side update below only
+      // ever touches 'pending' walks) left the entry and its done walk
+      // disagreeing on time with no new actionable occurrence for today at
+      // all — exactly the real-device symptom this fixes.
+      const { toRemove, toUpdate, toAdd, toRegenerate } = planRuleDaysReconciliation(
         rule,
         updatedRule,
         get().entries,
         today,
         endDate,
-        () => generateId('entry')
+        () => generateId('entry'),
+        get().walks
       );
 
       // Days dropped from the rule: only a still-pending occurrence is
@@ -595,17 +605,23 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         updatedWalks.push(updatedWalk);
       }
 
-      // Days newly added to the rule: generate entries/walks for them now,
-      // same as addRule. Real-device QA fix — same deferred-background
-      // handoff as addRule() uses for its own newly generated walks (see
-      // that function's own comment and queueWalksForBackgroundSync()'s
-      // doc comment in offlineFirstRepository.ts): a rule edit that adds
-      // several days back would otherwise hit the exact same sequential-
-      // network-round-trips bottleneck this fix targets.
-      if (toAdd.length > 0) await repository.addScheduleEntries(toAdd);
-      const newWalks = toAdd.map((e) => walkFromEntry(e, updatedRule.familyId));
-      const todayNewWalks = newWalks.filter((w) => w.scheduleEntryId && toAdd.some((e) => e.id === w.scheduleEntryId && e.date === today));
-      const futureNewWalks = newWalks.filter((w) => !w.scheduleEntryId || !toAdd.some((e) => e.id === w.scheduleEntryId && e.date === today));
+      // Days newly added to the rule, OR a date whose only existing
+      // entry is locked by an already-resolved walk (toRegenerate — see
+      // planRuleDaysReconciliation's doc comment): generate entries/walks
+      // for them now, same as addRule. Real-device QA fix — same
+      // deferred-background handoff as addRule() uses for its own newly
+      // generated walks (see that function's own comment and
+      // queueWalksForBackgroundSync()'s doc comment in
+      // offlineFirstRepository.ts): a rule edit that adds several days
+      // back would otherwise hit the exact same sequential-network-
+      // round-trips bottleneck this fix targets. The OLD (locked) entry
+      // and its already-resolved walk are never touched — they remain
+      // exactly as they were, preserved as history.
+      const allNewEntries = [...toAdd, ...toRegenerate];
+      if (allNewEntries.length > 0) await repository.addScheduleEntries(allNewEntries);
+      const newWalks = allNewEntries.map((e) => walkFromEntry(e, updatedRule.familyId));
+      const todayNewWalks = newWalks.filter((w) => w.scheduleEntryId && allNewEntries.some((e) => e.id === w.scheduleEntryId && e.date === today));
+      const futureNewWalks = newWalks.filter((w) => !w.scheduleEntryId || !allNewEntries.some((e) => e.id === w.scheduleEntryId && e.date === today));
       for (const w of todayNewWalks) await repository.saveWalk(w);
       if (futureNewWalks.length > 0) {
         if (repository.queueWalksForBackgroundSync) {
@@ -619,7 +635,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         rules: s.rules.map((r) => (r.id === ruleId ? updatedRule : r)),
         entries: [
           ...s.entries.filter((e) => !removedEntryIds.has(e.id)).map((e) => toUpdate.find((ue) => ue.id === e.id) ?? e),
-          ...toAdd,
+          ...allNewEntries,
         ],
         walks: [
           ...s.walks

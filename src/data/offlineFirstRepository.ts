@@ -674,12 +674,33 @@ export class OfflineFirstRepository implements Repository {
     await this.queue.enqueue({ type: 'addScheduleEntries', payload: entries });
   }
 
+  /**
+   * P0 real-device fix — this used to ALWAYS queue+fire-and-forget
+   * (`trySync()` without awaiting the actual network write), unlike every
+   * other mutation in this class, which waits for Supabase to confirm
+   * while online (see upsertScheduleRule/addScheduleEntries above). That
+   * asymmetry is why editing a recurring rule's time updated
+   * schedule_rules immediately (upsertScheduleRule awaits) but the
+   * schedule_entries reconciliation it triggers (updateRule in
+   * scheduleStore.ts) could silently fail to land: the local cache showed
+   * the new time right away, but the very next ONLINE read of entries
+   * (getScheduleEntries — a pure remote pass-through with no local merge,
+   * unlike getWalks) returned the server's still-old value the instant it
+   * ran before this queued write actually reached Supabase, overwriting
+   * the correct local state right back to stale. Now mirrors every other
+   * write here: confirmed before returning while online, queued only for
+   * a genuine offline state.
+   */
   async updateScheduleEntry(entry: ScheduleEntry): Promise<void> {
     await this.local.updateScheduleEntry(entry);
-    if (this.remote) {
-      await this.queue.enqueue({ type: 'updateScheduleEntry', payload: entry });
-      await this.trySync();
+    if (!this.remote) return;
+
+    if (await this.isOnline()) {
+      await this.remote.updateScheduleEntry(entry);
+      return;
     }
+
+    await this.queue.enqueue({ type: 'updateScheduleEntry', payload: entry });
   }
 
   async deleteScheduleEntry(entryId: string): Promise<void> {
