@@ -846,9 +846,12 @@ export function HomeScreen() {
             />
             <Pressable
               onPress={handleHeaderMascotPress}
-              style={styles.mascotHeaderButton}
+              style={[styles.mascotHeaderButton, celebration && styles.homeMascotSuppressed]}
               accessibilityRole="button"
               accessibilityLabel="פתיחת פרופיל הכלב"
+              accessibilityElementsHidden={!!celebration}
+              importantForAccessibility={celebration ? 'no-hide-descendants' : 'auto'}
+              pointerEvents={celebration ? 'none' : 'auto'}
             >
               <WalkieMascot state="idle" size={38} accessibilityLabel="Walkie Doggy" />
             </Pressable>
@@ -1616,6 +1619,9 @@ const styles = StyleSheet.create({
   // Preserve the hero mascot's mounted layout slot during a completion moment,
   // but make only its pixels disappear so there is never a second mascot.
   dashboardHeroMascotCelebrating: { opacity: 0 },
+  // During a completion celebration the dedicated celebration mascot is the
+  // single mascot on Home. Keep other mascot slots mounted to avoid layout jumps.
+  homeMascotSuppressed: { opacity: 0 },
   dashboardHeroForeground: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 52, zIndex: 3, overflow: 'hidden' },
   dashboardHeroForegroundLeft: { position: 'absolute', left: -22, bottom: -23, width: 126, height: 52, borderRadius: 63, backgroundColor: '#C5E2B7', opacity: 0.72, transform: [{ rotate: '-4deg' }] },
   dashboardHeroForegroundMid: { position: 'absolute', right: 118, bottom: -31, width: 106, height: 48, borderRadius: 53, backgroundColor: '#D6EBC8', opacity: 0.78, transform: [{ rotate: '5deg' }] },
