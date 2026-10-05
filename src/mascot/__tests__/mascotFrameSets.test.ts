@@ -20,9 +20,11 @@ describe('MASCOT_FRAME_SETS — discrete per-frame celebration assets', () => {
   });
 
   it('every celebration in the library that maps to a sprite resolves a usable frame set', () => {
-    // Real-device QA round 4 — `high-five` and `paw-party` share a curated
-    // (shorter, reordered) choreography built from the same raw frames,
-    // not the raw 24-frame set in original order — see
+    // Real-device QA round 4/5 — `high-five` and `paw-party` share a
+    // curated choreography built from the same raw frames, reordered and
+    // deliberately REPEATED (to hold key poses for a natural ~2s beat
+    // instead of racing through in under a second) — not the raw 24-frame
+    // set in original order, and not necessarily 24 or fewer entries. See
     // celebrationAnimationManifest.ts's own doc comment above
     // HIGH_FIVE_CELEBRATION_FRAMES for why.
     const curatedIds = new Set(['high-five', 'paw-party']);
@@ -31,8 +33,9 @@ describe('MASCOT_FRAME_SETS — discrete per-frame celebration assets', () => {
       if (!frames) continue;
       if (curatedIds.has(celebration.id)) {
         expect(frames.length).toBeGreaterThan(0);
-        expect(frames.length).toBeLessThanOrEqual(24);
-        expect(MASCOT_FRAME_SETS['high-five']).toEqual(expect.arrayContaining(frames));
+        // Every entry must still be one of the real, approved raw frames —
+        // choreography may reorder/repeat them, but never invents new ones.
+        expect(MASCOT_FRAME_SETS['high-five']).toEqual(expect.arrayContaining(Array.from(new Set(frames))));
       } else {
         expect(frames).toHaveLength(24);
       }

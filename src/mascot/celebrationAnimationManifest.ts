@@ -400,23 +400,32 @@ export const MASCOT_FRAME_FPS = 24;
  * 11 more frames through an unrelated forward-reach motion into a calm,
  * eyes-closed, non-gesture resting pose (frame 24) — and that resting
  * pose is also where playback freezes once finished, since
- * MascotFrameAnimation holds on the last array entry. The result: the one
- * genuinely good "high five" moment flashed by for a few hundred
- * milliseconds while the celebration spent most of its visible time on
- * frames that don't read as a high five at all.
+ * MascotFrameAnimation holds on the last array entry.
  *
- * This re-choreographs the SAME raw frame files (nothing regenerated, no
- * new art) for the `high-five` celebration specifically:
- *   - Skips the idle lead-in entirely and starts right at the rise
- *     (frames 6-8), so the speech bubble — which appears the instant this
- *     sequence starts playing, via MascotFrameAnimation's onReady — lands
- *     close to when the paw is actually visible rising, not seconds of
- *     standing idle first.
- *   - Holds on the four strongest raised-paw frames (8, 9, 10, 11) by
- *     cycling through them rather than freezing one bitmap, so the hold
- *     still reads as a little alive "wave" instead of a dead freeze.
- *   - Never reaches the weak tail (12-24): playback now freezes on one of
- *     the clear hero frames, not the resting pose.
+ * Real-device QA round 5 — the round-4 curated sequence (19 entries @
+ * MASCOT_FRAME_FPS's fixed 50ms/tick = ~950ms total) was itself too fast:
+ * it cycled through the four peak frames (9,10,11,8) four full times in
+ * under a second, which read as frantic repeated cycling rather than a
+ * deliberate celebratory hold. MascotFrameAnimation plays one uniform
+ * interval per instance (no per-frame timing), so this choreography
+ * achieves per-phase PACING entirely through how many consecutive ticks
+ * each frame is held for — no engine change needed:
+ *   - Phase 1, rise (3 ticks = 150ms): frames 6,7,8 in their natural
+ *     order, no idle lead-in, so the speech bubble (which appears the
+ *     instant this sequence starts playing, via onReady) lands close to
+ *     when the paw is actually visible rising.
+ *   - Phase 2, one gentle lap (16 ticks = 800ms): the four strongest
+ *     raised-paw frames (9,10,11,8), each HELD for 4 ticks (200ms) before
+ *     advancing — a single clearly-readable sway through the pose's best
+ *     angles, not a rapid flicker, and not repeated multiple times.
+ *   - Phase 3, settle (21 ticks = 1050ms): a firm, unmoving hold on the
+ *     single clearest frame (9), long enough on its own to register the
+ *     gesture clearly, and where playback finishes — so the freeze-frame
+ *     for the remainder of the celebration is this same hero pose, never
+ *     the weak tail (12-24).
+ * Total: 40 ticks @ 50ms = ~2000ms, matching a ~2-second celebration
+ * beat instead of racing through in under a second.
+ *
  * Two celebration ids share this exact sprite via CELEBRATION_SPRITE_MAP —
  * `high-five` itself and `paw-party` (whose bubble reads "כף אל כף!", the
  * title that actually appeared in the real-device evidence for this
@@ -427,14 +436,17 @@ export const MASCOT_FRAME_FPS = 24;
  * the old, weak choreography. Every other celebration's sprite is
  * untouched.
  */
+const repeatFrame = (frameNumber: number, ticks: number): number[] => Array(ticks).fill(frameNumber);
+
 const HIGH_FIVE_CHOREOGRAPHED_FRAME_NUMBERS = [
-  // Rise straight into the gesture — no idle lead-in.
+  // Phase 1 — rise (150ms): straight into the gesture, no idle lead-in.
   6, 7, 8,
-  // Hold: cycle the four strongest peak frames so it reads as alive.
-  9, 10, 11, 8,
-  9, 10, 11, 8,
-  9, 10, 11, 8,
-  9, 10, 11, 8,
+  // Phase 2 — one gentle lap (800ms) through the four strongest raised-paw
+  // frames, each clearly held for 200ms before advancing.
+  ...repeatFrame(9, 4), ...repeatFrame(10, 4), ...repeatFrame(11, 4), ...repeatFrame(8, 4),
+  // Phase 3 — settle (1050ms): a firm hold on the single clearest pose,
+  // long enough to register on its own before the celebration dismisses.
+  ...repeatFrame(9, 21),
 ];
 const HIGH_FIVE_CELEBRATION_FRAMES: ImageSourcePropType[] = HIGH_FIVE_CHOREOGRAPHED_FRAME_NUMBERS.map(
   (frameNumber) => MASCOT_FRAME_SETS['high-five'][frameNumber - 1]

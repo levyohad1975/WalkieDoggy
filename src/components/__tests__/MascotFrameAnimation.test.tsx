@@ -288,6 +288,54 @@ describe('MascotFrameAnimation', () => {
     expect(screen.getByTestId('mascot').props.source).toBe(frames[0]);
     expect(screen.UNSAFE_getAllByType(RNImage)).toHaveLength(1); // preload Images unmounted
   });
+
+  /**
+   * Real-device QA round 5 — a choreographed sequence (see
+   * celebrationAnimationManifest.ts's HIGH_FIVE_CHOREOGRAPHED_FRAME_NUMBERS)
+   * deliberately repeats the same few underlying frames many times over to
+   * hold key poses for a natural duration. Before this fix, preloading
+   * created one hidden Image PER ARRAY POSITION, so a sequence built from
+   * only a handful of distinct files fired that many separate, fully
+   * independent `ImageLoader.load()` calls all at once on mount — real,
+   * unnecessary duplicate network/decode load on a real device that this
+   * suite's instant mocked Image never surfaced. Preloading must track only
+   * the DISTINCT underlying frames (by reference — the real choreography
+   * array is built by indexing into the same stable MASCOT_FRAME_SETS
+   * array, so repeated entries really are the same object).
+   */
+  it('preloads only the distinct underlying frames when the sequence repeats the same frame many times', async () => {
+    mockReducedMotion(false);
+    const a = frame(1);
+    const b = frame(2);
+    const c = frame(3);
+    // 9 entries, only 3 distinct underlying frames — mirrors a
+    // choreographed hold (e.g. a, b, b, b, b, c, c, c, c).
+    const frames = [a, b, b, b, b, c, c, c, c];
+    const onReady = jest.fn();
+    const screen = render(
+      <MascotFrameAnimation frames={frames} fallback={FALLBACK} fps={10} size={100} accessibilityLabel="mascot" testID="mascot" onReady={onReady} />
+    );
+    await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
+
+    // Exactly 3 preload Images — one per DISTINCT frame, not one per array
+    // position (which would be 9).
+    const preloaders = screen.UNSAFE_getAllByType(RNImage).slice(1);
+    expect(preloaders).toHaveLength(3);
+
+    // Firing onLoad on all 3 distinct preloaders is enough to become ready
+    // — no need for 9 separate load events for what is really 3 resources.
+    act(() => {
+      preloaders.forEach((img: any) => img.props.onLoad());
+    });
+    expect(onReady).toHaveBeenCalledTimes(1);
+
+    // Playback still indexes into the FULL, repeated sequence correctly.
+    expect(screen.getByTestId('mascot').props.source).toBe(a);
+    act(() => { jest.advanceTimersByTime(100); });
+    expect(screen.getByTestId('mascot').props.source).toBe(b);
+    act(() => { jest.advanceTimersByTime(400); });
+    expect(screen.getByTestId('mascot').props.source).toBe(c);
+  });
 });
 
 

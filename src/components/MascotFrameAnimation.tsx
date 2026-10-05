@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Image, Platform, StyleSheet, View, type ImageSourcePropType } from 'react-native';
 
 export interface MascotFrameAnimationProps {
@@ -76,6 +76,24 @@ export function MascotFrameAnimation({ frames, fallback, fps, size, accessibilit
 
   const canAnimate = !reducedMotion && frames.length >= 2;
 
+  // Real-device QA round 5 — a choreographed sequence can legitimately
+  // repeat the SAME underlying frame many times (e.g. to hold on a pose
+  // for longer than one playback tick — see celebrationAnimationManifest.ts's
+  // HIGH_FIVE_CHOREOGRAPHED_FRAME_NUMBERS). Preloading used to create one
+  // hidden <Image> PER ARRAY POSITION, so a 19-40 entry choreographed
+  // sequence built from only ~6 distinct files fired that many duplicate,
+  // fully independent `ImageLoader.load()` calls (each its own
+  // `new window.Image()` + `.decode()`) all at once on mount — real,
+  // unnecessary concurrent network/decode load for already-identical
+  // resources that a desktop/Jest environment never surfaces but a real
+  // iPhone's tighter PWA memory/decode budget can struggle with. Preload
+  // (and the readiness gate) now tracks only the DISTINCT underlying
+  // frames — reference-equal here since every entry in a choreographed
+  // sequence is the exact same resolved module reference from
+  // MASCOT_FRAME_SETS, not a fresh object each time. Playback itself still
+  // indexes into the full, repeated `frames` array — unaffected.
+  const distinctFrames = useMemo(() => Array.from(new Set(frames)), [frames]);
+
   // Reset preload progress whenever a genuinely new frame set arrives (by
   // reference — same convention the playback effect below already uses).
   useEffect(() => {
@@ -83,7 +101,7 @@ export function MascotFrameAnimation({ frames, fallback, fps, size, accessibilit
     readyFiredRef.current = false;
   }, [frames]);
 
-  const framesReady = canAnimate && loadedCount >= frames.length;
+  const framesReady = canAnimate && loadedCount >= distinctFrames.length;
 
   useEffect(() => {
     if (readyFiredRef.current || !motionChecked) return;
@@ -148,7 +166,7 @@ export function MascotFrameAnimation({ frames, fallback, fps, size, accessibilit
     <>
       <Image testID={testID} source={source} accessibilityLabel={accessibilityLabel} style={{ width: size, height: size, backgroundColor: 'transparent' }} resizeMode="contain" />
       {canAnimate && !framesReady
-        ? frames.map((frame, index) => (
+        ? distinctFrames.map((frame, index) => (
             <Image
               key={index}
               source={frame}

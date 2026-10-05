@@ -37,6 +37,16 @@ import { MASCOT_FRAME_SETS, MASCOT_FRAME_FPS, framesForCelebration } from '../..
  * resolved sequence from `framesForCelebration('high-five')` rather than
  * hardcoding its length/order, so they stay correct regardless of exactly
  * how that choreography is tuned.
+ *
+ * Real-device QA round 5 — round 4's curated sequence played back in well
+ * under a second (19 entries @ 50ms) and cycled its hold frames four full
+ * times, reported as "frantic" on a real iPhone; the choreography now
+ * deliberately repeats frames to hold key poses for a natural ~2s beat
+ * instead (see celebrationAnimationManifest.ts). A repeated sequence means
+ * MascotFrameAnimation now preloads only the DISTINCT underlying frames,
+ * not one hidden Image per array position — see this file's
+ * `expectedDistinctFrameCount` and MascotFrameAnimation.test.tsx's own
+ * dedicated dedup test.
  */
 describe('WalkCompletionCelebration — mascot renders via discrete, preloaded frames; bubble waits for onReady', () => {
   const highFive = CELEBRATION_LIBRARY.find((item) => item.id === 'high-five')!;
@@ -55,9 +65,15 @@ describe('WalkCompletionCelebration — mascot renders via discrete, preloaded f
   });
 
   const expectedFrames = framesForCelebration('high-five')!;
+  // Real-device QA round 5 — MascotFrameAnimation now preloads only the
+  // DISTINCT underlying frames (a choreographed sequence can legitimately
+  // repeat the same file many times to hold a pose), so the number of
+  // hidden preloader Images is the distinct count, not the full sequence
+  // length. See MascotFrameAnimation.tsx's own doc comment for why.
+  const expectedDistinctFrameCount = new Set(expectedFrames).size;
 
   /** Fires onLoad on every hidden MascotFrameAnimation preloader Image for the mascot's curated frame sequence. */
-  function completeMascotPreload(renderedScreen: ReturnType<typeof render>, frameCount = expectedFrames.length) {
+  function completeMascotPreload(renderedScreen: ReturnType<typeof render>, frameCount = expectedDistinctFrameCount) {
     act(() => {
       const images = renderedScreen.UNSAFE_getAllByType(RNImage);
       // The visible mascot Image (testID set) is always first among the
@@ -82,11 +98,17 @@ describe('WalkCompletionCelebration — mascot renders via discrete, preloaded f
 
   it('advances through the curated high-five sequence and stops clamped on the last (hero-pose) frame', async () => {
     const screen = render(<WalkCompletionCelebration celebration={celebration} onDismiss={jest.fn()} />);
-    // Curated (round 4): a reordered subset of the raw 24 frames, not all
-    // 24 in original order — see celebrationAnimationManifest.ts.
+    // Curated (round 4/5): a reordered, deliberately-repeated choreography
+    // built from the raw 24 frames — not all 24 in original order, and
+    // not necessarily 24 or fewer entries (repeats hold key poses for a
+    // natural ~2s beat) — see celebrationAnimationManifest.ts.
     expect(expectedFrames.length).toBeGreaterThan(0);
-    expect(expectedFrames.length).toBeLessThan(24);
-    expect(MASCOT_FRAME_SETS['high-five']).toEqual(expect.arrayContaining(expectedFrames));
+    expect(MASCOT_FRAME_SETS['high-five']).toEqual(expect.arrayContaining(Array.from(new Set(expectedFrames))));
+    // Real playback duration must land close to a natural ~2s celebration
+    // beat, not race through in under a second (round 4's regression).
+    const actualDurationMs = expectedFrames.length * Math.max(50, Math.round(1000 / MASCOT_FRAME_FPS));
+    expect(actualDurationMs).toBeGreaterThanOrEqual(1500);
+    expect(actualDurationMs).toBeLessThanOrEqual(2500);
 
     await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
     completeMascotPreload(screen);

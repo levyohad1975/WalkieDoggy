@@ -103,14 +103,14 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
                 <MascotFrameAnimation
                   frames={frames}
                   fps={MASCOT_FRAME_FPS}
-                  // Real-device QA round 4 (visual polish) — a modest bump
-                  // from 84 to fill most of this moment's already-reserved
-                  // 96-wide slot (see `moment` style below, unchanged), so
-                  // the paw-pad detail that actually reads as "high five"
-                  // is a bit more legible on a real phone screen, without
-                  // growing the reserved layout area or moving the
-                  // approved anchor/position.
-                  size={92}
+                  // Real-device QA round 5 — reverted the round-4 bump to
+                  // 92 (unproven: direct pixel inspection of the frame
+                  // assets found the subject already covers ~50% of its
+                  // 256x256 canvas, not under-sized) back to the original
+                  // approved 84, per "keep approximately the current
+                  // visual size" — this round's real regressions (timing,
+                  // the reported black rectangle) were never about size.
+                  size={84}
                   fallback={COMPLETION_MASCOT}
                   accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול"
                   testID="completion-mascot-animation"
