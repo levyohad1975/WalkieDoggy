@@ -46,7 +46,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
   useEffect(() => {
     if (!celebration) return;
     setBubbleVisible(reducedMotion);
-    const bubbleTimer = reducedMotion ? null : setTimeout(() => setBubbleVisible(true), 650);
+    const bubbleTimer = reducedMotion ? null : setTimeout(() => setBubbleVisible(true), 360);
     opacity.setValue(reducedMotion ? 1 : 0);
     translateY.setValue(reducedMotion ? 0 : 18);
     if (!reducedMotion) {
@@ -58,7 +58,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
     // Auto-dismiss is keyed to the celebration id rather than object identity,
     // so harmless parent re-renders cannot restart the timer indefinitely.
     if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
-    autoDismissTimerRef.current = setTimeout(() => dismissRef.current(), screenReaderEnabled ? 5000 : 2200);
+    autoDismissTimerRef.current = setTimeout(() => dismissRef.current(), screenReaderEnabled ? 5000 : 2600);
     return () => { if (bubbleTimer) clearTimeout(bubbleTimer); };
   }, [celebration?.id, opacity, reducedMotion, screenReaderEnabled, translateY]);
 
@@ -110,10 +110,10 @@ const styles = StyleSheet.create({
   // Compact diagonal speech bubble: it sits above-left of the mascot, over
   // the free space above the last-walk time, while the mascot itself remains
   // exactly centred in the gap between edit and pee/poop controls.
-  speechBubbleWrap: { position: 'absolute', left: -58, top: -42, alignItems: 'flex-end', zIndex: 3 },
+  speechBubbleWrap: { position: 'absolute', left: -44, top: -38, alignItems: 'flex-end', zIndex: 3 },
   bubble: { maxWidth: 154, backgroundColor: colors.surface, borderRadius: 22, paddingHorizontal: 12, paddingVertical: 8, shadowColor: '#0B5C75', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
   message: { color: colors.textPrimary, fontSize: 13, lineHeight: 17, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
-  tail: { width: 13, height: 13, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }], marginTop: -7, marginRight: 18 },
+  tail: { width: 13, height: 13, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }], marginTop: -7, marginRight: 12 },
   confetti: { position: 'absolute', top: 64, color: colors.primary, fontSize: 24, letterSpacing: 10 },
   dismissButton: { minHeight: 44, paddingHorizontal: 18, justifyContent: 'center', marginTop: -6 },
   dismissText: { color: colors.textInverse, fontWeight: '700', fontSize: 14 },
