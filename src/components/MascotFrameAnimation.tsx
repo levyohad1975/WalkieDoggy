@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Image, View, type ImageSourcePropType } from 'react-native';
+import { AccessibilityInfo, Image, Platform, View, type ImageSourcePropType } from 'react-native';
 
 export interface MascotFrameAnimationProps {
   frames: ImageSourcePropType[];
@@ -100,6 +100,7 @@ export function MascotSpriteAnimation({ source, columns, rows, frameSize, frameC
       <Image
         source={source}
         resizeMode="stretch"
+        fadeDuration={0}
         style={{
           position: 'absolute',
           width: columns * size,
@@ -107,6 +108,7 @@ export function MascotSpriteAnimation({ source, columns, rows, frameSize, frameC
           left: -column * size,
           top: -row * size,
           backgroundColor: 'transparent',
+          ...(Platform.OS === 'web' ? { imageRendering: 'auto' as const } : {}),
         }}
       />
     </View>
