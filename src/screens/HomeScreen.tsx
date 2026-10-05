@@ -879,7 +879,15 @@ export function HomeScreen() {
             {showDogCutout ? <Image source={{ uri: dog!.photoCutoutUrl! }} style={styles.dashboardHeroDogCutout} resizeMode="contain" onError={() => setHeroCutoutFailed(true)} /> : null}
             {!showDogCutout && showPersonalHero ? <Image source={{ uri: dog!.photoUrl! }} style={styles.dashboardHeroDogPhoto} resizeMode="cover" onError={() => setHeroPhotoFailed(true)} /> : null}
             {!showDogCutout && !showPersonalHero ? (
-              <View style={styles.dashboardHeroMascot} pointerEvents="none">
+              <View
+                style={[styles.dashboardHeroMascot, celebration && styles.dashboardHeroMascotCelebrating]}
+                pointerEvents="none"
+                accessibilityElementsHidden={!!celebration}
+                importantForAccessibility={celebration ? 'no-hide-descendants' : 'auto'}
+              >
+                {/* Keep the hero slot mounted so the approved Dashboard geometry never
+                    jumps, but suppress the default mascot while the dedicated completion
+                    mascot owns the stage. Uploaded family-dog imagery above is untouched. */}
                 <WalkieMascot state="idle" size={158} accessibilityLabel="כלב Walkie Doggy" />
               </View>
             ) : null}
