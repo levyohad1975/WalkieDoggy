@@ -11,6 +11,17 @@ import { MascotSafeZone } from './MascotSafeZone';
 
 const COMPLETION_MASCOT = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
 
+// Real-device QA round 8 — roughly doubled from the previous 84 (within
+// the requested ~160-170 range) per direct real-iPhone feedback that the
+// mascot "lacks presence" at the old size. Applies to every celebration
+// variant (both the MascotPoseCelebration and MascotFrameAnimation render
+// branches below use this same constant), not just one. The anchor box
+// itself is untouched — MascotSafeZone's `anchoredStage` already renders
+// with `overflow: 'visible'`, so the larger mascot is free to extend
+// beyond the Last Walk card's own bounds without being clipped or
+// shifting any surrounding layout.
+const CELEBRATION_MASCOT_SIZE = 168;
+
 interface WalkCompletionCelebrationProps {
   celebration: CompletionCelebration | null;
   onDismiss: () => void;
@@ -31,6 +42,15 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
   const [motionChecked, setMotionChecked] = useState(false);
   const [screenReaderEnabled, setScreenReaderEnabled] = useState(false);
   const [bubbleVisible, setBubbleVisible] = useState(false);
+  // Real-device QA round 8 — "keep the speech bubble synchronized with the
+  // mascot's arrival": now that the entrance is a real, visible slide
+  // across the screen (not a small in-place appear), the bubble must wait
+  // for BOTH the mascot to be ready (asset loaded) AND the entrance slide
+  // to have actually finished — otherwise it could appear while the
+  // character is still mid-flight. Reset together with bubbleVisible
+  // whenever a new celebration starts; the effect below combines them.
+  const [mascotReady, setMascotReady] = useState(false);
+  const [entranceArrived, setEntranceArrived] = useState(false);
   const autoDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Fail-safe default false: until confirmed on, behave as before (a
   // screen reader user who somehow isn't detected in time still gets the
@@ -90,12 +110,14 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
     // Real-device QA fix — the bubble used to appear on a fixed 360ms
     // timer, racing the mascot's own actual paint: on a real iPhone the
     // bubble could appear before the mascot was visibly rendered and
-    // animating at all. It is now gated on the mascot's own onReady
-    // callback below (fired once ready, whichever rendering technique is
-    // in use) instead — reduced motion and "no sprite mapped for this
+    // animating at all. It is now gated on the mascot being ready AND
+    // having arrived (see the mascotReady/entranceArrived effect below)
+    // instead — reduced motion and "no sprite mapped for this
     // celebration" are the only cases with nothing to wait for, so the
     // bubble still appears immediately there.
     setBubbleVisible(reducedMotion || (!frames && !highFivePose));
+    setMascotReady(false);
+    setEntranceArrived(false);
     scale.setValue(reducedMotion ? 1 : 0.94);
     translateY.setValue(reducedMotion ? 0 : 18);
     if (!reducedMotion) {
@@ -110,6 +132,13 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
     autoDismissTimerRef.current = setTimeout(() => dismissRef.current(), screenReaderEnabled ? 5000 : 2600);
   }, [celebration?.id, frames, highFivePose, motionChecked, scale, reducedMotion, screenReaderEnabled, translateY]);
 
+  // Real-device QA round 8 — the bubble reveals once BOTH the mascot is
+  // ready and the entrance slide has actually arrived, so it never shows
+  // while the character is still sliding in from off-screen.
+  useEffect(() => {
+    if (mascotReady && entranceArrived) setBubbleVisible(true);
+  }, [mascotReady, entranceArrived]);
+
   useEffect(() => () => {
     if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
   }, []);
@@ -119,7 +148,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
   return (
     <Modal visible transparent animationType="none" onRequestClose={onDismiss} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תגובת הקמע של Walkie Doggy Link">
-        <MascotSafeZone from="left" anchor={anchor} testID="completion-mascot-safe-zone">
+        <MascotSafeZone from="left" anchor={anchor} testID="completion-mascot-safe-zone" onEntranceComplete={() => setEntranceArrived(true)}>
           <Animated.View style={[styles.moment, { transform: [{ translateY }] }]} accessibilityRole="alert" accessibilityLiveRegion="polite">
             {bubbleVisible ? (
               <View style={styles.speechBubbleWrap}>
@@ -131,21 +160,21 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
               {highFivePose ? (
                 <MascotPoseCelebration
                   pose={highFivePose}
-                  size={84}
+                  size={CELEBRATION_MASCOT_SIZE}
                   fallback={COMPLETION_MASCOT}
                   accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול"
                   testID="completion-mascot-animation"
-                  onReady={() => setBubbleVisible(true)}
+                  onReady={() => setMascotReady(true)}
                 />
               ) : frames ? (
                 <MascotFrameAnimation
                   frames={frames}
                   fps={MASCOT_FRAME_FPS}
-                  size={84}
+                  size={CELEBRATION_MASCOT_SIZE}
                   fallback={COMPLETION_MASCOT}
                   accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול"
                   testID="completion-mascot-animation"
-                  onReady={() => setBubbleVisible(true)}
+                  onReady={() => setMascotReady(true)}
                 />
               ) : null}
             </Animated.View>
@@ -159,11 +188,19 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'transparent' },
-  moment: { width: 96, alignItems: 'center' },
+  // Real-device QA round 8 — widened to match CELEBRATION_MASCOT_SIZE (168,
+  // doubled from the previous 84/96) so the mascot's own bounding box no
+  // longer exceeds its layout container; MascotSafeZone's anchoredStage
+  // still renders with overflow: visible, so this never clips the larger
+  // character, it only keeps the speech bubble's relative offsets correct.
+  moment: { width: 168, alignItems: 'center' },
   // Compact diagonal speech bubble: it sits above-left of the mascot, over
   // the free space above the last-walk time, while the mascot itself remains
   // exactly centred in the gap between edit and pee/poop controls.
-  speechBubbleWrap: { position: 'absolute', left: -44, top: -38, alignItems: 'flex-end', zIndex: 3 },
+  // Real-device QA round 8 — offsets scaled ~2x alongside the mascot size
+  // (84 -> 168) so the bubble keeps the same relative position against the
+  // now much larger character instead of appearing to sit too close/overlap.
+  speechBubbleWrap: { position: 'absolute', left: -88, top: -76, alignItems: 'flex-end', zIndex: 3 },
   bubble: { maxWidth: 154, backgroundColor: colors.surface, borderRadius: 22, paddingHorizontal: 12, paddingVertical: 8, shadowColor: '#0B5C75', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
   message: { color: colors.textPrimary, fontSize: 13, lineHeight: 17, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
   tail: { width: 13, height: 13, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }], marginTop: -7, marginRight: 12 },

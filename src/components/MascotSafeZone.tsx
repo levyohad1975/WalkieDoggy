@@ -8,6 +8,15 @@ interface MascotSafeZoneProps {
   /** Optional measured anchor supplied by Home's last-walk action lane. */
   anchor?: { x: number; y: number; width: number; height: number } | null;
   testID?: string;
+  /**
+   * Real-device QA round 8 — fires exactly once, the moment the entrance
+   * slide has actually finished (or immediately, when there is nothing to
+   * animate — Reduced Motion). A caller that needs to know "the character
+   * has physically arrived at its resting spot" (e.g. to reveal a speech
+   * bubble only once it has, not while it is still sliding in) should use
+   * this instead of assuming the entrance is instant.
+   */
+  onEntranceComplete?: () => void;
 }
 
 /**
@@ -19,26 +28,66 @@ interface MascotSafeZoneProps {
  * bottom navigation below. Event overlays can therefore feel playful without
  * obscuring the controls that caused them.
  */
-export function MascotSafeZone({ children, from = 'right', anchor, testID }: MascotSafeZoneProps) {
+export function MascotSafeZone({ children, from = 'right', anchor, testID, onEntranceComplete }: MascotSafeZoneProps) {
   const [reducedMotion, setReducedMotion] = useState(true);
+  // Real-device QA round 8 — `reducedMotion` is fail-safe-default-true
+  // above, same convention as WalkCompletionCelebration's own identical
+  // state. Without this, the entrance effect below would run once on
+  // mount under that stale default, see `reducedMotion` as true, and fire
+  // `onEntranceComplete` immediately — before the real async check even
+  // resolved — telling a caller the character has "arrived" while the
+  // real entrance animation (which starts a moment later once the real,
+  // non-reduced-motion answer lands) hasn't even begun. Gating the effect
+  // on `motionChecked` (same idiom as WalkCompletionCelebration) means it
+  // only ever runs once, with the real answer.
+  const [motionChecked, setMotionChecked] = useState(false);
   const { width } = useWindowDimensions();
-  const travel = anchor ? Math.max(56, anchor.width * 0.7) : Math.max(260, width * 0.78);
+  // Real-device QA round 8 — when anchored (every WalkCompletionCelebration
+  // call), this used to be capped at a fraction of the ANCHOR's own (small,
+  // ~100-150px) width, so the character started only a little off its
+  // resting spot — nowhere near the physical screen edge, despite this
+  // component's own doc comment claiming "starts fully outside the
+  // physical viewport". Computed instead from the real, measured viewport
+  // width and the anchor's actual on-screen position: the distance from
+  // the anchor's own center to the near screen edge, plus one full extra
+  // screen-width of margin — generous on purpose, since this component
+  // only knows the anchor's box, not the (now much larger, ~168px)
+  // character's own rendered size, and the margin must comfortably clear
+  // it regardless. The un-anchored branch (ReminderMascotPrompt, which
+  // never reported this symptom) is untouched.
+  const anchorCenterX = anchor ? anchor.x + anchor.width / 2 : width / 2;
+  const travel = anchor
+    ? (from === 'right' ? width - anchorCenterX : anchorCenterX) + width
+    : Math.max(260, width * 0.78);
   const translateX = useRef(new Animated.Value(from === 'right' ? travel : -travel)).current;
   const opacity = useRef(new Animated.Value(0)).current;
+  const onEntranceCompleteRef = useRef(onEntranceComplete);
+  const entranceFiredRef = useRef(false);
+
+  useEffect(() => {
+    onEntranceCompleteRef.current = onEntranceComplete;
+  }, [onEntranceComplete]);
 
   useEffect(() => {
     let mounted = true;
     AccessibilityInfo.isReduceMotionEnabled()
-      .then((enabled) => mounted && setReducedMotion(!!enabled))
-      .catch(() => mounted && setReducedMotion(false));
+      .then((enabled) => { if (mounted) { setReducedMotion(!!enabled); setMotionChecked(true); } })
+      .catch(() => { if (mounted) { setReducedMotion(false); setMotionChecked(true); } });
     const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReducedMotion);
     return () => { mounted = false; subscription?.remove?.(); };
   }, []);
 
   useEffect(() => {
+    if (!motionChecked) return;
     translateX.setValue(reducedMotion ? 0 : (from === 'right' ? travel : -travel));
     opacity.setValue(reducedMotion ? 1 : 0);
-    if (reducedMotion) return;
+    if (reducedMotion) {
+      if (!entranceFiredRef.current) {
+        entranceFiredRef.current = true;
+        onEntranceCompleteRef.current?.();
+      }
+      return;
+    }
     Animated.parallel([
       Animated.timing(translateX, {
         toValue: 0,
@@ -47,8 +96,13 @@ export function MascotSafeZone({ children, from = 'right', anchor, testID }: Mas
         useNativeDriver: true,
       }),
       Animated.timing(opacity, { toValue: 1, duration: 420, useNativeDriver: true }),
-    ]).start();
-  }, [from, opacity, reducedMotion, translateX, travel]);
+    ]).start(() => {
+      if (!entranceFiredRef.current) {
+        entranceFiredRef.current = true;
+        onEntranceCompleteRef.current?.();
+      }
+    });
+  }, [from, motionChecked, opacity, reducedMotion, translateX, travel]);
 
   return (
     <View pointerEvents="box-none" style={[styles.stage, anchor ? styles.anchoredStage : null, anchor ? { top: anchor.y, left: anchor.x, width: anchor.width, height: anchor.height, right: undefined, bottom: undefined } : null]} testID={testID}>

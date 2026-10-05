@@ -113,17 +113,25 @@ describe('WalkCompletionCelebration — high-five/paw-party render via MascotPos
   it('never shows the speech bubble before the mascot has preloaded and started animating', async () => {
     const screen = render(<WalkCompletionCelebration celebration={celebration} onDismiss={jest.fn()} />);
 
-    await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
     // The bubble used to appear on a fixed 360ms timer regardless of the
     // mascot's own state — prove that timer window alone is no longer
     // enough to reveal it.
+    await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
     act(() => {
       jest.advanceTimersByTime(5000);
     });
     expect(screen.queryByText(celebration.title)).toBeNull();
 
+    // Real-device QA round 8 — it now also needs MascotSafeZone's own
+    // entrance slide to have actually arrived, not just the mascot itself
+    // being ready. completeMascotPreload only makes the mascot ready;
+    // the final waitFor below is what confirms the bubble still appears
+    // once BOTH conditions are eventually true (the entrance arrives on
+    // its own shortly after, driven by MascotSafeZone's own async
+    // Reduced-Motion check — see MascotSafeZone.test.tsx for that
+    // contract in isolation).
     completeMascotPreload(screen);
-    expect(screen.getByText(celebration.title)).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(celebration.title)).toBeTruthy());
   });
 
   it('shows the speech bubble immediately when Reduced Motion is on (nothing to wait for)', async () => {
