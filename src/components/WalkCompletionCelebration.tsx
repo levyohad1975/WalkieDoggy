@@ -40,7 +40,26 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
   useEffect(() => {
     dismissRef.current = onDismiss;
   }, [onDismiss]);
-  const opacity = useRef(new Animated.Value(0)).current;
+  // Real-device QA round 7 — this used to be a SECOND, fully independent
+  // animated opacity layer (0->1) stacked directly on top of
+  // MascotSafeZone's own opacity+translateX entrance animation, with a
+  // THIRD layer (scale) derived from it, around a plain <Image> rendering
+  // real per-pixel alpha content via background-image CSS. Frame-by-frame
+  // analysis of real-iPhone footage found a solid gray rectangle, shaped
+  // exactly like the Image's own bounding box with the mascot's opaque
+  // silhouette cut out of it — i.e. the transparent regions of the PNG
+  // were painting a neutral backing-store fill instead of true
+  // transparency. The one thing that structurally differs between this
+  // component (reported broken) and every other MascotSafeZone consumer
+  // in this app (ReminderMascotPrompt — a single opacity layer via
+  // MascotSafeZone only, never reported) is this redundant second
+  // independently-animating opacity layer: a known WebKit defect class is
+  // nested/stacked animated-opacity compositing layers mishandling alpha
+  // content underneath. `scale` replaces `opacity` as a plain, directly
+  // animated value (no second opacity layer at all) — MascotSafeZone's own
+  // single fade still provides the entrance, and the pop-in/settle motion
+  // is unchanged; only the redundant opacity layer is removed.
+  const scale = useRef(new Animated.Value(0.94)).current;
   const translateY = useRef(new Animated.Value(18)).current;
 
 
@@ -77,11 +96,11 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
     // celebration" are the only cases with nothing to wait for, so the
     // bubble still appears immediately there.
     setBubbleVisible(reducedMotion || (!frames && !highFivePose));
-    opacity.setValue(reducedMotion ? 1 : 0);
+    scale.setValue(reducedMotion ? 1 : 0.94);
     translateY.setValue(reducedMotion ? 0 : 18);
     if (!reducedMotion) {
       Animated.parallel([
-        Animated.timing(opacity, { toValue: 1, duration: motion.feedback, useNativeDriver: true }),
+        Animated.timing(scale, { toValue: 1, duration: motion.feedback, useNativeDriver: true }),
         Animated.spring(translateY, { toValue: 0, damping: 16, stiffness: 180, mass: 0.8, useNativeDriver: true }),
       ]).start();
     }
@@ -89,7 +108,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
     // so harmless parent re-renders cannot restart the timer indefinitely.
     if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
     autoDismissTimerRef.current = setTimeout(() => dismissRef.current(), screenReaderEnabled ? 5000 : 2600);
-  }, [celebration?.id, frames, highFivePose, motionChecked, opacity, reducedMotion, screenReaderEnabled, translateY]);
+  }, [celebration?.id, frames, highFivePose, motionChecked, scale, reducedMotion, screenReaderEnabled, translateY]);
 
   useEffect(() => () => {
     if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
@@ -101,14 +120,14 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
     <Modal visible transparent animationType="none" onRequestClose={onDismiss} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תגובת הקמע של Walkie Doggy Link">
         <MascotSafeZone from="left" anchor={anchor} testID="completion-mascot-safe-zone">
-          <Animated.View style={[styles.moment, { opacity, transform: [{ translateY }] }]} accessibilityRole="alert" accessibilityLiveRegion="polite">
+          <Animated.View style={[styles.moment, { transform: [{ translateY }] }]} accessibilityRole="alert" accessibilityLiveRegion="polite">
             {bubbleVisible ? (
               <View style={styles.speechBubbleWrap}>
                 <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
                 <View style={styles.tail} />
               </View>
             ) : null}
-            <Animated.View style={{ transform: [{ scale: opacity.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) }] }}>
+            <Animated.View style={{ transform: [{ scale }] }}>
               {highFivePose ? (
                 <MascotPoseCelebration
                   pose={highFivePose}
