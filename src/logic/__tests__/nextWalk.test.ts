@@ -365,6 +365,64 @@ describe('dedupeCanonicalWalks', () => {
     const deduped = dedupeCanonicalWalks(walks);
     expect(computeNextWalk(deduped, NOW)).toBeUndefined();
   });
+
+  /**
+   * P0 real-device fix, ROUND 4 — a valid, still-future 14:00 occurrence
+   * TODAY vanished from Home entirely (fell through to TOMORROW's
+   * occurrence instead), even though an earlier walk the same day was
+   * correctly 'done'. Root-caused to dedupeCanonicalWalks's own
+   * status-rank ordering: the exact duplicate-local-id race the round-3
+   * fix addresses can leave ONE copy of an occurrence genuinely 'pending'
+   * (still actionable, not yet due) and another stuck as 'skipped'. The
+   * original rank table put `skipped` ABOVE `pending`, so dedup picked the
+   * stale, dead-end `skipped` copy as canonical and discarded the
+   * genuinely actionable `pending` one — silently removing a valid future
+   * occurrence. `pending` now outranks `skipped`.
+   */
+  it('a genuinely pending future occurrence outranks a stale skipped duplicate for the same schedule_entry_id — the exact reported symptom', () => {
+    const now = new Date('2026-10-05T13:00:00');
+    const walks = [
+      makeWalk({ id: 'w-0800-done', scheduleEntryId: 'e-0800', date: '2026-10-05', scheduledTime: '08:00', status: 'done' }),
+      makeWalk({ id: 'w-1400-pending', scheduleEntryId: 'e-1400', date: '2026-10-05', scheduledTime: '14:00', status: 'pending' }),
+      makeWalk({ id: 'w-1400-stale-skipped', scheduleEntryId: 'e-1400', date: '2026-10-05', scheduledTime: '14:00', status: 'skipped' }),
+      makeWalk({ id: 'w-tomorrow-0800-pending', scheduleEntryId: 'e-tmrw-0800', date: '2026-10-06', scheduledTime: '08:00', status: 'pending' }),
+    ];
+
+    const deduped = dedupeCanonicalWalks(walks);
+    const forEntry1400 = deduped.filter((w) => w.scheduleEntryId === 'e-1400');
+    expect(forEntry1400).toHaveLength(1);
+    expect(forEntry1400[0].status).toBe('pending');
+    expect(forEntry1400[0].id).toBe('w-1400-pending');
+
+    expect(computeNextWalk(deduped, now)?.id).toBe('w-1400-pending');
+  });
+
+  it('done and in_progress still outrank pending — the round-3 completed-walk guarantee is unaffected by the round-4 fix', () => {
+    const pendingVsDone = dedupeCanonicalWalks([
+      makeWalk({ id: 'stale-pending', scheduleEntryId: 'entry-1', status: 'pending' }),
+      makeWalk({ id: 'canonical-done', scheduleEntryId: 'entry-1', status: 'done' }),
+    ]);
+    expect(pendingVsDone.map((w) => w.id)).toEqual(['canonical-done']);
+
+    const pendingVsActive = dedupeCanonicalWalks([
+      makeWalk({ id: 'stale-pending', scheduleEntryId: 'entry-2', status: 'pending' }),
+      makeWalk({ id: 'canonical-active', scheduleEntryId: 'entry-2', status: 'in_progress' }),
+    ]);
+    expect(pendingVsActive.map((w) => w.id)).toEqual(['canonical-active']);
+  });
+});
+
+describe('computeNextWalk — today\'s later occurrence vs tomorrow\'s (P0 round 4 regression spec)', () => {
+  it('at ~13:00, with an earlier walk today already done, selects today 14:00 over tomorrow 08:00', () => {
+    const now = new Date('2026-10-05T13:00:00');
+    const walks = [
+      makeWalk({ id: 'w-0800-done', scheduleEntryId: 'e-0800', date: '2026-10-05', scheduledTime: '08:00', status: 'done', completedAt: '2026-10-05T08:15:00' }),
+      makeWalk({ id: 'w-1400-pending', scheduleEntryId: 'e-1400', date: '2026-10-05', scheduledTime: '14:00', status: 'pending' }),
+      makeWalk({ id: 'w-tomorrow-0800-pending', scheduleEntryId: 'e-tmrw-0800', date: '2026-10-06', scheduledTime: '08:00', status: 'pending' }),
+    ];
+
+    expect(computeNextWalk(walks, now)?.id).toBe('w-1400-pending');
+  });
 });
 
 describe('dailyWalkTimeline', () => {

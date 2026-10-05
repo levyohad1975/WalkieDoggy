@@ -229,3 +229,74 @@ describe('OfflineFirstRepository.getWalks — one canonical walk per schedule_en
     expect(forEntryAgain[0].status).toBe('done');
   });
 });
+
+/**
+ * P0 real-device fix, round 4 — a valid, still-future occurrence TODAY
+ * (14:00) vanished from Home entirely (fell through to TOMORROW's
+ * occurrence instead), even though an EARLIER walk the same day was
+ * correctly 'done'. Root cause: dedupeCanonicalWalks's status-rank table
+ * (src/logic/nextWalk.ts) used to put `skipped` ABOVE `pending`, so when
+ * the exact duplicate-local-id race from round 3 left one copy of the
+ * 14:00 occurrence genuinely 'pending' and another stuck as a stale
+ * 'skipped', getWalks()'s dedup picked the dead-end `skipped` copy as
+ * canonical and discarded the real, still-actionable `pending` one. Fixed
+ * by making `pending` outrank `skipped`. These tests prove getWalks()
+ * returns the genuinely pending occurrence — on both the online and the
+ * offline-fallback path — not the stale skipped duplicate.
+ */
+describe('OfflineFirstRepository.getWalks — a pending future occurrence survives a stale skipped duplicate (P0 round 4)', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    const { setSyncQueueActorGetter } = require('../syncQueue');
+    setSyncQueueActorGetter(() => 'user-1');
+  });
+
+  afterEach(() => {
+    const { setSyncQueueActorGetter } = require('../syncQueue');
+    setSyncQueueActorGetter(() => null);
+  });
+
+  it('online: the remote-confirmed pending 14:00 walk wins over a stale local-only skipped duplicate', async () => {
+    setupNetInfo(true);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { LocalRepository } = require('../localRepository');
+    const { OfflineFirstRepository } = require('../offlineFirstRepository');
+
+    const staleSkipped = walkFixture({ id: 'walk-1400-stale-skipped', scheduledTime: '14:00', status: 'skipped' });
+    await new LocalRepository().saveWalk(staleSkipped);
+
+    const pending1400 = walkFixture({ id: 'walk-1400-pending', scheduledTime: '14:00', status: 'pending' });
+    const remote = stubRemote({ getWalks: jest.fn().mockResolvedValue([pending1400]) });
+    const repo = new OfflineFirstRepository(remote);
+
+    const walks = await repo.getWalks('family-1');
+    const forEntry = walks.filter((w: Walk) => w.scheduleEntryId === 'entry-1');
+    expect(forEntry).toHaveLength(1);
+    expect(forEntry[0].id).toBe('walk-1400-pending');
+    expect(forEntry[0].status).toBe('pending');
+  });
+
+  it('offline fallback: a genuinely pending occurrence survives a stale skipped duplicate in the raw local cache too', async () => {
+    setupNetInfo(false);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { LocalRepository } = require('../localRepository');
+    const { OfflineFirstRepository } = require('../offlineFirstRepository');
+
+    const staleSkipped = walkFixture({ id: 'walk-1400-stale-skipped', scheduledTime: '14:00', status: 'skipped' });
+    const pending1400 = walkFixture({ id: 'walk-1400-pending', scheduledTime: '14:00', status: 'pending' });
+    const seedRepo = new LocalRepository();
+    await seedRepo.saveWalk(staleSkipped);
+    await seedRepo.saveWalk(pending1400);
+
+    const remote = stubRemote();
+    const repo = new OfflineFirstRepository(remote);
+
+    const walks = await repo.getWalks('family-1');
+    const forEntry = walks.filter((w: Walk) => w.scheduleEntryId === 'entry-1');
+    expect(forEntry).toHaveLength(1);
+    expect(forEntry[0].id).toBe('walk-1400-pending');
+    expect(forEntry[0].status).toBe('pending');
+  });
+});

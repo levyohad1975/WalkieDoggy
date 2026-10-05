@@ -79,17 +79,33 @@ export function finalizeSupersededPendingWalks(walks: Walk[], now: Date = new Da
  * more than one Walk per schedule_entry_id from ever reaching display.
  *
  * Collapses every group of walks that share a `scheduleEntryId` down to
- * exactly one: whichever is furthest along the pending -> in_progress ->
- * done/skipped lifecycle (a `pending` leftover can never outrank an
- * already-`done` or already-`in_progress` canonical row for the same
- * occurrence). Walks with no `scheduleEntryId` (unplanned/spontaneous)
- * are never deduplicated against each other — each is independently real,
- * and this bug class cannot apply to them (no shared unique constraint).
- * Pure and order-preserving otherwise, so it is safe to call on every
- * schedule load, not just when a duplicate is suspected.
+ * exactly one. Walks with no `scheduleEntryId` (unplanned/spontaneous) are
+ * never deduplicated against each other — each is independently real, and
+ * this bug class cannot apply to them (no shared unique constraint). Pure
+ * and order-preserving otherwise, so it is safe to call on every schedule
+ * load, not just when a duplicate is suspected.
+ *
+ * ROUND 4 FIX — real-device QA: a valid, still-FUTURE 14:00 occurrence
+ * today vanished from Home entirely (it fell through to tomorrow's
+ * occurrence instead), even though an earlier walk the same day was
+ * correctly 'done'. Root-caused to this function's own status-rank
+ * ordering: the exact duplicate-local-id race described above can leave
+ * ONE copy of an occurrence genuinely 'pending' (still actionable, not yet
+ * due) and the OTHER stuck as 'skipped' — e.g. a stale copy that was
+ * generated, then superseded by a LATER walk for the same dog becoming due
+ * (finalizeSupersededPendingWalks) on some earlier pass, while the real,
+ * still-relevant copy remained 'pending'. The original rank table put
+ * `skipped` ABOVE `pending`, so dedup picked the stale, dead-end `skipped`
+ * copy as canonical and discarded the genuinely actionable `pending` one —
+ * silently removing a valid future occurrence from Home exactly as
+ * described above. `pending` now outranks `skipped`: an occurrence that is
+ * still genuinely actionable must never lose to a duplicate that gave up
+ * on it. This cannot regress the "stays done" guarantee above — `done`
+ * and `in_progress` still outrank everything, `pending` only ever wins
+ * against `skipped`, a status that itself never outranks either.
  */
 export function dedupeCanonicalWalks(walks: Walk[]): Walk[] {
-  const statusRank: Record<Walk['status'], number> = { pending: 0, in_progress: 1, skipped: 2, done: 3 };
+  const statusRank: Record<Walk['status'], number> = { skipped: 0, pending: 1, in_progress: 2, done: 3 };
   const canonicalByEntry = new Map<string, Walk>();
   for (const walk of walks) {
     if (!walk.scheduleEntryId) continue;
