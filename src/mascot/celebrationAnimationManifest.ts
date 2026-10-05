@@ -386,74 +386,43 @@ export const MASCOT_FRAME_SETS: Record<CuratedMascotSpriteId, ImageSourcePropTyp
  */
 export const MASCOT_FRAME_FPS = 24;
 
-/**
- * Real-device QA round 4 (visual polish) — the preload mechanism now works
- * (see MascotFrameAnimation's own doc comment), but playing all 24 raw
- * `high-five` frames in their original order at one uniform interval made
- * the gesture itself read as weak. Inspecting the raw frames directly
- * (assets/mascot-animations/high-five/frame-NN.png) found the ART is not
- * the problem — frames 8-11 in particular are a clean, well-drawn,
- * clearly recognizable raised-paw high-five pose with no alpha-edge
- * fringing and good subject framing within the canvas. The defect is pure
- * choreography: the original 24-frame clip spends 6 frames on pure idle
- * lead-in, only ~4 frames on the actual raised-paw peak, then drifts for
- * 11 more frames through an unrelated forward-reach motion into a calm,
- * eyes-closed, non-gesture resting pose (frame 24) — and that resting
- * pose is also where playback freezes once finished, since
- * MascotFrameAnimation holds on the last array entry.
- *
- * Real-device QA round 5 — the round-4 curated sequence (19 entries @
- * MASCOT_FRAME_FPS's fixed 50ms/tick = ~950ms total) was itself too fast:
- * it cycled through the four peak frames (9,10,11,8) four full times in
- * under a second, which read as frantic repeated cycling rather than a
- * deliberate celebratory hold. MascotFrameAnimation plays one uniform
- * interval per instance (no per-frame timing), so this choreography
- * achieves per-phase PACING entirely through how many consecutive ticks
- * each frame is held for — no engine change needed:
- *   - Phase 1, rise (3 ticks = 150ms): frames 6,7,8 in their natural
- *     order, no idle lead-in, so the speech bubble (which appears the
- *     instant this sequence starts playing, via onReady) lands close to
- *     when the paw is actually visible rising.
- *   - Phase 2, one gentle lap (16 ticks = 800ms): the four strongest
- *     raised-paw frames (9,10,11,8), each HELD for 4 ticks (200ms) before
- *     advancing — a single clearly-readable sway through the pose's best
- *     angles, not a rapid flicker, and not repeated multiple times.
- *   - Phase 3, settle (21 ticks = 1050ms): a firm, unmoving hold on the
- *     single clearest frame (9), long enough on its own to register the
- *     gesture clearly, and where playback finishes — so the freeze-frame
- *     for the remainder of the celebration is this same hero pose, never
- *     the weak tail (12-24).
- * Total: 40 ticks @ 50ms = ~2000ms, matching a ~2-second celebration
- * beat instead of racing through in under a second.
- *
- * Two celebration ids share this exact sprite via CELEBRATION_SPRITE_MAP —
- * `high-five` itself and `paw-party` (whose bubble reads "כף אל כף!", the
- * title that actually appeared in the real-device evidence for this
- * report). Both render the identical raw art and would exhibit the
- * identical pacing defect, so this is applied by resolved spriteId rather
- * than by celebration id — it would be wrong to "fix" only the `high-five`
- * id and silently leave `paw-party` (the one actually reported) playing
- * the old, weak choreography. Every other celebration's sprite is
- * untouched.
- */
-const repeatFrame = (frameNumber: number, ticks: number): number[] => Array(ticks).fill(frameNumber);
-
-const HIGH_FIVE_CHOREOGRAPHED_FRAME_NUMBERS = [
-  // Phase 1 — rise (150ms): straight into the gesture, no idle lead-in.
-  6, 7, 8,
-  // Phase 2 — one gentle lap (800ms) through the four strongest raised-paw
-  // frames, each clearly held for 200ms before advancing.
-  ...repeatFrame(9, 4), ...repeatFrame(10, 4), ...repeatFrame(11, 4), ...repeatFrame(8, 4),
-  // Phase 3 — settle (1050ms): a firm hold on the single clearest pose,
-  // long enough to register on its own before the celebration dismisses.
-  ...repeatFrame(9, 21),
-];
-const HIGH_FIVE_CELEBRATION_FRAMES: ImageSourcePropType[] = HIGH_FIVE_CHOREOGRAPHED_FRAME_NUMBERS.map(
-  (frameNumber) => MASCOT_FRAME_SETS['high-five'][frameNumber - 1]
-);
-
 export function framesForCelebration(id: string): ImageSourcePropType[] | undefined {
   const spriteId = CELEBRATION_SPRITE_MAP[id];
-  if (spriteId === 'high-five') return HIGH_FIVE_CELEBRATION_FRAMES;
   return spriteId ? MASCOT_FRAME_SETS[spriteId] : undefined;
+}
+
+/**
+ * Real-device QA rounds 4-6 — the `high-five`/`paw-party` celebration went
+ * through three straight discrete-frame-swap choreography attempts (reorder
+ * the raw 24 frames; retime them to ~2s; dedupe the preload requests) and
+ * each one reproduced a DIFFERENT real-device-only symptom (a black
+ * rectangle, then frantic pacing, then a black rectangle again) that never
+ * showed up in this suite's synchronous test mocks. Round 6 retires that
+ * whole approach for this celebration rather than attempting a fourth
+ * variant: instead of swapping `Image.source` between many separate PNG
+ * files every tick (the one thing every failed attempt had in common),
+ * `WalkCompletionCelebration` now renders this single pose through
+ * MascotPoseCelebration — the exact same "one already-approved transparent
+ * image, animated purely via Animated transforms" technique this app
+ * already ships everywhere else (WalkieMascot.tsx's header/hero/idle
+ * states), with no real-device rendering complaint anywhere in this
+ * project's history. See MascotPoseCelebration.tsx's own doc comment for
+ * why that technique structurally cannot hit the same bug class: `source`
+ * is set once and never swapped again during playback.
+ *
+ * frame-09.png was picked as the single pose after direct pixel inspection
+ * of every candidate frame (assets/mascot-animations/high-five/frame-NN.png):
+ * a clean, well-drawn, clearly recognizable raised-paw gesture, verified
+ * byte-for-byte to have ZERO black-RGB-under-alpha pixels across its full
+ * transparent (4,939 px) and semi-transparent (3,707 px) range — i.e. a
+ * genuinely clean alpha channel, not merely "is a PNG". `high-five` and
+ * `paw-party` both resolve to this same pose, by spriteId (not celebration
+ * id) via CELEBRATION_SPRITE_MAP, same convention as framesForCelebration
+ * above — both render the identical art and must stay in sync.
+ */
+const HIGH_FIVE_POSE: ImageSourcePropType = MASCOT_FRAME_SETS['high-five'][8]; // frame-09.png
+
+export function highFivePoseForCelebration(id: string): ImageSourcePropType | undefined {
+  const spriteId = CELEBRATION_SPRITE_MAP[id];
+  return spriteId === 'high-five' ? HIGH_FIVE_POSE : undefined;
 }

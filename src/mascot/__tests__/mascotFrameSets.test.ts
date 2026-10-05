@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { MASCOT_FRAME_SETS, MASCOT_FRAME_FPS, framesForCelebration } from '../celebrationAnimationManifest';
+import { MASCOT_FRAME_SETS, MASCOT_FRAME_FPS, framesForCelebration, highFivePoseForCelebration } from '../celebrationAnimationManifest';
 import { CELEBRATION_LIBRARY } from '../../logic/walkCompletionCelebration';
 
 /**
@@ -10,6 +10,14 @@ import { CELEBRATION_LIBRARY } from '../../logic/walkCompletionCelebration';
  * file guards the two things that fix depends on staying true: every
  * celebration resolves to a full, genuinely-transparent 24-frame set, and
  * the sliced frame files on disk were never silently re-flattened.
+ *
+ * Real-device QA round 6 — `high-five`/`paw-party` no longer render
+ * through this discrete-frame-swap path at all (WalkCompletionCelebration
+ * now uses MascotPoseCelebration — a single pose, animated via transforms
+ * — for those two specifically; see celebrationAnimationManifest.ts's own
+ * doc comment above HIGH_FIVE_POSE for why). `framesForCelebration` is
+ * back to its original, simple form; `highFivePoseForCelebration` is
+ * tested separately below.
  */
 describe('MASCOT_FRAME_SETS — discrete per-frame celebration assets', () => {
   it('every sprite id has exactly 24 frames', () => {
@@ -19,26 +27,10 @@ describe('MASCOT_FRAME_SETS — discrete per-frame celebration assets', () => {
     }
   });
 
-  it('every celebration in the library that maps to a sprite resolves a usable frame set', () => {
-    // Real-device QA round 4/5 — `high-five` and `paw-party` share a
-    // curated choreography built from the same raw frames, reordered and
-    // deliberately REPEATED (to hold key poses for a natural ~2s beat
-    // instead of racing through in under a second) — not the raw 24-frame
-    // set in original order, and not necessarily 24 or fewer entries. See
-    // celebrationAnimationManifest.ts's own doc comment above
-    // HIGH_FIVE_CELEBRATION_FRAMES for why.
-    const curatedIds = new Set(['high-five', 'paw-party']);
+  it('every celebration in the library that maps to a sprite resolves the full 24-frame set', () => {
     for (const celebration of CELEBRATION_LIBRARY) {
       const frames = framesForCelebration(celebration.id);
-      if (!frames) continue;
-      if (curatedIds.has(celebration.id)) {
-        expect(frames.length).toBeGreaterThan(0);
-        // Every entry must still be one of the real, approved raw frames —
-        // choreography may reorder/repeat them, but never invents new ones.
-        expect(MASCOT_FRAME_SETS['high-five']).toEqual(expect.arrayContaining(Array.from(new Set(frames))));
-      } else {
-        expect(frames).toHaveLength(24);
-      }
+      if (frames) expect(frames).toHaveLength(24);
     }
   });
 
@@ -48,6 +40,24 @@ describe('MASCOT_FRAME_SETS — discrete per-frame celebration assets', () => {
 
   it('framesForCelebration returns undefined for an id with no sprite mapping', () => {
     expect(framesForCelebration('not-a-real-celebration-id')).toBeUndefined();
+  });
+});
+
+describe('highFivePoseForCelebration — single-pose celebration rendering', () => {
+  it('resolves the same real, approved frame for both high-five and paw-party', () => {
+    const highFivePose = highFivePoseForCelebration('high-five');
+    const pawPartyPose = highFivePoseForCelebration('paw-party');
+    expect(highFivePose).toBeTruthy();
+    expect(pawPartyPose).toBe(highFivePose);
+    // It must be one of the real, approved high-five frames — not invented.
+    expect(MASCOT_FRAME_SETS['high-five']).toContain(highFivePose);
+  });
+
+  it('returns undefined for every celebration that does not share the high-five sprite', () => {
+    for (const celebration of CELEBRATION_LIBRARY) {
+      if (celebration.id === 'high-five' || celebration.id === 'paw-party') continue;
+      expect(highFivePoseForCelebration(celebration.id)).toBeUndefined();
+    }
   });
 });
 

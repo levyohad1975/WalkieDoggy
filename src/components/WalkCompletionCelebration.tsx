@@ -5,7 +5,8 @@ import { motion, radii, spacing } from '../theme/tokens';
 import type { CompletionCelebration } from '../logic/walkCompletionCelebration';
 import { RtlText } from './RtlText';
 import { MascotFrameAnimation } from './MascotFrameAnimation';
-import { framesForCelebration, MASCOT_FRAME_FPS } from '../mascot/celebrationAnimationManifest';
+import { MascotPoseCelebration } from './MascotPoseCelebration';
+import { framesForCelebration, highFivePoseForCelebration, MASCOT_FRAME_FPS } from '../mascot/celebrationAnimationManifest';
 import { MascotSafeZone } from './MascotSafeZone';
 
 const COMPLETION_MASCOT = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
@@ -54,19 +55,28 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
     return () => { mounted = false; subscription?.remove?.(); srSubscription?.remove?.(); };
   }, []);
 
-  const frames = celebration ? framesForCelebration(celebration.id) : undefined;
+  // Real-device QA round 6 — `high-five`/`paw-party` render through
+  // MascotPoseCelebration (a single static pose, animated purely via
+  // transforms) instead of MascotFrameAnimation's discrete-frame-swap
+  // technique, which reproduced a different real-device-only rendering
+  // symptom on every one of three straight attempts. See
+  // celebrationAnimationManifest.ts's own doc comment above HIGH_FIVE_POSE
+  // for the full history. highFivePose takes priority: frames is only
+  // consulted for every OTHER celebration, unaffected by this change.
+  const highFivePose = celebration ? highFivePoseForCelebration(celebration.id) : undefined;
+  const frames = celebration && !highFivePose ? framesForCelebration(celebration.id) : undefined;
 
   useEffect(() => {
     if (!celebration || !motionChecked) return;
     // Real-device QA fix — the bubble used to appear on a fixed 360ms
     // timer, racing the mascot's own actual paint: on a real iPhone the
     // bubble could appear before the mascot was visibly rendered and
-    // animating at all. It is now gated on MascotFrameAnimation's own
-    // onReady callback below (fired once every frame has actually
-    // finished loading and playback is starting) instead — reduced motion
-    // and "no sprite mapped for this celebration" are the only cases with
-    // nothing to wait for, so the bubble still appears immediately there.
-    setBubbleVisible(reducedMotion || !frames);
+    // animating at all. It is now gated on the mascot's own onReady
+    // callback below (fired once ready, whichever rendering technique is
+    // in use) instead — reduced motion and "no sprite mapped for this
+    // celebration" are the only cases with nothing to wait for, so the
+    // bubble still appears immediately there.
+    setBubbleVisible(reducedMotion || (!frames && !highFivePose));
     opacity.setValue(reducedMotion ? 1 : 0);
     translateY.setValue(reducedMotion ? 0 : 18);
     if (!reducedMotion) {
@@ -79,7 +89,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
     // so harmless parent re-renders cannot restart the timer indefinitely.
     if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
     autoDismissTimerRef.current = setTimeout(() => dismissRef.current(), screenReaderEnabled ? 5000 : 2600);
-  }, [celebration?.id, frames, motionChecked, opacity, reducedMotion, screenReaderEnabled, translateY]);
+  }, [celebration?.id, frames, highFivePose, motionChecked, opacity, reducedMotion, screenReaderEnabled, translateY]);
 
   useEffect(() => () => {
     if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
@@ -99,17 +109,19 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
               </View>
             ) : null}
             <Animated.View style={{ transform: [{ scale: opacity.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) }] }}>
-              {frames ? (
+              {highFivePose ? (
+                <MascotPoseCelebration
+                  pose={highFivePose}
+                  size={84}
+                  fallback={COMPLETION_MASCOT}
+                  accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול"
+                  testID="completion-mascot-animation"
+                  onReady={() => setBubbleVisible(true)}
+                />
+              ) : frames ? (
                 <MascotFrameAnimation
                   frames={frames}
                   fps={MASCOT_FRAME_FPS}
-                  // Real-device QA round 5 — reverted the round-4 bump to
-                  // 92 (unproven: direct pixel inspection of the frame
-                  // assets found the subject already covers ~50% of its
-                  // 256x256 canvas, not under-sized) back to the original
-                  // approved 84, per "keep approximately the current
-                  // visual size" — this round's real regressions (timing,
-                  // the reported black rectangle) were never about size.
                   size={84}
                   fallback={COMPLETION_MASCOT}
                   accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול"
