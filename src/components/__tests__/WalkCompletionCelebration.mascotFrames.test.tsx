@@ -3,7 +3,7 @@ import { AccessibilityInfo, Image as RNImage } from 'react-native';
 import { render, waitFor, act } from '@testing-library/react-native';
 import { WalkCompletionCelebration } from '../WalkCompletionCelebration';
 import { CELEBRATION_LIBRARY } from '../../logic/walkCompletionCelebration';
-import { MASCOT_FRAME_SETS, MASCOT_FRAME_FPS } from '../../mascot/celebrationAnimationManifest';
+import { MASCOT_FRAME_SETS, MASCOT_FRAME_FPS, framesForCelebration } from '../../mascot/celebrationAnimationManifest';
 
 /**
  * Real-device QA round 1 fix — a solid BLACK rectangle appeared behind the
@@ -28,6 +28,15 @@ import { MASCOT_FRAME_SETS, MASCOT_FRAME_FPS } from '../../mascot/celebrationAni
  * fixes: every frame is preloaded before playback ever starts, and the
  * bubble is gated on MascotFrameAnimation's onReady callback instead of a
  * timer.
+ *
+ * Real-device QA round 4 (visual polish) — `high-five` (and `paw-party`,
+ * which shares the same sprite) now plays a curated, reordered subset of
+ * the raw 24 frames rather than all 24 in their original order (see
+ * celebrationAnimationManifest.ts's own doc comment above
+ * HIGH_FIVE_CELEBRATION_FRAMES for why). These tests read the actual
+ * resolved sequence from `framesForCelebration('high-five')` rather than
+ * hardcoding its length/order, so they stay correct regardless of exactly
+ * how that choreography is tuned.
  */
 describe('WalkCompletionCelebration — mascot renders via discrete, preloaded frames; bubble waits for onReady', () => {
   const highFive = CELEBRATION_LIBRARY.find((item) => item.id === 'high-five')!;
@@ -45,8 +54,10 @@ describe('WalkCompletionCelebration — mascot renders via discrete, preloaded f
     jest.restoreAllMocks();
   });
 
-  /** Fires onLoad on every hidden MascotFrameAnimation preloader Image for the mascot's 24 frames. */
-  function completeMascotPreload(renderedScreen: ReturnType<typeof render>, frameCount = 24) {
+  const expectedFrames = framesForCelebration('high-five')!;
+
+  /** Fires onLoad on every hidden MascotFrameAnimation preloader Image for the mascot's curated frame sequence. */
+  function completeMascotPreload(renderedScreen: ReturnType<typeof render>, frameCount = expectedFrames.length) {
     act(() => {
       const images = renderedScreen.UNSAFE_getAllByType(RNImage);
       // The visible mascot Image (testID set) is always first among the
@@ -60,7 +71,6 @@ describe('WalkCompletionCelebration — mascot renders via discrete, preloaded f
 
   it('shows the static fallback (never an unloaded frame) until every frame has preloaded', async () => {
     const screen = render(<WalkCompletionCelebration celebration={celebration} onDismiss={jest.fn()} />);
-    const expectedFrames = MASCOT_FRAME_SETS['high-five'];
 
     await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
     // Not yet preloaded — must never show a frame that has not finished loading.
@@ -70,10 +80,13 @@ describe('WalkCompletionCelebration — mascot renders via discrete, preloaded f
     expect(screen.getByTestId('completion-mascot-animation').props.source).toBe(expectedFrames[0]);
   });
 
-  it('advances through the full 24-frame set and stops clamped on the last frame', async () => {
+  it('advances through the curated high-five sequence and stops clamped on the last (hero-pose) frame', async () => {
     const screen = render(<WalkCompletionCelebration celebration={celebration} onDismiss={jest.fn()} />);
-    const expectedFrames = MASCOT_FRAME_SETS['high-five'];
-    expect(expectedFrames).toHaveLength(24);
+    // Curated (round 4): a reordered subset of the raw 24 frames, not all
+    // 24 in original order — see celebrationAnimationManifest.ts.
+    expect(expectedFrames.length).toBeGreaterThan(0);
+    expect(expectedFrames.length).toBeLessThan(24);
+    expect(MASCOT_FRAME_SETS['high-five']).toEqual(expect.arrayContaining(expectedFrames));
 
     await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
     completeMascotPreload(screen);
@@ -89,10 +102,10 @@ describe('WalkCompletionCelebration — mascot renders via discrete, preloaded f
 
     // Advance well past the full sequence at MASCOT_FRAME_FPS.
     act(() => {
-      jest.advanceTimersByTime(Math.ceil(24 * (1000 / MASCOT_FRAME_FPS)) + 500);
+      jest.advanceTimersByTime(Math.ceil(expectedFrames.length * (1000 / MASCOT_FRAME_FPS)) + 500);
     });
 
-    expect(screen.getByTestId('completion-mascot-animation').props.source).toBe(expectedFrames[23]);
+    expect(screen.getByTestId('completion-mascot-animation').props.source).toBe(expectedFrames[expectedFrames.length - 1]);
   });
 
   it('falls back to the static approved mascot when Reduced Motion is on, never attempting frame playback', async () => {

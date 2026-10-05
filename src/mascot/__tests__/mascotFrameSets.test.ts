@@ -19,10 +19,23 @@ describe('MASCOT_FRAME_SETS — discrete per-frame celebration assets', () => {
     }
   });
 
-  it('every celebration in the library that maps to a sprite resolves a full frame set', () => {
+  it('every celebration in the library that maps to a sprite resolves a usable frame set', () => {
+    // Real-device QA round 4 — `high-five` and `paw-party` share a curated
+    // (shorter, reordered) choreography built from the same raw frames,
+    // not the raw 24-frame set in original order — see
+    // celebrationAnimationManifest.ts's own doc comment above
+    // HIGH_FIVE_CELEBRATION_FRAMES for why.
+    const curatedIds = new Set(['high-five', 'paw-party']);
     for (const celebration of CELEBRATION_LIBRARY) {
       const frames = framesForCelebration(celebration.id);
-      if (frames) expect(frames).toHaveLength(24);
+      if (!frames) continue;
+      if (curatedIds.has(celebration.id)) {
+        expect(frames.length).toBeGreaterThan(0);
+        expect(frames.length).toBeLessThanOrEqual(24);
+        expect(MASCOT_FRAME_SETS['high-five']).toEqual(expect.arrayContaining(frames));
+      } else {
+        expect(frames).toHaveLength(24);
+      }
     }
   });
 

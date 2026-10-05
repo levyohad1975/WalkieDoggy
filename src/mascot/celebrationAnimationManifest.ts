@@ -386,7 +386,62 @@ export const MASCOT_FRAME_SETS: Record<CuratedMascotSpriteId, ImageSourcePropTyp
  */
 export const MASCOT_FRAME_FPS = 24;
 
+/**
+ * Real-device QA round 4 (visual polish) — the preload mechanism now works
+ * (see MascotFrameAnimation's own doc comment), but playing all 24 raw
+ * `high-five` frames in their original order at one uniform interval made
+ * the gesture itself read as weak. Inspecting the raw frames directly
+ * (assets/mascot-animations/high-five/frame-NN.png) found the ART is not
+ * the problem — frames 8-11 in particular are a clean, well-drawn,
+ * clearly recognizable raised-paw high-five pose with no alpha-edge
+ * fringing and good subject framing within the canvas. The defect is pure
+ * choreography: the original 24-frame clip spends 6 frames on pure idle
+ * lead-in, only ~4 frames on the actual raised-paw peak, then drifts for
+ * 11 more frames through an unrelated forward-reach motion into a calm,
+ * eyes-closed, non-gesture resting pose (frame 24) — and that resting
+ * pose is also where playback freezes once finished, since
+ * MascotFrameAnimation holds on the last array entry. The result: the one
+ * genuinely good "high five" moment flashed by for a few hundred
+ * milliseconds while the celebration spent most of its visible time on
+ * frames that don't read as a high five at all.
+ *
+ * This re-choreographs the SAME raw frame files (nothing regenerated, no
+ * new art) for the `high-five` celebration specifically:
+ *   - Skips the idle lead-in entirely and starts right at the rise
+ *     (frames 6-8), so the speech bubble — which appears the instant this
+ *     sequence starts playing, via MascotFrameAnimation's onReady — lands
+ *     close to when the paw is actually visible rising, not seconds of
+ *     standing idle first.
+ *   - Holds on the four strongest raised-paw frames (8, 9, 10, 11) by
+ *     cycling through them rather than freezing one bitmap, so the hold
+ *     still reads as a little alive "wave" instead of a dead freeze.
+ *   - Never reaches the weak tail (12-24): playback now freezes on one of
+ *     the clear hero frames, not the resting pose.
+ * Two celebration ids share this exact sprite via CELEBRATION_SPRITE_MAP —
+ * `high-five` itself and `paw-party` (whose bubble reads "כף אל כף!", the
+ * title that actually appeared in the real-device evidence for this
+ * report). Both render the identical raw art and would exhibit the
+ * identical pacing defect, so this is applied by resolved spriteId rather
+ * than by celebration id — it would be wrong to "fix" only the `high-five`
+ * id and silently leave `paw-party` (the one actually reported) playing
+ * the old, weak choreography. Every other celebration's sprite is
+ * untouched.
+ */
+const HIGH_FIVE_CHOREOGRAPHED_FRAME_NUMBERS = [
+  // Rise straight into the gesture — no idle lead-in.
+  6, 7, 8,
+  // Hold: cycle the four strongest peak frames so it reads as alive.
+  9, 10, 11, 8,
+  9, 10, 11, 8,
+  9, 10, 11, 8,
+  9, 10, 11, 8,
+];
+const HIGH_FIVE_CELEBRATION_FRAMES: ImageSourcePropType[] = HIGH_FIVE_CHOREOGRAPHED_FRAME_NUMBERS.map(
+  (frameNumber) => MASCOT_FRAME_SETS['high-five'][frameNumber - 1]
+);
+
 export function framesForCelebration(id: string): ImageSourcePropType[] | undefined {
   const spriteId = CELEBRATION_SPRITE_MAP[id];
+  if (spriteId === 'high-five') return HIGH_FIVE_CELEBRATION_FRAMES;
   return spriteId ? MASCOT_FRAME_SETS[spriteId] : undefined;
 }
