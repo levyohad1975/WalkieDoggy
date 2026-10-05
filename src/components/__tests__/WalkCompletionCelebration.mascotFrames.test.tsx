@@ -79,21 +79,22 @@ describe('WalkCompletionCelebration — high-five/paw-party render via MascotPos
     expect(screen.getByTestId('completion-mascot-animation').props.source).toBe(expectedPose);
   });
 
-  it('never swaps the visible Image source again once the pose is showing — no "next frame" to swap to', async () => {
+  it('uses the raised-paw pose only for the gesture, then returns to the neutral mascot', async () => {
     const screen = render(<WalkCompletionCelebration celebration={celebration} onDismiss={jest.fn()} />);
     await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
     completeMascotPreload(screen);
     expect(screen.getByTestId('completion-mascot-animation').props.source).toBe(expectedPose);
 
-    // Advance through the full celebration window (auto-dismiss is 2600ms)
-    // — the mascot's own source must stay the single pose throughout.
-    for (let elapsed = 0; elapsed < 2600; elapsed += 100) {
-      act(() => { jest.advanceTimersByTime(100); });
-      expect(screen.getByTestId('completion-mascot-animation').props.source).toBe(expectedPose);
-    }
+    // The transform choreography lasts ~2.24s. The raised paw must remain
+    // visible while the gesture is happening, but it must not become the
+    // character's frozen resting state afterwards.
+    act(() => { jest.advanceTimersByTime(2000); });
+    expect(screen.getByTestId('completion-mascot-animation').props.source).toBe(expectedPose);
 
-    // Never the old cropped-sheet technique either: no absolutely
-    // positioned image many times larger than its visible container.
+    act(() => { jest.advanceTimersByTime(400); });
+    expect(screen.getByTestId('completion-mascot-animation').props.source).not.toBe(expectedPose);
+
+    // Never regress to the old oversized cropped-sheet technique.
     const oversizedAbsoluteLayers = screen.UNSAFE_getAllByType(RNImage).filter(
       (node: any) => node.props.style && node.props.style.position === 'absolute' && typeof node.props.style.width === 'number' && node.props.style.width > 200
     );
