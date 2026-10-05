@@ -19,7 +19,11 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('source={{ uri: dog!.photoUrl! }}');
     expect(home).toContain('tone="dashboard"');
     expect(home).toContain('setDogProfileVisible(true)');
-    expect(home).toContain("style={styles.mascotHeaderButton}");
+    // Real-device QA fix — the header mascot button's style is now an array
+    // so it can also fade out during a completion celebration (there must
+    // only ever be one visible mascot on Home at a time); the base style
+    // reference itself is unchanged.
+    expect(home).toContain('style={[styles.mascotHeaderButton, celebration && styles.homeMascotSuppressed]}');
   });
 
   it('keeps the Dashboard hero unobstructed by the removed family greeting overlay', () => {
