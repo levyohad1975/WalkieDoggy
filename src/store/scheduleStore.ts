@@ -25,7 +25,7 @@ import { guardTestModeMutation } from '../lib/testModeGuard';
 import { hasActiveRemoteReminderChannel } from '../lib/remoteReminderChannel';
 import { deleteScheduleRuleWithOccurrences, isSupabaseConfigured } from '../lib/supabase';
 import { adminRescheduleWalk, adminSwapWalks } from '../lib/walkAdmin';
-import { friendlyErrorMessage, rawMessageOf } from '../lib/errorMessages';
+import { appendRawDiagnostic, friendlyErrorMessage, rawMessageOf } from '../lib/errorMessages';
 import { useGpsStore } from './gpsStore';
 // TEMPORARY DIAGNOSTIC INSTRUMENTATION — see perfTrace.ts's own doc
 // comment. Remove this import and every perfMark call in addRule()/
@@ -806,6 +806,32 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         return false;
       }
     }
+    // Real-device QA fix — if an EARLIER background sync for this exact
+    // walk (e.g. loadScheduleForFamily's orphan-walk-repair, which calls
+    // queueWalksForBackgroundSync() without waiting for the server write to
+    // actually land) was permanently rejected, SyncQueue drops it and
+    // records a conflict instead of retrying forever (see syncQueue.ts's
+    // isPermanentSyncError doc comment — e.g. a 23505 unique-constraint hit
+    // if a walk for this schedule_entry_id already existed server-side
+    // under a different id). The walk then exists ONLY locally: Home still
+    // renders it as a normal pending/overdue walk, but start_walk() can
+    // only ever fail against it with an opaque "walk not found", forever,
+    // with no way for the user to tell why. markDone() below already
+    // established this exact check (see its own doc comment) for the
+    // equivalent saveWalk case; this is the same check for startWalk,
+    // proactive rather than after-the-fact since there is no optimistic
+    // local write to protect here.
+    const startConflict = await repository.getConflictForWalk?.(walkId);
+    if (startConflict) {
+      set({
+        actionError: appendRawDiagnostic(
+          'הטיול הזה לא נשמר בהצלחה בשרת בעבר ולכן אי אפשר להתחיל אותו. רעננו את המסך ונסו שוב — אם זה חוזר, יש לדווח לתמיכה.',
+          { message: startConflict.message, code: startConflict.code },
+          { walkId, conflictFailedAt: startConflict.failedAt }
+        ),
+      });
+      return false;
+    }
     try {
       let updated: Walk;
       if (repository.startWalk) updated = await repository.startWalk(walkId);
@@ -819,7 +845,23 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       void useGpsStore.getState().startTracking(updated);
       return true;
     } catch (e) {
-      set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו להתחיל את הטיול') });
+      // TEMPORARY P0 DIAGNOSTIC — real-device QA: "Start" failed on a real
+      // iPhone PWA with only the generic Hebrew fallback below, which hid
+      // the actual server rejection. console.error the full raw error here
+      // (this call site previously logged nothing at all, despite
+      // errorMessages.ts's own doc comment claiming every call site does).
+      // See appendRawDiagnostic's doc comment for why the shown message
+      // also gets the raw code/message/details/hint appended, but ONLY
+      // when friendlyErrorMessage() still fell through to the generic
+      // fallback — a rule that already matched means the real reason is
+      // already known and shown, so there is nothing to add.
+      console.error('[startWalk] failed', { walkId, localStatus: walk.status, responsibleUserId: walk.responsibleUserId, error: e });
+      const fallback = 'לא הצלחנו להתחיל את הטיול';
+      const friendly = friendlyErrorMessage(e, [], fallback);
+      const shown = friendly === fallback
+        ? appendRawDiagnostic(friendly, e, { walkId, localStatus: walk.status, responsibleUserId: walk.responsibleUserId })
+        : friendly;
+      set({ actionError: shown });
       return false;
     }
   },

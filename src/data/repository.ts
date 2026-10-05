@@ -166,8 +166,14 @@ export interface Repository {
   hasPendingForOtherUser?(userId: string): Promise<boolean>;
   /** Optional (A2 fix): true if a saveWalk write for this walk id is still queued, not yet reconciled with the server. See SyncQueue.hasPendingSaveWalk's doc comment. */
   hasPendingSaveWalk?(walkId: string): Promise<boolean>;
-  /** Optional (A2 fix): the most recent permanent-failure sync conflict recorded for this walk's saveWalk write, if any. */
-  getConflictForWalk?(walkId: string): Promise<{ message: string; failedAt: string } | undefined>;
+  /**
+   * Optional (A2 fix): the most recent permanent-failure sync conflict
+   * recorded for this walk's saveWalk write, if any. `code` (the raw
+   * Postgres/PostgREST SQLSTATE, e.g. "23505", "P0001" — see
+   * syncQueue.ts's isPermanentSyncError) is included so a caller can show
+   * or log the real server rejection rather than just its text.
+   */
+  getConflictForWalk?(walkId: string): Promise<{ message: string; code?: string; failedAt: string } | undefined>;
 
   /**
    * PRD §20: "persistent queue conflicts must be visible, never silently
