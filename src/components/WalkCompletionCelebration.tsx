@@ -32,7 +32,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
   }, [onDismiss]);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(18)).current;
-  const mascotBounce = useRef(new Animated.Value(0)).current;
+
 
   useEffect(() => {
     let mounted = true;
@@ -55,25 +55,12 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
         Animated.spring(translateY, { toValue: 0, damping: 16, stiffness: 180, mass: 0.8, useNativeDriver: true }),
       ]).start();
     }
-    mascotBounce.setValue(0);
-    let mascotAnimation: Animated.CompositeAnimation | undefined;
-    if (!reducedMotion) {
-      mascotAnimation = Animated.loop(
-        Animated.sequence([
-          Animated.timing(mascotBounce, { toValue: -8, duration: 260, useNativeDriver: true }),
-          Animated.timing(mascotBounce, { toValue: 0, duration: 260, useNativeDriver: true }),
-          Animated.delay(180),
-        ]),
-        { iterations: 2 },
-      );
-      mascotAnimation.start();
-    }
     // Auto-dismiss is keyed to the celebration id rather than object identity,
     // so harmless parent re-renders cannot restart the timer indefinitely.
     if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
     autoDismissTimerRef.current = setTimeout(() => dismissRef.current(), screenReaderEnabled ? 5000 : 2200);
-    return () => { mascotAnimation?.stop(); if (bubbleTimer) clearTimeout(bubbleTimer); };
-  }, [celebration?.id, mascotBounce, opacity, reducedMotion, screenReaderEnabled, translateY]);
+    return () => { if (bubbleTimer) clearTimeout(bubbleTimer); };
+  }, [celebration?.id, opacity, reducedMotion, screenReaderEnabled, translateY]);
 
   useEffect(() => () => {
     if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
@@ -93,7 +80,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
                 <View style={styles.tail} />
               </View>
             ) : null}
-            <Animated.View style={{ transform: [{ translateY: mascotBounce }, { scale: opacity.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }] }}>
+            <Animated.View style={{ transform: [{ scale: opacity.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) }] }}>
               {sprite ? (
                 <MascotSpriteAnimation
                   source={sprite.source}
@@ -102,7 +89,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
                   frameSize={sprite.frameSize}
                   frameCount={sprite.frameCount}
                   fps={sprite.fps}
-                  size={132}
+                  size={84}
                   fallback={COMPLETION_MASCOT}
                   accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול"
                   testID="completion-mascot-animation"
@@ -119,11 +106,11 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'transparent' },
-  moment: { width: 160, alignItems: 'center' },
+  moment: { width: 96, alignItems: 'center' },
   // Compact diagonal speech bubble: it sits above-left of the mascot, over
   // the free space above the last-walk time, while the mascot itself remains
   // exactly centred in the gap between edit and pee/poop controls.
-  speechBubbleWrap: { position: 'absolute', left: -72, top: -34, alignItems: 'flex-end', zIndex: 3 },
+  speechBubbleWrap: { position: 'absolute', left: -58, top: -42, alignItems: 'flex-end', zIndex: 3 },
   bubble: { maxWidth: 154, backgroundColor: colors.surface, borderRadius: 22, paddingHorizontal: 12, paddingVertical: 8, shadowColor: '#0B5C75', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
   message: { color: colors.textPrimary, fontSize: 13, lineHeight: 17, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
   tail: { width: 13, height: 13, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }], marginTop: -7, marginRight: 18 },
