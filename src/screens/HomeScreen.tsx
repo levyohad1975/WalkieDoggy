@@ -60,6 +60,14 @@ import { getImportantHealthReminders, summarizeHealthTasksForHome } from '../log
 import { getDogBackground } from '../theme/dogBackgrounds';
 import { useGpsStore } from '../store/gpsStore';
 import { requestForegroundGpsPermission } from '../lib/gpsTracking';
+// TEMPORARY P0 DIAGNOSTIC (real-device QA round 5) — see
+// walkPipelineDiagnostics.ts's own doc comment. Remove these imports, the
+// diagnostics state/handler, the button, and the modal render below once
+// the round-5 symptom (a confirmed today's-later-occurrence missing from
+// Home's next-walk selection) is root-caused and fixed. (`repository` is
+// already imported above for unrelated existing use.)
+import { buildWalkPipelineReport } from '../logic/walkPipelineDiagnostics';
+import { WalkPipelineDiagnosticsModal } from '../components/WalkPipelineDiagnosticsModal';
 
 export function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
@@ -113,6 +121,10 @@ export function HomeScreen() {
 
   const {
     walks,
+    // TEMPORARY P0 DIAGNOSTIC (round 5) — rules/entries are not otherwise
+    // used by this screen; only read here to build the pipeline report.
+    rules: scheduleRules,
+    entries: scheduleEntries,
     loading: scheduleLoading,
     error: scheduleError,
     actionError,
@@ -132,6 +144,39 @@ export function HomeScreen() {
     deleteScheduledWalkOccurrence,
     clearActionError,
   } = useScheduleStore();
+
+  // TEMPORARY P0 DIAGNOSTIC (real-device QA round 5) — see
+  // walkPipelineDiagnostics.ts's own doc comment. Remove this state,
+  // handler, the button, and the modal render further below once the
+  // round-5 symptom (a confirmed today's-later-occurrence missing from
+  // Home's next-walk selection) is root-caused and fixed.
+  const [diagnosticsVisible, setDiagnosticsVisible] = useState(false);
+  const [diagnosticsReport, setDiagnosticsReport] = useState<string | undefined>(undefined);
+  const openWalkPipelineDiagnostics = useCallback(async () => {
+    setDiagnosticsReport(undefined);
+    setDiagnosticsVisible(true);
+    try {
+      const debugRepo = repository as unknown as {
+        debugWalksTrace?: (familyId: string) => Promise<Parameters<typeof buildWalkPipelineReport>[0]['trace']>;
+      };
+      if (!debugRepo.debugWalksTrace) {
+        setDiagnosticsReport('debugWalksTrace is not available on this repository (local/demo mode has no remote to trace).');
+        return;
+      }
+      const trace = await debugRepo.debugWalksTrace(familyId);
+      const report = buildWalkPipelineReport({
+        now: new Date(),
+        familyId,
+        rules: scheduleRules,
+        entries: scheduleEntries,
+        trace,
+        storeWalks: useScheduleStore.getState().walks,
+      });
+      setDiagnosticsReport(report);
+    } catch (e) {
+      setDiagnosticsReport(`Diagnostic gathering failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [familyId, scheduleRules, scheduleEntries]);
 
   const {
     swapRequests,
@@ -865,6 +910,17 @@ export function HomeScreen() {
                 </View>
               ) : null}
             </Pressable>
+            {/* TEMPORARY P0 DIAGNOSTIC (real-device QA round 5) — see
+                walkPipelineDiagnostics.ts's own doc comment. Remove this
+                button once the round-5 symptom is root-caused and fixed. */}
+            <Pressable
+              onPress={() => void openWalkPipelineDiagnostics()}
+              style={styles.diagnosticsButton}
+              accessibilityRole="button"
+              accessibilityLabel="Temporary walk pipeline diagnostic"
+            >
+              <RtlText style={styles.notificationIcon}>🔍</RtlText>
+            </Pressable>
           </View>
 
           {/* Issue #145: the approved calm composition remains the default;
@@ -1526,6 +1582,14 @@ export function HomeScreen() {
         onCancel={clearRequestsError}
       />
       <DogProfileModal visible={dogProfileVisible} onClose={() => setDogProfileVisible(false)} />
+      {/* TEMPORARY P0 DIAGNOSTIC (real-device QA round 5) — remove this
+          render alongside the button/handler/state above once the
+          round-5 symptom is root-caused and fixed. */}
+      <WalkPipelineDiagnosticsModal
+        visible={diagnosticsVisible}
+        report={diagnosticsReport}
+        onClose={() => setDiagnosticsVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -1683,6 +1747,9 @@ const styles = StyleSheet.create({
   // anywhere else on Home. See the JSX comment at this wrapper's usage.
   dashboardOverflow: {},
   notificationButton: { position: 'absolute', right: spacing.md, top: 7, width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
+  // TEMPORARY P0 DIAGNOSTIC (real-device QA round 5) — remove alongside
+  // the button/modal/handler this styles once that symptom is fixed.
+  diagnosticsButton: { position: 'absolute', right: spacing.md + 44, top: 7, width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   notificationIcon: { fontSize: 18 },
   requestsCountBadge: { minWidth: spacing.xl, height: spacing.xl, borderRadius: radii.sm, paddingHorizontal: spacing.xs, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryDark },
   requestsCountText: { fontSize: 11, fontWeight: '800', color: colors.textInverse },
