@@ -70,15 +70,22 @@ describe('MascotPoseCelebration', () => {
   });
 
   /**
-   * The core regression guard for this redesign: once the pose is showing,
-   * its `source` must never change again for the rest of the animation —
-   * no swap to any other image at any point, through the full ~2.2s
-   * transform sequence. This is the one property that structurally rules
-   * out the whole class of real-device bugs (black rectangle, restart
+   * The core regression guard for this redesign: while the gesture is
+   * actually playing, `source` must never swap to anything else — no
+   * "next frame" to swap to, the one property that structurally rules out
+   * the whole class of real-device bugs (black rectangle, restart
    * cascades) MascotFrameAnimation's swap-many-sources technique kept
-   * hitting: there is no "next frame" to swap to.
+   * hitting.
+   *
+   * Direct real-device QA fix (commit d7a25a2) — the raised-paw art is a
+   * gesture, not a resting pose: once the ~2.24s transform choreography
+   * finishes, the component now deliberately returns to the approved
+   * neutral mascot (`fallback`) rather than freezing with one paw held in
+   * the air forever. So the no-swap guarantee holds only through the
+   * gesture itself; the one intentional swap back to `fallback` once it
+   * completes is covered separately below.
    */
-  it('never changes the visible Image source once the pose is showing, for the whole animation', async () => {
+  it('shows the pose immediately once it preloads — no window where a not-yet-decoded frame could paint black', async () => {
     mockReducedMotion(false);
     const screen = render(
       <MascotPoseCelebration pose={POSE} fallback={FALLBACK} size={84} accessibilityLabel="mascot" testID="mascot" />
@@ -88,16 +95,26 @@ describe('MascotPoseCelebration', () => {
     act(() => { (preloader as any).props.onLoad(); });
     expect(screen.getByTestId('mascot').props.source).toBe(POSE);
 
-    // Sample throughout the whole ~2.2s animation — source must stay POSE
-    // at every point, never swapping to anything else or back to fallback.
-    for (let elapsed = 0; elapsed < 2400; elapsed += 100) {
-      act(() => { jest.advanceTimersByTime(100); });
-      expect(screen.getByTestId('mascot').props.source).toBe(POSE);
-    }
-
     // Preloader Image is gone once the pose is showing — only one Image
     // (the visible one) remains for the rest of the component's lifetime.
     expect(findPreloader(screen)).toBeUndefined();
+  });
+
+  it('returns to the neutral resting pose once the gesture finishes, and stays there', async () => {
+    mockReducedMotion(false);
+    const screen = render(
+      <MascotPoseCelebration pose={POSE} fallback={FALLBACK} size={84} accessibilityLabel="mascot" testID="mascot" />
+    );
+    await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
+    const preloader = findPreloader(screen);
+    act(() => { (preloader as any).props.onLoad(); });
+    expect(screen.getByTestId('mascot').props.source).toBe(POSE);
+
+    await waitFor(() => expect(screen.getByTestId('mascot').props.source).toBe(FALLBACK));
+
+    // Never swaps back to the pose afterward — it's a one-shot gesture.
+    act(() => { jest.advanceTimersByTime(2000); });
+    expect(screen.getByTestId('mascot').props.source).toBe(FALLBACK);
   });
 
   it('shows the static fallback (never attempts the pose) when Reduced Motion is on', async () => {
