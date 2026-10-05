@@ -13,10 +13,11 @@ const COMPLETION_MASCOT = require('../../assets/branding/walkie-doggy-mascot-tra
 interface WalkCompletionCelebrationProps {
   celebration: CompletionCelebration | null;
   onDismiss: () => void;
+  anchor?: { x: number; y: number; width: number; height: number } | null;
 }
 
 /** A local, non-blocking post-completion moment. It has no persistence or sync role. */
-export function WalkCompletionCelebration({ celebration, onDismiss }: WalkCompletionCelebrationProps) {
+export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: WalkCompletionCelebrationProps) {
   const [reducedMotion, setReducedMotion] = useState(true);
   const [screenReaderEnabled, setScreenReaderEnabled] = useState(false);
   const [bubbleVisible, setBubbleVisible] = useState(false);
@@ -84,7 +85,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss }: WalkComple
   return (
     <Modal visible transparent animationType="none" onRequestClose={onDismiss} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תגובת הקמע של Walkie Doggy Link">
-        <MascotSafeZone from="left" testID="completion-mascot-safe-zone">
+        <MascotSafeZone from="left" anchor={anchor} testID="completion-mascot-safe-zone">
           <Animated.View style={[styles.moment, { opacity, transform: [{ translateY }] }]} accessibilityRole="alert" accessibilityLiveRegion="polite">
             {bubbleVisible ? (
               <View style={styles.speechBubbleWrap}>
