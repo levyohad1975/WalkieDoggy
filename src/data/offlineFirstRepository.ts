@@ -59,27 +59,31 @@ export class OfflineFirstRepository implements Repository {
         if (!(await this.isOnline())) {
           throw new Error('אין חיבור לשרת. כדי להתחיל מעקב טיול יש להתחבר לאינטרנט.');
         }
+        // Same-day generated occurrences may still be queued locally when
+        // the user taps Start. Flush pending writes first so start_walk()
+        // never races the occurrence's server upsert.
+        await this.queue.flush(this.remote!);
+        // P0 fix: resolve to the CANONICAL server row for this occurrence
+        // BEFORE ever calling start_walk — see resolveCanonicalWalkId's own
+        // doc comment for why `walkId` itself can be a permanent orphan
+        // (never a row on the server at all) even though Home still shows
+        // it as a normal, startable walk.
+        const resolvedId = await this.resolveCanonicalWalkId(walkId);
         try {
-          // Same-day generated occurrences may still be queued locally when
-          // the user taps Start. Flush pending writes first so start_walk()
-          // never races the occurrence's server upsert.
-          await this.queue.flush(this.remote!);
-          const walk = await this.remote!.startWalk!(walkId);
+          const walk = await this.remote!.startWalk!(resolvedId);
           await this.local.saveWalk(walk);
           return walk;
         } catch (error) {
-          // Recover legacy/stale local IDs by resolving the canonical server
-          // occurrence through its schedule_entry_id, then retry exactly once.
           if (!(error instanceof Error) || !/walk not found/i.test(error.message)) throw error;
-          const localWalks = await this.local.getWalks('');
-          const stale = localWalks.find((walk) => walk.id === walkId);
-          if (!stale?.scheduleEntryId) throw error;
-          const remoteWalks = await this.remote!.getWalks(stale.familyId);
-          const canonical = remoteWalks.find((walk) => walk.scheduleEntryId === stale.scheduleEntryId);
-          if (!canonical) throw error;
-          await this.local.deleteWalk(stale.id);
-          await this.local.saveWalk(canonical);
-          const walk = await this.remote!.startWalk!(canonical.id);
+          // Defensive fallback only: resolveCanonicalWalkId above already
+          // reconciles the known "duplicate local id for the same
+          // schedule_entry_id" case before ever reaching here. This covers
+          // the narrow remaining race where the canonical row is created
+          // (e.g. by another family member's device) in between that
+          // resolution and this call.
+          const retryId = await this.resolveCanonicalWalkId(resolvedId);
+          if (retryId === resolvedId) throw error;
+          const walk = await this.remote!.startWalk!(retryId);
           await this.local.saveWalk(walk);
           return walk;
         }
@@ -103,6 +107,82 @@ export class OfflineFirstRepository implements Repository {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * P0 real-device fix — root cause of "Start" permanently failing with an
+   * opaque "walk not found" on an otherwise normal, overdue scheduled walk.
+   *
+   * `walks.schedule_entry_id` is UNIQUE (supabase/schema.sql) — there can
+   * only ever be ONE canonical server row per schedule_entry. But a local
+   * walk id for a given occurrence can still be minted more than once:
+   * scheduleStore.loadScheduleForFamily's orphan-walk-repair generates a
+   * brand-new `walkFromEntry()` (a fresh local id) for any future entry
+   * that its OWN last-known walk list doesn't yet cover, and
+   * queueWalksForBackgroundSync() hands that off via a fire-and-forget
+   * trySync() rather than waiting for server confirmation. If a second
+   * foreground reload runs before that first repair has actually reached
+   * the server (closed app, flaky connection, etc.), getWalks() has no way
+   * to know a walk for that entry is already on its way, so the repair can
+   * run again and mint a SECOND local walk, under a DIFFERENT id, for the
+   * exact same schedule_entry_id.
+   *
+   * Only one of the two can ever become the real server row (the unique
+   * constraint settles it, with help from supabaseRepository.ts's own
+   * saveWalk — it looks up any existing row for this schedule_entry_id
+   * BEFORE inserting and reuses its id, so the second write silently
+   * resolves into the first one's row instead of throwing). The LOSING
+   * local id is never written anywhere as its own row, yet nothing ever
+   * told the device's local cache or the Zustand store that the id it is
+   * still showing on Home is not the real one — so start_walk(losingId)
+   * can only ever and forever report "walk not found", however many times
+   * it's retried, including after commit 47559ad's pre-flush (flush has
+   * nothing to retry: the losing write already "succeeded" by quietly
+   * writing into the OTHER row).
+   *
+   * This resolves `walkId` to whatever the server actually considers
+   * canonical for its schedule_entry_id BEFORE any lifecycle RPC is ever
+   * called with it, reconciling the local cache to match so the next
+   * foreground reload sees the correct id and never mints a further
+   * duplicate:
+   *   - No schedule_entry_id at all (an unplanned/spontaneous walk, which
+   *     this bug class cannot apply to): returns `walkId` unchanged.
+   *   - A canonical row already exists under a DIFFERENT id: deletes the
+   *     local orphan row and adopts the canonical one.
+   *   - No canonical row exists yet at all (the repair's write never
+   *     reached the server — the genuinely-missing-row case, not just a
+   *     duplicate-id one): persists it now through the normal authorized
+   *     saveWalk path, which itself becomes the canonical row.
+   * A SyncConflict previously recorded against `walkId` (e.g. a genuine
+   * 23505 unique_violation from two devices racing the same repair) is not
+   * treated as unrecoverable here — by the time this runs, the row that
+   * conflict refers to already exists under the OTHER device's write, and
+   * the getWalks() lookup above finds it like any other canonical row.
+   */
+  private async resolveCanonicalWalkId(walkId: string): Promise<string> {
+    const stale = await this.local.findWalkById(walkId);
+    if (!stale?.scheduleEntryId) return walkId;
+
+    const remoteWalks = await this.remote!.getWalks(stale.familyId);
+    const canonical = remoteWalks.find((w) => w.scheduleEntryId === stale.scheduleEntryId);
+    if (canonical) {
+      if (canonical.id !== walkId) {
+        await this.local.deleteWalk(walkId);
+        await this.local.saveWalk(canonical);
+      }
+      return canonical.id;
+    }
+
+    // Genuinely missing server-side: persist it now. supabaseRepository.ts's
+    // saveWalk still protects against a last-instant concurrent insert by
+    // rewriting `stale.id` in place (same object reference) if one appears
+    // between the getWalks() read above and this write.
+    await this.remote!.saveWalk(stale);
+    if (stale.id !== walkId) {
+      await this.local.deleteWalk(walkId);
+    }
+    await this.local.saveWalk(stale);
+    return stale.id;
   }
 
   /** Attempts to push any queued writes now; safe to call opportunistically (e.g. on app foreground). */
@@ -627,17 +707,38 @@ export class OfflineFirstRepository implements Repository {
         // survive a refresh and later reach start_walk()/finish_walk().
         const remoteWalks = await this.remote!.getWalks(familyId);
         const remoteIds = new Set(remoteWalks.map((walk) => walk.id));
+        const remoteEntryIds = new Set(
+          remoteWalks.map((walk) => walk.scheduleEntryId).filter((id): id is string => Boolean(id))
+        );
         const localWalks = await this.local.getWalks(familyId);
 
         for (const walk of remoteWalks) {
           await this.local.saveWalk(walk);
         }
+        // P0 fix: a walk still sitting in the sync queue (its
+        // queueWalksForBackgroundSync() write hasn't landed yet — see
+        // resolveCanonicalWalkId's doc comment) must stay visible in the
+        // returned list, not just survive in the local cache. Dropping it
+        // here left scheduleStore.loadScheduleForFamily's orphan-repair
+        // unable to see that this occurrence already has a walk on the
+        // way, so a second foreground reload before the first write landed
+        // minted ANOTHER local walk for the same schedule_entry_id — the
+        // exact duplicate-id race resolveCanonicalWalkId now has to clean
+        // up after the fact. Excluded once remoteWalks already carries a
+        // row for the same schedule_entry_id (under either id), so a
+        // confirmed occurrence is never shown twice.
+        const pendingLocalOnly: Walk[] = [];
         for (const walk of localWalks) {
-          if (!remoteIds.has(walk.id) && !(await this.queue.hasPendingSaveWalk(walk.id))) {
-            await this.local.deleteWalk(walk.id);
+          if (remoteIds.has(walk.id)) continue;
+          if (await this.queue.hasPendingSaveWalk(walk.id)) {
+            if (!walk.scheduleEntryId || !remoteEntryIds.has(walk.scheduleEntryId)) {
+              pendingLocalOnly.push(walk);
+            }
+            continue;
           }
+          await this.local.deleteWalk(walk.id);
         }
-        return remoteWalks;
+        return [...remoteWalks, ...pendingLocalOnly];
       } catch {
         /* fall through */
       }

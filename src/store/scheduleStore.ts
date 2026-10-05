@@ -811,18 +811,23 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     // queueWalksForBackgroundSync() without waiting for the server write to
     // actually land) was permanently rejected, SyncQueue drops it and
     // records a conflict instead of retrying forever (see syncQueue.ts's
-    // isPermanentSyncError doc comment — e.g. a 23505 unique-constraint hit
-    // if a walk for this schedule_entry_id already existed server-side
-    // under a different id). The walk then exists ONLY locally: Home still
-    // renders it as a normal pending/overdue walk, but start_walk() can
-    // only ever fail against it with an opaque "walk not found", forever,
-    // with no way for the user to tell why. markDone() below already
+    // isPermanentSyncError doc comment). markDone() below already
     // established this exact check (see its own doc comment) for the
     // equivalent saveWalk case; this is the same check for startWalk,
     // proactive rather than after-the-fact since there is no optimistic
     // local write to protect here.
+    //
+    // P0 FOLLOW-UP: a `23505` (unique_violation) conflict specifically
+    // means a walk for this schedule_entry_id already exists server-side
+    // under a DIFFERENT id — not an unrecoverable state. OfflineFirstRepo
+    // sitory.startWalk's resolveCanonicalWalkId now reconciles exactly
+    // this case (finds the canonical row, adopts its id, retries) before
+    // ever calling start_walk, so a 23505 conflict is deliberately let
+    // through to that normal path instead of being hard-blocked here. Any
+    // OTHER recorded code (RLS rejection, a business-rule raise, etc.) is
+    // not something id-reconciliation can fix, so those still stop here.
     const startConflict = await repository.getConflictForWalk?.(walkId);
-    if (startConflict) {
+    if (startConflict && startConflict.code !== '23505') {
       set({
         actionError: appendRawDiagnostic(
           'הטיול הזה לא נשמר בהצלחה בשרת בעבר ולכן אי אפשר להתחיל אותו. רעננו את המסך ונסו שוב — אם זה חוזר, יש לדווח לתמיכה.',

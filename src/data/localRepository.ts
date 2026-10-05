@@ -360,6 +360,20 @@ export class LocalRepository implements Repository {
   }
 
   /**
+   * P0 fix: finds a cached walk by id with NO family filter — unlike
+   * getWalks above, which requires a familyId the caller does not
+   * necessarily have in hand yet (e.g. OfflineFirstRepository.startWalk's
+   * canonical-id reconciliation only learns the walk's familyId FROM this
+   * lookup). This device's local cache holds exactly one family at a time
+   * (see LocalStoreShape), so no family filter is needed for correctness
+   * here. Returns undefined if no cached walk has this id.
+   */
+  async findWalkById(walkId: string): Promise<Walk | undefined> {
+    const s = await this.load();
+    return s.walks.find((w) => w.id === walkId);
+  }
+
+  /**
    * Optimistic-concurrency guard for "two people mark it done at once":
    * if the incoming write's `updatedAt` no longer matches what's stored, a
    * concurrent write already happened — we keep the version already saved

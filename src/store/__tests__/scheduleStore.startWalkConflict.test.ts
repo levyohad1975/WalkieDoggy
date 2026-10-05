@@ -22,6 +22,17 @@ import type { Walk } from '../../types';
  *    "walk not found", forever. markDone() already had this exact check
  *    for the equivalent saveWalk case (see scheduleStore.markDoneConflict.
  *    test.ts); startWalk() now has the same check, proactively.
+ *
+ * ROUND 2 (real-device retest after the above): a `23505` conflict turned
+ * out to be RECOVERABLE, not a dead end — it means a canonical row for
+ * this schedule_entry_id already exists server-side under a different id.
+ * OfflineFirstRepository.startWalk's resolveCanonicalWalkId (see its own
+ * doc comment) now finds that row and reconciles before ever calling
+ * start_walk, so this store-level check deliberately lets a `23505`
+ * conflict THROUGH to repository.startWalk instead of hard-blocking it;
+ * every other conflict code still blocks here as before (see
+ * offlineFirstRepository.startWalkOrphanReconciliation.test.ts for the
+ * repository-level reconciliation tests).
  */
 jest.mock('../../data', () => ({
   repository: {
@@ -64,10 +75,10 @@ describe('scheduleStore.startWalk — surfaces the real reason instead of a gene
     consoleErrorSpy.mockRestore();
   });
 
-  it('checks for a recorded sync conflict BEFORE attempting start_walk, and never calls it when one exists', async () => {
+  it('checks for a recorded sync conflict BEFORE attempting start_walk, and never calls it for an unrecoverable (non-23505) conflict', async () => {
     mockedRepository.getConflictForWalk.mockResolvedValue({
-      code: '23505',
-      message: 'duplicate key value violates unique constraint',
+      code: '23503',
+      message: 'insert or update on table "walks" violates foreign key constraint',
       failedAt: '2026-01-01T00:00:00.000Z',
     });
 
@@ -77,9 +88,24 @@ describe('scheduleStore.startWalk — surfaces the real reason instead of a gene
 
     const { actionError } = useScheduleStore.getState();
     expect(actionError).toContain('לא נשמר בהצלחה בשרת');
-    expect(actionError).toContain('code=23505');
-    expect(actionError).toContain('duplicate key value violates unique constraint');
+    expect(actionError).toContain('code=23503');
+    expect(actionError).toContain('insert or update on table "walks" violates foreign key constraint');
     expect(actionError).toContain('walkId=walk-x');
+  });
+
+  it('lets a 23505 (unique_violation) conflict pass through to repository.startWalk, since its own canonical-id reconciliation resolves it — never a dead end', async () => {
+    mockedRepository.getConflictForWalk.mockResolvedValue({
+      code: '23505',
+      message: 'duplicate key value violates unique constraint "walks_schedule_entry_id_key"',
+      failedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const inProgress = { ...fakeWalk({ id: 'walk-canonical' }), status: 'in_progress' as const, startedAt: new Date().toISOString() };
+    mockedRepository.startWalk.mockResolvedValue(inProgress);
+
+    const started = await useScheduleStore.getState().startWalk('walk-x');
+    expect(mockedRepository.startWalk).toHaveBeenCalledWith('walk-x');
+    expect(started).toBe(true);
+    expect(useScheduleStore.getState().actionError).toBeNull();
   });
 
   it('proceeds to call start_walk normally when there is no recorded conflict', async () => {
@@ -128,5 +154,24 @@ describe('scheduleStore.startWalk — surfaces the real reason instead of a gene
       '[startWalk] failed',
       expect.objectContaining({ walkId: 'walk-x', localStatus: 'pending', responsibleUserId: 'user-a' })
     );
+  });
+
+  it('the 30-minute early-start gate is unchanged by this fix — a walk scheduled more than 30 minutes in the future is still blocked, before any conflict check or RPC call', async () => {
+    const farFuture = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 hours from now
+    const yyyy = farFuture.getFullYear();
+    const mm = String(farFuture.getMonth() + 1).padStart(2, '0');
+    const dd = String(farFuture.getDate()).padStart(2, '0');
+    const hh = String(farFuture.getHours()).padStart(2, '0');
+    const min = String(farFuture.getMinutes()).padStart(2, '0');
+    useScheduleStore.setState({
+      walks: [fakeWalk({ date: `${yyyy}-${mm}-${dd}`, scheduledTime: `${hh}:${min}` })],
+      actionError: null,
+    });
+
+    const started = await useScheduleStore.getState().startWalk('walk-x');
+    expect(started).toBe(false);
+    expect(mockedRepository.getConflictForWalk).not.toHaveBeenCalled();
+    expect(mockedRepository.startWalk).not.toHaveBeenCalled();
+    expect(useScheduleStore.getState().actionError).toContain('ניתן להתחיל את הטיול החל מ־');
   });
 });
