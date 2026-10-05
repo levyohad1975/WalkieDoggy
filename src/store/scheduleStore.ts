@@ -4,6 +4,7 @@ import { repository } from '../data';
 import {
   generateRotationSchedule,
   planRuleDaysReconciliation,
+  planStaleRuleEntryReconciliation,
   resolveResponsibleForDate,
   ruleNeedsEntryBackfill,
 } from '../logic/rotation';
@@ -325,6 +326,59 @@ async function loadScheduleForFamily(
         for (const walk of repairedWalks) await repository.saveWalk(walk);
       }
       finalWalks = [...finalWalks, ...repairedWalks];
+    }
+
+    // P0 real-device self-heal: a rule edit made BEFORE 807e4db's
+    // updateScheduleEntry/planRuleDaysReconciliation fix (or any other path
+    // that changed schedule_rules.time without reconciling
+    // schedule_entries) can have left entries permanently stuck at a stale
+    // time, with no further rule edit ever correcting them. Runs on every
+    // load — see planStaleRuleEntryReconciliation's own doc comment for the
+    // exact per-(rule,date) semantics (mutate an open stale entry in
+    // place; regenerate a fresh occurrence only when every existing entry
+    // is already resolved AND the rule's time for that date hasn't passed
+    // yet; never touch an already-resolved entry's recorded time).
+    // Idempotent — a (rule, date) already correctly represented is a
+    // complete no-op on every subsequent load.
+    const staleReconciliation = planStaleRuleEntryReconciliation(
+      activeRules,
+      finalEntries,
+      finalWalks,
+      today,
+      endDate,
+      new Date(),
+      () => generateId('entry')
+    );
+    if (staleReconciliation.toUpdate.length > 0) {
+      for (const entry of staleReconciliation.toUpdate) {
+        await repository.updateScheduleEntry(entry);
+      }
+      const staleUpdatedWalks: Walk[] = [];
+      for (const entry of staleReconciliation.toUpdate) {
+        const walk = finalWalks.find((w) => w.scheduleEntryId === entry.id);
+        if (!walk || walk.status !== 'pending') continue;
+        const updatedWalk: Walk = { ...walk, scheduledTime: entry.time, responsibleUserId: entry.responsibleUserId, updatedAt: new Date().toISOString() };
+        await repository.saveWalk(updatedWalk);
+        staleUpdatedWalks.push(updatedWalk);
+      }
+      finalEntries = finalEntries.map((e) => staleReconciliation.toUpdate.find((ue) => ue.id === e.id) ?? e);
+      finalWalks = finalWalks.map((w) => staleUpdatedWalks.find((uw) => uw.id === w.id) ?? w);
+    }
+    if (staleReconciliation.toRegenerate.length > 0) {
+      await repository.addScheduleEntries(staleReconciliation.toRegenerate);
+      const regeneratedWalks = staleReconciliation.toRegenerate.map((e) => walkFromEntry(e, familyId));
+      const todayRegeneratedWalks = regeneratedWalks.filter((w) => w.date === today);
+      const futureRegeneratedWalks = regeneratedWalks.filter((w) => w.date !== today);
+      for (const w of todayRegeneratedWalks) await repository.saveWalk(w);
+      if (futureRegeneratedWalks.length > 0) {
+        if (repository.queueWalksForBackgroundSync) {
+          await repository.queueWalksForBackgroundSync(futureRegeneratedWalks);
+        } else {
+          for (const w of futureRegeneratedWalks) await repository.saveWalk(w);
+        }
+      }
+      finalEntries = [...finalEntries, ...staleReconciliation.toRegenerate];
+      finalWalks = [...finalWalks, ...regeneratedWalks];
     }
 
     // Once a later planned occurrence for the same dog is due, older
