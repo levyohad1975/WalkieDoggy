@@ -175,6 +175,15 @@ export function HomeScreen() {
   // navigation or the completion action itself (markDone already resolved
   // by the time this is set), auto-dismisses on its own.
   const [celebration, setCelebration] = useState<CompletionCelebration | null>(null);
+  const lastWalkMascotLaneRef = useRef<View>(null);
+  const [lastWalkMascotAnchor, setLastWalkMascotAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const measureLastWalkMascotLane = useCallback(() => {
+    requestAnimationFrame(() => {
+      lastWalkMascotLaneRef.current?.measureInWindow((x, y, width, height) => {
+        if (width > 0 && height > 0) setLastWalkMascotAnchor({ x, y, width, height });
+      });
+    });
+  }, []);
   const suppressAchievementPopupRef = useRef(false);
   const [recentCelebrationIds, setRecentCelebrationIds] = useState<string[]>([]);
   // A notification response can arrive before Home's family/schedule data is
@@ -1069,6 +1078,13 @@ export function HomeScreen() {
                       <RtlText style={styles.dashboardLastWalkEditIcon}>✏️</RtlText>
                     </Pressable>
                   ) : null}
+                  <View
+                    ref={lastWalkMascotLaneRef}
+                    onLayout={measureLastWalkMascotLane}
+                    pointerEvents="none"
+                    style={styles.dashboardLastWalkMascotLane}
+                    testID="last-walk-mascot-lane"
+                  />
                   {lastWalk.status !== 'skipped' ? (
                     <View style={styles.dashboardLastWalkNeeds}>
                       <Pressable
@@ -1232,6 +1248,7 @@ export function HomeScreen() {
 
       <WalkCompletionCelebration
         celebration={celebration}
+        anchor={lastWalkMascotAnchor}
         onDismiss={() => {
           // A walk completion is one brief, self-closing moment. Do not
           // chain another mascot overlay from the dismiss action.
@@ -1620,6 +1637,7 @@ const styles = StyleSheet.create({
   // toggles stay together on its physical right edge. This creates a real
   // empty centre lane instead of merely adding a few pixels between controls.
   dashboardLastWalkEdit: { alignItems: 'center', justifyContent: 'center', width: 32, height: 44 },
+  dashboardLastWalkMascotLane: { flex: 1, minWidth: 72, height: 52, alignSelf: 'center' },
   dashboardLastWalkNeeds: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', alignSelf: 'center', gap: 2 },
   dashboardLastWalkNeedButton: { width: 26, height: 44, alignItems: 'center', justifyContent: 'center' },
   dashboardLastWalkEditIcon: { fontSize: 17, color: '#E6B422' },
