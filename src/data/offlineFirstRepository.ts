@@ -20,13 +20,6 @@ import { isPermanentSyncError, SyncQueue } from './syncQueue';
 // bottleneck is confirmed fixed by an actual real-device measurement.
 import { perfMark } from '../lib/perfTrace';
 import { dedupeCanonicalWalks } from '../logic/nextWalk';
-// TEMPORARY P0 DIAGNOSTIC (real-device QA round 5) — see
-// walkPipelineDiagnostics.ts's own doc comment. Remove this import and
-// debugWalksTrace() below, plus their call sites in HomeScreen.tsx /
-// WalkPipelineDiagnosticsModal.tsx, once the round-5 symptom (a confirmed
-// today's-later-occurrence missing from Home's next-walk selection) is
-// root-caused and fixed.
-import { dedupeTraceEntries, toWalkTraceEntry, type WalksDebugTrace } from '../logic/walkPipelineDiagnostics';
 
 /**
  * The repository the app actually uses. Reads always come from the local
@@ -807,72 +800,6 @@ export class OfflineFirstRepository implements Repository {
       )
     );
     return deduped;
-  }
-
-  /**
-   * TEMPORARY P0 DIAGNOSTIC (real-device QA round 5) — see
-   * walkPipelineDiagnostics.ts's own doc comment for why this exists.
-   * Read-only: mirrors getWalks()'s own online/offline merge logic EXACTLY
-   * (duplicated, not refactored into a shared helper, so this instrument
-   * can never change getWalks()'s real behavior) but returns every
-   * intermediate stage instead of just the final list, annotated with
-   * origin/queue/conflict state, so a real-device report can show exactly
-   * where a specific occurrence's walk stopped being visible. Never
-   * mutates local/remote state beyond what getWalks() itself already does
-   * (mirroring remote into the local cache) — no pruning/deletion here.
-   */
-  async debugWalksTrace(familyId: string): Promise<WalksDebugTrace> {
-    const fetchedAt = new Date().toISOString();
-    const online = await this.isOnline();
-    let remoteWalksRaw: Walk[] = [];
-    let remoteFetchError: string | undefined;
-    if (online && this.remote) {
-      try {
-        remoteWalksRaw = await this.remote.getWalks(familyId);
-      } catch (error) {
-        remoteFetchError = error instanceof Error ? error.message : String(error);
-      }
-    }
-    const localWalksRaw = await this.local.getWalks(familyId);
-    const remoteIds = new Set(remoteWalksRaw.map((w) => w.id));
-
-    const annotate = async (walk: Walk, origin: 'remote' | 'local-only') => {
-      const pending = await this.queue.hasPendingSaveWalk(walk.id);
-      const conflict = await this.queue.getConflictForWalk(walk.id);
-      return toWalkTraceEntry(walk, origin, pending, conflict ? { code: conflict.code, message: conflict.message, failedAt: conflict.failedAt } : undefined);
-    };
-
-    const remoteWalks = await Promise.all(remoteWalksRaw.map((w) => annotate(w, 'remote')));
-    const localOnlyRaw = localWalksRaw.filter((w) => !remoteIds.has(w.id));
-    const localWalks = await Promise.all(localWalksRaw.map((w) => annotate(w, remoteIds.has(w.id) ? 'remote' : 'local-only')));
-
-    let mergedBeforeDedupe: WalksDebugTrace['mergedBeforeDedupe'];
-    if (remoteFetchError || !online) {
-      // Mirrors getWalks()'s offline/failed-fetch fallback: the raw local cache, no merge.
-      mergedBeforeDedupe = localWalks;
-    } else {
-      const remoteEntryIds = new Set(remoteWalksRaw.map((w) => w.scheduleEntryId).filter((id): id is string => Boolean(id)));
-      const pendingLocalOnly: WalksDebugTrace['mergedBeforeDedupe'] = [];
-      for (const w of localOnlyRaw) {
-        const pending = await this.queue.hasPendingSaveWalk(w.id);
-        if (pending && (!w.scheduleEntryId || !remoteEntryIds.has(w.scheduleEntryId))) {
-          pendingLocalOnly.push(await annotate(w, 'local-only'));
-        }
-      }
-      mergedBeforeDedupe = [...remoteWalks, ...pendingLocalOnly];
-    }
-    const afterDedupe = dedupeTraceEntries(mergedBeforeDedupe);
-
-    return {
-      familyId,
-      fetchedAt,
-      isOnline: online,
-      remoteFetchError,
-      remoteWalks,
-      localWalks,
-      mergedBeforeDedupe,
-      afterDedupe,
-    };
   }
 
   /**
