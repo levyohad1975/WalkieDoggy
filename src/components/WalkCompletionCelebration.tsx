@@ -19,6 +19,15 @@ interface WalkCompletionCelebrationProps {
 /** A local, non-blocking post-completion moment. It has no persistence or sync role. */
 export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: WalkCompletionCelebrationProps) {
   const [reducedMotion, setReducedMotion] = useState(true);
+  // Real-device QA fix — `reducedMotion` is fail-safe-default-true above,
+  // which briefly reads as "reduced motion is on" before the real async
+  // check resolves. The bubble effect below used to run immediately on
+  // that default and show the bubble right away, then correct itself a
+  // tick later once the real value landed — a visible flash of the bubble
+  // before the mascot had even started preloading, on every normal
+  // (non-reduced-motion) device. Gating that effect on `motionChecked`
+  // too means it only ever runs once, with the real answer.
+  const [motionChecked, setMotionChecked] = useState(false);
   const [screenReaderEnabled, setScreenReaderEnabled] = useState(false);
   const [bubbleVisible, setBubbleVisible] = useState(false);
   const autoDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -36,17 +45,28 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
 
   useEffect(() => {
     let mounted = true;
-    AccessibilityInfo.isReduceMotionEnabled().then((enabled) => mounted && setReducedMotion(!!enabled)).catch(() => mounted && setReducedMotion(false));
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((enabled) => { if (mounted) { setReducedMotion(!!enabled); setMotionChecked(true); } })
+      .catch(() => { if (mounted) { setReducedMotion(false); setMotionChecked(true); } });
     const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReducedMotion);
     AccessibilityInfo.isScreenReaderEnabled().then((enabled) => mounted && setScreenReaderEnabled(!!enabled)).catch(() => {});
     const srSubscription = AccessibilityInfo.addEventListener('screenReaderChanged', setScreenReaderEnabled);
     return () => { mounted = false; subscription?.remove?.(); srSubscription?.remove?.(); };
   }, []);
 
+  const frames = celebration ? framesForCelebration(celebration.id) : undefined;
+
   useEffect(() => {
-    if (!celebration) return;
-    setBubbleVisible(reducedMotion);
-    const bubbleTimer = reducedMotion ? null : setTimeout(() => setBubbleVisible(true), 360);
+    if (!celebration || !motionChecked) return;
+    // Real-device QA fix — the bubble used to appear on a fixed 360ms
+    // timer, racing the mascot's own actual paint: on a real iPhone the
+    // bubble could appear before the mascot was visibly rendered and
+    // animating at all. It is now gated on MascotFrameAnimation's own
+    // onReady callback below (fired once every frame has actually
+    // finished loading and playback is starting) instead — reduced motion
+    // and "no sprite mapped for this celebration" are the only cases with
+    // nothing to wait for, so the bubble still appears immediately there.
+    setBubbleVisible(reducedMotion || !frames);
     opacity.setValue(reducedMotion ? 1 : 0);
     translateY.setValue(reducedMotion ? 0 : 18);
     if (!reducedMotion) {
@@ -59,8 +79,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
     // so harmless parent re-renders cannot restart the timer indefinitely.
     if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
     autoDismissTimerRef.current = setTimeout(() => dismissRef.current(), screenReaderEnabled ? 5000 : 2600);
-    return () => { if (bubbleTimer) clearTimeout(bubbleTimer); };
-  }, [celebration?.id, opacity, reducedMotion, screenReaderEnabled, translateY]);
+  }, [celebration?.id, frames, motionChecked, opacity, reducedMotion, screenReaderEnabled, translateY]);
 
   useEffect(() => () => {
     if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
@@ -68,7 +87,6 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
 
   if (!celebration) return null;
   const message = celebration.title;
-  const frames = framesForCelebration(celebration.id);
   return (
     <Modal visible transparent animationType="none" onRequestClose={onDismiss} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תגובת הקמע של Walkie Doggy Link">
@@ -89,6 +107,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
                   fallback={COMPLETION_MASCOT}
                   accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול"
                   testID="completion-mascot-animation"
+                  onReady={() => setBubbleVisible(true)}
                 />
               ) : null}
             </Animated.View>

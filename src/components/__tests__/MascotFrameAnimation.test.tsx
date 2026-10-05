@@ -1,5 +1,5 @@
 import React from 'react';
-import { AccessibilityInfo } from 'react-native';
+import { AccessibilityInfo, Image as RNImage } from 'react-native';
 import { render, waitFor, act } from '@testing-library/react-native';
 import { MascotFrameAnimation, MascotSpriteAnimation } from '../MascotFrameAnimation';
 
@@ -10,6 +10,13 @@ import { MascotFrameAnimation, MascotSpriteAnimation } from '../MascotFrameAnima
  * tree (every celebration/reminder moment routes through it) and had no
  * direct test coverage before this — engineering-only gap identified
  * during the mascot audit, fixed here without touching any art asset.
+ *
+ * Real-device QA round 2 — playback is now gated on every frame actually
+ * finishing its own load first (see the component's own doc comment for
+ * why: on web each frame is a separate network request, and swapping to
+ * one that had not loaded yet left a real window for a black paint). These
+ * tests simulate that by firing `onLoad` on each hidden preloader Image —
+ * see `completePreload` below — before asserting playback has started.
  */
 describe('MascotFrameAnimation', () => {
   const FALLBACK = { uri: 'fallback.png' };
@@ -29,6 +36,16 @@ describe('MascotFrameAnimation', () => {
     jest.spyOn(AccessibilityInfo, 'addEventListener').mockReturnValue({ remove: jest.fn() } as any);
   }
 
+  /** Fires onLoad on every hidden preloader Image (all Images after the first, visible one). */
+  function completePreload(screen: ReturnType<typeof render>, frameCount: number) {
+    act(() => {
+      const images = screen.UNSAFE_getAllByType(RNImage);
+      const preloaders = images.slice(1); // index 0 is always the visible, testID'd Image
+      expect(preloaders).toHaveLength(frameCount);
+      preloaders.forEach((img: any) => img.props.onLoad());
+    });
+  }
+
   it('renders the fallback (never crashes) with zero frames', async () => {
     mockReducedMotion(false);
     const screen = render(
@@ -36,6 +53,24 @@ describe('MascotFrameAnimation', () => {
     );
     await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
     expect(screen.getByTestId('mascot').props.source).toBe(FALLBACK);
+  });
+
+  it('fires onReady immediately (nothing to preload) with zero frames', async () => {
+    mockReducedMotion(false);
+    const onReady = jest.fn();
+    render(
+      <MascotFrameAnimation frames={[]} fallback={FALLBACK} fps={10} size={100} accessibilityLabel="mascot" testID="mascot" onReady={onReady} />
+    );
+    await waitFor(() => expect(onReady).toHaveBeenCalledTimes(1));
+  });
+
+  it('fires onReady immediately (nothing to preload) when Reduced Motion is on, even with enough frames', async () => {
+    mockReducedMotion(true);
+    const onReady = jest.fn();
+    render(
+      <MascotFrameAnimation frames={[frame(1), frame(2)]} fallback={FALLBACK} fps={10} size={100} accessibilityLabel="mascot" testID="mascot" onReady={onReady} />
+    );
+    await waitFor(() => expect(onReady).toHaveBeenCalledTimes(1));
   });
 
   it('renders the fallback with exactly one frame — MASCOT_SPEC requires at least two to animate', async () => {
@@ -51,17 +86,62 @@ describe('MascotFrameAnimation', () => {
     expect(screen.getByTestId('mascot').props.source).toBe(FALLBACK);
   });
 
+  it('shows the fallback while frames are still preloading, never an unloaded frame', async () => {
+    mockReducedMotion(false);
+    const frames = [frame(1), frame(2), frame(3)];
+    const screen = render(
+      <MascotFrameAnimation frames={frames} fallback={FALLBACK} fps={10} size={100} accessibilityLabel="mascot" testID="mascot" />
+    );
+    await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
+    expect(screen.getByTestId('mascot').props.source).toBe(FALLBACK);
+    act(() => {
+      jest.advanceTimersByTime(1000);
+    });
+    // Still the fallback — no preloader has fired onLoad yet, so playback
+    // must not have started regardless of how much time passes.
+    expect(screen.getByTestId('mascot').props.source).toBe(FALLBACK);
+  });
+
+  it('fires onReady exactly once, the moment every frame has finished preloading', async () => {
+    mockReducedMotion(false);
+    const frames = [frame(1), frame(2), frame(3)];
+    const onReady = jest.fn();
+    const screen = render(
+      <MascotFrameAnimation frames={frames} fallback={FALLBACK} fps={10} size={100} accessibilityLabel="mascot" testID="mascot" onReady={onReady} />
+    );
+    await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
+    expect(onReady).not.toHaveBeenCalled();
+    completePreload(screen, 3);
+    expect(onReady).toHaveBeenCalledTimes(1);
+  });
+
+  it('a failed frame load still counts toward readiness — one broken frame never blocks playback forever', async () => {
+    mockReducedMotion(false);
+    const frames = [frame(1), frame(2), frame(3)];
+    const onReady = jest.fn();
+    const screen = render(
+      <MascotFrameAnimation frames={frames} fallback={FALLBACK} fps={10} size={100} accessibilityLabel="mascot" testID="mascot" onReady={onReady} />
+    );
+    await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
+    act(() => {
+      const preloaders = screen.UNSAFE_getAllByType(RNImage).slice(1);
+      preloaders[0].props.onError();
+      preloaders[1].props.onLoad();
+      preloaders[2].props.onLoad();
+    });
+    expect(onReady).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('mascot').props.source).toBe(frames[0]);
+  });
+
   it('cycles through frames at the given fps and stops (clamped) on the last frame', async () => {
     mockReducedMotion(false);
     const frames = [frame(1), frame(2), frame(3)];
     const screen = render(
       <MascotFrameAnimation frames={frames} fallback={FALLBACK} fps={10} size={100} accessibilityLabel="mascot" testID="mascot" />
     );
-    // Waits out the async isReduceMotionEnabled() resolution AND the
-    // frame-playback effect it re-triggers (both must settle before
-    // fake-timer advances are meaningful — a bare `isReduceMotionEnabled`
-    // call-count check alone can still race the state update it causes).
-    await waitFor(() => expect(screen.getByTestId('mascot').props.source).toBe(frames[0]));
+    await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
+    completePreload(screen, 3);
+    expect(screen.getByTestId('mascot').props.source).toBe(frames[0]);
 
     act(() => {
       jest.advanceTimersByTime(100); // one tick at 10fps (100ms/frame)
@@ -101,7 +181,9 @@ describe('MascotFrameAnimation', () => {
     const screen = render(
       <MascotFrameAnimation frames={framesA} fallback={FALLBACK} fps={10} size={100} accessibilityLabel="mascot" testID="mascot" />
     );
-    await waitFor(() => expect(screen.getByTestId('mascot').props.source).toBe(framesA[0]));
+    await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
+    completePreload(screen, 2);
+    expect(screen.getByTestId('mascot').props.source).toBe(framesA[0]);
     act(() => {
       jest.advanceTimersByTime(100);
     });
@@ -110,6 +192,9 @@ describe('MascotFrameAnimation', () => {
     screen.rerender(
       <MascotFrameAnimation frames={framesB} fallback={FALLBACK} fps={10} size={100} accessibilityLabel="mascot" testID="mascot" />
     );
+    // The new frame set has not preloaded yet — fallback until it does.
+    expect(screen.getByTestId('mascot').props.source).toBe(FALLBACK);
+    completePreload(screen, 2);
     expect(screen.getByTestId('mascot').props.source).toBe(framesB[0]);
   });
 
