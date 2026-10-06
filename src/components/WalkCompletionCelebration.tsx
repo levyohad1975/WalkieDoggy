@@ -11,8 +11,20 @@ import { MascotSafeZone } from './MascotSafeZone';
 
 const COMPLETION_MASCOT = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
 const HIGH_FIVE_V2 = require('../../assets/branding/walkie-high-five-v2-final.webp');
-const HIGH_FIVE_V2_IDS = new Set(['high-five', 'paw-party']);
-const HIGH_FIVE_V2_DURATION_MS = 5100;
+const HAPPY_JUMP_V2 = require('../../assets/branding/walkie-happy-jump-v2-final.webp');
+const THANK_YOU_HEART_V2 = require('../../assets/branding/walkie-thank-you-heart-v2-final.webp');
+const SLEEPY_GOOD_NIGHT_V2 = require('../../assets/branding/walkie-sleepy-good-night-v2-final.webp');
+const TROPHY_V2 = require('../../assets/branding/walkie-trophy-v2-final.webp');
+
+const V2_CELEBRATIONS: Record<string, { source: number; durationMs: number }> = {
+  'high-five': { source: HIGH_FIVE_V2, durationMs: 5100 },
+  'paw-party': { source: HIGH_FIVE_V2, durationMs: 5100 },
+  'happy-jump': { source: HAPPY_JUMP_V2, durationMs: 5100 },
+  'thank-you-heart': { source: THANK_YOU_HEART_V2, durationMs: 5100 },
+  'sleepy-good-night': { source: SLEEPY_GOOD_NIGHT_V2, durationMs: 5100 },
+  'trophy-teaser': { source: TROPHY_V2, durationMs: 5100 },
+  'long-walk': { source: TROPHY_V2, durationMs: 5100 },
+};
 
 // Real-device QA round 8 — roughly doubled from the previous 84 (within
 // the requested ~160-170 range) per direct real-iPhone feedback that the
@@ -105,9 +117,9 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
   // celebrationAnimationManifest.ts's own doc comment above HIGH_FIVE_POSE
   // for the full history. highFivePose takes priority: frames is only
   // consulted for every OTHER celebration, unaffected by this change.
-  const usesHighFiveV2 = !!celebration && HIGH_FIVE_V2_IDS.has(celebration.id);
-  const highFivePose = celebration && !usesHighFiveV2 ? highFivePoseForCelebration(celebration.id) : undefined;
-  const frames = celebration && !usesHighFiveV2 && !highFivePose ? framesForCelebration(celebration.id) : undefined;
+  const v2Celebration = celebration ? V2_CELEBRATIONS[celebration.id] : undefined;
+  const highFivePose = celebration && !v2Celebration ? highFivePoseForCelebration(celebration.id) : undefined;
+  const frames = celebration && !v2Celebration && !highFivePose ? framesForCelebration(celebration.id) : undefined;
 
   useEffect(() => {
     if (!celebration || !motionChecked) return;
@@ -119,7 +131,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
     // instead — reduced motion and "no sprite mapped for this
     // celebration" are the only cases with nothing to wait for, so the
     // bubble still appears immediately there.
-    setBubbleVisible(reducedMotion || (!usesHighFiveV2 && !frames && !highFivePose));
+    setBubbleVisible(reducedMotion || (!v2Celebration && !frames && !highFivePose));
     setMascotReady(false);
     setEntranceArrived(false);
     scale.setValue(reducedMotion ? 1 : 0.94);
@@ -133,10 +145,10 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
     // Auto-dismiss is keyed to the celebration id rather than object identity,
     // so harmless parent re-renders cannot restart the timer indefinitely.
     if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
-    const visualDuration = usesHighFiveV2 && !reducedMotion ? HIGH_FIVE_V2_DURATION_MS : 2600;
+    const visualDuration = v2Celebration && !reducedMotion ? v2Celebration.durationMs : 2600;
     const dismissDelay = screenReaderEnabled ? Math.max(6500, visualDuration + 1200) : visualDuration;
     autoDismissTimerRef.current = setTimeout(() => dismissRef.current(), dismissDelay);
-  }, [celebration?.id, frames, highFivePose, usesHighFiveV2, motionChecked, scale, reducedMotion, screenReaderEnabled, translateY]);
+  }, [celebration?.id, frames, highFivePose, v2Celebration, motionChecked, scale, reducedMotion, screenReaderEnabled, translateY]);
 
   // Real-device QA round 8 — the bubble reveals once BOTH the mascot is
   // ready and the entrance slide has actually arrived, so it never shows
@@ -163,9 +175,9 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
               </View>
             ) : null}
             <Animated.View style={{ transform: [{ scale }] }}>
-              {usesHighFiveV2 ? (
+              {v2Celebration ? (
                 <Image
-                  source={reducedMotion ? COMPLETION_MASCOT : HIGH_FIVE_V2}
+                  source={reducedMotion ? COMPLETION_MASCOT : v2Celebration.source}
                   style={styles.v2Mascot}
                   resizeMode="contain"
                   accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול"
