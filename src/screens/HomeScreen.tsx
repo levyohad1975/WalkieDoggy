@@ -1649,15 +1649,14 @@ const styles = StyleSheet.create({
   dashboardLastWalkTimeBlock: { width: 104, alignItems: 'flex-start', flexShrink: 0 },
   dashboardLastWalkTime: { fontSize: 24, lineHeight: 29, fontWeight: '700', color: '#17345B' },
   dashboardLastWalkDone: { marginTop: 1, fontSize: 12, lineHeight: 16, fontWeight: '600', color: '#15966D' },
-  // Three deterministic physical lanes on compact iPhones:
-  // edit | mascot anchor | relief toggles. The mascot lane may shrink, but
-  // the edit and pee/poop controls never do, so celebration work cannot
-  // push the relief controls outside the visible Last Walk card.
-  dashboardLastWalkActions: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', justifyContent: 'space-between', flex: 1, minWidth: 0, paddingHorizontal: 2 },
-  dashboardLastWalkEdit: { alignItems: 'center', justifyContent: 'center', width: 30, height: 44, flexShrink: 0 },
-  dashboardLastWalkMascotLane: { flex: 1, minWidth: 24, height: 52, alignSelf: 'center' },
-  dashboardLastWalkNeeds: { width: 54, flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', justifyContent: 'space-between', alignSelf: 'center', flexShrink: 0 },
-  dashboardLastWalkNeedButton: { width: 26, height: 44, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  // Fixed physical lanes. Do not let RTL/flex negotiation move the relief
+  // controls outside the compact iPhone card: edit is pinned left, pee/poop
+  // pinned right, and the mascot anchor occupies only the centre.
+  dashboardLastWalkActions: { position: 'relative', flex: 1, minWidth: 108, height: 52 },
+  dashboardLastWalkEdit: { position: 'absolute', left: 0, top: 4, alignItems: 'center', justifyContent: 'center', width: 30, height: 44 },
+  dashboardLastWalkMascotLane: { position: 'absolute', left: 32, right: 56, top: 0, height: 52 },
+  dashboardLastWalkNeeds: { position: 'absolute', right: 0, top: 4, width: 54, height: 44, flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', justifyContent: 'space-between' },
+  dashboardLastWalkNeedButton: { width: 26, height: 44, alignItems: 'center', justifyContent: 'center' },
   dashboardLastWalkEditIcon: { fontSize: 17, color: '#E6B422' },
   dashboardLastWalkEditText: { fontSize: 11, fontWeight: '600', color: '#17345B' },
   dashboardLastWalkNeed: { fontSize: 18 },
