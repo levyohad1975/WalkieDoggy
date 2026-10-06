@@ -5,6 +5,8 @@ import { WalkCompletionCelebration } from '../WalkCompletionCelebration';
 import { CELEBRATION_LIBRARY } from '../../logic/walkCompletionCelebration';
 import { highFivePoseForCelebration } from '../../mascot/celebrationAnimationManifest';
 
+const HIGH_FIVE_V2 = require('../../../assets/branding/walkie-high-five-v2-final.webp');
+
 /**
  * Real-device QA round 1 fix — a solid BLACK rectangle appeared behind the
  * mascot on iPhone Safari/PWA for some celebrations. The sprite sheets
@@ -35,7 +37,7 @@ import { highFivePoseForCelebration } from '../../mascot/celebrationAnimationMan
  * renders the pose-based component for high-five/paw-party, and that the
  * bubble/dismiss/fallback contracts around it still hold.
  */
-describe('WalkCompletionCelebration — high-five/paw-party render via MascotPoseCelebration; bubble waits for onReady', () => {
+describe('WalkCompletionCelebration — High-Five V2 single animated asset; bubble waits for onReady', () => {
   const highFive = CELEBRATION_LIBRARY.find((item) => item.id === 'high-five')!;
   const celebration = { ...highFive, reaction: 'כל הכבוד!' };
   const expectedPose = highFivePoseForCelebration('high-five')!;
@@ -64,19 +66,22 @@ describe('WalkCompletionCelebration — high-five/paw-party render via MascotPos
     });
   }
 
-  it('resolves a real pose for high-five and paw-party, both from the same approved frame', () => {
+  it('keeps the legacy pose manifest available but renders High-Five V2 instead', async () => {
     expect(expectedPose).toBeTruthy();
     expect(highFivePoseForCelebration('paw-party')).toBe(expectedPose);
+    const screen = render(<WalkCompletionCelebration celebration={celebration} onDismiss={jest.fn()} />);
+    await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
+    expect(screen.getByTestId('completion-mascot-animation').props.source).toBe(HIGH_FIVE_V2);
   });
 
   it('shows the static fallback (never the pose before it has preloaded)', async () => {
     const screen = render(<WalkCompletionCelebration celebration={celebration} onDismiss={jest.fn()} />);
 
     await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
-    expect(screen.getByTestId('completion-mascot-animation').props.source).not.toBe(expectedPose);
+    expect(screen.getByTestId('completion-mascot-animation').props.source).toBe(HIGH_FIVE_V2);
 
     completeMascotPreload(screen);
-    expect(screen.getByTestId('completion-mascot-animation').props.source).toBe(expectedPose);
+    expect(screen.getByTestId('completion-mascot-animation').props.source).toBe(HIGH_FIVE_V2);
   });
 
   it('uses the raised-paw pose only for the gesture, then returns to the neutral mascot', async () => {
