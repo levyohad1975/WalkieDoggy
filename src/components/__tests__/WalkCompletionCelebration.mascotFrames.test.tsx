@@ -54,15 +54,9 @@ describe('WalkCompletionCelebration — High-Five V2 single animated asset; bubb
     jest.restoreAllMocks();
   });
 
-  function findPreloader(screen: ReturnType<typeof render>) {
-    return screen.UNSAFE_getAllByType(RNImage).find((img: any) => img.props.style && img.props.style.width === 1 && img.props.style.height === 1);
-  }
-
-  function completeMascotPreload(screen: ReturnType<typeof render>) {
+  function loadV2(screen: ReturnType<typeof render>) {
     act(() => {
-      const preloader = findPreloader(screen);
-      expect(preloader).toBeTruthy();
-      (preloader as any).props.onLoad();
+      screen.getByTestId('completion-mascot-animation').props.onLoad();
     });
   }
 
@@ -74,42 +68,15 @@ describe('WalkCompletionCelebration — High-Five V2 single animated asset; bubb
     expect(screen.getByTestId('completion-mascot-animation').props.source).toBe(HIGH_FIVE_V2);
   });
 
-  it('shows the static fallback (never the pose before it has preloaded)', async () => {
-    const screen = render(<WalkCompletionCelebration celebration={celebration} onDismiss={jest.fn()} />);
-
-    await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
-    expect(screen.getByTestId('completion-mascot-animation').props.source).toBe(HIGH_FIVE_V2);
-
-    completeMascotPreload(screen);
-    expect(screen.getByTestId('completion-mascot-animation').props.source).toBe(HIGH_FIVE_V2);
-  });
-
-  it('uses the raised-paw pose only for the gesture, then returns to the neutral mascot', async () => {
+  it('uses one stable animated source for the entire High-Five V2 gesture', async () => {
     const screen = render(<WalkCompletionCelebration celebration={celebration} onDismiss={jest.fn()} />);
     await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
-    completeMascotPreload(screen);
-    expect(screen.getByTestId('completion-mascot-animation').props.source).toBe(expectedPose);
-
-    // Direct real-device QA fix (commit d7a25a2) — the gesture itself is
-    // ~2.24s. Fixed-ms assertions here are unreliable: this suite's fake
-    // timers + RN's jest-preset requestAnimationFrame shim (a chained
-    // 0ms setTimeout) can collapse a whole Animated.sequence well ahead
-    // of its declared durations once advanced at all, so "still mid-
-    // gesture at exactly 2000ms" cannot be asserted deterministically
-    // here (see MascotPoseCelebration.test.tsx for the same reasoning).
-    // What IS deterministic, and what this test guards: it eventually
-    // settles to the neutral mascot and never swaps back to the pose
-    // afterwards — it's a one-shot gesture, not the character's resting
-    // state.
-    await waitFor(() => expect(screen.getByTestId('completion-mascot-animation').props.source).not.toBe(expectedPose));
-    act(() => { jest.advanceTimersByTime(2000); });
-    expect(screen.getByTestId('completion-mascot-animation').props.source).not.toBe(expectedPose);
-
-    // Never regress to the old oversized cropped-sheet technique.
-    const oversizedAbsoluteLayers = screen.UNSAFE_getAllByType(RNImage).filter(
-      (node: any) => node.props.style && node.props.style.position === 'absolute' && typeof node.props.style.width === 'number' && node.props.style.width > 200
-    );
-    expect(oversizedAbsoluteLayers).toHaveLength(0);
+    const mascot = screen.getByTestId('completion-mascot-animation');
+    expect(mascot.props.source).toBe(HIGH_FIVE_V2);
+    loadV2(screen);
+    act(() => { jest.advanceTimersByTime(4000); });
+    expect(screen.getByTestId('completion-mascot-animation').props.source).toBe(HIGH_FIVE_V2);
+    expect(screen.UNSAFE_getAllByType(RNImage).filter((node: any) => node.props.testID === 'completion-mascot-animation')).toHaveLength(1);
   });
 
   it('falls back to the static approved mascot when Reduced Motion is on, never attempting the pose', async () => {
@@ -142,7 +109,7 @@ describe('WalkCompletionCelebration — High-Five V2 single animated asset; bubb
     // its own shortly after, driven by MascotSafeZone's own async
     // Reduced-Motion check — see MascotSafeZone.test.tsx for that
     // contract in isolation).
-    completeMascotPreload(screen);
+    loadV2(screen);
     await waitFor(() => expect(screen.getByText(celebration.title)).toBeTruthy());
   });
 
