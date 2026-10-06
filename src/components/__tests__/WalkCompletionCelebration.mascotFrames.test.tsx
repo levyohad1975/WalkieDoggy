@@ -6,6 +6,10 @@ import { CELEBRATION_LIBRARY } from '../../logic/walkCompletionCelebration';
 import { highFivePoseForCelebration } from '../../mascot/celebrationAnimationManifest';
 
 const HIGH_FIVE_V2 = require('../../../assets/branding/walkie-high-five-v2-final.webp');
+const HAPPY_JUMP_V2 = require('../../../assets/branding/walkie-happy-jump-v2-final.webp');
+const THANK_YOU_HEART_V2 = require('../../../assets/branding/walkie-thank-you-heart-v2-final.webp');
+const SLEEPY_GOOD_NIGHT_V2 = require('../../../assets/branding/walkie-sleepy-good-night-v2-final.webp');
+const TROPHY_V2 = require('../../../assets/branding/walkie-trophy-v2-final.webp');
 
 /**
  * Real-device QA round 1 fix — a solid BLACK rectangle appeared behind the
@@ -67,6 +71,21 @@ describe('WalkCompletionCelebration — High-Five V2 single animated asset; bubb
     const screen = render(<WalkCompletionCelebration celebration={celebration} onDismiss={jest.fn()} />);
     await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
     expect(screen.getByTestId('completion-mascot-animation').props.source).toBe(HIGH_FIVE_V2);
+  });
+
+  it.each([
+    ['happy-jump', HAPPY_JUMP_V2],
+    ['thank-you-heart', THANK_YOU_HEART_V2],
+    ['sleepy-good-night', SLEEPY_GOOD_NIGHT_V2],
+    ['trophy-teaser', TROPHY_V2],
+    ['long-walk', TROPHY_V2],
+    ['paw-party', HIGH_FIVE_V2],
+  ])('renders %s through the V2 single-asset path', async (id, expectedSource) => {
+    const item = CELEBRATION_LIBRARY.find((candidate) => candidate.id === id)!;
+    const screen = render(<WalkCompletionCelebration celebration={item} onDismiss={jest.fn()} />);
+    await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
+    expect(screen.getByTestId('completion-mascot-animation').props.source).toBe(expectedSource);
+    expect(screen.UNSAFE_getAllByType(RNImage).filter((node: any) => node.props.testID === 'completion-mascot-animation')).toHaveLength(1);
   });
 
   it('uses one stable animated source for the entire High-Five V2 gesture', async () => {
