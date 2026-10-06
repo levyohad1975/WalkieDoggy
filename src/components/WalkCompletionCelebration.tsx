@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, Animated, Image, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { colors } from '../theme/colors';
 import { motion, radii, spacing } from '../theme/tokens';
 import type { CompletionCelebration } from '../logic/walkCompletionCelebration';
@@ -10,6 +10,9 @@ import { framesForCelebration, highFivePoseForCelebration, MASCOT_FRAME_FPS } fr
 import { MascotSafeZone } from './MascotSafeZone';
 
 const COMPLETION_MASCOT = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
+const HIGH_FIVE_V2 = require('../../assets/branding/walkie-high-five-v2-final.webp');
+const HIGH_FIVE_V2_IDS = new Set(['high-five', 'paw-party']);
+const HIGH_FIVE_V2_DURATION_MS = 5100;
 
 // Real-device QA round 8 — roughly doubled from the previous 84 (within
 // the requested ~160-170 range) per direct real-iPhone feedback that the
@@ -102,8 +105,9 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
   // celebrationAnimationManifest.ts's own doc comment above HIGH_FIVE_POSE
   // for the full history. highFivePose takes priority: frames is only
   // consulted for every OTHER celebration, unaffected by this change.
-  const highFivePose = celebration ? highFivePoseForCelebration(celebration.id) : undefined;
-  const frames = celebration && !highFivePose ? framesForCelebration(celebration.id) : undefined;
+  const usesHighFiveV2 = !!celebration && HIGH_FIVE_V2_IDS.has(celebration.id);
+  const highFivePose = celebration && !usesHighFiveV2 ? highFivePoseForCelebration(celebration.id) : undefined;
+  const frames = celebration && !usesHighFiveV2 && !highFivePose ? framesForCelebration(celebration.id) : undefined;
 
   useEffect(() => {
     if (!celebration || !motionChecked) return;
@@ -115,7 +119,7 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
     // instead — reduced motion and "no sprite mapped for this
     // celebration" are the only cases with nothing to wait for, so the
     // bubble still appears immediately there.
-    setBubbleVisible(reducedMotion || (!frames && !highFivePose));
+    setBubbleVisible(reducedMotion || (!usesHighFiveV2 && !frames && !highFivePose));
     setMascotReady(false);
     setEntranceArrived(false);
     scale.setValue(reducedMotion ? 1 : 0.94);
@@ -129,8 +133,10 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
     // Auto-dismiss is keyed to the celebration id rather than object identity,
     // so harmless parent re-renders cannot restart the timer indefinitely.
     if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
-    autoDismissTimerRef.current = setTimeout(() => dismissRef.current(), screenReaderEnabled ? 5000 : 2600);
-  }, [celebration?.id, frames, highFivePose, motionChecked, scale, reducedMotion, screenReaderEnabled, translateY]);
+    const visualDuration = usesHighFiveV2 && !reducedMotion ? HIGH_FIVE_V2_DURATION_MS : 2600;
+    const dismissDelay = screenReaderEnabled ? Math.max(6500, visualDuration + 1200) : visualDuration;
+    autoDismissTimerRef.current = setTimeout(() => dismissRef.current(), dismissDelay);
+  }, [celebration?.id, frames, highFivePose, usesHighFiveV2, motionChecked, scale, reducedMotion, screenReaderEnabled, translateY]);
 
   // Real-device QA round 8 — the bubble reveals once BOTH the mascot is
   // ready and the entrance slide has actually arrived, so it never shows
@@ -157,7 +163,16 @@ export function WalkCompletionCelebration({ celebration, onDismiss, anchor }: Wa
               </View>
             ) : null}
             <Animated.View style={{ transform: [{ scale }] }}>
-              {highFivePose ? (
+              {usesHighFiveV2 ? (
+                <Image
+                  source={reducedMotion ? COMPLETION_MASCOT : HIGH_FIVE_V2}
+                  style={styles.v2Mascot}
+                  resizeMode="contain"
+                  accessibilityLabel="הקמע של Walkie Doggy Link חוגג את סיום הטיול"
+                  testID="completion-mascot-animation"
+                  onLoad={() => setMascotReady(true)}
+                />
+              ) : highFivePose ? (
                 <MascotPoseCelebration
                   pose={highFivePose}
                   size={CELEBRATION_MASCOT_SIZE}
@@ -194,6 +209,7 @@ const styles = StyleSheet.create({
   // still renders with overflow: visible, so this never clips the larger
   // character, it only keeps the speech bubble's relative offsets correct.
   moment: { width: 168, alignItems: 'center' },
+  v2Mascot: { width: CELEBRATION_MASCOT_SIZE, height: CELEBRATION_MASCOT_SIZE },
   // Compact diagonal speech bubble: it sits above-left of the mascot, over
   // the free space above the last-walk time, while the mascot itself remains
   // exactly centred in the gap between edit and pee/poop controls.
