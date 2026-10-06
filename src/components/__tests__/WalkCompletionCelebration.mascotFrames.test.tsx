@@ -81,7 +81,7 @@ describe('WalkCompletionCelebration — High-Five V2 single animated asset; bubb
     ['long-walk', TROPHY_V2],
     ['paw-party', HIGH_FIVE_V2],
   ])('renders %s through the V2 single-asset path', async (id, expectedSource) => {
-    const item = CELEBRATION_LIBRARY.find((candidate) => candidate.id === id)!;
+    const item = { ...CELEBRATION_LIBRARY.find((candidate) => candidate.id === id)!, reaction: 'כל הכבוד!' };
     const screen = render(<WalkCompletionCelebration celebration={item} onDismiss={jest.fn()} />);
     await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
     expect(screen.getByTestId('completion-mascot-animation').props.source).toBe(expectedSource);
