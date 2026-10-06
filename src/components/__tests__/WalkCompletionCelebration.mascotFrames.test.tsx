@@ -18,24 +18,25 @@ const HIGH_FIVE_V2 = require('../../../assets/branding/walkie-high-five-v2-final
  *
  * Real-device QA rounds 2-5 — that technique (preload every frame, swap
  * `Image.source` on a timer between many separate PNG files) kept
- * reproducing real-device-only symptoms across four straight rounds (a
- * black rectangle during loading, too-fast/"frantic" pacing, a stable
- * preload callback, deduped preload requests) that never showed up in
- * this suite's synchronous test mocks.
+ * reproducing real-device-only symptoms across four straight rounds that
+ * never showed up in this suite's synchronous test mocks.
  *
- * Real-device QA round 6 — rather than attempt a fifth variant of the
- * same swap-many-sources approach, `high-five` (and `paw-party`, which
- * shares the same sprite via CELEBRATION_SPRITE_MAP) now renders through
- * MascotPoseCelebration instead: ONE already-approved pose image, `source`
- * set once and never swapped again, animated purely via Animated
- * transforms — the exact technique this app already ships everywhere
- * else (WalkieMascot.tsx). See celebrationAnimationManifest.ts's own doc
- * comment above HIGH_FIVE_POSE, and MascotPoseCelebration.tsx's own doc
- * comment, for the full history. MascotPoseCelebration has its own
- * dedicated, thorough test file (MascotPoseCelebration.test.tsx); this
- * file covers only the WIRING — that WalkCompletionCelebration actually
- * renders the pose-based component for high-five/paw-party, and that the
- * bubble/dismiss/fallback contracts around it still hold.
+ * Real-device QA round 6 — high-five/paw-party moved to MascotPoseCelebration
+ * (one approved pose, animated via transforms). See
+ * MascotPoseCelebration.test.tsx for that component's own coverage.
+ *
+ * Direct real-device QA fix (commits cce4a30/d842f52/a9362ad/fa1b338/454d8cc)
+ * — high-five and paw-party now render a real uploaded animated asset
+ * (walkie-high-five-v2-final.webp) directly through a single plain
+ * <Image>, bypassing MascotPoseCelebration entirely for these two ids
+ * (`usesHighFiveV2` in WalkCompletionCelebration.tsx takes priority over
+ * `highFivePose`; `highFivePoseForCelebration` itself still resolves a
+ * real frame — kept available as a fallback/legacy path — but is never
+ * reached for these ids anymore). This file covers the current wiring:
+ * the component renders the V2 asset (or the static fallback under
+ * Reduced Motion), the mascot-ready gate is driven by that Image's own
+ * onLoad, and the auto-dismiss window stretches to match the longer
+ * animation.
  */
 describe('WalkCompletionCelebration — High-Five V2 single animated asset; bubble waits for onReady', () => {
   const highFive = CELEBRATION_LIBRARY.find((item) => item.id === 'high-five')!;
@@ -86,6 +87,7 @@ describe('WalkCompletionCelebration — High-Five V2 single animated asset; bubb
     await waitFor(() => {
       const source = screen.getByTestId('completion-mascot-animation').props.source;
       expect(source).not.toBe(expectedPose);
+      expect(source).not.toBe(HIGH_FIVE_V2);
     });
   });
 
@@ -103,14 +105,21 @@ describe('WalkCompletionCelebration — High-Five V2 single animated asset; bubb
 
     // Real-device QA round 8 — it now also needs MascotSafeZone's own
     // entrance slide to have actually arrived, not just the mascot itself
-    // being ready. completeMascotPreload only makes the mascot ready;
-    // the final waitFor below is what confirms the bubble still appears
-    // once BOTH conditions are eventually true (the entrance arrives on
-    // its own shortly after, driven by MascotSafeZone's own async
-    // Reduced-Motion check — see MascotSafeZone.test.tsx for that
-    // contract in isolation).
-    loadV2(screen);
-    await waitFor(() => expect(screen.getByText(celebration.title)).toBeTruthy());
+    // being ready (the entrance arrives on its own shortly after, driven
+    // by MascotSafeZone's own async Reduced-Motion check — see
+    // MascotSafeZone.test.tsx for that contract in isolation). Calling
+    // loadV2 inside the waitFor's own retry loop, rather than once up
+    // front, deterministically survives this component's own
+    // Reduced-Motion check resolving late relative to the asset's onLoad
+    // in this fake-timer test environment — a resolution race that isn't
+    // realistic on a real device, where the native accessibility check
+    // settles long before any image finishes loading, but that this
+    // harness's fake timers + React's effect flushing can otherwise hit:
+    // re-firing onLoad on every retry is harmless once it does land.
+    await waitFor(() => {
+      loadV2(screen);
+      expect(screen.getByText(celebration.title)).toBeTruthy();
+    });
   });
 
   it('shows the speech bubble immediately when Reduced Motion is on (nothing to wait for)', async () => {
@@ -127,5 +136,21 @@ describe('WalkCompletionCelebration — High-Five V2 single animated asset; bubb
     const screen = render(<WalkCompletionCelebration celebration={celebrationWithNoSprite} onDismiss={jest.fn()} />);
 
     await waitFor(() => expect(screen.getByText(celebrationWithNoSprite.title)).toBeTruthy());
+  });
+
+  it('does not dismiss within the standard 2.6s window used by other celebrations', async () => {
+    const onDismiss = jest.fn();
+    render(<WalkCompletionCelebration celebration={celebration} onDismiss={onDismiss} />);
+    await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
+
+    await expect(waitFor(() => expect(onDismiss).toHaveBeenCalled(), { timeout: 2600 })).rejects.toThrow();
+  });
+
+  it('dismisses once the longer V2 animation window (~5.1s) elapses', async () => {
+    const onDismiss = jest.fn();
+    render(<WalkCompletionCelebration celebration={celebration} onDismiss={onDismiss} />);
+    await waitFor(() => expect(AccessibilityInfo.isReduceMotionEnabled).toHaveBeenCalled());
+
+    await waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1), { timeout: 8000 });
   });
 });

@@ -16,7 +16,13 @@ describe('WalkCompletionCelebration (structural)', () => {
   });
 
   it('gives VoiceOver/TalkBack extra reading time while preserving explicit dismissal', () => {
-    expect(source).toMatch(/setTimeout\(\(\) => dismissRef\.current\(\), screenReaderEnabled \? 5000 : 2600\)/);
+    // Direct real-device QA fix (commit d842f52) — the dismiss delay is no
+    // longer a fixed screenReaderEnabled ? 5000 : 2600 literal; it is now
+    // computed from the active celebration's own visual duration (longer
+    // for the V2 high-five/paw-party animation), with the screen-reader
+    // case always adding extra reading time on top via Math.max(6500, ...).
+    expect(source).toMatch(/const dismissDelay = screenReaderEnabled \? Math\.max\(6500, visualDuration \+ 1200\) : visualDuration;/);
+    expect(source).toMatch(/setTimeout\(\(\) => dismissRef\.current\(\), dismissDelay\)/);
     expect(source).toMatch(/AccessibilityInfo\.isScreenReaderEnabled\(\)/);
     expect(source).toMatch(/AccessibilityInfo\.addEventListener\('screenReaderChanged', setScreenReaderEnabled\)/);
   });
