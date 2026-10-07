@@ -155,6 +155,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
   const [animationTestVisible, setAnimationTestVisible] = useState(false);
   const [animationTestCelebration, setAnimationTestCelebration] = useState<CompletionCelebration | null>(null);
   const [reminderTestVisible, setReminderTestVisible] = useState(false);
+  const [reminderTestState, setReminderTestState] = useState<MascotState>('ready');
   const [mascotStateTest, setMascotStateTest] = useState<MascotState | null>(null);
 
   // Family names are not unique (see SystemAdminFamilyListItem's own doc
@@ -374,10 +375,17 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
             </View>
             <RtlText style={styles.sectionTitle}>תזכורות</RtlText>
             <View style={styles.animationTestGrid}>
-              <Pressable onPress={() => setReminderTestVisible(true)} style={styles.animationTestCard} accessibilityRole="button">
-                <RtlText style={styles.animationTestTitle}>תזכורת לטיול</RtlText>
-                <RtlText style={styles.animationTestMeta}>ReminderMascotPrompt</RtlText>
-              </Pressable>
+              {([
+                ['15 דקות לפני הטיול', 'excited'],
+                ['הגיע זמן הטיול', 'ready'],
+                ['15 דקות איחור', 'waiting'],
+                ['30 דקות איחור', 'concerned'],
+              ] as const).map(([label, state]) => (
+                <Pressable key={state} onPress={() => { setReminderTestState(state); setReminderTestVisible(true); }} style={styles.animationTestCard} accessibilityRole="button">
+                  <RtlText style={styles.animationTestTitle}>{label}</RtlText>
+                  <RtlText style={styles.animationTestMeta}>{state}</RtlText>
+                </Pressable>
+              ))}
             </View>
             <RtlText style={styles.sectionTitle}>מצבי קמע</RtlText>
             <View style={styles.animationTestGrid}>
@@ -709,7 +717,8 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
       />
       <ReminderMascotPrompt
         visible={reminderTestVisible}
-        message="הגיע הזמן לטיול — תצוגת בדיקה"
+        message="תזכורת לטיול — תצוגת בדיקה"
+        mascotState={reminderTestState}
         onDismiss={() => setReminderTestVisible(false)}
       />
     </Modal>
