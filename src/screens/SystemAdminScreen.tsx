@@ -3,6 +3,8 @@ import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, TextInput,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RtlText } from '../components/RtlText';
 import { Button } from '../components/Button';
+import { WalkCompletionCelebration } from '../components/WalkCompletionCelebration';
+import { CELEBRATION_LIBRARY, type CompletionCelebration } from '../logic/walkCompletionCelebration';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { friendlyErrorMessage } from '../lib/errorMessages';
@@ -148,6 +150,8 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
   const [auditFamilyId, setAuditFamilyId] = useState<string>('all');
+  const [animationTestVisible, setAnimationTestVisible] = useState(false);
+  const [animationTestCelebration, setAnimationTestCelebration] = useState<CompletionCelebration | null>(null);
 
   // Family names are not unique (see SystemAdminFamilyListItem's own doc
   // comment) — the invite code is the actual distinguishing identifier,
@@ -225,6 +229,8 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
       setDetail(null);
       setEmailLogVisible(false);
       setAuditVisible(false);
+      setAnimationTestVisible(false);
+      setAnimationTestCelebration(null);
       void loadFamilies();
       void getSystemAdminEmailDeliveryLog().then(setEmailLog).catch(() => {
         // Overview email health is supplementary; the dedicated log keeps
@@ -319,8 +325,11 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
         <View style={styles.header}>
           <RtlText style={styles.title} accessibilityRole="header">🛡️ ניהול מערכת</RtlText>
           <View style={styles.headerActions}>
-            {!selectedFamilyId && !emailLogVisible && !auditVisible ? (
+            {!selectedFamilyId && !emailLogVisible && !auditVisible && !animationTestVisible ? (
               <>
+                <Pressable onPress={() => setAnimationTestVisible(true)} accessibilityRole="button" accessibilityLabel="פתיחת בדיקת אנימציות" hitSlop={10}>
+                  <RtlText style={styles.headerLink}>בדיקת אנימציות</RtlText>
+                </Pressable>
                 <Pressable onPress={openAuditLog} accessibilityRole="button" accessibilityLabel="פתיחת יומן פעילות" hitSlop={10}>
                   <RtlText style={styles.headerLink}>יומן פעילות</RtlText>
                 </Pressable>
@@ -335,7 +344,29 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
           </View>
         </View>
 
-        {auditVisible ? (
+        {animationTestVisible ? (
+          <ScrollView contentContainerStyle={styles.content}>
+            <Pressable onPress={() => setAnimationTestVisible(false)} accessibilityRole="button" accessibilityLabel="חזרה לרשימת המשפחות">
+              <RtlText style={styles.backLink}>‹ חזרה לרשימה</RtlText>
+            </Pressable>
+            <RtlText style={styles.sectionTitle}>בדיקת אנימציות</RtlText>
+            <RtlText style={styles.auditHint}>בחר/י אנימציה כדי להציג אותה בדיוק דרך רכיב סיום הטיול הפעיל ב־Staging.</RtlText>
+            <View style={styles.animationTestGrid}>
+              {CELEBRATION_LIBRARY.map((item) => (
+                <Pressable
+                  key={item.id}
+                  onPress={() => setAnimationTestCelebration({ ...item, reaction: item.id })}
+                  style={styles.animationTestCard}
+                  accessibilityRole="button"
+                  accessibilityLabel={`בדיקת אנימציה ${item.title}`}
+                >
+                  <RtlText style={styles.animationTestTitle}>{item.title}</RtlText>
+                  <RtlText style={styles.animationTestMeta}>{item.id}</RtlText>
+                </Pressable>
+              ))}
+            </View>
+          </ScrollView>
+        ) : auditVisible ? (
           <ScrollView contentContainerStyle={styles.content}>
             <Pressable onPress={() => setAuditVisible(false)} accessibilityRole="button" accessibilityLabel="חזרה לרשימת המשפחות">
               <RtlText style={styles.backLink}>‹ חזרה לרשימה</RtlText>
@@ -643,6 +674,10 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
           </View>
         )}
       </SafeAreaView>
+      <WalkCompletionCelebration
+        celebration={animationTestCelebration}
+        onDismiss={() => setAnimationTestCelebration(null)}
+      />
     </Modal>
   );
 }
@@ -730,4 +765,8 @@ const styles = StyleSheet.create({
   auditFilterTextSelected: { color: colors.surface },
   auditCard: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
   auditAction: { ...typography.body, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
+  animationTestGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: spacing.sm },
+  animationTestCard: { flexBasis: '46%', flexGrow: 1, minWidth: 150, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
+  animationTestTitle: { ...typography.body, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
+  animationTestMeta: { ...typography.caption, color: colors.textSecondary, textAlign: 'right', writingDirection: 'ltr' },
 });
