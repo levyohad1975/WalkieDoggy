@@ -5,6 +5,8 @@ import { radii, spacing } from '../theme/tokens';
 import { RtlText } from './RtlText';
 import { selectReminderAnimation, type ReminderAnimationId, type ReminderStage } from '../logic/reminderAnimationLibrary';
 import { MascotSafeZone } from './MascotSafeZone';
+import { MascotFrameAnimation } from './MascotFrameAnimation';
+import { MASCOT_FRAME_SETS, MASCOT_FRAME_FPS } from '../mascot/celebrationAnimationManifest';
 
 interface ReminderMascotPromptProps {
   visible: boolean;
@@ -16,7 +18,9 @@ interface ReminderMascotPromptProps {
 
 /** A notification-open prompt, intentionally distinct from completion gratitude. */
 const FALLBACK_MASCOT = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
-const REMINDER_V2: Record<ReminderAnimationId, number> = {
+const FRAME_REMINDER_IDS = new Set<ReminderAnimationId>(['leash-ready', 'tail-wag', 'curious-listen', 'trophy-winner', 'happy-spin']);
+
+const REMINDER_V2: Partial<Record<ReminderAnimationId, number>> = {
   'happy-jump': require('../../assets/branding/walkie-happy-jump-v2-final.webp'),
   'high-five': require('../../assets/branding/walkie-high-five-v2-final.webp'),
   'thank-you-heart': require('../../assets/branding/walkie-thank-you-heart-v2-final.webp'),
@@ -72,13 +76,24 @@ export function ReminderMascotPrompt({ visible, message, onDismiss, animationId,
           <View style={styles.moment} accessibilityRole="alert" accessibilityLiveRegion="polite">
             <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
             <View style={styles.tail} />
-            <Image
-              source={reducedMotion ? FALLBACK_MASCOT : REMINDER_V2[selectedAnimationId]}
-              style={styles.mascot}
-              resizeMode="contain"
-              accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול"
-              testID="reminder-mascot-animation"
-            />
+            {!reducedMotion && FRAME_REMINDER_IDS.has(selectedAnimationId) ? (
+              <MascotFrameAnimation
+                frames={MASCOT_FRAME_SETS[selectedAnimationId as keyof typeof MASCOT_FRAME_SETS]}
+                fps={MASCOT_FRAME_FPS}
+                size={216}
+                fallback={FALLBACK_MASCOT}
+                accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול"
+                testID="reminder-mascot-animation"
+              />
+            ) : (
+              <Image
+                source={reducedMotion ? FALLBACK_MASCOT : REMINDER_V2[selectedAnimationId]!}
+                style={styles.mascot}
+                resizeMode="contain"
+                accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול"
+                testID="reminder-mascot-animation"
+              />
+            )}
           </View>
         </MascotSafeZone>
       </Pressable>
