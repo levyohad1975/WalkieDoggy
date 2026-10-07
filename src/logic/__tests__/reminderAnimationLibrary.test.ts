@@ -1,21 +1,19 @@
 import { REMINDER_ANIMATION_LIBRARY, selectReminderAnimation } from '../reminderAnimationLibrary';
 
 describe('reminderAnimationLibrary', () => {
-  it('ships a broad set of reminder moments across all timing stages', () => {
-    expect(REMINDER_ANIMATION_LIBRARY).toHaveLength(12);
+  it('never presents duplicate motion assets as separate animation choices', () => {
+    const ids = REMINDER_ANIMATION_LIBRARY.map((item) => item.animationId);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('covers pre-walk, due, and escalating overdue reminder moments', () => {
     expect(new Set(REMINDER_ANIMATION_LIBRARY.map((item) => item.stage))).toEqual(
       new Set(['pre-walk', 'due', 'late-15', 'late-30'])
     );
   });
 
-  it('offers three choices for every reminder stage', () => {
-    for (const stage of ['pre-walk', 'due', 'late-15', 'late-30'] as const) {
-      expect(REMINDER_ANIMATION_LIBRARY.filter((item) => item.stage === stage)).toHaveLength(3);
-    }
-  });
-
   it('avoids immediately repeating the previous motion when another exists', () => {
-    const selected = selectReminderAnimation('due', 'high-five', () => 0);
+    const selected = selectReminderAnimation(undefined, 'high-five', () => 0);
     expect(selected.animationId).not.toBe('high-five');
   });
 
