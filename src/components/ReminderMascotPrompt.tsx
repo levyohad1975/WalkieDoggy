@@ -3,19 +3,20 @@ import { AccessibilityInfo, Modal, Pressable, StyleSheet, View } from 'react-nat
 import { colors } from '../theme/colors';
 import { radii, spacing } from '../theme/tokens';
 import { RtlText } from './RtlText';
-import { WalkieMascot } from './WalkieMascot';
+import { WalkieMascot, type MascotState } from './WalkieMascot';
 import { MascotSafeZone } from './MascotSafeZone';
 
 interface ReminderMascotPromptProps {
   visible: boolean;
   message: string;
   onDismiss: () => void;
+  mascotState?: MascotState;
 }
 
 /** A notification-open prompt, intentionally distinct from completion gratitude. */
 const FALLBACK_MASCOT = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
 
-export function ReminderMascotPrompt({ visible, message, onDismiss }: ReminderMascotPromptProps) {
+export function ReminderMascotPrompt({ visible, message, onDismiss, mascotState = 'ready' }: ReminderMascotPromptProps) {
   // Fail-safe default true, same convention as WalkieMascot/MascotFrameAnimation/
   // WalkCompletionCelebration: static until the OS setting is confirmed off.
   const [reducedMotion, setReducedMotion] = useState(true);
@@ -48,7 +49,7 @@ export function ReminderMascotPrompt({ visible, message, onDismiss }: ReminderMa
           <View style={styles.moment} accessibilityRole="alert" accessibilityLiveRegion="polite">
             <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
             <View style={styles.tail} />
-            <WalkieMascot state="ready" size={154} accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול" testID="reminder-mascot-animation" />
+            <WalkieMascot state={mascotState} size={168} accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול" testID="reminder-mascot-animation" />
           </View>
         </MascotSafeZone>
       </Pressable>
