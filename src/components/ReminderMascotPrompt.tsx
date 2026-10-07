@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AccessibilityInfo, Image, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { MascotFrameAnimation } from './MascotFrameAnimation';
 import { colors } from '../theme/colors';
 import { radii, spacing } from '../theme/tokens';
 import { RtlText } from './RtlText';
@@ -22,6 +23,7 @@ const REMINDER_V2: Record<ReminderAnimationId, number> = {
   'thank-you-heart': require('../../assets/branding/walkie-thank-you-heart-v2-final.webp'),
   'trophy': require('../../assets/branding/walkie-trophy-v2-final.webp'),
   'sleepy-good-night': require('../../assets/branding/walkie-sleepy-good-night-v2-final.webp'),
+  'leash-ready': require('../../assets/branding/walkie-doggy-mascot-transparent.png'),
 };
 
 let lastReminderAnimationId: ReminderAnimationId | undefined;
@@ -72,13 +74,22 @@ export function ReminderMascotPrompt({ visible, message, onDismiss, animationId,
           <View style={styles.moment} accessibilityRole="alert" accessibilityLiveRegion="polite">
             <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
             <View style={styles.tail} />
-            <Image
-              source={reducedMotion ? FALLBACK_MASCOT : REMINDER_V2[selectedAnimationId]}
-              style={styles.mascot}
-              resizeMode="contain"
-              accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול"
-              testID="reminder-mascot-animation"
-            />
+            {!reducedMotion && selectedAnimationId === 'leash-ready' ? (
+              <MascotFrameAnimation
+                animationId="leash-ready"
+                size={168}
+                accessibilityLabel="הקמע של Walkie Doggy Link מוכן לטיול עם הרצועה"
+                testID="reminder-mascot-animation"
+              />
+            ) : (
+              <Image
+                source={reducedMotion ? FALLBACK_MASCOT : REMINDER_V2[selectedAnimationId]}
+                style={styles.mascot}
+                resizeMode="contain"
+                accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול"
+                testID="reminder-mascot-animation"
+              />
+            )}
           </View>
         </MascotSafeZone>
       </Pressable>
