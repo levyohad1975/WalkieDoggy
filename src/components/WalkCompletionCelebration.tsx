@@ -20,6 +20,7 @@ const V2_CELEBRATIONS: Record<string, { source: number; durationMs: number }> = 
   'high-five': { source: HIGH_FIVE_V2, durationMs: 5100 },
   'paw-party': { source: HIGH_FIVE_V2, durationMs: 5100 },
   'happy-jump': { source: HAPPY_JUMP_V2, durationMs: 5100 },
+  'confetti': { source: HAPPY_JUMP_V2, durationMs: 5100 },
   'thank-you-heart': { source: THANK_YOU_HEART_V2, durationMs: 5100 },
   'sleepy-good-night': { source: SLEEPY_GOOD_NIGHT_V2, durationMs: 5100 },
   'trophy-teaser': { source: TROPHY_V2, durationMs: 5100 },
