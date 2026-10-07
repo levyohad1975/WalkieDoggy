@@ -27,7 +27,7 @@ const REMINDER_V2: Record<ReminderAnimationId, number> = {
 let lastReminderAnimationId: ReminderAnimationId | undefined;
 
 export function ReminderMascotPrompt({ visible, message, onDismiss, animationId, stage }: ReminderMascotPromptProps) {
-  // Fail-safe default true, same convention as WalkieMascot/MascotFrameAnimation/
+  // Fail-safe default true, same convention as WalkieMascot/
   // WalkCompletionCelebration: static until the OS setting is confirmed off.
   const [reducedMotion, setReducedMotion] = useState(true);
   // Fail-safe default false — see WalkCompletionCelebration's identical
