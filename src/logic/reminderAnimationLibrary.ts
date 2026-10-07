@@ -1,5 +1,5 @@
 export type ReminderStage = 'pre-walk' | 'due' | 'late-15' | 'late-30';
-export type ReminderAnimationId = 'happy-jump' | 'high-five' | 'thank-you-heart' | 'trophy' | 'sleepy-good-night';
+export type ReminderAnimationId = 'happy-jump' | 'high-five' | 'thank-you-heart' | 'trophy' | 'sleepy-good-night' | 'leash-ready' | 'tail-wag' | 'curious-listen' | 'trophy-winner' | 'happy-spin';
 
 export interface ReminderAnimationMoment {
   id: string;
@@ -21,6 +21,11 @@ export const REMINDER_ANIMATION_LIBRARY: ReminderAnimationMoment[] = [
   { id: 'late15-heart', stage: 'late-15', animationId: 'thank-you-heart', title: 'עדיין מחכה', message: 'אני עדיין מחכה לטיול שלנו…' },
   { id: 'due-trophy', stage: 'due', animationId: 'trophy', title: 'מוכנים למשימה', message: 'זמן לטיול — בואו נעשה את זה!' },
   { id: 'late30-sleepy', stage: 'late-30', animationId: 'sleepy-good-night', title: 'מחכה כבר הרבה זמן', message: 'הטיול מחכה לנו כבר חצי שעה…' },
+  { id: 'pre-leash', stage: 'pre-walk', animationId: 'leash-ready', title: 'הרצועה כבר מוכנה', message: 'הרצועה בפה — עוד מעט יוצאים! 🐾' },
+  { id: 'pre-tail', stage: 'pre-walk', animationId: 'tail-wag', title: 'הזנב כבר עובד', message: 'יש לי הרגשה שמתקרב טיול…' },
+  { id: 'pre-listen', stage: 'pre-walk', animationId: 'curious-listen', title: 'שמעתי טיול?', message: 'אמרתם טיול? אני מקשיב!' },
+  { id: 'due-spin', stage: 'due', animationId: 'happy-spin', title: 'יוצאים!', message: 'הגיע הזמן — אני כבר מתרגש!' },
+  { id: 'late30-trophy-winner', stage: 'late-30', animationId: 'trophy-winner', title: 'הגביע מחכה', message: 'בואו נסיים את המשימה כמו אלופים!' },
 ];
 
 export function selectReminderAnimation(stage?: ReminderStage, recentAnimationId?: ReminderAnimationId, random: () => number = Math.random): ReminderAnimationMoment {
