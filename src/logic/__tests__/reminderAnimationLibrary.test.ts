@@ -8,8 +8,10 @@ describe('reminderAnimationLibrary', () => {
     // trophy-winner have none and were pulled back out.
     const ids = REMINDER_ANIMATION_LIBRARY.map((item) => item.animationId);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toEqual(expect.arrayContaining(['happy-jump', 'high-five', 'thank-you-heart', 'trophy', 'sleepy-good-night']));
-    expect(ids).toHaveLength(5);
+    expect(ids).toEqual(
+      expect.arrayContaining(['happy-jump', 'high-five', 'thank-you-heart', 'trophy', 'sleepy-good-night', 'leash-ready', 'tail-wag', 'curious-listen', 'happy-spin', 'trophy-winner'])
+    );
+    expect(ids).toHaveLength(10);
   });
 
   it('covers pre-walk, due, and escalating overdue reminder moments', () => {

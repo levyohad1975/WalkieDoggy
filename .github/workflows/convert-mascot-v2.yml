@@ -37,7 +37,7 @@ jobs:
             test "${#frames[@]}" -eq 24
             args=()
             for frame in "${frames[@]}"; do args+=("-d" "42" "$frame"); done
-            img2webp -quiet -loop 0 -mixed -q 82 "${args[@]}" -o "assets/branding/mascot-v2/walkie-$id-v2.webp"
+            img2webp -loop 0 -mixed -q 82 "${args[@]}" -o "assets/branding/mascot-v2/walkie-$id-v2.webp"
           done
           ls -lh assets/branding/mascot-v2/*.webp
       - name: Commit generated V2 assets
