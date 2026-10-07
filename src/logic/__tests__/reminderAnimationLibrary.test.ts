@@ -8,6 +8,7 @@ describe('reminderAnimationLibrary', () => {
     // trophy-winner have none and were pulled back out.
     const ids = REMINDER_ANIMATION_LIBRARY.map((item) => item.animationId);
     expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toEqual(expect.arrayContaining(['happy-jump', 'high-five', 'thank-you-heart', 'trophy', 'sleepy-good-night']));
     expect(ids).toHaveLength(5);
   });
 
