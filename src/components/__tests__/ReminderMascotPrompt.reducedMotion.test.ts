@@ -48,17 +48,14 @@ describe('ReminderMascotPrompt — Modal transition respects reduced motion (str
   it('uses real V2 animated assets for reminder motion and keeps a static reduced-motion fallback', () => {
     expect(source).toContain('REMINDER_V2');
     expect(source).toContain('selectReminderAnimation');
-    expect(source).toContain('source={reducedMotion ? FALLBACK_MASCOT : REMINDER_V2[selectedAnimationId]!}');
-    expect(source).toContain('MascotFrameAnimation');
-    expect(source).toContain('size={216}');
+    expect(source).toContain('source={reducedMotion ? FALLBACK_MASCOT : REMINDER_V2[selectedAnimationId]}');
     expect(source).toContain('mascot: { width: 216, height: 216 }');
     expect(source).toContain('testID="reminder-mascot-animation"');
   });
 
-  it('falls back to the legacy discrete-frame mascot for ids with no uploaded V2 asset yet', () => {
-    expect(source).toContain('FRAME_REMINDER_IDS');
-    expect(source).toContain('MascotFrameAnimation');
-    expect(source).toContain('MASCOT_FRAME_SETS');
-    expect(source).toContain('MASCOT_FRAME_FPS');
+
+  it('does not expose the rejected legacy frame renderer in reminder prompts', () => {
+    expect(source).not.toContain('FRAME_REMINDER_IDS');
+    expect(source).not.toContain('MASCOT_FRAME_SETS');
   });
 });
