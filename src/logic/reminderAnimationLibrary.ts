@@ -33,8 +33,8 @@ export const REMINDER_ANIMATION_LIBRARY: ReminderAnimationMoment[] = [
   { id: 'late30-trophy', stage: 'late-30', animationId: 'trophy', title: 'עוד לא יצאנו', message: 'הגיע הזמן להשלים את הטיול 🐾' },
 ];
 
-export function selectReminderAnimation(stage: ReminderStage, recentAnimationId?: ReminderAnimationId, random: () => number = Math.random): ReminderAnimationMoment {
-  const stagePool = REMINDER_ANIMATION_LIBRARY.filter((item) => item.stage === stage);
+export function selectReminderAnimation(stage?: ReminderStage, recentAnimationId?: ReminderAnimationId, random: () => number = Math.random): ReminderAnimationMoment {
+  const stagePool = stage ? REMINDER_ANIMATION_LIBRARY.filter((item) => item.stage === stage) : REMINDER_ANIMATION_LIBRARY;
   const freshPool = recentAnimationId ? stagePool.filter((item) => item.animationId !== recentAnimationId) : stagePool;
   const pool = freshPool.length ? freshPool : stagePool;
   return pool[Math.min(pool.length - 1, Math.floor(random() * pool.length))];
