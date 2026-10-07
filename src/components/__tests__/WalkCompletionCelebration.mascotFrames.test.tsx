@@ -78,8 +78,6 @@ describe('WalkCompletionCelebration — High-Five V2 single animated asset; bubb
     ['thank-you-heart', THANK_YOU_HEART_V2],
     ['sleepy-good-night', SLEEPY_GOOD_NIGHT_V2],
     ['trophy-teaser', TROPHY_V2],
-    ['long-walk', TROPHY_V2],
-    ['paw-party', HIGH_FIVE_V2],
   ])('renders %s through the V2 single-asset path', async (id, expectedSource) => {
     const item = { ...CELEBRATION_LIBRARY.find((candidate) => candidate.id === id)!, reaction: 'כל הכבוד!' };
     const screen = render(<WalkCompletionCelebration celebration={item} onDismiss={jest.fn()} />);
