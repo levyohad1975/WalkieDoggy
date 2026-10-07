@@ -229,7 +229,7 @@ const styles = StyleSheet.create({
   // Real-device QA round 8 — offsets scaled ~2x alongside the mascot size
   // (84 -> 168) so the bubble keeps the same relative position against the
   // now much larger character instead of appearing to sit too close/overlap.
-  speechBubbleWrap: { position: 'absolute', left: -50, top: -28, alignItems: 'flex-end', zIndex: 3 },
+  speechBubbleWrap: { position: 'absolute', left: -58, top: -28, alignItems: 'flex-end', zIndex: 3 },
   bubble: { minWidth: 96, maxWidth: 142, minHeight: 64, backgroundColor: colors.surface, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', shadowColor: '#0B5C75', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
   message: { color: colors.textPrimary, fontSize: 13, lineHeight: 17, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
   tail: { width: 14, height: 14, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }], marginTop: -8, marginRight: 24 },
