@@ -25,6 +25,10 @@ const REMINDER_V2: Record<ReminderAnimationId, number> = {
   'trophy': require('../../assets/branding/walkie-trophy-v2-final.webp'),
   'sleepy-good-night': require('../../assets/branding/walkie-sleepy-good-night-v2-final.webp'),
   'leash-ready': require('../../assets/branding/walkie-doggy-mascot-transparent.png'),
+  'tail-wag': require('../../assets/branding/walkie-doggy-mascot-transparent.png'),
+  'curious-listen': require('../../assets/branding/walkie-doggy-mascot-transparent.png'),
+  'peek-a-boo': require('../../assets/branding/walkie-doggy-mascot-transparent.png'),
+  'trophy-winner': require('../../assets/branding/walkie-doggy-mascot-transparent.png'),
 };
 
 let lastReminderAnimationId: ReminderAnimationId | undefined;
@@ -75,7 +79,7 @@ export function ReminderMascotPrompt({ visible, message, onDismiss, animationId,
           <View style={styles.moment} accessibilityRole="alert" accessibilityLiveRegion="polite">
             <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
             <View style={styles.tail} />
-            {!reducedMotion && selectedAnimationId === 'leash-ready' ? (
+            {!reducedMotion && ['leash-ready', 'tail-wag', 'curious-listen', 'peek-a-boo', 'trophy-winner'].includes(selectedAnimationId) ? (
               <MascotFrameAnimation
                 frames={MASCOT_FRAME_SETS['leash-ready']}
                 fps={MASCOT_FRAME_FPS}
