@@ -52,4 +52,9 @@ describe('ReminderMascotPrompt — Modal transition respects reduced motion (str
     expect(source).toContain('mascot: { width: 216, height: 216 }');
     expect(source).toContain('testID="reminder-mascot-animation"');
   });
+
+  it('does not expose the rejected legacy frame renderer in reminder prompts', () => {
+    expect(source).not.toContain('FRAME_REMINDER_IDS');
+    expect(source).not.toContain('MASCOT_FRAME_SETS');
+  });
 });
