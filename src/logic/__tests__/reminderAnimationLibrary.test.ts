@@ -5,6 +5,8 @@ describe('reminderAnimationLibrary', () => {
     const ids = REMINDER_ANIMATION_LIBRARY.map((item) => item.animationId);
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toContain('leash-ready');
+    expect(ids).toEqual(expect.arrayContaining(['tail-wag', 'curious-listen', 'peek-a-boo', 'trophy-winner']));
+    expect(ids).toHaveLength(10);
   });
 
   it('covers pre-walk, due, and escalating overdue reminder moments', () => {
