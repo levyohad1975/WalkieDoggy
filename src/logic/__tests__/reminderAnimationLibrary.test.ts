@@ -2,11 +2,13 @@ import { REMINDER_ANIMATION_LIBRARY, selectReminderAnimation } from '../reminder
 
 describe('reminderAnimationLibrary', () => {
   it('never presents duplicate motion assets as separate animation choices', () => {
+    // fix: remove unconverted legacy motions from reminder V2 library — only
+    // ids with a real uploaded V2 asset stay listed (see ReminderMascotPrompt.tsx's
+    // REMINDER_V2 map); leash-ready/tail-wag/curious-listen/peek-a-boo/
+    // trophy-winner have none and were pulled back out.
     const ids = REMINDER_ANIMATION_LIBRARY.map((item) => item.animationId);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toContain('leash-ready');
-    expect(ids).toEqual(expect.arrayContaining(['tail-wag', 'curious-listen', 'peek-a-boo', 'trophy-winner']));
-    expect(ids).toHaveLength(10);
+    expect(ids).toHaveLength(5);
   });
 
   it('covers pre-walk, due, and escalating overdue reminder moments', () => {
