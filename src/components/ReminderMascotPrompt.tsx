@@ -6,6 +6,7 @@ import { radii, spacing } from '../theme/tokens';
 import { RtlText } from './RtlText';
 import { selectReminderAnimation, type ReminderAnimationId, type ReminderStage } from '../logic/reminderAnimationLibrary';
 import { MascotSafeZone } from './MascotSafeZone';
+import { MASCOT_FRAME_SETS, MASCOT_FRAME_FPS } from '../mascot/celebrationAnimationManifest';
 
 interface ReminderMascotPromptProps {
   visible: boolean;
@@ -76,7 +77,9 @@ export function ReminderMascotPrompt({ visible, message, onDismiss, animationId,
             <View style={styles.tail} />
             {!reducedMotion && selectedAnimationId === 'leash-ready' ? (
               <MascotFrameAnimation
-                animationId="leash-ready"
+                frames={MASCOT_FRAME_SETS['leash-ready']}
+                fps={MASCOT_FRAME_FPS}
+                fallback={FALLBACK_MASCOT}
                 size={168}
                 accessibilityLabel="הקמע של Walkie Doggy Link מוכן לטיול עם הרצועה"
                 testID="reminder-mascot-animation"
