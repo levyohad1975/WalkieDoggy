@@ -3,7 +3,7 @@ import { AccessibilityInfo, Image, Modal, Pressable, StyleSheet, View } from 're
 import { colors } from '../theme/colors';
 import { radii, spacing } from '../theme/tokens';
 import { RtlText } from './RtlText';
-import type { ReminderAnimationId } from '../logic/reminderAnimationLibrary';
+import { selectReminderAnimation, type ReminderAnimationId, type ReminderStage } from '../logic/reminderAnimationLibrary';
 import { MascotSafeZone } from './MascotSafeZone';
 
 interface ReminderMascotPromptProps {
@@ -11,6 +11,7 @@ interface ReminderMascotPromptProps {
   message: string;
   onDismiss: () => void;
   animationId?: ReminderAnimationId;
+  stage?: ReminderStage;
 }
 
 /** A notification-open prompt, intentionally distinct from completion gratitude. */
@@ -23,13 +24,28 @@ const REMINDER_V2: Record<ReminderAnimationId, number> = {
   'sleepy-good-night': require('../../assets/branding/walkie-sleepy-good-night-v2-final.webp'),
 };
 
-export function ReminderMascotPrompt({ visible, message, onDismiss, animationId = 'happy-jump' }: ReminderMascotPromptProps) {
+let lastReminderAnimationId: ReminderAnimationId | undefined;
+
+export function ReminderMascotPrompt({ visible, message, onDismiss, animationId, stage = 'due' }: ReminderMascotPromptProps) {
   // Fail-safe default true, same convention as WalkieMascot/MascotFrameAnimation/
   // WalkCompletionCelebration: static until the OS setting is confirmed off.
   const [reducedMotion, setReducedMotion] = useState(true);
   // Fail-safe default false — see WalkCompletionCelebration's identical
   // state for why (never a permanently-stuck modal if detection is slow).
   const [screenReaderEnabled, setScreenReaderEnabled] = useState(false);
+  const [selectedAnimationId, setSelectedAnimationId] = useState<ReminderAnimationId>(animationId ?? 'happy-jump');
+
+  useEffect(() => {
+    if (!visible) return;
+    if (animationId) {
+      setSelectedAnimationId(animationId);
+      lastReminderAnimationId = animationId;
+      return;
+    }
+    const selected = selectReminderAnimation(stage, lastReminderAnimationId);
+    setSelectedAnimationId(selected.animationId);
+    lastReminderAnimationId = selected.animationId;
+  }, [visible, animationId, stage]);
 
   useEffect(() => {
     let mounted = true;
@@ -57,7 +73,7 @@ export function ReminderMascotPrompt({ visible, message, onDismiss, animationId 
             <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
             <View style={styles.tail} />
             <Image
-              source={reducedMotion ? FALLBACK_MASCOT : REMINDER_V2[animationId]}
+              source={reducedMotion ? FALLBACK_MASCOT : REMINDER_V2[selectedAnimationId]}
               style={styles.mascot}
               resizeMode="contain"
               accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול"
