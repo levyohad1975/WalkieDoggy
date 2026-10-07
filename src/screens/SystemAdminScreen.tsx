@@ -7,6 +7,7 @@ import { WalkCompletionCelebration } from '../components/WalkCompletionCelebrati
 import { ReminderMascotPrompt } from '../components/ReminderMascotPrompt';
 import { WalkieMascot, MASCOT_STATES, type MascotState } from '../components/WalkieMascot';
 import { CELEBRATION_LIBRARY, type CompletionCelebration } from '../logic/walkCompletionCelebration';
+import { REMINDER_ANIMATION_LIBRARY, type ReminderAnimationMoment } from '../logic/reminderAnimationLibrary';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { friendlyErrorMessage } from '../lib/errorMessages';
@@ -155,7 +156,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
   const [animationTestVisible, setAnimationTestVisible] = useState(false);
   const [animationTestCelebration, setAnimationTestCelebration] = useState<CompletionCelebration | null>(null);
   const [reminderTestVisible, setReminderTestVisible] = useState(false);
-  const [reminderTestState, setReminderTestState] = useState<MascotState>('ready');
+  const [reminderTestMoment, setReminderTestMoment] = useState<ReminderAnimationMoment | null>(null);
   const [mascotStateTest, setMascotStateTest] = useState<MascotState | null>(null);
 
   // Family names are not unique (see SystemAdminFamilyListItem's own doc
@@ -375,15 +376,16 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
             </View>
             <RtlText style={styles.sectionTitle}>תזכורות</RtlText>
             <View style={styles.animationTestGrid}>
-              {([
-                ['15 דקות לפני הטיול', 'excited'],
-                ['הגיע זמן הטיול', 'ready'],
-                ['15 דקות איחור', 'waiting'],
-                ['30 דקות איחור', 'concerned'],
-              ] as const).map(([label, state]) => (
-                <Pressable key={state} onPress={() => { setReminderTestState(state); setReminderTestVisible(true); }} style={styles.animationTestCard} accessibilityRole="button">
-                  <RtlText style={styles.animationTestTitle}>{label}</RtlText>
-                  <RtlText style={styles.animationTestMeta}>{state}</RtlText>
+              {REMINDER_ANIMATION_LIBRARY.map((item) => (
+                <Pressable
+                  key={item.id}
+                  onPress={() => { setReminderTestMoment(item); setReminderTestVisible(true); }}
+                  style={styles.animationTestCard}
+                  accessibilityRole="button"
+                  accessibilityLabel={`בדיקת אנימציית תזכורת ${item.title}`}
+                >
+                  <RtlText style={styles.animationTestTitle}>{item.title}</RtlText>
+                  <RtlText style={styles.animationTestMeta}>{item.stage} · {item.animationId}</RtlText>
                 </Pressable>
               ))}
             </View>
@@ -717,8 +719,8 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
       />
       <ReminderMascotPrompt
         visible={reminderTestVisible}
-        message="תזכורת לטיול — תצוגת בדיקה"
-        mascotState={reminderTestState}
+        message={reminderTestMoment?.message ?? "תזכורת לטיול — תצוגת בדיקה"}
+        animationId={reminderTestMoment?.animationId}
         onDismiss={() => setReminderTestVisible(false)}
       />
     </Modal>
