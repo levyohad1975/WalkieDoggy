@@ -4,6 +4,7 @@ describe('reminderAnimationLibrary', () => {
   it('never presents duplicate motion assets as separate animation choices', () => {
     const ids = REMINDER_ANIMATION_LIBRARY.map((item) => item.animationId);
     expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toContain('leash-ready');
   });
 
   it('covers pre-walk, due, and escalating overdue reminder moments', () => {
