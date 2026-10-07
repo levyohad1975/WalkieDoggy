@@ -1,22 +1,29 @@
 import React, { useEffect, useState } from 'react';
-import { AccessibilityInfo, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, Image, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { colors } from '../theme/colors';
 import { radii, spacing } from '../theme/tokens';
 import { RtlText } from './RtlText';
-import { WalkieMascot, type MascotState } from './WalkieMascot';
+import type { ReminderAnimationId } from '../logic/reminderAnimationLibrary';
 import { MascotSafeZone } from './MascotSafeZone';
 
 interface ReminderMascotPromptProps {
   visible: boolean;
   message: string;
   onDismiss: () => void;
-  mascotState?: MascotState;
+  animationId?: ReminderAnimationId;
 }
 
 /** A notification-open prompt, intentionally distinct from completion gratitude. */
 const FALLBACK_MASCOT = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
+const REMINDER_V2: Record<ReminderAnimationId, number> = {
+  'happy-jump': require('../../assets/branding/walkie-happy-jump-v2-final.webp'),
+  'high-five': require('../../assets/branding/walkie-high-five-v2-final.webp'),
+  'thank-you-heart': require('../../assets/branding/walkie-thank-you-heart-v2-final.webp'),
+  'trophy': require('../../assets/branding/walkie-trophy-v2-final.webp'),
+  'sleepy-good-night': require('../../assets/branding/walkie-sleepy-good-night-v2-final.webp'),
+};
 
-export function ReminderMascotPrompt({ visible, message, onDismiss, mascotState = 'ready' }: ReminderMascotPromptProps) {
+export function ReminderMascotPrompt({ visible, message, onDismiss, animationId = 'happy-jump' }: ReminderMascotPromptProps) {
   // Fail-safe default true, same convention as WalkieMascot/MascotFrameAnimation/
   // WalkCompletionCelebration: static until the OS setting is confirmed off.
   const [reducedMotion, setReducedMotion] = useState(true);
@@ -49,7 +56,13 @@ export function ReminderMascotPrompt({ visible, message, onDismiss, mascotState 
           <View style={styles.moment} accessibilityRole="alert" accessibilityLiveRegion="polite">
             <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
             <View style={styles.tail} />
-            <WalkieMascot state={mascotState} size={168} accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול" testID="reminder-mascot-animation" />
+            <Image
+              source={reducedMotion ? FALLBACK_MASCOT : REMINDER_V2[animationId]}
+              style={styles.mascot}
+              resizeMode="contain"
+              accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול"
+              testID="reminder-mascot-animation"
+            />
           </View>
         </MascotSafeZone>
       </Pressable>
@@ -63,4 +76,5 @@ const styles = StyleSheet.create({
   bubble: { backgroundColor: colors.surface, borderRadius: radii.xl, paddingHorizontal: 18, paddingVertical: spacing.md, marginBottom: -6, zIndex: 2 },
   message: { color: colors.textPrimary, fontSize: 19, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
   tail: { width: 18, height: 18, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }], marginTop: -9, marginBottom: -3, zIndex: 1 },
+  mascot: { width: 168, height: 168 },
 });
