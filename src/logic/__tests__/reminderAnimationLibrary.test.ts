@@ -4,8 +4,8 @@ describe('reminderAnimationLibrary', () => {
   it('never presents duplicate motion assets as separate animation choices', () => {
     const ids = REMINDER_ANIMATION_LIBRARY.map((item) => item.animationId);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toEqual(expect.arrayContaining(['happy-jump', 'high-five', 'thank-you-heart', 'trophy', 'sleepy-good-night', 'leash-ready', 'playful-wait', 'trophy-lift']));
-    expect(ids).toHaveLength(8);
+    expect(ids).toEqual(expect.arrayContaining(['happy-jump', 'high-five', 'thank-you-heart', 'trophy', 'sleepy-good-night', 'leash-ready', 'playful-wait', 'trophy-lift', 'paw-wave']));
+    expect(ids).toHaveLength(9);
   });
 
   it('covers pre-walk, due, and escalating overdue reminder moments', () => {
