@@ -4,6 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { RtlText } from '../components/RtlText';
 import { Button } from '../components/Button';
 import { WalkCompletionCelebration } from '../components/WalkCompletionCelebration';
+import { ReminderMascotPrompt } from '../components/ReminderMascotPrompt';
+import { WalkieMascot, MASCOT_STATES, type MascotState } from '../components/WalkieMascot';
 import { CELEBRATION_LIBRARY, type CompletionCelebration } from '../logic/walkCompletionCelebration';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
@@ -152,6 +154,8 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
   const [auditFamilyId, setAuditFamilyId] = useState<string>('all');
   const [animationTestVisible, setAnimationTestVisible] = useState(false);
   const [animationTestCelebration, setAnimationTestCelebration] = useState<CompletionCelebration | null>(null);
+  const [reminderTestVisible, setReminderTestVisible] = useState(false);
+  const [mascotStateTest, setMascotStateTest] = useState<MascotState | null>(null);
 
   // Family names are not unique (see SystemAdminFamilyListItem's own doc
   // comment) — the invite code is the actual distinguishing identifier,
@@ -231,6 +235,8 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
       setAuditVisible(false);
       setAnimationTestVisible(false);
       setAnimationTestCelebration(null);
+      setReminderTestVisible(false);
+      setMascotStateTest(null);
       void loadFamilies();
       void getSystemAdminEmailDeliveryLog().then(setEmailLog).catch(() => {
         // Overview email health is supplementary; the dedicated log keeps
@@ -350,7 +356,8 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
               <RtlText style={styles.backLink}>‹ חזרה לרשימה</RtlText>
             </Pressable>
             <RtlText style={styles.sectionTitle}>בדיקת אנימציות</RtlText>
-            <RtlText style={styles.auditHint}>בחר/י אנימציה כדי להציג אותה בדיוק דרך רכיב סיום הטיול הפעיל ב־Staging.</RtlText>
+            <RtlText style={styles.auditHint}>מרכז בדיקה לכל אנימציות הקמע הפעילות באפליקציה.</RtlText>
+            <RtlText style={styles.sectionTitle}>סיום טיול</RtlText>
             <View style={styles.animationTestGrid}>
               {CELEBRATION_LIBRARY.map((item) => (
                 <Pressable
@@ -365,6 +372,28 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                 </Pressable>
               ))}
             </View>
+            <RtlText style={styles.sectionTitle}>תזכורות</RtlText>
+            <View style={styles.animationTestGrid}>
+              <Pressable onPress={() => setReminderTestVisible(true)} style={styles.animationTestCard} accessibilityRole="button">
+                <RtlText style={styles.animationTestTitle}>תזכורת לטיול</RtlText>
+                <RtlText style={styles.animationTestMeta}>ReminderMascotPrompt</RtlText>
+              </Pressable>
+            </View>
+            <RtlText style={styles.sectionTitle}>מצבי קמע</RtlText>
+            <View style={styles.animationTestGrid}>
+              {MASCOT_STATES.map((state) => (
+                <Pressable key={state} onPress={() => setMascotStateTest(state)} style={styles.animationTestCard} accessibilityRole="button">
+                  <RtlText style={styles.animationTestTitle}>{state}</RtlText>
+                  <RtlText style={styles.animationTestMeta}>WalkieMascot</RtlText>
+                </Pressable>
+              ))}
+            </View>
+            {mascotStateTest ? (
+              <View style={styles.mascotStatePreview}>
+                <Button label="סגירת תצוגה" onPress={() => setMascotStateTest(null)} compact />
+                <WalkieMascot state={mascotStateTest} size={168} accessibilityLabel="תצוגת בדיקת קמע" />
+              </View>
+            ) : null}
           </ScrollView>
         ) : auditVisible ? (
           <ScrollView contentContainerStyle={styles.content}>
@@ -678,6 +707,11 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
         celebration={animationTestCelebration}
         onDismiss={() => setAnimationTestCelebration(null)}
       />
+      <ReminderMascotPrompt
+        visible={reminderTestVisible}
+        message="הגיע הזמן לטיול — תצוגת בדיקה"
+        onDismiss={() => setReminderTestVisible(false)}
+      />
     </Modal>
   );
 }
@@ -769,4 +803,5 @@ const styles = StyleSheet.create({
   animationTestCard: { flexBasis: '46%', flexGrow: 1, minWidth: 150, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
   animationTestTitle: { ...typography.body, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
   animationTestMeta: { ...typography.caption, color: colors.textSecondary, textAlign: 'right', writingDirection: 'ltr' },
+  mascotStatePreview: { alignItems: 'center', justifyContent: 'center', minHeight: 230, backgroundColor: colors.surfaceMuted, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, marginTop: spacing.sm, gap: spacing.md },
 });
