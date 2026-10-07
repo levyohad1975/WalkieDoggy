@@ -1,6 +1,11 @@
 name: Convert Mascot Legacy Frames to V2 WebP
 
 on:
+  pull_request:
+    branches:
+      - fix/urgent-master-batch-20260925
+    paths:
+      - '.github/workflows/convert-mascot-v2.yml'
   push:
     branches:
       - fix/urgent-master-batch-20260925
