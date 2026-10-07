@@ -8,6 +8,12 @@ import { selectReminderAnimation, type ReminderAnimationId, type ReminderStage }
 import { MascotSafeZone } from './MascotSafeZone';
 import { MASCOT_FRAME_SETS, MASCOT_FRAME_FPS } from '../mascot/celebrationAnimationManifest';
 
+const FRAME_ANIMATION_IDS = ['leash-ready', 'tail-wag', 'curious-listen', 'peek-a-boo', 'trophy-winner'] as const;
+type FrameAnimationId = (typeof FRAME_ANIMATION_IDS)[number];
+function isFrameAnimationId(id: ReminderAnimationId): id is FrameAnimationId {
+  return (FRAME_ANIMATION_IDS as readonly string[]).includes(id);
+}
+
 interface ReminderMascotPromptProps {
   visible: boolean;
   message: string;
@@ -79,13 +85,13 @@ export function ReminderMascotPrompt({ visible, message, onDismiss, animationId,
           <View style={styles.moment} accessibilityRole="alert" accessibilityLiveRegion="polite">
             <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
             <View style={styles.tail} />
-            {!reducedMotion && ['leash-ready', 'tail-wag', 'curious-listen', 'peek-a-boo', 'trophy-winner'].includes(selectedAnimationId) ? (
+            {!reducedMotion && isFrameAnimationId(selectedAnimationId) ? (
               <MascotFrameAnimation
-                frames={MASCOT_FRAME_SETS['leash-ready']}
+                frames={MASCOT_FRAME_SETS[selectedAnimationId]}
                 fps={MASCOT_FRAME_FPS}
                 fallback={FALLBACK_MASCOT}
                 size={168}
-                accessibilityLabel="הקמע של Walkie Doggy Link מוכן לטיול עם הרצועה"
+                accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול"
                 testID="reminder-mascot-animation"
               />
             ) : (
