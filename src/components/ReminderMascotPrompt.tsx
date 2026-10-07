@@ -25,6 +25,7 @@ const REMINDER_V2: Record<ReminderAnimationId, number> = {
   'leash-ready': require('../../assets/branding/walkie-leash-mouth-v2-final.webp'),
   'playful-wait': require('../../assets/branding/walkie-playful-wait-v2-final.webp'),
   'trophy-lift': require('../../assets/branding/walkie-trophy-lift-v2-final.webp'),
+  'paw-wave': require('../../assets/branding/walkie-paw-wave-v2-final.webp'),
 };
 
 let lastReminderAnimationId: ReminderAnimationId | undefined;
