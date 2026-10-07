@@ -1,5 +1,5 @@
 export type ReminderStage = 'pre-walk' | 'due' | 'late-15' | 'late-30';
-export type ReminderAnimationId = 'happy-jump' | 'high-five' | 'thank-you-heart' | 'trophy' | 'sleepy-good-night';
+export type ReminderAnimationId = 'happy-jump' | 'high-five' | 'thank-you-heart' | 'trophy' | 'sleepy-good-night' | 'leash-ready';
 
 export interface ReminderAnimationMoment {
   id: string;
@@ -17,6 +17,7 @@ export interface ReminderAnimationMoment {
  */
 export const REMINDER_ANIMATION_LIBRARY: ReminderAnimationMoment[] = [
   { id: 'pre-jump', stage: 'pre-walk', animationId: 'happy-jump', title: 'מתחילים להתרגש', message: 'עוד מעט יוצאים לטיול! 🐾' },
+  { id: 'pre-leash-ready', stage: 'pre-walk', animationId: 'leash-ready', title: 'הרצועה מוכנה', message: 'עוד מעט יוצאים — אני כבר מוכן עם הרצועה!' },
   { id: 'due-high-five', stage: 'due', animationId: 'high-five', title: 'הגיע הזמן', message: 'הגיע הזמן לטיול — יוצאים?' },
   { id: 'late15-heart', stage: 'late-15', animationId: 'thank-you-heart', title: 'עדיין מחכה', message: 'אני עדיין מחכה לטיול שלנו…' },
   { id: 'due-trophy', stage: 'due', animationId: 'trophy', title: 'מוכנים למשימה', message: 'זמן לטיול — בואו נעשה את זה!' },
