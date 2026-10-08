@@ -35,6 +35,7 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
   const [color, setColor] = useState(userPalette[0]);
   const [photoUrl, setPhotoUrl] = useState<string | undefined>(undefined);
   const [uploading, setUploading] = useState(false);
+  const [removingPhoto, setRemovingPhoto] = useState(false);
   const [pendingPhotoPick, setPendingPhotoPick] = useState(false);
   const saveUserPhoto = useFamilyStore((s) => s.saveUserPhoto);
   // Keep latest values available while the hosted web cropper is open.
@@ -111,6 +112,24 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
       });
   }, [pendingPhotoPick, familyId, saveUserPhoto]);
 
+  const removePhoto = async () => {
+    if (!photoUrl || uploading || removingPhoto) return;
+    setRemovingPhoto(true);
+    try {
+      // Existing members persist immediately, just like a photo replacement.
+      // Passing undefined explicitly clears the stored photo_url.
+      if (editingUser) {
+        await onSave({ name: name.trim(), avatar, color, photoUrl: undefined });
+      }
+      setPhotoUrl(undefined);
+    } catch {
+      if (Platform.OS === 'web') window.alert('לא הצלחנו להסיר את התמונה. נסו שוב.');
+      else Alert.alert('לא הצלחנו להסיר את התמונה', 'נסו שוב.');
+    } finally {
+      setRemovingPhoto(false);
+    }
+  };
+
   if (pendingPhotoPick && Platform.OS === 'web') return null;
 
   return (
@@ -133,13 +152,24 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
               <Avatar emoji={avatar} color={color} photoUrl={photoUrl} size={72} />
               <Pressable
                 onPress={pickPhoto}
-                disabled={uploading}
+                disabled={uploading || removingPhoto}
                 style={styles.photoButton}
                 accessibilityRole="button"
                 accessibilityLabel={photoUrl ? 'החלפת תמונה' : 'הוספת תמונה מהגלריה'}
               >
                 <RtlText style={styles.photoLink}>{uploading ? 'מעלה תמונה...' : photoUrl ? 'החלף תמונה' : 'הוסף תמונה מהגלריה'}</RtlText>
               </Pressable>
+              {photoUrl ? (
+                <Pressable
+                  onPress={() => void removePhoto()}
+                  disabled={uploading || removingPhoto}
+                  style={styles.photoButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="הסר תמונה וחזור לסמל ברירת המחדל"
+                >
+                  <RtlText style={styles.photoLink}>{removingPhoto ? 'מסיר תמונה...' : 'הסר תמונה'}</RtlText>
+                </Pressable>
+              ) : null}
             </View>
 
             <RtlText style={styles.label}>שם</RtlText>
