@@ -171,7 +171,7 @@ export function AddUnplannedWalkModal({
             accessibilityLabel={isEditing ? `סגירת עריכת טיול ספונטני של ${dogName}` : `סגירת הוספת טיול ספונטני של ${dogName}`}
           />
           <View style={styles.sheet}>
-            <ScrollView keyboardShouldPersistTaps="handled">
+            <ScrollView style={styles.formScroll} contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled">
               <RtlText style={styles.title} accessibilityRole="header">
                 {isEditing ? `עריכת טיול של ${dogName}` : `הוסף טיול של ${dogName}`}
               </RtlText>
@@ -305,26 +305,6 @@ export function AddUnplannedWalkModal({
               accessibilityLabel="הערה (אופציונלי)"
             />
 
-            <View style={styles.actions}>
-              <Button
-                label={isEditing ? 'שמור שינויים' : 'שמור טיול'}
-                disabled={!valid}
-                onPress={() =>
-                  onConfirm({
-                    performedByUserId: performedBy,
-                    date,
-                    time,
-                    hadPee,
-                    hadPoop,
-                    note: note.trim(),
-                    durationMinutes: duration ? Number(duration) : undefined,
-                  })
-                }
-                style={styles.flex}
-              />
-              <Button label="ביטול" onPress={onClose} variant="secondary" style={styles.flex} />
-            </View>
-
             {isEditing && onDelete && editingWalk ? (
               <Button
                 label="מחק טיול זה"
@@ -357,6 +337,26 @@ export function AddUnplannedWalkModal({
               />
             ) : null}
             </ScrollView>
+            <View style={styles.actions}>
+              <Button
+                label={isEditing ? 'שמור שינויים' : 'שמור טיול'}
+                disabled={!valid}
+                onPress={() =>
+                  onConfirm({
+                    performedByUserId: performedBy,
+                    date,
+                    time,
+                    hadPee,
+                    hadPoop,
+                    note: note.trim(),
+                    durationMinutes: duration ? Number(duration) : undefined,
+                  })
+                }
+                style={styles.flex}
+              />
+              <Button label="ביטול" onPress={onClose} variant="secondary" style={styles.flex} />
+            </View>
+
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -380,7 +380,9 @@ const styles = StyleSheet.create({
   webDateField: { position: 'relative', minHeight: 52, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceMuted, alignItems: 'center', justifyContent: 'center' },
   webDateDisplay: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, maxHeight: '90%' },
+  sheet: { flex: 1, backgroundColor: colors.surface, paddingHorizontal: 24, paddingTop: Platform.OS === 'web' ? 28 : 48, paddingBottom: Platform.OS === 'web' ? 28 : 36 },
+  formScroll: { flex: 1 },
+  formContent: { paddingBottom: spacing.lg },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
   subtitle: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xs, marginBottom: spacing.sm },
   label: { width: '100%', fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: 14, marginBottom: spacing.sm, textAlign: 'right', writingDirection: 'rtl' },
@@ -421,7 +423,7 @@ const styles = StyleSheet.create({
     minHeight: 56,
     textAlignVertical: 'top',
   },
-  actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xl },
+  actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm, paddingTop: spacing.sm },
   startNowButton: { marginTop: spacing.sm, marginBottom: spacing.md },
   deleteButton: { marginTop: spacing.md },
 });
