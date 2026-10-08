@@ -113,13 +113,8 @@ export function HomeScreen() {
   const [guestReactionPlaying, setGuestReactionPlaying] = useState(false);
   const guestReactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleHeroMascotPress = useCallback(() => {
-    // Family photos retain their existing immediate profile action. Only the
-    // default mascot gets this optional, one-shot reaction on tap.
+    // A short reaction plays for both uploaded dog photos and the default mascot.
     if (dogProfileVisible || guestReactionPlaying) return;
-    if (showPersonalHero || showDogCutout) {
-      setDogProfileVisible(true);
-      return;
-    }
     AccessibilityInfo.isReduceMotionEnabled().then((reduceMotion) => {
       if (reduceMotion) {
         setDogProfileVisible(true);
@@ -133,7 +128,7 @@ export function HomeScreen() {
         guestReactionTimerRef.current = null;
       }, 5100);
     }).catch(() => setDogProfileVisible(true));
-  }, [dogProfileVisible, guestReactionPlaying, showPersonalHero, showDogCutout]);
+  }, [dogProfileVisible, guestReactionPlaying]);
   useEffect(() => () => {
     if (guestReactionTimerRef.current) clearTimeout(guestReactionTimerRef.current);
   }, []);
@@ -906,9 +901,9 @@ export function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
           >
-            {showDogCutout ? <Image source={{ uri: dog!.photoCutoutUrl! }} style={styles.dashboardHeroDogCutout} resizeMode="contain" onError={() => setHeroCutoutFailed(true)} /> : null}
-            {!showDogCutout && showPersonalHero ? <Image source={{ uri: dog!.photoUrl! }} style={styles.dashboardHeroDogPhoto} resizeMode="cover" onError={() => setHeroPhotoFailed(true)} /> : null}
-            {!showDogCutout && !showPersonalHero ? (
+            {showDogCutout && !guestReactionPlaying ? <Image source={{ uri: dog!.photoCutoutUrl! }} style={styles.dashboardHeroDogCutout} resizeMode="contain" onError={() => setHeroCutoutFailed(true)} /> : null}
+            {!showDogCutout && showPersonalHero && !guestReactionPlaying ? <Image source={{ uri: dog!.photoUrl! }} style={styles.dashboardHeroDogPhoto} resizeMode="cover" onError={() => setHeroPhotoFailed(true)} /> : null}
+            {guestReactionPlaying || (!showDogCutout && !showPersonalHero) ? (
               <View
                 style={[styles.dashboardHeroMascot, celebration && styles.dashboardHeroMascotCelebrating]}
                 pointerEvents="none"
