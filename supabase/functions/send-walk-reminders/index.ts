@@ -111,6 +111,27 @@ const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY') ?? '';
 const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT') ?? 'https://walkie-doggy-link.expo.app';
 const CRON_SECRET = Deno.env.get('WALK_REMINDER_CRON_SECRET') ?? '';
 
+// P0 notification-delivery investigation (Staging security review, item 3):
+// this is the ONLY credential this function trusts (see the header above),
+// so it must not be comparable via a data-dependent-timing `!==`/`===` on
+// the raw strings — that leaks how many leading bytes matched through
+// response latency, letting a network attacker recover the secret
+// byte-by-byte over enough requests. Deno's Web Crypto API has no
+// Node-style `crypto.timingSafeEqual`, so this is a small manual constant-
+// time comparison: it always walks the longer of the two byte lengths
+// (never branches/returns early on the first mismatching byte or on a
+// length difference) and only inspects the accumulated result at the end.
+function timingSafeEqual(a: string, b: string): boolean {
+  const aBytes = new TextEncoder().encode(a);
+  const bBytes = new TextEncoder().encode(b);
+  const maxLen = Math.max(aBytes.length, bBytes.length);
+  let mismatch = aBytes.length ^ bBytes.length;
+  for (let i = 0; i < maxLen; i++) {
+    mismatch |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0);
+  }
+  return mismatch === 0;
+}
+
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
   webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 }
@@ -354,7 +375,7 @@ Deno.serve(async (req: Request) => {
 
   // ---- Step 1: the ONLY credential this function trusts — see header. ----
   const providedSecret = req.headers.get('x-cron-secret') ?? '';
-  if (!CRON_SECRET || providedSecret !== CRON_SECRET) {
+  if (!CRON_SECRET || !timingSafeEqual(providedSecret, CRON_SECRET)) {
     return new Response(JSON.stringify({ ok: false, error: 'unauthorized' }), { status: 401 });
   }
 
