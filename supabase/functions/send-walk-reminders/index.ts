@@ -170,8 +170,8 @@ function buildWalkReminderMessage(input: ReminderMessageInput): { title: string;
   if (stage === 'T-15') {
     return pick(
       [
-        { title: `🐶 עוד 15 דקות לטיול של ${dogName}`, body: `הטיול בשעה ${scheduledTime} — באחריות ${responsibleName}` },
-        { title: '⏰ טיול בקרוב', body: `בעוד 15 דקות הגיע הזמן לטייל עם ${dogName} — באחריות ${responsibleName}` },
+        { title: `🐶 עוד 15 דקות לטיול של ${dogName}`, body: `${responsibleName} — באחריות בשעה ${scheduledTime}` },
+        { title: '⏰ טיול בקרוב', body: `בעוד 15 דקות הגיע הזמן לטייל עם ${dogName} — ${responsibleName} — באחריות` },
       ],
       seed
     );
@@ -179,8 +179,8 @@ function buildWalkReminderMessage(input: ReminderMessageInput): { title: string;
   if (stage === 'T') {
     return pick(
       [
-        { title: '🐾 הגיע הזמן לטיול!', body: `${noun} מחכה לטיול עכשיו — באחריות ${responsibleName}` },
-        { title: `🐾 זמן לטייל עם ${dogName}`, body: `השעה ${scheduledTime} הגיעה — באחריות ${responsibleName}` },
+        { title: '🐾 הגיע הזמן לטיול!', body: `${noun} מחכה לטיול עכשיו — ${responsibleName} — באחריות` },
+        { title: `🐾 זמן לטייל עם ${dogName}`, body: `השעה ${scheduledTime} הגיעה — ${responsibleName} — באחריות` },
       ],
       seed
     );
@@ -188,8 +188,8 @@ function buildWalkReminderMessage(input: ReminderMessageInput): { title: string;
   if (stage === 'T+15') {
     return pick(
       [
-        { title: '⏰ הטיול עדיין לא סומן כבוצע', body: `${noun} עדיין מחכה — הטיול משעה ${scheduledTime} טרם סומן. באחריות ${responsibleName}` },
-        { title: `⏰ ${dogName} עדיין מחכה לטיול`, body: `הטיול משעה ${scheduledTime} עדיין ממתין — באחריות ${responsibleName}. אפשר לסמן כבוצע באפליקציה` },
+        { title: '⏰ הטיול עדיין לא סומן כבוצע', body: `${noun} עדיין מחכה — הטיול משעה ${scheduledTime} טרם סומן. ${responsibleName} — באחריות` },
+        { title: `⏰ ${dogName} עדיין מחכה לטיול`, body: `הטיול משעה ${scheduledTime} עדיין ממתין — ${responsibleName} — באחריות. אפשר לסמן כבוצע באפליקציה` },
       ],
       seed
     );
@@ -200,10 +200,10 @@ function buildWalkReminderMessage(input: ReminderMessageInput): { title: string;
       {
         title: '🚨 הטיול דורש תשומת לב',
         body: wentOut
-          ? `${noun} עדיין לא ${wentOut} לטיול משעה ${scheduledTime} — באחריות ${responsibleName}`
-          : `הטיול של ${dogName} משעה ${scheduledTime} עדיין ממתין — באחריות ${responsibleName}`,
+          ? `${noun} עדיין לא ${wentOut} לטיול משעה ${scheduledTime} — ${responsibleName} — באחריות`
+          : `הטיול של ${dogName} משעה ${scheduledTime} עדיין ממתין — ${responsibleName} — באחריות`,
       },
-      { title: '🚨 טיול באיחור משמעותי', body: `הטיול של ${dogName} משעה ${scheduledTime} עדיין לא סומן כבוצע — באחריות ${responsibleName}` },
+      { title: '🚨 טיול באיחור משמעותי', body: `הטיול של ${dogName} משעה ${scheduledTime} עדיין לא סומן כבוצע — ${responsibleName} — באחריות` },
     ],
     seed
   );
