@@ -96,6 +96,7 @@ function toEntry(row: any): ScheduleEntry {
     time: row.time,
     responsibleUserId: row.responsible_user_id,
     createdAt: row.created_at,
+    timeOverridden: row.time_overridden ?? false,
   };
 }
 
@@ -196,6 +197,7 @@ function fromEntry(entry: ScheduleEntry) {
     date: entry.date,
     time: entry.time,
     responsible_user_id: entry.responsibleUserId,
+    time_overridden: entry.timeOverridden ?? false,
   };
 }
 

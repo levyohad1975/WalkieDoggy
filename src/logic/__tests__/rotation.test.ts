@@ -545,4 +545,47 @@ describe('planStaleRuleEntryReconciliation', () => {
     expect(plan.toRegenerate).toHaveLength(1);
     expect(plan.toRegenerate[0]).toMatchObject({ date: tomorrow, time: '14:00', ruleId: 'rule-1400' });
   });
+
+  // P0 BUG FIX — real-device report: editing a scheduled walk's time via
+  // EditWalkModal (scheduleStore.rescheduleWalk / admin_reschedule_walk)
+  // did not survive an app restart. Root cause: a deliberate one-off
+  // per-occurrence time edit makes entry.time diverge from its rule's
+  // time by design (see ScheduleEntry.time's own doc comment), which this
+  // function's `time !== rule.time` staleness test could not tell apart
+  // from a genuine pre-807e4db stale leftover — so it silently reverted
+  // every deliberate edit back to the rule's time on the very next load.
+  // The fix: an entry with `timeOverridden: true` is now always treated
+  // as correctly represented, regardless of its time value.
+  it('never reverts a deliberately overridden entry, even though its time differs from the rule (the P0 bug)', () => {
+    const rules = [rule1400()];
+    const entries = [
+      entry({ id: 'e-1400-tmrw', ruleId: 'rule-1400', date: tomorrow, time: '14:05', timeOverridden: true }),
+    ];
+    const walks = [{ scheduleEntryId: 'e-1400-tmrw', status: 'pending' as const }];
+
+    const plan = planStaleRuleEntryReconciliation(rules, entries, walks, today, endDate, now);
+
+    expect(plan.toUpdate).toEqual([]);
+    expect(plan.toRegenerate).toEqual([]);
+  });
+
+  it('still reconciles a genuinely stale entry that was never overridden, alongside an unrelated overridden one for a different rule', () => {
+    const rules = [rule1400(), rule2100()];
+    const entries = [
+      // Genuinely stale (pre-807e4db leftover) — no timeOverridden flag.
+      entry({ id: 'e-1400-tmrw', ruleId: 'rule-1400', date: tomorrow, time: '09:00' }),
+      // Deliberately overridden — must survive untouched.
+      entry({ id: 'e-2100-tmrw', ruleId: 'rule-2100', date: tomorrow, time: '21:30', timeOverridden: true }),
+    ];
+    const walks = [
+      { scheduleEntryId: 'e-1400-tmrw', status: 'pending' as const },
+      { scheduleEntryId: 'e-2100-tmrw', status: 'pending' as const },
+    ];
+
+    const plan = planStaleRuleEntryReconciliation(rules, entries, walks, today, endDate, now);
+
+    expect(plan.toUpdate).toHaveLength(1);
+    expect(plan.toUpdate[0]).toMatchObject({ id: 'e-1400-tmrw', time: '14:00' });
+    expect(plan.toRegenerate).toEqual([]);
+  });
 });

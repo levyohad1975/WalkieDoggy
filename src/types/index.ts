@@ -164,6 +164,19 @@ export interface ScheduleEntry {
   time: string; // "HH:mm" — editable per-entry without touching the rule (single-occurrence time change)
   responsibleUserId: string;
   createdAt: string;
+  /**
+   * P0 FIX — a one-off per-occurrence time edit (admin_reschedule_walk /
+   * scheduleStore.rescheduleWalk) deliberately makes `time` diverge from
+   * this entry's rule, by design (see `time`'s own comment above). Before
+   * this flag existed, planStaleRuleEntryReconciliation() in
+   * src/logic/rotation.ts could not tell that apart from an entry genuinely
+   * stuck at a stale pre-807e4db rule time, and silently reverted every
+   * deliberate one-off edit back to the rule's time on the very next
+   * schedule load. Set to true ONLY by the one-off reschedule path; never
+   * cleared automatically, since the whole point of a one-off edit is that
+   * it survives independently of the rule going forward.
+   */
+  timeOverridden?: boolean;
 }
 
 export interface WalkSwap {

@@ -1062,6 +1062,7 @@ describe('SupabaseRepository — schedule entry writes', () => {
     expect(captured?.opts).toEqual({ onConflict: 'dog_id,date,time', ignoreDuplicates: true });
     expect((captured?.payload as any[])[0]).toEqual({
       id: 'entry-1', family_id: 'fam-42', dog_id: 'dog-1', rule_id: 'rule-1', date: '2026-08-30', time: '07:00', responsible_user_id: 'user-1',
+      time_overridden: false,
     });
     expect(generated.id).toBe('canonical-entry');
   });

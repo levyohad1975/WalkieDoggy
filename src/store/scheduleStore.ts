@@ -829,13 +829,19 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         await repository.saveWalk(updatedWalk);
         if (walk.scheduleEntryId) {
           const entry = get().entries.find((e) => e.id === walk.scheduleEntryId);
-          if (entry) await repository.updateScheduleEntry({ ...entry, time: newTime });
+          // P0 FIX: mark this entry as a deliberate one-off override — see
+          // ScheduleEntry.timeOverridden's doc comment. Without this,
+          // planStaleRuleEntryReconciliation() (src/logic/rotation.ts),
+          // which runs on every schedule load, could not tell this edit
+          // apart from a stale pre-807e4db leftover and silently reverted
+          // it back to the rule's time on the very next load.
+          if (entry) await repository.updateScheduleEntry({ ...entry, time: newTime, timeOverridden: true });
         }
       }
 
       set((s) => ({
         walks: s.walks.map((w) => (w.id === walkId ? updatedWalk : w)),
-        entries: s.entries.map((e) => (e.id === walk.scheduleEntryId ? { ...e, time: newTime } : e)),
+        entries: s.entries.map((e) => (e.id === walk.scheduleEntryId ? { ...e, time: newTime, timeOverridden: true } : e)),
         actionError: null,
       }));
       await scheduleNotificationsForWalk(updatedWalk);

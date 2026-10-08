@@ -260,6 +260,15 @@ export interface StaleRuleEntryReconciliationPlan {
  *   - If any entry for that (rule, date) ALREADY has `time === rule.time`,
  *     that date is correctly represented — nothing to do, regardless of
  *     what other stale entries/history also exist for it.
+ *   - An entry whose `timeOverridden` flag is set is a DELIBERATE one-off
+ *     per-occurrence edit (scheduleStore.rescheduleWalk /
+ *     admin_reschedule_walk), never a stale leftover — `time !== rule.time`
+ *     is exactly what that feature is supposed to produce, so such an entry
+ *     is treated as correctly represented too and never touched here. See
+ *     ScheduleEntry.timeOverridden's own doc comment for the P0 bug this
+ *     fixed: without this check, every deliberate one-off time edit looked
+ *     identical to a pre-807e4db stale leftover and was silently reverted
+ *     back to the rule's time on the very next schedule load.
  *   - Otherwise every entry for that (rule, date) is stale. If any of them
  *     is still mutable (a 'pending' walk, or no walk at all), that one is
  *     corrected in place (`toUpdate`) — exactly as an ordinary rule-time
@@ -322,7 +331,7 @@ export function planStaleRuleEntryReconciliation(
   for (const [key, entriesForRuleDate] of byRuleDate) {
     const [ruleId, date] = key.split('|');
     const rule = rulesById.get(ruleId)!;
-    if (entriesForRuleDate.some((e) => e.time === rule.time)) continue; // already correctly represented
+    if (entriesForRuleDate.some((e) => e.time === rule.time || e.timeOverridden)) continue; // already correctly represented (including deliberate one-off edits)
 
     const mutable = entriesForRuleDate.find((e) => !isLocked(e));
     if (mutable) {

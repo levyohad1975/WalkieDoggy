@@ -317,6 +317,49 @@ it('rescheduleWalk changes only the selected pending walk and its entry, without
     after.walks.filter((w) => w.id === walk!.id)
   ).toHaveLength(1);
 });
+
+// P0 BUG FIX — real-device report: editing a scheduled walk's time, then
+// exiting and reopening the app, showed the ORIGINAL time again — the
+// edit never survived a reload. Root cause: scheduleStore.load()'s own
+// stale-rule-entry self-heal (planStaleRuleEntryReconciliation in
+// src/logic/rotation.ts) could not tell a deliberate one-off time edit
+// apart from a genuinely stale pre-807e4db leftover, so it reverted the
+// edit back to the rule's recurring time on every subsequent load. This
+// test reproduces the exact repro steps (edit time, then reload) and
+// asserts the new time survives — see rotation.test.ts's own
+// "never reverts a deliberately overridden entry" test for the underlying
+// pure-function coverage of the fix itself.
+it('a rescheduled walk survives a fresh reload — the self-heal must never revert a deliberate one-off time edit', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+
+  const before = useScheduleStore.getState();
+  const walk = before.walks.find((w) => w.status === 'pending' && w.scheduleEntryId);
+  expect(walk).toBeTruthy();
+  const originalTime = walk!.scheduledTime;
+  const newTime = originalTime === '15:30' ? '15:45' : '15:30';
+
+  await useScheduleStore.getState().rescheduleWalk(walk!.id, newTime);
+
+  const afterEdit = useScheduleStore.getState();
+  expect(afterEdit.walks.find((w) => w.id === walk!.id)?.scheduledTime).toBe(newTime);
+
+  // Reproduces "exit and reopen the app" — a fresh load() of the SAME
+  // family, exercising the exact self-heal pass that previously reverted
+  // the edit.
+  await useScheduleStore.getState().load(FAMILY_ID);
+
+  const afterReload = useScheduleStore.getState();
+  expect(afterReload.walks.find((w) => w.id === walk!.id)?.scheduledTime).toBe(newTime);
+  const entry = afterReload.entries.find((e) => e.id === walk!.scheduleEntryId);
+  expect(entry?.time).toBe(newTime);
+  expect(entry?.timeOverridden).toBe(true);
+
+  // A second reload must also stay converged — not just the first one.
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const afterSecondReload = useScheduleStore.getState();
+  expect(afterSecondReload.walks.find((w) => w.id === walk!.id)?.scheduledTime).toBe(newTime);
+});
+
 it('skip changes only the selected pending walk and leaves the rule and other walks untouched', async () => {
   await useScheduleStore.getState().load(FAMILY_ID);
 
