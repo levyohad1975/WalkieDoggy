@@ -731,14 +731,15 @@ describe('OfflineFirstRepository — writes with a remote repository configured:
     expect(await repo.pendingSyncCount()).toBe(0);
   });
 
-  it('upsertHealthTask writes the local task and enqueues a sync op', async () => {
-    const repo = await makeRepo(false, stubRemote());
+  it('upsertHealthTask rejects offline without showing a phantom saved appointment', async () => {
+    const remote = stubRemote();
+    const repo = await makeRepo(false, remote);
     const task: HealthTask = { id: 'task-1', familyId: 'family-1', dogId: 'dog-1', category: 'vaccination', title: 'חיסון', dueDate: '2026-10-01', createdAt: 'c', updatedAt: 'u' };
 
-    await repo.upsertHealthTask(task);
-
-    await expect(repo.getHealthTasks('dog-1')).resolves.toEqual([task]);
-    expect(await repo.pendingSyncCount()).toBe(1);
+    await expect(repo.upsertHealthTask(task)).rejects.toThrow('אין חיבור לשרת');
+    await expect(repo.getHealthTasks('dog-1')).resolves.toEqual([]);
+    expect(remote.upsertHealthTask).not.toHaveBeenCalled();
+    expect(await repo.pendingSyncCount()).toBe(0);
   });
 
   it('upsertGpsSession writes the local session and enqueues a sync op', async () => {
