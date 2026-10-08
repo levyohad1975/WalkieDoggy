@@ -557,7 +557,7 @@ function SettingsScreenContent() {
       if (!reloaded) throw new Error('האיפוס הושלם, אך לא הצלחנו לרענן את הלו״ז.');
       setAchievementWalks([]);
       setManagementVisible(false);
-      Alert.alert('האיפוס הושלם', 'היסטוריית הטיולים ונתוני הפעילות אופסו. המשפחה, הכלבים, בני המשפחה והלו״ז נשמרו.');
+      Alert.alert('האיפוס הושלם', 'היסטוריית הטיולים ונתוני הפעילות אופסו. לוח הבריאות והטיפוח, המשפחה, הכלבים, בני המשפחה והלו״ז הקבוע נשמרו.');
     } catch (e) {
       Alert.alert('האיפוס לא בוצע', friendlyErrorMessage(e) || 'לא הצלחנו לאפס את נתוני הפעילות. נסו שוב.');
     } finally {
@@ -743,7 +743,7 @@ function SettingsScreenContent() {
       <ConfirmModal
         visible={resetConfirmStep === 1}
         title="איפוס נתוני המשפחה?"
-        message="הפעולה תמחק לצמיתות את כל הטיולים, ההיסטוריה ונתוני ה-GPS של המשפחה. בני המשפחה, הכלבים והגדרת הלו״ז יישמרו. לא ניתן לבטל את הפעולה."
+        message="הפעולה תמחק לצמיתות את כל הטיולים, ההיסטוריה ונתוני ה-GPS של המשפחה. בני המשפחה, הכלבים, הלו״ז הקבוע ולוח הבריאות והטיפוח (כולל תזכורותיו) יישמרו ללא שינוי. לא ניתן לבטל את הפעולה."
         confirmLabel="המשך לאישור אחרון"
         onConfirm={() => setResetConfirmStep(2)}
         onCancel={() => setResetConfirmStep(0)}
@@ -751,7 +751,7 @@ function SettingsScreenContent() {
       <ConfirmModal
         visible={resetConfirmStep === 2}
         title="אישור אחרון"
-        message="למחוק עכשיו את כל היסטוריית הפעילות?"
+        message="למחוק עכשיו את היסטוריית הטיולים והפעילות בלבד? לוח הבריאות והטיפוח לא יימחק."
         confirmLabel="אפס נתונים"
         loading={resettingActivity}
         onConfirm={() => {
