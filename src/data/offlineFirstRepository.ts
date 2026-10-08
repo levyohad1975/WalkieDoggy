@@ -490,19 +490,12 @@ export class OfflineFirstRepository implements Repository {
   }
 
   async upsertHealthTask(task: HealthTask): Promise<void> {
+    // Health appointments must not appear successfully saved unless the server
+    // confirmed them. Otherwise a local-only record can disappear after reload.
+    if (!this.remote) throw new Error('שמירת תורים דורשת חיבור לשרת');
+    if (!(await this.isOnline())) throw new Error('אין חיבור לשרת. התור לא נשמר — נסו שוב כשיש אינטרנט.');
+    await this.remote.upsertHealthTask(task);
     await this.local.upsertHealthTask(task);
-    if (this.remote) {
-      if (await this.isOnline()) {
-        try {
-          await this.remote.upsertHealthTask(task);
-          return;
-        } catch {
-          // Preserve offline-first behaviour: retry through the sync queue.
-        }
-      }
-      await this.queue.enqueue({ type: 'upsertHealthTask', payload: task });
-      await this.trySync();
-    }
   }
 
   async getGpsSession(walkId: string): Promise<WalkGpsSession | undefined> {
