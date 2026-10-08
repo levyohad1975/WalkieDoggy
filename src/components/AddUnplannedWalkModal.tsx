@@ -305,6 +305,26 @@ export function AddUnplannedWalkModal({
               accessibilityLabel="הערה (אופציונלי)"
             />
 
+            </ScrollView>
+            <View style={styles.actions}>
+              <Button
+                label={isEditing ? 'שמור שינויים' : 'שמור טיול'}
+                disabled={!valid}
+                onPress={() =>
+                  onConfirm({
+                    performedByUserId: performedBy,
+                    date,
+                    time,
+                    hadPee,
+                    hadPoop,
+                    note: note.trim(),
+                    durationMinutes: duration ? Number(duration) : undefined,
+                  })
+                }
+                style={styles.flex}
+              />
+              <Button label="ביטול" onPress={onClose} variant="secondary" style={styles.flex} />
+            </View>
             {isEditing && onDelete && editingWalk ? (
               <Button
                 label="מחק טיול זה"
@@ -336,26 +356,7 @@ export function AddUnplannedWalkModal({
                 }}
               />
             ) : null}
-            </ScrollView>
-            <View style={styles.actions}>
-              <Button
-                label={isEditing ? 'שמור שינויים' : 'שמור טיול'}
-                disabled={!valid}
-                onPress={() =>
-                  onConfirm({
-                    performedByUserId: performedBy,
-                    date,
-                    time,
-                    hadPee,
-                    hadPoop,
-                    note: note.trim(),
-                    durationMinutes: duration ? Number(duration) : undefined,
-                  })
-                }
-                style={styles.flex}
-              />
-              <Button label="ביטול" onPress={onClose} variant="secondary" style={styles.flex} />
-            </View>
+
 
           </View>
         </View>
@@ -368,6 +369,7 @@ const webTimeInputStyle = {
   display: 'block', width: '100%', minHeight: 52, boxSizing: 'border-box', padding: 12,
   fontSize: 18, fontWeight: '700', borderRadius: radii.md, border: `1px solid ${colors.border}`,
   backgroundColor: colors.surfaceMuted, color: colors.textPrimary, textAlign: 'center', direction: 'ltr', cursor: 'pointer',
+  WebkitAppearance: 'none', appearance: 'none',
 };
 
 const webDatePickerOverlayStyle = {
@@ -425,5 +427,5 @@ const styles = StyleSheet.create({
   },
   actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm, paddingTop: spacing.sm },
   startNowButton: { marginTop: spacing.sm, marginBottom: spacing.md },
-  deleteButton: { marginTop: spacing.md },
+  deleteButton: { marginTop: spacing.sm, marginBottom: spacing.sm },
 });
