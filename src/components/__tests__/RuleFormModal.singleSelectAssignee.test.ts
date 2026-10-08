@@ -52,7 +52,7 @@ describe('RuleFormModal — single-select responsible member (structural)', () =
   // (saved before this fix, or the demo seed's own default rules), which
   // must show only ONE (the first), never all of them.
   it('loading an existing rule for editing takes only the FIRST id from rotationUserIds, even if it has more than one (a pre-existing rotation rule)', () => {
-    expect(source).toMatch(/setRotation\(editingRule\?\.rotationUserIds\?\.slice\(0, 1\) \?\? \[\]\);/);
+    expect(source).toMatch(/setRotation\(editingRule \? \(editingRule\.rotationUserIds\?\.slice\(0, 1\) \?\? \[\]\) : \(users\.length === 1 \? \[users\[0\]\.id\] : \[\]\)\);/);
   });
 
   // Requirement 5: changing assignee replaces, never appends — same
