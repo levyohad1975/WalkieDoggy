@@ -1,0 +1,48 @@
+{
+  "version": 2,
+  "objective": "maximum-throughput-zero-routine-owner-intervention",
+  "evidenceRequired": true,
+  "automaticActions": [
+    "inspect_code",
+    "edit_non_production_code",
+    "create_feature_branch",
+    "run_tests",
+    "run_typecheck",
+    "run_lint",
+    "commit_feature_branch",
+    "push_feature_branch",
+    "prepare_or_update_pr",
+    "investigate_ci",
+    "repair_routine_ci_failure",
+    "run_approved_staging_validation"
+  ],
+  "humanGates": [
+    "product_decision_required",
+    "high_risk_action_required",
+    "production_merge",
+    "production_deploy",
+    "production_migration",
+    "production_data_or_rls_change",
+    "production_secret_or_credential_change",
+    "destructive_or_irreversible_action",
+    "purchase_or_charge",
+    "public_publish"
+  ],
+  "notifications": [
+    "PRODUCT_DECISION_REQUIRED",
+    "HIGH_RISK_ACTION_REQUIRED",
+    "PRODUCTION_APPROVAL_REQUIRED",
+    "MILESTONE_COMPLETE"
+  ],
+  "failurePolicy": {
+    "routineFailure": "AUTO_REPAIR",
+    "sameStrategyRetries": 1,
+    "requireStrategyChangeAfterRepeatedFailure": true,
+    "escalateToHumanOnlyAfterAutonomousRecoveryExhausted": true
+  },
+  "completionPolicy": {
+    "builderMaySelfCertifyMediumOrHighRisk": false,
+    "requireIndependentVerificationForMediumOrHighRisk": true,
+    "unverifiedDoneAllowed": false
+  }
+}
