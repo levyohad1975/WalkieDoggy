@@ -10,6 +10,7 @@ import { mapExecutionEnvironment } from '../lib/expoRuntime';
 // goes through the lazy guarded `require('expo-notifications')` below.
 import type * as ExpoNotifications from 'expo-notifications';
 import { publishReminderOpen, reminderOpenFromNotificationData } from './reminderEntry';
+import { publishRequestOpen, requestOpenFromNotificationData } from './requestEntry';
 
 /**
  * P0 FIX — Android Expo Go 57 startup crash.
@@ -156,13 +157,24 @@ export async function getNotifications(): Promise<typeof ExpoNotifications | nul
 /**
  * Observes genuine OS notification taps only. The payload is validated before
  * reaching UI, and this never affects delivery, scheduling, or Web Push.
+ *
+ * Mascot-notification-experiences round — also recognizes a tapped
+ * swap/time-change request push (supabase/functions/send-request-push's
+ * `{ type: 'request', ... }` payload), not just a walk reminder; both are
+ * read from the same OS response `data` field, so one dispatch covers both.
  */
 export async function subscribeToWalkReminderResponses(): Promise<() => void> {
   const Notifications = await getNotifications();
   if (!Notifications?.addNotificationResponseReceivedListener) return () => undefined;
   const dispatch = (response: any) => {
-    const event = reminderOpenFromNotificationData(response?.notification?.request?.content?.data);
-    if (event) publishReminderOpen(event);
+    const data = response?.notification?.request?.content?.data;
+    const reminderEvent = reminderOpenFromNotificationData(data);
+    if (reminderEvent) {
+      publishReminderOpen(reminderEvent);
+      return;
+    }
+    const requestEvent = requestOpenFromNotificationData(data);
+    if (requestEvent) publishRequestOpen(requestEvent);
   };
   // Cold launch has no live listener event. Consume the OS's response once so
   // opening Home normally later cannot replay an old reminder.

@@ -21,6 +21,30 @@ export const REMINDER_ANIMATION_LIBRARY: ReminderAnimationMoment[] = [
   { id: 'late30-sleepy', stage: 'late-30', animationId: 'sleepy-good-night', title: 'מחכה כבר הרבה זמן', message: 'הטיול מחכה לנו כבר חצי שעה…' },
 ];
 
+/**
+ * Mascot-notification-experiences round — maps the server/push notification
+ * stage vocabulary ('T-15' | 'T' | 'T+15' | 'T+30', src/types/index.ts's
+ * NotificationKind — the actual `stage` field
+ * supabase/functions/send-walk-reminders/index.ts sends) onto this file's
+ * own ReminderStage vocabulary, so a real notification tap can select the
+ * stage-appropriate animation via selectReminderAnimation() below instead
+ * of always falling back to its full, unfiltered pool. T+30 (the
+ * responsible member's own copy of the final overdue stage) maps to the
+ * same 'late-30' escalation treatment already defined for it.
+ */
+export function reminderStageForNotificationKind(kind: 'T-15' | 'T' | 'T+15' | 'T+30'): ReminderStage {
+  switch (kind) {
+    case 'T-15':
+      return 'pre-walk';
+    case 'T':
+      return 'due';
+    case 'T+15':
+      return 'late-15';
+    case 'T+30':
+      return 'late-30';
+  }
+}
+
 export function selectReminderAnimation(stage?: ReminderStage, recentAnimationId?: ReminderAnimationId, random: () => number = Math.random): ReminderAnimationMoment {
   const stagePool = stage ? REMINDER_ANIMATION_LIBRARY.filter((item) => item.stage === stage) : REMINDER_ANIMATION_LIBRARY;
   const freshPool = recentAnimationId ? stagePool.filter((item) => item.animationId !== recentAnimationId) : stagePool;

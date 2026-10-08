@@ -13,6 +13,7 @@ import {
   __resetNotificationCapabilityCacheForTests,
 } from '../notificationService';
 import { subscribeToReminderOpens, __resetReminderEntryForTests } from '../reminderEntry';
+import { subscribeToRequestOpens, __resetRequestEntryForTests } from '../requestEntry';
 
 const scheduleMock = Notifications.scheduleNotificationAsync as jest.Mock;
 const cancelMock = Notifications.cancelScheduledNotificationAsync as jest.Mock;
@@ -121,6 +122,7 @@ beforeEach(() => {
   clearLastResponseMock.mockResolvedValue(undefined);
   addResponseListenerMock.mockReturnValue({ remove: jest.fn() });
   __resetReminderEntryForTests();
+  __resetRequestEntryForTests();
 });
 
 afterEach(() => {
@@ -395,7 +397,7 @@ describe('notificationService — subscribeToWalkReminderResponses (notification
 
   it('cold launch: consumes a genuine pending response exactly once and publishes the matching reminder-open event', async () => {
     getLastResponseMock.mockResolvedValueOnce({
-      notification: { request: { content: { data: { walkId: 'walk-cold', kind: 'T-15' } } } },
+      notification: { request: { content: { data: { type: 'walkReminder', walkId: 'walk-cold', stage: 'T-15' } } } },
     });
 
     const unsubscribeResponses = await subscribeToWalkReminderResponses();
@@ -446,11 +448,47 @@ describe('notificationService — subscribeToWalkReminderResponses (notification
     const received: unknown[] = [];
     const unsubscribeReminder = subscribeToReminderOpens((event) => received.push(event));
 
-    liveHandler({ notification: { request: { content: { data: { walkId: 'walk-live', kind: 'T+30' } } } } });
+    liveHandler({ notification: { request: { content: { data: { type: 'walkReminder', walkId: 'walk-live', stage: 'T+30' } } } } });
 
     expect(received).toEqual([{ walkId: 'walk-live', kind: 'T+30' }]);
 
     unsubscribeReminder();
+    unsubscribeResponses();
+  });
+
+  it('live tap: a tapped swap/time-change request notification publishes a request-open event instead (same dispatch point, different payload shape)', async () => {
+    const unsubscribeResponses = await subscribeToWalkReminderResponses();
+    const liveHandler = addResponseListenerMock.mock.calls[0][0];
+
+    const received: unknown[] = [];
+    const unsubscribeRequest = subscribeToRequestOpens((event) => received.push(event));
+
+    liveHandler({
+      notification: { request: { content: { data: { type: 'request', requestId: 'req-1', kind: 'swap', event: 'approved' } } } },
+    });
+
+    expect(received).toEqual([{ requestId: 'req-1', kind: 'swap', event: 'approved' }]);
+
+    unsubscribeRequest();
+    unsubscribeResponses();
+  });
+
+  it('a request payload never also publishes a reminder-open event, and vice versa', async () => {
+    const unsubscribeResponses = await subscribeToWalkReminderResponses();
+    const liveHandler = addResponseListenerMock.mock.calls[0][0];
+
+    const receivedReminders: unknown[] = [];
+    const receivedRequests: unknown[] = [];
+    const unsubscribeReminder = subscribeToReminderOpens((event) => receivedReminders.push(event));
+    const unsubscribeRequest = subscribeToRequestOpens((event) => receivedRequests.push(event));
+
+    liveHandler({ notification: { request: { content: { data: { type: 'request', requestId: 'req-2', kind: 'timeChange', event: 'created' } } } } });
+
+    expect(receivedReminders).toEqual([]);
+    expect(receivedRequests).toEqual([{ requestId: 'req-2', kind: 'timeChange', event: 'created' }]);
+
+    unsubscribeReminder();
+    unsubscribeRequest();
     unsubscribeResponses();
   });
 

@@ -54,6 +54,9 @@ import { computeWalkRequestStatusLine } from '../logic/walkRequestStatusLine';
 import type { Walk, WalkGpsSession } from '../types';
 import { renderMessageTemplate } from '../mascot/messageEngine';
 import { subscribeToReminderOpens, type ReminderOpenEvent } from '../notifications/reminderEntry';
+import { subscribeToRequestOpens, type RequestOpenEvent } from '../notifications/requestEntry';
+import { consumeInitialWebNotificationParam, subscribeToWebNotificationClicks } from '../lib/webNotificationEntry';
+import { reminderStageForNotificationKind } from '../logic/reminderAnimationLibrary';
 import type { RootTabParamList } from '../navigation/RootNavigator';
 import { useHealthStore } from '../store/healthStore';
 import { getImportantHealthReminders, summarizeHealthTasksForHome } from '../logic/healthTasks';
@@ -218,6 +221,11 @@ export function HomeScreen() {
   // string, so the prompt is only shown after its current pending walk and
   // dynamic dog data can be confirmed below.
   const [reminderPrompt, setReminderPrompt] = useState<ReminderOpenEvent | null>(null);
+  // Mascot-notification-experiences round — "swap/time-change approved"
+  // happy-confirmation mascot moment, triggered only for the 'approved'
+  // event (never 'created'/'rejected' — a rejection must never look
+  // celebratory). See the subscribeToRequestOpens effect below.
+  const [requestPrompt, setRequestPrompt] = useState<RequestOpenEvent | null>(null);
   const showWalkCompletionCelebration = useCallback((durationMinutes?: number) => {
     try {
       const picked = selectWalkCompletionCelebration({
@@ -459,6 +467,33 @@ export function HomeScreen() {
       }),
     [navigation]
   );
+  // Mascot-notification-experiences round — the swap/time-change
+  // counterpart to the reminder-open effect above: a genuine notification
+  // tap always opens the requests inbox (never a dead end), and only an
+  // 'approved' outcome also shows the happy-confirmation mascot moment —
+  // a 'created'/'rejected' tap opens the inbox silently, matching the
+  // ordinary bell-tap behavior it reuses (openRequestsInbox, defined below
+  // in this component — safe to reference here: this callback only runs
+  // after the full render, by which point it is already initialized).
+  useEffect(
+    () =>
+      subscribeToRequestOpens((event) => {
+        navigation.navigate('Home');
+        openRequestsInbox();
+        if (event.event === 'approved') setRequestPrompt(event);
+      }),
+    [navigation]
+  );
+  // Mascot-notification-experiences round — web (PWA) counterpart to
+  // native's notification-response listener; both funnel into the same
+  // subscribeToReminderOpens/subscribeToRequestOpens channels above. A
+  // no-op on native. Runs once per mount: the cold-launch URL param is
+  // consumed a single time, and the service-worker message listener stays
+  // subscribed for the lifetime of this screen.
+  useEffect(() => {
+    consumeInitialWebNotificationParam();
+    return subscribeToWebNotificationClicks();
+  }, []);
   // BATCH 3 (Task 5): the single source of truth for the top Action Card's
   // four action flags — see computeNextWalkCardActions's own doc comment
   // in logic/walkActions.ts for the exact rule and the regression this
@@ -712,6 +747,24 @@ export function HomeScreen() {
       responsibleName: usersById[walk.responsibleUserId]?.name,
     });
   }, [dog, dogs, reminderPrompt, usersById, walksById]);
+  // Mascot-notification-experiences round — selects the stage-appropriate
+  // mascot animation (T-15 excited, T playful-invitation, T+15 waiting,
+  // T+30 waiting-escalated) instead of ReminderMascotPrompt's previous
+  // unfiltered random pick; see reminderStageForNotificationKind's own doc
+  // comment for the server-payload-vocabulary mapping.
+  const reminderPromptStage = useMemo(
+    () => (reminderPrompt ? reminderStageForNotificationKind(reminderPrompt.kind) : undefined),
+    [reminderPrompt]
+  );
+  // Mascot-notification-experiences round — a short, always-available
+  // happy-confirmation message for an approved swap/time-change (never
+  // personalized by name/time, so it never depends on a request still
+  // being present in a possibly-not-yet-loaded local store — a stale or
+  // not-yet-loaded request still gets a correct, generic confirmation).
+  const requestPromptMessage = useMemo(() => {
+    if (!requestPrompt) return null;
+    return requestPrompt.kind === 'swap' ? 'בקשת ההחלפה אושרה! 🎉' : 'בקשת שינוי השעה אושרה! 🎉';
+  }, [requestPrompt]);
 
   // Badge counts: swap requests addressed to the viewer (a swap target can
   // be ANY active member, including one who also holds the Admin role —
@@ -1304,7 +1357,23 @@ export function HomeScreen() {
         }}
       />
 
-      <ReminderMascotPrompt visible={!!reminderPromptMessage} message={reminderPromptMessage ?? ''} onDismiss={() => setReminderPrompt(null)} />
+      <ReminderMascotPrompt
+        visible={!!reminderPromptMessage}
+        message={reminderPromptMessage ?? ''}
+        stage={reminderPromptStage}
+        onDismiss={() => setReminderPrompt(null)}
+      />
+      {/* Mascot-notification-experiences round — a distinct, celebratory
+          moment for an approved swap/time-change notification tap. Reuses
+          the identical approved mascot component/identity, varied only by
+          message + a fixed happy animationId (never filtered by
+          `stage`, since this isn't a walk-reminder stage at all). */}
+      <ReminderMascotPrompt
+        visible={!!requestPromptMessage}
+        message={requestPromptMessage ?? ''}
+        animationId="high-five"
+        onDismiss={() => setRequestPrompt(null)}
+      />
 
       <SwapWalkPickerModal
         visible={!!swapWalkId}

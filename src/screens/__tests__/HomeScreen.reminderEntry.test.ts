@@ -22,4 +22,16 @@ describe('Home reminder-notification integration', () => {
     expect(source).toContain('const walkDog = dogs.find((d) => d.id === walk.dogId) ?? dog;');
     expect(source).toContain('if (!walkDog) return null;');
   });
+
+  // Mascot-notification-experiences round — a real tap must select the
+  // stage-appropriate mascot animation (T-15 excited, T playful, T+15
+  // waiting, T+30 waiting-escalated), not ReminderMascotPrompt's previous
+  // unfiltered random pick.
+  it('computes reminderPromptStage from the reminder-open event and passes it to ReminderMascotPrompt', () => {
+    expect(source).toContain('reminderStageForNotificationKind(reminderPrompt.kind)');
+    const renderIdx = source.indexOf('<ReminderMascotPrompt\n        visible={!!reminderPromptMessage}');
+    expect(renderIdx).toBeGreaterThan(-1);
+    const block = source.slice(renderIdx, renderIdx + 300);
+    expect(block).toContain('stage={reminderPromptStage}');
+  });
 });
