@@ -25,6 +25,7 @@ interface EditWalkModalProps {
   onChangeResponsible: (newUserId: string) => void;
   onSwapWithWalk?: (otherWalkId: string) => void;
   onCancelWalk: () => void;
+  onRemoveRecurringRule?: () => void;
   onClose: () => void;
 }
 
@@ -42,12 +43,14 @@ export function EditWalkModal({
   onChangeResponsible,
   onSwapWithWalk,
   onCancelWalk,
+  onRemoveRecurringRule,
   onClose,
 }: EditWalkModalProps) {
   const [time, setTime] = useState(walk?.scheduledTime ?? '');
   const [selectedResponsibleUserId, setSelectedResponsibleUserId] = useState(walk?.responsibleUserId ?? '');
   const [swapMode, setSwapMode] = useState(false);
   const [cancelConfirmVisible, setCancelConfirmVisible] = useState(false);
+  const [removeRuleConfirmVisible, setRemoveRuleConfirmVisible] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -144,6 +147,7 @@ export function EditWalkModal({
   onPress={() => setCancelConfirmVisible(true)}
   style={styles.cancelButton}
 />
+            {onRemoveRecurringRule ? <Button label="הסר מהשגרה הקבועה" variant="danger" onPress={() => setRemoveRuleConfirmVisible(true)} /> : null}
             <Button label="סגור" variant="secondary" onPress={onClose} style={styles.closeButton} />
             </ScrollView>
           </Pressable>
@@ -163,6 +167,14 @@ export function EditWalkModal({
           onSwapWithWalk?.(otherWalkId);
         }}
         onClose={() => setSwapMode(false)}
+      />
+      <ConfirmModal
+        visible={removeRuleConfirmVisible}
+        title="להסיר את הטיול מהשגרה?"
+        message={`השגרה הקבועה של ${walk.scheduledTime} תוסר ולא תיצור טיולים עתידיים. טיולים שכבר בוצעו יישמרו. שגרות אחרות באותה שעה לא יימחקו.`}
+        confirmLabel="הסר מהשגרה"
+        onConfirm={() => { setRemoveRuleConfirmVisible(false); onRemoveRecurringRule?.(); }}
+        onCancel={() => setRemoveRuleConfirmVisible(false)}
       />
       <ConfirmModal
         visible={cancelConfirmVisible}
