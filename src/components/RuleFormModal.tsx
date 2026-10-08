@@ -76,11 +76,11 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
       // id, never all of them. Saving this rule again (even unchanged)
       // collapses it to that one member going forward; the underlying
       // column is untouched otherwise.
-      setRotation(editingRule?.rotationUserIds?.slice(0, 1) ?? []);
+      // For a newly created rule in a one-member family, select that sole\n      // member automatically. Never override the assignee of an existing rule.\n      setRotation(editingRule ? (editingRule.rotationUserIds?.slice(0, 1) ?? []) : (users.length === 1 ? [users[0].id] : []));
       setError(null);
       setSaving(false);
     }
-  }, [visible, editingRule]);
+  }, [visible, editingRule, users]);
 
   const toggleDay = (d: number) => setDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()));
   /**
