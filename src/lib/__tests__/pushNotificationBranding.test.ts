@@ -56,7 +56,11 @@ describe('push notification text never draws a generic emoji dog', () => {
       return `${m.title}|${m.body}`;
     }));
     expect(texts.size).toBe(2);
-    for (const t of texts) expect(t).toContain('15 דקות');
+    for (const t of texts) {
+      expect(t).toContain('15 דקות');
+      // "הגיע הזמן" is the due-stage (T) wording; a T-15 push must not use it.
+      expect(t).not.toContain('הגיע הזמן');
+    }
   });
 
   it('the deployed senders (Edge Functions) and the service worker carry no dog emoji either', () => {

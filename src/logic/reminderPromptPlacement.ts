@@ -4,10 +4,13 @@
  *
  * Real-iPhone QA: the moment was centred on the whole screen, which is
  * exactly where Home's next-walk card and its Start Walk button live, so
- * the mascot covered the one control the reminder is about. It now lives
- * in a lane BELOW that card (measured on screen) and above the bottom tab
- * bar, and the mascot image shrinks — same approved asset, only rendered
- * smaller — when that lane is short. Nothing on the Dashboard moves.
+ * the mascot covered the one control the reminder is about.
+ *
+ * Rule: the moment lives only in the lane BELOW that card (measured on
+ * screen) and ABOVE the bottom tab bar. It never covers either. When the
+ * lane is short the same approved mascot asset is rendered smaller, and
+ * when it is too short for bubble-above-mascot the two sit side by side
+ * (`compact`). Nothing on the Dashboard moves.
  */
 export interface ScreenRect { x: number; y: number; width: number; height: number }
 
@@ -17,49 +20,58 @@ export interface ReminderPromptPlacement {
   bottom: number;
   /** Rendered square size of the mascot image. */
   mascotSize: number;
-  /** False only when the screen is too short to clear the card even at the minimum size. */
+  /** True: bubble beside the mascot (short lane). False: bubble above it. */
+  compact: boolean;
+  /** False only when the lane is shorter than even the compact layout. */
   clearsAvoidRect: boolean;
 }
 
 export const REMINDER_MASCOT_MAX_SIZE = 216;
+/** Smallest mascot in the stacked (bubble above) layout. */
 export const REMINDER_MASCOT_MIN_SIZE = 112;
+/** Smallest mascot at all (compact layout). */
+export const REMINDER_MASCOT_COMPACT_MIN_SIZE = 64;
 /** Two-line bubble + tail above the mascot. */
 export const REMINDER_BUBBLE_ALLOWANCE = 96;
-const GAP_BELOW_AVOID_RECT = 8;
+/** Height of the two-line bubble when it sits beside the mascot. */
+export const REMINDER_COMPACT_MIN_HEIGHT = 72;
+const GAP = 8;
 
 export function computeReminderPromptPlacement(input: {
   windowHeight: number;
   /** Bottom tab bar row height (excluding the home-indicator inset). */
-  tabBarReserve: number;
+  tabBarHeight: number;
   /** Home-indicator safe-area inset. */
   bottomInset: number;
   /** On-screen rect of the next-walk card (incl. Start Walk), when measured. */
   avoid?: ScreenRect | null;
 }): ReminderPromptPlacement {
-  const { windowHeight, tabBarReserve, bottomInset, avoid } = input;
+  const { windowHeight, tabBarHeight, bottomInset, avoid } = input;
   const measured = !!avoid && avoid.height > 0;
+  // The tab bar (and the home indicator under it) is never covered.
+  const laneBottom = Math.max(0, windowHeight - bottomInset - tabBarHeight - GAP);
   // Unmeasured (card not on screen yet): still stay out of the upper half,
   // where the card normally sits, instead of the old dead-centre spot.
-  const wantedTop = measured
-    ? Math.max(0, avoid!.y + avoid!.height + GAP_BELOW_AVOID_RECT)
-    : windowHeight * 0.5;
-  const minNeeded = REMINDER_MASCOT_MIN_SIZE + REMINDER_BUBBLE_ALLOWANCE;
-
-  // Preferred lane ends above the tab bar. On a compact phone that lane can
-  // be too short; the brief, self-dismissing moment may then extend over
-  // the tab bar (never the home indicator) — covering navigation for a few
-  // seconds is better than covering Start Walk.
-  let laneBottom = Math.max(0, windowHeight - bottomInset - tabBarReserve);
-  if (laneBottom - wantedTop < minNeeded) laneBottom = Math.max(0, windowHeight - bottomInset);
-
-  const available = laneBottom - wantedTop;
-  const mascotSize = Math.round(
-    Math.min(REMINDER_MASCOT_MAX_SIZE, Math.max(REMINDER_MASCOT_MIN_SIZE, available - REMINDER_BUBBLE_ALLOWANCE))
+  const wantedTop = Math.min(
+    laneBottom,
+    measured ? Math.max(0, avoid!.y + avoid!.height + GAP) : windowHeight * 0.5
   );
-  const needed = mascotSize + REMINDER_BUBBLE_ALLOWANCE;
+  const available = laneBottom - wantedTop;
+  const bottom = Math.round(windowHeight - laneBottom);
+
+  if (available >= REMINDER_MASCOT_MIN_SIZE + REMINDER_BUBBLE_ALLOWANCE) {
+    const mascotSize = Math.round(Math.min(REMINDER_MASCOT_MAX_SIZE, available - REMINDER_BUBBLE_ALLOWANCE));
+    return { top: Math.round(wantedTop), bottom, mascotSize, compact: false, clearsAvoidRect: true };
+  }
+
+  const mascotSize = Math.round(
+    Math.min(REMINDER_MASCOT_MIN_SIZE, Math.max(REMINDER_MASCOT_COMPACT_MIN_SIZE, available))
+  );
+  const needed = Math.max(mascotSize, REMINDER_COMPACT_MIN_HEIGHT);
   const clears = available >= needed;
-  // Still too short to clear: hug the bottom so any overlap is with the
-  // card's lowest edge only.
+  // Lane shorter than even the compact row (the card reaches almost to the
+  // tab bar): keep navigation free and hug the lane bottom, so the only
+  // overlap is a sliver of the card's lowest edge.
   const top = clears ? wantedTop : Math.max(0, laneBottom - needed);
-  return { top: Math.round(top), bottom: Math.round(windowHeight - laneBottom), mascotSize, clearsAvoidRect: clears || !measured };
+  return { top: Math.round(top), bottom, mascotSize, compact: true, clearsAvoidRect: clears || !measured };
 }

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, Image, Modal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
-import { radii, spacing } from '../theme/tokens';
+import { layout, radii, spacing } from '../theme/tokens';
 import { RtlText } from './RtlText';
 import { selectReminderAnimation, type ReminderAnimationId, type ReminderStage } from '../logic/reminderAnimationLibrary';
 import { MascotSafeZone } from './MascotSafeZone';
@@ -21,8 +21,6 @@ interface ReminderMascotPromptProps {
   avoid?: ScreenRect | null;
 }
 
-/** Bottom tab bar row; the home-indicator inset is added on top of this. */
-const TAB_BAR_RESERVE = 88;
 
 /** A notification-open prompt, intentionally distinct from completion gratitude. */
 const FALLBACK_MASCOT = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
@@ -43,7 +41,13 @@ let lastReminderAnimationId: ReminderAnimationId | undefined;
 export function ReminderMascotPrompt({ visible, message, onDismiss, animationId, stage, avoid }: ReminderMascotPromptProps) {
   const { height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const placement = computeReminderPromptPlacement({ windowHeight, tabBarReserve: TAB_BAR_RESERVE, bottomInset: insets.bottom, avoid });
+  const placement = computeReminderPromptPlacement({
+    windowHeight,
+    // Same height the tab bar itself uses (navigation: layout.rowHeight + insets.bottom).
+    tabBarHeight: layout.rowHeight,
+    bottomInset: insets.bottom,
+    avoid,
+  });
   // Fail-safe default true, matching the app's mascot motion components:
   // render static until the OS setting is confirmed off.
   const [reducedMotion, setReducedMotion] = useState(true);
@@ -104,10 +108,10 @@ export function ReminderMascotPrompt({ visible, message, onDismiss, animationId,
       <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תזכורת הקמע של Walkie Doggy Link">
         <View pointerEvents="box-none" style={[styles.lane, { top: placement.top, bottom: placement.bottom }]} testID="reminder-mascot-lane">
         <MascotSafeZone from="right" testID="reminder-mascot-safe-zone">
-          <View style={styles.moment} accessibilityRole="alert" accessibilityLiveRegion="polite">
-            <Animated.View style={{ opacity: bubbleProgress, transform: [{ translateY: bubbleProgress.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
-              <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
-              <View style={styles.tail} />
+          <View style={[styles.moment, placement.compact && styles.momentCompact]} accessibilityRole="alert" accessibilityLiveRegion="polite">
+            <Animated.View style={{ flexShrink: 1, opacity: bubbleProgress, transform: [{ translateY: bubbleProgress.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
+              <View style={[styles.bubble, placement.compact && styles.bubbleCompact]}><RtlText style={[styles.message, placement.compact && styles.messageCompact]} numberOfLines={2}>{message}</RtlText></View>
+              {placement.compact ? null : <View style={styles.tail} />}
             </Animated.View>
             <Image
               source={reducedMotion ? FALLBACK_MASCOT : REMINDER_V2[selectedAnimationId]}
@@ -131,4 +135,8 @@ const styles = StyleSheet.create({
   message: { color: colors.textPrimary, fontSize: 19, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
   tail: { width: 18, height: 18, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }], marginTop: -9, marginBottom: -3, zIndex: 1 },
   lane: { position: 'absolute', left: 0, right: 0 },
+  // Short lane: bubble beside the mascot instead of above it.
+  momentCompact: { flexDirection: 'row', gap: spacing.sm },
+  bubbleCompact: { marginBottom: 0, paddingHorizontal: 14, paddingVertical: spacing.sm },
+  messageCompact: { fontSize: 16 },
 });

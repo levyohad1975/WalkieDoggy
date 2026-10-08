@@ -119,7 +119,7 @@ export function buildWalkReminderMessage(input: ReminderMessageInput): ReminderM
       },
       {
         title: '⏰ טיול בקרוב',
-        body: `בעוד 15 דקות הגיע הזמן לטייל עם ${dogName} — ${responsibleName} — באחריות`,
+        body: `הטיול עם ${dogName} מתחיל בעוד 15 דקות — ${responsibleName} — באחריות`,
       },
     ];
     return pick(variants, seed);

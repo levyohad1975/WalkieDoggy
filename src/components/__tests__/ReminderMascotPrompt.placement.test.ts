@@ -12,7 +12,11 @@ describe('ReminderMascotPrompt — placement lane (structural)', () => {
 
   it('accepts an avoid rect and derives its lane from computeReminderPromptPlacement', () => {
     expect(source).toContain('avoid?: ScreenRect | null;');
-    expect(source).toContain('computeReminderPromptPlacement({ windowHeight, tabBarReserve: TAB_BAR_RESERVE, bottomInset: insets.bottom, avoid })');
+    expect(source).toContain('computeReminderPromptPlacement({');
+    // The tab bar's own height token — the lane must end above the real bar.
+    expect(source).toContain('tabBarHeight: layout.rowHeight,');
+    expect(source).toContain('bottomInset: insets.bottom,');
+    expect(source).toContain("import { useSafeAreaInsets } from 'react-native-safe-area-context';");
     expect(source).toContain('style={[styles.lane, { top: placement.top, bottom: placement.bottom }]}');
   });
 
@@ -25,6 +29,12 @@ describe('ReminderMascotPrompt — placement lane (structural)', () => {
 
   it('the lane never intercepts taps, so the backdrop dismiss still works', () => {
     expect(source).toContain('<View pointerEvents="box-none" style={[styles.lane');
+  });
+
+  it('switches to the side-by-side compact layout when the lane is short', () => {
+    expect(source).toContain('style={[styles.moment, placement.compact && styles.momentCompact]}');
+    expect(source).toContain("momentCompact: { flexDirection: 'row', gap: spacing.sm },");
+    expect(source).toContain('{placement.compact ? null : <View style={styles.tail} />}');
   });
 
   it('still renders only the approved mascot assets', () => {
