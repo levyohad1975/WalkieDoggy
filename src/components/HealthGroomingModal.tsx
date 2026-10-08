@@ -23,6 +23,10 @@ function taskTypeLabel(task: HealthTask): string {
   return CATEGORY_LABELS[task.category];
 }
 
+function appointmentTimeFromNotes(notes?: string): string | undefined {
+  return notes?.match(/(?:^|\n)שעת תור: (\d{2}:\d{2})(?:\n|$)/)?.[1];
+}
+
 function formatDisplayDate(value: string): string {
   if (!value) return 'בחירת תאריך';
   const [year, month, day] = value.split('-');
@@ -148,7 +152,7 @@ export function HealthGroomingModal({ visible, dog, tasks, users, currentUserId,
                         <RtlText style={styles.rowMeta}>
                           {[
                             taskTypeLabel(t) !== t.title.trim() ? taskTypeLabel(t) : '',
-                            t.dueDate ? `יעד: ${formatDisplayDate(t.dueDate)}` : '',
+                            t.dueDate ? `יעד: ${formatDisplayDate(t.dueDate)}${appointmentTimeFromNotes(t.notes) ? ` · ${appointmentTimeFromNotes(t.notes)}` : ''}` : '',
                             responsibleName ? `באחריות: ${responsibleName}` : '',
                             t.recurrenceIntervalDays ? `חוזר כל ${t.recurrenceIntervalDays} ימים` : '',
                           ].filter(Boolean).join(' · ')}
@@ -264,7 +268,7 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
     setVetPurposes(task?.category === 'vet_visit' ? (task.title ?? '').split(' · ').filter(Boolean) : []);
     setNotes((task?.notes ?? '').replace(/(?:^|\n)שעת תור: \d{2}:\d{2}(?=\n|$)/g, '').replace(/^\n+|\n+$/g, ''));
     setDueDate(task?.dueDate ?? '');
-    const savedTime = task?.notes?.match(/(?:^|\n)שעת תור: (\d{2}:\d{2})(?:\n|$)/)?.[1];
+    const savedTime = appointmentTimeFromNotes(task?.notes);
     setAppointmentTime(savedTime ?? '09:00');
     setShowTimePicker(false);
     setWeightKg(task?.weightKg != null ? String(task.weightKg) : '');
