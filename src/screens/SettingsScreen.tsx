@@ -642,6 +642,21 @@ function SettingsScreenContent() {
             </View>
             <DogPhoto photoUrl={dog.photoUrl} size={64} />
           </Pressable>
+        ) : effectiveFamilyRole === 'admin' && !systemObserverActive ? (
+          <Pressable
+            style={styles.dogCard}
+            onPress={() => { if (!addingDog) void handleAddDog(); }}
+            disabled={addingDog}
+            accessibilityRole="button"
+            accessibilityLabel="הוספת הכלב הראשון למשפחה"
+            testID="add-first-dog"
+          >
+            <RtlText style={styles.hubChevron}>‹</RtlText>
+            <View style={styles.dogCardBody}>
+              <RtlText style={styles.dogCardName}>הוספת הכלב הראשון</RtlText>
+              <RtlText style={styles.dogCardMeta}>{addingDog ? 'מוסיפים כלב…' : 'לחצו להגדרת פרטי הכלב'}</RtlText>
+            </View>
+          </Pressable>
         ) : null}
 
 
