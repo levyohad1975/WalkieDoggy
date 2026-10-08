@@ -483,6 +483,8 @@ export function ScheduleScreen() {
         visible={ruleFormVisible}
         editingRule={editingRule}
         users={activeUsers}
+        existingRules={rules}
+        dogId={dog?.id}
         onSave={async (result: RuleFormResult) => {
           if (editingRule) {
             await updateRule(editingRule.id, result);
