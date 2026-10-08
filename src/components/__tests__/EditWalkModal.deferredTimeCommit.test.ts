@@ -43,8 +43,8 @@ describe('EditWalkModal — time changes are only committed via an explicit conf
     expect(source).toMatch(/<TimePickerField value=\{time\} onChange=\{handleTimeChange\}/);
   });
 
-  it('a dedicated "עדכן שעה" button calls onChangeTime(time) explicitly, gated on timeChanged', () => {
-    const index = source.indexOf('label="עדכן שעה"');
+  it('a dedicated "שמור שינויים" button calls onChangeTime(time) explicitly, gated on timeChanged', () => {
+    const index = source.indexOf('label="שמור שינויים"');
     expect(index).toBeGreaterThan(-1);
     const around = source.slice(index, index + 200);
     expect(around).toMatch(/disabled=\{!timeChanged\}/);
