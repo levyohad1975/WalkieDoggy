@@ -901,9 +901,9 @@ export function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
           >
-            {showDogCutout && !guestReactionPlaying ? <Image source={{ uri: dog!.photoCutoutUrl! }} style={styles.dashboardHeroDogCutout} resizeMode="contain" onError={() => setHeroCutoutFailed(true)} /> : null}
-            {!showDogCutout && showPersonalHero && !guestReactionPlaying ? <Image source={{ uri: dog!.photoUrl! }} style={styles.dashboardHeroDogPhoto} resizeMode="cover" onError={() => setHeroPhotoFailed(true)} /> : null}
-            {guestReactionPlaying || (!showDogCutout && !showPersonalHero) ? (
+            {showDogCutout ? <Image source={{ uri: dog!.photoCutoutUrl! }} style={styles.dashboardHeroDogCutout} resizeMode="contain" onError={() => setHeroCutoutFailed(true)} /> : null}
+            {!showDogCutout && showPersonalHero ? <Image source={{ uri: dog!.photoUrl! }} style={styles.dashboardHeroDogPhoto} resizeMode="cover" onError={() => setHeroPhotoFailed(true)} /> : null}
+            {!showDogCutout && !showPersonalHero ? (
               <View
                 style={[styles.dashboardHeroMascot, celebration && styles.dashboardHeroMascotCelebrating]}
                 pointerEvents="none"
@@ -913,17 +913,18 @@ export function HomeScreen() {
                 {/* Keep the hero slot mounted so the approved Dashboard geometry never
                     jumps, but suppress the default mascot while the dedicated completion
                     mascot owns the stage. Uploaded family-dog imagery above is untouched. */}
-                {guestReactionPlaying ? (
-                  <Image
-                    source={require('../../assets/branding/walkie-guest-celebration.webp')}
-                    style={{ width: 158, height: 158 }}
-                    resizeMode="contain"
-                    accessibilityLabel="הכלב מנופף לשלום"
-                    testID="home-guest-mascot-reaction"
-                  />
-                ) : (
-                  <WalkieMascot state="idle" size={158} accessibilityLabel="כלב Walkie Doggy" />
-                )}
+                <WalkieMascot state="idle" size={158} accessibilityLabel="כלב Walkie Doggy" />
+              </View>
+            ) : null}
+            {guestReactionPlaying ? (
+              <View pointerEvents="none" style={{ position: 'absolute', right: 4, bottom: 2, width: 158, height: 158, zIndex: 4 }}>
+                <Image
+                  source={require('../../assets/branding/walkie-guest-celebration.webp')}
+                  style={[{ width: 158, height: 158 }, Platform.OS === 'web' ? ({ mixBlendMode: 'screen' } as any) : null]}
+                  resizeMode="contain"
+                  accessibilityLabel="הכלב מנופף לשלום"
+                  testID="home-guest-mascot-reaction"
+                />
               </View>
             ) : null}
             {dog?.heroBackgroundId === 'walkie-park' && !showPersonalHero ? (
