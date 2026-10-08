@@ -1114,7 +1114,6 @@ export function HomeScreen() {
             // onEdit/onSwap below also require `nextWalk.status ===
             // 'pending'` — an admin editing/swapping a walk that's already
             // in_progress/done doesn't make sense.
-            onSwap={effectiveRole === 'admin' && nextWalk.status === 'pending' ? () => setSwapWalkId(nextWalk.id) : undefined}
             onEdit={effectiveRole === 'admin' && nextWalk.status === 'pending' ? () => setEditWalkId(nextWalk.id) : undefined}
             onRequestSwap={
               nextWalkCardActions?.canRequestSwap && !walkHasActiveSwapRequest(nextWalk.id, swapRequests, walksById)
