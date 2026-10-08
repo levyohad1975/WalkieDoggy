@@ -41,6 +41,7 @@ export function DatePickerField({value,onChange,label='בחירת תאריך',al
         <View style={s.card}>
           <RtlText style={s.title}>{label}</RtlText>
           <View style={s.quick}><Button compact label="אתמול" variant="secondary" onPress={()=>quick(-1)} style={s.flex}/><Button compact label="היום" variant="secondary" onPress={()=>quick(0)} style={s.flex}/><Button compact label="מחר" variant="secondary" onPress={()=>quick(1)} style={s.flex}/></View>
+          <View style={s.columnLabels}><RtlText style={s.columnLabel}>יום</RtlText><RtlText style={s.columnLabel}>חודש</RtlText><RtlText style={s.columnLabel}>שנה</RtlText></View>
           <View style={s.columns}>
             <Column values={days} selected={draft.getDate()} text={n=>String(n)} onSelect={d=>setPart(draft.getFullYear(),draft.getMonth(),d)}/>
             <Column values={Array.from({length:12},(_,i)=>i)} selected={draft.getMonth()} text={m=>pad2(m+1)} wide onSelect={m=>setPart(draft.getFullYear(),m,draft.getDate())}/>
@@ -54,7 +55,8 @@ export function DatePickerField({value,onChange,label='בחירת תאריך',al
   </>;
 }
 function Column({values,selected,text,onSelect,wide=false}:{values:number[];selected:number;text:(n:number)=>string;onSelect:(n:number)=>void;wide?:boolean}) {
-  return <ScrollView style={[s.column,wide&&s.wide]} showsVerticalScrollIndicator={false}>{values.map(v=><Pressable key={v} onPress={()=>onSelect(v)} style={[s.row,v===selected&&s.active]}><RtlText style={[s.rowText,v===selected&&s.activeText]}>{text(v)}</RtlText></Pressable>)}</ScrollView>;
+  const selectedIndex = Math.max(0, values.indexOf(selected));
+  return <ScrollView key={`${values.length}-${selected}`} style={[s.column,wide&&s.wide]} contentOffset={{x:0,y:Math.max(0,selectedIndex*44-88)}} showsVerticalScrollIndicator={false}>{values.map(v=><Pressable key={v} onPress={()=>onSelect(v)} style={[s.row,v===selected&&s.active]}><RtlText style={[s.rowText,v===selected&&s.activeText]}>{text(v)}</RtlText></Pressable>)}</ScrollView>;
 }
 const s=StyleSheet.create({
   field:{minHeight:52,borderRadius:14,borderWidth:1,borderColor:colors.border,backgroundColor:colors.surface,alignItems:'center',justifyContent:'center',padding:12},
@@ -63,8 +65,10 @@ const s=StyleSheet.create({
   card:{width:'100%',maxWidth:390,backgroundColor:colors.surface,borderRadius:radii.xl,padding:spacing.xl},
   title:{fontSize:18,fontWeight:'800',color:colors.textPrimary,textAlign:'center',marginBottom:spacing.md},
   quick:{flexDirection:'row',gap:spacing.sm},flex:{flex:1},
-  columns:{flexDirection:'row',direction:'ltr',justifyContent:'center',gap:spacing.sm,marginTop:spacing.lg},
-  column:{height:220,width:72},wide:{width:118},
+  columnLabels:{flexDirection:'row',direction:'ltr',justifyContent:'space-around',marginTop:spacing.md},
+  columnLabel:{flex:1,textAlign:'center',fontSize:13,fontWeight:'700',color:colors.textSecondary},
+  columns:{flexDirection:'row',direction:'ltr',justifyContent:'center',gap:spacing.xs,marginTop:spacing.xs},
+  column:{height:220,flex:1,minWidth:0},wide:{flex:1},
   row:{height:44,alignItems:'center',justifyContent:'center',borderRadius:radii.sm},
   active:{backgroundColor:colors.primarySoft},rowText:{fontSize:17,fontWeight:'600',color:colors.textSecondary},
   activeText:{color:colors.primaryDark,fontWeight:'800'},
