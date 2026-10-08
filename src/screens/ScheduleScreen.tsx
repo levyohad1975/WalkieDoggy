@@ -378,7 +378,7 @@ export function ScheduleScreen() {
               numberOfLines alone is enough headroom for the rare case.
             */}
             <RtlText style={styles.sectionTitle} numberOfLines={1}>
-              שעות קבועות ({sortedRules.length})
+              טיולים קבועים ({sortedRules.length})
             </RtlText>
             {familyRole === 'admin' ? (
   <Pressable
@@ -387,13 +387,13 @@ export function ScheduleScreen() {
       setRuleFormVisible(true);
     }}
   >
-    <RtlText style={styles.addLink}>+ הוספת שעה</RtlText>
+    <RtlText style={styles.addLink}>+ הוספת טיול קבוע</RtlText>
   </Pressable>
 ) : null}
           </View>
 
           {sortedRules.length === 0 ? (
-            <RtlText style={styles.empty}>עדיין אין שעות טיול מוגדרות</RtlText>
+            <RtlText style={styles.empty}>עדיין לא הוגדרו טיולים קבועים</RtlText>
           ) : (
             sortedRules.map((r) => (
   <View key={r.id} style={styles.ruleRow}>
