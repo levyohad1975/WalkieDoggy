@@ -1435,8 +1435,8 @@ export function HomeScreen() {
           setEditWalkId(null);
         }}
         onRemoveRecurringRule={(() => {
-          const entry = entries.find((e) => e.id === editingWalk?.scheduleEntryId);
-          const rule = entry && rules.find((r) => r.id === entry.ruleId);
+          const entry = useScheduleStore.getState().entries.find((e) => e.id === editingWalk?.scheduleEntryId);
+          const rule = entry && useScheduleStore.getState().rules.find((r) => r.id === entry.ruleId);
           return effectiveRole === 'admin' && rule ? async () => {
             await useScheduleStore.getState().deleteRule(rule.id);
             setEditWalkId(null);
