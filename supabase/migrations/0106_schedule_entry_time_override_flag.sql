@@ -75,11 +75,22 @@ begin
     raise exception 'walk not found in this family';
   end if;
 
+  -- Server-side authorization is this check, not any client-supplied flag.
+  -- is_family_admin() already returns false while the caller is
+  -- impersonating (0006), so an admin who is currently impersonating a
+  -- member cannot reach this direct-edit path either — matching the
+  -- "admin status alone must not grant responsible-member actions, and
+  -- impersonation must behave exactly like that simulated member" rules
+  -- elsewhere in this codebase.
   if not is_family_admin(w.family_id) then
     raise exception 'admin permission required';
   end if;
 
   if w.status <> 'pending' then
+    -- Reuses the exact phrase create_time_change_request() (0006) already
+    -- raises for the same condition, so this new RPC's rejection is picked
+    -- up by the SAME existing friendlyErrorMessage() Hebrew mapping
+    -- (src/lib/errorMessages.ts) without needing a new entry there.
     raise exception 'walk is no longer pending';
   end if;
 

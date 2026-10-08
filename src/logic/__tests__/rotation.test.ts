@@ -293,6 +293,30 @@ describe('planRuleDaysReconciliation', () => {
     expect(plan.toUpdate.map((e) => e.id)).toEqual(['entry-wed']);
   });
 
+  // P0 BUG FIX (priority #2 of the schedule-edit persistence investigation):
+  // a deliberate one-off per-occurrence time override must survive even a
+  // rule-WIDE time edit, not just a plain schedule reload — otherwise an
+  // admin changing the recurring rule's time would silently wipe out every
+  // one-off override across every future date for that rule in one shot.
+  it('leaves a deliberately-overridden mutable entry completely untouched by a rule-wide time edit', () => {
+    const previousRule = makeRule({ daysOfWeek: [0, 1, 2, 3, 4, 5, 6], time: '20:00' });
+    const updatedRule = makeRule({ daysOfWeek: [0, 1, 2, 3, 4, 5, 6], time: '21:00' });
+    const entries = [
+      makeEntry({ id: 'entry-mon', date: '2026-08-24', time: '20:00' }), // normal — follows the rule edit
+      makeEntry({ id: 'entry-tue', date: '2026-08-25', time: '20:30', timeOverridden: true }), // deliberate one-off — must survive
+    ];
+
+    const plan = planRuleDaysReconciliation(previousRule, updatedRule, entries, today, endDate);
+
+    expect(plan.toUpdate.map((e) => e.id)).toEqual(['entry-mon']);
+    expect(plan.toUpdate.find((e) => e.id === 'entry-mon')?.time).toBe('21:00');
+    expect(plan.toRegenerate).toEqual([]);
+    expect(plan.toRemove).toEqual([]);
+    // No entry at all is produced for Tuesday — the existing overridden one
+    // already represents it, untouched.
+    expect(plan.toUpdate.some((e) => e.date === '2026-08-25')).toBe(false);
+  });
+
   it('only reconciles entries belonging to the same rule', () => {
     const previousRule = makeRule({ daysOfWeek: [0, 1, 2, 3, 4, 5, 6] });
     const updatedRule = makeRule({ daysOfWeek: [0, 1, 2, 3, 4, 5] }); // Saturday dropped

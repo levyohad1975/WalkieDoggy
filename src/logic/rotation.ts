@@ -175,6 +175,17 @@ export interface RuleDaysReconciliationPlan {
  * locked does this reach for `toRegenerate` instead — so re-editing the
  * rule again after a regenerated entry exists updates that new pending
  * entry in place rather than regenerating a second one.
+ *
+ * P0 FIX (same bug class as planStaleRuleEntryReconciliation's own
+ * `timeOverridden` fix below): a still-mutable, deliberately-overridden
+ * entry for a date (a one-off per-occurrence time edit) is left
+ * completely untouched by a rule-wide time edit too — the whole point of
+ * that override is that it survives independently of the rule going
+ * forward, not just across an app reload. A date whose only mutable entry
+ * is overridden is skipped entirely (no `toUpdate`, no `toRegenerate` —
+ * the existing entry already represents that date). A locked/historical
+ * overridden entry is unaffected either way, since locked entries are
+ * never rewritten by this function regardless of this flag.
  */
 export function planRuleDaysReconciliation(
   previousRule: Pick<ScheduleRule, 'daysOfWeek'>,
@@ -210,6 +221,7 @@ export function planRuleDaysReconciliation(
   const toUpdate: ScheduleEntry[] = [];
   const toRegenerate: ScheduleEntry[] = [];
   for (const [date, entriesForDate] of byDate) {
+    if (entriesForDate.some((e) => e.timeOverridden && !isLocked(e))) continue; // deliberate one-off override — a rule-wide time edit must never reset it either
     const mutable = entriesForDate.find((e) => !isLocked(e));
     if (mutable) {
       toUpdate.push({ ...mutable, time: updatedRule.time, responsibleUserId: resolveResponsibleForDate(updatedRule, date) });
