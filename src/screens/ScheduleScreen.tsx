@@ -441,6 +441,8 @@ export function ScheduleScreen() {
           r.rotationUserIds.length
         )}
       </RtlText>
+      <RtlText style={styles.ruleRotation}>
+        ימים: {r.daysOfWeek.slice().sort((a, b) => a - b).map((day) => ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'][day] ?? '?').join(' · ')}
     </View>
   </View>
 ))
