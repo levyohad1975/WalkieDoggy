@@ -148,23 +148,23 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
             style={StyleSheet.absoluteFill}
             onPress={onClose}
             accessibilityRole="button"
-            accessibilityLabel={editingRule ? 'סגירת עריכת שעת טיול' : 'סגירת הוספת שעת טיול'}
+            accessibilityLabel={editingRule ? 'סגירת עריכת טיול קבוע' : 'סגירת הגדרת טיול קבוע'}
           />
           <View style={styles.sheet}>
             <ScrollView keyboardShouldPersistTaps="handled">
-              <RtlText style={styles.title} accessibilityRole="header">{editingRule ? 'עריכת שעת טיול' : 'הוספת שעת טיול'}</RtlText>
+              <RtlText style={styles.title} accessibilityRole="header">{editingRule ? 'עריכת טיול קבוע' : 'הגדרת טיול קבוע'}</RtlText>
 
-            <RtlText style={styles.label}>שעה</RtlText>
+            <RtlText style={styles.label}>שעת הטיול</RtlText>
             <TimePickerField value={time} onChange={setTime} webLabel="בחירת שעת טיול" />
 
-            <RtlText style={styles.label}>הערה / שם לטיול (אופציונלי)</RtlText>
+            <RtlText style={styles.label}>שם הטיול (לא חובה)</RtlText>
             <TextInput
               value={label}
               onChangeText={setLabel}
               placeholder="למשל: טיול בוקר או הערה"
               style={styles.input}
               textAlign="right"
-              accessibilityLabel="הערה או שם לטיול (אופציונלי)"
+              accessibilityLabel="שם הטיול (לא חובה)"
             />
 
             <RtlText style={styles.label}>ימים</RtlText>
