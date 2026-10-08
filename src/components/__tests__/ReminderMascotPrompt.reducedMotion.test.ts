@@ -9,11 +9,11 @@ import path from 'path';
  * sibling mascot-prompt component, WalkCompletionCelebration.tsx, which
  * explicitly sets `animationType="none"` and gates all of its own internal
  * Animated motion behind an `AccessibilityInfo.isReduceMotionEnabled()`
- * check (see WalkieMascot.tsx / MascotFrameAnimation.tsx for the same
- * fail-safe-default-true convention). MascotFrameAnimation itself already
- * respects reduced motion for its frame playback, but the outer Modal
- * transition wrapping it did not, so a reduced-motion user opening a
- * reminder notification still saw a native fade-in/out.
+ * check. ReminderMascotPrompt now follows the same pattern: the Modal's
+ * own transition is always `"none"`, and a custom `bubbleProgress`
+ * Animated.Value — snapped straight to 1 when reduced motion is on,
+ * animated via a delay+timing sequence otherwise — drives the speech
+ * bubble's reveal instead.
  *
  * This repo has no React Native component-rendering test infrastructure, so
  * — consistent with FamilySharingModal.codeTextAlignment.test.ts and
@@ -32,7 +32,13 @@ describe('ReminderMascotPrompt — Modal transition respects reduced motion (str
 
   it('does not hardcode the native fade transition regardless of reduced motion', () => {
     expect(source).not.toMatch(/animationType="fade"/);
-    expect(source).toMatch(/animationType=\{reducedMotion \? 'none' : 'fade'\}/);
+    expect(source).toMatch(/animationType="none"/);
+  });
+
+  it('gates the custom bubble-reveal animation behind reduced motion instead of the Modal transition', () => {
+    expect(source).toMatch(/bubbleProgress\.setValue\(1\)/);
+    expect(source).toMatch(/Animated\.sequence/);
+    expect(source).toMatch(/if \(reducedMotion\) \{\s*bubbleProgress\.setValue\(1\);\s*return;\s*\}/);
   });
 
   it('pairs accessibilityRole="alert" with accessibilityLiveRegion="polite" — Android TalkBack needs both (mascot audit, see WalkCompletionCelebration.accessibility.test.ts for the sibling coverage)', () => {
