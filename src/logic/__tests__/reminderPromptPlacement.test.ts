@@ -1,5 +1,6 @@
 import {
   computeReminderPromptPlacement,
+  reminderLaneInHost,
   REMINDER_BUBBLE_ALLOWANCE,
   REMINDER_COMPACT_MIN_HEIGHT,
   REMINDER_MASCOT_COMPACT_MIN_SIZE,
@@ -88,5 +89,29 @@ describe('computeReminderPromptPlacement', () => {
     const p = computeReminderPromptPlacement({ windowHeight: 844, tabBarHeight: TAB, bottomInset: 34, avoid: card(-150) });
     expect(p.top).toBe(0);
     expect(p.mascotSize).toBe(REMINDER_MASCOT_MAX_SIZE);
+  });
+});
+
+describe('reminderLaneInHost — window lane translated into the in-screen overlay', () => {
+  it('with no host measurement, treats the host as the whole window', () => {
+    expect(reminderLaneInHost({ top: 430, bottom: 98 }, 844, null)).toEqual({ top: 430, bottom: 98 });
+  });
+
+  it('subtracts the host top (status bar / header above the screen)', () => {
+    // Screen box: y 47..754 (ends at the tab bar top on an 844pt phone: 844 - 34 - 56).
+    const lane = reminderLaneInHost({ top: 430, bottom: 98 }, 844, { y: 47, height: 707 });
+    expect(lane.top).toBe(383);
+    // Lane bottom in window = 746; host bottom = 754 -> 8px gap above the tab bar.
+    expect(lane.bottom).toBe(8);
+  });
+
+  it('never yields negative insets when the lane starts above or ends below the host', () => {
+    const lane = reminderLaneInHost({ top: 10, bottom: 0 }, 844, { y: 47, height: 707 });
+    expect(lane.top).toBe(0);
+    expect(lane.bottom).toBe(0);
+  });
+
+  it('ignores a zero-size host measurement', () => {
+    expect(reminderLaneInHost({ top: 430, bottom: 98 }, 844, { y: 47, height: 0 })).toEqual({ top: 430, bottom: 98 });
   });
 });

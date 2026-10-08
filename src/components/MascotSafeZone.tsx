@@ -17,6 +17,13 @@ interface MascotSafeZoneProps {
    * this instead of assuming the entrance is instant.
    */
   onEntranceComplete?: () => void;
+  /**
+   * False for a purely decorative moment (ReminderMascotPrompt): the stage
+   * AND the character get pointerEvents="none". The default stage is
+   * "box-none", which on web re-enables pointer events on its children and
+   * would let the character swallow taps meant for the screen underneath.
+   */
+  interactive?: boolean;
 }
 
 /**
@@ -28,7 +35,7 @@ interface MascotSafeZoneProps {
  * bottom navigation below. Event overlays can therefore feel playful without
  * obscuring the controls that caused them.
  */
-export function MascotSafeZone({ children, from = 'right', anchor, testID, onEntranceComplete }: MascotSafeZoneProps) {
+export function MascotSafeZone({ children, from = 'right', anchor, testID, onEntranceComplete, interactive = true }: MascotSafeZoneProps) {
   const [reducedMotion, setReducedMotion] = useState(true);
   // Real-device QA round 8 — `reducedMotion` is fail-safe-default-true
   // above, same convention as WalkCompletionCelebration's own identical
@@ -106,8 +113,8 @@ export function MascotSafeZone({ children, from = 'right', anchor, testID, onEnt
   }, [from, motionChecked, opacity, reducedMotion, translateX, travel]);
 
   return (
-    <View pointerEvents="box-none" style={[styles.stage, anchor ? styles.anchoredStage : null, anchor ? { top: anchor.y, left: anchor.x, width: anchor.width, height: anchor.height, right: undefined, bottom: undefined } : null]} testID={testID}>
-      <Animated.View style={[styles.character, { opacity, transform: [{ translateX }] }]}>
+    <View pointerEvents={interactive ? 'box-none' : 'none'} style={[styles.stage, anchor ? styles.anchoredStage : null, anchor ? { top: anchor.y, left: anchor.x, width: anchor.width, height: anchor.height, right: undefined, bottom: undefined } : null]} testID={testID}>
+      <Animated.View pointerEvents={interactive ? 'auto' : 'none'} style={[styles.character, { opacity, transform: [{ translateX }] }]}>
         {children}
       </Animated.View>
     </View>

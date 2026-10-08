@@ -75,3 +75,26 @@ export function computeReminderPromptPlacement(input: {
   const top = clears ? wantedTop : Math.max(0, laneBottom - needed);
   return { top: Math.round(top), bottom, mascotSize, compact: true, clearsAvoidRect: clears || !measured };
 }
+
+/**
+ * The placement above is in WINDOW coordinates (that is what
+ * measureInWindow reports for the next-walk card). The overlay itself is
+ * an absolutely positioned view inside the screen, whose own box usually
+ * starts below the status bar and ends above the tab bar — so the lane has
+ * to be translated into that host box before it is used as top/bottom
+ * insets. With no host measurement yet, the host is assumed to be the
+ * whole window.
+ */
+export function reminderLaneInHost(
+  placement: Pick<ReminderPromptPlacement, 'top' | 'bottom'>,
+  windowHeight: number,
+  host?: Pick<ScreenRect, 'y' | 'height'> | null
+): { top: number; bottom: number } {
+  const hostTop = host && host.height > 0 ? host.y : 0;
+  const hostBottom = host && host.height > 0 ? host.y + host.height : windowHeight;
+  const laneBottomInWindow = windowHeight - placement.bottom;
+  return {
+    top: Math.max(0, Math.round(placement.top - hostTop)),
+    bottom: Math.max(0, Math.round(hostBottom - laneBottomInWindow)),
+  };
+}

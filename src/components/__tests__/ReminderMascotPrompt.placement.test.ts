@@ -17,18 +17,20 @@ describe('ReminderMascotPrompt — placement lane (structural)', () => {
     expect(source).toContain('tabBarHeight: layout.rowHeight,');
     expect(source).toContain('bottomInset: insets.bottom,');
     expect(source).toContain("import { useSafeAreaInsets } from 'react-native-safe-area-context';");
-    expect(source).toContain('style={[styles.lane, { top: placement.top, bottom: placement.bottom }]}');
+    // Window-space placement, translated into the overlay's own box.
+    expect(source).toContain('const lane = reminderLaneInHost(placement, windowHeight, hostRect);');
+    expect(source).toContain('style={[styles.lane, { top: lane.top, bottom: lane.bottom }]}');
   });
 
   it('wraps the existing MascotSafeZone entrance in the lane without replacing it', () => {
     const lane = source.indexOf('testID="reminder-mascot-lane"');
-    const zone = source.indexOf('<MascotSafeZone from="right" testID="reminder-mascot-safe-zone">');
+    const zone = source.indexOf('<MascotSafeZone from="right" interactive={false} testID="reminder-mascot-safe-zone">');
     expect(lane).toBeGreaterThan(-1);
     expect(zone).toBeGreaterThan(lane);
   });
 
-  it('the lane never intercepts taps, so the backdrop dismiss still works', () => {
-    expect(source).toContain('<View pointerEvents="box-none" style={[styles.lane');
+  it('the lane never intercepts taps', () => {
+    expect(source).toContain('<View pointerEvents="none" style={[styles.lane');
   });
 
   it('switches to the side-by-side compact layout when the lane is short', () => {

@@ -30,9 +30,12 @@ describe('ReminderMascotPrompt — Modal transition respects reduced motion (str
     expect(source).toMatch(/addEventListener\('reduceMotionChanged'/);
   });
 
-  it('does not hardcode the native fade transition regardless of reduced motion', () => {
-    expect(source).not.toMatch(/animationType="fade"/);
-    expect(source).toMatch(/animationType="none"/);
+  // The prompt is no longer a <Modal> at all (non-interactive overlay — see
+  // ReminderMascotPrompt.nonInteractive.test.tsx), so there is no native
+  // Modal transition left that could bypass the reduce-motion setting.
+  it('has no native Modal transition that could ignore reduced motion', () => {
+    expect(source).not.toMatch(/animationType=/);
+    expect(source).not.toMatch(/<Modal\b/);
   });
 
   it('gates the custom bubble-reveal animation behind reduced motion instead of the Modal transition', () => {
@@ -45,10 +48,14 @@ describe('ReminderMascotPrompt — Modal transition respects reduced motion (str
     expect(source).toMatch(/accessibilityRole="alert" accessibilityLiveRegion="polite"/);
   });
 
-  it('tracks screen-reader state and never auto-dismisses the reminder bubble while one is active', () => {
+  // Previously the prompt never auto-dismissed under a screen reader and
+  // relied on a backdrop tap. The overlay can no longer be tapped, so it
+  // must always dismiss itself — just later when a screen reader is on.
+  it('tracks screen-reader state and gives it a longer, but still automatic, dismissal', () => {
     expect(source).toMatch(/AccessibilityInfo\.isScreenReaderEnabled\(\)/);
     expect(source).toMatch(/addEventListener\('screenReaderChanged', setScreenReaderEnabled\)/);
-    expect(source).toMatch(/if \(screenReaderEnabled\) return;/);
+    expect(source).not.toMatch(/if \(screenReaderEnabled\) return;/);
+    expect(source).toContain('setTimeout(onDismiss, screenReaderEnabled ? REMINDER_PROMPT_SCREEN_READER_DISMISS_MS : REMINDER_PROMPT_DISMISS_MS)');
   });
 
   it('uses real V2 animated assets for reminder motion and keeps a static reduced-motion fallback', () => {

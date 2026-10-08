@@ -1,12 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Image, Modal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, Animated, Image, Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
 import { layout, radii, spacing } from '../theme/tokens';
 import { RtlText } from './RtlText';
 import { selectReminderAnimation, type ReminderAnimationId, type ReminderStage } from '../logic/reminderAnimationLibrary';
 import { MascotSafeZone } from './MascotSafeZone';
-import { computeReminderPromptPlacement, type ScreenRect } from '../logic/reminderPromptPlacement';
+import { computeReminderPromptPlacement, reminderLaneInHost, type ScreenRect } from '../logic/reminderPromptPlacement';
 
 interface ReminderMascotPromptProps {
   visible: boolean;
@@ -22,7 +22,29 @@ interface ReminderMascotPromptProps {
 }
 
 
-/** A notification-open prompt, intentionally distinct from completion gratitude. */
+/** How long the moment stays up before dismissing itself. */
+export const REMINDER_PROMPT_DISMISS_MS = 3200;
+/**
+ * With VoiceOver/TalkBack on it stays longer, so the sentence can be read
+ * out — but it still always dismisses itself. The overlay cannot be tapped
+ * (see below), so "wait for a tap" would mean a permanent overlay.
+ */
+export const REMINDER_PROMPT_SCREEN_READER_DISMISS_MS = 8000;
+
+/**
+ * A notification-open prompt, intentionally distinct from completion gratitude.
+ *
+ * Real-iPhone QA: this used to be a React Native Modal holding a
+ * full-screen Pressable. That backdrop swallowed every touch for as long
+ * as the mascot was up — including on the fully transparent areas — so a
+ * tap on Start Walk, Add Walk or the tab bar only dismissed the mascot.
+ *
+ * It is now a purely DECORATIVE, non-modal overlay: an absolutely
+ * positioned view inside the screen with pointerEvents="none" on the whole
+ * subtree. It never receives a touch, so everything underneath stays
+ * usable, and it leaves on its own timer. Render it as a late child of the
+ * screen's root view (not inside a ScrollView).
+ */
 const FALLBACK_MASCOT = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
 const REMINDER_V2: Record<ReminderAnimationId, number> = {
   'happy-jump': require('../../assets/branding/walkie-happy-jump-v2-final.webp'),
@@ -41,6 +63,15 @@ let lastReminderAnimationId: ReminderAnimationId | undefined;
 export function ReminderMascotPrompt({ visible, message, onDismiss, animationId, stage, avoid }: ReminderMascotPromptProps) {
   const { height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  // The overlay's own box in window coordinates, so the window-space lane
+  // can be translated into it (see reminderLaneInHost).
+  const overlayRef = useRef<View>(null);
+  const [hostRect, setHostRect] = useState<ScreenRect | null>(null);
+  const measureHost = useCallback(() => {
+    overlayRef.current?.measureInWindow?.((x, y, width, height) => {
+      if (width > 0 && height > 0) setHostRect({ x, y, width, height });
+    });
+  }, []);
   const placement = computeReminderPromptPlacement({
     windowHeight,
     // Same height the tab bar itself uses (navigation: layout.rowHeight + insets.bottom).
@@ -48,6 +79,7 @@ export function ReminderMascotPrompt({ visible, message, onDismiss, animationId,
     bottomInset: insets.bottom,
     avoid,
   });
+  const lane = reminderLaneInHost(placement, windowHeight, hostRect);
   // Fail-safe default true, matching the app's mascot motion components:
   // render static until the OS setting is confirmed off.
   const [reducedMotion, setReducedMotion] = useState(true);
@@ -96,20 +128,29 @@ export function ReminderMascotPrompt({ visible, message, onDismiss, animationId,
 
   useEffect(() => {
     if (!visible) return;
-    // Same reasoning as WalkCompletionCelebration: never auto-dismiss a
-    // dynamic Hebrew reminder sentence out from under VoiceOver/TalkBack —
-    // the backdrop tap stays available as the explicit dismiss.
-    if (screenReaderEnabled) return;
-    const timer = setTimeout(onDismiss, 3200);
+    // Always self-dismissing. A screen-reader user gets a longer window so
+    // the dynamic Hebrew sentence is not cut off mid-announcement, but the
+    // overlay never waits for a tap it cannot receive.
+    const timer = setTimeout(onDismiss, screenReaderEnabled ? REMINDER_PROMPT_SCREEN_READER_DISMISS_MS : REMINDER_PROMPT_DISMISS_MS);
     return () => clearTimeout(timer);
   }, [visible, onDismiss, screenReaderEnabled]);
+
+  useEffect(() => {
+    // iOS has no live regions: speak the sentence explicitly so VoiceOver
+    // users hear it even though the overlay takes no focus. Android
+    // (accessibilityLiveRegion) and web (role="alert") announce it from
+    // the markup below, so announcing here as well would say it twice.
+    if (!visible || !message || Platform.OS !== 'ios') return;
+    AccessibilityInfo.announceForAccessibility?.(message);
+  }, [visible, message]);
+
+  if (!visible) return null;
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onDismiss} statusBarTranslucent>
-      <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תזכורת הקמע של Walkie Doggy Link">
-        <View pointerEvents="box-none" style={[styles.lane, { top: placement.top, bottom: placement.bottom }]} testID="reminder-mascot-lane">
-        <MascotSafeZone from="right" testID="reminder-mascot-safe-zone">
-          <View style={[styles.moment, placement.compact && styles.momentCompact]} accessibilityRole="alert" accessibilityLiveRegion="polite">
-            <Animated.View style={{ flexShrink: 1, opacity: bubbleProgress, transform: [{ translateY: bubbleProgress.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
+    <View ref={overlayRef} onLayout={measureHost} pointerEvents="none" style={styles.overlay} testID="reminder-mascot-overlay">
+        <View pointerEvents="none" style={[styles.lane, { top: lane.top, bottom: lane.bottom }]} testID="reminder-mascot-lane">
+        <MascotSafeZone from="right" interactive={false} testID="reminder-mascot-safe-zone">
+          <View pointerEvents="none" style={[styles.moment, placement.compact && styles.momentCompact]} accessibilityRole="alert" accessibilityLiveRegion="polite">
+            <Animated.View pointerEvents="none" style={{ flexShrink: 1, opacity: bubbleProgress, transform: [{ translateY: bubbleProgress.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
               <View style={[styles.bubble, placement.compact && styles.bubbleCompact]}><RtlText style={[styles.message, placement.compact && styles.messageCompact]} numberOfLines={2}>{message}</RtlText></View>
               {placement.compact ? null : <View style={styles.tail} />}
             </Animated.View>
@@ -123,13 +164,14 @@ export function ReminderMascotPrompt({ visible, message, onDismiss, animationId,
           </View>
         </MascotSafeZone>
         </View>
-      </Pressable>
-    </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'transparent' },
+  // Fills the screen it is rendered in, above the Dashboard content, and
+  // takes no touches (pointerEvents="none" on the element itself).
+  overlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 20, backgroundColor: 'transparent' },
   moment: { alignItems: 'center', maxWidth: 340 },
   bubble: { backgroundColor: colors.surface, borderRadius: radii.xl, paddingHorizontal: 18, paddingVertical: spacing.md, marginBottom: -6, zIndex: 2 },
   message: { color: colors.textPrimary, fontSize: 19, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
