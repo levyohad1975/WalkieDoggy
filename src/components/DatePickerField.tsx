@@ -31,7 +31,6 @@ export function DatePickerField({value,onChange,label='בחירת תאריך',al
   const years=useMemo(()=>{const y=new Date().getFullYear();return Array.from({length:21},(_,i)=>y-5+i);},[]);
   const days=useMemo(()=>Array.from({length:new Date(draft.getFullYear(),draft.getMonth()+1,0).getDate()},(_,i)=>i+1),[draft]);
   const setPart=(y:number,m:number,d:number)=>setDraft(new Date(y,m,Math.min(d,new Date(y,m+1,0).getDate()),12));
-  const quick=(offset:number)=>{const d=new Date();d.setDate(d.getDate()+offset);setDraft(d);};
   return <>
     <Pressable style={s.field} onPress={()=>setOpen(true)} accessibilityRole="button" accessibilityLabel={label}>
       <RtlText style={s.fieldText}>{display(value)}</RtlText>
@@ -40,7 +39,6 @@ export function DatePickerField({value,onChange,label='בחירת תאריך',al
       <View style={s.backdrop}><Pressable style={StyleSheet.absoluteFill} onPress={()=>setOpen(false)} />
         <View style={s.card}>
           <RtlText style={s.title}>{label}</RtlText>
-          <View style={s.quick}><Button compact label="אתמול" variant="secondary" onPress={()=>quick(-1)} style={s.flex}/><Button compact label="היום" variant="secondary" onPress={()=>quick(0)} style={s.flex}/><Button compact label="מחר" variant="secondary" onPress={()=>quick(1)} style={s.flex}/></View>
           <View style={s.columnLabels}><RtlText style={s.columnLabel}>יום</RtlText><RtlText style={s.columnLabel}>חודש</RtlText><RtlText style={s.columnLabel}>שנה</RtlText></View>
           <View style={s.columns}>
             <Column values={days} selected={draft.getDate()} text={n=>String(n)} onSelect={d=>setPart(draft.getFullYear(),draft.getMonth(),d)}/>
@@ -64,7 +62,7 @@ const s=StyleSheet.create({
   backdrop:{flex:1,backgroundColor:'#00000055',alignItems:'center',justifyContent:'center',padding:spacing.xl},
   card:{width:'100%',maxWidth:390,backgroundColor:colors.surface,borderRadius:radii.xl,padding:spacing.xl},
   title:{fontSize:18,fontWeight:'800',color:colors.textPrimary,textAlign:'center',marginBottom:spacing.md},
-  quick:{flexDirection:'row',gap:spacing.sm},flex:{flex:1},
+  flex:{flex:1},
   columnLabels:{flexDirection:'row',direction:'ltr',justifyContent:'space-around',marginTop:spacing.md},
   columnLabel:{flex:1,textAlign:'center',fontSize:13,fontWeight:'700',color:colors.textSecondary},
   columns:{flexDirection:'row',direction:'ltr',justifyContent:'center',gap:spacing.xs,marginTop:spacing.xs},
