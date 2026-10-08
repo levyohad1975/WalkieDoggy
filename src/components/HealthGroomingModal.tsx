@@ -89,15 +89,29 @@ export function HealthGroomingModal({ visible, dog, tasks, users, currentUserId,
     setFormVisible(true);
   };
 
-  const handleComplete = async (taskId: string) => {
-    setCompletingId(taskId);
-    try {
-      await onComplete(taskId);
-    } catch {
-      Alert.alert('לא הצלחנו לעדכן', 'נסו שוב בעוד רגע.');
-    } finally {
-      setCompletingId(null);
-    }
+  const handleComplete = (taskId: string, taskTitle: string) => {
+    Alert.alert(
+      'אישור השלמת משימה',
+      `האם לסמן את "${taskTitle}" כבוצעה? הפעולה תעביר אותה להיסטוריה.`,
+      [
+        { text: 'ביטול', style: 'cancel' },
+        {
+          text: 'אישור השלמה',
+          onPress: () => {
+            void (async () => {
+              setCompletingId(taskId);
+              try {
+                await onComplete(taskId);
+              } catch {
+                Alert.alert('לא הצלחנו לעדכן', 'נסו שוב בעוד רגע.');
+              } finally {
+                setCompletingId(null);
+              }
+            })();
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -139,13 +153,13 @@ export function HealthGroomingModal({ visible, dog, tasks, users, currentUserId,
                         </RtlText>
                       </Pressable>
                       <Pressable
-                        onPress={() => void handleComplete(t.id)}
+                        onPress={() => handleComplete(t.id, t.title)}
                         disabled={completingId === t.id}
                         style={styles.completeButton}
                         accessibilityRole="button"
                         accessibilityLabel={`סימון ${t.title} כבוצע`}
                       >
-                        <RtlText style={styles.completeButtonText}>{completingId === t.id ? '…' : '✓ בוצע'}</RtlText>
+                        <RtlText style={styles.completeButtonText}>{completingId === t.id ? 'מעדכן…' : 'סמן כבוצע'}</RtlText>
                       </Pressable>
                     </View>
                   );
@@ -224,7 +238,7 @@ interface HealthTaskFormModalProps {
  * toggle): a due date left blank saves as a COMPLETED log entry (now); a
  * due date filled in saves as an OPEN task. Editing an already-completed
  * record preserves its existing completedAt — marking a record complete is
- * this modal's parent's dedicated "✓ בוצע" row action, not something this
+ * this modal's parent's dedicated "סמן כבוצע" row action, not something this
  * form does.
  */
 function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave, onDelete, onClose }: HealthTaskFormModalProps) {
