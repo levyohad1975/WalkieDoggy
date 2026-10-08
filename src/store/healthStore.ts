@@ -78,16 +78,14 @@ export const useHealthStore = create<HealthState>((set, get) => ({
 
   saveTask: async (task: HealthTask) => {
     if (!guardTestModeMutation()) return;
+    // Only show the task after confirmed server persistence.
+    await repository.upsertHealthTask(task);
     set((s) => {
-      // A task for a different dog than the one currently loaded must never
-      // be spliced into `tasks` — that would show up as a stray record on
-      // whichever dog's screen happens to be open right now.
       if (task.dogId !== s.loadedDogId) return {};
       const idx = s.tasks.findIndex((t) => t.id === task.id);
       const tasks = idx >= 0 ? s.tasks.map((t, i) => (i === idx ? task : t)) : [...s.tasks, task];
-      return { tasks };
+      return { tasks, error: null };
     });
-    await repository.upsertHealthTask(task);
     if (task.dogId === get().loadedDogId) {
       void scheduleHealthTaskNotifications(task, activeDogName());
     }
