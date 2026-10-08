@@ -102,6 +102,24 @@ export { mapExecutionEnvironment };
 export async function registerPushToken(): Promise<void> {
   if (!isSupabaseConfigured || !supabase) return;
 
+  // P0 notification-delivery investigation: this module's own remote push
+  // is the NATIVE (Expo push token) system — src/lib/webPush.ts is the
+  // separate, dedicated, correctly-configured path for web Web Push. This
+  // app's app.json intentionally has no `notification.vapidPublicKey` /
+  // `notification.serviceWorkerPath` keys (those belong to a DIFFERENT
+  // Expo-managed web-push mechanism this app doesn't use), so on web,
+  // expo-notifications' own getDevicePushTokenAsync().web.js always throws
+  // ERR_NOTIFICATIONS_PUSH_WEB_MISSING_CONFIG — this path can never
+  // succeed there by construction. Before this device check, running it
+  // anyway on every web page load still called the real
+  // Notification.requestPermission() browser API (via expo-notifications'
+  // own web permissions shim) purely to throw moments later — wasted work
+  // on every load, and (once permission was already granted via
+  // webPush.ts's own flow) a guaranteed, previously-silently-swallowed
+  // failure on every subsequent load. Skip this device-registration path
+  // entirely on web; webPush.ts owns web push registration completely.
+  if (Platform.OS === 'web') return;
+
   // expo-constants is safe to inspect first. We must identify Expo Go
   // BEFORE touching expo-notifications, because that module can throw when
   // loaded inside Android Expo Go.
@@ -121,11 +139,9 @@ export async function registerPushToken(): Promise<void> {
   if (decision === 'skip-silent') return; // Confirmed Expo Go — never load expo-notifications.
 
   if (decision === 'skip-warn') {
-    if (process.env.NODE_ENV !== 'production') {
-      console.warn(
-        'registerPushToken: no EAS projectId configured yet (run `eas init` / `eas build:configure`) — skipping remote push registration for now.'
-      );
-    }
+    console.warn(
+      'registerPushToken: no EAS projectId configured yet (run `eas init` / `eas build:configure`) — skipping remote push registration for now.'
+    );
     return;
   }
 
@@ -206,6 +222,22 @@ export async function registerPushToken(): Promise<void> {
  * supabase/functions/send-request-push/index.ts's doc comment. Never
  * throws: a failed push must not surface as a failure of the request
  * action itself, which already succeeded server-side by the time this runs.
+ *
+ * P0 notification-delivery fix: `supabase.functions.invoke()` does NOT
+ * reject for an HTTP-level failure — a missing/undeployed function (404),
+ * an unauthorized/expired session (401), or a 5xx from inside the function
+ * itself all resolve normally as `{ data: null, error: FunctionsHttpError
+ * }` (see @supabase/functions-js's FunctionsClient.invoke(), which wraps
+ * its whole body in try/catch and always returns rather than throwing).
+ * The previous version of this function awaited the call without reading
+ * that result at all, so every one of those failure modes — almost
+ * certainly including "the function was never deployed" or "it's deployed
+ * but errored" — produced no error, no log, and no observable difference
+ * from a genuine successful send. Logging unconditionally here (not gated
+ * behind NODE_ENV, matching src/lib/webPush.ts's own existing convention
+ * for this same remote-push subsystem) so a real send failure is at least
+ * visible via a remote Web Inspector / device log on every build,
+ * including this staging deployment, not only in local development.
  */
 export async function sendRequestPush(payload: {
   requestId: string;
@@ -214,11 +246,14 @@ export async function sendRequestPush(payload: {
 }): Promise<void> {
   if (!isSupabaseConfigured || !supabase) return;
   try {
-    await supabase.functions.invoke('send-request-push', { body: payload });
-  } catch (err) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.error('sendRequestPush failed (non-fatal):', err);
+    const { data, error } = await supabase.functions.invoke('send-request-push', { body: payload });
+    if (error) {
+      console.error('sendRequestPush: Edge Function call failed (non-fatal):', error);
+    } else if (data && (data as { ok?: boolean }).ok === false) {
+      console.error('sendRequestPush: Edge Function reported failure (non-fatal):', data);
     }
+  } catch (err) {
+    console.error('sendRequestPush failed (non-fatal):', err);
   }
 }
 
