@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { AccessibilityInfo, Image, Modal, Pressable, StyleSheet, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, Animated, Image, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { colors } from '../theme/colors';
 import { radii, spacing } from '../theme/tokens';
 import { RtlText } from './RtlText';
@@ -37,6 +37,7 @@ export function ReminderMascotPrompt({ visible, message, onDismiss, animationId,
   // Fail-safe default false — see WalkCompletionCelebration's identical
   // state for why (never a permanently-stuck modal if detection is slow).
   const [screenReaderEnabled, setScreenReaderEnabled] = useState(false);
+  const bubbleProgress = useRef(new Animated.Value(0)).current;
   const [selectedAnimationId, setSelectedAnimationId] = useState<ReminderAnimationId>(animationId ?? 'happy-jump');
 
   useEffect(() => {
@@ -61,6 +62,22 @@ export function ReminderMascotPrompt({ visible, message, onDismiss, animationId,
   }, []);
 
   useEffect(() => {
+    bubbleProgress.stopAnimation();
+    bubbleProgress.setValue(0);
+    if (!visible) return;
+    if (reducedMotion) {
+      bubbleProgress.setValue(1);
+      return;
+    }
+    const sequence = Animated.sequence([
+      Animated.delay(450),
+      Animated.timing(bubbleProgress, { toValue: 1, duration: 280, useNativeDriver: true }),
+    ]);
+    sequence.start();
+    return () => sequence.stop();
+  }, [visible, reducedMotion, bubbleProgress]);
+
+  useEffect(() => {
     if (!visible) return;
     // Same reasoning as WalkCompletionCelebration: never auto-dismiss a
     // dynamic Hebrew reminder sentence out from under VoiceOver/TalkBack —
@@ -70,12 +87,14 @@ export function ReminderMascotPrompt({ visible, message, onDismiss, animationId,
     return () => clearTimeout(timer);
   }, [visible, onDismiss, screenReaderEnabled]);
   return (
-    <Modal visible={visible} transparent animationType={reducedMotion ? 'none' : 'fade'} onRequestClose={onDismiss} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onDismiss} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תזכורת הקמע של Walkie Doggy Link">
         <MascotSafeZone from="right" testID="reminder-mascot-safe-zone">
           <View style={styles.moment} accessibilityRole="alert" accessibilityLiveRegion="polite">
-            <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
-            <View style={styles.tail} />
+            <Animated.View style={{ opacity: bubbleProgress, transform: [{ translateY: bubbleProgress.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
+              <View style={styles.bubble}><RtlText style={styles.message} numberOfLines={2}>{message}</RtlText></View>
+              <View style={styles.tail} />
+            </Animated.View>
             <Image
               source={reducedMotion ? FALLBACK_MASCOT : REMINDER_V2[selectedAnimationId]}
               style={styles.mascot}
