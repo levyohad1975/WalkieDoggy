@@ -14,7 +14,7 @@ describe('RemindersModal Web Push reconcile wiring (structural)', () => {
   const source = fs.readFileSync(require.resolve('../RemindersModal'), 'utf8').replace(/\r\n/g, '\n');
 
   it('imports reconcileWebPushSubscription for its mount effect, and no longer imports the plain read-only getWebPushStatus', () => {
-    expect(source).toMatch(/import \{ enableWebPush, reconcileWebPushSubscription, type WebPushStatus \} from '\.\.\/lib\/webPush';/);
+    expect(source).toMatch(/import \{ enableWebPush, reconcileWebPushSubscription, verifyServerSubscription, type WebPushStatus \} from '\.\.\/lib\/webPush';/);
   });
 
   it('calls reconcileWebPushSubscription (not a bare status read) inside the visible+web mount effect', () => {

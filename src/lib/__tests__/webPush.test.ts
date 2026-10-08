@@ -512,3 +512,83 @@ describe('lib/webPush — reconcileWebPushSubscription (refresh/reopen recovery)
     await expect(reconcile()).resolves.toBe('granted');
   });
 });
+
+describe('lib/webPush — verifyServerSubscription', () => {
+  function mockSupabase(overrides: { isSupabaseConfigured: boolean; rpc?: jest.Mock }) {
+    jest.doMock('../supabase', () => ({
+      isSupabaseConfigured: overrides.isSupabaseConfigured,
+      supabase: overrides.isSupabaseConfigured ? { rpc: overrides.rpc } : null,
+    }));
+  }
+
+  function requireVerify() {
+    return require('../webPush').verifyServerSubscription as typeof import('../webPush').verifyServerSubscription;
+  }
+
+  beforeEach(() => {
+    jest.resetModules();
+  });
+
+  it('P0 notification-delivery investigation: returns true when the server confirms an active row for this device\'s own endpoint', async () => {
+    setPlatformOS('web');
+    stubBrowserGlobals({ permission: 'granted' });
+    const getSubscription = jest.fn().mockResolvedValue({ endpoint: 'https://push.example/mine' });
+    const getRegistration = jest.fn().mockResolvedValue({ pushManager: { getSubscription } });
+    setNavigatorServiceWorker({ getRegistration });
+    const rpc = jest.fn().mockResolvedValue({ data: true, error: null });
+    mockSupabase({ isSupabaseConfigured: true, rpc });
+
+    const verifyServerSubscription = requireVerify();
+    await expect(verifyServerSubscription()).resolves.toBe(true);
+    expect(rpc).toHaveBeenCalledWith('has_active_remote_push_channel', {
+      p_web_push_endpoint: 'https://push.example/mine',
+    });
+  });
+
+  it('returns false (not null) when the server has no active row for this device — a real subscription exists locally but the server disagrees', async () => {
+    setPlatformOS('web');
+    stubBrowserGlobals({ permission: 'granted' });
+    const getSubscription = jest.fn().mockResolvedValue({ endpoint: 'https://push.example/mine' });
+    const getRegistration = jest.fn().mockResolvedValue({ pushManager: { getSubscription } });
+    setNavigatorServiceWorker({ getRegistration });
+    const rpc = jest.fn().mockResolvedValue({ data: false, error: null });
+    mockSupabase({ isSupabaseConfigured: true, rpc });
+
+    const verifyServerSubscription = requireVerify();
+    await expect(verifyServerSubscription()).resolves.toBe(false);
+  });
+
+  it('returns null (not false) when there is no local subscription to check at all', async () => {
+    setPlatformOS('web');
+    stubBrowserGlobals({ permission: 'granted' });
+    const getRegistration = jest.fn().mockResolvedValue(undefined);
+    setNavigatorServiceWorker({ getRegistration });
+    const rpc = jest.fn();
+    mockSupabase({ isSupabaseConfigured: true, rpc });
+
+    const verifyServerSubscription = requireVerify();
+    await expect(verifyServerSubscription()).resolves.toBeNull();
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('returns null (never throws) when the RPC call itself fails', async () => {
+    setPlatformOS('web');
+    stubBrowserGlobals({ permission: 'granted' });
+    const getSubscription = jest.fn().mockResolvedValue({ endpoint: 'https://push.example/mine' });
+    const getRegistration = jest.fn().mockResolvedValue({ pushManager: { getSubscription } });
+    setNavigatorServiceWorker({ getRegistration });
+    const rpc = jest.fn().mockRejectedValue(new Error('offline'));
+    mockSupabase({ isSupabaseConfigured: true, rpc });
+
+    const verifyServerSubscription = requireVerify();
+    await expect(verifyServerSubscription()).resolves.toBeNull();
+  });
+
+  it('returns null when Supabase is not configured', async () => {
+    setPlatformOS('web');
+    mockSupabase({ isSupabaseConfigured: false });
+
+    const verifyServerSubscription = requireVerify();
+    await expect(verifyServerSubscription()).resolves.toBeNull();
+  });
+});

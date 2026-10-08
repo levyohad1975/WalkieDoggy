@@ -6,7 +6,7 @@ import { radii, spacing, typography } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 import type { FamilyUser } from '../types';
-import { enableWebPush, reconcileWebPushSubscription, type WebPushStatus } from '../lib/webPush';
+import { enableWebPush, reconcileWebPushSubscription, verifyServerSubscription, type WebPushStatus } from '../lib/webPush';
 import {
   getNativeNotificationPermissionStatus,
   requestNotificationPermissions,
@@ -34,6 +34,12 @@ export function RemindersModal({
   const [webPushStatus, setWebPushStatus] = useState<WebPushStatus>('default');
   const [webPushBusy, setWebPushBusy] = useState(false);
   const [webPushError, setWebPushError] = useState<string | null>(null);
+  // P0 notification-delivery investigation: a phone-only way to confirm the
+  // subscription this device believes it has is genuinely persisted,
+  // server-side, under this device's own claimed profile — no desktop
+  // dev-tools needed. null = not checked yet (or nothing to check); true/
+  // false = the server's own answer, via verifyServerSubscription().
+  const [serverVerified, setServerVerified] = useState<boolean | null>(null);
   const [iosSafariNeedsInstall, setIosSafariNeedsInstall] = useState(false);
   const [androidNeedsInstall, setAndroidNeedsInstall] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
@@ -95,6 +101,11 @@ export function RemindersModal({
           ? 'לא הצלחנו לאשר שהמכשיר נרשם להתראות בשרת. נסו ללחוץ על "אפשר התראות" שוב.'
           : null
       );
+      if (status === 'subscribed') {
+        void verifyServerSubscription().then(setServerVerified);
+      } else {
+        setServerVerified(null);
+      }
     });
 
     const handleBeforeInstallPrompt = (event: any) => {
@@ -120,6 +131,8 @@ export function RemindersModal({
       setWebPushStatus(status);
 
       if (status === 'subscribed') {
+        const verified = await verifyServerSubscription();
+        setServerVerified(verified);
         Alert.alert('התראות הופעלו', 'המכשיר הזה רשום לקבלת התראות.');
       } else if (status === 'denied') {
         Alert.alert(
@@ -197,6 +210,21 @@ export function RemindersModal({
 
     {webPushError ? (
       <RtlText style={styles.webPushError} accessibilityRole="alert">{`שגיאת רישום: ${webPushError}`}</RtlText>
+    ) : null}
+
+    {/* P0 notification-delivery investigation: lets a person confirm,
+        from their own phone, with no desktop dev-tools, that the server
+        genuinely has an active row for THIS device's own subscription —
+        not just that the browser locally believes it's subscribed. */}
+    {webPushStatus === 'subscribed' && serverVerified !== null ? (
+      <RtlText
+        style={serverVerified ? styles.webPushVerified : styles.webPushError}
+        accessibilityRole={serverVerified ? undefined : 'alert'}
+      >
+        {serverVerified
+          ? '✅ אומת בשרת: המכשיר הזה רשום בפועל להתראות.'
+          : '⚠️ השרת לא מצא רישום פעיל למכשיר הזה, אף שהדפדפן חושב שהוא רשום. נסו ללחוץ שוב על "אפשר התראות".'}
+      </RtlText>
     ) : null}
 
     {iosSafariNeedsInstall ? (
@@ -307,6 +335,12 @@ webPushError: {
   fontSize: 13,
   color: colors.danger ?? '#B42318',
   textAlign: 'right',
-},  
+},
+webPushVerified: {
+  marginTop: 8,
+  fontSize: 13,
+  color: colors.success ?? '#1A7F37',
+  textAlign: 'right',
+},
 closeButton: { marginTop: 14 },
 });

@@ -80,6 +80,38 @@ export async function getCurrentWebPushEndpoint(): Promise<string | null> {
   }
 }
 
+/**
+ * P0 notification-delivery investigation — a phone-only, no-desktop-tools
+ * way to answer "did my subscription actually persist server-side, under
+ * MY OWN claimed profile" directly from the Reminders UI. Reuses
+ * has_active_remote_push_channel() (migration 0025 Part 5, already
+ * granted to `authenticated` and already used by
+ * src/lib/remoteReminderChannel.ts for the native-reminder-suppression
+ * gate) with THIS device's own current endpoint — it only ever confirms
+ * or denies a value the caller already supplied, scoped to
+ * real_current_profile_id(), so it cannot leak anything about any other
+ * device or profile. Returns null (never throws) if there's no local
+ * subscription to check in the first place, or the RPC call itself fails
+ * (offline, etc.) — distinct from a confirmed `false`, which means a real
+ * subscription exists locally but the server has no matching active row
+ * for it (exactly the failure mode reconcileWebPushSubscription()'s own
+ * doc comment describes).
+ */
+export async function verifyServerSubscription(): Promise<boolean | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+  const endpoint = await getCurrentWebPushEndpoint();
+  if (!endpoint) return null;
+  try {
+    const { data, error } = await supabase.rpc('has_active_remote_push_channel', {
+      p_web_push_endpoint: endpoint,
+    });
+    if (error) return null;
+    return data === true;
+  } catch {
+    return null;
+  }
+}
+
 export async function getWebPushStatus(): Promise<WebPushStatus> {
   if (!isWebPushSupported()) {
     return 'unsupported';
