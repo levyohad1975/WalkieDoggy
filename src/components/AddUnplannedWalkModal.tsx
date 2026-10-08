@@ -326,6 +326,7 @@ export function AddUnplannedWalkModal({
               <Button label="ביטול" onPress={onClose} variant="secondary" style={styles.flex} />
             </View>
             {isEditing && onDelete && editingWalk ? (
+              <View style={styles.destructiveSection}>
               <Button
                 label="מחק טיול זה"
                 variant="danger"
@@ -427,5 +428,6 @@ const styles = StyleSheet.create({
   },
   actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm, paddingTop: spacing.sm },
   startNowButton: { marginTop: spacing.sm, marginBottom: spacing.md },
-  deleteButton: { marginTop: spacing.sm, marginBottom: spacing.sm },
+  destructiveSection: { marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
+  deleteButton: { marginBottom: spacing.xs },
 });
