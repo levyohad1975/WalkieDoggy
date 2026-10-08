@@ -31,6 +31,8 @@ interface RuleFormModalProps {
   visible: boolean;
   editingRule: ScheduleRule | null;
   users: FamilyUser[];
+  existingRules?: ScheduleRule[];
+  dogId?: string;
   /**
    * Real-device QA fix (double-tap "שמירה" false-failure bug) — this is
    * now awaited (see `submit` below), so a caller's async add/update work
@@ -44,7 +46,7 @@ interface RuleFormModalProps {
 }
 
 /** Add or edit one of the family's daily walk time slots: time, optional label, active days, and the single family member responsible for it. */
-export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: RuleFormModalProps) {
+export function RuleFormModal({ visible, editingRule, users, existingRules = [], dogId, onSave, onClose }: RuleFormModalProps) {
   const [time, setTime] = useState('08:00');
   const [label, setLabel] = useState('');
   const [days, setDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
@@ -112,6 +114,9 @@ export function RuleFormModal({ visible, editingRule, users, onSave, onClose }: 
     if (!is24HourTime(time)) return setError('שעה לא תקינה — פורמט HH:mm, למשל 08:00');
     if (days.length === 0) return setError('יש לבחור לפחות יום אחד');
     if (rotation.length === 0) return setError('יש לבחור אחראי/ת לטיול');
+    // A rule can share a clock time only when its days do not overlap, or it belongs to another dog.
+    const conflicting = existingRules.some((rule) => rule.active && rule.dogId === dogId && rule.id !== editingRule?.id && rule.time === time && rule.daysOfWeek.some((day) => days.includes(day)));
+    if (conflicting) return setError(`כבר קיים טיול קבוע בשעה ${time} באחד הימים שבחרת. בחרו שעה אחרת או ערכו את הטיול הקיים.`);
     // TEMPORARY DIAGNOSTIC INSTRUMENTATION — see perfTrace.ts's own doc
     // comment. perfReset() here starts a fresh trace for exactly this one
     // save attempt.
