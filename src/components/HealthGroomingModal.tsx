@@ -89,29 +89,31 @@ export function HealthGroomingModal({ visible, dog, tasks, users, currentUserId,
     setFormVisible(true);
   };
 
+  const completeConfirmed = async (taskId: string) => {
+    setCompletingId(taskId);
+    try {
+      await onComplete(taskId);
+    } catch {
+      if (Platform.OS === 'web') {
+        window.alert('לא הצלחנו לעדכן. נסו שוב בעוד רגע.');
+      } else {
+        Alert.alert('לא הצלחנו לעדכן', 'נסו שוב בעוד רגע.');
+      }
+    } finally {
+      setCompletingId(null);
+    }
+  };
+
   const handleComplete = (taskId: string, taskTitle: string) => {
-    Alert.alert(
-      'אישור השלמת משימה',
-      `האם לסמן את "${taskTitle}" כבוצעה? הפעולה תעביר אותה להיסטוריה.`,
-      [
-        { text: 'ביטול', style: 'cancel' },
-        {
-          text: 'אישור השלמה',
-          onPress: () => {
-            void (async () => {
-              setCompletingId(taskId);
-              try {
-                await onComplete(taskId);
-              } catch {
-                Alert.alert('לא הצלחנו לעדכן', 'נסו שוב בעוד רגע.');
-              } finally {
-                setCompletingId(null);
-              }
-            })();
-          },
-        },
-      ],
-    );
+    const message = `האם לסמן את "${taskTitle}" כבוצעה? הפעולה תעביר אותה להיסטוריה.`;
+    if (Platform.OS === 'web') {
+      if (window.confirm(message)) void completeConfirmed(taskId);
+      return;
+    }
+    Alert.alert('אישור השלמת משימה', message, [
+      { text: 'ביטול', style: 'cancel' },
+      { text: 'אישור השלמה', onPress: () => void completeConfirmed(taskId) },
+    ]);
   };
 
   return (
