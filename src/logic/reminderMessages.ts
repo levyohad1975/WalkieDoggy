@@ -114,7 +114,7 @@ export function buildWalkReminderMessage(input: ReminderMessageInput): ReminderM
   if (stage === 'T-15') {
     const variants: ReminderMessage[] = [
       {
-        title: `🐶 עוד 15 דקות לטיול של ${dogName}`,
+        title: `⏰ עוד 15 דקות לטיול של ${dogName}`,
         body: `${responsibleName} — באחריות בשעה ${scheduledTime}`,
       },
       {

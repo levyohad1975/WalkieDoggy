@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Image, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, Animated, Image, Modal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
 import { radii, spacing } from '../theme/tokens';
 import { RtlText } from './RtlText';
 import { selectReminderAnimation, type ReminderAnimationId, type ReminderStage } from '../logic/reminderAnimationLibrary';
 import { MascotSafeZone } from './MascotSafeZone';
+import { computeReminderPromptPlacement, type ScreenRect } from '../logic/reminderPromptPlacement';
 
 interface ReminderMascotPromptProps {
   visible: boolean;
@@ -12,7 +14,15 @@ interface ReminderMascotPromptProps {
   onDismiss: () => void;
   animationId?: ReminderAnimationId;
   stage?: ReminderStage;
+  /**
+   * On-screen rect the moment must not cover — Home's next-walk card,
+   * including its Start Walk button. See reminderPromptPlacement.ts.
+   */
+  avoid?: ScreenRect | null;
 }
+
+/** Bottom tab bar row; the home-indicator inset is added on top of this. */
+const TAB_BAR_RESERVE = 88;
 
 /** A notification-open prompt, intentionally distinct from completion gratitude. */
 const FALLBACK_MASCOT = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
@@ -30,7 +40,10 @@ const REMINDER_V2: Record<ReminderAnimationId, number> = {
 
 let lastReminderAnimationId: ReminderAnimationId | undefined;
 
-export function ReminderMascotPrompt({ visible, message, onDismiss, animationId, stage }: ReminderMascotPromptProps) {
+export function ReminderMascotPrompt({ visible, message, onDismiss, animationId, stage, avoid }: ReminderMascotPromptProps) {
+  const { height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const placement = computeReminderPromptPlacement({ windowHeight, tabBarReserve: TAB_BAR_RESERVE, bottomInset: insets.bottom, avoid });
   // Fail-safe default true, matching the app's mascot motion components:
   // render static until the OS setting is confirmed off.
   const [reducedMotion, setReducedMotion] = useState(true);
@@ -89,6 +102,7 @@ export function ReminderMascotPrompt({ visible, message, onDismiss, animationId,
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onDismiss} statusBarTranslucent>
       <Pressable style={styles.backdrop} onPress={onDismiss} accessibilityRole="button" accessibilityLabel="סגירת תזכורת הקמע של Walkie Doggy Link">
+        <View pointerEvents="box-none" style={[styles.lane, { top: placement.top, bottom: placement.bottom }]} testID="reminder-mascot-lane">
         <MascotSafeZone from="right" testID="reminder-mascot-safe-zone">
           <View style={styles.moment} accessibilityRole="alert" accessibilityLiveRegion="polite">
             <Animated.View style={{ opacity: bubbleProgress, transform: [{ translateY: bubbleProgress.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
@@ -97,13 +111,14 @@ export function ReminderMascotPrompt({ visible, message, onDismiss, animationId,
             </Animated.View>
             <Image
               source={reducedMotion ? FALLBACK_MASCOT : REMINDER_V2[selectedAnimationId]}
-              style={styles.mascot}
+              style={{ width: placement.mascotSize, height: placement.mascotSize }}
               resizeMode="contain"
               accessibilityLabel="הקמע של Walkie Doggy Link מזכיר שהגיע זמן הטיול"
               testID="reminder-mascot-animation"
             />
           </View>
         </MascotSafeZone>
+        </View>
       </Pressable>
     </Modal>
   );
@@ -115,5 +130,5 @@ const styles = StyleSheet.create({
   bubble: { backgroundColor: colors.surface, borderRadius: radii.xl, paddingHorizontal: 18, paddingVertical: spacing.md, marginBottom: -6, zIndex: 2 },
   message: { color: colors.textPrimary, fontSize: 19, fontWeight: '800', textAlign: 'center', writingDirection: 'rtl' },
   tail: { width: 18, height: 18, backgroundColor: colors.surface, transform: [{ rotate: '45deg' }], marginTop: -9, marginBottom: -3, zIndex: 1 },
-  mascot: { width: 216, height: 216 },
+  lane: { position: 'absolute', left: 0, right: 0 },
 });

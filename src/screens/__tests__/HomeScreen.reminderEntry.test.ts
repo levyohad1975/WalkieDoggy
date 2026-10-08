@@ -13,7 +13,10 @@ describe('Home reminder-notification integration', () => {
 
   it('only presents the prompt for the current pending walk, using dynamic gender-aware dog copy', () => {
     expect(source).toContain("if (!walk || walk.status !== 'pending') return null;");
-    expect(source).toContain("renderMessageTemplate('{responsibleName}, הגיע הזמן לטייל עם {dogNoun} 🐾'");
+    // Real-iPhone QA: the copy is stage- and time-aware now (a T-15 tap must
+    // not say "הגיע הזמן לטייל") — see reminderPromptMessage.test.ts.
+    expect(source).toContain('renderMessageTemplate(reminderPromptTemplate(reminderPrompt.kind, walk.date, walk.scheduledTime), {');
+    expect(source).not.toContain("renderMessageTemplate('{responsibleName}, הגיע הזמן לטייל עם {dogNoun} 🐾'");
     expect(source).toContain('dogName: walkDog.name');
     expect(source).toContain('dogSex: walkDog.sex');
   });
@@ -33,5 +36,18 @@ describe('Home reminder-notification integration', () => {
     expect(renderIdx).toBeGreaterThan(-1);
     const block = source.slice(renderIdx, renderIdx + 300);
     expect(block).toContain('stage={reminderPromptStage}');
+  });
+
+  // Real-iPhone QA: the mascot + speech bubble covered the next-walk card
+  // and its Start Walk button.
+  it('measures the existing next-walk card wrapper and hands that rect to both notification-open mascot prompts', () => {
+    expect(source).toContain('<View ref={nextWalkCardRef} onLayout={measureNextWalkCard} collapsable={false} style={styles.nextWalkLift}>');
+    expect(source).toContain('nextWalkCardRef.current?.measureInWindow(');
+    expect(source).toContain('if (reminderPrompt || requestPrompt) measureNextWalkCard();');
+    expect(source.match(/avoid=\{nextWalkCardRect\}/g)?.length).toBe(2);
+  });
+
+  it('does not change the Dashboard layout to make room for the mascot', () => {
+    expect(source).toContain('nextWalkLift: { marginTop: -34, zIndex: 1, paddingHorizontal: spacing.xs },');
   });
 });

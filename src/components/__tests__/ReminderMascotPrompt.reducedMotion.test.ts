@@ -55,7 +55,8 @@ describe('ReminderMascotPrompt — Modal transition respects reduced motion (str
     expect(source).toContain('REMINDER_V2');
     expect(source).toContain('selectReminderAnimation');
     expect(source).toContain('source={reducedMotion ? FALLBACK_MASCOT : REMINDER_V2[selectedAnimationId]}');
-    expect(source).toContain('mascot: { width: 216, height: 216 }');
+    // Size now comes from the placement lane (216 max, same approved asset) — see ReminderMascotPrompt.placement.test.ts.
+    expect(source).toContain('style={{ width: placement.mascotSize, height: placement.mascotSize }}');
     expect(source).toContain('testID="reminder-mascot-animation"');
   });
 

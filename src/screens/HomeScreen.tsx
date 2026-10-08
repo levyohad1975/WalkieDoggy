@@ -57,6 +57,7 @@ import { subscribeToReminderOpens, type ReminderOpenEvent } from '../notificatio
 import { subscribeToRequestOpens, type RequestOpenEvent } from '../notifications/requestEntry';
 import { consumeInitialWebNotificationParam, subscribeToWebNotificationClicks } from '../lib/webNotificationEntry';
 import { reminderStageForNotificationKind } from '../logic/reminderAnimationLibrary';
+import { reminderPromptTemplate } from '../logic/reminderPromptMessage';
 import type { RootTabParamList } from '../navigation/RootNavigator';
 import { useHealthStore } from '../store/healthStore';
 import { getImportantHealthReminders, summarizeHealthTasksForHome } from '../logic/healthTasks';
@@ -206,6 +207,18 @@ export function HomeScreen() {
     requestAnimationFrame(() => {
       lastWalkMascotLaneRef.current?.measureInWindow((x, y, width, height) => {
         if (width > 0 && height > 0) setLastWalkMascotAnchor({ x, y, width, height });
+      });
+    });
+  }, []);
+  // Real-iPhone QA: the notification-open mascot moment must not cover the
+  // next-walk card / Start Walk button. Measure that card's existing
+  // wrapper (no layout change) so ReminderMascotPrompt can sit below it.
+  const nextWalkCardRef = useRef<View>(null);
+  const [nextWalkCardRect, setNextWalkCardRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const measureNextWalkCard = useCallback(() => {
+    requestAnimationFrame(() => {
+      nextWalkCardRef.current?.measureInWindow((x, y, width, height) => {
+        if (width > 0 && height > 0) setNextWalkCardRect({ x, y, width, height });
       });
     });
   }, []);
@@ -736,7 +749,7 @@ export function HomeScreen() {
     const walkDog = dogs.find((d) => d.id === walk.dogId) ?? dog;
     if (!walkDog) return null;
 
-    return renderMessageTemplate('{responsibleName}, הגיע הזמן לטייל עם {dogNoun} 🐾', {
+    return renderMessageTemplate(reminderPromptTemplate(reminderPrompt.kind, walk.date, walk.scheduledTime), {
       dogName: walkDog.name,
       dogSex: walkDog.sex,
       responsibleName: usersById[walk.responsibleUserId]?.name,
@@ -747,6 +760,11 @@ export function HomeScreen() {
   // T+30 waiting-escalated) instead of ReminderMascotPrompt's previous
   // unfiltered random pick; see reminderStageForNotificationKind's own doc
   // comment for the server-payload-vocabulary mapping.
+  // The card's on-screen position changes with scrolling, so re-measure at
+  // the moment a notification-open mascot moment is about to appear.
+  useEffect(() => {
+    if (reminderPrompt || requestPrompt) measureNextWalkCard();
+  }, [measureNextWalkCard, reminderPrompt, requestPrompt]);
   const reminderPromptStage = useMemo(
     () => (reminderPrompt ? reminderStageForNotificationKind(reminderPrompt.kind) : undefined),
     [reminderPrompt]
@@ -1034,7 +1052,7 @@ export function HomeScreen() {
           </Pressable>
         ) : null}
 
-        <View style={styles.nextWalkLift}>
+        <View ref={nextWalkCardRef} onLayout={measureNextWalkCard} collapsable={false} style={styles.nextWalkLift}>
           {nextWalk ? (
           <NextWalkCard
             walk={nextWalk}
@@ -1357,6 +1375,7 @@ export function HomeScreen() {
         visible={!!reminderPromptMessage}
         message={reminderPromptMessage ?? ''}
         stage={reminderPromptStage}
+        avoid={nextWalkCardRect}
         onDismiss={() => setReminderPrompt(null)}
       />
       {/* Mascot-notification-experiences round — a distinct, celebratory
@@ -1368,6 +1387,7 @@ export function HomeScreen() {
         visible={!!requestPromptMessage}
         message={requestPromptMessage ?? ''}
         animationId="high-five"
+        avoid={nextWalkCardRect}
         onDismiss={() => setRequestPrompt(null)}
       />
 
