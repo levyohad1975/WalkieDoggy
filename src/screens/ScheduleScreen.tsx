@@ -474,6 +474,14 @@ export function ScheduleScreen() {
           if (editingWalk) await swapTwoWalks(editingWalk.id, otherWalkId, currentUserId);
           setEditingWalkId(null);
         }}
+        onRemoveRecurringRule={(() => {
+          const entry = entries.find((e) => e.id === editingWalk?.scheduleEntryId);
+          const rule = entry && rules.find((r) => r.id === entry.ruleId);
+          return familyRole === 'admin' && rule ? async () => {
+            await useScheduleStore.getState().deleteRule(rule.id);
+            setEditingWalkId(null);
+          } : undefined;
+        })()}
         onCancelWalk={async () => {
           if (editingWalk) await skip(editingWalk.id);
           setEditingWalkId(null);
