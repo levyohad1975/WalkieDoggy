@@ -393,7 +393,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                 <Button label="סגירת תצוגה" onPress={() => setGuestAnimationTestVisible(false)} compact />
                 <Image
                   source={require('../../assets/branding/walkie-guest-celebration.webp')}
-                  style={{ width: 168, height: 168 }}
+                  style={[{ width: 168, height: 168 }, { mixBlendMode: 'screen' } as any]}
                   resizeMode="contain"
                   accessibilityLabel="בדיקת אנימציית תגובת הכלב"
                   testID="system-admin-guest-reaction-preview"
