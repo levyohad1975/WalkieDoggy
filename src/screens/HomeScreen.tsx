@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -110,6 +110,33 @@ export function HomeScreen() {
   }, [dog?.id, dog?.photoUrl, dog?.photoCutoutUrl]);
   const showPersonalHero = Boolean(dog?.photoUrl) && !heroPhotoFailed;
   const showDogCutout = Boolean(dog?.photoCutoutUrl) && !heroCutoutFailed;
+  const [guestReactionPlaying, setGuestReactionPlaying] = useState(false);
+  const guestReactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleHeroMascotPress = useCallback(() => {
+    // Family photos retain their existing immediate profile action. Only the
+    // default mascot gets this optional, one-shot reaction on tap.
+    if (dogProfileVisible || guestReactionPlaying) return;
+    if (showPersonalHero || showDogCutout) {
+      setDogProfileVisible(true);
+      return;
+    }
+    AccessibilityInfo.isReduceMotionEnabled().then((reduceMotion) => {
+      if (reduceMotion) {
+        setDogProfileVisible(true);
+        return;
+      }
+      setGuestReactionPlaying(true);
+      if (guestReactionTimerRef.current) clearTimeout(guestReactionTimerRef.current);
+      guestReactionTimerRef.current = setTimeout(() => {
+        setGuestReactionPlaying(false);
+        setDogProfileVisible(true);
+        guestReactionTimerRef.current = null;
+      }, 5100);
+    }).catch(() => setDogProfileVisible(true));
+  }, [dogProfileVisible, guestReactionPlaying, showPersonalHero, showDogCutout]);
+  useEffect(() => () => {
+    if (guestReactionTimerRef.current) clearTimeout(guestReactionTimerRef.current);
+  }, []);
 
   const {
     walks,
@@ -874,7 +901,7 @@ export function HomeScreen() {
               a manager-selected family scene replaces it and a transparent dog
               cutout is composited over it when one exists. */}
           <Pressable
-            onPress={() => setDogProfileVisible(true)}
+            onPress={handleHeroMascotPress}
             style={styles.dashboardHero}
             accessibilityRole="button"
             accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
@@ -891,7 +918,17 @@ export function HomeScreen() {
                 {/* Keep the hero slot mounted so the approved Dashboard geometry never
                     jumps, but suppress the default mascot while the dedicated completion
                     mascot owns the stage. Uploaded family-dog imagery above is untouched. */}
-                <WalkieMascot state="idle" size={158} accessibilityLabel="כלב Walkie Doggy" />
+                {guestReactionPlaying ? (
+                  <Image
+                    source={require('../../assets/branding/walkie-guest-celebration.webp')}
+                    style={{ width: 158, height: 158 }}
+                    resizeMode="contain"
+                    accessibilityLabel="הכלב מנופף לשלום"
+                    testID="home-guest-mascot-reaction"
+                  />
+                ) : (
+                  <WalkieMascot state="idle" size={158} accessibilityLabel="כלב Walkie Doggy" />
+                )}
               </View>
             ) : null}
             {dog?.heroBackgroundId === 'walkie-park' && !showPersonalHero ? (
