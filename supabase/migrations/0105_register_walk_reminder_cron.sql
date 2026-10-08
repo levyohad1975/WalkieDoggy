@@ -16,17 +16,20 @@
 -- and local-fallback-suppression logic) was already in place and correct;
 -- nothing was ever invoking the sender on a schedule.
 --
--- VAULT PREREQUISITE (found 2026-10-08) — a direct, read-only check of
--- `pg_extension` on this project found pg_cron and pg_net installed, but
--- supabase_vault NOT installed (the extension that provisions the `vault`
--- schema `vault.decrypted_secrets` below depends on). This migration now
--- enables it itself (`create extension if not exists supabase_vault;`,
--- same pattern as the pg_cron/pg_net lines already below). If Vault is
--- genuinely unavailable on this project's plan, that statement fails with
--- Postgres's own "extension ... is not available" error and the whole
--- migration aborts — no partial state is left behind, and the fix is to
--- enable Vault for the project (Dashboard → Database → Extensions →
--- supabase_vault) before re-running this file.
+-- VAULT PREREQUISITE — an initial read-only check of `pg_extension` on
+-- 2026-10-08 looked for an extension literally named `vault` and found
+-- none, which first looked like a missing Vault install. A follow-up,
+-- correctly-targeted check (looking for the actual extension name,
+-- `supabase_vault`) found it already installed at version 0.3.1 on this
+-- project — so no separate enablement step is actually needed here. The
+-- `create extension if not exists supabase_vault;` line below is kept
+-- anyway, purely as defense-in-depth: it is a genuine no-op on a project
+-- where it is already installed (same `if not exists` idempotency used
+-- for pg_cron/pg_net on the next two lines), and it still protects any
+-- future project this migration might run against that genuinely lacks
+-- it — in which case it fails loudly with Postgres's own "extension ...
+-- is not available" error and the whole migration aborts, rather than
+-- failing later and more confusingly inside the DO block below.
 --
 -- SECRET HANDLING — this migration still embeds no secret value, matching
 -- 0025's own policy exactly. WALK_REMINDER_CRON_SECRET already exists as an
