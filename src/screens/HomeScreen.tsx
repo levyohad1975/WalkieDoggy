@@ -116,13 +116,8 @@ export function HomeScreen() {
   const [guestReactionPlaying, setGuestReactionPlaying] = useState(false);
   const guestReactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleHeroMascotPress = useCallback(() => {
-    // Family photos retain their existing immediate profile action. Only the
-    // default mascot gets this optional, one-shot reaction on tap.
+    // A short reaction plays for both uploaded dog photos and the default mascot.
     if (dogProfileVisible || guestReactionPlaying) return;
-    if (showPersonalHero || showDogCutout) {
-      setDogProfileVisible(true);
-      return;
-    }
     AccessibilityInfo.isReduceMotionEnabled().then((reduceMotion) => {
       if (reduceMotion) {
         setDogProfileVisible(true);
@@ -136,7 +131,7 @@ export function HomeScreen() {
         guestReactionTimerRef.current = null;
       }, 5100);
     }).catch(() => setDogProfileVisible(true));
-  }, [dogProfileVisible, guestReactionPlaying, showPersonalHero, showDogCutout]);
+  }, [dogProfileVisible, guestReactionPlaying]);
   useEffect(() => () => {
     if (guestReactionTimerRef.current) clearTimeout(guestReactionTimerRef.current);
   }, []);
@@ -971,17 +966,18 @@ export function HomeScreen() {
                 {/* Keep the hero slot mounted so the approved Dashboard geometry never
                     jumps, but suppress the default mascot while the dedicated completion
                     mascot owns the stage. Uploaded family-dog imagery above is untouched. */}
-                {guestReactionPlaying ? (
-                  <Image
-                    source={require('../../assets/branding/walkie-guest-celebration.webp')}
-                    style={{ width: 158, height: 158 }}
-                    resizeMode="contain"
-                    accessibilityLabel="הכלב מנופף לשלום"
-                    testID="home-guest-mascot-reaction"
-                  />
-                ) : (
-                  <WalkieMascot state="idle" size={158} accessibilityLabel="כלב Walkie Doggy" />
-                )}
+                <WalkieMascot state="idle" size={158} accessibilityLabel="כלב Walkie Doggy" />
+              </View>
+            ) : null}
+            {guestReactionPlaying ? (
+              <View pointerEvents="none" style={{ position: 'absolute', right: 4, bottom: 2, width: 158, height: 158, zIndex: 4 }}>
+                <Image
+                  source={require('../../assets/branding/walkie-guest-celebration.webp')}
+                  style={[{ width: 158, height: 158 }, Platform.OS === 'web' ? ({ mixBlendMode: 'screen' } as any) : null]}
+                  resizeMode="contain"
+                  accessibilityLabel="הכלב מנופף לשלום"
+                  testID="home-guest-mascot-reaction"
+                />
               </View>
             ) : null}
             {dog?.heroBackgroundId === 'walkie-park' && !showPersonalHero ? (

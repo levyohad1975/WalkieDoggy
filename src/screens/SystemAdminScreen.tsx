@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RtlText } from '../components/RtlText';
 import { Button } from '../components/Button';
@@ -155,6 +155,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
   const [auditFamilyId, setAuditFamilyId] = useState<string>('all');
   const [animationTestVisible, setAnimationTestVisible] = useState(false);
   const [animationTestCelebration, setAnimationTestCelebration] = useState<CompletionCelebration | null>(null);
+  const [guestAnimationTestVisible, setGuestAnimationTestVisible] = useState(false);
   const [reminderTestVisible, setReminderTestVisible] = useState(false);
   const [reminderTestMoment, setReminderTestMoment] = useState<ReminderAnimationMoment | null>(null);
   const [mascotStateTest, setMascotStateTest] = useState<MascotState | null>(null);
@@ -237,6 +238,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
       setAuditVisible(false);
       setAnimationTestVisible(false);
       setAnimationTestCelebration(null);
+      setGuestAnimationTestVisible(false);
       setReminderTestVisible(false);
       setMascotStateTest(null);
       void loadFamilies();
@@ -374,6 +376,30 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                 </Pressable>
               ))}
             </View>
+            <RtlText style={styles.sectionTitle}>תגובות במסך הבית</RtlText>
+            <View style={styles.animationTestGrid}>
+              <Pressable
+                onPress={() => setGuestAnimationTestVisible(true)}
+                style={styles.animationTestCard}
+                accessibilityRole="button"
+                accessibilityLabel="בדיקת אנימציית תגובת הכלב במסך הבית"
+              >
+                <RtlText style={styles.animationTestTitle}>תגובת הכלב בלחיצה</RtlText>
+                <RtlText style={styles.animationTestMeta}>walkie-guest-celebration</RtlText>
+              </Pressable>
+            </View>
+            {guestAnimationTestVisible ? (
+              <View style={styles.mascotStatePreview}>
+                <Button label="סגירת תצוגה" onPress={() => setGuestAnimationTestVisible(false)} compact />
+                <Image
+                  source={require('../../assets/branding/walkie-guest-celebration.webp')}
+                  style={[{ width: 168, height: 168 }, { mixBlendMode: 'screen' } as any]}
+                  resizeMode="contain"
+                  accessibilityLabel="בדיקת אנימציית תגובת הכלב"
+                  testID="system-admin-guest-reaction-preview"
+                />
+              </View>
+            ) : null}
             <RtlText style={styles.sectionTitle}>תזכורות</RtlText>
             <View style={styles.animationTestGrid}>
               {REMINDER_ANIMATION_LIBRARY.map((item) => (
