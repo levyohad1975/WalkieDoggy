@@ -65,7 +65,7 @@ export function EditWalkModal({
   // so committing immediately used to reschedule the walk to whatever
   // intermediate value the wheel passed through first, then close the sheet
   // out from under the user before they reached their intended time. The
-  // explicit "עדכן שעה" button below is the one place the change is
+  // single "שמור שינויים" button below is the one place the change is
   // actually applied, matching RequestTimeChangeModal/AddUnplannedWalkModal's
   // own explicit-submit pattern for the identical spinner picker.
   const handleTimeChange = (newTime: string) => {
@@ -101,15 +101,8 @@ export function EditWalkModal({
               <RtlText style={styles.title} accessibilityRole="header">עריכת הטיול — {walk.scheduledTime}</RtlText>
             <RtlText style={styles.subtitle}>שינוי חד-פעמי, לא משפיע על שאר הסבב</RtlText>
 
-            <RtlText style={styles.label}>שעה</RtlText>
+            <RtlText style={styles.label}>שעת הטיול — לחצו על השעה לשינוי</RtlText>
             <TimePickerField value={time} onChange={handleTimeChange} webLabel="בחירת שעת הטיול" />
-            <Button
-              label="עדכן שעה"
-              variant="secondary"
-              disabled={!timeChanged}
-              onPress={() => onChangeTime(time)}
-              style={styles.updateTimeButton}
-            />
 
             <RtlText style={styles.label}>אחראי לטיול הזה</RtlText>
             <View style={styles.userRow}>
@@ -138,6 +131,12 @@ export function EditWalkModal({
               </>
             ) : null}
 
+            <Button
+              label="שמור שינויים"
+              disabled={!timeChanged}
+              onPress={() => onChangeTime(time)}
+              style={styles.updateTimeButton}
+            />
             <Button
   label="בטל את הטיול הזה"
   variant="danger"
