@@ -295,6 +295,12 @@ export default function App() {
     const isIos = /iphone|ipad|ipod/i.test(nav.userAgent) || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1);
     const isStandalone = Boolean(window.matchMedia?.('(display-mode: standalone)').matches || nav.standalone === true);
     if (!isIos || isStandalone) return;
+    // Respect the user's choice on this device; do not interrupt every login.
+    try {
+      if (window.localStorage.getItem('walkie-ios-install-prompt-dismissed') === '1') return;
+    } catch {
+      // Private browsing may block storage; the prompt remains dismissible.
+    }
     setShowIosInstallPrompt(true);
   }, [hydrated]);
 
@@ -409,15 +415,30 @@ export default function App() {
           {showIosInstallPrompt ? (
             <Pressable style={styles.installPromptBackdrop} onPress={() => setShowIosInstallPrompt(false)}>
               <Pressable style={styles.installPromptCard} onPress={(event) => event.stopPropagation()}>
-                <RtlText style={styles.installPromptTitle}>בואו נוסיף את Walkie Doggy למסך הבית</RtlText>
-                <RtlText style={styles.installPromptText}>כך האפליקציה תהיה זמינה בלחיצה אחת ותוכל לקבל תזכורות גם כשהדפדפן סגור.</RtlText>
-                <RtlText style={styles.installPromptStep}>1️⃣ בתחתית Safari לחצו על כפתור השיתוף — הריבוע עם החץ כלפי מעלה ↑.</RtlText>
-                <RtlText style={styles.installPromptStep}>2️⃣ בתפריט שנפתח גללו ובחרו ״הוספה למסך הבית״.</RtlText>
-                <RtlText style={styles.installPromptStep}>3️⃣ במסך הבא לחצו ״הוסף״ בפינה העליונה.</RtlText>
-                <RtlText style={styles.installPromptStep}>4️⃣ חזרו למסך הבית ופתחו את Walkie Doggy מהאייקון החדש.</RtlText>
-                <RtlText style={styles.installPromptHint}>לאחר שתפתחו מהאייקון, נדריך אתכם גם בהפעלת ההתראות.</RtlText>
-                <Pressable style={styles.installPromptButton} onPress={() => setShowIosInstallPrompt(false)} accessibilityRole="button">
+                <RtlText style={styles.installPromptTitle}>🐾 Walkie Doggy במסך הבית</RtlText>
+                <RtlText style={styles.installPromptText}>פותחים את האפליקציה בלחיצה אחת!</RtlText>
+                <RtlText style={styles.installPromptStep}>① ב־Safari לחצו על שיתוף ⬆️</RtlText>
+                <RtlText style={styles.installPromptStep}>② בחרו ״הוספה למסך הבית״ ואז ״הוסף״</RtlText>
+                <RtlText style={styles.installPromptHint}>פתחו את Walkie Doggy מהסמל החדש במסך הבית.</RtlText>
+                <Pressable
+                  style={styles.installPromptButton}
+                  onPress={() => {
+                    try { window.localStorage.setItem('walkie-ios-install-prompt-dismissed', '1'); } catch {}
+                    setShowIosInstallPrompt(false);
+                  }}
+                  accessibilityRole="button"
+                >
                   <RtlText style={styles.installPromptButtonText}>הבנתי</RtlText>
+                </Pressable>
+                <Pressable
+                  style={styles.installPromptLater}
+                  onPress={() => {
+                    try { window.localStorage.setItem('walkie-ios-install-prompt-dismissed', '1'); } catch {}
+                    setShowIosInstallPrompt(false);
+                  }}
+                  accessibilityRole="button"
+                >
+                  <RtlText style={styles.installPromptLaterText}>אולי אחר כך</RtlText>
                 </Pressable>
               </Pressable>
             </Pressable>
@@ -479,4 +500,6 @@ const styles = StyleSheet.create({
   installPromptHint: { fontSize: 13, fontWeight: '700', color: colors.primaryDark, textAlign: 'right', lineHeight: 20, marginTop: 4 },
   installPromptButton: { marginTop: 8, minHeight: 46, borderRadius: 14, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   installPromptButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  installPromptLater: { minHeight: 40, alignItems: 'center', justifyContent: 'center' },
+  installPromptLaterText: { fontSize: 14, color: colors.textSecondary, fontWeight: '600' },
 });
