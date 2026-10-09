@@ -164,7 +164,6 @@ export function WalkRow({
             })}`}
           </RtlText>
         </View>
-        {routeSession?.routePoints && routeSession.routePoints.length > 1 ? <RoutePreview session={routeSession} compact={historyCompact} /> : null}
 
         {responsible ? (
           <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={32} />
@@ -199,6 +198,7 @@ export function WalkRow({
             ) : null}
           </View>
         )}
+        {routeSession?.routePoints && routeSession.routePoints.length > 1 ? <RoutePreview session={routeSession} compact={historyCompact} /> : null}
       </View>
 
       {historyTimingLine ? (
@@ -389,7 +389,7 @@ const styles = StyleSheet.create({
   // so a long name/time combo ellipsizes rather than pushing the row taller
   // or squeezing `middle`.
   leftBlock: {
-    width: 118,
+    width: 56,
     alignItems: 'flex-end',
     flexShrink: 0,
     gap: 3,
