@@ -12,6 +12,7 @@ import { Button } from './Button';
 import { DogPhoto } from './DogPhoto';
 import { Countdown } from './Countdown';
 import { WalkieMascot } from './WalkieMascot';
+import { WalkingPair } from './WalkingPair';
 import { deriveMascotMoment } from '../mascot/mascotStage';
 import { selectMessage } from '../mascot/messageEngine';
 import { formatDistanceMeters } from '../logic/gpsDistance';
@@ -205,13 +206,7 @@ export function NextWalkCard({
 
       {isActive ? (
         <View style={styles.activeWalkBanner} accessibilityRole="timer" accessibilityLabel={`משך הטיול ${elapsedLabel}`}>
-          {/* A single animated walking pair: the visible leash joins the
-              walker's hand to the dog instead of showing disconnected emojis. */}
-          <View style={styles.walkingPair} accessibilityLabel="אדם וכלב הולכים יחד עם רצועה">
-            <Animated.Text style={[styles.walkerEmoji, { transform: [{ translateY: walkerBob }] }]}>🚶‍♂️</Animated.Text>
-            <View style={styles.walkingLeash} />
-            <Animated.Text style={[styles.walkingDogEmoji, { transform: [{ translateY: walkerBob }] }]}>🐕</Animated.Text>
-          </View>
+          <WalkingPair bob={walkerBob} />
           <View style={styles.activeWalkCopy}>
             <RtlText style={styles.activeWalkTitle}>מטיילים עכשיו</RtlText>
             <RtlText style={styles.activeWalkSubtitle}>הולכים יחד ברצועה</RtlText>
@@ -450,10 +445,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginBottom: 12,
   },
-  walkingPair: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: 108, minWidth: 108 },
-  walkerEmoji: { fontSize: 27 },
-  walkingLeash: { width: 23, height: 2, backgroundColor: '#667C7C', transform: [{ rotate: '-16deg' }], marginHorizontal: -2 },
-  walkingDogEmoji: { fontSize: 26 },
   activeWalkCopy: { flex: 1, alignItems: 'flex-end' },
   activeWalkTitle: { fontSize: 15, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
   activeWalkSubtitle: { fontSize: 12, color: colors.textSecondary, textAlign: 'right', marginTop: 2 },
