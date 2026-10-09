@@ -1,0 +1,101 @@
+src/screens/__tests__/HomeScreen.walkLifecycle.test.ts :: Home integrated walk lifecycle renders manager-only Edit/Swap directly under Next Walk and no standalone swap row
+    Error: expect(received).toContain(expected) // indexOf
+    
+    Expected substring: "setSwapWalkId(nextWalk.id)"
+    Received string:    "import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+src/components/__tests__/RuleFormModal.timePickerSheetFlow.test.tsx :: RuleFormModal — time picker sheet opens as a discrete step and never blocks the rest of the form full flow: open picker → select hour/minute → confirm → sheet gone → assignee reachable → Save fires once with the new time and exactly one assignee
+    Error: Unable to find an element with accessibility label: בחירת שעת טיול
+    
+    [36m<Modal>[39m
+      [36m<View>[39m
+
+src/components/__tests__/RuleFormModal.timePickerSheetFlow.test.tsx :: RuleFormModal — time picker sheet opens as a discrete step and never blocks the rest of the form editing an existing rule seeds the picker sheet from the rule's current time, not a default
+    Error: Unable to find an element with accessibility label: בחירת שעת טיול
+    
+    [36m<Modal>[39m
+      [36m<View>[39m
+
+src/components/__tests__/RuleFormModal.timePickerSheetFlow.test.tsx :: RuleFormModal — time picker sheet opens as a discrete step and never blocks the rest of the form cancelling the picker sheet leaves the previously selected time untouched and the form fully usable
+    Error: Unable to find an element with accessibility label: בחירת שעת טיול
+    
+    [36m<Modal>[39m
+      [36m<View>[39m
+
+src/components/__tests__/TimePickerField.web.test.tsx :: TimePickerField on Web — custom picker sheet (no native <input type="time">) renders a plain button showing the current value — never a native <input type="time">
+    Error: Unable to find an element with accessibility label: בחירת שעת טיול
+    
+    [
+      [36m<View[39m
+
+src/components/__tests__/TimePickerField.web.test.tsx :: TimePickerField on Web — custom picker sheet (no native <input type="time">) tapping the field opens the picker sheet, not an inline/overlay native control
+    Error: Unable to find an element with accessibility label: בחירת שעת טיול
+    
+    [
+      [36m<View[39m
+
+src/components/__tests__/TimePickerField.web.test.tsx :: TimePickerField on Web — custom picker sheet (no native <input type="time">) selecting hour 7 and minute 0 and confirming commits 07:00
+    Error: Unable to find an element with accessibility label: בחירת שעת טיול
+    
+    [
+      [36m<View[39m
+
+src/components/__tests__/TimePickerField.web.test.tsx :: TimePickerField on Web — custom picker sheet (no native <input type="time">) selecting hour 19 and minute 30 and confirming commits 19:30
+    Error: Unable to find an element with accessibility label: בחירת שעת טיול
+    
+    [
+      [36m<View[39m
+
+src/components/__tests__/TimePickerField.web.test.tsx :: TimePickerField on Web — custom picker sheet (no native <input type="time">) selecting hour 8 and minute 5 and confirming commits 08:05
+    Error: Unable to find an element with accessibility label: בחירת שעת טיול
+    
+    [
+      [36m<View[39m
+
+src/components/__tests__/TimePickerField.web.test.tsx :: TimePickerField on Web — custom picker sheet (no native <input type="time">) confirming closes the sheet completely — the confirm/cancel controls are gone afterwards
+    Error: Unable to find an element with accessibility label: בחירת שעת טיול
+    
+    [
+      [36m<View[39m
+
+src/components/__tests__/TimePickerField.web.test.tsx :: TimePickerField on Web — custom picker sheet (no native <input type="time">) cancelling discards any in-progress selection and never calls onChange
+    Error: Unable to find an element with accessibility label: בחירת שעת טיול
+    
+    [36m<View[39m
+      [33maccessibilityLabel[39m=[32m"בחירת שעת טיול, שעה נוכחית 08:00, לחצו לשינוי"[39m
+
+src/components/__tests__/TimePickerField.web.test.tsx :: TimePickerField on Web — custom picker sheet (no native <input type="time">) re-opening the sheet (editing an existing time) starts from the field's current value, not a prior in-progress selection
+    Error: Unable to find an element with accessibility label: בחירת שעת טיול
+    
+    [
+      [36m<View[39m
+
+src/components/__tests__/HealthGroomingModal.structure.test.ts :: HealthGroomingModal (structural) an open task row offers a dedicated "✓ בוצע" action that calls onComplete, separate from editing
+    Error: expect(received).toMatch(expected)
+    
+    Expected pattern: /void handleComplete\(t\.id\)/
+    Received string:  "import React, { useEffect, useMemo, useState } from 'react';
+
+src/components/__tests__/EditWalkModal.deferredTimeCommit.test.ts :: EditWalkModal — time changes are only committed via an explicit confirm, not on every picker tick a dedicated "שמור שינויים" button calls onChangeTime(time) explicitly, gated on timeChanged
+    Error: expect(received).toMatch(expected)
+    
+    Expected pattern: /disabled=\{!timeChanged\}/
+    Received string:  "label=\"שמור שינויים\" disabled={!timeChanged || timeOccupied} onPress={() => onChangeTime(time)} style={styles.footerButton} />
+
+src/lib/__tests__/migration0103.markResultsSeenNoRaise.test.ts :: migration 0103 — mark_my_request_results_seen() no longer raises when identity cannot be resolved does not edit any already-applied migration file — only adds a new one
+    Error: expect(received).toHaveLength(expected)
+    
+    Expected length: 1
+    Received length: 2
+
+src/components/__tests__/TimePickerField.noNativeOverlay.test.tsx :: TimePickerField on Web — no native time-entry element at all the visible field has no `type` prop (it is a Pressable, not a form control that could carry iOS Safari's native time/keyboard chrome)
+    Error: Unable to find an element with accessibility label: בחירת שעת טיול
+    
+    [36m<View[39m
+      [33maccessibilityLabel[39m=[32m"בחירת שעת טיול, שעה נוכחית 08:00, לחצו לשינוי"[39m
+
+src/components/__tests__/dangerButtonAccessibilityHint.test.ts :: danger-variant Button accessibilityHint ../EditWalkModal.tsx: the danger Button labeled "בטל את הטיול הזה" has a non-empty accessibilityHint
+    Error: expect(received).toBeGreaterThan(expected)
+    
+    Expected: > -1
+    Received:   -1

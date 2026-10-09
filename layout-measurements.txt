@@ -1,0 +1,57 @@
+## iPhone 390x844 — tab bar
+הגדרות: button x=8..58 w=50 bottom=836 | labelText=33.3px labelBox=47.7px clipped=false
+נתונים: button x=58..107 w=50 bottom=836 | labelText=28.8px labelBox=47.7px clipped=false
+משפחה: button x=107..157 w=50 bottom=836 | labelText=35.5px labelBox=47.7px clipped=false
+בית: button x=157..233 w=76 bottom=826 | labelText=18px labelBox=18px clipped=false
+צ׳אט: button x=233..283 w=50 bottom=836 | labelText=23.9px labelBox=47.7px clipped=false
+לו״ז: button x=283..332 w=50 bottom=836 | labelText=18.6px labelBox=47.7px clipped=false
+היסטוריה: button x=332..382 w=50 bottom=836 | labelText=41.8px labelBox=47.7px clipped=false
+viewport=390x844 horizontalOverflow=false
+chatTabLabelBeforeOpen=צ׳אט, 2 הודעות שלא נקראו
+## iPhone 390x844 — chat
+theirs-hebrew: x=72..321 direction=rtl textAlign=right
+theirs-english: x=72..321 direction=ltr textAlign=left
+mine-mixed: x=29..297 direction=rtl textAlign=right
+removed: x=159..321 direction=rtl textAlign=right
+unread-divider: x=159..231 direction=rtl textAlign=center
+composer: y=747..769 of 844
+horizontalOverflow=false
+chatTabLabelAfterOpen=צ׳אט
+iphone console errors: []
+## Small phone 320x568 — tab bar
+הגדרות: button x=8..47 w=39 bottom=560 | labelText=33.3px labelBox=35.3px clipped=false
+נתונים: button x=47..81 w=34 bottom=560 | labelText=28.8px labelBox=30.8px clipped=false
+משפחה: button x=81..122 w=41 bottom=560 | labelText=35.5px labelBox=37.5px clipped=false
+בית: button x=122..198 w=76 bottom=550 | labelText=18px labelBox=18px clipped=false
+צ׳אט: button x=198..231 w=33 bottom=560 | labelText=23.9px labelBox=25.9px clipped=false
+לו״ז: button x=231..261 w=29 bottom=560 | labelText=18.6px labelBox=20.6px clipped=false
+היסטוריה: button x=261..312 w=51 bottom=560 | labelText=41.8px labelBox=43.8px clipped=false
+viewport=320x568 horizontalOverflow=false
+## Android 360x780 — tab bar
+הגדרות: button x=8..53 w=45 bottom=772 | labelText=33.3px labelBox=42.7px clipped=false
+נתונים: button x=53..97 w=45 bottom=772 | labelText=28.8px labelBox=42.7px clipped=false
+משפחה: button x=97..142 w=45 bottom=772 | labelText=35.5px labelBox=42.7px clipped=false
+בית: button x=142..218 w=76 bottom=762 | labelText=18px labelBox=18px clipped=false
+צ׳אט: button x=218..263 w=45 bottom=772 | labelText=23.9px labelBox=42.7px clipped=false
+לו״ז: button x=263..307 w=45 bottom=772 | labelText=18.6px labelBox=42.7px clipped=false
+היסטוריה: button x=307..352 w=45 bottom=772 | labelText=41.8px labelBox=42.7px clipped=false
+viewport=360x780 horizontalOverflow=false
+## Desktop 1440x900 — tab bar
+הגדרות: button x=220..374 w=154 bottom=892 | labelText=33.3px labelBox=152px clipped=false
+נתונים: button x=374..528 w=154 bottom=892 | labelText=28.8px labelBox=152px clipped=false
+משפחה: button x=528..682 w=154 bottom=892 | labelText=35.5px labelBox=152px clipped=false
+בית: button x=682..758 w=76 bottom=882 | labelText=18px labelBox=18px clipped=false
+צ׳אט: button x=758..912 w=154 bottom=892 | labelText=23.9px labelBox=152px clipped=false
+לו״ז: button x=912..1066 w=154 bottom=892 | labelText=18.6px labelBox=152px clipped=false
+היסטוריה: button x=1066..1220 w=154 bottom=892 | labelText=41.8px labelBox=152px clipped=false
+viewport=1440x900 horizontalOverflow=false
+## Desktop 1440x900 — chat
+theirs-hebrew: x=721..1031 direction=rtl textAlign=right
+theirs-english: x=610..1031 direction=ltr textAlign=left
+mine-mixed: x=369..654 direction=rtl textAlign=right
+removed: x=869..1031 direction=rtl textAlign=right
+unread-divider: x=684..756 direction=rtl textAlign=center
+composer: y=803..825 of 900
+horizontalOverflow=false
+chatTabLabelAfterOpen=צ׳אט
+desktop console errors: []

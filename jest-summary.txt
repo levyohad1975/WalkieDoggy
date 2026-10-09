@@ -1,0 +1,11 @@
+exit=1
+FAIL src/components/__tests__/EditWalkModal.deferredTimeCommit.test.ts
+FAIL src/components/__tests__/HealthGroomingModal.structure.test.ts
+FAIL src/components/__tests__/RuleFormModal.timePickerSheetFlow.test.tsx
+FAIL src/components/__tests__/TimePickerField.noNativeOverlay.test.tsx
+FAIL src/components/__tests__/TimePickerField.web.test.tsx
+FAIL src/components/__tests__/dangerButtonAccessibilityHint.test.ts
+FAIL src/lib/__tests__/migration0103.markResultsSeenNoRaise.test.ts
+FAIL src/screens/__tests__/HomeScreen.walkLifecycle.test.ts
+Test Suites: 8 failed, 245 passed, 253 total
+Tests:       17 failed, 2564 passed, 2581 total
