@@ -8,12 +8,13 @@ import { RtlText } from './RtlText';
 interface RoutePreviewProps {
   session: WalkGpsSession | null;
   large?: boolean;
+  compact?: boolean;
 }
 
 /** Lightweight in-app route drawing. It deliberately has no map provider dependency. */
-export function RoutePreview({ session, large = false }: RoutePreviewProps) {
+export function RoutePreview({ session, large = false, compact = false }: RoutePreviewProps) {
   const points = session?.routePoints ?? [];
-  const dimensions = large ? { width: 320, height: 210 } : { width: 92, height: 72 };
+  const dimensions = large ? { width: 320, height: 210 } : compact ? { width: 72, height: 48 } : { width: 92, height: 72 };
   const hasEnoughSamples = points.length >= 3;
   const path = useMemo(() => {
     if (!hasEnoughSamples) return '';
@@ -34,7 +35,7 @@ export function RoutePreview({ session, large = false }: RoutePreviewProps) {
   if (points.length < 2) return null;
   if (!hasEnoughSamples) {
     return (
-      <View style={[styles.wrapper, large && styles.largeWrapper]} accessibilityLabel="מסלול GPS חלקי: אין מספיק נקודות להצגת המסלול">
+      <View style={[styles.wrapper, compact && !large && styles.compactWrapper, large && styles.largeWrapper]} accessibilityLabel="מסלול GPS חלקי: אין מספיק נקודות להצגת המסלול">
         <RtlText style={styles.incomplete}>{large ? 'אין מספיק נקודות GPS להצגת המסלול' : 'GPS חלקי'}</RtlText>
       </View>
     );
@@ -56,6 +57,7 @@ export function RoutePreview({ session, large = false }: RoutePreviewProps) {
 
 const styles = StyleSheet.create({
   wrapper: { width: 92, height: 72, borderRadius: 12, overflow: 'hidden', backgroundColor: colors.statusCurrentBg, alignItems: 'center', justifyContent: 'center' },
+  compactWrapper: { width: 72, height: 48, borderRadius: 9 },
   largeWrapper: { width: '100%', height: 240, borderRadius: 18, backgroundColor: colors.surfaceMuted },
   incomplete: { fontSize: 11, color: colors.textSecondary, textAlign: 'center', paddingHorizontal: 4 },
   legend: { position: 'absolute', bottom: 8, fontSize: 12, color: colors.textSecondary },
