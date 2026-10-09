@@ -989,13 +989,22 @@ export function HomeScreen() {
             ) : null}
             {guestReactionPlaying ? (
               <View pointerEvents="none" style={{ position: 'absolute', right: 4, bottom: 2, width: 158, height: 158, zIndex: 4 }}>
-                <Image
-                  source={require('../../assets/branding/walkie-guest-celebration.webp')}
-                  style={[{ width: 158, height: 158 }, Platform.OS === 'web' ? ({ mixBlendMode: 'screen' } as any) : null]}
-                  resizeMode="contain"
-                  accessibilityLabel="הכלב מנופף לשלום"
-                  testID="home-guest-mascot-reaction"
-                />
+                {Platform.OS === 'web' ? (
+                  <WalkieMascot
+                    state="happy"
+                    size={158}
+                    accessibilityLabel="הכלב מנופף לשלום"
+                    testID="home-guest-mascot-reaction"
+                  />
+                ) : (
+                  <Image
+                    source={require('../../assets/branding/walkie-guest-celebration.webp')}
+                    style={{ width: 158, height: 158 }}
+                    resizeMode="contain"
+                    accessibilityLabel="הכלב מנופף לשלום"
+                    testID="home-guest-mascot-reaction"
+                  />
+                )}
               </View>
             ) : null}
             {dog?.heroBackgroundId === 'walkie-park' && !showPersonalHero ? (
