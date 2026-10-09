@@ -1,0 +1,64 @@
+# TEMPORARY — exists only on the claude/family-chat-validation branch.
+# Runs the repository-standard validation plus a web build and screenshots,
+# and publishes the results to a throwaway evidence branch.
+name: Family chat validation evidence (temporary)
+
+on:
+  push:
+    branches:
+      - claude/family-chat-validation
+
+permissions:
+  contents: write
+
+concurrency:
+  group: family-chat-evidence
+  cancel-in-progress: true
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: |
+          mkdir -p evidence
+          set +e
+          npm run typecheck > evidence/typecheck.txt 2>&1
+          echo "exit=$?" >> evidence/typecheck.txt
+          tail -5 evidence/typecheck.txt
+      - name: Full Jest suite
+        run: |
+          set +e
+          npm test -- --runInBand --silent --json --outputFile=jest.json > jest.log 2>&1
+          echo "exit=$?" > evidence/jest-summary.txt
+          grep -E '^(FAIL|Tests:|Test Suites:)' jest.log | sort -u >> evidence/jest-summary.txt
+          node -e "const r=require('./jest.json');const out=[];for(const s of r.testResults){for(const t of s.assertionResults){if(t.status==='failed')out.push(s.name.replace(process.cwd()+'/','')+' :: '+t.fullName+'\n    '+String((t.failureMessages||[''])[0]).split('\n').slice(0,4).join('\n    '))}}require('fs').writeFileSync('evidence/jest-failures.txt',out.join('\n\n')+'\n')"
+          cat evidence/jest-summary.txt
+      - name: Export web build (demo mode)
+        run: npx expo export --platform web
+      - name: Screenshots
+        run: |
+          mkdir -p /tmp/shoot && cp .github/visual-evidence/shoot.js /tmp/shoot/ && cd /tmp/shoot
+          npm init -y > /dev/null && npm i playwright serve > /dev/null
+          npx playwright install --with-deps chromium > /dev/null
+          (npx serve -s "$GITHUB_WORKSPACE/dist" -l 4173 > /dev/null 2>&1 &)
+          sleep 4
+          OUT_DIR="$GITHUB_WORKSPACE/evidence" node shoot.js
+      - name: Publish evidence branch
+        if: always()
+        run: |
+          echo "commit=$GITHUB_SHA" > evidence/source-commit.txt
+          cd evidence
+          git init -q -b claude/family-chat-evidence
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "evidence for $GITHUB_SHA"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" claude/family-chat-evidence

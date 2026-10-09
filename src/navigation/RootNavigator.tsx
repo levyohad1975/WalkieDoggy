@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, View } from 'react-native';
+import { Platform, Pressable, View, useWindowDimensions } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -104,6 +104,7 @@ const HOME_BUTTON_SIZE = 50;
 // phone that leaves ~40-47pt per button, so the padding is kept minimal to
 // give the longest label ("היסטוריה") the whole slot.
 const TAB_BUTTON_PADDING = 1;
+const COMPACT_TAB_BAR_BELOW = 360;
 
 /**
  * A physically deterministic tab bar. React Navigation/iOS can re-evaluate
@@ -116,6 +117,13 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
   // Family Chat unread badge. Read here (not passed as a prop) so a new
   // message re-renders only the bar, never the navigator and its screens.
   const chatBadge = formatChatBadge(useChatStore((s) => s.unreadCount));
+  // On the narrowest phones (320pt) three equal slots per side are ~38pt
+  // each — narrower than the longest label ("היסטוריה"), which would clip on
+  // web, where adjustsFontSizeToFit does not exist. There, each button is
+  // sized by its own label and the leftover space is shared equally, so every
+  // label fits whole. From 360pt up the slots stay equal, exactly as before.
+  const { width: windowWidth } = useWindowDimensions();
+  const contentSizedTabs = windowWidth < COMPACT_TAB_BAR_BELOW;
   const routeByName = Object.fromEntries(state.routes.map((route) => [route.name, route]));
   const isVisible = (name: keyof RootTabParamList) => {
     if (!routeByName[name]) return false;
@@ -159,7 +167,10 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
             ? `${TAB_LABEL.Chat}, ${chatBadge} הודעות שלא נקראו`
             : options?.tabBarAccessibilityLabel ?? TAB_LABEL[name]
         }
-        style={{ flex: 1, minWidth: 0, paddingHorizontal: TAB_BUTTON_PADDING, alignItems: 'center', justifyContent: 'center', gap: 1 }}
+        style={[
+          { minWidth: 0, paddingHorizontal: TAB_BUTTON_PADDING, alignItems: 'center', justifyContent: 'center', gap: 1 },
+          contentSizedTabs ? { flexGrow: 1, flexShrink: 1, flexBasis: 'auto' } : { flex: 1 },
+        ]}
       >
         <View>
           <TabIcon name={name} color={tint} />
@@ -174,7 +185,7 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
             </View>
           ) : null}
         </View>
-        <RtlText allowFontScaling={false} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={{ fontSize: 10, lineHeight: 13, fontWeight: '600', color: tint, textAlign: 'center', writingDirection: 'rtl', width: '100%', paddingHorizontal: 1 }}>{TAB_LABEL[name]}</RtlText>
+        <RtlText allowFontScaling={false} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={{ fontSize: 10, lineHeight: 13, fontWeight: '600', color: tint, textAlign: 'center', writingDirection: 'rtl', width: contentSizedTabs ? undefined : '100%', paddingHorizontal: 1 }}>{TAB_LABEL[name]}</RtlText>
       </Pressable>
     );
   };
