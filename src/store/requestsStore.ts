@@ -130,8 +130,8 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
     }
     try {
       const requestId = await createSwapRequest(walkId, targetWalkId);
-      await get().load();
       notifyPushBestEffort(requestId, 'swap', 'created');
+      await get().load();
     } catch (error) {
       set({ error: messageFor(error) });
     }
@@ -141,6 +141,7 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
     if (!guardTestModeMutation()) return;
     try {
       await approveSwapRequest(requestId);
+      notifyPushBestEffort(requestId, 'swap', 'approved');
       await get().load();
       // An approved swap changes a concrete walk's responsible user
       // server-side directly (not through scheduleStore's own actions), so
@@ -148,7 +149,6 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
       // it — would otherwise go stale. Reload it so both reflect the new
       // occurrence (A3's authoritative rule).
       await reloadScheduleAndNotifications();
-      notifyPushBestEffort(requestId, 'swap', 'approved');
     } catch (error) {
       set({ error: messageFor(error) });
     }
@@ -158,8 +158,8 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
     if (!guardTestModeMutation()) return;
     try {
       await rejectSwapRequest(requestId);
-      await get().load();
       notifyPushBestEffort(requestId, 'swap', 'rejected');
+      await get().load();
     } catch (error) {
       set({ error: messageFor(error) });
     }
@@ -173,8 +173,8 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
     }
     try {
       const requestId = await createTimeChangeRequest(walkId, proposedTime);
-      await get().load();
       notifyPushBestEffort(requestId, 'timeChange', 'created');
+      await get().load();
     } catch (error) {
       set({ error: messageFor(error) });
     }
@@ -184,11 +184,11 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
     if (!guardTestModeMutation()) return;
     try {
       await approveTimeChangeRequest(requestId);
+      notifyPushBestEffort(requestId, 'timeChange', 'approved');
       await get().load();
       // Same reasoning as approveSwap above: the walk's scheduledTime
       // changed server-side directly.
       await reloadScheduleAndNotifications();
-      notifyPushBestEffort(requestId, 'timeChange', 'approved');
     } catch (error) {
       set({ error: messageFor(error) });
     }
@@ -198,8 +198,8 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
     if (!guardTestModeMutation()) return;
     try {
       await rejectTimeChangeRequest(requestId);
-      await get().load();
       notifyPushBestEffort(requestId, 'timeChange', 'rejected');
+      await get().load();
     } catch (error) {
       set({ error: messageFor(error) });
     }
