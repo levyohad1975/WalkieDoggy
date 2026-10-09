@@ -8,7 +8,7 @@ import {
 } from './supabase';
 import { rawMessageOf } from './errorMessages';
 import { createLocalChatTransport } from './chatLocal';
-import { CHAT_ATTACHMENT_BUCKET } from '../logic/chatImages';
+import { CHAT_ATTACHMENT_BUCKET, ChatUploadCancelledError } from '../logic/chatImages';
 import { chatImageUploadBody, type PreparedChatImage } from './chatImages';
 import type { ChatAttachment, ChatConversationState, ChatLastMessage, ChatMessage } from '../types';
 
@@ -93,11 +93,7 @@ export class ChatUnavailableError extends Error {
   }
 }
 
-export class ChatUploadCancelledError extends Error {
-  constructor() {
-    super('chat image upload cancelled');
-  }
-}
+export { ChatUploadCancelledError };
 
 /** PostgREST / Postgres codes meaning "this function or table does not exist here". */
 const MISSING_BACKEND_CODES = new Set(['PGRST202', 'PGRST205', '42883', '42P01']);

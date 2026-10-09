@@ -161,3 +161,11 @@ export function chatImageFileName(createdAt: string, mime: string): string {
     : `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
   return `walkie-doggy-${stamp}.${chatImageExtension(mime)}`;
 }
+
+/** Thrown by an upload the member cancelled; never shown as a failure. */
+export class ChatUploadCancelledError extends Error {
+  constructor() {
+    super('chat image upload cancelled');
+    this.name = 'ChatUploadCancelledError';
+  }
+}

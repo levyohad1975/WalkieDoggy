@@ -276,11 +276,11 @@ export function ChatImageViewer({ message, senderName, onClose }: ChatImageViewe
 const styles = StyleSheet.create({
   pressed: { opacity: 0.75 },
   frame: { borderRadius: radii.md, overflow: 'hidden', backgroundColor: colors.surfaceMuted, marginBottom: spacing.xs },
-  centerFill: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', padding: spacing.sm, gap: 2 },
+  centerFill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', padding: spacing.sm, gap: 2 },
   unavailable: { ...typography.meta, color: colors.textSecondary, textAlign: 'center' },
   unavailableAction: { ...typography.meta, fontWeight: '700', color: colors.primaryDark, textAlign: 'center' },
   uploadOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
     backgroundColor: '#00000066',
     alignItems: 'center',
     justifyContent: 'center',

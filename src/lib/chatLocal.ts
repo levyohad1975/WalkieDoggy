@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEMO_FAMILY } from '../data/demoData';
+import { ChatUploadCancelledError } from '../logic/chatImages';
 import { CHAT_MESSAGE_MAX_LENGTH, chatBodyLength, chatLastMessageOf, compareChatMessages } from '../logic/chat';
 import { useAuthStore } from '../store/authStore';
 import { useFamilyStore } from '../store/familyStore';
@@ -281,7 +282,6 @@ export function createLocalChatTransport(): ChatTransport {
         onProgress(0.4);
         await Promise.resolve();
         if (cancelled) {
-          const { ChatUploadCancelledError } = await import('./chat');
           throw new ChatUploadCancelledError();
         }
         files.set(path, image);

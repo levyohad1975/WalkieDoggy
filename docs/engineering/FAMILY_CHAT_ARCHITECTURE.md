@@ -212,3 +212,74 @@ create table chat_conversation_families (
 - Until the migration is applied on an environment, the app shows a calm
   "chat is not enabled here yet" state instead of an error, and the unread
   badge stays hidden.
+
+## 9. Private conversations and image messages (migration 0109)
+
+Section 7 (connections between families) is still design only. What shipped
+next is narrower: private one-to-one conversations inside one family, and
+image messages in both kinds of conversation. Migration
+`0109_private_chat_and_images.sql` is additive — no existing row is rewritten
+or deleted, and the family conversation keeps its id and history.
+
+### 9.1 Data model
+
+- `chat_conversations.kind` is `family` or `direct`. A direct conversation
+  stores its two participants as `direct_user_low` / `direct_user_high`
+  (ordered), and a unique index on `(family_id, low, high)` makes a second
+  conversation for the same pair impossible, whichever side opens it.
+- `chat_messages` gains `attachment_path`, `attachment_mime`,
+  `attachment_width`, `attachment_height`, `attachment_size`. A message has
+  text, an image, or both. `attachment_path` is unique.
+- `chat_attachment_deletions` queues the file of a removed image message for
+  deletion from Storage.
+
+### 9.2 Authorization
+
+- `chat_can_access_conversation` — family: an active member of that family.
+  Direct: one of the two participants, still an active member of the family.
+  There is deliberately no administrator branch for direct conversations, and
+  `chat_actor_profile_id()` is null for a System Admin observer or an
+  impersonated session, so neither can read or send.
+- `chat_open_direct_conversation(p_other_user_id)` refuses self, removed
+  members and members of another family.
+- Removal: family messages — family admin (audited). Direct messages — the
+  sender only.
+- A member who leaves the family loses access to their direct conversations
+  at once; the remaining participant sees the thread read-only.
+
+### 9.3 Images
+
+- Private bucket `chat-attachments`, 5 MB, JPEG/PNG/WebP. No public URLs.
+- Object name: `<conversation id>/<sender profile id>/<message id>.<ext>`.
+  Storage policies call `chat_attachment_uploadable/readable/removable`, so
+  upload requires being that sender in that conversation, read requires
+  conversation access, and delete is only allowed while no message refers to
+  the file (an abandoned upload). There is no UPDATE policy.
+- The client resizes to 1600 px on the long edge and re-encodes as JPEG
+  before upload; re-encoding drops EXIF, including GPS. Orientation is baked
+  into the pixels.
+- Send order: upload, then `chat_send_image_message`, which checks that the
+  object exists, belongs to the caller and matches the message id. A failed
+  or cancelled send removes the uploaded object.
+- Display uses signed URLs valid for 10 minutes, cached in memory only.
+- Deleting an image message queues its file; the `chat-attachment-cleanup`
+  Edge Function removes queued files (invoked after a deletion, and callable
+  on a schedule with `CHAT_CLEANUP_CRON_SECRET`).
+
+### 9.4 Push
+
+`chat_push_recipients` returns the other participant only for a direct
+conversation. An image is announced as "📷 תמונה" plus any caption; no path
+or URL is ever placed in a notification or a log.
+
+### 9.5 Retention and monitoring
+
+Text and images are kept without an expiry. Nothing deletes on a timer.
+`select * from chat_storage_usage();` (System Admin) reports message, image
+and byte totals plus the pending-cleanup count, for watching storage growth.
+
+### 9.6 Rollout
+
+The client asks `chat_list_conversations()`; if 0109 is not applied it falls
+back to the Phase 1 family conversation with private chats and images hidden.
+The client is therefore safe to deploy before the migration.
