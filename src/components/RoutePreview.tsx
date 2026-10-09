@@ -9,14 +9,15 @@ interface RoutePreviewProps {
   session: WalkGpsSession | null;
   large?: boolean;
   compact?: boolean;
+  live?: boolean;
 }
 
 /** Lightweight in-app route drawing. It deliberately has no map provider dependency. */
-export function RoutePreview({ session, large = false, compact = false }: RoutePreviewProps) {
+export function RoutePreview({ session, large = false, compact = false, live = false }: RoutePreviewProps) {
   const points = session?.routePoints ?? [];
   const [mapOpen, setMapOpen] = useState(false);
   const mapPoints = points.filter(p => Number.isFinite(p.latitude) && Number.isFinite(p.longitude) && Math.abs(p.latitude) <= 90 && Math.abs(p.longitude) <= 180).map(p => [p.latitude, p.longitude]);
-  const webMap = Platform.OS === 'web' && mapPoints.length >= 2;
+  const webMap = Platform.OS === 'web' && mapPoints.length >= 1;
   const dimensions = large ? { width: 320, height: 210 } : compact ? { width: 72, height: 48 } : { width: 92, height: 72 };
   const hasEnoughSamples = points.length >= 3;
   const path = useMemo(() => {
@@ -35,7 +36,10 @@ export function RoutePreview({ session, large = false, compact = false }: RouteP
     return points.map((p) => `${dimensions.width / 2 + (p.longitude - centerLon) * lonScale * scale},${dimensions.height / 2 - (p.latitude - centerLat) * scale}`).join(' ');
   }, [dimensions.height, dimensions.width, points, hasEnoughSamples]);
 
-  if (points.length < 2) return null;
+  if (points.length < 2 && !live) return null;
+  if (live && mapPoints.length === 0) {
+    return <View style={[styles.wrapper, styles.liveWrapper]} accessibilityLabel="מפת הטיול ממתינה למיקום ראשון"><RtlText style={styles.incomplete}>📍 ממתין למיקום GPS ראשון…</RtlText></View>;
+  }
   if (webMap) {
     const renderMap = (expanded: boolean) => React.createElement('iframe', {
       title: 'מפת רחובות ומסלול GPS',
@@ -45,7 +49,7 @@ export function RoutePreview({ session, large = false, compact = false }: RouteP
     });
     return (
       <>
-        <Pressable onPress={() => setMapOpen(true)} accessibilityRole="button" accessibilityLabel="פתח מפת רחובות עם מסלול הטיול" style={[styles.wrapper, compact && !large && styles.compactWrapper, large && styles.largeWrapper]}>
+        <Pressable onPress={() => setMapOpen(true)} accessibilityRole="button" accessibilityLabel="פתח מפת רחובות עם מסלול הטיול" style={[styles.wrapper, compact && !large && styles.compactWrapper, large && styles.largeWrapper, live && styles.liveWrapper]}>
           {renderMap(false)}
         </Pressable>
         <Modal visible={mapOpen} transparent animationType="slide" onRequestClose={() => setMapOpen(false)}>
@@ -85,6 +89,7 @@ export function RoutePreview({ session, large = false, compact = false }: RouteP
 const styles = StyleSheet.create({
   wrapper: { width: 92, height: 72, borderRadius: 12, overflow: 'hidden', backgroundColor: colors.statusCurrentBg, alignItems: 'center', justifyContent: 'center' },
   compactWrapper: { width: 72, height: 48, borderRadius: 9 },
+  liveWrapper: { width: '100%', height: 112, borderRadius: 12 },
   mapBackdrop: { flex: 1, backgroundColor: '#0008', justifyContent: 'center', padding: 16 },
   mapCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 12, gap: 8 },
   closeMap: { padding: 12, alignSelf: 'flex-end' },
@@ -103,9 +108,11 @@ function buildMapHtml(points: number[][], expanded: boolean): string {
   const points = ${coords};
   const map = L.map('map',{zoomControl:false,scrollWheelZoom:false,attributionControl:${expanded ? 'true' : 'false'}});
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
-  const route = L.polyline(points,{color:'#12A5AB',weight:4}).addTo(map);
   L.circleMarker(points[0],{radius:6,color:'#138A52'}).addTo(map);
-  L.circleMarker(points[points.length-1],{radius:6,color:'#D74747'}).addTo(map);
-  map.fitBounds(route.getBounds().pad(0.35),{maxZoom:18});
+  L.circleMarker(points[points.length-1],{radius:6,color:'#2684D9'}).addTo(map);
+  if(points.length > 1) {
+    const route = L.polyline(points,{color:'#12A5AB',weight:4}).addTo(map);
+    map.fitBounds(route.getBounds().pad(0.35),{maxZoom:18});
+  } else { map.setView(points[0],17); }
   </script></body></html>`;
 }
