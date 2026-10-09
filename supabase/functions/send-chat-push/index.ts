@@ -13,16 +13,18 @@
 //      has not been removed. Anything else returns null and nothing is sent.
 //      A client therefore cannot trigger a push for someone else's message,
 //      for an old message, or with content of its choosing.
-//   3. Recipients come from chat_push_recipients() (service role): every
-//      active member of the conversation EXCEPT the sender, minus members
-//      who turned notifications off or muted this conversation. The client
-//      never supplies a recipient.
+//   3. Recipients come from chat_push_recipients() (service role), never from
+//      the client:
+//        family conversation  -> every active family member except the sender
+//        private conversation -> the other participant, and nobody else
+//      minus members who turned notifications off or muted the conversation.
 //   4. claim_chat_push_event() makes delivery at-most-once per message, so a
 //      retried send (same message id) or a duplicated call cannot notify
 //      twice.
 //
 // The notification text is the sender's name and a short preview, both read
-// from the database — never from the request.
+// from the database — never from the request. An image is announced as an
+// image; no image URL or storage path is ever put in a notification or a log.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import webpush from 'npm:web-push@3.6.7';
@@ -39,6 +41,7 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
 const PREVIEW_MAX_LENGTH = 140;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FALLBACK_SENDER = 'בן/בת משפחה'; // בן/בת משפחה
+const IMAGE_LABEL = '\ud83d\udcf7 \u05ea\u05de\u05d5\u05e0\u05d4'; // 📷 תמונה
 const NO_RECIPIENT = '00000000-0000-0000-0000-000000000000';
 
 const corsHeaders = {
@@ -112,6 +115,8 @@ Deno.serve(async (req: Request) => {
       sender_user_id: string;
       sender_name: string | null;
       body: string;
+      has_image?: boolean;
+      conversation_kind?: string;
     };
 
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
@@ -164,7 +169,8 @@ Deno.serve(async (req: Request) => {
       }
 
       const title = ctx.sender_name?.trim() || FALLBACK_SENDER;
-      const body = previewOf(ctx.body);
+      const caption = previewOf(ctx.body);
+      const body = ctx.has_image ? (caption ? `${IMAGE_LABEL}: ${caption}` : IMAGE_LABEL) : caption;
       const data = { type: 'chat', conversationId: ctx.conversation_id, messageId: ctx.message_id };
 
       let expoSent = 0;
@@ -263,6 +269,7 @@ Deno.serve(async (req: Request) => {
         return json({ ok: true, sent: totalSent, expoSent, webSent, deliveryErrors });
       }
 
+      // Ids and transport errors only — never message text.
       console.error('Chat push delivery failed', { messageId: ctx.message_id, deliveryErrors });
       await mark('failed');
       return json({ ok: false, sent: 0, expoSent: 0, webSent: 0, deliveryErrors });

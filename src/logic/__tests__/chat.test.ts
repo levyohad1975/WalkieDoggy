@@ -10,8 +10,14 @@ import {
   formatChatTime,
   mergeChatMessages,
   validateChatBody,
+  applyMessageToConversations,
+  chatLastMessageOf,
+  formatChatListTime,
+  formatChatPreview,
+  sortChatConversations,
+  totalUnreadChatMessages,
 } from '../chat';
-import type { ChatMessage } from '../../types';
+import type { ChatConversationState, ChatMessage } from '../../types';
 
 function message(overrides: Partial<ChatMessage> & { id: string }): ChatMessage {
   return {
@@ -221,5 +227,108 @@ describe('buildChatListItems', () => {
       { unreadFrom: at(8, 0, -2), now }
     );
     expect(new Set(items.map((i) => i.key)).size).toBe(items.length);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Conversations list (private conversations)
+// ---------------------------------------------------------------------------
+
+function conv(overrides: Partial<ChatConversationState> = {}): ChatConversationState {
+  return {
+    conversationId: 'conv-family',
+    kind: 'family',
+    familyId: 'family-1',
+    userId: 'me',
+    lastReadAt: '2026-10-09T09:00:00.000Z',
+    notificationsMuted: false,
+    unreadCount: 0,
+    canModerate: false,
+    lastActivityAt: '2026-10-09T09:00:00.000Z',
+    ...overrides,
+  };
+}
+
+describe('conversation list', () => {
+  const family = conv();
+  const direct = conv({ conversationId: 'conv-direct', kind: 'direct', otherUserId: 'user-b', lastActivityAt: '2026-10-09T08:00:00.000Z' });
+
+  it('sorts by recent activity, the family conversation winning a tie', () => {
+    expect(sortChatConversations([direct, family]).map((c) => c.conversationId)).toEqual(['conv-family', 'conv-direct']);
+    const later = { ...direct, lastActivityAt: '2026-10-09T10:00:00.000Z' };
+    expect(sortChatConversations([family, later]).map((c) => c.conversationId)).toEqual(['conv-direct', 'conv-family']);
+    const tie = { ...direct, lastActivityAt: family.lastActivityAt };
+    expect(sortChatConversations([tie, family]).map((c) => c.conversationId)).toEqual(['conv-family', 'conv-direct']);
+  });
+
+  it('totals unread across conversations for the tab badge', () => {
+    expect(totalUnreadChatMessages([{ ...family, unreadCount: 2 }, { ...direct, unreadCount: 3 }])).toBe(5);
+    expect(totalUnreadChatMessages([])).toBe(0);
+  });
+
+  it('builds a one-line preview from a message', () => {
+    expect(chatLastMessageOf(message({ id: 'm', body: 'שורה אחת\nשורה שתיים' }))).toMatchObject({ preview: 'שורה אחת שורה שתיים', hasImage: false, deleted: false });
+    expect(chatLastMessageOf(message({ id: 'm', body: '', attachment: { path: 'p', mime: 'image/jpeg', width: 1, height: 1, size: 1 } }))).toMatchObject({ preview: '', hasImage: true });
+    expect(Array.from(chatLastMessageOf(message({ id: 'm', body: '🐶'.repeat(500) })).preview)).toHaveLength(140);
+  });
+
+  it('words the preview: names the sender in the family group, only "you" in a private conversation', () => {
+    const last = chatLastMessageOf(message({ id: 'm', senderUserId: 'user-b', body: 'מי בבית?' }));
+    expect(formatChatPreview(last, { myUserId: 'me', kind: 'family', senderName: 'אמא' })).toBe('אמא: מי בבית?');
+    expect(formatChatPreview(last, { myUserId: 'me', kind: 'direct', senderName: 'אמא' })).toBe('מי בבית?');
+    expect(formatChatPreview(last, { myUserId: 'user-b', kind: 'direct' })).toBe('את/ה: מי בבית?');
+    expect(formatChatPreview({ ...last, hasImage: true, preview: '' }, { myUserId: 'me', kind: 'direct' })).toBe('📷 תמונה');
+    expect(formatChatPreview({ ...last, hasImage: true, preview: 'טופי' }, { myUserId: 'me', kind: 'family', senderName: 'אמא' })).toBe('אמא: 📷 טופי');
+    expect(formatChatPreview({ ...last, deleted: true, preview: '' }, { myUserId: 'me', kind: 'family', senderName: 'אמא' })).toBe('אמא: ההודעה הוסרה');
+    expect(formatChatPreview(undefined, { myUserId: 'me', kind: 'family' })).toBe('כל המשפחה במקום אחד');
+    expect(formatChatPreview(undefined, { myUserId: 'me', kind: 'direct' })).toBe('עדיין אין הודעות');
+  });
+
+  it('shows a compact time in the list', () => {
+    const now = new Date(2026, 9, 9, 20, 0);
+    expect(formatChatListTime(new Date(2026, 9, 9, 8, 5).toISOString(), now)).toBe('08:05');
+    expect(formatChatListTime(new Date(2026, 9, 8, 23, 0).toISOString(), now)).toBe('אתמול');
+    expect(formatChatListTime(new Date(2026, 9, 4, 12, 0).toISOString(), now)).toBe('04-10');
+  });
+
+  describe('applyMessageToConversations', () => {
+    const incoming = message({ id: 'n1', conversationId: 'conv-direct', senderUserId: 'user-b', body: 'היי', createdAt: '2026-10-09T12:00:00.000Z' });
+
+    it('updates the preview, bumps unread and moves the conversation to the top', () => {
+      const next = applyMessageToConversations([family, direct], incoming, { isNew: true, isBeingRead: false });
+      expect(next[0]).toMatchObject({ conversationId: 'conv-direct', unreadCount: 1, lastActivityAt: incoming.createdAt, lastMessage: { preview: 'היי' } });
+      expect(next[1]).toBe(family);
+    });
+
+    it('does not count a message that is being read, is mine, is not new, or was removed', () => {
+      const count = (m: typeof incoming, opts: { isNew: boolean; isBeingRead: boolean }) =>
+        applyMessageToConversations([family, direct], m, opts).find((c) => c.conversationId === 'conv-direct')!.unreadCount;
+      expect(count(incoming, { isNew: true, isBeingRead: true })).toBe(0);
+      expect(count(incoming, { isNew: false, isBeingRead: false })).toBe(0);
+      expect(count({ ...incoming, senderUserId: 'me' }, { isNew: true, isBeingRead: false })).toBe(0);
+      expect(count({ ...incoming, deletedAt: '2026-10-09T12:01:00.000Z', body: '' }, { isNew: true, isBeingRead: false })).toBe(0);
+    });
+
+    it('an older message never replaces a newer preview; a removal of the last message does', () => {
+      const withLast = { ...direct, lastMessage: chatLastMessageOf(incoming), lastActivityAt: incoming.createdAt };
+      const older = message({ id: 'old', conversationId: 'conv-direct', senderUserId: 'user-b', body: 'ישן', createdAt: '2026-10-09T07:00:00.000Z' });
+      expect(applyMessageToConversations([family, withLast], older, { isNew: false, isBeingRead: false })
+        .find((c) => c.conversationId === 'conv-direct')!.lastMessage!.preview).toBe('היי');
+
+      const removed = { ...incoming, body: '', deletedAt: '2026-10-09T12:05:00.000Z' };
+      expect(applyMessageToConversations([family, withLast], removed, { isNew: false, isBeingRead: false })
+        .find((c) => c.conversationId === 'conv-direct')!.lastMessage).toMatchObject({ deleted: true, preview: '' });
+    });
+
+    it('returns the same array for a conversation that is not listed, so nothing foreign is ever inserted', () => {
+      const list = [family];
+      expect(applyMessageToConversations(list, incoming, { isNew: true, isBeingRead: false })).toBe(list);
+    });
+
+    it('ignores an unsent local bubble for the preview', () => {
+      const list = [family, direct];
+      const unsent = { ...incoming, delivery: 'sending' as const };
+      expect(applyMessageToConversations(list, unsent, { isNew: false, isBeingRead: true })).toBe(list);
+    });
   });
 });

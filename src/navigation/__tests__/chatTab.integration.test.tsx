@@ -61,37 +61,25 @@ import { RootNavigator } from '../RootNavigator';
 import { useAuthStore } from '../../store/authStore';
 import { useFamilyStore } from '../../store/familyStore';
 import { __resetChatStoreForTests, useChatStore } from '../../store/chatStore';
-import { __setChatTransportForTests, type ChatSubscriptionHandlers, type ChatTransport } from '../../lib/chat';
+import { __setChatTransportForTests } from '../../lib/chat';
+import { createFakeChatTransport, fakeChatConversation } from '../../testUtils/fakeChatTransport';
 import { __resetChatEntryForTests, publishChatOpen } from '../../notifications/chatEntry';
 import { __resetNotificationOpenDedupForTests } from '../../notifications/notificationOpenDedup';
 
 function createTransport() {
-  const subscriptions: Array<{ conversationId: string; handlers: ChatSubscriptionHandlers; active: boolean }> = [];
   let familyId = 'family-main';
-  const transport: ChatTransport = {
-    open: async () => ({
+  const fake = createFakeChatTransport();
+  const conversationFor = () =>
+    fakeChatConversation({
       conversationId: `conv-${familyId}`,
       familyId,
       userId: useAuthStore.getState().currentUserId ?? 'nobody',
-      lastReadAt: '2026-10-09T09:00:00.000Z',
-      notificationsMuted: false,
-      unreadCount: 0,
-      canModerate: false,
-    }),
-    listMessages: async () => [],
-    send: async () => { throw new Error('not used'); },
-    remove: async () => { throw new Error('not used'); },
-    markRead: async () => 0,
-    setMuted: async (_id, muted) => muted,
-    subscribe: (conversationId, handlers) => {
-      const subscription = { conversationId, handlers, active: true };
-      subscriptions.push(subscription);
-      handlers.onStatus('live');
-      return () => { subscription.active = false; };
-    },
-    notify: async () => undefined,
-  };
-  return { transport, subscriptions, setFamily: (id: string) => { familyId = id; } };
+    });
+  fake.transport.listConversations = async () => ({
+    conversations: [conversationFor()],
+    capabilities: { privateConversations: true, images: true },
+  });
+  return { transport: fake.transport, subscriptions: fake.state.subscriptions, setFamily: (id: string) => { familyId = id; } };
 }
 
 function renderApp() {
@@ -190,25 +178,39 @@ describe('Family Chat — navigation entry, badge and session lifecycle', () => 
     expect(screen.getByLabelText('צ׳אט, 1 הודעות שלא נקראו')).toBeTruthy();
   });
 
-  it('a tapped chat notification switches to the Chat tab', async () => {
+  it('a tapped chat notification switches to the Chat tab and opens that conversation', async () => {
     renderApp();
-    await waitFor(() => expect(screen.getByText('HOME_SCREEN')).toBeTruthy());
+    await waitFor(() => expect(useChatStore.getState().status).toBe('ready'));
 
     act(() => { publishChatOpen({ conversationId: 'conv-family-main', messageId: 'm1' }); });
 
     await waitFor(() => expect(screen.getByText('CHAT_SCREEN')).toBeTruthy());
+    expect(useChatStore.getState().activeConversationId).toBe('conv-family-main');
   });
 
-  it('switching family releases the old Realtime subscription and opens the new family\'s conversation', async () => {
+  it('switching family releases the old Realtime subscription and loads the new family\'s conversations', async () => {
     renderApp();
     await waitFor(() => expect(fake.subscriptions.filter((s) => s.active)).toHaveLength(1));
-    expect(fake.subscriptions[0].conversationId).toBe('conv-family-main');
+    expect(useChatStore.getState().conversations.map((c) => c.conversationId)).toEqual(['conv-family-main']);
 
     fake.setFamily('family-other');
     act(() => { useAuthStore.setState({ familyId: 'family-other', currentUserId: 'user-other' }); });
 
-    await waitFor(() => expect(fake.subscriptions.filter((s) => s.active).map((s) => s.conversationId)).toEqual(['conv-family-other']));
+    await waitFor(() => expect(useChatStore.getState().conversations.map((c) => c.conversationId)).toEqual(['conv-family-other']));
     expect(fake.subscriptions[0].active).toBe(false);
+    expect(fake.subscriptions.filter((s) => s.active)).toHaveLength(1);
+  });
+
+  it('switching profile on the same device starts a clean session', async () => {
+    renderApp();
+    await waitFor(() => expect(useChatStore.getState().status).toBe('ready'));
+    act(() => { useChatStore.getState().openConversation('conv-family-main'); });
+
+    act(() => { useAuthStore.setState({ currentUserId: 'user-ima' }); });
+
+    await waitFor(() => expect(useChatStore.getState().conversations[0]?.userId).toBe('user-ima'));
+    expect(useChatStore.getState().activeConversationId).toBeNull();
+    expect(fake.subscriptions.filter((s) => s.active)).toHaveLength(1);
   });
 
   it('unmounting the navigator (sign-out) leaves no live subscription behind', async () => {

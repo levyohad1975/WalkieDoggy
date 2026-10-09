@@ -347,15 +347,41 @@ export interface UserDeletionImpact {
  */
 export type ChatConversationKind = 'family' | 'direct' | 'group';
 
+/** One image attached to a message. `path` is a private Storage object, never a URL. */
+export interface ChatAttachment {
+  path: string;
+  mime: string;
+  width: number;
+  height: number;
+  size: number; // bytes
+}
+
+/** What the Chats list shows under a conversation's name. */
+export interface ChatLastMessage {
+  id: string;
+  senderUserId?: string;
+  preview: string;
+  hasImage: boolean;
+  deleted: boolean;
+  createdAt: string; // ISO timestamp
+}
+
 export interface ChatConversationState {
   conversationId: string;
+  /** 'family' is the one family group; 'direct' is a private conversation between two members of the same family. */
+  kind: ChatConversationKind;
   familyId: string;
   /** The caller's REAL profile as the server resolved it — never a client claim. */
   userId: string;
+  /** Private conversations only: the other participant. */
+  otherUserId?: string;
   lastReadAt: string; // ISO timestamp
   notificationsMuted: boolean;
   unreadCount: number;
+  /** Family conversation only, and only for a real family admin. Nobody moderates a private conversation. */
   canModerate: boolean;
+  lastActivityAt: string; // ISO timestamp
+  lastMessage?: ChatLastMessage;
 }
 
 export type ChatDeliveryState = 'sent' | 'sending' | 'failed';
@@ -369,8 +395,11 @@ export interface ChatMessage {
   senderUserId?: string;
   body: string;
   createdAt: string; // ISO timestamp
-  deletedAt?: string; // set once a manager removed the message; body is then empty
+  deletedAt?: string; // set once the message was removed; body is then empty and there is no attachment
   deletedByUserId?: string;
+  attachment?: ChatAttachment;
   /** Client-only: 'sent' for anything that came from the server. */
   delivery: ChatDeliveryState;
+  /** Client-only, while this device is sending an image: local preview and upload progress (0..1). */
+  upload?: { localUri: string; progress: number };
 }

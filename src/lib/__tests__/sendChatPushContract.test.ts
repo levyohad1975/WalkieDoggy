@@ -65,7 +65,18 @@ describe('send-chat-push — server-derived, de-duplicated chat notifications (s
 
   it('builds the notification text from database values only', () => {
     expect(code).toContain('const title = ctx.sender_name?.trim() || FALLBACK_SENDER;');
-    expect(code).toContain('const body = previewOf(ctx.body);');
+    expect(code).toContain('const caption = previewOf(ctx.body);');
+    // An image is announced as an image; its path/URL is never part of a push.
+    expect(code).toContain('const body = ctx.has_image ? (caption ? `${IMAGE_LABEL}: ${caption}` : IMAGE_LABEL) : caption;');
+    expect(code).not.toMatch(/attachment_path|signedUrl|createSignedUrl/);
+  });
+
+  it('never logs message text', () => {
+    const logLines = code.split('\n').filter((line) => line.includes('console.'));
+    expect(logLines.length).toBeGreaterThan(0);
+    for (const line of logLines) {
+      expect(line).not.toMatch(/ctx\.body|caption|\bbody\b|title/);
+    }
   });
 
   it('the client trigger sends only the message id', () => {

@@ -297,8 +297,12 @@ export function RootNavigator() {
   // navigator is ready (cold launch), it is applied in onReady.
   const pendingChatOpen = useRef(false);
   useEffect(() => {
-    return subscribeToChatOpens(() => {
+    return subscribeToChatOpens((event) => {
       consumePendingChatOpen();
+      // Open the conversation the notification was about (the store waits
+      // for the list if it has not loaded yet, and ignores an id this
+      // profile cannot see).
+      useChatStore.getState().requestOpenConversation(event.conversationId);
       if (navigationRef.isReady()) {
         navigationRef.navigate('Chat');
       } else {

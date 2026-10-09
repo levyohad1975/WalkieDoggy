@@ -378,10 +378,12 @@ reset role;
 -- ---------------------------------------------------------------------------
 do $$
 begin
-  -- Phase 2 kinds cannot be created yet, even by the table owner.
+  -- Cross-family kinds cannot be created, even by the table owner. (The
+  -- guarding constraint is chat_conversations_phase1_family_only under 0108
+  -- alone, and chat_conversations_same_family_kinds once 0109 is applied.)
   perform pg_temp.expect_error(
     'insert into chat_conversations (kind) values (''group'')',
-    'chat_conversations_phase1_family_only', 'phase 1 kind guard');
+    'violates check constraint "chat_conversations_', 'conversation kind guard');
   perform pg_temp.expect_error(
     format('insert into chat_conversations (kind, family_id) values (''family'', %L)', (select fam_a from t108)),
     'chat_conversations_one_per_family_idx', 'one conversation per family');

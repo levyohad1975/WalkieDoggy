@@ -103,6 +103,18 @@ export const SHARED_ERROR_RULES: ErrorRule[] = [
   { includes: 'chat is read-only while impersonating', message: 'בזמן התחזות לבן משפחה אחר הצ׳אט זמין לקריאה בלבד.' },
   { includes: 'chat conversation not found', message: 'הצ׳אט המשפחתי אינו זמין לפרופיל הזה.' },
   { includes: 'chat message not found', message: 'ההודעה כבר אינה קיימת.' },
+  // Private conversations and image messages (migration 0109).
+  { includes: 'chat member not found', message: 'אי אפשר לפתוח שיחה עם בן/בת המשפחה הזה/ו.' },
+  { includes: 'choose another family member', message: 'יש לבחור בן/בת משפחה אחר/ת.' },
+  { includes: 'chat recipient is no longer in the family', message: 'בן/בת המשפחה כבר אינם חלק מהמשפחה, ולכן אי אפשר לשלוח להם הודעות.' },
+  { includes: 'only the sender can remove this message', message: 'רק מי ששלח/ה את ההודעה יכול/ה למחוק אותה.' },
+  { includes: 'chat attachment is too large', message: 'התמונה גדולה מדי לשליחה.' },
+  { includes: 'chat attachment type is not supported', message: 'סוג התמונה הזה אינו נתמך.' },
+  { includes: 'chat attachment dimensions are not supported', message: 'ממדי התמונה גדולים מדי לשליחה.' },
+  { includes: 'chat attachment was not uploaded', message: 'העלאת התמונה לא הושלמה. נסו לשלוח שוב.' },
+  { includes: 'chat attachment is not valid', message: 'לא ניתן לצרף את התמונה הזו. נסו לבחור אותה מחדש.' },
+  { includes: 'chat image upload failed', message: 'העלאת התמונה נכשלה. נסו שוב.' },
+  { includes: 'chat image is not available', message: 'התמונה אינה זמינה.' },
 
   { includes: 'admin permission required', message: 'רק מנהל/ת יכולים לבצע פעולה זו.' },
   { includes: 'no active profile claimed on this family', message: 'לא ניתן לזהות את הפרופיל הפעיל שלכם במשפחה הזו. נסו להתחבר מחדש.' },

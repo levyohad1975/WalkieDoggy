@@ -14,6 +14,15 @@ const supabasePublishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY 
  */
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabasePublishableKey);
 
+/**
+ * The project URL and publishable key, for the one caller that has to talk
+ * to the Storage REST endpoint directly (chat image upload — supabase-js
+ * offers no upload progress or cancellation). Both are public client
+ * configuration, already shipped in the bundle; neither is a secret.
+ */
+export const supabaseProjectUrl = supabaseUrl;
+export const supabaseClientKey = supabasePublishableKey;
+
 // Both env vars are read from process.env (not hardcoded) as required —
 // see .env.example for the keys and README "Configuring Supabase".
 export const supabase = isSupabaseConfigured

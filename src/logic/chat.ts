@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../types';
+import type { ChatConversationState, ChatLastMessage, ChatMessage } from '../types';
 
 /**
  * Pure Family Chat rules — no React, no Supabase, no storage. The server
@@ -187,4 +187,100 @@ export function buildChatListItems(
     previous = message;
   }
   return items;
+}
+
+// ---------------------------------------------------------------------------
+// Conversations list (Phase 2: family conversation + private conversations)
+// ---------------------------------------------------------------------------
+
+
+/** Most recently active first; the family conversation wins a tie so the list is stable. */
+export function sortChatConversations(conversations: ChatConversationState[]): ChatConversationState[] {
+  return [...conversations].sort((a, b) => {
+    if (a.lastActivityAt !== b.lastActivityAt) return a.lastActivityAt > b.lastActivityAt ? -1 : 1;
+    if (a.kind !== b.kind) return a.kind === 'family' ? -1 : 1;
+    return a.conversationId < b.conversationId ? -1 : 1;
+  });
+}
+
+export function totalUnreadChatMessages(conversations: ChatConversationState[]): number {
+  return conversations.reduce((sum, c) => sum + Math.max(0, c.unreadCount), 0);
+}
+
+const PREVIEW_MAX = 140;
+
+export function chatLastMessageOf(message: ChatMessage): ChatLastMessage {
+  const oneLine = message.body.replace(/\s+/g, ' ').trim();
+  const chars = Array.from(oneLine);
+  return {
+    id: message.id,
+    senderUserId: message.senderUserId,
+    preview: chars.length > PREVIEW_MAX ? chars.slice(0, PREVIEW_MAX).join('') : oneLine,
+    hasImage: Boolean(message.attachment),
+    deleted: Boolean(message.deletedAt),
+    createdAt: message.createdAt,
+  };
+}
+
+/**
+ * The one-line preview under a conversation in the Chats list. In the family
+ * group the sender is named; in a private conversation only "you" needs
+ * saying, because the other side is the conversation's own title.
+ */
+export function formatChatPreview(
+  last: ChatLastMessage | undefined,
+  options: { myUserId: string | null; kind: 'family' | 'direct' | 'group'; senderName?: string }
+): string {
+  if (!last) return options.kind === 'family' ? 'כל המשפחה במקום אחד' : 'עדיין אין הודעות';
+  const mine = Boolean(options.myUserId) && last.senderUserId === options.myUserId;
+  const who = mine ? 'את/ה' : options.kind === 'family' ? options.senderName ?? '' : '';
+  const prefix = who ? `${who}: ` : '';
+  if (last.deleted) return `${prefix}ההודעה הוסרה`;
+  if (last.hasImage) return `${prefix}📷 ${last.preview || 'תמונה'}`;
+  return `${prefix}${last.preview}`;
+}
+
+/** Compact time for the Chats list: time today, "אתמול", otherwise the date. */
+export function formatChatListTime(iso: string, now: Date = new Date()): string {
+  const label = formatChatDay(iso, now);
+  if (label === 'היום') return formatChatTime(iso);
+  if (label === 'אתמול') return label;
+  // dd-mm-yyyy -> dd-mm (the year adds nothing in a narrow list column)
+  return label.slice(0, 5);
+}
+
+/**
+ * Applies one arriving/changed message to the conversation it belongs to:
+ * updates the preview, the activity time and — when it is someone else's new
+ * live message that is not being read right now — the unread counter.
+ * Returns the same array when the conversation is not in the list (the caller
+ * then refreshes the list from the server).
+ */
+export function applyMessageToConversations(
+  conversations: ChatConversationState[],
+  message: ChatMessage,
+  options: { isNew: boolean; isBeingRead: boolean }
+): ChatConversationState[] {
+  const index = conversations.findIndex((c) => c.conversationId === message.conversationId);
+  if (index < 0) return conversations;
+  const current = conversations[index];
+  const isNewer = !current.lastMessage || message.createdAt >= current.lastMessage.createdAt;
+  const isSameAsLast = current.lastMessage?.id === message.id;
+  const fromSomeoneElse = message.senderUserId !== current.userId;
+
+  let next = current;
+  if (message.delivery === 'sent' && (isNewer || isSameAsLast)) {
+    next = {
+      ...next,
+      lastMessage: chatLastMessageOf(message),
+      lastActivityAt: message.createdAt > next.lastActivityAt ? message.createdAt : next.lastActivityAt,
+    };
+  }
+  if (options.isNew && fromSomeoneElse && !message.deletedAt && message.delivery === 'sent' && !options.isBeingRead) {
+    next = { ...next, unreadCount: next.unreadCount + 1 };
+  }
+  if (next === current) return conversations;
+  const copy = [...conversations];
+  copy[index] = next;
+  return sortChatConversations(copy);
 }
