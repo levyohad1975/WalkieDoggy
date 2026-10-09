@@ -356,9 +356,8 @@ export function AddUnplannedWalkModal({
                   );
                 }}
               />
+              </View>
             ) : null}
-
-
           </View>
         </View>
       </KeyboardAvoidingView>
