@@ -14,18 +14,31 @@ interface RoutePreviewProps {
 export function RoutePreview({ session, large = false }: RoutePreviewProps) {
   const points = session?.routePoints ?? [];
   const dimensions = large ? { width: 320, height: 210 } : { width: 92, height: 72 };
+  const hasEnoughSamples = points.length >= 3;
   const path = useMemo(() => {
-    if (points.length < 2) return '';
+    if (!hasEnoughSamples) return '';
     const minLat = Math.min(...points.map((p) => p.latitude));
     const maxLat = Math.max(...points.map((p) => p.latitude));
     const minLon = Math.min(...points.map((p) => p.longitude));
     const maxLon = Math.max(...points.map((p) => p.longitude));
+    const midLat = (minLat + maxLat) / 2;
+    const lonScale = Math.max(Math.cos(midLat * Math.PI / 180), 0.01);
     const latSpan = Math.max(maxLat - minLat, 0.00001);
-    const lonSpan = Math.max(maxLon - minLon, 0.00001);
-    return points.map((p) => `${8 + ((p.longitude - minLon) / lonSpan) * (dimensions.width - 16)},${8 + (1 - (p.latitude - minLat) / latSpan) * (dimensions.height - 16)}`).join(' ');
-  }, [dimensions.height, dimensions.width, points]);
+    const lonSpan = Math.max((maxLon - minLon) * lonScale, 0.00001);
+    const scale = Math.min((dimensions.width - 16) / lonSpan, (dimensions.height - 16) / latSpan);
+    const centerLat = (minLat + maxLat) / 2;
+    const centerLon = (minLon + maxLon) / 2;
+    return points.map((p) => `${dimensions.width / 2 + (p.longitude - centerLon) * lonScale * scale},${dimensions.height / 2 - (p.latitude - centerLat) * scale}`).join(' ');
+  }, [dimensions.height, dimensions.width, points, hasEnoughSamples]);
 
   if (points.length < 2) return null;
+  if (!hasEnoughSamples) {
+    return (
+      <View style={[styles.wrapper, large && styles.largeWrapper]} accessibilityLabel="מסלול GPS חלקי: אין מספיק נקודות להצגת המסלול">
+        <RtlText style={styles.incomplete}>{large ? 'אין מספיק נקודות GPS להצגת המסלול' : 'GPS חלקי'}</RtlText>
+      </View>
+    );
+  }
   const first = path.split(' ')[0].split(',');
   const last = path.split(' ').at(-1)?.split(',') ?? first;
 
@@ -44,5 +57,6 @@ export function RoutePreview({ session, large = false }: RoutePreviewProps) {
 const styles = StyleSheet.create({
   wrapper: { width: 92, height: 72, borderRadius: 12, overflow: 'hidden', backgroundColor: colors.statusCurrentBg, alignItems: 'center', justifyContent: 'center' },
   largeWrapper: { width: '100%', height: 240, borderRadius: 18, backgroundColor: colors.surfaceMuted },
+  incomplete: { fontSize: 11, color: colors.textSecondary, textAlign: 'center', paddingHorizontal: 4 },
   legend: { position: 'absolute', bottom: 8, fontSize: 12, color: colors.textSecondary },
 });
