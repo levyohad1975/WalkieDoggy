@@ -39,9 +39,9 @@ export function RoutePreview({ session, large = false, compact = false }: RouteP
   if (webMap) {
     const renderMap = (expanded: boolean) => React.createElement('iframe', {
       title: 'מפת רחובות ומסלול GPS',
-      srcDoc: buildMapHtml(mapPoints),
+      srcDoc: buildMapHtml(mapPoints, expanded),
       sandbox: 'allow-scripts',
-      style: { border: 0, width: '100%', height: '100%', borderRadius: expanded ? 12 : 9 },
+      style: { display: 'block', border: 0, width: '100%', height: '100%', maxWidth: '100%', maxHeight: '100%', overflow: 'hidden', borderRadius: expanded ? 12 : 9, pointerEvents: expanded ? 'auto' : 'none' },
     });
     return (
       <>
@@ -96,11 +96,12 @@ const styles = StyleSheet.create({
 });
 
 /** Leaflet and OSM standard tiles are free services, subject to their usage policies. */
-function buildMapHtml(points: number[][]): string {
+function buildMapHtml(points: number[][], expanded: boolean): string {
   const coords = JSON.stringify(points);
-  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><style>html,body,#map{margin:0;width:100%;height:100%;overflow:hidden}</style></head><body><div id="map"></div><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>
+  const attributionStyle = expanded ? '' : '.leaflet-control-attribution,.leaflet-control-container{display:none!important}';
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><style>html,body,#map{margin:0;padding:0;width:100%;height:100%;overflow:hidden;font-size:0} .leaflet-container{font-size:12px} ${attributionStyle}</style></head><body><div id="map"></div><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>
   const points = ${coords};
-  const map = L.map('map',{zoomControl:false,scrollWheelZoom:false});
+  const map = L.map('map',{zoomControl:false,scrollWheelZoom:false,attributionControl:${expanded ? 'true' : 'false'}});
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
   const route = L.polyline(points,{color:'#12A5AB',weight:4}).addTo(map);
   L.circleMarker(points[0],{radius:6,color:'#138A52'}).addTo(map);
