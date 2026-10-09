@@ -424,6 +424,13 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Admin accounts can have a push subscription attached to a local
+    // profile that is not the profile linked to family_auth_members.
+    // Resolve destinations by verified auth identity, not profile identity.
+    const verifiedAdminAuthIds = (row.kind === 'timeChange' && event === 'created') || event === 'approved' || event === 'rejected'
+      ? (await serviceClient.from('family_auth_members').select('auth_user_id').eq('family_id', row.familyId).eq('role', 'admin')).data?.map((m: any) => m.auth_user_id).filter(Boolean) ?? []
+      : [];
+
     // ---- Step 6: candidate recipients' family membership (Requirement 7, defense in depth) ----
     // .is('removed_at', null) excludes a since-removed member from
     // recipientFamilyIds entirely, so validateAndRoutePushEvent()'s filter
@@ -508,8 +515,19 @@ Deno.serve(async (req: Request) => {
         .eq('is_active', true);
       if (webPushError) throw webPushError;
 
+      // Resolve additional subscriptions by the verified admin account,
+      // restricted to the request family. Never fan out to unrelated members.
+      const { data: adminWebRows, error: adminWebError } = verifiedAdminAuthIds.length
+        ? await serviceClient.from('web_push_subscriptions')
+            .select('id, user_id, endpoint, p256dh, auth')
+            .eq('family_id', row.familyId)
+            .in('auth_user_id', verifiedAdminAuthIds)
+            .eq('is_active', true)
+        : { data: [], error: null };
+      if (adminWebError) throw adminWebError;
+
       const expoTokens = tokenRows ?? [];
-      const webSubscriptions = webPushRows ?? [];
+      const webSubscriptions = [...new Map([...(webPushRows ?? []), ...(adminWebRows ?? [])].map((sub: any) => [sub.endpoint, sub])).values()];
 
       if (expoTokens.length === 0 && webSubscriptions.length === 0) {
         // 0102 FIX: a distinct terminal status — never 'sent', which
