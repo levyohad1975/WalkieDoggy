@@ -464,7 +464,17 @@ Deno.serve(async (req: Request) => {
       recipientFamilyIds,
     });
 
-    if (!routing.authorized) {
+    // A family may have verified admin accounts but no admin-linked profile.
+    // Their device subscriptions are resolved by verified auth identity below.
+    // Preserve the persisted-request and caller checks before this fallback.
+    const adminAuthOnlyCreated = !routing.authorized
+      && row.kind === 'timeChange' && event === 'created'
+      && row.status === 'pending'
+      && callerUserId === row.requestedByUserId
+      && callerFamilyId === row.familyId
+      && verifiedAdminAuthIds.length > 0
+      && routing.reason === 'no valid same-family recipient resolved';
+    if (!routing.authorized && !adminAuthOnlyCreated) {
       // Not an error the client did anything observably wrong with (from
       // its own point of view it just asked "tell people about my
       // request") â€” respond 200/ok:false so this never surfaces as if the
@@ -504,14 +514,14 @@ Deno.serve(async (req: Request) => {
       const { data: tokenRows, error: tokenError } = await serviceClient
         .from('push_tokens')
         .select('id, user_id, token')
-        .in('user_id', routing.recipientUserIds)
+        .in('user_id', routing.recipientUserIds.length ? routing.recipientUserIds : ['00000000-0000-0000-0000-000000000000'])
         .eq('is_active', true);
       if (tokenError) throw tokenError;
 
       const { data: webPushRows, error: webPushError } = await serviceClient
         .from('web_push_subscriptions')
         .select('id, user_id, endpoint, p256dh, auth')
-        .in('user_id', routing.recipientUserIds)
+        .in('user_id', routing.recipientUserIds.length ? routing.recipientUserIds : ['00000000-0000-0000-0000-000000000000'])
         .eq('is_active', true);
       if (webPushError) throw webPushError;
 
