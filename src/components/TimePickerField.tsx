@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { colors } from '../theme/colors';
 import { radii, spacing } from '../theme/tokens';
@@ -55,18 +55,9 @@ export function TimePickerField({ value, onChange, webLabel, androidLabel = 'ש�
   if (Platform.OS === 'web') {
     return (
       <>
-        <View style={webStyles.webFieldRow}>
-          <View style={webStyles.field}>
-            <RtlText style={webStyles.fieldText}>{value}</RtlText>
-          </View>
-          <Button
-            label={androidLabel}
-            variant="secondary"
-            onPress={() => setWebSheetOpen(true)}
-            accessibilityLabel={webLabel}
-            style={webStyles.changeButton}
-          />
-        </View>
+        <Pressable style={webStyles.field} onPress={() => setWebSheetOpen(true)} accessibilityRole="button" accessibilityLabel={`${webLabel}, שעה נוכחית ${value}, לחצו לשינוי`}>
+          <RtlText style={webStyles.fieldText}>{value || pickerDateToTime(new Date())}</RtlText>
+        </Pressable>
         <WebTimePickerSheet
           visible={webSheetOpen}
           value={value}
@@ -88,10 +79,9 @@ export function TimePickerField({ value, onChange, webLabel, androidLabel = 'ש�
 
   return (
     <>
-      <View style={styles.row}>
-        <RtlText style={styles.value}>{value}</RtlText>
-        <Button label={androidLabel} variant="secondary" onPress={() => setPickerOpen(true)} style={styles.button} />
-      </View>
+      <Pressable style={styles.valueButton} onPress={() => setPickerOpen(true)} accessibilityRole="button" accessibilityLabel={`${webLabel}, שעה נוכחית ${value}, לחצו לשינוי`}>
+        <RtlText style={styles.value}>{value || pickerDateToTime(new Date())}</RtlText>
+      </Pressable>
       {pickerOpen ? (
         <DateTimePicker value={is24HourTime(value) ? timeToPickerDate(value) : new Date()} mode="time" is24Hour display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={handleNativeChange} />
       ) : null}
@@ -178,29 +168,38 @@ interface NumberColumnProps {
 }
 
 function NumberColumn({ values, selected, onSelect, unitLabel }: NumberColumnProps) {
+  const count = values.length;
+  const previous = (selected + count - 1) % count;
+  const next = (selected + 1) % count;
   return (
-    <ScrollView style={webStyles.column} showsVerticalScrollIndicator={false}>
-      {values.map((n) => {
-        const isSelected = n === selected;
-        return (
-          <Pressable
-            key={n}
-            onPress={() => onSelect(n)}
-            style={[webStyles.columnRow, isSelected && webStyles.columnRowActive]}
-            accessibilityRole="radio"
-            accessibilityState={{ selected: isSelected, checked: isSelected }}
-            accessibilityLabel={`${unitLabel} ${pad2(n)}`}
-          >
-            <RtlText style={[webStyles.columnRowText, isSelected && webStyles.columnRowTextActive]}>{pad2(n)}</RtlText>
-          </Pressable>
-        );
-      })}
-    </ScrollView>
+    <View style={webStyles.column} accessibilityLabel={unitLabel}>
+      {[
+        { value: previous, active: false },
+        { value: selected, active: true },
+        { value: next, active: false },
+      ].map(({ value: n, active }, index) => (
+        <Pressable
+          key={index}
+          onPress={() => onSelect(n)}
+          style={[webStyles.columnRow, active && webStyles.columnRowActive]}
+          accessibilityRole="button"
+          accessibilityLabel={`${unitLabel} ${pad2(n)}`}
+          accessibilityState={{ selected: active }}
+        >
+          <RtlText style={[webStyles.columnRowText, active && webStyles.columnRowTextActive]}>{pad2(n)}</RtlText>
+        </Pressable>
+      ))}
+      <View style={webStyles.stepControls}>
+        <Pressable onPress={() => onSelect(previous)} accessibilityRole="button" accessibilityLabel={`הפחת ${unitLabel}`} style={webStyles.stepButton}><RtlText>−</RtlText></Pressable>
+        <Pressable onPress={() => onSelect(next)} accessibilityRole="button" accessibilityLabel={`הוסף ${unitLabel}`} style={webStyles.stepButton}><RtlText>+</RtlText></Pressable>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  valueButton: { minHeight: 52, justifyContent: 'center', borderRadius: 14, borderWidth: 1, borderColor: colors.border },
   value: { flex: 1, backgroundColor: colors.surfaceMuted, borderRadius: 14, padding: 14, fontSize: 20, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
   button: { flex: 1.25 },
 });
@@ -208,7 +207,7 @@ const styles = StyleSheet.create({
 const COLUMN_ROW_HEIGHT = 44;
 
 const webStyles = StyleSheet.create({
-  webFieldRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'stretch' },
+
   field: {
     flex: 1,
     minHeight: 52,
@@ -221,7 +220,7 @@ const webStyles = StyleSheet.create({
     padding: 12,
   },
   fieldText: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', writingDirection: 'ltr' },
-  changeButton: { flex: 1.1 },
+
   // Centered dialog, not a bottom sheet anchored under RuleFormModal's own
   // sheet — a deliberately separate, self-contained step (see the
   // web-branch doc comment above): while it is open there is nothing
@@ -234,7 +233,9 @@ const webStyles = StyleSheet.create({
   // though the surrounding form is RTL Hebrew — same convention the
   // previous native web input used (`direction: 'ltr'`).
   columns: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, direction: 'ltr' },
-  column: { height: COLUMN_ROW_HEIGHT * 5, width: 72 },
+  column: { width: 100 },
+  stepControls: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 8 },
+  stepButton: { width: 38, height: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted, borderRadius: 10 },
   colon: { fontSize: 22, fontWeight: '700', color: colors.textPrimary },
   columnRow: { height: COLUMN_ROW_HEIGHT, alignItems: 'center', justifyContent: 'center', borderRadius: radii.sm },
   columnRowActive: { backgroundColor: colors.primarySoft },
