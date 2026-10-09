@@ -240,12 +240,6 @@ export function NextWalkCard({
         </RtlText>
       ) : null}
 
-      {isActive && liveRoutePoints && liveRoutePoints.length >= 2 ? (
-        <View style={styles.liveRouteMap}>
-          <RtlText style={styles.liveRouteLabel}>מסלול הטיול בזמן אמת · לחצו להגדלה</RtlText>
-          <RoutePreview large session={{ routePoints: liveRoutePoints } as import('../types').WalkGpsSession} />
-        </View>
-      ) : null}
 
       {tone === 'dashboard' ? (
         <View style={[styles.dashboardThreeColumnRow, isWeb && styles.webMainRow]}>
@@ -258,8 +252,8 @@ export function NextWalkCard({
             <RtlText style={styles.dashboardTime} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{walk.scheduledTime}</RtlText>
             <RtlText style={styles.dashboardDate}>{walkDateContextLabel(walk.date)}</RtlText>
           </View>
-          <View style={styles.dashboardCountdownColumn}>
-            {!overdue ? <Countdown target={walkDateTime(walk)} compact /> : null}
+          <View style={[styles.dashboardCountdownColumn, isActive && styles.liveMapColumn]}>
+            {isActive ? <RoutePreview live session={{ routePoints: liveRoutePoints ?? [] } as import('../types').WalkGpsSession} /> : !overdue ? <Countdown target={walkDateTime(walk)} compact /> : null}
           </View>
         </View>
       ) : (
@@ -406,6 +400,7 @@ const TIME_MAX_FONT_SCALE = 1.35;
 const CARD_MAX_FONT_SCALE = 1.35;
 
 const styles = StyleSheet.create({
+  liveMapColumn: { minWidth: 0, overflow: 'hidden' },
   liveRouteMap: { width: '100%', marginVertical: 8, gap: 6 },
   liveRouteLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'center' },
   card: {
