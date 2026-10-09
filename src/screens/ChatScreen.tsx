@@ -337,15 +337,24 @@ export function ChatScreen() {
   const overLimit = draftLength > CHAT_MESSAGE_MAX_LENGTH;
   const canSend = draftLength > 0 && !overLimit && status === 'ready';
 
+  // The draft is mirrored in a ref because two taps (or Enter + a tap) can
+  // land in the same tick, before React has re-rendered with the cleared
+  // state. The ref is emptied synchronously, so the second attempt finds
+  // nothing left to send — one press, one message.
+  const draftRef = useRef('');
+  const updateDraft = useCallback((text: string) => {
+    draftRef.current = text;
+    setDraft(text);
+  }, []);
+
   const handleSend = useCallback(() => {
-    const result = send(draft);
+    const text = draftRef.current;
+    const result = send(text);
     if (!result.ok) return;
-    // Clearing the draft in the same tick is what makes a double tap (or
-    // Enter + tap) harmless: the second attempt has nothing left to send.
-    setDraft('');
+    updateDraft('');
     setSelectedId(null);
     scrollToLatest(true);
-  }, [draft, send, scrollToLatest]);
+  }, [send, updateDraft, scrollToLatest]);
 
   const handleKeyPress = useCallback(
     (event: { nativeEvent: { key: string; shiftKey?: boolean }; preventDefault?: () => void }) => {
@@ -584,7 +593,7 @@ export function ChatScreen() {
                 <TextInput
                   ref={inputRef}
                   value={draft}
-                  onChangeText={setDraft}
+                  onChangeText={updateDraft}
                   onFocus={() => scrollToLatest(false)}
                   onKeyPress={handleKeyPress as never}
                   placeholder="כתבו הודעה למשפחה…"

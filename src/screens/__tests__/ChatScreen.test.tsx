@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 // The screen is rendered on its own here; the two navigation hooks it uses
@@ -104,6 +104,9 @@ describe('ChatScreen', () => {
   });
 
   afterEach(() => {
+    // Unmount first so resetting the store is not a state update on a
+    // mounted tree.
+    cleanup();
     __resetChatStoreForTests();
     __setChatTransportForTests(null);
   });

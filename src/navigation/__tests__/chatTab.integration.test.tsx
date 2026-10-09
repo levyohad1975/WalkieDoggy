@@ -1,7 +1,7 @@
 import React from 'react';
 import fs from 'fs';
 import path from 'path';
-import { act, render, screen, fireEvent, waitFor } from '@testing-library/react-native';
+import { act, cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 const initialSafeAreaMetrics = {
@@ -44,6 +44,18 @@ jest.mock('../../screens/ChatScreen', () => {
   return { ChatScreen: () => <Text>CHAT_SCREEN</Text> };
 });
 jest.mock('../../lib/realtime', () => ({ subscribeToFamilyChanges: () => () => undefined }));
+// @react-native-community/netinfo has no native module under Jest; its real
+// listener rejects asynchronously. useChatSession only needs "online".
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: {
+    addEventListener: (listener: (state: { isConnected: boolean; isInternetReachable: boolean }) => void) => {
+      listener({ isConnected: true, isInternetReachable: true });
+      return () => undefined;
+    },
+    fetch: async () => ({ isConnected: true, isInternetReachable: true }),
+  },
+}));
 
 import { RootNavigator } from '../RootNavigator';
 import { useAuthStore } from '../../store/authStore';
@@ -111,6 +123,7 @@ describe('Family Chat — navigation entry, badge and session lifecycle', () => 
   });
 
   afterEach(() => {
+    cleanup();
     __resetChatStoreForTests();
     __setChatTransportForTests(null);
   });

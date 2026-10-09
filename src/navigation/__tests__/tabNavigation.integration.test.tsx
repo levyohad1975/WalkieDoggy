@@ -54,6 +54,18 @@ jest.mock('../../screens/SettingsScreen', () => {
 // Best-effort multi-device sync — irrelevant to tab routing, and touches
 // realtime/supabase wiring that has nothing to do with what this file tests.
 jest.mock('../../lib/realtime', () => ({ subscribeToFamilyChanges: () => () => undefined }));
+// @react-native-community/netinfo has no native module under Jest; its real
+// listener rejects asynchronously. useChatSession only needs "online".
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: {
+    addEventListener: (listener: (state: { isConnected: boolean; isInternetReachable: boolean }) => void) => {
+      listener({ isConnected: true, isInternetReachable: true });
+      return () => undefined;
+    },
+    fetch: async () => ({ isConnected: true, isInternetReachable: true }),
+  },
+}));
 
 import { RootNavigator } from '../RootNavigator';
 import { useAuthStore } from '../../store/authStore';
