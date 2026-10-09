@@ -189,7 +189,7 @@ export function WalkRow({
         </View>
 
         {hidePendingStatus && walk.status === 'pending' && !overdue ? null : (
-          <View style={styles.leftBlock}>
+          <View style={[styles.leftBlock, historyCompact && styles.historyStatusColumn]}>
             <StatusBadge status={walk.status} overdue={overdue} glyphOnly={historyCompact} />
             {completionLine && !historyCompact ? (
               <RtlText style={styles.completionText} numberOfLines={1} ellipsizeMode="tail">
@@ -198,7 +198,13 @@ export function WalkRow({
             ) : null}
           </View>
         )}
-        {routeSession?.routePoints && routeSession.routePoints.length > 1 ? <RoutePreview session={routeSession} compact={historyCompact} /> : null}
+        {historyCompact ? (
+          <View style={styles.historyMapColumn}>
+            {routeSession?.routePoints && routeSession.routePoints.length > 1 ? <RoutePreview session={routeSession} compact /> : null}
+          </View>
+        ) : routeSession?.routePoints && routeSession.routePoints.length > 1 ? (
+          <RoutePreview session={routeSession} />
+        ) : null}
       </View>
 
       {historyTimingLine ? (
@@ -310,6 +316,9 @@ const styles = StyleSheet.create({
   rowHistoryCompact: { paddingVertical: 7, paddingHorizontal: 9, gap: 2 },
   mainRowHistoryCompact: { minHeight: 40, gap: 5 },
   historyTimingLineCompact: { marginTop: 0 },
+  // Fixed status and map slots keep ✓ / ✕ vertically aligned even when a walk has no GPS route.
+  historyStatusColumn: { width: 48, alignItems: 'center', justifyContent: 'center' },
+  historyMapColumn: { width: 72, height: 48, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
 
   // Part B fix: fixed minimum height for the identity/status row regardless
   // of walk status — no more "done"/"skipped" rows growing a taller card
