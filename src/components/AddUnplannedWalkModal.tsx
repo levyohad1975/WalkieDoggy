@@ -62,7 +62,8 @@ function timeIsValid(t: string): boolean {
 // explicit "no shared helper" scope rule.
 /** "HH:mm" -> a Date on an arbitrary fixed day, for feeding the native picker. */
 function timeStringToDate(t: string): Date {
-  const [h, m] = timeIsValid(t) ? t.split(':').map(Number) : [12, 0];
+  const now = new Date();
+  const [h, m] = timeIsValid(t) ? t.split(':').map(Number) : [now.getHours(), now.getMinutes()];
   const d = new Date(2000, 0, 1, h, m, 0, 0);
   return d;
 }
