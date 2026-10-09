@@ -21,6 +21,8 @@ interface EditWalkModalProps {
   walk: Walk | null;
   users: FamilyUser[];
   otherPendingWalks?: SwappableWalkOption[];
+  /** Other pending walks on the same date, used to flag occupied times. */
+  occupiedTimes?: string[];
   onChangeTime: (newTime: string) => void;
   onChangeResponsible: (newUserId: string) => void;
   onSwapWithWalk?: (otherWalkId: string) => void;
@@ -39,6 +41,7 @@ export function EditWalkModal({
   walk,
   users,
   otherPendingWalks = [],
+  occupiedTimes = [],
   onChangeTime,
   onChangeResponsible,
   onSwapWithWalk,
@@ -76,6 +79,7 @@ export function EditWalkModal({
   };
 
   const timeChanged = is24HourTime(time) && time !== walk.scheduledTime;
+  const timeOccupied = timeChanged && occupiedTimes.includes(time);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -106,6 +110,7 @@ export function EditWalkModal({
 
             <RtlText style={styles.label}>שעת הטיול — לחצו על השעה לשינוי</RtlText>
             <TimePickerField value={time} onChange={handleTimeChange} webLabel="בחירת שעת הטיול" />
+            {timeOccupied ? <RtlText style={styles.conflictWarning}>השעה {time} כבר תפוסה — קיים טיול נוסף שמתוכנן לשעה זו. יש לבחור שעה אחרת.</RtlText> : null}
 
             <RtlText style={styles.label}>אחראי לטיול הזה</RtlText>
             <View style={styles.userRow}>
@@ -134,7 +139,7 @@ export function EditWalkModal({
               </>
             ) : null}
             <View style={styles.footerActions}>
-               <Button label="שמור שינויים" disabled={!timeChanged} onPress={() => onChangeTime(time)} style={styles.footerButton} />
+               <Button label="שמור שינויים" disabled={!timeChanged || timeOccupied} onPress={() => onChangeTime(time)} style={styles.footerButton} />
                <Button label="סגור" variant="secondary" onPress={onClose} style={styles.footerButton} />
              </View>
              <View style={styles.destructiveActions}>
@@ -218,6 +223,7 @@ const styles = StyleSheet.create({
   scroll: { flexGrow: 0, flexShrink: 1 },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
   subtitle: { fontSize: typography.meta.fontSize, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xs, marginBottom: spacing.sm },
+  conflictWarning: { fontSize: 14, color: colors.statusSkipped, textAlign: 'right', marginTop: spacing.sm },
   label: { fontSize: typography.meta.fontSize, fontWeight: '700', color: colors.textSecondary, marginTop: spacing.lg, marginBottom: spacing.sm, textAlign: 'right' },
   userRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   userChip: { alignItems: 'center', minWidth: 68, gap: spacing.xs, opacity: 0.55 },
