@@ -130,7 +130,10 @@ export function EditWalkModal({
             {onSwapWithWalk && otherPendingWalks.length > 0 ? (
               <>
                 <RtlText style={styles.label}>או להחליף עם טיול אחר לגמרי</RtlText>
-                <View style={styles.footerActions}>
+                <Button label="🔁 בחר טיול" variant="secondary" onPress={() => setSwapMode(true)} />
+              </>
+            ) : null}
+            <View style={styles.footerActions}>
                <Button label="שמור שינויים" disabled={!timeChanged} onPress={() => onChangeTime(time)} style={styles.footerButton} />
                <Button label="סגור" variant="secondary" onPress={onClose} style={styles.footerButton} />
              </View>
