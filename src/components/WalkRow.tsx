@@ -148,9 +148,9 @@ export function WalkRow({
     <Pressable
       onPress={onPress}
       disabled={!onPress}
-      style={[styles.row, isCurrent && styles.rowCurrent, walk.status === 'done' && styles.rowDone]}
+      style={[styles.row, historyCompact && styles.rowHistoryCompact, isCurrent && styles.rowCurrent, walk.status === 'done' && styles.rowDone]}
     >
-        <View style={styles.mainRow}>
+        <View style={[styles.mainRow, historyCompact && styles.mainRowHistoryCompact]}>
         <View style={styles.dateTimeBlock}>
           <RtlText style={[styles.time, historyCompact && styles.timeHistory]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82} maxFontSizeMultiplier={WALK_ROW_DATE_TIME_MAX_SCALE}>
             {walk.scheduledTime}
@@ -164,7 +164,7 @@ export function WalkRow({
             })}`}
           </RtlText>
         </View>
-        {routeSession?.routePoints && routeSession.routePoints.length > 1 ? <RoutePreview session={routeSession} /> : null}
+        {routeSession?.routePoints && routeSession.routePoints.length > 1 ? <RoutePreview session={routeSession} compact={historyCompact} /> : null}
 
         {responsible ? (
           <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={32} />
@@ -202,7 +202,7 @@ export function WalkRow({
       </View>
 
       {historyTimingLine ? (
-        <RtlText style={styles.historyTimingLine} numberOfLines={1} ellipsizeMode="tail">
+        <RtlText style={[styles.historyTimingLine, styles.historyTimingLineCompact]} numberOfLines={1} ellipsizeMode="tail">
           {historyTimingLine}
         </RtlText>
       ) : null}
@@ -306,6 +306,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+
+  rowHistoryCompact: { paddingVertical: 7, paddingHorizontal: 9, gap: 2 },
+  mainRowHistoryCompact: { minHeight: 40, gap: 5 },
+  historyTimingLineCompact: { marginTop: 0 },
 
   // Part B fix: fixed minimum height for the identity/status row regardless
   // of walk status — no more "done"/"skipped" rows growing a taller card
