@@ -12,7 +12,6 @@ import { Button } from './Button';
 import { DogPhoto } from './DogPhoto';
 import { Countdown } from './Countdown';
 import { WalkieMascot } from './WalkieMascot';
-import { WalkingPair } from './WalkingPair';
 import { deriveMascotMoment } from '../mascot/mascotStage';
 import { selectMessage } from '../mascot/messageEngine';
 import { formatDistanceMeters } from '../logic/gpsDistance';
@@ -206,7 +205,6 @@ export function NextWalkCard({
 
       {isActive ? (
         <View style={styles.activeWalkBanner} accessibilityRole="timer" accessibilityLabel={`משך הטיול ${elapsedLabel}`}>
-          <WalkingPair />
           <View style={styles.activeWalkCopy}>
             <RtlText style={styles.activeWalkTitle}>מטיילים עכשיו</RtlText>
 
