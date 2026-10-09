@@ -9,6 +9,7 @@ import {
   StyleSheet,
   TextInput,
   View,
+  type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
@@ -260,7 +261,7 @@ export function ChatScreen() {
   const listRef = useRef<FlatList<ChatListItem>>(null);
   const inputRef = useRef<TextInput>(null);
   const stickToBottom = useRef(true);
-  const scrollMetrics = useRef({ offset: 0, contentHeight: 0 });
+  const scrollMetrics = useRef({ offset: 0, contentHeight: 0, layoutHeight: 0 });
   const restoreAfterPrepend = useRef<{ contentHeight: number; offset: number } | null>(null);
 
   const tabBarHeight = useBottomTabBarHeight();
@@ -296,35 +297,50 @@ export function ChatScreen() {
     [messages, myUserId, unreadDividerFrom]
   );
 
+  // Scrolls to an exact offset computed from the sizes this screen measured
+  // itself. FlatList's own scrollToEnd() reads the list's cached content
+  // length, which is still the OLD length inside onContentSizeChange — so it
+  // lands short by exactly the height of whatever was just added.
+  const scrollToBottom = useCallback((animated: boolean) => {
+    const { contentHeight, layoutHeight } = scrollMetrics.current;
+    listRef.current?.scrollToOffset({ offset: Math.max(0, contentHeight - layoutHeight), animated });
+  }, []);
+
   const scrollToLatest = useCallback((animated: boolean) => {
     stickToBottom.current = true;
     setShowJumpToLatest(false);
-    listRef.current?.scrollToEnd({ animated });
-  }, []);
+    scrollToBottom(animated);
+  }, [scrollToBottom]);
 
   const handleContentSizeChange = useCallback((_width: number, height: number) => {
     const restore = restoreAfterPrepend.current;
+    scrollMetrics.current.contentHeight = height;
     if (restore) {
       // Older messages were added above: keep the message the reader was
       // looking at exactly where it was.
       restoreAfterPrepend.current = null;
       listRef.current?.scrollToOffset({ offset: restore.offset + (height - restore.contentHeight), animated: false });
     } else if (stickToBottom.current) {
-      listRef.current?.scrollToEnd({ animated: false });
+      scrollToBottom(false);
     }
-    scrollMetrics.current.contentHeight = height;
-  }, []);
+  }, [scrollToBottom]);
+
+  const handleListLayout = useCallback((event: LayoutChangeEvent) => {
+    scrollMetrics.current.layoutHeight = event.nativeEvent.layout.height;
+    // The viewport itself changed (keyboard, banner, rotation): stay pinned.
+    if (stickToBottom.current) scrollToBottom(false);
+  }, [scrollToBottom]);
 
   const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-    scrollMetrics.current = { offset: contentOffset.y, contentHeight: contentSize.height };
+    scrollMetrics.current = { offset: contentOffset.y, contentHeight: contentSize.height, layoutHeight: layoutMeasurement.height };
     const nearBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height) < NEAR_BOTTOM_PX;
     stickToBottom.current = nearBottom;
     setShowJumpToLatest((current) => (current === !nearBottom ? current : !nearBottom));
   }, []);
 
   const handleLoadOlder = useCallback(() => {
-    restoreAfterPrepend.current = { ...scrollMetrics.current };
+    restoreAfterPrepend.current = { contentHeight: scrollMetrics.current.contentHeight, offset: scrollMetrics.current.offset };
     stickToBottom.current = false;
     void loadOlder();
   }, [loadOlder]);
@@ -496,6 +512,7 @@ export function ChatScreen() {
           style={styles.list}
           contentContainerStyle={[styles.listContent, items.length === 0 && styles.listContentEmpty]}
           onContentSizeChange={handleContentSizeChange}
+          onLayout={handleListLayout}
           onScroll={handleScroll}
           scrollEventThrottle={64}
           keyboardShouldPersistTaps="handled"
@@ -551,6 +568,7 @@ export function ChatScreen() {
       >
         {header}
 
+        <View style={styles.banners}>
         {!online ? (
           <View style={[styles.banner, styles.bannerWarning]}>
             <RtlText style={[styles.bannerText, styles.bannerTextWarning]} accessibilityRole="alert" accessibilityLiveRegion="polite">
@@ -577,6 +595,7 @@ export function ChatScreen() {
             </RtlText>
           </Pressable>
         ) : null}
+        </View>
 
         <View style={styles.bodyWrap}>{body}</View>
 
@@ -694,11 +713,13 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
 
-  banner: {
+  banners: {
     width: '100%',
-    maxWidth: CHAT_COLUMN_MAX_WIDTH - layout.screenPadding * 2,
+    maxWidth: CHAT_COLUMN_MAX_WIDTH,
     alignSelf: 'center',
-    marginHorizontal: layout.screenPadding,
+    paddingHorizontal: spacing.lg,
+  },
+  banner: {
     marginBottom: spacing.sm,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
