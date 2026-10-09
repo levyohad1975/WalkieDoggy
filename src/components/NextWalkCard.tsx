@@ -15,6 +15,7 @@ import { WalkieMascot } from './WalkieMascot';
 import { deriveMascotMoment } from '../mascot/mascotStage';
 import { selectMessage } from '../mascot/messageEngine';
 import { formatDistanceMeters } from '../logic/gpsDistance';
+import { RoutePreview } from './RoutePreview';
 
 interface NextWalkCardProps {
   walk: Walk;
@@ -48,6 +49,8 @@ interface NextWalkCardProps {
   gpsPointCount?: number | null;
   /** null/undefined = tracking hasn't reported a status yet (e.g. still requesting permission) — distinct from 'denied'/'unavailable', which show an explanatory note instead of a bare "0 מ'". */
   gpsStatus?: 'granted' | 'denied' | 'unavailable' | null;
+  /** GPS samples from the active walk, updated as the phone moves. */
+  liveRoutePoints?: Array<{ latitude: number; longitude: number; timestamp: number }>;
   /**
    * ✕ "לא בוצע" for an overdue-unresolved walk (Section 3). Only rendered
    * once the walk is actually overdue AND canResolve is true.
@@ -100,6 +103,7 @@ export function NextWalkCard({
   liveDistanceMeters,
   gpsPointCount,
   gpsStatus,
+  liveRoutePoints,
   onMarkNotDone,
   canResolve = true,
   onSwap,
@@ -234,6 +238,13 @@ export function NextWalkCard({
                 ? '📍 לא התקבל מיקום — ודאו ששירותי מיקום פעילים'
               : '📍 מפעיל GPS…'}
         </RtlText>
+      ) : null}
+
+      {isActive && liveRoutePoints && liveRoutePoints.length >= 2 ? (
+        <View style={styles.liveRouteMap}>
+          <RtlText style={styles.liveRouteLabel}>מסלול הטיול בזמן אמת · לחצו להגדלה</RtlText>
+          <RoutePreview large session={{ routePoints: liveRoutePoints } as import('../types').WalkGpsSession} />
+        </View>
       ) : null}
 
       {tone === 'dashboard' ? (
@@ -395,6 +406,8 @@ const TIME_MAX_FONT_SCALE = 1.35;
 const CARD_MAX_FONT_SCALE = 1.35;
 
 const styles = StyleSheet.create({
+  liveRouteMap: { width: '100%', marginVertical: 8, gap: 6 },
+  liveRouteLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'center' },
   card: {
     backgroundColor: colors.surface,
     borderRadius: radii.xl,
