@@ -462,6 +462,7 @@ export function ScheduleScreen() {
         walk={editingWalk}
         users={activeUsers}
         otherPendingWalks={otherPendingWalks}
+        occupiedTimes={walks.filter((w) => w.id !== editingWalk?.id && w.date === editingWalk?.date && w.status === 'pending').map((w) => w.scheduledTime)}
         onChangeTime={async (newTime) => {
           if (editingWalk) await rescheduleWalk(editingWalk.id, newTime);
           setEditingWalkId(null);
