@@ -192,6 +192,7 @@ export function HomeScreen() {
   const gpsTrackingWalkId = useGpsStore((s) => s.trackingWalkId);
   const gpsDistanceMeters = useGpsStore((s) => s.distanceMeters);
   const gpsPointCount = useGpsStore((s) => s.pointCount);
+  const gpsRoutePoints = useGpsStore((s) => s.routePoints);
   const gpsPermissionStatus = useGpsStore((s) => s.permissionStatus);
   const gpsSessionsByWalkId = useGpsStore((s) => s.sessionsByWalkId);
 
@@ -1076,6 +1077,7 @@ export function HomeScreen() {
             activeStartedAt={nextWalk.status === 'in_progress' ? nextWalk.startedAt ?? null : null}
             liveDistanceMeters={gpsTrackingWalkId === nextWalk.id ? gpsDistanceMeters : null}
             gpsPointCount={gpsTrackingWalkId === nextWalk.id ? gpsPointCount : null}
+            liveRoutePoints={gpsTrackingWalkId === nextWalk.id ? gpsRoutePoints : undefined}
             gpsStatus={gpsTrackingWalkId === nextWalk.id ? gpsPermissionStatus : null}
             onStartWalk={
               effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId
