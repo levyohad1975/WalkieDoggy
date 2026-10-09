@@ -93,7 +93,7 @@ export function TimePickerField({ value, onChange, webLabel, androidLabel = '×©×
         <Button label={androidLabel} variant="secondary" onPress={() => setPickerOpen(true)} style={styles.button} />
       </View>
       {pickerOpen ? (
-        <DateTimePicker value={timeToPickerDate(value)} mode="time" is24Hour display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={handleNativeChange} />
+        <DateTimePicker value={is24HourTime(value) ? timeToPickerDate(value) : new Date()} mode="time" is24Hour display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={handleNativeChange} />
       ) : null}
     </>
   );
@@ -127,7 +127,7 @@ function WebTimePickerSheet({ visible, value, title, onConfirm, onCancel }: WebT
   // wherever the columns were last left scrolled to.
   useEffect(() => {
     if (!visible) return;
-    const parsed = is24HourTime(value) ? value : '08:00';
+    const parsed = is24HourTime(value) ? value : pickerDateToTime(new Date());
     const [h, m] = parsed.split(':').map(Number);
     setHour(h);
     setMinute(m);
