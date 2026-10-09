@@ -30,8 +30,12 @@ import { sendRequestPush } from '../lib/pushTokens';
  * unit-tested routing/authorization rule the Edge Function's inline copy
  * mirrors is validateAndRoutePushEvent() in src/logic/pushRouting.ts.
  */
-function notifyPushBestEffort(requestId: string, kind: 'swap' | 'timeChange', event: 'created' | 'approved' | 'rejected'): void {
-  void sendRequestPush({ requestId, kind, event });
+async function notifyPushBestEffort(requestId: string, kind: 'swap' | 'timeChange', event: 'created' | 'approved' | 'rejected'): Promise<void> {
+  // Await the network request so iOS Safari does not abandon a detached
+  // fire-and-forget fetch when the request modal closes or navigates.
+  // sendRequestPush itself catches and logs delivery failures without
+  // failing the already-persisted request action.
+  await sendRequestPush({ requestId, kind, event });
 }
 
 /** Best-effort: reload the schedule store (walks + notification reconciliation) after a request approval that mutated a walk server-side directly. Never throws — a failure here must not surface as a request-approval failure, since the approval itself already succeeded. */
@@ -130,7 +134,7 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
     }
     try {
       const requestId = await createSwapRequest(walkId, targetWalkId);
-      notifyPushBestEffort(requestId, 'swap', 'created');
+      await notifyPushBestEffort(requestId, 'swap', 'created');
       await get().load();
     } catch (error) {
       set({ error: messageFor(error) });
@@ -141,7 +145,7 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
     if (!guardTestModeMutation()) return;
     try {
       await approveSwapRequest(requestId);
-      notifyPushBestEffort(requestId, 'swap', 'approved');
+      await notifyPushBestEffort(requestId, 'swap', 'approved');
       await get().load();
       // An approved swap changes a concrete walk's responsible user
       // server-side directly (not through scheduleStore's own actions), so
@@ -158,7 +162,7 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
     if (!guardTestModeMutation()) return;
     try {
       await rejectSwapRequest(requestId);
-      notifyPushBestEffort(requestId, 'swap', 'rejected');
+      await notifyPushBestEffort(requestId, 'swap', 'rejected');
       await get().load();
     } catch (error) {
       set({ error: messageFor(error) });
@@ -173,7 +177,7 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
     }
     try {
       const requestId = await createTimeChangeRequest(walkId, proposedTime);
-      notifyPushBestEffort(requestId, 'timeChange', 'created');
+      await notifyPushBestEffort(requestId, 'timeChange', 'created');
       await get().load();
     } catch (error) {
       set({ error: messageFor(error) });
@@ -184,7 +188,7 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
     if (!guardTestModeMutation()) return;
     try {
       await approveTimeChangeRequest(requestId);
-      notifyPushBestEffort(requestId, 'timeChange', 'approved');
+      await notifyPushBestEffort(requestId, 'timeChange', 'approved');
       await get().load();
       // Same reasoning as approveSwap above: the walk's scheduledTime
       // changed server-side directly.
@@ -198,7 +202,7 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
     if (!guardTestModeMutation()) return;
     try {
       await rejectTimeChangeRequest(requestId);
-      notifyPushBestEffort(requestId, 'timeChange', 'rejected');
+      await notifyPushBestEffort(requestId, 'timeChange', 'rejected');
       await get().load();
     } catch (error) {
       set({ error: messageFor(error) });
