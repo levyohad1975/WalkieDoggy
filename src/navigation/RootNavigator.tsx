@@ -1,7 +1,7 @@
-﻿import React, { useEffect, useState } from 'react';
-import { Platform, Pressable, View } from 'react-native';
+﻿import React, { useEffect, useRef, useState } from 'react';
+import { Platform, Pressable, View, useWindowDimensions } from 'react-native';
 import { RtlText } from '../components/RtlText';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
@@ -11,6 +11,7 @@ import { FamilyScreen } from '../screens/FamilyScreen';
 import { HistoryScreen } from '../screens/HistoryScreen';
 import { StatisticsScreen } from '../screens/StatisticsScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
+import { ChatScreen } from '../screens/ChatScreen';
 import { ImpersonationBanner } from '../components/ImpersonationBanner';
 import { SystemObserverBanner } from '../components/SystemObserverBanner';
 import { colors } from '../theme/colors';
@@ -22,10 +23,15 @@ import { useRequestsStore } from '../store/requestsStore';
 import { subscribeToFamilyChanges } from '../lib/realtime';
 import { DEMO_FAMILY } from '../data/demoData';
 import { canAccessHistoryScreen, canAccessStatisticsScreen, canAccessSettingsScreen } from '../logic/permissions';
+import { useChatStore } from '../store/chatStore';
+import { useChatSession } from './useChatSession';
+import { formatChatBadge } from '../logic/chat';
+import { consumePendingChatOpen, subscribeToChatOpens } from '../notifications/chatEntry';
 
 export type RootTabParamList = {
   Home: undefined;
   Schedule: undefined;
+  Chat: undefined;
   Family: undefined;
   History: undefined;
   Statistics: undefined;
@@ -33,6 +39,7 @@ export type RootTabParamList = {
 };
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
+const navigationRef = createNavigationContainerRef<RootTabParamList>();
 
 function TabIcon({ name, color }: { name: keyof RootTabParamList; color: string }) {
   const common = { stroke: color, strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
@@ -42,6 +49,8 @@ function TabIcon({ name, color }: { name: keyof RootTabParamList; color: string 
         return <><Path d="M3 10.5 12 3l9 7.5" {...common} /><Path d="M5 9.5V21h14V9.5M9 21v-7h6v7" {...common} /></>;
       case 'Schedule':
         return <><Rect x="3" y="5" width="18" height="16" rx="2" {...common} fill="none" /><Line x1="7" y1="3" x2="7" y2="7" {...common} /><Line x1="17" y1="3" x2="17" y2="7" {...common} /><Line x1="3" y1="10" x2="21" y2="10" {...common} /></>;
+      case 'Chat':
+        return <><Path d="M20.5 11.5a7.5 7.5 0 0 1-10.9 6.7L4 20l1.6-4.4A7.5 7.5 0 1 1 20.5 11.5Z" {...common} fill="none" /><Line x1="9" y1="10" x2="15" y2="10" {...common} /><Line x1="9" y1="13.5" x2="13" y2="13.5" {...common} /></>;
       case 'Family':
         return <><Circle cx="9" cy="8" r="3" {...common} fill="none" /><Circle cx="17" cy="9" r="2.5" {...common} fill="none" /><Path d="M3.5 20c.4-4 2.3-6 5.5-6s5.1 2 5.5 6M14 15c3.7-.8 6 1 6.5 4.5" {...common} /></>;
       case 'History':
@@ -58,6 +67,7 @@ function TabIcon({ name, color }: { name: keyof RootTabParamList; color: string 
 const TAB_LABEL: Record<keyof RootTabParamList, string> = {
   Home: 'בית',
   Schedule: 'לו״ז',
+  Chat: 'צ׳אט',
   Family: 'משפחה',
   History: 'היסטוריה',
   Statistics: 'נתונים',
@@ -69,6 +79,7 @@ const PHYSICAL_TAB_ORDER: (keyof RootTabParamList)[] = [
   'Statistics',
   'Family',
   'Home',
+  'Chat',
   'Schedule',
   'History',
 ];
@@ -88,6 +99,12 @@ const PHYSICAL_TAB_ORDER: (keyof RootTabParamList)[] = [
 // before (see HOME_BUTTON_SIZE below).
 const HOME_SLOT_WIDTH = 76;
 const HOME_BUTTON_SIZE = 50;
+// Horizontal padding of each side tab button. With Chat added, a fully
+// permitted member sees three destinations on each side of Home; on a 320-375pt
+// phone that leaves ~40-47pt per button, so the padding is kept minimal to
+// give the longest label ("היסטוריה") the whole slot.
+const TAB_BUTTON_PADDING = 1;
+const COMPACT_TAB_BAR_BELOW = 360;
 
 /**
  * A physically deterministic tab bar. React Navigation/iOS can re-evaluate
@@ -97,6 +114,16 @@ const HOME_BUTTON_SIZE = 50;
  */
 function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab, canSeeStatisticsTab, canSeeSettingsTab }: BottomTabBarProps & { canSeeHistoryTab: boolean; canSeeStatisticsTab: boolean; canSeeSettingsTab: boolean }) {
   const insets = useSafeAreaInsets();
+  // Family Chat unread badge. Read here (not passed as a prop) so a new
+  // message re-renders only the bar, never the navigator and its screens.
+  const chatBadge = formatChatBadge(useChatStore((s) => s.unreadCount));
+  // On the narrowest phones (320pt) three equal slots per side are ~38pt
+  // each — narrower than the longest label ("היסטוריה"), which would clip on
+  // web, where adjustsFontSizeToFit does not exist. There, each button is
+  // sized by its own label and the leftover space is shared equally, so every
+  // label fits whole. From 360pt up the slots stay equal, exactly as before.
+  const { width: windowWidth } = useWindowDimensions();
+  const contentSizedTabs = windowWidth < COMPACT_TAB_BAR_BELOW;
   const routeByName = Object.fromEntries(state.routes.map((route) => [route.name, route]));
   const isVisible = (name: keyof RootTabParamList) => {
     if (!routeByName[name]) return false;
@@ -135,11 +162,30 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
         onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
         accessibilityRole="button"
         accessibilityState={focused ? { selected: true } : {}}
-        accessibilityLabel={options?.tabBarAccessibilityLabel ?? TAB_LABEL[name]}
-        style={{ flex: 1, minWidth: 0, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', gap: 1 }}
+        accessibilityLabel={
+          name === 'Chat' && chatBadge
+            ? `${TAB_LABEL.Chat}, ${chatBadge} הודעות שלא נקראו`
+            : options?.tabBarAccessibilityLabel ?? TAB_LABEL[name]
+        }
+        style={[
+          { minWidth: 0, paddingHorizontal: TAB_BUTTON_PADDING, alignItems: 'center', justifyContent: 'center', gap: 1 },
+          contentSizedTabs ? { flexGrow: 1, flexShrink: 1, flexBasis: 'auto' } : { flex: 1 },
+        ]}
       >
-        <TabIcon name={name} color={tint} />
-        <RtlText allowFontScaling={false} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={{ fontSize: 10, lineHeight: 13, fontWeight: '600', color: tint, textAlign: 'center', writingDirection: 'rtl', width: '100%', paddingHorizontal: 1 }}>{TAB_LABEL[name]}</RtlText>
+        <View>
+          <TabIcon name={name} color={tint} />
+          {name === 'Chat' && chatBadge ? (
+            // Physically anchored (left/top), like the bar itself: the badge
+            // must not jump sides if RTL mirroring is re-evaluated.
+            <View
+              pointerEvents="none"
+              style={{ position: 'absolute', top: -5, left: layout.iconSize - 9, minWidth: 17, height: 17, borderRadius: 9, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryDark, borderWidth: 1.5, borderColor: colors.surface }}
+            >
+              <RtlText allowFontScaling={false} numberOfLines={1} style={{ fontSize: 10, lineHeight: 13, fontWeight: '800', color: colors.textInverse, textAlign: 'center', writingDirection: 'ltr' }}>{chatBadge}</RtlText>
+            </View>
+          ) : null}
+        </View>
+        <RtlText allowFontScaling={false} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={{ fontSize: 10, lineHeight: 13, fontWeight: '600', color: tint, textAlign: 'center', writingDirection: 'rtl', width: contentSizedTabs ? undefined : '100%', paddingHorizontal: 1 }}>{TAB_LABEL[name]}</RtlText>
       </Pressable>
     );
   };
@@ -244,6 +290,22 @@ export function RootNavigator() {
   // the user navigates AWAY, a genuinely revoked permission still hides
   // the tab correctly on the next render, exactly as before.
   const [activeTabName, setActiveTabName] = useState<keyof RootTabParamList>('Home');
+  // Family Chat: one live session (messages + unread badge) for whoever is
+  // signed in, torn down on every family/profile change — see useChatSession.
+  useChatSession();
+  // A tapped chat notification opens the Chat tab. If it arrives before the
+  // navigator is ready (cold launch), it is applied in onReady.
+  const pendingChatOpen = useRef(false);
+  useEffect(() => {
+    return subscribeToChatOpens(() => {
+      consumePendingChatOpen();
+      if (navigationRef.isReady()) {
+        navigationRef.navigate('Chat');
+      } else {
+        pendingChatOpen.current = true;
+      }
+    });
+  }, []);
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   // BATCH 3 (Task 4 — navigation visibility): hide the History/Statistics
   // tabs when the current EFFECTIVE member (respects impersonation/Test
@@ -349,7 +411,7 @@ export function RootNavigator() {
           <ImpersonationBanner />
         </SafeAreaView>
       ) : null}
-      <NavigationContainer direction="rtl" onStateChange={(state) => { const name = state?.routes[state.index ?? 0]?.name as keyof RootTabParamList | undefined; if (name) setActiveTabName(name); }}>
+      <NavigationContainer direction="rtl" ref={navigationRef} onReady={() => { if (pendingChatOpen.current) { pendingChatOpen.current = false; navigationRef.navigate('Chat'); } }} onStateChange={(state) => { const name = state?.routes[state.index ?? 0]?.name as keyof RootTabParamList | undefined; if (name) setActiveTabName(name); }}>
       <Tab.Navigator
         initialRouteName="Home"
         tabBar={(props) => <FixedPhysicalTabBar {...props} canSeeHistoryTab={canSeeHistoryTab} canSeeStatisticsTab={canSeeStatisticsTab} canSeeSettingsTab={canSeeSettingsTab} />}
@@ -377,6 +439,10 @@ export function RootNavigator() {
             pre-restart/post-restart mismatch we saw during Dynamic Type tests. */}
         <Tab.Screen name="Home" component={HomeScreen} />
         <Tab.Screen name="Schedule" component={ScheduleScreen} />
+        {/* Family Chat: every family member, children and regular members
+            included, so it is never permission-gated. Access to the
+            conversation itself is enforced server-side (migration 0108). */}
+        <Tab.Screen name="Chat" component={ChatScreen} />
         <Tab.Screen name="Family" component={FamilyScreen} />
         {/* BATCH 3 (Task 4): conditionally-rendered Tab.Screen — omitting it
             entirely (not just hiding a tab bar button) means it also can't

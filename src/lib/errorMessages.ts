@@ -96,6 +96,14 @@ export const SHARED_ERROR_RULES: ErrorRule[] = [
   { includes: 'deleteFamilyMember requires an internet connection and cannot be queued offline', message: 'לא ניתן להסיר בן משפחה ללא חיבור לאינטרנט. התחברו לרשת ונסו שוב.' },
 
   // ---- Admin / permission (shared across several RPCs) ----
+  // Family Chat (migration 0108).
+  { includes: 'chat message is empty', message: 'אי אפשר לשלוח הודעה ריקה.' },
+  { includes: 'chat message is too long', message: 'ההודעה ארוכה מדי — אפשר לשלוח עד 2,000 תווים.' },
+  { includes: 'chat messages are being sent too quickly', message: 'נשלחו הרבה הודעות ברצף. חכו רגע ונסו שוב.' },
+  { includes: 'chat is read-only while impersonating', message: 'בזמן התחזות לבן משפחה אחר הצ׳אט זמין לקריאה בלבד.' },
+  { includes: 'chat conversation not found', message: 'הצ׳אט המשפחתי אינו זמין לפרופיל הזה.' },
+  { includes: 'chat message not found', message: 'ההודעה כבר אינה קיימת.' },
+
   { includes: 'admin permission required', message: 'רק מנהל/ת יכולים לבצע פעולה זו.' },
   { includes: 'no active profile claimed on this family', message: 'לא ניתן לזהות את הפרופיל הפעיל שלכם במשפחה הזו. נסו להתחבר מחדש.' },
   { includes: 'you are no longer an active member of this family', message: 'לא ניתן לזהות את הפרופיל הפעיל שלכם במשפחה הזו. נסו להתחבר מחדש.' },

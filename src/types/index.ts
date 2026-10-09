@@ -339,3 +339,38 @@ export interface UserDeletionImpact {
   // soft-deleted user forever.
   directlyAssignedWalkCount: number;
 }
+
+/**
+ * Family Chat (migration 0108). `kind` is wider than Phase 1 uses on
+ * purpose: the conversation model already accommodates the future
+ * cross-family kinds — see docs/engineering/FAMILY_CHAT_ARCHITECTURE.md.
+ */
+export type ChatConversationKind = 'family' | 'direct' | 'group';
+
+export interface ChatConversationState {
+  conversationId: string;
+  familyId: string;
+  /** The caller's REAL profile as the server resolved it — never a client claim. */
+  userId: string;
+  lastReadAt: string; // ISO timestamp
+  notificationsMuted: boolean;
+  unreadCount: number;
+  canModerate: boolean;
+}
+
+export type ChatDeliveryState = 'sent' | 'sending' | 'failed';
+
+export interface ChatMessage {
+  id: string;
+  conversationId: string;
+  /** The sender's family at send time. */
+  familyId: string;
+  /** Absent only if the sending profile no longer exists at all. */
+  senderUserId?: string;
+  body: string;
+  createdAt: string; // ISO timestamp
+  deletedAt?: string; // set once a manager removed the message; body is then empty
+  deletedByUserId?: string;
+  /** Client-only: 'sent' for anything that came from the server. */
+  delivery: ChatDeliveryState;
+}
