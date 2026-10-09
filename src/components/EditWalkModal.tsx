@@ -130,26 +130,22 @@ export function EditWalkModal({
             {onSwapWithWalk && otherPendingWalks.length > 0 ? (
               <>
                 <RtlText style={styles.label}>או להחליף עם טיול אחר לגמרי</RtlText>
-                <Button label="🔁 בחר טיול " variant="secondary" onPress={() => setSwapMode(true)} />
-              </>
-            ) : null}
-
-            <Button
-              label="שמור שינויים"
-              disabled={!timeChanged}
-              onPress={() => onChangeTime(time)}
-              style={styles.updateTimeButton}
-            />
-            <Button
-  label="בטל את הטיול הזה"
-  variant="danger"
-  accessibilityHint="יוצג אישור לפני ביטול הטיול"
-  onPress={() => setCancelConfirmVisible(true)}
-  style={styles.cancelButton}
-/>
-            {onRemoveRecurringRule ? <Button label="הסר מהשגרה הקבועה" variant="danger" onPress={() => setRemoveRuleConfirmVisible(true)} /> : null}
-            <Button label="סגור" variant="secondary" onPress={onClose} style={styles.closeButton} />
-            </ScrollView>
+                <View style={styles.footerActions}>
+               <Button label="שמור שינויים" disabled={!timeChanged} onPress={() => onChangeTime(time)} style={styles.footerButton} />
+               <Button label="סגור" variant="secondary" onPress={onClose} style={styles.footerButton} />
+             </View>
+             <View style={styles.destructiveActions}>
+               <Pressable accessibilityRole="button" accessibilityLabel="בטל את הטיול הזה" onPress={() => setCancelConfirmVisible(true)} style={styles.destructiveLink}>
+                 <RtlText style={styles.destructiveText}>בטל את הטיול הזה</RtlText>
+               </Pressable>
+               {onRemoveRecurringRule ? (
+                 <Pressable accessibilityRole="button" accessibilityLabel="הסר מהשגרה הקבועה" onPress={() => setRemoveRuleConfirmVisible(true)} style={styles.destructiveLink}>
+                   <RtlText style={styles.destructiveText}>הסר מהשגרה הקבועה</RtlText>
+                   <RtlText style={styles.destructiveHint}>מפסיק יצירת טיולים עתידיים בשגרה זו</RtlText>
+                 </Pressable>
+               ) : null}
+             </View>
+             </ScrollView>
           </Pressable>
         </Pressable>
       </KeyboardAvoidingView>
@@ -224,7 +220,10 @@ const styles = StyleSheet.create({
   userChip: { alignItems: 'center', minWidth: 68, gap: spacing.xs, opacity: 0.55 },
   userChipActive: { opacity: 1 },
   userChipName: { fontSize: 12, color: colors.textPrimary, fontWeight: '600' },
-  updateTimeButton: { marginTop: 10 },
-  cancelButton: { marginTop: 22 },
-  closeButton: { marginTop: 10 },
+  footerActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg },
+  footerButton: { flex: 1 },
+  destructiveActions: { borderTopWidth: 1, borderTopColor: colors.border, marginTop: spacing.lg, paddingTop: spacing.xs },
+  destructiveLink: { minHeight: 44, justifyContent: 'center', alignItems: 'center', paddingVertical: spacing.sm },
+  destructiveText: { fontSize: 14, fontWeight: '600', color: colors.statusSkipped },
+  destructiveHint: { fontSize: 12, color: colors.textSecondary, textAlign: 'center', marginTop: 3 },
 });
