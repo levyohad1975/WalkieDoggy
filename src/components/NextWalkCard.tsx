@@ -206,10 +206,10 @@ export function NextWalkCard({
 
       {isActive ? (
         <View style={styles.activeWalkBanner} accessibilityRole="timer" accessibilityLabel={`משך הטיול ${elapsedLabel}`}>
-          <WalkingPair bob={walkerBob} />
+          <WalkingPair />
           <View style={styles.activeWalkCopy}>
             <RtlText style={styles.activeWalkTitle}>מטיילים עכשיו</RtlText>
-            <RtlText style={styles.activeWalkSubtitle}>הולכים יחד ברצועה</RtlText>
+
           </View>
           <View style={styles.elapsedBlock}>
             <RtlText style={styles.elapsedLabel}>זמן</RtlText>
@@ -445,7 +445,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginBottom: 12,
   },
-  activeWalkCopy: { flex: 1, alignItems: 'flex-end' },
+  activeWalkCopy: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
   activeWalkTitle: { fontSize: 15, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
   activeWalkSubtitle: { fontSize: 12, color: colors.textSecondary, textAlign: 'right', marginTop: 2 },
   elapsedBlock: { minWidth: 72, alignItems: 'center' },
