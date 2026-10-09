@@ -991,7 +991,7 @@ export function HomeScreen() {
               <View pointerEvents="none" style={{ position: 'absolute', right: 4, bottom: 2, width: 158, height: 158, zIndex: 4 }}>
                 {Platform.OS === 'web' ? (
                   <WalkieMascot
-                    state="happy"
+                    state="excited"
                     size={158}
                     accessibilityLabel="הכלב מנופף לשלום"
                     testID="home-guest-mascot-reaction"
