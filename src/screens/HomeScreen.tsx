@@ -987,24 +987,19 @@ export function HomeScreen() {
                 <WalkieMascot state="idle" size={158} accessibilityLabel="כלב Walkie Doggy" />
               </View>
             ) : null}
-            {guestReactionPlaying ? (
+            {/* The guest reaction bitmap has an opaque black backdrop on Safari.
+                Do not replace the approved full-body hero with a cropped face
+                or overlay another dog on the family's own photo. Keep the
+                normal transparent hero mascot / family dog visible instead. */}
+            {guestReactionPlaying && Platform.OS !== 'web' && !showPersonalHero && !showDogCutout ? (
               <View pointerEvents="none" style={{ position: 'absolute', right: 4, bottom: 2, width: 158, height: 158, zIndex: 4 }}>
-                {Platform.OS === 'web' ? (
-                  <WalkieMascot
-                    state="excited"
-                    size={158}
-                    accessibilityLabel="הכלב מנופף לשלום"
-                    testID="home-guest-mascot-reaction"
-                  />
-                ) : (
-                  <Image
-                    source={require('../../assets/branding/walkie-guest-celebration.webp')}
-                    style={{ width: 158, height: 158 }}
-                    resizeMode="contain"
-                    accessibilityLabel="הכלב מנופף לשלום"
-                    testID="home-guest-mascot-reaction"
-                  />
-                )}
+                <Image
+                  source={require('../../assets/branding/walkie-guest-celebration.webp')}
+                  style={{ width: 158, height: 158 }}
+                  resizeMode="contain"
+                  accessibilityLabel="הכלב מנופף לשלום"
+                  testID="home-guest-mascot-reaction"
+                />
               </View>
             ) : null}
             {dog?.heroBackgroundId === 'walkie-park' && !showPersonalHero ? (
