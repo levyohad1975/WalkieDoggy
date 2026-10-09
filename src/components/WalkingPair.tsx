@@ -1,63 +1,111 @@
 import React, { useEffect, useState } from 'react';
 import { AccessibilityInfo, StyleSheet, View } from 'react-native';
-import Svg, { Circle, Ellipse, Path } from 'react-native-svg';
+import Svg, { Circle, Ellipse, Path, G, Defs, LinearGradient, Stop } from 'react-native-svg';
 
-/** Two-frame illustrated walk cycle. Legs and tail change pose independently;
- * the leash is drawn as one continuous line between hand and collar.
- * Honors iOS Reduce Motion and stops updating when the walk ends/unmounts.
+/**
+ * Compact illustrated walking scene, designed for the active-walk card.
+ * Continuous eight-phase stride, independent tail and arm motion, a leash
+ * visibly connected to the walker's hand and the dog's harness.
  */
 export function WalkingPair() {
   const [phase, setPhase] = useState(0);
   const [reduceMotion, setReduceMotion] = useState(true);
+
   useEffect(() => {
     let mounted = true;
-    AccessibilityInfo.isReduceMotionEnabled().then(v => { if (mounted) setReduceMotion(v); }).catch(() => {});
-    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
-    return () => { mounted = false; sub?.remove?.(); };
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then(value => { if (mounted) setReduceMotion(value); })
+      .catch(() => {});
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => { mounted = false; subscription?.remove?.(); };
   }, []);
+
   useEffect(() => {
     if (reduceMotion) return;
-    const id = setInterval(() => setPhase(p => (p + 1) % 8), 90);
-    return () => clearInterval(id);
+    const timer = setInterval(() => setPhase(value => (value + 1) % 16), 75);
+    return () => clearInterval(timer);
   }, [reduceMotion]);
-  const stride = Math.sin((phase / 8) * Math.PI * 2);
-  const opposite = -stride;
-  const swing = (base: number, amount: number) => (base + stride * amount).toFixed(1);
-  const reverseSwing = (base: number, amount: number) => (base + opposite * amount).toFixed(1);
+
+  const cycle = phase * Math.PI / 8;
+  const stride = Math.sin(cycle);
+  const bob = Math.abs(Math.sin(cycle)) * 1.1;
+  const wag = Math.sin(cycle * 2) * 5;
+  const foot = (x: number, magnitude: number) => (x + stride * magnitude).toFixed(1);
+  const backFoot = (x: number, magnitude: number) => (x - stride * magnitude).toFixed(1);
+
   return (
-    <View style={styles.frame} accessibilityLabel="אדם וכלב הולכים יחד עם רצועה">
-      <Svg width="156" height="84" viewBox="0 0 142 76">
-        <Ellipse cx="38" cy="70" rx="25" ry="3" fill="#6C9D87" opacity={0.18} />
-        <Ellipse cx="103" cy="70" rx="31" ry="3" fill="#6C9D87" opacity={0.18} />
-        {/* Walker's alternating legs, with distinct foot positions. */}
-        <Path d={`M37 42 L${swing(31, 8)} 55 L${swing(22, 15)} 68`} stroke="#24405D" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-        <Path d={`M37 42 L${reverseSwing(43, 8)} 55 L${reverseSwing(52, 15)} 68`} stroke="#344F70" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-        <Path d={`M${swing(22,15)} 68 l-7 0 M${reverseSwing(52,15)} 68 l7 0`} stroke="#1E4055" strokeWidth="4" strokeLinecap="round" />
-        {/* Hoodie, head, hair and face. */}
-        <Path d="M34 23 Q24 29 29 44 L45 44 Q49 30 40 24Z" fill="#13A7AD" />
-        <Path d="M31 30 L23 41 L18 44" stroke="#E9AC80" strokeWidth="4.5" strokeLinecap="round" fill="none" />
-        <Path d="M43 30 L52 42 L59 44" stroke="#E9AC80" strokeWidth="4.5" strokeLinecap="round" fill="none" />
-        <Circle cx="37" cy="15" r="10" fill="#EFB78B" />
-        <Path d="M27 16 Q23 2 38 3 Q49 4 46 17 L42 11 L30 11Z" fill="#69412E" />
-        <Circle cx="42" cy="16" r="1.3" fill="#253B4B" />
-        {/* The same leash stays connected in both animation frames. */}
-        <Path d="M59 44 Q72 60 88 43" stroke="#CB6753" strokeWidth="2.8" strokeLinecap="round" fill="none" />
-        {/* Dog's alternating front and rear legs. */}
-        <Path d={`M99 57 L${swing(99,7)} 68 M115 57 L${reverseSwing(115,7)} 68`} stroke="#A8653B" strokeWidth="5" strokeLinecap="round" fill="none" />
-        <Path d={`M91 56 L${reverseSwing(91,6)} 68 M121 56 L${swing(121,6)} 67`} stroke="#C18450" strokeWidth="4" strokeLinecap="round" fill="none" />
-        <Ellipse cx="108" cy="49" rx="23" ry="13" fill="#C88955" />
-        <Ellipse cx="105" cy="51" rx="12" ry="7" fill="#EBCBA6" />
-        {/* Wagging tail, independent from the walker's stride. */}
-        <Path d={`M127 44 Q139 ${35 + Math.sin(phase * Math.PI / 2) * 5} 138 ${41 + Math.sin(phase * Math.PI / 2) * 7}`} stroke="#A8683F" strokeWidth="5" strokeLinecap="round" fill="none" />
-        <Circle cx="86" cy="39" r="12" fill="#C88955" />
-        <Path d="M83 32 Q70 26 75 46 Q80 49 84 40" fill="#91532E" />
-        <Ellipse cx="77" cy="43" rx="8" ry="5" fill="#F6E5CE" />
-        <Circle cx="76" cy="42" r="2" fill="#322A28" />
-        <Circle cx="88" cy="36" r="1.7" fill="#322A28" />
-        <Path d="M88 43 L92 47" stroke="#166E74" strokeWidth="3.5" strokeLinecap="round" />
-        <Circle cx="88" cy="43" r="2" fill="#166E74" />
+    <View style={styles.frame} accessible accessibilityLabel="אדם מטייל עם כלב שמח ברצועה">
+      <Svg width="164" height="92" viewBox="0 0 164 92">
+        <Defs>
+          <LinearGradient id="hoodie" x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0" stopColor="#65CED4" />
+            <Stop offset="1" stopColor="#159CA7" />
+          </LinearGradient>
+          <LinearGradient id="fur" x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0" stopColor="#F5C487" />
+            <Stop offset="1" stopColor="#CF8A4E" />
+          </LinearGradient>
+        </Defs>
+        <Ellipse cx="44" cy="86" rx="35" ry="3" fill="#47685E" opacity={0.14} />
+        <Ellipse cx="119" cy="86" rx="38" ry="3" fill="#47685E" opacity={0.14} />
+
+        {/* Person: articulated trousers and two separate sneakers. */}
+        <Path d={`M42 55 Q${foot(37, 4)} 68 ${foot(27, 13)} 81`}
+          stroke="#405A68" strokeWidth="9" strokeLinecap="round" fill="none" />
+        <Path d={`M45 55 Q${backFoot(49, 4)} 68 ${backFoot(58, 13)} 81`}
+          stroke="#293F52" strokeWidth="9" strokeLinecap="round" fill="none" />
+        <Path d={`M${foot(27, 13)} 81 l-9 2 q-2 3 2 3 h14`}
+          stroke="#FFFFFF" strokeWidth="5.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        <Path d={`M${backFoot(58, 13)} 81 l6 2 q3 3 -2 3 h-13`}
+          stroke="#FFFFFF" strokeWidth="5.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        <Path d="M35 32 Q29 37 32 54 Q42 60 53 54 L51 37 Q46 30 35 32Z"
+          fill="url(#hoodie)" />
+        <Path d="M38 33 Q43 40 49 34" stroke="#C3F1E9" strokeWidth="2" fill="none" opacity={0.75} />
+        <Path d="M32 39 Q24 48 20 51" stroke="#F0B58D" strokeWidth="5.5" strokeLinecap="round" fill="none" />
+        <Path d={`M50 39 Q58 ${49 + stride * 2} 66 54`}
+          stroke="#E5A77F" strokeWidth="5.5" strokeLinecap="round" fill="none" />
+        <Circle cx="66" cy="54" r="3.4" fill="#E5A77F" />
+        <Path d="M38 28 L39 34 L47 34 L47 28" fill="#E8A67E" />
+        <Ellipse cx="43" cy="20" rx="12" ry="14" fill="#F0BA93" />
+        <Path d="M31 20 Q28 5 41 5 Q52 1 56 13 Q51 12 49 9 Q42 16 31 15Z" fill="#574038" />
+        <Path d="M32 15 Q30 10 34 8" stroke="#7B5140" strokeWidth="3" strokeLinecap="round" />
+        <Circle cx="51" cy="20" r="1.3" fill="#303C46" />
+        <Path d="M49 25 Q53 27 55 23" stroke="#9B6156" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+        <Path d="M33 29 Q43 34 53 29" stroke="#F0BA93" strokeWidth="1.5" fill="none" />
+
+        {/* Dog: four independently moving paws, full fluffy silhouette. */}
+        <G transform={`translate(0 ${-bob.toFixed(1)})`}>
+          <Path d={`M143 57 Q155 ${44 + wag} 158 ${48 + wag}`}
+            stroke="#CB874C" strokeWidth="9" strokeLinecap="round" fill="none" />
+          <Path d={`M115 70 L${foot(109, 6)} 83`} stroke="#D3995C" strokeWidth="6.5" strokeLinecap="round" />
+          <Path d={`M140 69 L${backFoot(145, 6)} 83`} stroke="#BD7C45" strokeWidth="6.5" strokeLinecap="round" />
+          <Path d={`M108 68 L${backFoot(103, 6)} 83`} stroke="#BD7C45" strokeWidth="5.5" strokeLinecap="round" />
+          <Path d={`M136 69 L${foot(132, 6)} 83`} stroke="#E5B076" strokeWidth="5.5" strokeLinecap="round" />
+          <Ellipse cx="126" cy="59" rx="26" ry="17" fill="url(#fur)" />
+          <Path d="M109 60 Q124 77 142 62 Q129 72 115 67Z" fill="#F6D8B3" />
+          <Path d="M108 48 Q114 53 114 63" stroke="#8C5E43" strokeWidth="3.5" fill="none" />
+          <Path d="M109 49 Q118 44 128 45" stroke="#246F7D" strokeWidth="3.8" fill="none" />
+          <Path d="M120 45 L124 62" stroke="#246F7D" strokeWidth="3.6" />
+          <Circle cx="112" cy="48" r="2.8" fill="#246F7D" />
+          <Path d="M110 49 Q100 45 95 47" stroke="#F3C184" strokeWidth="11" strokeLinecap="round" fill="none" />
+          <Ellipse cx="96" cy="44" rx="15" ry="13" fill="url(#fur)" />
+          <Path d="M94 34 Q79 28 85 49 Q91 53 95 44Z" fill="#B77745" />
+          <Ellipse cx="85" cy="49" rx="11" ry="7" fill="#F7DBB5" />
+          <Circle cx="79" cy="47" r="2.5" fill="#3B3432" />
+          <Circle cx="99" cy="40" r="2" fill="#302D2B" />
+          <Path d="M79 53 Q87 60 92 52" stroke="#9C5C54" strokeWidth="1.8" strokeLinecap="round" fill="none" />
+          <Path d="M86 55 Q89 65 93 60 Q95 55 90 55Z" fill="#E88186" />
+        </G>
+
+        {/* Leash is drawn on top, terminating at the harness ring. */}
+        <Path d={`M66 54 Q81 ${69 + stride * 1.5} 112 ${48 - bob}`}
+          stroke="#3E6475" strokeWidth="2.6" strokeLinecap="round" fill="none" />
+        <Circle cx="112" cy={48 - bob} r="2.5" fill="#F4D6A7" stroke="#3E6475" strokeWidth="1.5" />
       </Svg>
     </View>
   );
 }
-const styles = StyleSheet.create({ frame: { width: 156, height: 84, alignItems: 'center', justifyContent: 'center', flexShrink: 0 } });
+
+const styles = StyleSheet.create({
+  frame: { width: 164, height: 92, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+});
