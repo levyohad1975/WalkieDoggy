@@ -22,7 +22,7 @@ import { Button } from '../components/Button';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { EmptyState } from '../components/EmptyState';
 import { colors } from '../theme/colors';
-import { elevation, layout, radii, spacing, typography } from '../theme/tokens';
+import { elevation, layout, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { useAuthStore } from '../store/authStore';
 import { useFamilyStore } from '../store/familyStore';
 import { useChatStore } from '../store/chatStore';
@@ -754,16 +754,18 @@ const styles = StyleSheet.create({
   unreadLine: { flex: 1, height: 1, backgroundColor: colors.primary, opacity: 0.35 },
   unreadLabel: { ...typography.caption, color: colors.primaryDark, textAlign: 'center' },
 
-  messageRow: { marginTop: 3, maxWidth: '100%' },
+  // The sides are PHYSICAL, like the tab bar: other people's messages on the
+  // right with their avatar at the edge, my own on the left — the mirrored
+  // layout Hebrew chat apps use. The web build lays out left-to-right while
+  // native is forced RTL, so the row pins its own direction (nativeDirection)
+  // and both platforms render the same picture. Text direction is set per
+  // message and is unaffected.
+  messageRow: { marginTop: 3, maxWidth: '100%', ...nativeDirection('ltr') },
   messageRowGroupStart: { marginTop: spacing.md },
-  // `flex-start` / `flex-end` are logical: in this RTL app "start" is the
-  // right-hand side, so other people's messages sit on the right with their
-  // avatar and my own sit on the left — the mirrored layout Hebrew chat
-  // apps use.
-  messageRowTheirs: { alignItems: 'flex-start' },
-  messageRowMine: { alignItems: 'flex-end' },
-  messageLine: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, maxWidth: '88%' },
-  messageLineMine: { maxWidth: '82%' },
+  messageRowTheirs: { alignItems: 'flex-end' },
+  messageRowMine: { alignItems: 'flex-start' },
+  messageLine: { flexDirection: 'row-reverse', alignItems: 'flex-end', gap: spacing.sm, maxWidth: '88%' },
+  messageLineMine: { flexDirection: 'row', maxWidth: '82%' },
   avatarSlot: { width: layout.avatarSm, height: layout.avatarSm, alignSelf: 'flex-start' },
   bubblePressable: { flexShrink: 1, minWidth: 0, maxWidth: BUBBLE_MAX_WIDTH },
 
@@ -788,8 +790,8 @@ const styles = StyleSheet.create({
   metaText: { fontSize: 11, lineHeight: 15, fontWeight: '500', color: colors.textSecondary, marginTop: 3, writingDirection: 'ltr', textAlign: 'left' },
   metaTextFailed: { color: colors.danger, fontWeight: '700', writingDirection: 'rtl' },
 
-  rowActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.md, marginTop: 2 },
-  rowActionsIndented: { paddingStart: layout.avatarSm + spacing.sm },
+  rowActions: { flexDirection: 'row-reverse', flexWrap: 'wrap', alignItems: 'center', gap: spacing.md, marginTop: 2 },
+  rowActionsIndented: { paddingRight: layout.avatarSm + spacing.sm },
   rowAction: { minHeight: 36, justifyContent: 'center', paddingHorizontal: spacing.xs },
   rowActionDanger: { ...typography.meta, fontWeight: '700', color: colors.danger },
   rowActionPrimary: { ...typography.meta, fontWeight: '700', color: colors.primaryDark },

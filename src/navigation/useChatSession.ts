@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
@@ -33,16 +33,34 @@ export function useChatSession(): void {
   }, [familyId, currentUserId, impersonatingUserId, systemObserverActive]);
 
   useEffect(() => {
-    let removeNetInfo: (() => void) | undefined;
-    try {
-      removeNetInfo = NetInfo.addEventListener((state) => {
-        // `isInternetReachable` is null until first probed: treat only an
-        // explicit `false` as offline.
-        useChatStore.getState().setOnline(state.isConnected !== false && state.isInternetReachable !== false);
-      });
-    } catch {
-      // Connectivity detection unavailable: stay optimistic; failed sends
-      // still surface as retryable bubbles.
+    let removeConnectivity: (() => void) | undefined;
+    const setOnline = (online: boolean) => useChatStore.getState().setOnline(online);
+    if (Platform.OS === 'web') {
+      // The browser's own signal. NetInfo's web build listens only to the
+      // Network Information API where it exists (Chrome/Android), which does
+      // not reliably report going offline, and falls back to these same
+      // events elsewhere (Safari) — so use them directly on every browser.
+      if (typeof window !== 'undefined' && typeof navigator !== 'undefined') {
+        const sync = () => setOnline(navigator.onLine !== false);
+        sync();
+        window.addEventListener('online', sync);
+        window.addEventListener('offline', sync);
+        removeConnectivity = () => {
+          window.removeEventListener('online', sync);
+          window.removeEventListener('offline', sync);
+        };
+      }
+    } else {
+      try {
+        removeConnectivity = NetInfo.addEventListener((state) => {
+          // `isInternetReachable` is null until first probed: treat only an
+          // explicit `false` as offline.
+          setOnline(state.isConnected !== false && state.isInternetReachable !== false);
+        });
+      } catch {
+        // Connectivity detection unavailable: stay optimistic; failed sends
+        // still surface as retryable bubbles.
+      }
     }
     const appState = AppState.addEventListener('change', (state) => {
       // Realtime sockets are suspended in the background. On return, re-read
@@ -50,7 +68,7 @@ export function useChatSession(): void {
       if (state === 'active') void useChatStore.getState().resync();
     });
     return () => {
-      removeNetInfo?.();
+      removeConnectivity?.();
       appState.remove();
     };
   }, []);
