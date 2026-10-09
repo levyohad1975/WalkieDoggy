@@ -11,6 +11,7 @@ import { mapExecutionEnvironment } from '../lib/expoRuntime';
 import type * as ExpoNotifications from 'expo-notifications';
 import { publishReminderOpen, reminderOpenFromNotificationData } from './reminderEntry';
 import { publishRequestOpen, requestOpenFromNotificationData } from './requestEntry';
+import { chatOpenFromNotificationData, publishChatOpen } from './chatEntry';
 
 /**
  * P0 FIX — Android Expo Go 57 startup crash.
@@ -174,7 +175,12 @@ export async function subscribeToWalkReminderResponses(): Promise<() => void> {
       return;
     }
     const requestEvent = requestOpenFromNotificationData(data);
-    if (requestEvent) publishRequestOpen(requestEvent);
+    if (requestEvent) {
+      publishRequestOpen(requestEvent);
+      return;
+    }
+    const chatEvent = chatOpenFromNotificationData(data);
+    if (chatEvent) publishChatOpen(chatEvent);
   };
   // Cold launch has no live listener event. Consume the OS's response once so
   // opening Home normally later cannot replay an old reminder.

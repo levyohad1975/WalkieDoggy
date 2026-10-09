@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import { publishReminderOpen, reminderOpenFromNotificationData } from '../notifications/reminderEntry';
 import { publishRequestOpen, requestOpenFromNotificationData } from '../notifications/requestEntry';
+import { chatOpenFromNotificationData, publishChatOpen } from '../notifications/chatEntry';
 
 /**
  * Mascot-notification-experiences round — the web (PWA) counterpart to
@@ -30,6 +31,11 @@ function dispatch(data: unknown): void {
   const requestEvent = requestOpenFromNotificationData(data);
   if (requestEvent) {
     publishRequestOpen(requestEvent);
+    return;
+  }
+  const chatEvent = chatOpenFromNotificationData(data);
+  if (chatEvent) {
+    publishChatOpen(chatEvent);
   }
 }
 

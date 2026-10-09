@@ -10,7 +10,7 @@ describe('bottom tab RTL contract', () => {
 
   it('declares routes in semantic RTL order so Home is rightmost and Settings leftmost', () => {
     const names = [...source.matchAll(/<Tab\.Screen name="([^"]+)"/g)].map((m) => m[1]);
-    expect(names).toEqual(['Home', 'Schedule', 'Family', 'History', 'Statistics', 'Settings']);
+    expect(names).toEqual(['Home', 'Schedule', 'Chat', 'Family', 'History', 'Statistics', 'Settings']);
   });
 
 
