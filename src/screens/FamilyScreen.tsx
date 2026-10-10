@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, AppState, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
+import { RemoteGpsPanel } from '../components/RemoteGpsPanel';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFamilyStore } from '../store/familyStore';
 import { isRealFamilyAdmin, useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
@@ -308,6 +309,13 @@ export function FamilyScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
         <RtlText style={styles.header} accessibilityRole="header">המשפחה שלנו</RtlText>
+        {/* Personal GPS consent belongs to every signed-in member, including children without Settings access. */}
+        {realCurrentUserId && !impersonatingUserId && !systemObserverActive ? (
+          <View style={{ marginBottom: spacing.sm }}>
+            <RtlText style={styles.sectionHeader}>הרשאת GPS אישית במכשיר שלי</RtlText>
+            <RemoteGpsPanel mode="settings" currentUserId={realCurrentUserId} familyRole={familyRole} ready />
+          </View>
+        ) : null}
 
         <View style={styles.memberSectionHeader}>
           <RtlText style={styles.sectionHeader} accessibilityRole="header">בני המשפחה</RtlText>
