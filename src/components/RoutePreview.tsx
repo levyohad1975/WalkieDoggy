@@ -43,7 +43,7 @@ export function RoutePreview({ session, large = false, compact = false, live = f
   if (webMap) {
     const renderMap = (expanded: boolean) => React.createElement('iframe', {
       title: 'מפת רחובות ומסלול GPS',
-      srcDoc: buildMapHtml(mapPoints, expanded),
+      srcDoc: buildMapHtml(mapPoints, expanded, live),
       sandbox: 'allow-scripts',
       style: { display: 'block', border: 0, width: '100%', height: '100%', maxWidth: '100%', maxHeight: '100%', overflow: 'hidden', borderRadius: expanded ? 12 : 9, pointerEvents: expanded ? 'auto' : 'none' },
     });
@@ -101,9 +101,9 @@ const styles = StyleSheet.create({
 });
 
 /** Free vector basemap via OpenFreeMap and MapLibre. GPS coordinates never leave the browser except as ordinary map rendering data. */
-function buildMapHtml(points: number[][], expanded: boolean): string {
+function buildMapHtml(points: number[][], expanded: boolean, live: boolean): string {
   const coords = JSON.stringify(points);
-  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"><style>html,body,#map{margin:0;width:100%;height:100%;overflow:hidden} .maplibregl-control-container{font:10px system-ui} .maplibregl-ctrl-attrib{font-size:10px!important} .maplibregl-ctrl-bottom-right{max-width:100%}</style></head><body><div id="map"></div><script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script><script>
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"><style>html,body,#map{margin:0;width:100%;height:100%;overflow:hidden} .maplibregl-control-container{font:10px system-ui} .maplibregl-ctrl-attrib{font-size:10px!important} .maplibregl-ctrl-bottom-right{max-width:100%}</style></head><body><div id="map"></div>${expanded ? '<button id="replay" style="position:absolute;z-index:5;top:12px;left:12px;border:0;border-radius:20px;padding:10px 16px;background:#fff;color:#183e48;font:600 14px system-ui">▶ הפעל מסלול</button>' : ''}<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script><script>
   const points = ${coords};
   const map = new maplibregl.Map({
     container:'map',style:'https://tiles.openfreemap.org/styles/positron',
@@ -122,6 +122,27 @@ function buildMapHtml(points: number[][], expanded: boolean): string {
     const marker=(coord,color,label)=>new maplibregl.Marker({color,scale:0.75}).setLngLat(coord).setPopup(new maplibregl.Popup({offset:16}).setText(label)).addTo(map);
     if(${expanded ? 'true' : 'false'})marker(coordinates[0],'#138A52','תחילת הטיול');
     if(${expanded ? 'true' : 'false'} && coordinates.length>1)marker(coordinates[coordinates.length-1],'#2684D9','סיום / מיקום אחרון');
+    if(${live ? 'true' : 'false'}){
+      const current=coordinates[coordinates.length-1];
+      new maplibregl.Marker({color:'#1976D2',scale:0.8}).setLngLat(current).addTo(map);
+      if(${expanded ? 'true' : 'false'})map.easeTo({center:current,zoom:17,duration:0});
+    }
+    const replay=document.getElementById('replay');
+    if(replay && coordinates.length>1){
+      let timer=null,index=0;
+      const progress=new maplibregl.Marker({color:'#1976D2',scale:0.9}).setLngLat(coordinates[0]);
+      replay.addEventListener('click',()=>{
+        if(timer){clearInterval(timer);timer=null;replay.textContent='▶ המשך מסלול';return;}
+        if(index>=coordinates.length-1)index=0;
+        progress.addTo(map);replay.textContent='Ⅱ השהה';
+        timer=setInterval(()=>{
+          index=Math.min(index+1,coordinates.length-1);
+          progress.setLngLat(coordinates[index]);
+          map.easeTo({center:coordinates[index],duration:450});
+          if(index===coordinates.length-1){clearInterval(timer);timer=null;replay.textContent='↻ הפעל שוב';}
+        },500);
+      });
+    }else if(replay){replay.style.display='none';}
     map.resize();
   });
   </script></body></html>`;
