@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, AppState, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useGpsStore } from '../store/gpsStore';
@@ -14,6 +14,12 @@ import {
  stopRemoteGpsTracking,getRemoteGpsWalkStatus,heartbeatRemoteGpsTracking,type RemoteGpsCommand,type RemoteGpsTarget,
 } from '../lib/remoteGps';
 
+/** React Native Alert.alert is a no-op in react-native-web (iPhone Safari / Android browser). */
+function showGpsMessage(title:string,message:string){
+ if(Platform.OS==='web' && typeof window!=='undefined'){window.alert(`${title}\n\n${message}`);return;}
+ Alert.alert(title,message);
+}
+
 interface Props { walk?: Walk; currentUserId: string; familyRole: string | null; ready: boolean; mode?: 'home' | 'settings' }
 export function RemoteGpsPanel({walk,currentUserId,familyRole,ready,mode='home'}:Props) {
  const { users }=useFamilyStore();
@@ -23,6 +29,7 @@ export function RemoteGpsPanel({walk,currentUserId,familyRole,ready,mode='home'}
  const [command,setCommand]=useState<RemoteGpsCommand|null>(null);
  const [walkStatus,setWalkStatus]=useState<string|null>(null);
  const [busy,setBusy]=useState(false);
+ const [feedback,setFeedback]=useState<string|null>(null);
  const processingRef=useRef(false);
  const startWalk=useScheduleStore(s=>s.startWalk);
  const trackingWalkId=useGpsStore(s=>s.trackingWalkId);
@@ -54,11 +61,11 @@ export function RemoteGpsPanel({walk,currentUserId,familyRole,ready,mode='home'}
   }catch(e){console.warn('Remote GPS activation failed',e);}finally{processingRef.current=false;}
  },[settings,currentUserId,ready,waitForFirstGpsFix]);
  useEffect(()=>{void processPending();const timer=setInterval(()=>void processPending(),6000);return()=>clearInterval(timer);},[processPending]);
- const toggleConsent=async()=>{if(busy||!settings)return;setBusy(true);try{await setRemoteGpsConsent(!settings.consentEnabled);await refresh();}catch{Alert.alert('לא ניתן לעדכן הסכמה','בדקו חיבור לאינטרנט ונסו שוב.');}finally{setBusy(false);}};
- const toggleFamily=async()=>{if(busy||!settings)return;setBusy(true);try{await setFamilyRemoteGpsEnabled(!settings.familyEnabled);await refresh();}catch{Alert.alert('לא ניתן לעדכן הגדרת משפחה','נדרשת הרשאת מנהל המשפחה.');}finally{setBusy(false);}};
- const chooseRemote=async()=>{if(!walk||busy)return;setBusy(true);try{const eligible=await listRemoteGpsTargets(walk.id);setTargets(eligible);if(!eligible.length){Alert.alert('אין מכשיר מורשה','המשפחה צריכה לאפשר מעקב, ובן המשפחה צריך להפעיל הסכמה במכשיר שלו.');return;}setSelecting(true);}catch{Alert.alert('לא ניתן לשלוח בקשה','בדקו שהמשפחה ומכשיר היעד מחוברים והסכמה פעילה.');}finally{setBusy(false);}};
- const selectTarget=async(target:RemoteGpsTarget)=>{if(!walk)return;setBusy(true);setSelecting(false);try{const id=await requestRemoteGpsStart(walk.id,target.target_auth_user_id);try{await sendRemoteGpsNotification(id);}catch{/* command remains pending; target foreground polling is authoritative */}Alert.alert('הבקשה נשלחה',`הבקשה נשלחה אל ${target.display_name}. המעקב ייחשב פעיל רק לאחר אישור GPS ממכשיר היעד.`);}catch{Alert.alert('הבקשה לא נשלחה','השרת דחה את הבקשה או שההסכמה אינה פעילה.');}finally{setBusy(false);}};
- const stop=async()=>{if(!command||busy)return;setBusy(true);try{const walk=useScheduleStore.getState().walks.find(w=>w.id===command.walk_id);if(walk)await useGpsStore.getState().stopTracking(walk,currentUserId);await stopRemoteGpsTracking(command.command_id);setCommand(null);}catch{Alert.alert('לא ניתן לעצור את המעקב','נסו שוב כשהחיבור יחזור.');}finally{setBusy(false);}};
+ const toggleConsent=async()=>{if(busy||!settings)return;setBusy(true);try{await setRemoteGpsConsent(!settings.consentEnabled);await refresh();}catch{showGpsMessage('לא ניתן לעדכן הסכמה','בדקו חיבור לאינטרנט ונסו שוב.');}finally{setBusy(false);}};
+ const toggleFamily=async()=>{if(busy||!settings)return;setBusy(true);try{await setFamilyRemoteGpsEnabled(!settings.familyEnabled);await refresh();}catch{showGpsMessage('לא ניתן לעדכן הגדרת משפחה','נדרשת הרשאת מנהל המשפחה.');}finally{setBusy(false);}};
+ const chooseRemote=async()=>{if(!walk||busy)return;setBusy(true);setFeedback('בודק מכשירים זמינים להפעלה מרחוק…');try{const eligible=await listRemoteGpsTargets(walk.id);setTargets(eligible);if(!eligible.length){setFeedback('לא נמצא מכשיר מורשה לטיול זה. בדקו הסכמה והרשאת מיקום באנדרואיד של מאור.');showGpsMessage('אין מכשיר מורשה','המשפחה צריכה לאפשר מעקב, ובן המשפחה צריך להפעיל הסכמה במכשיר שלו.');return;}setSelecting(true);setFeedback('בחרו את המכשיר של מאור להפעלת המעקב.');}catch{setFeedback('בדיקת המכשירים נכשלה. בדקו חיבור והרשאות.');showGpsMessage('לא ניתן לשלוח בקשה','בדקו שהמשפחה ומכשיר היעד מחוברים והסכמה פעילה.');}finally{setBusy(false);}};
+ const selectTarget=async(target:RemoteGpsTarget)=>{if(!walk)return;setBusy(true);setSelecting(false);setFeedback('שולח בקשת GPS למכשיר היעד…');try{const id=await requestRemoteGpsStart(walk.id,target.target_auth_user_id);try{await sendRemoteGpsNotification(id);}catch{/* command remains pending; target foreground polling is authoritative */}setFeedback('הבקשה נשלחה למכשיר היעד; ממתינים למיקום GPS אמיתי.');showGpsMessage('הבקשה נשלחה',`הבקשה נשלחה אל ${target.display_name}. המעקב ייחשב פעיל רק לאחר אישור GPS ממכשיר היעד.`);}catch{setFeedback('השרת דחה את הבקשה. בדקו הסכמה והרשאות.');showGpsMessage('הבקשה לא נשלחה','השרת דחה את הבקשה או שההסכמה אינה פעילה.');}finally{setBusy(false);}};
+ const stop=async()=>{if(!command||busy)return;setBusy(true);try{const walk=useScheduleStore.getState().walks.find(w=>w.id===command.walk_id);if(walk)await useGpsStore.getState().stopTracking(walk,currentUserId);await stopRemoteGpsTracking(command.command_id);setCommand(null);}catch{showGpsMessage('לא ניתן לעצור את המעקב','נסו שוב כשהחיבור יחזור.');}finally{setBusy(false);}};
  if(!isSupabaseConfigured)return null;
  const visible=Boolean(settings&&(familyRole==='admin'||settings.consentEnabled||command||walk?.status==='pending'||walk?.status==='in_progress'));
  if(!visible && mode==='home')return null;
@@ -68,6 +75,7 @@ export function RemoteGpsPanel({walk,currentUserId,familyRole,ready,mode='home'}
   {mode==='settings'&&settings?.isAdmin?<Pressable accessibilityRole="switch" accessibilityState={{checked:settings.familyEnabled}} onPress={()=>void toggleFamily()} style={styles.row}><RtlText style={styles.text}>הפעלת GPS מרחוק למשפחה</RtlText><RtlText style={styles.state}>{settings.familyEnabled?'פעיל':'כבוי'}</RtlText></Pressable>:null}
   {mode==='settings'?<Pressable accessibilityRole="switch" accessibilityState={{checked:settings?.consentEnabled??false}} onPress={()=>void toggleConsent()} style={styles.row}><RtlText style={styles.text}>אני מסכים/ה להפעלת GPS מרחוק</RtlText><RtlText style={styles.state}>{settings?.consentEnabled?'פעיל':'כבוי'}</RtlText></Pressable>:null}
   {mode==='home'&&familyRole==='admin'&&settings?.familyEnabled&&walk&&(walk.status==='pending'||walk.status==='in_progress')?<Pressable accessibilityRole="button" disabled={busy} onPress={()=>void chooseRemote()} style={styles.compactAction}><RtlText style={styles.compactActionText}>📍 התחל GPS מרחוק</RtlText></Pressable>:null}
+  {mode==='home'&&feedback?<RtlText accessibilityLiveRegion="polite" style={styles.status}>{feedback}</RtlText>:null}
   {mode==='home'&&selecting?targets.map(t=><Pressable key={t.target_auth_user_id} accessibilityRole="button" accessibilityLabel={`${t.display_name}, ${t.device_label}`} onPress={()=>void selectTarget(t)} style={styles.target}><RtlText style={styles.text}>{t.display_name} · {t.device_label}</RtlText></Pressable>):null}
   {mode==='home'&&familyRole==='admin'&&walkStatus?<RtlText accessibilityLiveRegion="polite" style={styles.status}>מצב בקשת GPS: {({pending:'ממתינה למכשיר היעד',tracking:'המעקב פעיל במכשיר היעד',failed:'הבקשה נכשלה',expired:'הבקשה פגה',stopped:'המעקב נעצר'} as Record<string,string>)[walkStatus]??walkStatus}</RtlText>:null}
   {mode==='home'&&command&&trackingWalkId===command.walk_id?<View accessibilityLiveRegion="polite" style={styles.active}><RtlText style={styles.activeText}>מעקב GPS הופעל מרחוק על ידי מנהל המשפחה{targetName?` · ${targetName}`:''}</RtlText><RtlText accessibilityRole="text" style={styles.status}>מעקב GPS פעיל במכשיר הזה</RtlText><Pressable accessibilityRole="button" onPress={()=>void stop()} style={styles.stop}><RtlText style={styles.stopText}>עצירת מעקב GPS</RtlText></Pressable></View>:null}
