@@ -1729,7 +1729,7 @@ const styles = StyleSheet.create({
     // own comments) so this crops only a little more off their bottom
     // (paws/tail), never their face/head — see docs/design/MASCOT_SPEC.md's
     // identity rules on what must stay recognizable in every frame.
-    height: 148,
+    height: 124,
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 34,
     // The scene is rendered once by dashboardHeroBackdrop across the entire top shell.
@@ -1772,16 +1772,16 @@ const styles = StyleSheet.create({
   dashboardHeroCopy: { width: '52%', alignItems: 'flex-end', alignSelf: 'flex-start', paddingTop: 38, paddingHorizontal: spacing.md, zIndex: 2 },
   dashboardHeroEyebrow: { fontSize: 16, color: '#27376F', fontWeight: '700', textAlign: 'right' },
   dashboardHeroName: { fontSize: 30, lineHeight: 36, color: '#16245B', fontWeight: '900', textAlign: 'right' },
-  dashboardAddWalk: { minHeight: 52, borderRadius: 22, backgroundColor: '#F0FAF8', borderWidth: 1, borderColor: '#D5EEE9', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
+  dashboardAddWalk: { minHeight: 46, borderRadius: 22, backgroundColor: '#F0FAF8', borderWidth: 1, borderColor: '#D5EEE9', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm },
   dashboardAddWalkIcon: { width: 34, height: 34, borderRadius: 17, textAlign: 'center', lineHeight: 34, fontSize: 25, fontWeight: '500', color: '#FFFFFF', backgroundColor: '#12A5AB' },
   dashboardAddWalkCopy: { flex: 1, alignItems: 'flex-end' },
   dashboardAddWalkTitle: { fontSize: 17, lineHeight: 21, fontWeight: '700', color: '#0E7E84', textAlign: 'right' },
   dashboardAddWalkSubtitle: { marginTop: 1, fontSize: 11, lineHeight: 15, fontWeight: '500', color: colors.textSecondary, textAlign: 'right' },
   dashboardAddWalkChevron: { fontSize: 22, color: '#0E7E84' },
-  dashboardSection: { gap: 5 },
+  dashboardSection: { gap: 3 },
   dashboardExternalHeading: { minHeight: 24, paddingHorizontal: 4, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   dashboardExternalTitle: { fontSize: 17, fontWeight: '800', color: '#17345B', textAlign: 'right' },
-  dashboardLastWalk: { minHeight: 82, borderRadius: 24, backgroundColor: '#F4FAFD', borderWidth: 1, borderColor: '#DCECF2', paddingHorizontal: spacing.md, paddingVertical: 7, shadowColor: '#6A5D45', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
+  dashboardLastWalk: { minHeight: 76, borderRadius: 24, backgroundColor: '#F4FAFD', borderWidth: 1, borderColor: '#DCECF2', paddingHorizontal: spacing.md, paddingVertical: 5, shadowColor: '#6A5D45', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
   dashboardLastWalkHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
   dashboardLastWalkTitle: { fontSize: 17, fontWeight: '700', color: '#17345B', textAlign: 'right' },
   dashboardLastWalkDate: { fontSize: 11, fontWeight: '500', color: colors.textSecondary },
