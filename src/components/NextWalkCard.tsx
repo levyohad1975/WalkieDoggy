@@ -69,6 +69,7 @@ interface NextWalkCardProps {
   /** Admin-only direct reassignment/edit ("לערוך" / "להחליף תור"). Omit entirely for a Member — see requirement 6. */
   onSwap?: () => void;
   onEdit?: () => void;
+  remoteGpsAction?: React.ReactNode;
   /** Member-facing contextual actions (requirement 4) — approval-gated, never an immediate change. */
   onRequestSwap?: () => void;
   onRequestTimeChange?: () => void;
@@ -108,6 +109,7 @@ export function NextWalkCard({
   canResolve = true,
   onSwap,
   onEdit,
+  remoteGpsAction,
   onRequestSwap,
   onRequestTimeChange,
   requestStatusLine,
@@ -364,6 +366,7 @@ export function NextWalkCard({
           ) : null}
         </View>
       ) : null}
+      {remoteGpsAction}
       {onRequestSwap || onRequestTimeChange ? (
         <View style={styles.linkRow}>
           {onRequestSwap ? (
