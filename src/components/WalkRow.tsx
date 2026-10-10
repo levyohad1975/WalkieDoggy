@@ -143,6 +143,8 @@ export function WalkRow({
   // 07:18"). Computed only in historyCompact mode; every other caller of
   // this component is unaffected.
   const historyTimingLine = historyCompact ? walkHistoryTimingLine(walk) : null;
+  // In completed history, show the actual walker rather than the originally scheduled assignee.
+  const displayedWalker = historyCompact && walk.status === 'done' && completedBy ? completedBy : responsible;
 
   return (
     <Pressable
@@ -165,8 +167,8 @@ export function WalkRow({
           </RtlText>
         </View>
 
-        {responsible ? (
-          <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={32} />
+        {displayedWalker ? (
+          <Avatar emoji={displayedWalker.avatar} color={displayedWalker.color} photoUrl={displayedWalker.photoUrl} size={32} />
         ) : null}
 
         <View style={styles.middle}>
@@ -175,8 +177,8 @@ export function WalkRow({
               never `adjustsFontSizeToFit` (that was the source of the
               inconsistent-font-size bug this redesign fixes). */}
           <RtlText style={[styles.name, historyCompact && styles.nameHistory]} numberOfLines={1} ellipsizeMode="tail">
-            {responsible?.name ?? 'לא הוגדר'}
-            {responsible?.removedAt ? ' (הוסר)' : ''}
+            {displayedWalker?.name ?? 'לא הוגדר'}
+            {displayedWalker?.removedAt ? ' (הוסר)' : ''}
           </RtlText>
           </View>
           <View style={styles.metadataSlot}>
