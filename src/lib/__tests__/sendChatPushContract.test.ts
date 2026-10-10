@@ -60,7 +60,7 @@ describe('send-chat-push — server-derived, de-duplicated chat notifications (s
   it('sends the payload shape the app routes to the Chat tab, and de-duplicates web destinations', () => {
     expect(code).toContain("const data = { type: 'chat', conversationId: ctx.conversation_id, messageId: ctx.message_id };");
     expect(code).toContain('new Map((webRows ?? []).map((sub: any) => [sub.endpoint, sub]))');
-    expect(code).toContain('tag: `chat-${ctx.conversation_id}`');
+    expect(code).toContain('tag: `chat-${ctx.message_id}`');
   });
 
   it('builds the notification text from database values only', () => {
