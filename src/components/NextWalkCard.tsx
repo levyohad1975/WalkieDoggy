@@ -182,7 +182,7 @@ export function NextWalkCard({
   }, [walk.id, walk.scheduledTime, walk.date, walk.status, dogName, dogSex, responsible?.name]);
 
   return (
-    <View style={[styles.card, tone === 'dashboard' && styles.cardDashboard, isWeb && styles.webCard, isActive && styles.cardActive, overdue && !isActive && styles.cardOverdue]}>
+    <View style={[styles.card, tone === 'dashboard' && styles.cardDashboard, isWeb && styles.webCard, isWeb && tone === 'dashboard' && styles.webDashboardCompact, isActive && styles.cardActive, overdue && !isActive && styles.cardOverdue]}>
       <View style={[styles.eyebrowRow, isWeb && styles.webEyebrowRow]}>
         {showDogPhoto ? <DogPhoto photoUrl={dogPhotoUrl} size={isWeb ? 60 : 72} /> : null}
         <RtlText style={styles.eyebrow} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
@@ -424,6 +424,8 @@ const styles = StyleSheet.create({
   // minHeight (tap targets stay exactly as large as before).
   cardDashboard: { backgroundColor: '#E9EFFD', borderColor: '#BFE3F4', borderRadius: 28, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3, paddingHorizontal: 14, paddingVertical: 6 },
   webCard: { borderRadius: radii.xl, paddingHorizontal: 24, paddingVertical: 18 },
+  // Web is the iPhone Safari PWA too: override webCard's generous 18px padding only for Dashboard.
+  webDashboardCompact: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 8 },
   cardActive: { backgroundColor: colors.successSoft, borderColor: colors.success + '55' },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
   eyebrowRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), alignItems: 'center', gap: 8, marginBottom: 4 },
