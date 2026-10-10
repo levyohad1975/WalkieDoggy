@@ -17,9 +17,8 @@
     data: payload.data || {},
   };
 
-  // Family Chat: the server tags every message of one conversation alike, so
-  // a burst of messages replaces the previous banner instead of stacking a
-  // pile of them, while still alerting again for each new message. Pushes
+  // Family Chat: the server tags every message uniquely, so a newer message
+  // does not replace a still-visible notification for an earlier one. Pushes
   // without a tag (walk reminders, requests) behave exactly as before.
   if (typeof payload.tag === 'string' && payload.tag) {
     options.tag = payload.tag;

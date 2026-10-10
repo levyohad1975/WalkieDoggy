@@ -743,8 +743,42 @@ describe('chatStore', () => {
       await flush();
 
       await expect(store().remove('m1')).resolves.toBe(false);
-      expect(store().actionError).toBe('רק מנהל/ת יכולים לבצע פעולה זו.');
+      expect(store().actionError).toBe('רק מי ששלח/ה את ההודעה יכול/ה למחוק אותה.');
       expect(thread(FAMILY).messages[0].body).toBe('הודעה רגילה');
+    });
+
+    it('a regular member removes their own message through the server-authoritative transport', async () => {
+      fake.state.messages.push(fakeChatMessage({ id: 'mine', senderUserId: 'user-me', body: 'שלי' }));
+      await store().start('family-a:user-me:self');
+      store().openConversation(FAMILY);
+      await flush();
+      await expect(store().remove('mine')).resolves.toBe(true);
+      expect(thread(FAMILY).messages[0]).toMatchObject({ body: '', deletedByUserId: 'user-me' });
+    });
+
+    it('a profile clear hides old messages on this session and from a clear event on another device', async () => {
+      fake.state.messages.push(fakeChatMessage({ id: 'old-1', createdAt: '2026-10-09T10:00:00.000Z' }));
+      await store().start('family-a:user-me:self');
+      store().openConversation(FAMILY);
+      await flush();
+      await expect(store().clearForMe()).resolves.toBe(true);
+      await flush();
+      expect(thread(FAMILY).messages).toEqual([]);
+      fake.activeSubscriptions()[0].handlers.onConversationCleared(FAMILY, '2026-10-09T12:00:00.000Z');
+      await flush();
+      expect(thread(FAMILY).messages).toEqual([]);
+    });
+
+    it('a family admin clears all messages after the RPC confirms authorization', async () => {
+      use(createFakeChatTransport({ conversations: [fakeChatConversation({ canModerate: true })] }));
+      fake.state.messages.push(fakeChatMessage({ id: 'family-1', body: 'היסטוריה' }));
+      await store().start('family-a:user-admin:self');
+      store().openConversation(FAMILY);
+      await flush();
+      await expect(store().clearForEveryone()).resolves.toBe(true);
+      await flush();
+      expect(thread(FAMILY).messages).toEqual([]);
+      expect(fake.state.messages[0]).toMatchObject({ body: '', deletedByUserId: 'user-me' });
     });
 
     it('mutes the open conversation optimistically and rolls back if the server refuses', async () => {

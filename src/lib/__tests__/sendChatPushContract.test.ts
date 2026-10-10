@@ -61,6 +61,7 @@ describe('send-chat-push — server-derived, de-duplicated chat notifications (s
     expect(code).toContain("const data = { type: 'chat', conversationId: ctx.conversation_id, messageId: ctx.message_id };");
     expect(code).toContain('new Map((webRows ?? []).map((sub: any) => [sub.endpoint, sub]))');
     expect(code).toContain('tag: `chat-${ctx.message_id}`');
+    expect(code).toContain('collapseId: `chat-${ctx.message_id}`');
   });
 
   it('builds the notification text from database values only', () => {
@@ -84,11 +85,12 @@ describe('send-chat-push — server-derived, de-duplicated chat notifications (s
     expect(client).toContain("supabase.functions.invoke('send-chat-push', { body: { messageId } })");
   });
 
-  it('the service worker collapses a conversation\'s notifications by tag without changing untagged pushes', () => {
+  it('the service worker gives every tagged chat message an independent visible notification', () => {
     const sw = fs.readFileSync(path.join(root, 'public', 'sw.js'), 'utf8');
     expect(sw).toContain("if (typeof payload.tag === 'string' && payload.tag) {");
     expect(sw).toContain('options.tag = payload.tag;');
     expect(sw).toContain('options.renotify = true;');
+    expect(sw).toContain('every message uniquely');
     // The pre-existing options are untouched.
     expect(sw).toContain("icon: '/icon-192.png',");
     expect(sw).toContain('data: payload.data || {},');

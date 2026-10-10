@@ -91,9 +91,10 @@ interface MessageRowProps {
   /** This viewer may remove this message (family: a manager; private: its sender). */
   canRemove: boolean;
   selected: boolean;
+  selectionMode: boolean;
   sendError?: string;
   imageMaxWidth: number;
-  onSelect: (messageId: string | null) => void;
+  onSelect: (messageId: string) => void;
   onRequestDelete: (message: ChatMessage) => void;
   onRetry: (messageId: string) => void;
   onDiscard: (messageId: string) => void;
@@ -106,6 +107,7 @@ const MessageRow = React.memo(function MessageRow({
   isPrivate,
   canRemove,
   selected,
+  selectionMode,
   sendError,
   imageMaxWidth,
   onSelect,
@@ -148,7 +150,9 @@ const MessageRow = React.memo(function MessageRow({
         </RtlText>
       ) : null}
       {removed ? (
-        <RtlText style={styles.removedText}>{isPrivate ? 'ההודעה נמחקה' : 'ההודעה הוסרה על ידי מנהל/ת'}</RtlText>
+        <RtlText style={styles.removedText}>
+          {isPrivate || message.deletedByUserId === message.senderUserId ? 'ההודעה נמחקה' : 'ההודעה הוסרה על ידי מנהל/ת'}
+        </RtlText>
       ) : (
         <>
           {hasImage ? (
@@ -157,6 +161,7 @@ const MessageRow = React.memo(function MessageRow({
               maxWidth={imageMaxWidth}
               senderName={isMine ? 'אני' : sender.name}
               onOpen={onOpenImage}
+              onLongPress={() => onSelect(message.id)}
               onCancelUpload={onDiscard}
             />
           ) : null}
@@ -194,8 +199,9 @@ const MessageRow = React.memo(function MessageRow({
         ) : null}
         {removable && !hasImage ? (
           <Pressable
-            onPress={() => onSelect(selected ? null : message.id)}
+            onPress={() => onSelect(message.id)}
             onLongPress={() => onSelect(message.id)}
+            delayLongPress={350}
             accessibilityRole="button"
             accessibilityLabel={accessibilityLabel}
             accessibilityHint="הקשה מציגה אפשרויות להודעה"
@@ -222,13 +228,25 @@ const MessageRow = React.memo(function MessageRow({
             style={styles.rowAction}
             hitSlop={8}
           >
-            <RtlText style={styles.rowActionMuted}>אפשרויות</RtlText>
+              <RtlText style={styles.rowActionMuted}>{selected ? 'נבחרה למחיקה' : 'אפשרויות'}</RtlText>
           </Pressable>
         </View>
       ) : null}
 
-      {selected && removable ? (
+      {removable && (selectionMode || selected) ? (
         <View style={[styles.rowActions, showSender && styles.rowActionsIndented]}>
+          <Pressable
+            onPress={() => onSelect(message.id)}
+            accessibilityRole="checkbox"
+            accessibilityLabel={selected ? 'ביטול בחירת ההודעה' : 'בחירת ההודעה למחיקה'}
+            accessibilityState={{ checked: selected }}
+            style={styles.selectionCheck}
+          >
+            <Svg width={20} height={20} viewBox="0 0 24 24" accessibilityElementsHidden>
+              <Circle cx="12" cy="12" r="9" fill={selected ? colors.primary : colors.surface} stroke={selected ? colors.primary : colors.textSecondary} strokeWidth={2} />
+              {selected ? <Path d="m7.5 12.5 3 3 6-7" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" fill="none" /> : null}
+            </Svg>
+          </Pressable>
           <Pressable
             onPress={() => onRequestDelete(message)}
             accessibilityRole="button"
@@ -240,7 +258,7 @@ const MessageRow = React.memo(function MessageRow({
           </Pressable>
           {hasImage ? (
             <Pressable
-              onPress={() => onSelect(null)}
+              onPress={() => onSelect(message.id)}
               accessibilityRole="button"
               accessibilityLabel="סגירת האפשרויות"
               style={styles.rowAction}
@@ -311,6 +329,9 @@ export function ChatThread({ conversation, users, showBack, keyboardPadding }: C
   const retry = useChatStore((s) => s.retry);
   const discard = useChatStore((s) => s.discard);
   const remove = useChatStore((s) => s.remove);
+  const removeMany = useChatStore((s) => s.removeMany);
+  const clearForMe = useChatStore((s) => s.clearForMe);
+  const clearForEveryone = useChatStore((s) => s.clearForEveryone);
   const setMuted = useChatStore((s) => s.setMuted);
   const closeConversation = useChatStore((s) => s.closeConversation);
   const clearActionError = useChatStore((s) => s.clearActionError);
@@ -319,9 +340,13 @@ export function ChatThread({ conversation, users, showBack, keyboardPadding }: C
   const isPrivate = conversation.kind === 'direct';
 
   const [draft, setDraft] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<ChatMessage | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const selectionMode = selectedIds.size > 0;
+  const [deleteTarget, setDeleteTarget] = useState<ChatMessage[] | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [showConversationActions, setShowConversationActions] = useState(false);
+  const [clearForMeVisible, setClearForMeVisible] = useState(false);
+  const [clearEveryoneStep, setClearEveryoneStep] = useState<0 | 1 | 2>(0);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [attachSheetVisible, setAttachSheetVisible] = useState(false);
   const [pickedImage, setPickedImage] = useState<PreparedChatImage | null>(null);
@@ -424,12 +449,21 @@ export function ChatThread({ conversation, users, showBack, keyboardPadding }: C
     setDraft(text);
   }, []);
 
+  const toggleSelected = useCallback((messageId: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(messageId)) next.delete(messageId);
+      else next.add(messageId);
+      return next;
+    });
+  }, []);
+
   const handleSend = useCallback(() => {
     const text = draftRef.current;
     const result = send(text);
     if (!result.ok) return;
     updateDraft('');
-    setSelectedId(null);
+    setSelectedIds(new Set());
     scrollToLatest(true);
   }, [send, updateDraft, scrollToLatest]);
 
@@ -504,11 +538,41 @@ export function ChatThread({ conversation, users, showBack, keyboardPadding }: C
   const confirmDelete = useCallback(async () => {
     if (!deleteTarget || deleting) return;
     setDeleting(true);
-    await remove(deleteTarget.id);
+    if (deleteTarget.length === 1) await remove(deleteTarget[0].id);
+    else await removeMany(deleteTarget.map((message) => message.id));
     setDeleting(false);
     setDeleteTarget(null);
-    setSelectedId(null);
-  }, [deleteTarget, deleting, remove]);
+    setSelectedIds(new Set());
+  }, [deleteTarget, deleting, remove, removeMany]);
+
+  const confirmClearForMe = useCallback(async () => {
+    if (deleting) return;
+    setDeleting(true);
+    const cleared = await clearForMe();
+    setDeleting(false);
+    if (cleared) {
+      setClearForMeVisible(false);
+      setShowConversationActions(false);
+      setSelectedIds(new Set());
+    }
+  }, [clearForMe, deleting]);
+
+  const confirmClearForEveryone = useCallback(async () => {
+    if (deleting) return;
+    if (clearEveryoneStep === 1) {
+      setClearEveryoneStep(2);
+      return;
+    }
+    if (clearEveryoneStep !== 2) return;
+    setDeleting(true);
+    const cleared = await clearForEveryone();
+    setDeleting(false);
+    if (cleared) {
+      setClearEveryoneStep(0);
+      setShowConversationActions(false);
+      setSelectedIds(new Set());
+    }
+  }, [clearEveryoneStep, clearForEveryone, deleting]);
 
   const renderItem = useCallback(
     ({ item }: { item: ChatListItem }) => {
@@ -534,19 +598,20 @@ export function ChatThread({ conversation, users, showBack, keyboardPadding }: C
           item={item}
           sender={sender}
           isPrivate={isPrivate}
-          canRemove={isPrivate ? item.isMine : conversation.canModerate}
-          selected={selectedId === item.message.id}
+          canRemove={isPrivate ? item.isMine : conversation.canModerate || item.isMine}
+          selected={selectedIds.has(item.message.id)}
+          selectionMode={selectionMode}
           sendError={sendErrors[item.message.id]}
           imageMaxWidth={imageMaxWidth}
-          onSelect={setSelectedId}
-          onRequestDelete={setDeleteTarget}
+          onSelect={toggleSelected}
+          onRequestDelete={(message) => setDeleteTarget([message])}
           onRetry={retry}
           onDiscard={discard}
           onOpenImage={setViewerMessage}
         />
       );
     },
-    [usersById, isPrivate, conversation.canModerate, selectedId, sendErrors, imageMaxWidth, retry, discard]
+    [usersById, isPrivate, conversation.canModerate, selectedIds, sendErrors, imageMaxWidth, retry, discard, toggleSelected]
   );
 
   const readOnlyReason = impersonatingUserId
@@ -563,6 +628,15 @@ export function ChatThread({ conversation, users, showBack, keyboardPadding }: C
   const header = (
     <View style={[styles.headerBand, isPrivate && styles.headerBandPrivate]}>
       <View style={styles.header}>
+        <Pressable
+          onPress={() => setShowConversationActions((visible) => !visible)}
+          accessibilityRole="button"
+          accessibilityLabel="אפשרויות שיחה"
+          accessibilityState={{ expanded: showConversationActions }}
+          style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
+        >
+          <RtlText style={styles.headerMenuLabel}>⋯</RtlText>
+        </Pressable>
         {isSupabaseConfigured && thread.status === 'ready' ? (
           <Pressable
             onPress={() => void setMuted(!conversation.notificationsMuted)}
@@ -708,6 +782,36 @@ export function ChatThread({ conversation, users, showBack, keyboardPadding }: C
       >
         {header}
 
+        {selectionMode && thread.status === 'ready' ? (
+          <View style={styles.selectionToolbar}>
+            <RtlText style={styles.selectionLabel}>{`נבחרו ${selectedIds.size} הודעות`}</RtlText>
+            <Pressable
+              onPress={() => setDeleteTarget(messages.filter((message) => selectedIds.has(message.id) && !message.deletedAt))}
+              accessibilityRole="button"
+              accessibilityLabel={`מחיקת ${selectedIds.size} הודעות נבחרות`}
+              style={styles.selectionDelete}
+            >
+              <RtlText style={styles.rowActionDanger}>מחיקת הודעות</RtlText>
+            </Pressable>
+            <Pressable onPress={() => setSelectedIds(new Set())} accessibilityRole="button" style={styles.rowAction}>
+              <RtlText style={styles.rowActionMuted}>ביטול בחירה</RtlText>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {showConversationActions && !selectionMode ? (
+          <View style={styles.conversationActions}>
+            <Pressable onPress={() => setClearForMeVisible(true)} accessibilityRole="button" style={styles.conversationAction}>
+              <RtlText style={styles.conversationActionText}>ניקוי השיחה אצלי</RtlText>
+            </Pressable>
+            {conversation.kind === 'family' && conversation.canModerate ? (
+              <Pressable onPress={() => setClearEveryoneStep(1)} accessibilityRole="button" style={styles.conversationAction}>
+                <RtlText style={styles.conversationActionDanger}>מחיקת השיחה לכולם</RtlText>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+
         <View style={styles.banners}>
         {!online ? (
           <View style={[styles.banner, styles.bannerWarning]}>
@@ -839,11 +943,11 @@ export function ChatThread({ conversation, users, showBack, keyboardPadding }: C
 
       <ConfirmModal
         visible={deleteTarget !== null}
-        title="למחוק את ההודעה?"
+        title={deleteTarget?.length === 1 ? 'למחוק את ההודעה?' : `למחוק ${deleteTarget?.length ?? 0} הודעות?`}
         message={
           isPrivate
-            ? 'ההודעה תימחק אצל שניכם, ואי אפשר יהיה לשחזר אותה. תמונה שכבר נשמרה במכשיר אחר תישאר שם.'
-            : 'ההודעה תוסר אצל כל בני המשפחה, ואי אפשר יהיה לשחזר אותה. תמונה שכבר נשמרה במכשיר אחר תישאר שם.'
+            ? 'ההודעות יימחקו אצל שניכם, ואי אפשר יהיה לשחזר אותן. עותק שכבר נשמר במכשיר אחר עשוי להישאר שם.'
+            : 'ההודעות יוסרו אצל כל בני המשפחה, ואי אפשר יהיה לשחזר אותן. עותק שכבר נשמר במכשיר אחר עשוי להישאר שם.'
         }
         confirmLabel="מחיקה"
         cancelLabel="ביטול"
@@ -852,6 +956,28 @@ export function ChatThread({ conversation, users, showBack, keyboardPadding }: C
         onCancel={() => {
           if (!deleting) setDeleteTarget(null);
         }}
+      />
+      <ConfirmModal
+        visible={clearForMeVisible}
+        title="לנקות את השיחה אצלך?"
+        message="ההיסטוריה תוסתר רק בפרופיל הזה. בני המשפחה האחרים עדיין יראו את ההודעות והתמונות."
+        confirmLabel="ניקוי אצלי"
+        cancelLabel="ביטול"
+        loading={deleting}
+        onConfirm={() => void confirmClearForMe()}
+        onCancel={() => { if (!deleting) setClearForMeVisible(false); }}
+      />
+      <ConfirmModal
+        visible={clearEveryoneStep > 0}
+        title={clearEveryoneStep === 1 ? 'למחוק את השיחה לכולם?' : 'אישור אחרון: למחוק לצמיתות?'}
+        message={clearEveryoneStep === 1
+          ? 'כל ההודעות והתמונות בצ׳אט המשפחתי יימחקו לכל בני המשפחה ולא ניתן יהיה לשחזר אותן. נדרשת עוד לחיצה אחת לאישור.'
+          : 'הפעולה תמחק את תוכן ההודעות ואת קובצי התמונות מהשרת. להמשיך?'}
+        confirmLabel={clearEveryoneStep === 1 ? 'המשך לאישור נוסף' : 'כן, למחוק לכולם'}
+        cancelLabel="ביטול"
+        loading={deleting}
+        onConfirm={() => void confirmClearForEveryone()}
+        onCancel={() => { if (!deleting) setClearEveryoneStep(0); }}
       />
     </View>
   );
@@ -909,6 +1035,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  headerMenuLabel: { fontSize: 23, lineHeight: 24, color: colors.primaryDark, fontWeight: '800' },
+  selectionToolbar: {
+    flexDirection: 'row-reverse', alignItems: 'center', flexWrap: 'wrap', gap: spacing.md,
+    paddingHorizontal: layout.screenPadding, paddingVertical: spacing.sm,
+    backgroundColor: colors.primarySoft, borderBottomWidth: 1, borderBottomColor: '#C5EBEE',
+  },
+  selectionLabel: { ...typography.meta, color: colors.textPrimary, fontWeight: '700' },
+  selectionDelete: { minHeight: layout.minTouchTarget, justifyContent: 'center', paddingHorizontal: spacing.sm },
+  selectionCheck: { width: 36, height: layout.minTouchTarget, alignItems: 'center', justifyContent: 'center' },
+  conversationActions: {
+    flexDirection: 'row-reverse', flexWrap: 'wrap', gap: spacing.md,
+    paddingHorizontal: layout.screenPadding, paddingVertical: spacing.sm,
+    backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border,
+  },
+  conversationAction: { minHeight: layout.minTouchTarget, justifyContent: 'center', paddingHorizontal: spacing.sm },
+  conversationActionText: { ...typography.meta, color: colors.primaryDark, fontWeight: '700' },
+  conversationActionDanger: { ...typography.meta, color: colors.danger, fontWeight: '800' },
 
   banners: {
     width: '100%',

@@ -177,16 +177,24 @@ describe('lib/chatLocal — demo-mode transport mirrors the server contract', ()
     expect((await familyOf(chat)).unreadCount).toBe(0);
   });
 
-  it('only an admin can remove a family message, and removal erases the text', async () => {
+  it('a family member can remove their own message and an admin can remove another member\'s message', async () => {
     const chat = createLocalChatTransport();
     const { conversationId } = await familyOf(chat);
     await chat.send(conversationId, 'id-1', 'הודעה');
 
     signInAs('user-ima', 'member');
-    await expect(chat.remove('id-1')).rejects.toThrow('admin permission required');
+    await expect(chat.remove('id-1')).rejects.toThrow('only the sender can remove this message');
+    const own = await chat.send(conversationId, 'id-own', 'הודעה שלי');
+    const ownRemoved = await chat.remove(own.id);
+    expect(ownRemoved).toMatchObject({ body: '', deletedByUserId: 'user-ima' });
 
     signInAs('user-aba', 'admin');
-    const removed = await chat.remove('id-1');
+    const otherMessage = await chat.send(conversationId, 'id-2', 'הודעה אחרת');
+    signInAs('user-ima', 'member');
+    await expect(chat.remove(otherMessage.id)).rejects.toThrow('only the sender can remove this message');
+
+    signInAs('user-aba', 'admin');
+    const removed = await chat.remove(otherMessage.id);
     expect(removed).toMatchObject({ body: '', deletedByUserId: 'user-aba' });
     expect(removed.deletedAt).toBeTruthy();
   });
@@ -196,13 +204,40 @@ describe('lib/chatLocal — demo-mode transport mirrors the server contract', ()
     const { conversationId } = await familyOf(chat);
     const onMessage = jest.fn();
     const onStatus = jest.fn();
-    const unsubscribe = chat.subscribe({ onMessage, onStatus });
+    const unsubscribe = chat.subscribe({ onMessage, onStatus, onConversationCleared: jest.fn() });
     expect(onStatus).toHaveBeenCalledWith('live');
 
     await chat.send(conversationId, 'id-1', 'אחת');
     unsubscribe();
     await chat.send(conversationId, 'id-2', 'שתיים');
     expect(onMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('bulk deletion removes message bodies and sent image references', async () => {
+    const chat = createLocalChatTransport();
+    const { conversationId } = await familyOf(chat);
+    const path = `${conversationId}/user-aba/img-bulk.jpg`;
+    await chat.uploadAttachment(path, image, () => undefined).promise;
+    await chat.sendImage(conversationId, 'img-bulk', { path, width: 800, height: 600 }, 'תמונה');
+    await chat.send(conversationId, 'txt-bulk', 'טקסט');
+    const removed = await chat.removeMany(['img-bulk', 'txt-bulk']);
+    expect(removed).toHaveLength(2);
+    expect(removed.every((message) => message.body === '' && message.deletedAt)).toBe(true);
+    await expect(chat.getAttachmentUrl(path)).rejects.toThrow('chat image is not available');
+  });
+
+  it('clears a conversation only for the requesting member unless an admin clears it for everyone', async () => {
+    const chat = createLocalChatTransport();
+    const { conversationId } = await familyOf(chat);
+    await chat.send(conversationId, 'clear-1', 'היסטוריה קיימת');
+    signInAs('user-ima', 'member');
+    await chat.clearForMe(conversationId);
+    expect(await chat.listMessages(conversationId, { limit: 20 })).toEqual([]);
+    signInAs('user-aba', 'admin');
+    expect(await chat.listMessages(conversationId, { limit: 20 })).toHaveLength(1);
+    await expect(chat.clearForEveryone(conversationId)).resolves.toBe(1);
+    signInAs('user-ima', 'member');
+    expect(await chat.listMessages(conversationId, { limit: 20 })).toEqual([]);
   });
 
   describe('private conversations', () => {

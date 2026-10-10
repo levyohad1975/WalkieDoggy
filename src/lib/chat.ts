@@ -35,6 +35,8 @@ export type ChatLiveStatus = 'live' | 'reconnecting';
 export interface ChatSubscriptionHandlers {
   /** A new message, or a changed one (removal), in ANY conversation the caller can read. */
   onMessage: (message: ChatMessage) => void;
+  /** A conversation history was cleared for this profile on another device. */
+  onConversationCleared: (conversationId: string, clearedAt: string) => void;
   onStatus: (status: ChatLiveStatus) => void;
 }
 
@@ -70,6 +72,9 @@ export interface ChatTransport {
     body: string
   ): Promise<ChatMessage>;
   remove(messageId: string): Promise<ChatMessage>;
+  removeMany(messageIds: string[]): Promise<ChatMessage[]>;
+  clearForMe(conversationId: string): Promise<string>;
+  clearForEveryone(conversationId: string): Promise<number>;
   /** Returns the remaining unread count. */
   markRead(conversationId: string, readAt: string): Promise<number>;
   setMuted(conversationId: string, muted: boolean): Promise<boolean>;
@@ -345,6 +350,36 @@ export const supabaseChatTransport: ChatTransport = {
     return chatMessageFromRow(row);
   },
 
+  async removeMany(messageIds) {
+    const { data, error } = await requireSupabase().rpc('chat_delete_messages', { p_message_ids: messageIds });
+    if (error) rethrow(error);
+    const rows = Array.isArray(data) ? (data as ChatMessageRow[]) : [];
+    if (rows.length !== new Set(messageIds).size) throw new Error('chat message selection could not be confirmed');
+    void requireSupabase().functions.invoke('chat-attachment-cleanup', { body: {} }).catch(() => undefined);
+    return rows.map(chatMessageFromRow);
+  },
+
+  async clearForMe(conversationId) {
+    const { data, error } = await requireSupabase().rpc('chat_clear_conversation_for_me', {
+      p_conversation_id: conversationId,
+    });
+    if (error) rethrow(error);
+    if (typeof data !== 'string') throw new Error('conversation clear was not confirmed by the server');
+    return new Date(data).toISOString();
+  },
+
+  async clearForEveryone(conversationId) {
+    const { data, error } = await requireSupabase().rpc('chat_clear_family_conversation_for_everyone', {
+      p_conversation_id: conversationId,
+      p_confirm: true,
+    });
+    if (error) rethrow(error);
+    const count = Number(data);
+    if (!Number.isFinite(count)) throw new Error('conversation clear was not confirmed by the server');
+    void requireSupabase().functions.invoke('chat-attachment-cleanup', { body: {} }).catch(() => undefined);
+    return count;
+  },
+
   async markRead(conversationId, readAt) {
     const { data, error } = await requireSupabase().rpc('chat_mark_read', {
       p_conversation_id: conversationId,
@@ -386,6 +421,16 @@ export const supabaseChatTransport: ChatTransport = {
       const target = { schema: 'public', table: 'chat_messages' };
       channel.on('postgres_changes' as any, { event: 'INSERT', ...target }, deliver);
       channel.on('postgres_changes' as any, { event: 'UPDATE', ...target }, deliver);
+      channel.on(
+        'postgres_changes' as any,
+        { event: 'UPDATE', schema: 'public', table: 'chat_conversation_members' },
+        (payload: { new?: { conversation_id?: string; user_id?: string; cleared_at?: string | null } }) => {
+          const row = payload?.new;
+          if (row?.conversation_id && row.user_id && row.cleared_at) {
+            handlers.onConversationCleared(row.conversation_id, new Date(row.cleared_at).toISOString());
+          }
+        }
+      );
       channel.subscribe((status: string) => {
         if (closed) return;
         handlers.onStatus(status === 'SUBSCRIBED' ? 'live' : 'reconnecting');

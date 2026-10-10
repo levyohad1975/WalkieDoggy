@@ -36,13 +36,14 @@ interface LocalChatData {
   /** Keyed by `${conversationId}|${userId}`. */
   lastReadAt: Record<string, string>;
   muted: Record<string, boolean>;
+  clearedAt: Record<string, string>;
 }
 
 const storageKey = (familyId: string) => `walkie-doggy/chat/v2/${familyId}`;
 const familyConversationId = (familyId: string) => `local-family-chat:${familyId}`;
 const memberKey = (conversationId: string, userId: string) => `${conversationId}|${userId}`;
 
-const EMPTY: LocalChatData = { conversations: [], messages: [], lastReadAt: {}, muted: {} };
+const EMPTY: LocalChatData = { conversations: [], messages: [], lastReadAt: {}, muted: {}, clearedAt: {} };
 
 async function read(familyId: string): Promise<LocalChatData> {
   try {
@@ -54,12 +55,13 @@ async function read(familyId: string): Promise<LocalChatData> {
         messages: Array.isArray(parsed.messages) ? parsed.messages : [],
         lastReadAt: parsed.lastReadAt ?? {},
         muted: parsed.muted ?? {},
+        clearedAt: parsed.clearedAt ?? {},
       };
     }
   } catch {
     // Unreadable local data is treated as an empty chat.
   }
-  return { ...EMPTY, conversations: [], messages: [], lastReadAt: {}, muted: {} };
+  return { ...EMPTY, conversations: [], messages: [], lastReadAt: {}, muted: {}, clearedAt: {} };
 }
 
 async function write(familyId: string, data: LocalChatData): Promise<void> {
@@ -79,7 +81,8 @@ function canAccess(conversation: LocalConversation | undefined, userId: string):
 
 function stateOf(data: LocalChatData, conversation: LocalConversation, familyId: string, userId: string, isAdmin: boolean): ChatConversationState {
   const lastRead = data.lastReadAt[memberKey(conversation.id, userId)] ?? new Date().toISOString();
-  const messages = data.messages.filter((m) => m.conversationId === conversation.id).sort(compareChatMessages);
+  const clearedAt = data.clearedAt[memberKey(conversation.id, userId)];
+  const messages = data.messages.filter((m) => m.conversationId === conversation.id && (!clearedAt || m.createdAt > clearedAt)).sort(compareChatMessages);
   const last = messages[messages.length - 1];
   return {
     conversationId: conversation.id,
@@ -201,7 +204,8 @@ export function createLocalChatTransport(): ChatTransport {
       const { familyId, userId } = identity();
       const data = await read(familyId);
       if (!canAccess(data.conversations.find((c) => c.id === conversationId), userId)) return [];
-      const sorted = data.messages.filter((m) => m.conversationId === conversationId).sort(compareChatMessages);
+      const clearedAt = data.clearedAt[memberKey(conversationId, userId)];
+      const sorted = data.messages.filter((m) => m.conversationId === conversationId && (!clearedAt || m.createdAt > clearedAt)).sort(compareChatMessages);
       const window = before ? sorted.filter((m) => m.createdAt <= before) : sorted;
       return window.slice(-limit);
     },
@@ -217,7 +221,7 @@ export function createLocalChatTransport(): ChatTransport {
       const conversation = current ? data.conversations.find((c) => c.id === current.conversationId) : undefined;
       if (!current || !canAccess(conversation, userId)) throw new Error('chat message not found');
       if (conversation.kind === 'family') {
-        if (!isAdmin) throw new Error('admin permission required');
+        if (!isAdmin && current.senderUserId !== userId) throw new Error('only the sender can remove this message');
       } else if (current.senderUserId !== userId) {
         throw new Error('only the sender can remove this message');
       }
@@ -234,6 +238,71 @@ export function createLocalChatTransport(): ChatTransport {
       await write(familyId, data);
       emit(removed);
       return removed;
+    },
+
+    async removeMany(messageIds) {
+      const { familyId, userId, isAdmin } = identity();
+      const ids = [...new Set(messageIds)];
+      if (ids.length === 0 || ids.length > 100) throw new Error('invalid chat message selection');
+      const data = await read(familyId);
+      const selected = ids.map((id) => data.messages.findIndex((message) => message.id === id));
+      if (selected.some((index) => index < 0)) throw new Error('chat message not found');
+      const conversations = selected.map((index) => data.conversations.find((conversation) => conversation.id === data.messages[index].conversationId));
+      if (conversations.some((conversation) => !canAccess(conversation, userId)) || new Set(conversations.map((conversation) => conversation?.id)).size !== 1) {
+        throw new Error('chat conversation not found');
+      }
+      const conversation = conversations[0]!;
+      const messages = selected.map((index) => data.messages[index]);
+      if (messages.some((message) => conversation.kind === 'family' ? !isAdmin && message.senderUserId !== userId : message.senderUserId !== userId)) {
+        throw new Error('only the sender can remove this message');
+      }
+      const removed = messages.map((current) => {
+        if (current.deletedAt) return current;
+        if (current.attachment) files.delete(current.attachment.path);
+        const message = { ...current, body: '', attachment: undefined, deletedAt: new Date().toISOString(), deletedByUserId: userId };
+        data.messages[data.messages.findIndex((item) => item.id === current.id)] = message;
+        return message;
+      });
+      await write(familyId, data);
+      removed.forEach(emit);
+      return removed;
+    },
+
+    async clearForMe(conversationId) {
+      const { familyId, userId } = identity();
+      const data = await read(familyId);
+      if (!canAccess(data.conversations.find((c) => c.id === conversationId), userId)) throw new Error('chat conversation not found');
+      const clearedAt = new Date().toISOString();
+      data.clearedAt[memberKey(conversationId, userId)] = clearedAt;
+      data.lastReadAt[memberKey(conversationId, userId)] = clearedAt;
+      await write(familyId, data);
+      listeners.forEach((handlers) => handlers.onConversationCleared(conversationId, clearedAt));
+      return clearedAt;
+    },
+
+    async clearForEveryone(conversationId) {
+      const { familyId, userId, isAdmin } = identity();
+      const data = await read(familyId);
+      const conversation = data.conversations.find((c) => c.id === conversationId);
+      if (!canAccess(conversation, userId) || conversation.kind !== 'family') throw new Error('chat conversation not found');
+      if (!isAdmin) throw new Error('admin permission required');
+      const clearedAt = new Date().toISOString();
+      let count = 0;
+      data.messages = data.messages.map((message) => {
+        if (message.conversationId !== conversationId || message.deletedAt) return message;
+        count += 1;
+        if (message.attachment) files.delete(message.attachment.path);
+        const removed = { ...message, body: '', attachment: undefined, deletedAt: clearedAt, deletedByUserId: userId };
+        emit(removed);
+        return removed;
+      });
+      for (const member of useFamilyStore.getState().users.filter((u) => !u.removedAt)) {
+        data.clearedAt[memberKey(conversationId, member.id)] = clearedAt;
+        data.lastReadAt[memberKey(conversationId, member.id)] = clearedAt;
+      }
+      await write(familyId, data);
+      listeners.forEach((handlers) => handlers.onConversationCleared(conversationId, clearedAt));
+      return count;
     },
 
     async markRead(conversationId, readAt) {

@@ -186,8 +186,9 @@ Deno.serve(async (req: Request) => {
             data,
             sound: 'default',
             priority: 'high',
-            // Collapses a burst from one conversation on Android/iOS.
-            collapseId: `chat-${ctx.conversation_id}`,
+            // Keep every chat message independent; a conversation-wide
+            // collapse id made a burst overwrite older pending notifications.
+            collapseId: `chat-${ctx.message_id}`,
           }));
           const expoResponse = await fetch(EXPO_PUSH_URL, {
             method: 'POST',

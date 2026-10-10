@@ -74,6 +74,7 @@ export function createFakeChatTransport(
     conversations: (options.conversations ?? [fakeChatConversation({ userId })]).map((c) => ({ ...c, userId })),
     capabilities: options.capabilities ?? { privateConversations: true, images: true },
     messages: [] as ChatMessage[],
+    clearedAt: new Map<string, string>(),
     uploaded: new Set<string>(),
     sendCalls: [] as Array<{ conversationId: string; clientId: string; body: string }>,
     sendImageCalls: [] as Array<{ conversationId: string; clientId: string; path: string; width: number; height: number; body: string }>,
@@ -152,7 +153,7 @@ export function createFakeChatTransport(
     },
     async listMessages(conversationId, { before, limit }) {
       return state.messages
-        .filter((m) => m.conversationId === conversationId && (!before || m.createdAt <= before))
+        .filter((m) => m.conversationId === conversationId && m.createdAt > (state.clearedAt.get(`${conversationId}|${userId}`) ?? '') && (!before || m.createdAt <= before))
         .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
         .slice(-limit);
     },
@@ -170,13 +171,48 @@ export function createFakeChatTransport(
       const conversation = state.conversations.find((c) => c.conversationId === current.conversationId);
       if (!conversation) throw new Error('chat message not found');
       if (conversation.kind === 'family') {
-        if (!conversation.canModerate) throw new Error('admin permission required');
+        if (!conversation.canModerate && current.senderUserId !== userId) throw new Error('only the sender can remove this message');
       } else if (current.senderUserId !== state.userId) {
         throw new Error('only the sender can remove this message');
       }
       const removed: ChatMessage = { ...current, body: '', attachment: undefined, deletedAt: '2026-10-09T13:00:00.000Z', deletedByUserId: state.userId };
       record(removed);
       return removed;
+    },
+    async removeMany(messageIds) {
+      const ids = [...new Set(messageIds)];
+      for (const id of ids) {
+        const message = state.messages.find((m) => m.id === id);
+        if (!message) throw new Error('chat message not found');
+        const conversation = state.conversations.find((c) => c.conversationId === message.conversationId);
+        if (!conversation) throw new Error('chat message not found');
+        if ((conversation.kind === 'family' && !conversation.canModerate && message.senderUserId !== userId) ||
+            (conversation.kind !== 'family' && message.senderUserId !== userId)) throw new Error('only the sender can remove this message');
+      }
+      const removed: ChatMessage[] = [];
+      for (const id of ids) removed.push(await transport.remove(id));
+      return removed;
+    },
+    async clearForMe(conversationId) {
+      if (!state.conversations.some((c) => c.conversationId === conversationId)) throw new Error('chat conversation not found');
+      const clearedAt = new Date().toISOString();
+      state.clearedAt.set(`${conversationId}|${userId}`, clearedAt);
+      activeSubscriptions().forEach((s) => s.handlers.onConversationCleared(conversationId, clearedAt));
+      return clearedAt;
+    },
+    async clearForEveryone(conversationId) {
+      const conversation = state.conversations.find((c) => c.conversationId === conversationId);
+      if (!conversation || conversation.kind !== 'family') throw new Error('chat conversation not found');
+      if (!conversation.canModerate) throw new Error('admin permission required');
+      const clearedAt = new Date().toISOString();
+      let count = 0;
+      for (const message of state.messages.filter((m) => m.conversationId === conversationId && !m.deletedAt)) {
+        count += 1;
+        record({ ...message, body: '', attachment: undefined, deletedAt: clearedAt, deletedByUserId: userId });
+      }
+      state.clearedAt.set(`${conversationId}|${userId}`, clearedAt);
+      activeSubscriptions().forEach((s) => s.handlers.onConversationCleared(conversationId, clearedAt));
+      return count;
     },
     async markRead(conversationId, readAt) {
       state.markReadCalls.push({ conversationId, readAt });

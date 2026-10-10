@@ -109,6 +109,9 @@ interface ChatState {
   /** Removes an unsent message; for an image that is still uploading this cancels the upload. */
   discard: (messageId: string) => void;
   remove: (messageId: string) => Promise<boolean>;
+  removeMany: (messageIds: string[]) => Promise<boolean>;
+  clearForMe: () => Promise<boolean>;
+  clearForEveryone: () => Promise<boolean>;
   setMuted: (muted: boolean) => Promise<void>;
   setScreenActive: (active: boolean) => void;
   setOnline: (online: boolean) => void;
@@ -243,6 +246,11 @@ export const useChatStore = create<ChatState>((set, get) => {
       hasBeenLive = false;
       unsubscribe = transport.subscribe({
         onMessage: (message) => handleIncoming(token, message),
+        onConversationCleared: (conversationId, clearedAt) => {
+          if (!isCurrent(token)) return;
+          applyConversationClear(conversationId, clearedAt);
+          void get().refresh();
+        },
         onStatus: (live) => {
           if (!isCurrent(token)) return;
           const wasLive = get().live === 'live';
@@ -420,6 +428,16 @@ export const useChatStore = create<ChatState>((set, get) => {
   const activeConversation = (): ChatConversationState | undefined => {
     const { activeConversationId, conversations } = get();
     return activeConversationId ? conversations.find((c) => c.conversationId === activeConversationId) : undefined;
+  };
+
+  const applyConversationClear = (conversationId: string, clearedAt: string) => {
+    const clearedMs = Date.parse(clearedAt);
+    patchThread(conversationId, {
+      messages: threadOf(conversationId).messages.filter((message) => Date.parse(message.createdAt) > clearedMs),
+    });
+    setConversations(get().conversations.map((item) => item.conversationId === conversationId
+      ? { ...item, unreadCount: 0, lastReadAt: clearedAt, lastMessage: undefined, lastActivityAt: clearedAt }
+      : item));
   };
 
   const releaseSessionMedia = () => {
@@ -683,6 +701,63 @@ export const useChatStore = create<ChatState>((set, get) => {
       } catch (error) {
         if (!isCurrent(token)) return false;
         set({ actionError: friendlyErrorMessage(error, [], 'לא הצלחנו למחוק את ההודעה. נסו שוב.') });
+        return false;
+      }
+    },
+
+    removeMany: async (messageIds) => {
+      if (messageIds.length === 0) return false;
+      const token = generation;
+      try {
+        const removed = await getChatTransport().removeMany(messageIds);
+        if (!isCurrent(token)) return false;
+        const byConversation = new Map<string, ChatMessage[]>();
+        for (const message of removed) byConversation.set(message.conversationId, [...(byConversation.get(message.conversationId) ?? []), message]);
+        byConversation.forEach((items, conversationId) => {
+          patchThread(conversationId, { messages: mergeChatMessages(threadOf(conversationId).messages, items) });
+          items.forEach((message) => setConversations(applyMessageToConversations(get().conversations, message, { isNew: false, isBeingRead: true })));
+        });
+        return true;
+      } catch (error) {
+        if (!isCurrent(token)) return false;
+        set({ actionError: friendlyErrorMessage(error, [], 'לא הצלחנו למחוק את ההודעות. נסו שוב.') });
+        return false;
+      }
+    },
+
+    clearForMe: async () => {
+      const conversation = activeConversation();
+      if (!conversation) return false;
+      const token = generation;
+      try {
+        const clearedAt = await getChatTransport().clearForMe(conversation.conversationId);
+        if (!isCurrent(token)) return false;
+        applyConversationClear(conversation.conversationId, clearedAt);
+        await get().refresh();
+        return true;
+      } catch (error) {
+        if (!isCurrent(token)) return false;
+        set({ actionError: friendlyErrorMessage(error, [], 'לא הצלחנו לנקות את השיחה אצלכם. נסו שוב.') });
+        return false;
+      }
+    },
+
+    clearForEveryone: async () => {
+      const conversation = activeConversation();
+      if (!conversation || !conversation.canModerate || conversation.kind !== 'family') return false;
+      const token = generation;
+      try {
+        await getChatTransport().clearForEveryone(conversation.conversationId);
+        if (!isCurrent(token)) return false;
+        patchThread(conversation.conversationId, { messages: [] });
+        setConversations(get().conversations.map((item) => item.conversationId === conversation.conversationId
+          ? { ...item, unreadCount: 0, lastMessage: undefined }
+          : item));
+        await get().refresh();
+        return true;
+      } catch (error) {
+        if (!isCurrent(token)) return false;
+        set({ actionError: friendlyErrorMessage(error, [], 'לא הצלחנו לנקות את השיחה לכל המשפחה. נסו שוב.') });
         return false;
       }
     },

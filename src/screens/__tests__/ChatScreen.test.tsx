@@ -275,10 +275,13 @@ describe('ChatScreen', () => {
       expect(fake.state.sendCalls).toHaveLength(0);
     });
 
-    it('a regular member gets no removal controls in the family conversation — not even on their own message', async () => {
+    it('a regular member can remove their own message but never another member\'s', async () => {
       await renderThread(createFake({ messages: [msg({ id: 'm1', body: 'של אמא' }), msg({ id: 'm2', senderUserId: 'user-aba', body: 'שלי', createdAt: new Date(2026, 9, 9, 10, 1).toISOString() })] }));
-      expect(screen.queryByAccessibilityHint('הקשה מציגה אפשרויות להודעה')).toBeNull();
-      expect(screen.queryByText('מחיקת ההודעה')).toBeNull();
+      expect(screen.queryByLabelText('בחירת ההודעה למחיקה')).toBeNull();
+      fireEvent.press(screen.getByLabelText('אני: שלי. 10:01'));
+      expect(screen.getByLabelText('מחיקת ההודעה לכל בני המשפחה')).toBeTruthy();
+      fireEvent.press(screen.getByLabelText('מחיקת ההודעה לכל בני המשפחה'));
+      expect(screen.getByText('למחוק את ההודעה?')).toBeTruthy();
     });
 
     it('a manager can remove a message after confirming, and it then shows as removed', async () => {
@@ -295,6 +298,22 @@ describe('ChatScreen', () => {
       await waitFor(() => expect(fake.state.messages[0].deletedAt).toBeTruthy());
       expect(screen.queryByText('משהו לא מתאים')).toBeNull();
       expect(screen.getByText('ההודעה הוסרה על ידי מנהל/ת')).toBeTruthy();
+    });
+
+    it('long-press selection allows atomic bulk deletion of multiple own messages', async () => {
+      const fake = createFake({ messages: [
+        msg({ id: 'mine-1', senderUserId: 'user-aba', body: 'ראשונה' }),
+        msg({ id: 'mine-2', senderUserId: 'user-aba', body: 'שנייה', createdAt: new Date(2026, 9, 9, 10, 1).toISOString() }),
+      ] });
+      await renderThread(fake);
+      fireEvent(screen.getByLabelText('אני: ראשונה. 10:00'), 'longPress');
+      fireEvent.press(screen.getByLabelText('אני: שנייה. 10:01'));
+      expect(screen.getByText('נבחרו 2 הודעות')).toBeTruthy();
+      fireEvent.press(screen.getByLabelText('מחיקת 2 הודעות נבחרות'));
+      expect(screen.getByText('למחוק 2 הודעות?')).toBeTruthy();
+      await act(async () => { fireEvent.press(screen.getByText('מחיקה')); });
+      await waitFor(() => expect(fake.state.messages.every((message) => message.deletedAt)).toBe(true));
+      expect(screen.getAllByText('ההודעה נמחקה')).toHaveLength(2);
     });
 
     it('shows a message that arrives live from another device', async () => {

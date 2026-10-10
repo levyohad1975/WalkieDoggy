@@ -63,11 +63,12 @@ interface ChatImageBubbleProps {
   maxWidth: number;
   senderName: string;
   onOpen: (message: ChatMessage) => void;
+  onLongPress?: () => void;
   onCancelUpload: (messageId: string) => void;
 }
 
 /** The image inside a message bubble: sized from the stored dimensions so the list never jumps when it loads. */
-export function ChatImageBubble({ message, maxWidth, senderName, onOpen, onCancelUpload }: ChatImageBubbleProps) {
+export function ChatImageBubble({ message, maxWidth, senderName, onOpen, onLongPress, onCancelUpload }: ChatImageBubbleProps) {
   const attachment = message.attachment;
   const { state, reload } = useChatImageUri(message);
   // A signed URL can expire while the screen stays open: refetch once on a load failure.
@@ -83,6 +84,8 @@ export function ChatImageBubble({ message, maxWidth, senderName, onOpen, onCance
       {state.status === 'ready' ? (
         <Pressable
           onPress={() => onOpen(message)}
+          onLongPress={onLongPress}
+          delayLongPress={350}
           disabled={uploading}
           accessibilityRole="imagebutton"
           accessibilityLabel={`תמונה מאת ${senderName}. הקשה מציגה אותה במסך מלא`}
