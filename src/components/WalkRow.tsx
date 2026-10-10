@@ -398,8 +398,10 @@ const styles = StyleSheet.create({
   // so a long name/time combo ellipsizes rather than pushing the row taller
   // or squeezing `middle`.
   leftBlock: {
-    width: 56,
-    alignItems: 'flex-end',
+    // Reserve enough space for the widest status (including 'לא בוצע').
+    // The old 56px slot let the non-shrinking badge spill past the card edge.
+    width: 100,
+    alignItems: 'center',
     flexShrink: 0,
     gap: 3,
   },
