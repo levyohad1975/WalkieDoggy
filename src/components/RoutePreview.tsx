@@ -105,8 +105,11 @@ function buildMapHtml(points: number[][], expanded: boolean, live: boolean): str
   const coords = JSON.stringify(points);
   return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"><style>html,body,#map{margin:0;width:100%;height:100%;overflow:hidden} .maplibregl-control-container{font:10px system-ui} .maplibregl-ctrl-attrib{font-size:10px!important} .maplibregl-ctrl-bottom-right{max-width:100%}</style></head><body><div id="map"></div>${expanded ? '<button id="replay" style="position:absolute;z-index:5;top:12px;left:12px;border:0;border-radius:20px;padding:10px 16px;background:#fff;color:#183e48;font:600 14px system-ui">▶ הפעל מסלול</button>' : ''}<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script><script>
   const points = ${coords};
+  // MapLibre's RTL plugin performs Unicode bidi shaping for Hebrew labels on vector tiles.
+  // Do not reverse the text or mirror the map: both corrupt street names and route geometry.
+  if(maplibregl.setRTLTextPlugin){maplibregl.setRTLTextPlugin('https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js',true).catch(()=>{});}
   const map = new maplibregl.Map({
-    container:'map',style:'https://tiles.openfreemap.org/styles/positron',
+    container:'map',style:'https://tiles.openfreemap.org/styles/liberty',
     center:[points[0][1],points[0][0]],zoom:16,
     interactive:${expanded ? 'true' : 'false'},attributionControl:${expanded ? 'true' : 'false'}
   });
@@ -114,10 +117,10 @@ function buildMapHtml(points: number[][], expanded: boolean, live: boolean): str
     const coordinates=points.map(p=>[p[1],p[0]]);
     if(coordinates.length>1){
       map.addSource('walk-route',{type:'geojson',data:{type:'Feature',properties:{},geometry:{type:'LineString',coordinates}}});
-      map.addLayer({id:'walk-route-outline',type:'line',source:'walk-route',paint:{'line-color':'#ffffff','line-width':7,'line-opacity':0.95},layout:{'line-join':'round','line-cap':'round'}});
-      map.addLayer({id:'walk-route-line',type:'line',source:'walk-route',paint:{'line-color':'#12A5AB','line-width':3.5},layout:{'line-join':'round','line-cap':'round'}});
+      map.addLayer({id:'walk-route-outline',type:'line',source:'walk-route',paint:{'line-color':'#ffffff','line-width':8,'line-opacity':0.95},layout:{'line-join':'round','line-cap':'round'}});
+      map.addLayer({id:'walk-route-line',type:'line',source:'walk-route',paint:{'line-color':'#12A5AB','line-width':4.5},layout:{'line-join':'round','line-cap':'round'}});
       const bounds=coordinates.reduce((b,p)=>b.extend(p),new maplibregl.LngLatBounds(coordinates[0],coordinates[0]));
-      map.fitBounds(bounds,{padding:${expanded ? '48' : '10'},maxZoom:17,duration:0});
+      map.fitBounds(bounds,{padding:${expanded ? '56' : '18'},maxZoom:17,duration:0});
     }
     const marker=(coord,color,label)=>new maplibregl.Marker({color,scale:0.75}).setLngLat(coord).setPopup(new maplibregl.Popup({offset:16}).setText(label)).addTo(map);
     if(${expanded ? 'true' : 'false'})marker(coordinates[0],'#138A52','תחילת הטיול');
