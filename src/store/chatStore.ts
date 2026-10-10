@@ -744,7 +744,7 @@ export const useChatStore = create<ChatState>((set, get) => {
 
     clearForEveryone: async () => {
       const conversation = activeConversation();
-      if (!conversation || !conversation.canModerate || conversation.kind !== 'family') return false;
+      if (!conversation || !conversation.canModerate) return false;
       const token = generation;
       try {
         await getChatTransport().clearForEveryone(conversation.conversationId);
