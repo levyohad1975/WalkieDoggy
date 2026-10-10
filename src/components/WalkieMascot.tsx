@@ -58,9 +58,9 @@ import { AccessibilityInfo, Animated, Image, ImageSourcePropType, StyleSheet } f
  *      this component's public API.
  */
 
-export type MascotState = 'idle' | 'excited' | 'ready' | 'waiting' | 'concerned' | 'success';
+export type MascotState = 'idle' | 'excited' | 'ready' | 'waiting' | 'concerned' | 'success' | 'runIn';
 
-export const MASCOT_STATES: MascotState[] = ['idle', 'excited', 'ready', 'waiting', 'concerned', 'success'];
+export const MASCOT_STATES: MascotState[] = ['idle', 'excited', 'ready', 'waiting', 'concerned', 'success', 'runIn'];
 
 /**
  * BATCH 4 CORRECTION #1 (item 1) — a concrete, greppable/testable marker of
@@ -70,7 +70,7 @@ export const MASCOT_STATES: MascotState[] = ['idle', 'excited', 'ready', 'waitin
  * character animation the product requirement describes. See the module doc
  * comment above and MASCOT_ASSET_PRODUCTION_LIST below.
  */
-export const MASCOT_ANIMATION_STATUS = 'temporary-fallback-real-character-frames-required' as const;
+export const MASCOT_ANIMATION_STATUS = 'real-run-frames-loading-procedural-other-states' as const;
 
 /**
  * C2, requirement 4 (expanded per Batch 4 correction #1, item 1D) — an
@@ -84,6 +84,7 @@ export const MASCOT_ANIMATION_STATUS = 'temporary-fallback-real-character-frames
  * is checked by a test to make sure every state is accounted for.
  */
 export const MASCOT_ASSET_PRODUCTION_LIST: Record<MascotState, string> = {
+  runIn: 'App-loading entrance (~1.4s): mascot enters quickly from off-screen, with a bounded running-like hop cadence, settles at center, then holds. A future true run-cycle sprite/Lottie can replace the flattened-art fallback behind the same state API.',
   idle:
     'Idle/welcome (seamless ~2s loop). NEEDS: eyes as a separate layer/frame — a closed-eyes (blink) frame held ~150-250ms, blinking roughly every 3-4s within the loop; a separate tail layer with 2-3 tail positions (center/left/right) for a small continuous wag; a subtle head-bob (can reuse the current whole-body bob as-is). Base pose (sitting, eyes open, soft/neutral mouth) can reuse the existing artwork.',
   excited:
@@ -101,6 +102,7 @@ export const MASCOT_ASSET_PRODUCTION_LIST: Record<MascotState, string> = {
 const MASCOT_SOURCE = require('../../assets/branding/walkie-doggy-mascot-transparent.png');
 
 interface AnimatedValues {
+  translateX: Animated.Value;
   translateY: Animated.Value;
   rotateDeg: Animated.Value;
   scale: Animated.Value;
@@ -121,9 +123,19 @@ function timing(value: Animated.Value, toValue: number, duration: number) {
  * forever).
  */
 function buildMascotAnimation(state: MascotState, values: AnimatedValues): Animated.CompositeAnimation {
-  const { translateY, rotateDeg, scale } = values;
+  const { translateX, translateY, rotateDeg, scale } = values;
 
   switch (state) {
+    case 'runIn': {
+      // The bundled GIF supplies the real 16-frame leg/body run cycle.
+      // This bounded transform only moves that running dog into the center.
+      translateX.setValue(260);
+      scale.setValue(0.9);
+      return Animated.sequence([
+        Animated.parallel([timing(translateX, -8, 620), timing(scale, 1.08, 620)]),
+        Animated.parallel([timing(translateX, 0, 180), timing(scale, 1, 180)]),
+      ]);
+    }
     case 'idle': {
       // Gentle head-bob-and-settle, continuous but small (4px) and slow
       // (1.4s each way) — a living-but-calm resting pose.
@@ -199,6 +211,7 @@ export interface WalkieMascotProps {
  */
 export function WalkieMascot({ state, size = 72, accessibilityLabel, testID, source = MASCOT_SOURCE, reducedMotionSource }: WalkieMascotProps) {
   const [reducedMotion, setReducedMotion] = useState(true); // fail-safe default: static until proven otherwise
+  const translateX = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(0)).current;
   const rotateRaw = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(1)).current;
@@ -222,9 +235,11 @@ export function WalkieMascot({ state, size = 72, accessibilityLabel, testID, sou
   }, []);
 
   useEffect(() => {
+    translateX.stopAnimation();
     translateY.stopAnimation();
     rotateRaw.stopAnimation();
     scale.stopAnimation();
+    translateX.setValue(0);
     translateY.setValue(0);
     rotateRaw.setValue(0);
     scale.setValue(1);
@@ -234,10 +249,10 @@ export function WalkieMascot({ state, size = 72, accessibilityLabel, testID, sou
       return;
     }
 
-    const animation = buildMascotAnimation(state, { translateY, rotateDeg: rotateRaw, scale });
+    const animation = buildMascotAnimation(state, { translateX, translateY, rotateDeg: rotateRaw, scale });
     animation.start();
     return () => animation.stop();
-  }, [state, reducedMotion, translateY, rotateRaw, scale]);
+  }, [state, reducedMotion, translateX, translateY, rotateRaw, scale]);
 
   const rotate = rotateRaw.interpolate({ inputRange: [-1, 1], outputRange: ['-8deg', '8deg'] });
 
@@ -247,15 +262,23 @@ export function WalkieMascot({ state, size = 72, accessibilityLabel, testID, sou
       accessibilityElementsHidden={!accessibilityLabel}
       importantForAccessibility={accessibilityLabel ? 'yes' : 'no-hide-descendants'}
       accessibilityLabel={accessibilityLabel}
-      style={[styles.container, { width: size, height: size, transform: [{ translateY }, { rotate }, { scale }] }]}
+      style={[styles.container, state === 'runIn' && styles.runContainer, { width: size, height: size, transform: [{ translateX }, { translateY }, { rotate }, { scale }] }]}
     >
-      <Image source={reducedMotion && reducedMotionSource ? reducedMotionSource : source} style={styles.image} resizeMode="contain" />
+      <Image
+        source={reducedMotion && reducedMotionSource ? reducedMotionSource : source}
+        style={styles.image}
+        resizeMode="contain"
+      />
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { overflow: 'hidden' },
+  // The run-in GIF starts off-screen and translates into place. Allow the
+  // animated frames to remain visible while crossing the container edge;
+  // all other mascot states keep the original clipped/static behavior.
+  runContainer: { overflow: 'visible' },
   image: { width: '100%', height: '100%' },
 });
 

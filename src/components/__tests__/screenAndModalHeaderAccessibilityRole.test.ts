@@ -13,7 +13,7 @@ import path from 'path';
  * render-test harness.
  */
 const TARGET_FILES: Array<[string, string, number]> = [
-  ['../../screens/FamilyOnboardingScreen.tsx', 'title', 7],
+  ['../../screens/FamilyOnboardingScreen.tsx', 'title', 8],
   ['../../screens/LoginScreen.tsx', 'title', 1],
   ['../../screens/SystemAdminScreen.tsx', 'title', 1],
   ['../../screens/SettingsScreen.tsx', 'header', 1],
@@ -24,6 +24,7 @@ const TARGET_FILES: Array<[string, string, number]> = [
   ['../../screens/HistoryScreen.tsx', 'header', 1],
   ['../DeleteUserModal.tsx', 'title', 1],
   ['../DogDetailsModal.tsx', 'title', 1],
+  ['../HealthGroomingModal.tsx', 'title', 2],
   ['../AddUnplannedWalkModal.tsx', 'title', 1],
   ['../RemindersModal.tsx', 'title', 1],
   ['../PinEntryModal.tsx', 'title', 1],

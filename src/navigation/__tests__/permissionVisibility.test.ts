@@ -27,7 +27,7 @@ describe('RootNavigator — History/Statistics tab visibility (permission-gated,
   const source = fs.readFileSync(path.resolve(__dirname, '../RootNavigator.tsx'), 'utf8');
 
   it('imports the fail-closed screen-access gates rather than the plain (fail-open-while-loading) resolvers', () => {
-    expect(source).toMatch(/import\s*\{\s*canAccessHistoryScreen,\s*canAccessStatisticsScreen\s*\}\s*from\s*'\.\.\/logic\/permissions'/);
+    expect(source).toMatch(/import\s*\{[\s\S]*canAccessHistoryScreen,[\s\S]*canAccessStatisticsScreen,[\s\S]*canAccessSettingsScreen[\s\S]*\}\s*from\s*'\.\.\/logic\/permissions'/);
     expect(source).not.toMatch(/import\s*\{\s*canViewHistory/);
   });
 
@@ -35,15 +35,32 @@ describe('RootNavigator — History/Statistics tab visibility (permission-gated,
     expect(source).toMatch(/const permissionOverridesStatus = useFamilyStore\(\(s\) => s\.permissionOverridesStatus\);/);
   });
 
-  it('keeps the History route mounted while the custom tab bar hides its button when access is not verified', () => {
-    expect(source).toMatch(/<Tab\.Screen name="History" component=\{HistoryScreen\} \/>/);
-    expect(source).toMatch(/name === 'History' && !canSeeHistoryTab/);
+  /**
+   * Item 1 fix (final consolidated pass): a permission-status reload
+   * triggered by History/Statistics/Settings' OWN mount/focus effect
+   * (loadFamily -> familyStore.load() -> loadPermissionOverrides(), which
+   * resets permissionOverridesStatus to 'loading' the instant it starts)
+   * used to fail canSeeXTab closed WHILE THE USER WAS STANDING ON that
+   * exact tab, unmounting its Tab.Screen and bouncing the navigator back
+   * to Home (the first declared screen) — a real regression, not the
+   * stale-navigate-by-name issue an earlier fix (20dcc49) already
+   * addressed. `|| activeTabName === 'History'` (etc.) keeps the route
+   * mounted while it IS the active one; the destination screen's own
+   * canAccessXScreen() gate still independently re-verifies access and
+   * shows its own locked state during that same blip, so nothing is
+   * exposed by keeping it mounted through a transient status reset — see
+   * src/navigation/__tests__/tabNavigation.integration.test.tsx for the
+   * actual render+tap regression test proving both halves of this (stays
+   * put during a transient reload; still hides once a REAL revocation
+   * settles and the user navigates away).
+   */
+  it('does not mount the History route until access is verified, EXCEPT while it is the currently active route (never yank the active tab out from under the user)', () => {
+    expect(source).toMatch(/\{\(canSeeHistoryTab \|\| activeTabName === 'History'\) \? <Tab\.Screen name="History" component=\{HistoryScreen\} \/> : null\}/);
     expect(source).toMatch(/canSeeHistoryTab = canAccessHistoryScreen\(effectiveUserId, permissionOverrides, permissionOverridesStatus\)/);
   });
 
-  it('keeps the Statistics route mounted while the custom tab bar hides its button when access is not verified', () => {
-    expect(source).toMatch(/<Tab\.Screen name="Statistics" component=\{StatisticsScreen\} \/>/);
-    expect(source).toMatch(/name === 'Statistics' && !canSeeStatisticsTab/);
+  it('does not mount the Statistics route until access is verified, EXCEPT while it is the currently active route', () => {
+    expect(source).toMatch(/\{\(canSeeStatisticsTab \|\| activeTabName === 'Statistics'\) \? <Tab\.Screen name="Statistics" component=\{StatisticsScreen\} \/> : null\}/);
     expect(source).toMatch(/canSeeStatisticsTab = canAccessStatisticsScreen\(effectiveUserId, permissionOverrides, permissionOverridesStatus\)/);
   });
 
@@ -51,14 +68,14 @@ describe('RootNavigator — History/Statistics tab visibility (permission-gated,
     expect(source).toMatch(/const effectiveUserId = useEffectiveUserId\(\);/);
   });
 
-  it('Home, Schedule, Family, and Settings are never permission-gated — Settings (Personal Settings) always remains visible', () => {
+  it('keeps core tabs mounted and permission-gates Settings while preserving an active protected tab during refresh', () => {
     expect(source).toMatch(/<Tab\.Screen name="Home" component=\{HomeScreen\} \/>/);
     expect(source).toMatch(/<Tab\.Screen name="Schedule" component=\{ScheduleScreen\} \/>/);
     expect(source).toMatch(/<Tab\.Screen name="Family" component=\{FamilyScreen\} \/>/);
-    expect(source).toMatch(/<Tab\.Screen name="Settings" component=\{SettingsScreen\} \/>/);
-    // Never wrapped in a canSee.../conditional — unlike History/Statistics above.
-    expect(source).not.toMatch(/canSeeSettingsTab/);
+    expect(source).toMatch(/canSeeSettingsTab/);
+    expect(source).toContain("activeTabName === 'History'");
+    expect(source).toContain("activeTabName === 'Statistics'");
+    expect(source).toContain("activeTabName === 'Settings'");
   });
 });
-
 

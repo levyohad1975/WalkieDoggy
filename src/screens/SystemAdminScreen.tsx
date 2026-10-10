@@ -1,8 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RtlText } from '../components/RtlText';
 import { Button } from '../components/Button';
+import { WalkCompletionCelebration } from '../components/WalkCompletionCelebration';
+import { ReminderMascotPrompt } from '../components/ReminderMascotPrompt';
+import { WalkieMascot, MASCOT_STATES, type MascotState } from '../components/WalkieMascot';
+import { CELEBRATION_LIBRARY, type CompletionCelebration } from '../logic/walkCompletionCelebration';
+import { REMINDER_ANIMATION_LIBRARY, type ReminderAnimationMoment } from '../logic/reminderAnimationLibrary';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { friendlyErrorMessage } from '../lib/errorMessages';
@@ -38,6 +43,22 @@ function emailMessageTypeLabel(type: string): string {
   if (type === 'system_owner_new_family') return 'התראת מנהל מערכת';
   return type;
 }
+
+/**
+ * Audit actions that record a System Admin's OWN hidden-observation
+ * activity (entering/exiting silent family viewing, or opening a family's
+ * detail view) rather than something a family did. Hidden from the "יומן
+ * פעילות מערכת" presentation per explicit product direction — the log
+ * should read as family activity, not "who is watching". The rows
+ * themselves stay fully intact in the backend audit table; this only
+ * narrows what filteredAuditLog renders.
+ */
+const HIDDEN_OBSERVATION_AUDIT_ACTIONS = new Set([
+  'system_observer.started',
+  'system_observer.ended',
+  'system_admin_view_family_detail',
+  'system_admin.view_family_detail',
+]);
 
 /** Hebrew label for email_delivery_log.status (0034) — falls back to the raw value for any future provider status. */
 function auditActionLabel(action: string): string {
@@ -132,9 +153,34 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
   const [auditFamilyId, setAuditFamilyId] = useState<string>('all');
+  const [animationTestVisible, setAnimationTestVisible] = useState(false);
+  const [animationTestCelebration, setAnimationTestCelebration] = useState<CompletionCelebration | null>(null);
+  const [guestAnimationTestVisible, setGuestAnimationTestVisible] = useState(false);
+  const [reminderTestVisible, setReminderTestVisible] = useState(false);
+  const [reminderTestMoment, setReminderTestMoment] = useState<ReminderAnimationMoment | null>(null);
+  const [mascotStateTest, setMascotStateTest] = useState<MascotState | null>(null);
+
+  // Family names are not unique (see SystemAdminFamilyListItem's own doc
+  // comment) — the invite code is the actual distinguishing identifier,
+  // already shown on every family card below. Reused here (not a new
+  // exposure — a System Admin already sees every family's invite code)
+  // so two same-named families never look identical in the audit log.
+  const familyInviteCodeById = useMemo(
+    () => new Map(families.map((f) => [f.familyId, f.inviteCode])),
+    [families]
+  );
 
   const filteredAuditLog = useMemo(
-    () => auditFamilyId === 'all' ? auditLog : auditLog.filter((entry) => entry.familyId === auditFamilyId),
+    () =>
+      auditLog
+        // UI-presentation-only filter: the System Admin's own hidden-
+        // observation actions (entering/exiting silent family viewing, or
+        // viewing family detail) are noise in an activity log meant to show
+        // what FAMILIES did, not when an admin looked. The underlying rows
+        // are untouched in the backend audit table/RPC — getSystemAdminGlobalAudit
+        // above still fetches everything, this only narrows what renders.
+        .filter((entry) => !HIDDEN_OBSERVATION_AUDIT_ACTIONS.has(entry.action))
+        .filter((entry) => auditFamilyId === 'all' || entry.familyId === auditFamilyId),
     [auditLog, auditFamilyId]
   );
 
@@ -190,6 +236,11 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
       setDetail(null);
       setEmailLogVisible(false);
       setAuditVisible(false);
+      setAnimationTestVisible(false);
+      setAnimationTestCelebration(null);
+      setGuestAnimationTestVisible(false);
+      setReminderTestVisible(false);
+      setMascotStateTest(null);
       void loadFamilies();
       void getSystemAdminEmailDeliveryLog().then(setEmailLog).catch(() => {
         // Overview email health is supplementary; the dedicated log keeps
@@ -284,8 +335,11 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
         <View style={styles.header}>
           <RtlText style={styles.title} accessibilityRole="header">🛡️ ניהול מערכת</RtlText>
           <View style={styles.headerActions}>
-            {!selectedFamilyId && !emailLogVisible && !auditVisible ? (
+            {!selectedFamilyId && !emailLogVisible && !auditVisible && !animationTestVisible ? (
               <>
+                <Pressable onPress={() => setAnimationTestVisible(true)} accessibilityRole="button" accessibilityLabel="פתיחת בדיקת אנימציות" hitSlop={10}>
+                  <RtlText style={styles.headerLink}>בדיקת אנימציות</RtlText>
+                </Pressable>
                 <Pressable onPress={openAuditLog} accessibilityRole="button" accessibilityLabel="פתיחת יומן פעילות" hitSlop={10}>
                   <RtlText style={styles.headerLink}>יומן פעילות</RtlText>
                 </Pressable>
@@ -300,7 +354,84 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
           </View>
         </View>
 
-        {auditVisible ? (
+        {animationTestVisible ? (
+          <ScrollView contentContainerStyle={styles.content}>
+            <Pressable onPress={() => setAnimationTestVisible(false)} accessibilityRole="button" accessibilityLabel="חזרה לרשימת המשפחות">
+              <RtlText style={styles.backLink}>‹ חזרה לרשימה</RtlText>
+            </Pressable>
+            <RtlText style={styles.sectionTitle}>בדיקת אנימציות</RtlText>
+            <RtlText style={styles.auditHint}>מרכז בדיקה לכל אנימציות הקמע הפעילות באפליקציה.</RtlText>
+            <RtlText style={styles.sectionTitle}>סיום טיול</RtlText>
+            <View style={styles.animationTestGrid}>
+              {CELEBRATION_LIBRARY.map((item) => (
+                <Pressable
+                  key={item.id}
+                  onPress={() => setAnimationTestCelebration({ ...item, reaction: item.id })}
+                  style={styles.animationTestCard}
+                  accessibilityRole="button"
+                  accessibilityLabel={`בדיקת אנימציה ${item.title}`}
+                >
+                  <RtlText style={styles.animationTestTitle}>{item.title}</RtlText>
+                  <RtlText style={styles.animationTestMeta}>{item.id}</RtlText>
+                </Pressable>
+              ))}
+            </View>
+            <RtlText style={styles.sectionTitle}>תגובות במסך הבית</RtlText>
+            <View style={styles.animationTestGrid}>
+              <Pressable
+                onPress={() => setGuestAnimationTestVisible(true)}
+                style={styles.animationTestCard}
+                accessibilityRole="button"
+                accessibilityLabel="בדיקת אנימציית תגובת הכלב במסך הבית"
+              >
+                <RtlText style={styles.animationTestTitle}>תגובת הכלב בלחיצה</RtlText>
+                <RtlText style={styles.animationTestMeta}>walkie-guest-celebration</RtlText>
+              </Pressable>
+            </View>
+            {guestAnimationTestVisible ? (
+              <View style={styles.mascotStatePreview}>
+                <Button label="סגירת תצוגה" onPress={() => setGuestAnimationTestVisible(false)} compact />
+                <Image
+                  source={require('../../assets/branding/walkie-guest-celebration.webp')}
+                  style={[{ width: 168, height: 168 }, { mixBlendMode: 'screen' } as any]}
+                  resizeMode="contain"
+                  accessibilityLabel="בדיקת אנימציית תגובת הכלב"
+                  testID="system-admin-guest-reaction-preview"
+                />
+              </View>
+            ) : null}
+            <RtlText style={styles.sectionTitle}>תזכורות</RtlText>
+            <View style={styles.animationTestGrid}>
+              {REMINDER_ANIMATION_LIBRARY.map((item) => (
+                <Pressable
+                  key={item.id}
+                  onPress={() => { setReminderTestMoment(item); setReminderTestVisible(true); }}
+                  style={styles.animationTestCard}
+                  accessibilityRole="button"
+                  accessibilityLabel={`בדיקת אנימציית תזכורת ${item.title}`}
+                >
+                  <RtlText style={styles.animationTestTitle}>{item.title}</RtlText>
+                  <RtlText style={styles.animationTestMeta}>{item.stage} · {item.animationId}</RtlText>
+                </Pressable>
+              ))}
+            </View>
+            <RtlText style={styles.sectionTitle}>מצבי קמע</RtlText>
+            <View style={styles.animationTestGrid}>
+              {MASCOT_STATES.map((state) => (
+                <Pressable key={state} onPress={() => setMascotStateTest(state)} style={styles.animationTestCard} accessibilityRole="button">
+                  <RtlText style={styles.animationTestTitle}>{state}</RtlText>
+                  <RtlText style={styles.animationTestMeta}>WalkieMascot</RtlText>
+                </Pressable>
+              ))}
+            </View>
+            {mascotStateTest ? (
+              <View style={styles.mascotStatePreview}>
+                <Button label="סגירת תצוגה" onPress={() => setMascotStateTest(null)} compact />
+                <WalkieMascot state={mascotStateTest} size={168} accessibilityLabel="תצוגת בדיקת קמע" />
+              </View>
+            ) : null}
+          </ScrollView>
+        ) : auditVisible ? (
           <ScrollView contentContainerStyle={styles.content}>
             <Pressable onPress={() => setAuditVisible(false)} accessibilityRole="button" accessibilityLabel="חזרה לרשימת המשפחות">
               <RtlText style={styles.backLink}>‹ חזרה לרשימה</RtlText>
@@ -324,10 +455,10 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                   style={[styles.auditFilterChip, auditFamilyId === family.familyId && styles.auditFilterChipSelected]}
                   accessibilityRole="button"
                   accessibilityState={{ selected: auditFamilyId === family.familyId }}
-                  accessibilityLabel={`סינון פעילות למשפחת ${family.familyName}`}
+                  accessibilityLabel={`סינון פעילות למשפחת ${family.familyName}, קוד ${family.inviteCode}`}
                 >
                   <RtlText style={[styles.auditFilterText, auditFamilyId === family.familyId && styles.auditFilterTextSelected]}>
-                    {family.familyName}
+                    {family.familyName} · {family.inviteCode}
                   </RtlText>
                 </Pressable>
               ))}
@@ -339,7 +470,10 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
               <View key={`${entry.source}-${entry.id}`} style={styles.auditCard}>
                 <RtlText style={styles.auditAction}>{auditActionLabel(entry.action)}</RtlText>
                 <RtlText style={styles.cardLine}>{new Date(entry.createdAt).toLocaleString('he-IL')}</RtlText>
-                <RtlText style={styles.cardLine}>משפחה: {entry.familyName ?? 'מערכתי'}</RtlText>
+                <RtlText style={styles.cardLine}>
+                  משפחה: {entry.familyName ?? 'מערכתי'}
+                  {entry.familyId && familyInviteCodeById.get(entry.familyId) ? ` · קוד ${familyInviteCodeById.get(entry.familyId)}` : ''}
+                </RtlText>
                 <RtlText style={styles.cardLine}>משתמש: {entry.actorName ?? '—'}</RtlText>
                 <RtlText style={styles.cardLine}>אימייל: {entry.actorEmail ?? '—'}</RtlText>
                 <RtlText style={styles.cardLine}>יעד: {entry.targetType ?? '—'}{entry.targetId ? ` · ${entry.targetId.slice(0, 12)}` : ''}</RtlText>
@@ -513,18 +647,25 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                   ))}
                 </View>
 
-                <RtlText style={styles.sectionTitle}>יומן ביקורת ({detail.recentAudit.length})</RtlText>
-                <View style={styles.card}>
-                  {detail.recentAudit.length === 0 ? (
-                    <RtlText style={styles.cardLine}>אין רשומות</RtlText>
-                  ) : (
-                    detail.recentAudit.slice(0, 15).map((a) => (
+                {(() => {
+                  const visibleAudit = detail.recentAudit.filter((entry) => !entry.action.startsWith('system_observer.'));
+                  return (
+                    <>
+                      <RtlText style={styles.sectionTitle}>יומן פעילות ({visibleAudit.length})</RtlText>
+                      <View style={styles.card}>
+                        {visibleAudit.length === 0 ? (
+                          <RtlText style={styles.cardLine}>אין רשומות</RtlText>
+                        ) : (
+                          visibleAudit.slice(0, 15).map((a) => (
                       <RtlText key={a.id} style={styles.cardLine}>
                         {new Date(a.createdAt).toLocaleString('he-IL')} · {a.action}
                       </RtlText>
-                    ))
-                  )}
-                </View>
+                          ))
+                        )}
+                      </View>
+                    </>
+                  );
+                })()}
               </View>
             ) : null}
           </ScrollView>
@@ -598,6 +739,16 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
           </View>
         )}
       </SafeAreaView>
+      <WalkCompletionCelebration
+        celebration={animationTestCelebration}
+        onDismiss={() => setAnimationTestCelebration(null)}
+      />
+      <ReminderMascotPrompt
+        visible={reminderTestVisible}
+        message={reminderTestMoment?.message ?? "תזכורת לטיול — תצוגת בדיקה"}
+        animationId={reminderTestMoment?.animationId}
+        onDismiss={() => setReminderTestVisible(false)}
+      />
     </Modal>
   );
 }
@@ -619,8 +770,8 @@ const styles = StyleSheet.create({
   headerLink: { color: colors.primaryDark, fontWeight: '700', fontSize: 14 },
   closeLink: { color: colors.primaryDark, fontWeight: '700', fontSize: 15 },
   backLink: { color: colors.primaryDark, fontWeight: '700', fontSize: 14, marginBottom: spacing.md },
-  content: { padding: spacing.xl, gap: spacing.sm, paddingBottom: spacing.xxxl },
-  searchRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.xl, paddingTop: spacing.md, alignItems: 'center' },
+  content: { width: '100%', maxWidth: 1180, alignSelf: 'center', padding: spacing.xl, gap: spacing.sm, paddingBottom: spacing.xxxl },
+  searchRow: { width: '100%', maxWidth: 1180, alignSelf: 'center', flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.xl, paddingTop: spacing.md, alignItems: 'center' },
   searchInput: {
     flex: 1,
     backgroundColor: colors.surface,
@@ -685,4 +836,9 @@ const styles = StyleSheet.create({
   auditFilterTextSelected: { color: colors.surface },
   auditCard: { backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
   auditAction: { ...typography.body, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
+  animationTestGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: spacing.sm },
+  animationTestCard: { flexBasis: '46%', flexGrow: 1, minWidth: 150, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
+  animationTestTitle: { ...typography.body, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
+  animationTestMeta: { ...typography.caption, color: colors.textSecondary, textAlign: 'right', writingDirection: 'ltr' },
+  mascotStatePreview: { alignItems: 'center', justifyContent: 'center', minHeight: 230, backgroundColor: colors.surfaceMuted, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.lg, marginTop: spacing.sm, gap: spacing.md },
 });

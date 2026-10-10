@@ -23,13 +23,12 @@ describe('App.tsx — System Admin entry point sits OUTSIDE family/auth branchin
     expect(source).toMatch(/useEffect\(\(\) => \{\s*\n\s*if \(hydrated\) void refreshSystemAdmin\(\);\s*\n\s*\}, \[hydrated, refreshSystemAdmin\]\);/);
   });
 
-  it('the System Admin entry Pressable and SystemAdminScreen are rendered in the same fragment AFTER the needsFamilyOnboarding/currentUserId/LoginScreen ternary, never inside one of its branches', () => {
+  it('keeps the SystemAdminScreen host after the family/auth branching but no longer renders a floating admin Pressable', () => {
     const ternaryIdx = source.indexOf('{shouldEnterSystemAdminDirectly ? (');
-    const entryIdx = source.indexOf('{isSystemAdmin && !systemObserverActive ? (');
     const screenIdx = source.indexOf('<SystemAdminScreen', ternaryIdx);
     expect(ternaryIdx).toBeGreaterThan(-1);
-    expect(entryIdx).toBeGreaterThan(ternaryIdx);
     expect(screenIdx).toBeGreaterThan(ternaryIdx);
+    expect(source).not.toContain('{isSystemAdmin && !systemObserverActive ? (');
   });
 
   it('never assigns familyId/currentUserId from the System Admin flow — this file has exactly one writer of familyId-affecting state, and it is not the System Admin block', () => {

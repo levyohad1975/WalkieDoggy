@@ -30,8 +30,12 @@ import { sendRequestPush } from '../lib/pushTokens';
  * unit-tested routing/authorization rule the Edge Function's inline copy
  * mirrors is validateAndRoutePushEvent() in src/logic/pushRouting.ts.
  */
-function notifyPushBestEffort(requestId: string, kind: 'swap' | 'timeChange', event: 'created' | 'approved' | 'rejected'): void {
-  void sendRequestPush({ requestId, kind, event });
+async function notifyPushBestEffort(requestId: string, kind: 'swap' | 'timeChange', event: 'created' | 'approved' | 'rejected'): Promise<void> {
+  // Await the network request so iOS Safari does not abandon a detached
+  // fire-and-forget fetch when the request modal closes or navigates.
+  // sendRequestPush itself catches and logs delivery failures without
+  // failing the already-persisted request action.
+  await sendRequestPush({ requestId, kind, event });
 }
 
 /** Best-effort: reload the schedule store (walks + notification reconciliation) after a request approval that mutated a walk server-side directly. Never throws — a failure here must not surface as a request-approval failure, since the approval itself already succeeded. */
@@ -130,8 +134,8 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
     }
     try {
       const requestId = await createSwapRequest(walkId, targetWalkId);
+      await notifyPushBestEffort(requestId, 'swap', 'created');
       await get().load();
-      notifyPushBestEffort(requestId, 'swap', 'created');
     } catch (error) {
       set({ error: messageFor(error) });
     }
@@ -141,6 +145,7 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
     if (!guardTestModeMutation()) return;
     try {
       await approveSwapRequest(requestId);
+      await notifyPushBestEffort(requestId, 'swap', 'approved');
       await get().load();
       // An approved swap changes a concrete walk's responsible user
       // server-side directly (not through scheduleStore's own actions), so
@@ -148,7 +153,6 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
       // it — would otherwise go stale. Reload it so both reflect the new
       // occurrence (A3's authoritative rule).
       await reloadScheduleAndNotifications();
-      notifyPushBestEffort(requestId, 'swap', 'approved');
     } catch (error) {
       set({ error: messageFor(error) });
     }
@@ -158,8 +162,8 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
     if (!guardTestModeMutation()) return;
     try {
       await rejectSwapRequest(requestId);
+      await notifyPushBestEffort(requestId, 'swap', 'rejected');
       await get().load();
-      notifyPushBestEffort(requestId, 'swap', 'rejected');
     } catch (error) {
       set({ error: messageFor(error) });
     }
@@ -173,8 +177,8 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
     }
     try {
       const requestId = await createTimeChangeRequest(walkId, proposedTime);
+      await notifyPushBestEffort(requestId, 'timeChange', 'created');
       await get().load();
-      notifyPushBestEffort(requestId, 'timeChange', 'created');
     } catch (error) {
       set({ error: messageFor(error) });
     }
@@ -184,11 +188,11 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
     if (!guardTestModeMutation()) return;
     try {
       await approveTimeChangeRequest(requestId);
+      await notifyPushBestEffort(requestId, 'timeChange', 'approved');
       await get().load();
       // Same reasoning as approveSwap above: the walk's scheduledTime
       // changed server-side directly.
       await reloadScheduleAndNotifications();
-      notifyPushBestEffort(requestId, 'timeChange', 'approved');
     } catch (error) {
       set({ error: messageFor(error) });
     }
@@ -198,13 +202,34 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
     if (!guardTestModeMutation()) return;
     try {
       await rejectTimeChangeRequest(requestId);
+      await notifyPushBestEffort(requestId, 'timeChange', 'rejected');
       await get().load();
-      notifyPushBestEffort(requestId, 'timeChange', 'rejected');
     } catch (error) {
       set({ error: messageFor(error) });
     }
   },
 
+  /**
+   * Real-device QA fix ("bell opens an error dialog") — root cause: this
+   * previously treated a failed read-receipt write exactly like a failed
+   * mutation, setting the SAME `error` field approveSwap/rejectSwap/etc.
+   * use — so a person tapping the bell to OPEN their requests (this is
+   * the only call site, via HomeScreen's openRequestsInbox) could get an
+   * "אופס" dialog stacked on top of the inbox they were just trying to
+   * read, even though RequestsInboxModal itself opened and rendered fine
+   * underneath it (it needs no server round-trip — it reads the already-
+   * loaded swapRequests/timeChangeRequests straight from props).
+   *
+   * Marking results "seen" is exactly the same kind of best-effort,
+   * non-blocking housekeeping as touchLastSeen() (see requests.ts's own
+   * doc comment: "a failure here ... must never interrupt anything else
+   * the app is doing") — nobody's action should ever fail or alarm
+   * because a read-receipt couldn't be written. Failures are now
+   * swallowed the same way (dev-only diagnostic, no user-facing error);
+   * the bell badge simply stays as it was and will clear next time this
+   * succeeds (next open, next foreground reconcile, etc.) — never worse
+   * than before, just never a false alarm either.
+   */
   markResultsSeen: async () => {
     if (!guardTestModeMutation()) return;
     if (!isSupabaseConfigured) return;
@@ -212,7 +237,9 @@ export const useRequestsStore = create<RequestsState>((set, get) => ({
       await markMyRequestResultsSeen();
       await get().load();
     } catch (error) {
-      set({ error: messageFor(error) });
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('markResultsSeen failed (best-effort, not shown to the user):', error);
+      }
     }
   },
 

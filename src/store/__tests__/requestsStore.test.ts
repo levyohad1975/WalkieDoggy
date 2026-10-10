@@ -443,16 +443,41 @@ describe('requestsStore — approveSwap / rejectSwap / approveTimeChange / rejec
     ]);
   });
 
-  it('markResultsSeen surfaces a server failure via `error`', async () => {
+  // Real-device QA fix ("bell opens an error dialog") — markResultsSeen is
+  // the ONLY thing HomeScreen's openRequestsInbox() does besides showing
+  // the already-loaded RequestsInboxModal, so this used to pop an "אופס"
+  // dialog over the inbox the person was just trying to read, for a
+  // best-effort read-receipt write that has nothing to do with whether the
+  // inbox itself opened or rendered correctly. This now matches
+  // touchLastSeen()'s own established contract: a failure here must never
+  // interrupt/alarm the user — it is swallowed (never rethrown, never set
+  // on the shared `error` field every real mutation failure also uses).
+  it('markResultsSeen NEVER surfaces a failure via `error` (best-effort, like touchLastSeen) — this is what stopped the bell from showing a false "אופס" dialog', async () => {
     jest.resetModules();
     setupSupabaseMode();
     const { useRequestsStore } = require('../requestsStore');
     const { markMyRequestResultsSeen } = require('../../lib/requests');
+    (markMyRequestResultsSeen as jest.Mock).mockRejectedValue(new Error('no active profile claimed on this family'));
+
+    await expect(useRequestsStore.getState().markResultsSeen()).resolves.toBeUndefined();
+
+    expect(useRequestsStore.getState().error).toBeNull();
+  });
+
+  it("markResultsSeen's failure is never logged to the console in a production build", async () => {
+    jest.resetModules();
+    setupSupabaseMode();
+    process.env.NODE_ENV = 'production';
+    const { useRequestsStore } = require('../requestsStore');
+    const { markMyRequestResultsSeen } = require('../../lib/requests');
     (markMyRequestResultsSeen as jest.Mock).mockRejectedValue(new Error('boom'));
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
     await useRequestsStore.getState().markResultsSeen();
 
-    expect(useRequestsStore.getState().error).toBe('משהו השתבש, נסו שוב');
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+    process.env.NODE_ENV = 'test';
   });
 
   it('load() is a no-op in local/demo mode (never calls the RPC)', async () => {

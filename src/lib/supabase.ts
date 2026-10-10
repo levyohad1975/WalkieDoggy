@@ -14,6 +14,15 @@ const supabasePublishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY 
  */
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabasePublishableKey);
 
+/**
+ * The project URL and publishable key, for the one caller that has to talk
+ * to the Storage REST endpoint directly (chat image upload — supabase-js
+ * offers no upload progress or cancellation). Both are public client
+ * configuration, already shipped in the bundle; neither is a secret.
+ */
+export const supabaseProjectUrl = supabaseUrl;
+export const supabaseClientKey = supabasePublishableKey;
+
 // Both env vars are read from process.env (not hardcoded) as required —
 // see .env.example for the keys and README "Configuring Supabase".
 export const supabase = isSupabaseConfigured
@@ -306,6 +315,36 @@ export async function getCurrentFamilyRole(): Promise<FamilyRole | null> {
 
   return null;
 }
+/** Admin-only, server-authoritative removal for a dog that has never acquired history. */
+/**
+ * Generates a transparent dog cutout for the current uploaded dog photo.
+ *
+ * The Edge Function re-authorizes the caller against the dog row under RLS,
+ * performs background removal server-side, stores the PNG in the family's
+ * existing Storage namespace, and updates dogs.photo_cutout_url. Keeping the
+ * provider call server-side means no provider details/credentials are ever
+ * shipped in the mobile/web bundle.
+ *
+ * A failure is non-destructive: photo_url remains authoritative and Home
+ * simply falls back to the original photo until a cutout exists.
+ */
+export async function generateDogPhotoCutout(dogId: string): Promise<string> {
+  if (!supabase) throw new SupabaseNotConfiguredError();
+  const { data, error } = await supabase.functions.invoke('generate-dog-cutout', {
+    body: { dogId },
+  });
+  if (error) throw error;
+  const cutoutUrl = (data as { cutoutUrl?: string } | null)?.cutoutUrl;
+  if (!cutoutUrl) throw new Error('cutout generation returned no URL');
+  return cutoutUrl;
+}
+
+export async function removeUnusedDog(dogId: string): Promise<void> {
+  if (!supabase) throw new SupabaseNotConfiguredError();
+  const { error } = await supabase.rpc('admin_remove_unused_dog', { p_dog_id: dogId });
+  if (error) throw error;
+}
+
 export async function regenerateInviteCode(familyId: string): Promise<string> {
   if (!supabase) throw new SupabaseNotConfiguredError();
   const { data, error } = await supabase.rpc('regenerate_invite_code', { target_family_id: familyId });
@@ -325,6 +364,17 @@ export async function regenerateInviteCode(familyId: string): Promise<string> {
 export interface WhoAmI {
   profileId: string | null;
   realProfileId: string | null;
+  /**
+   * Family Lifecycle repair (migration 0101) — the server's own
+   * current_family_id() for this caller, alongside realProfileId. Lets a
+   * client-side recovery path (authStore.restoreSession()) re-derive a
+   * complete local session (familyId + currentUserId) from server truth
+   * alone, with no second round trip, when local storage has nothing
+   * cached (e.g. a device whose prior invite redemption left no local
+   * commit). Null in local/demo mode or for a device whoami() cannot
+   * resolve a family for.
+   */
+  familyId: string | null;
   familyRole: FamilyRole | null;
   isImpersonating: boolean;
   impersonatedUserId: string | null;
@@ -336,11 +386,20 @@ export async function getWhoAmI(): Promise<WhoAmI | null> {
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) return null;
+  const isImpersonating = Boolean(row.is_impersonating);
   return {
     profileId: row.profile_id ?? null,
-    realProfileId: row.real_profile_id ?? null,
+    // Backward-compatible Staging recovery: older whoami() deployments may
+    // not expose real_profile_id yet. Outside impersonation, profile_id is
+    // the real claimed profile, so it is safe to use as the verification
+    // fallback. Never use that fallback while impersonating.
+    realProfileId: row.real_profile_id ?? (!isImpersonating ? row.profile_id ?? null : null),
+    // row.family_id is only present once migration 0101 is deployed —
+    // older deployments simply report null here (no backward-compat
+    // fallback needed: callers already treat null as "couldn't resolve").
+    familyId: row.family_id ?? null,
     familyRole: row.family_role === 'admin' || row.family_role === 'member' ? row.family_role : null,
-    isImpersonating: Boolean(row.is_impersonating),
+    isImpersonating,
     impersonatedUserId: row.impersonated_user_id ?? null,
   };
 }
@@ -372,4 +431,20 @@ export async function endImpersonation(): Promise<void> {
   if (!supabase) return;
   const { error } = await supabase.rpc('end_impersonation');
   if (error) throw error;
+}
+
+
+/** Admin-only atomic removal of one recurring schedule slot and its generated future occurrences. */
+export async function deleteScheduleRuleWithOccurrences(ruleId: string): Promise<void> {
+  if (!supabase) throw new SupabaseNotConfiguredError();
+  const { error } = await supabase.rpc('admin_delete_schedule_rule', { p_rule_id: ruleId });
+  if (error) throw error;
+}
+
+/** Admin-only destructive reset: removes family walk/activity history while preserving family, members, dogs and schedule. */
+export async function resetFamilyActivity(): Promise<number> {
+  if (!supabase) throw new SupabaseNotConfiguredError();
+  const { data, error } = await supabase.rpc('admin_reset_family_activity', { p_confirm: true });
+  if (error) throw error;
+  return Number((data as { deleted_walks?: number } | null)?.deleted_walks ?? 0);
 }

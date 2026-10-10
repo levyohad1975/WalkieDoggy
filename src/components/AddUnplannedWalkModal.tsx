@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from './RtlText';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { DatePickerField } from './DatePickerField';
 import type { FamilyUser, Walk } from '../types';
 import { colors } from '../theme/colors';
 import { radii, spacing } from '../theme/tokens';
@@ -42,6 +43,8 @@ interface AddUnplannedWalkModalProps {
   editingWalk?: Walk | null;
   onDelete?: (walkId: string) => void;
   onConfirm: (result: UnplannedWalkResult) => void;
+  /** Starts a live unplanned walk through the normal start/finish + GPS lifecycle. */
+  onStartNow?: () => void | Promise<void>;
   onClose: () => void;
 }
 
@@ -59,9 +62,21 @@ function timeIsValid(t: string): boolean {
 // explicit "no shared helper" scope rule.
 /** "HH:mm" -> a Date on an arbitrary fixed day, for feeding the native picker. */
 function timeStringToDate(t: string): Date {
-  const [h, m] = timeIsValid(t) ? t.split(':').map(Number) : [12, 0];
+  const now = new Date();
+  const [h, m] = timeIsValid(t) ? t.split(':').map(Number) : [now.getHours(), now.getMinutes()];
   const d = new Date(2000, 0, 1, h, m, 0, 0);
   return d;
+}
+
+function isoDateToLocalDate(value: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return new Date();
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0, 0);
+}
+
+function displayDate(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : value;
 }
 
 function dateToTimeString(d: Date): string {
@@ -82,6 +97,7 @@ export function AddUnplannedWalkModal({
   editingWalk = null,
   onDelete,
   onConfirm,
+  onStartNow,
   onClose,
 }: AddUnplannedWalkModalProps) {
   const isEditing = !!editingWalk;
@@ -148,18 +164,23 @@ export function AddUnplannedWalkModal({
           RequestTimeChangeModal.tsx — wraps the existing backdrop/sheet/
           ScrollView structure unchanged. */}
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <Pressable
-          style={styles.backdrop}
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel={isEditing ? `סגירת עריכת טיול ספונטני של ${dogName}` : `סגירת הוספת טיול ספונטני של ${dogName}`}
-        >
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-            <ScrollView keyboardShouldPersistTaps="handled">
+        <View style={styles.backdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel={isEditing ? `סגירת עריכת טיול ספונטני של ${dogName}` : `סגירת הוספת טיול ספונטני של ${dogName}`}
+          />
+          <View style={styles.sheet}>
+            <ScrollView style={styles.formScroll} contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled">
               <RtlText style={styles.title} accessibilityRole="header">
-                {isEditing ? `עריכת טיול ספונטני של ${dogName}` : `הוספת טיול ספונטני של ${dogName}`}
+                {isEditing ? `עריכת טיול של ${dogName}` : `הוסף טיול של ${dogName}`}
               </RtlText>
-            <RtlText style={styles.subtitle}>לטיול שכבר קרה, בלי לשנות את הסבב</RtlText>
+            <RtlText style={styles.subtitle}>{isEditing ? 'עדכון פרטי הטיול' : 'אפשר להתחיל טיול עכשיו או להזין טיול שכבר בוצע'}</RtlText>
+
+            {!isEditing && onStartNow ? (
+              <Button label="התחל טיול עכשיו" onPress={() => void onStartNow()} style={styles.startNowButton} />
+            ) : null}
 
             <RtlText style={styles.label}>מי טייל?</RtlText>
             {canChooseUser ? (
@@ -197,23 +218,27 @@ export function AddUnplannedWalkModal({
             <View style={styles.row}>
               <View style={styles.flex}>
                 <RtlText style={styles.label}>תאריך</RtlText>
-                <TextInput
-                  value={date}
-                  onChangeText={setDate}
-                  style={styles.input}
-                  placeholder="YYYY-MM-DD"
-                  textAlign="center"
-                  accessibilityLabel="תאריך"
-                />
+                <DatePickerField value={date} onChange={setDate} label="בחירת תאריך הטיול" />
               </View>
               <View style={styles.flex}>
                 <RtlText style={styles.label}>שעה</RtlText>
-                <RtlText style={[styles.input, styles.timeDisplay]}>{time}</RtlText>
+                {/* The app is also used from Safari. DateTimePicker has no
+                    visible Web control there, so render the browser's native
+                    time picker instead of a static-looking time label. */}
+                {Platform.OS === 'web' ? React.createElement('input', {
+                  type: 'time',
+                  value: time,
+                  step: 60,
+                  'aria-label': 'בחר שעת טיול',
+                  onChange: (event: { target: { value: string } }) => setTime(event.target.value),
+                  style: webTimeInputStyle,
+                }) : (
+                  <RtlText style={[styles.input, styles.timeDisplay]}>{time}</RtlText>
+                )}
               </View>
             </View>
 
-            {/* Round 6C-time: date field above is unchanged (still a plain
-                TextInput). Time is now picked via the native time picker —
+            {/* Time is picked via the native time picker —
                 the trigger button opens it on Android; on iOS the picker is
                 always shown inline below, mirroring
                 RequestTimeChangeModal.tsx's platform split. */}
@@ -281,6 +306,7 @@ export function AddUnplannedWalkModal({
               accessibilityLabel="הערה (אופציונלי)"
             />
 
+            </ScrollView>
             <View style={styles.actions}>
               <Button
                 label={isEditing ? 'שמור שינויים' : 'שמור טיול'}
@@ -300,37 +326,66 @@ export function AddUnplannedWalkModal({
               />
               <Button label="ביטול" onPress={onClose} variant="secondary" style={styles.flex} />
             </View>
-
             {isEditing && onDelete && editingWalk ? (
+              <View style={styles.destructiveSection}>
               <Button
                 label="מחק טיול זה"
                 variant="danger"
                 style={styles.deleteButton}
                 accessibilityHint="יוצג אישור לפני מחיקה לצמיתות של הטיול"
                 onPress={() => {
+                  const confirmDelete = () => onDelete(editingWalk.id);
+
+                  // React Native Alert is not reliably shown in Safari Web.
+                  // Use the browser confirmation there so the delete button
+                  // is actually actionable on iPhone Safari.
+                  if (Platform.OS === 'web') {
+                    const confirm = (globalThis as typeof globalThis & { confirm?: (message?: string) => boolean }).confirm;
+                    if (confirm?.('למחוק את הטיול הזה?\\n\\nהפעולה תמחק לצמיתות את הטיול הספונטני הזה ואת כל הפרטים שלו.')) {
+                      void confirmDelete();
+                    }
+                    return;
+                  }
+
                   Alert.alert(
                     'למחוק את הטיול הזה?',
                     'הפעולה תמחק לצמיתות את הטיול הספונטני הזה ואת כל הפרטים שלו.',
                     [
                       { text: 'חזרה', style: 'cancel' },
-                      { text: 'מחק', style: 'destructive', onPress: () => onDelete(editingWalk.id) },
+                      { text: 'מחק', style: 'destructive', onPress: () => void confirmDelete() },
                     ]
                   );
                 }}
               />
+              </View>
             ) : null}
-            </ScrollView>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );
 }
 
+const webTimeInputStyle = {
+  display: 'block', width: '100%', minHeight: 52, boxSizing: 'border-box', padding: 12,
+  fontSize: 18, fontWeight: '700', borderRadius: radii.md, border: `1px solid ${colors.border}`,
+  backgroundColor: colors.surfaceMuted, color: colors.textPrimary, textAlign: 'center', direction: 'ltr', cursor: 'pointer',
+  WebkitAppearance: 'none', appearance: 'none',
+};
+
+const webDatePickerOverlayStyle = {
+  position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0,
+  cursor: 'pointer',
+};
+
 const styles = StyleSheet.create({
   flexFull: { flex: 1 },
+  webDateField: { position: 'relative', minHeight: 52, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceMuted, alignItems: 'center', justifyContent: 'center' },
+  webDateDisplay: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, maxHeight: '90%' },
+  sheet: { flex: 1, backgroundColor: colors.surface, paddingHorizontal: 24, paddingTop: Platform.OS === 'web' ? 28 : 48, paddingBottom: Platform.OS === 'web' ? 28 : 36 },
+  formScroll: { flex: 1 },
+  formContent: { paddingBottom: spacing.lg },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
   subtitle: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xs, marginBottom: spacing.sm },
   label: { width: '100%', fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: 14, marginBottom: spacing.sm, textAlign: 'right', writingDirection: 'rtl' },
@@ -371,6 +426,8 @@ const styles = StyleSheet.create({
     minHeight: 56,
     textAlignVertical: 'top',
   },
-  actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.xl },
-  deleteButton: { marginTop: spacing.md },
+  actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm, paddingTop: spacing.sm },
+  startNowButton: { marginTop: spacing.sm, marginBottom: spacing.md },
+  destructiveSection: { marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
+  deleteButton: { marginBottom: spacing.xs },
 });

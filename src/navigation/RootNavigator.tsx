@@ -1,7 +1,7 @@
-﻿import React, { useEffect } from 'react';
-import { Platform, Pressable, View } from 'react-native';
+﻿import React, { useEffect, useRef, useState } from 'react';
+import { Platform, Pressable, View, useWindowDimensions } from 'react-native';
 import { RtlText } from '../components/RtlText';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
@@ -11,21 +11,27 @@ import { FamilyScreen } from '../screens/FamilyScreen';
 import { HistoryScreen } from '../screens/HistoryScreen';
 import { StatisticsScreen } from '../screens/StatisticsScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
+import { ChatScreen } from '../screens/ChatScreen';
 import { ImpersonationBanner } from '../components/ImpersonationBanner';
 import { SystemObserverBanner } from '../components/SystemObserverBanner';
 import { colors } from '../theme/colors';
 import { layout, nativeDirection, spacing } from '../theme/tokens';
-import { useAuthStore, useEffectiveUserId } from '../store/authStore';
+import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useRequestsStore } from '../store/requestsStore';
 import { subscribeToFamilyChanges } from '../lib/realtime';
 import { DEMO_FAMILY } from '../data/demoData';
-import { canAccessHistoryScreen, canAccessStatisticsScreen } from '../logic/permissions';
+import { canAccessHistoryScreen, canAccessStatisticsScreen, canAccessSettingsScreen } from '../logic/permissions';
+import { useChatStore } from '../store/chatStore';
+import { useChatSession } from './useChatSession';
+import { formatChatBadge } from '../logic/chat';
+import { consumePendingChatOpen, subscribeToChatOpens } from '../notifications/chatEntry';
 
 export type RootTabParamList = {
   Home: undefined;
   Schedule: undefined;
+  Chat: undefined;
   Family: undefined;
   History: undefined;
   Statistics: undefined;
@@ -33,6 +39,7 @@ export type RootTabParamList = {
 };
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
+const navigationRef = createNavigationContainerRef<RootTabParamList>();
 
 function TabIcon({ name, color }: { name: keyof RootTabParamList; color: string }) {
   const common = { stroke: color, strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
@@ -42,6 +49,8 @@ function TabIcon({ name, color }: { name: keyof RootTabParamList; color: string 
         return <><Path d="M3 10.5 12 3l9 7.5" {...common} /><Path d="M5 9.5V21h14V9.5M9 21v-7h6v7" {...common} /></>;
       case 'Schedule':
         return <><Rect x="3" y="5" width="18" height="16" rx="2" {...common} fill="none" /><Line x1="7" y1="3" x2="7" y2="7" {...common} /><Line x1="17" y1="3" x2="17" y2="7" {...common} /><Line x1="3" y1="10" x2="21" y2="10" {...common} /></>;
+      case 'Chat':
+        return <><Path d="M20.5 11.5a7.5 7.5 0 0 1-10.9 6.7L4 20l1.6-4.4A7.5 7.5 0 1 1 20.5 11.5Z" {...common} fill="none" /><Line x1="9" y1="10" x2="15" y2="10" {...common} /><Line x1="9" y1="13.5" x2="13" y2="13.5" {...common} /></>;
       case 'Family':
         return <><Circle cx="9" cy="8" r="3" {...common} fill="none" /><Circle cx="17" cy="9" r="2.5" {...common} fill="none" /><Path d="M3.5 20c.4-4 2.3-6 5.5-6s5.1 2 5.5 6M14 15c3.7-.8 6 1 6.5 4.5" {...common} /></>;
       case 'History':
@@ -57,21 +66,45 @@ function TabIcon({ name, color }: { name: keyof RootTabParamList; color: string 
 
 const TAB_LABEL: Record<keyof RootTabParamList, string> = {
   Home: 'בית',
-  Schedule: 'לוח זמנים',
+  Schedule: 'לו״ז',
+  Chat: 'צ׳אט',
   Family: 'משפחה',
   History: 'היסטוריה',
-  Statistics: 'סטטיסטיקה',
+  Statistics: 'נתונים',
   Settings: 'הגדרות',
 };
 
 const PHYSICAL_TAB_ORDER: (keyof RootTabParamList)[] = [
   'Settings',
   'Statistics',
-  'History',
   'Family',
-  'Schedule',
   'Home',
+  'Chat',
+  'Schedule',
+  'History',
 ];
+
+// Item 8 (nav centering): Home must sit at the exact geometric center of the
+// bar regardless of how many of the OTHER destinations are currently visible
+// (History/Statistics/Settings are each permission-gated and can come and go
+// independently — see canSeeHistoryTab/canSeeStatisticsTab/canSeeSettingsTab
+// below). Splitting the non-Home destinations into two independent flex
+// groups (everything physically before Home, everything physically after)
+// and absolutely-positioning Home at left: 50% of the whole bar decouples
+// its position from either group's item count entirely — it is centered on
+// the bar itself, never on "whatever's left after subtracting N buttons".
+// This slot width only reserves layout space in the two flex groups (so
+// their buttons never render underneath the centered Home circle); it does
+// not constrain Home's own tap target, which stays exactly as large as
+// before (see HOME_BUTTON_SIZE below).
+const HOME_SLOT_WIDTH = 76;
+const HOME_BUTTON_SIZE = 50;
+// Horizontal padding of each side tab button. With Chat added, a fully
+// permitted member sees three destinations on each side of Home; on a 320-375pt
+// phone that leaves ~40-47pt per button, so the padding is kept minimal to
+// give the longest label ("היסטוריה") the whole slot.
+const TAB_BUTTON_PADDING = 1;
+const COMPACT_TAB_BAR_BELOW = 360;
 
 /**
  * A physically deterministic tab bar. React Navigation/iOS can re-evaluate
@@ -79,40 +112,94 @@ const PHYSICAL_TAB_ORDER: (keyof RootTabParamList)[] = [
  * ourselves in an explicitly-LTR row prevents that transient flip while the
  * Hebrew labels themselves remain RTL text.
  */
-function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab, canSeeStatisticsTab }: BottomTabBarProps & { canSeeHistoryTab: boolean; canSeeStatisticsTab: boolean }) {
+function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab, canSeeStatisticsTab, canSeeSettingsTab }: BottomTabBarProps & { canSeeHistoryTab: boolean; canSeeStatisticsTab: boolean; canSeeSettingsTab: boolean }) {
   const insets = useSafeAreaInsets();
+  // Family Chat unread badge. Read here (not passed as a prop) so a new
+  // message re-renders only the bar, never the navigator and its screens.
+  const chatBadge = formatChatBadge(useChatStore((s) => s.unreadCount));
+  // On the narrowest phones (320pt) three equal slots per side are ~38pt
+  // each — narrower than the longest label ("היסטוריה"), which would clip on
+  // web, where adjustsFontSizeToFit does not exist. There, each button is
+  // sized by its own label and the leftover space is shared equally, so every
+  // label fits whole. From 360pt up the slots stay equal, exactly as before.
+  const { width: windowWidth } = useWindowDimensions();
+  const contentSizedTabs = windowWidth < COMPACT_TAB_BAR_BELOW;
   const routeByName = Object.fromEntries(state.routes.map((route) => [route.name, route]));
+  const isVisible = (name: keyof RootTabParamList) => {
+    if (!routeByName[name]) return false;
+    // Item 1 fix: never hide the tab BUTTON for the route the user is
+    // actually standing on right now, even if its permission just went
+    // fail-closed mid-visit (see RootNavigator()'s own activeTabName
+    // comment for why that happens and why it's safe to ignore here —
+    // the destination screen's own canAccessXScreen() gate still protects
+    // the real content during that blip).
+    if (state.routes[state.index]?.name === name) return true;
+    if (name === 'History') return canSeeHistoryTab;
+    if (name === 'Statistics') return canSeeStatisticsTab;
+    if (name === 'Settings') return canSeeSettingsTab;
+    return true;
+  };
 
-  const buttons = PHYSICAL_TAB_ORDER.map((name) => {
-        const route = routeByName[name];
-        if (!route) return null;
-        if (name === 'History' && !canSeeHistoryTab) return null;
-        if (name === 'Statistics' && !canSeeStatisticsTab) return null;
-        const routeIndex = state.routes.findIndex((r) => r.key === route.key);
-        const focused = state.index === routeIndex;
-        const options = descriptors[route.key]?.options;
-        const tint = focused ? colors.primary : colors.textSecondary;
-        return (
-          <Pressable
-            key={route.key}
-            onPress={() => {
-              const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-              if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
-            }}
-            onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
-            accessibilityRole="button"
-            accessibilityState={focused ? { selected: true } : {}}
-            accessibilityLabel={options?.tabBarAccessibilityLabel ?? TAB_LABEL[name]}
-            style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 1 }}
-          >
-            <TabIcon name={name} color={tint} />
-            <RtlText allowFontScaling={false} numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: tint, textAlign: 'center', writingDirection: 'rtl' }}>{TAB_LABEL[name]}</RtlText>
-          </Pressable>
-        );
-      });
+  const renderTabButton = (name: keyof RootTabParamList) => {
+    const route = routeByName[name];
+    if (!route) return null;
+    const focused = state.routes[state.index]?.key === route.key;
+    const options = descriptors[route.key]?.options;
+    const tint = focused ? colors.primary : colors.textSecondary;
+    return (
+      <Pressable
+        key={route.key}
+        onPress={() => {
+          const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+          if (!focused && !event.defaultPrevented) {
+            // Target the tab navigator by route key. With conditional
+            // History/Statistics routes, navigating only by name could
+            // be resolved against stale navigator state and fall back
+            // to the initial Home route after permission refreshes.
+            navigation.navigate({ key: route.key, name: route.name } as never);
+          }
+        }}
+        onLongPress={() => navigation.emit({ type: 'tabLongPress', target: route.key })}
+        accessibilityRole="button"
+        accessibilityState={focused ? { selected: true } : {}}
+        accessibilityLabel={
+          name === 'Chat' && chatBadge
+            ? `${TAB_LABEL.Chat}, ${chatBadge} הודעות שלא נקראו`
+            : options?.tabBarAccessibilityLabel ?? TAB_LABEL[name]
+        }
+        style={[
+          { minWidth: 0, paddingHorizontal: TAB_BUTTON_PADDING, alignItems: 'center', justifyContent: 'center', gap: 1 },
+          contentSizedTabs ? { flexGrow: 1, flexShrink: 1, flexBasis: 'auto' } : { flex: 1 },
+        ]}
+      >
+        <View>
+          <TabIcon name={name} color={tint} />
+          {name === 'Chat' && chatBadge ? (
+            // Physically anchored (left/top), like the bar itself: the badge
+            // must not jump sides if RTL mirroring is re-evaluated.
+            <View
+              pointerEvents="none"
+              style={{ position: 'absolute', top: -5, left: layout.iconSize - 9, minWidth: 17, height: 17, borderRadius: 9, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryDark, borderWidth: 1.5, borderColor: colors.surface }}
+            >
+              <RtlText allowFontScaling={false} numberOfLines={1} style={{ fontSize: 10, lineHeight: 13, fontWeight: '800', color: colors.textInverse, textAlign: 'center', writingDirection: 'ltr' }}>{chatBadge}</RtlText>
+            </View>
+          ) : null}
+        </View>
+        <RtlText allowFontScaling={false} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={{ fontSize: 10, lineHeight: 13, fontWeight: '600', color: tint, textAlign: 'center', writingDirection: 'rtl', width: contentSizedTabs ? undefined : '100%', paddingHorizontal: 1 }}>{TAB_LABEL[name]}</RtlText>
+      </Pressable>
+    );
+  };
+
+  const homeIndex = PHYSICAL_TAB_ORDER.indexOf('Home');
+  const leftButtons = PHYSICAL_TAB_ORDER.slice(0, homeIndex).filter(isVisible).map(renderTabButton);
+  const rightButtons = PHYSICAL_TAB_ORDER.slice(homeIndex + 1).filter(isVisible).map(renderTabButton);
+
+  const homeRoute = routeByName.Home;
+  const homeFocused = homeRoute ? state.routes[state.index]?.key === homeRoute.key : false;
+  const homeOptions = homeRoute ? descriptors[homeRoute.key]?.options : undefined;
 
   return (
-    <View style={{ height: layout.rowHeight + insets.bottom, paddingBottom: Math.max(spacing.sm, insets.bottom), paddingTop: 6, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }}>
+    <View style={{ height: layout.rowHeight + insets.bottom, paddingBottom: Math.max(spacing.sm, insets.bottom), paddingTop: 6, paddingHorizontal: Math.max(spacing.sm, insets.left, insets.right), backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border }}>
       <View
         style={{
           flex: 1,
@@ -120,10 +207,59 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
           maxWidth: Platform.OS === 'web' ? 1000 : undefined,
           alignSelf: 'center',
           flexDirection: 'row',
+          position: 'relative',
           ...nativeDirection('ltr'),
         }}
       >
-        {buttons}
+        <View style={{ flex: 1, flexDirection: 'row' }}>{leftButtons}</View>
+        {/* Reserves the centered Home button's own footprint so the two side
+            groups never render underneath it. */}
+        <View style={{ width: HOME_SLOT_WIDTH }} />
+        <View style={{ flex: 1, flexDirection: 'row' }}>{rightButtons}</View>
+
+        {homeRoute ? (
+          <Pressable
+            key={homeRoute.key}
+            onPress={() => {
+              const event = navigation.emit({ type: 'tabPress', target: homeRoute.key, canPreventDefault: true });
+              if (!homeFocused && !event.defaultPrevented) {
+                navigation.navigate({ key: homeRoute.key, name: homeRoute.name } as never);
+              }
+            }}
+            onLongPress={() => navigation.emit({ type: 'tabLongPress', target: homeRoute.key })}
+            accessibilityRole="button"
+            accessibilityState={homeFocused ? { selected: true } : {}}
+            accessibilityLabel={homeOptions?.tabBarAccessibilityLabel ?? TAB_LABEL.Home}
+            style={{
+              position: 'absolute',
+              left: '50%',
+              marginLeft: -(HOME_SLOT_WIDTH / 2),
+              // Item 2 fix: stretch to the FULL row height (top:0 AND
+              // bottom:0), not just top-anchored — the previous top-only
+              // anchor meant the circle+label content (taller than the row
+              // itself) hung down top-first instead of being centered, so
+              // the -10 raise pushed the label past the row's bottom edge
+              // instead of lifting a vertically-centered block. Matches
+              // what every OTHER tab button already gets for free from the
+              // row's default flex `alignItems: 'stretch'` (they are flex
+              // children of a stretch parent; this one is absolutely
+              // positioned, so it needs top+bottom set explicitly to get
+              // the same full-height box before centering).
+              top: 0,
+              bottom: 0,
+              width: HOME_SLOT_WIDTH,
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 1,
+              transform: [{ translateY: -10 }],
+            }}
+          >
+            <View style={{ width: HOME_BUTTON_SIZE, height: HOME_BUTTON_SIZE, borderRadius: HOME_BUTTON_SIZE / 2, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 4, borderColor: colors.surface }}>
+              <TabIcon name="Home" color={colors.textInverse} />
+            </View>
+            <RtlText allowFontScaling={false} numberOfLines={1} style={{ fontSize: 11, fontWeight: '800', color: colors.primary, textAlign: 'center', writingDirection: 'rtl' }}>{TAB_LABEL.Home}</RtlText>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -131,6 +267,49 @@ function FixedPhysicalTabBar({ state, descriptors, navigation, canSeeHistoryTab,
 
 
 export function RootNavigator() {
+  // Item 1 fix (real bug, not the stale-navigate-by-name issue 20dcc49
+  // already fixed): History/Statistics/Settings each reload family data on
+  // their OWN mount/focus (loadFamily -> familyStore.load() ->
+  // loadPermissionOverrides(), which resets permissionOverridesStatus to
+  // 'loading' the instant it starts — see familyStore.ts). That flips
+  // canSeeHistoryTab/canSeeStatisticsTab/canSeeSettingsTab to false
+  // (fail-closed) for the split second the reload is in flight — including
+  // while the user is SITTING ON that exact tab, having just navigated
+  // there. The conditional `{canSeeXTab ? <Tab.Screen .../> : null}` below
+  // then unmounts the CURRENTLY FOCUSED route out from under the Tab
+  // Navigator, which falls back to the first declared screen — Home. That
+  // is the actual mechanism behind "Statistics/History still open Home".
+  // Fix: track which route is currently focused (both here AND in
+  // FixedPhysicalTabBar's own isVisible(), so the tab bar BUTTON doesn't
+  // flicker away either) and never let a conditional screen/button
+  // disappear while it IS the active one — the destination screen's own
+  // canAccessXScreen() gate (HistoryScreen.tsx / StatisticsScreen.tsx)
+  // already re-verifies access independently and shows its own
+  // locked/blocked state during that same reload, so no protected content
+  // is ever exposed by keeping the route mounted through the blip. Once
+  // the user navigates AWAY, a genuinely revoked permission still hides
+  // the tab correctly on the next render, exactly as before.
+  const [activeTabName, setActiveTabName] = useState<keyof RootTabParamList>('Home');
+  // Family Chat: one live session (messages + unread badge) for whoever is
+  // signed in, torn down on every family/profile change — see useChatSession.
+  useChatSession();
+  // A tapped chat notification opens the Chat tab. If it arrives before the
+  // navigator is ready (cold launch), it is applied in onReady.
+  const pendingChatOpen = useRef(false);
+  useEffect(() => {
+    return subscribeToChatOpens((event) => {
+      consumePendingChatOpen();
+      // Open the conversation the notification was about (the store waits
+      // for the list if it has not loaded yet, and ignores an id this
+      // profile cannot see).
+      useChatStore.getState().requestOpenConversation(event.conversationId);
+      if (navigationRef.isReady()) {
+        navigationRef.navigate('Chat');
+      } else {
+        pendingChatOpen.current = true;
+      }
+    });
+  }, []);
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   // BATCH 3 (Task 4 — navigation visibility): hide the History/Statistics
   // tabs when the current EFFECTIVE member (respects impersonation/Test
@@ -170,6 +349,9 @@ export function RootNavigator() {
   const permissionOverridesStatus = useFamilyStore((s) => s.permissionOverridesStatus);
   const canSeeHistoryTab = canAccessHistoryScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus);
   const canSeeStatisticsTab = canAccessStatisticsScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus);
+  const effectiveFamilyRole = useEffectiveFamilyRole();
+  const canSeeSettingsTab = effectiveFamilyRole === 'admin' ||
+    canAccessSettingsScreen(effectiveUserId, permissionOverrides, permissionOverridesStatus);
   // Gates the wrapping SafeAreaView itself (not just the banner's own
   // internal null-check) — otherwise an empty top-inset-padded View would
   // sit above every screen at all times, silently pushing everything down
@@ -233,10 +415,10 @@ export function RootNavigator() {
           <ImpersonationBanner />
         </SafeAreaView>
       ) : null}
-      <NavigationContainer direction="rtl">
+      <NavigationContainer direction="rtl" ref={navigationRef} onReady={() => { if (pendingChatOpen.current) { pendingChatOpen.current = false; navigationRef.navigate('Chat'); } }} onStateChange={(state) => { const name = state?.routes[state.index ?? 0]?.name as keyof RootTabParamList | undefined; if (name) setActiveTabName(name); }}>
       <Tab.Navigator
         initialRouteName="Home"
-        tabBar={(props) => <FixedPhysicalTabBar {...props} canSeeHistoryTab={canSeeHistoryTab} canSeeStatisticsTab={canSeeStatisticsTab} />}
+        tabBar={(props) => <FixedPhysicalTabBar {...props} canSeeHistoryTab={canSeeHistoryTab} canSeeStatisticsTab={canSeeStatisticsTab} canSeeSettingsTab={canSeeSettingsTab} />}
         screenOptions={({ route }) => ({
           headerShown: false,
           tabBarActiveTintColor: colors.primary,
@@ -261,15 +443,19 @@ export function RootNavigator() {
             pre-restart/post-restart mismatch we saw during Dynamic Type tests. */}
         <Tab.Screen name="Home" component={HomeScreen} />
         <Tab.Screen name="Schedule" component={ScheduleScreen} />
+        {/* Family Chat: every family member, children and regular members
+            included, so it is never permission-gated. Access to the
+            conversation itself is enforced server-side (migration 0108). */}
+        <Tab.Screen name="Chat" component={ChatScreen} />
         <Tab.Screen name="Family" component={FamilyScreen} />
         {/* BATCH 3 (Task 4): conditionally-rendered Tab.Screen — omitting it
             entirely (not just hiding a tab bar button) means it also can't
             be reached via navigation.navigate('History'/...) from stale
             code, and FixedPhysicalTabBar's own `if (!route) return null`
             above already handles a route that doesn't exist this render. */}
-        <Tab.Screen name="History" component={HistoryScreen} />
-        <Tab.Screen name="Statistics" component={StatisticsScreen} />
-        <Tab.Screen name="Settings" component={SettingsScreen} />
+        {(canSeeHistoryTab || activeTabName === 'History') ? <Tab.Screen name="History" component={HistoryScreen} /> : null}
+        {(canSeeStatisticsTab || activeTabName === 'Statistics') ? <Tab.Screen name="Statistics" component={StatisticsScreen} /> : null}
+        {(canSeeSettingsTab || activeTabName === 'Settings') ? <Tab.Screen name="Settings" component={SettingsScreen} /> : null}
       </Tab.Navigator>
       </NavigationContainer>
     </View>

@@ -1,4 +1,5 @@
 ﻿import type { Walk } from '../types';
+import { localDateOnly } from './dateFormat';
 
 /**
  * Combines a walk's date + "HH:mm" scheduled time into a Date object (local time).
@@ -11,9 +12,10 @@ export function walkDateTime(walk: Pick<Walk, 'date' | 'scheduledTime'>): Date {
 
 /**
  * Finds the "next walk" to surface on the Home screen:
- * an unresolved overdue walk first, otherwise the earliest future pending
- * walk. An overdue status decision is the most urgent action on Home; it
- * must never be hidden behind a later upcoming walk.
+ * the most recently scheduled unresolved overdue walk first, otherwise the
+ * earliest future pending walk. When several walks were missed, the latest
+ * missed occurrence is the current actionable context; older missed walks
+ * must not make the red card count lateness indefinitely.
  */
 export function computeNextWalk(walks: Walk[], now: Date = new Date()): Walk | undefined {
   const active = walks.find((w) => w.status === 'in_progress');
@@ -23,9 +25,97 @@ export function computeNextWalk(walks: Walk[], now: Date = new Date()): Walk | u
   const overdue = pending.filter((w) => walkDateTime(w).getTime() < now.getTime());
   const candidates = overdue.length ? overdue : pending.filter((w) => walkDateTime(w).getTime() >= now.getTime());
   if (candidates.length === 0) return undefined;
-  return [...candidates].sort(
-    (a, b) => walkDateTime(a).getTime() - walkDateTime(b).getTime()
-  )[0];
+  return [...candidates].sort((a, b) => {
+    const delta = walkDateTime(a).getTime() - walkDateTime(b).getTime();
+    return overdue.length ? -delta : delta;
+  })[0];
+}
+
+/**
+ * Finalizes stale planned walks once a later planned occurrence for the same
+ * dog has become due. The newest due occurrence stays actionable; any older
+ * pending occurrence is no longer an open question and becomes "skipped".
+ *
+ * In-progress walks are never touched. Unplanned walks neither trigger nor
+ * receive automatic skipping.
+ */
+export function finalizeSupersededPendingWalks(walks: Walk[], now: Date = new Date()): Walk[] {
+  const latestDueByDog = new Map<string, number>();
+
+  for (const walk of walks) {
+    if (walk.isUnplanned) continue;
+    const scheduledAt = walkDateTime(walk).getTime();
+    if (scheduledAt > now.getTime()) continue;
+    const latest = latestDueByDog.get(walk.dogId);
+    if (latest == null || scheduledAt > latest) latestDueByDog.set(walk.dogId, scheduledAt);
+  }
+
+  let changed = false;
+  const finalized = walks.map((walk) => {
+    if (walk.isUnplanned || walk.status !== 'pending') return walk;
+    const latestDue = latestDueByDog.get(walk.dogId);
+    if (latestDue == null || walkDateTime(walk).getTime() >= latestDue) return walk;
+    changed = true;
+    return { ...walk, status: 'skipped' as const, updatedAt: now.toISOString() };
+  });
+
+  return changed ? finalized : walks;
+}
+
+/**
+ * P0 real-device fix — after a scheduled occurrence's Walk was legitimately
+ * finished (status 'done'), the SAME occurrence reappeared as a second,
+ * separately startable pending Walk. Root cause: `walks.schedule_entry_id`
+ * is UNIQUE server-side (supabase/schema.sql), so there can only ever be
+ * ONE canonical server row per occurrence — but the OFFLINE-FIRST local
+ * cache can still end up holding a stale PENDING duplicate for the same
+ * schedule_entry_id left over from the exact local-id race
+ * resolveCanonicalWalkId (offlineFirstRepository.ts) resolves for Start.
+ * That duplicate is normally excluded once a remote row for the same
+ * schedule_entry_id is known, but a reload that happens to read the raw
+ * local cache (e.g. a transient `isOnline()` false right after
+ * foregrounding, before connectivity is confirmed) returns it with no
+ * such filtering at all, and nothing before this point otherwise prevents
+ * more than one Walk per schedule_entry_id from ever reaching display.
+ *
+ * Collapses every group of walks that share a `scheduleEntryId` down to
+ * exactly one. Walks with no `scheduleEntryId` (unplanned/spontaneous) are
+ * never deduplicated against each other — each is independently real, and
+ * this bug class cannot apply to them (no shared unique constraint). Pure
+ * and order-preserving otherwise, so it is safe to call on every schedule
+ * load, not just when a duplicate is suspected.
+ *
+ * ROUND 4 FIX — real-device QA: a valid, still-FUTURE 14:00 occurrence
+ * today vanished from Home entirely (it fell through to tomorrow's
+ * occurrence instead), even though an earlier walk the same day was
+ * correctly 'done'. Root-caused to this function's own status-rank
+ * ordering: the exact duplicate-local-id race described above can leave
+ * ONE copy of an occurrence genuinely 'pending' (still actionable, not yet
+ * due) and the OTHER stuck as 'skipped' — e.g. a stale copy that was
+ * generated, then superseded by a LATER walk for the same dog becoming due
+ * (finalizeSupersededPendingWalks) on some earlier pass, while the real,
+ * still-relevant copy remained 'pending'. The original rank table put
+ * `skipped` ABOVE `pending`, so dedup picked the stale, dead-end `skipped`
+ * copy as canonical and discarded the genuinely actionable `pending` one —
+ * silently removing a valid future occurrence from Home exactly as
+ * described above. `pending` now outranks `skipped`: an occurrence that is
+ * still genuinely actionable must never lose to a duplicate that gave up
+ * on it. This cannot regress the "stays done" guarantee above — `done`
+ * and `in_progress` still outrank everything, `pending` only ever wins
+ * against `skipped`, a status that itself never outranks either.
+ */
+export function dedupeCanonicalWalks(walks: Walk[]): Walk[] {
+  const statusRank: Record<Walk['status'], number> = { skipped: 0, pending: 1, in_progress: 2, done: 3 };
+  const canonicalByEntry = new Map<string, Walk>();
+  for (const walk of walks) {
+    if (!walk.scheduleEntryId) continue;
+    const current = canonicalByEntry.get(walk.scheduleEntryId);
+    if (!current || statusRank[walk.status] > statusRank[current.status]) {
+      canonicalByEntry.set(walk.scheduleEntryId, walk);
+    }
+  }
+  const kept = new Set(canonicalByEntry.values());
+  return walks.filter((walk) => !walk.scheduleEntryId || kept.has(walk));
 }
 
 /** Finds the most recently completed (or skipped) walk, for the "last walk" home card. */
@@ -40,7 +130,7 @@ export function computeLastWalk(walks: Walk[], now: Date = new Date()): Walk | u
 
   const finished = walks.filter(
     (w) =>
-      w.status !== 'pending' &&
+      (w.status === 'done' || w.status === 'skipped') &&
       finishedTime(w) <= now.getTime()
   );
 
@@ -108,3 +198,16 @@ export function upcomingWalks(walks: Walk[], now: Date = new Date(), limit = 10)
     .slice(0, limit);
 }
 
+
+/**
+ * Returns every walk scheduled for the viewer's local calendar day in
+ * chronological order. Unlike `upcomingWalks`, this deliberately retains
+ * completed, skipped and in-progress walks so a Home dashboard can show the
+ * day's actual timeline rather than only future pending work.
+ */
+export function dailyWalkTimeline(walks: Walk[], now: Date = new Date()): Walk[] {
+  const today = localDateOnly(now);
+  return walks
+    .filter((walk) => walk.date === today)
+    .sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
+}

@@ -111,6 +111,27 @@ const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY') ?? '';
 const VAPID_SUBJECT = Deno.env.get('VAPID_SUBJECT') ?? 'https://walkie-doggy-link.expo.app';
 const CRON_SECRET = Deno.env.get('WALK_REMINDER_CRON_SECRET') ?? '';
 
+// P0 notification-delivery investigation (Staging security review, item 3):
+// this is the ONLY credential this function trusts (see the header above),
+// so it must not be comparable via a data-dependent-timing `!==`/`===` on
+// the raw strings — that leaks how many leading bytes matched through
+// response latency, letting a network attacker recover the secret
+// byte-by-byte over enough requests. Deno's Web Crypto API has no
+// Node-style `crypto.timingSafeEqual`, so this is a small manual constant-
+// time comparison: it always walks the longer of the two byte lengths
+// (never branches/returns early on the first mismatching byte or on a
+// length difference) and only inspects the accumulated result at the end.
+function timingSafeEqual(a: string, b: string): boolean {
+  const aBytes = new TextEncoder().encode(a);
+  const bBytes = new TextEncoder().encode(b);
+  const maxLen = Math.max(aBytes.length, bBytes.length);
+  let mismatch = aBytes.length ^ bBytes.length;
+  for (let i = 0; i < maxLen; i++) {
+    mismatch |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0);
+  }
+  return mismatch === 0;
+}
+
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
   webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 }
@@ -170,8 +191,8 @@ function buildWalkReminderMessage(input: ReminderMessageInput): { title: string;
   if (stage === 'T-15') {
     return pick(
       [
-        { title: `🐶 עוד 15 דקות לטיול של ${dogName}`, body: `${responsibleName} אחראי/ת על הטיול בשעה ${scheduledTime}` },
-        { title: '⏰ טיול בקרוב', body: `בעוד 15 דקות הגיע הזמן לטייל את ${dogName} — ${responsibleName} אחראי/ת` },
+        { title: `⏰ עוד 15 דקות לטיול של ${dogName}`, body: `${responsibleName} — באחריות בשעה ${scheduledTime}` },
+        { title: '⏰ טיול בקרוב', body: `הטיול עם ${dogName} מתחיל בעוד 15 דקות — ${responsibleName} — באחריות` },
       ],
       seed
     );
@@ -179,8 +200,8 @@ function buildWalkReminderMessage(input: ReminderMessageInput): { title: string;
   if (stage === 'T') {
     return pick(
       [
-        { title: '🐾 הגיע הזמן לטיול!', body: `${noun} מחכה לטיול עכשיו — ${responsibleName} אחראי/ת` },
-        { title: `🐾 זמן לטייל את ${dogName}`, body: `השעה ${scheduledTime} הגיעה — ${responsibleName} אחראי/ת על הטיול` },
+        { title: '🐾 הגיע הזמן לטיול!', body: `${noun} מחכה לטיול עכשיו — ${responsibleName} — באחריות` },
+        { title: `🐾 זמן לטייל עם ${dogName}`, body: `השעה ${scheduledTime} הגיעה — ${responsibleName} — באחריות` },
       ],
       seed
     );
@@ -188,8 +209,8 @@ function buildWalkReminderMessage(input: ReminderMessageInput): { title: string;
   if (stage === 'T+15') {
     return pick(
       [
-        { title: '⏰ הטיול עדיין לא סומן כבוצע', body: `${noun} עדיין מחכה — הטיול משעה ${scheduledTime} טרם סומן. ${responsibleName} אחראי/ת` },
-        { title: `⏰ ${dogName} עדיין מחכה לטיול`, body: `הטיול משעה ${scheduledTime} עדיין ממתין — ${responsibleName} אחראי/ת. אפשר לסמן כבוצע באפליקציה` },
+        { title: '⏰ הטיול עדיין לא סומן כבוצע', body: `${noun} עדיין מחכה — הטיול משעה ${scheduledTime} טרם סומן. ${responsibleName} — באחריות` },
+        { title: `⏰ ${dogName} עדיין מחכה לטיול`, body: `הטיול משעה ${scheduledTime} עדיין ממתין — ${responsibleName} — באחריות. אפשר לסמן כבוצע באפליקציה` },
       ],
       seed
     );
@@ -200,10 +221,10 @@ function buildWalkReminderMessage(input: ReminderMessageInput): { title: string;
       {
         title: '🚨 הטיול דורש תשומת לב',
         body: wentOut
-          ? `${noun} עדיין לא ${wentOut} לטיול משעה ${scheduledTime} — ${responsibleName} אחראי/ת`
-          : `הטיול של ${dogName} משעה ${scheduledTime} עדיין ממתין — ${responsibleName} אחראי/ת`,
+          ? `${noun} עדיין לא ${wentOut} לטיול משעה ${scheduledTime} — ${responsibleName} — באחריות`
+          : `הטיול של ${dogName} משעה ${scheduledTime} עדיין ממתין — ${responsibleName} — באחריות`,
       },
-      { title: '🚨 טיול באיחור משמעותי', body: `הטיול של ${dogName} משעה ${scheduledTime} עדיין לא סומן כבוצע — ${responsibleName} אחראי/ת` },
+      { title: '🚨 טיול באיחור משמעותי', body: `הטיול של ${dogName} משעה ${scheduledTime} עדיין לא סומן כבוצע — ${responsibleName} — באחריות` },
     ],
     seed
   );
@@ -220,8 +241,8 @@ function buildWalkAttentionEscalationMessage(input: Omit<ReminderMessageInput, '
       {
         title: '🚨 עדכון למשפחה',
         body: wentOut
-          ? `${noun} עדיין לא ${wentOut} לטיול (${scheduledTime}) — ${responsibleName} היה/תה אחראי/ת`
-          : `הטיול של ${dogName} משעה ${scheduledTime} עדיין ממתין — ${responsibleName} היה/תה אחראי/ת`,
+          ? `${noun} עדיין לא ${wentOut} לטיול (${scheduledTime}) — באחריות ${responsibleName}`
+          : `הטיול של ${dogName} משעה ${scheduledTime} עדיין ממתין — באחריות ${responsibleName}`,
       },
     ],
     seed
@@ -354,7 +375,7 @@ Deno.serve(async (req: Request) => {
 
   // ---- Step 1: the ONLY credential this function trusts — see header. ----
   const providedSecret = req.headers.get('x-cron-secret') ?? '';
-  if (!CRON_SECRET || providedSecret !== CRON_SECRET) {
+  if (!CRON_SECRET || !timingSafeEqual(providedSecret, CRON_SECRET)) {
     return new Response(JSON.stringify({ ok: false, error: 'unauthorized' }), { status: 401 });
   }
 

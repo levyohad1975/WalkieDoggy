@@ -12,12 +12,10 @@
  * time), and increasing urgency by stage.
  *
  * HEBREW GRAMMAR NOTE: this codebase's existing convention for a
- * gender-unknown HUMAN is a literal "אחראי/ת" slash form (see
- * supabase/functions/send-request-push/index.ts's Hebrew templates) — reused
- * here unchanged for the responsible member. For the DOG's sex (new in this
- * batch — see migrations/0022_family_timezone_and_dog_sex.sql), use the
- * single correct verb when sex is known. When sex is unknown, use a separate
- * neutral sentence rather than a slash-form or a guessed gender.
+ * Human copy stays gender-neutral until member gender is explicitly stored,
+ * so notification text never guesses and never exposes slash-form wording.
+ * For the DOG's sex (see migrations/0022_family_timezone_and_dog_sex.sql),
+ * use the single correct verb when sex is known; otherwise use a neutral sentence.
  */
 
 import type { Dog } from '../types';
@@ -116,12 +114,12 @@ export function buildWalkReminderMessage(input: ReminderMessageInput): ReminderM
   if (stage === 'T-15') {
     const variants: ReminderMessage[] = [
       {
-        title: `🐶 עוד 15 דקות לטיול של ${dogName}`,
-        body: `${responsibleName} אחראי/ת על הטיול בשעה ${scheduledTime}`,
+        title: `⏰ עוד 15 דקות לטיול של ${dogName}`,
+        body: `${responsibleName} — באחריות בשעה ${scheduledTime}`,
       },
       {
         title: '⏰ טיול בקרוב',
-        body: `בעוד 15 דקות הגיע הזמן לטייל את ${dogName} — ${responsibleName} אחראי/ת`,
+        body: `הטיול עם ${dogName} מתחיל בעוד 15 דקות — ${responsibleName} — באחריות`,
       },
     ];
     return pick(variants, seed);
@@ -131,11 +129,11 @@ export function buildWalkReminderMessage(input: ReminderMessageInput): ReminderM
     const variants: ReminderMessage[] = [
       {
         title: '🐾 הגיע הזמן לטיול!',
-        body: `${noun} מחכה לטיול עכשיו — ${responsibleName} אחראי/ת`,
+        body: `${noun} מחכה לטיול עכשיו — ${responsibleName} — באחריות`,
       },
       {
-        title: `🐾 זמן לטייל את ${dogName}`,
-        body: `השעה ${scheduledTime} הגיעה — ${responsibleName} אחראי/ת על הטיול`,
+        title: `🐾 זמן לטייל עם ${dogName}`,
+        body: `השעה ${scheduledTime} הגיעה — ${responsibleName} — באחריות`,
       },
     ];
     return pick(variants, seed);
@@ -145,11 +143,11 @@ export function buildWalkReminderMessage(input: ReminderMessageInput): ReminderM
     const variants: ReminderMessage[] = [
       {
         title: '⏰ הטיול עדיין לא סומן כבוצע',
-        body: `${noun} עדיין מחכה — הטיול משעה ${scheduledTime} טרם סומן. ${responsibleName} אחראי/ת`,
+        body: `${noun} עדיין מחכה — הטיול משעה ${scheduledTime} טרם סומן. ${responsibleName} — באחריות`,
       },
       {
         title: `⏰ ${dogName} עדיין מחכה לטיול`,
-        body: `הטיול משעה ${scheduledTime} עדיין ממתין — ${responsibleName} אחראי/ת. אפשר לסמן כבוצע באפליקציה`,
+        body: `הטיול משעה ${scheduledTime} עדיין ממתין — ${responsibleName} — באחריות. אפשר לסמן כבוצע באפליקציה`,
       },
     ];
     return pick(variants, seed);
@@ -162,12 +160,12 @@ export function buildWalkReminderMessage(input: ReminderMessageInput): ReminderM
     {
       title: '🚨 הטיול דורש תשומת לב',
       body: wentOut
-        ? `${noun} עדיין לא ${wentOut} לטיול משעה ${scheduledTime} — ${responsibleName} אחראי/ת`
-        : `הטיול של ${dogName} משעה ${scheduledTime} עדיין ממתין — ${responsibleName} אחראי/ת`,
+        ? `${noun} עדיין לא ${wentOut} לטיול משעה ${scheduledTime} — ${responsibleName} — באחריות`
+        : `הטיול של ${dogName} משעה ${scheduledTime} עדיין ממתין — ${responsibleName} — באחריות`,
     },
     {
       title: '🚨 טיול באיחור משמעותי',
-      body: `הטיול של ${dogName} משעה ${scheduledTime} עדיין לא סומן כבוצע — ${responsibleName} אחראי/ת`,
+      body: `הטיול של ${dogName} משעה ${scheduledTime} עדיין לא סומן כבוצע — ${responsibleName} — באחריות`,
     },
   ];
   return pick(variants, seed);
@@ -195,8 +193,8 @@ export function buildWalkAttentionEscalationMessage(
     {
       title: '🚨 עדכון למשפחה',
       body: wentOut
-        ? `${noun} עדיין לא ${wentOut} לטיול (${scheduledTime}) — ${responsibleName} היה/תה אחראי/ת`
-        : `הטיול של ${dogName} משעה ${scheduledTime} עדיין ממתין — ${responsibleName} היה/תה אחראי/ת`,
+        ? `${noun} עדיין לא ${wentOut} לטיול (${scheduledTime}) — באחריות ${responsibleName}`
+        : `הטיול של ${dogName} משעה ${scheduledTime} עדיין ממתין — באחריות ${responsibleName}`,
     },
   ];
   return pick(variants, seed);

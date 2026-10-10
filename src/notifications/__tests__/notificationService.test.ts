@@ -1,9 +1,11 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { NotificationSetting, Walk } from '../../types';
+import { buildWalkReminderMessage, type ReminderStage } from '../../logic/reminderMessages';
 import {
   cancelWalkNotifications,
   ensureAndroidNotificationChannel,
+  getNativeNotificationPermissionStatus,
   reconcileWalkNotifications,
   requestNotificationPermissions,
   scheduleWalkNotifications,
@@ -11,6 +13,7 @@ import {
   __resetNotificationCapabilityCacheForTests,
 } from '../notificationService';
 import { subscribeToReminderOpens, __resetReminderEntryForTests } from '../reminderEntry';
+import { subscribeToRequestOpens, __resetRequestEntryForTests } from '../requestEntry';
 
 const scheduleMock = Notifications.scheduleNotificationAsync as jest.Mock;
 const cancelMock = Notifications.cancelScheduledNotificationAsync as jest.Mock;
@@ -57,10 +60,24 @@ function fakeWalk(id: string, overrides: Partial<Walk> = {}): Walk {
 
 const setting: NotificationSetting = {
   userId: 'user-a',
-  minutesBefore: 15,
-  overdueMinutesAfter: 10,
   enabled: true,
 };
+
+/** All four PRD §8 stages, in the fixed order the server-side scheduler (migration 0025) and REMINDER_STAGES both use. */
+const ALL_STAGES: ReminderStage[] = ['T-15', 'T', 'T+15', 'T+30'];
+
+/**
+ * PRD §11 (multi-dog): reconcileWalkNotifications() resolves each walk's
+ * own dog by walk.dogId, not a single fixed dogName/dogSex — see
+ * notificationService.ts's own doc comment. Most tests in this file only
+ * ever exercise one dog, so this ignores dogId and always resolves the
+ * same fixed dog, matching the OLD fixed-dogName/dogSex test behavior
+ * exactly for every test that doesn't care about the multi-dog case
+ * itself.
+ */
+function fakeGetDog(name = 'רקסי', sex?: 'male' | 'female') {
+  return (_dogId: string) => ({ name, sex });
+}
 
 /** Builds a fake Notifications.NotificationRequest the way expo-notifications would return it from getAllScheduledNotificationsAsync — content.data matches what scheduleWalkNotifications() actually schedules with. */
 function fakeScheduledRequest(
@@ -105,6 +122,7 @@ beforeEach(() => {
   clearLastResponseMock.mockResolvedValue(undefined);
   addResponseListenerMock.mockReturnValue({ remove: jest.fn() });
   __resetReminderEntryForTests();
+  __resetRequestEntryForTests();
 });
 
 afterEach(() => {
@@ -120,22 +138,22 @@ describe('notificationService — reassignment replaces old content (regression)
     await scheduleWalkNotifications(reassigned, setting, 'אבא', 'רקסי');
 
     const identifiers = scheduleMock.mock.calls.map((call) => call[0].identifier);
-    // Same two identifiers both times — no separate "old" vs "new" ids ever created.
-    expect(new Set(identifiers).size).toBe(2);
+    const expectedIds = ALL_STAGES.map((stage) => `notif:walk-1:${stage}`);
+    // Same four identifiers both times — no separate "old" vs "new" ids ever created.
+    expect(new Set(identifiers).size).toBe(4);
     // scheduleWalkNotifications() is called twice above (initial assignment,
-    // then reassignment), each time scheduling both notification kinds — so
-    // 4 calls are recorded in total, using only these 2 distinct identifiers
-    // each time. expo-notifications' scheduleNotificationAsync with an
-    // explicit `identifier` replaces the previous notification with that id
-    // in place, which is exactly the behavior this regression test protects.
-    identifiers.forEach((id) =>
-      expect(['notif:walk-1:pre_walk_reminder', 'notif:walk-1:overdue_reminder']).toContain(id)
-    );
-    // The LAST schedule call for each kind (the reassignment) is what
+    // then reassignment), each time scheduling all four notification
+    // stages — so 8 calls are recorded in total, using only these 4
+    // distinct identifiers each time. expo-notifications'
+    // scheduleNotificationAsync with an explicit `identifier` replaces the
+    // previous notification with that id in place, which is exactly the
+    // behavior this regression test protects.
+    identifiers.forEach((id) => expect(expectedIds).toContain(id));
+    // The LAST schedule call for each stage (the reassignment) is what
     // actually matters for "replaces old content in place".
-    expect(identifiers.slice(-2)).toEqual(['notif:walk-1:pre_walk_reminder', 'notif:walk-1:overdue_reminder']);
+    expect(identifiers.slice(-4)).toEqual(expectedIds);
 
-    const lastCallBodies = scheduleMock.mock.calls.slice(-2).map((call) => call[0].content.body);
+    const lastCallBodies = scheduleMock.mock.calls.slice(-4).map((call) => call[0].content.body);
     expect(lastCallBodies.some((b: string) => b.includes('אבא'))).toBe(true);
     expect(lastCallBodies.some((b: string) => b.includes('עומר'))).toBe(false);
   });
@@ -148,11 +166,12 @@ describe('notificationService — a walk marked done has its reminders removed',
       [doneWalk],
       async () => setting,
       () => 'עומר',
-      'רקסי'
+      fakeGetDog()
     );
 
-    expect(cancelMock).toHaveBeenCalledWith('notif:walk-2:pre_walk_reminder');
-    expect(cancelMock).toHaveBeenCalledWith('notif:walk-2:overdue_reminder');
+    for (const stage of ALL_STAGES) {
+      expect(cancelMock).toHaveBeenCalledWith(`notif:walk-2:${stage}`);
+    }
     expect(scheduleMock).not.toHaveBeenCalled();
   });
 });
@@ -163,9 +182,9 @@ describe('notificationService — bug 4: orphaned notification for a remotely-de
     // since been deleted on another device — it is not in the fresh `walks`
     // list at all (not even as a done/skipped entry).
     getAllScheduledMock.mockResolvedValue([
-      fakeScheduledRequest('notif:deleted-walk:pre_walk_reminder', {
+      fakeScheduledRequest('notif:deleted-walk:T-15', {
         walkId: 'deleted-walk',
-        kind: 'pre_walk_reminder',
+        kind: 'T-15',
       }),
     ]);
 
@@ -174,17 +193,17 @@ describe('notificationService — bug 4: orphaned notification for a remotely-de
       [stillPendingWalk],
       async () => setting,
       () => 'עומר',
-      'רקסי'
+      fakeGetDog()
     );
 
-    expect(cancelMock).toHaveBeenCalledWith('notif:deleted-walk:pre_walk_reminder');
+    expect(cancelMock).toHaveBeenCalledWith('notif:deleted-walk:T-15');
   });
 
   it('does not cancel an app-owned notification for a walk id that IS still present', async () => {
     getAllScheduledMock.mockResolvedValue([
-      fakeScheduledRequest('notif:walk-present:pre_walk_reminder', {
+      fakeScheduledRequest('notif:walk-present:T-15', {
         walkId: 'walk-present',
-        kind: 'pre_walk_reminder',
+        kind: 'T-15',
       }),
     ]);
 
@@ -193,10 +212,10 @@ describe('notificationService — bug 4: orphaned notification for a remotely-de
       [stillPendingWalk],
       async () => setting,
       () => 'עומר',
-      'רקסי'
+      fakeGetDog()
     );
 
-    expect(cancelMock).not.toHaveBeenCalledWith('notif:walk-present:pre_walk_reminder');
+    expect(cancelMock).not.toHaveBeenCalledWith('notif:walk-present:T-15');
   });
 
   it('leaves an unrelated (non-walk) notification already scheduled on the device untouched', async () => {
@@ -207,27 +226,28 @@ describe('notificationService — bug 4: orphaned notification for a remotely-de
       fakeScheduledRequest('some-other-feature:reminder-42', { somethingElse: true }),
     ]);
 
-    await reconcileWalkNotifications([], async () => setting, () => 'עומר', 'רקסי');
+    await reconcileWalkNotifications([], async () => setting, () => 'עומר', fakeGetDog());
 
     expect(cancelMock).not.toHaveBeenCalledWith('some-other-feature:reminder-42');
   });
 
   it('falls back to parsing the deterministic identifier when content.data did not round-trip', async () => {
     getAllScheduledMock.mockResolvedValue([
-      fakeScheduledRequest('notif:deleted-walk-2:overdue_reminder' /* no data */),
+      fakeScheduledRequest('notif:deleted-walk-2:T+30' /* no data */),
     ]);
 
-    await reconcileWalkNotifications([], async () => setting, () => 'עומר', 'רקסי');
+    await reconcileWalkNotifications([], async () => setting, () => 'עומר', fakeGetDog());
 
-    expect(cancelMock).toHaveBeenCalledWith('notif:deleted-walk-2:overdue_reminder');
+    expect(cancelMock).toHaveBeenCalledWith('notif:deleted-walk-2:T+30');
   });
 });
 
 describe('notificationService — cancelWalkNotifications', () => {
-  it('cancels both kinds by deterministic id regardless of prior state', async () => {
+  it('cancels all four stages by deterministic id regardless of prior state', async () => {
     await cancelWalkNotifications('walk-x');
-    expect(cancelMock).toHaveBeenCalledWith('notif:walk-x:pre_walk_reminder');
-    expect(cancelMock).toHaveBeenCalledWith('notif:walk-x:overdue_reminder');
+    for (const stage of ALL_STAGES) {
+      expect(cancelMock).toHaveBeenCalledWith(`notif:walk-x:${stage}`);
+    }
   });
 });
 
@@ -291,6 +311,29 @@ describe('notificationService — Android notification channel (Round 6D)', () =
     expect(granted).toBe(true);
   });
 
+  describe('getNativeNotificationPermissionStatus (PRD §25 native notifications-disabled state)', () => {
+    it('resolves "granted" without ever calling requestPermissionsAsync (read-only status check)', async () => {
+      getPermissionsMock.mockResolvedValueOnce({ granted: true });
+
+      await expect(getNativeNotificationPermissionStatus()).resolves.toBe('granted');
+      expect(requestPermissionsMock).not.toHaveBeenCalled();
+    });
+
+    it('resolves "denied" when not granted and the OS won\'t ask again', async () => {
+      getPermissionsMock.mockResolvedValueOnce({ granted: false, canAskAgain: false });
+
+      await expect(getNativeNotificationPermissionStatus()).resolves.toBe('denied');
+      expect(requestPermissionsMock).not.toHaveBeenCalled();
+    });
+
+    it('resolves "undetermined" when not granted but the OS could still ask (never yet prompted)', async () => {
+      getPermissionsMock.mockResolvedValueOnce({ granted: false, canAskAgain: true });
+
+      await expect(getNativeNotificationPermissionStatus()).resolves.toBe('undetermined');
+      expect(requestPermissionsMock).not.toHaveBeenCalled();
+    });
+  });
+
   it('scheduleWalkNotifications on Android routes scheduled notifications to channelId "walk-reminders"', async () => {
     setPlatformOS('android');
     const walk = fakeWalk('walk-android');
@@ -319,7 +362,7 @@ describe('notificationService — Android notification channel (Round 6D)', () =
     await scheduleWalkNotifications(androidWalk, setting, 'עומר', 'רקסי');
     const androidIdentifiers = scheduleMock.mock.calls.map((call) => call[0].identifier);
     expect(new Set(androidIdentifiers)).toEqual(
-      new Set(['notif:walk-ids-android:pre_walk_reminder', 'notif:walk-ids-android:overdue_reminder'])
+      new Set(ALL_STAGES.map((stage) => `notif:walk-ids-android:${stage}`))
     );
 
     scheduleMock.mockClear();
@@ -329,7 +372,7 @@ describe('notificationService — Android notification channel (Round 6D)', () =
     await scheduleWalkNotifications(iosWalk, setting, 'עומר', 'רקסי');
     const iosIdentifiers = scheduleMock.mock.calls.map((call) => call[0].identifier);
     expect(new Set(iosIdentifiers)).toEqual(
-      new Set(['notif:walk-ids-ios:pre_walk_reminder', 'notif:walk-ids-ios:overdue_reminder'])
+      new Set(ALL_STAGES.map((stage) => `notif:walk-ids-ios:${stage}`))
     );
   });
 });
@@ -354,7 +397,7 @@ describe('notificationService — subscribeToWalkReminderResponses (notification
 
   it('cold launch: consumes a genuine pending response exactly once and publishes the matching reminder-open event', async () => {
     getLastResponseMock.mockResolvedValueOnce({
-      notification: { request: { content: { data: { walkId: 'walk-cold', kind: 'pre_walk_reminder' } } } },
+      notification: { request: { content: { data: { type: 'walkReminder', walkId: 'walk-cold', stage: 'T-15' } } } },
     });
 
     const unsubscribeResponses = await subscribeToWalkReminderResponses();
@@ -366,7 +409,7 @@ describe('notificationService — subscribeToWalkReminderResponses (notification
     const received: unknown[] = [];
     const unsubscribeReminder = subscribeToReminderOpens((event) => received.push(event));
 
-    expect(received).toEqual([{ walkId: 'walk-cold', kind: 'pre_walk_reminder' }]);
+    expect(received).toEqual([{ walkId: 'walk-cold', kind: 'T-15' }]);
     expect(clearLastResponseMock).toHaveBeenCalledTimes(1);
 
     unsubscribeReminder();
@@ -405,11 +448,47 @@ describe('notificationService — subscribeToWalkReminderResponses (notification
     const received: unknown[] = [];
     const unsubscribeReminder = subscribeToReminderOpens((event) => received.push(event));
 
-    liveHandler({ notification: { request: { content: { data: { walkId: 'walk-live', kind: 'overdue_reminder' } } } } });
+    liveHandler({ notification: { request: { content: { data: { type: 'walkReminder', walkId: 'walk-live', stage: 'T+30' } } } } });
 
-    expect(received).toEqual([{ walkId: 'walk-live', kind: 'overdue_reminder' }]);
+    expect(received).toEqual([{ walkId: 'walk-live', kind: 'T+30' }]);
 
     unsubscribeReminder();
+    unsubscribeResponses();
+  });
+
+  it('live tap: a tapped swap/time-change request notification publishes a request-open event instead (same dispatch point, different payload shape)', async () => {
+    const unsubscribeResponses = await subscribeToWalkReminderResponses();
+    const liveHandler = addResponseListenerMock.mock.calls[0][0];
+
+    const received: unknown[] = [];
+    const unsubscribeRequest = subscribeToRequestOpens((event) => received.push(event));
+
+    liveHandler({
+      notification: { request: { content: { data: { type: 'request', requestId: 'req-1', kind: 'swap', event: 'approved' } } } },
+    });
+
+    expect(received).toEqual([{ requestId: 'req-1', kind: 'swap', event: 'approved' }]);
+
+    unsubscribeRequest();
+    unsubscribeResponses();
+  });
+
+  it('a request payload never also publishes a reminder-open event, and vice versa', async () => {
+    const unsubscribeResponses = await subscribeToWalkReminderResponses();
+    const liveHandler = addResponseListenerMock.mock.calls[0][0];
+
+    const receivedReminders: unknown[] = [];
+    const receivedRequests: unknown[] = [];
+    const unsubscribeReminder = subscribeToReminderOpens((event) => receivedReminders.push(event));
+    const unsubscribeRequest = subscribeToRequestOpens((event) => receivedRequests.push(event));
+
+    liveHandler({ notification: { request: { content: { data: { type: 'request', requestId: 'req-2', kind: 'timeChange', event: 'created' } } } } });
+
+    expect(receivedReminders).toEqual([]);
+    expect(receivedRequests).toEqual([{ requestId: 'req-2', kind: 'timeChange', event: 'created' }]);
+
+    unsubscribeReminder();
+    unsubscribeRequest();
     unsubscribeResponses();
   });
 
@@ -484,19 +563,22 @@ describe('notificationService — scheduleWalkNotifications no-longer-pending gu
     const doneWalk = fakeWalk('walk-done-guard', { status: 'done' });
     await scheduleWalkNotifications(doneWalk, setting, 'עומר', 'רקסי');
 
-    expect(cancelMock).toHaveBeenCalledWith('notif:walk-done-guard:pre_walk_reminder');
-    expect(cancelMock).toHaveBeenCalledWith('notif:walk-done-guard:overdue_reminder');
+    for (const stage of ALL_STAGES) {
+      expect(cancelMock).toHaveBeenCalledWith(`notif:walk-done-guard:${stage}`);
+    }
     expect(scheduleMock).not.toHaveBeenCalled();
   });
 });
 
 describe('notificationService — scheduleWalkNotifications stale-kind cleanup', () => {
-  it('cancels the one kind whose computed fire time has already passed while still (re)scheduling the other', async () => {
-    // walkTime 5 minutes ago: preFireAt (15 min before) is ~20 min ago (past,
-    // skipped by the `fireDate.getTime() <= Date.now()` guard); overdueFireAt
-    // (10 min after) is ~5 min from now (future, still scheduled) — so only
-    // ONE of the two kinds ends up in `scheduledKinds`, leaving the other one
-    // stale and reaching the Promise.all(staleKinds.map(...)) cleanup below.
+  it('cancels stages whose computed fire time has already passed while still (re)scheduling the ones still in the future', async () => {
+    // walkTime 5 minutes ago: T-15's fireAt (15 min before) is ~20 min ago
+    // and T's fireAt (walk time itself) is ~5 min ago — both past, skipped
+    // by the `fireDate.getTime() <= Date.now()` guard. T+15's fireAt (~10
+    // min from now) and T+30's (~25 min from now) are both still in the
+    // future — so exactly two of the four stages end up in
+    // `scheduledKinds`, leaving T-15/T stale and reaching the
+    // Promise.all(staleKinds.map(...)) cleanup below.
     const walkTime = new Date(Date.now() - 5 * 60000);
     const walk = fakeWalk('walk-stale-kind', {
       date: localDateString(walkTime),
@@ -505,9 +587,11 @@ describe('notificationService — scheduleWalkNotifications stale-kind cleanup',
 
     await scheduleWalkNotifications(walk, setting, 'עומר', 'רקסי');
 
-    expect(scheduleMock).toHaveBeenCalledTimes(1);
-    expect(scheduleMock.mock.calls[0][0].identifier).toBe('notif:walk-stale-kind:overdue_reminder');
-    expect(cancelMock).toHaveBeenCalledWith('notif:walk-stale-kind:pre_walk_reminder');
+    expect(scheduleMock).toHaveBeenCalledTimes(2);
+    const scheduledIds = scheduleMock.mock.calls.map((call) => call[0].identifier);
+    expect(new Set(scheduledIds)).toEqual(new Set(['notif:walk-stale-kind:T+15', 'notif:walk-stale-kind:T+30']));
+    expect(cancelMock).toHaveBeenCalledWith('notif:walk-stale-kind:T-15');
+    expect(cancelMock).toHaveBeenCalledWith('notif:walk-stale-kind:T');
   });
 });
 
@@ -516,7 +600,7 @@ describe('notificationService — cancelOrphanedWalkNotifications resiliency', (
     getAllScheduledMock.mockRejectedValueOnce(new Error('OS enumeration failed'));
 
     await expect(
-      reconcileWalkNotifications([fakeWalk('walk-enum-fail')], async () => setting, () => 'עומר', 'רקסי')
+      reconcileWalkNotifications([fakeWalk('walk-enum-fail')], async () => setting, () => 'עומר', fakeGetDog())
     ).resolves.toBeUndefined();
   });
 });
@@ -524,66 +608,84 @@ describe('notificationService — cancelOrphanedWalkNotifications resiliency', (
 describe('notificationService — reconcileWalkNotifications missing-setting/name guard', () => {
   it('cancels a pending walk whose responsible user has no notification setting at all', async () => {
     const walk = fakeWalk('walk-no-setting');
-    await reconcileWalkNotifications([walk], async () => undefined, () => 'עומר', 'רקסי');
+    await reconcileWalkNotifications([walk], async () => undefined, () => 'עומר', fakeGetDog());
 
-    expect(cancelMock).toHaveBeenCalledWith('notif:walk-no-setting:pre_walk_reminder');
-    expect(cancelMock).toHaveBeenCalledWith('notif:walk-no-setting:overdue_reminder');
+    for (const stage of ALL_STAGES) {
+      expect(cancelMock).toHaveBeenCalledWith(`notif:walk-no-setting:${stage}`);
+    }
     expect(scheduleMock).not.toHaveBeenCalled();
   });
 
   it('cancels a pending walk whose responsible user has disabled reminders', async () => {
     const walk = fakeWalk('walk-disabled-setting');
     const disabledSetting: NotificationSetting = { ...setting, enabled: false };
-    await reconcileWalkNotifications([walk], async () => disabledSetting, () => 'עומר', 'רקסי');
+    await reconcileWalkNotifications([walk], async () => disabledSetting, () => 'עומר', fakeGetDog());
 
-    expect(cancelMock).toHaveBeenCalledWith('notif:walk-disabled-setting:pre_walk_reminder');
+    expect(cancelMock).toHaveBeenCalledWith('notif:walk-disabled-setting:T-15');
     expect(scheduleMock).not.toHaveBeenCalled();
   });
 
   it('cancels a pending walk whose responsible user name cannot be resolved', async () => {
     const walk = fakeWalk('walk-no-username');
-    await reconcileWalkNotifications([walk], async () => setting, () => undefined, 'רקסי');
+    await reconcileWalkNotifications([walk], async () => setting, () => undefined, fakeGetDog());
 
-    expect(cancelMock).toHaveBeenCalledWith('notif:walk-no-username:pre_walk_reminder');
+    expect(cancelMock).toHaveBeenCalledWith('notif:walk-no-username:T-15');
     expect(scheduleMock).not.toHaveBeenCalled();
   });
 });
 
-describe('notificationService — dog-sex grammar wiring (reminderMessages helpers)', () => {
-  it('uses gender-neutral body text when dogSex is omitted (unchanged default behavior)', async () => {
+/**
+ * Message content itself (variant selection, gendering, urgency-by-stage)
+ * is reminderMessages.test.ts's own responsibility — buildWalkReminderMessage
+ * is deterministic (seeded by walk id + stage) but which of its 2 variants
+ * per stage gets picked isn't something a wiring test should hardcode or
+ * guess at. These tests instead verify the WIRING: every one of the four
+ * scheduled stages' title/body is exactly buildWalkReminderMessage's own
+ * output for that same (stage, dogName, dogSex, responsibleName,
+ * scheduledTime, walk id) input — i.e. this is really the same canonical
+ * message generator the server-side scheduler uses, not a re-implementation
+ * that happens to look similar.
+ */
+describe('notificationService — message content is generated via reminderMessages.ts (shared with the server scheduler)', () => {
+  function expectCallsMatchGeneratedMessages(walkId: string, dogName: string, dogSex: 'male' | 'female' | undefined, responsibleName: string) {
+    const calls = scheduleMock.mock.calls;
+    expect(calls).toHaveLength(4);
+    for (const call of calls) {
+      const stage = call[0].content.data.kind as ReminderStage;
+      const expected = buildWalkReminderMessage({
+        stage,
+        dogName,
+        dogSex,
+        responsibleName,
+        scheduledTime: FUTURE_TIME,
+        varietySeed: walkId,
+      });
+      expect(call[0].content.title).toBe(expected.title);
+      expect(call[0].content.body).toBe(expected.body);
+    }
+  }
+
+  it('gender-neutral (dogSex omitted) — every stage matches buildWalkReminderMessage exactly', async () => {
     const walk = fakeWalk('walk-sex-unknown');
     await scheduleWalkNotifications(walk, setting, 'עומר', 'רקסי');
-
-    const bodies = scheduleMock.mock.calls.map((call) => call[0].content.body as string);
-    const preBody = bodies.find((b) => b.includes('אחראי/ת'));
-    const overdueBody = bodies.find((b) => !b.includes('אחראי/ת'));
-    expect(preBody).toBe('עומר אחראי/ת על הטיול של רקסי בשעה 12:00');
-    expect(overdueBody).toBe('הטיול של רקסי בשעה 12:00 עדיין ממתין. אפשר לסמן כבוצע באפליקציה.');
+    expectCallsMatchGeneratedMessages('walk-sex-unknown', 'רקסי', undefined, 'עומר');
   });
 
-  it('uses male-gendered body text ("הכלב"/"יצא") when dogSex is "male"', async () => {
+  it('male dogSex — every stage matches buildWalkReminderMessage exactly', async () => {
     const walk = fakeWalk('walk-sex-male');
     await scheduleWalkNotifications(walk, setting, 'עומר', 'רקסי', 'male');
-
-    const bodies = scheduleMock.mock.calls.map((call) => call[0].content.body as string);
-    expect(bodies.some((b) => b.includes('הכלב רקסי'))).toBe(true);
-    expect(bodies.some((b) => b.includes('עדיין לא יצא לטיול'))).toBe(true);
+    expectCallsMatchGeneratedMessages('walk-sex-male', 'רקסי', 'male', 'עומר');
   });
 
-  it('uses female-gendered body text ("הכלבה"/"יצאה") when dogSex is "female"', async () => {
+  it('female dogSex — every stage matches buildWalkReminderMessage exactly', async () => {
     const walk = fakeWalk('walk-sex-female');
     await scheduleWalkNotifications(walk, setting, 'עומר', 'רקסי', 'female');
-
-    const bodies = scheduleMock.mock.calls.map((call) => call[0].content.body as string);
-    expect(bodies.some((b) => b.includes('הכלבה רקסי'))).toBe(true);
-    expect(bodies.some((b) => b.includes('עדיין לא יצאה לטיול'))).toBe(true);
+    expectCallsMatchGeneratedMessages('walk-sex-female', 'רקסי', 'female', 'עומר');
   });
 
   it('reconcileWalkNotifications threads dogSex through to scheduleWalkNotifications', async () => {
     const walk = fakeWalk('walk-reconcile-sex');
-    await reconcileWalkNotifications([walk], async () => setting, () => 'עומר', 'רקסי', 'female');
-
-    const bodies = scheduleMock.mock.calls.map((call) => call[0].content.body as string);
-    expect(bodies.some((b) => b.includes('הכלבה רקסי'))).toBe(true);
+    await reconcileWalkNotifications([walk], async () => setting, () => 'עומר', fakeGetDog('רקסי', 'female'));
+    expectCallsMatchGeneratedMessages('walk-reconcile-sex', 'רקסי', 'female', 'עומר');
   });
 });

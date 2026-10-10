@@ -1,12 +1,12 @@
-import React, { useMemo } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Platform, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import type { Dog, FamilyUser, Walk } from '../types';
 import { isOverdue, relativeTimeLabel, walkDateTime } from '../logic/nextWalk';
 import { isWalkRequiringAttention } from '../logic/walkAttention';
 import { walkDateContextLabel } from '../logic/walkDateContext';
 import { colors } from '../theme/colors';
-import { nativeDirection } from '../theme/tokens';
+import { nativeDirection, radii } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 import { DogPhoto } from './DogPhoto';
@@ -14,6 +14,8 @@ import { Countdown } from './Countdown';
 import { WalkieMascot } from './WalkieMascot';
 import { deriveMascotMoment } from '../mascot/mascotStage';
 import { selectMessage } from '../mascot/messageEngine';
+import { formatDistanceMeters } from '../logic/gpsDistance';
+import { RoutePreview } from './RoutePreview';
 
 interface NextWalkCardProps {
   walk: Walk;
@@ -30,8 +32,25 @@ interface NextWalkCardProps {
   onMarkDone: () => void;
   /** Primary lifecycle action. When omitted the legacy completion action remains available. */
   onStartWalk?: () => void;
+  /** Planned walks unlock shortly before their scheduled time. */
+  startWalkDisabled?: boolean;
+  startWalkAvailableLabel?: string;
   onEndWalk?: () => void;
   activeStartedAt?: string | null;
+  /**
+   * Phase 4 (GPS foundation, PRD §7 — "In Progress" card state: "מרחק/מצב
+   * GPS"). Only ever rendered while the walk is active (isActive); omit
+   * entirely for a caller with no GPS integration (every other call site
+   * of this component) — a fully backward-compatible addition.
+   */
+  liveDistanceMeters?: number | null;
+  /** Number of accepted location fixes in the current active session. Lets
+   * the card distinguish a healthy zero-distance start from a stalled GPS. */
+  gpsPointCount?: number | null;
+  /** null/undefined = tracking hasn't reported a status yet (e.g. still requesting permission) — distinct from 'denied'/'unavailable', which show an explanatory note instead of a bare "0 מ'". */
+  gpsStatus?: 'granted' | 'denied' | 'unavailable' | null;
+  /** GPS samples from the active walk, updated as the phone moves. */
+  liveRoutePoints?: Array<{ latitude: number; longitude: number; timestamp: number }>;
   /**
    * ✕ "לא בוצע" for an overdue-unresolved walk (Section 3). Only rendered
    * once the walk is actually overdue AND canResolve is true.
@@ -50,6 +69,7 @@ interface NextWalkCardProps {
   /** Admin-only direct reassignment/edit ("לערוך" / "להחליף תור"). Omit entirely for a Member — see requirement 6. */
   onSwap?: () => void;
   onEdit?: () => void;
+  remoteGpsAction?: React.ReactNode;
   /** Member-facing contextual actions (requirement 4) — approval-gated, never an immediate change. */
   onRequestSwap?: () => void;
   onRequestTimeChange?: () => void;
@@ -57,6 +77,8 @@ interface NextWalkCardProps {
   requestStatusLine?: string | null;
   /** Overdue primary cards are status decisions, not "next" walks. */
   primaryLabel?: string;
+  /** Home uses a richer surface so the dashboard does not flatten into white cards. */
+  tone?: 'default' | 'dashboard';
 }
 
 /**
@@ -75,16 +97,24 @@ export function NextWalkCard({
   dogSex,
   onMarkDone,
   onStartWalk,
+  startWalkDisabled = false,
+  startWalkAvailableLabel,
   onEndWalk,
   activeStartedAt,
+  liveDistanceMeters,
+  gpsPointCount,
+  gpsStatus,
+  liveRoutePoints,
   onMarkNotDone,
   canResolve = true,
   onSwap,
   onEdit,
+  remoteGpsAction,
   onRequestSwap,
   onRequestTimeChange,
   requestStatusLine,
   primaryLabel,
+  tone = 'default',
 }: NextWalkCardProps) {
   const overdue = isOverdue(walk);
   // Batch 2, requirement 7 ("walk requires attention" in-app state) — see
@@ -93,7 +123,42 @@ export function NextWalkCard({
   const requiresAttention = isWalkRequiringAttention(walk);
   const isMine = walk.responsibleUserId === currentUserId;
   const isWeb = Platform.OS === 'web';
-  const isActive = Boolean(activeStartedAt);
+  // Status is authoritative for the lifecycle. Some remote responses omit
+  // startedAt even though start_walk succeeded; the card must still expose
+  // the active-walk/GPS state in that case.
+  const isActive = walk.status === 'in_progress' || Boolean(activeStartedAt);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const walkerBob = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!isActive || !activeStartedAt) {
+      setElapsedSeconds(0);
+      walkerBob.stopAnimation();
+      walkerBob.setValue(0);
+      return;
+    }
+
+    const updateElapsed = () => {
+      const startedAtMs = new Date(activeStartedAt).getTime();
+      setElapsedSeconds(Number.isFinite(startedAtMs) ? Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000)) : 0);
+    };
+    updateElapsed();
+    const timer = setInterval(updateElapsed, 1000);
+    const bob = Animated.loop(
+      Animated.sequence([
+        Animated.timing(walkerBob, { toValue: -3, duration: 350, useNativeDriver: true }),
+        Animated.timing(walkerBob, { toValue: 0, duration: 350, useNativeDriver: true }),
+      ])
+    );
+    bob.start();
+    return () => {
+      clearInterval(timer);
+      bob.stop();
+      walkerBob.stopAnimation();
+    };
+  }, [activeStartedAt, isActive, walkerBob]);
+
+  const elapsedLabel = `${String(Math.floor(elapsedSeconds / 60)).padStart(2, '0')}:${String(elapsedSeconds % 60).padStart(2, '0')}`;
 
   // BATCH 4 (C2/C3/C8) — the Walkie Doggy mascot + a matching personality
   // message, centrally derived (mascotStage.ts) from how far `walk` is from
@@ -117,11 +182,11 @@ export function NextWalkCard({
   }, [walk.id, walk.scheduledTime, walk.date, walk.status, dogName, dogSex, responsible?.name]);
 
   return (
-    <View style={[styles.card, isWeb && styles.webCard, isActive && styles.cardActive, overdue && !isActive && styles.cardOverdue]}>
+    <View style={[styles.card, tone === 'dashboard' && styles.cardDashboard, isWeb && styles.webCard, isWeb && tone === 'dashboard' && styles.webDashboardCompact, isActive && styles.cardActive, overdue && !isActive && styles.cardOverdue]}>
       <View style={[styles.eyebrowRow, isWeb && styles.webEyebrowRow]}>
         {showDogPhoto ? <DogPhoto photoUrl={dogPhotoUrl} size={isWeb ? 60 : 72} /> : null}
         <RtlText style={styles.eyebrow} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-          {isActive ? `בזמן טיול · ${dogName}` : (primaryLabel ?? `הטיול הבא של ${dogName}`)}
+          {isActive ? `בזמן טיול · ${dogName}` : (primaryLabel ?? `🐾 הטיול הבא של ${dogName}`)}
         </RtlText>
         {/* The Walkie Doggy MASCOT (brand character) — deliberately separate
             from DogPhoto above (the family's REAL dog), never interchanged,
@@ -135,56 +200,94 @@ export function NextWalkCard({
         {showMascot ? <WalkieMascot state={mascotState} size={isWeb ? 52 : 58} testID="next-walk-mascot" /> : null}
       </View>
 
-      <RtlText style={styles.mascotMessage} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-        {message}
-      </RtlText>
+      {/* An overdue card is an operational decision, not a greeting. Keeping
+          the mascot copy out of that state gives the time, assignee and the
+          two resolution actions enough calm, predictable room on a phone. */}
+      {!overdue && !isActive && tone !== 'dashboard' ? (
+        <RtlText style={styles.mascotMessage} numberOfLines={1} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+          {message}
+        </RtlText>
+      ) : null}
 
-      <View style={[styles.mainRow, isWeb && styles.webMainRow]}>
-        <View style={styles.timeBlock}>
-          <RtlText
-            style={styles.time}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.7}
-            maxFontSizeMultiplier={TIME_MAX_FONT_SCALE}
-          >
-            {walk.scheduledTime}
-          </RtlText>
-          {/* P1 — Home today/tomorrow date ambiguity: the countdown/overdue
-              text below already implies "soon", but for a walk further out
-              (e.g. tomorrow morning shown tonight) it doesn't say WHICH day
-              — this one compact label removes that ambiguity, using the
-              same shared helper the last-walk card below uses. */}
-          <RtlText style={styles.dateContext} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-            {walkDateContextLabel(walk.date)}
-          </RtlText>
-          {overdue ? (
-            <RtlText style={[styles.relative, styles.relativeOverdue]} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-              {requiresAttention ? '🚨 דורש תשומת לב · ' : 'ממתין לעדכון · '}
-              {relativeTimeLabel(walk)}
-            </RtlText>
-          ) : (
-            <Countdown target={walkDateTime(walk)} />
-          )}
-        </View>
+      {isActive ? (
+        <View style={styles.activeWalkBanner} accessibilityRole="timer" accessibilityLabel={`משך הטיול ${elapsedLabel}`}>
+          <View style={styles.activeWalkCopy}>
+            <RtlText style={styles.activeWalkTitle}>מטיילים עכשיו</RtlText>
 
-        <View style={styles.personBlock}>
-          {responsible ? (
-            <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={isWeb ? 50 : 56} />
-          ) : null}
-          <RtlText style={styles.personName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-            {responsible?.name ?? '—'}
-          </RtlText>
-          {!isMine ? (
-            <RtlText style={styles.responsibleLabel} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-              באחריות {responsible?.name}
-            </RtlText>
-          ) : null}
+          </View>
+          <View style={styles.elapsedBlock}>
+            <RtlText style={styles.elapsedLabel}>זמן</RtlText>
+            <RtlText style={styles.elapsedTime}>{elapsedLabel}</RtlText>
+          </View>
         </View>
-      </View>
+      ) : null}
+
+      {/* 'unavailable' (no permission API at all, e.g. some sandboxed
+          environments) is silently skipped — a persistent "GPS unavailable"
+          line for every such device would be clutter with no action the
+          person can take, unlike 'denied' (a real, correctable state). */}
+      {isActive ? (
+        <RtlText style={styles.gpsStatusLine} numberOfLines={1} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+          {gpsStatus === 'granted'
+            ? `📍 ${liveDistanceMeters != null && liveDistanceMeters > 0
+              ? formatDistanceMeters(liveDistanceMeters)
+              : gpsPointCount != null && gpsPointCount > 0
+                ? 'GPS פעיל — ממתין לתנועה'
+                : 'ממתין לנתוני GPS…'}`
+            : gpsStatus === 'denied'
+              ? '📍 מיקום לא זמין — אפשר להפעיל בהגדרות המכשיר'
+              : gpsStatus === 'unavailable'
+                ? '📍 לא התקבל מיקום — ודאו ששירותי מיקום פעילים'
+              : '📍 מפעיל GPS…'}
+        </RtlText>
+      ) : null}
+
+
+      {tone === 'dashboard' ? (
+        <View style={[styles.dashboardThreeColumnRow, isWeb && styles.webMainRow]}>
+          <View style={styles.dashboardPersonColumn}>
+            {responsible ? <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={isWeb ? 46 : 50} /> : null}
+            <RtlText style={styles.dashboardPersonName} numberOfLines={1}>{responsible?.name ?? '—'}</RtlText>
+            <RtlText style={styles.dashboardColumnLabel}>אחראי לטיול</RtlText>
+          </View>
+          <View style={styles.dashboardTimeColumn}>
+            <RtlText style={styles.dashboardTime} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{walk.scheduledTime}</RtlText>
+            <RtlText style={styles.dashboardDate}>{walkDateContextLabel(walk.date)}</RtlText>
+          </View>
+          <View style={[styles.dashboardCountdownColumn, isActive && styles.liveMapColumn]}>
+            {isActive ? <RoutePreview live session={{ routePoints: liveRoutePoints ?? [] } as import('../types').WalkGpsSession} /> : !overdue ? <Countdown target={walkDateTime(walk)} compact /> : null}
+          </View>
+        </View>
+      ) : (
+        <View style={[styles.mainRow, isWeb && styles.webMainRow]}>
+          <View style={styles.timeBlock}>
+            <RtlText style={styles.time} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} maxFontSizeMultiplier={TIME_MAX_FONT_SCALE}>
+              {walk.scheduledTime}
+            </RtlText>
+            <RtlText style={styles.dateContext} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+              {walkDateContextLabel(walk.date)}
+            </RtlText>
+            {!overdue ? <Countdown target={walkDateTime(walk)} /> : null}
+          </View>
+          <View style={styles.personBlock}>
+            {responsible ? <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={isWeb ? 50 : 56} /> : null}
+            <RtlText style={styles.personName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+              {responsible?.name ?? '—'}
+            </RtlText>
+            {overdue ? <RtlText style={styles.responsibleLabel}>באחריות {responsible?.name}</RtlText> : null}
+          </View>
+        </View>
+      )}
+
+      {overdue ? (
+        <RtlText style={[styles.relative, styles.relativeOverdue]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+          {requiresAttention ? '🚨 דורש תשומת לב · ' : 'ממתין לעדכון · '}
+          {relativeTimeLabel(walk)}
+        </RtlText>
+      ) : null}
 
       {requestStatusLine && !requestStatusLine.startsWith('✓') && !requestStatusLine.startsWith('✕') ? (
-        <RtlText style={styles.requestStatusLine} numberOfLines={1} ellipsizeMode="tail" adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
+        <RtlText style={styles.requestStatusLine} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
           {requestStatusLine}
         </RtlText>
       ) : null}
@@ -198,50 +301,83 @@ export function NextWalkCard({
         <Button label="סיים טיול" icon="■" onPress={onEndWalk} style={styles.endWalkButton} shrinkToFit />
       ) : onStartWalk ? (
         <>
-          <Button label={overdue ? 'התחל טיול עכשיו' : 'התחל טיול'} icon="▶" onPress={onStartWalk} style={styles.doneButton} shrinkToFit />
           <Button
-            label="✓ סמן טיול כבוצע"
-            variant="secondary"
-            onPress={onMarkDone}
-            style={styles.markDoneFallbackButton}
-            compact
+            label={tone === 'dashboard' ? 'התחל טיול' : 'התחל טיול עכשיו'}
+            icon="▶"
+            onPress={onStartWalk}
+            disabled={startWalkDisabled}
+            accessibilityHint={startWalkDisabled ? startWalkAvailableLabel : undefined}
+            style={tone === 'dashboard' ? styles.dashboardStartButton : styles.doneButton}
             shrinkToFit
           />
+          {startWalkDisabled && startWalkAvailableLabel ? (
+            <RtlText style={styles.startWalkLockedNote}>{startWalkAvailableLabel}</RtlText>
+          ) : null}
+          {overdue && onMarkNotDone ? (
+            <View style={styles.resolveRow}>
+              <Button
+                label="✓ בוצע"
+                variant="secondary"
+                onPress={onMarkDone}
+                style={styles.resolveButton}
+                compact
+                shrinkToFit
+              />
+              <Button
+                label="לא בוצע"
+                variant="secondary"
+                onPress={onMarkNotDone}
+                style={styles.resolveButton}
+                compact
+                shrinkToFit
+              />
+            </View>
+          ) : tone === 'dashboard' ? null : (
+            <Button
+              label="בוצע"
+              variant="secondary"
+              onPress={onMarkDone}
+              style={styles.markDoneFallbackButton}
+              compact
+              shrinkToFit
+            />
+          )}
         </>
       ) : overdue && onMarkNotDone ? (
         <View style={styles.resolveRow}>
           <Button label="✓ בוצע" onPress={onMarkDone} style={styles.resolveButton} compact shrinkToFit />
-          <Button label="✕ לא בוצע" variant="secondary" onPress={onMarkNotDone} style={styles.resolveButton} compact shrinkToFit />
+          <Button label="לא בוצע" variant="secondary" onPress={onMarkNotDone} style={styles.resolveButton} compact shrinkToFit />
         </View>
       ) : (
-        <Button label="סמן כבוצע" icon="✓" onPress={onMarkDone} style={styles.doneButton} shrinkToFit />
+        <Button label="בוצע" icon="✓" onPress={onMarkDone} style={styles.doneButton} shrinkToFit />
       )}
       {onEdit || onSwap ? (
         <View style={styles.linkRow}>
           {onEdit ? (
             <RtlText style={styles.linkText} onPress={onEdit} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-              לערוך
+              עריכה
             </RtlText>
           ) : null}
           {onEdit && onSwap ? <RtlText style={styles.linkDivider} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>·</RtlText> : null}
           {onSwap ? (
             <RtlText style={styles.linkText} onPress={onSwap} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-              להחליף תור
+              החלפה
             </RtlText>
           ) : null}
         </View>
       ) : null}
+      {remoteGpsAction}
       {onRequestSwap || onRequestTimeChange ? (
         <View style={styles.linkRow}>
           {onRequestSwap ? (
             <RtlText style={styles.linkText} onPress={onRequestSwap} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-              בקש החלפה
+              בקשת החלפה
             </RtlText>
           ) : null}
           {onRequestSwap && onRequestTimeChange ? <RtlText style={styles.linkDivider} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>·</RtlText> : null}
           {onRequestTimeChange ? (
             <RtlText style={styles.linkText} onPress={onRequestTimeChange} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-              בקש שינוי שעה
+              בקשה לשינוי
             </RtlText>
           ) : null}
         </View>
@@ -267,56 +403,102 @@ const TIME_MAX_FONT_SCALE = 1.35;
 const CARD_MAX_FONT_SCALE = 1.35;
 
 const styles = StyleSheet.create({
+  liveMapColumn: { minWidth: 0, overflow: 'hidden' },
+  liveRouteMap: { width: '100%', marginVertical: 8, gap: 6 },
+  liveRouteLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'center' },
   card: {
-    backgroundColor: colors.statusCurrentBg,
-    borderRadius: 28,
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderWidth: 1,
-    borderColor: colors.primary + '24',
+    borderColor: colors.border,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.10,
-    shadowRadius: 18,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
   },
-  webCard: { borderRadius: 22, paddingHorizontal: 22, paddingVertical: 15 },
+  // Item 6 (mobile polish): paddingVertical trimmed from 5 to 2 — a
+  // slightly more compact dashboard card. Never touches any button's own
+  // minHeight (tap targets stay exactly as large as before).
+  cardDashboard: { backgroundColor: '#E9EFFD', borderColor: '#BFE3F4', borderRadius: 28, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3, paddingHorizontal: 14, paddingVertical: 6 },
+  webCard: { borderRadius: radii.xl, paddingHorizontal: 24, paddingVertical: 18 },
+  // Web is the iPhone Safari PWA too: override webCard's generous 18px padding only for Dashboard.
+  webDashboardCompact: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 8 },
   cardActive: { backgroundColor: colors.successSoft, borderColor: colors.success + '55' },
   cardOverdue: { backgroundColor: colors.statusOverdueBg, borderColor: colors.statusOverdue + '44' },
-  eyebrowRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), alignItems: 'center', gap: 8, marginBottom: 6 },
+  eyebrowRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), alignItems: 'center', gap: 8, marginBottom: 4 },
   webEyebrowRow: { marginBottom: 2 },
-  eyebrow: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.textSecondary, textAlign: 'right' },
+  eyebrow: { flex: 1, fontSize: 18, fontWeight: '900', color: '#17345B', textAlign: 'right' },
   mascotMessage: {
     fontSize: 13,
     fontWeight: '600',
     color: colors.primaryDark,
     textAlign: 'right',
+    marginBottom: 2,
+  },
+  gpsStatusLine: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    textAlign: 'right',
     marginBottom: 8,
   },
-  // Round 6F correction: timeBlock/personBlock each get an explicit, equal
-  // `flex` share of the row instead of sizing themselves to their own text's
-  // rendered width. Box widths are now a fixed proportion of the row —
-  // independent of Dynamic Type/system font-size — so neither block's
-  // on-screen position drifts as text metrics change; only the content
-  // centered inside each fixed-width box can shift by a few px.
-  mainRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 12 },
+  activeWalkBanner: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    width: '100%',
+    backgroundColor: colors.success + '18',
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  activeWalkCopy: { flex: 1, minWidth: 0, alignItems: 'flex-end' },
+  activeWalkTitle: { fontSize: 15, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
+  activeWalkSubtitle: { fontSize: 12, color: colors.textSecondary, textAlign: 'right', marginTop: 2 },
+  elapsedBlock: { minWidth: 72, alignItems: 'center' },
+  elapsedLabel: { fontSize: 11, color: colors.textSecondary, fontWeight: '700' },
+  elapsedTime: { fontSize: 22, color: colors.success, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  // The row follows the reading direction: the scheduled time anchors the
+  // right edge and the responsible person sits opposite it. Fixed halves
+  // prevent a long status from pushing either item into a third column.
+  mainRow: { flexDirection: 'row-reverse', alignItems: 'center', marginBottom: 14, gap: 12 },
   webMainRow: { marginBottom: 8, minHeight: 68 },
   timeBlock: { flex: 1, alignItems: 'flex-start', minWidth: 0 },
   // Reduced from 44 (BUG report: too large, wrapped to two lines on a
   // narrow iPhone and dwarfed the rest of the card). Still the single
   // biggest element on the card, so it stays the clear visual anchor next
   // to the responsible person's name (18) and "סמן כבוצע" button.
-  time: { fontSize: 30, fontWeight: '800', color: colors.textPrimary, textAlign: 'left' },
+  time: { fontSize: 32, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
   dateContext: { fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginTop: 1 },
-  relative: { fontSize: 16, fontWeight: '600', color: colors.primary, marginTop: 2 },
+  relative: { width: '100%', fontSize: 14, fontWeight: '700', color: colors.primary, marginTop: 4, textAlign: 'right' },
   relativeOverdue: { color: colors.statusOverdue },
-  personBlock: { flex: 1, alignItems: 'center', gap: 4, minWidth: 0 },
-  personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
-  responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'right' },
-  doneButton: { marginTop: 4 },
-  markDoneFallbackButton: { marginTop: 10, borderWidth: 1.5, borderColor: colors.primaryDark },
+  // Keep the family-member circle visually separated from the large time on
+  // the dashboard, especially on narrow phones.
+  // Use an intentionally wider central gutter and inset both columns so the
+  // assignee circle reads as its own block instead of touching the time.
+  dashboardMainRow: { gap: 34, paddingHorizontal: 10, marginTop: 4, marginBottom: 10, minHeight: 82 },
+  dashboardThreeColumnRow: { flexDirection: 'row', alignItems: 'stretch', justifyContent: 'space-between', marginTop: 1, marginBottom: 3, minHeight: 70, gap: 0 },
+  dashboardPersonColumn: { flex: 0.75, alignItems: 'center', justifyContent: 'center', gap: 2, minWidth: 0, paddingHorizontal: 2 },
+  dashboardPersonName: { fontSize: 16, fontWeight: '800', color: '#17345B', textAlign: 'center' },
+  dashboardColumnLabel: { fontSize: 11, fontWeight: '600', color: '#7B746B', textAlign: 'center' },
+  dashboardTimeColumn: { flex: 1.3, alignItems: 'center', justifyContent: 'center', minWidth: 102, borderLeftWidth: 1, borderRightWidth: 1, borderColor: '#D9D3C8', paddingHorizontal: 2 },
+  dashboardTime: { width: '100%', fontSize: 31, lineHeight: 38, fontWeight: '900', color: '#111111', fontVariant: ['tabular-nums'], textAlign: 'center' },
+  dashboardDate: { fontSize: 13, fontWeight: '700', color: '#7B746B', marginTop: 2, textAlign: 'center' },
+  dashboardCountdownColumn: { flex: 1, alignItems: 'center', justifyContent: 'center', minWidth: 0, paddingHorizontal: 2 },
+  personBlock: { flex: 1, alignItems: 'flex-end', gap: 5, minWidth: 0, paddingStart: 8 },
+  personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'left' },
+  responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'left' },
+  doneButton: { marginTop: 2 },
+  dashboardStartButton: { marginTop: 1, minHeight: 44, paddingVertical: 3, borderRadius: 24, backgroundColor: '#0EA8B2', borderColor: '#0EA8B2' },
+  startWalkLockedNote: { marginTop: 5, fontSize: 12, fontWeight: '600', color: colors.textSecondary, textAlign: 'center' },
+  markDoneFallbackButton: { marginTop: 8, borderWidth: 1.5, borderColor: colors.primaryDark },
+  dashboardMarkDoneButton: { marginTop: 4, minHeight: 40, paddingVertical: 3, borderWidth: 1.5, borderColor: '#12A5AB' },
   endWalkButton: { marginTop: 4, backgroundColor: colors.statusOverdue },
-  resolveRow: { flexDirection: 'row', gap: 8, marginTop: 4, width: '100%' },
+  resolveRow: { flexDirection: 'row-reverse', gap: 8, marginTop: 3, width: '100%' },
   resolveButton: { flex: 1, minWidth: 0 },
   notMineNote: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: 6 },
   requestStatusLine: {
@@ -326,9 +508,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.primaryDark,
     marginTop: 4,
+    lineHeight: 18,
   },
   requestStatusApproved: { color: colors.statusDone },
-  linkRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 9 },
-  linkText: { color: colors.primaryDark, fontSize: 14, fontWeight: '600' },
+  linkRow: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 3, minHeight: 34, paddingHorizontal: 14 },
+  linkText: { color: '#17345B', fontSize: 13, fontWeight: '600' },
   linkDivider: { color: colors.textSecondary },
 });

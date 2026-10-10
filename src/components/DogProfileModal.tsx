@@ -1,32 +1,41 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RtlText } from './RtlText';
 import { WalkieMascot } from './WalkieMascot';
-import { ConfirmModal } from './ConfirmModal';
 import { useFamilyStore } from '../store/familyStore';
 import { useAuthStore, useEffectiveFamilyRole } from '../store/authStore';
 import { DEMO_FAMILY } from '../data/demoData';
 import { pickAndUploadImage } from '../lib/uploadImage';
 import { colors } from '../theme/colors';
 import { breakpoints, radii, spacing, typography } from '../theme/tokens';
+import { getDogBackground, getDogBackgroundImageSource } from '../theme/dogBackgrounds';
+import { DogHeroBackgroundPicker } from './DogHeroBackgroundPicker';
+import { Button } from './Button';
 
 export function DogProfileModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const dog = useFamilyStore((s) => s.dog);
   const saveDog = useFamilyStore((s) => s.saveDog);
+  const clearDogPhoto = useFamilyStore((s) => s.removeDogPhoto);
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const familyRole = useEffectiveFamilyRole();
   const systemObserverActive = useAuthStore((s) => s.systemObserverActive);
   const [uploading, setUploading] = useState(false);
-  const [removeConfirmVisible, setRemoveConfirmVisible] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
+  const [pendingPhotoUrl, setPendingPhotoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPhotoLoadFailed(false);
+    setPendingPhotoUrl(null);
+  }, [dog?.id, dog?.photoUrl]);
 
   const changePhoto = async () => {
     if (!dog || familyRole !== 'admin' || systemObserverActive) return;
     setUploading(true);
     try {
       const uri = await pickAndUploadImage('dogs', familyId, dog.id);
-      if (uri) await saveDog({ ...dog, photoUrl: uri });
+      if (uri) setPendingPhotoUrl(uri);
     } catch {
       Alert.alert('לא הצלחנו לשמור את התמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
     } finally {
@@ -34,19 +43,34 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
     }
   };
 
-  const removePhoto = () => {
-    if (!dog || !dog.photoUrl || familyRole !== 'admin' || systemObserverActive) return;
-    setRemoveConfirmVisible(true);
-  };
-
   const confirmRemovePhoto = async () => {
     if (!dog || !dog.photoUrl || familyRole !== 'admin' || systemObserverActive || removing) return;
     setRemoving(true);
     try {
-      await saveDog({ ...dog, photoUrl: undefined });
-      setRemoveConfirmVisible(false);
+      // Removal is an explicit destructive action: persist it immediately.
+      // Do not leave the user in a hidden draft state that requires a second
+      // "save photo" tap and makes the old photo reappear after refresh.
+      await clearDogPhoto(dog.id);
+      setPendingPhotoUrl(null);
+      setPhotoLoadFailed(false);
     } catch {
-      Alert.alert('לא הצלחנו להסיר את התמונה', 'נסו שוב בעוד רגע.');
+      Alert.alert('לא הצלחנו להסיר את התמונה', 'בדקו את החיבור ונסו שוב.');
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  const displayedPhotoUrl = pendingPhotoUrl === null ? dog?.photoUrl : (pendingPhotoUrl || undefined);
+  const photoDirty = pendingPhotoUrl !== null;
+  const savePhoto = async () => {
+    if (!dog || !photoDirty || removing || uploading) return;
+    setRemoving(true);
+    try {
+      if (pendingPhotoUrl) await saveDog({ ...dog, photoUrl: pendingPhotoUrl, photoCutoutUrl: undefined });
+      else await clearDogPhoto(dog.id);
+      setPendingPhotoUrl(null);
+    } catch {
+      Alert.alert('לא הצלחנו לשמור את התמונה', 'נסו שוב בעוד רגע.');
     } finally {
       setRemoving(false);
     }
@@ -66,12 +90,16 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
           {dog ? (
             <>
               <View style={styles.photoWrap}>
-                {dog.photoUrl ? (
+                  {getDogBackground(dog.heroBackgroundId) && !dog.photoUrl ? (
+                    <Image source={getDogBackgroundImageSource(getDogBackground(dog.heroBackgroundId)!)} style={styles.previewBackground} resizeMode="cover" />
+                  ) : null}
+                {displayedPhotoUrl && !photoLoadFailed ? (
                   <Image
-                    source={{ uri: dog.photoUrl }}
+                    source={{ uri: displayedPhotoUrl }}
                     style={styles.photo}
                     resizeMode="cover"
                     accessibilityLabel={`תמונה של ${dog.name}`}
+                    onError={() => setPhotoLoadFailed(true)}
                   />
                 ) : (
                   <WalkieMascot
@@ -83,18 +111,20 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
               </View>
               <RtlText style={styles.name}>{dog.name}</RtlText>
               <RtlText style={styles.hint}>
-                {dog.photoUrl ? 'תמונה אישית' : 'תמונת הכלב אינה חובה — מוצג כלב Walkie Doggy כברירת מחדל'}
+                {displayedPhotoUrl && !photoLoadFailed ? 'תמונה אישית' : 'תמונת הכלב אינה חובה — מוצג כלב Walkie Doggy כברירת מחדל'}
               </RtlText>
               {familyRole === 'admin' && !systemObserverActive ? (
                 <View style={styles.actions}>
                   <Pressable onPress={changePhoto} disabled={uploading || removing} style={styles.primaryButton} accessibilityRole="button">
-                    <RtlText style={styles.primaryText}>{uploading ? 'מעלה…' : dog.photoUrl ? 'החלפת תמונה' : 'הוספת תמונה'}</RtlText>
+                    <RtlText style={styles.primaryText}>{uploading ? 'מעלה…' : displayedPhotoUrl ? 'החלפת תמונה' : 'הוספת תמונה'}</RtlText>
                   </Pressable>
-                  {dog.photoUrl ? (
-                    <Pressable onPress={removePhoto} disabled={uploading || removing} style={styles.removeButton} accessibilityRole="button">
+                  {displayedPhotoUrl ? (
+                    <Pressable onPress={() => void confirmRemovePhoto()} disabled={uploading || removing} style={styles.removeButton} accessibilityRole="button">
                       <RtlText style={styles.removeText}>הסרת תמונה</RtlText>
                     </Pressable>
                   ) : null}
+                  {photoDirty ? <Button label={removing ? 'שומר…' : 'שמור תמונה'} onPress={() => void savePhoto()} disabled={removing || uploading} /> : null}
+                  <DogHeroBackgroundPicker dog={dog} onSave={(patch) => saveDog({ ...dog, ...patch })} />
                 </View>
               ) : null}
               <View style={styles.card}>
@@ -110,16 +140,7 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
         </ScrollView>
       </SafeAreaView>
     </Modal>
-    <ConfirmModal
-      visible={removeConfirmVisible}
-      title="הסרת תמונת הכלב"
-      message="להסיר את התמונה ולחזור לכלב של Walkie Doggy?"
-      confirmLabel="הסרה"
-      cancelLabel="ביטול"
-      onConfirm={() => void confirmRemovePhoto()}
-      onCancel={() => !removing && setRemoveConfirmVisible(false)}
-      loading={removing}
-    />
+
     </>
   );
 }
@@ -131,13 +152,29 @@ const styles = StyleSheet.create({
   title: { ...typography.screenTitle, color: colors.textPrimary, textAlign: 'right' },
   content: { padding: spacing.xl, gap: spacing.md, alignItems: 'center', paddingBottom: spacing.xxxl },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', width: '100%' },
-  photoWrap: { marginTop: spacing.md, width: 180, height: 180, alignItems: 'center', justifyContent: 'center' },
-  photo: { width: 180, height: 180, borderRadius: 90, borderWidth: 3, borderColor: colors.surface },
+  photoWrap: { marginTop: spacing.md, width: 280, height: 210, borderRadius: radii.xl, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
+  previewBackground: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
+  // The uploaded photo is shown as the complete preview scene. No secondary
+  // background or visible frame is composited behind it.
+  photo: { width: '100%', height: 210, borderRadius: 24, borderWidth: 0 },
   name: { ...typography.screenTitle, color: colors.textPrimary, textAlign: 'center' },
   hint: { ...typography.meta, color: colors.textSecondary, textAlign: 'center' },
   actions: { width: '100%', maxWidth: 420, gap: spacing.sm, marginTop: spacing.sm },
   primaryButton: { paddingVertical: spacing.md, paddingHorizontal: spacing.lg, borderRadius: radii.lg, backgroundColor: colors.primaryDark, alignItems: 'center' },
   primaryText: { ...typography.body, color: colors.surface, fontWeight: '800' },
+  backgroundButton: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.primaryDark, alignItems: 'center', backgroundColor: colors.surface },
+  backgroundButtonText: { ...typography.body, color: colors.primaryDark, fontWeight: '800' },
+  backgroundPicker: { width: '100%', padding: spacing.md, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: spacing.sm },
+  backgroundTitle: { ...typography.sectionTitle, color: colors.textPrimary, textAlign: 'right' },
+  backgroundGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: spacing.sm, justifyContent: 'space-between' },
+  backgroundTile: { width: '48%', height: 100, borderRadius: radii.md, overflow: 'hidden', borderWidth: 3, borderColor: 'transparent', position: 'relative' },
+  backgroundThumb: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
+  backgroundSelected: { borderColor: colors.primaryDark },
+  backgroundLabelWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#00000088', paddingVertical: 5, paddingHorizontal: 8 },
+  backgroundLabel: { color: '#fff', fontSize: 13, fontWeight: '800', textAlign: 'center' },
+  backgroundCheckBadge: { position: 'absolute', top: 6, right: 6, width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primaryDark, alignItems: 'center', justifyContent: 'center' },
+  backgroundCheck: { fontSize: 18, fontWeight: '900', color: '#fff' },
+  backgroundHint: { ...typography.meta, color: colors.textSecondary, textAlign: 'center' },
   removeButton: { paddingVertical: spacing.sm, alignItems: 'center' },
   removeText: { ...typography.body, color: colors.statusOverdue, fontWeight: '700' },
   card: { width: '100%', maxWidth: 520, marginTop: spacing.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radii.lg, padding: spacing.lg, gap: spacing.sm },

@@ -1,12 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Alert, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 import type { FamilyUser } from '../types';
-import { enableWebPush, getWebPushStatus, type WebPushStatus } from '../lib/webPush';
+import { enableWebPush, reconcileWebPushSubscription, verifyServerSubscription, type WebPushStatus } from '../lib/webPush';
+import {
+  getNativeNotificationPermissionStatus,
+  requestNotificationPermissions,
+  type NativeNotificationPermissionStatus,
+} from '../notifications/notificationService';
 
 interface RemindersModalProps {
   visible: boolean;
@@ -28,9 +33,39 @@ export function RemindersModal({
 }: RemindersModalProps) {
   const [webPushStatus, setWebPushStatus] = useState<WebPushStatus>('default');
   const [webPushBusy, setWebPushBusy] = useState(false);
+  const [webPushError, setWebPushError] = useState<string | null>(null);
+  // P0 notification-delivery investigation: a phone-only way to confirm the
+  // subscription this device believes it has is genuinely persisted,
+  // server-side, under this device's own claimed profile — no desktop
+  // dev-tools needed. null = not checked yet (or nothing to check); true/
+  // false = the server's own answer, via verifyServerSubscription().
+  const [serverVerified, setServerVerified] = useState<boolean | null>(null);
   const [iosSafariNeedsInstall, setIosSafariNeedsInstall] = useState(false);
   const [androidNeedsInstall, setAndroidNeedsInstall] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
+  // PRD §25's "notifications disabled" state, native side — Web already had
+  // its own denied/unsupported messaging below; a native device with OS
+  // notification permission denied previously had nothing explaining why
+  // local reminders never fire. 'granted' is the fail-safe default so this
+  // never briefly shows a denied/undetermined message before the real
+  // async status resolves.
+  const [nativePermissionStatus, setNativePermissionStatus] = useState<NativeNotificationPermissionStatus>('granted');
+  const [nativePermissionBusy, setNativePermissionBusy] = useState(false);
+
+  useEffect(() => {
+    if (!visible || Platform.OS === 'web') return;
+    void getNativeNotificationPermissionStatus().then(setNativePermissionStatus);
+  }, [visible]);
+
+  const handleRequestNativePermission = async () => {
+    setNativePermissionBusy(true);
+    try {
+      const granted = await requestNotificationPermissions();
+      setNativePermissionStatus(granted ? 'granted' : await getNativeNotificationPermissionStatus());
+    } finally {
+      setNativePermissionBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!visible || Platform.OS !== 'web') {
@@ -47,7 +82,31 @@ export function RemindersModal({
     const isAndroid = Boolean(nav && /android/i.test(nav.userAgent));
     setIosSafariNeedsInstall(isIos && !isStandalone);
     setAndroidNeedsInstall(isAndroid && !isStandalone);
-    void getWebPushStatus().then(setWebPushStatus);
+    // Reconcile rather than a plain status read: repairs a subscription
+    // that exists in this browser but was never (or no longer) persisted
+    // server-side — see reconcileWebPushSubscription()'s own doc comment.
+    // A no-op (same report as getWebPushStatus()) whenever permission
+    // isn't already 'granted', so this never prompts just by opening the
+    // modal.
+    //
+    // Real-device QA fix: an 'error' result means persistence to the
+    // server failed just now (logged by reconcileWebPushSubscription()
+    // itself) — surface that via the same webPushError text the explicit
+    // "אפשר התראות" tap already uses, rather than leaving the person with
+    // no explanation while nothing was actually registered server-side.
+    void reconcileWebPushSubscription().then((status) => {
+      setWebPushStatus(status);
+      setWebPushError(
+        status === 'error'
+          ? 'לא הצלחנו לאשר שהמכשיר נרשם להתראות בשרת. נסו ללחוץ על "אפשר התראות" שוב.'
+          : null
+      );
+      if (status === 'subscribed') {
+        void verifyServerSubscription().then(setServerVerified);
+      } else {
+        setServerVerified(null);
+      }
+    });
 
     const handleBeforeInstallPrompt = (event: any) => {
       event.preventDefault();
@@ -67,10 +126,13 @@ export function RemindersModal({
   const handleEnableWebPush = async () => {
     try {
       setWebPushBusy(true);
+      setWebPushError(null);
       const status = await enableWebPush();
       setWebPushStatus(status);
 
       if (status === 'subscribed') {
+        const verified = await verifyServerSubscription();
+        setServerVerified(verified);
         Alert.alert('התראות הופעלו', 'המכשיר הזה רשום לקבלת התראות.');
       } else if (status === 'denied') {
         Alert.alert(
@@ -85,9 +147,11 @@ export function RemindersModal({
       }
     } catch (error) {
       console.error('Failed to enable Web Push', error);
+      const message = error instanceof Error ? error.message : String(error);
+      setWebPushError(message);
       Alert.alert(
         'לא ניתן להפעיל התראות',
-        'אירעה שגיאה בעת רישום המכשיר להתראות.'
+        message || 'אירעה שגיאה בעת רישום המכשיר להתראות.'
       );
     } finally {
       setWebPushBusy(false);
@@ -104,6 +168,26 @@ export function RemindersModal({
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <RtlText style={styles.title} accessibilityRole="header">🔔 תזכורות</RtlText>
           <ScrollView style={styles.scroll}>
+{Platform.OS !== 'web' && nativePermissionStatus !== 'granted' && nativePermissionStatus !== 'unavailable' && (
+  <View style={styles.webPushSection}>
+    <RtlText style={styles.webPushTitle}>התראות במכשיר הזה</RtlText>
+    <RtlText style={styles.webPushText}>
+      {nativePermissionStatus === 'denied'
+        ? 'ההתראות חסומות בהגדרות המכשיר, כך שתזכורות טיול לא יגיעו. אפשר להפעיל אותן מחדש בהגדרות.'
+        : 'עדיין לא אישרתם התראות במכשיר הזה — בלי זה תזכורות הטיול לא יגיעו.'}
+    </RtlText>
+    {nativePermissionStatus === 'denied' ? (
+      <Button label="פתיחת הגדרות המכשיר" onPress={() => void Linking.openSettings()} style={styles.webPushButton} />
+    ) : (
+      <Button
+        label={nativePermissionBusy ? 'מפעיל התראות...' : 'אפשר התראות'}
+        onPress={() => void handleRequestNativePermission()}
+        disabled={nativePermissionBusy}
+        style={styles.webPushButton}
+      />
+    )}
+  </View>
+)}
 {Platform.OS === 'web' && (
   <View style={styles.webPushSection}>
     <RtlText style={styles.webPushTitle}>התראות במכשיר הזה</RtlText>
@@ -119,8 +203,29 @@ export function RemindersModal({
             ? 'ההתראות חסומות בהגדרות הדפדפן או המכשיר.'
             : webPushStatus === 'unsupported'
               ? 'המכשיר או הדפדפן הזה אינם תומכים ב-Web Push.'
-              : 'אפשר לקבל התראות גם כשהאפליקציה אינה פתוחה.'}
+              : webPushStatus === 'error'
+                ? 'ההתראות אושרו במכשיר, אך הרישום בשרת נכשל — התראות לא יגיעו עדיין.'
+                : 'אפשר לקבל התראות גם כשהאפליקציה אינה פתוחה.'}
     </RtlText>
+
+    {webPushError ? (
+      <RtlText style={styles.webPushError} accessibilityRole="alert">{`שגיאת רישום: ${webPushError}`}</RtlText>
+    ) : null}
+
+    {/* P0 notification-delivery investigation: lets a person confirm,
+        from their own phone, with no desktop dev-tools, that the server
+        genuinely has an active row for THIS device's own subscription —
+        not just that the browser locally believes it's subscribed. */}
+    {webPushStatus === 'subscribed' && serverVerified !== null ? (
+      <RtlText
+        style={serverVerified ? styles.webPushVerified : styles.webPushError}
+        accessibilityRole={serverVerified ? undefined : 'alert'}
+      >
+        {serverVerified
+          ? '✅ אומת בשרת: המכשיר הזה רשום בפועל להתראות.'
+          : '⚠️ השרת לא מצא רישום פעיל למכשיר הזה, אף שהדפדפן חושב שהוא רשום. נסו ללחוץ שוב על "אפשר התראות".'}
+      </RtlText>
+    ) : null}
 
     {iosSafariNeedsInstall ? (
       <View style={styles.installGuide}>
@@ -224,6 +329,18 @@ installGuideStep: {
 },
 webPushButton: {
   marginTop: 10,
-},  
+},
+webPushError: {
+  marginTop: 8,
+  fontSize: 13,
+  color: colors.danger ?? '#B42318',
+  textAlign: 'right',
+},
+webPushVerified: {
+  marginTop: 8,
+  fontSize: 13,
+  color: colors.success ?? '#1A7F37',
+  textAlign: 'right',
+},
 closeButton: { marginTop: 14 },
 });

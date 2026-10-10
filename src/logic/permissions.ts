@@ -47,10 +47,10 @@
  *      correct for every other (non-boundary) caller as-is.
  */
 
-export type PermissionKey = 'view_history' | 'view_statistics';
+export type PermissionKey = 'view_history' | 'view_statistics' | 'view_settings';
 
 /** The full set of customizable permission keys — kept as a single source used by both this resolver and the admin UI, so a newly added key only needs to be listed once. Must exactly match migration 0023's CHECK constraint. */
-export const PERMISSION_KEYS: readonly PermissionKey[] = ['view_history', 'view_statistics'];
+export const PERMISSION_KEYS: readonly PermissionKey[] = ['view_history', 'view_statistics', 'view_settings'];
 
 /** One override row, in the app's own camelCase shape (see lib/permissions.ts for the raw-row -> this mapping). */
 export interface MemberPermissionOverride {
@@ -69,6 +69,10 @@ export interface MemberPermissionOverride {
 const ROLE_DEFAULT: Record<PermissionKey, boolean> = {
   view_history: true,
   view_statistics: true,
+  // Settings is admin-oriented by default. Members may be granted access
+  // explicitly through an override; family admins retain access separately
+  // at the navigation/screen boundary.
+  view_settings: false,
 };
 
 /**
@@ -135,4 +139,18 @@ export function canAccessStatisticsScreen(
 ): boolean {
   if (status !== 'loaded') return false;
   return canViewStatistics(userId, overrides);
+}
+
+/** Settings permission. Family admins are handled as always-allowed by the caller; this resolver covers member overrides. */
+export function canViewSettings(userId: string | null | undefined, overrides: readonly MemberPermissionOverride[]): boolean {
+  return resolveEffectivePermission('view_settings', userId, overrides);
+}
+
+export function canAccessSettingsScreen(
+  userId: string | null | undefined,
+  overrides: readonly MemberPermissionOverride[],
+  status: PermissionLoadStatus
+): boolean {
+  if (status !== 'loaded') return false;
+  return canViewSettings(userId, overrides);
 }

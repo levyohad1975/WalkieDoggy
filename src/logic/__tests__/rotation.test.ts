@@ -1,6 +1,7 @@
 import {
   generateRotationSchedule,
   planRuleDaysReconciliation,
+  planStaleRuleEntryReconciliation,
   previewRotation,
   resolveResponsibleForDate,
   ruleNeedsEntryBackfill,
@@ -292,6 +293,30 @@ describe('planRuleDaysReconciliation', () => {
     expect(plan.toUpdate.map((e) => e.id)).toEqual(['entry-wed']);
   });
 
+  // P0 BUG FIX (priority #2 of the schedule-edit persistence investigation):
+  // a deliberate one-off per-occurrence time override must survive even a
+  // rule-WIDE time edit, not just a plain schedule reload — otherwise an
+  // admin changing the recurring rule's time would silently wipe out every
+  // one-off override across every future date for that rule in one shot.
+  it('leaves a deliberately-overridden mutable entry completely untouched by a rule-wide time edit', () => {
+    const previousRule = makeRule({ daysOfWeek: [0, 1, 2, 3, 4, 5, 6], time: '20:00' });
+    const updatedRule = makeRule({ daysOfWeek: [0, 1, 2, 3, 4, 5, 6], time: '21:00' });
+    const entries = [
+      makeEntry({ id: 'entry-mon', date: '2026-08-24', time: '20:00' }), // normal — follows the rule edit
+      makeEntry({ id: 'entry-tue', date: '2026-08-25', time: '20:30', timeOverridden: true }), // deliberate one-off — must survive
+    ];
+
+    const plan = planRuleDaysReconciliation(previousRule, updatedRule, entries, today, endDate);
+
+    expect(plan.toUpdate.map((e) => e.id)).toEqual(['entry-mon']);
+    expect(plan.toUpdate.find((e) => e.id === 'entry-mon')?.time).toBe('21:00');
+    expect(plan.toRegenerate).toEqual([]);
+    expect(plan.toRemove).toEqual([]);
+    // No entry at all is produced for Tuesday — the existing overridden one
+    // already represents it, untouched.
+    expect(plan.toUpdate.some((e) => e.date === '2026-08-25')).toBe(false);
+  });
+
   it('only reconciles entries belonging to the same rule', () => {
     const previousRule = makeRule({ daysOfWeek: [0, 1, 2, 3, 4, 5, 6] });
     const updatedRule = makeRule({ daysOfWeek: [0, 1, 2, 3, 4, 5] }); // Saturday dropped
@@ -313,5 +338,278 @@ describe('planRuleDaysReconciliation', () => {
 
     expect(plan.toRemove).toEqual([]);
     expect(plan.toUpdate).toEqual([]);
+  });
+
+  /**
+   * P0 real-device fix — real-iPhone QA: editing a rule's time (09:00 ->
+   * 14:00) after today's occurrence under the OLD time had already been
+   * completed left today's entry stuck at 09:00 forever, with no new
+   * actionable occurrence ever created. Root cause: the pre-fix version of
+   * this function blindly mutated EVERY future entry's time in place,
+   * including one whose walk was already 'done' — rewriting completed
+   * history — while the caller (scheduleStore.updateRule) correctly
+   * refuses to touch a non-'pending' walk, leaving the entry and its done
+   * walk disagreeing with no new occurrence to show. These tests cover the
+   * `currentWalks` parameter that fixes it.
+   */
+  describe('with currentWalks — locked (already-resolved) entries are never mutated', () => {
+    it('a date whose only entry has a done walk is left untouched, and a fresh pending entry is regenerated for it instead', () => {
+      const previousRule = makeRule({ time: '09:00' });
+      const updatedRule = makeRule({ time: '14:00' });
+      const entries = [makeEntry({ id: 'entry-today', date: today, time: '09:00' })];
+      const walks = [{ scheduleEntryId: 'entry-today', status: 'done' as const }];
+
+      const plan = planRuleDaysReconciliation(previousRule, updatedRule, entries, today, endDate, () => 'entry-fresh', walks);
+
+      expect(plan.toUpdate).toEqual([]);
+      expect(plan.toRegenerate).toHaveLength(1);
+      expect(plan.toRegenerate[0]).toMatchObject({ id: 'entry-fresh', date: today, time: '14:00' });
+      // The original entry is not present anywhere in the output — it was
+      // never touched, matching the "never rewrite completed history" requirement.
+      expect(plan.toRemove.find((e) => e.id === 'entry-today')).toBeUndefined();
+    });
+
+    it('a date whose only entry has an in_progress walk is also locked', () => {
+      const previousRule = makeRule({ time: '09:00' });
+      const updatedRule = makeRule({ time: '14:00' });
+      const entries = [makeEntry({ id: 'entry-today', date: today, time: '09:00' })];
+      const walks = [{ scheduleEntryId: 'entry-today', status: 'in_progress' as const }];
+
+      const plan = planRuleDaysReconciliation(previousRule, updatedRule, entries, today, endDate, () => 'entry-fresh', walks);
+
+      expect(plan.toUpdate).toEqual([]);
+      expect(plan.toRegenerate).toHaveLength(1);
+    });
+
+    it('a pending walk is still updated in place, same as with no currentWalks given at all', () => {
+      const previousRule = makeRule({ time: '09:00' });
+      const updatedRule = makeRule({ time: '14:00' });
+      const entries = [makeEntry({ id: 'entry-today', date: today, time: '09:00' })];
+      const walks = [{ scheduleEntryId: 'entry-today', status: 'pending' as const }];
+
+      const plan = planRuleDaysReconciliation(previousRule, updatedRule, entries, today, endDate, () => 'entry-fresh', walks);
+
+      expect(plan.toRegenerate).toEqual([]);
+      expect(plan.toUpdate).toHaveLength(1);
+      expect(plan.toUpdate[0]).toMatchObject({ id: 'entry-today', time: '14:00' });
+    });
+
+    it('an entry with no matching walk at all is treated as freely mutable (not locked)', () => {
+      const previousRule = makeRule({ time: '09:00' });
+      const updatedRule = makeRule({ time: '14:00' });
+      const entries = [makeEntry({ id: 'entry-today', date: today, time: '09:00' })];
+
+      const plan = planRuleDaysReconciliation(previousRule, updatedRule, entries, today, endDate, () => 'entry-fresh', []);
+
+      expect(plan.toRegenerate).toEqual([]);
+      expect(plan.toUpdate).toHaveLength(1);
+    });
+
+    it('re-editing the rule again after a regenerated entry exists updates the NEW pending entry in place, never regenerating a second one', () => {
+      const previousRule = makeRule({ time: '14:00' });
+      const updatedRule = makeRule({ time: '18:00' });
+      // Simulates the state right after the FIRST edit's regeneration: the
+      // old done entry is still there (history), plus the fresh pending one.
+      const entries = [
+        makeEntry({ id: 'entry-today-old', date: today, time: '09:00' }),
+        makeEntry({ id: 'entry-today-fresh', date: today, time: '14:00' }),
+      ];
+      const walks = [
+        { scheduleEntryId: 'entry-today-old', status: 'done' as const },
+        { scheduleEntryId: 'entry-today-fresh', status: 'pending' as const },
+      ];
+
+      const plan = planRuleDaysReconciliation(previousRule, updatedRule, entries, today, endDate, () => 'entry-should-not-be-used', walks);
+
+      expect(plan.toRegenerate).toEqual([]);
+      expect(plan.toUpdate).toHaveLength(1);
+      expect(plan.toUpdate[0]).toMatchObject({ id: 'entry-today-fresh', time: '18:00' });
+    });
+
+    it('omitting currentWalks entirely (legacy call shape) behaves exactly as if nothing were locked', () => {
+      const previousRule = makeRule({ time: '09:00' });
+      const updatedRule = makeRule({ time: '14:00' });
+      const entries = [makeEntry({ id: 'entry-today', date: today, time: '09:00' })];
+
+      const plan = planRuleDaysReconciliation(previousRule, updatedRule, entries, today, endDate);
+
+      expect(plan.toRegenerate).toEqual([]);
+      expect(plan.toUpdate).toHaveLength(1);
+    });
+  });
+});
+
+/**
+ * P0 real-device fix, self-heal round — reproduces the exact real-device
+ * evidence: three active rules (14:00, 21:00, 08:00) whose schedule_entries
+ * were left stale by edits made before 807e4db shipped (so no further rule
+ * edit will ever correct them on its own — see planStaleRuleEntryReconciliation's
+ * own doc comment). "now" is 14:17, so the 14:00 rule's time for today has
+ * already passed, while 21:00 has not.
+ */
+describe('planStaleRuleEntryReconciliation', () => {
+  const today = '2026-10-05';
+  const tomorrow = '2026-10-06';
+  const endDate = '2026-10-19';
+  const now = new Date('2026-10-05T14:17:00');
+
+  const rule1400 = (overrides: Partial<ScheduleRule> = {}): ScheduleRule =>
+    makeRule({ id: 'rule-1400', time: '14:00', rotationUserIds: ['user-a'], rotationAnchorDate: '2026-09-01', ...overrides });
+  const rule2100 = (overrides: Partial<ScheduleRule> = {}): ScheduleRule =>
+    makeRule({ id: 'rule-2100', time: '21:00', rotationUserIds: ['user-b'], rotationAnchorDate: '2026-09-01', ...overrides });
+  const rule0800 = (overrides: Partial<ScheduleRule> = {}): ScheduleRule =>
+    makeRule({ id: 'rule-0800', time: '08:00', rotationUserIds: ['user-c'], rotationAnchorDate: '2026-09-01', ...overrides });
+
+  function entry(overrides: Partial<ScheduleEntry>): ScheduleEntry {
+    return {
+      id: 'e', familyId: 'family-1', dogId: 'dog-1', date: today, time: '00:00',
+      responsibleUserId: 'user-a', createdAt: new Date().toISOString(), ...overrides,
+    };
+  }
+
+  it('reproduces the exact reported state and converges to the exact expected result', () => {
+    const rules = [rule1400(), rule2100(), rule0800()];
+    const entries: ScheduleEntry[] = [
+      // today
+      entry({ id: 'e-1400-today', ruleId: 'rule-1400', date: today, time: '09:00' }), // stale, done
+      entry({ id: 'e-2100-today', ruleId: 'rule-2100', date: today, time: '11:00' }), // stale, done
+      entry({ id: 'e-0800-today', ruleId: 'rule-0800', date: today, time: '08:00' }), // NOT stale, skipped
+      // tomorrow
+      entry({ id: 'e-1400-tmrw', ruleId: 'rule-1400', date: tomorrow, time: '09:00' }), // stale, pending
+      entry({ id: 'e-2100-tmrw', ruleId: 'rule-2100', date: tomorrow, time: '11:00' }), // stale, pending
+      entry({ id: 'e-0800-tmrw', ruleId: 'rule-0800', date: tomorrow, time: '08:00' }), // NOT stale, pending
+    ];
+    const walks = [
+      { scheduleEntryId: 'e-1400-today', status: 'done' as const },
+      { scheduleEntryId: 'e-2100-today', status: 'done' as const },
+      { scheduleEntryId: 'e-0800-today', status: 'skipped' as const },
+      { scheduleEntryId: 'e-1400-tmrw', status: 'pending' as const },
+      { scheduleEntryId: 'e-2100-tmrw', status: 'pending' as const },
+      { scheduleEntryId: 'e-0800-tmrw', status: 'pending' as const },
+    ];
+
+    let idCounter = 0;
+    const plan = planStaleRuleEntryReconciliation(rules, entries, walks, today, endDate, now, () => `regen-${++idCounter}`);
+
+    // Today 14:00: already passed at 14:17, and the only entry is locked
+    // (done) — no new occurrence; the historical 09:00 done record is
+    // untouched (not even present in toUpdate/toRegenerate).
+    expect(plan.toRegenerate.some((e) => e.ruleId === 'rule-1400' && e.date === today)).toBe(false);
+    expect(plan.toUpdate.some((e) => e.id === 'e-1400-today')).toBe(false);
+
+    // Today 21:00: locked (done) but 21:00 hasn't passed yet — a fresh
+    // pending occurrence is generated for today.
+    const regen2100Today = plan.toRegenerate.find((e) => e.ruleId === 'rule-2100' && e.date === today);
+    expect(regen2100Today).toBeTruthy();
+    expect(regen2100Today?.time).toBe('21:00');
+
+    // Today 08:00: already correctly represented (skipped, but time
+    // matches) — untouched.
+    expect(plan.toUpdate.some((e) => e.id === 'e-0800-today')).toBe(false);
+    expect(plan.toRegenerate.some((e) => e.ruleId === 'rule-0800' && e.date === today)).toBe(false);
+
+    // Tomorrow 14:00/21:00: stale but still PENDING (open, not locked) —
+    // updated in place, not regenerated.
+    const upd1400Tmrw = plan.toUpdate.find((e) => e.id === 'e-1400-tmrw');
+    const upd2100Tmrw = plan.toUpdate.find((e) => e.id === 'e-2100-tmrw');
+    expect(upd1400Tmrw?.time).toBe('14:00');
+    expect(upd2100Tmrw?.time).toBe('21:00');
+    expect(plan.toRegenerate.some((e) => e.date === tomorrow)).toBe(false);
+
+    // Tomorrow 08:00: already correct — untouched.
+    expect(plan.toUpdate.some((e) => e.id === 'e-0800-tmrw')).toBe(false);
+  });
+
+  it('is idempotent: re-running on the already-converged result produces an empty plan', () => {
+    const rules = [rule1400(), rule2100(), rule0800()];
+    // Start from what the FIRST run above would converge to.
+    const entries: ScheduleEntry[] = [
+      entry({ id: 'e-1400-today', ruleId: 'rule-1400', date: today, time: '09:00' }), // stays — 14:00 already passed
+      entry({ id: 'e-2100-today', ruleId: 'rule-2100', date: today, time: '11:00' }), // old done record, preserved
+      entry({ id: 'e-2100-today-fresh', ruleId: 'rule-2100', date: today, time: '21:00' }), // regenerated
+      entry({ id: 'e-0800-today', ruleId: 'rule-0800', date: today, time: '08:00' }),
+      entry({ id: 'e-1400-tmrw', ruleId: 'rule-1400', date: tomorrow, time: '14:00' }), // already reconciled
+      entry({ id: 'e-2100-tmrw', ruleId: 'rule-2100', date: tomorrow, time: '21:00' }), // already reconciled
+      entry({ id: 'e-0800-tmrw', ruleId: 'rule-0800', date: tomorrow, time: '08:00' }),
+    ];
+    const walks = [
+      { scheduleEntryId: 'e-1400-today', status: 'done' as const },
+      { scheduleEntryId: 'e-2100-today', status: 'done' as const },
+      { scheduleEntryId: 'e-2100-today-fresh', status: 'pending' as const },
+      { scheduleEntryId: 'e-0800-today', status: 'skipped' as const },
+      { scheduleEntryId: 'e-1400-tmrw', status: 'pending' as const },
+      { scheduleEntryId: 'e-2100-tmrw', status: 'pending' as const },
+      { scheduleEntryId: 'e-0800-tmrw', status: 'pending' as const },
+    ];
+
+    const plan = planStaleRuleEntryReconciliation(rules, entries, walks, today, endDate, now, () => 'should-not-be-used');
+
+    expect(plan.toUpdate).toEqual([]);
+    expect(plan.toRegenerate).toEqual([]);
+  });
+
+  it('ignores entries belonging to an inactive rule', () => {
+    const rules = [rule1400({ active: false })];
+    const entries = [entry({ id: 'e-1400-today', ruleId: 'rule-1400', date: today, time: '09:00' })];
+    const walks = [{ scheduleEntryId: 'e-1400-today', status: 'done' as const }];
+
+    const plan = planStaleRuleEntryReconciliation(rules, entries, walks, today, endDate, now);
+
+    expect(plan.toUpdate).toEqual([]);
+    expect(plan.toRegenerate).toEqual([]);
+  });
+
+  it('a future date whose only entry is locked and stale always regenerates (its time cannot have "already passed")', () => {
+    const rules = [rule1400()];
+    const entries = [entry({ id: 'e-1400-tmrw-done', ruleId: 'rule-1400', date: tomorrow, time: '09:00' })];
+    const walks = [{ scheduleEntryId: 'e-1400-tmrw-done', status: 'done' as const }];
+
+    const plan = planStaleRuleEntryReconciliation(rules, entries, walks, today, endDate, now, () => 'fresh-tmrw');
+
+    expect(plan.toRegenerate).toHaveLength(1);
+    expect(plan.toRegenerate[0]).toMatchObject({ date: tomorrow, time: '14:00', ruleId: 'rule-1400' });
+  });
+
+  // P0 BUG FIX — real-device report: editing a scheduled walk's time via
+  // EditWalkModal (scheduleStore.rescheduleWalk / admin_reschedule_walk)
+  // did not survive an app restart. Root cause: a deliberate one-off
+  // per-occurrence time edit makes entry.time diverge from its rule's
+  // time by design (see ScheduleEntry.time's own doc comment), which this
+  // function's `time !== rule.time` staleness test could not tell apart
+  // from a genuine pre-807e4db stale leftover — so it silently reverted
+  // every deliberate edit back to the rule's time on the very next load.
+  // The fix: an entry with `timeOverridden: true` is now always treated
+  // as correctly represented, regardless of its time value.
+  it('never reverts a deliberately overridden entry, even though its time differs from the rule (the P0 bug)', () => {
+    const rules = [rule1400()];
+    const entries = [
+      entry({ id: 'e-1400-tmrw', ruleId: 'rule-1400', date: tomorrow, time: '14:05', timeOverridden: true }),
+    ];
+    const walks = [{ scheduleEntryId: 'e-1400-tmrw', status: 'pending' as const }];
+
+    const plan = planStaleRuleEntryReconciliation(rules, entries, walks, today, endDate, now);
+
+    expect(plan.toUpdate).toEqual([]);
+    expect(plan.toRegenerate).toEqual([]);
+  });
+
+  it('still reconciles a genuinely stale entry that was never overridden, alongside an unrelated overridden one for a different rule', () => {
+    const rules = [rule1400(), rule2100()];
+    const entries = [
+      // Genuinely stale (pre-807e4db leftover) — no timeOverridden flag.
+      entry({ id: 'e-1400-tmrw', ruleId: 'rule-1400', date: tomorrow, time: '09:00' }),
+      // Deliberately overridden — must survive untouched.
+      entry({ id: 'e-2100-tmrw', ruleId: 'rule-2100', date: tomorrow, time: '21:30', timeOverridden: true }),
+    ];
+    const walks = [
+      { scheduleEntryId: 'e-1400-tmrw', status: 'pending' as const },
+      { scheduleEntryId: 'e-2100-tmrw', status: 'pending' as const },
+    ];
+
+    const plan = planStaleRuleEntryReconciliation(rules, entries, walks, today, endDate, now);
+
+    expect(plan.toUpdate).toHaveLength(1);
+    expect(plan.toUpdate[0]).toMatchObject({ id: 'e-1400-tmrw', time: '14:00' });
+    expect(plan.toRegenerate).toEqual([]);
   });
 });

@@ -374,6 +374,27 @@ async function verifyAndCommitPendingRedemption(
     return 'unverified';
   }
 
+  // P0 FIX (real-device QA — invite redemption always "mismatched"): a
+  // successful whoami() call reporting realProfileId === null is NOT the
+  // same confidence level as reporting a DEFINITE, DIFFERENT profile id.
+  // null means "doesn't resolve to a claimed profile right now" — which
+  // migration 0101's own header comment documents as the exact, previously
+  // unhandled, 100%-reproducible gap left by redeem_family_invite() never
+  // having written a profile_auth_sessions row before that migration (now
+  // self-healed by whoami() itself, but treating this case as a STILL
+  // ambiguous "unverified" here — never a hard "mismatch" — is this
+  // function's own, independent half of that fix: it must never throw
+  // away a real, server-confirmed redemption's only recovery marker over
+  // what might be a transient null, and self-healing itself requires
+  // another whoami() call to ever get a chance to run). Only a DEFINITE,
+  // DIFFERENT non-null profile id is a confirmed mismatch — mirroring
+  // checkClaimStillValid()'s own true/false/null three-way convention,
+  // which this function's own doc comment above already describes but
+  // previously failed to actually implement for this specific case.
+  if (who.realProfileId === null) {
+    return 'unverified';
+  }
+
   if (who.realProfileId !== pending.targetUserId) {
     // Confirmed mismatch — clear the now-unrecoverable marker; never commit.
     await AsyncStorage.removeItem(PENDING_REDEMPTION_KEY);
@@ -533,6 +554,41 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           // Corrupted/unparseable marker — drop it rather than retry forever.
           await AsyncStorage.removeItem(PENDING_REDEMPTION_KEY);
         }
+      }
+    }
+
+    // P0 FIX — last-resort server-truth recovery for a device with
+    // NOTHING cached locally (no familyId, no currentUserId, and no
+    // pending-redemption marker either — the exact state a device is left
+    // in after the whoami()-null-vs-mismatch bug above already ran its
+    // OLD, buggy logic and discarded the recovery marker on a prior
+    // launch, before this fix existed). Mirrors the verified-admin-creator
+    // recovery a few lines up in this same function (get_my_family_
+    // onboarding_status()) for the member-claim side: ask the server's own
+    // authoritative whoami() once, and if it resolves BOTH a real profile
+    // and a family for this device's auth.uid(), trust it — nothing is
+    // invented client-side, this only reads back an identity the server's
+    // own profile_auth_sessions/family_auth_members rows already establish
+    // for this exact auth.uid(). A device that never claimed anything
+    // simply gets realProfileId: null back (cheap, harmless no-op) and
+    // falls through to ordinary onboarding as before.
+    if (isSupabaseConfigured && !get().familyId && !get().currentUserId) {
+      try {
+        const who = await getWhoAmI();
+        if (who?.realProfileId && who.familyId) {
+          await AsyncStorage.setItem(FAMILY_ID_KEY, who.familyId);
+          await AsyncStorage.setItem(CURRENT_USER_KEY, who.realProfileId);
+          set({
+            familyId: who.familyId,
+            currentUserId: who.realProfileId,
+            testModeUserId: null,
+            impersonatingUserId: null,
+          });
+          await get().refreshFamilyRole();
+        }
+      } catch {
+        // Best-effort recovery only — offline/RPC failure falls back to
+        // ordinary onboarding, exactly as if this check never ran.
       }
     }
   },

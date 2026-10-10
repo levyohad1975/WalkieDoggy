@@ -1,13 +1,14 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
-import type { FamilyUser, Walk } from '../types';
+import type { FamilyUser, Walk, WalkGpsSession } from '../types';
 import { isOverdue } from '../logic/nextWalk';
 import { walkCompletionLine, walkHistoryTimingLine, walkMetadataLine } from '../logic/walkActions';
 import { colors } from '../theme/colors';
 import { nativeDirection } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { StatusBadge } from './StatusBadge';
+import { RoutePreview } from './RoutePreview';
 
 interface WalkRowProps {
   walk: Walk;
@@ -61,6 +62,7 @@ interface WalkRowProps {
   /** History-only visual density: keep time prominent, soften identity text, and omit redundant completion copy. */
   historyCompact?: boolean;
   hidePendingStatus?: boolean;
+  routeSession?: WalkGpsSession;
 }
 
 /**
@@ -128,6 +130,7 @@ export function WalkRow({
   requestStatusLine,
   historyCompact = false,
   hidePendingStatus = false,
+  routeSession,
 }: WalkRowProps) {
   const overdue = isOverdue(walk);
   const metadataLine = historyCompact ? (walk.isUnplanned ? 'ספונטני' : 'מתוכנן') : walkMetadataLine(walk);
@@ -140,14 +143,16 @@ export function WalkRow({
   // 07:18"). Computed only in historyCompact mode; every other caller of
   // this component is unaffected.
   const historyTimingLine = historyCompact ? walkHistoryTimingLine(walk) : null;
+  // In completed history, show the actual walker rather than the originally scheduled assignee.
+  const displayedWalker = historyCompact && walk.status === 'done' && completedBy ? completedBy : responsible;
 
   return (
     <Pressable
       onPress={onPress}
       disabled={!onPress}
-      style={[styles.row, isCurrent && styles.rowCurrent, walk.status === 'done' && styles.rowDone]}
+      style={[styles.row, historyCompact && styles.rowHistoryCompact, isCurrent && styles.rowCurrent, walk.status === 'done' && styles.rowDone]}
     >
-      <View style={styles.mainRow}>
+        <View style={[styles.mainRow, historyCompact && styles.mainRowHistoryCompact]}>
         <View style={styles.dateTimeBlock}>
           <RtlText style={[styles.time, historyCompact && styles.timeHistory]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82} maxFontSizeMultiplier={WALK_ROW_DATE_TIME_MAX_SCALE}>
             {walk.scheduledTime}
@@ -162,27 +167,31 @@ export function WalkRow({
           </RtlText>
         </View>
 
-        {responsible ? (
-          <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={32} />
+        {displayedWalker ? (
+          <Avatar emoji={displayedWalker.avatar} color={displayedWalker.color} photoUrl={displayedWalker.photoUrl} size={32} />
         ) : null}
 
         <View style={styles.middle}>
+          <View style={styles.identityLine}>
           {/* Fixed size, one line, ellipsis only for a genuinely long name —
               never `adjustsFontSizeToFit` (that was the source of the
               inconsistent-font-size bug this redesign fixes). */}
           <RtlText style={[styles.name, historyCompact && styles.nameHistory]} numberOfLines={1} ellipsizeMode="tail">
-            {responsible?.name ?? 'לא הוגדר'}
-            {responsible?.removedAt ? ' (הוסר)' : ''}
+            {displayedWalker?.name ?? 'לא הוגדר'}
+            {displayedWalker?.removedAt ? ' (הוסר)' : ''}
           </RtlText>
-          {metadataLine ? (
-            <RtlText style={[styles.metadata, historyCompact && styles.metadataHistory]} numberOfLines={1}>
-              {metadataLine}
-            </RtlText>
-          ) : null}
+          </View>
+          <View style={styles.metadataSlot}>
+            {metadataLine ? (
+              <RtlText style={[styles.metadata, historyCompact && styles.metadataHistory]} numberOfLines={1}>
+                {metadataLine}
+              </RtlText>
+            ) : null}
+          </View>
         </View>
 
         {hidePendingStatus && walk.status === 'pending' && !overdue ? null : (
-          <View style={styles.leftBlock}>
+          <View style={[styles.leftBlock, historyCompact && styles.historyStatusColumn]}>
             <StatusBadge status={walk.status} overdue={overdue} glyphOnly={historyCompact} />
             {completionLine && !historyCompact ? (
               <RtlText style={styles.completionText} numberOfLines={1} ellipsizeMode="tail">
@@ -191,10 +200,17 @@ export function WalkRow({
             ) : null}
           </View>
         )}
+        {historyCompact ? (
+          <View style={styles.historyMapColumn}>
+            {routeSession?.routePoints && routeSession.routePoints.length > 1 ? <RoutePreview session={routeSession} compact /> : null}
+          </View>
+        ) : routeSession?.routePoints && routeSession.routePoints.length > 1 ? (
+          <RoutePreview session={routeSession} />
+        ) : null}
       </View>
 
       {historyTimingLine ? (
-        <RtlText style={styles.historyTimingLine} numberOfLines={1} ellipsizeMode="tail">
+        <RtlText style={[styles.historyTimingLine, styles.historyTimingLineCompact]} numberOfLines={1} ellipsizeMode="tail">
           {historyTimingLine}
         </RtlText>
       ) : null}
@@ -299,6 +315,13 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
 
+  rowHistoryCompact: { paddingVertical: 7, paddingHorizontal: 9, gap: 2 },
+  mainRowHistoryCompact: { minHeight: 40, gap: 5 },
+  historyTimingLineCompact: { marginTop: 0 },
+  // Fixed status and map slots keep ✓ / ✕ vertically aligned even when a walk has no GPS route.
+  historyStatusColumn: { width: 48, alignItems: 'center', justifyContent: 'center' },
+  historyMapColumn: { width: 72, height: 48, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+
   // Part B fix: fixed minimum height for the identity/status row regardless
   // of walk status — no more "done"/"skipped" rows growing a taller card
   // than a plain "pending" one.
@@ -338,8 +361,19 @@ const styles = StyleSheet.create({
 
   middle: {
     flex: 1,
-    gap: 4,
     minWidth: 0,
+    alignItems: 'flex-end',
+  },
+  identityLine: {
+    width: '100%',
+    minHeight: 22,
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+  },
+  metadataSlot: {
+    width: '100%',
+    height: 18,
+    justifyContent: 'center',
     alignItems: 'flex-end',
   },
   timeHistory: { fontSize: 18 },
@@ -359,14 +393,17 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     alignSelf: 'flex-end',
     flexShrink: 0,
+    lineHeight: 16,
   },
 
   // LEFT column: status badge + (optional) compact completion line, capped
   // so a long name/time combo ellipsizes rather than pushing the row taller
   // or squeezing `middle`.
   leftBlock: {
-    width: 118,
-    alignItems: 'flex-end',
+    // Reserve enough space for the widest status (including 'לא בוצע').
+    // The old 56px slot let the non-shrinking badge spill past the card edge.
+    width: 100,
+    alignItems: 'center',
     flexShrink: 0,
     gap: 3,
   },
@@ -458,4 +495,3 @@ const styles = StyleSheet.create({
     opacity: 0.35,
   },
 });
-

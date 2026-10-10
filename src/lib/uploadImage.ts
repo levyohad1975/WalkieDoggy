@@ -1,7 +1,8 @@
 import * as ImagePicker from 'expo-image-picker';
-import { Alert, Linking } from 'react-native';
+import { Alert, Linking, Platform } from 'react-native';
 import { isSupabaseConfigured, supabase } from './supabase';
 import { guardTestModeMutation } from './testModeGuard';
+import { requestPhotoCrop } from './photoCropHost';
 
 export type PhotoKind = 'dogs' | 'users';
 
@@ -72,15 +73,31 @@ export async function pickAndUploadImage(kind: PhotoKind, familyId: string, id: 
 
   const asset = result.assets[0];
 
+  // Native iOS/Android already got OS-native crop/zoom/pan UI above via
+  // allowsEditing/aspect. expo-image-picker's allowsEditing does nothing at
+  // all on Web, so Web gets its own crop step here instead — see
+  // PhotoCropModal.tsx. Cancelling the crop cancels the whole pick, same as
+  // cancelling the native picker.
+  let sourceUri = asset.uri;
+  let webCropped = false;
+  if (Platform.OS === 'web') {
+    const cropped = await requestPhotoCrop(asset.uri);
+    if (cropped === null) return null;
+    sourceUri = cropped;
+    webCropped = true;
+  }
+
   if (isSupabaseConfigured && supabase) {
     const folder = kind === 'dogs' ? 'dog' : `users/${id}`;
     const path = `${familyId}/${folder}/${Date.now()}.jpg`;
     // SDK 57 / iOS does not guarantee ImagePicker base64 payloads. Read the
     // selected local URI as binary instead, which works for both iOS and
     // Android and avoids silently falling back to a device-only file URI.
-    const response = await fetch(asset.uri);
+    const response = await fetch(sourceUri);
     const bytes = await response.arrayBuffer();
-    const contentType = asset.mimeType ?? 'image/jpeg';
+    // The web crop step always outputs a canvas-encoded JPEG, regardless of
+    // the original asset's mime type.
+    const contentType = webCropped ? 'image/jpeg' : asset.mimeType ?? 'image/jpeg';
     const extension = contentType === 'image/png' ? 'png' : contentType === 'image/webp' ? 'webp' : 'jpg';
     const finalPath = path.replace(/\.jpg$/, `.${extension}`);
     const { error } = await supabase.storage
@@ -91,5 +108,5 @@ export async function pickAndUploadImage(kind: PhotoKind, familyId: string, id: 
     return data.publicUrl;
   }
 
-  return asset.uri;
+  return sourceUri;
 }

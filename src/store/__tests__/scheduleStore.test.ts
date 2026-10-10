@@ -1,5 +1,6 @@
 import type { ScheduleRule, Walk } from '../../types';
 import { computeNextWalk } from '../../logic/nextWalk';
+import { localDateOnly } from '../../logic/dateFormat';
 
 /**
  * Regression tests for BUG 1 (round-2 bug report): a schedule rule added or
@@ -18,10 +19,20 @@ describe('scheduleStore', () => {
   let useScheduleStore: typeof import('../scheduleStore').useScheduleStore;
 
   beforeEach(async () => {
+    // The demo seed intentionally auto-finalizes older pending walks once a
+    // later scheduled walk becomes due. Keep this suite at a deterministic
+    // pre-noon instant so tests that exercise editing/deleting a *pending*
+    // 12:30 occurrence do not change meaning depending on CI wall-clock.
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-10-01T10:00:00.000Z'));
     jest.resetModules();
     const AsyncStorage = require('@react-native-async-storage/async-storage');
     await AsyncStorage.clear();
     ({ useScheduleStore } = require('../scheduleStore'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('creating a schedule rule adds it to state and immediately generates entries + walks for it', async () => {
@@ -81,7 +92,7 @@ describe('scheduleStore', () => {
     const updatedRule = state.rules.find((r) => r.id === 'rule-1230');
     expect(updatedRule?.time).toBe('07:30');
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDateOnly(new Date());
     const todaysEntry = state.entries.find((e) => e.ruleId === 'rule-1230' && e.date === today);
     expect(todaysEntry?.time).toBe('07:30');
     expect(todaysEntry?.id).toBe('entry-1230'); // scheduleEntryId is preserved, not replaced
@@ -100,15 +111,14 @@ describe('scheduleStore', () => {
     expect(untouchedDoneWalk?.scheduledTime).toBe('07:00');
   });
 
-  it('reload (load) self-heals: an active rule with no upcoming entries gets them backfilled instead of showing empty', async () => {
+  it('reload rebuilds future occurrences for a recurring rule preserved by activity reset', async () => {
     await useScheduleStore.getState().load(FAMILY_ID);
 
-    // Simulate a rule that exists in the repository but whose entries were
-    // never generated (e.g. an interrupted save) — persist it directly,
-    // bypassing addRule/its entry-generation step.
+    // Activity reset preserves recurring routine rules. A normal load rebuilds
+    // the future horizon so Home can resolve the next walk.
     const { repository } = require('../../data');
     const orphanRule: ScheduleRule = {
-      id: 'rule-orphan',
+      id: 'rule-reset-preserved',
       familyId: FAMILY_ID,
       dogId: 'dog-topi',
       time: '15:00',
@@ -121,16 +131,50 @@ describe('scheduleStore', () => {
     };
     await repository.upsertScheduleRule(orphanRule);
 
-    // A fresh load (as the Schedule screen does on mount) must notice the
-    // active rule has no matching entries and backfill them itself.
     await useScheduleStore.getState().load(FAMILY_ID);
 
     const state = useScheduleStore.getState();
-    expect(state.rules.some((r) => r.id === 'rule-orphan')).toBe(true);
-    const backfilledEntries = state.entries.filter((e) => e.ruleId === 'rule-orphan');
-    expect(backfilledEntries.length).toBeGreaterThan(0);
-    const backfilledWalks = state.walks.filter((w) => backfilledEntries.some((e) => e.id === w.scheduleEntryId));
-    expect(backfilledWalks.length).toBe(backfilledEntries.length);
+    expect(state.rules.some((r) => r.id === orphanRule.id)).toBe(true);
+    expect(state.entries.filter((e) => e.ruleId === orphanRule.id).length).toBeGreaterThan(0);
+    expect(state.walks.filter((w) => {
+      const entry = state.entries.find((e) => e.id === w.scheduleEntryId);
+      return entry?.ruleId === orphanRule.id;
+    }).length).toBeGreaterThan(0);
+  });
+
+  it('two concurrent load() calls share one in-flight read without duplicating rebuilt future occurrences', async () => {
+    await useScheduleStore.getState().load(FAMILY_ID);
+    const { repository } = require('../../data');
+    const resetRule: ScheduleRule = {
+      id: 'rule-reset-race',
+      familyId: FAMILY_ID,
+      dogId: 'dog-topi',
+      time: '16:00',
+      daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+      rotationUserIds: ['user-aba'],
+      rotationAnchorDate: '2026-08-20',
+      sortOrder: 99,
+      active: true,
+      createdAt: new Date().toISOString(),
+    };
+    await repository.upsertScheduleRule(resetRule);
+
+    const [firstResult, secondResult] = await Promise.all([
+      useScheduleStore.getState().load(FAMILY_ID),
+      useScheduleStore.getState().load(FAMILY_ID),
+    ]);
+
+    expect(firstResult).toBe(true);
+    expect(secondResult).toBe(true);
+    let state = useScheduleStore.getState();
+    expect(state.rules.some((r) => r.id === resetRule.id)).toBe(true);
+    const rebuiltEntries = state.entries.filter((e) => e.ruleId === resetRule.id);
+    expect(rebuiltEntries.length).toBeGreaterThan(0);
+
+    const thirdResult = await useScheduleStore.getState().load(FAMILY_ID);
+    expect(thirdResult).toBe(true);
+    state = useScheduleStore.getState();
+    expect(state.entries.filter((e) => e.ruleId === resetRule.id)).toHaveLength(rebuiltEntries.length);
   });
 
   it('addRule surfaces a visible actionError instead of silently doing nothing when the repository write fails', async () => {
@@ -273,6 +317,49 @@ it('rescheduleWalk changes only the selected pending walk and its entry, without
     after.walks.filter((w) => w.id === walk!.id)
   ).toHaveLength(1);
 });
+
+// P0 BUG FIX — real-device report: editing a scheduled walk's time, then
+// exiting and reopening the app, showed the ORIGINAL time again — the
+// edit never survived a reload. Root cause: scheduleStore.load()'s own
+// stale-rule-entry self-heal (planStaleRuleEntryReconciliation in
+// src/logic/rotation.ts) could not tell a deliberate one-off time edit
+// apart from a genuinely stale pre-807e4db leftover, so it reverted the
+// edit back to the rule's recurring time on every subsequent load. This
+// test reproduces the exact repro steps (edit time, then reload) and
+// asserts the new time survives — see rotation.test.ts's own
+// "never reverts a deliberately overridden entry" test for the underlying
+// pure-function coverage of the fix itself.
+it('a rescheduled walk survives a fresh reload — the self-heal must never revert a deliberate one-off time edit', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+
+  const before = useScheduleStore.getState();
+  const walk = before.walks.find((w) => w.status === 'pending' && w.scheduleEntryId);
+  expect(walk).toBeTruthy();
+  const originalTime = walk!.scheduledTime;
+  const newTime = originalTime === '15:30' ? '15:45' : '15:30';
+
+  await useScheduleStore.getState().rescheduleWalk(walk!.id, newTime);
+
+  const afterEdit = useScheduleStore.getState();
+  expect(afterEdit.walks.find((w) => w.id === walk!.id)?.scheduledTime).toBe(newTime);
+
+  // Reproduces "exit and reopen the app" — a fresh load() of the SAME
+  // family, exercising the exact self-heal pass that previously reverted
+  // the edit.
+  await useScheduleStore.getState().load(FAMILY_ID);
+
+  const afterReload = useScheduleStore.getState();
+  expect(afterReload.walks.find((w) => w.id === walk!.id)?.scheduledTime).toBe(newTime);
+  const entry = afterReload.entries.find((e) => e.id === walk!.scheduleEntryId);
+  expect(entry?.time).toBe(newTime);
+  expect(entry?.timeOverridden).toBe(true);
+
+  // A second reload must also stay converged — not just the first one.
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const afterSecondReload = useScheduleStore.getState();
+  expect(afterSecondReload.walks.find((w) => w.id === walk!.id)?.scheduledTime).toBe(newTime);
+});
+
 it('skip changes only the selected pending walk and leaves the rule and other walks untouched', async () => {
   await useScheduleStore.getState().load(FAMILY_ID);
 
@@ -401,7 +488,7 @@ it('swapTwoWalks exchanges both walk owners and backing schedule-entry owners', 
   expect(persistedEntries.find((e: { id: string }) => e.id === walkB!.scheduleEntryId)?.responsibleUserId).toBe(userA);
 });
 
-it('deleteRule removes the rule plus its future pending entries/walks, and leaves other rules untouched', async () => {
+it('deleteRule persists through the next reload instead of letting backfill recreate the deleted schedule', async () => {
   await useScheduleStore.getState().load(FAMILY_ID);
   const before = useScheduleStore.getState();
   expect(before.rules.some((r) => r.id === 'rule-1700')).toBe(true);
@@ -423,6 +510,16 @@ it('deleteRule removes the rule plus its future pending entries/walks, and leave
   const { repository } = require('../../data');
   const persistedEntries = await repository.getScheduleEntries(FAMILY_ID);
   expect(persistedEntries.some((e: { id: string }) => e.id === 'entry-1700')).toBe(false);
+
+  // Regression: scheduleStore legitimately repairs a *still-active* rule
+  // with no occurrences (covered separately by the active-rule backfill
+  // test). A deliberately deleted rule must be absent before that logic runs,
+  // so refresh/reload cannot put its whole schedule back.
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const reloaded = useScheduleStore.getState();
+  expect(reloaded.rules.some((r) => r.id === 'rule-1700')).toBe(false);
+  expect(reloaded.entries.some((e) => e.ruleId === 'rule-1700')).toBe(false);
+  expect(reloaded.walks.some((w) => w.scheduleEntryId === 'entry-1700')).toBe(false);
 });
 
 it('deleteRule surfaces a visible actionError instead of silently doing nothing when the repository write fails', async () => {

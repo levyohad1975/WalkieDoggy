@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Platform, Pressable, StyleSheet } from 'react-native';
+import { Alert, AppState, Platform, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from './src/store/authStore';
@@ -8,16 +8,19 @@ import { RootNavigator } from './src/navigation/RootNavigator';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { FamilyOnboardingScreen } from './src/screens/FamilyOnboardingScreen';
 import { SystemAdminScreen } from './src/screens/SystemAdminScreen';
+import { PhotoCropHost } from './src/components/PhotoCropHost';
 import { RtlText } from './src/components/RtlText';
 import { colors } from './src/theme/colors';
 import { requestNotificationPermissions, subscribeToWalkReminderResponses } from './src/notifications/notificationService';
 import { registerPushToken } from './src/lib/pushTokens';
+import { reconcileWebPushSubscription } from './src/lib/webPush';
 import { repository, setSyncQueueActorGetter } from './src/data';
 import { isSupabaseConfigured } from './src/lib/supabase';
 import { touchLastSeen } from './src/lib/requests';
 import { useRequestsStore } from './src/store/requestsStore';
 import { useScheduleStore, reconcileScheduleNotifications } from './src/store/scheduleStore';
 import { useFamilyStore } from './src/store/familyStore';
+import { WalkieMascot } from './src/components/WalkieMascot';
 
 // Reconciles local notifications against the currently loaded schedule store
 // state (A3's authoritative rule: notification content always comes from the
@@ -149,6 +152,29 @@ async function runForegroundSyncOnce(): Promise<void> {
   // 5. Presence + claim housekeeping.
   await touchLastSeen().catch(() => undefined);
   await useAuthStore.getState().revalidateClaim();
+
+  // 6. Real-device QA fix — "recovery after refresh/reopen" for Web Push.
+  // reconcileWebPushSubscription() was previously only ever called once,
+  // from a currentUserId-keyed effect in App() below (covers sign-in/
+  // mount) and from RemindersModal's own mount effect (covers explicitly
+  // reopening that modal). Neither re-runs on an ordinary foreground
+  // transition — reopening an already-signed-in installed PWA from the
+  // Home Screen resumes the SAME app instance (no remount, currentUserId
+  // never changes), so a persistence failure on the very first attempt
+  // had no other retry point short of the person manually reopening
+  // Reminders. This is the actual "every app launch/foreground" behavior
+  // reconcileWebPushSubscription()'s own doc comment already claimed —
+  // now actually wired here, matching registerPushTokenAndReconcile()'s
+  // equivalent step for native push tokens. Platform-gated (web only) the
+  // same way the standalone effect below is; web is a no-op instantly on
+  // every other platform (isWebPushSupported() short-circuits).
+  if (Platform.OS === 'web') {
+    const webPushStatus = await reconcileWebPushSubscription();
+    if (webPushStatus === 'error') {
+      // eslint-disable-next-line no-console
+      console.error('[webPush] foreground reconcile failed to persist this device\'s subscription');
+    }
+  }
 }
 
 /**
@@ -256,6 +282,7 @@ export default function App() {
   // cannot affect which family this device is a member of.
   const isSystemAdmin = useSystemAdminStore((s) => s.isSystemAdmin);
   const refreshSystemAdmin = useSystemAdminStore((s) => s.refresh);
+  const systemAdminOpenRequestId = useSystemAdminStore((s) => s.openRequestId);
   const [systemAdminOpen, setSystemAdminOpen] = useState(false);
   const [showIosInstallPrompt, setShowIosInstallPrompt] = useState(false);
   useEffect(() => {
@@ -268,6 +295,12 @@ export default function App() {
     const isIos = /iphone|ipad|ipod/i.test(nav.userAgent) || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1);
     const isStandalone = Boolean(window.matchMedia?.('(display-mode: standalone)').matches || nav.standalone === true);
     if (!isIos || isStandalone) return;
+    // Respect the user's choice on this device; do not interrupt every login.
+    try {
+      if (window.localStorage.getItem('walkie-ios-install-prompt-dismissed') === '1') return;
+    } catch {
+      // Private browsing may block storage; the prompt remains dismissible.
+    }
     setShowIosInstallPrompt(true);
   }, [hydrated]);
 
@@ -278,6 +311,12 @@ export default function App() {
   // console from the header entry point.
   const shouldEnterSystemAdminDirectly =
     isSupabaseConfigured && isSystemAdmin && !familyId && !currentUserId && !systemObserverActive;
+
+  useEffect(() => {
+    if (hydrated && isSystemAdmin && systemAdminOpenRequestId > 0 && !shouldEnterSystemAdminDirectly) {
+      setSystemAdminOpen(true);
+    }
+  }, [hydrated, isSystemAdmin, systemAdminOpenRequestId, shouldEnterSystemAdminDirectly]);
 
   // Section 10: remote request-push token registration — completely
   // separate from requestNotificationPermissions() below (that's the
@@ -297,6 +336,25 @@ export default function App() {
   useEffect(() => {
     if (currentUserId && !systemObserverActive) {
       void registerPushTokenAndReconcile();
+    }
+  }, [currentUserId, systemObserverActive]);
+
+  // Request-notifications repair — "refresh/reopen recovery" for Web Push,
+  // the exact web-platform counterpart of registerPushTokenAndReconcile()
+  // above. Silent and best-effort (reconcileWebPushSubscription() never
+  // throws): repairs a subscription that exists in this browser but was
+  // never (or no longer) persisted server-side, or re-subscribes if the
+  // browser invalidated it, without requiring the person to open Reminders
+  // and tap "אפשר התראות" again. A no-op whenever permission isn't already
+  // 'granted' — this never prompts on its own.
+  useEffect(() => {
+    if (Platform.OS === 'web' && currentUserId && !systemObserverActive) {
+      void reconcileWebPushSubscription().then((status) => {
+        if (status === 'error') {
+          // eslint-disable-next-line no-console
+          console.error('[webPush] mount-time reconcile failed to persist this device\'s subscription');
+        }
+      });
     }
   }, [currentUserId, systemObserverActive]);
 
@@ -348,7 +406,8 @@ export default function App() {
     <SafeAreaProvider>
       {!hydrated ? (
         <SafeAreaView style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <WalkieMascot state="runIn" size={150} accessibilityLabel="Walkie Doggy טוען את האפליקציה" testID="app-loading-mascot" />
+          <RtlText style={styles.loadingText}>רק רגע, יוצאים לדרך…</RtlText>
         </SafeAreaView>
       ) : (
         <>
@@ -356,15 +415,30 @@ export default function App() {
           {showIosInstallPrompt ? (
             <Pressable style={styles.installPromptBackdrop} onPress={() => setShowIosInstallPrompt(false)}>
               <Pressable style={styles.installPromptCard} onPress={(event) => event.stopPropagation()}>
-                <RtlText style={styles.installPromptTitle}>בואו נוסיף את Walkie Doggy למסך הבית</RtlText>
-                <RtlText style={styles.installPromptText}>כך האפליקציה תהיה זמינה בלחיצה אחת ותוכל לקבל תזכורות גם כשהדפדפן סגור.</RtlText>
-                <RtlText style={styles.installPromptStep}>1️⃣ בתחתית Safari לחצו על כפתור השיתוף — הריבוע עם החץ כלפי מעלה ↑.</RtlText>
-                <RtlText style={styles.installPromptStep}>2️⃣ בתפריט שנפתח גללו ובחרו ״הוספה למסך הבית״.</RtlText>
-                <RtlText style={styles.installPromptStep}>3️⃣ במסך הבא לחצו ״הוסף״ בפינה העליונה.</RtlText>
-                <RtlText style={styles.installPromptStep}>4️⃣ חזרו למסך הבית ופתחו את Walkie Doggy מהאייקון החדש.</RtlText>
-                <RtlText style={styles.installPromptHint}>לאחר שתפתחו מהאייקון, נדריך אתכם גם בהפעלת ההתראות.</RtlText>
-                <Pressable style={styles.installPromptButton} onPress={() => setShowIosInstallPrompt(false)} accessibilityRole="button">
+                <RtlText style={styles.installPromptTitle}>🐾 Walkie Doggy במסך הבית</RtlText>
+                <RtlText style={styles.installPromptText}>פותחים את האפליקציה בלחיצה אחת!</RtlText>
+                <RtlText style={styles.installPromptStep}>① ב־Safari לחצו על שיתוף ⬆️</RtlText>
+                <RtlText style={styles.installPromptStep}>② בחרו ״הוספה למסך הבית״ ואז ״הוסף״</RtlText>
+                <RtlText style={styles.installPromptHint}>פתחו את Walkie Doggy מהסמל החדש במסך הבית.</RtlText>
+                <Pressable
+                  style={styles.installPromptButton}
+                  onPress={() => {
+                    try { window.localStorage.setItem('walkie-ios-install-prompt-dismissed', '1'); } catch {}
+                    setShowIosInstallPrompt(false);
+                  }}
+                  accessibilityRole="button"
+                >
                   <RtlText style={styles.installPromptButtonText}>הבנתי</RtlText>
+                </Pressable>
+                <Pressable
+                  style={styles.installPromptLater}
+                  onPress={() => {
+                    try { window.localStorage.setItem('walkie-ios-install-prompt-dismissed', '1'); } catch {}
+                    setShowIosInstallPrompt(false);
+                  }}
+                  accessibilityRole="button"
+                >
+                  <RtlText style={styles.installPromptLaterText}>אולי אחר כך</RtlText>
                 </Pressable>
               </Pressable>
             </Pressable>
@@ -378,27 +452,15 @@ export default function App() {
           ) : (
             <LoginScreen />
           )}
-
-          {/* BATCH 4 (item A) — see the isSystemAdmin comment above for why
-              this sits outside every other branch. A small, unobtrusive
-              corner entry point; NEVER shown unless
-              useSystemAdminStore().isSystemAdmin resolved true, and that in
-              turn only ever came from am_i_system_admin() — a fresh,
-              server-side check of the real auth identity, not a locally
-              cached/guessed value. */}
-          {isSystemAdmin && !systemObserverActive ? (
-            <Pressable
-              onPress={() => setSystemAdminOpen(true)}
-              style={styles.systemAdminEntry}
-              accessibilityRole="button"
-              accessibilityLabel="ניהול מערכת"
-            >
-              <RtlText style={styles.systemAdminEntryText}>🛡️</RtlText>
-            </Pressable>
-          ) : null}
           {!shouldEnterSystemAdminDirectly ? (
             <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} />
           ) : null}
+
+          {/* PRD §12 (profile-photo crop/zoom/pan) — web-only, no-op on
+              native. See PhotoCropHost.tsx's doc comment for why this sits
+              outside every other branch, same as the isSystemAdmin button
+              above. */}
+          <PhotoCropHost />
         </>
       )}
     </SafeAreaProvider>
@@ -406,10 +468,13 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
+  center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  loadingText: { color: colors.textSecondary, fontSize: 16, fontWeight: '700', textAlign: 'center' },
   systemAdminEntry: {
     position: 'absolute',
-    top: 14,
+    // Keep the platform-admin shortcut below the branded header so it can
+    // never cover/compete with the Walkie Doggy mascot on narrow phones.
+    top: 72,
     right: 18,
     width: 44,
     height: 44,
@@ -435,4 +500,6 @@ const styles = StyleSheet.create({
   installPromptHint: { fontSize: 13, fontWeight: '700', color: colors.primaryDark, textAlign: 'right', lineHeight: 20, marginTop: 4 },
   installPromptButton: { marginTop: 8, minHeight: 46, borderRadius: 14, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   installPromptButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  installPromptLater: { minHeight: 40, alignItems: 'center', justifyContent: 'center' },
+  installPromptLaterText: { fontSize: 14, color: colors.textSecondary, fontWeight: '600' },
 });

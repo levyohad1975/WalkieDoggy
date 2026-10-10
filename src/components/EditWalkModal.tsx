@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import type { FamilyUser, Walk } from '../types';
 import { colors } from '../theme/colors';
@@ -9,6 +9,7 @@ import { Button } from './Button';
 import { SwapWalkPickerModal } from './SwapWalkPickerModal';
 import { TimePickerField } from './TimePickerField';
 import { is24HourTime } from '../logic/timeInput';
+import { ConfirmModal } from './ConfirmModal';
 
 export interface SwappableWalkOption {
   walk: Walk;
@@ -20,10 +21,13 @@ interface EditWalkModalProps {
   walk: Walk | null;
   users: FamilyUser[];
   otherPendingWalks?: SwappableWalkOption[];
+  /** Other pending walks on the same date, used to flag occupied times. */
+  occupiedTimes?: string[];
   onChangeTime: (newTime: string) => void;
   onChangeResponsible: (newUserId: string) => void;
   onSwapWithWalk?: (otherWalkId: string) => void;
   onCancelWalk: () => void;
+  onRemoveRecurringRule?: () => void;
   onClose: () => void;
 }
 
@@ -37,21 +41,27 @@ export function EditWalkModal({
   walk,
   users,
   otherPendingWalks = [],
+  occupiedTimes = [],
   onChangeTime,
   onChangeResponsible,
   onSwapWithWalk,
   onCancelWalk,
+  onRemoveRecurringRule,
   onClose,
 }: EditWalkModalProps) {
   const [time, setTime] = useState(walk?.scheduledTime ?? '');
+  const [selectedResponsibleUserId, setSelectedResponsibleUserId] = useState(walk?.responsibleUserId ?? '');
   const [swapMode, setSwapMode] = useState(false);
+  const [cancelConfirmVisible, setCancelConfirmVisible] = useState(false);
+  const [removeRuleConfirmVisible, setRemoveRuleConfirmVisible] = useState(false);
 
   useEffect(() => {
     if (visible) {
       setTime(walk?.scheduledTime ?? '');
+      setSelectedResponsibleUserId(walk?.responsibleUserId ?? '');
       setSwapMode(false);
     }
-  }, [visible, walk?.scheduledTime]);
+  }, [visible, walk?.id]);
 
   if (!walk) return null;
 
@@ -61,7 +71,7 @@ export function EditWalkModal({
   // so committing immediately used to reschedule the walk to whatever
   // intermediate value the wheel passed through first, then close the sheet
   // out from under the user before they reached their intended time. The
-  // explicit "עדכן שעה" button below is the one place the change is
+  // single "שמור שינויים" button below is the one place the change is
   // actually applied, matching RequestTimeChangeModal/AddUnplannedWalkModal's
   // own explicit-submit pattern for the identical spinner picker.
   const handleTimeChange = (newTime: string) => {
@@ -69,6 +79,7 @@ export function EditWalkModal({
   };
 
   const timeChanged = is24HourTime(time) && time !== walk.scheduledTime;
+  const timeOccupied = timeChanged && occupiedTimes.includes(time);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -97,23 +108,21 @@ export function EditWalkModal({
               <RtlText style={styles.title} accessibilityRole="header">עריכת הטיול — {walk.scheduledTime}</RtlText>
             <RtlText style={styles.subtitle}>שינוי חד-פעמי, לא משפיע על שאר הסבב</RtlText>
 
-            <RtlText style={styles.label}>שעה</RtlText>
+            <RtlText style={styles.label}>שעת הטיול — לחצו על השעה לשינוי</RtlText>
             <TimePickerField value={time} onChange={handleTimeChange} webLabel="בחירת שעת הטיול" />
-            <Button
-              label="עדכן שעה"
-              variant="secondary"
-              disabled={!timeChanged}
-              onPress={() => onChangeTime(time)}
-              style={styles.updateTimeButton}
-            />
+            {timeOccupied ? <RtlText style={styles.conflictWarning}>השעה {time} כבר תפוסה — קיים טיול נוסף שמתוכנן לשעה זו. יש לבחור שעה אחרת.</RtlText> : null}
 
             <RtlText style={styles.label}>אחראי לטיול הזה</RtlText>
             <View style={styles.userRow}>
               {users.map((u) => (
                 <Pressable
                   key={u.id}
-                  onPress={() => u.id !== walk.responsibleUserId && onChangeResponsible(u.id)}
-                  style={[styles.userChip, u.id === walk.responsibleUserId && styles.userChipActive]}
+                  onPress={async () => {
+                    if (u.id === selectedResponsibleUserId) return;
+                    setSelectedResponsibleUserId(u.id);
+                    await onChangeResponsible(u.id);
+                  }}
+                  style={[styles.userChip, u.id === selectedResponsibleUserId && styles.userChipActive]}
                 >
                   <Avatar emoji={u.avatar} color={u.color} photoUrl={u.photoUrl} size={40} />
                   <RtlText style={styles.userChipName} numberOfLines={1}>
@@ -126,35 +135,25 @@ export function EditWalkModal({
             {onSwapWithWalk && otherPendingWalks.length > 0 ? (
               <>
                 <RtlText style={styles.label}>או להחליף עם טיול אחר לגמרי</RtlText>
-                <Button label="🔁 בחר טיול " variant="secondary" onPress={() => setSwapMode(true)} />
+                <Button label="🔁 בחר טיול" variant="secondary" onPress={() => setSwapMode(true)} />
               </>
             ) : null}
-
-            <Button
-  label="בטל את הטיול הזה"
-  variant="danger"
-  accessibilityHint="יוצג אישור לפני ביטול הטיול"
-  onPress={() => {
-    Alert.alert(
-      'לבטל את הטיול הזה?',
-      `הטיול של ${walk.scheduledTime} יבוטל רק הפעם. שאר הסבב לא ישתנה.`,
-      [
-        {
-          text: 'חזרה',
-          style: 'cancel',
-        },
-        {
-          text: 'בטל טיול',
-          style: 'destructive',
-          onPress: onCancelWalk,
-        },
-      ]
-    );
-  }}
-  style={styles.cancelButton}
-/>
-            <Button label="סגור" variant="secondary" onPress={onClose} style={styles.closeButton} />
-            </ScrollView>
+            <View style={styles.footerActions}>
+               <Button label="שמור שינויים" disabled={!timeChanged || timeOccupied} onPress={() => onChangeTime(time)} style={styles.footerButton} />
+               <Button label="סגור" variant="secondary" onPress={onClose} style={styles.footerButton} />
+             </View>
+             <View style={styles.destructiveActions}>
+               <Pressable accessibilityRole="button" accessibilityLabel="בטל את הטיול הזה" onPress={() => setCancelConfirmVisible(true)} style={styles.destructiveLink}>
+                 <RtlText style={styles.destructiveText}>בטל את הטיול הזה</RtlText>
+               </Pressable>
+               {onRemoveRecurringRule ? (
+                 <Pressable accessibilityRole="button" accessibilityLabel="הסר מהשגרה הקבועה" onPress={() => setRemoveRuleConfirmVisible(true)} style={styles.destructiveLink}>
+                   <RtlText style={styles.destructiveText}>הסר מהשגרה הקבועה</RtlText>
+                   <RtlText style={styles.destructiveHint}>מפסיק יצירת טיולים עתידיים בשגרה זו</RtlText>
+                 </Pressable>
+               ) : null}
+             </View>
+             </ScrollView>
           </Pressable>
         </Pressable>
       </KeyboardAvoidingView>
@@ -172,6 +171,25 @@ export function EditWalkModal({
           onSwapWithWalk?.(otherWalkId);
         }}
         onClose={() => setSwapMode(false)}
+      />
+      <ConfirmModal
+        visible={removeRuleConfirmVisible}
+        title="להסיר את הטיול מהשגרה?"
+        message={`השגרה הקבועה של ${walk.scheduledTime} תוסר ולא תיצור טיולים עתידיים. טיולים שכבר בוצעו יישמרו. שגרות אחרות באותה שעה לא יימחקו.`}
+        confirmLabel="הסר מהשגרה"
+        onConfirm={() => { setRemoveRuleConfirmVisible(false); onRemoveRecurringRule?.(); }}
+        onCancel={() => setRemoveRuleConfirmVisible(false)}
+      />
+      <ConfirmModal
+        visible={cancelConfirmVisible}
+        title="לבטל את הטיול הזה?"
+        message={`הטיול של ${walk.scheduledTime} יבוטל רק הפעם. שאר הסבב לא ישתנה.`}
+        confirmLabel="בטל טיול"
+        onConfirm={() => {
+          setCancelConfirmVisible(false);
+          onCancelWalk();
+        }}
+        onCancel={() => setCancelConfirmVisible(false)}
       />
     </Modal>
   );
@@ -205,12 +223,16 @@ const styles = StyleSheet.create({
   scroll: { flexGrow: 0, flexShrink: 1 },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
   subtitle: { fontSize: typography.meta.fontSize, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xs, marginBottom: spacing.sm },
+  conflictWarning: { fontSize: 14, color: colors.statusSkipped, textAlign: 'right', marginTop: spacing.sm },
   label: { fontSize: typography.meta.fontSize, fontWeight: '700', color: colors.textSecondary, marginTop: spacing.lg, marginBottom: spacing.sm, textAlign: 'right' },
   userRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   userChip: { alignItems: 'center', minWidth: 68, gap: spacing.xs, opacity: 0.55 },
   userChipActive: { opacity: 1 },
   userChipName: { fontSize: 12, color: colors.textPrimary, fontWeight: '600' },
-  updateTimeButton: { marginTop: 10 },
-  cancelButton: { marginTop: 22 },
-  closeButton: { marginTop: 10 },
+  footerActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg },
+  footerButton: { flex: 1 },
+  destructiveActions: { borderTopWidth: 1, borderTopColor: colors.border, marginTop: spacing.lg, paddingTop: spacing.xs },
+  destructiveLink: { minHeight: 44, justifyContent: 'center', alignItems: 'center', paddingVertical: spacing.sm },
+  destructiveText: { fontSize: 14, fontWeight: '600', color: colors.statusSkipped },
+  destructiveHint: { fontSize: 12, color: colors.textSecondary, textAlign: 'center', marginTop: 3 },
 });

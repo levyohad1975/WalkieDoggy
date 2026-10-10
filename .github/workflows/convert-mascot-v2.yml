@@ -1,0 +1,51 @@
+name: Convert Mascot Legacy Frames to V2 WebP
+
+on:
+  pull_request:
+    branches:
+      - fix/urgent-master-batch-20260925
+    paths:
+      - '.github/workflows/convert-mascot-v2.yml'
+  push:
+    branches:
+      - fix/urgent-master-batch-20260925
+    paths:
+      - '.github/workflows/convert-mascot-v2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/urgent-master-batch-20260925
+          fetch-depth: 0
+      - name: Install WebP tools
+        run: sudo apt-get update && sudo apt-get install -y webp
+      - name: Convert unique mascot frame packs to animated WebP
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p assets/branding/mascot-v2
+          for id in leash-ready tail-wag curious-listen peek-a-boo trophy-winner happy-spin; do
+            src="assets/mascot-animations/$id"
+            test -d "$src"
+            mapfile -t frames < <(find "$src" -maxdepth 1 -name 'frame-*.png' | sort)
+            test "${#frames[@]}" -eq 24
+            args=()
+            for frame in "${frames[@]}"; do args+=("-d" "42" "$frame"); done
+            img2webp -loop 0 -mixed -q 82 "${args[@]}" -o "assets/branding/mascot-v2/walkie-$id-v2.webp"
+          done
+          ls -lh assets/branding/mascot-v2/*.webp
+      - name: Commit generated V2 assets
+        run: |
+          set -euo pipefail
+          git config user.name "walkie-animation-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add assets/branding/mascot-v2/*.webp
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "assets: convert legacy mascot motions to V2 WebP"
+          git push origin HEAD:fix/urgent-master-batch-20260925
