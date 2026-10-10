@@ -1075,6 +1075,7 @@ export function HomeScreen() {
             }
             primaryLabel={isOverdue(nextWalk) ? 'ממתין לעדכון' : undefined}
             tone="dashboard"
+            remoteGpsAction={<RemoteGpsPanel walk={nextWalk} currentUserId={currentUserId} familyRole={actualFamilyRole} ready={!familyLoading && !scheduleLoading && Boolean(family)} />}
             onMarkDone={() => setCompleteWalkId(nextWalk.id)}
             activeStartedAt={nextWalk.status === 'in_progress' ? nextWalk.startedAt ?? null : null}
             liveDistanceMeters={gpsTrackingWalkId === nextWalk.id ? gpsDistanceMeters : null}
@@ -1145,7 +1146,6 @@ export function HomeScreen() {
         )}
         </View>
 
-        <RemoteGpsPanel walk={nextWalk} currentUserId={currentUserId} familyRole={actualFamilyRole} ready={!familyLoading && !scheduleLoading && Boolean(family)} />
 
         {/* Real-device QA fix — an actionable swap/time-change request is
             urgent and must be visible the moment Home opens, without
