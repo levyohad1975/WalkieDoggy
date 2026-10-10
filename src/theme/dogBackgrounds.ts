@@ -7,6 +7,13 @@ const unsplash = (photoId: string) =>
  * Bright, walk-friendly hero scenes. Keep this list deliberately varied so
  * families can choose a mood without making the Dashboard feel dark/heavy.
  */
+// Dedicated branded default, intentionally not in the user-selectable gallery.
+export const DEFAULT_DOG_BACKGROUND: DogBackground = {
+  id: 'walkie-default-park',
+  label: 'פארק Walkie Doggy',
+  uri: unsplash('photo-1500530855697-b586d89ba3ee'),
+};
+
 export const DOG_BACKGROUNDS: DogBackground[] = [
   // Walkie Park is the branded default park treatment: a real photographic park,
   // rendered by the same full-bleed image path as every other selectable background.
@@ -38,5 +45,5 @@ export const DOG_BACKGROUNDS: DogBackground[] = [
 ];
 
 export function getDogBackground(backgroundId?: string) {
-  return DOG_BACKGROUNDS.find((item) => item.id === backgroundId);
+  return backgroundId ? DOG_BACKGROUNDS.find((item) => item.id === backgroundId) : DEFAULT_DOG_BACKGROUND;
 }
