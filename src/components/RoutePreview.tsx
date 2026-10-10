@@ -108,7 +108,7 @@ function buildMapHtml(points: number[][], expanded: boolean): string {
   const map = new maplibregl.Map({
     container:'map',style:'https://tiles.openfreemap.org/styles/positron',
     center:[points[0][1],points[0][0]],zoom:16,
-    interactive:${expanded ? 'true' : 'false'},attributionControl:true
+    interactive:${expanded ? 'true' : 'false'},attributionControl:${expanded ? 'true' : 'false'}
   });
   map.on('load',()=>{
     const coordinates=points.map(p=>[p[1],p[0]]);
@@ -117,11 +117,11 @@ function buildMapHtml(points: number[][], expanded: boolean): string {
       map.addLayer({id:'walk-route-outline',type:'line',source:'walk-route',paint:{'line-color':'#ffffff','line-width':7,'line-opacity':0.95},layout:{'line-join':'round','line-cap':'round'}});
       map.addLayer({id:'walk-route-line',type:'line',source:'walk-route',paint:{'line-color':'#12A5AB','line-width':3.5},layout:{'line-join':'round','line-cap':'round'}});
       const bounds=coordinates.reduce((b,p)=>b.extend(p),new maplibregl.LngLatBounds(coordinates[0],coordinates[0]));
-      map.fitBounds(bounds,{padding:${expanded ? '48' : '16'},maxZoom:17,duration:0});
+      map.fitBounds(bounds,{padding:${expanded ? '48' : '10'},maxZoom:17,duration:0});
     }
     const marker=(coord,color,label)=>new maplibregl.Marker({color,scale:0.75}).setLngLat(coord).setPopup(new maplibregl.Popup({offset:16}).setText(label)).addTo(map);
-    marker(coordinates[0],'#138A52','תחילת הטיול');
-    if(coordinates.length>1)marker(coordinates[coordinates.length-1],'#2684D9','סיום / מיקום אחרון');
+    if(${expanded ? 'true' : 'false'})marker(coordinates[0],'#138A52','תחילת הטיול');
+    if(${expanded ? 'true' : 'false'} && coordinates.length>1)marker(coordinates[coordinates.length-1],'#2684D9','סיום / מיקום אחרון');
     map.resize();
   });
   </script></body></html>`;
