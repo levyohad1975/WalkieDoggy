@@ -315,6 +315,32 @@ export function HomeScreen() {
     }, [familyId, loadFamily, loadSchedule, loadRequests])
   );
 
+  // Mobile Safari may miss Realtime while another member finishes a remote-started walk.
+  // Reconcile active walks while Home is focused, even without tab navigation.
+  useFocusEffect(
+    useCallback(() => {
+      if (!isSupabaseConfigured || !familyId) return;
+      let disposed = false;
+      let refreshing = false;
+      const reconcile = async () => {
+        if (disposed || refreshing) return;
+        if (!useScheduleStore.getState().walks.some(
+          (entry) => entry.familyId === familyId && entry.status === 'in_progress'
+        )) return;
+        refreshing = true;
+        try {
+          await useScheduleStore.getState().load(familyId);
+        } catch (error) {
+          console.warn('Active walk reconciliation failed', error);
+        } finally {
+          refreshing = false;
+        }
+      };
+      const interval = setInterval(() => { void reconcile(); }, 6000);
+      return () => { disposed = true; clearInterval(interval); };
+    }, [familyId])
+  );
+
   const usersById = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u])), [users]);
   // Active-only — for pickers that assign NEW work (who's completing/
   // swapping/logging a walk): a removed member must never be offered here.
