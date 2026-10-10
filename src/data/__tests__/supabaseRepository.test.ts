@@ -880,8 +880,8 @@ describe('SupabaseRepository — reads map rows correctly (toDog/toRule/toEntry/
               data: [
                 {
                   id: 'walk-2', family_id: 'fam-42', schedule_entry_id: 'entry-1', dog_id: 'dog-1',
-                  date: '2026-08-30', scheduled_time: '07:00', responsible_user_id: 'user-2',
-                  status: 'done', completed_at: '2026-08-30T07:10:00.000Z', completed_by_user_id: 'user-2',
+                  date: '2026-08-30', scheduled_time: '07:00', responsible_user_id: 'omer',
+                  status: 'done', completed_at: '2026-08-30T07:10:00.000Z', completed_by_user_id: 'avi',
                   had_pee: true, had_poop: false, note: 'טיול טוב', duration_minutes: 20,
                   is_unplanned: true,
                   swap_original_user_id: 'user-1', swap_new_user_id: 'user-2',
@@ -897,6 +897,10 @@ describe('SupabaseRepository — reads map rows correctly (toDog/toRule/toEntry/
     const repo = new SupabaseRepository(client);
     const walks = await repo.getWalks('fam-42');
     expect(walks[0].scheduleEntryId).toBe('entry-1');
+    // A reload must preserve the scheduled assignment separately from who
+    // actually completed the walk; history and statistics use completedBy.
+    expect(walks[0].responsibleUserId).toBe('omer');
+    expect(walks[0].completedByUserId).toBe('avi');
     expect(walks[0].swap).toEqual({
       originalUserId: 'user-1',
       newUserId: 'user-2',
