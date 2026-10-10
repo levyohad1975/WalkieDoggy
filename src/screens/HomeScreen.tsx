@@ -483,6 +483,11 @@ export function HomeScreen() {
     [walks, dogs.length, dog?.id]
   );
   const nextWalk = useMemo(() => computeNextWalk(visibleWalks), [visibleWalks, minuteTick]);
+  // Active spontaneous walks may coexist with a planned next-walk card.
+  const activeSpontaneousWalks = useMemo(
+    () => visibleWalks.filter((w) => w.isUnplanned && w.status === 'in_progress' && w.id !== nextWalk?.id),
+    [visibleWalks, nextWalk?.id]
+  );
   // Planned walks may be started from 30 minutes before their scheduled time.
   // Spontaneous walks keep their separate always-available flow.
   const nextWalkStartGate = useMemo(() => {
@@ -1085,6 +1090,24 @@ export function HomeScreen() {
             </RtlText>
             <RtlText style={styles.healthSummaryChevron}>‹</RtlText>
           </Pressable>
+        ) : null}
+
+        {actualFamilyRole === 'admin' && activeSpontaneousWalks.length > 0 ? (
+          <View style={{ paddingHorizontal: 16, paddingVertical: 8, gap: 8 }}>
+            {activeSpontaneousWalks.map((spontaneous) => (
+              <View key={spontaneous.id} style={{ padding: 12, borderRadius: 12, backgroundColor: '#F1F8F3' }}>
+                <RtlText style={{ fontWeight: '700', marginBottom: 6 }}>
+                  טיול ספונטני פעיל · {usersById[spontaneous.responsibleUserId]?.name ?? 'בן משפחה'}
+                </RtlText>
+                <RemoteGpsPanel
+                  walk={spontaneous}
+                  currentUserId={currentUserId}
+                  familyRole={actualFamilyRole}
+                  ready={!familyLoading && !scheduleLoading && Boolean(family)}
+                />
+              </View>
+            ))}
+          </View>
         ) : null}
 
         <View ref={nextWalkCardRef} onLayout={measureNextWalkCard} collapsable={false} style={styles.nextWalkLift}>
