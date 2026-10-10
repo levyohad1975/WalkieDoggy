@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { colors } from '../theme/colors';
 import { radii, spacing } from '../theme/tokens';
@@ -168,31 +168,44 @@ interface NumberColumnProps {
 }
 
 function NumberColumn({ values, selected, onSelect, unitLabel }: NumberColumnProps) {
-  const count = values.length;
-  const previous = (selected + count - 1) % count;
-  const next = (selected + 1) % count;
+  const scrollRef = useRef<ScrollView>(null);
+  const rowHeight = 44;
+  useEffect(() => {
+    // Scroll to the currently selected value whenever the picker opens or a
+    // different field value is supplied. Two spacer rows center edge values.
+    const frame = setTimeout(() => scrollRef.current?.scrollTo({ y: selected * rowHeight, animated: false }), 0);
+    return () => clearTimeout(frame);
+  }, [selected]);
   return (
     <View style={webStyles.column} accessibilityLabel={unitLabel}>
-      {[
-        { value: previous, active: false },
-        { value: selected, active: true },
-        { value: next, active: false },
-      ].map(({ value: n, active }, index) => (
-        <Pressable
-          key={index}
-          onPress={() => onSelect(n)}
-          style={[webStyles.columnRow, active && webStyles.columnRowActive]}
-          accessibilityRole="button"
-          accessibilityLabel={`${unitLabel} ${pad2(n)}`}
-          accessibilityState={{ selected: active }}
-        >
-          <RtlText style={[webStyles.columnRowText, active && webStyles.columnRowTextActive]}>{pad2(n)}</RtlText>
-        </Pressable>
-      ))}
-      <View style={webStyles.stepControls}>
-        <Pressable onPress={() => onSelect(previous)} accessibilityRole="button" accessibilityLabel={`הפחת ${unitLabel}`} style={webStyles.stepButton}><RtlText>−</RtlText></Pressable>
-        <Pressable onPress={() => onSelect(next)} accessibilityRole="button" accessibilityLabel={`הוסף ${unitLabel}`} style={webStyles.stepButton}><RtlText>+</RtlText></Pressable>
-      </View>
+      <RtlText style={webStyles.wheelLabel}>{unitLabel}</RtlText>
+      <ScrollView
+        ref={scrollRef}
+        style={webStyles.wheel}
+        showsVerticalScrollIndicator={false}
+        snapToInterval={rowHeight}
+        decelerationRate="fast"
+        nestedScrollEnabled
+        onMomentumScrollEnd={(event) => {
+          const index = Math.max(0, Math.min(values.length - 1, Math.round(event.nativeEvent.contentOffset.y / rowHeight)));
+          onSelect(values[index]);
+        }}
+        onScrollEndDrag={(event) => {
+          const index = Math.max(0, Math.min(values.length - 1, Math.round(event.nativeEvent.contentOffset.y / rowHeight)));
+          onSelect(values[index]);
+        }}
+      >
+        <View style={{ height: rowHeight }} />
+        {values.map((n) => (
+          <Pressable key={n} onPress={() => onSelect(n)}
+            style={[webStyles.columnRow, n === selected && webStyles.columnRowActive]}
+            accessibilityRole="button" accessibilityLabel={`${unitLabel} ${pad2(n)}`}
+            accessibilityState={{ selected: n === selected }}>
+            <RtlText style={[webStyles.columnRowText, n === selected && webStyles.columnRowTextActive]}>{pad2(n)}</RtlText>
+          </Pressable>
+        ))}
+        <View style={{ height: rowHeight }} />
+      </ScrollView>
     </View>
   );
 }
@@ -234,6 +247,8 @@ const webStyles = StyleSheet.create({
   // previous native web input used (`direction: 'ltr'`).
   columns: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, direction: 'ltr' },
   column: { width: 100 },
+  wheel: { height: 132, flexGrow: 0 },
+  wheelLabel: { textAlign: 'center', fontSize: 12, color: colors.textSecondary, marginBottom: 4 },
   stepControls: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 8 },
   stepButton: { width: 38, height: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted, borderRadius: 10 },
   colon: { fontSize: 22, fontWeight: '700', color: colors.textPrimary },
