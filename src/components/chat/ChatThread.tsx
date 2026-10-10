@@ -804,7 +804,7 @@ export function ChatThread({ conversation, users, showBack, keyboardPadding }: C
             <Pressable onPress={() => setClearForMeVisible(true)} accessibilityRole="button" style={styles.conversationAction}>
               <RtlText style={styles.conversationActionText}>ניקוי השיחה אצלי</RtlText>
             </Pressable>
-            {conversation.kind === 'family' && conversation.canModerate ? (
+            {conversation.canModerate ? (
               <Pressable onPress={() => setClearEveryoneStep(1)} accessibilityRole="button" style={styles.conversationAction}>
                 <RtlText style={styles.conversationActionDanger}>מחיקת השיחה לכולם</RtlText>
               </Pressable>
