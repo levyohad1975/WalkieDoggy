@@ -550,11 +550,11 @@ export function HistoryScreen() {
         scheduledTime={resolveWalk?.scheduledTime}
         users={activeUsers}
         defaultUserId={effectiveUserId ?? ''}
-        onConfirm={async ({ completedByUserId, hadPee, hadPoop, note }) => {
+        onConfirm={async ({ completedByUserId, hadPee, hadPoop, note, completedAt }) => {
           const walkId = resolveWalkId;
           setResolveWalkId(null);
           if (!walkId) return;
-          await markDone(walkId, completedByUserId, { hadPee, hadPoop, note: note || undefined });
+          await markDone(walkId, completedByUserId, { hadPee, hadPoop, note: note || undefined, completedAt });
           await refreshHistoryDataset();
         }}
         onCancel={() => setResolveWalkId(null)}
