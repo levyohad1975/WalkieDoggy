@@ -57,7 +57,7 @@ export function RoutePreview({ session, large = false, compact = false, live = f
             <View style={styles.mapCard}>
               <Pressable onPress={() => setMapOpen(false)} accessibilityRole="button" accessibilityLabel="סגור מפה" style={styles.closeMap}><RtlText>✕ סגור מפה</RtlText></Pressable>
               <View style={styles.expandedMap}>{renderMap(true)}</View>
-              <RtlText style={styles.mapAttribution}>© OpenStreetMap contributors</RtlText>
+              <RtlText style={styles.mapAttribution}>© OpenStreetMap contributors · OpenFreeMap</RtlText>
             </View>
           </View>
         </Modal>
@@ -100,19 +100,29 @@ const styles = StyleSheet.create({
   legend: { position: 'absolute', bottom: 8, fontSize: 12, color: colors.textSecondary },
 });
 
-/** Leaflet and OSM standard tiles are free services, subject to their usage policies. */
+/** Free vector basemap via OpenFreeMap and MapLibre. GPS coordinates never leave the browser except as ordinary map rendering data. */
 function buildMapHtml(points: number[][], expanded: boolean): string {
   const coords = JSON.stringify(points);
-  const attributionStyle = expanded ? '' : '.leaflet-control-attribution,.leaflet-control-container{display:none!important}';
-  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><style>html,body,#map{margin:0;padding:0;width:100%;height:100%;overflow:hidden;font-size:0} .leaflet-container{font-size:12px} ${attributionStyle}</style></head><body><div id="map"></div><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"><style>html,body,#map{margin:0;width:100%;height:100%;overflow:hidden} .maplibregl-control-container{font:10px system-ui} .maplibregl-ctrl-attrib{font-size:10px!important} .maplibregl-ctrl-bottom-right{max-width:100%}</style></head><body><div id="map"></div><script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script><script>
   const points = ${coords};
-  const map = L.map('map',{zoomControl:false,scrollWheelZoom:false,attributionControl:${expanded ? 'true' : 'false'}});
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
-  L.circleMarker(points[0],{radius:6,color:'#138A52'}).addTo(map);
-  L.circleMarker(points[points.length-1],{radius:6,color:'#2684D9'}).addTo(map);
-  if(points.length > 1) {
-    const route = L.polyline(points,{color:'#12A5AB',weight:4}).addTo(map);
-    map.fitBounds(route.getBounds().pad(0.35),{maxZoom:18});
-  } else { map.setView(points[0],17); }
+  const map = new maplibregl.Map({
+    container:'map',style:'https://tiles.openfreemap.org/styles/positron',
+    center:[points[0][1],points[0][0]],zoom:16,
+    interactive:${expanded ? 'true' : 'false'},attributionControl:true
+  });
+  map.on('load',()=>{
+    const coordinates=points.map(p=>[p[1],p[0]]);
+    if(coordinates.length>1){
+      map.addSource('walk-route',{type:'geojson',data:{type:'Feature',properties:{},geometry:{type:'LineString',coordinates}}});
+      map.addLayer({id:'walk-route-outline',type:'line',source:'walk-route',paint:{'line-color':'#ffffff','line-width':7,'line-opacity':0.95},layout:{'line-join':'round','line-cap':'round'}});
+      map.addLayer({id:'walk-route-line',type:'line',source:'walk-route',paint:{'line-color':'#12A5AB','line-width':3.5},layout:{'line-join':'round','line-cap':'round'}});
+      const bounds=coordinates.reduce((b,p)=>b.extend(p),new maplibregl.LngLatBounds(coordinates[0],coordinates[0]));
+      map.fitBounds(bounds,{padding:${expanded ? '48' : '16'},maxZoom:17,duration:0});
+    }
+    const marker=(coord,color,label)=>new maplibregl.Marker({color,scale:0.75}).setLngLat(coord).setPopup(new maplibregl.Popup({offset:16}).setText(label)).addTo(map);
+    marker(coordinates[0],'#138A52','תחילת הטיול');
+    if(coordinates.length>1)marker(coordinates[coordinates.length-1],'#2684D9','סיום / מיקום אחרון');
+    map.resize();
+  });
   </script></body></html>`;
 }
