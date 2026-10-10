@@ -111,7 +111,7 @@ export function HomeScreen() {
   const { family, users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, error: familyError, load: loadFamily } = useFamilyStore();
   // Use the established coastal photo as the default instead of the flat placeholder scene.
   // Explicit family background choices always take precedence.
-  const heroBackground = getDogBackground(dog?.heroBackgroundId ?? 'coastal-walk');
+  const heroBackground = getDogBackground(dog?.heroBackgroundId);
   useEffect(() => {
     setHeroPhotoFailed(false);
     setHeroCutoutFailed(false);
