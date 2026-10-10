@@ -1294,7 +1294,7 @@ export function HomeScreen() {
               <View style={styles.dashboardTimelinePeople}>
                 {dashboardTimelineWalks.map((walk) => (
                   <View key={walk.id} style={[styles.dashboardTimelineStop, walk.status === 'done' && styles.dashboardTimelineStopDone, walk.status === 'skipped' && styles.dashboardTimelineStopSkipped, walk.status === 'in_progress' && styles.dashboardTimelineStopActive]}>
-                    <Avatar emoji={usersById[walk.responsibleUserId]?.avatar ?? '🐾'} color={usersById[walk.responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[walk.responsibleUserId]?.photoUrl} size={26} />
+                    <Avatar emoji={usersById[walk.responsibleUserId]?.avatar ?? '🐾'} color={usersById[walk.responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[walk.responsibleUserId]?.photoUrl} size={22} />
                   </View>
                 ))}
               </View>
@@ -1729,7 +1729,7 @@ const styles = StyleSheet.create({
     // own comments) so this crops only a little more off their bottom
     // (paws/tail), never their face/head — see docs/design/MASCOT_SPEC.md's
     // identity rules on what must stay recognizable in every frame.
-    height: 124,
+    height: 148,
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 34,
     // The scene is rendered once by dashboardHeroBackdrop across the entire top shell.
@@ -1805,7 +1805,7 @@ const styles = StyleSheet.create({
   dashboardLastWalkPersonLabel: { fontSize: 10, fontWeight: '500', color: colors.textSecondary, textAlign: 'right' },
   dashboardLastWalkPersonName: { marginTop: 1, fontSize: 15, fontWeight: '700', color: '#17345B', textAlign: 'right' },
   dashboardLastWalkGps: { marginTop: 5, fontSize: 10, fontWeight: '600', color: '#2F7F75', textAlign: 'left' },
-  dashboardTimeline: { minHeight: 58, borderRadius: 22, backgroundColor: '#F5F9FC', borderWidth: 1, borderColor: '#DCECF2', paddingHorizontal: spacing.md, paddingTop: 6, paddingBottom: 4, gap: 2 },
+  dashboardTimeline: { minHeight: 52, borderRadius: 22, backgroundColor: '#F5F9FC', borderWidth: 1, borderColor: '#DCECF2', paddingHorizontal: spacing.md, paddingTop: 6, paddingBottom: 4, gap: 2 },
   dashboardTimelineHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   dashboardTimelineTitle: { fontSize: 16, fontWeight: '700', color: '#17345B', textAlign: 'right' },
   dashboardTimelineChevron: { fontSize: 24, color: '#129EA5', writingDirection: 'ltr' },
@@ -1814,8 +1814,8 @@ const styles = StyleSheet.create({
   dashboardSingleUpcomingTime: { fontSize: 17, fontWeight: '800', color: '#17345B' },
   dashboardSingleUpcomingName: { fontSize: 11, fontWeight: '600', color: colors.textSecondary },
   dashboardSingleUpcomingHint: { fontSize: 11, fontWeight: '600', color: '#129EA5', marginRight: 8 },
-  dashboardTimelineStops: { position: 'relative', gap: 4, paddingTop: 2 },
-  dashboardTimelinePeople: { flexDirection: 'row-reverse', justifyContent: 'space-around', marginBottom: 2 },
+  dashboardTimelineStops: { position: 'relative', gap: 2, paddingTop: 0 },
+  dashboardTimelinePeople: { flexDirection: 'row-reverse', justifyContent: 'space-around', marginBottom: 0 },
   dashboardTimelineStop: { flex: 1, alignItems: 'center' },
   dashboardTimelineStopDone: { opacity: 0.72 },
   dashboardTimelineStopSkipped: { opacity: 0.48 },
