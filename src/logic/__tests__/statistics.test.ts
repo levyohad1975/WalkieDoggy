@@ -95,6 +95,12 @@ describe('computeMemberDistribution', () => {
     ]);
   });
 
+  it('credits the completed performer when the scheduled member was someone else', () => {
+    const completed = makeWalk({ status: 'done', responsibleUserId: 'omer', completedByUserId: 'avi' });
+    expect(computeMemberDistribution([completed])).toEqual([{ userId: 'avi', count: 1 }]);
+    expect(completed.responsibleUserId).toBe('omer');
+  });
+
   it('falls back to responsibleUserId when completedByUserId is missing', () => {
     const walks = [makeWalk({ status: 'done', responsibleUserId: 'c', completedByUserId: undefined })];
     expect(computeMemberDistribution(walks)).toEqual([{ userId: 'c', count: 1 }]);

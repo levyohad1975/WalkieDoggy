@@ -108,6 +108,16 @@ describe('scheduleStore.startWalk — surfaces the real reason instead of a gene
     expect(useScheduleStore.getState().actionError).toBeNull();
   });
 
+  it('allows an authorized remote activation to bypass the local scheduled-time gate without starting GPS on the requester device', async () => {
+    const futureWalk = fakeWalk({ date: '2099-01-01', scheduledTime: '23:59' });
+    useScheduleStore.setState({ walks: [futureWalk], actionError: null });
+    mockedRepository.startWalk.mockResolvedValue({ ...futureWalk, status: 'in_progress' });
+    const started = await useScheduleStore.getState().startWalk('walk-x', { startGps: false, remoteActivation: true });
+    expect(started).toBe(true);
+    expect(mockedRepository.startWalk).toHaveBeenCalledWith('walk-x');
+    expect(useScheduleStore.getState().walks[0].status).toBe('in_progress');
+  });
+
   it('proceeds to call start_walk normally when there is no recorded conflict', async () => {
     mockedRepository.getConflictForWalk.mockResolvedValue(undefined);
     const inProgress = { ...fakeWalk(), status: 'in_progress' as const, startedAt: new Date().toISOString() };

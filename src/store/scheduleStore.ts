@@ -98,7 +98,7 @@ interface ScheduleState {
   rescheduleWalk: (walkId: string, newTime: string) => Promise<void>;
   deleteEntry: (entryId: string) => Promise<void>;
 
-  startWalk: (walkId: string) => Promise<boolean>;
+  startWalk: (walkId: string, options?: { startGps?: boolean; remoteActivation?: boolean }) => Promise<boolean>;
   finishWalk: (walkId: string, completedByUserId: string, details?: WalkCompletionDetails) => Promise<boolean>;
   markDone: (walkId: string, completedByUserId: string, details?: WalkCompletionDetails) => Promise<boolean>;
   editDoneDetails: (walkId: string, details: WalkCompletionDetails) => Promise<void>;
@@ -864,14 +864,14 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     }));
   },
 
-  startWalk: async (walkId: string) => {
+  startWalk: async (walkId: string, options: { startGps?: boolean; remoteActivation?: boolean } = {}) => {
     if (!guardTestModeMutation()) return false;
     const walk = get().walks.find((w) => w.id === walkId);
     if (!walk) return false;
     // Defense in depth: the Home button is disabled before this point, but
     // no other caller may start a planned walk more than 30 minutes early.
     // Unplanned/spontaneous walks are intentionally exempt.
-    if (!walk.isUnplanned && walk.status === 'pending') {
+    if (!options.remoteActivation && !walk.isUnplanned && walk.status === 'pending') {
       const scheduledAt = new Date(`${walk.date}T${walk.scheduledTime}:00`).getTime();
       const unlockAt = scheduledAt - 30 * 60 * 1000;
       if (Number.isFinite(unlockAt) && Date.now() < unlockAt) {
@@ -923,7 +923,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // GPS is assistive, never a precondition for the walk lifecycle
       // itself (permission denial/unavailability must never fail or delay
       // Start). See gpsStore.startTracking's own doc comment.
-      void useGpsStore.getState().startTracking(updated);
+      if (options.startGps !== false) void useGpsStore.getState().startTracking(updated);
       return true;
     } catch (e) {
       // TEMPORARY P0 DIAGNOSTIC — real-device QA: "Start" failed on a real

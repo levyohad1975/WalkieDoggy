@@ -133,6 +133,22 @@ describe('gpsStore', () => {
     expect(useGpsStore.getState().trackingWalkId).toBeNull();
   });
 
+  it('attributes a remote GPS session to the target device performer, not the scheduled member', async () => {
+    const { useGpsStore } = require('../gpsStore');
+    const { repository } = require('../../data');
+    const gpsTracking = require('../../lib/gpsTracking');
+    const targetDevice = { ...walk, responsibleUserId: 'omer' };
+    jest.spyOn(gpsTracking, 'startGpsWatch').mockImplementationOnce(async (onUpdate: any) => {
+      onUpdate({ distanceMeters: 250, pointCount: 3, routePoints: [] });
+      return { handle: { remove: jest.fn() }, permissionStatus: 'granted' };
+    });
+    const upsertSpy = jest.spyOn(repository, 'upsertGpsSession').mockResolvedValue(undefined);
+    await useGpsStore.getState().startTracking(targetDevice);
+    const session = await useGpsStore.getState().stopTracking(targetDevice, 'avi');
+    expect(session).toMatchObject({ walkId: 'walk-1', createdByUserId: 'avi', source: 'device_gps', pointCount: 3 });
+    expect(upsertSpy).toHaveBeenCalledWith(expect.objectContaining({ createdByUserId: 'avi' }));
+  });
+
   it('GPS audit fix: persists the session\'s startedAt/endedAt — previously always omitted even though the schema/repository already round-trip them', async () => {
     const { useGpsStore } = require('../gpsStore');
     const gpsTracking = require('../../lib/gpsTracking');

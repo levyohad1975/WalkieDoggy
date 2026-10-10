@@ -53,6 +53,14 @@ describe('markWalkDone', () => {
     expect(done.responsibleUserId).toBe('noam');
     expect(done.completedByUserId).toBe('yael');
   });
+
+  it('keeps Omer as the scheduled owner while recording Avi as the actual performer', () => {
+    const scheduled = makeWalk({ responsibleUserId: 'omer', status: 'in_progress', startedByUserId: 'avi' });
+    const completed = markWalkDone(scheduled, 'avi');
+    expect(completed.responsibleUserId).toBe('omer');
+    expect(completed.completedByUserId).toBe('avi');
+    expect(completed.startedByUserId).toBe('avi');
+  });
 });
 
 describe('editWalkDetails', () => {

@@ -64,6 +64,7 @@ import { getImportantHealthReminders, summarizeHealthTasksForHome } from '../log
 import { getDogBackground } from '../theme/dogBackgrounds';
 import { useGpsStore } from '../store/gpsStore';
 import { requestForegroundGpsPermission } from '../lib/gpsTracking';
+import { RemoteGpsPanel } from '../components/RemoteGpsPanel';
 
 export function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
@@ -98,6 +99,7 @@ export function HomeScreen() {
   const currentUserId = useAuthStore((s) => s.currentUserId)!;
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const effectiveRole = useEffectiveFamilyRole();
+  const actualFamilyRole = useAuthStore((s) => s.familyRole);
   // B1 (round 6): Test Mode's product UI (banner + entry button) has been
   // removed from this screen and from Settings — see SettingsScreen.tsx's
   // comment. clearTestModeIfInvalid() is still called below as a harmless
@@ -1142,6 +1144,8 @@ export function HomeScreen() {
           </View>
         )}
         </View>
+
+        <RemoteGpsPanel walk={nextWalk} currentUserId={currentUserId} familyRole={actualFamilyRole} ready={!familyLoading && !scheduleLoading && Boolean(family)} />
 
         {/* Real-device QA fix — an actionable swap/time-change request is
             urgent and must be visible the moment Home opens, without
