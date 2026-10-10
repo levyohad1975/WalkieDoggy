@@ -9,7 +9,7 @@ import { DEMO_FAMILY } from '../data/demoData';
 import { pickAndUploadImage } from '../lib/uploadImage';
 import { colors } from '../theme/colors';
 import { breakpoints, radii, spacing, typography } from '../theme/tokens';
-import { getDogBackground } from '../theme/dogBackgrounds';
+import { getDogBackground, getDogBackgroundImageSource } from '../theme/dogBackgrounds';
 import { DogHeroBackgroundPicker } from './DogHeroBackgroundPicker';
 import { Button } from './Button';
 
@@ -91,7 +91,7 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
             <>
               <View style={styles.photoWrap}>
                   {getDogBackground(dog.heroBackgroundId) && !dog.photoUrl ? (
-                    <Image source={{ uri: getDogBackground(dog.heroBackgroundId)!.uri }} style={styles.previewBackground} resizeMode="cover" />
+                    <Image source={getDogBackgroundImageSource(getDogBackground(dog.heroBackgroundId)!)} style={styles.previewBackground} resizeMode="cover" />
                   ) : null}
                 {displayedPhotoUrl && !photoLoadFailed ? (
                   <Image

@@ -8,6 +8,7 @@ describe('Home Dashboard dog scene', () => {
 
   it('uses the persisted family scene and prefers a transparent dog cutout', () => {
     expect(home).toContain('getDogBackground(dog?.heroBackgroundId)');
+    expect(home).toContain('getDogBackgroundImageSource(heroBackground)');
     expect(home).toContain('const showDogCutout = Boolean(dog?.photoCutoutUrl)');
     expect(home).toContain("source={{ uri: dog!.photoCutoutUrl! }}");
     expect(home).toContain('!showDogCutout && showPersonalHero');

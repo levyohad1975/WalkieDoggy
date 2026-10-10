@@ -1,4 +1,4 @@
-import { DOG_BACKGROUNDS, getDogBackground } from '../dogBackgrounds';
+import { DEFAULT_DOG_BACKGROUND, DOG_BACKGROUNDS, getDogBackground, getDogBackgroundImageSource } from '../dogBackgrounds';
 
 /**
  * Regression coverage for the real-device QA bug where Dog Settings showed
@@ -26,8 +26,21 @@ describe('DOG_BACKGROUNDS', () => {
     expect(match?.uri).toMatch(/^https:\/\//);
   });
 
+  it('uses the bundled approved park as the implicit and legacy default', () => {
+    expect(getDogBackground()).toBe(DEFAULT_DOG_BACKGROUND);
+    expect(getDogBackground('walkie-default-park')).toBe(DEFAULT_DOG_BACKGROUND);
+    expect(DEFAULT_DOG_BACKGROUND.source).toBeDefined();
+    expect(DEFAULT_DOG_BACKGROUND.uri).toBeUndefined();
+    expect(getDogBackgroundImageSource(DEFAULT_DOG_BACKGROUND)).toBe(DEFAULT_DOG_BACKGROUND.source);
+  });
+
+  it('preserves an explicitly selected family background', () => {
+    const selected = getDogBackground('walkie-park');
+    expect(selected?.id).toBe('walkie-park');
+    expect(getDogBackgroundImageSource(selected!)).toEqual({ uri: selected!.uri });
+  });
+
   it('returns undefined for an unknown id rather than a false match', () => {
     expect(getDogBackground('not-a-real-id')).toBeUndefined();
-    expect(getDogBackground(undefined)).toBeUndefined();
   });
 });

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Image, Pressable, StyleSheet, View } from 'react-native';
 import type { Dog } from '../types';
-import { DOG_BACKGROUNDS } from '../theme/dogBackgrounds';
+import { DOG_BACKGROUNDS, DEFAULT_DOG_BACKGROUND, getDogBackgroundImageSource } from '../theme/dogBackgrounds';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { RtlText } from './RtlText';
@@ -41,15 +41,10 @@ export function DogHeroBackgroundPicker({ dog, onSave }: { dog: Dog; onSave: (pa
           style={[styles.tile, styles.defaultTile, draftId === undefined && styles.selected]}
           accessibilityRole="button"
           accessibilityState={{ selected: draftId === undefined }}
-          accessibilityLabel="בחירת רקע ברירת המחדל החם והנקי"
+          accessibilityLabel="בחירת פארק Walkie Doggy כברירת מחדל"
         >
-          <View style={styles.defaultPreview}>
-            <View style={styles.defaultSun} />
-            <View style={styles.defaultHillBack} />
-            <View style={styles.defaultHillFront} />
-            <View style={styles.defaultGround} />
-          </View>
-          <View style={styles.labelWrap}><RtlText style={styles.label}>ברירת מחדל · חם ונקי</RtlText></View>
+          <Image source={getDogBackgroundImageSource(DEFAULT_DOG_BACKGROUND)} style={styles.thumb} resizeMode="cover" />
+          <View style={styles.labelWrap}><RtlText style={styles.label}>ברירת מחדל · פארק</RtlText></View>
           {draftId === undefined ? <View style={styles.check}><RtlText style={styles.checkText}>✓</RtlText></View> : null}
         </Pressable>
         {DOG_BACKGROUNDS.map((item) => {

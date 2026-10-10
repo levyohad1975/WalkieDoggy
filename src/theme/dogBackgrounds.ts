@@ -1,4 +1,11 @@
-export type DogBackground = { id: string; label: string; uri: string };
+import type { ImageSourcePropType } from 'react-native';
+
+export type DogBackground = {
+  id: string;
+  label: string;
+  uri?: string;
+  source?: ImageSourcePropType;
+};
 
 const unsplash = (photoId: string) =>
   `https://images.unsplash.com/${photoId}?auto=format&fit=crop&w=1200&q=84`;
@@ -11,7 +18,7 @@ const unsplash = (photoId: string) =>
 export const DEFAULT_DOG_BACKGROUND: DogBackground = {
   id: 'walkie-default-park',
   label: 'פארק Walkie Doggy',
-  uri: unsplash('photo-1500530855697-b586d89ba3ee'),
+  source: require('../../assets/images/walkie-default-park.jpg'),
 };
 
 export const DOG_BACKGROUNDS: DogBackground[] = [
@@ -45,5 +52,12 @@ export const DOG_BACKGROUNDS: DogBackground[] = [
 ];
 
 export function getDogBackground(backgroundId?: string) {
-  return backgroundId ? DOG_BACKGROUNDS.find((item) => item.id === backgroundId) : DEFAULT_DOG_BACKGROUND;
+  if (!backgroundId || backgroundId === DEFAULT_DOG_BACKGROUND.id) return DEFAULT_DOG_BACKGROUND;
+  return DOG_BACKGROUNDS.find((item) => item.id === backgroundId);
+}
+
+export function getDogBackgroundImageSource(background: DogBackground): ImageSourcePropType {
+  if (background.source) return background.source;
+  if (background.uri) return { uri: background.uri };
+  return DEFAULT_DOG_BACKGROUND.source!;
 }
