@@ -42,6 +42,7 @@ import { fetchHistoryWalks } from '../lib/permissionedWalks';
 import { listSwapRequests, type SwapRequestRow } from '../lib/requests';
 import { PrivacyAccessibilityInfoModal } from '../components/PrivacyAccessibilityInfoModal';
 import { ScreenRecoveryBoundary } from '../components/ScreenRecoveryBoundary';
+import { RemoteGpsPanel } from '../components/RemoteGpsPanel';
 
 export function SettingsScreen() {
   return (
@@ -703,6 +704,11 @@ function SettingsScreenContent() {
             <RtlText style={styles.hubChevron}>‹</RtlText>
             <RtlText style={styles.hubLabel}>הישגים 🏆</RtlText>
           </Pressable>
+        </View>
+
+        <View style={styles.section}>
+          <RtlText style={styles.sectionTitle}>🛰️ GPS ומעקב מרחוק</RtlText>
+          <RemoteGpsPanel mode="settings" currentUserId={effectiveUserId ?? currentUserId ?? ""} familyRole={effectiveFamilyRole} ready={Boolean(family)} />
         </View>
 
         {/* PRD §16: Settings must include "פרטיות/GPS, נגישות/Reduced
