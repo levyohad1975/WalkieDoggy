@@ -229,7 +229,7 @@ Deno.serve(async (req: Request) => {
         if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
           deliveryErrors.push('web: VAPID keys are not configured');
         } else {
-          const payload = JSON.stringify({ title, body, data, tag: `chat-${ctx.conversation_id}` });
+          const payload = JSON.stringify({ title, body, data, tag: `chat-${ctx.message_id}` });
           const results = await Promise.allSettled(
             webSubscriptions.map(async (sub: any) => {
               try {
