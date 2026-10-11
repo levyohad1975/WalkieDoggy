@@ -3,6 +3,12 @@ import type { Dog } from '../../types';
 
 const SELECTED_DOG_KEY = 'dog-walk-family:selected-dog-id';
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
 /**
  * Phase 1B batch 2 (user-facing multi-dog foundation): a device must track
  * a clearly defined SELECTED/active dog rather than silently relying on
@@ -13,6 +19,42 @@ const SELECTED_DOG_KEY = 'dog-walk-family:selected-dog-id';
 describe('familyStore — dog selection (arbitrary N dogs)', () => {
   beforeEach(() => {
     jest.resetModules();
+  });
+
+  it('does not let slow original-family reads overwrite a newly entered QA family', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useFamilyStore } = require('../familyStore');
+    const { repository } = require('../../data');
+    const oldFamily = deferred<any>();
+    const qaFamily = deferred<any>();
+    const oldUsers = deferred<any>();
+    const qaUsers = deferred<any>();
+    const oldDogs = deferred<any>();
+    const qaDogs = deferred<any>();
+
+    jest.spyOn(repository, 'getFamily').mockImplementation((id: string) => id === 'qa-family' ? qaFamily.promise : oldFamily.promise);
+    jest.spyOn(repository, 'getUsers').mockImplementation((id: string) => id === 'qa-family' ? qaUsers.promise : oldUsers.promise);
+    jest.spyOn(repository, 'getDogs').mockImplementation((id: string) => id === 'qa-family' ? qaDogs.promise : oldDogs.promise);
+
+    const load = useFamilyStore.getState().load;
+    const originalLoad = load('original-family');
+    const qaLoad = load('qa-family');
+    const stamp = '2026-01-01T00:00:00.000Z';
+    const qaDog = { id: 'qa-dog', familyId: 'qa-family', name: 'בוקי', walksPerDay: 1 };
+    qaFamily.resolve({ id: 'qa-family', name: 'משפחת בדיקה', createdAt: stamp });
+    qaUsers.resolve([{ id: 'qa-admin', familyId: 'qa-family', name: 'מנהל בדיקה', createdAt: stamp }]);
+    qaDogs.resolve([qaDog]);
+    await qaLoad;
+
+    oldFamily.resolve({ id: 'original-family', name: 'המשפחה המקורית', createdAt: stamp });
+    oldUsers.resolve([{ id: 'original-admin', familyId: 'original-family', name: 'מנהל', createdAt: stamp }]);
+    oldDogs.resolve([{ id: 'original-dog', familyId: 'original-family', name: 'כלב מקורי', walksPerDay: 1 }]);
+    await originalLoad;
+
+    expect(useFamilyStore.getState().family?.id).toBe('qa-family');
+    expect(useFamilyStore.getState().users.map((user: any) => user.id)).toEqual(['qa-admin']);
+    expect(useFamilyStore.getState().dog?.id).toBe('qa-dog');
   });
 
   it('selectDog(dogId) makes that dog active in both `dog` and `selectedDogId`, without disturbing `dogs`', async () => {
