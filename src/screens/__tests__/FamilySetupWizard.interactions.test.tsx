@@ -76,7 +76,7 @@ function setup(step: 2 | 3 | 4 | 5 = 2, pendingDogSex?: 'male' | 'female', omitA
   const signIn = jest.fn().mockResolvedValue(undefined);
   useAuthStore.setState({ currentUserId: omitAdminProgress ? null : ADMIN_ID, familyId: FAMILY_ID, familyRole: 'admin', isQaFamily: omitAdminProgress, signIn } as any);
   const scheduleDog = step >= 4 ? { ...DOG } : null;
-  useFamilyStore.setState({ family: { id: FAMILY_ID, name: 'משפחת כהן', inviteCode: 'ABC123', timezone: 'Asia/Jerusalem', createdAt: '2026-01-01T00:00:00.000Z' }, dog: scheduleDog, dogs: scheduleDog ? [scheduleDog] : [], users: [ADMIN], selectedDogId: scheduleDog?.id, loading: false, error: null, load: loadFamily, saveDog, selectDog: jest.fn(), removeDogPhoto: jest.fn(), addUser, updateUser } as any);
+  useFamilyStore.setState({ family: { id: FAMILY_ID, name: 'משפחת כהן', inviteCode: 'ABC123', timezone: 'Asia/Jerusalem', createdAt: '2026-01-01T00:00:00.000Z' }, dog: scheduleDog, dogs: scheduleDog ? [scheduleDog] : [], users: [ADMIN], selectedDogId: scheduleDog?.id, loading: false, error: null, load: loadFamily, saveDog, selectDog: jest.fn(), removeDogPhoto: jest.fn(), addUser, updateUser: jest.fn() } as any);
   useScheduleStore.setState({ rules: [], entries: [], walks: [], loading: false, error: null, load: loadSchedule, addRule, updateRule: jest.fn(), deleteRule: jest.fn() } as any);
   mockPickAndUpload.mockReset();
   mockTakeAndUpload.mockReset();
