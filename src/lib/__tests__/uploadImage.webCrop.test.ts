@@ -82,6 +82,28 @@ describe('pickAndUploadImage — web crop step (PRD §12)', () => {
     expect(result).toBe('file:///local/photo.jpg');
   });
 
+  it('opens the Web picker synchronously from the tap and previews before crop/upload completes', async () => {
+    configureSupabaseEnv(false);
+    mockRequestPhotoCrop.mockResolvedValue('blob:cropped-uri');
+    let resolvePicker!: (value: unknown) => void;
+    mockLaunchImageLibraryAsync.mockImplementation(
+      () => new Promise((resolve) => { resolvePicker = resolve; }),
+    );
+    const preview = jest.fn();
+    const { pickAndUploadImage } = require('../uploadImage');
+
+    const pending = pickAndUploadImage('dogs', 'family-1', 'dog-1', preview);
+
+    // This assertion runs before control yields to the picker promise.
+    expect(mockLaunchImageLibraryAsync).toHaveBeenCalledTimes(1);
+    expect(mockRequestMediaLibraryPermissionsAsync).not.toHaveBeenCalled();
+
+    resolvePicker({ canceled: false, assets: [{ uri: 'blob:original-photo.jpg' }] });
+    await expect(pending).resolves.toBe('blob:cropped-uri');
+    expect(preview).toHaveBeenNthCalledWith(1, 'blob:original-photo.jpg');
+    expect(preview).toHaveBeenLastCalledWith('blob:cropped-uri');
+  });
+
   it('on web, calls requestPhotoCrop with the picked asset uri before returning (demo mode)', async () => {
     configureSupabaseEnv(false);
     mockLaunchImageLibraryAsync.mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///local/photo.jpg' }] });

@@ -105,6 +105,32 @@ describe('FamilySetupWizard interactions', () => {
     expect(state.onProgressChange).toHaveBeenCalledWith(expect.objectContaining({ step: 3, pendingDogPhotoUrl: undefined }));
   });
 
+  it('opens the gallery on the tap before awaiting the entered dog-name save', async () => {
+    setup();
+    await waitFor(() => expect(screen.getByLabelText('שם הכלב או הכלבה')).toBeTruthy());
+    fireEvent.changeText(screen.getByLabelText('שם הכלב או הכלבה'), 'לוקה');
+
+    let resolvePicker!: (value: string | null) => void;
+    let clearPreview!: () => void;
+    mockPickAndUpload.mockImplementation((...args: unknown[]) => {
+      const onPreview = args[3] as (uri: string | null) => void;
+      onPreview('blob:local-dog-preview');
+      clearPreview = () => onPreview(null);
+      return new Promise((resolve) => { resolvePicker = resolve; });
+    });
+    fireEvent.press(screen.getByLabelText('בחירת תמונה מהגלריה'));
+
+    expect(screen.getByText('dog-photo:blob:local-dog-preview')).toBeTruthy();
+    expect(mockPickAndUpload).toHaveBeenCalledTimes(1);
+    expect(mockPickAndUpload).toHaveBeenCalledWith(
+      'dogs',
+      FAMILY_ID,
+      expect.any(String),
+      expect.any(Function),
+    );
+    await act(async () => { clearPreview(); resolvePicker(null); });
+  });
+
   it('shows a retryable Hebrew error when dog persistence fails, then allows back and forward navigation', async () => {
     const state = setup();
     await waitFor(() => expect(screen.getByLabelText('שם הכלב או הכלבה')).toBeTruthy());

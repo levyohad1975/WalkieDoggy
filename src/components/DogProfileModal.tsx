@@ -34,10 +34,11 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
     if (!dog || familyRole !== 'admin' || systemObserverActive) return;
     setUploading(true);
     try {
-      const uri = await pickAndUploadImage('dogs', familyId, dog.id);
+      const uri = await pickAndUploadImage('dogs', familyId, dog.id, setPendingPhotoUrl);
       if (uri) setPendingPhotoUrl(uri);
     } catch {
-      Alert.alert('לא הצלחנו לשמור את התמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
+      setPendingPhotoUrl(null);
+      Alert.alert('לא הצלחנו לשמור את התמונה', 'בדקו תמיכת דפדפן, הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
     } finally {
       setUploading(false);
     }

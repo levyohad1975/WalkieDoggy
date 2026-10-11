@@ -67,6 +67,7 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
   const [error, setError] = useState<string | null>(null);
   const [dogName, setDogName] = useState('');
   const [pendingDogPhotoUrl, setPendingDogPhotoUrl] = useState(progress.pendingDogPhotoUrl);
+  const [selectedDogPhotoPreviewUrl, setSelectedDogPhotoPreviewUrl] = useState<string | undefined>();
   const dogIdRef = useRef<string>(generateId('dog'));
   const [additionalDogName, setAdditionalDogName] = useState('');
   const [adminName, setAdminName] = useState(progress.adminName ?? '');
@@ -151,10 +152,14 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
     setError(null);
     try {
       const currentName = dogName.trim();
-      if (currentName) await savePrimaryDog(currentName);
-      const uri = camera
-        ? await takeAndUploadImage('dogs', familyId, dogIdRef.current)
-        : await pickAndUploadImage('dogs', familyId, dogIdRef.current);
+      // Start the Web gallery picker before any awaited persistence call so
+      // Safari still has the tap's transient user activation. Saving the typed
+      // name concurrently keeps it durable even if the picker is canceled.
+      const photoPromise = camera
+        ? takeAndUploadImage('dogs', familyId, dogIdRef.current)
+        : pickAndUploadImage('dogs', familyId, dogIdRef.current, setSelectedDogPhotoPreviewUrl);
+      const saveNamePromise = currentName ? savePrimaryDog(currentName) : Promise.resolve();
+      const [uri] = await Promise.all([photoPromise, saveNamePromise]);
       if (uri) {
         if (currentName || dog?.name) await savePrimaryDog(currentName || dog?.name || '', uri);
         else {
@@ -163,9 +168,13 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
           onProgressChange(next);
           setPendingDogPhotoUrl(uri);
         }
+        setSelectedDogPhotoPreviewUrl(undefined);
+      } else {
+        setSelectedDogPhotoPreviewUrl(undefined);
       }
     } catch {
-      setError('לא הצלחנו להעלות את התמונה. בדקו את החיבור והרשאת המצלמה או התמונות ונסו שוב.');
+      setSelectedDogPhotoPreviewUrl(undefined);
+      setError('לא הצלחנו לפתוח את הגלריה או לשמור את התמונה. בדקו את תמיכת הדפדפן, הרשאת התמונות והחיבור ונסו שוב.');
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -322,7 +331,7 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
   const familyName = family?.name ?? 'המשפחה שלכם';
   const familyPhotoSection = (
     <View style={styles.dogPhotoCard}>
-      <DogPhoto photoUrl={dog?.photoUrl ?? pendingDogPhotoUrl} size={128} />
+      <DogPhoto photoUrl={selectedDogPhotoPreviewUrl ?? dog?.photoUrl ?? pendingDogPhotoUrl} size={128} />
       <RtlText style={styles.muted}>{dog?.photoUrl || pendingDogPhotoUrl ? 'תמונת הכלב/ה שלכם' : 'כאן יופיע הקמע הרשמי של Walkie Doggy עד שתוסיפו תמונה'}</RtlText>
       <View style={styles.photoActions}>
         <Button label={busy ? 'מעלה תמונה…' : dog?.photoUrl ? 'החלפת תמונה מהגלריה' : 'בחירת תמונה מהגלריה'} variant="secondary" disabled={busy} onPress={() => void pickDogPhoto(false)} style={styles.flexButton} />
