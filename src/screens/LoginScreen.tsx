@@ -29,7 +29,7 @@ import { friendlyErrorMessage } from '../lib/errorMessages';
 export function claimErrorMessage(err: unknown): string {
   return friendlyErrorMessage(
     err,
-    [{ includes: 'claim could not be verified', message: 'לא הצלחנו לאמת את ההתחברות לפרופיל הזה. ודאו שיש חיבור לאינטרנט ונסו שוב.' }],
+    [{ includes: 'claim could not be verified', message: 'לא הצלחנו לאמת את ההתחברות לפרופיל הזה. ודאו שיש חיבור לאינטרנט ונסו שוב.' }, { includes: 'pending sync from another profile on this device', message: 'יש פעולות שממתינות לסנכרון מפרופיל אחר במכשיר. חזרו למשפחה המקורית כדי לסנכרן אותן, ואז נסו שוב. השינויים נשמרו במכשיר ולא הועברו לפרופיל אחר.' }],
     'לא הצלחנו להתחבר לפרופיל הזה — נסו שוב.'
   );
 }
