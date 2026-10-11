@@ -213,6 +213,17 @@ describe('FamilySetupWizard interactions', () => {
     expect(screen.getByText('20:00 · טיול ערב')).toBeTruthy();
   });
 
+  it('fails closed when the wizard family differs from the active authenticated family', async () => {
+    const state = setup(4);
+    act(() => { useAuthStore.setState({ familyId: 'original-family' }); });
+    await waitFor(() => expect(screen.getByText('טיולים בכל יום (0)')).toBeTruthy());
+
+    expect(screen.getByLabelText('הוספת שעה ללוח').props.disabled).toBe(true);
+    await act(async () => { fireEvent.press(screen.getByLabelText('הוספת שעה ללוח')); });
+    expect(state.addRule).not.toHaveBeenCalled();
+    expect(useScheduleStore.getState().rules).toHaveLength(0);
+  });
+
   it('explains when no active member in this family can be assigned', async () => {
     const state = setup(4);
     await waitFor(() => expect(screen.getByText('טיולים בכל יום (0)')).toBeTruthy());
