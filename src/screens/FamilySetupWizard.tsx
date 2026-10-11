@@ -67,6 +67,7 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  const [dogSetupRetry, setDogSetupRetry] = useState<'save' | 'photo' | null>(null);
   const [dogName, setDogName] = useState('');
   const [dogSex, setDogSex] = useState<Dog['sex']>(progress.pendingDogSex);
   const [pendingDogPhotoUrl, setPendingDogPhotoUrl] = useState(progress.pendingDogPhotoUrl);
@@ -91,10 +92,14 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
     busyRef.current = true;
     setBusy(true);
     setError(null);
+    setDogSetupRetry(null);
     try {
       await action();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'לא הצלחנו לשמור את השינוי. בדקו את החיבור ונסו שוב.');
+      const detail = cause instanceof Error ? cause.message : '';
+      const message = /[\u0590-\u05FF]/.test(detail) ? detail : 'לא הצלחנו לשמור את פרטי הכלב/ה. בדקו את החיבור ונסו שוב.';
+      setError(message);
+      setDogSetupRetry(step === 2 ? 'save' : null);
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -143,11 +148,26 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
   };
 
   const savePrimaryDog = async (name: string, photoUrl?: string, sex: Dog['sex'] = dog?.sex ?? dogSex) => {
-    const savedDog: Dog = dog
-      ? { ...dog, name, ...(sex ? { sex } : {}), ...(photoUrl !== undefined ? { photoUrl, photoCutoutUrl: undefined } : {}) }
+    const storedDog = useFamilyStore.getState().dogs.find((candidate) => candidate.id === dogIdRef.current);
+    const currentDog = storedDog ?? (dog?.id === dogIdRef.current ? dog : null);
+    const savedDog: Dog = currentDog
+      ? { ...currentDog, name, ...(sex ? { sex } : {}), ...(photoUrl !== undefined ? { photoUrl, photoCutoutUrl: undefined } : {}) }
       : { id: dogIdRef.current, familyId, name, walksPerDay: 0, ...(sex ? { sex } : {}), ...(photoUrl ? { photoUrl } : {}) };
-    await saveDog(savedDog);
-    if (!dog) await selectDog(savedDog.id);
+    const alreadySaved = currentDog
+      && currentDog.name === savedDog.name
+      && currentDog.sex === savedDog.sex
+      && currentDog.photoUrl === savedDog.photoUrl
+      && currentDog.photoCutoutUrl === savedDog.photoCutoutUrl;
+    if (!alreadySaved) await saveDog(savedDog);
+    if (!currentDog || useFamilyStore.getState().selectedDogId !== savedDog.id) await selectDog(savedDog.id);
+  };
+
+  const persistPendingDogPhoto = async (photoUrl: string) => {
+    const next = { ...progressRef.current, familyId, pendingDogPhotoUrl: photoUrl };
+    await saveFamilySetupProgress(next);
+    progressRef.current = next;
+    onProgressChange(next);
+    setPendingDogPhotoUrl(photoUrl);
   };
 
   const pickDogPhoto = async (camera = false) => {
@@ -155,32 +175,41 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
     busyRef.current = true;
     setBusy(true);
     setError(null);
+    setDogSetupRetry(null);
+    let uploadedPhotoUrl: string | null = null;
     try {
       const currentName = dogName.trim();
-      // Start the Web gallery picker before any awaited persistence call so
-      // Safari still has the tap's transient user activation. Saving the typed
-      // name concurrently keeps it durable even if the picker is canceled.
+      // Invoke the Web picker synchronously from the tap. Once it resolves,
+      // persist the name and uploaded photo together in one dog-profile write.
       const photoPromise = camera
         ? takeAndUploadImage('dogs', familyId, dogIdRef.current)
         : pickAndUploadImage('dogs', familyId, dogIdRef.current, (uri) => setSelectedDogPhotoPreviewUrl(uri ?? undefined));
-      const saveNamePromise = currentName ? savePrimaryDog(currentName) : Promise.resolve();
-      const [uri] = await Promise.all([photoPromise, saveNamePromise]);
-      if (uri) {
-        if (currentName || dog?.name) await savePrimaryDog(currentName || dog?.name || '', uri);
-        else {
-          const next = { ...progressRef.current, familyId, pendingDogPhotoUrl: uri };
-          await saveFamilySetupProgress(next);
-          progressRef.current = next;
-          onProgressChange(next);
-          setPendingDogPhotoUrl(uri);
+      uploadedPhotoUrl = await photoPromise;
+      if (uploadedPhotoUrl) {
+        if (currentName || dog?.name) {
+          await savePrimaryDog(currentName || dog?.name || '', uploadedPhotoUrl, dogSex);
+        } else {
+          await persistPendingDogPhoto(uploadedPhotoUrl);
         }
-        setSelectedDogPhotoPreviewUrl(undefined);
-      } else {
-        setSelectedDogPhotoPreviewUrl(undefined);
+      } else if (currentName) {
+        // Cancellation is not an error, but keep the entered name durable.
+        await savePrimaryDog(currentName, undefined, dogSex);
       }
+      setSelectedDogPhotoPreviewUrl(undefined);
     } catch {
       setSelectedDogPhotoPreviewUrl(undefined);
-      setError('לא הצלחנו לפתוח את הגלריה או לשמור את התמונה. בדקו את תמיכת הדפדפן, הרשאת התמונות והחיבור ונסו שוב.');
+      // The upload may already have succeeded even if the dog-row write did
+      // not. Keep that URL as a retryable onboarding draft instead of losing it.
+      if (uploadedPhotoUrl) {
+        try { await persistPendingDogPhoto(uploadedPhotoUrl); } catch { /* keep the original save error visible */ }
+      }
+      if (uploadedPhotoUrl) {
+        setError('התמונה הועלתה, אך שמירת פרטי הכלב/ה נכשלה. נשמור את הבחירה וננסה שוב כשתמשיכו.');
+        setDogSetupRetry('save');
+      } else {
+        setError('לא הצלחנו לבחור או להעלות את התמונה. אפשר לנסות שוב, או להמשיך בלי תמונה.');
+        setDogSetupRetry('photo');
+      }
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -463,10 +492,14 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
               </>
             ) : null}
 
-            {error ? <View style={styles.errorBanner}><RtlText style={styles.errorText} accessibilityRole="alert" accessibilityLiveRegion="polite">{error}</RtlText><Pressable onPress={() => setError(null)} accessibilityRole="button"><RtlText style={styles.errorDismiss}>הבנתי</RtlText></Pressable></View> : null}
           </ScrollView>
 
           <View style={styles.footer}>
+            {error ? <View style={styles.errorBanner}><RtlText style={styles.errorText} accessibilityRole="alert" accessibilityLiveRegion="polite">{error}</RtlText><Pressable onPress={() => {
+              if (step === 2 && dogSetupRetry === 'photo') void pickDogPhoto(false);
+              else if (step === 2) void continueDogStep();
+              else setError(null);
+            }} accessibilityRole="button" accessibilityLabel={step === 2 ? 'ניסיון חוזר' : 'סגירת הודעת השגיאה'}><RtlText style={styles.errorDismiss}>{step === 2 ? 'נסו שוב' : 'סגירה'}</RtlText></Pressable></View> : null}
             {step === 1 ? <Button label="ממשיכים להגדרת הכלב" onPress={() => void showAction(() => persistStep(2))} disabled={busy} loading={busy} /> : null}
             {step === 2 ? <Button label="המשך לבני המשפחה" onPress={() => void continueDogStep()} disabled={busy} loading={busy} /> : null}
             {step === 3 ? <>

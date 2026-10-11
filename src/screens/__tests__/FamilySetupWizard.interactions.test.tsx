@@ -86,6 +86,57 @@ describe('FamilySetupWizard interactions', () => {
   beforeEach(async () => { await AsyncStorage.clear(); });
   afterEach(cleanup);
 
+  it('advances after the real-photo preview and avoids a redundant second dog save', async () => {
+    const state = setup();
+    await waitFor(() => expect(screen.getByLabelText('שם הכלב או הכלבה')).toBeTruthy());
+    fireEvent.changeText(screen.getByLabelText('שם הכלב או הכלבה'), 'בוקי');
+    await act(async () => { fireEvent.press(screen.getByLabelText('נקבה')); });
+    mockPickAndUpload.mockResolvedValue('https://cdn.example/buki.jpg');
+
+    await act(async () => { fireEvent.press(screen.getByLabelText('בחירת תמונה מהגלריה')); });
+    expect(screen.getByText('dog-photo:https://cdn.example/buki.jpg')).toBeTruthy();
+    expect(state.saveDog).toHaveBeenCalledTimes(2);
+    expect(state.saveDog).toHaveBeenLastCalledWith(expect.objectContaining({
+      name: 'בוקי',
+      sex: 'female',
+      photoUrl: 'https://cdn.example/buki.jpg',
+    }));
+
+    await act(async () => { fireEvent.press(screen.getByLabelText('המשך לבני המשפחה')); });
+    expect(state.onProgressChange).toHaveBeenLastCalledWith(expect.objectContaining({ step: 3 }));
+    expect(screen.getByLabelText('הוספת בן או בת משפחה')).toBeTruthy();
+    expect(state.saveDog).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps an uploaded photo available and shows a visible retryable error when saving the dog fails', async () => {
+    const state = setup();
+    await waitFor(() => expect(screen.getByLabelText('שם הכלב או הכלבה')).toBeTruthy());
+    fireEvent.changeText(screen.getByLabelText('שם הכלב או הכלבה'), 'בוקי');
+    mockPickAndUpload.mockResolvedValue('https://cdn.example/buki.jpg');
+    state.saveDog.mockRejectedValueOnce(new Error('offline'));
+
+    await act(async () => { fireEvent.press(screen.getByLabelText('בחירת תמונה מהגלריה')); });
+    expect(await screen.findByText(/התמונה הועלתה, אך שמירת פרטי הכלב/)).toBeTruthy();
+    expect(screen.getByText('dog-photo:https://cdn.example/buki.jpg')).toBeTruthy();
+    expect(JSON.parse((await AsyncStorage.getItem(FAMILY_SETUP_PROGRESS_KEY))!).pendingDogPhotoUrl).toBe('https://cdn.example/buki.jpg');
+
+    await act(async () => { fireEvent.press(screen.getByLabelText('המשך לבני המשפחה')); });
+    expect(state.onProgressChange).toHaveBeenLastCalledWith(expect.objectContaining({ step: 3 }));
+    expect(state.saveDog).toHaveBeenCalledTimes(2);
+    expect(state.saveDog).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'בוקי', photoUrl: 'https://cdn.example/buki.jpg' }));
+  });
+
+  it('continues without a photo when a valid dog name has been entered', async () => {
+    const state = setup();
+    await waitFor(() => expect(screen.getByLabelText('שם הכלב או הכלבה')).toBeTruthy());
+    fireEvent.changeText(screen.getByLabelText('שם הכלב או הכלבה'), 'בוקי');
+    await act(async () => { fireEvent.press(screen.getByLabelText('המשך לבני המשפחה')); });
+    expect(state.saveDog).toHaveBeenCalledWith(expect.objectContaining({ name: 'בוקי', photoUrl: undefined }));
+    expect(state.onProgressChange).toHaveBeenLastCalledWith(expect.objectContaining({ step: 3 }));
+    expect(screen.getByLabelText('הוספת בן או בת משפחה')).toBeTruthy();
+    expect(screen.getByText('official-mascot')).toBeTruthy();
+  });
+
   it('persists dog sex in the profile and resumable setup draft, then restores it into the saved dog', async () => {
     const state = setup();
     await waitFor(() => expect(screen.getByLabelText('מין הכלב או הכלבה')).toBeTruthy());
@@ -153,7 +204,8 @@ describe('FamilySetupWizard interactions', () => {
     fireEvent.changeText(screen.getByLabelText('שם הכלב או הכלבה'), 'לוקה');
     state.saveDog.mockRejectedValueOnce(new Error('offline'));
     await act(async () => { fireEvent.press(screen.getByLabelText('המשך לבני המשפחה')); });
-    expect(await screen.findByText('offline')).toBeTruthy();
+    expect(await screen.findByText('לא הצלחנו לשמור את פרטי הכלב/ה. בדקו את החיבור ונסו שוב.')).toBeTruthy();
+    expect(screen.getByLabelText('ניסיון חוזר')).toBeTruthy();
     expect(screen.getByLabelText('המשך לבני המשפחה')).toBeTruthy();
     state.saveDog.mockImplementationOnce(async (dog) => { useFamilyStore.setState({ dog, dogs: [dog] }); });
     await act(async () => { fireEvent.press(screen.getByLabelText('המשך לבני המשפחה')); });
