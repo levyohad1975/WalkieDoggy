@@ -23,6 +23,11 @@ import { clearMemberPermissionOverride, listMemberPermissionOverrides, setMember
 // to the first dog — see load()'s selection resolution below).
 const SELECTED_DOG_KEY = 'dog-walk-family:selected-dog-id';
 
+// A family switch can issue overlapping authenticated reads. Only the most
+// recent request may publish into this shared store, or a slow response from
+// the previous family's RLS context can replace the new family's roster.
+let familyLoadRequestId = 0;
+
 interface FamilyState {
   family: Family | null;
   users: FamilyUser[];
@@ -107,6 +112,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
   permissionOverridesStatus: 'idle',
 
   load: async (familyId: string) => {
+    const requestId = ++familyLoadRequestId;
     set({ loading: true, error: null });
     try {
       const [family, users, dogs] = await Promise.all([
@@ -114,6 +120,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
         repository.getUsers(familyId),
         repository.getDogs(familyId),
       ]);
+      if (requestId !== familyLoadRequestId) return;
       // The dog must never be silently missing in local/demo mode: this is
       // the app's single seeded family, so if the repository came back with
       // no dogs for it (a stale cache from an earlier build, a not-yet-run
@@ -153,6 +160,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
           /* best-effort */
         }
       }
+      if (requestId !== familyLoadRequestId) return;
 
       set({
         family: family ?? null,
@@ -176,6 +184,7 @@ export const useFamilyStore = create<FamilyState>((set, get) => ({
       // this never blocks or fails the family load itself.
       void get().loadPermissionOverrides();
     } catch (e) {
+      if (requestId !== familyLoadRequestId) return;
       set({ error: e instanceof Error ? e.message : 'שגיאה בטעינת נתוני המשפחה', loading: false });
     }
   },
