@@ -218,7 +218,9 @@ describe('FamilySetupWizard interactions', () => {
     await waitFor(() => expect(screen.getByText('טיולים בכל יום (0)')).toBeTruthy());
     act(() => { useFamilyStore.setState({ users: [] }); });
     expect(await screen.findByText(/לא נמצא במשפחה פרופיל פעיל/)).toBeTruthy();
-    expect(screen.getByLabelText('הוספת שעה ללוח').props.disabled).toBeTruthy();
+    await act(async () => { fireEvent.press(screen.getByLabelText('הוספת שעה ללוח')); });
+    expect(useScheduleStore.getState().rules).toHaveLength(0);
+    expect(state.addRule).not.toHaveBeenCalled();
   });
 
   it('continues without a photo when a valid dog name has been entered', async () => {
