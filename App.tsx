@@ -24,6 +24,7 @@ import { WalkieMascot } from './src/components/WalkieMascot';
 import { FamilySetupWizard } from './src/screens/FamilySetupWizard';
 import { beginFamilySetup, clearFamilySetupProgress, isFamilySetupComplete, markFamilySetupComplete, readFamilySetupProgress, type FamilySetupProgress } from './src/lib/familySetupProgress';
 import { getVerifiedAdminIdentity } from './src/lib/verifiedAdminOnboarding';
+import { canResumeFamilySetupDraft } from './src/logic/familySetupResume';
 import {
   createTestFamilyReentryDiagnosticId,
   exitSystemAdminTestFamily,
@@ -293,7 +294,7 @@ export default function App() {
       // draft's family. This preserves dormant QA drafts after an admin exits
       // back to the original family without making RLS-scoped reads go empty.
       const serverContext = isSupabaseConfigured ? await getWhoAmI() : null;
-      if (serverContext?.familyId !== progress.familyId) return;
+      if (!canResumeFamilySetupDraft(progress.familyId, serverContext?.familyId)) return;
       if (useAuthStore.getState().familyId !== progress.familyId) await setFamilyId(progress.familyId);
     }).catch(() => undefined).finally(() => { if (mounted) setFamilySetupLoaded(true); });
     return () => { mounted = false; };
