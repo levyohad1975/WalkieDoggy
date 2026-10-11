@@ -153,6 +153,7 @@ describe('FamilySetupWizard interactions', () => {
     const state = setup(3);
     await waitFor(() => expect(screen.getByLabelText('המשך להגדרת הטיולים')).toBeTruthy());
     state.signIn.mockRejectedValueOnce(new Error('pending sync from another profile on this device — connect to the internet and try again'));
+    state.signIn.mockRejectedValueOnce(new Error('pending sync from another profile on this device — connect to the internet and try again'));
     act(() => {
       useFamilyStore.setState({ users: [] });
       useAuthStore.setState({ currentUserId: null, isQaFamily: true });
@@ -165,6 +166,7 @@ describe('FamilySetupWizard interactions', () => {
 
     expect(await screen.findByText(/פרופיל המנהל נשמר במשפחת הבדיקה/)).toBeTruthy();
     expect(state.addUser).toHaveBeenCalledTimes(1);
+    expect(state.signIn).toHaveBeenCalledTimes(1);
     expect(state.addUser).toHaveBeenCalledWith(expect.objectContaining({
       id: ADMIN_ID,
       name: 'מנהל בדיקה',

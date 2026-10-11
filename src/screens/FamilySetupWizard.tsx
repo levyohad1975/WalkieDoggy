@@ -75,6 +75,7 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
   const dogIdRef = useRef<string>(generateId('dog'));
   const [additionalDogName, setAdditionalDogName] = useState('');
   const [adminName, setAdminName] = useState(progress.adminName ?? '');
+  const adminProfileSaveRef = useRef(false);
   const [memberFormVisible, setMemberFormVisible] = useState(false);
   const [sharingVisible, setSharingVisible] = useState(false);
   const [inviteCode, setInviteCode] = useState<string | undefined>(undefined);
@@ -137,7 +138,7 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
   }, [family?.inviteCode]);
 
   useEffect(() => {
-    if (!currentUserId && progress.adminUserId && activeUsers.some((user) => user.id === progress.adminUserId)) {
+    if (!adminProfileSaveRef.current && !currentUserId && progress.adminUserId && activeUsers.some((user) => user.id === progress.adminUserId)) {
       void signIn(progress.adminUserId).catch((cause) => setError(cause instanceof Error ? cause.message : 'לא הצלחנו להתחבר לפרופיל המנהל.'));
     }
   }, [currentUserId, progress.adminUserId, activeUsers, signIn]);
@@ -258,28 +259,34 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
   };
 
   const createAdminProfile = async () => {
-    const name = adminName.trim();
-    if (!name) throw new Error('צריך להזין את השם שלכם כדי להמשיך.');
-    if (familyRole !== 'admin') throw new Error('ההרשאה של מנהל המשפחה עדיין לא אומתה. נסו לטעון מחדש.');
-    const userId = progress.adminUserId ?? generateId('user');
-    const nextProgress = { ...progress, familyId, step: 3 as const, adminUserId: userId, adminName: name };
-    // Save the stable profile id before the network write. A refresh after a
-    // successful server insert can find and claim the same profile instead
-    // of creating a duplicate administrator.
-    await saveFamilySetupProgress(nextProgress);
-    onProgressChange(nextProgress);
-    // Re-read the authoritative remote list before retrying the INSERT.
-    // If the server committed but the client lost the response, reusing the
-    // stable id as a fresh create would hit the INSERT-only RLS path again.
-    await loadFamily(familyId);
-    const existing = useFamilyStore.getState().users.find((user) => user.id === userId);
-    if (!existing) {
-      await addUser({ id: userId, name, avatar: '🧑', color: userPalette[0] });
-    } else if (existing.name !== name) {
-      await updateUser({ ...existing, name });
+    if (adminProfileSaveRef.current) return;
+    adminProfileSaveRef.current = true;
+    try {
+      const name = adminName.trim();
+      if (!name) throw new Error('צריך להזין את השם שלכם כדי להמשיך.');
+      if (familyRole !== 'admin') throw new Error('ההרשאה של מנהל המשפחה עדיין לא אומתה. נסו לטעון מחדש.');
+      const userId = progress.adminUserId ?? generateId('user');
+      const nextProgress = { ...progress, familyId, step: 3 as const, adminUserId: userId, adminName: name };
+      // Save the stable profile id before the network write. A refresh after a
+      // successful server insert can find and claim the same profile instead
+      // of creating a duplicate administrator.
+      await saveFamilySetupProgress(nextProgress);
+      onProgressChange(nextProgress);
+      // Re-read the authoritative remote list before retrying the INSERT.
+      // If the server committed but the client lost the response, reusing the
+      // stable id as a fresh create would hit the INSERT-only RLS path again.
+      await loadFamily(familyId);
+      const existing = useFamilyStore.getState().users.find((user) => user.id === userId);
+      if (!existing) {
+        await addUser({ id: userId, name, avatar: '🧑', color: userPalette[0] });
+      } else if (existing.name !== name) {
+        await updateUser({ ...existing, name });
+      }
+      await signIn(userId);
+      setResponsibleUserId(userId);
+    } finally {
+      adminProfileSaveRef.current = false;
     }
-    await signIn(userId);
-    setResponsibleUserId(userId);
   };
 
   const saveMember = async (input: { name: string; avatar: string; color: string; photoUrl?: string }) => {
