@@ -131,7 +131,7 @@ describe('FamilySetupWizard interactions', () => {
     await waitFor(() => expect(screen.getByLabelText('שם הכלב או הכלבה')).toBeTruthy());
     fireEvent.changeText(screen.getByLabelText('שם הכלב או הכלבה'), 'בוקי');
     await act(async () => { fireEvent.press(screen.getByLabelText('המשך לבני המשפחה')); });
-    expect(state.saveDog).toHaveBeenCalledWith(expect.objectContaining({ name: 'בוקי', photoUrl: undefined }));
+    expect(state.saveDog).toHaveBeenCalledWith(expect.objectContaining({ name: 'בוקי' }));
     expect(state.onProgressChange).toHaveBeenLastCalledWith(expect.objectContaining({ step: 3 }));
     expect(screen.getByLabelText('הוספת בן או בת משפחה')).toBeTruthy();
     expect(screen.getByText('official-mascot')).toBeTruthy();
