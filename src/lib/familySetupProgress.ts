@@ -11,6 +11,8 @@ export type FamilySetupProgress = {
   step: 1 | 2 | 3 | 4 | 5;
   adminUserId?: string;
   adminName?: string;
+  /** Uploaded image awaiting the required dog name before a Dog row exists. */
+  pendingDogPhotoUrl?: string;
 };
 
 export async function readFamilySetupProgress(): Promise<FamilySetupProgress | null> {
@@ -25,6 +27,7 @@ export async function readFamilySetupProgress(): Promise<FamilySetupProgress | n
       ...(typeof parsed.ownerAuthUserId === 'string' ? { ownerAuthUserId: parsed.ownerAuthUserId } : {}),
       ...(typeof parsed.adminUserId === 'string' ? { adminUserId: parsed.adminUserId } : {}),
       ...(typeof parsed.adminName === 'string' ? { adminName: parsed.adminName } : {}),
+      ...(typeof parsed.pendingDogPhotoUrl === 'string' ? { pendingDogPhotoUrl: parsed.pendingDogPhotoUrl } : {}),
     };
   } catch {
     return null;

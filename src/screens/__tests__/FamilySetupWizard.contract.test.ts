@@ -9,7 +9,7 @@ describe('new family setup wizard contract', () => {
 
   it('requires a dog name, persists photos through the shared upload/store path and keeps the mascot fallback', () => {
     expect(wizard).toContain("if (!name) {");
-    expect(wizard).toContain('await savePrimaryDog(name)');
+    expect(wizard).toContain('await savePrimaryDog(name, pendingDogPhotoUrl)');
     expect(wizard).toContain("pickAndUploadImage('dogs', familyId, dogIdRef.current)");
     expect(wizard).toContain("takeAndUploadImage('dogs', familyId, dogIdRef.current)");
     expect(wizard).toContain('await saveDog(savedDog)');

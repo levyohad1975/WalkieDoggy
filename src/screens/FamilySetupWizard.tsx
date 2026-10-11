@@ -66,6 +66,7 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
   const busyRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [dogName, setDogName] = useState('');
+  const [pendingDogPhotoUrl, setPendingDogPhotoUrl] = useState(progress.pendingDogPhotoUrl);
   const dogIdRef = useRef<string>(generateId('dog'));
   const [additionalDogName, setAdditionalDogName] = useState('');
   const [adminName, setAdminName] = useState(progress.adminName ?? '');
@@ -154,7 +155,15 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
       const uri = camera
         ? await takeAndUploadImage('dogs', familyId, dogIdRef.current)
         : await pickAndUploadImage('dogs', familyId, dogIdRef.current);
-      if (uri) await savePrimaryDog(currentName || dog?.name || '', uri);
+      if (uri) {
+        if (currentName || dog?.name) await savePrimaryDog(currentName || dog?.name || '', uri);
+        else {
+          const next = { ...progress, familyId, pendingDogPhotoUrl: uri };
+          await saveFamilySetupProgress(next);
+          onProgressChange(next);
+          setPendingDogPhotoUrl(uri);
+        }
+      }
     } catch {
       setError('לא הצלחנו להעלות את התמונה. בדקו את החיבור והרשאת המצלמה או התמונות ונסו שוב.');
     } finally {
@@ -178,8 +187,9 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
       return;
     }
     await showAction(async () => {
-      await savePrimaryDog(name);
-      await persistStep(3);
+      await savePrimaryDog(name, pendingDogPhotoUrl);
+      await persistStep(3, { pendingDogPhotoUrl: undefined });
+      setPendingDogPhotoUrl(undefined);
     });
   };
 
@@ -312,12 +322,17 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
   const familyName = family?.name ?? 'המשפחה שלכם';
   const familyPhotoSection = (
     <View style={styles.dogPhotoCard}>
-      <DogPhoto photoUrl={dog?.photoUrl} size={128} />
-      <RtlText style={styles.muted}>{dog?.photoUrl ? 'תמונת הכלב/ה שלכם' : 'כאן יופיע הקמע הרשמי של Walkie Doggy עד שתוסיפו תמונה'}</RtlText>
+      <DogPhoto photoUrl={dog?.photoUrl ?? pendingDogPhotoUrl} size={128} />
+      <RtlText style={styles.muted}>{dog?.photoUrl || pendingDogPhotoUrl ? 'תמונת הכלב/ה שלכם' : 'כאן יופיע הקמע הרשמי של Walkie Doggy עד שתוסיפו תמונה'}</RtlText>
       <View style={styles.photoActions}>
         <Button label={busy ? 'מעלה תמונה…' : dog?.photoUrl ? 'החלפת תמונה מהגלריה' : 'בחירת תמונה מהגלריה'} variant="secondary" disabled={busy} onPress={() => void pickDogPhoto(false)} style={styles.flexButton} />
         {Platform.OS !== 'web' ? <Button label="צילום תמונה" variant="secondary" disabled={busy} onPress={() => void pickDogPhoto(true)} style={styles.flexButton} /> : null}
-        {dog?.photoUrl ? <Button label="הסרת תמונה" variant="secondary" disabled={busy} onPress={() => void showAction(async () => removeDogPhoto(dog.id))} style={styles.flexButton} /> : null}
+        {dog?.photoUrl || pendingDogPhotoUrl ? <Button label="הסרת תמונה" variant="secondary" disabled={busy} onPress={() => {
+          if (pendingDogPhotoUrl && pendingDogPhotoUrl !== dog?.photoUrl) {
+            const next = { ...progress, familyId, pendingDogPhotoUrl: undefined };
+            void saveFamilySetupProgress(next).then(() => { onProgressChange(next); setPendingDogPhotoUrl(undefined); });
+          } else if (dog) void showAction(async () => removeDogPhoto(dog.id));
+        }} style={styles.flexButton} /> : null}
       </View>
     </View>
   );
