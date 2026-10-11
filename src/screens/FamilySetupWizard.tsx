@@ -86,9 +86,25 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [responsibleUserId, setResponsibleUserId] = useState(progress.adminUserId ?? '');
 
-  const activeUsers = useMemo(() => users.filter((user) => !user.removedAt), [users]);
+  // A family switch can leave another family's members in the shared store briefly.
+  // Only show and assign profiles that belong to this wizard's family.
+  const activeUsers = useMemo(() => users.filter((user) => user.familyId === familyId && !user.removedAt), [users, familyId]);
   const dogRules = useMemo(() => rules.filter((rule) => rule.dogId === dog?.id && rule.active).sort((a, b) => a.time.localeCompare(b.time)), [rules, dog?.id]);
   const usersById = useMemo(() => Object.fromEntries(activeUsers.map((user) => [user.id, user])), [activeUsers]);
+
+  // Restoring an onboarding draft after a System Admin family switch may not
+  // restore the prior device claim. Keep the saved manager when present; for
+  // a one-manager family, safely choose its sole active family profile.
+  useEffect(() => {
+    setResponsibleUserId((current) => {
+      if (activeUsers.some((user) => user.id === current)) return current;
+      const savedAdmin = activeUsers.find((user) => user.id === progress.adminUserId);
+      if (savedAdmin) return savedAdmin.id;
+      const signedInMember = activeUsers.find((user) => user.id === currentUserId);
+      if (signedInMember) return signedInMember.id;
+      return activeUsers.length === 1 ? activeUsers[0].id : '';
+    });
+  }, [activeUsers, progress.adminUserId, currentUserId]);
   const showAction = async (action: () => Promise<void>) => {
     if (busyRef.current) return;
     busyRef.current = true;
@@ -488,6 +504,7 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
                   {editingRuleId ? <RtlText style={styles.label}>עריכת שעה ואחראי/ת</RtlText> : <RtlText style={styles.label}>שעת טיול נוספת</RtlText>}
                   <TimePickerField value={newTime} onChange={setNewTime} webLabel="בחירת שעת טיול" />
                   <RtlText style={styles.label}>אחראי/ת</RtlText>
+                  {activeUsers.length === 0 ? <RtlText style={styles.muted} accessibilityRole="alert">לא נמצא במשפחה פרופיל פעיל שאפשר לשייך לטיול. חזרו לשלב בני המשפחה ושמרו פרופיל מנהל, ואז נסו שוב.</RtlText> : null}
                   <View style={styles.memberChoiceRow}>{activeUsers.map((user) => <Pressable key={user.id} onPress={() => setResponsibleUserId(user.id)} style={[styles.memberChip, responsibleUserId === user.id && styles.memberChipActive]} accessibilityRole="button" accessibilityState={{ selected: responsibleUserId === user.id }}><RtlText style={[styles.memberChipText, responsibleUserId === user.id && styles.memberChipTextActive]}>{user.name}</RtlText></Pressable>)}</View>
                   {editingRuleId ? <><Button label="שמירת עדכון הטיול" variant="secondary" disabled={busy || !responsibleUserId} loading={busy} onPress={() => void editScheduleRule()} /><Pressable onPress={() => setEditingRuleId(null)} style={styles.skipLink}><RtlText style={styles.skipText}>ביטול עריכה</RtlText></Pressable></> : <Button label="הוספת שעה ללוח" variant="secondary" disabled={busy || !dog || !responsibleUserId} loading={busy} onPress={() => void addCustomSchedule()} />}
                   {dogRules.length === 0 ? <Button label="הוספת הצעה: בוקר, צהריים וערב" variant="secondary" disabled={busy || !dog || !responsibleUserId} onPress={() => void addSuggestedSchedule()} style={styles.suggestButton} /> : null}
