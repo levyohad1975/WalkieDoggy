@@ -151,11 +151,13 @@ describe('FamilySetupWizard interactions', () => {
 
   it('persists the test-family administrator once and safely retries a profile-claim queue guard', async () => {
     const state = setup(3);
+    await waitFor(() => expect(screen.getByLabelText('המשך להגדרת הטיולים')).toBeTruthy());
     state.signIn.mockRejectedValueOnce(new Error('pending sync from another profile on this device — connect to the internet and try again'));
     act(() => {
       useFamilyStore.setState({ users: [] });
       useAuthStore.setState({ currentUserId: null, isQaFamily: true });
     });
+    await waitFor(() => expect(screen.getByLabelText('שם מנהל המשפחה')).toBeTruthy());
 
     const nameInput = screen.getByLabelText('שם מנהל המשפחה');
     fireEvent.changeText(nameInput, 'מנהל בדיקה');
