@@ -22,8 +22,9 @@ import {
   getSystemAdminFamilyDetail,
   listSystemAdminFamilies,
   listSystemAdminTestFamilies,
-  switchToSystemAdminTestFamily,
+  reenterExistingSystemAdminTestFamily,
   setSystemAdminFamilyApproval,
+  TestFamilyReentryError,
   type SystemAdminEmailDeliveryLogEntry,
   type SystemAdminGlobalAuditEntry,
   type SystemAdminFamilyDetail,
@@ -34,7 +35,7 @@ import {
 interface SystemAdminScreenProps {
   visible: boolean;
   onClose: () => void;
-  onTestFamilySelected?: (familyId: string) => Promise<void>;
+  onTestFamilySelected?: (familyId: string, diagnosticId?: string) => Promise<void>;
 }
 
 /** Hebrew label for families.approval_status (0032/0035) — falls back to the raw value for any future status this screen doesn't know about yet, rather than hiding it. */
@@ -794,11 +795,14 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected }: Sy
                         if (testFamilyBusyRef.current) return;
                         testFamilyBusyRef.current = true; setTestFamilyBusy(true); setTestFamilyError(null);
                         try {
-                          await switchToSystemAdminTestFamily(testFamily.familyId);
-                          await onTestFamilySelected?.(testFamily.familyId);
+                          await reenterExistingSystemAdminTestFamily(testFamily.familyId, onTestFamilySelected);
                           onClose();
                         }
-                        catch (e) { setTestFamilyError(friendlyErrorMessage(e, [], 'לא הצלחנו לעבור למשפחת הבדיקה.')); }
+                        catch (e) {
+                          setTestFamilyError(e instanceof TestFamilyReentryError
+                            ? e.userMessage
+                            : friendlyErrorMessage(e, [], 'לא הצלחנו לעבור למשפחת הבדיקה. בדקו את החיבור והרשאת מנהל המערכת ונסו שוב.'));
+                        }
                         finally { testFamilyBusyRef.current = false; setTestFamilyBusy(false); }
                       }} />}
                       {activeFamilyId === testFamily.familyId ? null : confirmTestDeleteId === testFamily.familyId ? (
