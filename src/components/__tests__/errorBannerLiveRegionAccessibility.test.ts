@@ -20,7 +20,7 @@ const TARGET_FILES: Array<[string, number]> = [
   ['../../screens/FamilyOnboardingScreen.tsx', 5],
   ['../../screens/LoginScreen.tsx', 2],
   ['../../screens/FamilyScreen.tsx', 2],
-  ['../../screens/SystemAdminScreen.tsx', 6],
+  ['../../screens/SystemAdminScreen.tsx', 7],
   ['../PinEntryModal.tsx', 1],
   ['../AdminActivityModal.tsx', 1],
   ['../InviteShareModal.tsx', 1],

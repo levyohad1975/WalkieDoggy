@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const FAMILY_SETUP_PROGRESS_KEY = 'walkie-family-setup-progress:v1';
 export const FAMILY_CREATION_PENDING_KEY = 'walkie-family-creation-pending:v1';
+const FAMILY_SETUP_COMPLETE_KEY_PREFIX = 'walkie-family-setup-complete:v1:';
 
 export type FamilySetupProgress = {
   familyId: string;
@@ -40,6 +41,18 @@ export async function saveFamilySetupProgress(progress: FamilySetupProgress): Pr
 
 export async function clearFamilySetupProgress(): Promise<void> {
   await AsyncStorage.multiRemove([FAMILY_SETUP_PROGRESS_KEY, FAMILY_CREATION_PENDING_KEY]);
+}
+
+export async function isFamilySetupComplete(familyId: string): Promise<boolean> {
+  return (await AsyncStorage.getItem(`${FAMILY_SETUP_COMPLETE_KEY_PREFIX}${familyId}`)) === '1';
+}
+
+export async function markFamilySetupComplete(familyId: string): Promise<void> {
+  await AsyncStorage.setItem(`${FAMILY_SETUP_COMPLETE_KEY_PREFIX}${familyId}`, '1');
+}
+
+export async function clearFamilySetupCompletion(familyId: string): Promise<void> {
+  await AsyncStorage.removeItem(`${FAMILY_SETUP_COMPLETE_KEY_PREFIX}${familyId}`);
 }
 
 export async function markFamilyCreationPending(ownerAuthUserId?: string): Promise<void> {

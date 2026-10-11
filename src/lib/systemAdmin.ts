@@ -27,6 +27,84 @@ export interface SystemAdminFamilyListItem {
   verifiedEmail: string | null;
 }
 
+export interface SystemAdminTestFamily {
+  familyId: string;
+  familyName: string;
+  inviteCode: string;
+  createdAt: string;
+  dogName: string | null;
+}
+
+function rowOrThrow<T>(data: T[] | T | null, message: string): T {
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) throw new Error(message);
+  return row as T;
+}
+
+/** Creates an isolated QA family and snapshots the caller's current family/profile. */
+export async function createSystemAdminTestFamily(familyName: string): Promise<SystemAdminTestFamily> {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc('system_admin_enter_test_family', { p_family_name: familyName.trim() });
+  if (error) throw error;
+  const row = rowOrThrow(data as Array<{ id: string; name: string; invite_code: string }> | null, 'יצירת משפחת הבדיקה נכשלה');
+  return { familyId: row.id, familyName: row.name, inviteCode: row.invite_code, createdAt: new Date().toISOString(), dogName: null };
+}
+
+/** Re-enters an existing QA family without replacing the original membership snapshot. */
+export async function switchToSystemAdminTestFamily(familyId: string): Promise<SystemAdminTestFamily> {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc('system_admin_switch_test_family', { p_family_id: familyId });
+  if (error) throw error;
+  const row = rowOrThrow(data as Array<{ id: string; name: string; invite_code: string }> | null, 'הכניסה למשפחת הבדיקה נכשלה');
+  return { familyId: row.id, familyName: row.name, inviteCode: row.invite_code, createdAt: new Date().toISOString(), dogName: null };
+}
+
+export async function listSystemAdminTestFamilies(): Promise<SystemAdminTestFamily[]> {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc('system_admin_list_test_families');
+  if (error) throw error;
+  return ((data ?? []) as Array<{ family_id: string; family_name: string; invite_code: string; created_at: string; dog_name: string | null }>).map((row) => ({
+    familyId: row.family_id,
+    familyName: row.family_name,
+    inviteCode: row.invite_code,
+    createdAt: row.created_at,
+    dogName: row.dog_name,
+  }));
+}
+
+export async function getActiveSystemAdminTestFamily(): Promise<{ familyId: string; familyName: string } | null> {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc('system_admin_get_active_test_family');
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return row?.family_id && row?.family_name ? { familyId: row.family_id, familyName: row.family_name } : null;
+}
+
+export async function deleteSystemAdminTestFamily(familyId: string): Promise<void> {
+  const client = requireSupabase();
+  const { data: photoRows, error: photoListError } = await client.rpc('system_admin_list_test_family_photo_paths', { p_family_id: familyId });
+  if (photoListError) throw photoListError;
+  const paths = ((photoRows ?? []) as Array<{ object_path: string }>).map((row) => row.object_path).filter(Boolean);
+  for (let offset = 0; offset < paths.length; offset += 1000) {
+    const { error } = await client.storage.from('family-photos').remove(paths.slice(offset, offset + 1000));
+    if (error) throw error;
+  }
+  const { error } = await client.rpc('system_admin_delete_test_family', {
+    p_family_id: familyId,
+    p_confirm: 'DELETE TEST FAMILY',
+  });
+  if (error) throw error;
+}
+
+/** Leaves the active QA family and restores the original family/profile snapshot. */
+export async function exitSystemAdminTestFamily(): Promise<{ id: string; name: string }> {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc('system_admin_exit_test_family');
+  if (error) throw error;
+  const row = rowOrThrow(data as Array<{ id: string; name: string }> | null, 'החזרה למשפחה המקורית נכשלה');
+  return row;
+}
+
 export interface SystemAdminFamilyMember {
   id: string;
   name: string;

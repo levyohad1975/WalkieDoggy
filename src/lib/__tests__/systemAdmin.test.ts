@@ -37,6 +37,42 @@ describe('lib/systemAdmin — Supabase mode', () => {
     process.env = ORIGINAL_ENV;
   });
 
+  it('creates an isolated test family through the guarded entry RPC and trims its name', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: [{ id: 'qa-1', name: 'משפחת בדיקה', invite_code: 'QATEST' }], error: null });
+    mockSupabaseClient(rpc);
+    const { createSystemAdminTestFamily } = require('../systemAdmin');
+    const result = await createSystemAdminTestFamily(' משפחת בדיקה ');
+    expect(rpc).toHaveBeenCalledWith('system_admin_enter_test_family', { p_family_name: 'משפחת בדיקה' });
+    expect(result).toMatchObject({ familyId: 'qa-1', familyName: 'משפחת בדיקה', inviteCode: 'QATEST', dogName: null });
+  });
+
+  it('deletes only through the explicit-confirmation test-family RPC and propagates authorization failures', async () => {
+    const rpc = jest.fn()
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({ data: null, error: { message: 'return to original family first' } });
+    mockSupabaseClient(rpc);
+    const { deleteSystemAdminTestFamily } = require('../systemAdmin');
+    await expect(deleteSystemAdminTestFamily('qa-1')).rejects.toBeTruthy();
+    expect(rpc).toHaveBeenNthCalledWith(1, 'system_admin_list_test_family_photo_paths', { p_family_id: 'qa-1' });
+    expect(rpc).toHaveBeenNthCalledWith(2, 'system_admin_delete_test_family', { p_family_id: 'qa-1', p_confirm: 'DELETE TEST FAMILY' });
+  });
+
+  it('re-enters a listed test family through its guarded switch RPC', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: [{ id: 'qa-2', name: 'בדיקה קיימת', invite_code: 'QATEST' }], error: null });
+    mockSupabaseClient(rpc);
+    const { switchToSystemAdminTestFamily } = require('../systemAdmin');
+    await expect(switchToSystemAdminTestFamily('qa-2')).resolves.toMatchObject({ familyId: 'qa-2', familyName: 'בדיקה קיימת' });
+    expect(rpc).toHaveBeenCalledWith('system_admin_switch_test_family', { p_family_id: 'qa-2' });
+  });
+
+  it('restores the active identity through the dedicated guarded exit RPC', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: [{ id: 'family-original', name: 'המשפחה שלי' }], error: null });
+    mockSupabaseClient(rpc);
+    const { exitSystemAdminTestFamily } = require('../systemAdmin');
+    await expect(exitSystemAdminTestFamily()).resolves.toEqual({ id: 'family-original', name: 'המשפחה שלי' });
+    expect(rpc).toHaveBeenCalledWith('system_admin_exit_test_family');
+  });
+
   it('checkIsSystemAdmin calls am_i_system_admin with no arguments and returns the boolean verbatim', async () => {
     const rpc = jest.fn().mockResolvedValue({ data: true, error: null });
     mockSupabaseClient(rpc);

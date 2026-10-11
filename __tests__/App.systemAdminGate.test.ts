@@ -31,11 +31,15 @@ describe('App.tsx — System Admin entry point sits OUTSIDE family/auth branchin
     expect(source).not.toContain('{isSystemAdmin && !systemObserverActive ? (');
   });
 
-  it('never assigns familyId/currentUserId from the System Admin flow — this file has exactly one writer of familyId-affecting state, and it is not the System Admin block', () => {
+  it('only changes family context through the explicit test-family enter/return actions and wires the admin UI to that handler', () => {
     const adminBlockStart = source.indexOf('const isSystemAdmin = useSystemAdminStore');
     const adminBlockEnd = source.indexOf('useEffect(() => {\n    if (currentUserId && !systemObserverActive)');
     const adminBlock = source.slice(adminBlockStart, adminBlockEnd);
-    expect(adminBlock).not.toMatch(/setFamilyId|familyId\s*=/);
+    expect(adminBlock).toContain('const selectTestFamily = async');
+    expect(adminBlock).toContain('const returnFromTestFamily = async');
+    expect(source).toContain('onTestFamilySelected={selectTestFamily}');
+    expect(adminBlock).toMatch(/await setFamilyId\(selectedFamilyId\)/);
+    expect(adminBlock).toMatch(/await setFamilyId\(restored\.id\)/);
   });
   it('routes a standalone System Admin directly to the platform console before family onboarding', () => {
     expect(source).toMatch(/const shouldEnterSystemAdminDirectly =/);

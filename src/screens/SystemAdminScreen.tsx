@@ -12,21 +12,29 @@ import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { friendlyErrorMessage } from '../lib/errorMessages';
 import { useAuthStore } from '../store/authStore';
+import { useSystemAdminStore } from '../store/systemAdminStore';
+import { clearFamilySetupCompletion, clearFamilySetupProgress, readFamilySetupProgress } from '../lib/familySetupProgress';
 import {
+  createSystemAdminTestFamily,
+  deleteSystemAdminTestFamily,
   getSystemAdminEmailDeliveryLog,
   getSystemAdminGlobalAudit,
   getSystemAdminFamilyDetail,
   listSystemAdminFamilies,
+  listSystemAdminTestFamilies,
+  switchToSystemAdminTestFamily,
   setSystemAdminFamilyApproval,
   type SystemAdminEmailDeliveryLogEntry,
   type SystemAdminGlobalAuditEntry,
   type SystemAdminFamilyDetail,
   type SystemAdminFamilyListItem,
+  type SystemAdminTestFamily,
 } from '../lib/systemAdmin';
 
 interface SystemAdminScreenProps {
   visible: boolean;
   onClose: () => void;
+  onTestFamilySelected?: (familyId: string) => Promise<void>;
 }
 
 /** Hebrew label for families.approval_status (0032/0035) — falls back to the raw value for any future status this screen doesn't know about yet, rather than hiding it. */
@@ -127,7 +135,9 @@ function emailStatusLabel(status: string): string {
  * here cannot change the device's own active family or create membership,
  * by construction (there is no code path here that touches those stores).
  */
-export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) {
+export function SystemAdminScreen({ visible, onClose, onTestFamilySelected }: SystemAdminScreenProps) {
+  const isSystemAdmin = useSystemAdminStore((s) => s.isSystemAdmin);
+  const activeFamilyId = useAuthStore((s) => s.familyId);
   const [search, setSearch] = useState('');
   const beginSystemObserver = useAuthStore((s) => s.beginSystemObserver);
   const [observerStartingFamilyId, setObserverStartingFamilyId] = useState<string | null>(null);
@@ -135,6 +145,12 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
   const [families, setFamilies] = useState<SystemAdminFamilyListItem[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
+  const [testFamilies, setTestFamilies] = useState<SystemAdminTestFamily[]>([]);
+  const [testFamilyName, setTestFamilyName] = useState('משפחת בדיקה');
+  const [testFamilyError, setTestFamilyError] = useState<string | null>(null);
+  const [testFamilyBusy, setTestFamilyBusy] = useState(false);
+  const testFamilyBusyRef = React.useRef(false);
+  const [confirmTestDeleteId, setConfirmTestDeleteId] = useState<string | null>(null);
 
   const [selectedFamilyId, setSelectedFamilyId] = useState<string | null>(null);
   const [detail, setDetail] = useState<SystemAdminFamilyDetail | null>(null);
@@ -221,8 +237,10 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
     setListLoading(true);
     setListError(null);
     try {
-      const result = await listSystemAdminFamilies(query);
-      setFamilies(result);
+      const [result, tests] = await Promise.all([listSystemAdminFamilies(query), listSystemAdminTestFamilies()]);
+      const testIds = new Set(tests.map((test) => test.familyId));
+      setFamilies(result.filter((family) => !testIds.has(family.familyId)));
+      setTestFamilies(tests);
     } catch (e) {
       setListError(friendlyErrorMessage(e));
     } finally {
@@ -230,8 +248,47 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
     }
   }, []);
 
+  const createTestFamily = async () => {
+    if (testFamilyBusyRef.current) return;
+    if (!testFamilyName.trim()) { setTestFamilyError('צריך לתת שם למשפחת הבדיקה'); return; }
+    testFamilyBusyRef.current = true;
+    setTestFamilyBusy(true);
+    setTestFamilyError(null);
+    try {
+      const created = await createSystemAdminTestFamily(testFamilyName.trim());
+      await onTestFamilySelected?.(created.familyId);
+      onClose();
+    } catch (e) {
+      setTestFamilyError(friendlyErrorMessage(e, [], 'לא הצלחנו ליצור משפחת בדיקה. בדקו את החיבור ונסו שוב.'));
+    } finally {
+      testFamilyBusyRef.current = false;
+      setTestFamilyBusy(false);
+      void loadFamilies(search);
+    }
+  };
+
+  const deleteTestFamily = async (familyId: string) => {
+    if (testFamilyBusyRef.current) return;
+    testFamilyBusyRef.current = true;
+    setTestFamilyBusy(true);
+    setTestFamilyError(null);
+    try {
+      await deleteSystemAdminTestFamily(familyId);
+      await clearFamilySetupCompletion(familyId);
+      const progress = await readFamilySetupProgress();
+      if (progress?.familyId === familyId) await clearFamilySetupProgress();
+      setConfirmTestDeleteId(null);
+      await loadFamilies(search);
+    } catch (e) {
+      setTestFamilyError(friendlyErrorMessage(e, [], 'מחיקת משפחת הבדיקה נכשלה. הנתונים נשארו ללא שינוי.'));
+    } finally {
+      testFamilyBusyRef.current = false;
+      setTestFamilyBusy(false);
+    }
+  };
+
   useEffect(() => {
-    if (visible) {
+    if (visible && isSystemAdmin) {
       setSelectedFamilyId(null);
       setDetail(null);
       setEmailLogVisible(false);
@@ -247,7 +304,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
         // its own visible error state when opened.
       });
     }
-  }, [visible, loadFamilies]);
+  }, [visible, isSystemAdmin, loadFamilies]);
 
   const openAuditLog = async () => {
     setAuditFamilyId('all');
@@ -330,7 +387,7 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
   };
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible && isSystemAdmin} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
           <RtlText style={styles.title} accessibilityRole="header">🛡️ ניהול מערכת</RtlText>
@@ -708,6 +765,58 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                 <RtlText style={styles.healthLine}>כשלים/החזרות ביומן האימיילים האחרון: {overview.emailFailures}</RtlText>
               </View>
 
+              <View style={styles.testFamilyCard}>
+                <RtlText style={styles.sectionTitle}>בדיקת תהליך הצטרפות</RtlText>
+                <RtlText style={styles.cardLine}>הפעולה יוצרת סביבת בדיקה נפרדת ומעבירה אליה את המכשיר. אפשר לחזור למשפחה המקורית בכל רגע.</RtlText>
+                {!activeFamilyId ? <RtlText style={styles.familyMeta}>כדי לשמור על המשפחה הקיימת, צריך להיכנס תחילה לפרופיל משפחה.</RtlText> : null}
+                <TextInput
+                  value={testFamilyName}
+                  onChangeText={setTestFamilyName}
+                  placeholder="שם למשפחת הבדיקה"
+                  placeholderTextColor={colors.textSecondary}
+                  style={styles.searchInput}
+                  textAlign="right"
+                  accessibilityLabel="שם למשפחת בדיקה"
+                  maxLength={80}
+                />
+                <Button label={testFamilyBusy ? 'יוצרים…' : 'צור משפחת בדיקה'} onPress={() => void createTestFamily()} disabled={testFamilyBusy || !activeFamilyId} />
+                {testFamilyError ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{testFamilyError}</RtlText> : null}
+                <RtlText style={styles.sectionTitle}>משפחות בדיקה ({testFamilies.length})</RtlText>
+                {testFamilies.map((testFamily) => (
+                  <View key={testFamily.familyId} style={styles.testFamilyRow}>
+                    <View style={styles.familyTitleRow}>
+                      <RtlText style={styles.familyName}>{testFamily.familyName}</RtlText>
+                      <RtlText style={styles.testBadge}>בדיקה</RtlText>
+                    </View>
+                    <RtlText style={styles.familyMeta}>קוד: {testFamily.inviteCode}{testFamily.dogName ? ` · ${testFamily.dogName}` : ' · טרם הוגדר כלב'}</RtlText>
+                    <View style={styles.approvalActions}>
+                      {activeFamilyId === testFamily.familyId ? <RtlText style={styles.activeTestLabel}>משפחת הבדיקה פעילה במכשיר הזה</RtlText> : <Button label="המשך בדיקה" compact disabled={testFamilyBusy} onPress={async () => {
+                        if (testFamilyBusyRef.current) return;
+                        testFamilyBusyRef.current = true; setTestFamilyBusy(true); setTestFamilyError(null);
+                        try {
+                          await switchToSystemAdminTestFamily(testFamily.familyId);
+                          await onTestFamilySelected?.(testFamily.familyId);
+                          onClose();
+                        }
+                        catch (e) { setTestFamilyError(friendlyErrorMessage(e, [], 'לא הצלחנו לעבור למשפחת הבדיקה.')); }
+                        finally { testFamilyBusyRef.current = false; setTestFamilyBusy(false); }
+                      }} />}
+                      {activeFamilyId === testFamily.familyId ? null : confirmTestDeleteId === testFamily.familyId ? (
+                        <>
+                          <RtlText style={styles.deleteWarning}>מחיקה לצמיתות של המשפחה, הכלב, המשתמשים והטיולים. אי אפשר לשחזר.</RtlText>
+                          <Button label="אישור מחיקה" compact disabled={testFamilyBusy} onPress={() => void deleteTestFamily(testFamily.familyId)} />
+                          <Button label="ביטול" compact disabled={testFamilyBusy} onPress={() => setConfirmTestDeleteId(null)} />
+                        </>
+                      ) : (
+                        <Pressable onPress={() => setConfirmTestDeleteId(testFamily.familyId)} disabled={testFamilyBusy} accessibilityRole="button" accessibilityLabel={`מחיקת משפחת בדיקה ${testFamily.familyName}`}>
+                          <RtlText style={styles.deleteLink}>מחיקה</RtlText>
+                        </Pressable>
+                      )}
+                    </View>
+                  </View>
+                ))}
+              </View>
+
               <RtlText style={styles.sectionTitle}>משפחות ({families.length})</RtlText>
               {!listLoading && families.length === 0 ? <RtlText style={styles.cardLine}>לא נמצאו משפחות</RtlText> : null}
               {families.map((f) => (
@@ -825,6 +934,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  testFamilyCard: { backgroundColor: colors.surfaceMuted, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.sm },
+  testFamilyRow: { backgroundColor: colors.surface, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, padding: spacing.md, gap: spacing.xs },
+  testBadge: { ...typography.caption, fontSize: 11, fontWeight: '800', color: colors.primaryDark, backgroundColor: colors.surfaceMuted, borderRadius: radii.round, paddingHorizontal: spacing.sm, paddingVertical: 4 },
+  activeTestLabel: { ...typography.caption, color: colors.primaryDark, textAlign: 'right', fontWeight: '800', paddingVertical: spacing.sm },
+  deleteLink: { color: colors.statusOverdue, fontWeight: '800', paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
+  deleteWarning: { ...typography.caption, color: colors.statusOverdue, textAlign: 'right', flexBasis: '100%' },
   healthTitle: { ...typography.cardTitle, color: colors.textPrimary, textAlign: 'right' },
   healthLine: { ...typography.meta, color: colors.textSecondary, textAlign: 'right' },
   auditHint: { ...typography.meta, color: colors.textSecondary, textAlign: 'right', marginBottom: spacing.sm },

@@ -4,6 +4,9 @@ import {
   clearFamilySetupProgress,
   isFamilyCreationPending,
   markFamilyCreationPending,
+  isFamilySetupComplete,
+  markFamilySetupComplete,
+  clearFamilySetupCompletion,
   readFamilySetupProgress,
   saveFamilySetupProgress,
 } from '../familySetupProgress';
@@ -32,5 +35,13 @@ describe('resumable family setup progress', () => {
     await clearFamilySetupProgress();
     expect(await isFamilyCreationPending()).toBe(false);
     await expect(readFamilySetupProgress()).resolves.toBeNull();
+  });
+
+  it('keeps QA completion scoped to its family across app restarts and removes it when that QA family is deleted', async () => {
+    await markFamilySetupComplete('qa-family-1');
+    await expect(isFamilySetupComplete('qa-family-1')).resolves.toBe(true);
+    await expect(isFamilySetupComplete('family-original')).resolves.toBe(false);
+    await clearFamilySetupCompletion('qa-family-1');
+    await expect(isFamilySetupComplete('qa-family-1')).resolves.toBe(false);
   });
 });

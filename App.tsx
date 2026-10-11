@@ -15,15 +15,16 @@ import { requestNotificationPermissions, subscribeToWalkReminderResponses } from
 import { registerPushToken } from './src/lib/pushTokens';
 import { reconcileWebPushSubscription } from './src/lib/webPush';
 import { repository, setSyncQueueActorGetter } from './src/data';
-import { isSupabaseConfigured } from './src/lib/supabase';
+import { getCurrentFamilyIsQa, isSupabaseConfigured } from './src/lib/supabase';
 import { touchLastSeen } from './src/lib/requests';
 import { useRequestsStore } from './src/store/requestsStore';
 import { useScheduleStore, reconcileScheduleNotifications } from './src/store/scheduleStore';
 import { useFamilyStore } from './src/store/familyStore';
 import { WalkieMascot } from './src/components/WalkieMascot';
 import { FamilySetupWizard } from './src/screens/FamilySetupWizard';
-import { clearFamilySetupProgress, readFamilySetupProgress, type FamilySetupProgress } from './src/lib/familySetupProgress';
+import { beginFamilySetup, clearFamilySetupProgress, isFamilySetupComplete, markFamilySetupComplete, readFamilySetupProgress, type FamilySetupProgress } from './src/lib/familySetupProgress';
 import { getVerifiedAdminIdentity } from './src/lib/verifiedAdminOnboarding';
+import { exitSystemAdminTestFamily, getActiveSystemAdminTestFamily } from './src/lib/systemAdmin';
 
 // Reconciles local notifications against the currently loaded schedule store
 // state (A3's authoritative rule: notification content always comes from the
@@ -268,6 +269,9 @@ export default function App() {
   const [familySetupProgress, setFamilySetupProgress] = useState<FamilySetupProgress | null>(null);
   const [familySetupLoaded, setFamilySetupLoaded] = useState(false);
   const [familySetupOwnerMatches, setFamilySetupOwnerMatches] = useState(false);
+  const [isQaFamily, setIsQaFamily] = useState(false);
+  const [qaSessionLoaded, setQaSessionLoaded] = useState(false);
+  const [qaSwitchError, setQaSwitchError] = useState<string | null>(null);
   useEffect(() => {
     if (!hydrated) return;
     let mounted = true;
@@ -285,6 +289,7 @@ export default function App() {
     return () => { mounted = false; };
   }, [hydrated, setFamilyId]);
   const finishFamilySetup = async () => {
+    if (isQaFamily && familyId) await markFamilySetupComplete(familyId);
     await clearFamilySetupProgress();
     setFamilySetupProgress(null);
   };
@@ -316,10 +321,78 @@ export default function App() {
   const refreshSystemAdmin = useSystemAdminStore((s) => s.refresh);
   const systemAdminOpenRequestId = useSystemAdminStore((s) => s.openRequestId);
   const [systemAdminOpen, setSystemAdminOpen] = useState(false);
+  const selectTestFamily = async (selectedFamilyId: string) => {
+    const identity = await getVerifiedAdminIdentity();
+    const complete = await isFamilySetupComplete(selectedFamilyId);
+    const saved = await readFamilySetupProgress();
+    let progress: FamilySetupProgress | null = null;
+    if (!complete) {
+      progress = saved?.familyId === selectedFamilyId && saved?.ownerAuthUserId === identity.userId
+        ? saved
+        : await beginFamilySetup(selectedFamilyId, identity.userId);
+      setFamilySetupProgress(progress);
+      setFamilySetupOwnerMatches(true);
+    } else {
+      if (saved?.familyId === selectedFamilyId) await clearFamilySetupProgress();
+      setFamilySetupProgress(null);
+      setFamilySetupOwnerMatches(false);
+    }
+    setIsQaFamily(true);
+    setQaSwitchError(null);
+    await setFamilyId(selectedFamilyId);
+  };
+  const returnFromTestFamily = async () => {
+    setQaSwitchError(null);
+    try {
+      const restored = await exitSystemAdminTestFamily();
+      setIsQaFamily(false);
+      setFamilySetupProgress(null);
+      setFamilySetupOwnerMatches(false);
+      await setFamilyId(restored.id);
+    } catch (cause) {
+      setQaSwitchError(cause instanceof Error ? cause.message : 'לא הצלחנו לחזור למשפחה המקורית. נסו שוב.');
+    }
+  };
   const [showIosInstallPrompt, setShowIosInstallPrompt] = useState(false);
   useEffect(() => {
     if (hydrated) void refreshSystemAdmin();
   }, [hydrated, refreshSystemAdmin]);
+
+  useEffect(() => {
+    if (!hydrated || !isSystemAdmin) { if (hydrated) { setIsQaFamily(false); setQaSessionLoaded(true); } return; }
+    let mounted = true;
+    setQaSessionLoaded(false);
+    void (async () => {
+      try {
+        const isQa = await getCurrentFamilyIsQa();
+        if (!mounted) return;
+        setIsQaFamily(isQa);
+        if (isQa) {
+          const active = await getActiveSystemAdminTestFamily();
+          if (active && useAuthStore.getState().familyId !== active.familyId) await setFamilyId(active.familyId);
+          const identity = await getVerifiedAdminIdentity();
+          const saved = await readFamilySetupProgress();
+          if (saved?.familyId === active?.familyId && saved?.ownerAuthUserId === identity.userId) {
+            setFamilySetupProgress(saved);
+            setFamilySetupOwnerMatches(true);
+          } else if (active && !(await isFamilySetupComplete(active.familyId))) {
+            const progress = await beginFamilySetup(active.familyId, identity.userId);
+            setFamilySetupProgress(progress);
+            setFamilySetupOwnerMatches(true);
+          } else if (active) {
+            if (saved?.familyId === active.familyId) await clearFamilySetupProgress();
+            setFamilySetupProgress(null);
+            setFamilySetupOwnerMatches(false);
+          }
+        }
+      } catch {
+        // The admin UI surfaces RPC failures when a test family operation is
+        // requested. A failed status probe must never switch family context.
+        if (mounted) setIsQaFamily(false);
+      } finally { if (mounted) setQaSessionLoaded(true); }
+    })();
+    return () => { mounted = false; };
+  }, [hydrated, isSystemAdmin, setFamilyId]);
 
   useEffect(() => {
     if (!hydrated || Platform.OS !== 'web' || typeof navigator === 'undefined' || typeof window === 'undefined') return;
@@ -436,7 +509,7 @@ export default function App() {
   // session restore resolves.
   return (
     <SafeAreaProvider>
-      {!hydrated || !familySetupLoaded ? (
+      {!hydrated || !familySetupLoaded || !qaSessionLoaded ? (
         <SafeAreaView style={styles.center}>
           <WalkieMascot state="runIn" size={150} accessibilityLabel="Walkie Doggy טוען את האפליקציה" testID="app-loading-mascot" />
           <RtlText style={styles.loadingText}>רק רגע, יוצאים לדרך…</RtlText>
@@ -476,7 +549,7 @@ export default function App() {
             </Pressable>
           ) : null}
           {shouldEnterSystemAdminDirectly ? (
-            <SystemAdminScreen visible onClose={() => undefined} />
+            <SystemAdminScreen visible onClose={() => undefined} onTestFamilySelected={selectTestFamily} />
           ) : needsFamilyOnboarding ? (
             <FamilyOnboardingScreen onFamilyCreated={startFamilySetup} />
           ) : familySetupProgress?.ownerAuthUserId && familySetupOwnerMatches && familySetupProgress.familyId === familyId && familyRole === 'admin' ? (
@@ -487,7 +560,16 @@ export default function App() {
             <LoginScreen />
           )}
           {!shouldEnterSystemAdminDirectly ? (
-            <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} />
+            <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} onTestFamilySelected={selectTestFamily} />
+          ) : null}
+
+          {isSystemAdmin && isQaFamily && !systemObserverActive ? (
+            <>
+              <Pressable style={styles.qaReturnButton} onPress={() => void returnFromTestFamily()} accessibilityRole="button" accessibilityLabel="חזרה למשפחה המקורית">
+                <RtlText style={styles.qaReturnButtonText}>חזרה למשפחה המקורית</RtlText>
+              </Pressable>
+              {qaSwitchError ? <Pressable style={styles.qaError} onPress={() => void returnFromTestFamily()} accessibilityRole="button"><RtlText style={styles.qaErrorText}>{qaSwitchError} · נסו שוב</RtlText></Pressable> : null}
+            </>
           ) : null}
 
           {/* PRD §12 (profile-photo crop/zoom/pan) — web-only, no-op on
@@ -526,6 +608,10 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   systemAdminEntryText: { fontSize: 20 },
+  qaReturnButton: { position: 'absolute', top: 8, right: 12, zIndex: 900, elevation: 9, backgroundColor: colors.surface, borderColor: colors.primary, borderWidth: 1, borderRadius: 18, minHeight: 40, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' },
+  qaReturnButtonText: { color: colors.primaryDark, fontWeight: '800', fontSize: 13 },
+  qaError: { position: 'absolute', top: 54, right: 12, left: 12, zIndex: 901, backgroundColor: colors.surface, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.statusOverdue },
+  qaErrorText: { color: colors.statusOverdue, textAlign: 'center', fontWeight: '700' },
   installPromptBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: '#00000055', alignItems: 'center', justifyContent: 'center', padding: 24, zIndex: 1000 },
   installPromptCard: { width: '100%', maxWidth: 420, backgroundColor: colors.surface, borderRadius: 20, padding: 22, gap: 10 },
   installPromptTitle: { fontSize: 20, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
