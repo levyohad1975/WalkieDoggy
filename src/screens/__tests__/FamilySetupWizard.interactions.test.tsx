@@ -153,7 +153,6 @@ describe('FamilySetupWizard interactions', () => {
     const state = setup(3);
     await waitFor(() => expect(screen.getByLabelText('המשך להגדרת הטיולים')).toBeTruthy());
     state.signIn.mockRejectedValueOnce(new Error('pending sync from another profile on this device — connect to the internet and try again'));
-    state.signIn.mockRejectedValueOnce(new Error('pending sync from another profile on this device — connect to the internet and try again'));
     act(() => {
       useFamilyStore.setState({ users: [] });
       useAuthStore.setState({ currentUserId: null, isQaFamily: true });
