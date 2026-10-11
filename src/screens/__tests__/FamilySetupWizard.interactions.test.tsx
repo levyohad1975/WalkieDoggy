@@ -130,11 +130,11 @@ describe('FamilySetupWizard interactions', () => {
     const state = setup();
     await waitFor(() => expect(screen.getByLabelText('שם הכלב או הכלבה')).toBeTruthy());
     fireEvent.changeText(screen.getByLabelText('שם הכלב או הכלבה'), 'בוקי');
+    expect(screen.getByText('official-mascot')).toBeTruthy();
     await act(async () => { fireEvent.press(screen.getByLabelText('המשך לבני המשפחה')); });
     expect(state.saveDog).toHaveBeenCalledWith(expect.objectContaining({ name: 'בוקי' }));
     expect(state.onProgressChange).toHaveBeenLastCalledWith(expect.objectContaining({ step: 3 }));
     expect(screen.getByLabelText('הוספת בן או בת משפחה')).toBeTruthy();
-    expect(screen.getByText('official-mascot')).toBeTruthy();
   });
 
   it('persists dog sex in the profile and resumable setup draft, then restores it into the saved dog', async () => {
