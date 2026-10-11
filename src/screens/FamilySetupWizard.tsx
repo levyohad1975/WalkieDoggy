@@ -53,6 +53,7 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
   const updateUser = useFamilyStore((s) => s.updateUser);
   const selectDog = useFamilyStore((s) => s.selectDog);
   const currentUserId = useAuthStore((s) => s.currentUserId);
+  const authFamilyId = useAuthStore((s) => s.familyId);
   const familyRole = useAuthStore((s) => s.familyRole);
   const signIn = useAuthStore((s) => s.signIn);
   const rules = useScheduleStore((s) => s.rules);
@@ -91,6 +92,19 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
   const activeUsers = useMemo(() => users.filter((user) => user.familyId === familyId && !user.removedAt), [users, familyId]);
   const dogRules = useMemo(() => rules.filter((rule) => rule.dogId === dog?.id && rule.active).sort((a, b) => a.time.localeCompare(b.time)), [rules, dog?.id]);
   const usersById = useMemo(() => Object.fromEntries(activeUsers.map((user) => [user.id, user])), [activeUsers]);
+  const scheduleFamilyContextValid = authFamilyId === familyId && family?.id === familyId;
+  const scheduleDogAvailable = Boolean(dog && dog.familyId === familyId);
+  const scheduleAssigneeEligible = activeUsers.some((user) => user.id === responsibleUserId);
+  const scheduleDisabledReasons = [
+    (initializing || familyLoading) ? 'נתוני המשפחה עדיין נטענים' : null,
+    busy ? 'שמירה מתבצעת' : null,
+    !scheduleFamilyContextValid ? 'המשפחה במסך אינה המשפחה הפעילה שאושרה בשרת' : null,
+    !scheduleDogAvailable ? 'לא נטען כלב פעיל במשפחה הזאת' : null,
+    activeUsers.length === 0 ? 'לא נטען חבר משפחה פעיל' : null,
+    !scheduleAssigneeEligible ? 'לא נבחר אחראי פעיל במשפחה הזאת' : null,
+  ].filter(Boolean) as string[];
+  const showScheduleDiagnostics = Platform.OS === 'web' && typeof window !== 'undefined'
+    && window.location.hostname.toLowerCase() === 'staging.walkielink.co.il';
 
   // Restoring an onboarding draft after a System Admin family switch may not
   // restore the prior device claim. Keep the saved manager when present; for
@@ -317,7 +331,8 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
   };
 
   const addRuleAt = async (time: string, label = '') => {
-    if (!dog || !responsibleUserId) throw new Error('צריך לבחור כלב/ה ואחראי/ת לפני שמירת הטיול.');
+    if (!scheduleFamilyContextValid) throw new Error('המשפחה במסך אינה המשפחה הפעילה שאושרה בשרת. רעננו את משפחת הבדיקה ונסו שוב.');
+    if (!scheduleDogAvailable || !dog || !scheduleAssigneeEligible) throw new Error('צריך לטעון כלב פעיל ולבחור אחראי/ת פעיל/ה במשפחה לפני שמירת הטיול.');
     const existing = useScheduleStore.getState().rules;
     const duplicate = existing.find((rule) => rule.active && rule.dogId === dog.id && rule.time === time && rule.daysOfWeek.length === ALL_DAYS.length && ALL_DAYS.every((day) => rule.daysOfWeek.includes(day)));
     if (duplicate) return;
@@ -497,6 +512,16 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
 
             {step === 4 ? (
               <>
+                {showScheduleDiagnostics ? <View accessibilityLabel="אבחון הקמת לוח זמנים ב-Staging" style={styles.scheduleDiagnostics}>
+                  <RtlText style={styles.scheduleDiagnosticsTitle}>אבחון Staging · לוח זמנים</RtlText>
+                  <RtlText style={styles.scheduleDiagnosticsLine}>משפחה פעילה תואמת: {scheduleFamilyContextValid ? 'כן' : 'לא'}</RtlText>
+                  <RtlText style={styles.scheduleDiagnosticsLine}>רשומת משפחה נטענה: {family?.id === familyId ? 'כן' : 'לא'}</RtlText>
+                  <RtlText style={styles.scheduleDiagnosticsLine}>כלב נטען למשפחה: {scheduleDogAvailable ? 'כן' : 'לא'}</RtlText>
+                  <RtlText style={styles.scheduleDiagnosticsLine}>חברים פעילים זכאים: {activeUsers.length}</RtlText>
+                  <RtlText style={styles.scheduleDiagnosticsLine}>אחראי נבחר וזכאי: {scheduleAssigneeEligible ? 'כן' : 'לא'}</RtlText>
+                  <RtlText style={styles.scheduleDiagnosticsLine}>טעינת משפחה/שלב: {familyLoading || initializing ? 'בתהליך' : 'הסתיימה'}</RtlText>
+                  <RtlText style={styles.scheduleDiagnosticsLine}>הסיבה לחסימה: {scheduleDisabledReasons.length ? scheduleDisabledReasons.join(' · ') : 'אין'}</RtlText>
+                </View> : null}
                 <RtlText style={styles.bodyCopy}>הוסיפו שעה לכל טיול קבוע. לכל שעה אפשר לבחור מי אחראי/ת; אפשר גם להמשיך בלי לוח זמנים.</RtlText>
                 <View style={styles.card}>
                   <RtlText style={styles.cardTitle}>טיולים בכל יום ({dogRules.length})</RtlText>
@@ -506,8 +531,8 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
                   <RtlText style={styles.label}>אחראי/ת</RtlText>
                   {activeUsers.length === 0 ? <RtlText style={styles.muted} accessibilityRole="alert">לא נמצא במשפחה פרופיל פעיל שאפשר לשייך לטיול. חזרו לשלב בני המשפחה ושמרו פרופיל מנהל, ואז נסו שוב.</RtlText> : null}
                   <View style={styles.memberChoiceRow}>{activeUsers.map((user) => <Pressable key={user.id} onPress={() => setResponsibleUserId(user.id)} style={[styles.memberChip, responsibleUserId === user.id && styles.memberChipActive]} accessibilityRole="button" accessibilityState={{ selected: responsibleUserId === user.id }}><RtlText style={[styles.memberChipText, responsibleUserId === user.id && styles.memberChipTextActive]}>{user.name}</RtlText></Pressable>)}</View>
-                  {editingRuleId ? <><Button label="שמירת עדכון הטיול" variant="secondary" disabled={busy || !responsibleUserId} loading={busy} onPress={() => void editScheduleRule()} /><Pressable onPress={() => setEditingRuleId(null)} style={styles.skipLink}><RtlText style={styles.skipText}>ביטול עריכה</RtlText></Pressable></> : <Button label="הוספת שעה ללוח" variant="secondary" disabled={busy || !dog || !responsibleUserId} loading={busy} onPress={() => void addCustomSchedule()} />}
-                  {dogRules.length === 0 ? <Button label="הוספת הצעה: בוקר, צהריים וערב" variant="secondary" disabled={busy || !dog || !responsibleUserId} onPress={() => void addSuggestedSchedule()} style={styles.suggestButton} /> : null}
+                  {editingRuleId ? <><Button label="שמירת עדכון הטיול" variant="secondary" disabled={busy || !responsibleUserId} loading={busy} onPress={() => void editScheduleRule()} /><Pressable onPress={() => setEditingRuleId(null)} style={styles.skipLink}><RtlText style={styles.skipText}>ביטול עריכה</RtlText></Pressable></> : <Button label="הוספת שעה ללוח" variant="secondary" disabled={busy || !scheduleFamilyContextValid || !scheduleDogAvailable || !scheduleAssigneeEligible} loading={busy} onPress={() => void addCustomSchedule()} />}
+                  {dogRules.length === 0 ? <Button label="הוספת הצעה: בוקר, צהריים וערב" variant="secondary" disabled={busy || !scheduleFamilyContextValid || !scheduleDogAvailable || !scheduleAssigneeEligible} onPress={() => void addSuggestedSchedule()} style={styles.suggestButton} /> : null}
                 </View>
               </>
             ) : null}
@@ -605,6 +630,9 @@ const styles = StyleSheet.create({
   memberChipText: { color: colors.textPrimary, fontWeight: '600' },
   memberChipTextActive: { color: colors.primaryDark, fontWeight: '800' },
   suggestButton: { marginTop: spacing.xs },
+  scheduleDiagnostics: { width: '100%', padding: spacing.md, borderRadius: radii.md, borderWidth: 1, borderColor: colors.statusOverdue, backgroundColor: colors.statusOverdueBg, gap: 4 },
+  scheduleDiagnosticsTitle: { ...typography.meta, color: colors.textPrimary, textAlign: 'right', fontWeight: '800' },
+  scheduleDiagnosticsLine: { ...typography.meta, color: colors.textPrimary, textAlign: 'right' },
   successBanner: { padding: spacing.md, borderRadius: radii.md, backgroundColor: colors.statusDoneBg },
   successText: { color: colors.statusDone, fontWeight: '800', textAlign: 'right' },
   readyHero: { backgroundColor: colors.surface, borderRadius: radii.lg, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.sm },
