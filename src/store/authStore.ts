@@ -863,7 +863,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const blockedByOtherUsersQueue = await repository.hasPendingForOtherUser?.(userId);
       if (blockedByOtherUsersQueue) {
         throw new Error(
-          'pending sync from another profile on this device — connect to the internet and try again'
+          'יש פעולות שממתינות לסנכרון מפרופיל אחר במכשיר. חזרו למשפחה המקורית כדי לסנכרן אותן, ואז נסו שוב. הנתונים נשמרו במכשיר ולא הועברו לפרופיל אחר.'
         );
       }
       if (mode === 'pin') {
