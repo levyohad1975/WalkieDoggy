@@ -6,7 +6,7 @@ const app = fs.readFileSync(path.join(root, 'App.tsx'), 'utf8');
 const screen = fs.readFileSync(path.join(root, 'src/screens/SystemAdminScreen.tsx'), 'utf8');
 const client = fs.readFileSync(path.join(root, 'src/lib/systemAdmin.ts'), 'utf8');
 const sql = fs.readFileSync(path.join(root, 'supabase/migrations/20261011104342_system_admin_test_families.sql'), 'utf8');
-const storageSql = fs.readFileSync(path.join(root, 'supabase/migrations/20261011105300_system_admin_test_family_storage_cleanup.sql'), 'utf8');
+const storageSql = fs.readFileSync(path.join(root, 'supabase/migrations/20261011104913_system_admin_test_family_storage_cleanup.sql'), 'utf8');
 
 describe('System Admin test-family isolation contract', () => {
   it('exposes the control only in the verified System Admin surface and starts the existing setup wizard', () => {
