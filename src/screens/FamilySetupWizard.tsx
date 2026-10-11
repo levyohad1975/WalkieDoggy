@@ -76,6 +76,7 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
   const [additionalDogName, setAdditionalDogName] = useState('');
   const [adminName, setAdminName] = useState(progress.adminName ?? '');
   const adminProfileSaveRef = useRef(false);
+  const adminAutoResumeAttemptedRef = useRef<string | null>(null);
   const [memberFormVisible, setMemberFormVisible] = useState(false);
   const [sharingVisible, setSharingVisible] = useState(false);
   const [inviteCode, setInviteCode] = useState<string | undefined>(undefined);
@@ -138,7 +139,8 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
   }, [family?.inviteCode]);
 
   useEffect(() => {
-    if (!adminProfileSaveRef.current && !currentUserId && progress.adminUserId && activeUsers.some((user) => user.id === progress.adminUserId)) {
+    if (!adminProfileSaveRef.current && !currentUserId && progress.adminUserId && adminAutoResumeAttemptedRef.current !== progress.adminUserId && activeUsers.some((user) => user.id === progress.adminUserId)) {
+      adminAutoResumeAttemptedRef.current = progress.adminUserId;
       void signIn(progress.adminUserId).catch((cause) => setError(cause instanceof Error ? cause.message : 'לא הצלחנו להתחבר לפרופיל המנהל.'));
     }
   }, [currentUserId, progress.adminUserId, activeUsers, signIn]);
@@ -266,6 +268,10 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
       if (!name) throw new Error('צריך להזין את השם שלכם כדי להמשיך.');
       if (familyRole !== 'admin') throw new Error('ההרשאה של מנהל המשפחה עדיין לא אומתה. נסו לטעון מחדש.');
       const userId = progress.adminUserId ?? generateId('user');
+      // A failed explicit claim must stay a user-controlled retry. Otherwise
+      // adding the profile row can immediately trigger the auto-resume effect
+      // and issue a second claim behind the visible error.
+      adminAutoResumeAttemptedRef.current = userId;
       const nextProgress = { ...progress, familyId, step: 3 as const, adminUserId: userId, adminName: name };
       // Save the stable profile id before the network write. A refresh after a
       // successful server insert can find and claim the same profile instead
