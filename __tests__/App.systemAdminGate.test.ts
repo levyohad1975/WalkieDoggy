@@ -41,6 +41,21 @@ describe('App.tsx — System Admin entry point sits OUTSIDE family/auth branchin
     expect(adminBlock).toMatch(/await setFamilyId\(selectedFamilyId\)/);
     expect(adminBlock).toMatch(/await setFamilyId\(restored\.id\)/);
   });
+
+  it('keeps a dormant test-family draft hidden until whoami confirms that exact family, while preserving the saved draft', () => {
+    const resumeStart = source.indexOf('void readFamilySetupProgress().then(async (progress) => {');
+    const resumeEnd = source.indexOf('}).catch(() => {', resumeStart);
+    const resumeBlock = source.slice(resumeStart, resumeEnd);
+    const serverCheck = resumeBlock.indexOf('if (!canResumeFamilySetupDraft(progress.familyId, serverContext?.familyId))');
+    const publishDraft = resumeBlock.indexOf('setFamilySetupProgress(progress);');
+
+    expect(serverCheck).toBeGreaterThan(-1);
+    expect(publishDraft).toBeGreaterThan(serverCheck);
+    expect(resumeBlock).toContain('setFamilySetupProgress(null)');
+    expect(resumeBlock).not.toContain('clearFamilySetupProgress');
+    expect(source).toContain('serverConfirmedFamilyId: familySetupServerConfirmedFamilyId');
+  });
+
   it('routes a standalone System Admin directly to the platform console before family onboarding', () => {
     expect(source).toMatch(/const shouldEnterSystemAdminDirectly =/);
     const directIdx = source.indexOf('{shouldEnterSystemAdminDirectly ? (');

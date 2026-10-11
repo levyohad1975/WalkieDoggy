@@ -24,7 +24,7 @@ import { WalkieMascot } from './src/components/WalkieMascot';
 import { FamilySetupWizard } from './src/screens/FamilySetupWizard';
 import { beginFamilySetup, clearFamilySetupProgress, isFamilySetupComplete, markFamilySetupComplete, readFamilySetupProgress, type FamilySetupProgress } from './src/lib/familySetupProgress';
 import { getVerifiedAdminIdentity } from './src/lib/verifiedAdminOnboarding';
-import { canResumeFamilySetupDraft } from './src/logic/familySetupResume';
+import { canResumeFamilySetupDraft, canShowFamilySetupWizard } from './src/logic/familySetupResume';
 import {
   createTestFamilyReentryDiagnosticId,
   exitSystemAdminTestFamily,
@@ -276,6 +276,7 @@ export default function App() {
   const [familySetupProgress, setFamilySetupProgress] = useState<FamilySetupProgress | null>(null);
   const [familySetupLoaded, setFamilySetupLoaded] = useState(false);
   const [familySetupOwnerMatches, setFamilySetupOwnerMatches] = useState(false);
+  const [familySetupServerConfirmedFamilyId, setFamilySetupServerConfirmedFamilyId] = useState<string | null>(null);
   const [isQaFamily, setIsQaFamily] = useState(false);
   const [qaSessionLoaded, setQaSessionLoaded] = useState(false);
   const [qaSwitchError, setQaSwitchError] = useState<string | null>(null);
@@ -283,32 +284,61 @@ export default function App() {
     if (!hydrated) return;
     let mounted = true;
     void readFamilySetupProgress().then(async (progress) => {
-      if (!progress || !mounted) return;
-      setFamilySetupProgress(progress);
-      if (!progress.ownerAuthUserId) return;
+      if (!mounted) return;
+      // Never expose an AsyncStorage draft while its server family is still
+      // unknown. Keep the draft on disk so a later authorized test-family
+      // entry can resume it, but clear only the in-memory wizard state.
+      setFamilySetupProgress(null);
+      setFamilySetupOwnerMatches(false);
+      setFamilySetupServerConfirmedFamilyId(null);
+      if (!progress?.ownerAuthUserId) return;
       const identity = await getVerifiedAdminIdentity();
       if (identity.userId !== progress.ownerAuthUserId || !mounted) return;
-      setFamilySetupOwnerMatches(true);
       // A saved onboarding draft does not authorize a family switch. Resume it
       // only when Supabase confirms this auth session is already mapped to the
       // draft's family. This preserves dormant QA drafts after an admin exits
       // back to the original family without making RLS-scoped reads go empty.
       const serverContext = isSupabaseConfigured ? await getWhoAmI() : null;
-      if (!canResumeFamilySetupDraft(progress.familyId, serverContext?.familyId)) return;
+      if (!mounted) return;
+      if (!canResumeFamilySetupDraft(progress.familyId, serverContext?.familyId)) {
+        // If a stale local family id survived a switch, reconcile it only
+        // from whoami()'s server-confirmed family. This is a local cache fix;
+        // it never changes family membership or claims a profile.
+        if (serverContext?.familyId && useAuthStore.getState().familyId !== serverContext.familyId) {
+          await setFamilyId(serverContext.familyId);
+        }
+        return;
+      }
       if (useAuthStore.getState().familyId !== progress.familyId) await setFamilyId(progress.familyId);
-    }).catch(() => undefined).finally(() => { if (mounted) setFamilySetupLoaded(true); });
+      if (!mounted) return;
+      setFamilySetupProgress(progress);
+      setFamilySetupOwnerMatches(true);
+      setFamilySetupServerConfirmedFamilyId(serverContext?.familyId ?? null);
+    }).catch(() => {
+      // A whoami timeout is not authorization to continue with stale local
+      // family state. The persisted draft remains available for a safe retry.
+      if (mounted) {
+        setFamilySetupProgress(null);
+        setFamilySetupOwnerMatches(false);
+        setFamilySetupServerConfirmedFamilyId(null);
+      }
+    }).finally(() => { if (mounted) setFamilySetupLoaded(true); });
     return () => { mounted = false; };
   }, [hydrated, setFamilyId]);
   const finishFamilySetup = async () => {
     if (isQaFamily && familyId) await markFamilySetupComplete(familyId);
     await clearFamilySetupProgress();
     setFamilySetupProgress(null);
+    setFamilySetupServerConfirmedFamilyId(null);
   };
   const startFamilySetup = async (createdFamilyId: string) => {
     const progress = await readFamilySetupProgress();
     setFamilySetupProgress(progress ?? { familyId: createdFamilyId, step: 2 });
     setFamilySetupOwnerMatches(Boolean(progress?.ownerAuthUserId));
     await setFamilyId(createdFamilyId);
+    // This callback only runs after the server-side family creation RPC has
+    // returned the created family id.
+    setFamilySetupServerConfirmedFamilyId(createdFamilyId);
   };
   // In Supabase (backend) mode, a device with no familyId yet hasn't
   // created/joined a family — show that onboarding before anything else.
@@ -366,10 +396,12 @@ export default function App() {
           : await beginFamilySetup(selectedFamilyId, identity.userId);
         setFamilySetupProgress(progress);
         setFamilySetupOwnerMatches(true);
+        setFamilySetupServerConfirmedFamilyId(selectedFamilyId);
       } else {
         if (saved?.familyId === selectedFamilyId) await clearFamilySetupProgress();
         setFamilySetupProgress(null);
         setFamilySetupOwnerMatches(false);
+        setFamilySetupServerConfirmedFamilyId(null);
       }
       recordTestFamilyReentryDiagnostic({ diagnosticId, familyId: selectedFamilyId, stage, outcome: 'succeeded' });
     } catch (error) {
@@ -391,6 +423,7 @@ export default function App() {
       setIsQaFamily(false);
       setFamilySetupProgress(null);
       setFamilySetupOwnerMatches(false);
+      setFamilySetupServerConfirmedFamilyId(null);
     } catch (cause) {
       setQaSwitchError(cause instanceof Error ? cause.message : 'לא הצלחנו לחזור למשפחה המקורית. נסו שוב.');
     } finally {
@@ -417,17 +450,20 @@ export default function App() {
           if (active && useAuthStore.getState().familyId !== active.familyId) await setFamilyId(active.familyId);
           const identity = await getVerifiedAdminIdentity();
           const saved = await readFamilySetupProgress();
-          if (saved?.familyId === active?.familyId && saved?.ownerAuthUserId === identity.userId) {
+          if (active && saved?.familyId === active.familyId && saved?.ownerAuthUserId === identity.userId) {
             setFamilySetupProgress(saved);
             setFamilySetupOwnerMatches(true);
+            setFamilySetupServerConfirmedFamilyId(active.familyId);
           } else if (active && !(await isFamilySetupComplete(active.familyId))) {
             const progress = await beginFamilySetup(active.familyId, identity.userId);
             setFamilySetupProgress(progress);
             setFamilySetupOwnerMatches(true);
+            setFamilySetupServerConfirmedFamilyId(active.familyId);
           } else if (active) {
             if (saved?.familyId === active.familyId) await clearFamilySetupProgress();
             setFamilySetupProgress(null);
             setFamilySetupOwnerMatches(false);
+            setFamilySetupServerConfirmedFamilyId(null);
           }
         }
       } catch {
@@ -597,8 +633,14 @@ export default function App() {
             <SystemAdminScreen visible onClose={() => undefined} onTestFamilySelected={selectTestFamily} />
           ) : needsFamilyOnboarding ? (
             <FamilyOnboardingScreen onFamilyCreated={startFamilySetup} />
-          ) : familySetupProgress?.ownerAuthUserId && familySetupOwnerMatches && familySetupProgress.familyId === familyId && familyRole === 'admin' ? (
-            <FamilySetupWizard familyId={familySetupProgress.familyId} progress={familySetupProgress} onProgressChange={setFamilySetupProgress} onComplete={finishFamilySetup} />
+          ) : canShowFamilySetupWizard({
+            progressFamilyId: familySetupProgress?.familyId,
+            localFamilyId: familyId,
+            serverConfirmedFamilyId: familySetupServerConfirmedFamilyId,
+            ownerMatches: familySetupOwnerMatches,
+            familyRole,
+          }) ? (
+            <FamilySetupWizard familyId={familySetupProgress!.familyId} progress={familySetupProgress!} onProgressChange={setFamilySetupProgress} onComplete={finishFamilySetup} />
           ) : currentUserId || systemObserverActive ? (
             <RootNavigator />
           ) : (
