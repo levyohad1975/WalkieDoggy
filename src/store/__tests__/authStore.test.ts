@@ -184,7 +184,22 @@ describe('authStore — familyRole refresh after a claim (persona-vs-authorizati
     process.env = ORIGINAL_ENV;
   });
 
-  function setupSupabaseMode(rpc: jest.Mock) {
+  it('blocks claiming the test-family manager while preserving another profile\'s queued changes and gives Hebrew recovery guidance', async () => {
+    jest.resetModules();
+    const rpc = rpcRouter({});
+    setupSupabaseMode(rpc, true);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { useAuthStore } = require('../authStore');
+
+    await expect(useAuthStore.getState().signIn('qa-manager-profile')).rejects.toThrow(
+      'יש פעולות שממתינות לסנכרון מפרופיל אחר במכשיר. חזרו למשפחה המקורית כדי לסנכרן אותן, ואז נסו שוב. הנתונים נשמרו במכשיר ולא הועברו לפרופיל אחר.'
+    );
+    expect(rpc).not.toHaveBeenCalledWith('claim_family_profile', expect.anything());
+    expect(useAuthStore.getState().currentUserId).not.toBe('qa-manager-profile');
+  });
+
+  function setupSupabaseMode(rpc: jest.Mock, pendingForOtherUser = false) {
     process.env = {
       ...ORIGINAL_ENV,
       EXPO_PUBLIC_SUPABASE_URL: 'https://example.supabase.co',
@@ -194,7 +209,7 @@ describe('authStore — familyRole refresh after a claim (persona-vs-authorizati
     jest.doMock('../../data', () => ({
       repository: {
         trySync: jest.fn().mockResolvedValue(undefined),
-        hasPendingForOtherUser: jest.fn().mockResolvedValue(false),
+        hasPendingForOtherUser: jest.fn().mockResolvedValue(pendingForOtherUser),
       },
     }));
   }
