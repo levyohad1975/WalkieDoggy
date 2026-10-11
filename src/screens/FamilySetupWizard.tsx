@@ -97,7 +97,7 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
       await action();
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : '';
-      const message = /[\u0590-\u05FF]/.test(detail) ? detail : 'לא הצלחנו לשמור את פרטי הכלב/ה. בדקו את החיבור ונסו שוב.';
+      const message = /[\u0590-\u05FF]/.test(detail) ? detail : step === 2 ? 'לא הצלחנו לשמור את פרטי הכלב/ה. בדקו את החיבור ונסו שוב.' : 'לא הצלחנו לשמור את השינוי. בדקו את החיבור ונסו שוב.';
       setError(message);
       setDogSetupRetry(step === 2 ? 'save' : null);
     } finally {
