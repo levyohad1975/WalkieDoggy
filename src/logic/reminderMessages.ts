@@ -128,11 +128,11 @@ export function buildWalkReminderMessage(input: ReminderMessageInput): ReminderM
   if (stage === 'T') {
     const variants: ReminderMessage[] = [
       {
-        title: '🐾 הגיע הזמן לטיול!',
+        title: '⏰ הגיע הזמן לטיול!',
         body: `${noun} מחכה לטיול עכשיו — ${responsibleName} — באחריות`,
       },
       {
-        title: `🐾 זמן לטייל עם ${dogName}`,
+        title: `⏰ זמן לטייל עם ${dogName}`,
         body: `השעה ${scheduledTime} הגיעה — ${responsibleName} — באחריות`,
       },
     ];

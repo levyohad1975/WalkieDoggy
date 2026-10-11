@@ -447,7 +447,7 @@ export default function App() {
           {showIosInstallPrompt ? (
             <Pressable style={styles.installPromptBackdrop} onPress={() => setShowIosInstallPrompt(false)}>
               <Pressable style={styles.installPromptCard} onPress={(event) => event.stopPropagation()}>
-                <RtlText style={styles.installPromptTitle}>🐾 Walkie Doggy במסך הבית</RtlText>
+                <RtlText style={styles.installPromptTitle}>Walkie Doggy במסך הבית</RtlText>
                 <RtlText style={styles.installPromptText}>פותחים את האפליקציה בלחיצה אחת!</RtlText>
                 <RtlText style={styles.installPromptStep}>① ב־Safari לחצו על שיתוף ⬆️</RtlText>
                 <RtlText style={styles.installPromptStep}>② בחרו ״הוספה למסך הבית״ ואז ״הוסף״</RtlText>

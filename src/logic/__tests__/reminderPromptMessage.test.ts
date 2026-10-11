@@ -10,7 +10,7 @@ describe('reminderPromptTemplate — in-app mascot copy for a tapped walk remind
 
   it('T-15 tapped at 18:25 for an 18:40 walk says it starts in 15 minutes, not that it is time to go', () => {
     const text = reminderPromptTemplate('T-15', '2026-10-08', '18:40', at('18:25'));
-    expect(text).toBe('{responsibleName}, הטיול עם {dogNoun} מתחיל בעוד 15 דקות 🐾');
+    expect(text).toBe('{responsibleName}, הטיול עם {dogNoun} מתחיל בעוד 15 דקות');
     expect(text).not.toContain('הגיע הזמן');
   });
 

@@ -76,7 +76,7 @@ export const DEMO_DOG: Dog = {
   familyId: DEMO_FAMILY.id,
   name: 'טופי',
   walksPerDay: 4,
-  notes: 'הכי טוב בעולם 🐾',
+  notes: 'הכי טוב בעולם',
 };
 
 const ALL_USER_IDS = DEMO_USERS.map((u) => u.id);

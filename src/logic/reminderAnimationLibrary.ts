@@ -10,7 +10,7 @@ export interface ReminderAnimationMoment {
 }
 
 export const REMINDER_ANIMATION_LIBRARY: ReminderAnimationMoment[] = [
-  { id: 'pre-jump', stage: 'pre-walk', animationId: 'happy-jump', title: 'מתחילים להתרגש', message: 'עוד מעט יוצאים לטיול! 🐾' },
+  { id: 'pre-jump', stage: 'pre-walk', animationId: 'happy-jump', title: 'מתחילים להתרגש', message: 'עוד מעט יוצאים לטיול!' },
   { id: 'pre-leash-ready', stage: 'pre-walk', animationId: 'leash-ready', title: 'הרצועה מוכנה', message: 'עוד מעט יוצאים — אני כבר מוכן עם הרצועה!' },
   { id: 'late15-playful-wait', stage: 'late-15', animationId: 'playful-wait', title: 'מחכה לך', message: 'אני כאן ומחכה — יוצאים לטיול?' },
   { id: 'due-trophy-lift', stage: 'due', animationId: 'trophy-lift', title: 'יוצאים לנצח', message: 'מוכנים לטיול? אני כבר מוכן!' },

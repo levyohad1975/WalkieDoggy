@@ -60,7 +60,7 @@ const SUBJECT_BY_ACTION_TYPE: Record<string, string> = {
 function templateFor(actionType: string, token: string): { subject: string; html: string } {
   const subject = SUBJECT_BY_ACTION_TYPE[actionType] ?? SUBJECT_BY_ACTION_TYPE.signup;
   const safeToken = escapeHtml(token);
-  const html = `<div dir="rtl"><h1>Walkie Doggy Link 🐾</h1><p>קוד האימות שלך:</p><p style="font-size:28px;font-weight:bold;letter-spacing:6px;">${safeToken}</p><p>הקוד תקף לזמן מוגבל. אם לא ביקשת אותו, אפשר להתעלם מהודעה זו בבטחה.</p></div>`;
+  const html = `<div dir="rtl"><h1>Walkie Doggy Link</h1><p>קוד האימות שלך:</p><p style="font-size:28px;font-weight:bold;letter-spacing:6px;">${safeToken}</p><p>הקוד תקף לזמן מוגבל. אם לא ביקשת אותו, אפשר להתעלם מהודעה זו בבטחה.</p></div>`;
   return { subject, html };
 }
 

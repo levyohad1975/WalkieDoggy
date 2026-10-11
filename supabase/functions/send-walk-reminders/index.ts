@@ -200,8 +200,8 @@ function buildWalkReminderMessage(input: ReminderMessageInput): { title: string;
   if (stage === 'T') {
     return pick(
       [
-        { title: '🐾 הגיע הזמן לטיול!', body: `${noun} מחכה לטיול עכשיו — ${responsibleName} — באחריות` },
-        { title: `🐾 זמן לטייל עם ${dogName}`, body: `השעה ${scheduledTime} הגיעה — ${responsibleName} — באחריות` },
+        { title: '⏰ הגיע הזמן לטיול!', body: `${noun} מחכה לטיול עכשיו — ${responsibleName} — באחריות` },
+        { title: `⏰ זמן לטייל עם ${dogName}`, body: `השעה ${scheduledTime} הגיעה — ${responsibleName} — באחריות` },
       ],
       seed
     );

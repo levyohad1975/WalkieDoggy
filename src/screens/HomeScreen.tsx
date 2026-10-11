@@ -932,7 +932,7 @@ export function HomeScreen() {
           testID="no-dog-mascot"
         />
         <RtlText style={styles.noDogTitle}>עדיין אין כלב במשפחה</RtlText>
-        <RtlText style={styles.noDogSubtitle}>בואו נכיר את החבר החדש שלנו 🐾 הוסיפו את הכלב הראשון כדי להתחיל לטייל עם Walkie Doggy</RtlText>
+        <RtlText style={styles.noDogSubtitle}>בואו נכיר את החבר החדש שלנו. הוסיפו את הכלב הראשון כדי להתחיל לטייל עם Walkie Doggy</RtlText>
         <Button label="הוספת כלב" onPress={() => navigation.navigate('Settings')} style={styles.addFirstDogButton} />
       </SafeAreaView>
     );
@@ -1323,7 +1323,7 @@ export function HomeScreen() {
           <Pressable style={styles.dashboardTimeline} onPress={() => navigation.navigate('Schedule')} accessibilityRole="button" accessibilityLabel="פתיחת המשך הטיולים של היום בלוח הזמנים">
           {dashboardTimelineWalks.length === 1 ? (
             <View style={styles.dashboardSingleUpcoming}>
-              <Avatar emoji={usersById[dashboardTimelineWalks[0].responsibleUserId]?.avatar ?? '🐾'} color={usersById[dashboardTimelineWalks[0].responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[dashboardTimelineWalks[0].responsibleUserId]?.photoUrl} size={34} />
+              <Avatar emoji={usersById[dashboardTimelineWalks[0].responsibleUserId]?.avatar ?? '👤'} color={usersById[dashboardTimelineWalks[0].responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[dashboardTimelineWalks[0].responsibleUserId]?.photoUrl} size={34} />
               <View style={styles.dashboardSingleUpcomingText}>
                 <RtlText style={styles.dashboardSingleUpcomingTime}>{dashboardTimelineWalks[0].scheduledTime}</RtlText>
                 <RtlText style={styles.dashboardSingleUpcomingName}>{usersById[dashboardTimelineWalks[0].responsibleUserId]?.name ?? 'בן משפחה'}</RtlText>
@@ -1335,7 +1335,7 @@ export function HomeScreen() {
               <View style={styles.dashboardTimelinePeople}>
                 {dashboardTimelineWalks.map((walk) => (
                   <View key={walk.id} style={[styles.dashboardTimelineStop, walk.status === 'done' && styles.dashboardTimelineStopDone, walk.status === 'skipped' && styles.dashboardTimelineStopSkipped, walk.status === 'in_progress' && styles.dashboardTimelineStopActive]}>
-                    <Avatar emoji={usersById[walk.responsibleUserId]?.avatar ?? '🐾'} color={usersById[walk.responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[walk.responsibleUserId]?.photoUrl} size={22} />
+                    <Avatar emoji={usersById[walk.responsibleUserId]?.avatar ?? '👤'} color={usersById[walk.responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[walk.responsibleUserId]?.photoUrl} size={22} />
                   </View>
                 ))}
               </View>

@@ -14,7 +14,7 @@ import type { NotificationKind } from '../types';
  * ({responsibleName}, {dogNoun}); every verb here is identical for a male
  * and a female dog, so no gendered variants are needed.
  */
-export const REMINDER_PROMPT_DUE_TEMPLATE = '{responsibleName}, הגיע הזמן לטייל עם {dogNoun} 🐾';
+export const REMINDER_PROMPT_DUE_TEMPLATE = '{responsibleName}, הגיע הזמן לטייל עם {dogNoun}';
 
 function minutesPhrase(minutes: number): string {
   return minutes === 1 ? 'בעוד דקה' : `בעוד ${minutes} דקות`;
@@ -39,13 +39,13 @@ export function reminderPromptTemplate(
   if (kind === 'T-15') {
     const minutes = minutesUntilWalk(walkDate, scheduledTime, now);
     // Unparseable time: trust the stage itself rather than guess.
-    if (minutes === null) return '{responsibleName}, הטיול עם {dogNoun} מתחיל בעוד 15 דקות 🐾';
+    if (minutes === null) return '{responsibleName}, הטיול עם {dogNoun} מתחיל בעוד 15 דקות';
     // A T-15 notification tapped late (after the walk's start time) is a
     // "due" moment by then — never "starts in 15 minutes".
     if (minutes <= 0) return REMINDER_PROMPT_DUE_TEMPLATE;
-    return `{responsibleName}, הטיול עם {dogNoun} מתחיל ${minutesPhrase(minutes)} 🐾`;
+    return `{responsibleName}, הטיול עם {dogNoun} מתחיל ${minutesPhrase(minutes)}`;
   }
   if (kind === 'T') return REMINDER_PROMPT_DUE_TEMPLATE;
-  if (kind === 'T+15') return '{responsibleName}, {dogNoun} עדיין מחכה לטיול 🐾';
+  if (kind === 'T+15') return '{responsibleName}, {dogNoun} עדיין מחכה לטיול';
   return '{responsibleName}, הטיול עם {dogNoun} מחכה כבר חצי שעה';
 }

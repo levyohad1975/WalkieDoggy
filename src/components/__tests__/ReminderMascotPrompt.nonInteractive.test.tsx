@@ -35,7 +35,7 @@ function renderPrompt(props: Partial<React.ComponentProps<typeof ReminderMascotP
     <SafeAreaProvider initialMetrics={metrics}>
       <View style={{ flex: 1 }}>
         {underlay}
-        <ReminderMascotPrompt visible message="אוהד, הטיול עם הכלב רקסי מתחיל בעוד 15 דקות 🐾" stage="pre-walk" onDismiss={onDismiss} {...props} />
+        <ReminderMascotPrompt visible message="אוהד, הטיול עם הכלב רקסי מתחיל בעוד 15 דקות" stage="pre-walk" onDismiss={onDismiss} {...props} />
       </View>
     </SafeAreaProvider>
   );
@@ -118,7 +118,7 @@ describe('ReminderMascotPrompt — non-modal, non-interactive overlay', () => {
     mockAccessibility();
     const { getByText, getByTestId } = renderPrompt();
     await flush();
-    expect(getByText('אוהד, הטיול עם הכלב רקסי מתחיל בעוד 15 דקות 🐾')).toBeTruthy();
+    expect(getByText('אוהד, הטיול עם הכלב רקסי מתחיל בעוד 15 דקות')).toBeTruthy();
     expect(getByTestId('reminder-mascot-animation')).toBeTruthy();
     const alerts = getByTestId('reminder-mascot-overlay').findAll(
       (node: { props: Record<string, any> }) => node.props.accessibilityRole === 'alert' && node.props.accessibilityLiveRegion === 'polite'

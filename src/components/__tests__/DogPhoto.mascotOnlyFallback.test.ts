@@ -5,7 +5,7 @@ describe('DogPhoto identity rule', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../DogPhoto.tsx'), 'utf8');
 
   it('keeps generic dog emoji and retired dog-art files out of production UI source', () => {
-    const root = path.resolve(__dirname, '../..');
+    const repoRoot = path.resolve(__dirname, '../../..');
     const files: string[] = [];
     const visit = (directory: string) => {
       for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
@@ -17,11 +17,14 @@ describe('DogPhoto identity rule', () => {
         }
       }
     };
-    visit(root);
+    visit(path.join(repoRoot, 'src'));
+    visit(path.join(repoRoot, 'supabase', 'functions'));
+    files.push(path.join(repoRoot, 'App.tsx'));
     const productionSource = files.map((file) => fs.readFileSync(file, 'utf8')).join('\n');
 
-    expect(productionSource).not.toMatch(/🐶|🐕|🦮|🐩/u);
+    expect(productionSource).not.toMatch(/🐶|🐕|🦮|🐩|🐾|🦴/u);
     expect(productionSource).not.toMatch(/walkie-guest-celebration\.webp|onboarding-welcome-(?:final|wink)\.png/u);
+    expect(fs.readFileSync(path.join(repoRoot, 'supabase', 'seed.sql'), 'utf8')).not.toMatch(/🐶|🐕|🦮|🐩|🐾|🦴/u);
   });
 
   it('uses a family photo when available and only the official WalkieMascot otherwise', () => {

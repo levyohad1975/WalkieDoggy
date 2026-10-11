@@ -36,7 +36,7 @@ export const FAMILY_WALK_MILESTONES = [10, 25, 50] as const;
 export const FAIR_SWAP_TARGET = 3;
 
 export const ACHIEVEMENT_CATALOG: AchievementDefinition[] = [
-  { key: 'family_first_walk', scope: 'family', title: 'הטיול הראשון', description: 'השלמתם את הטיול הראשון של המשפחה!', icon: '🐾', celebrationId: 'trophy-teaser' },
+  { key: 'family_first_walk', scope: 'family', title: 'הטיול הראשון', description: 'השלמתם את הטיול הראשון של המשפחה!', icon: '🏆', celebrationId: 'trophy-teaser' },
   { key: 'family_walks_10', scope: 'family', title: '10 טיולים', description: '10 טיולים משפחתיים הושלמו.', icon: '🏆', celebrationId: 'trophy-teaser' },
   { key: 'family_walks_25', scope: 'family', title: '25 טיולים', description: '25 טיולים משפחתיים הושלמו.', icon: '🏆', celebrationId: 'trophy-teaser' },
   { key: 'family_walks_50', scope: 'family', title: '50 טיולים', description: '50 טיולים משפחתיים הושלמו.', icon: '🏆', celebrationId: 'trophy-teaser' },

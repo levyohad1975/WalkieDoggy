@@ -562,7 +562,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
           <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
             <View style={[styles.formHero, isDesktop && styles.formHeroDesktop]}>
               <WalkieMascot state="excited" size={86} />
-              <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>בואו נקים למשפחה שלכם בית חדש 🐾</RtlText></View>
+              <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>בואו נקים למשפחה שלכם בית חדש</RtlText></View>
             </View>
             <View style={styles.creationProgress} accessibilityLabel="שלב 1 מתוך 5">
               {[1, 2, 3, 4, 5].map((step) => <View key={step} style={[styles.creationProgressSegment, step === 1 ? styles.creationProgressCurrent : null]} />)}
@@ -641,7 +641,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
 
               {verifiedAdminEmail ? (
                 <>
-                  <RtlText style={styles.stepHint}>מעולה! עכשיו רק נותנים למשפחה שם 🐾</RtlText>
+                  <RtlText style={styles.stepHint}>מעולה! עכשיו רק נותנים למשפחה שם</RtlText>
                   <RtlText style={styles.label}>שם המשפחה</RtlText>
                   <TextInput
                     value={familyName}
@@ -806,7 +806,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
         <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
           <View style={[styles.formHero, isDesktop && styles.formHeroDesktop]}>
             <WalkieMascot state="excited" size={86} />
-            <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>קיבלתם קוד? בואו נמצא את המשפחה 🐾</RtlText></View>
+            <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>קיבלתם קוד? בואו נמצא את המשפחה</RtlText></View>
           </View>
           <RtlText style={[styles.title, styles.joinTitle, isDesktop && styles.titleDesktop]} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit>הצטרפות למשפחה קיימת</RtlText>
           <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>הקלידו את קוד ההזמנה שקיבלתם מבן/בת המשפחה</RtlText>
