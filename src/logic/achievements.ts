@@ -41,7 +41,7 @@ export const ACHIEVEMENT_CATALOG: AchievementDefinition[] = [
   { key: 'family_walks_25', scope: 'family', title: '25 טיולים', description: '25 טיולים משפחתיים הושלמו.', icon: '🏆', celebrationId: 'trophy-teaser' },
   { key: 'family_walks_50', scope: 'family', title: '50 טיולים', description: '50 טיולים משפחתיים הושלמו.', icon: '🏆', celebrationId: 'trophy-teaser' },
   { key: 'family_perfect_month', scope: 'family', title: 'חודש מושלם', description: `כל הטיולים ב-30 הימים האחרונים בוצעו, בלי אף אחד שהוחמץ (מתוך לפחות ${PERFECT_MONTH_MIN_RESOLVED}).`, icon: '🌟', celebrationId: 'trophy-teaser' },
-  { key: 'personal_first_walk', scope: 'personal', title: 'הטיול הראשון שלך', description: 'השלמת את הטיול הראשון שלך!', icon: '🐕', celebrationId: 'trophy-teaser' },
+  { key: 'personal_first_walk', scope: 'personal', title: 'הטיול הראשון שלך', description: 'השלמת את הטיול הראשון שלך!', icon: '🏆', celebrationId: 'trophy-teaser' },
   { key: 'personal_long_walk', scope: 'personal', title: 'טיול ארוך', description: `השלמת טיול של ${LONG_WALK_MINUTES} דקות ומעלה.`, icon: '⏱️', celebrationId: 'long-walk' },
   { key: 'personal_family_helper', scope: 'personal', title: 'עוזר/ת משפחתי/ת', description: `עזרת בטיול שלא היה תורך ${FAMILY_HELPER_TARGET} פעמים.`, icon: '🤝', celebrationId: 'trophy-teaser' },
   { key: 'personal_on_time_streak', scope: 'personal', title: 'תמיד בזמן', description: `${ON_TIME_STREAK_TARGET} טיולים ברצף בזמן.`, icon: '⏰', celebrationId: 'trophy-teaser' },

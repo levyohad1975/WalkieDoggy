@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Image, ImageBackground, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
@@ -21,6 +21,7 @@ import { friendlyErrorMessage } from '../lib/errorMessages';
 import { Avatar } from '../components/Avatar';
 import { DogPhoto } from '../components/DogPhoto';
 import { WalkieMascot } from '../components/WalkieMascot';
+import { beginFamilySetup, getFamilyCreationOwnerId, markFamilyCreationPending } from '../lib/familySetupProgress';
 import type { FamilyLookupResult } from '../types';
 
 type Mode = 'choose' | 'pwaChoice' | 'recover' | 'create' | 'join' | 'redeem';
@@ -37,27 +38,10 @@ type Mode = 'choose' | 'pwaChoice' | 'recover' | 'create' | 'join' | 'redeem';
  * new family) and "pick who you are" (an existing family being joined) with
  * no changes needed here.
  */
-// True width/height ratio of assets/onboarding-welcome-final.png and
-// -wink.png (941x1671 px). Sizing the hero to this exact ratio — rather than
-// leaning on resizeMode alone inside a mismatched box — guarantees the full
-// composition (badges, speech bubble, both CTA buttons) is always visible
-// with no cropping, and confines any letterbox space to outside the image's
-// own bounds so it can be filled with the brand cream background instead of
-// the flat dark teal that read as a "green screen".
-const ONBOARDING_HERO_ASPECT = 941 / 1671;
-
-export function FamilyOnboardingScreen() {
-  const { width, height } = useWindowDimensions();
+export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: (familyId: string) => Promise<void> | void }) {
+  const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
   const setFamilyId = useAuthStore((s) => s.setFamilyId);
-  // Mobile keeps the approved full-screen artwork. Desktop must not render
-  // the mobile composition as a giant phone in the middle of the browser:
-  // use the same artwork as a wide, edge-to-edge cover surface instead.
-  const heroMaxWidth = isDesktop ? width : width;
-  const heroHeightIfWidthConstrained = heroMaxWidth / ONBOARDING_HERO_ASPECT;
-  const isWidthConstrained = !isDesktop && heroHeightIfWidthConstrained <= height;
-  const heroHeight = isDesktop ? height : isWidthConstrained ? heroHeightIfWidthConstrained : height;
-  const heroWidth = isDesktop ? width : isWidthConstrained ? heroMaxWidth : Math.min(heroHeight * ONBOARDING_HERO_ASPECT, heroMaxWidth);
   // Round 4 — set only when a redemption already succeeded server-side but
   // this device couldn't yet confirm it via whoami() (see authStore.ts's
   // completeInviteRedemption/restoreSession doc comments). Checked on mount
@@ -119,47 +103,11 @@ export function FamilyOnboardingScreen() {
   const [mode, setMode] = useState<Mode>(
     initialInviteToken ? 'redeem' : initialJoinCode ? 'join' : isInstalledWebApp ? 'pwaChoice' : 'choose'
   );
-  const [showWelcomeWink, setShowWelcomeWink] = useState(false);
-  // Same fail-safe-static convention as WalkieMascot/MascotFrameAnimation:
-  // default true (no animation) until the OS setting is confirmed, so a
-  // Reduced Motion device never sees even one wink before this resolves.
-  const [reducedMotion, setReducedMotion] = useState(true);
-
-  useEffect(() => {
-    let mounted = true;
-    AccessibilityInfo.isReduceMotionEnabled()
-      .then((enabled) => {
-        if (mounted) setReducedMotion(!!enabled);
-      })
-      .catch(() => {
-        if (mounted) setReducedMotion(false);
-      });
-    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', (enabled: boolean) =>
-      setReducedMotion(!!enabled)
-    );
-    return () => {
-      mounted = false;
-      subscription?.remove?.();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (mode !== 'choose' || reducedMotion) return;
-    let winkTimer: ReturnType<typeof setTimeout> | undefined;
-    const interval = setInterval(() => {
-      setShowWelcomeWink(true);
-      winkTimer = setTimeout(() => setShowWelcomeWink(false), 320);
-    }, 4200);
-    return () => {
-      clearInterval(interval);
-      if (winkTimer) clearTimeout(winkTimer);
-    };
-  }, [mode, reducedMotion]);
-
   // --- create ---
   const [familyName, setFamilyName] = useState('');
   const [dogName, setDogName] = useState('');
   const [creating, setCreating] = useState(false);
+  const creatingRef = useRef(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [adminEmail, setAdminEmail] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
@@ -184,11 +132,18 @@ export function FamilyOnboardingScreen() {
   // anonymous session, or a device that never tried creating a family) --
   // get_my_family_onboarding_status() simply returns no row.
   useEffect(() => {
-    getMyFamilyOnboardingStatus()
-      .then((status) => {
+    Promise.all([getMyFamilyOnboardingStatus(), getFamilyCreationOwnerId()])
+      .then(async ([status, creationOwnerId]) => {
         if (!status) return;
         if (status.approvalStatus === 'active') {
-          setFamilyId(status.familyId);
+          if (creationOwnerId && onFamilyCreated) {
+            const identity = await getVerifiedAdminIdentity();
+            if (identity.userId === creationOwnerId) {
+              await beginFamilySetup(status.familyId, identity.userId);
+              await onFamilyCreated(status.familyId);
+            } else await setFamilyId(status.familyId);
+          }
+          else setFamilyId(status.familyId);
         } else if (status.approvalStatus === 'pending') {
           setMode('create');
           setPendingApprovalFamilyName(status.familyName);
@@ -257,7 +212,8 @@ export function FamilyOnboardingScreen() {
   };
 
   const submitCreate = async () => {
-    if (!familyName.trim() || !verifiedAdminEmail) return;
+    if (!familyName.trim() || !verifiedAdminEmail || creatingRef.current) return;
+    creatingRef.current = true;
     setCreating(true);
     setCreateError(null);
     try {
@@ -265,15 +221,26 @@ export function FamilyOnboardingScreen() {
       if (identity.email !== verifiedAdminEmail) {
         throw new Error('יש לאמת מחדש את כתובת הדוא״ל לפני יצירת המשפחה');
       }
+      // Write an intent marker before the network request. The server action
+      // is idempotent for this verified identity; after a refresh we can
+      // distinguish this device's interrupted creation from an existing
+      // family/member login and resume setup without creating a duplicate.
+      await markFamilyCreationPending(identity.userId);
       const family = await createVerifiedFamily(familyName.trim(), dogName.trim() || undefined);
       if (family.approvalStatus === 'pending') {
         setPendingApprovalFamilyName(family.name);
         return;
       }
-      await setFamilyId(family.id);
+      if (onFamilyCreated) {
+        await beginFamilySetup(family.id, identity.userId);
+        await onFamilyCreated(family.id);
+      } else {
+        await setFamilyId(family.id);
+      }
     } catch (e) {
       setCreateError(friendlyErrorMessage(e));
     } finally {
+      creatingRef.current = false;
       setCreating(false);
     }
   };
@@ -549,40 +516,16 @@ export function FamilyOnboardingScreen() {
 
   if (mode === 'choose') {
     return (
-      <View style={styles.welcomeContainer}>
-        <ImageBackground
-          source={require("../../assets/onboarding-welcome-final.png")}
-          style={[
-            styles.referenceHero,
-            isDesktop && styles.referenceHeroDesktop,
-            { width: heroWidth, height: heroHeight },
-          ]}
-          imageStyle={styles.referenceHeroImage}
-          resizeMode="contain"
-          accessibilityLabel="מסך הפתיחה של Walkie Doggy"
-        >
-          {showWelcomeWink ? (
-            <Image
-              source={require("../../assets/onboarding-welcome-wink.png")}
-              style={styles.winkFrame}
-              resizeMode="cover"
-              accessibilityElementsHidden
-            />
-          ) : null}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="יצירת משפחה חדשה"
-            onPress={() => setMode('create')}
-            style={[styles.createHotspot, isDesktop && styles.createHotspotDesktop]}
-          />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="הצטרפות למשפחה קיימת"
-            onPress={() => setMode('join')}
-            style={[styles.joinHotspot, isDesktop && styles.joinHotspotDesktop]}
-          />
-        </ImageBackground>
-      </View>
+      <SafeAreaView style={styles.welcomeContainer}>
+        <View style={[styles.welcomeCard, isDesktop && styles.welcomeCardDesktop]}>
+          <WalkieMascot state="ready" size={isDesktop ? 184 : 150} accessibilityLabel="הקמע הרשמי של Walkie Doggy" />
+          <RtlText style={styles.welcomeBrand}>Walkie Doggy</RtlText>
+          <RtlText style={styles.welcomeTitle} accessibilityRole="header">מטיילים יחד, כמשפחה</RtlText>
+          <RtlText style={styles.welcomeCopy}>יוצרים בית משותף לכלבים, לבני המשפחה ולטיולים היומיים.</RtlText>
+          <Button label="יצירת משפחה חדשה" onPress={() => setMode('create')} style={styles.welcomeButton} />
+          <Button label="הצטרפות למשפחה קיימת" variant="secondary" onPress={() => setMode('join')} style={styles.welcomeButton} />
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -621,7 +564,11 @@ export function FamilyOnboardingScreen() {
               <WalkieMascot state="excited" size={86} />
               <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>בואו נקים למשפחה שלכם בית חדש 🐾</RtlText></View>
             </View>
-            <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">יצירת משפחה חדשה</RtlText>
+            <View style={styles.creationProgress} accessibilityLabel="שלב 1 מתוך 5">
+              {[1, 2, 3, 4, 5].map((step) => <View key={step} style={[styles.creationProgressSegment, step === 1 ? styles.creationProgressCurrent : null]} />)}
+            </View>
+            <RtlText style={styles.creationStepText}>שלב 1 מתוך 5</RtlText>
+            <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">בואו נקים את המשפחה שלכם</RtlText>
             <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>כמה פרטים קצרים ומתחילים לטייל יחד</RtlText>
 
             <View style={[styles.form, isDesktop && styles.formDesktop]}>
@@ -710,7 +657,7 @@ export function FamilyOnboardingScreen() {
                   <TextInput
                     value={dogName}
                     onChangeText={setDogName}
-                    placeholder="אפשר להוסיף גם אחר כך בהגדרות"
+                    placeholder="אפשר להוסיף בשלב הבא"
                     placeholderTextColor={colors.textSecondary}
                     style={styles.input}
                     textAlign="right"
@@ -929,22 +876,13 @@ export function FamilyOnboardingScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, overflow: 'hidden' },
-  // width/height are set per-render to the artwork's exact aspect ratio (see
-  // ONBOARDING_HERO_ASPECT), so any leftover space is real letterboxing
-  // outside the image bounds, not a mismatched-container crop. Centering it
-  // here fills that leftover space with the brand cream background instead
-  // of the previous flat dark teal.
-  welcomeContainer: { flex: 1, backgroundColor: colors.background, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
-  winkFrame: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%' },
-  createHotspot: { position: 'absolute', left: '12%', right: '12%', top: '72%', height: '7.5%', zIndex: 2 },
-  joinHotspot: { position: 'absolute', left: '12%', right: '12%', top: '80%', height: '7.5%', zIndex: 2 },
-  // Desktop uses the artwork as a wide cover. Keep the two onboarding CTAs
-  // in the lower centre where the approved composition places them.
-  createHotspotDesktop: { left: '35%', right: '35%', top: '72%' },
-  joinHotspotDesktop: { left: '35%', right: '35%', top: '80%' },
-  referenceHero: {},
-  referenceHeroDesktop: { alignSelf: 'stretch', backgroundColor: '#F7F3E9' },
-  referenceHeroImage: { width: '100%', height: '100%' },
+  welcomeContainer: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
+  welcomeCard: { width: '100%', maxWidth: 480, alignItems: 'center', justifyContent: 'center', gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.xl, borderRadius: radii.xl, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  welcomeCardDesktop: { maxWidth: 560, paddingVertical: 36 },
+  welcomeBrand: { fontSize: 18, fontWeight: '800', color: colors.primaryDark },
+  welcomeTitle: { fontSize: 28, lineHeight: 36, fontWeight: '900', color: colors.textPrimary, textAlign: 'center' },
+  welcomeCopy: { ...typography.body, color: colors.textSecondary, lineHeight: 25, textAlign: 'center', marginBottom: spacing.sm },
+  welcomeButton: { width: '100%', minHeight: 52 },
   referenceOverlay: { flex: 1, justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 12, paddingBottom: 18 },
   referenceTopRow: { minHeight: 170, alignItems: 'center', justifyContent: 'center' },
   languagePill: { position: 'absolute', right: 0, top: 0, backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 28, paddingHorizontal: 18, paddingVertical: 11 },
@@ -976,6 +914,10 @@ const styles = StyleSheet.create({
   // controlled brand accent".
   formSafeArea: { flex: 1, backgroundColor: colors.background },
   formHero: { width: '100%', maxWidth: 560, minHeight: 82, borderRadius: 24, backgroundColor: colors.surfaceMuted, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 14, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
+  creationProgress: { width: '100%', maxWidth: 560, flexDirection: 'row-reverse', gap: 6, marginTop: 4, marginBottom: 6 },
+  creationProgressSegment: { flex: 1, height: 5, borderRadius: 4, backgroundColor: colors.border },
+  creationProgressCurrent: { backgroundColor: colors.primary },
+  creationStepText: { ...typography.meta, color: colors.primaryDark, textAlign: 'right', alignSelf: 'flex-end', fontWeight: '700', marginBottom: 4 },
   formHeroDesktop: { maxWidth: 680, minHeight: 104 },
   formSpeech: { flex: 1, maxWidth: 330, backgroundColor: colors.surface, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 2, borderColor: colors.primary },
   formSpeechText: { color: '#102A5A', fontSize: 16, lineHeight: 22, fontWeight: '800', textAlign: 'center' },

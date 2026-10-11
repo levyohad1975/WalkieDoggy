@@ -33,7 +33,7 @@ describe('App.tsx — System Admin entry point sits OUTSIDE family/auth branchin
 
   it('never assigns familyId/currentUserId from the System Admin flow — this file has exactly one writer of familyId-affecting state, and it is not the System Admin block', () => {
     const adminBlockStart = source.indexOf('const isSystemAdmin = useSystemAdminStore');
-    const adminBlockEnd = source.indexOf('useEffect(() => {\n    if (currentUserId)');
+    const adminBlockEnd = source.indexOf('useEffect(() => {\n    if (currentUserId && !systemObserverActive)');
     const adminBlock = source.slice(adminBlockStart, adminBlockEnd);
     expect(adminBlock).not.toMatch(/setFamilyId|familyId\s*=/);
   });

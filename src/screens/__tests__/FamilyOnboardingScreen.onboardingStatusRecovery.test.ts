@@ -36,7 +36,7 @@ describe('FamilyOnboardingScreen recovers onboarding status on mount (structural
     expect(callIdx).toBeGreaterThan(-1);
     const effectIdx = source.lastIndexOf('useEffect(', callIdx);
     expect(effectIdx).toBeGreaterThan(-1);
-    const afterCall = source.slice(callIdx, callIdx + 800);
+    const afterCall = source.slice(callIdx, callIdx + 1800);
     expect(afterCall).toMatch(/\},\s*\[\]\s*\)/);
   });
 

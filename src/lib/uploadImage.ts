@@ -110,3 +110,42 @@ export async function pickAndUploadImage(kind: PhotoKind, familyId: string, id: 
 
   return sourceUri;
 }
+
+/** Capture and persist a photo through the same family-photos storage used by the library picker. */
+export async function takeAndUploadImage(kind: PhotoKind, familyId: string, id: string): Promise<string | null> {
+  if (!guardTestModeMutation()) return null;
+  const permission = await ImagePicker.requestCameraPermissionsAsync();
+  if (!permission.granted) {
+    if (!permission.canAskAgain) {
+      Alert.alert('נדרשת הרשאה למצלמה', 'אפשרו גישה למצלמה בהגדרות המכשיר כדי לצלם תמונה.', [
+        { text: 'ביטול', style: 'cancel' },
+        { text: 'פתח הגדרות', onPress: () => { void Linking.openSettings(); } },
+      ]);
+    } else Alert.alert('נדרשת הרשאה למצלמה', 'אפשרו לאפליקציה גישה למצלמה כדי לצלם תמונה.');
+    return null;
+  }
+  const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.7 });
+  if (result.canceled || result.assets.length === 0) return null;
+  const asset = result.assets[0];
+  let sourceUri = asset.uri;
+  let webCropped = false;
+  if (Platform.OS === 'web') {
+    const cropped = await requestPhotoCrop(asset.uri);
+    if (cropped === null) return null;
+    sourceUri = cropped;
+    webCropped = true;
+  }
+  if (isSupabaseConfigured && supabase) {
+    const folder = kind === 'dogs' ? 'dog' : `users/${id}`;
+    const path = `${familyId}/${folder}/${Date.now()}.jpg`;
+    const response = await fetch(sourceUri);
+    const bytes = await response.arrayBuffer();
+    const contentType = webCropped ? 'image/jpeg' : asset.mimeType ?? 'image/jpeg';
+    const extension = contentType === 'image/png' ? 'png' : contentType === 'image/webp' ? 'webp' : 'jpg';
+    const finalPath = path.replace(/\.jpg$/, `.${extension}`);
+    const { error } = await supabase.storage.from('family-photos').upload(finalPath, bytes, { contentType, upsert: true });
+    if (error) throw error;
+    return supabase.storage.from('family-photos').getPublicUrl(finalPath).data.publicUrl;
+  }
+  return sourceUri;
+}

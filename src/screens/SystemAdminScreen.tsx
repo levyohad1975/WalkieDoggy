@@ -385,17 +385,16 @@ export function SystemAdminScreen({ visible, onClose }: SystemAdminScreenProps) 
                 accessibilityLabel="בדיקת אנימציית תגובת הכלב במסך הבית"
               >
                 <RtlText style={styles.animationTestTitle}>תגובת הכלב בלחיצה</RtlText>
-                <RtlText style={styles.animationTestMeta}>walkie-guest-celebration</RtlText>
+                <RtlText style={styles.animationTestMeta}>WalkieMascot · excited</RtlText>
               </Pressable>
             </View>
             {guestAnimationTestVisible ? (
               <View style={styles.mascotStatePreview}>
                 <Button label="סגירת תצוגה" onPress={() => setGuestAnimationTestVisible(false)} compact />
-                <Image
-                  source={require('../../assets/branding/walkie-guest-celebration.webp')}
-                  style={[{ width: 168, height: 168 }, { mixBlendMode: 'screen' } as any]}
-                  resizeMode="contain"
-                  accessibilityLabel="בדיקת אנימציית תגובת הכלב"
+                <WalkieMascot
+                  state="excited"
+                  size={168}
+                  accessibilityLabel="בדיקת אנימציית הקמע הרשמי"
                   testID="system-admin-guest-reaction-preview"
                 />
               </View>

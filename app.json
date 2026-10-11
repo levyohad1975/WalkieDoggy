@@ -16,7 +16,8 @@
         "UIBackgroundModes": [
           "remote-notification"
         ],
-        "NSPhotoLibraryUsageDescription": "כדי לבחור תמונה של הכלב/ה שלכם או של בן משפחה מהגלריה שלכם."
+        "NSPhotoLibraryUsageDescription": "כדי לבחור תמונה של הכלב/ה שלכם או של בן משפחה מהגלריה שלכם.",
+        "NSCameraUsageDescription": "כדי לצלם תמונה של הכלב/ה או בני המשפחה."
       }
     },
     "android": {
@@ -49,7 +50,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "כדי לבחור תמונה של הכלב/ה שלכם או של בן משפחה מהגלריה שלכם."
+          "photosPermission": "כדי לבחור תמונה של הכלב/ה שלכם או של בן משפחה מהגלריה שלכם.",
+          "cameraPermission": "כדי לצלם תמונה של הכלב/ה או בני המשפחה."
         }
       ],
       [

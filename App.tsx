@@ -21,6 +21,9 @@ import { useRequestsStore } from './src/store/requestsStore';
 import { useScheduleStore, reconcileScheduleNotifications } from './src/store/scheduleStore';
 import { useFamilyStore } from './src/store/familyStore';
 import { WalkieMascot } from './src/components/WalkieMascot';
+import { FamilySetupWizard } from './src/screens/FamilySetupWizard';
+import { clearFamilySetupProgress, readFamilySetupProgress, type FamilySetupProgress } from './src/lib/familySetupProgress';
+import { getVerifiedAdminIdentity } from './src/lib/verifiedAdminOnboarding';
 
 // Reconciles local notifications against the currently loaded schedule store
 // state (A3's authoritative rule: notification content always comes from the
@@ -261,7 +264,36 @@ export async function registerPushTokenAndReconcile(): Promise<void> {
 setSyncQueueActorGetter(() => useAuthStore.getState().currentUserId);
 
 export default function App() {
-  const { currentUserId, familyId, hydrated, restoreSession, systemObserverActive } = useAuthStore();
+  const { currentUserId, familyId, familyRole, hydrated, restoreSession, systemObserverActive, setFamilyId } = useAuthStore();
+  const [familySetupProgress, setFamilySetupProgress] = useState<FamilySetupProgress | null>(null);
+  const [familySetupLoaded, setFamilySetupLoaded] = useState(false);
+  const [familySetupOwnerMatches, setFamilySetupOwnerMatches] = useState(false);
+  useEffect(() => {
+    if (!hydrated) return;
+    let mounted = true;
+    void readFamilySetupProgress().then(async (progress) => {
+      if (!progress || !mounted) return;
+      setFamilySetupProgress(progress);
+      if (!progress.ownerAuthUserId) return;
+      const identity = await getVerifiedAdminIdentity();
+      if (identity.userId !== progress.ownerAuthUserId || !mounted) return;
+      setFamilySetupOwnerMatches(true);
+      // Resume an interrupted create on this device even if the browser
+      // persisted the auth session before the local family selection.
+      if (useAuthStore.getState().familyId !== progress.familyId) await setFamilyId(progress.familyId);
+    }).catch(() => undefined).finally(() => { if (mounted) setFamilySetupLoaded(true); });
+    return () => { mounted = false; };
+  }, [hydrated, setFamilyId]);
+  const finishFamilySetup = async () => {
+    await clearFamilySetupProgress();
+    setFamilySetupProgress(null);
+  };
+  const startFamilySetup = async (createdFamilyId: string) => {
+    const progress = await readFamilySetupProgress();
+    setFamilySetupProgress(progress ?? { familyId: createdFamilyId, step: 2 });
+    setFamilySetupOwnerMatches(Boolean(progress?.ownerAuthUserId));
+    await setFamilyId(createdFamilyId);
+  };
   // In Supabase (backend) mode, a device with no familyId yet hasn't
   // created/joined a family — show that onboarding before anything else.
   // Local/demo mode always has a familyId (the seeded demo family) and
@@ -404,7 +436,7 @@ export default function App() {
   // session restore resolves.
   return (
     <SafeAreaProvider>
-      {!hydrated ? (
+      {!hydrated || !familySetupLoaded ? (
         <SafeAreaView style={styles.center}>
           <WalkieMascot state="runIn" size={150} accessibilityLabel="Walkie Doggy טוען את האפליקציה" testID="app-loading-mascot" />
           <RtlText style={styles.loadingText}>רק רגע, יוצאים לדרך…</RtlText>
@@ -446,7 +478,9 @@ export default function App() {
           {shouldEnterSystemAdminDirectly ? (
             <SystemAdminScreen visible onClose={() => undefined} />
           ) : needsFamilyOnboarding ? (
-            <FamilyOnboardingScreen />
+            <FamilyOnboardingScreen onFamilyCreated={startFamilySetup} />
+          ) : familySetupProgress?.ownerAuthUserId && familySetupOwnerMatches && familySetupProgress.familyId === familyId && familyRole === 'admin' ? (
+            <FamilySetupWizard familyId={familySetupProgress.familyId} progress={familySetupProgress} onProgressChange={setFamilySetupProgress} onComplete={finishFamilySetup} />
           ) : currentUserId || systemObserverActive ? (
             <RootNavigator />
           ) : (
