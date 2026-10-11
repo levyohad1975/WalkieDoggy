@@ -207,7 +207,7 @@ describe('FamilySetupWizard interactions', () => {
 
     await act(async () => { fireEvent.press(screen.getByLabelText('המשך לסיכום')); });
     expect(screen.getByText('שלב 5 מתוך 5')).toBeTruthy();
-    await act(async () => { fireEvent.press(screen.getByLabelText('חזרה לעריכה')); });
+    await act(async () => { fireEvent.press(screen.getByText('חזרה לעריכה')); });
     expect(screen.getByText('08:00 · טיול בוקר')).toBeTruthy();
     expect(screen.getByText('14:00 · טיול צהריים')).toBeTruthy();
     expect(screen.getByText('20:00 · טיול ערב')).toBeTruthy();
