@@ -24,7 +24,13 @@ import { WalkieMascot } from './src/components/WalkieMascot';
 import { FamilySetupWizard } from './src/screens/FamilySetupWizard';
 import { beginFamilySetup, clearFamilySetupProgress, isFamilySetupComplete, markFamilySetupComplete, readFamilySetupProgress, type FamilySetupProgress } from './src/lib/familySetupProgress';
 import { getVerifiedAdminIdentity } from './src/lib/verifiedAdminOnboarding';
-import { exitSystemAdminTestFamily, getActiveSystemAdminTestFamily } from './src/lib/systemAdmin';
+import {
+  createTestFamilyReentryDiagnosticId,
+  exitSystemAdminTestFamily,
+  getActiveSystemAdminTestFamily,
+  recordTestFamilyReentryDiagnostic,
+  type TestFamilyReentryStage,
+} from './src/lib/systemAdmin';
 
 // Reconciles local notifications against the currently loaded schedule store
 // state (A3's authoritative rule: notification content always comes from the
@@ -321,25 +327,45 @@ export default function App() {
   const refreshSystemAdmin = useSystemAdminStore((s) => s.refresh);
   const systemAdminOpenRequestId = useSystemAdminStore((s) => s.openRequestId);
   const [systemAdminOpen, setSystemAdminOpen] = useState(false);
-  const selectTestFamily = async (selectedFamilyId: string) => {
-    const identity = await getVerifiedAdminIdentity();
-    const complete = await isFamilySetupComplete(selectedFamilyId);
-    const saved = await readFamilySetupProgress();
-    let progress: FamilySetupProgress | null = null;
-    if (!complete) {
-      progress = saved?.familyId === selectedFamilyId && saved?.ownerAuthUserId === identity.userId
-        ? saved
-        : await beginFamilySetup(selectedFamilyId, identity.userId);
-      setFamilySetupProgress(progress);
-      setFamilySetupOwnerMatches(true);
-    } else {
-      if (saved?.familyId === selectedFamilyId) await clearFamilySetupProgress();
-      setFamilySetupProgress(null);
-      setFamilySetupOwnerMatches(false);
+  const selectTestFamily = async (selectedFamilyId: string, suppliedDiagnosticId?: string) => {
+    const diagnosticId = suppliedDiagnosticId ?? createTestFamilyReentryDiagnosticId();
+    let stage: TestFamilyReentryStage = 'family_selection';
+    recordTestFamilyReentryDiagnostic({ diagnosticId, familyId: selectedFamilyId, stage, outcome: 'started' });
+    try {
+      // The server RPC has already authorized the switch. Reconcile local family
+      // context immediately so a later onboarding-storage failure cannot leave
+      // the UI pointing at the original family while the server is in QA.
+      setIsQaFamily(true);
+      setQaSwitchError(null);
+      await setFamilyId(selectedFamilyId);
+      recordTestFamilyReentryDiagnostic({ diagnosticId, familyId: selectedFamilyId, stage, outcome: 'succeeded' });
+
+      stage = 'identity_validation';
+      recordTestFamilyReentryDiagnostic({ diagnosticId, familyId: selectedFamilyId, stage, outcome: 'started' });
+      const identity = await getVerifiedAdminIdentity();
+      recordTestFamilyReentryDiagnostic({ diagnosticId, familyId: selectedFamilyId, stage, outcome: 'succeeded' });
+
+      stage = 'onboarding_state';
+      recordTestFamilyReentryDiagnostic({ diagnosticId, familyId: selectedFamilyId, stage, outcome: 'started' });
+      const complete = await isFamilySetupComplete(selectedFamilyId);
+      const saved = await readFamilySetupProgress();
+      let progress: FamilySetupProgress | null = null;
+      if (!complete) {
+        progress = saved?.familyId === selectedFamilyId && saved?.ownerAuthUserId === identity.userId
+          ? saved
+          : await beginFamilySetup(selectedFamilyId, identity.userId);
+        setFamilySetupProgress(progress);
+        setFamilySetupOwnerMatches(true);
+      } else {
+        if (saved?.familyId === selectedFamilyId) await clearFamilySetupProgress();
+        setFamilySetupProgress(null);
+        setFamilySetupOwnerMatches(false);
+      }
+      recordTestFamilyReentryDiagnostic({ diagnosticId, familyId: selectedFamilyId, stage, outcome: 'succeeded' });
+    } catch (error) {
+      recordTestFamilyReentryDiagnostic({ diagnosticId, familyId: selectedFamilyId, stage, outcome: 'failed', error });
+      throw error;
     }
-    setIsQaFamily(true);
-    setQaSwitchError(null);
-    await setFamilyId(selectedFamilyId);
   };
   const returnFromTestFamily = async () => {
     setQaSwitchError(null);
