@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, AppState, Platform, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -15,7 +15,7 @@ import { requestNotificationPermissions, subscribeToWalkReminderResponses } from
 import { registerPushToken } from './src/lib/pushTokens';
 import { reconcileWebPushSubscription } from './src/lib/webPush';
 import { repository, setSyncQueueActorGetter } from './src/data';
-import { getCurrentFamilyIsQa, isSupabaseConfigured } from './src/lib/supabase';
+import { getCurrentFamilyIsQa, getWhoAmI, isSupabaseConfigured } from './src/lib/supabase';
 import { touchLastSeen } from './src/lib/requests';
 import { useRequestsStore } from './src/store/requestsStore';
 import { useScheduleStore, reconcileScheduleNotifications } from './src/store/scheduleStore';
@@ -288,8 +288,12 @@ export default function App() {
       const identity = await getVerifiedAdminIdentity();
       if (identity.userId !== progress.ownerAuthUserId || !mounted) return;
       setFamilySetupOwnerMatches(true);
-      // Resume an interrupted create on this device even if the browser
-      // persisted the auth session before the local family selection.
+      // A saved onboarding draft does not authorize a family switch. Resume it
+      // only when Supabase confirms this auth session is already mapped to the
+      // draft's family. This preserves dormant QA drafts after an admin exits
+      // back to the original family without making RLS-scoped reads go empty.
+      const serverContext = isSupabaseConfigured ? await getWhoAmI() : null;
+      if (serverContext?.familyId !== progress.familyId) return;
       if (useAuthStore.getState().familyId !== progress.familyId) await setFamilyId(progress.familyId);
     }).catch(() => undefined).finally(() => { if (mounted) setFamilySetupLoaded(true); });
     return () => { mounted = false; };
@@ -327,7 +331,12 @@ export default function App() {
   const refreshSystemAdmin = useSystemAdminStore((s) => s.refresh);
   const systemAdminOpenRequestId = useSystemAdminStore((s) => s.openRequestId);
   const [systemAdminOpen, setSystemAdminOpen] = useState(false);
+  const qaSwitchBusyRef = useRef(false);
+  const [qaSwitchBusy, setQaSwitchBusy] = useState(false);
   const selectTestFamily = async (selectedFamilyId: string, suppliedDiagnosticId?: string) => {
+    if (qaSwitchBusyRef.current) throw new Error('המעבר בין המשפחות כבר מתבצע. המתינו רגע ונסו שוב.');
+    qaSwitchBusyRef.current = true;
+    setQaSwitchBusy(true);
     const diagnosticId = suppliedDiagnosticId ?? createTestFamilyReentryDiagnosticId();
     let stage: TestFamilyReentryStage = 'family_selection';
     recordTestFamilyReentryDiagnostic({ diagnosticId, familyId: selectedFamilyId, stage, outcome: 'started' });
@@ -365,18 +374,27 @@ export default function App() {
     } catch (error) {
       recordTestFamilyReentryDiagnostic({ diagnosticId, familyId: selectedFamilyId, stage, outcome: 'failed', error });
       throw error;
+    } finally {
+      qaSwitchBusyRef.current = false;
+      setQaSwitchBusy(false);
     }
   };
   const returnFromTestFamily = async () => {
+    if (qaSwitchBusyRef.current) return;
+    qaSwitchBusyRef.current = true;
+    setQaSwitchBusy(true);
     setQaSwitchError(null);
     try {
       const restored = await exitSystemAdminTestFamily();
+      await setFamilyId(restored.id);
       setIsQaFamily(false);
       setFamilySetupProgress(null);
       setFamilySetupOwnerMatches(false);
-      await setFamilyId(restored.id);
     } catch (cause) {
       setQaSwitchError(cause instanceof Error ? cause.message : 'לא הצלחנו לחזור למשפחה המקורית. נסו שוב.');
+    } finally {
+      qaSwitchBusyRef.current = false;
+      setQaSwitchBusy(false);
     }
   };
   const [showIosInstallPrompt, setShowIosInstallPrompt] = useState(false);
@@ -591,7 +609,7 @@ export default function App() {
 
           {isSystemAdmin && isQaFamily && !systemObserverActive ? (
             <>
-              <Pressable style={styles.qaReturnButton} onPress={() => void returnFromTestFamily()} accessibilityRole="button" accessibilityLabel="חזרה למשפחה המקורית">
+              <Pressable style={styles.qaReturnButton} onPress={() => void returnFromTestFamily()} disabled={qaSwitchBusy} accessibilityRole="button" accessibilityState={{ disabled: qaSwitchBusy }} accessibilityLabel="חזרה למשפחה המקורית">
                 <RtlText style={styles.qaReturnButtonText}>חזרה למשפחה המקורית</RtlText>
               </Pressable>
               {qaSwitchError ? <Pressable style={styles.qaError} onPress={() => void returnFromTestFamily()} accessibilityRole="button"><RtlText style={styles.qaErrorText}>{qaSwitchError} · נסו שוב</RtlText></Pressable> : null}
