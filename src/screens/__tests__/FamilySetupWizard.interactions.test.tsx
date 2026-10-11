@@ -214,7 +214,7 @@ describe('FamilySetupWizard interactions', () => {
   });
 
   it('explains when no active member in this family can be assigned', async () => {
-    setup(4);
+    const state = setup(4);
     await waitFor(() => expect(screen.getByText('טיולים בכל יום (0)')).toBeTruthy());
     act(() => { useFamilyStore.setState({ users: [] }); });
     expect(await screen.findByText(/לא נמצא במשפחה פרופיל פעיל/)).toBeTruthy();
