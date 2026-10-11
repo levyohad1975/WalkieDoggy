@@ -150,9 +150,15 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
   const savePrimaryDog = async (name: string, photoUrl?: string, sex: Dog['sex'] = dog?.sex ?? dogSex) => {
     const storedDog = useFamilyStore.getState().dogs.find((candidate) => candidate.id === dogIdRef.current);
     const currentDog = storedDog ?? (dog?.id === dogIdRef.current ? dog : null);
+    // The database enforces dogs.walks_per_day > 0. New/legacy synthesized
+    // profiles can carry 0, which made the first QA-family dog INSERT fail
+    // with SQLSTATE 23514 even when family authorization was valid.
+    const walksPerDay = currentDog && Number.isInteger(currentDog.walksPerDay) && currentDog.walksPerDay > 0
+      ? currentDog.walksPerDay
+      : 1;
     const savedDog: Dog = currentDog
-      ? { ...currentDog, name, ...(sex ? { sex } : {}), ...(photoUrl !== undefined ? { photoUrl, photoCutoutUrl: undefined } : {}) }
-      : { id: dogIdRef.current, familyId, name, walksPerDay: 0, ...(sex ? { sex } : {}), ...(photoUrl ? { photoUrl } : {}) };
+      ? { ...currentDog, name, walksPerDay, ...(sex ? { sex } : {}), ...(photoUrl !== undefined ? { photoUrl, photoCutoutUrl: undefined } : {}) }
+      : { id: dogIdRef.current, familyId, name, walksPerDay, ...(sex ? { sex } : {}), ...(photoUrl ? { photoUrl } : {}) };
     const alreadySaved = currentDog
       && currentDog.name === savedDog.name
       && currentDog.sex === savedDog.sex
@@ -219,7 +225,7 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
   const saveAdditionalDog = async () => {
     const name = additionalDogName.trim();
     if (!name) throw new Error('צריך להזין שם לכלב/ה הנוסף/ת.');
-    const newDog: Dog = { id: generateId('dog'), familyId, name, walksPerDay: 0 };
+    const newDog: Dog = { id: generateId('dog'), familyId, name, walksPerDay: 1 };
     await saveDog(newDog);
     setAdditionalDogName('');
   };

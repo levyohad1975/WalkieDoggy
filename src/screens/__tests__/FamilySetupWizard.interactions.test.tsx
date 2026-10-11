@@ -126,6 +126,28 @@ describe('FamilySetupWizard interactions', () => {
     expect(state.saveDog).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'בוקי', photoUrl: 'https://cdn.example/buki.jpg' }));
   });
 
+  it('creates the first dog for a QA family with a database-valid walk count before advancing', async () => {
+    const state = setup();
+    await waitFor(() => expect(screen.getByLabelText('שם הכלב או הכלבה')).toBeTruthy());
+    fireEvent.changeText(screen.getByLabelText('שם הכלב או הכלבה'), 'בוקי');
+    await act(async () => { fireEvent.press(screen.getByLabelText('זכר')); });
+    mockPickAndUpload.mockResolvedValue('https://cdn.example/buki-qa.jpg');
+
+    await act(async () => { fireEvent.press(screen.getByLabelText('בחירת תמונה מהגלריה')); });
+    expect(state.saveDog).toHaveBeenLastCalledWith(expect.objectContaining({
+      familyId: FAMILY_ID,
+      name: 'בוקי',
+      sex: 'male',
+      photoUrl: 'https://cdn.example/buki-qa.jpg',
+      walksPerDay: 1,
+    }));
+
+    await act(async () => { fireEvent.press(screen.getByLabelText('המשך לבני המשפחה')); });
+    expect(state.onProgressChange).toHaveBeenLastCalledWith(expect.objectContaining({ familyId: FAMILY_ID, step: 3 }));
+    expect(screen.getByLabelText('הוספת בן או בת משפחה')).toBeTruthy();
+    expect(state.saveDog).toHaveBeenCalledTimes(2);
+  });
+
   it('continues without a photo when a valid dog name has been entered', async () => {
     const state = setup();
     await waitFor(() => expect(screen.getByLabelText('שם הכלב או הכלבה')).toBeTruthy());
