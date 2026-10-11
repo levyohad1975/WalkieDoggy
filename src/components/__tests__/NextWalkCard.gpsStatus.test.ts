@@ -19,14 +19,18 @@ describe('NextWalkCard surfaces live GPS distance/status while active (structura
     expect(idx).toBeGreaterThan(-1);
   });
 
-  it('explains the three user-visible GPS states instead of silently hiding the status', () => {
-    const blockStart = source.indexOf("gpsStatus === 'granted'");
-    const block = source.slice(blockStart, blockStart + 600);
-    expect(block).toContain('ממתין לנתוני GPS');
-    expect(block).toContain('GPS פעיל — ממתין לתנועה');
-    expect(block).toContain('מיקום לא זמין');
-    expect(block).toContain('לא התקבל מיקום');
-    expect(block).toContain('מפעיל GPS');
+  it('explains acquisition, active, denied, timeout, and interruption states and offers retry', () => {
+    expect(source).toContain('gpsTrackingStatus === \'requesting\'');
+    expect(source).toContain('gpsTrackingStatus === \'waiting\'');
+    expect(source).toContain('gpsTrackingStatus === \'active\'');
+    expect(source).toContain('gpsTrackingStatus === \'denied\'');
+    expect(source).toContain('gpsTrackingStatus === \'timeout\'');
+    expect(source).toContain('gpsTrackingStatus === \'unavailable\'');
+    expect(source).toContain('gpsTrackingStatus === \'interrupted\'');
+    expect(source).toContain('ממתין למיקום GPS ראשון');
+    expect(source).toContain('לא התקבל מיקום בזמן');
+    expect(source).toContain('הרשאת מיקום נדחתה');
+    expect(source).toContain('נסה שוב');
   });
 
   it('formats the live distance via the shared formatDistanceMeters (never a hand-rolled duplicate)', () => {

@@ -40,14 +40,17 @@ async function getLocation(): Promise<typeof ExpoLocation | null> {
 }
 
 export type GpsPermissionStatus = 'granted' | 'denied' | 'unavailable';
+export type GpsTrackingStatus = 'requesting' | 'waiting' | 'active' | 'denied' | 'timeout' | 'unavailable' | 'interrupted';
 
 function browserGeolocation(): Geolocation | null {
   if (typeof navigator === 'undefined' || !navigator.geolocation) return null;
   return navigator.geolocation;
 }
 
-function browserErrorStatus(error: GeolocationPositionError): GpsPermissionStatus {
-  return error.code === error.PERMISSION_DENIED ? 'denied' : 'unavailable';
+function browserErrorStatus(error: GeolocationPositionError): GpsTrackingStatus {
+  if (error.code === error.PERMISSION_DENIED) return 'denied';
+  if (error.code === error.TIMEOUT) return 'timeout';
+  return 'unavailable';
 }
 
 /**
@@ -60,11 +63,23 @@ function requestBrowserGpsPermission(): Promise<GpsPermissionStatus> {
   if (!geolocation) return Promise.resolve('unavailable');
 
   return new Promise((resolve) => {
-    geolocation.getCurrentPosition(
-      () => resolve('granted'),
-      (error) => resolve(browserErrorStatus(error)),
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 }
-    );
+    let settled = false;
+    const finish = (status: GpsPermissionStatus) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(status);
+    };
+    const timer = setTimeout(() => finish('unavailable'), 18_000);
+    try {
+      geolocation.getCurrentPosition(
+        () => finish('granted'),
+        (error) => finish(browserErrorStatus(error) === 'denied' ? 'denied' : 'unavailable'),
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 12_000 }
+      );
+    } catch {
+      finish('unavailable');
+    }
   });
 }
 
@@ -99,6 +114,7 @@ export interface GpsWatchHandle {
 export interface GpsWatchStartResult {
   handle: GpsWatchHandle | null;
   permissionStatus: GpsPermissionStatus;
+  trackingStatus: GpsTrackingStatus;
 }
 
 /**
@@ -115,13 +131,45 @@ export interface GpsWatchStartResult {
  * just burn battery for noise logic/gpsDistance.ts's own movement floor
  * would discard anyway.
  */
-export async function startGpsWatch(onUpdate: (acc: GpsAccumulator) => void): Promise<GpsWatchStartResult> {
+export async function startGpsWatch(
+  onUpdate: (acc: GpsAccumulator) => void,
+  onStatus: (status: GpsTrackingStatus) => void = () => undefined,
+): Promise<GpsWatchStartResult> {
   if (Platform.OS === 'web') {
     const geolocation = browserGeolocation();
-    if (!geolocation) return { handle: null, permissionStatus: 'unavailable' };
+    if (!geolocation) return { handle: null, permissionStatus: 'unavailable', trackingStatus: 'unavailable' };
 
     let acc = createGpsAccumulator();
+    let watchId: number | null = null;
+    let removed = false;
+    let retries = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let startupTimer: ReturnType<typeof setTimeout> | null = null;
+    let settled = false;
+    let resolveStartup: ((result: GpsWatchStartResult) => void) | null = null;
+    const removeCurrentWatch = () => {
+      if (watchId !== null) {
+        try { geolocation.clearWatch(watchId); } catch { /* best effort */ }
+        watchId = null;
+      }
+    };
+    const handle: GpsWatchHandle = {
+      remove: () => {
+        removed = true;
+        if (retryTimer) clearTimeout(retryTimer);
+        if (startupTimer) clearTimeout(startupTimer);
+        removeCurrentWatch();
+      },
+    };
+    const finishStartup = (permissionStatus: GpsPermissionStatus, trackingStatus: GpsTrackingStatus) => {
+      if (settled) return;
+      settled = true;
+      if (startupTimer) clearTimeout(startupTimer);
+      if (!handle || permissionStatus !== 'granted') handle.remove();
+      resolveStartup?.({ handle: permissionStatus === 'granted' ? handle : null, permissionStatus, trackingStatus });
+    };
     const accept = (location: GeolocationPosition) => {
+      if (removed) return;
       const point: GpsPoint = {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
@@ -130,42 +178,76 @@ export async function startGpsWatch(onUpdate: (acc: GpsAccumulator) => void): Pr
       };
       acc = accumulateDistance(acc, point);
       onUpdate(acc);
+      retries = 0;
+      onStatus('active');
+      finishStartup('granted', 'active');
     };
-
-    // A first real fix makes the active card useful immediately instead of
-    // waiting indefinitely for a watch callback that Safari may never send.
-    const initialStatus = await new Promise<GpsPermissionStatus>((resolve) => {
-      geolocation.getCurrentPosition(
-        (location) => {
-          accept(location);
-          resolve('granted');
-        },
-        (error) => resolve(browserErrorStatus(error)),
-        { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 }
-      );
-    });
-    if (initialStatus !== 'granted') return { handle: null, permissionStatus: initialStatus };
-
-    try {
-      const watchId = geolocation.watchPosition(
-        accept,
-        () => undefined,
-        { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 }
-      );
-      return { handle: { remove: () => geolocation.clearWatch(watchId) }, permissionStatus: 'granted' };
-    } catch {
-      return { handle: null, permissionStatus: 'unavailable' };
-    }
+    const onError = (error: GeolocationPositionError) => {
+      if (removed) return;
+      const status = browserErrorStatus(error);
+      if (!settled) {
+        onStatus(status);
+        if (status === 'denied' || status === 'unavailable') {
+          finishStartup(status === 'denied' ? 'denied' : 'unavailable', status);
+        }
+        // Safari can report TIMEOUT before it has produced a fix. Keep the
+        // one watch alive until our independent startup deadline expires.
+        return;
+      }
+      if (status === 'denied') {
+        onStatus('denied');
+        handle.remove();
+        return;
+      }
+      onStatus('interrupted');
+      removeCurrentWatch();
+      if (retries >= 3 || retryTimer) {
+        if (retries >= 3) onStatus(status === 'timeout' ? 'timeout' : 'unavailable');
+        return;
+      }
+      retries += 1;
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        if (!removed) startWatch();
+      }, 1500 * retries);
+    };
+    const startWatch = () => {
+      if (removed) return;
+      try {
+        const nextWatchId = geolocation.watchPosition(accept, onError, {
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: 12_000,
+        });
+        watchId = nextWatchId;
+        // A few test doubles (and unusual shims) invoke callbacks
+        // synchronously before returning the watch id.
+        if (removed || retryTimer) removeCurrentWatch();
+      } catch {
+        if (!settled) finishStartup('unavailable', 'unavailable');
+        else onError({ code: 2, message: 'location unavailable', PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3 } as GeolocationPositionError);
+      }
+    };
+    onStatus('waiting');
+    const startup = new Promise<GpsWatchStartResult>((resolve) => { resolveStartup = resolve; });
+    startupTimer = setTimeout(() => finishStartup('unavailable', 'timeout'), 18_000);
+    startWatch();
+    return startup;
   }
 
   const Location = await getLocation();
-  if (!Location) return { handle: null, permissionStatus: 'unavailable' };
+  if (!Location) return { handle: null, permissionStatus: 'unavailable', trackingStatus: 'unavailable' };
 
+  onStatus('requesting');
   const permission = await requestForegroundGpsPermission();
-  if (permission !== 'granted') return { handle: null, permissionStatus: permission };
+  if (permission !== 'granted') return { handle: null, permissionStatus: permission, trackingStatus: permission === 'denied' ? 'denied' : 'unavailable' };
 
   try {
     let acc = createGpsAccumulator();
+    let hasFix = false;
+    let removed = false;
+    let firstFixTimer: ReturnType<typeof setTimeout> | null = null;
+    onStatus('waiting');
     const subscription = await Location.watchPositionAsync(
       {
         accuracy: Location.Accuracy.Balanced,
@@ -173,6 +255,7 @@ export async function startGpsWatch(onUpdate: (acc: GpsAccumulator) => void): Pr
         distanceInterval: 5,
       },
       (location) => {
+        if (removed) return;
         const point: GpsPoint = {
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
@@ -181,11 +264,22 @@ export async function startGpsWatch(onUpdate: (acc: GpsAccumulator) => void): Pr
         };
         acc = accumulateDistance(acc, point);
         onUpdate(acc);
+        hasFix = true;
+        if (firstFixTimer) clearTimeout(firstFixTimer);
+        onStatus('active');
       }
     );
-    return { handle: { remove: () => subscription.remove() }, permissionStatus: 'granted' };
+    const handle: GpsWatchHandle = { remove: () => { if (removed) return; removed = true; if (firstFixTimer) clearTimeout(firstFixTimer); subscription.remove(); } };
+    if (!hasFix) {
+      firstFixTimer = setTimeout(() => {
+        if (removed || hasFix) return;
+        onStatus('timeout');
+        handle.remove();
+      }, 18_000);
+    }
+    return { handle, permissionStatus: 'granted', trackingStatus: hasFix ? 'active' : 'waiting' };
   } catch {
-    return { handle: null, permissionStatus: 'unavailable' };
+    return { handle: null, permissionStatus: 'unavailable', trackingStatus: 'unavailable' };
   }
 }
 

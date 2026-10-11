@@ -63,7 +63,6 @@ import { useHealthStore } from '../store/healthStore';
 import { getImportantHealthReminders, summarizeHealthTasksForHome } from '../logic/healthTasks';
 import { getDogBackground, getDogBackgroundImageSource } from '../theme/dogBackgrounds';
 import { useGpsStore } from '../store/gpsStore';
-import { requestForegroundGpsPermission } from '../lib/gpsTracking';
 import { RemoteGpsPanel } from '../components/RemoteGpsPanel';
 
 export function HomeScreen() {
@@ -198,6 +197,7 @@ export function HomeScreen() {
   const gpsPointCount = useGpsStore((s) => s.pointCount);
   const gpsRoutePoints = useGpsStore((s) => s.routePoints);
   const gpsPermissionStatus = useGpsStore((s) => s.permissionStatus);
+  const gpsTrackingStatus = useGpsStore((s) => s.trackingStatus);
   const gpsSessionsByWalkId = useGpsStore((s) => s.sessionsByWalkId);
 
   const [completeWalkId, setCompleteWalkId] = useState<string | null>(null);
@@ -1133,14 +1133,19 @@ export function HomeScreen() {
             gpsPointCount={gpsTrackingWalkId === nextWalk.id ? gpsPointCount : null}
             liveRoutePoints={gpsTrackingWalkId === nextWalk.id ? gpsRoutePoints : undefined}
             gpsStatus={gpsTrackingWalkId === nextWalk.id ? gpsPermissionStatus : null}
+            gpsTrackingStatus={gpsTrackingWalkId === nextWalk.id ? gpsTrackingStatus : null}
+            onRetryGps={() => { void useGpsStore.getState().startTracking(nextWalk).catch(() => undefined); }}
             onStartWalk={
               effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId
                 ? () => {
-                  // Start Safari's permission request inside the user gesture,
-                  // before the server walk RPC. GPS remains assistive: a
-                  // denial never prevents the walk lifecycle from starting.
-                  void requestForegroundGpsPermission();
-                  void startWalk(nextWalk.id);
+                  // Start the single foreground watch in the tap handler so
+                  // Safari receives the gesture-bound location request. The
+                  // walk RPC remains independent: GPS never blocks the walk.
+                  void useGpsStore.getState().startTracking(nextWalk).catch(() => undefined);
+                  void startWalk(nextWalk.id, { startGps: false }).then(
+                    (started) => { if (!started) void useGpsStore.getState().stopTracking(nextWalk, effectiveUserId); },
+                    () => { void useGpsStore.getState().stopTracking(nextWalk, effectiveUserId); },
+                  );
                 }
                 : undefined
             }

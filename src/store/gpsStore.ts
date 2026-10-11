@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { Walk, WalkGpsSession } from '../types';
 import { repository } from '../data';
 import { generateId } from '../lib/id';
-import { startGpsWatch, type GpsPermissionStatus, type GpsWatchHandle } from '../lib/gpsTracking';
+import { startGpsWatch, type GpsPermissionStatus, type GpsTrackingStatus, type GpsWatchHandle } from '../lib/gpsTracking';
 import type { GpsAccumulator } from '../logic/gpsDistance';
 
 // Not store state — the live OS subscription handle. Kept outside the
@@ -11,12 +11,15 @@ import type { GpsAccumulator } from '../logic/gpsDistance';
 // UI state; the store only ever exposes DERIVED numbers from it
 // (distanceMeters/pointCount), never the handle itself.
 let activeWatch: GpsWatchHandle | null = null;
+let startGeneration = 0;
 
 interface GpsState {
   /** The walk currently being tracked, if any — null when no walk is in progress or the active walk simply isn't being tracked (permission denied/unavailable). */
   trackingWalkId: string | null;
   /** Set once startTracking() resolves permission — lets UI show WHY there's no live distance (denied vs. unavailable vs. simply not started yet). */
   permissionStatus: GpsPermissionStatus | null;
+  /** Foreground acquisition/watch state, distinct from OS permission. */
+  trackingStatus: GpsTrackingStatus | null;
   /** ISO timestamp of when the CURRENT tracking round actually began (the watch started, not just startTracking() being called) — null whenever trackingWalkId is null. Feeds WalkGpsSession.startedAt/endedAt on stop, which the schema/repository layer already round-trip but this store never used to populate. */
   trackingStartedAt: string | null;
   /** Live running total while trackingWalkId is set — meaningless/stale once tracking stops (read sessionsByWalkId for the persisted, authoritative value instead). */
@@ -54,6 +57,7 @@ interface GpsState {
 export const useGpsStore = create<GpsState>((set, get) => ({
   trackingWalkId: null,
   permissionStatus: null,
+  trackingStatus: null,
   trackingStartedAt: null,
   distanceMeters: 0,
   pointCount: 0,
@@ -61,6 +65,12 @@ export const useGpsStore = create<GpsState>((set, get) => ({
   sessionsByWalkId: {},
 
   startTracking: async (walk) => {
+    const current = get();
+    // A second caller (e.g. remote-command polling plus the Start button)
+    // must not create a competing browser/native subscription. Failed rounds
+    // remain explicitly retryable.
+    if (current.trackingWalkId === walk.id && current.trackingStatus !== 'timeout' && current.trackingStatus !== 'unavailable' && current.trackingStatus !== 'denied' && current.trackingStatus !== 'interrupted') return;
+    const generation = ++startGeneration;
     // A previous walk's watch left running (shouldn't normally happen —
     // stopTracking() always tears it down — but never leak a subscription
     // across walks if it does).
@@ -68,16 +78,18 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       activeWatch.remove();
       activeWatch = null;
     }
-    set({ trackingWalkId: walk.id, permissionStatus: null, trackingStartedAt: null, distanceMeters: 0, pointCount: 0, routePoints: [] });
+    set({ trackingWalkId: walk.id, permissionStatus: null, trackingStatus: 'requesting', trackingStartedAt: null, distanceMeters: 0, pointCount: 0, routePoints: [] });
 
     const result = await startGpsWatch((acc: GpsAccumulator) => {
       // Ignore a late callback from a watch that's since been stopped/
       // superseded (e.g. the walk ended right as a fix arrived).
-      if (get().trackingWalkId !== walk.id) return;
-      set({ distanceMeters: acc.distanceMeters, pointCount: acc.pointCount, routePoints: (acc.routePoints ?? []).map(({ latitude, longitude, timestamp }) => ({ latitude, longitude, timestamp })) });
+      if (startGeneration !== generation || get().trackingWalkId !== walk.id) return;
+      set({ distanceMeters: acc.distanceMeters, pointCount: acc.pointCount, trackingStatus: 'active', routePoints: (acc.routePoints ?? []).map(({ latitude, longitude, timestamp }) => ({ latitude, longitude, timestamp })) });
+    }, (trackingStatus) => {
+      if (startGeneration === generation && get().trackingWalkId === walk.id) set({ trackingStatus });
     });
 
-    if (get().trackingWalkId !== walk.id) {
+    if (startGeneration !== generation || get().trackingWalkId !== walk.id) {
       // startTracking() was called again for a different walk while this
       // permission/start round-trip was in flight — this handle belongs to
       // an already-superseded session; tear it down instead of leaking it.
@@ -88,15 +100,16 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       // Keep the active walk attached to the store even when the OS/browser
       // denies location or cannot create a watch. The Home card can then
       // explain the GPS state instead of silently losing the GPS section.
-      set({ trackingWalkId: walk.id, permissionStatus: result.permissionStatus });
+      set({ trackingWalkId: walk.id, permissionStatus: result.permissionStatus, trackingStatus: result.trackingStatus });
       return;
     }
     activeWatch = result.handle;
-    set({ permissionStatus: 'granted', trackingStartedAt: new Date().toISOString() });
+    set({ permissionStatus: 'granted', trackingStatus: get().pointCount > 0 ? 'active' : result.trackingStatus, trackingStartedAt: new Date().toISOString() });
   },
 
   stopTracking: async (walk, userId) => {
     const wasTracking = get().trackingWalkId === walk.id;
+    if (wasTracking) startGeneration += 1;
     if (activeWatch && wasTracking) {
       activeWatch.remove();
       activeWatch = null;
@@ -105,7 +118,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
 
     const { distanceMeters, pointCount, trackingStartedAt } = get();
     const now = new Date().toISOString();
-    set({ trackingWalkId: null, trackingStartedAt: null });
+    set({ trackingWalkId: null, trackingStartedAt: null, trackingStatus: null, permissionStatus: null });
 
     // Nothing was ever actually captured (denied/unavailable, or stopped
     // before any fix arrived) — no session worth persisting.

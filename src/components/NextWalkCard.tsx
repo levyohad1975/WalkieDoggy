@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Platform, StyleSheet, View } from 'react-native';
+import { Animated, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import type { Dog, FamilyUser, Walk } from '../types';
 import { isOverdue, relativeTimeLabel, walkDateTime } from '../logic/nextWalk';
@@ -16,6 +16,7 @@ import { deriveMascotMoment } from '../mascot/mascotStage';
 import { selectMessage } from '../mascot/messageEngine';
 import { formatDistanceMeters } from '../logic/gpsDistance';
 import { RoutePreview } from './RoutePreview';
+import type { GpsTrackingStatus } from '../lib/gpsTracking';
 
 interface NextWalkCardProps {
   walk: Walk;
@@ -49,6 +50,8 @@ interface NextWalkCardProps {
   gpsPointCount?: number | null;
   /** null/undefined = tracking hasn't reported a status yet (e.g. still requesting permission) — distinct from 'denied'/'unavailable', which show an explanatory note instead of a bare "0 מ'". */
   gpsStatus?: 'granted' | 'denied' | 'unavailable' | null;
+  gpsTrackingStatus?: GpsTrackingStatus | null;
+  onRetryGps?: () => void;
   /** GPS samples from the active walk, updated as the phone moves. */
   liveRoutePoints?: Array<{ latitude: number; longitude: number; timestamp: number }>;
   /**
@@ -104,6 +107,8 @@ export function NextWalkCard({
   liveDistanceMeters,
   gpsPointCount,
   gpsStatus,
+  gpsTrackingStatus,
+  onRetryGps,
   liveRoutePoints,
   onMarkNotDone,
   canResolve = true,
@@ -227,19 +232,34 @@ export function NextWalkCard({
           line for every such device would be clutter with no action the
           person can take, unlike 'denied' (a real, correctable state). */}
       {isActive ? (
-        <RtlText style={styles.gpsStatusLine} numberOfLines={1} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-          {gpsStatus === 'granted'
+        <>
+        <RtlText style={styles.gpsStatusLine} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE} accessibilityLiveRegion="polite">
+          {gpsTrackingStatus === 'requesting'
+            ? '📍 מבקש גישה למיקום…'
+            : gpsTrackingStatus === 'waiting'
+              ? '📍 ממתין למיקום GPS ראשון…'
+              : gpsTrackingStatus === 'timeout'
+                ? '📍 לא התקבל מיקום בזמן — אפשר לנסות שוב'
+                : gpsTrackingStatus === 'denied' || gpsStatus === 'denied'
+                  ? '📍 הרשאת מיקום נדחתה — יש לאפשר מיקום בהגדרות המכשיר'
+                  : gpsTrackingStatus === 'unavailable' || gpsStatus === 'unavailable'
+                    ? '📍 שירות המיקום אינו זמין כרגע'
+                    : gpsTrackingStatus === 'interrupted'
+                      ? '📍 מעקב GPS הושהה — מנסה להתחבר מחדש…'
+                      : gpsTrackingStatus === 'active' || gpsStatus === 'granted'
             ? `📍 ${liveDistanceMeters != null && liveDistanceMeters > 0
               ? formatDistanceMeters(liveDistanceMeters)
               : gpsPointCount != null && gpsPointCount > 0
                 ? 'GPS פעיל — ממתין לתנועה'
-                : 'ממתין לנתוני GPS…'}`
-            : gpsStatus === 'denied'
-              ? '📍 מיקום לא זמין — אפשר להפעיל בהגדרות המכשיר'
-              : gpsStatus === 'unavailable'
-                ? '📍 לא התקבל מיקום — ודאו ששירותי מיקום פעילים'
-              : '📍 מפעיל GPS…'}
+                : 'GPS פעיל'}`
+                      : '📍 מפעיל GPS…'}
         </RtlText>
+        {onRetryGps && (gpsTrackingStatus === 'timeout' || gpsTrackingStatus === 'unavailable' || gpsTrackingStatus === 'interrupted') ? (
+          <Pressable onPress={onRetryGps} accessibilityRole="button" accessibilityLabel="נסה להפעיל GPS שוב" style={styles.gpsRetry}>
+            <RtlText style={styles.gpsRetryText}>נסה שוב</RtlText>
+          </Pressable>
+        ) : null}
+        </>
       ) : null}
 
 
@@ -445,6 +465,8 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     marginBottom: 8,
   },
+  gpsRetry: { alignSelf: 'flex-start', minHeight: 36, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 18, backgroundColor: '#E7F5F4' },
+  gpsRetryText: { color: colors.primary, fontSize: 13, fontWeight: '700' },
   activeWalkBanner: {
     flexDirection: 'row-reverse',
     alignItems: 'center',

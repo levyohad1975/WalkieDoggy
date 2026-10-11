@@ -80,6 +80,32 @@ describe('gpsStore', () => {
     expect(useGpsStore.getState().trackingWalkId).toBe('walk-b');
   });
 
+  it('coalesces duplicate start requests for the same walk into one watch', async () => {
+    const { useGpsStore } = require('../gpsStore');
+    const gpsTracking = require('../../lib/gpsTracking');
+    const startSpy = jest.spyOn(gpsTracking, 'startGpsWatch').mockResolvedValueOnce({ handle: { remove: jest.fn() }, permissionStatus: 'granted', trackingStatus: 'waiting' });
+
+    await Promise.all([useGpsStore.getState().startTracking(walk), useGpsStore.getState().startTracking(walk)]);
+
+    expect(startSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('stopping while GPS startup is pending invalidates and removes the late watch', async () => {
+    const { useGpsStore } = require('../gpsStore');
+    const gpsTracking = require('../../lib/gpsTracking');
+    let resolveStart!: (value: any) => void;
+    const remove = jest.fn();
+    jest.spyOn(gpsTracking, 'startGpsWatch').mockImplementationOnce(() => new Promise((resolve: any) => { resolveStart = resolve; }));
+
+    const starting = useGpsStore.getState().startTracking(walk);
+    await useGpsStore.getState().stopTracking(walk, 'user-aba');
+    resolveStart({ handle: { remove }, permissionStatus: 'granted', trackingStatus: 'waiting' });
+    await starting;
+
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(useGpsStore.getState().trackingWalkId).toBeNull();
+  });
+
   it('stopTracking for a walk that was never being tracked returns null and persists nothing', async () => {
     const { useGpsStore } = require('../gpsStore');
     const { repository } = require('../../data');
