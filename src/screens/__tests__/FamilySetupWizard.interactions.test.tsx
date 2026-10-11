@@ -18,7 +18,7 @@ jest.mock('../../components/Button', () => ({
   Button: ({ label, onPress, disabled }: { label: string; onPress: () => void; disabled?: boolean }) => {
     const { Pressable, Text } = require('react-native');
     return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress}><Text>{label}</Text></Pressable>
+    <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} accessibilityState={{ disabled: Boolean(disabled) }} onPress={onPress}><Text>{label}</Text></Pressable>
     );
   },
 }));
@@ -218,7 +218,7 @@ describe('FamilySetupWizard interactions', () => {
     act(() => { useAuthStore.setState({ familyId: 'original-family' }); });
     await waitFor(() => expect(screen.getByText('טיולים בכל יום (0)')).toBeTruthy());
 
-    expect(screen.getByLabelText('הוספת שעה ללוח').props.disabled).toBe(true);
+    expect(screen.getByLabelText('הוספת שעה ללוח').props.accessibilityState.disabled).toBe(true);
     await act(async () => { fireEvent.press(screen.getByLabelText('הוספת שעה ללוח')); });
     expect(state.addRule).not.toHaveBeenCalled();
     expect(useScheduleStore.getState().rules).toHaveLength(0);
