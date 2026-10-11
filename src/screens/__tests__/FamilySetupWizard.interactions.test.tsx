@@ -67,19 +67,20 @@ function setup(step: 2 | 3 | 4 | 5 = 2, pendingDogSex?: 'male' | 'female') {
   });
   const loadFamily = jest.fn().mockResolvedValue(undefined);
   const loadSchedule = jest.fn().mockResolvedValue(true);
-  const addUser = jest.fn(async (input: { name: string; avatar: string; color: string }) => {
-    const user = { ...input, id: 'new-member', familyId: FAMILY_ID, remindersEnabled: true, gamificationEnabled: true, createdAt: '2026-01-01T00:00:00.000Z' };
+  const addUser = jest.fn(async (input: { id?: string; name: string; avatar: string; color: string }) => {
+    const user = { ...input, id: input.id ?? 'new-member', familyId: FAMILY_ID, remindersEnabled: true, gamificationEnabled: true, createdAt: '2026-01-01T00:00:00.000Z' };
     useFamilyStore.setState((state) => ({ users: [...state.users, user] }));
     return user;
   });
   const addRule = jest.fn(async (rule: any) => useScheduleStore.setState((state) => ({ rules: [...state.rules, rule] })));
-  useAuthStore.setState({ currentUserId: ADMIN_ID, familyId: FAMILY_ID, familyRole: 'admin' });
+  const signIn = jest.fn().mockResolvedValue(undefined);
+  useAuthStore.setState({ currentUserId: ADMIN_ID, familyId: FAMILY_ID, familyRole: 'admin', signIn } as any);
   useFamilyStore.setState({ family: { id: FAMILY_ID, name: 'משפחת כהן', inviteCode: 'ABC123', timezone: 'Asia/Jerusalem', createdAt: '2026-01-01T00:00:00.000Z' }, dog: null, dogs: [], users: [ADMIN], selectedDogId: undefined, loading: false, error: null, load: loadFamily, saveDog, selectDog: jest.fn(), removeDogPhoto: jest.fn(), addUser, updateUser: jest.fn() } as any);
   useScheduleStore.setState({ rules: [], entries: [], walks: [], loading: false, error: null, load: loadSchedule, addRule, updateRule: jest.fn(), deleteRule: jest.fn() } as any);
   mockPickAndUpload.mockReset();
   mockTakeAndUpload.mockReset();
   const view = render(<SafeAreaProvider><FamilySetupWizard familyId={FAMILY_ID} progress={{ ...progress, ...(pendingDogSex ? { pendingDogSex } : {}), step }} onProgressChange={onProgressChange} onComplete={onComplete} /></SafeAreaProvider>);
-  return { ...view, onProgressChange, onComplete, saveDog, addUser, addRule, loadFamily, loadSchedule };
+  return { ...view, onProgressChange, onComplete, saveDog, addUser, addRule, loadFamily, loadSchedule, signIn };
 }
 
 describe('FamilySetupWizard interactions', () => {
@@ -146,6 +147,42 @@ describe('FamilySetupWizard interactions', () => {
     expect(state.onProgressChange).toHaveBeenLastCalledWith(expect.objectContaining({ familyId: FAMILY_ID, step: 3 }));
     expect(screen.getByLabelText('הוספת בן או בת משפחה')).toBeTruthy();
     expect(state.saveDog).toHaveBeenCalledTimes(2);
+  });
+
+  it('persists the test-family administrator once and safely retries a profile-claim queue guard', async () => {
+    const state = setup(3);
+    state.signIn.mockRejectedValueOnce(new Error('pending sync from another profile on this device — connect to the internet and try again'));
+    act(() => {
+      useFamilyStore.setState({ users: [] });
+      useAuthStore.setState({ currentUserId: null, isQaFamily: true });
+    });
+
+    const nameInput = screen.getByLabelText('שם מנהל המשפחה');
+    fireEvent.changeText(nameInput, 'מנהל בדיקה');
+    await act(async () => { fireEvent.press(screen.getByLabelText('שמירה והמשך')); });
+
+    expect(await screen.findByText(/פרופיל המנהל נשמר במשפחת הבדיקה/)).toBeTruthy();
+    expect(state.addUser).toHaveBeenCalledTimes(1);
+    expect(state.addUser).toHaveBeenCalledWith(expect.objectContaining({
+      id: ADMIN_ID,
+      name: 'מנהל בדיקה',
+    }));
+    const savedDraft = JSON.parse((await AsyncStorage.getItem(FAMILY_SETUP_PROGRESS_KEY))!);
+    expect(savedDraft).toEqual(expect.objectContaining({
+      familyId: FAMILY_ID,
+      adminUserId: ADMIN_ID,
+      adminName: 'מנהל בדיקה',
+    }));
+    expect(useFamilyStore.getState().users).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: ADMIN_ID, familyId: FAMILY_ID, name: 'מנהל בדיקה' }),
+    ]));
+
+    await act(async () => { fireEvent.press(screen.getByLabelText('שמירה והמשך')); });
+    expect(await screen.findByText('טיולים בכל יום (0)')).toBeTruthy();
+    expect(state.addUser).toHaveBeenCalledTimes(1);
+    expect(state.signIn).toHaveBeenCalledTimes(2);
+    expect(state.signIn).toHaveBeenNthCalledWith(1, ADMIN_ID);
+    expect(state.signIn).toHaveBeenNthCalledWith(2, ADMIN_ID);
   });
 
   it('continues without a photo when a valid dog name has been entered', async () => {

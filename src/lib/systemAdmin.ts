@@ -1,4 +1,5 @@
 import { supabase, SupabaseNotConfiguredError } from './supabase';
+import { repository } from '../data';
 
 /**
  * BATCH 4 (item A — System Admin V1, read-only). Thin client wrappers over
@@ -41,9 +42,35 @@ function rowOrThrow<T>(data: T[] | T | null, message: string): T {
   return row as T;
 }
 
+/**
+ * Profile claims must not switch the audit actor while writes from the
+ * currently active family are still queued. Drain and verify the queue
+ * before the server changes this System Admin device's family context.
+ * The server RPC remains the authorization boundary.
+ */
+export async function flushBeforeSystemAdminTestFamilySwitch(): Promise<void> {
+  if (!repository.trySync || !repository.pendingSyncCount) {
+    throw new Error('לא ניתן לוודא שהפעולות במכשיר סונכרנו, ולכן לא עברנו למשפחת הבדיקה.');
+  }
+
+  try {
+    await repository.trySync();
+    const pendingCount = await repository.pendingSyncCount();
+    if (pendingCount > 0) {
+      throw new Error(
+        `לא ניתן לעבור למשפחת בדיקה: נותרו ${pendingCount} פעולות שממתינות לסנכרון. התחברו לאינטרנט והמתינו לסיום הסנכרון במשפחה הפעילה, ואז נסו שוב. המשפחה והנתונים לא שונו.`
+      );
+    }
+  } catch (cause) {
+    if (cause instanceof Error && /[\u0590-\u05FF]/.test(cause.message)) throw cause;
+    throw new Error('לא הצלחנו לסנכרן את הפעולות במשפחה הפעילה. לא עברנו למשפחת הבדיקה; בדקו את החיבור ונסו שוב.');
+  }
+}
+
 /** Creates an isolated QA family and snapshots the caller's current family/profile. */
 export async function createSystemAdminTestFamily(familyName: string): Promise<SystemAdminTestFamily> {
   const client = requireSupabase();
+  await flushBeforeSystemAdminTestFamilySwitch();
   const { data, error } = await client.rpc('system_admin_enter_test_family', { p_family_name: familyName.trim() });
   if (error) throw error;
   const row = rowOrThrow(data as Array<{ id: string; name: string; invite_code: string }> | null, 'יצירת משפחת הבדיקה נכשלה');
@@ -53,6 +80,7 @@ export async function createSystemAdminTestFamily(familyName: string): Promise<S
 /** Re-enters an existing QA family without replacing the original membership snapshot. */
 export async function switchToSystemAdminTestFamily(familyId: string): Promise<SystemAdminTestFamily> {
   const client = requireSupabase();
+  await flushBeforeSystemAdminTestFamilySwitch();
   const { data, error } = await client.rpc('system_admin_switch_test_family', { p_family_id: familyId });
   if (error) throw error;
   const row = rowOrThrow(data as Array<{ id: string; name: string; invite_code: string }> | null, 'הכניסה למשפחת הבדיקה נכשלה');

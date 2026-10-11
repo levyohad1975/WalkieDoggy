@@ -97,7 +97,10 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
       await action();
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : '';
-      const message = /[\u0590-\u05FF]/.test(detail) ? detail : step === 2 ? 'לא הצלחנו לשמור את פרטי הכלב/ה. בדקו את החיבור ונסו שוב.' : 'לא הצלחנו לשמור את השינוי. בדקו את החיבור ונסו שוב.';
+      const blockedByPendingProfileSync = /pending sync from another profile on this device/i.test(detail);
+      const message = blockedByPendingProfileSync
+        ? 'פרופיל המנהל נשמר במשפחת הבדיקה, אך לא ניתן לחבר אותו למכשיר כי נשארו פעולות שממתינות לסנכרון מפרופיל אחר. חזרו למשפחה המקורית כשהמכשיר מחובר לאינטרנט, המתינו לסיום הסנכרון, ואז היכנסו שוב למשפחת הבדיקה ולחצו על ״שמירה והמשך״. השם נשמר ולא ייווצר פרופיל כפול.'
+        : /[\u0590-\u05FF]/.test(detail) ? detail : step === 2 ? 'לא הצלחנו לשמור את פרטי הכלב/ה. בדקו את החיבור ונסו שוב.' : 'לא הצלחנו לשמור את השינוי. בדקו את החיבור ונסו שוב.';
       setError(message);
       setDogSetupRetry(step === 2 ? 'save' : null);
     } finally {
