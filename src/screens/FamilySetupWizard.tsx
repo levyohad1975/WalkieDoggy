@@ -61,11 +61,14 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
   const addRule = useScheduleStore((s) => s.addRule);
   const deleteRule = useScheduleStore((s) => s.deleteRule);
   const [step, setStep] = useState<FamilySetupProgress['step']>(progress.step);
+  const progressRef = useRef(progress);
+  progressRef.current = progress;
   const [initializing, setInitializing] = useState(true);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [dogName, setDogName] = useState('');
+  const [dogSex, setDogSex] = useState<Dog['sex']>(progress.pendingDogSex);
   const [pendingDogPhotoUrl, setPendingDogPhotoUrl] = useState(progress.pendingDogPhotoUrl);
   const [selectedDogPhotoPreviewUrl, setSelectedDogPhotoPreviewUrl] = useState<string | undefined>();
   const dogIdRef = useRef<string>(generateId('dog'));
@@ -117,6 +120,7 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
     if (dog) {
       dogIdRef.current = dog.id;
       setDogName(dog.name);
+      setDogSex(dog.sex ?? progress.pendingDogSex);
     }
   }, [dog?.id]);
 
@@ -131,16 +135,17 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
   }, [currentUserId, progress.adminUserId, activeUsers, signIn]);
 
   const persistStep = async (nextStep: FamilySetupProgress['step'], patch: Partial<FamilySetupProgress> = {}) => {
-    const next = { ...progress, ...patch, familyId, step: nextStep };
+    const next = { ...progressRef.current, ...patch, familyId, step: nextStep };
     await saveFamilySetupProgress(next);
+    progressRef.current = next;
     onProgressChange(next);
     setStep(nextStep);
   };
 
-  const savePrimaryDog = async (name: string, photoUrl?: string) => {
+  const savePrimaryDog = async (name: string, photoUrl?: string, sex: Dog['sex'] = dog?.sex ?? dogSex) => {
     const savedDog: Dog = dog
-      ? { ...dog, name, ...(photoUrl !== undefined ? { photoUrl, photoCutoutUrl: undefined } : {}) }
-      : { id: dogIdRef.current, familyId, name, walksPerDay: 0, ...(photoUrl ? { photoUrl } : {}) };
+      ? { ...dog, name, ...(sex ? { sex } : {}), ...(photoUrl !== undefined ? { photoUrl, photoCutoutUrl: undefined } : {}) }
+      : { id: dogIdRef.current, familyId, name, walksPerDay: 0, ...(sex ? { sex } : {}), ...(photoUrl ? { photoUrl } : {}) };
     await saveDog(savedDog);
     if (!dog) await selectDog(savedDog.id);
   };
@@ -163,8 +168,9 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
       if (uri) {
         if (currentName || dog?.name) await savePrimaryDog(currentName || dog?.name || '', uri);
         else {
-          const next = { ...progress, familyId, pendingDogPhotoUrl: uri };
+          const next = { ...progressRef.current, familyId, pendingDogPhotoUrl: uri };
           await saveFamilySetupProgress(next);
+          progressRef.current = next;
           onProgressChange(next);
           setPendingDogPhotoUrl(uri);
         }
@@ -189,6 +195,17 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
     setAdditionalDogName('');
   };
 
+  const chooseDogSex = async (sex: NonNullable<Dog['sex']>) => {
+    setDogSex(sex);
+    const next = { ...progressRef.current, familyId, pendingDogSex: sex };
+    await saveFamilySetupProgress(next);
+    progressRef.current = next;
+    onProgressChange(next);
+    if (dog || dogName.trim()) {
+      await savePrimaryDog(dogName.trim() || dog?.name || '', undefined, sex);
+    }
+  };
+
   const continueDogStep = async () => {
     const name = dogName.trim();
     if (!name) {
@@ -196,8 +213,8 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
       return;
     }
     await showAction(async () => {
-      await savePrimaryDog(name, pendingDogPhotoUrl);
-      await persistStep(3, { pendingDogPhotoUrl: undefined });
+      await savePrimaryDog(name, pendingDogPhotoUrl, dogSex);
+      await persistStep(3, { pendingDogPhotoUrl: undefined, pendingDogSex: undefined });
       setPendingDogPhotoUrl(undefined);
     });
   };
@@ -338,8 +355,8 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
         {Platform.OS !== 'web' ? <Button label="צילום תמונה" variant="secondary" disabled={busy} onPress={() => void pickDogPhoto(true)} style={styles.flexButton} /> : null}
         {dog?.photoUrl || pendingDogPhotoUrl ? <Button label="הסרת תמונה" variant="secondary" disabled={busy} onPress={() => {
           if (pendingDogPhotoUrl && pendingDogPhotoUrl !== dog?.photoUrl) {
-            const next = { ...progress, familyId, pendingDogPhotoUrl: undefined };
-            void saveFamilySetupProgress(next).then(() => { onProgressChange(next); setPendingDogPhotoUrl(undefined); });
+            const next = { ...progressRef.current, familyId, pendingDogPhotoUrl: undefined };
+            void saveFamilySetupProgress(next).then(() => { progressRef.current = next; onProgressChange(next); setPendingDogPhotoUrl(undefined); });
           } else if (dog) void showAction(async () => removeDogPhoto(dog.id));
         }} style={styles.flexButton} /> : null}
       </View>
@@ -372,6 +389,13 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
                 <RtlText style={styles.bodyCopy}>נשמור את תמונת הכלב במשפחה, והיא תופיע גם בפרופיל וגם במסך הבית.</RtlText>
                 <RtlText style={styles.label}>שם הכלב/ה *</RtlText>
                 <TextInput value={dogName} onChangeText={setDogName} placeholder="איך קוראים לו/לה?" placeholderTextColor={colors.textSecondary} style={styles.input} textAlign="right" accessibilityLabel="שם הכלב או הכלבה" autoCapitalize="words" returnKeyType="done" />
+                <RtlText style={styles.label}>מין הכלב/ה</RtlText>
+                <View style={styles.sexChoiceRow} accessibilityRole="radiogroup" accessibilityLabel="מין הכלב או הכלבה">
+                  {([{ value: 'male', label: 'זכר' }, { value: 'female', label: 'נקבה' }] as const).map((option) => {
+                    const selected = dogSex === option.value;
+                    return <Pressable key={option.value} onPress={() => void showAction(() => chooseDogSex(option.value))} disabled={busy} style={[styles.sexChoice, selected && styles.sexChoiceActive]} accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={option.label}><RtlText style={[styles.sexChoiceText, selected && styles.sexChoiceTextActive]}>{option.label}</RtlText></Pressable>;
+                  })}
+                </View>
                 {familyPhotoSection}
                 {dogs.length > 1 ? <View style={styles.card}>{dogs.map((item) => <View key={item.id} style={styles.summaryRow}><DogPhoto photoUrl={item.photoUrl} size={44} /><RtlText style={styles.rowTitle}>{item.name}</RtlText></View>)}</View> : null}
                 <View style={styles.card}>
@@ -490,6 +514,11 @@ const styles = StyleSheet.create({
   muted: { ...typography.meta, color: colors.textSecondary, textAlign: 'right', lineHeight: 21 },
   label: { ...typography.meta, color: colors.textPrimary, textAlign: 'right', fontWeight: '700', marginTop: spacing.xs },
   input: { minHeight: 50, width: '100%', borderRadius: radii.md, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, paddingHorizontal: spacing.md, color: colors.textPrimary, fontSize: 16, writingDirection: 'rtl' },
+  sexChoiceRow: { flexDirection: 'row-reverse', gap: spacing.sm },
+  sexChoice: { flex: 1, minHeight: 48, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  sexChoiceActive: { borderColor: colors.primary, backgroundColor: colors.statusCurrentBg },
+  sexChoiceText: { color: colors.textSecondary, fontWeight: '600' },
+  sexChoiceTextActive: { color: colors.primaryDark, fontWeight: '800' },
   summaryRow: { width: '100%', minHeight: 48, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xs },
   rowTitle: { ...typography.body, color: colors.textPrimary, textAlign: 'right', fontWeight: '700' },
   ruleRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: spacing.sm },

@@ -23,4 +23,8 @@ describe('DogProfileModal — broken photo fallback', () => {
     expect(source).toContain('<WalkieMascot');
   });
 
+  it('shows the persisted Dog.sex value in the dog profile in Hebrew', () => {
+    const source = fs.readFileSync(path.resolve(__dirname, '../DogProfileModal.tsx'), 'utf8');
+    expect(source).toContain("{dog.sex === 'male' ? 'זכר' : 'נקבה'}");
+  });
 });

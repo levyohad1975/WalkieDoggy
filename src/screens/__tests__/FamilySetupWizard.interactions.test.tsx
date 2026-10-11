@@ -59,7 +59,7 @@ const DOG = { id: 'wizard-dog', familyId: FAMILY_ID, name: 'לוקה', walksPerD
 const ADMIN = { id: ADMIN_ID, familyId: FAMILY_ID, name: 'יעל כהן', avatar: '👩', color: '#5B8DEF', remindersEnabled: true, gamificationEnabled: true, createdAt: '2026-01-01T00:00:00.000Z' };
 const progress = { familyId: FAMILY_ID, ownerAuthUserId: 'verified-owner', step: 2 as const, adminUserId: ADMIN_ID };
 
-function setup(step: 2 | 3 | 4 | 5 = 2) {
+function setup(step: 2 | 3 | 4 | 5 = 2, pendingDogSex?: 'male' | 'female') {
   const onProgressChange = jest.fn();
   const onComplete = jest.fn().mockResolvedValue(undefined);
   const saveDog = jest.fn(async (dog: typeof DOG) => {
@@ -78,13 +78,29 @@ function setup(step: 2 | 3 | 4 | 5 = 2) {
   useScheduleStore.setState({ rules: [], entries: [], walks: [], loading: false, error: null, load: loadSchedule, addRule, updateRule: jest.fn(), deleteRule: jest.fn() } as any);
   mockPickAndUpload.mockReset();
   mockTakeAndUpload.mockReset();
-  const view = render(<SafeAreaProvider><FamilySetupWizard familyId={FAMILY_ID} progress={{ ...progress, step }} onProgressChange={onProgressChange} onComplete={onComplete} /></SafeAreaProvider>);
+  const view = render(<SafeAreaProvider><FamilySetupWizard familyId={FAMILY_ID} progress={{ ...progress, ...(pendingDogSex ? { pendingDogSex } : {}), step }} onProgressChange={onProgressChange} onComplete={onComplete} /></SafeAreaProvider>);
   return { ...view, onProgressChange, onComplete, saveDog, addUser, addRule, loadFamily, loadSchedule };
 }
 
 describe('FamilySetupWizard interactions', () => {
   beforeEach(async () => { await AsyncStorage.clear(); });
   afterEach(cleanup);
+
+  it('persists dog sex in the profile and resumable setup draft, then restores it into the saved dog', async () => {
+    const state = setup();
+    await waitFor(() => expect(screen.getByLabelText('מין הכלב או הכלבה')).toBeTruthy());
+    fireEvent.press(screen.getByLabelText('נקבה'));
+    await waitFor(async () => expect(JSON.parse((await AsyncStorage.getItem(FAMILY_SETUP_PROGRESS_KEY))!).pendingDogSex).toBe('female'));
+    fireEvent.changeText(screen.getByLabelText('שם הכלב או הכלבה'), 'לוקה');
+    await act(async () => { fireEvent.press(screen.getByLabelText('המשך לבני המשפחה')); });
+    expect(state.saveDog).toHaveBeenCalledWith(expect.objectContaining({ name: 'לוקה', sex: 'female' }));
+    expect(state.onProgressChange).toHaveBeenCalledWith(expect.objectContaining({ step: 3, pendingDogSex: undefined }));
+  });
+
+  it('restores a saved dog sex draft when onboarding resumes after refresh', async () => {
+    setup(2, 'female');
+    await waitFor(() => expect(screen.getByLabelText('נקבה').props.accessibilityState.selected).toBe(true));
+  });
 
   it('requires a dog name and preserves a selected photo until the named dog is saved', async () => {
     const state = setup();
