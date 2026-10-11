@@ -157,7 +157,7 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
       // name concurrently keeps it durable even if the picker is canceled.
       const photoPromise = camera
         ? takeAndUploadImage('dogs', familyId, dogIdRef.current)
-        : pickAndUploadImage('dogs', familyId, dogIdRef.current, setSelectedDogPhotoPreviewUrl);
+        : pickAndUploadImage('dogs', familyId, dogIdRef.current, (uri) => setSelectedDogPhotoPreviewUrl(uri ?? undefined));
       const saveNamePromise = currentName ? savePrimaryDog(currentName) : Promise.resolve();
       const [uri] = await Promise.all([photoPromise, saveNamePromise]);
       if (uri) {
