@@ -1204,7 +1204,7 @@ describe('authStore — signIn (Supabase mode: offline-queue audit-integrity gua
       caught = err;
     }
 
-    expect(claimErrorMessage(caught)).toMatch(/פעולות ממתינות לסנכרון/);
+    expect(claimErrorMessage(caught)).toMatch(/פעולות שממתינות לסנכרון/);
   });
 
   it('proceeds normally once nothing is pending for a different profile (the common, already-synced case)', async () => {
