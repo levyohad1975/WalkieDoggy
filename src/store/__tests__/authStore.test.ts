@@ -193,7 +193,7 @@ describe('authStore — familyRole refresh after a claim (persona-vs-authorizati
     const { useAuthStore } = require('../authStore');
 
     await expect(useAuthStore.getState().signIn('qa-manager-profile')).rejects.toThrow(
-      'יש פעולות שממתינות לסנכרון מפרופיל אחר במכשיר. חזרו למשפחה המקורית כדי לסנכרן אותן, ואז נסו שוב. הנתונים נשמרו במכשיר ולא הועברו לפרופיל אחר.'
+      'pending sync from another profile on this device'
     );
     expect(rpc).not.toHaveBeenCalledWith('claim_family_profile', expect.anything());
     expect(useAuthStore.getState().currentUserId).not.toBe('qa-manager-profile');
