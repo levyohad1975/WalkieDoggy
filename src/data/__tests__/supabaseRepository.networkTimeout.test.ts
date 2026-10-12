@@ -71,6 +71,51 @@ describe('SupabaseRepository — a stalled network call times out instead of han
     await assertion;
   });
 
+  it('aborts the underlying schedule-entry fetch when the lookup times out', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    const lookup = {
+      abortSignal(signal: AbortSignal) {
+        capturedSignal = signal;
+        return {
+          then: (_resolve: (value: unknown) => void, reject: (reason: unknown) => void) => {
+            signal.addEventListener('abort', () => reject(Object.assign(new Error('fetch aborted'), { name: 'AbortError' })));
+          },
+        };
+      },
+    };
+    const client: any = {
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              maybeSingle: () => lookup,
+            }),
+          }),
+        }),
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+    const walk: Walk = {
+      id: 'walk-timeout',
+      familyId: 'fam-1',
+      dogId: 'dog-1',
+      responsibleUserId: 'user-1',
+      date: '2026-10-05',
+      scheduledTime: '08:00',
+      status: 'pending',
+      scheduleEntryId: 'entry-1',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as Walk;
+
+    const promise = repo.saveWalk(walk);
+    const assertion = expect(promise).rejects.toBeInstanceOf(SupabaseTimeoutError);
+    await jest.advanceTimersByTimeAsync(15000);
+    await assertion;
+
+    expect(capturedSignal?.aborted).toBe(true);
+  });
+
   it('addScheduleEntries() times out on a stalled upsert rather than hanging', async () => {
     const client: any = {
       from: () => ({

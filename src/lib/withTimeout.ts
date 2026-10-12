@@ -51,15 +51,21 @@ export class SupabaseTimeoutError extends Error {
 export const SUPABASE_CALL_TIMEOUT_MS = 15000;
 
 /**
- * Races `promise` against a timer. On timeout, rejects with
- * SupabaseTimeoutError (never hangs); the original promise is left to
- * settle on its own (there is no way to cancel a supabase-js/fetch call
- * already in flight) — its eventual result is simply ignored once the
- * timeout has already resolved this race.
+ * Races `promise` against a timer. On timeout, invokes the optional
+ * cancellation callback and rejects with SupabaseTimeoutError (never
+ * hangs). Callers without cancellation support leave the original promise
+ * to settle on its own; fetch-backed query callers should abort the request
+ * so it does not retain a browser connection after the queue moves on.
  */
-export function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T> {
+export function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string, onTimeout?: () => void): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new SupabaseTimeoutError(label, ms)), ms);
+    const timer = setTimeout(() => {
+      try {
+        onTimeout?.();
+      } finally {
+        reject(new SupabaseTimeoutError(label, ms));
+      }
+    }, ms);
     promise.then(
       (value) => {
         clearTimeout(timer);

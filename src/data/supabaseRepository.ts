@@ -717,15 +717,25 @@ export class SupabaseRepository implements Repository {
     // fields and stable id, but persist it as a standalone walk when the
     // optional schedule relation is genuinely absent in this family.
     if (walkToPersist.scheduleEntryId) {
+      const scheduleEntryAbort = new AbortController();
+      const scheduleEntryLookup = this.client
+        .from('schedule_entries')
+        .select('id')
+        .eq('id', walkToPersist.scheduleEntryId)
+        .eq('family_id', walkToPersist.familyId)
+        .maybeSingle();
+      // The timeout must also cancel the underlying fetch. Racing only the
+      // promise leaves a dead request occupying the browser's connection
+      // pool while the offline queue retries this same FIFO item later.
+      const abortableScheduleEntryLookup =
+        typeof scheduleEntryLookup.abortSignal === 'function'
+          ? scheduleEntryLookup.abortSignal(scheduleEntryAbort.signal)
+          : scheduleEntryLookup;
       const { data: scheduleEntry, error: scheduleEntryError, status: scheduleEntryStatus } = await withTimeout(
-        this.client
-          .from('schedule_entries')
-          .select('id')
-          .eq('id', walkToPersist.scheduleEntryId)
-          .eq('family_id', walkToPersist.familyId)
-          .maybeSingle(),
+        abortableScheduleEntryLookup,
         SUPABASE_CALL_TIMEOUT_MS,
-        'schedule_entries lookup for queued walk'
+        'schedule_entries lookup for queued walk',
+        () => scheduleEntryAbort.abort()
       );
       if (scheduleEntryError) throw Object.assign(scheduleEntryError, { status: scheduleEntryStatus });
       if (!scheduleEntry) walkToPersist.scheduleEntryId = undefined;
