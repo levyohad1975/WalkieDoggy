@@ -87,19 +87,31 @@ describe('LocalRepository — schedule + walk CRUD', () => {
     expect(after).toHaveLength(before.length);
   });
 
-  it('removes a schedule entry and its associated walk together', async () => {
+  it('removes a schedule entry without deleting linked historical walks', async () => {
     const repo = new LocalRepository();
     const entries = await repo.getScheduleEntries('family-main');
     const walks = await repo.getWalks('family-main');
     const target = entries[0];
+    const linkedWalks = walks.filter((walk) => walk.scheduleEntryId === target.id);
 
     await repo.deleteScheduleEntry(target.id);
+    await repo.deleteScheduleEntry(target.id); // idempotent repeat
 
     const remainingEntries = await repo.getScheduleEntries('family-main');
     const remainingWalks = await repo.getWalks('family-main');
-    expect(remainingEntries.find((e) => e.id === target.id)).toBeUndefined();
-    expect(remainingWalks.find((w) => w.scheduleEntryId === target.id)).toBeUndefined();
-    expect(remainingWalks.length).toBeLessThan(walks.length);
+    expect(remainingEntries.find((entry) => entry.id === target.id)).toBeUndefined();
+    expect(remainingWalks.filter((walk) => walk.scheduleEntryId === target.id)).toHaveLength(0);
+
+    for (const linkedWalk of linkedWalks) {
+      if (linkedWalk.status === 'pending') {
+        expect(remainingWalks.some((walk) => walk.id === linkedWalk.id)).toBe(false);
+      } else {
+        expect(remainingWalks.find((walk) => walk.id === linkedWalk.id)).toMatchObject({
+          ...linkedWalk,
+          scheduleEntryId: undefined,
+        });
+      }
+    }
   });
 });
 
