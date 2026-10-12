@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -962,6 +963,22 @@ export function HomeScreen() {
                 <View style={styles.dashboardHeroDefaultGround} />
               </>
             )}
+            <Svg
+              pointerEvents="none"
+              width="100%"
+              height={44}
+              viewBox="0 0 100 44"
+              preserveAspectRatio="none"
+              style={styles.dashboardHeroFade}
+            >
+              <Defs>
+                <LinearGradient id="dashboardHeroCreamFade" x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0" stopColor={colors.background} stopOpacity={0} />
+                  <Stop offset="1" stopColor={colors.background} stopOpacity={1} />
+                </LinearGradient>
+              </Defs>
+              <Rect x="0" y="0" width="100" height="44" fill="url(#dashboardHeroCreamFade)" />
+            </Svg>
           </View>
           <View style={[styles.topRow, styles.dashboardTopRow]}>
             <Image
@@ -1777,7 +1794,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'flex-end',
   },
-  dashboardHeroImage: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
+  dashboardHeroImage: { ...StyleSheet.absoluteFill, width: '100%', height: '100%' },
+  dashboardHeroFade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 44, zIndex: 1 },
   dashboardHeroDefaultSun: { position: 'absolute', width: 86, height: 86, borderRadius: 43, right: 30, top: 18, backgroundColor: '#FFF1C7' },
   dashboardHeroDefaultHillBack: { position: 'absolute', width: 330, height: 150, borderRadius: 165, left: -95, bottom: -88, backgroundColor: '#E8F1DF' },
   dashboardHeroDefaultHillFront: { position: 'absolute', width: 320, height: 142, borderRadius: 160, right: -98, bottom: -94, backgroundColor: '#DCEAD7' },
@@ -1793,7 +1811,9 @@ const styles = StyleSheet.create({
   // so each image's TOP edge — where the mascot/dog's face/head sits —
   // renders at the exact same position as before; only extra bottom
   // (paws/tail) bleed is newly clipped by the shorter frame.
-  dashboardHeroMascot: { position: 'absolute', right: 4, bottom: 2, zIndex: 2 },
+  // The approved raster ends in a flat opaque baseline. Sink it just below the
+  // clipped hero edge so that edge cannot read as a white strip over the scene.
+  dashboardHeroMascot: { position: 'absolute', right: 4, bottom: -14, zIndex: 2 },
   // Preserve the hero mascot's mounted layout slot during a completion moment,
   // but make only its pixels disappear so there is never a second mascot.
   dashboardHeroMascotCelebrating: { opacity: 0 },

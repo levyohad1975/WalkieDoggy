@@ -8,7 +8,7 @@ export type DogBackground = {
 };
 
 const unsplash = (photoId: string) =>
-  `https://images.unsplash.com/${photoId}?auto=format&fit=crop&w=1200&q=84`;
+  `https://images.unsplash.com/${photoId}?auto=format&fit=crop&w=1200&h=600&q=84`;
 
 /**
  * Bright, walk-friendly hero scenes. Keep this list deliberately varied so
