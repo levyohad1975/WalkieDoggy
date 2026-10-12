@@ -50,6 +50,7 @@ import type { SyncQueueDiagnostics } from '../data/syncQueue';
 import { shouldShowStagingSyncDiagnostics } from '../logic/syncDiagnosticsGate';
 import { SyncDiagnosticsActionButton } from '../components/SyncDiagnosticsActionButton';
 import { summarizeSyncConflicts, summarizeSyncQuarantine } from '../logic/syncQuarantineDiagnostics';
+import { buildSyncDiagnosticExport } from '../logic/syncDiagnosticExport';
 
 type SettingsSyncDiagnostics = SyncQueueDiagnostics & { permanentFailureCount: number; quarantineCount: number; conflictSummary: ReturnType<typeof summarizeSyncConflicts>; quarantineSummary: ReturnType<typeof summarizeSyncQuarantine>; syncPreflight?: { outcome: string; at: string | null } };
 
@@ -172,6 +173,35 @@ function SettingsScreenContent() {
       await loadSyncDiagnostics({ feedback: false });
     } finally {
       setSyncRetrying(false);
+    }
+  };
+
+  const exportSyncDiagnostics = async () => {
+    if (!canShowSyncDiagnostics || syncDiagnosticsLoading || syncRetrying) return;
+    if (!repository.getSyncConflicts || !repository.getQuarantinedSyncItems) {
+      setSyncDiagnosticsFeedback({ kind: 'error', message: 'ייצוא האבחון אינו זמין. הנתונים המקומיים נשמרו ללא שינוי.' });
+      return;
+    }
+    setSyncDiagnosticsFeedback({ kind: 'loading', message: 'מכין ייצוא אבחון מסונן…' });
+    try {
+      const [conflicts, quarantined] = await Promise.all([
+        repository.getSyncConflicts(),
+        repository.getQuarantinedSyncItems(),
+      ]);
+      const report = buildSyncDiagnosticExport(conflicts, quarantined);
+      await Share.share({
+        title: 'אבחון סנכרון מסונן',
+        message: JSON.stringify(report, null, 2),
+      });
+      setSyncDiagnosticsFeedback({
+        kind: 'success',
+        message: 'דוח אבחון מסונן הוכן לשיתוף. לא בוצעו שינויים בתור או בנתונים.',
+      });
+    } catch {
+      setSyncDiagnosticsFeedback({
+        kind: 'error',
+        message: 'ייצוא האבחון נכשל. התור והנתונים המקומיים נשמרו ללא שינוי.',
+      });
     }
   };
   // NESTED-MODAL LIFECYCLE FIX (final QA round) — see
@@ -852,6 +882,7 @@ function SettingsScreenContent() {
                   <RtlText style={styles.syncRetryButtonText}>{syncRetrying ? 'מנסה לסנכרן…' : 'ניסיון חוזר לסנכרון'}</RtlText>
                 </Pressable>
                 <SyncDiagnosticsActionButton label="רענון אבחון" loadingLabel="מרענן אבחון…" accessibilityLabel="רענון אבחון" testID="sync-diagnostics-refresh" disabled={syncDiagnosticsLoading || syncRetrying} busy={syncDiagnosticsLoading} feedback={syncDiagnosticsFeedback} onPressIn={() => setSyncDiagnosticsFeedback({ kind: 'loading', message: 'הלחיצה נקלטה; מרענן אבחון…' })} onPress={() => void loadSyncDiagnostics()} />
+                <SyncDiagnosticsActionButton label="ייצוא אבחון מסונן" loadingLabel="מכין ייצוא…" accessibilityLabel="ייצוא אבחון סנכרון מסונן" testID="sync-diagnostics-export" disabled={syncDiagnosticsLoading || syncRetrying} busy={syncDiagnosticsLoading || syncRetrying} feedback={syncDiagnosticsFeedback} onPress={() => void exportSyncDiagnostics()} />
               </View>
             ) : null}
           </View>

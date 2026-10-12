@@ -29,6 +29,15 @@ describe('Settings sync diagnostics refresh feedback', () => {
     expect(screen).toContain('feedback={syncDiagnosticsFeedback}');
   });
 
+  it('offers a read-only sanitized export only inside the gated Staging diagnostics section', () => {
+    expect(screen).toContain("import { buildSyncDiagnosticExport } from '../logic/syncDiagnosticExport'");
+    expect(screen).toContain('const exportSyncDiagnostics = async () =>');
+    expect(screen).toContain('Share.share({');
+    expect(screen).toContain('sync-diagnostics-export');
+    expect(screen).toContain("if (!canShowSyncDiagnostics || syncDiagnosticsLoading || syncRetrying) return;");
+    expect(screen).toContain('לא בוצעו שינויים בתור או בנתונים');
+  });
+
   it('reports allowlisted quarantine reason and operation aggregates without raw metadata', () => {
     expect(screen).toContain('summarizeSyncQuarantine(quarantined)');
     expect(screen).toContain('summarizeSyncConflicts(conflicts)');

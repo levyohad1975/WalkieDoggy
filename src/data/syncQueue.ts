@@ -127,6 +127,9 @@ export interface SyncConflict {
   code: string | undefined;
   message: string;
   failedAt: string;
+  /** Device-local context captured at failure time; never used as server authorization. */
+  claimedByUserId?: string | null;
+  httpStatus?: number;
 }
 
 /**
@@ -501,7 +504,12 @@ export class SyncQueue {
   private async quarantine(item: QueuedItem, reason: string): Promise<void> {
     const list = await this.loadQuarantined();
     list.push({ op: item.op, quarantinedAt: new Date().toISOString(), reason });
-    await this.persistQuarantined();
+    try {
+      await this.persistQuarantined();
+    } catch (error) {
+      list.pop();
+      throw error;
+    }
   }
 
   /**
@@ -780,9 +788,16 @@ export class SyncQueue {
         const item = q[i];
 
         if (item.claimedByUserId == null) {
-          q.splice(i, 1);
-          await this.persist();
+          // Persist the quarantine copy before removing the pending item. If
+          // either storage write fails, at least one durable copy remains.
           await this.quarantine(item, 'legacy/untagged operation — original actor unknown, never auto-replayed');
+          q.splice(i, 1);
+          try {
+            await this.persist();
+          } catch (error) {
+            q.splice(i, 0, item);
+            throw error;
+          }
           quarantinedCount++;
           continue; // the next item has shifted into index i
         }
@@ -862,16 +877,32 @@ export class SyncQueue {
             category,
           });
           if (isPermanentSyncError(error)) {
-            q.splice(i, 1);
-            await this.persist();
             const conflicts = await this.loadConflicts();
             conflicts.push({
               op: item.op,
               code: (error as { code?: string } | null | undefined)?.code,
               message: error instanceof Error ? error.message : String(error),
               failedAt: new Date().toISOString(),
+              claimedByUserId: item.claimedByUserId,
+              httpStatus: (error as { status?: number } | null | undefined)?.status,
             });
-            await this.persistConflicts();
+            try {
+              // Archive first. Never remove the only durable copy of an
+              // operation before its conflict record has been persisted.
+              await this.persistConflicts();
+            } catch (archiveError) {
+              conflicts.pop();
+              throw archiveError;
+            }
+            q.splice(i, 1);
+            try {
+              await this.persist();
+            } catch (queueError) {
+              // The archive is already durable, and restoring in memory
+              // keeps the operation visible if the queue write failed.
+              q.splice(i, 0, item);
+              throw queueError;
+            }
             conflicted++;
             continue; // don't let a permanent conflict block unrelated later ops
           }
