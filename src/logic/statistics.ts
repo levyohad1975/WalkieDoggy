@@ -18,6 +18,32 @@ export function filterWalksByPeriod(walks: Walk[], period: StatsPeriod, now: Dat
   return walks.filter((w) => w.date >= start);
 }
 
+export interface WalkHorizonStats {
+  /** Walks whose date has arrived, matching History's eligibility rule. */
+  dueOrHistorical: number;
+  /** Pending, planned walks whose scheduled date and time are still ahead. */
+  upcomingScheduled: number;
+}
+
+/** Splits the statistics dataset into past/due records and future scheduled work without changing its total count. */
+export function computeWalkHorizonStats(walks: Walk[], now: Date = new Date()): WalkHorizonStats {
+  const nowMs = now.getTime();
+  const today = localDateOnly(now);
+  return {
+    dueOrHistorical: walks.filter((walk) =>
+      walk.status === 'pending'
+        ? walkDateTime(walk).getTime() <= nowMs
+        : walk.date <= today
+    ).length,
+    upcomingScheduled: walks.filter(
+      (walk) =>
+        walk.status === 'pending' &&
+        !walk.isUnplanned &&
+        walkDateTime(walk).getTime() > nowMs
+    ).length,
+  };
+}
+
 export interface CompletionStats {
   done: number;
   notDone: number;

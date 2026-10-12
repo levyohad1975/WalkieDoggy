@@ -16,6 +16,7 @@ import { repository } from '../data';
 import {
   applyStatisticsFilters,
   computeCompletionStats,
+  computeWalkHorizonStats,
   computeDailyTrend,
   computeDistanceStats,
   computeDogDistribution,
@@ -219,6 +220,7 @@ export function StatisticsScreen() {
   }, [filteredWalks]);
 
   const completion = useMemo(() => computeCompletionStats(filteredWalks), [filteredWalks]);
+  const horizon = useMemo(() => computeWalkHorizonStats(filteredWalks), [filteredWalks]);
   const memberDistribution = useMemo(() => computeMemberDistribution(filteredWalks), [filteredWalks]);
   const dogDistribution = useMemo(() => computeDogDistribution(filteredWalks), [filteredWalks]);
   const plannedVsSpontaneous = useMemo(() => computePlannedVsSpontaneous(filteredWalks), [filteredWalks]);
@@ -488,7 +490,8 @@ export function StatisticsScreen() {
             <View style={styles.kpiGrid}>
               <View style={styles.kpiTile}>
                 <RtlText style={[styles.kpiValue, styles.ltrText]}>{completion.total}</RtlText>
-                <RtlText style={[styles.kpiLabel, styles.rtlText]}>סה״כ טיולים</RtlText>
+                <RtlText style={[styles.kpiLabel, styles.rtlText]}>כלל הרשומות</RtlText>
+                <RtlText style={[styles.kpiSubValue, styles.rtlText]}>{horizon.dueOrHistorical} עד היום · {horizon.upcomingScheduled} מתוכננים בהמשך</RtlText>
               </View>
               <View style={styles.kpiTile}>
                 <RtlText style={[styles.kpiValue, styles.kpiValueDone, styles.ltrText]}>{completion.done}</RtlText>

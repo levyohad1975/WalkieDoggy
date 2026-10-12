@@ -166,6 +166,17 @@ interface ScheduleState {
   clearActionError: () => void;
 }
 
+function hasPlannedWalkForEntry(walks: Walk[], entry: ScheduleEntry, familyId: string): boolean {
+  return walks.some(
+    (walk) =>
+      !walk.isUnplanned &&
+      walk.familyId === familyId &&
+      walk.dogId === entry.dogId &&
+      walk.date === entry.date &&
+      walk.scheduledTime === entry.time
+  );
+}
+
 function walkFromEntry(entry: ScheduleEntry, familyId: string): Walk {
   const now = new Date().toISOString();
   return {
@@ -284,7 +295,9 @@ async function loadScheduleForFamily(
       await repository.addScheduleEntries(generated);
       const existingKeys = new Set(finalEntries.map((e) => `${e.dogId}|${e.date}|${e.time}`));
       const trulyNew = generated.filter((e) => !existingKeys.has(`${e.dogId}|${e.date}|${e.time}`));
-      const generatedWalks = trulyNew.map((e) => walkFromEntry(e, rule.familyId));
+      const generatedWalks = trulyNew
+        .filter((entry) => !hasPlannedWalkForEntry(finalWalks, entry, rule.familyId))
+        .map((entry) => walkFromEntry(entry, rule.familyId));
       for (const walk of generatedWalks) await repository.saveWalk(walk);
       finalEntries = [...finalEntries, ...trulyNew];
       finalWalks = [...finalWalks, ...generatedWalks];
@@ -316,7 +329,8 @@ async function loadScheduleForFamily(
         entry.date >= today &&
         entry.date <= endDate &&
         entryBelongsToActiveRule(entry) &&
-        !walkEntryIds.has(entry.id)
+        !walkEntryIds.has(entry.id) &&
+        !hasPlannedWalkForEntry(finalWalks, entry, familyId)
     );
     if (orphanFutureEntries.length > 0) {
       const repairedWalks = orphanFutureEntries.map((entry) => walkFromEntry(entry, familyId));
@@ -366,7 +380,9 @@ async function loadScheduleForFamily(
     }
     if (staleReconciliation.toRegenerate.length > 0) {
       await repository.addScheduleEntries(staleReconciliation.toRegenerate);
-      const regeneratedWalks = staleReconciliation.toRegenerate.map((e) => walkFromEntry(e, familyId));
+      const regeneratedWalks = staleReconciliation.toRegenerate
+        .filter((entry) => !hasPlannedWalkForEntry(finalWalks, entry, familyId))
+        .map((entry) => walkFromEntry(entry, familyId));
       const todayRegeneratedWalks = regeneratedWalks.filter((w) => w.date === today);
       const futureRegeneratedWalks = regeneratedWalks.filter((w) => w.date !== today);
       for (const w of todayRegeneratedWalks) await repository.saveWalk(w);
@@ -480,7 +496,9 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
 
       const existingKeys = new Set(get().entries.map((e) => `${e.dogId}|${e.date}|${e.time}`));
       const trulyNew = newEntries.filter((e) => !existingKeys.has(`${e.dogId}|${e.date}|${e.time}`));
-      const newWalks = trulyNew.map((e) => walkFromEntry(e, rule.familyId));
+      const newWalks = trulyNew
+        .filter((entry) => !hasPlannedWalkForEntry(get().walks, entry, rule.familyId))
+        .map((entry) => walkFromEntry(entry, rule.familyId));
       // Real-device QA fix — "Save spinner lingers ~10s": this used to be
       // `for (const w of newWalks) await repository.saveWalk(w);` — up to
       // GENERATE_DAYS_AHEAD (14) SEQUENTIAL network round trips (each
@@ -673,7 +691,9 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // exactly as they were, preserved as history.
       const allNewEntries = [...toAdd, ...toRegenerate];
       if (allNewEntries.length > 0) await repository.addScheduleEntries(allNewEntries);
-      const newWalks = allNewEntries.map((e) => walkFromEntry(e, updatedRule.familyId));
+      const newWalks = allNewEntries
+        .filter((entry) => !hasPlannedWalkForEntry(get().walks, entry, updatedRule.familyId))
+        .map((entry) => walkFromEntry(entry, updatedRule.familyId));
       const todayNewWalks = newWalks.filter((w) => w.scheduleEntryId && allNewEntries.some((e) => e.id === w.scheduleEntryId && e.date === today));
       const futureNewWalks = newWalks.filter((w) => !w.scheduleEntryId || !allNewEntries.some((e) => e.id === w.scheduleEntryId && e.date === today));
       for (const w of todayNewWalks) await repository.saveWalk(w);

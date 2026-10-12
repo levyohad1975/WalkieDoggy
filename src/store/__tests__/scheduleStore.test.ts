@@ -177,6 +177,53 @@ describe('scheduleStore', () => {
     expect(state.entries.filter((e) => e.ruleId === resetRule.id)).toHaveLength(rebuiltEntries.length);
   });
 
+  it('does not regenerate a scheduled occurrence when a standalone planned walk already occupies that family/dog/date/time', async () => {
+    await useScheduleStore.getState().load(FAMILY_ID);
+    const { repository } = require('../../data');
+    const occurrenceDate = localDateOnly(new Date());
+    const rule: ScheduleRule = {
+      id: 'rule-orphan-occurrence',
+      familyId: FAMILY_ID,
+      dogId: 'dog-topi',
+      time: '16:17',
+      daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+      rotationUserIds: ['user-aba'],
+      rotationAnchorDate: occurrenceDate,
+      sortOrder: 99,
+      active: true,
+      createdAt: new Date().toISOString(),
+    };
+    const existingStandaloneWalk: Walk = {
+      id: 'walk-legacy-standalone-occurrence',
+      familyId: FAMILY_ID,
+      dogId: rule.dogId,
+      date: occurrenceDate,
+      scheduledTime: rule.time,
+      responsibleUserId: 'user-aba',
+      status: 'pending',
+      isUnplanned: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await repository.upsertScheduleRule(rule);
+    await repository.saveWalk(existingStandaloneWalk);
+
+    const result = await useScheduleStore.getState().load(FAMILY_ID);
+    const matchingWalks = useScheduleStore.getState().walks.filter(
+      (walk) =>
+        walk.familyId === FAMILY_ID &&
+        walk.dogId === rule.dogId &&
+        walk.date === occurrenceDate &&
+        walk.scheduledTime === rule.time &&
+        !walk.isUnplanned
+    );
+
+    expect(result).toBe(true);
+    expect(matchingWalks).toHaveLength(1);
+    expect(matchingWalks[0].id).toBe(existingStandaloneWalk.id);
+    expect(matchingWalks[0].scheduleEntryId).toBeUndefined();
+  });
+
   it('addRule surfaces a visible actionError instead of silently doing nothing when the repository write fails', async () => {
     await useScheduleStore.getState().load(FAMILY_ID);
     const { repository } = require('../../data');

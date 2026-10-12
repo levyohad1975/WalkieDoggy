@@ -1,6 +1,7 @@
 import {
   applyStatisticsFilters,
   computeCompletionStats,
+  computeWalkHorizonStats,
   computeDailyTrend,
   computeDistanceStats,
   computeDogDistribution,
@@ -60,6 +61,24 @@ describe('filterWalksByPeriod', () => {
   it('defaults to the real current moment when called with no `now` argument', () => {
     const walks = [makeWalk({ id: 'today', date: new Date().toISOString().slice(0, 10) })];
     expect(filterWalksByPeriod(walks, '7d').map((w) => w.id)).toEqual(['today']);
+  });
+});
+
+describe('computeWalkHorizonStats', () => {
+  it('separates due/history rows from future scheduled rows using the History date rule', () => {
+    const now = new Date('2026-08-26T18:00:00');
+    const walks = [
+      makeWalk({ id: 'done-past', status: 'done', date: '2026-08-25' }),
+      makeWalk({ id: 'skipped-today', status: 'skipped', date: '2026-08-26' }),
+      makeWalk({ id: 'pending-due', status: 'pending', date: '2026-08-26', scheduledTime: '17:00' }),
+      makeWalk({ id: 'pending-future', status: 'pending', date: '2026-08-26', scheduledTime: '20:00' }),
+      makeWalk({ id: 'future-unplanned', status: 'pending', isUnplanned: true, scheduledTime: '20:00' }),
+      makeWalk({ id: 'future-resolved', status: 'done', date: '2026-08-27' }),
+    ];
+    expect(computeWalkHorizonStats(walks, now)).toEqual({
+      dueOrHistorical: 3,
+      upcomingScheduled: 1,
+    });
   });
 });
 
