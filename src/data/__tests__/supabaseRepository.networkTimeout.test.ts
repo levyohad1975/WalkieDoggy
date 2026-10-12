@@ -118,6 +118,66 @@ describe('SupabaseRepository — a stalled network call times out instead of han
     expect(capturedSignal?.aborted).toBe(true);
   });
 
+  it('aborts the underlying walks-by-schedule-entry fetch when the lookup times out', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    const client: any = {
+      from: (table: string) => {
+        if (table === 'schedule_entries') {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  maybeSingle: async () => ({ data: { id: 'entry-1' }, error: null, status: 200 }),
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'walks') {
+          return {
+            select: () => ({
+              eq: () => ({
+                abortSignal(signal: AbortSignal) {
+                  capturedSignal = signal;
+                  return {
+                    maybeSingle: () => ({
+                      then: (_resolve: (value: unknown) => void, reject: (reason: unknown) => void) => {
+                        signal.addEventListener('abort', () =>
+                          reject(Object.assign(new Error('fetch aborted'), { name: 'AbortError' }))
+                        );
+                      },
+                    }),
+                  };
+                },
+              }),
+            }),
+          };
+        }
+        throw new Error(`Unexpected table in saveWalk test: ${table}`);
+      },
+    };
+    const repo = new SupabaseRepository(client);
+    const walk: Walk = {
+      id: 'walk-timeout',
+      familyId: 'fam-1',
+      dogId: 'dog-1',
+      responsibleUserId: 'user-1',
+      date: '2026-10-05',
+      scheduledTime: '08:00',
+      status: 'pending',
+      scheduleEntryId: 'entry-1',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as Walk;
+
+    const promise = repo.saveWalk(walk);
+    const assertion = expect(promise).rejects.toBeInstanceOf(SupabaseTimeoutError);
+    await jest.advanceTimersByTimeAsync(15000);
+    await assertion;
+
+    expect(capturedSignal?.aborted).toBe(true);
+  });
+
   it('addScheduleEntries() times out on a stalled upsert rather than hanging', async () => {
     const client: any = {
       from: () => ({

@@ -771,10 +771,20 @@ export class SupabaseRepository implements Repository {
       return;
     }
     if (walkToPersist.scheduleEntryId) {
+      const walksLookupAbort = new AbortController();
+      const walksLookupQuery = this.client
+        .from('walks')
+        .select('id, status')
+        .eq('schedule_entry_id', walkToPersist.scheduleEntryId);
+      const abortableWalksLookup =
+        typeof walksLookupQuery.abortSignal === 'function'
+          ? walksLookupQuery.abortSignal(walksLookupAbort.signal)
+          : walksLookupQuery;
       const { data: existing, error: lookupError, status: lookupStatus } = await withTimeout(
-        this.client.from('walks').select('id, status').eq('schedule_entry_id', walkToPersist.scheduleEntryId).maybeSingle(),
+        abortableWalksLookup.maybeSingle(),
         SUPABASE_CALL_TIMEOUT_MS,
-        'walks lookup by schedule_entry_id'
+        'walks lookup by schedule_entry_id',
+        () => walksLookupAbort.abort()
       );
       if (lookupError) throw Object.assign(lookupError, { status: lookupStatus });
       if (existing) {
