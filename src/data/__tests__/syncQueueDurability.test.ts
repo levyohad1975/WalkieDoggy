@@ -16,14 +16,14 @@ function remote(upsertUser: jest.Mock): Repository {
 }
 
 type StorageFailure = (key: string) => Error | null;
+const BASE_SET_ITEM = (AsyncStorage.setItem as jest.Mock).getMockImplementation();
 
 function interceptStorageWrites(failure: StorageFailure): void {
-  const originalWrite = (AsyncStorage.setItem as jest.Mock).getMockImplementation();
-  if (!originalWrite) throw new Error('AsyncStorage test mock has no setItem implementation');
+  if (!BASE_SET_ITEM) throw new Error('AsyncStorage test mock has no setItem implementation');
   jest.spyOn(AsyncStorage, 'setItem').mockImplementation(async (key, value) => {
     const error = failure(key);
     if (error) throw error;
-    await originalWrite(key, value);
+    await BASE_SET_ITEM(key, value);
   });
 }
 
