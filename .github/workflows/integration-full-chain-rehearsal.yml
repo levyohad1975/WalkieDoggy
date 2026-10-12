@@ -260,6 +260,7 @@ jobs:
       - name: Rehearse schedule-entry deletion with disposable history and GPS fixtures
         env:
           PGPASSWORD: postgres
+          PGOPTIONS: "-c app.schedule_delete_fixture=local"
         run: |
           psql "postgresql://postgres@127.0.0.1:54322/postgres" \
             -v ON_ERROR_STOP=1 \

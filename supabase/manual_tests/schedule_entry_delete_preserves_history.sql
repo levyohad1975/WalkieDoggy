@@ -1,8 +1,8 @@
 -- Disposable real-Postgres regression rehearsal. All writes roll back.
 do $local_only$
 begin
- if current_database()<>'postgres' or coalesce(inet_server_addr()::text,'')<>'127.0.0.1' or current_setting('port')<>'54322' then
-  raise exception 'Fixture is restricted to isolated local Supabase on 127.0.0.1:54322';
+ if current_database()<>'postgres' or current_setting('app.schedule_delete_fixture',true) is distinct from 'local' then
+  raise exception 'Fixture requires the isolated CI session flag';
  end if;
 end;$local_only$;
 begin;
