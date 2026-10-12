@@ -281,10 +281,13 @@ jobs:
           path = 'supabase/migrations/0105_register_walk_reminder_cron.sql'
           sql = open(path).read()
           secret_marker = 'create extension if not exists supabase_vault;'
-          assert sql.count(secret_marker) == 1
-          sql = sql.replace(
-              secret_marker,
-              secret_marker + "\n\nselect vault.create_secret('local-rehearsal-only-dummy-secret', 'walk_reminder_cron_secret', 'Isolated local rehearsal only.');"
+          marker_index = sql.rfind(secret_marker)
+          assert marker_index >= 0
+          sql = (
+              sql[:marker_index]
+              + secret_marker
+              + "\n\nselect vault.create_secret('local-rehearsal-only-dummy-secret', 'walk_reminder_cron_secret', 'Isolated local rehearsal only.');"
+              + sql[marker_index + len(secret_marker):]
           )
           sql = sql.replace(
               'https://czbxhsoxyawprqehkfit.supabase.co/functions/v1/send-walk-reminders',
