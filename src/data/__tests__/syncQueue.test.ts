@@ -1067,7 +1067,7 @@ describe('SyncQueue — sanitized diagnostics for an unclassified HTTP conflict'
     expect(JSON.stringify(warn.mock.calls)).not.toContain('later-user');
 
     const saveWalk = jest.fn().mockResolvedValue(undefined);
-    const secondResult = await queue.flush(stubRemote({ saveWalk, upsertUser: laterWrite }));
+    const secondResult = await queue.flush(stubRemote({ saveWalk, upsertUser: laterWrite }), { force: true });
     expect(saveWalk).toHaveBeenCalledTimes(1);
     expect(laterWrite).toHaveBeenCalledTimes(1);
     expect(secondResult).toEqual({ succeeded: 2, remaining: 0, conflicted: 0, quarantined: 0 });

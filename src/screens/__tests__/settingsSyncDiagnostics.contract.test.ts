@@ -11,6 +11,8 @@ describe('Settings sync diagnostics refresh feedback', () => {
     expect(screen).toContain('רענון האבחון נכשל');
     expect(screen).toContain('accessibilityLiveRegion="polite"');
     expect(screen).toContain("syncDiagnosticsLoading ? 'מרענן אבחון…' : 'רענון אבחון'");
+    expect(screen).toContain('onPressIn={() => setSyncDiagnosticsFeedback({ kind: \'loading\', message: \'הלחיצה נקלטה; מרענן אבחון…\' })}');
+    expect(screen).toContain('syncRefreshButtonPressed');
     expect(screen).toContain('onPress={() => void loadSyncDiagnostics()}');
   });
 
