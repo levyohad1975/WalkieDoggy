@@ -566,12 +566,27 @@ export class SupabaseRepository implements Repository {
   }
 
   async deleteScheduleRule(ruleId: string): Promise<void> {
-    // Supabase DELETE with RLS can resolve without an error while deleting
-    // zero rows.  Select the id back and require exactly one deletion so the
-    // caller never presents a rejected schedule deletion as successful.
-    const { data, error } = await this.client.from('schedule_rules').delete().eq('id', ruleId).select('id');
-    if (error) throw error;
-    if ((data ?? []).length !== 1) throw new Error('Schedule rule was not deleted or is no longer authorized');
+    // DELETE ... RETURNING hides both absent rows and rows outside the
+    // caller's RLS scope. The RPC checks the authenticated active family,
+    // resolves only globally absent rules as idempotent, and delegates an
+    // existing same-family rule to the existing admin deletion workflow.
+    const { data, error, status } = await this.client.rpc('delete_schedule_rule_idempotent', {
+      p_rule_id: ruleId,
+    });
+    if (error) {
+      const enrichedError: Error & { code?: string; status?: number; syncQueueRetryable?: boolean } = Object.assign(
+        new Error(error.message || 'Schedule rule delete failed'),
+        error,
+        { status: status ?? (error as { status?: number }).status }
+      );
+      // Keep family/admin context failures in FIFO for a safe retry; never
+      // report an authorization failure as a successful deletion.
+      if (error.code === '42501') enrichedError.syncQueueRetryable = true;
+      throw enrichedError;
+    }
+    if (data !== 'deleted' && data !== 'already_absent') {
+      throw new Error('Schedule rule delete returned an unrecognized result');
+    }
   }
 
   async getScheduleEntries(familyId: string): Promise<ScheduleEntry[]> {

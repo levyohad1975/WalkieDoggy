@@ -990,19 +990,31 @@ describe('SupabaseRepository — deletes and simple updates', () => {
     });
   });
 
-  it('deleteScheduleRule confirms exactly one returned id, so an RLS-hidden zero-row delete cannot look successful', async () => {
-    const calls: string[] = [];
-    const okClient: any = {
-      from: (table: string) => ({ delete: () => ({ eq: (col: string, val: string) => ({ select: (columns: string) => { calls.push(`${table}.${col}.${val}.${columns}`); return Promise.resolve({ data: [{ id: val }], error: null }); } }) }) }),
-    };
-    await new SupabaseRepository(okClient).deleteScheduleRule('rule-1');
-    expect(calls).toEqual(['schedule_rules.id.rule-1.id']);
+  it('deleteScheduleRule accepts deleted/already-absent RPC outcomes and preserves cross-family authorization denial', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: 'deleted', error: null, status: 200 });
+    const repository = new SupabaseRepository({ rpc } as any);
 
-    const errClient: any = { from: () => ({ delete: () => ({ eq: () => ({ select: () => Promise.resolve({ data: null, error: { message: 'x' } }) }) }) }) };
-    await expect(new SupabaseRepository(errClient).deleteScheduleRule('rule-1')).rejects.toBeTruthy();
+    await expect(repository.deleteScheduleRule('rule-1')).resolves.toBeUndefined();
+    expect(rpc).toHaveBeenCalledWith('delete_schedule_rule_idempotent', { p_rule_id: 'rule-1' });
 
-    const hiddenClient: any = { from: () => ({ delete: () => ({ eq: () => ({ select: () => Promise.resolve({ data: [], error: null }) }) }) }) };
-    await expect(new SupabaseRepository(hiddenClient).deleteScheduleRule('rule-1')).rejects.toThrow('not deleted');
+    rpc.mockResolvedValueOnce({ data: 'already_absent', error: null, status: 200 });
+    await expect(repository.deleteScheduleRule('rule-1')).resolves.toBeUndefined();
+
+    // Cross-family and non-admin failures must remain failed/retryable. They
+    // cannot be converted to the idempotent already-absent success path.
+    rpc.mockResolvedValueOnce({
+      data: null,
+      error: Object.assign(new Error('Schedule rule delete is not authorized'), { code: '42501' }),
+      status: 403,
+    });
+    await expect(repository.deleteScheduleRule('rule-1')).rejects.toMatchObject({
+      code: '42501',
+      status: 403,
+      syncQueueRetryable: true,
+    });
+
+    rpc.mockResolvedValueOnce({ data: 'unexpected', error: null, status: 200 });
+    await expect(repository.deleteScheduleRule('rule-1')).rejects.toThrow('unrecognized result');
   });
 
   it('deleteScheduleEntry accepts an applied or already-absent result from the family-scoped RPC', async () => {

@@ -281,8 +281,8 @@ function operationEndpoint(op: SyncOperation): string {
     case 'upsertHealthTask': return '/rest/v1/health_tasks';
     case 'upsertGpsSession': return '/rest/v1/walk_gps_sessions';
     case 'upsertAchievementUnlock': return '/rest/v1/achievement_unlocks';
-    case 'upsertScheduleRule':
-    case 'deleteScheduleRule': return '/rest/v1/schedule_rules';
+    case 'upsertScheduleRule': return '/rest/v1/schedule_rules';
+    case 'deleteScheduleRule': return '/rest/v1/rpc/delete_schedule_rule_idempotent';
     case 'addScheduleEntries':
     case 'updateScheduleEntry': return '/rest/v1/schedule_entries';
     case 'deleteScheduleEntry': return '/rest/v1/rpc/delete_schedule_entry_idempotent';

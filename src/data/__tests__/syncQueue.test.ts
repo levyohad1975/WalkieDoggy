@@ -1087,6 +1087,35 @@ describe('SyncQueue — sanitized diagnostics for an unclassified HTTP conflict'
       },
     });
   });
+  it('keeps a denied schedule rule delete queued and reports the family-scoped RPC endpoint', async () => {
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'deleteScheduleRule', payload: { ruleId: 'rule-denied' } });
+    await queue.enqueue({ type: 'upsertUser', payload: fakeUser('later-user') });
+
+    const denied = Object.assign(new Error('Schedule rule delete is not authorized'), {
+      code: '42501',
+      status: 403,
+      syncQueueRetryable: true,
+    });
+    const laterWrite = jest.fn().mockResolvedValue(undefined);
+    const result = await queue.flush(stubRemote({
+      deleteScheduleRule: jest.fn().mockRejectedValue(denied),
+      upsertUser: laterWrite,
+    }));
+
+    expect(result).toEqual({ succeeded: 0, remaining: 2, conflicted: 0, quarantined: 0 });
+    expect(laterWrite).not.toHaveBeenCalled();
+    expect(await queue.getDiagnostics()).toMatchObject({
+      firstRetryableFailure: {
+        operationType: 'deleteScheduleRule',
+        endpoint: '/rest/v1/rpc/delete_schedule_rule_idempotent',
+        httpStatus: 403,
+        errorCode: '42501',
+        category: 'authorization',
+      },
+    });
+  });
+
   it('does not label a 409 as permanent without a response SQLSTATE', async () => {
     const queue = new SyncQueue();
     await queue.enqueue({ type: 'saveWalk', payload: fakeWalk('walk-conflict') });
