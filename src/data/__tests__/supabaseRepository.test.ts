@@ -1005,16 +1005,26 @@ describe('SupabaseRepository — deletes and simple updates', () => {
     await expect(new SupabaseRepository(hiddenClient).deleteScheduleRule('rule-1')).rejects.toThrow('not deleted');
   });
 
-  it('deleteScheduleEntry confirms exactly one returned id and throws on error', async () => {
-    const calls: string[] = [];
-    const okClient: any = {
-      from: (table: string) => ({ delete: () => ({ eq: (col: string, val: string) => ({ select: (columns: string) => { calls.push(`${table}.${col}.${val}.${columns}`); return Promise.resolve({ data: [{ id: val }], error: null }); } }) }) }),
-    };
-    await new SupabaseRepository(okClient).deleteScheduleEntry('entry-1');
-    expect(calls).toEqual(['schedule_entries.id.entry-1.id']);
+  it('deleteScheduleEntry accepts an applied or already-absent result from the family-scoped RPC', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: 'already_absent', error: null, status: 200 });
+    await new SupabaseRepository({ rpc } as any).deleteScheduleEntry('entry-1');
+    expect(rpc).toHaveBeenCalledWith('delete_schedule_entry_idempotent', { p_entry_id: 'entry-1' });
 
-    const errClient: any = { from: () => ({ delete: () => ({ eq: () => ({ select: () => Promise.resolve({ data: null, error: { message: 'x' } }) }) }) }) };
-    await expect(new SupabaseRepository(errClient).deleteScheduleEntry('entry-1')).rejects.toBeTruthy();
+    rpc.mockResolvedValueOnce({ data: 'deleted', error: null, status: 200 });
+    await expect(new SupabaseRepository({ rpc } as any).deleteScheduleEntry('entry-1')).resolves.toBeUndefined();
+
+    rpc.mockResolvedValueOnce({ data: null, error: Object.assign(new Error('not authorized for active family'), { code: '42501' }), status: 403 });
+    await expect(new SupabaseRepository({ rpc } as any).deleteScheduleEntry('entry-1')).rejects.toMatchObject({
+      code: '42501',
+      status: 403,
+      syncQueueRetryable: true,
+    });
+
+    rpc.mockResolvedValueOnce({ data: null, error: { message: 'temporary failure', code: '08006' }, status: 503 });
+    await expect(new SupabaseRepository({ rpc } as any).deleteScheduleEntry('entry-1')).rejects.toMatchObject({
+      code: '08006',
+      status: 503,
+    });
   });
 
   it('deleteWalk calls .from("walks").delete().eq("id", walkId) and throws on error', async () => {

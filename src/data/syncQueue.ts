@@ -217,6 +217,10 @@ export interface QuarantinedItem {
  * before SyncQueue ever gets a chance to surface its conflict record.
  */
 export function isPermanentSyncError(error: unknown): boolean {
+  // Family-scoped deletes can return 42501 when this queued intent is being
+  // replayed outside its authorized family. Preserve it in FIFO until the
+  // correct server context is restored instead of moving it to conflicts.
+  if ((error as { syncQueueRetryable?: boolean } | null | undefined)?.syncQueueRetryable) return false;
   const code = (error as { code?: string } | null | undefined)?.code;
   if (typeof code !== 'string') return false;
   return (

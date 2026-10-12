@@ -1055,6 +1055,38 @@ describe('SyncQueue — sanitized diagnostics for an unclassified HTTP conflict'
     expect(secondResult).toEqual({ succeeded: 2, remaining: 0, conflicted: 0, quarantined: 0 });
   });
 
+  it('keeps an RLS-denied schedule delete in place and does not dispatch later queue items', async () => {
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'deleteScheduleEntry', payload: { entryId: 'entry-denied' } });
+    await queue.enqueue({ type: 'upsertUser', payload: fakeUser('later-user') });
+
+    const denied = Object.assign(new Error('not authorized for active family'), {
+      code: '42501',
+      status: 403,
+      syncQueueRetryable: true,
+    });
+    const laterWrite = jest.fn().mockResolvedValue(undefined);
+    const result = await queue.flush(stubRemote({
+      deleteScheduleEntry: jest.fn().mockRejectedValue(denied),
+      upsertUser: laterWrite,
+    }));
+
+    expect(result).toEqual({ succeeded: 0, remaining: 2, conflicted: 0, quarantined: 0 });
+    expect(laterWrite).not.toHaveBeenCalled();
+    expect(await queue.getConflicts()).toEqual([]);
+    expect(await queue.size()).toBe(2);
+    expect(await queue.getDiagnostics()).toMatchObject({
+      lastFlush: { attempted: 1, succeeded: 0, remaining: 2, stoppedOnRetryableFailure: true },
+      firstRetryableFailure: {
+        operationType: 'deleteScheduleEntry',
+        queuePosition: 1,
+        endpoint: '/rest/v1/schedule_entries',
+        httpStatus: 403,
+        errorCode: '42501',
+        category: 'authorization',
+      },
+    });
+  });
   it('does not label a 409 as permanent without a response SQLSTATE', async () => {
     const queue = new SyncQueue();
     await queue.enqueue({ type: 'saveWalk', payload: fakeWalk('walk-conflict') });

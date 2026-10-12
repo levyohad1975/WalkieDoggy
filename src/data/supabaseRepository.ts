@@ -638,11 +638,26 @@ export class SupabaseRepository implements Repository {
   }
 
   async deleteScheduleEntry(entryId: string): Promise<void> {
-    // See deleteScheduleRule: a zero-row RLS delete is otherwise invisible
-    // to the caller and can be mistaken for an intentional removal.
-    const { data, error } = await this.client.from('schedule_entries').delete().eq('id', entryId).select('id');
-    if (error) throw error;
-    if ((data ?? []).length !== 1) throw new Error('Schedule entry was not deleted or is no longer authorized');
+    // DELETE ... RETURNING can yield an empty representation both when the
+    // entry is already gone and when RLS hides it. Let the server distinguish
+    // those cases atomically under the authenticated active-family context.
+    const { data, error, status } = await this.client.rpc('delete_schedule_entry_idempotent', {
+      p_entry_id: entryId,
+    });
+    if (error) {
+      const enrichedError: Error & { code?: string; status?: number; syncQueueRetryable?: boolean } = Object.assign(
+        new Error(error.message || 'Schedule entry delete failed'),
+        error,
+        { status: status ?? (error as { status?: number }).status }
+      );
+      // Keep authorization/context failures in FIFO for safe retry after the
+      // correct family context is restored; they are never treated as deletes.
+      if (error.code === '42501') enrichedError.syncQueueRetryable = true;
+      throw enrichedError;
+    }
+    if (data !== 'deleted' && data !== 'already_absent') {
+      throw new Error('Schedule entry delete returned an unrecognized result');
+    }
   }
 
   async getWalks(familyId: string): Promise<Walk[]> {
