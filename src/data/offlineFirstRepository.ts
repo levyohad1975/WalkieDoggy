@@ -188,7 +188,7 @@ export class OfflineFirstRepository implements Repository {
   }
 
   /** Attempts to push any queued writes now; safe to call opportunistically (e.g. on app foreground). */
-  async trySync(): Promise<void> {
+  async trySync(options: { force?: boolean } = {}): Promise<void> {
     if (!this.remote) {
       this.lastSyncPreflight = { outcome: 'remote-unconfigured', at: new Date().toISOString() };
       return;
@@ -198,7 +198,7 @@ export class OfflineFirstRepository implements Repository {
       return;
     }
     try {
-      await this.queue.flush(this.remote);
+      await this.queue.flush(this.remote, options);
       this.lastSyncPreflight = { outcome: 'flush-finished', at: new Date().toISOString() };
     } catch (error) {
       this.lastSyncPreflight = { outcome: 'flush-error', at: new Date().toISOString() };

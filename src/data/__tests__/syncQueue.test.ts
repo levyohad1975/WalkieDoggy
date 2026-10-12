@@ -83,6 +83,24 @@ describe('SyncQueue — permanent vs retryable conflict handling', () => {
     });
   });
 
+  it('backs off retryable failures and allows an explicit safe retry to bypass the delay', async () => {
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'upsertUser', payload: fakeUser('retry-user') });
+    const remote = stubRemote({ upsertUser: jest.fn().mockRejectedValue(new Error('network timeout')) });
+
+    await queue.flush(remote);
+    const firstDiagnostics = await queue.getDiagnostics();
+    expect(firstDiagnostics.firstRetryableFailure?.retryAfterAt).toBeTruthy();
+    await queue.flush(remote);
+    expect(remote.upsertUser).toHaveBeenCalledTimes(1);
+    expect((await queue.getDiagnostics()).lastFlush).toMatchObject({ attempted: 0, stoppedOnRetryableFailure: true, remaining: 1 });
+
+    const recovered = stubRemote({ upsertUser: jest.fn().mockResolvedValue(undefined) });
+    await queue.flush(recovered, { force: true });
+    expect(recovered.upsertUser).toHaveBeenCalledTimes(1);
+    expect(await queue.size()).toBe(0);
+  });
+
   it('reports ownership skips separately from dispatched writes without mutating another profile queue', async () => {
     setSyncQueueActorGetter(() => 'active-user');
     await AsyncStorage.setItem('dog-walk-family:sync-queue:v4', JSON.stringify([

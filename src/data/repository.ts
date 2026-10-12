@@ -153,7 +153,7 @@ export interface Repository {
   getNotificationSettings(familyId: string): Promise<NotificationSetting[]>;
 
   /** Optional: implemented by offline-capable repositories to push queued writes when back online. No-op otherwise. */
-  trySync?(): Promise<void>;
+  trySync?(options?: { force?: boolean }): Promise<void>;
   /**
    * Optional: true when this device still has queued offline writes tagged
    * with a DIFFERENT claimed profile than `userId` (see

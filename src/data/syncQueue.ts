@@ -74,6 +74,7 @@ interface QueuedItem {
   lastErrorOperationId?: string;
   lastErrorQueuePosition?: number;
   lastErrorCategory?: string;
+  retryAfterAt?: string;
 }
 
 export interface SyncQueueDiagnostics {
@@ -99,6 +100,7 @@ export interface SyncQueueDiagnostics {
     stoppedOnRetryableFailure: boolean;
     completedAt: string;
   } | null;
+  firstPendingOperation: { operationType: string; safeOperationId: string; queuePosition: number } | null;
   firstRetryableFailure: {
     operationType: string;
     safeOperationId: string;
@@ -110,6 +112,7 @@ export interface SyncQueueDiagnostics {
     category: string;
     attemptCount: number;
     lastAttemptAt: string;
+    retryAfterAt: string | null;
   } | null;
 }
 
@@ -584,6 +587,11 @@ export class SyncQueue {
       attemptedWithUnknownOutcome,
       lastErrorCodes: errorCodes,
       lastFlush: this.lastFlush,
+      firstPendingOperation: (() => {
+        const item = q.find((candidate) => candidate.claimedByUserId === activeProfileId) ?? q.find((candidate) => candidate.claimedByUserId == null) ?? null;
+        if (!item) return null;
+        return { operationType: item.op.type, safeOperationId: safeOperationId(item.op), queuePosition: q.indexOf(item) + 1 };
+      })(),
       firstRetryableFailure: (() => {
         const item = q.find((candidate) => candidate.lastAttemptAt && candidate.lastErrorMessage);
         if (!item || !item.lastAttemptAt) return null;
@@ -598,6 +606,7 @@ export class SyncQueue {
           category: item.lastErrorCategory ?? 'unclassified',
           attemptCount: item.attemptCount ?? 0,
           lastAttemptAt: item.lastAttemptAt,
+          retryAfterAt: item.retryAfterAt ?? null,
         };
       })(),
     };
@@ -747,9 +756,9 @@ export class SyncQueue {
    * foreground/mutation once restoreSession() has resolved — never a wrong
    * actor.
    */
-  async flush(remote: Repository): Promise<FlushResult> {
+  async flush(remote: Repository, options: { force?: boolean } = {}): Promise<FlushResult> {
     if (this.flushPromise) return this.flushPromise;
-    const work = this.flushOnce(remote);
+    const work = this.flushOnce(remote, options);
     this.flushPromise = work;
     try {
       return await work;
@@ -758,7 +767,7 @@ export class SyncQueue {
     }
   }
 
-  private async flushOnce(remote: Repository): Promise<FlushResult> {
+  private async flushOnce(remote: Repository, options: { force?: boolean }): Promise<FlushResult> {
     const q = await this.load();
     let succeeded = 0;
     let conflicted = 0;
@@ -782,6 +791,15 @@ export class SyncQueue {
           skippedOtherProfile++;
           i++; // known owner, not currently claimed — skip, don't block others
           continue;
+        }
+
+        // A retryable failure stays FIFO, but automatic foreground/enqueue
+        // syncs respect persisted exponential backoff. The explicit admin
+        // retry action may bypass this delay; it still uses the same owner
+        // guard and normal server authorization path.
+        if (!options.force && item.retryAfterAt && Date.parse(item.retryAfterAt) > Date.now()) {
+          stoppedOnRetryableFailure = true;
+          break;
         }
 
         try {
@@ -866,6 +884,8 @@ export class SyncQueue {
           item.lastErrorOperationId = safeId;
           item.lastErrorQueuePosition = i + 1;
           item.lastErrorCategory = category;
+          const retryDelayMs = Math.min(15 * 60_000, 30_000 * (2 ** Math.min(item.attemptCount - 1, 5)));
+          item.retryAfterAt = new Date(Date.now() + retryDelayMs).toISOString();
           await this.persist();
           stoppedOnRetryableFailure = true;
           break; // retryable: keep it queued, try again on next flush
