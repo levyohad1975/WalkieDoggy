@@ -36,6 +36,7 @@ interface SystemAdminScreenProps {
   visible: boolean;
   onClose: () => void;
   onTestFamilySelected?: (familyId: string, diagnosticId?: string) => Promise<void>;
+  onTestFamilyScheduleSelected?: (familyId: string, diagnosticId?: string) => Promise<void>;
 }
 
 /** Hebrew label for families.approval_status (0032/0035) — falls back to the raw value for any future status this screen doesn't know about yet, rather than hiding it. */
@@ -136,7 +137,7 @@ function emailStatusLabel(status: string): string {
  * here cannot change the device's own active family or create membership,
  * by construction (there is no code path here that touches those stores).
  */
-export function SystemAdminScreen({ visible, onClose, onTestFamilySelected }: SystemAdminScreenProps) {
+export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTestFamilyScheduleSelected }: SystemAdminScreenProps) {
   const isSystemAdmin = useSystemAdminStore((s) => s.isSystemAdmin);
   const activeFamilyId = useAuthStore((s) => s.familyId);
   const [search, setSearch] = useState('');
@@ -265,6 +266,24 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected }: Sy
       testFamilyBusyRef.current = false;
       setTestFamilyBusy(false);
       void loadFamilies(search);
+    }
+  };
+
+  const reopenTestFamilySchedule = async (familyId: string) => {
+    if (!isSystemAdmin || !onTestFamilyScheduleSelected || testFamilyBusyRef.current) return;
+    testFamilyBusyRef.current = true;
+    setTestFamilyBusy(true);
+    setTestFamilyError(null);
+    try {
+      await reenterExistingSystemAdminTestFamily(familyId, onTestFamilyScheduleSelected);
+      onClose();
+    } catch (e) {
+      setTestFamilyError(e instanceof TestFamilyReentryError
+        ? e.userMessage
+        : friendlyErrorMessage(e, [], 'לא הצלחנו לפתוח את שלב לוח הטיולים. הנתונים לא שונו; בדקו את החיבור והרשאת מנהל המערכת ונסו שוב.'));
+    } finally {
+      testFamilyBusyRef.current = false;
+      setTestFamilyBusy(false);
     }
   };
 
@@ -805,6 +824,7 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected }: Sy
                         }
                         finally { testFamilyBusyRef.current = false; setTestFamilyBusy(false); }
                       }} />}
+                      {onTestFamilyScheduleSelected ? <Button label="פתיחת שלב לוח הטיולים" compact disabled={testFamilyBusy} onPress={() => void reopenTestFamilySchedule(testFamily.familyId)} /> : null}
                       {activeFamilyId === testFamily.familyId ? null : confirmTestDeleteId === testFamily.familyId ? (
                         <>
                           <RtlText style={styles.deleteWarning}>מחיקה לצמיתות של המשפחה, הכלב, המשתמשים והטיולים. אי אפשר לשחזר.</RtlText>

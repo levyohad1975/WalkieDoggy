@@ -10,6 +10,8 @@ export type FamilySetupProgress = {
   ownerAuthUserId?: string;
   /** The post-creation screen to resume: dog, members, schedule, or ready. */
   step: 1 | 2 | 3 | 4 | 5;
+  /** Opens only Step 4 for System Admin QA without resetting the completed-onboarding marker. */
+  scheduleReviewOnly?: boolean;
   adminUserId?: string;
   adminName?: string;
   /** Uploaded image awaiting the required dog name before a Dog row exists. */
@@ -27,6 +29,7 @@ export async function readFamilySetupProgress(): Promise<FamilySetupProgress | n
     return {
       familyId: parsed.familyId,
       step: Number(parsed.step) as FamilySetupProgress['step'],
+      ...(parsed.scheduleReviewOnly === true ? { scheduleReviewOnly: true } : {}),
       ...(typeof parsed.ownerAuthUserId === 'string' ? { ownerAuthUserId: parsed.ownerAuthUserId } : {}),
       ...(typeof parsed.adminUserId === 'string' ? { adminUserId: parsed.adminUserId } : {}),
       ...(typeof parsed.adminName === 'string' ? { adminName: parsed.adminName } : {}),

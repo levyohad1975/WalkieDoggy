@@ -17,6 +17,17 @@ describe('System Admin test-family isolation contract', () => {
     expect(app).toContain('exitSystemAdminTestFamily');
   });
 
+  it('reopens only the real schedule wizard for an existing QA family without clearing completion', () => {
+    expect(screen).toContain('visible={visible && isSystemAdmin}');
+    expect(screen).toContain('פתיחת שלב לוח הטיולים');
+    expect(screen).toContain('reenterExistingSystemAdminTestFamily(familyId, onTestFamilyScheduleSelected)');
+    expect(app).toContain('onTestFamilyScheduleSelected={selectTestFamilyForScheduleReview}');
+    expect(app).toContain('scheduleReviewOnly: true');
+    expect(app).toContain('getActiveSystemAdminTestFamily()');
+    expect(app).toContain('scheduleReviewOnly = familySetupProgress?.scheduleReviewOnly === true');
+    expect(app).toContain('<FamilySetupWizard');
+  });
+
   it('requires an authenticated, verified System Admin for test-family entry, switch, listing and cleanup RPCs', () => {
     const guardedRpcCount = (sql.match(/not public\.is_system_admin\(\)/g) ?? []).length;
     expect(guardedRpcCount).toBeGreaterThanOrEqual(5);

@@ -29,6 +29,14 @@ describe('resumable family setup progress', () => {
     await expect(readFamilySetupProgress()).resolves.toEqual({ familyId: 'family-2', ownerAuthUserId: 'verified-auth-user', step: 2 });
   });
 
+  it('persists a System Admin schedule-review draft without clearing completed onboarding', async () => {
+    const review = { familyId: 'qa-family-1', ownerAuthUserId: 'verified-admin', step: 4 as const, scheduleReviewOnly: true };
+    await markFamilySetupComplete(review.familyId);
+    await saveFamilySetupProgress(review);
+    await expect(readFamilySetupProgress()).resolves.toEqual(review);
+    await expect(isFamilySetupComplete(review.familyId)).resolves.toBe(true);
+  });
+
   it('clears setup only after completion', async () => {
     await markFamilyCreationPending();
     await saveFamilySetupProgress({ familyId: 'family-3', step: 5 });

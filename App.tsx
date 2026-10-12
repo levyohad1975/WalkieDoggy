@@ -22,7 +22,7 @@ import { useScheduleStore, reconcileScheduleNotifications } from './src/store/sc
 import { useFamilyStore } from './src/store/familyStore';
 import { WalkieMascot } from './src/components/WalkieMascot';
 import { FamilySetupWizard } from './src/screens/FamilySetupWizard';
-import { beginFamilySetup, clearFamilySetupProgress, isFamilySetupComplete, markFamilySetupComplete, readFamilySetupProgress, type FamilySetupProgress } from './src/lib/familySetupProgress';
+import { beginFamilySetup, clearFamilySetupProgress, isFamilySetupComplete, markFamilySetupComplete, readFamilySetupProgress, saveFamilySetupProgress, type FamilySetupProgress } from './src/lib/familySetupProgress';
 import { getVerifiedAdminIdentity } from './src/lib/verifiedAdminOnboarding';
 import { canResumeFamilySetupDraft, canShowFamilySetupWizard } from './src/logic/familySetupResume';
 import {
@@ -326,10 +326,12 @@ export default function App() {
     return () => { mounted = false; };
   }, [hydrated, setFamilyId]);
   const finishFamilySetup = async () => {
-    if (isQaFamily && familyId) await markFamilySetupComplete(familyId);
+    const scheduleReviewOnly = familySetupProgress?.scheduleReviewOnly === true;
+    if (isQaFamily && familyId && !scheduleReviewOnly) await markFamilySetupComplete(familyId);
     await clearFamilySetupProgress();
     setFamilySetupProgress(null);
     setFamilySetupServerConfirmedFamilyId(null);
+    setFamilySetupOwnerMatches(false);
   };
   const startFamilySetup = async (createdFamilyId: string) => {
     const progress = await readFamilySetupProgress();
@@ -411,6 +413,27 @@ export default function App() {
       qaSwitchBusyRef.current = false;
       setQaSwitchBusy(false);
     }
+  };
+  const selectTestFamilyForScheduleReview = async (selectedFamilyId: string, suppliedDiagnosticId?: string) => {
+    if (!useSystemAdminStore.getState().isSystemAdmin) throw new Error('נדרשת הרשאת מנהל מערכת לפתיחת שלב הבדיקה.');
+    await selectTestFamily(selectedFamilyId, suppliedDiagnosticId);
+    const [activeTestFamily, identity] = await Promise.all([
+      getActiveSystemAdminTestFamily(),
+      getVerifiedAdminIdentity(),
+    ]);
+    if (activeTestFamily?.familyId !== selectedFamilyId || useAuthStore.getState().familyId !== selectedFamilyId) {
+      throw new Error('השרת לא אישר שמשפחת הבדיקה הנכונה פעילה. לא פתחנו את שלב לוח הטיולים.');
+    }
+    const progress: FamilySetupProgress = {
+      familyId: selectedFamilyId,
+      ownerAuthUserId: identity.userId,
+      step: 4,
+      scheduleReviewOnly: true,
+    };
+    await saveFamilySetupProgress(progress);
+    setFamilySetupProgress(progress);
+    setFamilySetupOwnerMatches(true);
+    setFamilySetupServerConfirmedFamilyId(selectedFamilyId);
   };
   const returnFromTestFamily = async () => {
     if (qaSwitchBusyRef.current) return;
@@ -630,7 +653,7 @@ export default function App() {
             </Pressable>
           ) : null}
           {shouldEnterSystemAdminDirectly ? (
-            <SystemAdminScreen visible onClose={() => undefined} onTestFamilySelected={selectTestFamily} />
+            <SystemAdminScreen visible onClose={() => undefined} onTestFamilySelected={selectTestFamily} onTestFamilyScheduleSelected={selectTestFamilyForScheduleReview} />
           ) : needsFamilyOnboarding ? (
             <FamilyOnboardingScreen onFamilyCreated={startFamilySetup} />
           ) : canShowFamilySetupWizard({
@@ -647,7 +670,7 @@ export default function App() {
             <LoginScreen />
           )}
           {!shouldEnterSystemAdminDirectly ? (
-            <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} onTestFamilySelected={selectTestFamily} />
+            <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} onTestFamilySelected={selectTestFamily} onTestFamilyScheduleSelected={selectTestFamilyForScheduleReview} />
           ) : null}
 
           {isSystemAdmin && isQaFamily && !systemObserverActive ? (
