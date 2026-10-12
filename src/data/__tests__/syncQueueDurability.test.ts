@@ -61,6 +61,7 @@ describe('SyncQueue durable archive handoff', () => {
 
     const restarted = new SyncQueue();
     expect(await restarted.size()).toBe(2);
+    expect((await restarted.getDiagnostics()).firstRetryableFailure?.category).toBe('local-persistence');
     await restarted.flush(remote(apply), { force: true });
 
     expect(apply).toHaveBeenCalledTimes(3);

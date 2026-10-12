@@ -315,6 +315,7 @@ function sanitizedErrorMessage(error: unknown): string {
 }
 
 function failureCategory(error: unknown, status: number | null, code: string | null): string {
+  if (errorField(error, 'syncQueueLocalPersistence') === true) return 'local-persistence';
   const name = errorField(error, 'name');
   const message = sanitizedErrorMessage(error).toLowerCase();
   if (status === 409) return code ? 'http-conflict-with-code' : 'http-conflict-unclassified';
@@ -831,7 +832,12 @@ export class SyncQueue {
             await this.persist();
           } catch (error) {
             q.splice(i, 0, item);
-            throw error;
+            // Keep diagnostics honest: the server accepted the write; only
+            // local queue persistence failed.
+            throw Object.assign(new Error('Local sync queue persistence failed'), {
+              syncQueueLocalPersistence: true,
+              cause: error,
+            });
           }
           succeeded++;
           // don't advance i — the next item has shifted into this slot
