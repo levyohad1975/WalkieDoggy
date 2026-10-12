@@ -1,5 +1,5 @@
 export interface QuarantinedDiagnosticItem {
-  op?: { type?: unknown };
+  op?: { type?: unknown; payload?: unknown };
   reason?: unknown;
 }
 
