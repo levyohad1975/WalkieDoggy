@@ -19,8 +19,8 @@ describe('Settings sync diagnostics refresh feedback', () => {
     expect(screen).toContain('feedback={syncDiagnosticsFeedback}');
     expect(screen).toContain('onPress={() => void loadSyncDiagnostics()}');
     expect(screen.indexOf('onPress={() => void retrySyncNow()}')).toBeLessThan(screen.indexOf('<SyncDiagnosticsActionButton label="רענון אבחון"'));
-    expect(screen).toContain('SYNC-TOUCH-PROBE-20261012-A');
-    expect(screen).toContain("const syncDiagnosticsBuildId = 'SYNC-TOUCH-PROBE-20261012-A'");
+    expect(screen).toContain('SYNC-REFRESH-FEEDBACK-20261012-B');
+    expect(screen).toContain("const syncDiagnosticsBuildId = 'SYNC-REFRESH-FEEDBACK-20261012-B'");
     expect(screen).toContain('מצב כפתור הרענון:');
     expect(screen).toContain('בדיקת מגע עצמאית:');
     expect(screen).toContain('testID="sync-diagnostics-touch-probe"');

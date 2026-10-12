@@ -131,7 +131,7 @@ function SettingsScreenContent() {
   const [syncRetrying, setSyncRetrying] = useState(false);
   const [syncDiagnosticsFeedback, setSyncDiagnosticsFeedback] = useState<{ kind: 'loading' | 'success' | 'error'; message: string } | null>(null);
   const [touchProbeFeedback, setTouchProbeFeedback] = useState('טרם נבדק');
-  const syncDiagnosticsBuildId = 'SYNC-TOUCH-PROBE-20261012-A';
+  const syncDiagnosticsBuildId = 'SYNC-REFRESH-FEEDBACK-20261012-B';
 
   const loadSyncDiagnostics = useCallback(async (options: { feedback?: boolean; successMessage?: string } = {}): Promise<boolean> => {
     const showFeedback = options.feedback !== false;
