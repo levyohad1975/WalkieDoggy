@@ -7,6 +7,7 @@ import { useFamilyStore } from '../store/familyStore';
 import { useAuthStore, useEffectiveFamilyRole } from '../store/authStore';
 import { DEMO_FAMILY } from '../data/demoData';
 import { pickAndUploadImage } from '../lib/uploadImage';
+import { generateDogPhotoCutout } from '../lib/supabase';
 import { colors } from '../theme/colors';
 import { breakpoints, radii, spacing, typography } from '../theme/tokens';
 import { getDogBackground, getDogBackgroundImageSource } from '../theme/dogBackgrounds';
@@ -16,12 +17,14 @@ import { Button } from './Button';
 export function DogProfileModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const dog = useFamilyStore((s) => s.dog);
   const saveDog = useFamilyStore((s) => s.saveDog);
+  const loadFamily = useFamilyStore((s) => s.load);
   const clearDogPhoto = useFamilyStore((s) => s.removeDogPhoto);
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const familyRole = useEffectiveFamilyRole();
   const systemObserverActive = useAuthStore((s) => s.systemObserverActive);
   const [uploading, setUploading] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [processingCutout, setProcessingCutout] = useState(false);
   const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
   const [pendingPhotoUrl, setPendingPhotoUrl] = useState<string | null>(null);
 
@@ -41,6 +44,21 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
       Alert.alert('לא הצלחנו לשמור את התמונה', 'בדקו תמיכת דפדפן, הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const requestDogCutout = async (dogId: string) => {
+    setProcessingCutout(true);
+    try {
+      await generateDogPhotoCutout(dogId);
+      await loadFamily(familyId);
+    } catch {
+      Alert.alert(
+        'התמונה המקורית נשמרה',
+        'לא הצלחנו להסיר את הרקע כרגע. אפשר לנסות שוב מאותו מסך.',
+      );
+    } finally {
+      setProcessingCutout(false);
     }
   };
 
@@ -65,11 +83,18 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
   const photoDirty = pendingPhotoUrl !== null;
   const savePhoto = async () => {
     if (!dog || !photoDirty || removing || uploading) return;
+    const photoUrlToProcess = pendingPhotoUrl || undefined;
     setRemoving(true);
     try {
-      if (pendingPhotoUrl) await saveDog({ ...dog, photoUrl: pendingPhotoUrl, photoCutoutUrl: undefined });
+      if (photoUrlToProcess) await saveDog({ ...dog, photoUrl: photoUrlToProcess, photoCutoutUrl: undefined });
       else await clearDogPhoto(dog.id);
       setPendingPhotoUrl(null);
+      setPhotoLoadFailed(false);
+      if (photoUrlToProcess) {
+        // Keep the persisted source and prepare its transparent derivative
+        // without delaying the user's photo-save action.
+        void requestDogCutout(dog.id);
+      }
     } catch {
       Alert.alert('לא הצלחנו לשמור את התמונה', 'נסו שוב בעוד רגע.');
     } finally {
@@ -114,6 +139,7 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
               <RtlText style={styles.hint}>
                 {displayedPhotoUrl && !photoLoadFailed ? 'תמונה אישית' : 'תמונת הכלב אינה חובה — מוצג כלב Walkie Doggy כברירת מחדל'}
               </RtlText>
+              {processingCutout ? <RtlText style={styles.hint}>התמונה נשמרה; מסירים את הרקע…</RtlText> : null}
               {familyRole === 'admin' && !systemObserverActive ? (
                 <View style={styles.actions}>
                   <Pressable onPress={changePhoto} disabled={uploading || removing} style={styles.primaryButton} accessibilityRole="button">
@@ -125,6 +151,17 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
                     </Pressable>
                   ) : null}
                   {photoDirty ? <Button label={removing ? 'שומר…' : 'שמור תמונה'} onPress={() => void savePhoto()} disabled={removing || uploading} /> : null}
+                  {dog.photoUrl && !dog.photoCutoutUrl ? (
+                    <Pressable
+                      onPress={() => void requestDogCutout(dog.id)}
+                      disabled={processingCutout || uploading || removing}
+                      style={styles.removeButton}
+                      accessibilityRole="button"
+                      accessibilityLabel="הסרת הרקע מתמונת הכלב"
+                    >
+                      <RtlText style={styles.removeText}>{processingCutout ? 'מסירים רקע…' : 'הסרת רקע מהתמונה'}</RtlText>
+                    </Pressable>
+                  ) : null}
                   <DogHeroBackgroundPicker dog={dog} onSave={(patch) => saveDog({ ...dog, ...patch })} />
                 </View>
               ) : null}

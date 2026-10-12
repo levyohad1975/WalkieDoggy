@@ -14,6 +14,10 @@ describe('new family setup wizard contract', () => {
     expect(wizard).toContain("pickAndUploadImage('dogs', familyId, dogIdRef.current, (uri) => setSelectedDogPhotoPreviewUrl(uri ?? undefined))");
     expect(wizard).toContain("takeAndUploadImage('dogs', familyId, dogIdRef.current)");
     expect(wizard).toContain('await saveDog(savedDog)');
+    expect(wizard).toContain('void generateDogPhotoCutout(savedDog.id)');
+    expect(wizard).toContain('const photoChanged = photoUrl !== undefined && photoUrl !== currentDog?.photoUrl;');
+    expect(wizard).toContain('const needsCutout = Boolean(photoUrl) && (!currentDog || photoChanged || !currentDog.photoCutoutUrl);');
+    expect(wizard).toContain('photoChanged ? { photoCutoutUrl: undefined } : {}');
     expect(wizard).toContain('const userId = progress.adminUserId ?? generateId');
     expect(dogPhoto).toContain('<WalkieMascot state="idle"');
   });

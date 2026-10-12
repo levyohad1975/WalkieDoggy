@@ -93,7 +93,6 @@ export function HomeScreen() {
   useEffect(() => () => {
     if (mascotTapTimerRef.current) clearTimeout(mascotTapTimerRef.current);
   }, []);
-  const [heroPhotoFailed, setHeroPhotoFailed] = useState(false);
   const [heroCutoutFailed, setHeroCutoutFailed] = useState(false);
   const currentUserId = useAuthStore((s) => s.currentUserId)!;
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
@@ -112,10 +111,8 @@ export function HomeScreen() {
   // Explicit family background choices always take precedence.
   const heroBackground = getDogBackground(dog?.heroBackgroundId);
   useEffect(() => {
-    setHeroPhotoFailed(false);
     setHeroCutoutFailed(false);
   }, [dog?.id, dog?.photoUrl, dog?.photoCutoutUrl]);
-  const showPersonalHero = Boolean(dog?.photoUrl) && !heroPhotoFailed;
   const showDogCutout = Boolean(dog?.photoCutoutUrl) && !heroCutoutFailed;
   const [guestReactionPlaying, setGuestReactionPlaying] = useState(false);
   const guestReactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1009,8 +1006,7 @@ export function HomeScreen() {
             accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
           >
             {showDogCutout ? <Image source={{ uri: dog!.photoCutoutUrl! }} style={styles.dashboardHeroDogCutout} resizeMode="contain" onError={() => setHeroCutoutFailed(true)} /> : null}
-            {!showDogCutout && showPersonalHero ? <Image source={{ uri: dog!.photoUrl! }} style={styles.dashboardHeroDogPhoto} resizeMode="cover" onError={() => setHeroPhotoFailed(true)} /> : null}
-            {!showDogCutout && !showPersonalHero ? (
+            {!showDogCutout ? (
               <View
                 style={[styles.dashboardHeroMascot, celebration && styles.dashboardHeroMascotCelebrating]}
                 pointerEvents="none"
@@ -1023,7 +1019,7 @@ export function HomeScreen() {
                 <WalkieMascot state={guestReactionPlaying ? 'excited' : 'idle'} size={158} accessibilityLabel="הקמע הרשמי של Walkie Doggy" />
               </View>
             ) : null}
-            {dog?.heroBackgroundId === 'walkie-park' && !showPersonalHero ? (
+            {dog?.heroBackgroundId === 'walkie-park' && !showDogCutout ? (
               <View pointerEvents="none" style={styles.dashboardHeroForeground}>
                 <View style={styles.dashboardHeroForegroundLeft} />
                 <View style={styles.dashboardHeroForegroundMid} />
@@ -1810,7 +1806,6 @@ const styles = StyleSheet.create({
   dashboardHeroForegroundDogBase: { position: 'absolute', right: -2, bottom: -25, width: 182, height: 58, borderRadius: 91, backgroundColor: '#D1E8C4', opacity: 0.94, transform: [{ rotate: '-2deg' }] },
   dashboardHeroForegroundRight: { position: 'absolute', right: -42, bottom: -17, width: 104, height: 46, borderRadius: 52, backgroundColor: '#BFDDB1', opacity: 0.86, transform: [{ rotate: '7deg' }] },
   dashboardHeroDogCutout: { position: 'absolute', right: 4, bottom: 2, width: 166, height: 158, zIndex: 2 },
-  dashboardHeroDogPhoto: { position: 'absolute', right: 4, bottom: -36, width: 136, height: 136, borderRadius: 22, zIndex: 2 },
   dashboardHeroCopy: { width: '52%', alignItems: 'flex-end', alignSelf: 'flex-start', paddingTop: 38, paddingHorizontal: spacing.md, zIndex: 2 },
   dashboardHeroEyebrow: { fontSize: 16, color: '#27376F', fontWeight: '700', textAlign: 'right' },
   dashboardHeroName: { fontSize: 30, lineHeight: 36, color: '#16245B', fontWeight: '900', textAlign: 'right' },

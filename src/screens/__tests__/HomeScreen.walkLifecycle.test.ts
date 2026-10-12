@@ -16,7 +16,8 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('getDogBackground(dog?.heroBackgroundId)');
     expect(home).not.toContain('getDogBackgroundId');
     expect(home).toContain('source={{ uri: dog!.photoCutoutUrl! }}');
-    expect(home).toContain('source={{ uri: dog!.photoUrl! }}');
+    expect(home).not.toContain('source={{ uri: dog!.photoUrl! }}');
+    expect(home).toContain('source={{ uri: dog!.photoCutoutUrl! }}');
     expect(home).toContain('tone="dashboard"');
     expect(home).toContain('setDogProfileVisible(true)');
     // Real-device QA: completion owns the only visible mascot. Both default

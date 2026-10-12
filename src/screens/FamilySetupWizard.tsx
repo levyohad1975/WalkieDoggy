@@ -19,7 +19,7 @@ import { generateId } from '../lib/id';
 import { localDateOnly } from '../logic/dateFormat';
 import { copyToClipboard } from '../lib/clipboard';
 import { buildJoinLinkText } from '../logic/familyJoinCode';
-import { regenerateInviteCode } from '../lib/supabase';
+import { generateDogPhotoCutout, regenerateInviteCode } from '../lib/supabase';
 import { type FamilySetupProgress, saveFamilySetupProgress } from '../lib/familySetupProgress';
 import type { Dog, FamilyUser, ScheduleRule } from '../types';
 
@@ -199,9 +199,11 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
     const walksPerDay = currentDog && Number.isInteger(currentDog.walksPerDay) && currentDog.walksPerDay > 0
       ? currentDog.walksPerDay
       : 1;
+    const photoChanged = photoUrl !== undefined && photoUrl !== currentDog?.photoUrl;
     const savedDog: Dog = currentDog
-      ? { ...currentDog, name, walksPerDay, ...(sex ? { sex } : {}), ...(photoUrl !== undefined ? { photoUrl, photoCutoutUrl: undefined } : {}) }
+      ? { ...currentDog, name, walksPerDay, ...(sex ? { sex } : {}), ...(photoUrl !== undefined ? { photoUrl, ...(photoChanged ? { photoCutoutUrl: undefined } : {}) } : {}) }
       : { id: dogIdRef.current, familyId, name, walksPerDay, ...(sex ? { sex } : {}), ...(photoUrl ? { photoUrl } : {}) };
+    const needsCutout = Boolean(photoUrl) && (!currentDog || photoChanged || !currentDog.photoCutoutUrl);
     const alreadySaved = currentDog
       && currentDog.name === savedDog.name
       && currentDog.sex === savedDog.sex
@@ -209,6 +211,14 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
       && currentDog.photoCutoutUrl === savedDog.photoCutoutUrl;
     if (!alreadySaved) await saveDog(savedDog);
     if (!currentDog || useFamilyStore.getState().selectedDogId !== savedDog.id) await selectDog(savedDog.id);
+    if (needsCutout) {
+      // Upload/setup must use the same background-removal path as Settings.
+      // Keep this off the onboarding save path: the original photo is already
+      // persisted and remains available while the cutout is prepared.
+      void generateDogPhotoCutout(savedDog.id)
+        .then(() => loadFamily(familyId))
+        .catch((cutoutError) => console.warn('Dog cutout generation failed; keeping source photo fallback:', cutoutError));
+    }
   };
 
   const persistPendingDogPhoto = async (photoUrl: string) => {
