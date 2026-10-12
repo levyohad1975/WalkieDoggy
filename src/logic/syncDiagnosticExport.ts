@@ -3,6 +3,9 @@ type DiagnosticOperation = {
   code?: unknown;
   httpStatus?: unknown;
   claimedByUserId?: unknown;
+  /** Accepted as input only so the sanitizer can prove these fields never escape. */
+  message?: unknown;
+  reason?: unknown;
 };
 
 type DiagnosticRecord = {
