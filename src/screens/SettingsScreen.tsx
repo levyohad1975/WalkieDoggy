@@ -825,6 +825,7 @@ function SettingsScreenContent() {
                       <RtlText style={styles.syncDiagnosticsText}>קבועים / דחויים / בהסגר: {d.permanentFailureCount} / {d.ownerCounts.otherProfile} / {d.quarantineCount}</RtlText>
                       <RtlText style={styles.syncDiagnosticsText}>קודי כשל קבוע: {d.conflictSummary.byCode.map((item) => `${item.code} ${item.count}`).join(' · ') || 'אין'}</RtlText>
                       <RtlText style={styles.syncDiagnosticsText}>סוגי פעולות עם כשל קבוע: {d.conflictSummary.byOperation.map((item) => `${item.operationType} ${item.count}`).join(' · ') || 'אין'}</RtlText>
+                       <RtlText style={styles.syncDiagnosticsText}>פעולה וקוד כשל: {d.conflictSummary.byOperationAndCode.map((item) => `${item.operationType} ${item.code} ${item.count}`).join(' · ') || 'אין'}</RtlText>
                       <RtlText style={styles.syncDiagnosticsText}>סיבת הסגר: {d.quarantineSummary.byReason.map((item) => `${item.label} ${item.count}`).join(' · ') || 'אין'}</RtlText>
                       <RtlText style={styles.syncDiagnosticsText}>סוגי פעולות בהסגר: {d.quarantineSummary.byOperation.map((item) => `${item.operationType} ${item.count}`).join(' · ') || 'אין'}</RtlText>
                       {d.quarantineCount > 0 ? <RtlText style={styles.syncDiagnosticsHint}>במבנה ההסגר הישן אין שיוך לבעלים או למשפחה. הפעולות נשמרו במכשיר ולא נשלחו אוטומטית; אין כאן אפשרות לשחזר או למחוק אותן.</RtlText> : null}
@@ -844,7 +845,7 @@ function SettingsScreenContent() {
                 >
                   <RtlText style={styles.syncRetryButtonText}>{syncRetrying ? 'מנסה לסנכרן…' : 'ניסיון חוזר לסנכרון'}</RtlText>
                 </Pressable>
-                <Pressable style={({ pressed }) => [styles.syncRefreshButton, pressed && styles.syncRefreshButtonPressed]} onPressIn={() => setSyncDiagnosticsFeedback({ kind: 'loading', message: 'הלחיצה נקלטה; מרענן אבחון…' })} onPress={() => void loadSyncDiagnostics()} disabled={syncDiagnosticsLoading || syncRetrying} accessibilityRole="button" accessibilityLabel="רענון אבחון" accessibilityState={{ disabled: syncDiagnosticsLoading || syncRetrying, busy: syncDiagnosticsLoading }}>
+                <Pressable style={styles.syncRefreshButton} onPress={() => void loadSyncDiagnostics()} disabled={syncDiagnosticsLoading || syncRetrying} accessibilityRole="button" accessibilityLabel="רענון אבחון" accessibilityState={{ disabled: syncDiagnosticsLoading || syncRetrying, busy: syncDiagnosticsLoading }}>
                   <RtlText style={styles.syncRefreshButtonText}>{syncDiagnosticsLoading ? 'מרענן אבחון…' : 'רענון אבחון'}</RtlText>
                 </Pressable>
               </View>
@@ -1052,8 +1053,7 @@ const styles = StyleSheet.create({
   syncRetryButton: { minHeight: 46, borderRadius: radii.md, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md, marginTop: spacing.xs },
   syncRetryButtonDisabled: { opacity: 0.6 },
   syncRetryButtonText: { color: '#FFFFFF', fontWeight: '800', textAlign: 'center' },
-  syncRefreshButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radii.md },
-  syncRefreshButtonPressed: { backgroundColor: colors.surface, opacity: 0.72 },
+  syncRefreshButton: { minHeight: 40, alignItems: 'center', justifyContent: 'center' },
   syncRefreshButtonText: { color: colors.primaryDark, fontWeight: '700', textAlign: 'center' },
   dogMeta: { fontSize: 14, color: colors.textSecondary, textAlign: 'right' },
   addButton: { marginTop: spacing.xs },

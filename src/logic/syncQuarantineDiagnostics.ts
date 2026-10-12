@@ -15,6 +15,7 @@ export interface SyncConflictSummary {
   total: number;
   byCode: Array<{ code: string; count: number }>;
   byOperation: Array<{ operationType: string; count: number }>;
+  byOperationAndCode: Array<{ operationType: string; code: string; count: number }>;
 }
 
 export interface SyncQuarantineSummary {
@@ -39,16 +40,25 @@ function safeOperationType(value: unknown): string {
 export function summarizeSyncConflicts(items: ConflictDiagnosticItem[]): SyncConflictSummary {
   const codeCounts = new Map<string, number>();
   const operationCounts = new Map<string, number>();
+  const operationCodeCounts = new Map<string, number>();
   for (const item of items) {
     const code = typeof item.code === 'string' && /^[0-9A-Z]{5}$/.test(item.code) ? item.code : 'unknown';
     codeCounts.set(code, (codeCounts.get(code) ?? 0) + 1);
     const operationType = safeOperationType(item.op?.type);
     operationCounts.set(operationType, (operationCounts.get(operationType) ?? 0) + 1);
+    const key = operationType + '\\u0000' + code;
+    operationCodeCounts.set(key, (operationCodeCounts.get(key) ?? 0) + 1);
   }
   return {
     total: items.length,
     byCode: [...codeCounts.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([code, count]) => ({ code, count })),
     byOperation: [...operationCounts.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([operationType, count]) => ({ operationType, count })),
+    byOperationAndCode: [...operationCodeCounts.entries()]
+      .map(([key, count]) => {
+        const [operationType, code] = key.split('\\u0000');
+        return { operationType, code, count };
+      })
+      .sort((a, b) => a.operationType.localeCompare(b.operationType) || a.code.localeCompare(b.code)),
   };
 }
 

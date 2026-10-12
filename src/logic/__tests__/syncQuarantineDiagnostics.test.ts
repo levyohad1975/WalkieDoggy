@@ -40,6 +40,10 @@ describe('sync conflict diagnostics', () => {
     expect(summary.total).toBe(3);
     expect(summary.byCode).toEqual([{ code: '23503', count: 2 }, { code: 'unknown', count: 1 }]);
     expect(summary.byOperation).toEqual([{ operationType: 'saveWalk', count: 2 }, { operationType: 'unknown', count: 1 }]);
+    expect(summary.byOperationAndCode).toEqual([
+      { operationType: 'saveWalk', code: '23503', count: 2 },
+      { operationType: 'unknown', code: 'unknown', count: 1 },
+    ]);
     expect(JSON.stringify(summary)).not.toContain('private');
   });
 });
