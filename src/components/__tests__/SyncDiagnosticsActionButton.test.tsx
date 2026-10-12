@@ -24,7 +24,7 @@ describe('SyncDiagnosticsActionButton native/web Pressable interaction', () => {
 
     const screen = render(<Harness />);
     const button = screen.getByTestId('sync-diagnostics-refresh');
-    fireEvent.pressIn(button);
+    fireEvent(button, 'pressIn');
     expect(screen.getByText('הלחיצה נקלטה; מרענן אבחון…')).toBeTruthy();
     fireEvent.press(button);
     expect(refresh).toHaveBeenCalledTimes(1);
