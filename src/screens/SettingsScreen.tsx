@@ -845,7 +845,7 @@ function SettingsScreenContent() {
                 >
                   <RtlText style={styles.syncRetryButtonText}>{syncRetrying ? 'מנסה לסנכרן…' : 'ניסיון חוזר לסנכרון'}</RtlText>
                 </Pressable>
-                <Pressable style={styles.syncRefreshButton} onPress={() => void loadSyncDiagnostics()} disabled={syncDiagnosticsLoading || syncRetrying} accessibilityRole="button" accessibilityLabel="רענון אבחון" accessibilityState={{ disabled: syncDiagnosticsLoading || syncRetrying, busy: syncDiagnosticsLoading }}>
+                <Pressable style={({ pressed }) => [styles.syncRefreshButton, pressed && styles.syncRefreshButtonPressed]} onPressIn={() => setSyncDiagnosticsFeedback({ kind: 'loading', message: 'הלחיצה נקלטה; מרענן אבחון…' })} onPress={() => void loadSyncDiagnostics()} disabled={syncDiagnosticsLoading || syncRetrying} accessibilityRole="button" accessibilityLabel="רענון אבחון" accessibilityState={{ disabled: syncDiagnosticsLoading || syncRetrying, busy: syncDiagnosticsLoading }}>
                   <RtlText style={styles.syncRefreshButtonText}>{syncDiagnosticsLoading ? 'מרענן אבחון…' : 'רענון אבחון'}</RtlText>
                 </Pressable>
               </View>
@@ -1053,7 +1053,8 @@ const styles = StyleSheet.create({
   syncRetryButton: { minHeight: 46, borderRadius: radii.md, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md, marginTop: spacing.xs },
   syncRetryButtonDisabled: { opacity: 0.6 },
   syncRetryButtonText: { color: '#FFFFFF', fontWeight: '800', textAlign: 'center' },
-  syncRefreshButton: { minHeight: 40, alignItems: 'center', justifyContent: 'center' },
+  syncRefreshButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radii.md },
+  syncRefreshButtonPressed: { backgroundColor: colors.surface, opacity: 0.72 },
   syncRefreshButtonText: { color: colors.primaryDark, fontWeight: '700', textAlign: 'center' },
   dogMeta: { fontSize: 14, color: colors.textSecondary, textAlign: 'right' },
   addButton: { marginTop: spacing.xs },
