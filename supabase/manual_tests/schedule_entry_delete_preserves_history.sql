@@ -5,6 +5,40 @@ begin
   raise exception 'Fixture requires the isolated CI session flag';
  end if;
 end;$local_only$;
+-- Reproduce the former cascade in disposable rows. This entire first
+-- transaction, including the temporary FK change, is rolled back.
+begin;
+do $legacy_cascade_repro$
+declare
+ fam uuid:=gen_random_uuid(); auth_user uuid:=gen_random_uuid(); prof uuid:=gen_random_uuid();
+ dogid uuid:=gen_random_uuid(); entryid uuid:=gen_random_uuid(); walkid uuid:=gen_random_uuid(); gpsid uuid:=gen_random_uuid();
+begin
+ execute 'alter table public.walks drop constraint if exists walks_schedule_entry_id_fkey';
+ execute 'alter table public.walks add constraint walks_schedule_entry_id_fkey foreign key (schedule_entry_id) references public.schedule_entries(id) on delete cascade';
+ perform set_config('request.jwt.claim.sub',auth_user::text,true);
+ perform set_config('request.jwt.claim.role','authenticated',true);
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',auth_user,'role','authenticated')::text,true);
+ insert into public.families(id,name,invite_code) values(fam,'Legacy cascade repro','repro-'||replace(fam::text,'-',''));
+ insert into auth.users(id,aud,role,email,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
+ values(auth_user,'authenticated','authenticated','repro-'||replace(auth_user::text,'-','')||'@example.test',now(),'{}'::jsonb,'{}'::jsonb,now(),now());
+ insert into public.family_auth_members(auth_user_id,family_id,role) values(auth_user,fam,'admin');
+ insert into public.users(id,family_id,auth_user_id,name) values(prof,fam,auth_user,'Repro Admin');
+ insert into public.dogs(id,family_id,name) values(dogid,fam,'Repro Dog');
+ insert into public.schedule_entries(id,family_id,dog_id,date,time,responsible_user_id)
+ values(entryid,fam,dogid,current_date,'13:00',prof);
+ insert into public.walks(id,family_id,schedule_entry_id,dog_id,date,scheduled_time,responsible_user_id,status,started_at,completed_at)
+ values(walkid,fam,entryid,dogid,current_date,'13:00',prof,'done',now()-interval '20 minutes',now()-interval '10 minutes');
+ insert into public.walk_gps_sessions(id,walk_id,family_id,dog_id,distance_meters,point_count,route_points,created_by_user_id)
+ values(gpsid,walkid,fam,dogid,25,1,'[{"lat":31,"lng":34}]'::jsonb,prof);
+ delete from public.schedule_entries where id=entryid;
+ if exists(select 1 from public.walks where id=walkid) or exists(select 1 from public.walk_gps_sessions where id=gpsid) then
+  raise exception 'legacy cascade reproduction failed: expected walk and GPS rows to disappear';
+ end if;
+ raise notice 'reproduced original cascade: one schedule-entry delete removed its completed walk and GPS session';
+end;
+$legacy_cascade_repro$;
+rollback;
+
 begin;
 do $fixture$
 declare
