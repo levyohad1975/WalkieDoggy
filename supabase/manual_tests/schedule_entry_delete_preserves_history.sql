@@ -18,6 +18,7 @@ begin
  perform set_config('request.jwt.claim.sub',auth_user::text,true);
  perform set_config('request.jwt.claim.role','authenticated',true);
  perform set_config('request.jwt.claims',jsonb_build_object('sub',auth_user,'role','authenticated')::text,true);
+ perform set_config('app.trusted_write','on',true);
  insert into auth.users(id,aud,role,email,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
  values(auth_user,'authenticated','authenticated','repro-'||replace(auth_user::text,'-','')||'@example.test',now(),'{}'::jsonb,'{}'::jsonb,now(),now());
  insert into public.families(id,name,invite_code) values(fam,'Legacy cascade repro','repro-'||replace(fam::text,'-',''));
@@ -55,6 +56,7 @@ begin
  perform set_config('request.jwt.claim.sub',auth_user::text,true);
  perform set_config('request.jwt.claim.role','authenticated',true);
  perform set_config('request.jwt.claims',jsonb_build_object('sub',auth_user,'role','authenticated')::text,true);
+ perform set_config('app.trusted_write','on',true);
  insert into auth.users(id,aud,role,email,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
  values(auth_user,'authenticated','authenticated','fixture-'||replace(auth_user::text,'-','')||'@example.test',now(),'{}'::jsonb,'{}'::jsonb,now(),now());
  insert into public.families(id,name,invite_code) values(fam,'Isolated schedule-delete fixture','fixture-'||replace(fam::text,'-',''));
@@ -88,6 +90,7 @@ begin
  (gd,wd,fam,dogid,120,2,pts,prof),(gg,wg,fam,dogid,40,1,pts,prof),(gr,wr,fam,dogid,75,2,pts,prof),
  (gred,wred,fam,dogid,130,2,pts,prof),(greg,wreg,fam,dogid,30,1,pts,prof),(graw,wraw,fam,dogid,55,2,pts,prof);
 
+ perform set_config('app.trusted_write','off',true);
  result:=public.delete_schedule_entry_idempotent(ed);
  if result<>'deleted' or not exists(select 1 from public.walks where id=wd and status='done' and schedule_entry_id is null)
    or not exists(select 1 from public.walk_gps_sessions where id=gd and walk_id=wd and route_points=pts) then raise exception 'completed history/GPS lost'; end if;
