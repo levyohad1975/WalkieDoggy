@@ -15,6 +15,23 @@ function remote(upsertUser: jest.Mock): Repository {
   return { upsertUser } as unknown as Repository;
 }
 
+type StorageFailure = (key: string) => Error | null;
+
+async function installStorageHarness(failure: StorageFailure): Promise<Map<string, string>> {
+  const values = new Map<string, string>();
+  for (const key of await AsyncStorage.getAllKeys()) {
+    const value = await AsyncStorage.getItem(key);
+    if (value !== null) values.set(key, value);
+  }
+  jest.spyOn(AsyncStorage, 'getItem').mockImplementation(async (key) => values.get(key) ?? null);
+  jest.spyOn(AsyncStorage, 'setItem').mockImplementation(async (key, value) => {
+    const error = failure(key);
+    if (error) throw error;
+    values.set(key, value);
+  });
+  return values;
+}
+
 describe('SyncQueue durable archive handoff', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
@@ -29,32 +46,29 @@ describe('SyncQueue durable archive handoff', () => {
   it('keeps permanent failures pending when conflict storage fails, including after restart', async () => {
     const queue = new SyncQueue();
     await queue.enqueue({ type: 'upsertUser', payload: user('a') });
-    const originalSetItem = AsyncStorage.setItem.bind(AsyncStorage);
-    jest.spyOn(AsyncStorage, 'setItem').mockImplementation(async (key, value) => {
-      if (key === CONFLICTS_KEY) throw new Error('simulated conflict-store failure');
-      return originalSetItem(key, value);
-    });
+    const persisted = await installStorageHarness((key) =>
+      key === CONFLICTS_KEY ? new Error('simulated conflict-store failure') : null
+    );
 
     await expect(queue.flush(remote(jest.fn().mockRejectedValue(Object.assign(new Error('constraint'), { code: '23503' }))))).rejects.toThrow('simulated conflict-store failure');
 
     const restarted = new SyncQueue();
     expect(await restarted.size()).toBe(1);
     expect(await restarted.getConflicts()).toHaveLength(0);
-    expect(JSON.parse((await AsyncStorage.getItem(QUEUE_KEY)) ?? '[]')).toHaveLength(1);
+    expect(JSON.parse(persisted.get(QUEUE_KEY) ?? '[]')).toHaveLength(1);
   });
 
   it('keeps an archived conflict and the full original queue if pending-store removal is interrupted, including after restart', async () => {
     const queue = new SyncQueue();
     await queue.enqueue({ type: 'upsertUser', payload: user('a') });
     await queue.enqueue({ type: 'upsertUser', payload: user('b') });
-    const originalSetItem = AsyncStorage.setItem.bind(AsyncStorage);
     let failQueueWrite = true;
-    jest.spyOn(AsyncStorage, 'setItem').mockImplementation(async (key, value) => {
+    const persisted = await installStorageHarness((key) => {
       if (key === QUEUE_KEY && failQueueWrite) {
         failQueueWrite = false;
-        throw new Error('simulated interruption after archive');
+        return new Error('simulated interruption after archive');
       }
-      return originalSetItem(key, value);
+      return null;
     });
 
     await expect(queue.flush(remote(jest.fn().mockRejectedValue(Object.assign(new Error('constraint'), { code: '23503' }))))).rejects.toThrow('simulated interruption after archive');
@@ -62,8 +76,8 @@ describe('SyncQueue durable archive handoff', () => {
     const restarted = new SyncQueue();
     expect(await restarted.size()).toBe(2);
     expect(await restarted.getConflicts()).toHaveLength(1);
-    expect(JSON.parse((await AsyncStorage.getItem(QUEUE_KEY)) ?? '[]')).toHaveLength(2);
-    expect(JSON.parse((await AsyncStorage.getItem(CONFLICTS_KEY)) ?? '[]')).toHaveLength(1);
+    expect(JSON.parse(persisted.get(QUEUE_KEY) ?? '[]')).toHaveLength(2);
+    expect(JSON.parse(persisted.get(CONFLICTS_KEY) ?? '[]')).toHaveLength(1);
   });
 
   it('persists unowned quarantine before removing the pending operation and preserves neighboring operations', async () => {
@@ -73,18 +87,16 @@ describe('SyncQueue durable archive handoff', () => {
     setSyncQueueActorGetter(() => 'test-user');
     await queue.enqueue({ type: 'upsertUser', payload: user('owned') });
 
-    const originalSetItem = AsyncStorage.setItem.bind(AsyncStorage);
-    jest.spyOn(AsyncStorage, 'setItem').mockImplementation(async (key, value) => {
-      if (key === QUARANTINE_KEY) throw new Error('simulated quarantine-store failure');
-      return originalSetItem(key, value);
-    });
+    const persisted = await installStorageHarness((key) =>
+      key === QUARANTINE_KEY ? new Error('simulated quarantine-store failure') : null
+    );
     const calls = jest.fn().mockResolvedValue(undefined);
 
     await expect(queue.flush(remote(calls))).rejects.toThrow('simulated quarantine-store failure');
     const restarted = new SyncQueue();
     expect(await restarted.size()).toBe(2);
     expect(await restarted.getQuarantined()).toHaveLength(0);
-    expect(JSON.parse((await AsyncStorage.getItem(QUEUE_KEY)) ?? '[]')).toHaveLength(2);
+    expect(JSON.parse(persisted.get(QUEUE_KEY) ?? '[]')).toHaveLength(2);
     expect(calls).not.toHaveBeenCalled();
   });
 });
