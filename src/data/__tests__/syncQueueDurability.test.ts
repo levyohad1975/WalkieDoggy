@@ -17,19 +17,14 @@ function remote(upsertUser: jest.Mock): Repository {
 
 type StorageFailure = (key: string) => Error | null;
 
-async function installStorageHarness(failure: StorageFailure): Promise<Map<string, string>> {
-  const values = new Map<string, string>();
-  for (const key of await AsyncStorage.getAllKeys()) {
-    const value = await AsyncStorage.getItem(key);
-    if (value !== null) values.set(key, value);
-  }
-  jest.spyOn(AsyncStorage, 'getItem').mockImplementation(async (key) => values.get(key) ?? null);
+function interceptStorageWrites(failure: StorageFailure): void {
+  const originalWrite = (AsyncStorage.setItem as jest.Mock).getMockImplementation();
+  if (!originalWrite) throw new Error('AsyncStorage test mock has no setItem implementation');
   jest.spyOn(AsyncStorage, 'setItem').mockImplementation(async (key, value) => {
     const error = failure(key);
     if (error) throw error;
-    values.set(key, value);
+    await originalWrite(key, value);
   });
-  return values;
 }
 
 describe('SyncQueue durable archive handoff', () => {
@@ -46,7 +41,7 @@ describe('SyncQueue durable archive handoff', () => {
   it('keeps permanent failures pending when conflict storage fails, including after restart', async () => {
     const queue = new SyncQueue();
     await queue.enqueue({ type: 'upsertUser', payload: user('a') });
-    const persisted = await installStorageHarness((key) =>
+    interceptStorageWrites((key) =>
       key === CONFLICTS_KEY ? new Error('simulated conflict-store failure') : null
     );
 
@@ -55,7 +50,7 @@ describe('SyncQueue durable archive handoff', () => {
     const restarted = new SyncQueue();
     expect(await restarted.size()).toBe(1);
     expect(await restarted.getConflicts()).toHaveLength(0);
-    expect(JSON.parse(persisted.get(QUEUE_KEY) ?? '[]')).toHaveLength(1);
+    expect(JSON.parse((await AsyncStorage.getItem(QUEUE_KEY)) ?? '[]')).toHaveLength(1);
   });
 
   it('keeps an archived conflict and the full original queue if pending-store removal is interrupted, including after restart', async () => {
@@ -63,7 +58,7 @@ describe('SyncQueue durable archive handoff', () => {
     await queue.enqueue({ type: 'upsertUser', payload: user('a') });
     await queue.enqueue({ type: 'upsertUser', payload: user('b') });
     let failQueueWrite = true;
-    const persisted = await installStorageHarness((key) => {
+    interceptStorageWrites((key) => {
       if (key === QUEUE_KEY && failQueueWrite) {
         failQueueWrite = false;
         return new Error('simulated interruption after archive');
@@ -76,8 +71,8 @@ describe('SyncQueue durable archive handoff', () => {
     const restarted = new SyncQueue();
     expect(await restarted.size()).toBe(2);
     expect(await restarted.getConflicts()).toHaveLength(1);
-    expect(JSON.parse(persisted.get(QUEUE_KEY) ?? '[]')).toHaveLength(2);
-    expect(JSON.parse(persisted.get(CONFLICTS_KEY) ?? '[]')).toHaveLength(1);
+    expect(JSON.parse((await AsyncStorage.getItem(QUEUE_KEY)) ?? '[]')).toHaveLength(2);
+    expect(JSON.parse((await AsyncStorage.getItem(CONFLICTS_KEY)) ?? '[]')).toHaveLength(1);
   });
 
   it('persists unowned quarantine before removing the pending operation and preserves neighboring operations', async () => {
@@ -87,7 +82,7 @@ describe('SyncQueue durable archive handoff', () => {
     setSyncQueueActorGetter(() => 'test-user');
     await queue.enqueue({ type: 'upsertUser', payload: user('owned') });
 
-    const persisted = await installStorageHarness((key) =>
+    interceptStorageWrites((key) =>
       key === QUARANTINE_KEY ? new Error('simulated quarantine-store failure') : null
     );
     const calls = jest.fn().mockResolvedValue(undefined);
@@ -96,7 +91,7 @@ describe('SyncQueue durable archive handoff', () => {
     const restarted = new SyncQueue();
     expect(await restarted.size()).toBe(2);
     expect(await restarted.getQuarantined()).toHaveLength(0);
-    expect(JSON.parse(persisted.get(QUEUE_KEY) ?? '[]')).toHaveLength(2);
+    expect(JSON.parse((await AsyncStorage.getItem(QUEUE_KEY)) ?? '[]')).toHaveLength(2);
     expect(calls).not.toHaveBeenCalled();
   });
 });
