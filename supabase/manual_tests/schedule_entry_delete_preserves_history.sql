@@ -22,6 +22,8 @@ begin
  perform set_config('request.jwt.claim.role','authenticated',true);
  perform set_config('request.jwt.claims',jsonb_build_object('sub',auth_user,'role','authenticated')::text,true);
  insert into public.families(id,name,invite_code) values(fam,'Isolated schedule-delete fixture','fixture-'||replace(fam::text,'-',''));
+ insert into auth.users(id,aud,role,email,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
+ values(auth_user,'authenticated','authenticated','fixture-'||replace(auth_user::text,'-','')||'@example.test',now(),'{}'::jsonb,'{}'::jsonb,now(),now());
  insert into public.family_auth_members(auth_user_id,family_id,role) values(auth_user,fam,'admin');
  insert into public.users(id,family_id,auth_user_id,name) values(prof,fam,auth_user,'Fixture Admin');
  insert into public.dogs(id,family_id,name) values(dogid,fam,'Fixture Dog');
