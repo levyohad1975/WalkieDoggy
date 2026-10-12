@@ -23,6 +23,8 @@ describe('System Admin test-family isolation contract', () => {
     expect(screen).toContain('reenterExistingSystemAdminTestFamily(familyId, onTestFamilyScheduleSelected)');
     expect(app).toContain('onTestFamilyScheduleSelected={selectTestFamilyForScheduleReview}');
     expect(app).toContain('scheduleReviewOnly: true');
+    expect(app).toContain("hostname === 'czbxhsoxyawprqehkfit.supabase.co'");
+    expect(app).toContain('!isStagingSupabaseProject || !useSystemAdminStore.getState().isSystemAdmin');
     expect(app).toContain('getActiveSystemAdminTestFamily()');
     expect(app).toContain('scheduleReviewOnly = familySetupProgress?.scheduleReviewOnly === true');
     expect(app).toContain('<FamilySetupWizard');

@@ -15,7 +15,7 @@ import { requestNotificationPermissions, subscribeToWalkReminderResponses } from
 import { registerPushToken } from './src/lib/pushTokens';
 import { reconcileWebPushSubscription } from './src/lib/webPush';
 import { repository, setSyncQueueActorGetter } from './src/data';
-import { getCurrentFamilyIsQa, getWhoAmI, isSupabaseConfigured } from './src/lib/supabase';
+import { getCurrentFamilyIsQa, getWhoAmI, isSupabaseConfigured, supabaseProjectUrl } from './src/lib/supabase';
 import { touchLastSeen } from './src/lib/requests';
 import { useRequestsStore } from './src/store/requestsStore';
 import { useScheduleStore, reconcileScheduleNotifications } from './src/store/scheduleStore';
@@ -25,6 +25,11 @@ import { FamilySetupWizard } from './src/screens/FamilySetupWizard';
 import { beginFamilySetup, clearFamilySetupProgress, isFamilySetupComplete, markFamilySetupComplete, readFamilySetupProgress, saveFamilySetupProgress, type FamilySetupProgress } from './src/lib/familySetupProgress';
 import { getVerifiedAdminIdentity } from './src/lib/verifiedAdminOnboarding';
 import { canResumeFamilySetupDraft, canShowFamilySetupWizard } from './src/logic/familySetupResume';
+const isStagingSupabaseProject = (() => {
+  try { return new URL(supabaseProjectUrl).hostname === 'czbxhsoxyawprqehkfit.supabase.co'; }
+  catch { return false; }
+})();
+
 import {
   createTestFamilyReentryDiagnosticId,
   exitSystemAdminTestFamily,
@@ -415,7 +420,7 @@ export default function App() {
     }
   };
   const selectTestFamilyForScheduleReview = async (selectedFamilyId: string, suppliedDiagnosticId?: string) => {
-    if (!useSystemAdminStore.getState().isSystemAdmin) throw new Error('נדרשת הרשאת מנהל מערכת לפתיחת שלב הבדיקה.');
+    if (!isStagingSupabaseProject || !useSystemAdminStore.getState().isSystemAdmin) throw new Error('פתיחת שלב הבדיקה זמינה רק למנהל מערכת בסביבת Staging.');
     await selectTestFamily(selectedFamilyId, suppliedDiagnosticId);
     const [activeTestFamily, identity] = await Promise.all([
       getActiveSystemAdminTestFamily(),
@@ -653,7 +658,7 @@ export default function App() {
             </Pressable>
           ) : null}
           {shouldEnterSystemAdminDirectly ? (
-            <SystemAdminScreen visible onClose={() => undefined} onTestFamilySelected={selectTestFamily} onTestFamilyScheduleSelected={selectTestFamilyForScheduleReview} />
+            <SystemAdminScreen visible onClose={() => undefined} onTestFamilySelected={selectTestFamily} onTestFamilyScheduleSelected={isStagingSupabaseProject ? selectTestFamilyForScheduleReview : undefined} />
           ) : needsFamilyOnboarding ? (
             <FamilyOnboardingScreen onFamilyCreated={startFamilySetup} />
           ) : canShowFamilySetupWizard({
@@ -670,7 +675,7 @@ export default function App() {
             <LoginScreen />
           )}
           {!shouldEnterSystemAdminDirectly ? (
-            <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} onTestFamilySelected={selectTestFamily} onTestFamilyScheduleSelected={selectTestFamilyForScheduleReview} />
+            <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} onTestFamilySelected={selectTestFamily} onTestFamilyScheduleSelected={isStagingSupabaseProject ? selectTestFamilyForScheduleReview : undefined} />
           ) : null}
 
           {isSystemAdmin && isQaFamily && !systemObserverActive ? (
