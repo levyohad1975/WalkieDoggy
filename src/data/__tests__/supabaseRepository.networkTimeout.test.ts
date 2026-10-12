@@ -45,7 +45,9 @@ describe('SupabaseRepository — a stalled network call times out instead of han
       from: () => ({
         select: () => ({
           eq: () => ({
-            maybeSingle: () => neverSettlingThenable(),
+            eq: () => ({
+              maybeSingle: () => neverSettlingThenable(),
+            }),
           }),
         }),
       }),

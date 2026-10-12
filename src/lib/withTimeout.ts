@@ -60,12 +60,14 @@ export const SUPABASE_CALL_TIMEOUT_MS = 15000;
 export function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string, onTimeout?: () => void): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
+      // Reject first so an AbortError emitted synchronously by cancellation
+      // cannot replace the stable retryable timeout reason.
+      reject(new SupabaseTimeoutError(label, ms));
       try {
         onTimeout?.();
       } catch {
         // The timeout error is the useful failure even if cancellation itself fails.
       }
-      reject(new SupabaseTimeoutError(label, ms));
     }, ms);
     promise.then(
       (value) => {
