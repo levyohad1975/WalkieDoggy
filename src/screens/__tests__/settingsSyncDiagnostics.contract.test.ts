@@ -14,6 +14,12 @@ describe('Settings sync diagnostics refresh feedback', () => {
     expect(screen).toContain('onPressIn={() => setSyncDiagnosticsFeedback({ kind: \'loading\', message: \'הלחיצה נקלטה; מרענן אבחון…\' })}');
     expect(screen).toContain('syncRefreshButtonPressed');
     expect(screen).toContain('onPress={() => void loadSyncDiagnostics()}');
+    expect(screen).toContain("const syncDiagnosticsBuildId = 'SYNC-TOUCH-PROBE-20261012-A'");
+    expect(screen).toContain('מצב כפתור הרענון:');
+    expect(screen).toContain('בדיקת מגע עצמאית:');
+    expect(screen).toContain('testID="sync-diagnostics-touch-probe"');
+    expect(screen).toContain("onPressIn={() => setTouchProbeFeedback('נקלט onPressIn')}");
+    expect(screen).toContain('syncTouchProbeButton');
   });
 
   it('reports allowlisted quarantine reason and operation aggregates without raw metadata', () => {

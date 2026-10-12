@@ -129,6 +129,8 @@ function SettingsScreenContent() {
   const [syncDiagnosticsLoading, setSyncDiagnosticsLoading] = useState(false);
   const [syncRetrying, setSyncRetrying] = useState(false);
   const [syncDiagnosticsFeedback, setSyncDiagnosticsFeedback] = useState<{ kind: 'loading' | 'success' | 'error'; message: string } | null>(null);
+  const [touchProbeFeedback, setTouchProbeFeedback] = useState('טרם נבדק');
+  const syncDiagnosticsBuildId = 'SYNC-TOUCH-PROBE-20261012-A';
 
   const loadSyncDiagnostics = useCallback(async (options: { feedback?: boolean; successMessage?: string } = {}): Promise<boolean> => {
     const showFeedback = options.feedback !== false;
@@ -808,6 +810,12 @@ function SettingsScreenContent() {
             </Pressable>
             {syncDiagnosticsExpanded ? (
               <View style={styles.syncDiagnosticsCard}>
+                <RtlText style={styles.syncDiagnosticsHint}>מזהה build: {syncDiagnosticsBuildId}</RtlText>
+                <RtlText style={styles.syncDiagnosticsText}>מצב כפתור הרענון: {syncDiagnosticsLoading ? 'טעינה פעילה' : syncRetrying ? 'ניסיון סנכרון פעיל' : 'זמין'}</RtlText>
+                <RtlText style={styles.syncDiagnosticsText}>בדיקת מגע עצמאית: {touchProbeFeedback}</RtlText>
+                <Pressable style={styles.syncTouchProbeButton} onPressIn={() => setTouchProbeFeedback('נקלט onPressIn')} onPress={() => setTouchProbeFeedback(`הפעולה פעלה · ${new Date().toLocaleTimeString('he-IL')}`)} accessibilityRole="button" accessibilityLabel="בדיקת מגע עצמאית" testID="sync-diagnostics-touch-probe">
+                  <RtlText style={styles.syncRefreshButtonText}>בדיקת מגע עצמאית</RtlText>
+                </Pressable>
                 {syncDiagnosticsFeedback ? <RtlText style={syncDiagnosticsFeedback.kind === 'error' ? styles.syncDiagnosticsError : syncDiagnosticsFeedback.kind === 'success' ? styles.syncDiagnosticsSuccess : styles.syncDiagnosticsText} accessibilityRole={syncDiagnosticsFeedback.kind === 'error' ? 'alert' : undefined} accessibilityLiveRegion="polite">{syncDiagnosticsFeedback.message}</RtlText> : null}
                 {syncDiagnostics ? (() => {
                   const d = syncDiagnostics;
@@ -1054,6 +1062,7 @@ const styles = StyleSheet.create({
   syncRetryButtonDisabled: { opacity: 0.6 },
   syncRetryButtonText: { color: '#FFFFFF', fontWeight: '800', textAlign: 'center' },
   syncRefreshButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radii.md },
+  syncTouchProbeButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radii.md, borderWidth: 1, borderColor: colors.primary, marginTop: spacing.xs },
   syncRefreshButtonPressed: { backgroundColor: colors.surface, opacity: 0.72 },
   syncRefreshButtonText: { color: colors.primaryDark, fontWeight: '700', textAlign: 'center' },
   dogMeta: { fontSize: 14, color: colors.textSecondary, textAlign: 'right' },
