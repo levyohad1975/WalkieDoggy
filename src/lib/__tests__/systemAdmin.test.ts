@@ -4,7 +4,7 @@ function mockSupabaseClient(rpc: jest.Mock) {
   jest.doMock('@supabase/supabase-js', () => ({
     createClient: jest.fn(() => ({
       auth: {
-        getSession: jest.fn().mockResolvedValue({ data: { session: null } }),
+        getSession: jest.fn().mockResolvedValue({ data: { session: { access_token: 'test-token', user: { id: 'test-admin' } } } }),
         signInAnonymously: jest.fn().mockResolvedValue({ error: null }),
       },
       rpc,
