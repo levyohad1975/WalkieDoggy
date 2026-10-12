@@ -1,4 +1,5 @@
 import { useScheduleStore } from '../scheduleStore';
+import { useGpsStore } from '../gpsStore';
 import { repository } from '../../data';
 import type { Walk } from '../../types';
 
@@ -127,6 +128,22 @@ describe('scheduleStore.startWalk — surfaces the real reason instead of a gene
     expect(started).toBe(true);
     expect(mockedRepository.startWalk).toHaveBeenCalledWith('walk-x');
     expect(useScheduleStore.getState().actionError).toBeNull();
+  });
+
+  it('rebinds a tap-started GPS watch when the server returns the canonical walk ID for this schedule entry', async () => {
+    const local = fakeWalk({ id: 'walk-local', scheduleEntryId: 'entry-shared' });
+    const canonical = { ...local, id: 'walk-server', status: 'in_progress' as const, startedAt: new Date().toISOString() };
+    useScheduleStore.setState({ walks: [local], actionError: null });
+    mockedRepository.getConflictForWalk.mockResolvedValue(undefined);
+    mockedRepository.startWalk.mockResolvedValue(canonical);
+    const rebind = jest.spyOn(useGpsStore.getState(), 'rebindTrackingWalk').mockReturnValue(true);
+
+    const started = await useScheduleStore.getState().startWalk('walk-local', { startGps: false });
+
+    expect(started).toBe(true);
+    expect(useScheduleStore.getState().walks).toEqual([canonical]);
+    expect(rebind).toHaveBeenCalledWith(local, canonical);
+    rebind.mockRestore();
   });
 
   it('shows the specific mapped Hebrew message (no raw debug noise) for a known start_walk rejection reason', async () => {

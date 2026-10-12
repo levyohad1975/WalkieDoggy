@@ -948,6 +948,14 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       if (repository.startWalk) updated = await repository.startWalk(walkId);
       else updated = { ...walk, status: 'in_progress', startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
+      // Home starts the foreground GPS watch in the original tap handler,
+      // before this server-authoritative RPC. OfflineFirstRepository may
+      // resolve that local occurrence to an existing canonical server walk
+      // with a different ID. Move the live GPS session to that same ID so
+      // the dashboard keeps showing fixes and finishWalk can persist them.
+      if (updated.id !== walk.id) {
+        useGpsStore.getState().rebindTrackingWalk(walk, updated);
+      }
       await cancelWalkNotifications(walkId);
       // Phase 4 (GPS foundation, PRD §7): best-effort, fire-and-forget —
       // GPS is assistive, never a precondition for the walk lifecycle

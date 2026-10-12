@@ -12,6 +12,11 @@ import type { GpsAccumulator } from '../logic/gpsDistance';
 // (distanceMeters/pointCount), never the handle itself.
 let activeWatch: GpsWatchHandle | null = null;
 let startGeneration = 0;
+// The repository may resolve a locally generated scheduled walk to the
+// canonical server row after the GPS watch has already started in the
+// user's tap handler (required by iOS Safari's gesture-bound permission
+// flow). Keep the callback identity aligned with that canonical row.
+let activeWatchWalkId: string | null = null;
 
 interface GpsState {
   /** The walk currently being tracked, if any — null when no walk is in progress or the active walk simply isn't being tracked (permission denied/unavailable). */
@@ -37,6 +42,11 @@ interface GpsState {
    * the walk itself.
    */
   startTracking: (walk: Pick<Walk, 'id' | 'familyId' | 'dogId'>) => Promise<void>;
+  /** Adopt the authoritative server walk ID after start_walk resolves a local schedule occurrence to its canonical row. */
+  rebindTrackingWalk: (
+    localWalk: Pick<Walk, 'id' | 'familyId' | 'dogId' | 'scheduleEntryId'>,
+    canonicalWalk: Pick<Walk, 'id' | 'familyId' | 'dogId' | 'scheduleEntryId'>,
+  ) => boolean;
   /**
    * Stops tracking (if this walk was the one being tracked), computes the
    * final reading, and persists it as a new/updated WalkGpsSession. Returns
@@ -78,18 +88,23 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       activeWatch.remove();
       activeWatch = null;
     }
+    activeWatchWalkId = walk.id;
     set({ trackingWalkId: walk.id, permissionStatus: null, trackingStatus: 'requesting', trackingStartedAt: null, distanceMeters: 0, pointCount: 0, routePoints: [] });
 
     const result = await startGpsWatch((acc: GpsAccumulator) => {
       // Ignore a late callback from a watch that's since been stopped/
       // superseded (e.g. the walk ended right as a fix arrived).
-      if (startGeneration !== generation || get().trackingWalkId !== walk.id) return;
+      if (startGeneration !== generation || get().trackingWalkId !== activeWatchWalkId) return;
       set({ distanceMeters: acc.distanceMeters, pointCount: acc.pointCount, trackingStatus: 'active', routePoints: (acc.routePoints ?? []).map(({ latitude, longitude, timestamp }) => ({ latitude, longitude, timestamp })) });
     }, (trackingStatus) => {
-      if (startGeneration === generation && get().trackingWalkId === walk.id) set({ trackingStatus });
+      if (startGeneration === generation && get().trackingWalkId === activeWatchWalkId) set({ trackingStatus });
     });
 
-    if (startGeneration !== generation || get().trackingWalkId !== walk.id) {
+    // The server can adopt the canonical ID while Safari's permission prompt
+    // / watch initialization is still pending. Compare against the mutable
+    // active identity, not the original tap-time ID, or this valid watch is
+    // removed just as it is created.
+    if (startGeneration !== generation || !activeWatchWalkId || get().trackingWalkId !== activeWatchWalkId) {
       // startTracking() was called again for a different walk while this
       // permission/start round-trip was in flight — this handle belongs to
       // an already-superseded session; tear it down instead of leaking it.
@@ -100,11 +115,24 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       // Keep the active walk attached to the store even when the OS/browser
       // denies location or cannot create a watch. The Home card can then
       // explain the GPS state instead of silently losing the GPS section.
-      set({ trackingWalkId: walk.id, permissionStatus: result.permissionStatus, trackingStatus: result.trackingStatus });
+      set({ trackingWalkId: activeWatchWalkId, permissionStatus: result.permissionStatus, trackingStatus: result.trackingStatus });
       return;
     }
     activeWatch = result.handle;
     set({ permissionStatus: 'granted', trackingStatus: get().pointCount > 0 ? 'active' : result.trackingStatus, trackingStartedAt: new Date().toISOString() });
+  },
+
+  rebindTrackingWalk: (localWalk, canonicalWalk) => {
+    const current = get();
+    if (current.trackingWalkId !== localWalk.id || activeWatchWalkId !== localWalk.id) return false;
+    if (localWalk.familyId !== canonicalWalk.familyId || localWalk.dogId !== canonicalWalk.dogId) return false;
+    // A schedule identity must remain the same across canonical-ID adoption.
+    // Spontaneous walks have no scheduleEntryId and are not expected to change ID.
+    if (localWalk.scheduleEntryId !== canonicalWalk.scheduleEntryId) return false;
+    if (localWalk.id === canonicalWalk.id) return true;
+    activeWatchWalkId = canonicalWalk.id;
+    set({ trackingWalkId: canonicalWalk.id });
+    return true;
   },
 
   stopTracking: async (walk, userId) => {
@@ -115,6 +143,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       activeWatch = null;
     }
     if (!wasTracking) return null; // this walk was never the one being tracked
+    activeWatchWalkId = null;
 
     const { distanceMeters, pointCount, trackingStartedAt } = get();
     const now = new Date().toISOString();

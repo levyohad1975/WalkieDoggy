@@ -51,7 +51,7 @@ describe('gpsStore', () => {
   it('feeds live distance/pointCount updates from the onUpdate callback into state', async () => {
     const { useGpsStore } = require('../gpsStore');
     const gpsTracking = require('../../lib/gpsTracking');
-    let feed: (acc: { distanceMeters: number; pointCount: number; routePoints: never[] }) => void = () => undefined;
+    let feed: (acc: { distanceMeters: number; pointCount: number; routePoints: Array<{ latitude: number; longitude: number; timestamp: number }> }) => void = () => undefined;
     jest.spyOn(gpsTracking, 'startGpsWatch').mockImplementationOnce(async (onUpdate: any) => {
       feed = onUpdate;
       return { handle: { remove: jest.fn() }, permissionStatus: 'granted' };
@@ -63,6 +63,59 @@ describe('gpsStore', () => {
     const state = useGpsStore.getState();
     expect(state.distanceMeters).toBe(123.4);
     expect(state.pointCount).toBe(7);
+  });
+
+  it('rebinds an active foreground watch to the canonical server walk ID and persists the collected GPS session there', async () => {
+    const { useGpsStore } = require('../gpsStore');
+    const { repository } = require('../../data');
+    const gpsTracking = require('../../lib/gpsTracking');
+    const localScheduledWalk = { ...walk, scheduleEntryId: 'entry-1' };
+    const canonicalWalk = { ...localScheduledWalk, id: 'walk-server-canonical' };
+    let feed: (acc: { distanceMeters: number; pointCount: number; routePoints: Array<{ latitude: number; longitude: number; timestamp: number }> }) => void = () => undefined;
+    const remove = jest.fn();
+    let resolveWatch!: (result: any) => void;
+    jest.spyOn(gpsTracking, 'startGpsWatch').mockImplementationOnce((onUpdate: any) => {
+      feed = onUpdate;
+      return new Promise((resolve) => { resolveWatch = resolve; });
+    });
+    const upsertSpy = jest.spyOn(repository, 'upsertGpsSession').mockResolvedValue(undefined);
+
+    const starting = useGpsStore.getState().startTracking(localScheduledWalk);
+    expect(useGpsStore.getState().trackingWalkId).toBe('walk-1');
+    expect(useGpsStore.getState().rebindTrackingWalk(localScheduledWalk, canonicalWalk)).toBe(true);
+    expect(useGpsStore.getState().trackingWalkId).toBe('walk-server-canonical');
+    // iOS permission/watch setup can still be resolving when the server
+    // returns its canonical row. The watch must remain attached afterward.
+    resolveWatch({ handle: { remove }, permissionStatus: 'granted', trackingStatus: 'waiting' });
+    await starting;
+
+    // A callback from the same still-running Safari watch must survive the
+    // ID adoption instead of being discarded as belonging to the stale row.
+    const routePoints = [
+      { latitude: 32.08, longitude: 34.78, timestamp: 1 },
+      { latitude: 32.081, longitude: 34.781, timestamp: 2 },
+    ];
+    feed({ distanceMeters: 247, pointCount: 4, routePoints });
+    expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: 'walk-server-canonical', distanceMeters: 247, pointCount: 4, routePoints });
+
+    const result = await useGpsStore.getState().stopTracking(canonicalWalk, 'user-aba');
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ walkId: 'walk-server-canonical', familyId: 'family-1', dogId: 'dog-1', distanceMeters: 247, pointCount: 4, routePoints });
+    expect(upsertSpy).toHaveBeenCalledWith(expect.objectContaining({ walkId: 'walk-server-canonical', distanceMeters: 247, routePoints }));
+  });
+
+  it('refuses to rebind a tracking session across family, dog, or schedule-entry ownership', async () => {
+    const { useGpsStore } = require('../gpsStore');
+    const gpsTracking = require('../../lib/gpsTracking');
+    const localScheduledWalk = { ...walk, scheduleEntryId: 'entry-1' };
+    jest.spyOn(gpsTracking, 'startGpsWatch').mockResolvedValueOnce({ handle: { remove: jest.fn() }, permissionStatus: 'granted' });
+    await useGpsStore.getState().startTracking(localScheduledWalk);
+
+    expect(useGpsStore.getState().rebindTrackingWalk(localScheduledWalk, { ...localScheduledWalk, id: 'other', familyId: 'family-2' })).toBe(false);
+    expect(useGpsStore.getState().rebindTrackingWalk(localScheduledWalk, { ...localScheduledWalk, id: 'other', dogId: 'dog-2' })).toBe(false);
+    expect(useGpsStore.getState().rebindTrackingWalk(localScheduledWalk, { ...localScheduledWalk, id: 'other', scheduleEntryId: 'entry-2' })).toBe(false);
+    expect(useGpsStore.getState().trackingWalkId).toBe('walk-1');
+    await useGpsStore.getState().stopTracking(localScheduledWalk, 'user-aba');
   });
 
   it('starting a new walk while a previous handle is active removes the old one first (no subscription leak)', async () => {
