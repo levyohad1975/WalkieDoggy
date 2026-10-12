@@ -73,13 +73,15 @@ describe('SupabaseRepository — a stalled network call times out instead of han
 
   it('aborts the underlying schedule-entry fetch when the lookup times out', async () => {
     let capturedSignal: AbortSignal | undefined;
-    const lookup = {
+    const lookupBuilder = {
       abortSignal(signal: AbortSignal) {
         capturedSignal = signal;
         return {
-          then: (_resolve: (value: unknown) => void, reject: (reason: unknown) => void) => {
-            signal.addEventListener('abort', () => reject(Object.assign(new Error('fetch aborted'), { name: 'AbortError' })));
-          },
+          maybeSingle: () => ({
+            then: (_resolve: (value: unknown) => void, reject: (reason: unknown) => void) => {
+              signal.addEventListener('abort', () => reject(Object.assign(new Error('fetch aborted'), { name: 'AbortError' })));
+            },
+          }),
         };
       },
     };
@@ -87,9 +89,7 @@ describe('SupabaseRepository — a stalled network call times out instead of han
       from: () => ({
         select: () => ({
           eq: () => ({
-            eq: () => ({
-              maybeSingle: () => lookup,
-            }),
+            eq: () => lookupBuilder,
           }),
         }),
       }),

@@ -62,9 +62,10 @@ export function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: strin
     const timer = setTimeout(() => {
       try {
         onTimeout?.();
-      } finally {
-        reject(new SupabaseTimeoutError(label, ms));
+      } catch {
+        // The timeout error is the useful failure even if cancellation itself fails.
       }
+      reject(new SupabaseTimeoutError(label, ms));
     }, ms);
     promise.then(
       (value) => {
