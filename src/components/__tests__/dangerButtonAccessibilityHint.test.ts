@@ -14,7 +14,6 @@ import path from 'path';
  */
 describe('danger-variant Button accessibilityHint', () => {
   const cases: Array<[file: string, marker: string]> = [
-    ['../EditWalkModal.tsx', 'בטל את הטיול הזה'],
     ['../EditDoneDetailsModal.tsx', '🗑️ מחיקת הטיול'],
     ['../InviteShareModal.tsx', 'בטל הזמנה'],
     ['../AddUnplannedWalkModal.tsx', 'מחק טיול זה'],
@@ -30,5 +29,13 @@ describe('danger-variant Button accessibilityHint', () => {
     const around = source.slice(buttonStart, buttonEnd);
     expect(around).toMatch(/variant="danger"/);
     expect(around).toMatch(/accessibilityHint="[^"]+"/);
+  });
+
+  it('EditWalkModal exposes a hint on its confirmation-gated cancel action', () => {
+    const source = fs.readFileSync(path.resolve(__dirname, '../EditWalkModal.tsx'), 'utf8');
+    expect(source).toContain('accessibilityLabel="בטל את הטיול הזה"');
+    expect(source).toContain('accessibilityHint="יוצג אישור לפני ביטול הטיול הזה"');
+    expect(source).toContain('onPress={() => setCancelConfirmVisible(true)}');
+    expect(source).toContain('visible={cancelConfirmVisible}');
   });
 });

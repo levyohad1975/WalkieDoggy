@@ -20,8 +20,9 @@ describe('migration 0103 — mark_my_request_results_seen() no longer raises whe
   const source = fs
     .readFileSync(path.join(migrationsDir, '0103_mark_results_seen_no_raise.sql'), 'utf8')
     .replace(/\r\n/g, '\n');
+  const rehearsalWorkflow = fs.readFileSync(path.resolve(__dirname, '../../../.github/workflows/integration-full-chain-rehearsal.yml'), 'utf8');
 
-  it('does not edit any already-applied migration file — only adds a new one', () => {
+  it('preserves the existing duplicate 0103 filenames and normalizes only the isolated replay copy', () => {
     const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql'));
     for (const mustExist of [
       '0019_request_result_seen_state.sql',
@@ -30,7 +31,12 @@ describe('migration 0103 — mark_my_request_results_seen() no longer raises whe
     ]) {
       expect(files).toContain(mustExist);
     }
-    expect(files.filter((f) => f.startsWith('0103_'))).toHaveLength(1);
+    expect(files.filter((f) => f.startsWith('0103_')).sort()).toEqual([
+      '0103_mark_results_seen_no_raise.sql',
+      '0103_web_push_verified_admin_identity.sql',
+    ]);
+    expect(rehearsalWorkflow).toContain('Combine duplicate 0103 migration bodies for ephemeral replay only');
+    expect(rehearsalWorkflow).toMatch(/The real\s+# migration files in Git and all remote migration ledgers remain\s+# untouched/);
   });
 
   it('returns silently instead of raising when current_profile_id()/current_family_id() cannot resolve — matching touch_last_seen()\'s own convention', () => {

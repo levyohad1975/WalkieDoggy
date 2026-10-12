@@ -5,6 +5,7 @@ describe('new family setup wizard contract', () => {
   const wizard = fs.readFileSync(path.resolve(__dirname, '../FamilySetupWizard.tsx'), 'utf8');
   const onboarding = fs.readFileSync(path.resolve(__dirname, '../FamilyOnboardingScreen.tsx'), 'utf8');
   const app = fs.readFileSync(path.resolve(__dirname, '../../../App.tsx'), 'utf8');
+  const setupResume = fs.readFileSync(path.resolve(__dirname, '../../logic/familySetupResume.ts'), 'utf8');
   const dogPhoto = fs.readFileSync(path.resolve(__dirname, '../../components/DogPhoto.tsx'), 'utf8');
 
   it('requires a dog name, persists photos through the shared upload/store path and keeps the mascot fallback', () => {
@@ -42,7 +43,10 @@ describe('new family setup wizard contract', () => {
     expect(onboarding).toContain("setMode('join')");
     expect(onboarding).toContain('await joinFamily(code.trim())');
     expect(onboarding).toContain('await setFamilyId(family.id)');
-    expect(app).toContain('familySetupProgress.familyId === familyId && familyRole === \'admin\'');
+    expect(app).toContain('canShowFamilySetupWizard({');
+    expect(setupResume).toContain("input.familyRole === 'admin'");
+    expect(setupResume).toContain('input.progressFamilyId === input.localFamilyId');
+    expect(setupResume).toContain('canResumeFamilySetupDraft(input.progressFamilyId, input.serverConfirmedFamilyId)');
     expect(app).toContain('<FamilySetupWizard');
   });
 

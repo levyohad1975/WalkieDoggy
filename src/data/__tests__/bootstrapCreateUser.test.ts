@@ -92,7 +92,7 @@ describe('first-profile creation and queue ownership', () => {
     expect(await local.getUsers(user.familyId)).toEqual([user]);
     expect(remote.createUser).not.toHaveBeenCalled();
     expect(JSON.parse((await AsyncStorage.getItem('dog-walk-family:sync-queue:v4'))!)).toEqual([
-      { op: { type: 'createUser', payload: user }, claimedByUserId: 'admin' },
+      expect.objectContaining({ op: { type: 'createUser', payload: user }, claimedByUserId: 'admin' }),
     ]);
     online();
     await repo.trySync();

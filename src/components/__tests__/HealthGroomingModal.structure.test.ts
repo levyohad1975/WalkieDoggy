@@ -40,7 +40,7 @@ describe('HealthGroomingModal (structural)', () => {
   });
 
   it('an open task row offers a dedicated "✓ בוצע" action that calls onComplete, separate from editing', () => {
-    expect(source).toMatch(/void handleComplete\(t\.id\)/);
+    expect(source).toMatch(/handleComplete\(t\.id, t\.title\)/);
     expect(source).toContain('await onComplete(taskId)');
   });
 

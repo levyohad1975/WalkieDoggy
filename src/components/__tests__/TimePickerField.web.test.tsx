@@ -36,7 +36,7 @@ describe('TimePickerField on Web — custom picker sheet (no native <input type=
 
   it('renders a plain button showing the current value — never a native <input type="time">', () => {
     const screen = render(<ControlledField />);
-    const field = screen.getByLabelText('בחירת שעת טיול');
+    const field = screen.getByLabelText(/^בחירת שעת טיול,/);
     expect(field.props.type).toBeUndefined();
     expect(screen.getByTestId('selected-time').props.children).toBe('08:00');
   });
@@ -45,7 +45,7 @@ describe('TimePickerField on Web — custom picker sheet (no native <input type=
     const screen = render(<ControlledField />);
     expect(screen.queryByText('אישור')).toBeNull();
 
-    fireEvent.press(screen.getByLabelText('בחירת שעת טיול'));
+    fireEvent.press(screen.getByLabelText(/^בחירת שעת טיול,/));
 
     expect(screen.getByText('אישור')).toBeTruthy();
     expect(screen.getByText('ביטול')).toBeTruthy();
@@ -57,7 +57,7 @@ describe('TimePickerField on Web — custom picker sheet (no native <input type=
     [8, 5, '08:05'],
   ])('selecting hour %i and minute %i and confirming commits %s', (hour, minute, expected) => {
     const screen = render(<ControlledField />);
-    fireEvent.press(screen.getByLabelText('בחירת שעת טיול'));
+    fireEvent.press(screen.getByLabelText(/^בחירת שעת טיול,/));
 
     fireEvent.press(screen.getByLabelText(`שעה ${String(hour).padStart(2, '0')}`));
     fireEvent.press(screen.getByLabelText(`דקה ${String(minute).padStart(2, '0')}`));
@@ -68,7 +68,7 @@ describe('TimePickerField on Web — custom picker sheet (no native <input type=
 
   it('confirming closes the sheet completely — the confirm/cancel controls are gone afterwards', () => {
     const screen = render(<ControlledField />);
-    fireEvent.press(screen.getByLabelText('בחירת שעת טיול'));
+    fireEvent.press(screen.getByLabelText(/^בחירת שעת טיול,/));
     fireEvent.press(screen.getByText('אישור'));
 
     expect(screen.queryByText('אישור')).toBeNull();
@@ -78,7 +78,7 @@ describe('TimePickerField on Web — custom picker sheet (no native <input type=
   it('cancelling discards any in-progress selection and never calls onChange', () => {
     const onChange = jest.fn();
     const screen = render(<TimePickerField value="08:00" onChange={onChange} webLabel="בחירת שעת טיול" />);
-    fireEvent.press(screen.getByLabelText('בחירת שעת טיול'));
+    fireEvent.press(screen.getByLabelText(/^בחירת שעת טיול,/));
 
     fireEvent.press(screen.getByLabelText('שעה 19'));
     fireEvent.press(screen.getByText('ביטול'));
@@ -90,11 +90,11 @@ describe('TimePickerField on Web — custom picker sheet (no native <input type=
   it('re-opening the sheet (editing an existing time) starts from the field\'s current value, not a prior in-progress selection', () => {
     const screen = render(<ControlledField />);
 
-    fireEvent.press(screen.getByLabelText('בחירת שעת טיול'));
+    fireEvent.press(screen.getByLabelText(/^בחירת שעת טיול,/));
     fireEvent.press(screen.getByLabelText('שעה 19'));
     fireEvent.press(screen.getByText('ביטול')); // discard — value stays 08:00
 
-    fireEvent.press(screen.getByLabelText('בחירת שעת טיול'));
+    fireEvent.press(screen.getByLabelText(/^בחירת שעת טיול,/));
     expect(screen.getByLabelText('שעה 08').props.accessibilityState.selected).toBe(true);
     expect(screen.getByLabelText('שעה 19').props.accessibilityState.selected).toBe(false);
   });

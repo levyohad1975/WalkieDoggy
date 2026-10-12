@@ -37,7 +37,7 @@ describe('TimePickerField on Web — no native time-entry element at all', () =>
 
   it('the visible field has no `type` prop (it is a Pressable, not a form control that could carry iOS Safari\'s native time/keyboard chrome)', () => {
     const screen = render(<TimePickerField value="08:00" onChange={() => undefined} webLabel="בחירת שעת טיול" />);
-    const field = screen.getByLabelText('בחירת שעת טיול');
+    const field = screen.getByLabelText(/^בחירת שעת טיול,/);
     expect(field.props.type).toBeUndefined();
   });
 });

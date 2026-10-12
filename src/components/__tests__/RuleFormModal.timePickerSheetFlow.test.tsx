@@ -46,7 +46,7 @@ describe('RuleFormModal — time picker sheet opens as a discrete step and never
     expect(screen.getByText('אבא')).toBeTruthy();
     expect(screen.getByText('שמירה')).toBeTruthy();
 
-    fireEvent.press(screen.getByLabelText('בחירת שעת טיול'));
+    fireEvent.press(screen.getByLabelText(/^בחירת שעת טיול,/));
 
     // The picker sheet is now open — its own confirm/cancel controls are
     // visible (distinct accessibility labels from RuleFormModal's own
@@ -92,7 +92,7 @@ describe('RuleFormModal — time picker sheet opens as a discrete step and never
       <RuleFormModal visible editingRule={editingRule} users={users} onSave={jest.fn()} onClose={jest.fn()} />
     );
 
-    fireEvent.press(screen.getByLabelText('בחירת שעת טיול'));
+    fireEvent.press(screen.getByLabelText(/^בחירת שעת טיול,/));
 
     expect(screen.getByLabelText('שעה 07').props.accessibilityState.selected).toBe(true);
     expect(screen.getByLabelText('דקה 15').props.accessibilityState.selected).toBe(true);
@@ -103,12 +103,12 @@ describe('RuleFormModal — time picker sheet opens as a discrete step and never
       <RuleFormModal visible editingRule={null} users={users} onSave={jest.fn()} onClose={jest.fn()} />
     );
 
-    fireEvent.press(screen.getByLabelText('בחירת שעת טיול'));
+    fireEvent.press(screen.getByLabelText(/^בחירת שעת טיול,/));
     fireEvent.press(screen.getByLabelText('שעה 23'));
     fireEvent.press(screen.getByLabelText('ביטול בחירת שעה'));
 
     // Default time (08:00) is unchanged; the field is still reachable.
-    fireEvent.press(screen.getByLabelText('בחירת שעת טיול'));
+    fireEvent.press(screen.getByLabelText(/^בחירת שעת טיול,/));
     expect(screen.getByLabelText('שעה 08').props.accessibilityState.selected).toBe(true);
     expect(screen.getByLabelText('שעה 23').props.accessibilityState.selected).toBe(false);
   });

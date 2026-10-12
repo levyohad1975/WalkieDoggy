@@ -47,7 +47,7 @@ describe('EditWalkModal — time changes are only committed via an explicit conf
     const index = source.indexOf('label="שמור שינויים"');
     expect(index).toBeGreaterThan(-1);
     const around = source.slice(index, index + 200);
-    expect(around).toMatch(/disabled=\{!timeChanged\}/);
+    expect(around).toMatch(/disabled=\{!timeChanged \|\| timeOccupied\}/);
     expect(around).toMatch(/onPress=\{\(\) => onChangeTime\(time\)\}/);
   });
 
@@ -55,6 +55,7 @@ describe('EditWalkModal — time changes are only committed via an explicit conf
     expect(source).toMatch(
       /const timeChanged = is24HourTime\(time\) && time !== walk\.scheduledTime;/
     );
+    expect(source).toMatch(/const timeOccupied = timeChanged && occupiedTimes\.includes\(time\);/);
   });
 
   function is24HourTime(value: string): boolean {

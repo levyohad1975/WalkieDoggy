@@ -143,7 +143,7 @@ export function EditWalkModal({
                <Button label="סגור" variant="secondary" onPress={onClose} style={styles.footerButton} />
              </View>
              <View style={styles.destructiveActions}>
-               <Pressable accessibilityRole="button" accessibilityLabel="בטל את הטיול הזה" onPress={() => setCancelConfirmVisible(true)} style={styles.destructiveLink}>
+               <Pressable accessibilityRole="button" accessibilityLabel="בטל את הטיול הזה" accessibilityHint="יוצג אישור לפני ביטול הטיול הזה" onPress={() => setCancelConfirmVisible(true)} style={styles.destructiveLink}>
                  <RtlText style={styles.destructiveText}>בטל את הטיול הזה</RtlText>
                </Pressable>
                {onRemoveRecurringRule ? (
