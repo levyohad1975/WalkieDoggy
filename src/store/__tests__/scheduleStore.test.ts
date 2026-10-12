@@ -177,7 +177,7 @@ describe('scheduleStore', () => {
     expect(state.entries.filter((e) => e.ruleId === resetRule.id)).toHaveLength(rebuiltEntries.length);
   });
 
-  it('does not regenerate a scheduled occurrence when a standalone planned walk already occupies that family/dog/date/time', async () => {
+  it('does not duplicate a standalone planned walk, preserves a spontaneous walk at the same slot, and remains idempotent on repeated loads', async () => {
     await useScheduleStore.getState().load(FAMILY_ID);
     const { repository } = require('../../data');
     const occurrenceDate = localDateOnly(new Date());
@@ -205,11 +205,26 @@ describe('scheduleStore', () => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+    const spontaneousWalkAtSameSlot: Walk = {
+      id: 'walk-spontaneous-same-slot',
+      familyId: FAMILY_ID,
+      dogId: rule.dogId,
+      date: occurrenceDate,
+      scheduledTime: rule.time,
+      responsibleUserId: 'user-eidan',
+      status: 'done',
+      isUnplanned: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
     await repository.upsertScheduleRule(rule);
     await repository.saveWalk(existingStandaloneWalk);
+    await repository.saveWalk(spontaneousWalkAtSameSlot);
 
     const result = await useScheduleStore.getState().load(FAMILY_ID);
-    const matchingWalks = useScheduleStore.getState().walks.filter(
+    expect(result).toBe(true);
+    let state = useScheduleStore.getState();
+    const matchingPlannedWalks = state.walks.filter(
       (walk) =>
         walk.familyId === FAMILY_ID &&
         walk.dogId === rule.dogId &&
@@ -217,11 +232,47 @@ describe('scheduleStore', () => {
         walk.scheduledTime === rule.time &&
         !walk.isUnplanned
     );
+    const matchingSpontaneousWalks = state.walks.filter(
+      (walk) =>
+        walk.familyId === FAMILY_ID &&
+        walk.dogId === rule.dogId &&
+        walk.date === occurrenceDate &&
+        walk.scheduledTime === rule.time &&
+        walk.isUnplanned
+    );
 
-    expect(result).toBe(true);
-    expect(matchingWalks).toHaveLength(1);
-    expect(matchingWalks[0].id).toBe(existingStandaloneWalk.id);
-    expect(matchingWalks[0].scheduleEntryId).toBeUndefined();
+    expect(matchingPlannedWalks).toHaveLength(1);
+    expect(matchingPlannedWalks[0].id).toBe(existingStandaloneWalk.id);
+    expect(matchingPlannedWalks[0].scheduleEntryId).toBeUndefined();
+    expect(matchingSpontaneousWalks).toHaveLength(1);
+    expect(matchingSpontaneousWalks[0].id).toBe(spontaneousWalkAtSameSlot.id);
+
+    // A further load sees the generated entry plus the legacy standalone
+    // walk. It must converge without creating another planned or spontaneous row.
+    const secondResult = await useScheduleStore.getState().load(FAMILY_ID);
+    expect(secondResult).toBe(true);
+    state = useScheduleStore.getState();
+    const plannedAfterRepeat = state.walks.filter(
+      (walk) =>
+        walk.familyId === FAMILY_ID &&
+        walk.dogId === rule.dogId &&
+        walk.date === occurrenceDate &&
+        walk.scheduledTime === rule.time &&
+        !walk.isUnplanned
+    );
+    const spontaneousAfterRepeat = state.walks.filter(
+      (walk) =>
+        walk.familyId === FAMILY_ID &&
+        walk.dogId === rule.dogId &&
+        walk.date === occurrenceDate &&
+        walk.scheduledTime === rule.time &&
+        walk.isUnplanned
+    );
+    expect(plannedAfterRepeat).toHaveLength(1);
+    expect(plannedAfterRepeat[0].id).toBe(existingStandaloneWalk.id);
+    expect(plannedAfterRepeat[0].scheduleEntryId).toBeUndefined();
+    expect(spontaneousAfterRepeat).toHaveLength(1);
+    expect(spontaneousAfterRepeat[0].id).toBe(spontaneousWalkAtSameSlot.id);
   });
 
   it('addRule surfaces a visible actionError instead of silently doing nothing when the repository write fails', async () => {
