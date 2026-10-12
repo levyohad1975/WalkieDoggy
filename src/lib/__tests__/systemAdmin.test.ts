@@ -34,6 +34,7 @@ describe('lib/systemAdmin — Supabase mode', () => {
   });
 
   afterEach(() => {
+    jest.dontMock('../../data');
     process.env = ORIGINAL_ENV;
   });
 
