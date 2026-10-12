@@ -1080,7 +1080,7 @@ describe('SyncQueue — sanitized diagnostics for an unclassified HTTP conflict'
       firstRetryableFailure: {
         operationType: 'deleteScheduleEntry',
         queuePosition: 1,
-        endpoint: '/rest/v1/schedule_entries',
+        endpoint: '/rest/v1/rpc/delete_schedule_entry_idempotent',
         httpStatus: 403,
         errorCode: '42501',
         category: 'authorization',

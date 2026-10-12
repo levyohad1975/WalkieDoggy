@@ -284,8 +284,8 @@ function operationEndpoint(op: SyncOperation): string {
     case 'upsertScheduleRule':
     case 'deleteScheduleRule': return '/rest/v1/schedule_rules';
     case 'addScheduleEntries':
-    case 'updateScheduleEntry':
-    case 'deleteScheduleEntry': return '/rest/v1/schedule_entries';
+    case 'updateScheduleEntry': return '/rest/v1/schedule_entries';
+    case 'deleteScheduleEntry': return '/rest/v1/rpc/delete_schedule_entry_idempotent';
     case 'saveWalk':
     case 'deleteWalk': return '/rest/v1/walks';
   }
