@@ -75,5 +75,8 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Run focused sync queue regression tests
+        run: npm test -- --runInBand src/data/__tests__/syncQueue.test.ts src/lib/__tests__/systemAdmin.test.ts
+
       - name: Run tests
         run: npm test -- --runInBand
