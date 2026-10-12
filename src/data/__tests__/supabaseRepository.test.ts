@@ -1178,6 +1178,56 @@ describe('SupabaseRepository — saveWalk (the "two people mark done at once" ra
       message: 'duplicate walk key',
     });
   });
+
+  it('persists an orphaned scheduled walk as standalone without mutating the queued source', async () => {
+    const writes: unknown[] = [];
+    const client: any = {
+      from: (table: string) => {
+        if (table === 'schedule_entries') {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  maybeSingle: () => Promise.resolve({ data: null, error: null, status: 200 }),
+                }),
+              }),
+            }),
+          };
+        }
+        return {
+          upsert: (payload: unknown) => {
+            writes.push(payload);
+            return Promise.resolve({ error: null, status: 201 });
+          },
+        };
+      },
+    };
+    const queuedWalk: Walk = { ...baseWalk, scheduleEntryId: 'deleted-entry', note: 'preserved walk note' };
+
+    await new SupabaseRepository(client).saveWalk(queuedWalk);
+
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({
+      id: 'walk-1',
+      family_id: 'fam-42',
+      schedule_entry_id: null,
+      note: 'preserved walk note',
+    });
+    expect(queuedWalk.scheduleEntryId).toBe('deleted-entry');
+  });
+
+  it('retains HTTP 409 status while preserving the source walk after an orphan preflight', async () => {
+    const conflict = Object.assign(new Error('duplicate walk key'), { code: '23505' });
+    const client: any = {
+      from: (table: string) => table === 'schedule_entries'
+        ? { select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null, status: 200 }) }) }) }) }
+        : { upsert: () => Promise.resolve({ error: conflict, status: 409 }) },
+    };
+    const queuedWalk: Walk = { ...baseWalk, scheduleEntryId: 'missing-entry' };
+
+    await expect(new SupabaseRepository(client).saveWalk(queuedWalk)).rejects.toMatchObject({ status: 409, code: '23505' });
+    expect(queuedWalk.scheduleEntryId).toBe('missing-entry');
+  });
 });
 
 describe('SupabaseRepository — getNotificationSettings', () => {

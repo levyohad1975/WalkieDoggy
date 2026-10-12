@@ -677,6 +677,30 @@ export class SupabaseRepository implements Repository {
   }
 
   async saveWalk(walk: Walk): Promise<void> {
+    // Keep the queued source object untouched until the server confirms the
+    // write. This lets a transient failure retry with the original payload.
+    const walkToPersist: Walk = { ...walk };
+
+    // A schedule edit/removal on another device can leave a locally queued
+    // walk pointing at a schedule_entries row that no longer exists. The FK
+    // then rejects the entire walk write (23503). Preserve the walk's history
+    // fields and stable id, but persist it as a standalone walk when the
+    // optional schedule relation is genuinely absent in this family.
+    if (walkToPersist.scheduleEntryId) {
+      const { data: scheduleEntry, error: scheduleEntryError, status: scheduleEntryStatus } = await withTimeout(
+        this.client
+          .from('schedule_entries')
+          .select('id')
+          .eq('id', walkToPersist.scheduleEntryId)
+          .eq('family_id', walkToPersist.familyId)
+          .maybeSingle(),
+        SUPABASE_CALL_TIMEOUT_MS,
+        'schedule_entries lookup for queued walk'
+      );
+      if (scheduleEntryError) throw Object.assign(scheduleEntryError, { status: scheduleEntryStatus });
+      if (!scheduleEntry) walkToPersist.scheduleEntryId = undefined;
+    }
+
     // Real-device QA fix — see withTimeout.ts's own doc comment.
     // addRule()/updateRule() call this once PER generated occurrence (up
     // to GENERATE_DAYS_AHEAD of them), each itself up to two sequential
@@ -684,9 +708,9 @@ export class SupabaseRepository implements Repository {
     // point identified for "the Save spinner never stops" on a real
     // mobile connection, since it is the one call site in that chain that
     // can run many times in a row.
-    if (walk.status === 'done') {
+    if (walkToPersist.status === 'done') {
       const { data, error, status } = await withTimeout(
-        this.client.from('walks').update(fromWalk(walk)).eq('id', walk.id).eq('status', 'pending').select('id'),
+        this.client.from('walks').update(fromWalk(walkToPersist)).eq('id', walkToPersist.id).eq('status', 'pending').select('id'),
         SUPABASE_CALL_TIMEOUT_MS,
         'walks update (done)'
       );
@@ -700,27 +724,27 @@ export class SupabaseRepository implements Repository {
       // and is a harmless no-op if it already exists (never overwrites the
       // other person's completion).
       const { error: insertError, status: insertStatus } = await withTimeout(
-        this.client.from('walks').upsert(fromWalk(walk), { onConflict: 'id', ignoreDuplicates: true }),
+        this.client.from('walks').upsert(fromWalk(walkToPersist), { onConflict: 'id', ignoreDuplicates: true }),
         SUPABASE_CALL_TIMEOUT_MS,
         'walks upsert (done, no pending match)'
       );
       if (insertError) throw Object.assign(insertError, { status: insertStatus });
       return;
     }
-    if (walk.scheduleEntryId) {
+    if (walkToPersist.scheduleEntryId) {
       const { data: existing, error: lookupError, status: lookupStatus } = await withTimeout(
-        this.client.from('walks').select('id, status').eq('schedule_entry_id', walk.scheduleEntryId).maybeSingle(),
+        this.client.from('walks').select('id, status').eq('schedule_entry_id', walkToPersist.scheduleEntryId).maybeSingle(),
         SUPABASE_CALL_TIMEOUT_MS,
         'walks lookup by schedule_entry_id'
       );
       if (lookupError) throw Object.assign(lookupError, { status: lookupStatus });
       if (existing) {
-        walk.id = existing.id;
+        walkToPersist.id = existing.id;
         if (existing.status === 'done') return;
       }
     }
     const { error, status } = await withTimeout(
-      this.client.from('walks').upsert(fromWalk(walk)),
+      this.client.from('walks').upsert(fromWalk(walkToPersist)),
       SUPABASE_CALL_TIMEOUT_MS,
       'walks upsert'
     );
