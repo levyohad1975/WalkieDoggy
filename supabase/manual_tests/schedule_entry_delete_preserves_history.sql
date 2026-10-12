@@ -24,6 +24,7 @@ begin
  insert into public.families(id,name,invite_code) values(fam,'Legacy cascade repro','repro-'||replace(fam::text,'-',''));
  insert into public.family_auth_members(auth_user_id,family_id,role) values(auth_user,fam,'admin');
  insert into public.users(id,family_id,auth_user_id,name) values(prof,fam,auth_user,'Repro Admin');
+ insert into public.profile_auth_sessions(auth_user_id,family_id,user_id) values(auth_user,fam,prof);
  insert into public.dogs(id,family_id,name) values(dogid,fam,'Repro Dog');
  insert into public.schedule_entries(id,family_id,dog_id,date,time,responsible_user_id)
  values(entryid,fam,dogid,current_date,'13:00',prof);
@@ -62,6 +63,7 @@ begin
  insert into public.families(id,name,invite_code) values(fam,'Isolated schedule-delete fixture','fixture-'||replace(fam::text,'-',''));
  insert into public.family_auth_members(auth_user_id,family_id,role) values(auth_user,fam,'admin');
  insert into public.users(id,family_id,auth_user_id,name) values(prof,fam,auth_user,'Fixture Admin');
+ insert into public.profile_auth_sessions(auth_user_id,family_id,user_id) values(auth_user,fam,prof);
  insert into public.dogs(id,family_id,name) values(dogid,fam,'Fixture Dog');
  insert into public.schedule_rules(id,family_id,dog_id,time,days_of_week,rotation_user_ids,rotation_anchor_date) values
  (r1,fam,dogid,'09:00',array[0,1,2,3,4,5,6],array[prof],current_date),
