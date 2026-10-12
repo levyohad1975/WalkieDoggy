@@ -31,6 +31,15 @@ describe('lib/systemAdmin — Supabase mode', () => {
       EXPO_PUBLIC_SUPABASE_URL: 'https://example.supabase.co',
       EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'anon-key',
     };
+    // These tests exercise System Admin RPC wrappers. Keep the sync preflight
+    // deterministic and avoid attaching the real NetInfo listener in Jest.
+    jest.doMock('../../data', () => ({
+      repository: {
+        trySync: jest.fn().mockResolvedValue(undefined),
+        pendingSyncCount: jest.fn().mockResolvedValue(0),
+        getPendingSyncDiagnostics: jest.fn().mockResolvedValue(null),
+      },
+    }));
   });
 
   afterEach(() => {
