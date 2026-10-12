@@ -68,6 +68,12 @@ interface QueuedItem {
   attemptCount?: number;
   lastAttemptAt?: string;
   lastErrorCode?: string;
+  lastErrorHttpStatus?: number;
+  lastErrorMessage?: string;
+  lastErrorEndpoint?: string;
+  lastErrorOperationId?: string;
+  lastErrorQueuePosition?: number;
+  lastErrorCategory?: string;
 }
 
 export interface SyncQueueDiagnostics {
@@ -83,6 +89,18 @@ export interface SyncQueueDiagnostics {
   neverAttempted: number;
   attemptedWithUnknownOutcome: number;
   lastErrorCodes: Record<string, number>;
+  firstRetryableFailure: {
+    operationType: string;
+    safeOperationId: string;
+    queuePosition: number;
+    endpoint: string;
+    httpStatus: number | null;
+    errorCode: string | null;
+    errorMessage: string;
+    category: string;
+    attemptCount: number;
+    lastAttemptAt: string;
+  } | null;
 }
 
 /**
@@ -216,6 +234,79 @@ export type SyncOperation =
   | { type: 'updateUserGamificationSetting'; payload: { userId: string; enabled: boolean } };
 
 type FlushResult = { succeeded: number; remaining: number; conflicted: number; quarantined: number };
+
+function payloadId(op: SyncOperation): string | undefined {
+  const payload = op.payload as unknown;
+  if (!payload || typeof payload !== 'object') return undefined;
+  const row = Array.isArray(payload) ? payload[0] : payload;
+  if (!row || typeof row !== 'object') return undefined;
+  const values = row as Record<string, unknown>;
+  for (const key of ['id', 'walkId', 'entryId', 'ruleId', 'userId', 'dogId', 'taskId']) {
+    if (typeof values[key] === 'string' && values[key]) return values[key] as string;
+  }
+  return undefined;
+}
+
+/** Stable opaque identifier; never places user or family identifiers in diagnostics. */
+function safeOperationId(op: SyncOperation): string {
+  const raw = payloadId(op) ?? op.type;
+  let hash = 2166136261;
+  for (let i = 0; i < raw.length; i++) hash = Math.imul(hash ^ raw.charCodeAt(i), 16777619);
+  return `op-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+function operationEndpoint(op: SyncOperation): string {
+  switch (op.type) {
+    case 'createUser':
+    case 'upsertUser':
+    case 'deleteUser':
+    case 'updateUserReminderSetting':
+    case 'updateUserGamificationSetting': return '/rest/v1/users';
+    case 'deleteFamilyMember': return '/rest/v1/rpc/admin_delete_family_member';
+    case 'upsertDog': return '/rest/v1/dogs';
+    case 'upsertHealthTask': return '/rest/v1/health_tasks';
+    case 'upsertGpsSession': return '/rest/v1/walk_gps_sessions';
+    case 'upsertAchievementUnlock': return '/rest/v1/achievement_unlocks';
+    case 'upsertScheduleRule':
+    case 'deleteScheduleRule': return '/rest/v1/schedule_rules';
+    case 'addScheduleEntries':
+    case 'updateScheduleEntry':
+    case 'deleteScheduleEntry': return '/rest/v1/schedule_entries';
+    case 'saveWalk':
+    case 'deleteWalk': return '/rest/v1/walks';
+  }
+}
+
+function errorField(error: unknown, key: string): unknown {
+  return error && typeof error === 'object' ? (error as Record<string, unknown>)[key] : undefined;
+}
+
+function sanitizedErrorMessage(error: unknown): string {
+  const raw = errorField(error, 'message');
+  let message = typeof raw === 'string' ? raw : String(error);
+  return message
+    .replace(/Bearer\s+[^\s,;]+/gi, 'Bearer [redacted]')
+    .replace(/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[redacted-token]')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted-email]')
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi, '[redacted-id]')
+    .replace(/Key \([^)]*\)=\([^)]*\)/gi, 'Key [redacted]')
+    .replace(/\s+/g, ' ')
+    .slice(0, 180);
+}
+
+function failureCategory(error: unknown, status: number | null, code: string | null): string {
+  const name = errorField(error, 'name');
+  const message = sanitizedErrorMessage(error).toLowerCase();
+  if (status === 409) return code ? 'http-conflict-with-code' : 'http-conflict-unclassified';
+  if (code?.startsWith('23')) return 'sql-integrity';
+  if (code === '42501' || code?.startsWith('28')) return 'authorization';
+  if (code === 'PGRST205' || code?.startsWith('42')) return 'schema-or-query';
+  if (name === 'TimeoutError' || message.includes('timeout') || message.includes('timed out')) return 'timeout';
+  if (name === 'TypeError' || message.includes('network') || message.includes('fetch')) return 'network';
+  if (status !== null && status >= 500) return 'server-temporary';
+  if (status !== null && status >= 400) return 'http-client-error';
+  return 'unclassified';
+}
 
 /**
  * Persistent FIFO queue of writes that couldn't reach Supabase yet (no
@@ -458,7 +549,7 @@ export class SyncQueue {
       else missingEnqueueTime++;
       if (item.lastAttemptAt && Number.isFinite(Date.parse(item.lastAttemptAt))) attemptTimestamps.push(item.lastAttemptAt);
       if (!item.attemptCount) neverAttempted++;
-      else if (!item.lastErrorCode) attemptedWithUnknownOutcome++;
+      else if (!item.lastErrorCode && item.lastErrorHttpStatus === undefined) attemptedWithUnknownOutcome++;
       if (item.lastErrorCode) errorCodes[item.lastErrorCode] = (errorCodes[item.lastErrorCode] ?? 0) + 1;
     }
 
@@ -477,6 +568,22 @@ export class SyncQueue {
       neverAttempted,
       attemptedWithUnknownOutcome,
       lastErrorCodes: errorCodes,
+      firstRetryableFailure: (() => {
+        const item = q.find((candidate) => candidate.lastAttemptAt && candidate.lastErrorMessage);
+        if (!item || !item.lastAttemptAt) return null;
+        return {
+          operationType: item.op.type,
+          safeOperationId: item.lastErrorOperationId ?? safeOperationId(item.op),
+          queuePosition: item.lastErrorQueuePosition ?? q.indexOf(item) + 1,
+          endpoint: item.lastErrorEndpoint ?? operationEndpoint(item.op),
+          httpStatus: item.lastErrorHttpStatus ?? null,
+          errorCode: item.lastErrorCode ?? null,
+          errorMessage: item.lastErrorMessage ?? 'Unknown error',
+          category: item.lastErrorCategory ?? 'unclassified',
+          attemptCount: item.attemptCount ?? 0,
+          lastAttemptAt: item.lastAttemptAt,
+        };
+      })(),
     };
   }
 
@@ -695,12 +802,26 @@ export class SyncQueue {
           // any crash-reporting integration that taps console output) for
           // diagnosis, it just doesn't take over the screen for something
           // the queue is already correctly handling.
-          console.warn(
-            'SyncQueue: operation failed (handled — recorded as a conflict or left queued for retry):',
-            item.op.type,
-            JSON.stringify(item.op.payload),
-            error
-          );
+          const httpStatusValue = errorField(error, 'status') ?? errorField(error, 'statusCode');
+          const httpStatus = typeof httpStatusValue === 'number' ? httpStatusValue : null;
+          const rawCode = errorField(error, 'code');
+          const errorCode = typeof rawCode === 'string' ? rawCode.slice(0, 32) : null;
+          const safeMessage = sanitizedErrorMessage(error);
+          const safeId = safeOperationId(item.op);
+          const endpoint = operationEndpoint(item.op);
+          const category = failureCategory(error, httpStatus, errorCode);
+          // Structured diagnostics deliberately exclude payload, auth/session data,
+          // family ids and raw Supabase error details that may contain user values.
+          console.warn('SyncQueue: operation failed', {
+            operationType: item.op.type,
+            safeOperationId: safeId,
+            queuePosition: i + 1,
+            endpoint,
+            httpStatus,
+            errorCode,
+            errorMessage: safeMessage,
+            category,
+          });
           if (isPermanentSyncError(error)) {
             q.splice(i, 1);
             await this.persist();
@@ -717,8 +838,13 @@ export class SyncQueue {
           }
           item.attemptCount = (item.attemptCount ?? 0) + 1;
           item.lastAttemptAt = new Date().toISOString();
-          const retryCode = (error as { code?: unknown } | null | undefined)?.code;
-          item.lastErrorCode = typeof retryCode === 'string' ? retryCode.slice(0, 32) : undefined;
+          item.lastErrorCode = errorCode ?? undefined;
+          item.lastErrorHttpStatus = httpStatus ?? undefined;
+          item.lastErrorMessage = safeMessage;
+          item.lastErrorEndpoint = endpoint;
+          item.lastErrorOperationId = safeId;
+          item.lastErrorQueuePosition = i + 1;
+          item.lastErrorCategory = category;
           await this.persist();
           break; // retryable: keep it queued, try again on next flush
         }

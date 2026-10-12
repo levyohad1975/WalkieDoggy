@@ -968,3 +968,66 @@ describe('SyncQueue — isPermanentError class 28, non-Error thrown values, and 
     expect(await queue.getQuarantined()).toEqual(persisted);
   });
 });
+
+
+describe('SyncQueue — sanitized diagnostics for an unclassified HTTP conflict', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    setSyncQueueActorGetter(() => 'test-user');
+  });
+
+  afterEach(() => {
+    setSyncQueueActorGetter(() => null);
+    jest.restoreAllMocks();
+  });
+
+  it('keeps a 409 in FIFO order, records safe response context and retries the same item', async () => {
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'saveWalk', payload: fakeWalk('123e4567-e89b-12d3-a456-426614174000') });
+    await queue.enqueue({ type: 'upsertUser', payload: fakeUser('later-user') });
+
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const conflict = Object.assign(
+      new Error('duplicate value for user@example.com, id 123e4567-e89b-12d3-a456-426614174000'),
+      { status: 409 }
+    );
+    const laterWrite = jest.fn().mockResolvedValue(undefined);
+    const firstResult = await queue.flush(
+      stubRemote({ saveWalk: jest.fn().mockRejectedValue(conflict), upsertUser: laterWrite })
+    );
+
+    expect(firstResult).toEqual({ succeeded: 0, remaining: 2, conflicted: 0, quarantined: 0 });
+    expect(laterWrite).not.toHaveBeenCalled();
+    const diagnostics = await queue.getDiagnostics();
+    expect(diagnostics.firstRetryableFailure).toMatchObject({
+      operationType: 'saveWalk',
+      queuePosition: 1,
+      endpoint: '/rest/v1/walks',
+      httpStatus: 409,
+      errorCode: null,
+      category: 'http-conflict-unclassified',
+      attemptCount: 1,
+    });
+    expect(diagnostics.firstRetryableFailure?.safeOperationId).toMatch(/^op-[0-9a-f]{8}$/);
+    expect(diagnostics.firstRetryableFailure?.errorMessage).not.toContain('user@example.com');
+    expect(diagnostics.firstRetryableFailure?.errorMessage).not.toContain('123e4567-e89b-12d3-a456-426614174000');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('later-user');
+
+    const saveWalk = jest.fn().mockResolvedValue(undefined);
+    const secondResult = await queue.flush(stubRemote({ saveWalk, upsertUser: laterWrite }));
+    expect(saveWalk).toHaveBeenCalledTimes(1);
+    expect(laterWrite).toHaveBeenCalledTimes(1);
+    expect(secondResult).toEqual({ succeeded: 2, remaining: 0, conflicted: 0, quarantined: 0 });
+  });
+
+  it('does not label a 409 as permanent without a response SQLSTATE', async () => {
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'saveWalk', payload: fakeWalk('walk-conflict') });
+    const result = await queue.flush(
+      stubRemote({ saveWalk: jest.fn().mockRejectedValue(Object.assign(new Error('conflict'), { status: 409 })) })
+    );
+    expect(result.conflicted).toBe(0);
+    expect(result.remaining).toBe(1);
+    expect(await queue.getConflicts()).toEqual([]);
+  });
+});

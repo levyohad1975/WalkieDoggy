@@ -685,12 +685,12 @@ export class SupabaseRepository implements Repository {
     // mobile connection, since it is the one call site in that chain that
     // can run many times in a row.
     if (walk.status === 'done') {
-      const { data, error } = await withTimeout(
+      const { data, error, status } = await withTimeout(
         this.client.from('walks').update(fromWalk(walk)).eq('id', walk.id).eq('status', 'pending').select('id'),
         SUPABASE_CALL_TIMEOUT_MS,
         'walks update (done)'
       );
-      if (error) throw error;
+      if (error) throw Object.assign(error, { status });
       if (data && data.length > 0) return; // updated the existing pending walk
 
       // No pending row matched — two possibilities: (a) this is a brand-new
@@ -699,32 +699,32 @@ export class SupabaseRepository implements Repository {
       // upsert with ignoreDuplicates handles both: inserts if the id is new,
       // and is a harmless no-op if it already exists (never overwrites the
       // other person's completion).
-      const { error: insertError } = await withTimeout(
+      const { error: insertError, status: insertStatus } = await withTimeout(
         this.client.from('walks').upsert(fromWalk(walk), { onConflict: 'id', ignoreDuplicates: true }),
         SUPABASE_CALL_TIMEOUT_MS,
         'walks upsert (done, no pending match)'
       );
-      if (insertError) throw insertError;
+      if (insertError) throw Object.assign(insertError, { status: insertStatus });
       return;
     }
     if (walk.scheduleEntryId) {
-      const { data: existing, error: lookupError } = await withTimeout(
+      const { data: existing, error: lookupError, status: lookupStatus } = await withTimeout(
         this.client.from('walks').select('id, status').eq('schedule_entry_id', walk.scheduleEntryId).maybeSingle(),
         SUPABASE_CALL_TIMEOUT_MS,
         'walks lookup by schedule_entry_id'
       );
-      if (lookupError) throw lookupError;
+      if (lookupError) throw Object.assign(lookupError, { status: lookupStatus });
       if (existing) {
         walk.id = existing.id;
         if (existing.status === 'done') return;
       }
     }
-    const { error } = await withTimeout(
+    const { error, status } = await withTimeout(
       this.client.from('walks').upsert(fromWalk(walk)),
       SUPABASE_CALL_TIMEOUT_MS,
       'walks upsert'
     );
-    if (error) throw error;
+    if (error) throw Object.assign(error, { status });
   }
 
   /**

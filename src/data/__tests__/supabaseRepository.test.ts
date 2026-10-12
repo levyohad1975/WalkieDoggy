@@ -1165,6 +1165,19 @@ describe('SupabaseRepository — saveWalk (the "two people mark done at once" ra
     });
     expect(captured.swap_swapped_by_user_id).toBeNull();
   });
+
+  it('preserves the HTTP response status for a 409 walk upsert error', async () => {
+    const conflict = Object.assign(new Error('duplicate walk key'), { code: '23505' });
+    const client: any = {
+      from: () => ({ upsert: () => Promise.resolve({ error: conflict, status: 409 }) }),
+    };
+
+    await expect(new SupabaseRepository(client).saveWalk(baseWalk)).rejects.toMatchObject({
+      status: 409,
+      code: '23505',
+      message: 'duplicate walk key',
+    });
+  });
 });
 
 describe('SupabaseRepository — getNotificationSettings', () => {
