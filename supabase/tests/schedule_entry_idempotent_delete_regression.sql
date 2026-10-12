@@ -1,4 +1,4 @@
--- Regression checks for 20261012053001_idempotent_schedule_entry_delete.sql.
+-- Regression checks for 20261012053936_idempotent_schedule_entry_delete.sql.
 -- Run after migrations against Staging/local Supabase; this script is read-only.
 do $$
 declare
