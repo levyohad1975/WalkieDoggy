@@ -57,6 +57,48 @@ describe('OfflineFirstRepository.updateScheduleEntry (P0 real-device fix)', () =
     setSyncQueueActorGetter(() => null);
   });
 
+  it('does not cache a rejected online schedule update', async () => {
+    setupNetInfo(true);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { OfflineFirstRepository } = require('../offlineFirstRepository');
+
+    const original = entryFixture({ time: '09:00' });
+    const conflict = Object.assign(new Error('duplicate schedule slot'), { code: '23505' });
+    const remote = stubRemote({
+      addScheduleEntries: jest.fn().mockResolvedValue(undefined),
+      updateScheduleEntry: jest.fn().mockRejectedValue(conflict),
+    });
+    const repo = new OfflineFirstRepository(remote);
+    await repo.addScheduleEntries([original]);
+
+    await expect(repo.updateScheduleEntry(entryFixture({ time: '14:00' }))).rejects.toMatchObject({ code: '23505' });
+
+    expect(await (repo as any).local.getScheduleEntries('family-1')).toEqual([original]);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+
+  it('does not cache an overlapping online schedule rule rejected by the server', async () => {
+    setupNetInfo(true);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    const { OfflineFirstRepository } = require('../offlineFirstRepository');
+
+    const rule = {
+      id: 'rule-1', familyId: 'family-1', dogId: 'dog-1', time: '08:00',
+      daysOfWeek: [0, 1, 2, 3, 4, 5, 6], rotationUserIds: ['user-1'],
+      rotationAnchorDate: '2026-10-05', sortOrder: 0, active: true, createdAt: 'created',
+    };
+    const conflict = Object.assign(new Error('overlapping recurring walk'), { code: '23505' });
+    const remote = stubRemote({ upsertScheduleRule: jest.fn().mockRejectedValue(conflict) });
+    const repo = new OfflineFirstRepository(remote);
+
+    await expect(repo.upsertScheduleRule(rule)).rejects.toMatchObject({ code: '23505' });
+
+    expect(await (repo as any).local.getScheduleRules('family-1')).toEqual([]);
+    expect(await repo.pendingSyncCount()).toBe(0);
+  });
+
   it('online: awaits the remote write before returning — it is confirmed, not merely queued', async () => {
     setupNetInfo(true);
     const AsyncStorage = require('@react-native-async-storage/async-storage');

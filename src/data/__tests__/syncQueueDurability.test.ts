@@ -38,6 +38,35 @@ describe('SyncQueue durable archive handoff', () => {
     setSyncQueueActorGetter(() => null);
   });
 
+  it('keeps an acknowledged write in the durable FIFO when queue removal storage fails, including after restart', async () => {
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'upsertUser', payload: user('first') });
+    await queue.enqueue({ type: 'upsertUser', payload: user('second') });
+    let failQueueWrite = true;
+    interceptStorageWrites((key) => {
+      if (key === QUEUE_KEY && failQueueWrite) {
+        failQueueWrite = false;
+        return new Error('simulated pending-store failure after remote acknowledgement');
+      }
+      return null;
+    });
+    const apply = jest.fn().mockResolvedValue(undefined);
+
+    const firstFlush = await queue.flush(remote(apply));
+
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(firstFlush).toMatchObject({ succeeded: 0, remaining: 2 });
+    expect(JSON.parse((await AsyncStorage.getItem(QUEUE_KEY)) ?? '[]').map((item: any) => item.op.payload.id))
+      .toEqual(['first', 'second']);
+
+    const restarted = new SyncQueue();
+    expect(await restarted.size()).toBe(2);
+    await restarted.flush(remote(apply), { force: true });
+
+    expect(apply).toHaveBeenCalledTimes(3);
+    expect(await restarted.size()).toBe(0);
+  });
+
   it('keeps permanent failures pending when conflict storage fails, including after restart', async () => {
     const queue = new SyncQueue();
     await queue.enqueue({ type: 'upsertUser', payload: user('a') });

@@ -820,27 +820,20 @@ export class SyncQueue {
         try {
           attempted++;
           await this.apply(remote, item.op);
-          q.splice(i, 1);
-          succeeded++;
-          await this.persist();
-          // BUG 3 FIX (historical SyncConflict falsely breaking a later
-          // success): a `saveWalk` for this exact walk id has now actually
-          // SUCCEEDED — any conflict previously recorded for this same walk
-          // id (from an earlier, since-superseded attempt) is stale and must
-          // not keep being returned by getConflictForWalk(). Without this,
-          // scheduleStore.markDone()'s sequence (saveWalk -> hasPendingSaveWalk
-          // (now false) -> getConflictForWalk) would see hasPendingSaveWalk
-          // false (correct — nothing's queued anymore) but getConflictForWalk
-          // still return Attempt-1's old permanent-failure record, and wrongly
-          // revert THIS successful completion. Clearing here — the moment a
-          // later write for the same walk id is confirmed to have landed — is
-          // the safest point to do it: it can never race ahead of a
-          // still-in-flight attempt (this only runs once `apply` above has
-          // actually resolved), and it only ever clears conflicts for the
-          // SAME walk id, never anything unrelated.
+          // Keep the acknowledged operation in the durable FIFO until queue
+          // removal is persisted. A local storage error must not be mistaken
+          // for a remote failure after the in-memory splice.
           if (item.op.type === 'saveWalk') {
             await this.clearConflictForWalk(item.op.payload.id);
           }
+          q.splice(i, 1);
+          try {
+            await this.persist();
+          } catch (error) {
+            q.splice(i, 0, item);
+            throw error;
+          }
+          succeeded++;
           // don't advance i — the next item has shifted into this slot
         } catch (error) {
           // QA pass v3, issue 3 fix: a queued write failing here is an

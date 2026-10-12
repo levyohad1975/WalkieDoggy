@@ -592,20 +592,19 @@ export class OfflineFirstRepository implements Repository {
   }
 
   async upsertScheduleRule(rule: ScheduleRule): Promise<void> {
-    await this.local.upsertScheduleRule(rule);
-    if (!this.remote) return;
-
-    // Schedule changes are a shared, user-visible setting. When the device
-    // is online, wait for Supabase to accept the write so an RLS/schema
-    // rejection is not presented as a successful edit until the next refresh.
-    if (await this.isOnline()) {
-      await this.remote.upsertScheduleRule(rule);
+    if (!this.remote) {
+      await this.local.upsertScheduleRule(rule);
       return;
     }
 
-    // Offline remains supported: persist locally and replay when a network
-    // connection returns. This path is deliberately reserved for a genuine
-    // offline state, not for an online server-side rejection.
+    // Server is authoritative for online shared schedule changes.
+    if (await this.isOnline()) {
+      await this.remote.upsertScheduleRule(rule);
+      await this.local.upsertScheduleRule(rule);
+      return;
+    }
+
+    await this.local.upsertScheduleRule(rule);
     await this.queue.enqueue({ type: 'upsertScheduleRule', payload: rule });
   }
 
@@ -695,14 +694,20 @@ export class OfflineFirstRepository implements Repository {
    * a genuine offline state.
    */
   async updateScheduleEntry(entry: ScheduleEntry): Promise<void> {
-    await this.local.updateScheduleEntry(entry);
-    if (!this.remote) return;
-
-    if (await this.isOnline()) {
-      await this.remote.updateScheduleEntry(entry);
+    if (!this.remote) {
+      await this.local.updateScheduleEntry(entry);
       return;
     }
 
+    if (await this.isOnline()) {
+      // Avoid leaving a phantom cache update when the server rejects a
+      // duplicate slot, missing relationship, or authorization context.
+      await this.remote.updateScheduleEntry(entry);
+      await this.local.updateScheduleEntry(entry);
+      return;
+    }
+
+    await this.local.updateScheduleEntry(entry);
     await this.queue.enqueue({ type: 'updateScheduleEntry', payload: entry });
   }
 
