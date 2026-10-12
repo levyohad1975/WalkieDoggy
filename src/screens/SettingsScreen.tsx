@@ -48,8 +48,9 @@ import { useSystemAdminStore } from '../store/systemAdminStore';
 import { repository } from '../data';
 import type { SyncQueueDiagnostics } from '../data/syncQueue';
 import { shouldShowStagingSyncDiagnostics } from '../logic/syncDiagnosticsGate';
+import { summarizeSyncQuarantine } from '../logic/syncQuarantineDiagnostics';
 
-type SettingsSyncDiagnostics = SyncQueueDiagnostics & { permanentFailureCount: number; quarantineCount: number; syncPreflight?: { outcome: string; at: string | null } };
+type SettingsSyncDiagnostics = SyncQueueDiagnostics & { permanentFailureCount: number; quarantineCount: number; quarantineSummary: ReturnType<typeof summarizeSyncQuarantine>; syncPreflight?: { outcome: string; at: string | null } };
 
 export function SettingsScreen() {
   return (
@@ -127,36 +128,44 @@ function SettingsScreenContent() {
   const [syncDiagnostics, setSyncDiagnostics] = useState<SettingsSyncDiagnostics | null>(null);
   const [syncDiagnosticsLoading, setSyncDiagnosticsLoading] = useState(false);
   const [syncRetrying, setSyncRetrying] = useState(false);
-  const [syncDiagnosticsError, setSyncDiagnosticsError] = useState<string | null>(null);
+  const [syncDiagnosticsFeedback, setSyncDiagnosticsFeedback] = useState<{ kind: 'loading' | 'success' | 'error'; message: string } | null>(null);
 
-  const loadSyncDiagnostics = useCallback(async () => {
-    if (!canShowSyncDiagnostics || !repository.getPendingSyncDiagnostics) return;
+  const loadSyncDiagnostics = useCallback(async (options: { feedback?: boolean; successMessage?: string } = {}): Promise<boolean> => {
+    const showFeedback = options.feedback !== false;
+    if (!canShowSyncDiagnostics || !repository.getPendingSyncDiagnostics) {
+      if (showFeedback) setSyncDiagnosticsFeedback({ kind: 'error', message: 'האבחון אינו זמין כרגע בפרופיל או בסביבת Staging זו.' });
+      return false;
+    }
     setSyncDiagnosticsLoading(true);
-    setSyncDiagnosticsError(null);
+    if (showFeedback) setSyncDiagnosticsFeedback({ kind: 'loading', message: 'מרענן אבחון…' });
     try {
       const [diagnostics, conflicts, quarantined] = await Promise.all([
         repository.getPendingSyncDiagnostics(),
         repository.getSyncConflicts?.() ?? Promise.resolve([]),
         repository.getQuarantinedSyncItems?.() ?? Promise.resolve([]),
       ]);
-      setSyncDiagnostics({ ...diagnostics, permanentFailureCount: conflicts.length, quarantineCount: quarantined.length });
+      const quarantineSummary = summarizeSyncQuarantine(quarantined);
+      setSyncDiagnostics({ ...diagnostics, permanentFailureCount: conflicts.length, quarantineCount: quarantined.length, quarantineSummary });
+      if (showFeedback) setSyncDiagnosticsFeedback({ kind: 'success', message: options.successMessage ?? `האבחון עודכן בהצלחה · ${new Date().toLocaleTimeString('he-IL')}` });
+      return true;
     } catch {
-      setSyncDiagnosticsError('לא הצלחנו לקרוא את נתוני הסנכרון במכשיר הזה. נסו לרענן.');
+      if (showFeedback) setSyncDiagnosticsFeedback({ kind: 'error', message: 'רענון האבחון נכשל. הנתונים המקומיים נשמרו; אפשר לנסות שוב.' });
+      return false;
     } finally {
       setSyncDiagnosticsLoading(false);
     }
   }, [canShowSyncDiagnostics]);
 
   const retrySyncNow = async () => {
-    if (!canShowSyncDiagnostics || !repository.trySync || syncRetrying) return;
+    if (!canShowSyncDiagnostics || !repository.trySync || syncRetrying || syncDiagnosticsLoading) return;
     setSyncRetrying(true);
-    setSyncDiagnosticsError(null);
+    setSyncDiagnosticsFeedback({ kind: 'loading', message: 'מנסה לסנכרן…' });
     try {
       await repository.trySync({ force: true });
-      await loadSyncDiagnostics();
+      await loadSyncDiagnostics({ successMessage: `הסנכרון הסתיים והאבחון עודכן · ${new Date().toLocaleTimeString('he-IL')}` });
     } catch {
-      setSyncDiagnosticsError('ניסיון הסנכרון נכשל. התור נשמר; אפשר לבדוק שוב את האבחון.');
-      await loadSyncDiagnostics();
+      setSyncDiagnosticsFeedback({ kind: 'error', message: 'ניסיון הסנכרון נכשל. התור וההסגר נשמרו ללא שינוי.' });
+      await loadSyncDiagnostics({ feedback: false });
     } finally {
       setSyncRetrying(false);
     }
@@ -798,8 +807,7 @@ function SettingsScreenContent() {
             </Pressable>
             {syncDiagnosticsExpanded ? (
               <View style={styles.syncDiagnosticsCard}>
-                {syncDiagnosticsLoading && !syncDiagnostics ? <RtlText style={styles.syncDiagnosticsText}>טוען אבחון…</RtlText> : null}
-                {syncDiagnosticsError ? <RtlText style={styles.syncDiagnosticsError} accessibilityRole="alert">{syncDiagnosticsError}</RtlText> : null}
+                {syncDiagnosticsFeedback ? <RtlText style={syncDiagnosticsFeedback.kind === 'error' ? styles.syncDiagnosticsError : syncDiagnosticsFeedback.kind === 'success' ? styles.syncDiagnosticsSuccess : styles.syncDiagnosticsText} accessibilityRole={syncDiagnosticsFeedback.kind === 'error' ? 'alert' : undefined} accessibilityLiveRegion="polite">{syncDiagnosticsFeedback.message}</RtlText> : null}
                 {syncDiagnostics ? (() => {
                   const d = syncDiagnostics;
                   const stateLabel = d.lastFlush?.stoppedOnRetryableFailure ? 'ממתין לניסיון חוזר לאחר כשל זמני' : d.total === 0 ? 'התור המקומי ריק' : 'יש פעולות שממתינות לסנכרון';
@@ -814,6 +822,9 @@ function SettingsScreenContent() {
                       <RtlText style={styles.syncDiagnosticsText}>הפעולה הבאה: {first ? first.operationType + ' · ' + first.safeOperationId + ' · מיקום ' + first.queuePosition : 'אין'}</RtlText>
                       <RtlText style={styles.syncDiagnosticsText}>כשל זמני ראשון: {failure ? failure.operationType + ' · ' + failure.category + ' · HTTP ' + (failure.httpStatus ?? '—') + ' · SQLSTATE ' + (failure.errorCode ?? '—') + (failure.retryAfterAt ? ' · ניסיון אוטומטי אחרי ' + new Date(failure.retryAfterAt).toLocaleTimeString('he-IL') : '') : 'אין כשל זמני שממתין'}</RtlText>
                       <RtlText style={styles.syncDiagnosticsText}>קבועים / דחויים / בהסגר: {d.permanentFailureCount} / {d.ownerCounts.otherProfile} / {d.quarantineCount}</RtlText>
+                      <RtlText style={styles.syncDiagnosticsText}>סיבת הסגר: {d.quarantineSummary.byReason.map((item) => `${item.label} ${item.count}`).join(' · ') || 'אין'}</RtlText>
+                      <RtlText style={styles.syncDiagnosticsText}>סוגי פעולות בהסגר: {d.quarantineSummary.byOperation.map((item) => `${item.operationType} ${item.count}`).join(' · ') || 'אין'}</RtlText>
+                      {d.quarantineCount > 0 ? <RtlText style={styles.syncDiagnosticsHint}>במבנה ההסגר הישן אין שיוך לבעלים או למשפחה. הפעולות נשמרו במכשיר ולא נשלחו אוטומטית; אין כאן אפשרות לשחזר או למחוק אותן.</RtlText> : null}
                       <RtlText style={styles.syncDiagnosticsText}>בעלות פעולות: הפרופיל הפעיל {d.ownerCounts.activeProfile} · פרופיל אחר {d.ownerCounts.otherProfile} · לא ידועה {d.ownerCounts.unknown}</RtlText>
                       <RtlText style={styles.syncDiagnosticsText}>לפי משפחה (מזהה מקוצר): {d.familyIds.length ? d.familyIds.map((f) => f.id.slice(0, 8) + '… ' + f.count).join(' · ') : 'אין מזהה משפחה בתור'}</RtlText>
                       <RtlText style={styles.syncDiagnosticsText}>ניסיון אחרון: {lastAt ? new Date(lastAt).toLocaleString('he-IL') : 'לא זמין'} · {lastResult}</RtlText>
@@ -830,8 +841,8 @@ function SettingsScreenContent() {
                 >
                   <RtlText style={styles.syncRetryButtonText}>{syncRetrying ? 'מנסה לסנכרן…' : 'ניסיון חוזר לסנכרון'}</RtlText>
                 </Pressable>
-                <Pressable style={styles.syncRefreshButton} onPress={() => void loadSyncDiagnostics()} disabled={syncDiagnosticsLoading} accessibilityRole="button">
-                  <RtlText style={styles.syncRefreshButtonText}>רענון אבחון</RtlText>
+                <Pressable style={styles.syncRefreshButton} onPress={() => void loadSyncDiagnostics()} disabled={syncDiagnosticsLoading || syncRetrying} accessibilityRole="button" accessibilityLabel="רענון אבחון" accessibilityState={{ disabled: syncDiagnosticsLoading || syncRetrying, busy: syncDiagnosticsLoading }}>
+                  <RtlText style={styles.syncRefreshButtonText}>{syncDiagnosticsLoading ? 'מרענן אבחון…' : 'רענון אבחון'}</RtlText>
                 </Pressable>
               </View>
             ) : null}
@@ -1033,7 +1044,8 @@ const styles = StyleSheet.create({
   syncDiagnosticsCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, padding: spacing.md, gap: spacing.xs },
   syncDiagnosticsText: { ...typography.meta, color: colors.textPrimary, textAlign: 'right', writingDirection: 'rtl', lineHeight: 20 },
   syncDiagnosticsHint: { ...typography.meta, color: colors.textSecondary, textAlign: 'right', writingDirection: 'rtl', lineHeight: 19 },
-  syncDiagnosticsError: { ...typography.meta, color: colors.statusOverdue, textAlign: 'right', writingDirection: 'rtl' },
+  syncDiagnosticsError: { ...typography.meta, color: colors.statusOverdue, textAlign: 'right', writingDirection: 'rtl', lineHeight: 20 },
+  syncDiagnosticsSuccess: { ...typography.meta, color: colors.primaryDark, textAlign: 'right', writingDirection: 'rtl', lineHeight: 20 },
   syncRetryButton: { minHeight: 46, borderRadius: radii.md, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md, marginTop: spacing.xs },
   syncRetryButtonDisabled: { opacity: 0.6 },
   syncRetryButtonText: { color: '#FFFFFF', fontWeight: '800', textAlign: 'center' },
