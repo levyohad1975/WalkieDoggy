@@ -1,6 +1,12 @@
 name: Integration Full-Chain Supabase Rehearsal
 
 on:
+  pull_request:
+    paths:
+      - "supabase/**"
+      - "src/data/localRepository.ts"
+      - "src/store/scheduleStore.ts"
+      - ".github/workflows/integration-full-chain-rehearsal.yml"
   workflow_dispatch:
     inputs:
       target_branch:
@@ -250,6 +256,14 @@ jobs:
 
       - name: Replay the FULL real migration chain (00000 base + 0001-0048) from empty
         run: supabase db reset --local
+
+      - name: Rehearse schedule-entry deletion with disposable history and GPS fixtures
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/manual_tests/schedule_entry_delete_preserves_history.sql
 
       - name: Run the 0043-0048 integration rehearsal (real Postgres, not source review)
         env:

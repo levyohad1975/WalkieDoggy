@@ -750,7 +750,13 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       set((s) => ({
         rules: s.rules.filter((r) => r.id !== ruleId),
         entries: s.entries.filter((e) => !removedEntryIds.has(e.id)),
-        walks: s.walks.filter((w) => !(w.scheduleEntryId && removedEntryIds.has(w.scheduleEntryId) && w.status === 'pending')),
+        walks: s.walks
+          .filter((w) => !(w.scheduleEntryId && removedEntryIds.has(w.scheduleEntryId) && w.status === 'pending'))
+          .map((w) =>
+            w.scheduleEntryId && removedEntryIds.has(w.scheduleEntryId)
+              ? { ...w, scheduleEntryId: undefined }
+              : w
+          ),
         actionError: null,
       }));
     } catch (e) {
@@ -880,7 +886,11 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     await repository.deleteScheduleEntry(entryId);
     set((s) => ({
       entries: s.entries.filter((e) => e.id !== entryId),
-      walks: s.walks.filter((w) => w.scheduleEntryId !== entryId),
+      // Server deletion detaches resolved walks. Preserve their history locally.
+      walks: s.walks.flatMap((w) => {
+        if (w.scheduleEntryId !== entryId) return [w];
+        return w.status === 'pending' ? [] : [{ ...w, scheduleEntryId: undefined }];
+      }),
     }));
   },
 

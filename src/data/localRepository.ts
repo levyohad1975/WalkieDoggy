@@ -350,7 +350,12 @@ export class LocalRepository implements Repository {
   async deleteScheduleEntry(entryId: string): Promise<void> {
     const s = await this.load();
     s.entries = s.entries.filter((e) => e.id !== entryId);
-    s.walks = s.walks.filter((w) => w.scheduleEntryId !== entryId);
+    s.walks = s.walks.flatMap((w) => {
+      if (w.scheduleEntryId !== entryId) return [w];
+      const hasGpsSession = s.gpsSessions.some((session) => session.walkId === w.id);
+      if (w.status === 'pending' && !hasGpsSession) return [];
+      return [{ ...w, scheduleEntryId: undefined }];
+    });
     await this.persist();
   }
 

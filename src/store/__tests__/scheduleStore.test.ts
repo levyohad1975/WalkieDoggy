@@ -673,17 +673,20 @@ it('reorderRules surfaces a visible actionError instead of silently doing nothin
   spy.mockRestore();
 });
 
-it('deleteEntry removes the entry and its backing walk together', async () => {
+it('deleteEntry removes pending occurrences and preserves resolved history', async () => {
   await useScheduleStore.getState().load(FAMILY_ID);
-  expect(useScheduleStore.getState().entries.some((e) => e.id === 'entry-1700')).toBe(true);
-  expect(useScheduleStore.getState().walks.some((w) => w.id === 'walk-1700')).toBe(true);
+  expect(useScheduleStore.getState().walks.find((w) => w.id === 'walk-0700')?.status).toBe('done');
+  expect(useScheduleStore.getState().walks.find((w) => w.id === 'walk-1700')?.status).toBe('pending');
 
+  await useScheduleStore.getState().deleteEntry('entry-0700');
+  await useScheduleStore.getState().deleteEntry('entry-0700');
   await useScheduleStore.getState().deleteEntry('entry-1700');
 
   const state = useScheduleStore.getState();
-  expect(state.entries.some((e) => e.id === 'entry-1700')).toBe(false);
+  expect(state.entries.some((e) => e.id === 'entry-0700' || e.id === 'entry-1700')).toBe(false);
+  expect(state.walks.find((w) => w.id === 'walk-0700')?.status).toBe('done');
+  expect(state.walks.find((w) => w.id === 'walk-0700')?.scheduleEntryId).toBeUndefined();
   expect(state.walks.some((w) => w.id === 'walk-1700')).toBe(false);
-  // Unrelated entry/walk pairs are untouched.
   expect(state.entries.some((e) => e.id === 'entry-1230')).toBe(true);
   expect(state.walks.some((w) => w.id === 'walk-1230')).toBe(true);
 });
