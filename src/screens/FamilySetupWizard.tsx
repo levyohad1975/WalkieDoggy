@@ -95,6 +95,13 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
   const scheduleFamilyContextValid = authFamilyId === familyId && family?.id === familyId;
   const scheduleDogAvailable = Boolean(dog && dog.familyId === familyId);
   const scheduleAssigneeEligible = activeUsers.some((user) => user.id === responsibleUserId);
+  const missingSuggestedTimes = SUGGESTED_TIMES.filter((suggestion) =>
+    !dogRules.some((rule) =>
+      rule.time === suggestion.time &&
+      rule.daysOfWeek.length === ALL_DAYS.length &&
+      ALL_DAYS.every((day) => rule.daysOfWeek.includes(day))
+    )
+  );
   const scheduleDisabledReasons = [
     (initializing || familyLoading) ? 'נתוני המשפחה עדיין נטענים' : null,
     busy ? 'שמירה מתבצעת' : null,
@@ -346,7 +353,7 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
 
   const addSuggestedSchedule = async () => {
     await showAction(async () => {
-      for (const suggestion of SUGGESTED_TIMES) await addRuleAt(suggestion.time, suggestion.label);
+      for (const suggestion of missingSuggestedTimes) await addRuleAt(suggestion.time, suggestion.label);
       await loadSchedule(familyId);
     });
   };
@@ -532,7 +539,15 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
                   {activeUsers.length === 0 ? <RtlText style={styles.muted} accessibilityRole="alert">לא נמצא במשפחה פרופיל פעיל שאפשר לשייך לטיול. חזרו לשלב בני המשפחה ושמרו פרופיל מנהל, ואז נסו שוב.</RtlText> : null}
                   <View style={styles.memberChoiceRow}>{activeUsers.map((user) => <Pressable key={user.id} onPress={() => setResponsibleUserId(user.id)} style={[styles.memberChip, responsibleUserId === user.id && styles.memberChipActive]} accessibilityRole="button" accessibilityState={{ selected: responsibleUserId === user.id }}><RtlText style={[styles.memberChipText, responsibleUserId === user.id && styles.memberChipTextActive]}>{user.name}</RtlText></Pressable>)}</View>
                   {editingRuleId ? <><Button label="שמירת עדכון הטיול" variant="secondary" disabled={busy || !responsibleUserId} loading={busy} onPress={() => void editScheduleRule()} /><Pressable onPress={() => setEditingRuleId(null)} style={styles.skipLink}><RtlText style={styles.skipText}>ביטול עריכה</RtlText></Pressable></> : <Button label="הוספת שעה ללוח" variant="secondary" disabled={busy || !scheduleFamilyContextValid || !scheduleDogAvailable || !scheduleAssigneeEligible} loading={busy} onPress={() => void addCustomSchedule()} />}
-                  {dogRules.length === 0 ? <Button label="הוספת הצעה: בוקר, צהריים וערב" variant="secondary" disabled={busy || !scheduleFamilyContextValid || !scheduleDogAvailable || !scheduleAssigneeEligible} onPress={() => void addSuggestedSchedule()} style={styles.suggestButton} /> : null}
+                  {missingSuggestedTimes.length > 0 ? <Button
+                    label={missingSuggestedTimes.length === SUGGESTED_TIMES.length
+                      ? 'הוספת הצעה: בוקר, צהריים וערב'
+                      : `השלמת הצעה: ${missingSuggestedTimes.map((suggestion) => suggestion.label.replace('טיול ', '')).join(' ו')}`}
+                    variant="secondary"
+                    disabled={busy || !scheduleFamilyContextValid || !scheduleDogAvailable || !scheduleAssigneeEligible}
+                    onPress={() => void addSuggestedSchedule()}
+                    style={styles.suggestButton}
+                  /> : null}
                 </View>
               </>
             ) : null}

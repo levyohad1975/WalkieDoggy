@@ -213,6 +213,44 @@ describe('FamilySetupWizard interactions', () => {
     expect(screen.getByText('20:00 · טיול ערב')).toBeTruthy();
   });
 
+  it('completes a partially configured test-family schedule without duplicating its persisted 08:00 walk', async () => {
+    const state = setup(4, undefined, true);
+    const persistedMorningRule = {
+      id: 'persisted-morning-rule',
+      familyId: FAMILY_ID,
+      dogId: DOG.id,
+      time: '08:00',
+      label: 'טיול בוקר',
+      daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+      rotationUserIds: [ADMIN_ID],
+      rotationAnchorDate: '2026-10-12',
+      sortOrder: 0,
+      active: true,
+      createdAt: '2026-10-12T00:00:00.000Z',
+    };
+    act(() => { useScheduleStore.setState({ rules: [persistedMorningRule] }); });
+
+    expect(await screen.findByText('08:00 · טיול בוקר')).toBeTruthy();
+    const completeScheduleButton = await screen.findByLabelText('השלמת הצעה: צהריים וערב');
+    await act(async () => { fireEvent.press(completeScheduleButton); });
+
+    expect(state.addRule).toHaveBeenCalledTimes(2);
+    expect(state.addRule.mock.calls.map(([rule]) => rule.time)).toEqual(['14:00', '20:00']);
+    expect(useScheduleStore.getState().rules.map((rule) => rule.time).sort()).toEqual(['08:00', '14:00', '20:00']);
+    expect(useScheduleStore.getState().rules.find((rule) => rule.id === persistedMorningRule.id)).toEqual(persistedMorningRule);
+    expect(screen.getByText('08:00 · טיול בוקר')).toBeTruthy();
+    expect(screen.getByText('14:00 · טיול צהריים')).toBeTruthy();
+    expect(screen.getByText('20:00 · טיול ערב')).toBeTruthy();
+    expect(state.loadSchedule).toHaveBeenCalledWith(FAMILY_ID);
+
+    await act(async () => { fireEvent.press(screen.getByLabelText('המשך לסיכום')); });
+    await waitFor(() => expect(screen.getByText('שלב 5 מתוך 5')).toBeTruthy());
+    await act(async () => { fireEvent.press(screen.getByText('חזרה לעריכה')); });
+    expect(screen.getByText('08:00 · טיול בוקר')).toBeTruthy();
+    expect(screen.getByText('14:00 · טיול צהריים')).toBeTruthy();
+    expect(screen.getByText('20:00 · טיול ערב')).toBeTruthy();
+  });
+
   it('fails closed when the wizard family differs from the active authenticated family', async () => {
     const state = setup(4);
     act(() => { useAuthStore.setState({ familyId: 'original-family' }); });
