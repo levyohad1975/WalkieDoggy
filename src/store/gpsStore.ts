@@ -126,9 +126,10 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     const current = get();
     if (current.trackingWalkId !== localWalk.id || activeWatchWalkId !== localWalk.id) return false;
     if (localWalk.familyId !== canonicalWalk.familyId || localWalk.dogId !== canonicalWalk.dogId) return false;
-    // A schedule identity must remain the same across canonical-ID adoption.
-    // Spontaneous walks have no scheduleEntryId and are not expected to change ID.
-    if (localWalk.scheduleEntryId !== canonicalWalk.scheduleEntryId) return false;
+    // Only adopt a new ID for the same scheduled occurrence. A pair of
+    // spontaneous walks both have an undefined schedule ID, which is not
+    // enough evidence to treat them as the same walk.
+    if (!localWalk.scheduleEntryId || localWalk.scheduleEntryId !== canonicalWalk.scheduleEntryId) return false;
     if (localWalk.id === canonicalWalk.id) return true;
     activeWatchWalkId = canonicalWalk.id;
     set({ trackingWalkId: canonicalWalk.id });

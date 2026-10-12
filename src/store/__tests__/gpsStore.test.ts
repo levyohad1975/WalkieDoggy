@@ -114,6 +114,8 @@ describe('gpsStore', () => {
     expect(useGpsStore.getState().rebindTrackingWalk(localScheduledWalk, { ...localScheduledWalk, id: 'other', familyId: 'family-2' })).toBe(false);
     expect(useGpsStore.getState().rebindTrackingWalk(localScheduledWalk, { ...localScheduledWalk, id: 'other', dogId: 'dog-2' })).toBe(false);
     expect(useGpsStore.getState().rebindTrackingWalk(localScheduledWalk, { ...localScheduledWalk, id: 'other', scheduleEntryId: 'entry-2' })).toBe(false);
+    const withoutScheduleEvidence = { ...localScheduledWalk, scheduleEntryId: undefined };
+    expect(useGpsStore.getState().rebindTrackingWalk(withoutScheduleEvidence, { ...withoutScheduleEvidence, id: 'other' })).toBe(false);
     expect(useGpsStore.getState().trackingWalkId).toBe('walk-1');
     await useGpsStore.getState().stopTracking(localScheduledWalk, 'user-aba');
   });
