@@ -21,7 +21,7 @@ describe('System Admin test-family isolation contract', () => {
     expect(screen).toContain('visible={visible && isSystemAdmin}');
     expect(screen).toContain('פתיחת שלב לוח הטיולים');
     expect(screen).toContain('reenterExistingSystemAdminTestFamily(familyId, onTestFamilyScheduleSelected)');
-    expect(app).toContain('onTestFamilyScheduleSelected={selectTestFamilyForScheduleReview}');
+    expect(app).toContain('onTestFamilyScheduleSelected={isStagingSupabaseProject ? selectTestFamilyForScheduleReview : undefined}');
     expect(app).toContain('scheduleReviewOnly: true');
     expect(app).toContain("hostname === 'czbxhsoxyawprqehkfit.supabase.co'");
     expect(app).toContain('!isStagingSupabaseProject || !useSystemAdminStore.getState().isSystemAdmin');
