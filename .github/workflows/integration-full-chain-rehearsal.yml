@@ -284,7 +284,7 @@ jobs:
           assert sql.count(secret_marker) == 1
           sql = sql.replace(
               secret_marker,
-              secret_marker + "\\n\\nselect vault.create_secret('local-rehearsal-only-dummy-secret', 'walk_reminder_cron_secret', 'Isolated local rehearsal only.');"
+              secret_marker + "\n\nselect vault.create_secret('local-rehearsal-only-dummy-secret', 'walk_reminder_cron_secret', 'Isolated local rehearsal only.');"
           )
           sql = sql.replace(
               'https://czbxhsoxyawprqehkfit.supabase.co/functions/v1/send-walk-reminders',
