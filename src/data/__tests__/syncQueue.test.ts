@@ -67,6 +67,41 @@ describe('SyncQueue — permanent vs retryable conflict handling', () => {
     expect(diagnostics.neverAttempted).toBe(1);
     expect(diagnostics.attemptedWithUnknownOutcome).toBe(1);
     expect(diagnostics.lastErrorCodes).toEqual({});
+    expect(diagnostics.lastFlush).toMatchObject({
+      attempted: 1,
+      skippedOtherProfile: 0,
+      succeeded: 0,
+      conflicted: 0,
+      quarantined: 0,
+      remaining: 2,
+      stoppedOnRetryableFailure: true,
+    });
+    expect(diagnostics.firstRetryableFailure).toMatchObject({
+      operationType: 'upsertUser',
+      queuePosition: 1,
+      errorMessage: expect.stringContaining('network timeout'),
+    });
+  });
+
+  it('reports ownership skips separately from dispatched writes without mutating another profile queue', async () => {
+    setSyncQueueActorGetter(() => 'active-user');
+    await AsyncStorage.setItem('dog-walk-family:sync-queue:v4', JSON.stringify([
+      { op: { type: 'saveWalk', payload: { id: 'walk-a' } }, claimedByUserId: 'other-user' },
+      { op: { type: 'saveWalk', payload: { id: 'walk-b' } }, claimedByUserId: 'other-user' },
+    ]));
+    const queue = new SyncQueue();
+    const remote = stubRemote({ saveWalk: jest.fn() });
+
+    await queue.flush(remote);
+
+    expect(remote.saveWalk).not.toHaveBeenCalled();
+    expect((await queue.getDiagnostics()).lastFlush).toMatchObject({
+      attempted: 0,
+      skippedOtherProfile: 2,
+      remaining: 2,
+      stoppedOnRetryableFailure: false,
+    });
+    expect(await queue.size()).toBe(2);
   });
 
   it('reports large mixed-owner legacy queues without changing or exposing operation payloads', async () => {

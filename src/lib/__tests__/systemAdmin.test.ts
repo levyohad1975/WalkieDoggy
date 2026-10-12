@@ -37,6 +37,61 @@ describe('lib/systemAdmin — Supabase mode', () => {
     process.env = ORIGINAL_ENV;
   });
 
+  it('surfaces the first sanitized queue failure in the test-family switch preflight without exposing payloads', async () => {
+    const pendingFailure = {
+      operationType: 'saveWalk',
+      safeOperationId: 'op-1234',
+      queuePosition: 1,
+      endpoint: 'POST /walks',
+      httpStatus: 409,
+      errorCode: '23503',
+      errorMessage: 'schedule entry is missing',
+      category: 'permanent-conflict',
+      attemptCount: 3,
+      lastAttemptAt: '2026-10-12T04:26:00.000Z',
+    };
+    jest.doMock('../../data', () => ({
+      repository: {
+        trySync: jest.fn().mockResolvedValue(undefined),
+        pendingSyncCount: jest.fn().mockResolvedValue(2557),
+        getPendingSyncDiagnostics: jest.fn().mockResolvedValue({
+          total: 2557,
+          byOperation: { saveWalk: 1965 },
+          ownerCounts: { activeProfile: 2557, otherProfile: 0, unknown: 0 },
+          ownerIds: [{ id: 'profile-safe', count: 2557 }],
+          familyIds: [{ id: 'family-safe', count: 2358 }],
+          withoutFamilyId: 199,
+          oldestEnqueuedAt: null,
+          latestAttemptAt: pendingFailure.lastAttemptAt,
+          missingEnqueueTime: 2557,
+          neverAttempted: 2556,
+          attemptedWithUnknownOutcome: 0,
+          lastErrorCodes: { '23503': 1 },
+          firstRetryableFailure: pendingFailure,
+          lastFlush: {
+            attempted: 1,
+            skippedOtherProfile: 0,
+            succeeded: 0,
+            conflicted: 0,
+            quarantined: 0,
+            remaining: 2557,
+            stoppedOnRetryableFailure: true,
+            completedAt: pendingFailure.lastAttemptAt,
+          },
+          syncPreflight: { outcome: 'flush-finished', at: pendingFailure.lastAttemptAt },
+        }),
+      },
+    }));
+    const rpc = jest.fn();
+    mockSupabaseClient(rpc);
+    const { flushBeforeSystemAdminTestFamilySwitch } = require('../systemAdmin');
+
+    await expect(flushBeforeSystemAdminTestFamilySwitch()).rejects.toThrow(
+      /כשל ראשון: saveWalk · מזהה בטוח op-1234 · מיקום 1 · יעד POST \/walks · HTTP 409 · קוד 23503/
+    );
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
   it('creates an isolated test family through the guarded entry RPC and trims its name', async () => {
     const rpc = jest.fn().mockResolvedValue({ data: [{ id: 'qa-1', name: 'משפחת בדיקה', invite_code: 'QATEST' }], error: null });
     mockSupabaseClient(rpc);

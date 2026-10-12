@@ -150,7 +150,13 @@ export async function flushBeforeSystemAdminTestFamilySwitch(): Promise<void> {
           const failures = Object.entries(queue.lastErrorCodes).map(([code, count]) => `${code}: ${count}`).join(', ') || 'אין קוד שגיאה שמור';
           const oldest = queue.oldestEnqueuedAt ?? 'לא נשמר זמן יצירה ברשומות הישנות';
           const preflight = queue.syncPreflight ? `${queue.syncPreflight.outcome} (${queue.syncPreflight.at ?? 'ללא זמן'})` : 'לא זמין';
-          details = `\nפירוט מקומי (ללא תוכן הפעולות): ${operations}. בעלים: הפרופיל הנוכחי ${queue.ownerCounts.activeProfile}, פרופילים אחרים ${queue.ownerCounts.otherProfile}, לא ידוע ${queue.ownerCounts.unknown}. מזהי פרופיל: ${owners}. משפחות: ${families}; פעולות ללא familyId בפayload: ${queue.withoutFamilyId}. בדיקת רשת/סנכרון: ${preflight}. תאריך ההוספה הישן ביותר הידוע: ${oldest}; רשומות ישנות ללא תאריך: ${queue.missingEnqueueTime}. ניסיון אחרון: ${queue.latestAttemptAt ?? 'לא נשמר'}. ממתינות ללא ניסיון: ${queue.neverAttempted}; ניסיון קודם ללא SQLSTATE: ${queue.attemptedWithUnknownOutcome}; שגיאות SQLSTATE: ${failures}.`;
+          const flush = queue.lastFlush
+            ? `עובדו: ${queue.lastFlush.attempted}; דולגו בשל בעלות של פרופיל אחר: ${queue.lastFlush.skippedOtherProfile}; נשמרו: ${queue.lastFlush.succeeded}; נדחו לצורך בדיקה: ${queue.lastFlush.conflicted}; הועברו להסגר: ${queue.lastFlush.quarantined}; נותרו אחרי הסנכרון: ${queue.lastFlush.remaining}; נעצר בכשל זמני: ${queue.lastFlush.stoppedOnRetryableFailure ? 'כן' : 'לא'}.`
+            : 'לא נשמר סיכום של ניסיון הסנכרון האחרון.';
+          const firstFailure = queue.firstRetryableFailure
+            ? `כשל ראשון: ${queue.firstRetryableFailure.operationType} · מזהה בטוח ${queue.firstRetryableFailure.safeOperationId} · מיקום ${queue.firstRetryableFailure.queuePosition} · יעד ${queue.firstRetryableFailure.endpoint} · HTTP ${queue.firstRetryableFailure.httpStatus ?? 'לא ידוע'} · קוד ${queue.firstRetryableFailure.errorCode ?? 'לא ידוע'} · ${queue.firstRetryableFailure.category} · ${queue.firstRetryableFailure.errorMessage}.`
+            : 'לא נשמר כשל זמני ראשון.';
+          details = `\nפירוט מקומי (ללא תוכן הפעולות): ${operations}. בעלים: הפרופיל הנוכחי ${queue.ownerCounts.activeProfile}, פרופילים אחרים ${queue.ownerCounts.otherProfile}, לא ידוע ${queue.ownerCounts.unknown}. מזהי פרופיל: ${owners}. משפחות: ${families}; פעולות ללא familyId בפayload: ${queue.withoutFamilyId}. בדיקת רשת/סנכרון: ${preflight}. תוצאת ניסיון אחרון: ${flush} ${firstFailure} תאריך ההוספה הישן ביותר הידוע: ${oldest}; רשומות ישנות ללא תאריך: ${queue.missingEnqueueTime}. ניסיון אחרון: ${queue.latestAttemptAt ?? 'לא נשמר'}. ממתינות ללא ניסיון: ${queue.neverAttempted}; ניסיון קודם ללא SQLSTATE: ${queue.attemptedWithUnknownOutcome}; שגיאות SQLSTATE: ${failures}.`;
         }
       } catch {
         // Diagnostics are best-effort and must never change the safety gate.

@@ -89,6 +89,16 @@ export interface SyncQueueDiagnostics {
   neverAttempted: number;
   attemptedWithUnknownOutcome: number;
   lastErrorCodes: Record<string, number>;
+  lastFlush: {
+    attempted: number;
+    skippedOtherProfile: number;
+    succeeded: number;
+    conflicted: number;
+    quarantined: number;
+    remaining: number;
+    stoppedOnRetryableFailure: boolean;
+    completedAt: string;
+  } | null;
   firstRetryableFailure: {
     operationType: string;
     safeOperationId: string;
@@ -318,6 +328,7 @@ function failureCategory(error: unknown, status: number | null, code: string | n
  */
 export class SyncQueue {
   private queue: QueuedItem[] | null = null;
+  private lastFlush: SyncQueueDiagnostics['lastFlush'] = null;
   private conflicts: SyncConflict[] | null = null;
   private quarantined: QuarantinedItem[] | null = null;
   /** A concurrent caller joins the active flush instead of receiving a misleading no-op. */
@@ -568,6 +579,7 @@ export class SyncQueue {
       neverAttempted,
       attemptedWithUnknownOutcome,
       lastErrorCodes: errorCodes,
+      lastFlush: this.lastFlush,
       firstRetryableFailure: (() => {
         const item = q.find((candidate) => candidate.lastAttemptAt && candidate.lastErrorMessage);
         if (!item || !item.lastAttemptAt) return null;
@@ -747,6 +759,9 @@ export class SyncQueue {
     let succeeded = 0;
     let conflicted = 0;
     let quarantinedCount = 0;
+    let attempted = 0;
+    let skippedOtherProfile = 0;
+    let stoppedOnRetryableFailure = false;
     let i = 0;
     while (i < q.length) {
         const item = q[i];
@@ -760,11 +775,13 @@ export class SyncQueue {
         }
 
         if (item.claimedByUserId !== getClaimedUserId()) {
+          skippedOtherProfile++;
           i++; // known owner, not currently claimed — skip, don't block others
           continue;
         }
 
         try {
+          attempted++;
           await this.apply(remote, item.op);
           q.splice(i, 1);
           succeeded++;
@@ -846,9 +863,14 @@ export class SyncQueue {
           item.lastErrorQueuePosition = i + 1;
           item.lastErrorCategory = category;
           await this.persist();
+          stoppedOnRetryableFailure = true;
           break; // retryable: keep it queued, try again on next flush
         }
     }
+    this.lastFlush = {
+      attempted, skippedOtherProfile, succeeded, conflicted, quarantined: quarantinedCount,
+      remaining: q.length, stoppedOnRetryableFailure, completedAt: new Date().toISOString(),
+    };
     return { succeeded, remaining: q.length, conflicted, quarantined: quarantinedCount };
   }
 
