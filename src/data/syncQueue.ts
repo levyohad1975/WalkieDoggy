@@ -63,6 +63,26 @@ export function setSyncQueueActorGetter(getter: () => string | null): void {
 interface QueuedItem {
   op: SyncOperation;
   claimedByUserId: string | null;
+  /** Missing on records written by app versions before queue diagnostics. */
+  enqueuedAt?: string;
+  attemptCount?: number;
+  lastAttemptAt?: string;
+  lastErrorCode?: string;
+}
+
+export interface SyncQueueDiagnostics {
+  total: number;
+  byOperation: Record<string, number>;
+  ownerCounts: { activeProfile: number; otherProfile: number; unknown: number };
+  ownerIds: Array<{ id: string; count: number }>;
+  familyIds: Array<{ id: string; count: number }>;
+  withoutFamilyId: number;
+  oldestEnqueuedAt: string | null;
+  latestAttemptAt: string | null;
+  missingEnqueueTime: number;
+  neverAttempted: number;
+  attemptedWithUnknownOutcome: number;
+  lastErrorCodes: Record<string, number>;
 }
 
 /**
@@ -388,12 +408,76 @@ export class SyncQueue {
 
   async enqueue(op: SyncOperation): Promise<void> {
     const q = await this.load();
-    q.push({ op, claimedByUserId: getClaimedUserId() });
+    q.push({ op, claimedByUserId: getClaimedUserId(), enqueuedAt: new Date().toISOString() });
     await this.persist();
   }
 
   async size(): Promise<number> {
     return (await this.load()).length;
+  }
+
+  /** Read-only, payload-free diagnostics for the System Admin sync preflight. */
+  async getDiagnostics(): Promise<SyncQueueDiagnostics> {
+    const q = await this.load();
+    const activeProfileId = getClaimedUserId();
+    const byOperation: Record<string, number> = {};
+    const ownerCounts = { activeProfile: 0, otherProfile: 0, unknown: 0 };
+    const owners = new Map<string, number>();
+    const families = new Map<string, number>();
+    const errorCodes: Record<string, number> = {};
+    const timestamps: string[] = [];
+    const attemptTimestamps: string[] = [];
+    let missingEnqueueTime = 0;
+    let neverAttempted = 0;
+    let attemptedWithUnknownOutcome = 0;
+    let withoutFamilyId = 0;
+
+    for (const item of q) {
+      byOperation[item.op.type] = (byOperation[item.op.type] ?? 0) + 1;
+      if (!item.claimedByUserId) ownerCounts.unknown++;
+      else {
+        owners.set(item.claimedByUserId, (owners.get(item.claimedByUserId) ?? 0) + 1);
+        if (activeProfileId && item.claimedByUserId === activeProfileId) ownerCounts.activeProfile++;
+        else ownerCounts.otherProfile++;
+      }
+
+      const payload = item.op.payload as unknown;
+      const payloadRows = Array.isArray(payload) ? payload : [payload];
+      const itemFamilyIds = new Set(
+        payloadRows.flatMap((row) => {
+          if (!row || typeof row !== 'object') return [];
+          const familyId = (row as Record<string, unknown>).familyId;
+          return typeof familyId === 'string' ? [familyId] : [];
+        })
+      );
+      if (itemFamilyIds.size === 0) withoutFamilyId++;
+      for (const familyId of itemFamilyIds) {
+        families.set(familyId, (families.get(familyId) ?? 0) + 1);
+      }
+      if (item.enqueuedAt && Number.isFinite(Date.parse(item.enqueuedAt))) timestamps.push(item.enqueuedAt);
+      else missingEnqueueTime++;
+      if (item.lastAttemptAt && Number.isFinite(Date.parse(item.lastAttemptAt))) attemptTimestamps.push(item.lastAttemptAt);
+      if (!item.attemptCount) neverAttempted++;
+      else if (!item.lastErrorCode) attemptedWithUnknownOutcome++;
+      if (item.lastErrorCode) errorCodes[item.lastErrorCode] = (errorCodes[item.lastErrorCode] ?? 0) + 1;
+    }
+
+    timestamps.sort();
+    attemptTimestamps.sort();
+    return {
+      total: q.length,
+      byOperation,
+      ownerCounts,
+      ownerIds: [...owners].map(([id, count]) => ({ id, count })).sort((a, b) => b.count - a.count).slice(0, 5),
+      familyIds: [...families].map(([id, count]) => ({ id, count })).sort((a, b) => b.count - a.count).slice(0, 5),
+      withoutFamilyId,
+      oldestEnqueuedAt: timestamps[0] ?? null,
+      latestAttemptAt: attemptTimestamps[attemptTimestamps.length - 1] ?? null,
+      missingEnqueueTime,
+      neverAttempted,
+      attemptedWithUnknownOutcome,
+      lastErrorCodes: errorCodes,
+    };
   }
 
   /** Live routing hint only; never grants server authority or an owner to queued items. */
@@ -631,6 +715,11 @@ export class SyncQueue {
             conflicted++;
             continue; // don't let a permanent conflict block unrelated later ops
           }
+          item.attemptCount = (item.attemptCount ?? 0) + 1;
+          item.lastAttemptAt = new Date().toISOString();
+          const retryCode = (error as { code?: unknown } | null | undefined)?.code;
+          item.lastErrorCode = typeof retryCode === 'string' ? retryCode.slice(0, 32) : undefined;
+          await this.persist();
           break; // retryable: keep it queued, try again on next flush
         }
     }

@@ -32,6 +32,7 @@ import { dedupeCanonicalWalks } from '../logic/nextWalk';
 export class OfflineFirstRepository implements Repository {
   private local = new LocalRepository();
   private queue = new SyncQueue();
+  private lastSyncPreflight: { outcome: 'not-run' | 'network-gated' | 'flush-finished' | 'flush-error' | 'remote-unconfigured'; at: string | null } = { outcome: 'not-run', at: null };
   /** Serializes writes for one member so an earlier edit cannot finish after a newer photo. */
   private userWriteTails = new Map<string, Promise<void>>();
 
@@ -188,13 +189,29 @@ export class OfflineFirstRepository implements Repository {
 
   /** Attempts to push any queued writes now; safe to call opportunistically (e.g. on app foreground). */
   async trySync(): Promise<void> {
-    if (!this.remote) return;
-    if (!(await this.isOnline())) return;
-    await this.queue.flush(this.remote);
+    if (!this.remote) {
+      this.lastSyncPreflight = { outcome: 'remote-unconfigured', at: new Date().toISOString() };
+      return;
+    }
+    if (!(await this.isOnline())) {
+      this.lastSyncPreflight = { outcome: 'network-gated', at: new Date().toISOString() };
+      return;
+    }
+    try {
+      await this.queue.flush(this.remote);
+      this.lastSyncPreflight = { outcome: 'flush-finished', at: new Date().toISOString() };
+    } catch (error) {
+      this.lastSyncPreflight = { outcome: 'flush-error', at: new Date().toISOString() };
+      throw error;
+    }
   }
 
   async pendingSyncCount(): Promise<number> {
     return this.queue.size();
+  }
+
+  async getPendingSyncDiagnostics() {
+    return { ...(await this.queue.getDiagnostics()), syncPreflight: this.lastSyncPreflight };
   }
 
   async hasPendingForOtherUser(userId: string): Promise<boolean> {

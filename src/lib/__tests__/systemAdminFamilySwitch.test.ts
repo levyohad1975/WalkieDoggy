@@ -1,5 +1,6 @@
 const mockTrySync = jest.fn();
 const mockPendingSyncCount = jest.fn();
+const mockPendingSyncDiagnostics = jest.fn();
 const mockRpc = jest.fn();
 const mockGetSession = jest.fn();
 
@@ -7,6 +8,7 @@ jest.mock('../../data', () => ({
   repository: {
     trySync: (...args: unknown[]) => mockTrySync(...args),
     pendingSyncCount: (...args: unknown[]) => mockPendingSyncCount(...args),
+    getPendingSyncDiagnostics: (...args: unknown[]) => mockPendingSyncDiagnostics(...args),
   },
 }));
 jest.mock('../supabase', () => ({
@@ -30,6 +32,7 @@ describe('System Admin test-family sync preflight', () => {
     jest.clearAllMocks();
     mockTrySync.mockResolvedValue(undefined);
     mockPendingSyncCount.mockResolvedValue(0);
+    mockPendingSyncDiagnostics.mockResolvedValue(null);
     mockGetSession.mockResolvedValue({ data: { session: { user: { id: 'verified-admin' } } }, error: null });
     mockRpc.mockResolvedValue({
       data: [{ id: 'qa-family', name: 'משפחת בדיקה', invite_code: 'QA1234' }],
@@ -51,9 +54,23 @@ describe('System Admin test-family sync preflight', () => {
 
   it('refuses to switch families while writes remain queued and leaves the RPC untouched', async () => {
     mockPendingSyncCount.mockResolvedValue(2);
+    mockPendingSyncDiagnostics.mockResolvedValue({
+      total: 2,
+      byOperation: { saveWalk: 2 },
+      ownerCounts: { activeProfile: 0, otherProfile: 2, unknown: 0 },
+      ownerIds: [{ id: 'original-profile', count: 2 }],
+      familyIds: [{ id: 'original-family', count: 2 }],
+      withoutFamilyId: 0,
+      oldestEnqueuedAt: null,
+      latestAttemptAt: null,
+      missingEnqueueTime: 2,
+      neverAttempted: 2,
+      attemptedWithUnknownOutcome: 0,
+      lastErrorCodes: {},
+    });
 
     await expect(switchToSystemAdminTestFamily('qa-family')).rejects.toThrow(
-      'נותרו 2 פעולות שממתינות לסנכרון'
+      /נותרו 2 פעולות שממתינות לסנכרון.*saveWalk: 2.*פרופילים אחרים 2.*original-profile.*original-family/s
     );
     expect(mockRpc).not.toHaveBeenCalled();
   });

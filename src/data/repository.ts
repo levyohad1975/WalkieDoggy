@@ -10,7 +10,7 @@ import type {
   Walk,
   WalkGpsSession,
 } from '../types';
-import type { QuarantinedItem, SyncConflict } from './syncQueue';
+import type { QuarantinedItem, SyncConflict, SyncQueueDiagnostics } from './syncQueue';
 
 /** Payload for Repository.deleteFamilyMember — see its doc comment below. */
 export interface DeleteFamilyMemberPayload {
@@ -197,6 +197,8 @@ export interface Repository {
    * repositories with no queue have nothing to count.
    */
   pendingSyncCount?(): Promise<number>;
+  /** Read-only queue metadata used to explain a blocked System Admin profile switch; never includes operation payloads. */
+  getPendingSyncDiagnostics?(): Promise<SyncQueueDiagnostics & { syncPreflight?: { outcome: string; at: string | null } }>;
   /**
    * Real-device QA fix — "Schedule save spinner lingers ~10s". Durably
    * hands off a batch of freshly-generated future walk occurrences

@@ -139,8 +139,24 @@ export async function flushBeforeSystemAdminTestFamilySwitch(): Promise<void> {
     await repository.trySync();
     const pendingCount = await repository.pendingSyncCount();
     if (pendingCount > 0) {
+      let details = '';
+      try {
+        const queue = await repository.getPendingSyncDiagnostics?.();
+        if (queue) {
+          const operations = Object.entries(queue.byOperation).sort((a, b) => b[1] - a[1])
+            .map(([type, count]) => `${type}: ${count}`).join(', ') || 'לא זוהו סוגי פעולות';
+          const owners = queue.ownerIds.slice(0, 3).map(({ id, count }) => `${id}: ${count}`).join(', ') || 'אין מזהה פרופיל';
+          const families = queue.familyIds.slice(0, 3).map(({ id, count }) => `${id}: ${count}`).join(', ') || 'אין מזהה משפחה';
+          const failures = Object.entries(queue.lastErrorCodes).map(([code, count]) => `${code}: ${count}`).join(', ') || 'אין קוד שגיאה שמור';
+          const oldest = queue.oldestEnqueuedAt ?? 'לא נשמר זמן יצירה ברשומות הישנות';
+          const preflight = queue.syncPreflight ? `${queue.syncPreflight.outcome} (${queue.syncPreflight.at ?? 'ללא זמן'})` : 'לא זמין';
+          details = `\nפירוט מקומי (ללא תוכן הפעולות): ${operations}. בעלים: הפרופיל הנוכחי ${queue.ownerCounts.activeProfile}, פרופילים אחרים ${queue.ownerCounts.otherProfile}, לא ידוע ${queue.ownerCounts.unknown}. מזהי פרופיל: ${owners}. משפחות: ${families}; פעולות ללא familyId בפayload: ${queue.withoutFamilyId}. בדיקת רשת/סנכרון: ${preflight}. תאריך ההוספה הישן ביותר הידוע: ${oldest}; רשומות ישנות ללא תאריך: ${queue.missingEnqueueTime}. ניסיון אחרון: ${queue.latestAttemptAt ?? 'לא נשמר'}. ממתינות ללא ניסיון: ${queue.neverAttempted}; ניסיון קודם ללא SQLSTATE: ${queue.attemptedWithUnknownOutcome}; שגיאות SQLSTATE: ${failures}.`;
+        }
+      } catch {
+        // Diagnostics are best-effort and must never change the safety gate.
+      }
       throw new Error(
-        `לא ניתן לעבור למשפחת בדיקה: נותרו ${pendingCount} פעולות שממתינות לסנכרון. התחברו לאינטרנט והמתינו לסיום הסנכרון במשפחה הפעילה, ואז נסו שוב. המשפחה והנתונים לא שונו.`
+        `לא ניתן לעבור למשפחת בדיקה: נותרו ${pendingCount} פעולות שממתינות לסנכרון. הנתונים לא שונו. בדקו את פירוט התור שמופיע כאן, חזרו לפרופיל שמופיע כבעל הפעולות ונסו שוב לאחר הסנכרון.${details}`
       );
     }
   } catch (cause) {

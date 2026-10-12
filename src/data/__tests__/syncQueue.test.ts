@@ -60,6 +60,40 @@ describe('SyncQueue — permanent vs retryable conflict handling', () => {
     expect(result).toEqual({ succeeded: 0, remaining: 2, conflicted: 0, quarantined: 0 });
     expect(await queue.size()).toBe(2);
     expect(await queue.getConflicts()).toEqual([]);
+    const diagnostics = await queue.getDiagnostics();
+    expect(diagnostics.total).toBe(2);
+    expect(diagnostics.ownerCounts.activeProfile).toBe(2);
+    expect(diagnostics.byOperation.upsertUser).toBe(2);
+    expect(diagnostics.neverAttempted).toBe(1);
+    expect(diagnostics.attemptedWithUnknownOutcome).toBe(1);
+    expect(diagnostics.lastErrorCodes).toEqual({});
+  });
+
+  it('reports large mixed-owner legacy queues without changing or exposing operation payloads', async () => {
+    const original = Array.from({ length: 2622 }, (_, index) => ({
+      op: { type: 'saveWalk', payload: { id: `walk-${index}`, familyId: index % 2 ? 'family-a' : 'family-b', note: 'private note' } },
+      claimedByUserId: index < 1300 ? 'test-user' : index < 2600 ? 'other-profile' : null,
+    }));
+    await AsyncStorage.setItem('dog-walk-family:sync-queue:v4', JSON.stringify(original));
+    const queue = new SyncQueue();
+
+    const diagnostics = await queue.getDiagnostics();
+
+    expect(diagnostics.total).toBe(2622);
+    expect(diagnostics.byOperation).toEqual({ saveWalk: 2622 });
+    expect(diagnostics.ownerCounts).toEqual({ activeProfile: 1300, otherProfile: 1300, unknown: 22 });
+    expect(diagnostics.ownerIds).toEqual([
+      { id: 'test-user', count: 1300 },
+      { id: 'other-profile', count: 1300 },
+    ]);
+    expect(diagnostics.familyIds).toEqual([
+      { id: 'family-b', count: 1311 },
+      { id: 'family-a', count: 1311 },
+    ]);
+    expect(diagnostics.missingEnqueueTime).toBe(2622);
+    expect(diagnostics.neverAttempted).toBe(2622);
+    expect(JSON.parse((await AsyncStorage.getItem('dog-walk-family:sync-queue:v4'))!).length).toBe(2622);
+    expect(JSON.stringify(diagnostics)).not.toContain('private note');
   });
 
   it('drops a permanent 23505 unique-violation, records it as a conflict, and continues flushing later ops', async () => {
