@@ -1,4 +1,4 @@
-import { summarizeSyncQuarantine } from '../syncQuarantineDiagnostics';
+import { summarizeSyncConflicts, summarizeSyncQuarantine } from '../syncQuarantineDiagnostics';
 
 describe('sync quarantine diagnostics', () => {
   it('counts only safe reason categories and operation types, never returns raw payload or reasons', () => {
@@ -26,5 +26,20 @@ describe('sync quarantine diagnostics', () => {
   it('hides malformed operation type strings instead of displaying persisted content', () => {
     expect(summarizeSyncQuarantine([{ reason: null, op: { type: 'name: private data' } }]).byOperation)
       .toEqual([{ operationType: 'unknown', count: 1 }]);
+  });
+});
+
+
+describe('sync conflict diagnostics', () => {
+  it('aggregates allowlisted SQLSTATE and operation types without exposing messages or payloads', () => {
+    const summary = summarizeSyncConflicts([
+      { code: '23503', message: 'private row data', op: { type: 'saveWalk', payload: { note: 'private' } } },
+      { code: '23503', op: { type: 'saveWalk' } },
+      { code: 'not a SQLSTATE with private text', op: { type: 'unknown-private-value' } },
+    ]);
+    expect(summary.total).toBe(3);
+    expect(summary.byCode).toEqual([{ code: '23503', count: 2 }, { code: 'unknown', count: 1 }]);
+    expect(summary.byOperation).toEqual([{ operationType: 'saveWalk', count: 2 }, { operationType: 'unknown', count: 1 }]);
+    expect(JSON.stringify(summary)).not.toContain('private');
   });
 });

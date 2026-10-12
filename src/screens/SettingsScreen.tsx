@@ -48,9 +48,9 @@ import { useSystemAdminStore } from '../store/systemAdminStore';
 import { repository } from '../data';
 import type { SyncQueueDiagnostics } from '../data/syncQueue';
 import { shouldShowStagingSyncDiagnostics } from '../logic/syncDiagnosticsGate';
-import { summarizeSyncQuarantine } from '../logic/syncQuarantineDiagnostics';
+import { summarizeSyncConflicts, summarizeSyncQuarantine } from '../logic/syncQuarantineDiagnostics';
 
-type SettingsSyncDiagnostics = SyncQueueDiagnostics & { permanentFailureCount: number; quarantineCount: number; quarantineSummary: ReturnType<typeof summarizeSyncQuarantine>; syncPreflight?: { outcome: string; at: string | null } };
+type SettingsSyncDiagnostics = SyncQueueDiagnostics & { permanentFailureCount: number; quarantineCount: number; conflictSummary: ReturnType<typeof summarizeSyncConflicts>; quarantineSummary: ReturnType<typeof summarizeSyncQuarantine>; syncPreflight?: { outcome: string; at: string | null } };
 
 export function SettingsScreen() {
   return (
@@ -144,8 +144,9 @@ function SettingsScreenContent() {
         repository.getSyncConflicts?.() ?? Promise.resolve([]),
         repository.getQuarantinedSyncItems?.() ?? Promise.resolve([]),
       ]);
+      const conflictSummary = summarizeSyncConflicts(conflicts);
       const quarantineSummary = summarizeSyncQuarantine(quarantined);
-      setSyncDiagnostics({ ...diagnostics, permanentFailureCount: conflicts.length, quarantineCount: quarantined.length, quarantineSummary });
+      setSyncDiagnostics({ ...diagnostics, permanentFailureCount: conflicts.length, conflictSummary, quarantineCount: quarantined.length, quarantineSummary });
       if (showFeedback) setSyncDiagnosticsFeedback({ kind: 'success', message: options.successMessage ?? `האבחון עודכן בהצלחה · ${new Date().toLocaleTimeString('he-IL')}` });
       return true;
     } catch {
@@ -822,6 +823,8 @@ function SettingsScreenContent() {
                       <RtlText style={styles.syncDiagnosticsText}>הפעולה הבאה: {first ? first.operationType + ' · ' + first.safeOperationId + ' · מיקום ' + first.queuePosition : 'אין'}</RtlText>
                       <RtlText style={styles.syncDiagnosticsText}>כשל זמני ראשון: {failure ? failure.operationType + ' · ' + failure.category + ' · HTTP ' + (failure.httpStatus ?? '—') + ' · SQLSTATE ' + (failure.errorCode ?? '—') + (failure.retryAfterAt ? ' · ניסיון אוטומטי אחרי ' + new Date(failure.retryAfterAt).toLocaleTimeString('he-IL') : '') : 'אין כשל זמני שממתין'}</RtlText>
                       <RtlText style={styles.syncDiagnosticsText}>קבועים / דחויים / בהסגר: {d.permanentFailureCount} / {d.ownerCounts.otherProfile} / {d.quarantineCount}</RtlText>
+                      <RtlText style={styles.syncDiagnosticsText}>קודי כשל קבוע: {d.conflictSummary.byCode.map((item) => `${item.code} ${item.count}`).join(' · ') || 'אין'}</RtlText>
+                      <RtlText style={styles.syncDiagnosticsText}>סוגי פעולות עם כשל קבוע: {d.conflictSummary.byOperation.map((item) => `${item.operationType} ${item.count}`).join(' · ') || 'אין'}</RtlText>
                       <RtlText style={styles.syncDiagnosticsText}>סיבת הסגר: {d.quarantineSummary.byReason.map((item) => `${item.label} ${item.count}`).join(' · ') || 'אין'}</RtlText>
                       <RtlText style={styles.syncDiagnosticsText}>סוגי פעולות בהסגר: {d.quarantineSummary.byOperation.map((item) => `${item.operationType} ${item.count}`).join(' · ') || 'אין'}</RtlText>
                       {d.quarantineCount > 0 ? <RtlText style={styles.syncDiagnosticsHint}>במבנה ההסגר הישן אין שיוך לבעלים או למשפחה. הפעולות נשמרו במכשיר ולא נשלחו אוטומטית; אין כאן אפשרות לשחזר או למחוק אותן.</RtlText> : null}

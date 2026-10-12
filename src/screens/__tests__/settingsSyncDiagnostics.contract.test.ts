@@ -16,6 +16,8 @@ describe('Settings sync diagnostics refresh feedback', () => {
 
   it('reports allowlisted quarantine reason and operation aggregates without raw metadata', () => {
     expect(screen).toContain('summarizeSyncQuarantine(quarantined)');
+    expect(screen).toContain('summarizeSyncConflicts(conflicts)');
+    expect(screen).toContain('קודי כשל קבוע:');
     expect(screen).toContain('סיבת הסגר:');
     expect(screen).toContain('סוגי פעולות בהסגר:');
     expect(screen).toContain('אין שיוך לבעלים או למשפחה');
