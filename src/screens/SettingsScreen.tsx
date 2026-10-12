@@ -48,6 +48,7 @@ import { useSystemAdminStore } from '../store/systemAdminStore';
 import { repository } from '../data';
 import type { SyncQueueDiagnostics } from '../data/syncQueue';
 import { shouldShowStagingSyncDiagnostics } from '../logic/syncDiagnosticsGate';
+import { SyncDiagnosticsActionButton } from '../components/SyncDiagnosticsActionButton';
 import { summarizeSyncConflicts, summarizeSyncQuarantine } from '../logic/syncQuarantineDiagnostics';
 
 type SettingsSyncDiagnostics = SyncQueueDiagnostics & { permanentFailureCount: number; quarantineCount: number; conflictSummary: ReturnType<typeof summarizeSyncConflicts>; quarantineSummary: ReturnType<typeof summarizeSyncQuarantine>; syncPreflight?: { outcome: string; at: string | null } };
@@ -813,10 +814,7 @@ function SettingsScreenContent() {
                 <RtlText style={styles.syncDiagnosticsHint}>מזהה build: {syncDiagnosticsBuildId}</RtlText>
                 <RtlText style={styles.syncDiagnosticsText}>מצב כפתור הרענון: {syncDiagnosticsLoading ? 'טעינה פעילה' : syncRetrying ? 'ניסיון סנכרון פעיל' : 'זמין'}</RtlText>
                 <RtlText style={styles.syncDiagnosticsText}>בדיקת מגע עצמאית: {touchProbeFeedback}</RtlText>
-                <Pressable style={styles.syncTouchProbeButton} onPressIn={() => setTouchProbeFeedback('נקלט onPressIn')} onPress={() => setTouchProbeFeedback(`הפעולה פעלה · ${new Date().toLocaleTimeString('he-IL')}`)} accessibilityRole="button" accessibilityLabel="בדיקת מגע עצמאית" testID="sync-diagnostics-touch-probe">
-                  <RtlText style={styles.syncRefreshButtonText}>בדיקת מגע עצמאית</RtlText>
-                </Pressable>
-                {syncDiagnosticsFeedback ? <RtlText style={syncDiagnosticsFeedback.kind === 'error' ? styles.syncDiagnosticsError : syncDiagnosticsFeedback.kind === 'success' ? styles.syncDiagnosticsSuccess : styles.syncDiagnosticsText} accessibilityRole={syncDiagnosticsFeedback.kind === 'error' ? 'alert' : undefined} accessibilityLiveRegion="polite">{syncDiagnosticsFeedback.message}</RtlText> : null}
+                <SyncDiagnosticsActionButton label="בדיקת מגע עצמאית" accessibilityLabel="בדיקת מגע עצמאית" testID="sync-diagnostics-touch-probe" onPressIn={() => setTouchProbeFeedback('נקלט onPressIn')} onPress={() => setTouchProbeFeedback(`הפעולה פעלה · ${new Date().toLocaleTimeString('he-IL')}`)} />
                 {syncDiagnostics ? (() => {
                   const d = syncDiagnostics;
                   const stateLabel = d.lastFlush?.stoppedOnRetryableFailure ? 'ממתין לניסיון חוזר לאחר כשל זמני' : d.total === 0 ? 'התור המקומי ריק' : 'יש פעולות שממתינות לסנכרון';
@@ -853,9 +851,7 @@ function SettingsScreenContent() {
                 >
                   <RtlText style={styles.syncRetryButtonText}>{syncRetrying ? 'מנסה לסנכרן…' : 'ניסיון חוזר לסנכרון'}</RtlText>
                 </Pressable>
-                <Pressable style={({ pressed }) => [styles.syncRefreshButton, pressed && styles.syncRefreshButtonPressed]} onPressIn={() => setSyncDiagnosticsFeedback({ kind: 'loading', message: 'הלחיצה נקלטה; מרענן אבחון…' })} onPress={() => void loadSyncDiagnostics()} disabled={syncDiagnosticsLoading || syncRetrying} accessibilityRole="button" accessibilityLabel="רענון אבחון" accessibilityState={{ disabled: syncDiagnosticsLoading || syncRetrying, busy: syncDiagnosticsLoading }}>
-                  <RtlText style={styles.syncRefreshButtonText}>{syncDiagnosticsLoading ? 'מרענן אבחון…' : 'רענון אבחון'}</RtlText>
-                </Pressable>
+                <SyncDiagnosticsActionButton label="רענון אבחון" loadingLabel="מרענן אבחון…" accessibilityLabel="רענון אבחון" testID="sync-diagnostics-refresh" disabled={syncDiagnosticsLoading || syncRetrying} busy={syncDiagnosticsLoading} feedback={syncDiagnosticsFeedback} onPressIn={() => setSyncDiagnosticsFeedback({ kind: 'loading', message: 'הלחיצה נקלטה; מרענן אבחון…' })} onPress={() => void loadSyncDiagnostics()} />
               </View>
             ) : null}
           </View>
@@ -1061,10 +1057,6 @@ const styles = StyleSheet.create({
   syncRetryButton: { minHeight: 46, borderRadius: radii.md, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md, marginTop: spacing.xs },
   syncRetryButtonDisabled: { opacity: 0.6 },
   syncRetryButtonText: { color: '#FFFFFF', fontWeight: '800', textAlign: 'center' },
-  syncRefreshButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radii.md },
-  syncTouchProbeButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radii.md, borderWidth: 1, borderColor: colors.primary, marginTop: spacing.xs },
-  syncRefreshButtonPressed: { backgroundColor: colors.surface, opacity: 0.72 },
-  syncRefreshButtonText: { color: colors.primaryDark, fontWeight: '700', textAlign: 'center' },
   dogMeta: { fontSize: 14, color: colors.textSecondary, textAlign: 'right' },
   addButton: { marginTop: spacing.xs },
   // Settings hub rows — consistent min-height (tokens.layout.rowHeight)
