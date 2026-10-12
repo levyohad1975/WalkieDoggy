@@ -158,6 +158,20 @@ jobs:
           # or removes anything in the actual repository.
           rm supabase/migrations/0019_request_result_read_state.sql
 
+      - name: Combine duplicate 0103 migration bodies for ephemeral replay only
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The repository has two independently committed 0103 migrations.
+          # Supabase stores the filename prefix as a unique migration version,
+          # so replaying both files fails with SQLSTATE 23505 before reaching
+          # later migrations. Combine their unchanged SQL bodies in their
+          # existing lexical order under one ephemeral 0103 file. The real
+          # migration files in Git and all remote migration ledgers remain
+          # untouched.
+          cat supabase/migrations/0103_web_push_verified_admin_identity.sql >> supabase/migrations/0103_mark_results_seen_no_raise.sql
+          rm supabase/migrations/0103_web_push_verified_admin_identity.sql
+
       - name: Reorder 0025's two function definitions for this ephemeral replay only
         shell: bash
         run: |
