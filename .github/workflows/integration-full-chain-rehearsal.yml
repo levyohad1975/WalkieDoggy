@@ -311,6 +311,9 @@ jobs:
           psql "postgresql://postgres@127.0.0.1:54322/postgres" \
             -v ON_ERROR_STOP=1 \
             -f supabase/manual_tests/walk_duplicate_resolution_v12_fixture.sql
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/manual_tests/walk_duplicate_resolution_v12_member_auth.sql
 
       - name: Apply the actual v1.1 migration after duplicate resolution
         run: |

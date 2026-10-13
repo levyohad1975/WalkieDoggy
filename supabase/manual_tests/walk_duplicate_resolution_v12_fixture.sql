@@ -72,25 +72,3 @@ begin
 end;
 $assertions$;
 commit;
-
--- Use a fresh connection so stable auth.uid() / profile helpers resolve the
--- member JWT, rather than a previous admin identity from this transaction.
-\connect postgres postgres 127.0.0.1 54322
-set role authenticated;
-select set_config('request.jwt.claim.sub','d0000000-0000-4000-8000-000000000002',false);
-select set_config('request.jwt.claim.role','authenticated',false);
-select set_config('request.jwt.claims','{"sub":"d0000000-0000-4000-8000-000000000002","role":"authenticated"}',false);
-do $unauthorized$
-begin
-  begin
-    perform public.resolve_duplicate_active_walks_v12(
-      array['d4000000-0000-4000-8000-000000000001','d4000000-0000-4000-8000-000000000003']::uuid[],null,
-      'Unauthorized fixture attempt must fail.', 'd6000000-0000-4000-8000-000000000002'
-    );
-    raise exception 'non-admin resolution unexpectedly succeeded';
-  exception when others then
-    if sqlerrm = 'non-admin resolution unexpectedly succeeded' then raise; end if;
-    if sqlerrm not like '%family admin required%' then raise; end if;
-  end;
-end;
-$unauthorized$;
