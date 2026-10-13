@@ -87,6 +87,8 @@ describe('OfflineFirstRepository lifecycle outbox — canonical walk id reconcil
     netinfoFetch.mockResolvedValue({ isConnected: true, isInternetReachable: true });
     await repo.trySync({ force: true });
 
+    // DEBUG-TEMP
+    if (finishWalkV11.mock.calls[0]?.[0] !== 'walk-canonical') throw new Error('DEBUG ' + JSON.stringify({ start: startWalkV11.mock.calls, finish: finishWalkV11.mock.calls, outbox: await listWalkLifecycleIntents() }));
     expect(startWalkV11).toHaveBeenCalledWith('walk-canonical', expect.objectContaining({ operationId: 'op-start' }));
     expect(finishWalkV11).toHaveBeenCalledTimes(1);
     expect(finishWalkV11).toHaveBeenCalledWith('walk-canonical', 'user-1', 'op-finish', expect.objectContaining({ actorUserId: 'user-1', hadPee: true }));

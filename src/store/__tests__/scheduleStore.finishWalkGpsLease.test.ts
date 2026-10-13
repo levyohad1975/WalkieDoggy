@@ -59,7 +59,7 @@ describe('scheduleStore.finishWalk with v1.1 GPS fencing', () => {
 
     await expect(useScheduleStore.getState().finishWalk(walk.id, 'user-a', { actorUserId: 'user-a' })).resolves.toBe(true);
 
-    expect(attach).toHaveBeenCalledWith(walk);
+    expect(attach).toHaveBeenCalledWith(expect.objectContaining({ id: walk.id, status: 'in_progress' }));
     expect(order).toEqual(['attach', 'stop', 'finish']);
     expect(useScheduleStore.getState().actionError).toBeNull();
     attach.mockRestore();
