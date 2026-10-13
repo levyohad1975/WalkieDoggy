@@ -276,17 +276,17 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
 
   it('getGpsSession maps a row via toGpsSession, including nullish correction fields -> undefined', async () => {
     const client: any = {
-      from: () => ({
+      from: (table: string) => ({
         select: () => ({
           eq: () => ({
             maybeSingle: () =>
               Promise.resolve({
-                data: {
+                data: table === 'walk_gps_sessions' ? {
                   id: 'gps-1', walk_id: 'walk-1', family_id: 'fam-42', dog_id: 'dog-1',
                   distance_meters: 640.2, point_count: 30, corrected_distance_meters: null,
                   corrected_by_user_id: null, started_at: null, ended_at: null,
                   source: 'device_gps', created_by_user_id: null, created_at: 'c', updated_at: 'u',
-                },
+                } : null,
                 error: null,
               }),
           }),
@@ -322,14 +322,14 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
   it('getGpsSessionsForWalkIds queries walk_gps_sessions with an .in(walk_id, ids) filter and maps every row', async () => {
     const inCalls: unknown[] = [];
     const client: any = {
-      from: () => ({
+      from: (table: string) => ({
         select: () => ({
           in: (column: string, ids: string[]) => {
             inCalls.push({ column, ids });
             return Promise.resolve({
-              data: [
+              data: table === 'walk_gps_sessions' ? [
                 { id: 'gps-a', walk_id: 'walk-a', family_id: 'fam-42', dog_id: 'dog-1', distance_meters: 500, point_count: 10, corrected_distance_meters: null, corrected_by_user_id: null, started_at: null, ended_at: null, source: 'device_gps', created_by_user_id: null, created_at: 'c', updated_at: 'u' },
-              ],
+              ] : [],
               error: null,
             });
           },
@@ -340,7 +340,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
 
     const result = await repo.getGpsSessionsForWalkIds(['walk-a', 'walk-b']);
 
-    expect(inCalls).toEqual([{ column: 'walk_id', ids: ['walk-a', 'walk-b'] }]);
+    expect(inCalls).toEqual([{ column: 'walk_id', ids: ['walk-a', 'walk-b'] }, { column: 'walk_id', ids: ['walk-a', 'walk-b'] }]);
     expect(result).toEqual([
       { id: 'gps-a', walkId: 'walk-a', familyId: 'fam-42', dogId: 'dog-1', distanceMeters: 500, pointCount: 10, correctedDistanceMeters: undefined, correctedByUserId: undefined, startedAt: undefined, endedAt: undefined, source: 'device_gps', createdByUserId: undefined, createdAt: 'c', updatedAt: 'u' },
     ]);

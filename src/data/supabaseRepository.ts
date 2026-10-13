@@ -10,6 +10,8 @@ import type {
   ScheduleRule,
   Walk,
   WalkGpsSession,
+  WalkStartAuthorization,
+  GpsRouteUpdate,
 } from '../types';
 import { defaultNotificationSetting } from '../logic/reminders';
 import type { DeleteFamilyMemberPayload, Repository } from './repository';
@@ -118,6 +120,7 @@ export function toWalk(row: any): Walk {
     status: row.status,
     startedAt: row.started_at ?? undefined,
     startedByUserId: row.started_by_user_id ?? undefined,
+    actualWalkerUserId: row.actual_walker_user_id ?? row.completed_by_user_id ?? undefined,
     completedAt: row.completed_at ?? undefined,
     completedByUserId: row.completed_by_user_id ?? undefined,
     endedByUserId: row.ended_by_user_id ?? undefined,
@@ -332,6 +335,7 @@ export class SupabaseRepository implements Repository {
           name: data.name,
           inviteCode: data.invite_code ?? undefined,
           timezone: data.timezone ?? undefined,
+          spontaneousAssociationWindowMinutes: data.spontaneous_association_window_minutes ?? undefined,
           createdAt: data.created_at,
         }
       : undefined;
@@ -495,7 +499,25 @@ export class SupabaseRepository implements Repository {
   async getGpsSession(walkId: string): Promise<WalkGpsSession | undefined> {
     const { data, error } = await this.client.from('walk_gps_sessions').select('*').eq('walk_id', walkId).maybeSingle();
     if (error) throw error;
-    return data ? toGpsSession(data) : undefined;
+    const { data: owner, error: ownerError } = await this.client.from('walk_gps_ownership').select('distance_meters,point_count,route_started_at,route_ended_at').eq('walk_id', walkId).maybeSingle();
+    if (ownerError) throw ownerError;
+    if (!data && !owner) return undefined;
+    const session = data ? toGpsSession(data) : {
+      id: walkId, walkId, familyId: '', dogId: '', pointCount: 0, source: 'device_gps' as const, createdAt: '', updatedAt: '',
+    };
+    if (!owner) return session;
+    const { data: points, error: pointsError } = await this.client.from('walk_gps_route_samples_v11').select('latitude,longitude,point_timestamp_ms').eq('walk_id', walkId).order('point_timestamp_ms', { ascending: true });
+    if (pointsError) throw pointsError;
+    return {
+      ...session,
+      distanceMeters: owner.distance_meters == null ? undefined : Number(owner.distance_meters),
+      pointCount: Number(owner.point_count ?? 0),
+      startedAt: owner.route_started_at ?? session.startedAt,
+      endedAt: owner.route_ended_at ?? session.endedAt,
+      // Once v1.1 owns this walk's session, render only fenced v1.1 points;
+      // a legacy direct session upsert cannot inject coordinates into it.
+      routePoints: (points ?? []).map((point: any) => ({ latitude: Number(point.latitude), longitude: Number(point.longitude), timestamp: Number(point.point_timestamp_ms) })),
+    };
   }
 
   async upsertGpsSession(session: WalkGpsSession): Promise<void> {
@@ -511,7 +533,42 @@ export class SupabaseRepository implements Repository {
     if (walkIds.length === 0) return [];
     const { data, error } = await this.client.from('walk_gps_sessions').select('*').in('walk_id', walkIds);
     if (error) throw error;
-    return (data ?? []).map(toGpsSession);
+    const sessions = new Map<string, WalkGpsSession>((data ?? []).map((row: any) => [row.walk_id, toGpsSession(row)]));
+    const { data: owners, error: ownerError } = await this.client.from('walk_gps_ownership')
+      .select('walk_id,family_id,dog_id,distance_meters,point_count,route_started_at,route_ended_at').in('walk_id', walkIds);
+    if (ownerError) throw ownerError;
+    if (!owners?.length) return [...sessions.values()];
+    const ownerIds = owners.map((owner: any) => owner.walk_id);
+    const { data: points, error: pointsError } = await this.client.from('walk_gps_route_samples_v11')
+      .select('walk_id,latitude,longitude,point_timestamp_ms').in('walk_id', ownerIds).order('point_timestamp_ms', { ascending: true });
+    if (pointsError) throw pointsError;
+    const pointsByWalk = new Map<string, Array<{ latitude: number; longitude: number; timestamp: number }>>();
+    for (const point of points ?? []) {
+      const route = pointsByWalk.get(point.walk_id) ?? [];
+      route.push({ latitude: Number(point.latitude), longitude: Number(point.longitude), timestamp: Number(point.point_timestamp_ms) });
+      pointsByWalk.set(point.walk_id, route);
+    }
+    for (const owner of owners) {
+      const existing = sessions.get(owner.walk_id);
+      sessions.set(owner.walk_id, {
+        id: existing?.id ?? owner.walk_id,
+        walkId: owner.walk_id,
+        familyId: existing?.familyId ?? owner.family_id,
+        dogId: existing?.dogId ?? owner.dog_id,
+        distanceMeters: owner.distance_meters == null ? undefined : Number(owner.distance_meters),
+        pointCount: Number(owner.point_count ?? 0),
+        routePoints: pointsByWalk.get(owner.walk_id) ?? [],
+        startedAt: owner.route_started_at ?? existing?.startedAt,
+        endedAt: owner.route_ended_at ?? existing?.endedAt,
+        correctedDistanceMeters: existing?.correctedDistanceMeters,
+        correctedByUserId: existing?.correctedByUserId,
+        source: existing?.source ?? 'device_gps',
+        createdByUserId: existing?.createdByUserId,
+        createdAt: existing?.createdAt ?? owner.route_started_at ?? '',
+        updatedAt: existing?.updatedAt ?? owner.route_ended_at ?? owner.route_started_at ?? '',
+      });
+    }
+    return [...sessions.values()];
   }
 
   async getAchievementUnlocks(familyId: string): Promise<AchievementUnlock[]> {
@@ -693,6 +750,49 @@ export class SupabaseRepository implements Repository {
     return toWalk(data);
   }
 
+  private async dispatchWalkLifecycleNotification(walkId: string): Promise<void> {
+    if (!this.client.functions?.invoke) return;
+    try {
+      const { data, error } = await this.client.functions.invoke('send-walk-lifecycle-notification', { body: { walkId } });
+      if (error || !data?.providerAccepted) {
+        // Lifecycle success is independent from push delivery. The outbox
+        // records a failed/pending send; never report delivery as successful.
+        console.warn('[walkLifecycle] notification was not provider-confirmed', { walkId, reason: error?.message ?? data?.reason });
+      }
+    } catch (error) {
+      console.warn('[walkLifecycle] notification dispatch failed', { walkId, error });
+    }
+  }
+
+  async startWalkV11(walkId: string, authorization: WalkStartAuthorization): Promise<Walk> {
+    const { data, error } = await this.client.rpc('start_walk_v11', {
+      p_walk_id: walkId,
+      p_expected_actor_id: authorization.actorUserId ?? authorization.actualWalkerUserId,
+      p_actual_walker_id: authorization.actualWalkerUserId,
+      p_operation_id: authorization.operationId,
+      p_substitution_confirmed: authorization.substitutionConfirmed ?? false,
+      p_remote_start: authorization.remoteStart ?? false,
+    });
+    if (error) throw error;
+    const walk = toWalk(data);
+    if (authorization.remoteStart) await this.dispatchWalkLifecycleNotification(walk.id);
+    return walk;
+  }
+
+  async startSpontaneousWalkV11(walk: Walk, operationId: string, actorUserId = walk.responsibleUserId): Promise<Walk> {
+    const { data, error } = await this.client.rpc('start_spontaneous_walk_v11', {
+      p_walk_id: walk.id,
+      p_family_id: walk.familyId,
+      p_dog_id: walk.dogId,
+      p_date: walk.date,
+      p_scheduled_time: walk.scheduledTime,
+      p_expected_actor_id: actorUserId,
+      p_operation_id: operationId,
+    });
+    if (error) throw error;
+    return toWalk(data);
+  }
+
   async finishWalk(walkId: string, actualWalkerId: string, details: { hadPee?: boolean; hadPoop?: boolean; note?: string; completedAt?: string } = {}): Promise<Walk> {
     const { data, error } = await this.client.rpc('finish_walk', {
       target_walk_id: walkId,
@@ -704,6 +804,53 @@ export class SupabaseRepository implements Repository {
     });
     if (error) throw error;
     return toWalk(data);
+  }
+
+  async finishWalkV11(walkId: string, actualWalkerId: string, operationId: string, details: { hadPee?: boolean; hadPoop?: boolean; note?: string; completedAt?: string; remoteConfirmation?: boolean; actorUserId?: string } = {}): Promise<Walk> {
+    const { data, error } = await this.client.rpc('finish_walk_v11', {
+      p_walk_id: walkId,
+      p_expected_actor_id: details.actorUserId ?? actualWalkerId,
+      p_actual_walker_id: actualWalkerId,
+      p_operation_id: operationId,
+      p_had_pee: details.hadPee ?? null,
+      p_had_poop: details.hadPoop ?? null,
+      p_note: details.note ?? null,
+      p_completed_at: details.completedAt ?? null,
+      p_remote_confirmation: details.remoteConfirmation ?? false,
+    });
+    if (error) throw error;
+    const walk = toWalk(data);
+    if (details.remoteConfirmation) await this.dispatchWalkLifecycleNotification(walk.id);
+    return walk;
+  }
+
+  async acquireGpsOwnershipV11(walkId: string, confirmTransfer = false): Promise<{ fencingEpoch: number; expiresAt: string }> {
+    const { data, error } = await this.client.rpc('acquire_walk_gps_ownership_v11', { p_walk_id: walkId, p_confirm_transfer: confirmTransfer });
+    if (error) throw error;
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row || typeof row.fencing_epoch !== 'number' || typeof row.expires_at !== 'string') throw new Error('GPS ownership response was invalid');
+    return { fencingEpoch: row.fencing_epoch, expiresAt: row.expires_at };
+  }
+
+  async heartbeatGpsOwnershipV11(walkId: string, fencingEpoch: number): Promise<string> {
+    const { data, error } = await this.client.rpc('heartbeat_walk_gps_ownership_v11', { p_walk_id: walkId, p_fencing_epoch: fencingEpoch });
+    if (error) throw error;
+    if (typeof data !== 'string') throw new Error('GPS ownership heartbeat response was invalid');
+    return data;
+  }
+
+  async appendGpsRouteV11(update: GpsRouteUpdate): Promise<WalkGpsSession> {
+    const { data, error } = await this.client.rpc('append_walk_gps_route_v11', {
+      p_walk_id: update.walkId,
+      p_fencing_epoch: update.fencingEpoch,
+      p_points: update.points,
+      p_distance_meters: update.distanceMeters,
+      p_point_count: update.pointCount,
+      p_started_at: update.startedAt ?? null,
+      p_ended_at: update.endedAt ?? null,
+    });
+    if (error) throw error;
+    return (await this.getGpsSession(update.walkId)) ?? toGpsSession(data);
   }
 
   async saveWalk(walk: Walk): Promise<void> {

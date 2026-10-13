@@ -20,7 +20,9 @@ describe('durable walk lifecycle contract', () => {
 
   it('renders lifecycle from persisted walk state, not component-local session state', () => {
     expect(home).toContain("nextWalk.status === 'in_progress'");
-    expect(home).toContain('startWalk(nextWalk.id, { startGps: false })');
+    expect(home).toContain('startWalk(walk.id, {');
+    expect(home).toContain('actualWalkerUserId,');
+    expect(home).toContain('actorUserId: currentUserId');
     expect(home).toContain('await finishWalk(walkId, completedByUserId');
     expect(home).not.toContain('activeWalkSession');
   });

@@ -20,7 +20,9 @@ describe('HomeScreen wires gpsStore\'s live tracking state into NextWalkCard (st
   });
 
   it('starts one foreground GPS watch from the Start button gesture before the walk RPC', () => {
-    const startAction = source.slice(source.indexOf('onStartWalk='), source.indexOf('onEndWalk='));
-    expect(startAction).toMatch(/startTracking\(nextWalk\)[\s\S]*startWalk\(nextWalk\.id, \{ startGps: false \}\)/);
+    const startAction = source.slice(source.indexOf('const startWalkAs ='), source.indexOf('// PRD §9 gamification — an unlocked'));
+    expect(startAction).toMatch(/if \(!remoteStart\) void useGpsStore\.getState\(\)\.startTracking\(walk\)/);
+    expect(startAction).toMatch(/startWalk\(walk\.id, \{[\s\S]*startGps: false/);
+    expect(startAction).toMatch(/actorUserId: currentUserId[\s\S]*actualWalkerUserId[\s\S]*remoteStart/);
   });
 });

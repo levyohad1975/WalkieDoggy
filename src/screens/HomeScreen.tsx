@@ -21,6 +21,9 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { UserPickerModal } from '../components/UserPickerModal';
 import { SwapWalkPickerModal } from '../components/SwapWalkPickerModal';
 import { CompleteWalkModal } from '../components/CompleteWalkModal';
+import { WalkStartFlowModal } from '../components/WalkStartFlowModal';
+import { SpontaneousWalkAssociationModal } from '../components/SpontaneousWalkAssociationModal';
+import { findSpontaneousAssociationCandidates, DEFAULT_SPONTANEOUS_ASSOCIATION_WINDOW_MINUTES } from '../logic/spontaneousWalkAssociation';
 import { EditWalkModal } from '../components/EditWalkModal';
 import { AddUnplannedWalkModal, type UnplannedWalkResult } from '../components/AddUnplannedWalkModal';
 import { EditDoneDetailsModal } from '../components/EditDoneDetailsModal';
@@ -201,6 +204,11 @@ export function HomeScreen() {
   const gpsSessionsByWalkId = useGpsStore((s) => s.sessionsByWalkId);
 
   const [completeWalkId, setCompleteWalkId] = useState<string | null>(null);
+  const [remoteFinishRequest, setRemoteFinishRequest] = useState<{ walkId: string; walkerId: string; hadPee: boolean; hadPoop: boolean; note?: string; completedAt?: string } | null>(null);
+  const [gpsTransferWalk, setGpsTransferWalk] = useState<Walk | null>(null);
+  const [startWalkFlowId, setStartWalkFlowId] = useState<string | null>(null);
+  const [spontaneousAssociationWalks, setSpontaneousAssociationWalks] = useState<Walk[]>([]);
+  const [spontaneousAssociationVisible, setSpontaneousAssociationVisible] = useState(false);
   // BATCH 4 (C2/C3/C8) — brief "success" mascot + message shown right after
   // a walk is marked done. Purely presentational local state: never blocks
   // navigation or the completion action itself (markDone already resolved
@@ -370,6 +378,23 @@ export function HomeScreen() {
   // authenticated identity (currentUserId) and REAL familyRole never
   // change, and are never used for mutations/RLS/audit either way.
   const effectiveUserId = useEffectiveUserId()!; // HomeScreen only renders once currentUserId is set (see the `!` above)
+
+  const startWalkAs = useCallback((walk: Walk, actualWalkerUserId: string, remoteStart: boolean) => {
+    // iPhone Safari requires location permission to be requested in the
+    // original user gesture. Remote starts never ask the manager's device.
+    if (!remoteStart) void useGpsStore.getState().startTracking(walk).catch(() => undefined);
+    void startWalk(walk.id, {
+      startGps: false,
+      actorUserId: currentUserId,
+      actualWalkerUserId,
+      substitutionConfirmed: !remoteStart && actualWalkerUserId !== walk.responsibleUserId,
+      remoteStart,
+    }).then((started) => {
+      if (!started && !remoteStart) void useGpsStore.getState().stopTracking(walk, currentUserId);
+    }, () => {
+      if (!remoteStart) void useGpsStore.getState().stopTracking(walk, currentUserId);
+    });
+  }, [currentUserId, startWalk]);
 
   // PRD §9 gamification — an unlocked achievement reuses the SAME
   // celebration modal/state as an ordinary walk-completion celebration
@@ -1157,26 +1182,22 @@ export function HomeScreen() {
             liveRoutePoints={gpsTrackingWalkId === nextWalk.id ? gpsRoutePoints : undefined}
             gpsStatus={gpsTrackingWalkId === nextWalk.id ? gpsPermissionStatus : null}
             gpsTrackingStatus={gpsTrackingWalkId === nextWalk.id ? gpsTrackingStatus : null}
-            onRetryGps={() => { void useGpsStore.getState().startTracking(nextWalk).catch(() => undefined); }}
-            onStartWalk={
-              effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId
-                ? () => {
-                  // Start the single foreground watch in the tap handler so
-                  // Safari receives the gesture-bound location request. The
-                  // walk RPC remains independent: GPS never blocks the walk.
-                  void useGpsStore.getState().startTracking(nextWalk).catch(() => undefined);
-                  void startWalk(nextWalk.id, { startGps: false }).then(
-                    (started) => { if (!started) void useGpsStore.getState().stopTracking(nextWalk, effectiveUserId); },
-                    () => { void useGpsStore.getState().stopTracking(nextWalk, effectiveUserId); },
-                  );
-                }
-                : undefined
-            }
+            onRetryGps={() => {
+              if (gpsTrackingStatus === 'interrupted') {
+                setGpsTransferWalk(nextWalk);
+                return;
+              }
+              void useGpsStore.getState().startTracking(nextWalk).then(() => useGpsStore.getState().attachGpsOwnership(nextWalk)).catch(() => undefined);
+            }}
+            onStartWalk={() => {
+              if (nextWalk.responsibleUserId === currentUserId) startWalkAs(nextWalk, currentUserId, false);
+              else setStartWalkFlowId(nextWalk.id);
+            }}
             startWalkDisabled={nextWalkStartGate.disabled}
             startWalkPending={startingWalkIds.includes(nextWalk.id)}
             startWalkAvailableLabel={nextWalkStartGate.label}
             onEndWalk={
-              nextWalk.status === 'in_progress' && (effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId)
+              nextWalk.status === 'in_progress' && (actualFamilyRole === 'admin' || nextWalk.actualWalkerUserId === currentUserId || (!nextWalk.actualWalkerUserId && nextWalk.responsibleUserId === currentUserId))
                 ? () => setCompleteWalkId(nextWalk.id)
                 : undefined
             }
@@ -1425,17 +1446,25 @@ export function HomeScreen() {
         visible={!!completeWalkId}
         dogName={dog?.name ?? 'הכלב/ה'}
         scheduledTime={completeWalkId ? walksById[completeWalkId]?.scheduledTime : undefined}
-        users={activeUsers}
-        defaultUserId={effectiveUserId}
+        users={completeWalkId && walksById[completeWalkId]?.status === 'in_progress'
+          ? activeUsers.filter((u) => u.id === (walksById[completeWalkId]?.actualWalkerUserId ?? walksById[completeWalkId]?.responsibleUserId))
+          : activeUsers}
+        defaultUserId={completeWalkId && walksById[completeWalkId]?.status === 'in_progress'
+          ? (walksById[completeWalkId]?.actualWalkerUserId ?? walksById[completeWalkId]?.responsibleUserId ?? effectiveUserId)
+          : effectiveUserId}
         onConfirm={async ({ completedByUserId, hadPee, hadPoop, note, completedAt }) => {
           const walkId = completeWalkId;
           const walkBeingCompleted = walkId ? walksById[walkId] : undefined;
           setCompleteWalkId(null);
           if (!walkId) return;
+          if (walkBeingCompleted?.status === 'in_progress' && completedByUserId !== currentUserId && actualFamilyRole === 'admin') {
+            setRemoteFinishRequest({ walkId, walkerId: completedByUserId, hadPee, hadPoop, note: note || undefined, completedAt });
+            return;
+          }
           // markDone() itself refuses while Test Mode is active (see
           // scheduleStore.ts) — no separate guard needed here.
           const completed = walkBeingCompleted?.status === 'in_progress'
-            ? await finishWalk(walkId, completedByUserId, { hadPee, hadPoop, note: note || undefined, completedAt })
+            ? await finishWalk(walkId, completedByUserId, { hadPee, hadPoop, note: note || undefined, completedAt, actorUserId: currentUserId })
             : await markDone(walkId, completedByUserId, { hadPee, hadPoop, note: note || undefined, completedAt });
           // BATCH 4 (C2/C3/C8) — success mascot + message, best-effort only:
           // if anything about the walk/dog/user lookups above is somehow
@@ -1449,6 +1478,54 @@ export function HomeScreen() {
           }
         }}
         onCancel={() => setCompleteWalkId(null)}
+      />
+
+      <ConfirmModal
+        visible={Boolean(gpsTransferWalk)}
+        title="להעביר את מעקב ה-GPS למכשיר הזה?"
+        message="אם מכשיר אחר עדיין עוקב, הוא יפסיק לשלוח נקודות חדשות. ההעברה תירשם ביומן הטיול."
+        confirmLabel="כן, להעביר מעקב"
+        onCancel={() => setGpsTransferWalk(null)}
+        onConfirm={() => {
+          const walk = gpsTransferWalk;
+          setGpsTransferWalk(null);
+          if (walk) void useGpsStore.getState().startTracking(walk).then(() => useGpsStore.getState().attachGpsOwnership(walk, true)).catch(() => undefined);
+        }}
+      />
+
+      <ConfirmModal
+        visible={Boolean(remoteFinishRequest)}
+        title={`לסיים את הטיול של ${usersById[remoteFinishRequest?.walkerId ?? '']?.name ?? 'בן המשפחה'}?`}
+        message="אתה עומד לסיים את הטיול עבורו/ה. האם להמשיך?"
+        confirmLabel="כן, לסיים את הטיול"
+        onCancel={() => setRemoteFinishRequest(null)}
+        onConfirm={() => {
+          const request = remoteFinishRequest;
+          setRemoteFinishRequest(null);
+          if (request) void finishWalk(request.walkId, request.walkerId, {
+            hadPee: request.hadPee,
+            hadPoop: request.hadPoop,
+            note: request.note,
+            completedAt: request.completedAt,
+            remoteConfirmation: true,
+            actorUserId: currentUserId,
+          });
+        }}
+      />
+
+      <WalkStartFlowModal
+        visible={Boolean(startWalkFlowId && startWalkFlowId === nextWalk?.id)}
+        dogName={dog?.name ?? 'הכלב/ה'}
+        assignedName={startWalkFlowId ? (usersById[walksById[startWalkFlowId]?.responsibleUserId ?? '']?.name ?? 'בן משפחה') : 'בן משפחה'}
+        currentUserId={currentUserId}
+        users={activeUsers}
+        canStartRemotely={actualFamilyRole === 'admin'}
+        onClose={() => setStartWalkFlowId(null)}
+        onStart={(actualWalkerUserId, remote) => {
+          const target = startWalkFlowId ? walksById[startWalkFlowId] : undefined;
+          setStartWalkFlowId(null);
+          if (target) startWalkAs(target, actualWalkerUserId, remote);
+        }}
       />
 
       <WalkCompletionCelebration
@@ -1556,6 +1633,19 @@ export function HomeScreen() {
             useScheduleStore.setState({ actionError: 'עדיין טוענים את פרטי הכלב/ה — נסו שוב בעוד רגע' });
             return;
           }
+          const candidates = findSpontaneousAssociationCandidates(
+            walks,
+            dog.id,
+            new Date(),
+            family?.timezone,
+            family?.spontaneousAssociationWindowMinutes ?? DEFAULT_SPONTANEOUS_ASSOCIATION_WINDOW_MINUTES,
+          );
+          if (candidates.length) {
+            setSpontaneousAssociationWalks(candidates);
+            setAddUnplannedVisible(false);
+            setSpontaneousAssociationVisible(true);
+            return;
+          }
           const started = await startUnplannedWalk(familyId, dog.id, effectiveUserId);
           if (started) setAddUnplannedVisible(false);
         }}
@@ -1591,6 +1681,29 @@ export function HomeScreen() {
           }
         }}
         onClose={() => setAddUnplannedVisible(false)}
+      />
+
+      <SpontaneousWalkAssociationModal
+        visible={spontaneousAssociationVisible}
+        dogName={dog?.name ?? 'הכלב/ה'}
+        candidates={spontaneousAssociationWalks}
+        assigneeNames={Object.fromEntries(activeUsers.map((user) => [user.id, user.name]))}
+        onAssociate={(walk) => {
+          setSpontaneousAssociationVisible(false);
+          setSpontaneousAssociationWalks([]);
+          startWalkAs(walk, currentUserId, false);
+        }}
+        onSeparate={async () => {
+          const started = dog ? await startUnplannedWalk(familyId, dog.id, currentUserId) : false;
+          setSpontaneousAssociationVisible(false);
+          setSpontaneousAssociationWalks([]);
+          if (started) setAddUnplannedVisible(false);
+        }}
+        onCancel={() => {
+          setSpontaneousAssociationVisible(false);
+          setSpontaneousAssociationWalks([]);
+          setAddUnplannedVisible(true);
+        }}
       />
 
       {/* Item D: "הטיול האחרון" edit/delete for an UNPLANNED last walk —

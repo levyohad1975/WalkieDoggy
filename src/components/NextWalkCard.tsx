@@ -6,7 +6,7 @@ import { isOverdue, relativeTimeLabel, walkDateTime } from '../logic/nextWalk';
 import { isWalkRequiringAttention } from '../logic/walkAttention';
 import { walkDateContextLabel } from '../logic/walkDateContext';
 import { colors } from '../theme/colors';
-import { nativeDirection, radii } from '../theme/tokens';
+import { nativeDirection, radii, spacing } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 import { DogPhoto } from './DogPhoto';
@@ -210,6 +210,17 @@ export function NextWalkCard({
             (onboarding, reminder, celebration) are untouched. */}
         {showMascot ? <WalkieMascot state={mascotState} size={isWeb ? 52 : 58} testID="next-walk-mascot" /> : null}
       </View>
+
+      {walk.lifecycleSyncStatus ? (
+        <RtlText
+          style={[styles.lifecycleSyncStatus, walk.lifecycleSyncStatus === 'conflict' && styles.lifecycleSyncConflict]}
+          accessibilityLiveRegion="polite"
+        >
+          {walk.lifecycleSyncStatus === 'pending'
+            ? 'הפעולה ממתינה לאישור השרת. אין עדיין אישור שהטיול פעיל בכל המכשירים.'
+            : 'השרת לא אישר את הפעולה. הטיול הקיים נשמר; יש לרענן ולבדוק לפני ניסיון נוסף.'}
+        </RtlText>
+      ) : null}
 
       {/* An overdue card is an operational decision, not a greeting. Keeping
           the mascot copy out of that state gives the time, assignee and the
@@ -457,6 +468,8 @@ const styles = StyleSheet.create({
   eyebrowRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), alignItems: 'center', gap: 8, marginBottom: 4 },
   webEyebrowRow: { marginBottom: 2 },
   eyebrow: { flex: 1, fontSize: 18, fontWeight: '900', color: '#17345B', textAlign: 'right' },
+  lifecycleSyncStatus: { color: colors.warning, backgroundColor: colors.warningSoft, borderRadius: radii.sm, padding: spacing.sm, fontSize: 12, fontWeight: '700', textAlign: 'right', marginBottom: spacing.sm },
+  lifecycleSyncConflict: { color: colors.danger, backgroundColor: colors.dangerSoft },
   mascotMessage: {
     fontSize: 13,
     fontWeight: '600',

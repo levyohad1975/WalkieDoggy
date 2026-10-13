@@ -5,6 +5,14 @@ describe('Home integrated walk lifecycle', () => {
   const home = fs.readFileSync(path.join(__dirname, '..', 'HomeScreen.tsx'), 'utf8');
   const card = fs.readFileSync(path.join(__dirname, '..', '..', 'components', 'NextWalkCard.tsx'), 'utf8');
 
+  it('requires the explicit start-flow choice for another member and records the selected actual walker', () => {
+    expect(home).toContain('<WalkStartFlowModal');
+    expect(home).toContain('onStart={(actualWalkerUserId, remote) => {');
+    expect(home).toContain('startWalkAs(target, actualWalkerUserId, remote)');
+    expect(home).toContain('startWalkAs(nextWalk, currentUserId, false)');
+    expect(home).toContain('setStartWalkFlowId(nextWalk.id)');
+  });
+
   it('keeps the branded Walkie Park default hero while using persisted family-dog imagery safely', () => {
     expect(home).toContain('showDogPhoto');
     expect(home).toContain('style={styles.dashboardHero}');
@@ -165,7 +173,7 @@ describe('Home integrated walk lifecycle', () => {
     expect(card).toContain('label="בוצע"');
     expect(card).toContain('label="לא בוצע"');
     expect(card).toContain('overdue && onMarkNotDone');
-    expect(home).toContain('startWalk(nextWalk.id, { startGps: false })');
+    expect(home).toContain('startWalk(walk.id, {');
     expect(home).toContain("nextWalk.status === 'in_progress'");
     expect(home).not.toContain('setActiveWalkSession({ walkId: nextWalk.id');
     expect(home).toContain('setCompleteWalkId(nextWalk.id)');

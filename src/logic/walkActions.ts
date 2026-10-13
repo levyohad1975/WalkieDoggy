@@ -114,6 +114,9 @@ export interface WalkCompletionDetails {
   durationMinutes?: number;
   /** Actual completion time when a late report corrects the default now timestamp. */
   completedAt?: string;
+  /** Explicit owner confirmation for a family manager completing another walker's active walk. */
+  remoteConfirmation?: boolean;
+  actorUserId?: string;
   /**
    * Final QA round v2: corrects WHO actually walked the dog, distinct from
    * `responsibleUserId` (the rotation-assigned person) — already a

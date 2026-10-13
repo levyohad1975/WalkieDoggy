@@ -214,6 +214,28 @@ describe('gpsStore', () => {
     expect(useGpsStore.getState().trackingWalkId).toBeNull();
   });
 
+  it('keeps the active route in memory when a fenced final GPS write fails', async () => {
+    const { useGpsStore } = require('../gpsStore');
+    const { repository } = require('../../data');
+    const gpsTracking = require('../../lib/gpsTracking');
+    const routePoint = { latitude: 32.08, longitude: 34.78, timestamp: 1000 };
+    const append = jest.fn(async (update: any) => {
+      if (update.endedAt) throw new Error('network unavailable');
+      return { id: walk.id, walkId: walk.id, familyId: walk.familyId, dogId: walk.dogId, pointCount: 1, routePoints: [routePoint], source: 'device_gps', createdAt: 'c', updatedAt: 'u' };
+    });
+    repository.acquireGpsOwnershipV11 = jest.fn().mockResolvedValue({ fencingEpoch: 1, expiresAt: 'later' });
+    repository.appendGpsRouteV11 = append;
+    jest.spyOn(gpsTracking, 'startGpsWatch').mockImplementationOnce(async (onUpdate: any) => {
+      return { handle: { remove: jest.fn() }, permissionStatus: 'granted' };
+    });
+    await useGpsStore.getState().startTracking(walk);
+    expect(await useGpsStore.getState().attachGpsOwnership({ ...walk, status: 'in_progress' } as Walk)).toBe(true);
+    useGpsStore.setState({ distanceMeters: 50, pointCount: 1, routePoints: [routePoint] });
+
+    await expect(useGpsStore.getState().stopTracking(walk, 'walker-1')).rejects.toThrow('network unavailable');
+    expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: walk.id, trackingStatus: 'interrupted', pointCount: 1, routePoints: [routePoint], gpsFencingEpoch: 1 });
+  });
+
   it('attributes a remote GPS session to the target device performer, not the scheduled member', async () => {
     const { useGpsStore } = require('../gpsStore');
     const { repository } = require('../../data');

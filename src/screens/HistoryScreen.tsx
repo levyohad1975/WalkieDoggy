@@ -196,7 +196,7 @@ export function HistoryScreen() {
   const history = useMemo(
     () =>
       allHistory.filter((w) => {
-        if (userFilter && w.completedByUserId !== userFilter && w.responsibleUserId !== userFilter) return false;
+        if (userFilter && w.actualWalkerUserId !== userFilter && w.completedByUserId !== userFilter && w.responsibleUserId !== userFilter) return false;
         if (planFilter === 'planned' && w.isUnplanned) return false;
         if (planFilter === 'unplanned' && !w.isUnplanned) return false;
         if (rangeFilter === 'today' && w.date !== todayString) return false;
@@ -481,7 +481,7 @@ export function HistoryScreen() {
                         routeSession={gpsSessions[w.id]}
                         historyCompact
                         responsible={usersById[w.responsibleUserId]}
-                        completedBy={w.completedByUserId ? usersById[w.completedByUserId] : undefined}
+                        completedBy={usersById[w.actualWalkerUserId ?? w.completedByUserId ?? '']}
                         onMarkDone={canResolveWalk(w) ? () => setResolveWalkId(w.id) : undefined}
                         onMarkNotDone={
                           canResolveWalk(w)

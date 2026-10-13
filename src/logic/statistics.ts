@@ -72,12 +72,12 @@ export interface MemberStat {
   count: number;
 }
 
-/** Distribution of DONE walks by who actually walked the dog (completedByUserId, falling back to responsibleUserId for older/edge-case rows), sorted descending. */
+/** Distribution of DONE walks by actual walker, with legacy attribution fallbacks, sorted descending. */
 export function computeMemberDistribution(walks: Walk[]): MemberStat[] {
   const counts = new Map<string, number>();
   for (const w of walks) {
     if (w.status !== 'done') continue;
-    const userId = w.completedByUserId ?? w.responsibleUserId;
+    const userId = w.actualWalkerUserId ?? w.completedByUserId ?? w.responsibleUserId;
     counts.set(userId, (counts.get(userId) ?? 0) + 1);
   }
   return [...counts.entries()]
@@ -122,8 +122,8 @@ export function computePeePoopStats(walks: Walk[]): PeePoopStats {
  * Reports & Insights redesign — a real filter set (date range/dog/member/
  * status/planned-vs-ad-hoc), replacing the old period-chip-only screen.
  * `dateRange` is inclusive "YYYY-MM-DD" bounds; null means unbounded (the
- * old 'all' period). `memberId` matches EITHER responsibleUserId or
- * completedByUserId — "walks involving this person", not just ones they
+ * old 'all' period). `memberId` matches responsibility or actual-walker
+ * attribution — "walks involving this person", not just ones they
  * completed, so filtering to a member still shows a walk they were
  * scheduled for but someone else ended up completing.
  */
@@ -155,7 +155,7 @@ export function applyStatisticsFilters(walks: Walk[], filters: StatisticsFilters
   return walks.filter((w) => {
     if (filters.dateRange && (w.date < filters.dateRange.start || w.date > filters.dateRange.end)) return false;
     if (filters.dogId && w.dogId !== filters.dogId) return false;
-    if (filters.memberId && w.responsibleUserId !== filters.memberId && w.completedByUserId !== filters.memberId) return false;
+    if (filters.memberId && w.responsibleUserId !== filters.memberId && w.actualWalkerUserId !== filters.memberId && w.completedByUserId !== filters.memberId) return false;
     if (filters.status !== 'all' && w.status !== filters.status) return false;
     if (filters.planned === 'planned' && w.isUnplanned) return false;
     if (filters.planned === 'adhoc' && !w.isUnplanned) return false;

@@ -9,6 +9,8 @@ import type {
   ScheduleRule,
   Walk,
   WalkGpsSession,
+  WalkStartAuthorization,
+  GpsRouteUpdate,
 } from '../types';
 import type { QuarantinedItem, SyncConflict, SyncQueueDiagnostics } from './syncQueue';
 
@@ -139,7 +141,15 @@ export interface Repository {
   saveWalk(walk: Walk): Promise<void>;
   /** Server-authoritative lifecycle operations; Supabase persists actor/time atomically. */
   startWalk?(walkId: string): Promise<Walk>;
+  /** Versioned, idempotent lifecycle path. Requires the v1.1 migration before Supabase use. */
+  startWalkV11?(walkId: string, authorization: WalkStartAuthorization): Promise<Walk>;
+  /** Atomic spontaneous create-and-start; never exposes a persisted pending stub. */
+  startSpontaneousWalkV11?(walk: Walk, operationId: string, actorUserId?: string): Promise<Walk>;
   finishWalk?(walkId: string, actualWalkerId: string, details?: { hadPee?: boolean; hadPoop?: boolean; note?: string; completedAt?: string }): Promise<Walk>;
+  finishWalkV11?(walkId: string, actualWalkerId: string, operationId: string, details?: { hadPee?: boolean; hadPoop?: boolean; note?: string; completedAt?: string; remoteConfirmation?: boolean; actorUserId?: string }): Promise<Walk>;
+  acquireGpsOwnershipV11?(walkId: string, confirmTransfer?: boolean): Promise<{ fencingEpoch: number; expiresAt: string }>;
+  heartbeatGpsOwnershipV11?(walkId: string, fencingEpoch: number): Promise<string>;
+  appendGpsRouteV11?(update: GpsRouteUpdate): Promise<WalkGpsSession>;
   /**
    * Section 2: permanently deletes an unplanned/spontaneous walk entered by
    * mistake. Callers (scheduleStore.deleteUnplannedWalk) must only call this
