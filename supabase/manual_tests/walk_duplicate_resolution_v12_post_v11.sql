@@ -42,6 +42,10 @@ begin
       and indexdef like '%duplicate_resolution_group_id IS NULL%') then
     raise exception 'v1.1 uniqueness index does not honor audited resolution marker';
   end if;
+  -- This isolated post-migration probe is trusted fixture SQL, not an app
+  -- request; bypass the write-authorization trigger so the unique index is
+  -- the guard under test.
+  perform set_config('app.trusted_write','on',true);
   begin
     insert into public.walks(id,family_id,dog_id,date,scheduled_time,responsible_user_id,status,started_at,started_by_user_id)
     values ('d4000000-0000-4000-8000-000000000099','d1000000-0000-4000-8000-000000000001',
