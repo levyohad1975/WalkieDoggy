@@ -310,6 +310,30 @@ jobs:
         run: |
           psql "postgresql://postgres@127.0.0.1:54322/postgres" \
             -v ON_ERROR_STOP=1 \
+            -v walk_fixture_resolve_only=0 \
+            -v walk_fixture_seed_only=1 \
+            -f supabase/manual_tests/walk_duplicate_resolution_v12_fixture.sql
+
+          set +e
+          output=$(psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f /tmp/walk_lifecycle_gps_v11.sql 2>&1)
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          if [ "$status" -eq 0 ]; then
+            echo "v1.1 migration unexpectedly accepted unresolved duplicate active walks"
+            exit 1
+          fi
+          if ! grep -Fq "duplicate active walks require owner-reviewed resolution" <<<"$output"; then
+            echo "v1.1 migration failed for a reason other than its duplicate preflight"
+            exit 1
+          fi
+
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -v walk_fixture_resolve_only=1 \
+            -v walk_fixture_seed_only=0 \
             -f supabase/manual_tests/walk_duplicate_resolution_v12_fixture.sql
           psql "postgresql://postgres@127.0.0.1:54322/postgres" \
             -v ON_ERROR_STOP=1 \

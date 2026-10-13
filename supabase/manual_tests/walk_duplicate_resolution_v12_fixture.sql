@@ -9,6 +9,9 @@ begin
 end;
 $guard$;
 
+\if :walk_fixture_resolve_only
+begin;
+\else
 begin;
 select set_config('app.trusted_write','on',true);
 insert into auth.users(id,aud,role,email,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
@@ -38,7 +41,12 @@ values
  ('d5000000-0000-4000-8000-000000000001','d4000000-0000-4000-8000-000000000001','d1000000-0000-4000-8000-000000000001','d3000000-0000-4000-8000-000000000001',0,4,'[{"latitude":31,"longitude":34,"timestamp":1}]','2026-10-13 05:03:58+00','2026-10-13 05:03:59+00','d2000000-0000-4000-8000-000000000001'),
  ('d5000000-0000-4000-8000-000000000002','d4000000-0000-4000-8000-000000000002','d1000000-0000-4000-8000-000000000001','d3000000-0000-4000-8000-000000000001',0,3,'[{"latitude":31.1,"longitude":34.1,"timestamp":2}]','2026-10-13 05:04:05+00','2026-10-13 05:04:06+00','d2000000-0000-4000-8000-000000000001'),
  ('d5000000-0000-4000-8000-000000000003','d4000000-0000-4000-8000-000000000003','d1000000-0000-4000-8000-000000000001','d3000000-0000-4000-8000-000000000001',0,1,'[{"latitude":31.2,"longitude":34.2,"timestamp":3}]','2026-10-13 05:04:36+00','2026-10-13 05:04:37+00','d2000000-0000-4000-8000-000000000001');
+\endif
 select set_config('app.trusted_write','off',true);
+\if :walk_fixture_seed_only
+commit;
+\quit
+\endif
 set local role authenticated;
 select set_config('request.jwt.claim.sub','d0000000-0000-4000-8000-000000000001',true);
 select set_config('request.jwt.claim.role','authenticated',true);
