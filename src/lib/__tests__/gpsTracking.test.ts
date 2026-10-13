@@ -9,6 +9,7 @@
 describe('gpsTracking', () => {
   const originalNavigator = Object.getOwnPropertyDescriptor(global, 'navigator');
   let platformOsDescriptor: PropertyDescriptor | undefined;
+  let documentDescriptor: PropertyDescriptor | undefined;
 
   beforeEach(() => {
     jest.resetModules();
@@ -21,6 +22,9 @@ describe('gpsTracking', () => {
     }
     if (originalNavigator) Object.defineProperty(global, 'navigator', originalNavigator);
     else delete (global as { navigator?: Navigator }).navigator;
+    if (documentDescriptor) Object.defineProperty(global, 'document', documentDescriptor);
+    else delete (global as { document?: Document }).document;
+    documentDescriptor = undefined;
   });
 
   function mockLocationModule(overrides: Record<string, jest.Mock> = {}) {
@@ -166,14 +170,21 @@ describe('gpsTracking', () => {
       const clearWatch = jest.fn();
       const watchPosition = jest.fn((success: (position: any) => void) => { callbacks.push(success); return callbacks.length; });
       Object.defineProperty(global, 'navigator', { configurable: true, value: { geolocation: { watchPosition, clearWatch } } });
-      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+      documentDescriptor = Object.getOwnPropertyDescriptor(global, 'document');
+      const visibilityListeners = new Set<() => void>();
+      const fakeDocument = {
+        visibilityState: 'visible',
+        addEventListener: jest.fn((_event: string, listener: () => void) => visibilityListeners.add(listener)),
+        removeEventListener: jest.fn((_event: string, listener: () => void) => visibilityListeners.delete(listener)),
+      };
+      Object.defineProperty(global, 'document', { configurable: true, value: fakeDocument });
       const { startGpsWatch } = require('../gpsTracking');
       const updates: any[] = [];
       const starting = startGpsWatch((acc: unknown) => updates.push(acc));
       callbacks[0]({ coords: { latitude: 32.08, longitude: 34.78, accuracy: 5 }, timestamp: 1 });
       const result = await starting;
 
-      document.dispatchEvent(new Event('visibilitychange'));
+      visibilityListeners.forEach((listener) => listener());
       expect(watchPosition).toHaveBeenCalledTimes(2);
       expect(clearWatch).toHaveBeenCalledWith(1);
       callbacks[1]({ coords: { latitude: 32.081, longitude: 34.78, accuracy: 5 }, timestamp: 2 });
@@ -181,7 +192,9 @@ describe('gpsTracking', () => {
 
       result.handle!.remove();
       expect(clearWatch).toHaveBeenCalledWith(2);
-      document.dispatchEvent(new Event('visibilitychange'));
+      expect(visibilityListeners.size).toBe(0);
+      expect(fakeDocument.removeEventListener).toHaveBeenCalledTimes(1);
+      visibilityListeners.forEach((listener) => listener());
       expect(watchPosition).toHaveBeenCalledTimes(2);
     });
 
