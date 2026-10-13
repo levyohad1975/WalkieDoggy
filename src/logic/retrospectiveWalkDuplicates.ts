@@ -20,7 +20,7 @@ export function findRetrospectiveWalkDuplicates(
 
   return walks.filter((walk) => {
     if (walk.id === input.excludeWalkId || walk.dogId !== input.dogId || walk.status !== 'done') return false;
-    if (walk.responsibleUserId !== input.performedByUserId || walk.date !== input.date) return false;
+    if ((walk.actualWalkerUserId ?? walk.responsibleUserId) !== input.performedByUserId || walk.date !== input.date) return false;
     const start = Date.parse(`${walk.date}T${walk.scheduledTime}:00`);
     if (!Number.isFinite(start)) return false;
     const end = start + Math.max(0, walk.durationMinutes ?? 60) * 60_000;

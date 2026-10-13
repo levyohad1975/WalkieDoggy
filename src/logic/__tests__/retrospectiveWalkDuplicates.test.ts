@@ -11,6 +11,9 @@ describe('findRetrospectiveWalkDuplicates', () => {
   it('flags a completed walk for the same dog, walker, date and overlapping time', () => {
     expect(findRetrospectiveWalkDuplicates([walk()], input)).toHaveLength(1);
   });
+  it('uses actual-walker attribution when it differs from the scheduled assignee', () => {
+    expect(findRetrospectiveWalkDuplicates([walk({ responsibleUserId: 'scheduled', actualWalkerUserId: 'walker' })], input)).toHaveLength(1);
+  });
   it('ignores other dogs, other walkers, other dates, pending walks and the edited row', () => {
     const candidates = [
       walk({ dogId: 'other' }), walk({ responsibleUserId: 'other' }), walk({ date: '2026-10-12' }),
