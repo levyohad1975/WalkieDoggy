@@ -231,9 +231,10 @@ export class OfflineFirstRepository implements Repository {
           // The server settled this occurrence on a different canonical row.
           // Later intents queued under the local id (typically the offline
           // finish) must follow it, both on disk and in this pass.
-          await remapWalkLifecycleIntentWalkId(intent.walkId, confirmed.id);
+          const localWalkId = intent.walkId;
+          await remapWalkLifecycleIntentWalkId(localWalkId, confirmed.id);
           for (const later of intents) {
-            if (later.state === 'pending' && later.action !== 'start_spontaneous' && later.walkId === intent.walkId) later.walkId = confirmed.id;
+            if (later !== intent && later.state === 'pending' && later.action !== 'start_spontaneous' && later.walkId === localWalkId) later.walkId = confirmed.id;
           }
         }
       } catch (error) {
