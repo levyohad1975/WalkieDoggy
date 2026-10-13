@@ -160,7 +160,9 @@ function fromWalk(walk: Walk) {
     status: walk.status,
     started_at: walk.startedAt ?? null,
     started_by_user_id: walk.startedByUserId ?? null,
-    duplicate_resolution_group_id: walk.duplicateResolutionGroupId ?? null,
+    // duplicate_resolution_group_id is server-owned: only the audited
+    // resolve_duplicate_active_walks_v12 RPC may set it (a trigger rejects
+    // any other change). Never echo it from a possibly stale local copy.
     completed_at: walk.completedAt ?? null,
     completed_by_user_id: walk.completedByUserId ?? null,
     ended_by_user_id: walk.endedByUserId ?? null,

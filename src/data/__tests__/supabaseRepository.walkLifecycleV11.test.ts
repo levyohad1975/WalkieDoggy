@@ -50,6 +50,27 @@ describe('SupabaseRepository v1.1 lifecycle RPC contracts', () => {
     expect(walk.startedByUserId).toBe(row.started_by_user_id);
   });
 
+  it('never writes the server-owned duplicate-resolution marker from a local walk copy', async () => {
+    const payloads: Array<Record<string, unknown>> = [];
+    const client: any = {
+      from: () => ({ upsert: (payload: Record<string, unknown>) => { payloads.push(payload); return Promise.resolve({ error: null, status: 201 }); } }),
+    };
+    const repo = new SupabaseRepository(client);
+    const base = {
+      id: 'walk-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-10-13', scheduledTime: '08:00',
+      responsibleUserId: 'assignee-1', status: 'in_progress' as const, isUnplanned: true,
+      createdAt: 'created', updatedAt: 'updated',
+    };
+    // A stale copy cached before an admin resolved the walk, and a fresh one.
+    await repo.saveWalk({ ...base });
+    await repo.saveWalk({ ...base, duplicateResolutionGroupId: 'resolution-group-1' });
+    expect(payloads).toHaveLength(2);
+    for (const payload of payloads) {
+      expect(payload).not.toHaveProperty('duplicate_resolution_group_id');
+      expect(payload).not.toHaveProperty('actual_walker_user_id');
+    }
+  });
+
   it('passes explicit device transfer consent to the GPS lease RPC', async () => {
     let call: unknown;
     const client: any = { rpc: (name: string, args: unknown) => { call = { name, args }; return Promise.resolve({ data: [{ fencing_epoch: 3, expires_at: 'later' }], error: null }); } };

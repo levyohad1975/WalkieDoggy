@@ -19,6 +19,15 @@ let startGeneration = 0;
 let activeWatchWalkId: string | null = null;
 let activeGpsHeartbeat: ReturnType<typeof setInterval> | null = null;
 let lastPersistedGpsTimestamp = 0;
+// True while a v1.1 watch is running without a valid server lease. Fixes are
+// still shown, but nothing is persisted, so the UI must not report "active".
+let gpsLeaseLost = false;
+
+/** Server answers that prove this device no longer holds a valid lease. */
+export function isGpsLeaseLostError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : typeof (error as { message?: unknown })?.message === 'string' ? (error as { message: string }).message : String(error ?? '');
+  return /GPS ownership expired or transferred|active walk not found/i.test(message);
+}
 
 interface GpsState {
   /** The walk currently being tracked, if any — null when no walk is in progress or the active walk simply isn't being tracked (permission denied/unavailable). */
@@ -145,6 +154,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
     activeGpsHeartbeat = null;
     lastPersistedGpsTimestamp = 0;
+    gpsLeaseLost = false;
     set({ trackingWalkId: walk.id, permissionStatus: null, trackingStatus: 'requesting', trackingStartedAt: priorStartedAt, distanceMeters: priorDistance, pointCount: priorPointCount, routePoints: priorRoute, gpsFencingEpoch: null });
 
     const result = await startGpsWatch((acc: GpsAccumulator) => {
@@ -156,7 +166,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
         ? [...priorRoute, ...newPoints.filter((point) => !priorRoute.some((saved) => saved.timestamp === point.timestamp))]
         : newPoints;
       const combined = { distanceMeters: priorDistance + acc.distanceMeters, pointCount: priorPointCount + acc.pointCount, routePoints: combinedRoute };
-      set({ distanceMeters: combined.distanceMeters, pointCount: combined.pointCount, trackingStatus: 'active', routePoints: combinedRoute });
+      set({ distanceMeters: combined.distanceMeters, pointCount: combined.pointCount, trackingStatus: gpsLeaseLost ? 'interrupted' : 'active', routePoints: combinedRoute });
       if (activeWatchWalkId) void persistGpsRoute(activeWatchWalkId, combined).catch((error) => console.warn('[gpsStore] route persistence failed', error));
     }, (trackingStatus) => {
       if (startGeneration === generation && get().trackingWalkId === activeWatchWalkId) set({ trackingStatus });
@@ -192,17 +202,35 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     try {
       const lease = await repository.acquireGpsOwnershipV11(walk.id, confirmTransfer);
       if (get().trackingWalkId !== walk.id || activeWatchWalkId !== walk.id) return false;
-      set({ gpsFencingEpoch: lease.fencingEpoch });
+      const recoveredLease = gpsLeaseLost;
+      gpsLeaseLost = false;
+      set({
+        gpsFencingEpoch: lease.fencingEpoch,
+        ...(recoveredLease && get().trackingStatus === 'interrupted' && get().pointCount > 0 ? { trackingStatus: 'active' as const } : {}),
+      });
       lastPersistedGpsTimestamp = 0;
       if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
       activeGpsHeartbeat = repository.heartbeatGpsOwnershipV11
         ? setInterval(() => {
             void repository.heartbeatGpsOwnershipV11!(walk.id, lease.fencingEpoch).catch((error) => {
               if (get().trackingWalkId !== walk.id || get().gpsFencingEpoch !== lease.fencingEpoch) return;
-              console.warn('[gpsStore] GPS ownership heartbeat failed', error);
-              set({ gpsFencingEpoch: null, trackingStatus: 'interrupted' });
+              if (!isGpsLeaseLostError(error)) {
+                // A dropped request does not prove the server lease ended.
+                // Keep the epoch; the next heartbeat (or the server's own
+                // expiry answer) decides. Route writes stay fenced server-side.
+                console.warn('[gpsStore] GPS ownership heartbeat failed; retrying on the next interval', error);
+                return;
+              }
+              // Typical on iPhone Safari after the screen was locked longer
+              // than the lease. Renew on this same device without transfer
+              // confirmation; the server refuses that if another device now
+              // owns GPS for this walk, which leaves the walk interrupted.
+              console.warn('[gpsStore] GPS ownership lease ended; renewing on this device', error);
               if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
               activeGpsHeartbeat = null;
+              gpsLeaseLost = true;
+              set({ gpsFencingEpoch: null, trackingStatus: 'interrupted' });
+              void get().attachGpsOwnership(walk);
             });
           }, 15_000)
         : null;
@@ -214,6 +242,11 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       return true;
     } catch (error) {
       console.warn('[gpsStore] GPS ownership was not acquired', error);
+      if (get().trackingWalkId === walk.id) {
+        gpsLeaseLost = true;
+        if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
+        activeGpsHeartbeat = null;
+      }
       set({ gpsFencingEpoch: null, trackingStatus: get().permissionStatus === 'denied' ? 'denied' : 'interrupted' });
       return false;
     }
@@ -241,6 +274,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
     activeGpsHeartbeat = null;
     activeWatchWalkId = null;
+    gpsLeaseLost = false;
     set({ trackingWalkId: null, permissionStatus: null, trackingStatus: null, trackingStartedAt: null, distanceMeters: 0, pointCount: 0, routePoints: [], gpsFencingEpoch: null });
   },
 
@@ -263,6 +297,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
       activeGpsHeartbeat = null;
       activeWatchWalkId = null;
+      gpsLeaseLost = false;
       set({ trackingWalkId: null, trackingStartedAt: null, trackingStatus: null, permissionStatus: null, gpsFencingEpoch: null });
       return null;
     }
@@ -317,6 +352,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
       activeGpsHeartbeat = null;
       activeWatchWalkId = null;
+      gpsLeaseLost = false;
       set({ trackingWalkId: null, trackingStartedAt: null, trackingStatus: null, permissionStatus: null, gpsFencingEpoch: null });
       set((s) => ({ sessionsByWalkId: { ...s.sessionsByWalkId, [walk.id]: saved } }));
       set({ routePoints: [] });
@@ -327,6 +363,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
     activeGpsHeartbeat = null;
     activeWatchWalkId = null;
+    gpsLeaseLost = false;
     set({ trackingWalkId: null, trackingStartedAt: null, trackingStatus: null, permissionStatus: null, gpsFencingEpoch: null });
     set((s) => ({ sessionsByWalkId: { ...s.sessionsByWalkId, [walk.id]: session } }));
     set({ routePoints: [] });

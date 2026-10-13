@@ -21,6 +21,15 @@ describe('Walk Lifecycle & GPS v1.1 additive migration contract', () => {
     expect(migration).toMatch(/walk_lifecycle_events/i);
   });
 
+  it('finishes walks that were active before v1.1 without trusting a NULL walker', () => {
+    const finish = migration.slice(migration.indexOf('create or replace function public.finish_walk_v11'), migration.indexOf('create or replace function public.acquire_walk_gps_ownership_v11'));
+    expect(finish).toMatch(/walker:=coalesce\(w\.actual_walker_user_id,w\.responsible_user_id\)/i);
+    expect(finish).toMatch(/walker is null or p_actual_walker_id is distinct from walker/i);
+    expect(finish).toMatch(/if actor <> walker and not/i);
+    expect(finish).not.toMatch(/actor <> p_actual_walker_id/i);
+    expect(finish).not.toMatch(/update public\.walks set[^;]*actual_walker_user_id/i);
+  });
+
   it('fences GPS ownership and route ingestion to the current device epoch', () => {
     expect(migration).toMatch(/fencing_epoch bigint/i);
     expect(migration).toMatch(/p_confirm_transfer/i);

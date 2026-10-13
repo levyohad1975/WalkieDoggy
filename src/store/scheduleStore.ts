@@ -1020,9 +1020,24 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // still valid. finish_walk_v11 closes the lease in the same server
       // transaction after this final route write.
       let gpsFinalizedBeforeFinish = false;
+      let gpsFinalizationFailed = false;
       if (repository.finishWalkV11 && useGpsStore.getState().trackingWalkId === walkId) {
-        await useGpsStore.getState().stopTracking(walk, completedByUserId);
         gpsFinalizedBeforeFinish = true;
+        try {
+          // A lease that lapsed while the phone was locked (or after a lost
+          // heartbeat) is renewed on this same device first. The server
+          // refuses that without confirmation if another device owns GPS.
+          const gps = useGpsStore.getState();
+          if (gps.gpsFencingEpoch === null && gps.pointCount > 0) await gps.attachGpsOwnership(walk);
+          await useGpsStore.getState().stopTracking(walk, completedByUserId);
+        } catch (error) {
+          // GPS is assistive, never a precondition for the walk lifecycle.
+          // The route already persisted under the lease stays saved; the
+          // unsaved tail stays in memory, and the walk is still finished
+          // (online or through the offline lifecycle outbox).
+          gpsFinalizationFailed = true;
+          console.error('[finishWalk] final GPS route was not saved before finish', { walkId, error });
+        }
       }
       let updated: Walk;
       if (repository.finishWalkV11) {
@@ -1033,6 +1048,9 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       } else if (repository.finishWalk) updated = await repository.finishWalk(walkId, completedByUserId, details);
       else updated = markWalkDone(walk, completedByUserId, details);
       set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
+      if (gpsFinalizationFailed) {
+        set({ actionError: 'הטיול הסתיים, אך לא הצלחנו לשמור את נתוני ה-GPS. הנתונים נשארו במכשיר — נסו לרענן ולדווח לתמיכה אם הבעיה חוזרת.' });
+      }
       // Notification cleanup is secondary; it must never skip the GPS
       // finalization after the server has already completed the walk.
       void cancelWalkNotifications(walkId).catch((error) => {

@@ -369,12 +369,19 @@ declare
   event_action text;
   request_payload jsonb;
   is_new boolean;
+  walker uuid;
 begin
   if auth.uid() is null or actor is null then raise exception 'active profile required'; end if;
   if p_expected_actor_id is distinct from actor then raise exception 'profile changed; lifecycle action must be reviewed by the current member'; end if;
   if p_operation_id is null then raise exception 'operation id required'; end if;
   select * into w from public.walks where id=p_walk_id and family_id=public.current_family_id() for update;
   if not found then raise exception 'walk not found'; end if;
+  -- A walk already in progress when this migration is applied was started by
+  -- the legacy start_walk() and has no actual_walker_user_id. Use the same
+  -- default the legacy finish_walk() used (the responsible member) so such a
+  -- walk can still be finished, and so NULL can never satisfy the walker
+  -- authorization comparisons below. The row itself is not backfilled.
+  walker:=coalesce(w.actual_walker_user_id,w.responsible_user_id);
   request_payload:=jsonb_build_object('actual_walker_id',p_actual_walker_id,'had_pee',p_had_pee,'had_poop',p_had_poop,'note',p_note,'completed_at',p_completed_at,'remote_confirmation',p_remote_confirmation);
   insert into public.walk_lifecycle_operations(actor_user_id,operation_id,action,walk_id,payload)
     values(actor,p_operation_id,'finish',w.id,request_payload) on conflict(actor_user_id,operation_id) do nothing returning true into is_new;
@@ -386,8 +393,8 @@ begin
   end if;
   if w.status='done' and w.ended_by_user_id=actor then return w; end if;
   if w.status <> 'in_progress' or w.duplicate_resolution_group_id is not null then raise exception 'walk is not in progress'; end if;
-  if p_actual_walker_id is distinct from w.actual_walker_user_id then raise exception 'actual walker cannot be changed during finish'; end if;
-  if actor <> p_actual_walker_id and not (public.is_family_admin(w.family_id) and p_remote_confirmation) then
+  if walker is null or p_actual_walker_id is distinct from walker then raise exception 'actual walker cannot be changed during finish'; end if;
+  if actor <> walker and not (public.is_family_admin(w.family_id) and p_remote_confirmation) then
     raise exception 'actual walker or confirmed family admin required to finish';
   end if;
   perform set_config('app.trusted_write','on',true);
@@ -396,7 +403,7 @@ begin
     duration_minutes=greatest(0,round(extract(epoch from (coalesce(p_completed_at,now())-started_at))/60.0)::int),updated_at=now()
   where id=w.id returning * into w;
   update public.walk_gps_ownership set fencing_epoch=fencing_epoch+1,ended_at=now(),expires_at=now(),updated_at=now() where walk_id=w.id and ended_at is null;
-  event_action:=case when actor <> p_actual_walker_id then 'remotely_finished' else 'finished' end;
+  event_action:=case when actor <> walker then 'remotely_finished' else 'finished' end;
   insert into public.walk_lifecycle_events(family_id,dog_id,walk_id,action,actor_user_id,original_assignee_user_id,current_assignee_user_id,actual_walker_user_id,operation_id)
     values(w.family_id,w.dog_id,w.id, event_action,actor,coalesce(w.swap_original_user_id,w.responsible_user_id),w.responsible_user_id,p_actual_walker_id,p_operation_id);
   if event_action='remotely_finished' then
