@@ -56,11 +56,16 @@ select public.resolve_duplicate_active_walks_v12(
   'Isolated regression fixture: three test starts, middle record selected explicitly as canonical.',
   'd6000000-0000-4000-8000-000000000001'
 );
+-- Switch the device's active profile to a member in a separate SQL command;
+-- this exercises persona-based authorization without relying on mutating JWT
+-- claims mid-transaction (auth.uid() is STABLE).
+set local role postgres;
+update public.profile_auth_sessions
+  set user_id='d2000000-0000-4000-8000-000000000002'
+  where auth_user_id='d0000000-0000-4000-8000-000000000001';
+set local role authenticated;
 do $unauthorized$
 begin
-  perform set_config('request.jwt.claim.sub','d0000000-0000-4000-8000-000000000002',true);
-  perform set_config('request.jwt.claim.role','authenticated',true);
-  perform set_config('request.jwt.claims','{"sub":"d0000000-0000-4000-8000-000000000002","role":"authenticated"}',true);
   begin
     perform public.resolve_duplicate_active_walks_v12(
       array['d4000000-0000-4000-8000-000000000001','d4000000-0000-4000-8000-000000000003']::uuid[],null,
