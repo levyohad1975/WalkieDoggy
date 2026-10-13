@@ -31,6 +31,36 @@ alter table public.families
   add column if not exists spontaneous_association_window_minutes smallint not null default 30
   check (spontaneous_association_window_minutes between 5 and 120);
 
+-- actual_walker_user_id decides who may collect GPS and who is credited with
+-- the walk. The legacy walk-write trigger lets an unplanned walk's owner (and,
+-- for scheduled walks, the responsible member or any admin) update most walk
+-- columns directly, so reserve this one for the audited lifecycle RPCs. Those
+-- are SECURITY DEFINER and run as the function owner; only the API-facing roles
+-- are restricted, which keeps RI actions and trusted maintenance SQL working.
+create or replace function public.prevent_untrusted_actual_walker_change()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, public
+as $$
+begin
+  if current_user in ('authenticated', 'anon') then
+    if tg_op = 'INSERT' then
+      if new.actual_walker_user_id is not null then
+        raise exception 'actual walker can only be set by the walk lifecycle operations';
+      end if;
+    elsif new.actual_walker_user_id is distinct from old.actual_walker_user_id then
+      raise exception 'actual walker can only be changed by the walk lifecycle operations';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.prevent_untrusted_actual_walker_change() from public, anon, authenticated;
+drop trigger if exists walks_actual_walker_guard on public.walks;
+create trigger walks_actual_walker_guard
+  before insert or update of actual_walker_user_id on public.walks
+  for each row execute function public.prevent_untrusted_actual_walker_change();
+
 create table if not exists public.walk_lifecycle_operations (
   actor_user_id uuid not null references public.users(id) on delete restrict,
   operation_id uuid not null,
@@ -178,7 +208,7 @@ begin
       when p_provider_accepted then 'provider_accepted'
       else 'failed' end,
     failure_reason=case when p_provider_accepted or n.delivery_state='opened' then null else left(coalesce(p_failure_reason,'delivery failed'),240) end,
-    provider_accepted_at=case when p_provider_accepted then now() else null end
+    provider_accepted_at=case when p_provider_accepted then coalesce(n.provider_accepted_at,now()) else n.provider_accepted_at end
   where n.id=any(p_notification_ids) and n.family_id=public.current_family_id() and n.actor_user_id=actor and n.delivery_state in ('sending','opened');
   get diagnostics affected=row_count;
   return affected;
@@ -370,6 +400,7 @@ declare
   request_payload jsonb;
   is_new boolean;
   walker uuid;
+  completed_ts timestamptz;
 begin
   if auth.uid() is null or actor is null then raise exception 'active profile required'; end if;
   if p_expected_actor_id is distinct from actor then raise exception 'profile changed; lifecycle action must be reviewed by the current member'; end if;
@@ -397,10 +428,24 @@ begin
   if actor <> walker and not (public.is_family_admin(w.family_id) and p_remote_confirmation) then
     raise exception 'actual walker or confirmed family admin required to finish';
   end if;
+  -- The device clock may run slightly ahead, so a small skew is clamped to the
+  -- server time; anything further ahead is rejected. A walk started offline is
+  -- stamped with the server time of its replay, so the finish time the walker
+  -- recorded on the device may legitimately precede started_at; allow that for
+  -- the longest period an offline walk is expected to wait for a sync.
+  if p_completed_at is not null then
+    if p_completed_at > now() + interval '15 minutes' then
+      raise exception 'completion time cannot be in the future';
+    end if;
+    if w.started_at is not null and p_completed_at < w.started_at - interval '7 days' then
+      raise exception 'completion time is too far before the walk started';
+    end if;
+  end if;
+  completed_ts:=least(coalesce(p_completed_at,now()),now());
   perform set_config('app.trusted_write','on',true);
-  update public.walks set status='done',completed_at=coalesce(p_completed_at,now()),completed_by_user_id=p_actual_walker_id,
+  update public.walks set status='done',completed_at=completed_ts,completed_by_user_id=p_actual_walker_id,
     ended_by_user_id=actor,had_pee=p_had_pee,had_poop=p_had_poop,note=p_note,
-    duration_minutes=greatest(0,round(extract(epoch from (coalesce(p_completed_at,now())-started_at))/60.0)::int),updated_at=now()
+    duration_minutes=greatest(0,round(extract(epoch from (completed_ts-started_at))/60.0)::int),updated_at=now()
   where id=w.id returning * into w;
   update public.walk_gps_ownership set fencing_epoch=fencing_epoch+1,ended_at=now(),expires_at=now(),updated_at=now() where walk_id=w.id and ended_at is null;
   event_action:=case when actor <> walker then 'remotely_finished' else 'finished' end;
@@ -427,12 +472,20 @@ declare
   owner public.walk_gps_ownership;
   profile_id uuid:=public.real_current_profile_id();
   next_epoch bigint;
+  walker uuid;
+  had_owner boolean;
+  owner_changed boolean;
 begin
   if auth.uid() is null or profile_id is null then raise exception 'active profile required'; end if;
   select * into w from public.walks where id=p_walk_id and family_id=public.current_family_id() for update;
   if not found or w.status <> 'in_progress' or w.duplicate_resolution_group_id is not null then raise exception 'active walk not found'; end if;
-  if w.actual_walker_user_id is distinct from profile_id then raise exception 'only the actual walker can collect GPS'; end if;
+  -- A walk started by the legacy start_walk() before v1.1 has no recorded
+  -- actual walker; its responsible member is the walker, exactly as the app
+  -- and the legacy finish_walk() already treat it. The row is not backfilled.
+  walker:=coalesce(w.actual_walker_user_id,w.responsible_user_id);
+  if walker is distinct from profile_id then raise exception 'only the actual walker can collect GPS'; end if;
   select * into owner from public.walk_gps_ownership where walk_id=w.id for update;
+  had_owner:=found;
   if found and owner.owner_auth_user_id<>auth.uid() and not p_confirm_transfer then
     raise exception 'confirm GPS transfer on this device';
   end if;
@@ -444,9 +497,15 @@ begin
     values(w.id,w.family_id,w.dog_id,profile_id,auth.uid(),next_epoch,now()+interval '45 seconds',null,now())
     on conflict(walk_id) do update set owner_user_id=excluded.owner_user_id,owner_auth_user_id=excluded.owner_auth_user_id,
       fencing_epoch=excluded.fencing_epoch,expires_at=excluded.expires_at,ended_at=null,updated_at=now();
-  insert into public.walk_lifecycle_events(family_id,dog_id,walk_id,action,actor_user_id,original_assignee_user_id,current_assignee_user_id,actual_walker_user_id,details)
-    values(w.family_id,w.dog_id,w.id,'gps_owner_changed',profile_id,coalesce(w.swap_original_user_id,w.responsible_user_id),w.responsible_user_id,w.actual_walker_user_id,
-      jsonb_build_object('fencing_epoch',next_epoch,'device_auth_user_id',auth.uid()));
+  -- Renewing this device's own lease (still active, or lapsed without anyone
+  -- else taking over) is not an ownership change and is not audited as one.
+  owner_changed:=not had_owner or owner.ended_at is not null
+    or owner.owner_auth_user_id is distinct from auth.uid() or owner.owner_user_id is distinct from profile_id;
+  if owner_changed then
+    insert into public.walk_lifecycle_events(family_id,dog_id,walk_id,action,actor_user_id,original_assignee_user_id,current_assignee_user_id,actual_walker_user_id,details)
+      values(w.family_id,w.dog_id,w.id,'gps_owner_changed',profile_id,coalesce(w.swap_original_user_id,w.responsible_user_id),w.responsible_user_id,walker,
+        jsonb_build_object('fencing_epoch',next_epoch,'device_auth_user_id',auth.uid()));
+  end if;
   return query select next_epoch,now()+interval '45 seconds';
 end;
 $$;
@@ -466,7 +525,7 @@ declare
 begin
   if auth.uid() is null or profile_id is null then raise exception 'active profile required'; end if;
   select * into w from public.walks where id=p_walk_id and family_id=public.current_family_id() and status='in_progress' and duplicate_resolution_group_id is null for update;
-  if not found or w.actual_walker_user_id is distinct from profile_id then raise exception 'active walk not found for current walker'; end if;
+  if not found or coalesce(w.actual_walker_user_id,w.responsible_user_id) is distinct from profile_id then raise exception 'active walk not found for current walker'; end if;
   select * into owner from public.walk_gps_ownership where walk_id=w.id for update;
   if not found or owner.owner_auth_user_id is distinct from auth.uid()
      or owner.fencing_epoch is distinct from p_fencing_epoch or owner.ended_at is not null then
@@ -475,7 +534,7 @@ begin
   update public.walk_gps_ownership set fencing_epoch=fencing_epoch+1,expires_at=now(),ended_at=now(),updated_at=now()
     where walk_id=w.id;
   insert into public.walk_lifecycle_events(family_id,dog_id,walk_id,action,actor_user_id,original_assignee_user_id,current_assignee_user_id,actual_walker_user_id,details)
-    values(w.family_id,w.dog_id,w.id,'gps_owner_changed',profile_id,coalesce(w.swap_original_user_id,w.responsible_user_id),w.responsible_user_id,w.actual_walker_user_id,
+    values(w.family_id,w.dog_id,w.id,'gps_owner_changed',profile_id,coalesce(w.swap_original_user_id,w.responsible_user_id),w.responsible_user_id,coalesce(w.actual_walker_user_id,w.responsible_user_id),
       jsonb_build_object('released',true,'fencing_epoch',owner.fencing_epoch+1,'device_auth_user_id',auth.uid()));
   return true;
 end;
@@ -495,7 +554,7 @@ begin
   from public.walks w
   where o.walk_id=p_walk_id and o.fencing_epoch=p_fencing_epoch and o.owner_auth_user_id=auth.uid() and o.ended_at is null
     and o.expires_at>now() and o.family_id=public.current_family_id() and w.id=o.walk_id and w.status='in_progress' and w.duplicate_resolution_group_id is null
-    and w.actual_walker_user_id=public.real_current_profile_id()
+    and coalesce(w.actual_walker_user_id,w.responsible_user_id)=public.real_current_profile_id()
   returning o.expires_at into renewed;
   if renewed is null then raise exception 'GPS ownership expired or transferred'; end if;
   return renewed;
@@ -525,7 +584,7 @@ begin
       or coalesce((point->>'timestamp')::bigint,0)<=0
   ) then raise exception 'invalid GPS coordinate'; end if;
   select * into w from public.walks where id=p_walk_id and family_id=public.current_family_id() and status='in_progress' and duplicate_resolution_group_id is null for update;
-  if not found or w.actual_walker_user_id is distinct from public.real_current_profile_id() then raise exception 'active walk not found for current walker'; end if;
+  if not found or coalesce(w.actual_walker_user_id,w.responsible_user_id) is distinct from public.real_current_profile_id() then raise exception 'active walk not found for current walker'; end if;
   select * into owner from public.walk_gps_ownership o where o.walk_id=w.id for update;
   if not found or owner.owner_auth_user_id is distinct from auth.uid() or owner.fencing_epoch is distinct from p_fencing_epoch or owner.expires_at<=now() or owner.ended_at is not null then
     raise exception 'GPS ownership expired or transferred';

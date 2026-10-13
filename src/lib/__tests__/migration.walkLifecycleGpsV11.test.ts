@@ -44,4 +44,35 @@ describe('Walk Lifecycle & GPS v1.1 additive migration contract', () => {
     expect(migration).toMatch(/duplicate active walks require owner-reviewed resolution/i);
     expect(migration).toMatch(/create unique index if not exists walks_one_active_per_dog_uidx/i);
   });
+  it('blocks direct client writes to actual_walker_user_id on every legacy write path', () => {
+    expect(migration).toMatch(/create or replace function public\.prevent_untrusted_actual_walker_change/i);
+    expect(migration).toMatch(/current_user in \('authenticated', 'anon'\)/i);
+    expect(migration).toMatch(/new\.actual_walker_user_id is distinct from old\.actual_walker_user_id/i);
+    expect(migration).toMatch(/create trigger walks_actual_walker_guard\s+before insert or update of actual_walker_user_id on public\.walks/i);
+    expect(migration).toMatch(/revoke all on function public\.prevent_untrusted_actual_walker_change\(\) from public, anon, authenticated/i);
+  });
+
+  it('treats the responsible user as the walker for walks that were active before v1.1', () => {
+    const lease = migration.slice(migration.search(/function public\.acquire_walk_gps_ownership_v11/i));
+    expect(lease).toMatch(/coalesce\(w\.actual_walker_user_id,\s*w\.responsible_user_id\)/i);
+    expect(migration).not.toMatch(/w\.actual_walker_user_id\s+is distinct from auth\.uid\(\)/i);
+  });
+
+  it('records an ownership-change audit event only when the owning device actually changes', () => {
+    expect(migration).toMatch(/had_owner/i);
+    expect(migration).toMatch(/owner_changed/i);
+    expect(migration).toMatch(/if owner_changed then[\s\S]*?gps_owner_changed/i);
+  });
+
+  it('bounds a reported completion time and never stores one in the future', () => {
+    expect(migration).toMatch(/p_completed_at > now\(\) \+ interval '15 minutes'/i);
+    expect(migration).toMatch(/completion time cannot be in the future/i);
+    expect(migration).toMatch(/p_completed_at < w\.started_at - interval '7 days'/i);
+    expect(migration).toMatch(/completion time is too far before the walk started/i);
+    expect(migration).toMatch(/least\(coalesce\(p_completed_at,\s*now\(\)\),\s*now\(\)\)/i);
+  });
+
+  it('never lets a delivery result erase a recorded provider acceptance', () => {
+    expect(migration).toMatch(/provider_accepted_at\s*=\s*case when p_provider_accepted then coalesce\(n\.provider_accepted_at,\s*now\(\)\) else n\.provider_accepted_at end/i);
+  });
 });

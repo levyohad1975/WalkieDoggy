@@ -115,3 +115,24 @@ export async function removeWalkLifecycleIntent(operationId: string): Promise<vo
   const entries = await readOutbox();
   await writeOutbox(entries.filter((entry) => entry.operationId !== operationId));
 }
+
+/**
+ * The server settled an occurrence on a different (canonical) walk id than the
+ * one this device used locally. Pending intents queued behind the start under
+ * the old id must follow it, otherwise they would be answered "walk not found"
+ * and parked as conflicts. Operation ids are untouched, so server-side
+ * idempotency is preserved. Conflict-state intents are left as recorded.
+ */
+export async function remapWalkLifecycleIntentWalkId(oldWalkId: string, newWalkId: string): Promise<number> {
+  if (oldWalkId === newWalkId) return 0;
+  const entries = await readOutbox();
+  let changed = 0;
+  const next = entries.map((entry) => {
+    if (entry.state !== 'pending') return entry;
+    if (entry.action === 'start_spontaneous' || entry.walkId !== oldWalkId) return entry;
+    changed += 1;
+    return { ...entry, walkId: newWalkId } as WalkLifecycleIntent;
+  });
+  if (changed > 0) await writeOutbox(next);
+  return changed;
+}

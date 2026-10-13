@@ -5,6 +5,7 @@ import {
   getExistingWalkLifecycleOperationId,
   getWalkLifecycleOperationId,
   listWalkLifecycleIntents,
+  remapWalkLifecycleIntentWalkId,
   removeWalkLifecycleIntent,
   updateWalkLifecycleIntent,
 } from '../walkLifecycleOperationIds';
@@ -54,6 +55,23 @@ describe('v1.1 lifecycle journal isolation and idempotency', () => {
     expect(await listWalkLifecycleIntents()).toEqual([expect.objectContaining({ state: 'conflict', operationId })]);
     await removeWalkLifecycleIntent(operationId);
     expect(await listWalkLifecycleIntents()).toEqual([]);
+    expect(await AsyncStorage.getItem('dog-walk-family:sync-queue:v4')).toBe(legacyQueueSnapshot);
+  });
+  it('remaps only pending intents of the old walk id, keeping operation ids and the legacy SyncQueue untouched', async () => {
+    const legacyQueueSnapshot = '[{"type":"sentinel"}]';
+    await AsyncStorage.setItem('dog-walk-family:sync-queue:v4', legacyQueueSnapshot);
+    const base = { familyId: 'family-1', actorUserId: 'actor-1', actualWalkerUserId: 'actor-1' } as const;
+    await enqueueWalkLifecycleIntent({ action: 'finish', walkId: 'walk-old', operationId: 'op-finish', details: { actorUserId: 'actor-1' }, state: 'pending', ...base });
+    await enqueueWalkLifecycleIntent({ action: 'finish', walkId: 'walk-old', operationId: 'op-parked', details: { actorUserId: 'actor-1' }, state: 'conflict', error: 'x', ...base });
+    await enqueueWalkLifecycleIntent({ action: 'finish', walkId: 'walk-other', operationId: 'op-other', details: { actorUserId: 'actor-1' }, state: 'pending', ...base });
+
+    expect(await remapWalkLifecycleIntentWalkId('walk-old', 'walk-new')).toBe(1);
+    expect(await remapWalkLifecycleIntentWalkId('walk-old', 'walk-old')).toBe(0);
+
+    const byOp = Object.fromEntries((await listWalkLifecycleIntents()).map((i) => [i.operationId, i]));
+    expect(byOp['op-finish']).toMatchObject({ walkId: 'walk-new', state: 'pending' });
+    expect(byOp['op-parked']).toMatchObject({ walkId: 'walk-old', state: 'conflict' });
+    expect(byOp['op-other']).toMatchObject({ walkId: 'walk-other' });
     expect(await AsyncStorage.getItem('dog-walk-family:sync-queue:v4')).toBe(legacyQueueSnapshot);
   });
 });
