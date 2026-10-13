@@ -143,7 +143,7 @@ begin
       and duplicate_resolution_group_id is null
       and (p_canonical_walk_id is null or id <> p_canonical_walk_id);
   get diagnostics affected = row_count;
-  if affected <> cardinality(requested_ids) - case when p_canonical_walk_id is null then 0 else 1 end then
+  if affected <> cardinality(requested_ids) - (case when p_canonical_walk_id is null then 0 else 1 end) then
     raise exception 'walk set changed while resolving duplicates';
   end if;
   return group_id;
