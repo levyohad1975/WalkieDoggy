@@ -93,8 +93,10 @@ describe('OfflineFirstRepository lifecycle outbox — canonical walk id reconcil
     // Nothing is parked as a conflict, and the outbox is fully drained.
     expect(await listWalkLifecycleIntents()).toEqual([]);
     // The device keeps exactly one copy of the occurrence: the finished canonical walk.
-    expect(await local.findWalkById('walk-orphan')).toBeUndefined();
-    expect(await local.findWalkById('walk-canonical')).toMatchObject({ status: 'done', completedByUserId: 'user-1' });
+    // Read through a fresh instance: the repository under test owns its own LocalRepository.
+    const afterSync = new LocalRepository();
+    expect(await afterSync.findWalkById('walk-orphan')).toBeUndefined();
+    expect(await afterSync.findWalkById('walk-canonical')).toMatchObject({ status: 'done', completedByUserId: 'user-1' });
   });
 
   it('keeps using the original id when the server row already has the same id', async () => {
