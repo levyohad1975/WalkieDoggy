@@ -400,13 +400,6 @@ async function loadScheduleForFamily(
     // selector advances by scheduled time while leaving unresolved older walks
     // pending for History/reporting.
     set({ rules, entries: finalEntries, walks: finalWalks, loading: false });
-    void Promise.allSettled(
-      autoSkipped.map(async (walk) => {
-        await repository.saveWalk(walk);
-        await cancelWalkNotifications(walk.id);
-      })
-    );
-
     // Full reconciliation (A3): cancels anything stale for a
     // done/skipped/removed walk and (re)schedules everything still
     // pending from its CURRENT persisted data — not just "schedule the
