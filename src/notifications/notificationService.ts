@@ -12,6 +12,7 @@ import type * as ExpoNotifications from 'expo-notifications';
 import { publishReminderOpen, reminderOpenFromNotificationData } from './reminderEntry';
 import { publishRequestOpen, requestOpenFromNotificationData } from './requestEntry';
 import { chatOpenFromNotificationData, publishChatOpen } from './chatEntry';
+import { acknowledgeWalkLifecycleOpen, walkLifecycleOpenFromNotificationData } from './walkLifecycleEntry';
 
 /**
  * P0 FIX — Android Expo Go 57 startup crash.
@@ -169,6 +170,8 @@ export async function subscribeToWalkReminderResponses(): Promise<() => void> {
   if (!Notifications?.addNotificationResponseReceivedListener) return () => undefined;
   const dispatch = (response: any) => {
     const data = response?.notification?.request?.content?.data;
+    const lifecycleEvent = walkLifecycleOpenFromNotificationData(data);
+    if (lifecycleEvent) void acknowledgeWalkLifecycleOpen(lifecycleEvent);
     const reminderEvent = reminderOpenFromNotificationData(data);
     if (reminderEvent) {
       publishReminderOpen(reminderEvent);

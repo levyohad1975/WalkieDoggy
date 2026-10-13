@@ -1621,6 +1621,8 @@ export function HomeScreen() {
       <AddUnplannedWalkModal
         visible={addUnplannedVisible}
         dogName={dog?.name ?? 'הכלב/ה'}
+        dogId={dog?.id}
+        existingWalks={walks}
         users={activeUsers}
         defaultUserId={effectiveUserId}
         // A regular Member (real or admin-simulated) is always attributed

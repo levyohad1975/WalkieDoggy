@@ -52,7 +52,7 @@ Deno.serve(async (request: Request) => {
     if (expoTokens.length) {
       const response = await fetch('https://exp.host/--/api/v2/push/send', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(expoTokens.map((to) => ({ to, title, body: message, sound: 'default', priority: 'high', data: { type: 'walk_lifecycle', walkId } }))),
+        body: JSON.stringify(expoTokens.map((to) => ({ to, title, body: message, sound: 'default', priority: 'high', data: { type: 'walk_lifecycle', walkId, notificationIds: ids } }))),
       });
       if (!response.ok) failures.push(`expo_http_${response.status}`);
       else {
@@ -65,7 +65,7 @@ Deno.serve(async (request: Request) => {
     if (vapidPublic && vapidPrivate) {
       for (const subscription of webResult.data ?? []) {
         try {
-          await webpush.sendNotification(subscription, JSON.stringify({ title, body: message, data: { type: 'walk_lifecycle', walkId } }));
+          await webpush.sendNotification(subscription, JSON.stringify({ title, body: message, data: { type: 'walk_lifecycle', walkId, notificationIds: ids } }));
           accepted += 1;
         } catch { failures.push('webpush_provider_rejected'); }
       }

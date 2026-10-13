@@ -5,6 +5,25 @@
 -- multiple active walks for a dog; operators must review that conflict in a
 -- separately approved data-change plan before this migration can proceed.
 
+-- Run the data gate first so a known conflict causes no preceding DDL to be
+-- applied by migration runners that do not wrap the whole file in a transaction.
+do $$
+declare conflicts text;
+begin
+  select string_agg(format('dog %s (%s active walks)', dog_id, active_count), ', ' order by dog_id)
+    into conflicts
+    from (
+      select dog_id, count(*) as active_count
+      from public.walks
+      where status = 'in_progress'
+      group by dog_id
+      having count(*) > 1
+    ) as duplicates;
+  if conflicts is not null then
+    raise exception 'Walk Lifecycle v1.1 blocked: duplicate active walks require owner-reviewed resolution before uniqueness can be enforced: %', conflicts;
+  end if;
+end $$;
+
 alter table public.walks
   add column if not exists actual_walker_user_id uuid references public.users(id) on delete set null;
 alter table public.families
@@ -153,10 +172,13 @@ returns integer language plpgsql security definer set search_path=pg_catalog,pub
 declare actor uuid:=public.real_current_profile_id(); affected integer;
 begin
   if auth.uid() is null or actor is null or not public.is_family_admin(public.current_family_id()) then raise exception 'family admin required'; end if;
-  update public.walk_lifecycle_notifications n set delivery_state=case when p_provider_accepted then 'provider_accepted' else 'failed' end,
-    failure_reason=case when p_provider_accepted then null else left(coalesce(p_failure_reason,'delivery failed'),240) end,
+  update public.walk_lifecycle_notifications n set delivery_state=case
+      when n.delivery_state='opened' then 'opened'
+      when p_provider_accepted then 'provider_accepted'
+      else 'failed' end,
+    failure_reason=case when p_provider_accepted or n.delivery_state='opened' then null else left(coalesce(p_failure_reason,'delivery failed'),240) end,
     provider_accepted_at=case when p_provider_accepted then now() else null end
-  where n.id=any(p_notification_ids) and n.family_id=public.current_family_id() and n.actor_user_id=actor and n.delivery_state='sending';
+  where n.id=any(p_notification_ids) and n.family_id=public.current_family_id() and n.actor_user_id=actor and n.delivery_state in ('sending','opened');
   get diagnostics affected=row_count;
   return affected;
 end;
@@ -164,23 +186,25 @@ $$;
 revoke all on function public.finish_walk_lifecycle_notification_delivery_v11(uuid[],boolean,text) from public,anon;
 grant execute on function public.finish_walk_lifecycle_notification_delivery_v11(uuid[],boolean,text) to authenticated;
 
--- Detect existing duplicate active walks before adding the hard invariant.
-do $$
-declare conflicts text;
+-- Provider acceptance only means a push provider queued a destination. This
+-- separate recipient-scoped RPC records that the app actually opened it.
+create or replace function public.acknowledge_walk_lifecycle_notifications_v11(p_notification_ids uuid[])
+returns integer language plpgsql security definer set search_path=pg_catalog,public as $$
+declare actor uuid:=public.real_current_profile_id(); affected integer;
 begin
-  select string_agg(format('dog %s (%s active walks)', dog_id, active_count), ', ' order by dog_id)
-    into conflicts
-    from (
-      select dog_id, count(*) as active_count
-      from public.walks
-      where status = 'in_progress'
-      group by dog_id
-      having count(*) > 1
-    ) as duplicates;
-  if conflicts is not null then
-    raise exception 'Walk Lifecycle v1.1 blocked: duplicate active walks require owner-reviewed resolution before uniqueness can be enforced: %', conflicts;
-  end if;
-end $$;
+  if auth.uid() is null or actor is null then raise exception 'active profile required'; end if;
+  update public.walk_lifecycle_notifications n
+    set delivery_state='opened',opened_at=coalesce(opened_at,now())
+    where n.id=any(p_notification_ids)
+      and n.family_id=public.current_family_id()
+      and n.recipient_user_id=actor
+      and n.delivery_state in ('pending','sending','provider_accepted','failed');
+  get diagnostics affected=row_count;
+  return affected;
+end;
+$$;
+revoke all on function public.acknowledge_walk_lifecycle_notifications_v11(uuid[]) from public,anon;
+grant execute on function public.acknowledge_walk_lifecycle_notifications_v11(uuid[]) to authenticated;
 
 create unique index if not exists walks_one_active_per_dog_uidx
   on public.walks (dog_id) where status = 'in_progress';

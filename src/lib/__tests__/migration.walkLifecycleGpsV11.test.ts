@@ -31,5 +31,8 @@ describe('Walk Lifecycle & GPS v1.1 additive migration contract', () => {
     expect(migration).toMatch(/walk_lifecycle_notifications/i);
     expect(migration).toMatch(/delivery_state='sending'/i);
     expect(migration).toMatch(/finish_walk_lifecycle_notification_delivery_v11/i);
+    expect(migration).toMatch(/acknowledge_walk_lifecycle_notifications_v11/i);
+    expect(migration).toMatch(/duplicate active walks require owner-reviewed resolution/i);
+    expect(migration).toMatch(/create unique index if not exists walks_one_active_per_dog_uidx/i);
   });
 });
