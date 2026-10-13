@@ -1,0 +1,158 @@
+import {
+  REMINDER_STAGES,
+  REMINDER_STAGE_OFFSET_MINUTES,
+  reminderUrgencyLevel,
+  buildWalkReminderMessage,
+  buildWalkAttentionEscalationMessage,
+  dogNoun,
+  wentOutForm,
+  type ReminderStage,
+} from '../reminderMessages';
+
+const BASE_INPUT = {
+  dogName: 'טופי',
+  responsibleName: 'אבא',
+  scheduledTime: '17:00',
+  varietySeed: 'walk-123',
+};
+
+describe('REMINDER_STAGES', () => {
+  it('is exactly the four approved stages, in order, with matching offsets — never a fifth', () => {
+    expect(REMINDER_STAGES).toEqual(['T-15', 'T', 'T+15', 'T+30']);
+    expect(REMINDER_STAGE_OFFSET_MINUTES).toEqual({
+      'T-15': -15,
+      T: 0,
+      'T+15': 15,
+      'T+30': 30,
+    });
+  });
+});
+
+describe('reminderUrgencyLevel', () => {
+  it('increases monotonically by stage', () => {
+    const levels = REMINDER_STAGES.map(reminderUrgencyLevel);
+    for (let i = 1; i < levels.length; i += 1) {
+      expect(levels[i]).toBeGreaterThan(levels[i - 1]);
+    }
+  });
+});
+
+describe('buildWalkReminderMessage', () => {
+  it.each(REMINDER_STAGES)('returns a non-empty title/body for stage %s', (stage: ReminderStage) => {
+    const msg = buildWalkReminderMessage({ ...BASE_INPUT, stage });
+    expect(msg.title.length).toBeGreaterThan(0);
+    expect(msg.body.length).toBeGreaterThan(0);
+  });
+
+  it('always mentions the dog name and the responsible member somewhere in the message', () => {
+    for (const stage of REMINDER_STAGES) {
+      const msg = buildWalkReminderMessage({ ...BASE_INPUT, stage });
+      const text = `${msg.title} ${msg.body}`;
+      expect(text).toContain('טופי');
+      // Every stage's variants reference the responsible member by name.
+      expect(text).toContain('אבא');
+    }
+  });
+
+  it('is deterministic for the same input (same seed -> same variant every time)', () => {
+    const a = buildWalkReminderMessage({ ...BASE_INPUT, stage: 'T' });
+    const b = buildWalkReminderMessage({ ...BASE_INPUT, stage: 'T' });
+    expect(a).toEqual(b);
+  });
+
+  it('can vary the phrase between different walks (different seeds), still within the same stage', () => {
+    const seeds = Array.from({ length: 12 }, (_, i) => `walk-${i}`);
+    const bodies = new Set(
+      seeds.map((varietySeed) => buildWalkReminderMessage({ ...BASE_INPUT, stage: 'T-15', varietySeed }).body)
+    );
+    // With only 2 variants and 12 seeds, both should show up at least once —
+    // this isn't a strict requirement of the function, just confirms the
+    // phrase pool for this stage actually has more than one member reachable.
+    expect(bodies.size).toBeGreaterThan(1);
+  });
+
+  it('uses neutral, slash-free wording when dog sex is unknown', () => {
+    for (const stage of REMINDER_STAGES) {
+      const msg = buildWalkReminderMessage({ ...BASE_INPUT, stage, dogSex: undefined });
+      const text = `${msg.title} ${msg.body}`;
+      expect(text).not.toContain('הכלב ');
+      expect(text).not.toContain('הכלבה ');
+      expect(text).not.toContain('יצא/ה');
+    }
+  });
+
+  it('uses male, female, and neutral dog forms without guessing', () => {
+    expect(dogNoun('רקסי', 'male')).toBe('הכלב רקסי');
+    expect(wentOutForm('male')).toBe('יצא');
+    expect(dogNoun('לונה', 'female')).toBe('הכלבה לונה');
+    expect(wentOutForm('female')).toBe('יצאה');
+    expect(dogNoun('מקס', undefined)).toBe('מקס');
+    expect(wentOutForm(undefined)).toBeNull();
+  });
+
+  it('escalates in urgency: T-15 is purely informational, T+30 carries an urgent marker', () => {
+    const early = buildWalkReminderMessage({ ...BASE_INPUT, stage: 'T-15' });
+    const late = buildWalkReminderMessage({ ...BASE_INPUT, stage: 'T+30' });
+    expect(early.title).not.toContain('🚨');
+    expect(late.title).toContain('🚨');
+  });
+
+  it('T+30 reminder uses the correct gendered "went out" verb, never the other one, when sex is known', () => {
+    const seeds = Array.from({ length: 20 }, (_, i) => `walk-${i}`);
+    const maleBodies = seeds.map(
+      (varietySeed) => buildWalkReminderMessage({ ...BASE_INPUT, stage: 'T+30', varietySeed, dogSex: 'male' }).body
+    );
+    const femaleBodies = seeds.map(
+      (varietySeed) => buildWalkReminderMessage({ ...BASE_INPUT, stage: 'T+30', varietySeed, dogSex: 'female' }).body
+    );
+    // Only the variant that references the dog's "went out" state uses this verb —
+    // the other T+30 variant never mentions it. Enough seeds to reach both variants.
+    expect(maleBodies.some((b) => b.includes('לא יצא '))).toBe(true);
+    expect(femaleBodies.some((b) => b.includes('לא יצאה '))).toBe(true);
+    expect(maleBodies.every((b) => !b.includes('יצאה'))).toBe(true);
+    expect(femaleBodies.every((b) => !b.includes('לא יצא '))).toBe(true);
+  });
+});
+
+describe('buildWalkAttentionEscalationMessage', () => {
+  it('mentions both the dog and the responsible member, and reads as a status report, not an instruction', () => {
+    const msg = buildWalkAttentionEscalationMessage(BASE_INPUT);
+    const text = `${msg.title} ${msg.body}`;
+    expect(text).toContain('טופי');
+    expect(text).toContain('אבא');
+    expect(msg.title).toContain('🚨');
+  });
+
+  it('is deterministic for the same input', () => {
+    const a = buildWalkAttentionEscalationMessage(BASE_INPUT);
+    const b = buildWalkAttentionEscalationMessage(BASE_INPUT);
+    expect(a).toEqual(b);
+  });
+
+  it('uses neutral, slash-free wording when dog sex is unset', () => {
+    for (const varietySeed of Array.from({ length: 16 }, (_, index) => `walk-${index}`)) {
+      const msg = buildWalkAttentionEscalationMessage({ ...BASE_INPUT, dogSex: undefined, varietySeed });
+      expect(`${msg.title} ${msg.body}`).not.toContain('יצא/ה');
+    }
+  });
+
+  it('produces a different message identity from the responsible member own T+30 reminder for the same walk', () => {
+    const toResponsible = buildWalkReminderMessage({ ...BASE_INPUT, stage: 'T+30' });
+    const toAdmin = buildWalkAttentionEscalationMessage(BASE_INPUT);
+    expect(toAdmin).not.toEqual(toResponsible);
+  });
+
+  it('uses the correct gendered "went out" verb, never the other one, when sex is known', () => {
+    const seeds = Array.from({ length: 20 }, (_, i) => `walk-${i}`);
+    const maleBodies = seeds.map(
+      (varietySeed) => buildWalkAttentionEscalationMessage({ ...BASE_INPUT, varietySeed, dogSex: 'male' }).body
+    );
+    const femaleBodies = seeds.map(
+      (varietySeed) => buildWalkAttentionEscalationMessage({ ...BASE_INPUT, varietySeed, dogSex: 'female' }).body
+    );
+    expect(maleBodies.some((b) => b.includes('לא יצא '))).toBe(true);
+    expect(femaleBodies.some((b) => b.includes('לא יצאה '))).toBe(true);
+    expect(maleBodies.every((b) => !b.includes('יצאה'))).toBe(true);
+    expect(femaleBodies.every((b) => !b.includes('לא יצא '))).toBe(true);
+  });
+});

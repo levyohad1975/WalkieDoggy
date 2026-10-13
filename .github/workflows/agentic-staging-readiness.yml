@@ -1,0 +1,81 @@
+name: Agentic Staging Readiness
+
+on:
+  workflow_run:
+    workflows:
+      - Agentic RC Worker
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agentic-staging-readiness
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify isolated Staging access
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: staging
+    env:
+      EXPECTED_STAGING_PROJECT_REF: czbxhsoxyawprqehkfit
+      SUPABASE_STAGING_URL: ${{ secrets.SUPABASE_STAGING_URL }}
+      SUPABASE_STAGING_ANON_KEY: ${{ secrets.SUPABASE_STAGING_ANON_KEY }}
+
+    steps:
+      - name: Guard exact Staging binding
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${SUPABASE_STAGING_URL:-}" ] || [ -z "${SUPABASE_STAGING_ANON_KEY:-}" ]; then
+            echo "::error::Required staging Environment secrets are not configured."
+            exit 1
+          fi
+
+          echo "::add-mask::$SUPABASE_STAGING_URL"
+          echo "::add-mask::$SUPABASE_STAGING_ANON_KEY"
+
+          expected_url="https://$EXPECTED_STAGING_PROJECT_REF.supabase.co"
+          if [ "$SUPABASE_STAGING_URL" != "$expected_url" ]; then
+            echo "::error::Supabase URL does not match the approved Staging project."
+            exit 1
+          fi
+
+          {
+            echo "## Agentic Staging Readiness"
+            echo
+            echo "Environment: staging"
+            echo "Approved project ref: $EXPECTED_STAGING_PROJECT_REF"
+            echo "Mode: read-only health verification"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify Supabase Staging health
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          http_status="$(
+            curl               --silent               --show-error               --max-time 20               --output /dev/null               --write-out '%{http_code}'               --header "apikey: $SUPABASE_STAGING_ANON_KEY"               --header "Authorization: Bearer $SUPABASE_STAGING_ANON_KEY"               "$SUPABASE_STAGING_URL/auth/v1/health"
+          )"
+
+          if [ "$http_status" != "200" ]; then
+            echo "::error::Staging health check returned HTTP $http_status."
+            exit 1
+          fi
+
+          echo "Supabase Staging health check passed." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve approval gates
+        shell: bash
+        run: |
+          {
+            echo
+            echo "No deploy, migration, data mutation, RLS change, secret change, or Production action was performed."
+            echo "Live OTP, email delivery, webhooks, and device E2E remain separate explicit tests."
+          } >> "$GITHUB_STEP_SUMMARY"

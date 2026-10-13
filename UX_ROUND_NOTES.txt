@@ -1,0 +1,13 @@
+Walkie Doggy Link UX round
+
+Changes included:
+- History: done/skipped badges show only ✓ / ✕ (pending remains readable as ⏳ ממתין).
+- History: custom date picker opens as a modal popup on iOS; Android uses the native date popup.
+- Walk rows: remove the visual metadata label "הוחלף" while preserving swap data/logic.
+- Home header: replace the "בקשות" text button with a bell icon and numeric actionable-request badge.
+- Home header keeps the brand centered with balanced side controls.
+- Preserves/reconstructs overdue pending walk behavior: 30-minute Home grace, overdue pending section, member sees only own pending items, Admin sees all, exact walk completion modal.
+- Preserves/reconstructs History overdue pending resolution actions.
+
+Validation note:
+This package was assembled against the latest available project snapshot and current patch history. The sandbox copy does not include node_modules, so TypeScript/Jest could not be executed here. Run `npx tsc --noEmit` and `npm test -- --runInBand` after applying.

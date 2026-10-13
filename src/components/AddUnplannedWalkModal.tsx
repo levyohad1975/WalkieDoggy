@@ -1,0 +1,433 @@
+import React, { useEffect, useState } from 'react';
+import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { RtlText } from './RtlText';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { DatePickerField } from './DatePickerField';
+import type { FamilyUser, Walk } from '../types';
+import { colors } from '../theme/colors';
+import { radii, spacing } from '../theme/tokens';
+import { Avatar } from './Avatar';
+import { Button } from './Button';
+import { localDateOnly } from '../logic/dateFormat';
+
+export interface UnplannedWalkResult {
+  performedByUserId: string;
+  date: string;
+  time: string;
+  hadPee: boolean;
+  hadPoop: boolean;
+  note: string;
+  durationMinutes?: number;
+}
+
+interface AddUnplannedWalkModalProps {
+  visible: boolean;
+  dogName: string;
+  users: FamilyUser[];
+  defaultUserId: string;
+  /**
+   * Whether the picker is shown at all. A regular Member logging a
+   * spontaneous walk is automatically attributed to themselves — no picker,
+   * no way to select someone else. Only Admin may correct/backfill history
+   * by choosing a different active family member. Defaults to true so
+   * existing (admin) call sites keep working unchanged.
+   */
+  canChooseUser?: boolean;
+  /**
+   * Section 2: when set, this modal opens in EDIT mode for an existing
+   * unplanned walk instead of the default "log a new one" mode — same
+   * form, prefilled, title/button text swapped, plus a delete option with
+   * its own confirmation. Editing always saves back to the SAME record
+   * (scheduleStore.editUnplannedWalk), never creates a duplicate.
+   */
+  editingWalk?: Walk | null;
+  onDelete?: (walkId: string) => void;
+  onConfirm: (result: UnplannedWalkResult) => void;
+  /** Starts a live unplanned walk through the normal start/finish + GPS lifecycle. */
+  onStartNow?: () => void | Promise<void>;
+  onClose: () => void;
+}
+
+function nowTime(): string {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function timeIsValid(t: string): boolean {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
+}
+
+// Round 6C-time: same local HH:mm <-> Date conversion already proven in
+// RequestTimeChangeModal.tsx, copied (not imported/shared) per this round's
+// explicit "no shared helper" scope rule.
+/** "HH:mm" -> a Date on an arbitrary fixed day, for feeding the native picker. */
+function timeStringToDate(t: string): Date {
+  const now = new Date();
+  const [h, m] = timeIsValid(t) ? t.split(':').map(Number) : [now.getHours(), now.getMinutes()];
+  const d = new Date(2000, 0, 1, h, m, 0, 0);
+  return d;
+}
+
+function isoDateToLocalDate(value: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return new Date();
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0, 0);
+}
+
+function displayDate(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : value;
+}
+
+function dateToTimeString(d: Date): string {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/**
+ * "הוסף טיול שבוצע" — logs a spontaneous walk that already happened, with no
+ * prior plan. Defaults to now/today so the common case is a couple of taps.
+ * Never touches the rotation or future schedule.
+ */
+export function AddUnplannedWalkModal({
+  visible,
+  dogName,
+  users,
+  defaultUserId,
+  canChooseUser = true,
+  editingWalk = null,
+  onDelete,
+  onConfirm,
+  onStartNow,
+  onClose,
+}: AddUnplannedWalkModalProps) {
+  const isEditing = !!editingWalk;
+  const [performedBy, setPerformedBy] = useState(defaultUserId);
+  // Local calendar day, not UTC — see dateFormat.ts's doc comment; a
+  // UTC-anchored default would show "yesterday" for a few hours after local
+  // midnight for anyone ahead of UTC (e.g. Israel).
+  const [date, setDate] = useState(localDateOnly(new Date()));
+  const [time, setTime] = useState(nowTime());
+  // Round 6C-time: same pickerOpen convention as RequestTimeChangeModal.tsx —
+  // always open (inline spinner) on iOS, closed until the "שנה שעה" button is
+  // tapped on Android. The date field below is completely unaffected.
+  const [pickerOpen, setPickerOpen] = useState(Platform.OS === 'ios');
+  const [hadPee, setHadPee] = useState(false);
+  const [hadPoop, setHadPoop] = useState(false);
+  const [note, setNote] = useState('');
+  const [duration, setDuration] = useState('');
+
+  useEffect(() => {
+    if (visible) {
+      if (editingWalk) {
+        setPerformedBy(editingWalk.responsibleUserId);
+        setDate(editingWalk.date);
+        setTime(editingWalk.scheduledTime);
+        setHadPee(!!editingWalk.hadPee);
+        setHadPoop(!!editingWalk.hadPoop);
+        setNote(editingWalk.note ?? '');
+        setDuration(editingWalk.durationMinutes ? String(editingWalk.durationMinutes) : '');
+      } else {
+        setPerformedBy(defaultUserId);
+        setDate(localDateOnly(new Date()));
+        setTime(nowTime());
+        setHadPee(false);
+        setHadPoop(false);
+        setNote('');
+        setDuration('');
+      }
+      setPickerOpen(Platform.OS === 'ios');
+    }
+  }, [visible, defaultUserId, editingWalk]);
+
+  // Round RC-duration: the underlying `walks.duration_minutes` column is a
+  // Postgres `int` — a non-integer value (reachable via clipboard paste,
+  // since `keyboardType="number-pad"` is only an on-screen-keyboard hint,
+  // not an input filter) would otherwise sync-queue-fail with a permanent
+  // class-22 Postgres error (see syncQueue.ts's `isPermanentError`) with no
+  // clear feedback to the user. Empty stays valid (duration is optional).
+  const durationValid = duration.trim() === '' || /^\d+$/.test(duration.trim());
+  const valid = timeIsValid(time) && /^\d{4}-\d{2}-\d{2}$/.test(date) && durationValid;
+
+  // Round 6C-time: native picker selection can't produce an invalid value,
+  // so this just converts and stores it — the existing timeIsValid() gate
+  // above (feeding `valid`) is left in place unchanged. Android dismissal
+  // (event.type === 'dismissed') leaves `time` unchanged.
+  const handleTimeChange = (event: DateTimePickerEvent, selected?: Date) => {
+    if (Platform.OS === 'android') setPickerOpen(false);
+    if (event.type === 'dismissed') return;
+    if (selected) setTime(dateToTimeString(selected));
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      {/* Round 6C1: same KeyboardAvoidingView pattern already proven in
+          RequestTimeChangeModal.tsx — wraps the existing backdrop/sheet/
+          ScrollView structure unchanged. */}
+      <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={styles.backdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel={isEditing ? `סגירת עריכת טיול ספונטני של ${dogName}` : `סגירת הוספת טיול ספונטני של ${dogName}`}
+          />
+          <View style={styles.sheet}>
+            <ScrollView style={styles.formScroll} contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled">
+              <RtlText style={styles.title} accessibilityRole="header">
+                {isEditing ? `עריכת טיול של ${dogName}` : `הוסף טיול של ${dogName}`}
+              </RtlText>
+            <RtlText style={styles.subtitle}>{isEditing ? 'עדכון פרטי הטיול' : 'אפשר להתחיל טיול עכשיו או להזין טיול שכבר בוצע'}</RtlText>
+
+            {!isEditing && onStartNow ? (
+              <Button label="התחל טיול עכשיו" onPress={() => void onStartNow()} style={styles.startNowButton} />
+            ) : null}
+
+            <RtlText style={styles.label}>מי טייל?</RtlText>
+            {canChooseUser ? (
+              <View style={styles.userRow}>
+                {users.map((u) => (
+                  <Pressable
+                    key={u.id}
+                    onPress={() => setPerformedBy(u.id)}
+                    style={[styles.userChip, performedBy === u.id && styles.userChipActive]}
+                  >
+                    <Avatar emoji={u.avatar} color={u.color} photoUrl={u.photoUrl} size={40} />
+                    <RtlText style={styles.userChipName} numberOfLines={1}>
+                      {u.name}
+                    </RtlText>
+                  </Pressable>
+                ))}
+              </View>
+            ) : (
+              // A regular Member cannot log a spontaneous walk as anyone
+              // but themselves — no picker, just a non-interactive
+              // confirmation of who this will be attributed to.
+              <View style={styles.selfRow}>
+                {(() => {
+                  const self = users.find((u) => u.id === defaultUserId);
+                  return (
+                    <>
+                      <Avatar emoji={self?.avatar ?? '🙂'} color={self?.color ?? colors.primary} photoUrl={self?.photoUrl} size={40} />
+                      <RtlText style={styles.selfRowName}>{self?.name ?? 'אתה'}</RtlText>
+                    </>
+                  );
+                })()}
+              </View>
+            )}
+
+            <View style={styles.row}>
+              <View style={styles.flex}>
+                <RtlText style={styles.label}>תאריך</RtlText>
+                <DatePickerField value={date} onChange={setDate} label="בחירת תאריך הטיול" />
+              </View>
+              <View style={styles.flex}>
+                <RtlText style={styles.label}>שעה</RtlText>
+                {/* The app is also used from Safari. DateTimePicker has no
+                    visible Web control there, so render the browser's native
+                    time picker instead of a static-looking time label. */}
+                {Platform.OS === 'web' ? React.createElement('input', {
+                  type: 'time',
+                  value: time,
+                  step: 60,
+                  'aria-label': 'בחר שעת טיול',
+                  onChange: (event: { target: { value: string } }) => setTime(event.target.value),
+                  style: webTimeInputStyle,
+                }) : (
+                  <RtlText style={[styles.input, styles.timeDisplay]}>{time}</RtlText>
+                )}
+              </View>
+            </View>
+
+            {/* Time is picked via the native time picker —
+                the trigger button opens it on Android; on iOS the picker is
+                always shown inline below, mirroring
+                RequestTimeChangeModal.tsx's platform split. */}
+            {Platform.OS === 'android' ? (
+              <Button
+                label={`שנה שעה (${time})`}
+                variant="secondary"
+                onPress={() => setPickerOpen(true)}
+                style={styles.timeButton}
+              />
+            ) : null}
+
+            {pickerOpen ? (
+              <DateTimePicker
+                value={timeStringToDate(time)}
+                mode="time"
+                is24Hour
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={handleTimeChange}
+              />
+            ) : null}
+
+            <View style={styles.toggleRow}>
+              <Pressable
+                onPress={() => setHadPee((v) => !v)}
+                style={[styles.toggle, hadPee && styles.toggleActivePee]}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: hadPee }}
+                accessibilityLabel="סימון פיפי בטיול"
+              >
+                <RtlText style={styles.toggleEmoji}>💧</RtlText>
+              </Pressable>
+              <Pressable
+                onPress={() => setHadPoop((v) => !v)}
+                style={[styles.toggle, hadPoop && styles.toggleActivePoop]}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: hadPoop }}
+                accessibilityLabel="סימון קקי בטיול"
+              >
+                <RtlText style={styles.toggleEmoji}>💩</RtlText>
+              </Pressable>
+            </View>
+
+            <RtlText style={styles.label}>משך (דקות, אופציונלי)</RtlText>
+            <TextInput
+              value={duration}
+              onChangeText={setDuration}
+              keyboardType="number-pad"
+              placeholder="20"
+              placeholderTextColor={colors.textSecondary}
+              style={styles.input}
+              textAlign="center"
+              accessibilityLabel="משך (דקות, אופציונלי)"
+            />
+
+            <RtlText style={styles.label}>הערה (אופציונלי)</RtlText>
+            <TextInput
+              value={note}
+              onChangeText={setNote}
+              placeholder="למשל: טיול קצר לפני השינה"
+              placeholderTextColor={colors.textSecondary}
+              style={styles.noteInput}
+              multiline
+              textAlign="right"
+              accessibilityLabel="הערה (אופציונלי)"
+            />
+
+            </ScrollView>
+            <View style={styles.actions}>
+              <Button
+                label={isEditing ? 'שמור שינויים' : 'שמור טיול'}
+                disabled={!valid}
+                onPress={() =>
+                  onConfirm({
+                    performedByUserId: performedBy,
+                    date,
+                    time,
+                    hadPee,
+                    hadPoop,
+                    note: note.trim(),
+                    durationMinutes: duration ? Number(duration) : undefined,
+                  })
+                }
+                style={styles.flex}
+              />
+              <Button label="ביטול" onPress={onClose} variant="secondary" style={styles.flex} />
+            </View>
+            {isEditing && onDelete && editingWalk ? (
+              <View style={styles.destructiveSection}>
+              <Button
+                label="מחק טיול זה"
+                variant="danger"
+                style={styles.deleteButton}
+                accessibilityHint="יוצג אישור לפני מחיקה לצמיתות של הטיול"
+                onPress={() => {
+                  const confirmDelete = () => onDelete(editingWalk.id);
+
+                  // React Native Alert is not reliably shown in Safari Web.
+                  // Use the browser confirmation there so the delete button
+                  // is actually actionable on iPhone Safari.
+                  if (Platform.OS === 'web') {
+                    const confirm = (globalThis as typeof globalThis & { confirm?: (message?: string) => boolean }).confirm;
+                    if (confirm?.('למחוק את הטיול הזה?\\n\\nהפעולה תמחק לצמיתות את הטיול הספונטני הזה ואת כל הפרטים שלו.')) {
+                      void confirmDelete();
+                    }
+                    return;
+                  }
+
+                  Alert.alert(
+                    'למחוק את הטיול הזה?',
+                    'הפעולה תמחק לצמיתות את הטיול הספונטני הזה ואת כל הפרטים שלו.',
+                    [
+                      { text: 'חזרה', style: 'cancel' },
+                      { text: 'מחק', style: 'destructive', onPress: () => void confirmDelete() },
+                    ]
+                  );
+                }}
+              />
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+const webTimeInputStyle = {
+  display: 'block', width: '100%', minHeight: 52, boxSizing: 'border-box', padding: 12,
+  fontSize: 18, fontWeight: '700', borderRadius: radii.md, border: `1px solid ${colors.border}`,
+  backgroundColor: colors.surfaceMuted, color: colors.textPrimary, textAlign: 'center', direction: 'ltr', cursor: 'pointer',
+  WebkitAppearance: 'none', appearance: 'none',
+};
+
+const webDatePickerOverlayStyle = {
+  position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0,
+  cursor: 'pointer',
+};
+
+const styles = StyleSheet.create({
+  flexFull: { flex: 1 },
+  webDateField: { position: 'relative', minHeight: 52, borderRadius: radii.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceMuted, alignItems: 'center', justifyContent: 'center' },
+  webDateDisplay: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
+  backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
+  sheet: { flex: 1, backgroundColor: colors.surface, paddingHorizontal: 24, paddingTop: Platform.OS === 'web' ? 28 : 48, paddingBottom: Platform.OS === 'web' ? 28 : 36 },
+  formScroll: { flex: 1 },
+  formContent: { paddingBottom: spacing.lg },
+  title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
+  subtitle: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginTop: spacing.xs, marginBottom: spacing.sm },
+  label: { width: '100%', fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginTop: 14, marginBottom: spacing.sm, textAlign: 'right', writingDirection: 'rtl' },
+  row: { flexDirection: 'row', gap: spacing.md },
+  flex: { flex: 1 },
+  input: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, padding: 14, fontSize: 16, color: colors.textPrimary },
+  timeDisplay: { textAlign: 'center', fontWeight: '700' },
+  timeButton: { marginTop: spacing.md },
+  userRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  userChip: { alignItems: 'center', minWidth: 68, gap: spacing.xs, opacity: 0.55 },
+  userChipActive: { opacity: 1 },
+  userChipName: { fontSize: 12, color: colors.textPrimary, fontWeight: '600' },
+  selfRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  selfRowName: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
+  toggleRow: { width: '100%', flexDirection: 'row', gap: spacing.md, marginTop: spacing.xs },
+  toggle: {
+    flex: 1,
+    minHeight: 64,
+    borderRadius: radii.lg,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  toggleActivePee: { backgroundColor: colors.statusCurrentBg, borderColor: colors.primary },
+  toggleActivePoop: { backgroundColor: colors.statusSkippedBg, borderColor: colors.statusSkipped },
+  toggleEmoji: { fontSize: 24 },
+  toggleLabel: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
+  toggleLabelActive: { color: colors.textPrimary },
+  noteInput: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radii.md,
+    padding: 14,
+    fontSize: 15,
+    color: colors.textPrimary,
+    minHeight: 56,
+    textAlignVertical: 'top',
+  },
+  actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm, paddingTop: spacing.sm },
+  startNowButton: { marginTop: spacing.sm, marginBottom: spacing.md },
+  destructiveSection: { marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
+  deleteButton: { marginBottom: spacing.xs },
+});

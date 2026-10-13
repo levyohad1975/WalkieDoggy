@@ -1,0 +1,9 @@
+Admin mutual swap follow-up
+
+Fixes two separate problems in the Admin quick action:
+1. Home's "להחליף תור" no longer performs a one-way reassignment via swap(). It now asks for the exact other pending walk and calls swapTwoWalks().
+2. swapTwoWalks() now updates both backing schedule_entries.responsibleUserId values as well as both walks, so reload/backfill cannot restore the old ownership.
+
+Also adds a regression test verifying both walk rows and both schedule-entry rows exchange owners.
+
+No Supabase migration is included in this follow-up; migration 0018 remains unchanged.

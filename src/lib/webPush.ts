@@ -1,0 +1,334 @@
+import { Platform } from 'react-native';
+import { isSupabaseConfigured, supabase } from './supabase';
+
+export type WebPushStatus =
+  | 'unsupported'
+  | 'default'
+  | 'denied'
+  | 'granted'
+  | 'subscribed'
+  /**
+   * Real-device QA fix — permission is 'granted' (and often a LOCAL
+   * PushManager subscription already exists), but persisting it to
+   * web_push_subscriptions via upsert_web_push_subscription just failed.
+   * Deliberately its own status, never collapsed into 'granted'/
+   * 'subscribed': those two both read as "this device is fine" to every
+   * caller (RemindersModal hides its enable button on 'subscribed'; a
+   * bare 'granted' quietly offers the same button again but implies
+   * nothing is actually broken). A browser that LOCALLY believes it's
+   * subscribed while the server has no matching row can never actually
+   * receive a push — silently reporting either of those statuses in that
+   * case is exactly the bug a real iPhone QA pass found: zero rows in
+   * web_push_subscriptions despite the device appearing notification-
+   * enabled. See reconcileWebPushSubscription()'s own doc comment below.
+   */
+  | 'error';
+
+function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding)
+    .replace(/-/g, '+')
+    .replace(/_/g, '/');
+
+  const rawData = window.atob(base64);
+  const bytes = new Uint8Array(new ArrayBuffer(rawData.length));
+
+  for (let i = 0; i < rawData.length; i += 1) {
+    bytes[i] = rawData.charCodeAt(i);
+  }
+
+  return bytes.buffer;
+}
+
+function isWebPushSupported(): boolean {
+  return (
+    Platform.OS === 'web' &&
+    typeof window !== 'undefined' &&
+    typeof navigator !== 'undefined' &&
+    'serviceWorker' in navigator &&
+    'PushManager' in window &&
+    'Notification' in window
+  );
+}
+
+/**
+ * Batch 2 review correction (device-specific channel selection): mirrors
+ * getWebPushStatus()'s own lookup of the current service-worker push
+ * subscription, but returns just the endpoint string (this browser/device's
+ * natural per-device identifier in web_push_subscriptions — see migration
+ * 0021) rather than a status enum. Used by src/lib/remoteReminderChannel.ts
+ * to ask has_active_remote_push_channel() about THIS device's own
+ * subscription specifically, not "does this profile have any subscription
+ * anywhere". Returns null on any failure or when unsupported/unsubscribed —
+ * never throws.
+ */
+export async function getCurrentWebPushEndpoint(): Promise<string | null> {
+  if (!isWebPushSupported()) {
+    return null;
+  }
+
+  try {
+    const registration = await navigator.serviceWorker.getRegistration('/');
+    if (!registration) {
+      return null;
+    }
+
+    const subscription = await registration.pushManager.getSubscription();
+    return subscription?.endpoint ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * P0 notification-delivery investigation — a phone-only, no-desktop-tools
+ * way to answer "did my subscription actually persist server-side, under
+ * MY OWN claimed profile" directly from the Reminders UI. Reuses
+ * has_active_remote_push_channel() (migration 0025 Part 5, already
+ * granted to `authenticated` and already used by
+ * src/lib/remoteReminderChannel.ts for the native-reminder-suppression
+ * gate) with THIS device's own current endpoint — it only ever confirms
+ * or denies a value the caller already supplied, scoped to
+ * real_current_profile_id(), so it cannot leak anything about any other
+ * device or profile. Returns null (never throws) if there's no local
+ * subscription to check in the first place, or the RPC call itself fails
+ * (offline, etc.) — distinct from a confirmed `false`, which means a real
+ * subscription exists locally but the server has no matching active row
+ * for it (exactly the failure mode reconcileWebPushSubscription()'s own
+ * doc comment describes).
+ */
+export async function verifyServerSubscription(): Promise<boolean | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+  const endpoint = await getCurrentWebPushEndpoint();
+  if (!endpoint) return null;
+  try {
+    const { data, error } = await supabase.rpc('has_active_remote_push_channel', {
+      p_web_push_endpoint: endpoint,
+    });
+    if (error) return null;
+    return data === true;
+  } catch {
+    return null;
+  }
+}
+
+export async function getWebPushStatus(): Promise<WebPushStatus> {
+  if (!isWebPushSupported()) {
+    return 'unsupported';
+  }
+
+  if (Notification.permission === 'denied') {
+    return 'denied';
+  }
+
+  if (Notification.permission !== 'granted') {
+    return 'default';
+  }
+
+  try {
+    const registration = await navigator.serviceWorker.getRegistration('/');
+    if (!registration) {
+      return 'granted';
+    }
+
+    const subscription = await registration.pushManager.getSubscription();
+    return subscription ? 'subscribed' : 'granted';
+  } catch {
+    return 'granted';
+  }
+}
+
+/**
+ * Persists a browser Push subscription to web_push_subscriptions via the
+ * upsert_web_push_subscription RPC (migration 0021) — the ONE place both
+ * enableWebPush() and reconcileWebPushSubscription() below write a
+ * subscription, so there is never a second, parallel persistence path to
+ * keep in sync. The RPC itself is a plain upsert (ON CONFLICT (endpoint) DO
+ * UPDATE), so calling this again for an already-persisted subscription is
+ * always safe and cheap — that idempotency is exactly what makes the
+ * reconcile path below able to "repair" a subscription by simply
+ * re-calling this.
+ */
+async function persistSubscription(subscription: PushSubscription): Promise<void> {
+  if (!supabase) {
+    throw new Error('Supabase is not configured');
+  }
+
+  const json = subscription.toJSON();
+  const endpoint = json.endpoint;
+  const p256dh = json.keys?.p256dh;
+  const auth = json.keys?.auth;
+
+  if (!endpoint || !p256dh || !auth) {
+    throw new Error('Browser returned an incomplete Web Push subscription');
+  }
+
+  const { error } = await supabase.rpc('upsert_web_push_subscription', {
+    p_endpoint: endpoint,
+    p_p256dh: p256dh,
+    p_auth: auth,
+  });
+
+  if (error) {
+    throw error;
+  }
+}
+
+/**
+ * Must be called from a direct user action (button/tap).
+ *
+ * iPhone/iPad Web Push requires the site to be installed as a Home Screen
+ * web app and notification permission must be requested as a result of
+ * explicit user interaction.
+ */
+export async function enableWebPush(): Promise<WebPushStatus> {
+  if (!isWebPushSupported()) {
+    return 'unsupported';
+  }
+
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error('Supabase is not configured');
+  }
+
+  const vapidPublicKey = process.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY?.trim();
+
+  if (!vapidPublicKey) {
+    throw new Error('VAPID public key is missing');
+  }
+
+  let permission = Notification.permission;
+
+  if (permission === 'default') {
+    permission = await Notification.requestPermission();
+  }
+
+  if (permission === 'denied') {
+    return 'denied';
+  }
+
+  if (permission !== 'granted') {
+    return 'default';
+  }
+
+  const registration = await navigator.serviceWorker.register('/sw.js', {
+    scope: '/',
+  });
+
+  await navigator.serviceWorker.ready;
+
+  let subscription = await registration.pushManager.getSubscription();
+
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+    });
+  }
+
+  await persistSubscription(subscription);
+
+  return 'subscribed';
+}
+
+/**
+ * Request-notifications repair — "refresh/reopen recovery". getWebPushStatus()
+ * only ever reports what the BROWSER believes locally (Notification.permission
+ * + PushManager.getSubscription()); it never confirms the server still has a
+ * matching web_push_subscriptions row. A subscription that locally reads
+ * 'subscribed' permanently hides RemindersModal's "אפשר התראות" button (it
+ * only renders while status !== 'subscribed'), so if the one-time
+ * upsert_web_push_subscription() call in enableWebPush() ever failed
+ * silently — a dropped network response, or the historical case: this
+ * device's real_current_profile_id() not yet resolving before migration
+ * 0101's self-heal ran (see that migration's header comment) — there was no
+ * way back in short of the person manually clearing site data.
+ *
+ * Silent, best-effort, idempotent, NEVER throws — safe to call on every
+ * app launch/foreground (see App.tsx, both the sign-in-availability effect
+ * and runForegroundSync()'s AppState 'active' step) and whenever
+ * RemindersModal opens, not only in response to an explicit tap:
+ *   - An existing local subscription is RE-persisted via the same
+ *     persistSubscription() enableWebPush() uses — repairs a silently
+ *     failed prior attempt with no user action needed.
+ *   - Permission is already 'granted' but no local subscription exists
+ *     (the browser invalidated/expired it, or it was granted without ever
+ *     subscribing) -> proactively re-subscribes and persists the new one.
+ *     This is safe outside a direct tap/gesture: only
+ *     Notification.requestPermission() requires one, not
+ *     pushManager.subscribe() once permission already reads 'granted' —
+ *     true on iOS 16.4+ PWA too.
+ *
+ * REAL-DEVICE QA FIX: a prior version of this function wrapped the WHOLE
+ * body (service worker registration AND persistSubscription()) in one
+ * try/catch that fell back to getWebPushStatus() on ANY failure.
+ * getWebPushStatus() only ever inspects the BROWSER's local state — so
+ * when persistSubscription() itself failed (RPC/network error, a session
+ * not yet ready, etc.) but a local subscription already existed, that
+ * fallback read 'subscribed' right back, and the RPC error was discarded
+ * with no log, no retry, nothing. A real iPhone ended up permission-
+ * granted and locally "subscribed" while web_push_subscriptions stayed at
+ * zero rows forever, because nothing ever disagreed with the browser's
+ * own (incomplete) opinion of itself. Fixed by giving the two failure
+ * modes their own try/catch:
+ *   1. Registration/getSubscription()/subscribe() failing is a genuine
+ *      local/browser-capability problem — no persistence was even
+ *      attempted, so falling back to getWebPushStatus()'s local-only read
+ *      is accurate here, not misleading.
+ *   2. persistSubscription() failing means the browser may well have (or
+ *      now has) a subscription, but the SERVER has no matching row and
+ *      can never deliver a push to it — this is reported as its own
+ *      'error' status (never silently merged into 'granted'/'subscribed')
+ *      and logged, so it is both observable (not swallowed) and retryable
+ *      (the next reconcile call — another foreground, reopening
+ *      RemindersModal, or tapping "אפשר התראות" again — gets another
+ *      chance, instead of a device stuck believing it's done).
+ */
+export async function reconcileWebPushSubscription(): Promise<WebPushStatus> {
+  if (!isWebPushSupported()) {
+    return 'unsupported';
+  }
+
+  if (Notification.permission === 'denied') {
+    return 'denied';
+  }
+
+  if (Notification.permission !== 'granted') {
+    return 'default';
+  }
+
+  if (!isSupabaseConfigured || !supabase) {
+    return 'granted';
+  }
+
+  const vapidPublicKey = process.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY?.trim();
+  if (!vapidPublicKey) {
+    return 'granted';
+  }
+
+  let subscription: PushSubscription | null;
+  try {
+    const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    await navigator.serviceWorker.ready;
+
+    subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+      });
+    }
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('[webPush] reconcile: service worker registration/subscribe failed', error);
+    return getWebPushStatus();
+  }
+
+  try {
+    await persistSubscription(subscription!);
+    return 'subscribed';
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('[webPush] reconcile: failed to persist subscription to the server — this device is NOT actually registered for push despite local permission/subscription state', error);
+    return 'error';
+  }
+}

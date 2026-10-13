@@ -1,0 +1,175 @@
+import * as ImagePicker from 'expo-image-picker';
+import { Alert, Linking, Platform } from 'react-native';
+import { isSupabaseConfigured, supabase } from './supabase';
+import { guardTestModeMutation } from './testModeGuard';
+import { requestPhotoCrop } from './photoCropHost';
+
+export type PhotoKind = 'dogs' | 'users';
+export type PhotoPreviewListener = (uri: string | null) => void;
+
+/**
+ * Opens the device photo library, and — if Supabase Storage is configured —
+ * uploads the picked image to the `family-photos` bucket, returning a public
+ * URL that syncs to every family member's device. Without Supabase
+ * configured, returns the local file URI instead (demo mode: the photo only
+ * shows up on this device, same as the rest of demo mode).
+ *
+ * `familyId` is required whenever Supabase is configured: the upload path is
+ * `{familyId}/dog/...` or `{familyId}/users/{userId}/...`, and the Storage
+ * RLS policies (supabase/migrations/0002_*.sql) check exactly that first
+ * path segment against the caller's own family — a family that doesn't own
+ * the folder can't upload/overwrite/delete into it.
+ *
+ * Returns `null` if the user cancels, permission is denied, or Admin Test
+ * Mode is currently active (see guardTestModeMutation's doc comment) — this
+ * is the ONE real Supabase Storage mutation that happens outside
+ * scheduleStore/familyStore/requestsStore (it's called directly from
+ * UserFormModal/SettingsScreen, before their later store.saveDog()/
+ * updateUser() call), so it needs its own guard rather than relying on the
+ * store call that happens afterwards. Checked FIRST, before even asking for
+ * photo-library permission — no point opening a picker for an upload that
+ * can never be saved.
+ */
+export async function pickAndUploadImage(kind: PhotoKind, familyId: string, id: string, onPreview?: PhotoPreviewListener): Promise<string | null> {
+  if (!guardTestModeMutation()) return null;
+
+  const launchLibrary = () =>
+    ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+
+  // On Web, expo-image-picker must be invoked directly from the tap. Its
+  // permission method is a no-op in browsers, and awaiting it first loses
+  // Safari's transient user activation so the native file dialog is blocked.
+  // Keep the picker call in this synchronous path; upload/cropping happen later.
+  const pickerResultPromise =
+    Platform.OS === 'web'
+      ? launchLibrary()
+      : (async () => {
+          const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          const hasPhotoAccess =
+            permission.granted ||
+            permission.accessPrivileges === 'all' ||
+            permission.accessPrivileges === 'limited';
+
+          if (!hasPhotoAccess) {
+            if (!permission.canAskAgain) {
+              Alert.alert(
+                'נדרשת הרשאה לתמונות',
+                'הגישה לתמונות חסומה בהגדרות המכשיר. אפשרו גישה לתמונות כדי לבחור תמונה.',
+                [
+                  { text: 'ביטול', style: 'cancel' },
+                  {
+                    text: 'פתח הגדרות',
+                    onPress: () => {
+                      void Linking.openSettings();
+                    },
+                  },
+                ],
+              );
+            } else {
+              Alert.alert(
+                'נדרשת הרשאה לתמונות',
+                'אפשרו לאפליקציה גישה לספריית התמונות כדי לבחור תמונה.',
+              );
+            }
+            return null;
+          }
+          return launchLibrary();
+        })();
+
+  const result = await pickerResultPromise;
+  if (!result || result.canceled || result.assets.length === 0) {
+    onPreview?.(null);
+    return null;
+  }
+
+  const asset = result.assets[0];
+  // Show the selected image while crop/upload continue, then replace this
+  // temporary URI with the shared Storage URL after persistence succeeds.
+  onPreview?.(asset.uri);
+
+  // Native iOS/Android already got OS-native crop/zoom/pan UI above via
+  // allowsEditing/aspect. expo-image-picker's allowsEditing does nothing at
+  // all on Web, so Web gets its own crop step here instead — see
+  // PhotoCropModal.tsx. Cancelling the crop cancels the whole pick, same as
+  // cancelling the native picker.
+  let sourceUri = asset.uri;
+  let webCropped = false;
+  if (Platform.OS === 'web') {
+    const cropped = await requestPhotoCrop(asset.uri);
+    if (cropped === null) {
+      onPreview?.(null);
+      return null;
+    }
+    sourceUri = cropped;
+    webCropped = true;
+  }
+
+  if (isSupabaseConfigured && supabase) {
+    const folder = kind === 'dogs' ? 'dog' : `users/${id}`;
+    const path = `${familyId}/${folder}/${Date.now()}.jpg`;
+    // SDK 57 / iOS does not guarantee ImagePicker base64 payloads. Read the
+    // selected local URI as binary instead, which works for both iOS and
+    // Android and avoids silently falling back to a device-only file URI.
+    const response = await fetch(sourceUri);
+    const bytes = await response.arrayBuffer();
+    // The web crop step always outputs a canvas-encoded JPEG, regardless of
+    // the original asset's mime type.
+    const contentType = webCropped ? 'image/jpeg' : asset.mimeType ?? 'image/jpeg';
+    const extension = contentType === 'image/png' ? 'png' : contentType === 'image/webp' ? 'webp' : 'jpg';
+    const finalPath = path.replace(/\.jpg$/, `.${extension}`);
+    const { error } = await supabase.storage
+      .from('family-photos')
+      .upload(finalPath, bytes, { contentType, upsert: true });
+    if (error) throw error;
+    const { data } = supabase.storage.from('family-photos').getPublicUrl(finalPath);
+    onPreview?.(data.publicUrl);
+    return data.publicUrl;
+  }
+
+  onPreview?.(sourceUri);
+  return sourceUri;
+}
+
+/** Capture and persist a photo through the same family-photos storage used by the library picker. */
+export async function takeAndUploadImage(kind: PhotoKind, familyId: string, id: string): Promise<string | null> {
+  if (!guardTestModeMutation()) return null;
+  const permission = await ImagePicker.requestCameraPermissionsAsync();
+  if (!permission.granted) {
+    if (!permission.canAskAgain) {
+      Alert.alert('נדרשת הרשאה למצלמה', 'אפשרו גישה למצלמה בהגדרות המכשיר כדי לצלם תמונה.', [
+        { text: 'ביטול', style: 'cancel' },
+        { text: 'פתח הגדרות', onPress: () => { void Linking.openSettings(); } },
+      ]);
+    } else Alert.alert('נדרשת הרשאה למצלמה', 'אפשרו לאפליקציה גישה למצלמה כדי לצלם תמונה.');
+    return null;
+  }
+  const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.7 });
+  if (result.canceled || result.assets.length === 0) return null;
+  const asset = result.assets[0];
+  let sourceUri = asset.uri;
+  let webCropped = false;
+  if (Platform.OS === 'web') {
+    const cropped = await requestPhotoCrop(asset.uri);
+    if (cropped === null) return null;
+    sourceUri = cropped;
+    webCropped = true;
+  }
+  if (isSupabaseConfigured && supabase) {
+    const folder = kind === 'dogs' ? 'dog' : `users/${id}`;
+    const path = `${familyId}/${folder}/${Date.now()}.jpg`;
+    const response = await fetch(sourceUri);
+    const bytes = await response.arrayBuffer();
+    const contentType = webCropped ? 'image/jpeg' : asset.mimeType ?? 'image/jpeg';
+    const extension = contentType === 'image/png' ? 'png' : contentType === 'image/webp' ? 'webp' : 'jpg';
+    const finalPath = path.replace(/\.jpg$/, `.${extension}`);
+    const { error } = await supabase.storage.from('family-photos').upload(finalPath, bytes, { contentType, upsert: true });
+    if (error) throw error;
+    return supabase.storage.from('family-photos').getPublicUrl(finalPath).data.publicUrl;
+  }
+  return sourceUri;
+}

@@ -1,0 +1,13 @@
+Walkie Doggy Link - bell unread-result update
+
+Behavior:
+- Bell stays visible.
+- Badge = actionable incoming pending requests + recent approved/rejected outcomes for requests created by this profile that have not yet been seen.
+- Opening the Requests inbox marks the current real profile's recent terminal outcomes as seen.
+- Pending requests are never marked seen by opening the inbox and continue to count until resolved.
+- Approved/rejected results keep the existing 24-hour visibility lifecycle.
+- Read state is persisted in Supabase and syncs across devices through the existing Realtime subscriptions on walk_swap_requests/time_change_requests.
+- Admin impersonation/test display does not mark another profile's results as seen.
+
+Server migration required before testing the new badge behavior:
+0019_request_result_seen_state.sql

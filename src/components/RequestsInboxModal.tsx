@@ -1,0 +1,243 @@
+import React from 'react';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { RtlText } from './RtlText';
+import type { FamilyRole } from '../lib/supabase';
+import type { SwapRequestRow, TimeChangeRequestRow } from '../lib/requests';
+import type { FamilyUser, HealthTask, Walk } from '../types';
+import { colors } from '../theme/colors';
+import { radii, spacing, typography } from '../theme/tokens';
+import { Button } from './Button';
+import { computeRequestLifecycle, isRequestVisible } from '../logic/requestLifecycle';
+import { getHealthTaskLifecycle, HEALTH_TASK_CATEGORY_LABELS } from '../logic/healthTasks';
+
+interface RequestsInboxModalProps {
+  visible: boolean;
+  /**
+   * The DISPLAY identity to filter/highlight by — the simulated member's id
+   * while Admin Test Mode is active, the real signed-in user's id otherwise
+   * (see authStore.useEffectiveUserId). Deliberately not named
+   * "currentUserId": this value decides what the inbox SHOWS (which pending
+   * swap request "belongs" to the viewer), never what gets sent to a
+   * mutating call — approveSwap/rejectSwap/etc. always resolve the real
+   * actor server-side from auth.uid(), regardless of this prop.
+   */
+  effectiveUserId: string;
+  familyRole: FamilyRole | null;
+  usersById: Record<string, FamilyUser>;
+  walksById: Record<string, Walk>;
+  swapRequests: SwapRequestRow[];
+  timeChangeRequests: TimeChangeRequestRow[];
+  onApproveSwap: (id: string) => void;
+  onRejectSwap: (id: string) => void;
+  onApproveTimeChange: (id: string) => void;
+  onRejectTimeChange: (id: string) => void;
+  /**
+   * PRD §15's "תזכורות חשובות" (important reminders) item type — already
+   * filtered/sorted via logic/healthTasks.ts's getImportantHealthReminders
+   * (overdue/due/due-soon only, for the currently active dog). Optional so
+   * this modal degrades gracefully to its pre-existing two sections if a
+   * caller doesn't pass any (none currently omit it, but this keeps the
+   * prop additive rather than a breaking change).
+   */
+  healthReminders?: HealthTask[];
+  dogName?: string;
+  onOpenHealthReminders?: () => void;
+  onClose: () => void;
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  pending: 'ממתין לאישור',
+  approved: 'אושר',
+  rejected: 'נדחה',
+  expired: 'פג תוקף',
+};
+
+function StatusBadge({ status, expired }: { status: string; expired?: boolean }) {
+  const label = expired ? STATUS_LABEL.expired : STATUS_LABEL[status] ?? status;
+  return (
+    <View
+      style={[
+        styles.badge,
+        status === 'approved' && !expired && styles.badgeApproved,
+        (status === 'rejected' || expired) && styles.badgeRejected,
+      ]}
+    >
+      <RtlText style={styles.badgeText}>{label}</RtlText>
+    </View>
+  );
+}
+
+/**
+ * Combined inbox for both approval workflows added in migration 0005:
+ * swap requests (Member -> Member) and time-change requests (Member ->
+ * Admin). What each row shows and which actions are offered depends on the
+ * viewer: the requester always sees the current status; only the actual
+ * approver (the target member for a swap, an Admin for a time change) sees
+ * approve/reject buttons — this mirrors the server-side authorization in
+ * the RPCs themselves (this UI hiding is a convenience, not the security
+ * boundary; approve/reject still re-checks on the server).
+ */
+const HEALTH_URGENCY_BADGE: Record<'upcoming' | 'due' | 'overdue', { label: string; color: string; bg: string }> = {
+  upcoming: { label: 'בקרוב', color: colors.statusPending, bg: colors.statusPendingBg },
+  due: { label: 'היום', color: colors.statusCurrent, bg: colors.statusCurrentBg },
+  overdue: { label: 'באיחור', color: colors.statusOverdue, bg: colors.statusOverdueBg },
+};
+
+export function RequestsInboxModal({
+  visible,
+  effectiveUserId,
+  familyRole,
+  usersById,
+  walksById,
+  swapRequests,
+  timeChangeRequests,
+  onApproveSwap,
+  onRejectSwap,
+  onApproveTimeChange,
+  onRejectTimeChange,
+  healthReminders,
+  dogName,
+  onOpenHealthReminders,
+  onClose,
+}: RequestsInboxModalProps) {
+  const walkLabel = (walkId: string) => {
+    const w = walksById[walkId];
+    if (!w) return 'טיול';
+    return `${w.date} · ${w.scheduledTime}`;
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable
+        style={styles.backdrop}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="סגירת חלון בקשות"
+      >
+        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+          <RtlText style={styles.title} accessibilityRole="header">בקשות</RtlText>
+          <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
+            <RtlText style={styles.sectionTitle}>בקשות החלפה</RtlText>
+            {(() => {
+              // Pending stays actionable while the walk is still pending.
+              // Approved/rejected stays visible for ~24 hours for awareness,
+              // then drops out of this active inbox. Expired pending requests
+              // are also hidden here rather than lingering forever.
+              const visibleSwaps = swapRequests
+                .map((r) => ({ r, state: computeRequestLifecycle(r, walksById) }))
+                .filter(({ state }) => isRequestVisible(state));
+              if (visibleSwaps.length === 0) return <RtlText style={styles.empty}>אין בקשות החלפה</RtlText>;
+              return visibleSwaps.map(({ r, state }) => {
+                const canApprove = state === 'active' && r.target_user_id === effectiveUserId;
+                return (
+                  <View key={r.id} style={styles.row}>
+                    <View style={styles.rowHeader}>
+                      <RtlText style={styles.rowText}>
+                        {usersById[r.requested_by_user_id]?.name ?? '—'} · {walkLabel(r.walk_id)} ↔ {usersById[r.target_user_id]?.name ?? '—'} · {r.target_walk_id ? walkLabel(r.target_walk_id) : 'טיול יעד לא זמין'}
+                      </RtlText>
+                      <StatusBadge status={r.status} expired={state === 'expired'} />
+                    </View>
+                    {canApprove ? (
+                      <View style={styles.rowActions}>
+                        <Button label="אשר" onPress={() => onApproveSwap(r.id)} style={styles.flex} />
+                        <Button
+                          label="דחה"
+                          variant="secondary"
+                          onPress={() => onRejectSwap(r.id)}
+                          style={styles.flex}
+                          accessibilityHint="הבקשה תידחה מיידית, ללא אפשרות ביטול"
+                        />
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              });
+            })()}
+
+            <RtlText style={[styles.sectionTitle, styles.sectionTitleSpaced]}>בקשות שינוי שעה</RtlText>
+            {(() => {
+              const visibleTimeChanges = timeChangeRequests
+                .map((r) => ({ r, state: computeRequestLifecycle(r, walksById) }))
+                .filter(({ state }) => isRequestVisible(state));
+              if (visibleTimeChanges.length === 0) return <RtlText style={styles.empty}>אין בקשות שינוי שעה</RtlText>;
+              return visibleTimeChanges.map(({ r, state }) => {
+                const canApprove = state === 'active' && familyRole === 'admin';
+                return (
+                  <View key={r.id} style={styles.row}>
+                    <View style={styles.rowHeader}>
+                      <RtlText style={styles.rowText}>
+                        {usersById[r.requested_by_user_id]?.name ?? '—'} · {walkLabel(r.walk_id)} ← {r.proposed_time}
+                      </RtlText>
+                      <StatusBadge status={r.status} expired={state === 'expired'} />
+                    </View>
+                    {canApprove ? (
+                      <View style={styles.rowActions}>
+                        <Button label="אשר" onPress={() => onApproveTimeChange(r.id)} style={styles.flex} />
+                        <Button
+                          label="דחה"
+                          variant="secondary"
+                          onPress={() => onRejectTimeChange(r.id)}
+                          style={styles.flex}
+                          accessibilityHint="הבקשה תידחה מיידית, ללא אפשרות ביטול"
+                        />
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              });
+            })()}
+
+            {healthReminders && healthReminders.length > 0 ? (
+              <>
+                <RtlText style={[styles.sectionTitle, styles.sectionTitleSpaced]}>תזכורות חשובות</RtlText>
+                {healthReminders.map((t) => {
+                  const lifecycle = getHealthTaskLifecycle(t) as 'upcoming' | 'due' | 'overdue';
+                  const badge = HEALTH_URGENCY_BADGE[lifecycle];
+                  return (
+                    <View key={t.id} style={styles.row}>
+                      <View style={styles.rowHeader}>
+                        <RtlText style={styles.rowText}>
+                          {dogName ? `${dogName} · ` : ''}
+                          {HEALTH_TASK_CATEGORY_LABELS[t.category]} · {t.title}
+                        </RtlText>
+                        <View style={[styles.badge, { backgroundColor: badge.bg }]}>
+                          <RtlText style={[styles.badgeText, { color: badge.color }]}>{badge.label}</RtlText>
+                        </View>
+                      </View>
+                      {onOpenHealthReminders ? (
+                        <View style={styles.rowActions}>
+                          <Button label="פתיחה" onPress={onOpenHealthReminders} style={styles.flex} />
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </>
+            ) : null}
+          </ScrollView>
+          <Button label="סגור" variant="secondary" onPress={onClose} style={styles.closeButton} />
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, maxHeight: '85%' },
+  title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: spacing.sm },
+  list: { maxHeight: '85%' },
+  sectionTitle: { fontSize: typography.cardTitle.fontSize, fontWeight: typography.cardTitle.fontWeight, color: colors.textSecondary, textAlign: 'right', marginBottom: spacing.sm },
+  sectionTitleSpaced: { marginTop: 18 },
+  empty: { textAlign: 'center', color: colors.textSecondary, paddingVertical: 10, fontSize: typography.meta.fontSize },
+  row: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, padding: spacing.md, marginBottom: spacing.sm, gap: spacing.sm },
+  rowHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm },
+  rowText: { flex: 1, fontSize: typography.meta.fontSize, fontWeight: '600', color: colors.textPrimary, textAlign: 'right' },
+  rowActions: { flexDirection: 'row', gap: spacing.sm },
+  flex: { flex: 1 },
+  badge: { paddingHorizontal: 10, paddingVertical: spacing.xs, borderRadius: radii.sm, backgroundColor: colors.statusCurrentBg },
+  badgeApproved: { backgroundColor: '#E8F7F1' },
+  badgeRejected: { backgroundColor: colors.statusSkippedBg },
+  badgeText: { fontSize: typography.caption.fontSize, fontWeight: typography.caption.fontWeight, color: colors.textPrimary },
+  closeButton: { marginTop: 14 },
+});
