@@ -251,6 +251,89 @@ describe('gpsStore', () => {
     expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: walk.id, trackingStatus: 'interrupted', pointCount: 1, routePoints: [routePoint], gpsFencingEpoch: 1 });
   });
 
+  describe('v1.1 lease heartbeat', () => {
+    const flush = () => new Promise((resolve) => setImmediate(resolve));
+    let heartbeatTick: (() => void) | undefined;
+    let intervalSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      heartbeatTick = undefined;
+      intervalSpy = jest.spyOn(global, 'setInterval').mockImplementation(((fn: () => void) => {
+        heartbeatTick = fn;
+        return 1 as unknown as ReturnType<typeof setInterval>;
+      }) as any);
+      jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      intervalSpy.mockRestore();
+      (console.warn as jest.Mock).mockRestore?.();
+    });
+
+    async function startLeasedWalk(acquire: jest.Mock, heartbeat: jest.Mock) {
+      const { useGpsStore } = require('../gpsStore');
+      const { repository } = require('../../data');
+      const gpsTracking = require('../../lib/gpsTracking');
+      let feed: (acc: any) => void = () => undefined;
+      repository.acquireGpsOwnershipV11 = acquire;
+      repository.heartbeatGpsOwnershipV11 = heartbeat;
+      repository.appendGpsRouteV11 = jest.fn().mockResolvedValue({ id: walk.id, walkId: walk.id, familyId: walk.familyId, dogId: walk.dogId, pointCount: 1, source: 'device_gps', createdAt: 'c', updatedAt: 'u' });
+      jest.spyOn(gpsTracking, 'startGpsWatch').mockImplementationOnce(async (onUpdate: any) => {
+        feed = onUpdate;
+        return { handle: { remove: jest.fn() }, permissionStatus: 'granted' };
+      });
+      await useGpsStore.getState().startTracking(walk);
+      expect(await useGpsStore.getState().attachGpsOwnership({ ...walk, status: 'in_progress' } as Walk)).toBe(true);
+      feed({ distanceMeters: 10, pointCount: 1, routePoints: [{ latitude: 32, longitude: 34, timestamp: 1000 }] });
+      await flush();
+      return { useGpsStore, repository, feed: (acc: any) => feed(acc) };
+    }
+
+    it('keeps the lease after a transient heartbeat failure instead of silently stopping route persistence', async () => {
+      const acquire = jest.fn().mockResolvedValue({ fencingEpoch: 2, expiresAt: 'later' });
+      const heartbeat = jest.fn().mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValue('later');
+      const { useGpsStore } = await startLeasedWalk(acquire, heartbeat);
+
+      heartbeatTick!();
+      await flush();
+
+      expect(useGpsStore.getState()).toMatchObject({ gpsFencingEpoch: 2, trackingStatus: 'active' });
+      expect(acquire).toHaveBeenCalledTimes(1);
+    });
+
+    it('renews an expired lease on the same device without a transfer confirmation', async () => {
+      const acquire = jest.fn()
+        .mockResolvedValueOnce({ fencingEpoch: 2, expiresAt: 'later' })
+        .mockResolvedValueOnce({ fencingEpoch: 3, expiresAt: 'later' });
+      const heartbeat = jest.fn().mockRejectedValue({ message: 'GPS ownership expired or transferred' });
+      const { useGpsStore, repository } = await startLeasedWalk(acquire, heartbeat);
+
+      heartbeatTick!();
+      await flush();
+      await flush();
+
+      expect(acquire).toHaveBeenNthCalledWith(2, walk.id, false);
+      expect(useGpsStore.getState()).toMatchObject({ gpsFencingEpoch: 3, trackingStatus: 'active' });
+      // The renewed epoch re-sends the captured route; the server dedupes by timestamp.
+      expect(repository.appendGpsRouteV11).toHaveBeenLastCalledWith(expect.objectContaining({ fencingEpoch: 3, points: [expect.objectContaining({ timestamp: 1000 })] }));
+    });
+
+    it('stays interrupted while fixes arrive without a lease, rather than showing an active GPS that saves nothing', async () => {
+      const acquire = jest.fn()
+        .mockResolvedValueOnce({ fencingEpoch: 2, expiresAt: 'later' })
+        .mockRejectedValueOnce({ message: 'confirm GPS transfer on this device' });
+      const heartbeat = jest.fn().mockRejectedValue({ message: 'GPS ownership expired or transferred' });
+      const { useGpsStore, feed } = await startLeasedWalk(acquire, heartbeat);
+
+      heartbeatTick!();
+      await flush();
+      await flush();
+      feed({ distanceMeters: 20, pointCount: 2, routePoints: [{ latitude: 32, longitude: 34, timestamp: 1000 }, { latitude: 32.1, longitude: 34.1, timestamp: 2000 }] });
+
+      expect(useGpsStore.getState()).toMatchObject({ gpsFencingEpoch: null, trackingStatus: 'interrupted', pointCount: 2 });
+    });
+  });
+
   it('attributes a remote GPS session to the target device performer, not the scheduled member', async () => {
     const { useGpsStore } = require('../gpsStore');
     const { repository } = require('../../data');

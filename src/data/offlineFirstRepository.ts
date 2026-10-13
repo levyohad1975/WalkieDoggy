@@ -22,7 +22,7 @@ import { isPermanentSyncError, SyncQueue } from './syncQueue';
 // bottleneck is confirmed fixed by an actual real-device measurement.
 import { perfMark } from '../lib/perfTrace';
 import { dedupeCanonicalWalks } from '../logic/nextWalk';
-import { enqueueWalkLifecycleIntent, listWalkLifecycleIntents, removeWalkLifecycleIntent, updateWalkLifecycleIntent } from './walkLifecycleOperationIds';
+import { enqueueWalkLifecycleIntent, listWalkLifecycleIntents, remapWalkLifecycleIntentWalkId, removeWalkLifecycleIntent, updateWalkLifecycleIntent } from './walkLifecycleOperationIds';
 
 /**
  * The repository the app actually uses. Reads always come from the local
@@ -227,9 +227,19 @@ export class OfflineFirstRepository implements Repository {
         }
         await this.local.saveWalk({ ...confirmed, lifecycleSyncStatus: undefined });
         await removeWalkLifecycleIntent(intent.operationId);
+        if (intent.action === 'start' && confirmed.id !== intent.walkId) {
+          // The server settled this occurrence on a different canonical row.
+          // Later intents queued under the local id (typically the offline
+          // finish) must follow it, both on disk and in this pass.
+          const localWalkId = intent.walkId;
+          await remapWalkLifecycleIntentWalkId(localWalkId, confirmed.id);
+          for (const later of intents) {
+            if (later !== intent && later.state === 'pending' && later.action !== 'start_spontaneous' && later.walkId === localWalkId) later.walkId = confirmed.id;
+          }
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        const permanentConflict = /another active walk|not pending|not in progress|actual walker|family mismatch|operation id reused|profile changed|not authorized|admin required|only assigned member|confirmed substitute|walk not found|walk is not pending|walk is not in progress/i.test(message);
+        const permanentConflict = /another active walk|not pending|not in progress|actual walker|family mismatch|operation id reused|profile changed|not authorized|admin required|only assigned member|confirmed substitute|walk not found|walk is not pending|walk is not in progress|completion time/i.test(message);
         if (permanentConflict) {
           await updateWalkLifecycleIntent(intent.operationId, { state: 'conflict', error: message });
           const stale = intent.action === 'start_spontaneous' ? intent.walk : await this.local.findWalkById(intent.walkId);
