@@ -59,6 +59,7 @@ select public.resolve_duplicate_active_walks_v12(
 do $unauthorized$
 begin
   perform set_config('request.jwt.claim.sub','d0000000-0000-4000-8000-000000000002',true);
+  perform set_config('request.jwt.claim.role','authenticated',true);
   perform set_config('request.jwt.claims','{"sub":"d0000000-0000-4000-8000-000000000002","role":"authenticated"}',true);
   begin
     perform public.resolve_duplicate_active_walks_v12(
