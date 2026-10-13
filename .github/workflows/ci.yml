@@ -80,17 +80,3 @@ jobs:
 
       - name: Run tests
         run: npm test -- --runInBand
-
-      # TEMPORARY DIAGNOSTIC (review branch only): surface failing test names as annotations.
-      - name: Annotate failing tests
-        if: failure()
-        run: |
-          npm test -- --runInBand --json --outputFile=/tmp/jest-result.json >/dev/null 2>&1 || true
-          node -e "
-          const r=require('/tmp/jest-result.json');
-          for (const f of r.testResults) {
-            if (f.status!=='failed') continue;
-            const msg=(f.message||'').replace(/\u001b\[[0-9;]*m/g,'').slice(0,900).replace(/\r?\n/g,'%0A');
-            console.log('::error title=Failed suite '+f.name.split('/src/').pop()+'::'+msg);
-            for (const a of f.assertionResults) if (a.status==='failed') console.log('::error title=Failed test::'+a.fullName.replace(/\n/g,' ')+' -- '+(a.failureMessages[0]||'').replace(/\u001b\[[0-9;]*m/g,'').slice(0,700).replace(/\r?\n/g,'%0A'));
-          }"
