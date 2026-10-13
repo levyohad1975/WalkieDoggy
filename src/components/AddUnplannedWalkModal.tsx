@@ -45,6 +45,8 @@ interface AddUnplannedWalkModalProps {
   onConfirm: (result: UnplannedWalkResult) => void;
   /** Starts a live unplanned walk through the normal start/finish + GPS lifecycle. */
   onStartNow?: () => void | Promise<void>;
+  /** Shows immediate feedback and prevents a second live-start tap while persistence is in flight. */
+  startingNow?: boolean;
   onClose: () => void;
 }
 
@@ -98,6 +100,7 @@ export function AddUnplannedWalkModal({
   onDelete,
   onConfirm,
   onStartNow,
+  startingNow = false,
   onClose,
 }: AddUnplannedWalkModalProps) {
   const isEditing = !!editingWalk;
@@ -179,7 +182,7 @@ export function AddUnplannedWalkModal({
             <RtlText style={styles.subtitle}>{isEditing ? 'עדכון פרטי הטיול' : 'אפשר להתחיל טיול עכשיו או להזין טיול שכבר בוצע'}</RtlText>
 
             {!isEditing && onStartNow ? (
-              <Button label="התחל טיול עכשיו" onPress={() => void onStartNow()} style={styles.startNowButton} />
+              <Button label={startingNow ? 'מתחיל טיול…' : 'התחל טיול עכשיו'} disabled={startingNow} onPress={() => void onStartNow()} style={styles.startNowButton} />
             ) : null}
 
             <RtlText style={styles.label}>מי טייל?</RtlText>

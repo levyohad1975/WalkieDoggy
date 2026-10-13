@@ -58,6 +58,8 @@ interface GpsState {
    * would be a race waiting to happen; the caller already has the full walk.
    */
   stopTracking: (walk: Pick<Walk, 'id' | 'familyId' | 'dogId'>, userId: string | null | undefined) => Promise<WalkGpsSession | null>;
+  /** Discards a provisional watch when walk creation/start fails; never persists points for an unstarted walk. */
+  cancelTracking: (walkId: string) => void;
   /** Loads a walk's already-persisted session (e.g. to show a past walk's distance) without starting any tracking. */
   loadSession: (walkId: string) => Promise<WalkGpsSession | undefined>;
   /** PRD §7's required correction flow: records a family member's confirmed/edited distance — see WalkGpsSession.correctedDistanceMeters' own doc comment for why this, not distanceMeters, then becomes authoritative. */
@@ -81,6 +83,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     // remain explicitly retryable.
     if (current.trackingWalkId === walk.id && current.trackingStatus !== 'timeout' && current.trackingStatus !== 'unavailable' && current.trackingStatus !== 'denied' && current.trackingStatus !== 'interrupted') return;
     const generation = ++startGeneration;
+    const trackingStartedAt = new Date().toISOString();
     // A previous walk's watch left running (shouldn't normally happen —
     // stopTracking() always tears it down — but never leak a subscription
     // across walks if it does).
@@ -119,7 +122,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       return;
     }
     activeWatch = result.handle;
-    set({ permissionStatus: 'granted', trackingStatus: get().pointCount > 0 ? 'active' : result.trackingStatus, trackingStartedAt: new Date().toISOString() });
+    set({ permissionStatus: 'granted', trackingStatus: get().pointCount > 0 ? 'active' : result.trackingStatus, trackingStartedAt });
   },
 
   rebindTrackingWalk: (localWalk, canonicalWalk) => {
@@ -134,6 +137,15 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     activeWatchWalkId = canonicalWalk.id;
     set({ trackingWalkId: canonicalWalk.id });
     return true;
+  },
+
+  cancelTracking: (walkId) => {
+    if (get().trackingWalkId !== walkId || activeWatchWalkId !== walkId) return;
+    startGeneration += 1;
+    activeWatch?.remove();
+    activeWatch = null;
+    activeWatchWalkId = null;
+    set({ trackingWalkId: null, permissionStatus: null, trackingStatus: null, trackingStartedAt: null, distanceMeters: 0, pointCount: 0, routePoints: [] });
   },
 
   stopTracking: async (walk, userId) => {

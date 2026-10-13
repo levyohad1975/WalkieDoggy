@@ -147,6 +147,8 @@ export async function startGpsWatch(
     let startupTimer: ReturnType<typeof setTimeout> | null = null;
     let settled = false;
     let resolveStartup: ((result: GpsWatchStartResult) => void) | null = null;
+    const browserDocument = typeof document !== 'undefined' ? document : null;
+    let visibilityListener: (() => void) | null = null;
     const removeCurrentWatch = () => {
       if (watchId !== null) {
         try { geolocation.clearWatch(watchId); } catch { /* best effort */ }
@@ -159,6 +161,10 @@ export async function startGpsWatch(
         if (retryTimer) clearTimeout(retryTimer);
         if (startupTimer) clearTimeout(startupTimer);
         removeCurrentWatch();
+        if (browserDocument && visibilityListener) {
+          browserDocument.removeEventListener('visibilitychange', visibilityListener);
+          visibilityListener = null;
+        }
       },
     };
     const finishStartup = (permissionStatus: GpsPermissionStatus, trackingStatus: GpsTrackingStatus) => {
@@ -230,7 +236,23 @@ export async function startGpsWatch(
     };
     onStatus('waiting');
     const startup = new Promise<GpsWatchStartResult>((resolve) => { resolveStartup = resolve; });
-    startupTimer = setTimeout(() => finishStartup('unavailable', 'timeout'), 18_000);
+    // A slow first fix is not a permission failure. Resolve startup so the
+    // walk UI can report timeout, but keep this same watch alive: iPhone
+    // Safari may deliver its first position after its per-request timeout.
+    startupTimer = setTimeout(() => {
+      onStatus('timeout');
+      finishStartup('granted', 'timeout');
+    }, 18_000);
+    if (browserDocument) {
+      visibilityListener = () => {
+        if (removed || !settled || browserDocument.visibilityState !== 'visible') return;
+        // iPhone Safari can suspend geolocation callbacks while backgrounded.
+        // Reattach on foreground while retaining this watch's accumulator.
+        removeCurrentWatch();
+        startWatch();
+      };
+      browserDocument.addEventListener('visibilitychange', visibilityListener);
+    }
     startWatch();
     return startup;
   }
@@ -273,8 +295,9 @@ export async function startGpsWatch(
     if (!hasFix) {
       firstFixTimer = setTimeout(() => {
         if (removed || hasFix) return;
+        // Keep the subscription alive. A late first position should recover
+        // this session without requiring a second tap or losing its route.
         onStatus('timeout');
-        handle.remove();
       }, 18_000);
     }
     return { handle, permissionStatus: 'granted', trackingStatus: hasFix ? 'active' : 'waiting' };

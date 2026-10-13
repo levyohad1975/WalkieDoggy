@@ -129,6 +129,8 @@ interface ScheduleState {
    */
   startUnplannedWalk: (familyId: string, dogId: string, userId: string) => Promise<boolean>;
   isStartingUnplannedWalk: boolean;
+  /** Walk IDs with an authoritative start request in flight; used to disable duplicate taps. */
+  startingWalkIds: string[];
   /**
    * Section 2: edits an existing unplanned/spontaneous walk IN PLACE — same
    * record, never a duplicate. `patch` may include any subset of the fields
@@ -421,6 +423,8 @@ async function loadScheduleForFamily(
   }
 }
 
+const startWalkPromises = new Map<string, Promise<boolean>>();
+
 export const useScheduleStore = create<ScheduleState>((set, get) => ({
   rules: [],
   entries: [],
@@ -429,6 +433,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   error: null,
   actionError: null,
   isStartingUnplannedWalk: false,
+  startingWalkIds: [],
 
   load: async (familyId: string): Promise<boolean> => {
     // BUG FIX (duplicate schedule entries/walks): load() is called from
@@ -876,7 +881,11 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     }));
   },
 
-  startWalk: async (walkId: string, options: { startGps?: boolean; remoteActivation?: boolean } = {}) => {
+  startWalk: (walkId: string, options: { startGps?: boolean; remoteActivation?: boolean } = {}) => {
+    const inFlight = startWalkPromises.get(walkId);
+    if (inFlight) return inFlight;
+    set((s) => ({ startingWalkIds: s.startingWalkIds.includes(walkId) ? s.startingWalkIds : [...s.startingWalkIds, walkId] }));
+    const operation = (async () => {
     if (!guardTestModeMutation()) return false;
     const walk = get().walks.find((w) => w.id === walkId);
     if (!walk) return false;
@@ -914,21 +923,27 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     // through to that normal path instead of being hard-blocked here. Any
     // OTHER recorded code (RLS rejection, a business-rule raise, etc.) is
     // not something id-reconciliation can fix, so those still stop here.
-    const startConflict = await repository.getConflictForWalk?.(walkId);
-    if (startConflict && startConflict.code !== '23505') {
-      set({
-        actionError: appendRawDiagnostic(
-          'הטיול הזה לא נשמר בהצלחה בשרת בעבר ולכן אי אפשר להתחיל אותו. רעננו את המסך ונסו שוב — אם זה חוזר, יש לדווח לתמיכה.',
-          { message: startConflict.message, code: startConflict.code },
-          { walkId, conflictFailedAt: startConflict.failedAt }
-        ),
-      });
-      return false;
-    }
     try {
+      const startConflict = await repository.getConflictForWalk?.(walkId);
+      if (startConflict && startConflict.code !== '23505') {
+        set({
+          actionError: appendRawDiagnostic(
+            'הטיול הזה לא נשמר בהצלחה בשרת בעבר ולכן אי אפשר להתחיל אותו. רעננו את המסך ונסו שוב — אם זה חוזר, יש לדווח לתמיכה.',
+            { message: startConflict.message, code: startConflict.code },
+            { walkId, conflictFailedAt: startConflict.failedAt }
+          ),
+        });
+        return false;
+      }
       let updated: Walk;
       if (repository.startWalk) updated = await repository.startWalk(walkId);
       else updated = { ...walk, status: 'in_progress', startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      // Some remote activation/start responses omit started_at even when the
+      // transition succeeded. Keep the active card timer moving from the
+      // acknowledgement time instead of rendering a permanent 00:00.
+      if (updated.status === 'in_progress' && !updated.startedAt) {
+        updated = { ...updated, startedAt: new Date().toISOString() };
+      }
       set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
       // Home starts the foreground GPS watch in the original tap handler,
       // before this server-authoritative RPC. OfflineFirstRepository may
@@ -938,7 +953,12 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       if (updated.id !== walk.id) {
         useGpsStore.getState().rebindTrackingWalk(walk, updated);
       }
-      await cancelWalkNotifications(walkId);
+      // Notification cleanup is secondary to the authoritative walk start.
+      // A local notification adapter failure must not make Home stop the GPS
+      // watch or report that an already-started walk failed.
+      void cancelWalkNotifications(walkId).catch((error) => {
+        console.warn('[startWalk] notification cleanup failed', { walkId, error });
+      });
       // Phase 4 (GPS foundation, PRD §7): best-effort, fire-and-forget —
       // GPS is assistive, never a precondition for the walk lifecycle
       // itself (permission denial/unavailability must never fail or delay
@@ -965,6 +985,13 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       set({ actionError: shown });
       return false;
     }
+    })();
+    const tracked = operation.finally(() => {
+      startWalkPromises.delete(walkId);
+      set((s) => ({ startingWalkIds: s.startingWalkIds.filter((id) => id !== walkId) }));
+    });
+    startWalkPromises.set(walkId, tracked);
+    return tracked;
   },
 
   finishWalk: async (walkId: string, completedByUserId: string, details: WalkCompletionDetails = {}) => {
@@ -976,11 +1003,19 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       if (repository.finishWalk) updated = await repository.finishWalk(walkId, completedByUserId, details);
       else updated = markWalkDone(walk, completedByUserId, details);
       set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
-      await cancelWalkNotifications(walkId);
-      // Best-effort, mirrors startWalk above — stops tracking (a no-op if
-      // this walk was never being tracked) and persists whatever distance
-      // was captured.
-      void useGpsStore.getState().stopTracking(updated, completedByUserId);
+      // Notification cleanup is secondary; it must never skip the GPS
+      // finalization after the server has already completed the walk.
+      void cancelWalkNotifications(walkId).catch((error) => {
+        console.warn('[finishWalk] notification cleanup failed', { walkId, error });
+      });
+      // Stop and persist the captured route before returning success. The
+      // repository writes locally first and queues remote retries offline.
+      try {
+        await useGpsStore.getState().stopTracking(updated, completedByUserId);
+      } catch (error) {
+        console.error('[finishWalk] GPS session persistence failed', { walkId, error });
+        set({ actionError: 'הטיול הסתיים, אך לא הצלחנו לשמור את נתוני ה-GPS. הנתונים נשארו במכשיר — נסו לרענן ולדווח לתמיכה אם הבעיה חוזרת.' });
+      }
       return true;
     } catch (e) {
       set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו לסיים את הטיול') });
@@ -1225,13 +1260,18 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     // optimistic update/rollback for the pending->in_progress step, so
     // this action only owns getting the new row to exist at all.
       set((s) => ({ walks: [...s.walks, walk], actionError: null }));
+      // Begin the foreground watch synchronously in the original tap stack
+      // so Safari can honor its gesture-bound geolocation permission flow.
+      // GPS is provisional until the authoritative walk start succeeds.
+      void useGpsStore.getState().startTracking(walk).catch(() => undefined);
       try {
         await repository.saveWalk(walk);
       } catch (e) {
+        useGpsStore.getState().cancelTracking(walk.id);
         set((s) => ({ walks: s.walks.filter((w) => w.id !== walk.id), actionError: 'לא הצלחנו להתחיל את הטיול' }));
         return false;
       }
-      const started = await get().startWalk(walk.id);
+      const started = await get().startWalk(walk.id, { startGps: false });
       if (!started) {
       // startWalk() already set its own actionError (e.g. offline —
       // startWalk/finishWalk are server-authoritative RPCs with no blind
@@ -1246,6 +1286,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
           // Already-surfaced actionError from startWalk() above stands.
         }
         set((s) => ({ walks: s.walks.filter((w) => w.id !== walk.id) }));
+        useGpsStore.getState().cancelTracking(walk.id);
       }
       return started;
     } finally {

@@ -37,6 +37,8 @@ interface NextWalkCardProps {
   onStartWalk?: () => void;
   /** Planned walks unlock shortly before their scheduled time. */
   startWalkDisabled?: boolean;
+  /** Prevents duplicate starts while the authoritative walk transition is pending. */
+  startWalkPending?: boolean;
   startWalkAvailableLabel?: string;
   onEndWalk?: () => void;
   activeStartedAt?: string | null;
@@ -104,6 +106,7 @@ export function NextWalkCard({
   onMarkDone,
   onStartWalk,
   startWalkDisabled = false,
+  startWalkPending = false,
   startWalkAvailableLabel,
   onEndWalk,
   activeStartedAt,
@@ -325,11 +328,11 @@ export function NextWalkCard({
       ) : onStartWalk ? (
         <>
           <Button
-            label={tone === 'dashboard' ? 'התחל טיול' : 'התחל טיול עכשיו'}
+            label={startWalkPending ? 'מתחיל טיול…' : tone === 'dashboard' ? 'התחל טיול' : 'התחל טיול עכשיו'}
             icon="▶"
             onPress={onStartWalk}
-            disabled={startWalkDisabled}
-            accessibilityHint={startWalkDisabled ? startWalkAvailableLabel : undefined}
+            disabled={startWalkDisabled || startWalkPending}
+            accessibilityHint={startWalkPending ? 'הבקשה להתחלת הטיול נשלחת' : startWalkDisabled ? startWalkAvailableLabel : undefined}
             style={tone === 'dashboard' ? styles.dashboardStartButton : styles.doneButton}
             shrinkToFit
           />

@@ -132,20 +132,57 @@ describe('gpsTracking', () => {
       expect(clearWatch).toHaveBeenCalledWith(42);
     });
 
-    it('bounds a Safari watch that never calls either callback', async () => {
+    it('keeps a Safari watch alive after a slow first fix and accepts the delayed position', async () => {
       jest.useFakeTimers();
       const { Platform } = require('react-native');
       platformOsDescriptor = Object.getOwnPropertyDescriptor(Platform, 'OS');
       Object.defineProperty(Platform, 'OS', { configurable: true, value: 'web' });
-      const watchPosition = jest.fn(() => 7);
-      Object.defineProperty(global, 'navigator', { configurable: true, value: { geolocation: { getCurrentPosition: jest.fn(), watchPosition, clearWatch: jest.fn() } } });
+      let succeed!: (position: any) => void;
+      const clearWatch = jest.fn();
+      const watchPosition = jest.fn((success: (position: any) => void) => { succeed = success; return 7; });
+      Object.defineProperty(global, 'navigator', { configurable: true, value: { geolocation: { getCurrentPosition: jest.fn(), watchPosition, clearWatch } } });
       const { startGpsWatch } = require('../gpsTracking');
 
-      const starting = startGpsWatch(jest.fn());
+      const updates: any[] = [];
+      const starting = startGpsWatch((acc: unknown) => updates.push(acc));
       await jest.advanceTimersByTimeAsync(18_000);
-      await expect(starting).resolves.toMatchObject({ handle: null, permissionStatus: 'unavailable', trackingStatus: 'timeout' });
+      const result = await starting;
+      expect(result).toMatchObject({ permissionStatus: 'granted', trackingStatus: 'timeout' });
+      expect(result.handle).not.toBeNull();
       expect(watchPosition).toHaveBeenCalledTimes(1);
+      expect(clearWatch).not.toHaveBeenCalled();
+      succeed({ coords: { latitude: 32.08, longitude: 34.78, accuracy: 5 }, timestamp: 1 });
+      expect(updates).toHaveLength(1);
+      result.handle!.remove();
+      expect(clearWatch).toHaveBeenCalledWith(7);
       jest.useRealTimers();
+    });
+
+    it('restarts the browser watch on foreground while preserving accumulated route and distance', async () => {
+      const { Platform } = require('react-native');
+      platformOsDescriptor = Object.getOwnPropertyDescriptor(Platform, 'OS');
+      Object.defineProperty(Platform, 'OS', { configurable: true, value: 'web' });
+      const callbacks: Array<(position: any) => void> = [];
+      const clearWatch = jest.fn();
+      const watchPosition = jest.fn((success: (position: any) => void) => { callbacks.push(success); return callbacks.length; });
+      Object.defineProperty(global, 'navigator', { configurable: true, value: { geolocation: { watchPosition, clearWatch } } });
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+      const { startGpsWatch } = require('../gpsTracking');
+      const updates: any[] = [];
+      const starting = startGpsWatch((acc: unknown) => updates.push(acc));
+      callbacks[0]({ coords: { latitude: 32.08, longitude: 34.78, accuracy: 5 }, timestamp: 1 });
+      const result = await starting;
+
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(watchPosition).toHaveBeenCalledTimes(2);
+      expect(clearWatch).toHaveBeenCalledWith(1);
+      callbacks[1]({ coords: { latitude: 32.081, longitude: 34.78, accuracy: 5 }, timestamp: 2 });
+      expect(updates.at(-1).pointCount).toBe(2);
+
+      result.handle!.remove();
+      expect(clearWatch).toHaveBeenCalledWith(2);
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(watchPosition).toHaveBeenCalledTimes(2);
     });
 
     it('reports permission denial from the browser watch without leaking a subscription', async () => {
@@ -250,17 +287,22 @@ describe('gpsTracking', () => {
     it('reports a bounded first-fix timeout on the native watch too', async () => {
       jest.useFakeTimers();
       const remove = jest.fn();
+      let feedPoint!: (location: any) => void;
       const mocks = mockLocationModule({
         getForegroundPermissionsAsync: jest.fn().mockResolvedValue({ granted: true }),
-        watchPositionAsync: jest.fn().mockResolvedValue({ remove }),
+        watchPositionAsync: jest.fn().mockImplementation(async (_options: unknown, callback: (location: any) => void) => { feedPoint = callback; return { remove }; }),
       });
       const statuses: string[] = [];
       const { startGpsWatch } = require('../gpsTracking');
       const result = await startGpsWatch(jest.fn(), (status: string) => statuses.push(status));
       await jest.advanceTimersByTimeAsync(18_000);
       expect(statuses).toContain('timeout');
-      expect(remove).toHaveBeenCalledTimes(1);
+      expect(remove).not.toHaveBeenCalled();
+      feedPoint({ coords: { latitude: 32.08, longitude: 34.78, accuracy: 5 }, timestamp: 1 });
+      expect(statuses).toContain('active');
+      expect(remove).not.toHaveBeenCalled();
       result.handle!.remove();
+      expect(remove).toHaveBeenCalledTimes(1);
       expect(mocks.watchPositionAsync).toHaveBeenCalledTimes(1);
       jest.useRealTimers();
     });

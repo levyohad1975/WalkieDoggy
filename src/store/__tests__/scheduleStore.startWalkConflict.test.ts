@@ -38,13 +38,20 @@ import type { Walk } from '../../types';
 jest.mock('../../data', () => ({
   repository: {
     startWalk: jest.fn(),
+    finishWalk: jest.fn(),
     getConflictForWalk: jest.fn(),
     getNotificationSettings: jest.fn().mockResolvedValue([]),
   },
 }));
+jest.mock('../../notifications/notificationService', () => ({
+  cancelWalkNotifications: jest.fn().mockResolvedValue(undefined),
+  reconcileWalkNotifications: jest.fn().mockResolvedValue(undefined),
+  scheduleWalkNotifications: jest.fn().mockResolvedValue(undefined),
+}));
 
 const mockedRepository = repository as unknown as {
   startWalk: jest.Mock;
+  finishWalk: jest.Mock;
   getConflictForWalk: jest.Mock;
 };
 
@@ -117,6 +124,74 @@ describe('scheduleStore.startWalk — surfaces the real reason instead of a gene
     expect(started).toBe(true);
     expect(mockedRepository.startWalk).toHaveBeenCalledWith('walk-x');
     expect(useScheduleStore.getState().walks[0].status).toBe('in_progress');
+  });
+
+  it('keeps a successful walk start successful when local notification cleanup rejects', async () => {
+    mockedRepository.getConflictForWalk.mockResolvedValue(undefined);
+    mockedRepository.startWalk.mockResolvedValue({ ...fakeWalk(), status: 'in_progress', startedAt: new Date().toISOString() });
+    const notifications = require('../../notifications/notificationService');
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    notifications.cancelWalkNotifications.mockRejectedValueOnce(new Error('notification storage unavailable'));
+
+    const started = await useScheduleStore.getState().startWalk('walk-x');
+    expect(started).toBe(true);
+    expect(useScheduleStore.getState().walks[0].status).toBe('in_progress');
+  });
+
+  it('keeps a successful walk start successful when local notification cleanup rejects', async () => {
+    mockedRepository.getConflictForWalk.mockResolvedValue(undefined);
+    mockedRepository.startWalk.mockResolvedValue({ ...fakeWalk(), status: 'in_progress', startedAt: new Date().toISOString() });
+    const notifications = require('../../notifications/notificationService');
+    const warnings = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    notifications.cancelWalkNotifications.mockRejectedValueOnce(new Error('notification storage unavailable'));
+
+    const started = await useScheduleStore.getState().startWalk('walk-x');
+    expect(started).toBe(true);
+    expect(useScheduleStore.getState().walks[0].status).toBe('in_progress');
+    await Promise.resolve();
+    warnings.mockRestore();
+  });
+
+  it('finalizes GPS after a successful walk completion even if notification cleanup rejects', async () => {
+    const completed = { ...fakeWalk({ status: 'in_progress', startedAt: new Date().toISOString() }), status: 'done' as const };
+    useScheduleStore.setState({ walks: [completed], actionError: null });
+    mockedRepository.finishWalk.mockResolvedValue(completed);
+    const notifications = require('../../notifications/notificationService');
+    const warnings = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const gps = useGpsStore.getState();
+    const stopSpy = jest.spyOn(gps, 'stopTracking').mockResolvedValue(null);
+    notifications.cancelWalkNotifications.mockRejectedValueOnce(new Error('notification storage unavailable'));
+
+    const finished = await useScheduleStore.getState().finishWalk('walk-x', 'user-a');
+    expect(finished).toBe(true);
+    expect(stopSpy).toHaveBeenCalledWith(completed, 'user-a');
+    await Promise.resolve();
+    warnings.mockRestore();
+    stopSpy.mockRestore();
+  });
+
+  it('supplies a timer start when the successful server response omits startedAt', async () => {
+    mockedRepository.getConflictForWalk.mockResolvedValue(undefined);
+    mockedRepository.startWalk.mockResolvedValue({ ...fakeWalk(), status: 'in_progress', startedAt: undefined });
+    const started = await useScheduleStore.getState().startWalk('walk-x');
+    expect(started).toBe(true);
+    expect(useScheduleStore.getState().walks[0].startedAt).toBeTruthy();
+  });
+
+  it('coalesces repeated start taps into one authoritative request and keeps the pending state until it settles', async () => {
+    let release!: (walk: Walk) => void;
+    mockedRepository.getConflictForWalk.mockResolvedValue(undefined);
+    mockedRepository.startWalk.mockImplementationOnce(() => new Promise<Walk>((resolve) => { release = resolve; }));
+
+    const first = useScheduleStore.getState().startWalk('walk-x');
+    const second = useScheduleStore.getState().startWalk('walk-x');
+    expect(mockedRepository.startWalk).toHaveBeenCalledTimes(0);
+    expect(useScheduleStore.getState().startingWalkIds).toContain('walk-x');
+    await Promise.resolve();
+    expect(mockedRepository.startWalk).toHaveBeenCalledTimes(1);
+    release({ ...fakeWalk(), status: 'in_progress', startedAt: new Date().toISOString() });
+    await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
+    expect(useScheduleStore.getState().startingWalkIds).not.toContain('walk-x');
   });
 
   it('proceeds to call start_walk normally when there is no recorded conflict', async () => {

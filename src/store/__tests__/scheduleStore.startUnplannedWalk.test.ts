@@ -98,6 +98,24 @@ describe('scheduleStore.startUnplannedWalk', () => {
     delete (repository as unknown as { startWalk?: unknown }).startWalk;
   });
 
+  it('starts GPS synchronously before the first persistence await so iPhone Safari keeps the tap gesture', async () => {
+    await useScheduleStore.getState().load(FAMILY_ID);
+    const { repository } = require('../../data');
+    const { useGpsStore } = require('../gpsStore');
+    const gpsSpy = jest.spyOn(useGpsStore.getState(), 'startTracking').mockResolvedValue(undefined);
+    let releaseSave!: () => void;
+    const pendingSave = new Promise<void>((resolve) => { releaseSave = resolve; });
+    jest.spyOn(repository, 'saveWalk').mockReturnValueOnce(pendingSave);
+
+    const starting = useScheduleStore.getState().startUnplannedWalk(FAMILY_ID, 'dog-topi', 'user-eidan');
+    expect(gpsSpy).toHaveBeenCalledTimes(1);
+    expect(repository.saveWalk).toHaveBeenCalledTimes(1);
+    releaseSave();
+    await expect(starting).resolves.toBe(true);
+    expect(useScheduleStore.getState().walks.filter((walk) => walk.isUnplanned && walk.status === 'in_progress')).toHaveLength(1);
+    gpsSpy.mockRestore();
+  });
+
   it('ignores a second tap while the first spontaneous-walk save is still in flight', async () => {
     await useScheduleStore.getState().load(FAMILY_ID);
     const { repository } = require('../../data');

@@ -143,6 +143,8 @@ export function HomeScreen() {
     loading: scheduleLoading,
     error: scheduleError,
     actionError,
+    isStartingUnplannedWalk,
+    startingWalkIds,
     load: loadSchedule,
     startWalk,
     finishWalk,
@@ -1171,6 +1173,7 @@ export function HomeScreen() {
                 : undefined
             }
             startWalkDisabled={nextWalkStartGate.disabled}
+            startWalkPending={startingWalkIds.includes(nextWalk.id)}
             startWalkAvailableLabel={nextWalkStartGate.label}
             onEndWalk={
               nextWalk.status === 'in_progress' && (effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId)
@@ -1547,6 +1550,7 @@ export function HomeScreen() {
         // to themselves — only a real Admin may pick someone else
         // (requirement 5).
         canChooseUser={effectiveRole === 'admin'}
+        startingNow={isStartingUnplannedWalk}
         onStartNow={async () => {
           if (!dog) {
             useScheduleStore.setState({ actionError: 'עדיין טוענים את פרטי הכלב/ה — נסו שוב בעוד רגע' });
