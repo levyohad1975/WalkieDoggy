@@ -20,6 +20,8 @@ import type { GpsTrackingStatus } from '../lib/gpsTracking';
 
 interface NextWalkCardProps {
   walk: Walk;
+  /** IANA timezone that owns the family schedule. */
+  scheduleTimezone?: string;
   responsible?: FamilyUser;
   currentUserId: string;
   dogName: string;
@@ -91,6 +93,7 @@ interface NextWalkCardProps {
  */
 export function NextWalkCard({
   walk,
+  scheduleTimezone,
   responsible,
   currentUserId,
   dogName,
@@ -121,7 +124,7 @@ export function NextWalkCard({
   primaryLabel,
   tone = 'default',
 }: NextWalkCardProps) {
-  const overdue = isOverdue(walk);
+  const overdue = isOverdue(walk, new Date(), scheduleTimezone);
   // Batch 2, requirement 7 ("walk requires attention" in-app state) — see
   // src/logic/walkAttention.ts for why this is a pure, derived read rather
   // than any new persisted flag.
@@ -275,7 +278,7 @@ export function NextWalkCard({
             <RtlText style={styles.dashboardDate}>{walkDateContextLabel(walk.date)}</RtlText>
           </View>
           <View style={[styles.dashboardCountdownColumn, isActive && styles.liveMapColumn]}>
-            {isActive ? <RoutePreview live session={{ routePoints: liveRoutePoints ?? [] } as import('../types').WalkGpsSession} /> : !overdue ? <Countdown target={walkDateTime(walk)} compact /> : null}
+            {isActive ? <RoutePreview live session={{ routePoints: liveRoutePoints ?? [] } as import('../types').WalkGpsSession} /> : !overdue ? <Countdown target={walkDateTime(walk, scheduleTimezone)} compact /> : null}
           </View>
         </View>
       ) : (
@@ -302,7 +305,7 @@ export function NextWalkCard({
       {overdue ? (
         <RtlText style={[styles.relative, styles.relativeOverdue]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
           {requiresAttention ? '🚨 דורש תשומת לב · ' : 'ממתין לעדכון · '}
-          {relativeTimeLabel(walk)}
+          {relativeTimeLabel(walk, new Date(), scheduleTimezone)}
         </RtlText>
       ) : null}
 

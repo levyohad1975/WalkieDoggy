@@ -1,67 +1,162 @@
 ﻿import type { Walk } from '../types';
 import { localDateOnly } from './dateFormat';
 
-/**
- * Combines a walk's date + "HH:mm" scheduled time into a Date object (local time).
- */
-export function walkDateTime(walk: Pick<Walk, 'date' | 'scheduledTime'>): Date {
-  const [h, m] = walk.scheduledTime.split(':').map(Number);
-  const [y, mo, d] = walk.date.split('-').map(Number);
-  return new Date(y, mo - 1, d, h, m, 0, 0);
+type FamilyClock = { date: string; time: string };
+
+function clockParts(date: Date, timeZone?: string): FamilyClock {
+  if (timeZone) {
+    try {
+      const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hourCycle: 'h23',
+      }).formatToParts(date);
+      const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+      return {
+        date: `${values.year}-${values.month}-${values.day}`,
+        time: `${values.hour}:${values.minute}`,
+      };
+    } catch {
+      // Older local/demo family records may not have a valid IANA timezone.
+      // Their fallback is the device's local calendar, matching legacy behavior.
+    }
+  }
+  return {
+    date: localDateOnly(date),
+    time: `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`,
+  };
+}
+
+function wallClockDate(date: string, time: string, timeZone?: string): Date {
+  const [year, month, day] = date.split('-').map(Number);
+  const [hour, minute] = time.split(':').map(Number);
+  if (![year, month, day, hour, minute].every(Number.isFinite)) return new Date(Number.NaN);
+  if (!timeZone) return new Date(year, month - 1, day, hour, minute, 0, 0);
+
+  const targetAsUtc = Date.UTC(year, month - 1, day, hour, minute);
+  let candidate = targetAsUtc;
+  try {
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    });
+    const seen = new Set<number>();
+    let closestAfter: { timestamp: number; difference: number } | undefined;
+    for (let attempt = 0; attempt < 6 && !seen.has(candidate); attempt += 1) {
+      seen.add(candidate);
+      const values = Object.fromEntries(formatter.formatToParts(new Date(candidate)).map((part) => [part.type, part.value]));
+      const representedAsUtc = Date.UTC(
+        Number(values.year), Number(values.month) - 1, Number(values.day),
+        Number(values.hour), Number(values.minute)
+      );
+      const adjustment = targetAsUtc - representedAsUtc;
+      if (adjustment === 0) return new Date(candidate);
+      // If the requested wall time falls inside a spring-forward gap, choose
+      // the first valid local minute after it instead of oscillating across
+      // the gap or producing a time before the requested schedule.
+      if (representedAsUtc > targetAsUtc) {
+        const difference = representedAsUtc - targetAsUtc;
+        if (!closestAfter || difference < closestAfter.difference) closestAfter = { timestamp: candidate, difference };
+      }
+      candidate += adjustment;
+    }
+    return new Date(closestAfter?.timestamp ?? candidate);
+  } catch {
+    // Invalid/legacy timezone falls back to the device-local wall clock.
+    return new Date(year, month - 1, day, hour, minute, 0, 0);
+  }
+}
+
+function compareScheduledWalks(a: Walk, b: Walk): number {
+  return a.date.localeCompare(b.date)
+    || a.scheduledTime.localeCompare(b.scheduledTime)
+    || (a.scheduleEntryId ?? '').localeCompare(b.scheduleEntryId ?? '')
+    || a.id.localeCompare(b.id);
+}
+
+function hasValidScheduleTime(walk: Walk): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(walk.date)
+    && /^\d{2}:\d{2}$/.test(walk.scheduledTime)
+    && !walk.isUnplanned;
 }
 
 /**
- * Finds the "next walk" to surface on the Home screen:
- * the most recently scheduled unresolved overdue walk first, otherwise the
- * earliest future pending walk. When several walks were missed, the latest
- * missed occurrence is the current actionable context; older missed walks
- * must not make the red card count lateness indefinitely.
+ * Combines a walk's family-local date and HH:mm schedule time into an instant.
+ * If no family timezone is available, the device's local timezone is used.
  */
-export function computeNextWalk(walks: Walk[], now: Date = new Date()): Walk | undefined {
-  const active = walks.find((w) => w.status === 'in_progress');
-  if (active) return active;
-
-  const pending = walks.filter((w) => w.status === 'pending');
-  const overdue = pending.filter((w) => walkDateTime(w).getTime() < now.getTime());
-  const candidates = overdue.length ? overdue : pending.filter((w) => walkDateTime(w).getTime() >= now.getTime());
-  if (candidates.length === 0) return undefined;
-  return [...candidates].sort((a, b) => {
-    const delta = walkDateTime(a).getTime() - walkDateTime(b).getTime();
-    return overdue.length ? -delta : delta;
-  })[0];
+export function walkDateTime(walk: Pick<Walk, 'date' | 'scheduledTime'>, timeZone?: string): Date {
+  return wallClockDate(walk.date, walk.scheduledTime, timeZone);
 }
 
 /**
- * Finalizes stale planned walks once a later planned occurrence for the same
- * dog has become due. The newest due occurrence stays actionable; any older
- * pending occurrence is no longer an open question and becomes "skipped".
- *
- * In-progress walks are never touched. Unplanned walks neither trigger nor
- * receive automatic skipping.
+ * Selects today's current scheduled slot, then the next unresolved future
+ * slot. A due slot remains the primary card only until a later scheduled
+ * time arrives. Resolved and older pending walks remain persisted and are
+ * never silently changed by selection.
  */
-export function finalizeSupersededPendingWalks(walks: Walk[], now: Date = new Date()): Walk[] {
-  const latestDueByDog = new Map<string, number>();
+export function computeNextWalk(walks: Walk[], now: Date = new Date(), timeZone?: string): Walk | undefined {
+  const today = clockParts(now, timeZone);
+  const unresolved = walks.filter(
+    (walk) => hasValidScheduleTime(walk) && (walk.status === 'pending' || walk.status === 'in_progress')
+  );
+  const todayWalks = unresolved.filter((walk) => walk.date === today.date);
 
-  for (const walk of walks) {
-    if (walk.isUnplanned) continue;
-    const scheduledAt = walkDateTime(walk).getTime();
-    if (scheduledAt > now.getTime()) continue;
-    const latest = latestDueByDog.get(walk.dogId);
-    if (latest == null || scheduledAt > latest) latestDueByDog.set(walk.dogId, scheduledAt);
+  const dueTimes = walks
+    .filter((walk) => hasValidScheduleTime(walk) && walk.date === today.date && walk.scheduledTime <= today.time)
+    .map((walk) => walk.scheduledTime)
+    .sort();
+  const latestDueTime = dueTimes[dueTimes.length - 1];
+
+  if (latestDueTime) {
+    const currentSlot = todayWalks
+      .filter((walk) => walk.scheduledTime === latestDueTime)
+      .sort(compareScheduledWalks);
+    if (currentSlot.length > 0) return currentSlot[0];
   }
 
-  let changed = false;
-  const finalized = walks.map((walk) => {
-    if (walk.isUnplanned || walk.status !== 'pending') return walk;
-    const latestDue = latestDueByDog.get(walk.dogId);
-    if (latestDue == null || walkDateTime(walk).getTime() >= latestDue) return walk;
-    changed = true;
-    return { ...walk, status: 'skipped' as const, updatedAt: now.toISOString() };
-  });
-
-  return changed ? finalized : walks;
+  const future = unresolved
+    .filter((walk) => walk.date > today.date || (walk.date === today.date && walk.scheduledTime > today.time))
+    .sort(compareScheduledWalks);
+  return future[0];
 }
 
+/**
+ * Returns how long Home can wait before its next time-based selection update.
+ * Includes each scheduled slot, the next family-local midnight, and a minute
+ * boundary for live countdown copy. The caller recalculates on schedule or
+ * family changes and when the app returns to the foreground.
+ */
+export function nextWalkSelectionRefreshDelayMs(
+  walks: Walk[],
+  now: Date = new Date(),
+  timeZone?: string
+): number {
+  const today = clockParts(now, timeZone).date;
+  const [year, month, day] = today.split('-').map(Number);
+  const nextDay = new Date(Date.UTC(year, month - 1, day + 1));
+  const nextDate = `${nextDay.getUTCFullYear()}-${String(nextDay.getUTCMonth() + 1).padStart(2, '0')}-${String(nextDay.getUTCDate()).padStart(2, '0')}`;
+  const boundaries = [
+    now.getTime() + (60_000 - (now.getTime() % 60_000)),
+    wallClockDate(nextDate, '00:00', timeZone).getTime(),
+    ...walks
+      .filter(hasValidScheduleTime)
+      .map((walk) => walkDateTime(walk, timeZone).getTime())
+      .filter((timestamp) => timestamp > now.getTime()),
+  ].filter((timestamp) => Number.isFinite(timestamp) && timestamp > now.getTime());
+
+  const nextBoundary = Math.min(...boundaries);
+  return Math.max(1, Math.ceil(nextBoundary - now.getTime()));
+}
 /**
  * P0 real-device fix — after a scheduled occurrence's Walk was legitimately
  * finished (status 'done'), the SAME occurrence reappeared as a second,
@@ -141,12 +236,12 @@ export function computeLastWalk(walks: Walk[], now: Date = new Date()): Walk | u
   )[0];
 }
 
-export function isOverdue(walk: Walk, now: Date = new Date()): boolean {
-  return walk.status === 'pending' && walkDateTime(walk).getTime() < now.getTime();
+export function isOverdue(walk: Walk, now: Date = new Date(), timeZone?: string): boolean {
+  return walk.status === 'pending' && walkDateTime(walk, timeZone).getTime() < now.getTime();
 }
 
-export function minutesUntil(walk: Pick<Walk, 'date' | 'scheduledTime'>, now: Date = new Date()): number {
-  return Math.round((walkDateTime(walk).getTime() - now.getTime()) / 60000);
+export function minutesUntil(walk: Pick<Walk, 'date' | 'scheduledTime'>, now: Date = new Date(), timeZone?: string): number {
+  return Math.round((walkDateTime(walk, timeZone).getTime() - now.getTime()) / 60000);
 }
 
 function pluralHours(hours: number): string {
@@ -180,8 +275,8 @@ export function formatDuration(totalMinutes: number): string {
  * the visual "overdue" treatment itself (color, badge) is applied by the
  * caller via isOverdue(), not by this label.
  */
-export function relativeTimeLabel(walk: Walk, now: Date = new Date()): string {
-  const diff = minutesUntil(walk, now);
+export function relativeTimeLabel(walk: Walk, now: Date = new Date(), timeZone?: string): string {
+  const diff = minutesUntil(walk, now, timeZone);
   if (diff > 0) return `עוד ${formatDuration(diff)}`;
   if (diff < 0) return `לפני ${formatDuration(Math.abs(diff))}`;
   return 'עכשיו';

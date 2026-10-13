@@ -117,6 +117,43 @@ describe('scheduleStore — a genuinely pending later occurrence today is never 
     expect(next?.scheduledTime).toBe('14:00');
   });
 
+  it('preserves an older unresolved walk after a later scheduled walk becomes due', async () => {
+    await useScheduleStore.getState().load(FAMILY_ID);
+    const { repository } = require('../../data');
+    const template = useScheduleStore.getState().walks[0];
+    const date = '2026-10-05';
+    const now = new Date('2026-10-05T14:17:00');
+    jest.setSystemTime(now);
+
+    const olderEntry: ScheduleEntry = {
+      id: 'entry-preserved-older', familyId: FAMILY_ID, dogId: template.dogId,
+      date, time: '08:00', responsibleUserId: template.responsibleUserId, createdAt: now.toISOString(),
+    };
+    const currentEntry: ScheduleEntry = {
+      id: 'entry-preserved-current', familyId: FAMILY_ID, dogId: template.dogId,
+      date, time: '14:00', responsibleUserId: template.responsibleUserId, createdAt: now.toISOString(),
+    };
+    await repository.addScheduleEntries([olderEntry, currentEntry]);
+
+    const older: Walk = {
+      id: 'walk-preserved-older', familyId: FAMILY_ID, scheduleEntryId: olderEntry.id, dogId: olderEntry.dogId,
+      date, scheduledTime: '08:00', responsibleUserId: olderEntry.responsibleUserId, status: 'pending',
+      createdAt: now.toISOString(), updatedAt: now.toISOString(),
+    };
+    const current: Walk = {
+      id: 'walk-current-slot', familyId: FAMILY_ID, scheduleEntryId: currentEntry.id, dogId: currentEntry.dogId,
+      date, scheduledTime: '14:00', responsibleUserId: currentEntry.responsibleUserId, status: 'pending',
+      createdAt: now.toISOString(), updatedAt: now.toISOString(),
+    };
+    await repository.saveWalk(older);
+    await repository.saveWalk(current);
+
+    await useScheduleStore.getState().load(FAMILY_ID);
+    const walks = useScheduleStore.getState().walks;
+    expect(walks.find((walk) => walk.id === older.id)?.status).toBe('pending');
+    expect(computeNextWalk(walks, now)?.id).toBe(current.id);
+  });
+
   it('is stable across repeated foreground reloads', async () => {
     await useScheduleStore.getState().load(FAMILY_ID);
     const { repository } = require('../../data');

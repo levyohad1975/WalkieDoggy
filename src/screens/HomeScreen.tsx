@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, AppState, Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,7 +8,7 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
-import { computeLastWalk, computeNextWalk, dailyWalkTimeline, isOverdue, upcomingWalks } from '../logic/nextWalk';
+import { computeLastWalk, computeNextWalk, dailyWalkTimeline, isOverdue, nextWalkSelectionRefreshDelayMs, upcomingWalks, walkDateTime } from '../logic/nextWalk';
 import { resolvedWalkDateContextLabel, walkDateContextLabel } from '../logic/walkDateContext';
  import { repository } from '../data';
 import { canRequestChangeForWalk, computeNextWalkCardActions, formatCompletedAtBadge } from '../logic/walkActions';
@@ -455,32 +455,54 @@ export function HomeScreen() {
     })();
   }, [fetchAchievementWalks, familyId, effectiveUserId]);
 
-  // Minute-level refresh so "עוד X שעות ו-Y דקות" doesn't go stale while this
-  // screen stays open, without re-rendering more often than that (see
-  // nextWalk.ts's relativeTimeLabel doc comment on why per-second is
-  // unnecessary here).
   const [minuteTick, setMinuteTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setMinuteTick((n) => n + 1), 60_000);
-    return () => clearInterval(id);
-  }, []);
 
   // PRD §11: multi-dog families must see only the SELECTED dog's walks on
   // this screen (next/last/upcoming/overdue) — `walks` itself is the raw,
-  // family-wide store, unfiltered by dog. Filtering here (rather than
-  // changing computeNextWalk/computeLastWalk/upcomingWalks themselves)
-  // keeps those pure functions generic and untouched; every "pick from the
-  // pool" usage below reads visibleWalks instead of walks. A single-dog
-  // family (dogs.length <= 1) sees everything unfiltered — no behavior
-  // change there. Walk lookups BY ID (walksById, walks.find(id)) stay on
-  // the unfiltered `walks` on purpose: those resolve one already-known
-  // walk regardless of which dog is currently selected (e.g. an edit modal
-  // opened before a dog switch, or a reminder tap for a different dog).
-  const visibleWalks = useMemo(
-    () => (dogs.length > 1 && dog ? walks.filter((w) => w.dogId === dog.id) : walks),
-    [walks, dogs.length, dog?.id]
+  // family-wide store, unfiltered by dog. Scope the supplied pool here so
+  // the pure selectors remain reusable; computeNextWalk applies the family-
+  // local schedule-slot rule to this selected dog's walks. A single-dog
+  // family (dogs.length <= 1) sees all of the current family's walks.
+  // Walk lookups BY ID (walksById, walks.find(id)) stay on the unfiltered
+  // `walks` on purpose: those resolve one already-known walk regardless of
+  // which dog is selected (e.g. a modal opened before a dog switch).
+  const visibleWalks = useMemo(() => {
+    const familyWalks = walks.filter((walk) => walk.familyId === familyId);
+    return dogs.length > 1 && dog ? familyWalks.filter((walk) => walk.dogId === dog.id) : familyWalks;
+  }, [walks, familyId, dogs.length, dog?.id]);
+  const scheduleTimezone = family?.id === familyId ? family.timezone : undefined;
+
+  // Recompute at the next family-local walk boundary (and local minute for
+  // countdown copy), not a drifting 60-second interval. Foregrounding also
+  // refreshes immediately after Safari/app timer throttling.
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    let disposed = false;
+    const scheduleRefresh = () => {
+      if (disposed) return;
+      if (timeout) clearTimeout(timeout);
+      timeout = setTimeout(() => {
+        setMinuteTick((tick) => tick + 1);
+        scheduleRefresh();
+      }, nextWalkSelectionRefreshDelayMs(visibleWalks, new Date(), scheduleTimezone));
+    };
+    scheduleRefresh();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      setMinuteTick((tick) => tick + 1);
+      scheduleRefresh();
+    });
+    return () => {
+      disposed = true;
+      if (timeout) clearTimeout(timeout);
+      subscription.remove();
+    };
+  }, [visibleWalks, scheduleTimezone]);
+
+  const nextWalk = useMemo(
+    () => computeNextWalk(visibleWalks, new Date(), scheduleTimezone),
+    [visibleWalks, minuteTick, scheduleTimezone]
   );
-  const nextWalk = useMemo(() => computeNextWalk(visibleWalks), [visibleWalks, minuteTick]);
   // Active spontaneous walks may coexist with a planned next-walk card.
   const activeSpontaneousWalks = useMemo(
     () => visibleWalks.filter((w) => w.isUnplanned && w.status === 'in_progress' && w.id !== nextWalk?.id),
@@ -490,7 +512,7 @@ export function HomeScreen() {
   // Spontaneous walks keep their separate always-available flow.
   const nextWalkStartGate = useMemo(() => {
     if (!nextWalk || nextWalk.status !== 'pending' || nextWalk.isUnplanned) return { disabled: false, label: undefined as string | undefined };
-    const scheduledAt = new Date(`${nextWalk.date}T${nextWalk.scheduledTime}:00`);
+    const scheduledAt = walkDateTime(nextWalk, scheduleTimezone);
     const unlockAt = scheduledAt.getTime() - 30 * 60 * 1000;
     if (!Number.isFinite(unlockAt) || Date.now() >= unlockAt) return { disabled: false, label: undefined as string | undefined };
     const unlock = new Date(unlockAt);
@@ -753,13 +775,13 @@ export function HomeScreen() {
           (w) =>
             w.status === 'pending' &&
             w.id !== nextWalk?.id &&
-            isOverdue(w) &&
+            isOverdue(w, new Date(), scheduleTimezone) &&
             (effectiveRole === 'admin' || w.responsibleUserId === effectiveUserId)
         )
         .sort((a, b) =>
           `${a.date}T${a.scheduledTime}`.localeCompare(`${b.date}T${b.scheduledTime}`)
         ),
-    [visibleWalks, nextWalk, minuteTick, effectiveRole, effectiveUserId]
+    [visibleWalks, nextWalk, minuteTick, effectiveRole, effectiveUserId, scheduleTimezone]
   );
 
   // ADMIN TEST MODE mutation-blocking (requirement 1) now lives centrally in
@@ -1119,10 +1141,11 @@ export function HomeScreen() {
             showDogPhoto={false}
             showMascot={false}
             dogSex={dog?.sex}
+            scheduleTimezone={scheduleTimezone}
             requestStatusLine={
               computeWalkRequestStatusLine(nextWalk, swapRequests, timeChangeRequests, walksById, new Date(), effectiveUserId)?.text
             }
-            primaryLabel={isOverdue(nextWalk) ? 'ממתין לעדכון' : undefined}
+            primaryLabel={isOverdue(nextWalk, new Date(), scheduleTimezone) ? 'ממתין לעדכון' : undefined}
             tone="dashboard"
             remoteGpsAction={<RemoteGpsPanel walk={nextWalk} currentUserId={currentUserId} familyRole={actualFamilyRole} ready={!familyLoading && !scheduleLoading && Boolean(family)} />}
             onMarkDone={() => setCompleteWalkId(nextWalk.id)}

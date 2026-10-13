@@ -9,7 +9,6 @@ import {
   ruleNeedsEntryBackfill,
 } from '../logic/rotation';
 import { localDateOnly } from '../logic/dateFormat';
-import { finalizeSupersededPendingWalks } from '../logic/nextWalk';
 import { pickerDateToTime } from '../logic/timeInput';
 import {
   editWalkDetails,
@@ -397,19 +396,9 @@ async function loadScheduleForFamily(
       finalWalks = [...finalWalks, ...regeneratedWalks];
     }
 
-    // Once a later planned occurrence for the same dog is due, older
-    // unresolved planned walks are no longer actionable questions. Close
-    // them as "not done" so History contains final facts instead of an
-    // ever-growing pending backlog. In-progress/unplanned walks are excluded
-    // by the pure helper. Persist best-effort: every client derives the same
-    // display state immediately, while an authorized online client also
-    // makes the final status authoritative on the server.
-    const reconciledWalks = finalizeSupersededPendingWalks(finalWalks, new Date());
-    const autoSkipped = reconciledWalks.filter((walk) => {
-      const before = finalWalks.find((candidate) => candidate.id === walk.id);
-      return before?.status === 'pending' && walk.status === 'skipped';
-    });
-    finalWalks = reconciledWalks;
+    // Walk status is changed only by an explicit lifecycle action. The Home
+    // selector advances by scheduled time while leaving unresolved older walks
+    // pending for History/reporting.
     set({ rules, entries: finalEntries, walks: finalWalks, loading: false });
     void Promise.allSettled(
       autoSkipped.map(async (walk) => {
