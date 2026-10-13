@@ -23,6 +23,27 @@ export const isSupabaseConfigured = Boolean(supabaseUrl && supabasePublishableKe
 export const supabaseProjectUrl = supabaseUrl;
 export const supabaseClientKey = supabasePublishableKey;
 
+/** This destructive-looking admin control is compiled in but visible only when
+ * the app is connected to the exact authorized Staging Supabase project. */
+export function isAuthorizedWalkResolutionStagingUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'https:' && parsed.hostname.toLowerCase() === 'czbxhsoxyawprqehkfit.supabase.co'
+      && parsed.port === '' && parsed.username === '' && parsed.password === '';
+  } catch {
+    return false;
+  }
+}
+
+export function isStagingDuplicateResolutionEnabled(value: string, explicitStagingFlag: string | undefined): boolean {
+  return explicitStagingFlag === 'true' && isAuthorizedWalkResolutionStagingUrl(value);
+}
+
+// The explicit opt-in must be a branch-scoped Staging Preview variable. It is
+// intentionally absent from Production; URL identity alone is not a rollout flag.
+export const isWalkResolutionStaging = isSupabaseConfigured
+  && isStagingDuplicateResolutionEnabled(supabaseUrl, process.env.EXPO_PUBLIC_STAGING_WALK_DUPLICATE_RESOLUTION);
+
 // Both env vars are read from process.env (not hardcoded) as required —
 // see .env.example for the keys and README "Configuring Supabase".
 export const supabase = isSupabaseConfigured

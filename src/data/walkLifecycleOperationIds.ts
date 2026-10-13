@@ -7,7 +7,7 @@ import type { WalkCompletionDetails } from '../logic/walkActions';
 // not read, migrate, rewrite, or enqueue anything in the legacy SyncQueue.
 const STORAGE_KEY = '@walkie/walk-lifecycle-operation-ids-v1';
 const OUTBOX_KEY = '@walkie/walk-lifecycle-outbox-v1';
-type Action = 'start' | 'start_spontaneous' | 'finish';
+type Action = 'start' | 'start_spontaneous' | 'finish' | 'resolve_duplicates';
 type Journal = Record<string, string>;
 export type WalkLifecycleIntent =
   | { action: 'start'; walkId: string; familyId: string; actorUserId: string; actualWalkerUserId: string; operationId: string; substitutionConfirmed: boolean; remoteStart: boolean; state: 'pending' | 'conflict'; error?: string }
@@ -27,7 +27,13 @@ export async function getWalkLifecycleOperationId(action: Action, walkId: string
     let journal: Journal = {};
     try {
       journal = JSON.parse((await AsyncStorage.getItem(STORAGE_KEY)) ?? '{}') as Journal;
+      if (!journal || typeof journal !== 'object' || Array.isArray(journal)) throw new Error('Invalid lifecycle operation journal');
     } catch {
+      if (action === 'resolve_duplicates') {
+        // This action must fail closed if durable idempotency cannot be
+        // guaranteed. Never send a fresh operation id after an uncertain RPC.
+        throw new Error('Could not safely read the duplicate-resolution idempotency journal');
+      }
       // A corrupt journal must not block the walk; a new id still gives the
       // server idempotency for this attempt, but cannot reconcile old work.
       journal = {};
@@ -57,6 +63,21 @@ export async function completeWalkLifecycleOperation(action: Action, walkId: str
   } catch {
     // Completion is already server-confirmed; a stale local key is safe and
     // the server will continue to deduplicate its operation id.
+  }
+}
+
+/** Reads a previously persisted id without creating a new one. Used to offer
+ * an explicit same-operation retry after an RPC response was lost. */
+export async function getExistingWalkLifecycleOperationId(action: Action, walkId: string, actorId: string): Promise<string | undefined> {
+  const key = scope(action, walkId, actorId);
+  try {
+    const value = JSON.parse((await AsyncStorage.getItem(STORAGE_KEY)) ?? '{}') as unknown;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid lifecycle operation journal');
+    const id = (value as Journal)[key];
+    return typeof id === 'string' && id ? id : undefined;
+  } catch {
+    if (action === 'resolve_duplicates') throw new Error('Could not safely read the duplicate-resolution idempotency journal');
+    return undefined;
   }
 }
 

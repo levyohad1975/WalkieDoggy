@@ -13,7 +13,7 @@ import type {
   WalkStartAuthorization,
   GpsRouteUpdate,
 } from '../types';
-import type { DeleteFamilyMemberPayload, Repository, WalkDuplicateResolutionAudit } from './repository';
+import type { DeleteFamilyMemberPayload, DuplicateActiveWalkReviewRecord, Repository, ResolveDuplicateActiveWalksRequest, WalkDuplicateResolutionAudit } from './repository';
 import { LocalRepository } from './localRepository';
 import { isPermanentSyncError, SyncQueue } from './syncQueue';
 // TEMPORARY DIAGNOSTIC INSTRUMENTATION — see perfTrace.ts's own doc
@@ -64,9 +64,25 @@ export class OfflineFirstRepository implements Repository {
   releaseGpsOwnershipV11?: (walkId: string, fencingEpoch: number) => Promise<void>;
   heartbeatGpsOwnershipV11?: (walkId: string, fencingEpoch: number) => Promise<string>;
   appendGpsRouteV11?: (update: GpsRouteUpdate) => Promise<WalkGpsSession>;
+  getDuplicateActiveWalkReview?: (familyId: string, walkIds: string[]) => Promise<DuplicateActiveWalkReviewRecord[]>;
+  resolveDuplicateActiveWalksV12?: (request: ResolveDuplicateActiveWalksRequest) => Promise<string>;
 
   constructor(private remote: Repository | null) {
     if (this.remote) {
+      if (this.remote.getDuplicateActiveWalkReview) {
+        this.getDuplicateActiveWalkReview = async (familyId, walkIds) => {
+          if (!(await this.isOnline())) throw new Error('Network unavailable; duplicate records could not be verified from Staging.');
+          return this.remote!.getDuplicateActiveWalkReview!(familyId, walkIds);
+        };
+      }
+      if (this.remote.resolveDuplicateActiveWalksV12) {
+        // Security-sensitive owner action: direct authenticated RPC only.
+        // It must never be placed in SyncQueue or replayed offline.
+        this.resolveDuplicateActiveWalksV12 = async (request) => {
+          if (!(await this.isOnline())) throw new Error('Network unavailable; no resolution request was sent.');
+          return this.remote!.resolveDuplicateActiveWalksV12!(request);
+        };
+      }
       this.startWalk = async (walkId: string): Promise<Walk> => {
         if (!(await this.isOnline())) {
           throw new Error('אין חיבור לשרת. כדי להתחיל מעקב טיול יש להתחבר לאינטרנט.');

@@ -37,6 +37,34 @@ export interface WalkDuplicateResolutionAudit {
   }>;
 }
 
+/** Minimal, read-only review data for the owner-confirmed Staging test duplicates. */
+export interface DuplicateActiveWalkReviewRecord {
+  walkId: string;
+  familyId: string;
+  dogId: string;
+  status: string;
+  startedAt?: string;
+  startedByUserId?: string;
+  actualWalkerUserId?: string;
+  responsibleUserId: string;
+  duplicateResolutionGroupId?: string;
+  gpsSessions: Array<{
+    id: string;
+    pointCount: number;
+    distanceMeters?: number;
+    startedAt?: string;
+    endedAt?: string;
+    createdByUserId?: string;
+  }>;
+}
+
+export interface ResolveDuplicateActiveWalksRequest {
+  walkIds: string[];
+  canonicalWalkId: string | null;
+  rationale: string;
+  operationId: string;
+}
+
 /**
  * Data-access abstraction. The rest of the app (stores, screens) only talks
  * to this interface — never to Supabase or AsyncStorage directly — so the
@@ -155,6 +183,10 @@ export interface Repository {
   getWalks(familyId: string): Promise<Walk[]>;
   /** Family-admin-only audit view of non-destructive duplicate-start resolutions. */
   getWalkDuplicateResolutionAudit?(familyId: string): Promise<WalkDuplicateResolutionAudit[]>;
+  /** Online, read-only, exact-ID review query; never returns stored route coordinates. */
+  getDuplicateActiveWalkReview?(familyId: string, walkIds: string[]): Promise<DuplicateActiveWalkReviewRecord[]>;
+  /** Direct authenticated RPC only; intentionally never enters the offline SyncQueue. */
+  resolveDuplicateActiveWalksV12?(request: ResolveDuplicateActiveWalksRequest): Promise<string>;
   saveWalk(walk: Walk): Promise<void>;
   /** Server-authoritative lifecycle operations; Supabase persists actor/time atomically. */
   startWalk?(walkId: string): Promise<Walk>;

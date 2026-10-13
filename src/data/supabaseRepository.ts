@@ -14,7 +14,7 @@ import type {
   GpsRouteUpdate,
 } from '../types';
 import { defaultNotificationSetting } from '../logic/reminders';
-import type { DeleteFamilyMemberPayload, Repository, WalkDuplicateResolutionAudit } from './repository';
+import type { DeleteFamilyMemberPayload, DuplicateActiveWalkReviewRecord, Repository, ResolveDuplicateActiveWalksRequest, WalkDuplicateResolutionAudit } from './repository';
 import { SUPABASE_CALL_TIMEOUT_MS, withTimeout } from '../lib/withTimeout';
 // TEMPORARY DIAGNOSTIC INSTRUMENTATION — see perfTrace.ts's own doc
 // comment. Remove this import and every perfMark call in
@@ -759,6 +759,62 @@ export class SupabaseRepository implements Repository {
         linkedGpsSessionIds: item.linked_gps_session_ids ?? [],
       })),
     }));
+  }
+
+  async getDuplicateActiveWalkReview(familyId: string, walkIds: string[]): Promise<DuplicateActiveWalkReviewRecord[]> {
+    if (walkIds.length === 0) return [];
+    const { data: walks, error: walkError } = await this.client.from('walks')
+      .select('id,family_id,dog_id,status,started_at,started_by_user_id,actual_walker_user_id,responsible_user_id,duplicate_resolution_group_id')
+      .eq('family_id', familyId).in('id', walkIds);
+    if (walkError) throw walkError;
+    const rows = walks ?? [];
+    if (rows.length === 0) return [];
+    const returnedWalkIds = rows.map((row: any) => row.id);
+    const { data: sessions, error: sessionError } = await this.client.from('walk_gps_sessions')
+      .select('id,walk_id,point_count,distance_meters,started_at,ended_at,created_by_user_id')
+      .eq('family_id', familyId).in('walk_id', returnedWalkIds);
+    if (sessionError) throw sessionError;
+    const sessionsByWalk = new Map<string, DuplicateActiveWalkReviewRecord['gpsSessions']>();
+    for (const session of sessions ?? []) {
+      const list = sessionsByWalk.get(session.walk_id) ?? [];
+      list.push({
+        id: session.id,
+        pointCount: Number(session.point_count ?? 0),
+        distanceMeters: session.distance_meters == null ? undefined : Number(session.distance_meters),
+        startedAt: session.started_at ?? undefined,
+        endedAt: session.ended_at ?? undefined,
+        createdByUserId: session.created_by_user_id ?? undefined,
+      });
+      sessionsByWalk.set(session.walk_id, list);
+    }
+    const rowsById = new Map<string, any>(rows.map((row: any) => [row.id, row]));
+    return walkIds.flatMap((walkId) => {
+      const row = rowsById.get(walkId);
+      return row ? [{
+        walkId: row.id,
+        familyId: row.family_id,
+        dogId: row.dog_id,
+        status: row.status,
+        startedAt: row.started_at ?? undefined,
+        startedByUserId: row.started_by_user_id ?? undefined,
+        actualWalkerUserId: row.actual_walker_user_id ?? undefined,
+        responsibleUserId: row.responsible_user_id,
+        duplicateResolutionGroupId: row.duplicate_resolution_group_id ?? undefined,
+        gpsSessions: sessionsByWalk.get(row.id) ?? [],
+      }] : [];
+    });
+  }
+
+  async resolveDuplicateActiveWalksV12(request: ResolveDuplicateActiveWalksRequest): Promise<string> {
+    const { data, error } = await this.client.rpc('resolve_duplicate_active_walks_v12', {
+      p_walk_ids: request.walkIds,
+      p_canonical_walk_id: request.canonicalWalkId,
+      p_rationale: request.rationale,
+      p_operation_id: request.operationId,
+    });
+    if (error) throw error;
+    if (typeof data !== 'string' || !data) throw new Error('Duplicate resolution RPC returned an invalid audit group id');
+    return data;
   }
 
   /**

@@ -23,6 +23,7 @@ import { Avatar } from '../components/Avatar';
 import { EditDoneDetailsModal } from '../components/EditDoneDetailsModal';
 import { CompleteWalkModal } from '../components/CompleteWalkModal';
 import { AddUnplannedWalkModal, type UnplannedWalkResult } from '../components/AddUnplannedWalkModal';
+import { StagingDuplicateWalkResolutionPanel } from '../components/StagingDuplicateWalkResolutionPanel';
 import { DEMO_FAMILY } from '../data/demoData';
 import type { Walk, WalkGpsSession } from '../types';
 
@@ -314,6 +315,8 @@ export function HistoryScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
         <RtlText style={styles.header} accessibilityRole="header" maxFontSizeMultiplier={1.35}>היסטוריה</RtlText>
+
+        <StagingDuplicateWalkResolutionPanel />
 
         {effectiveRole === 'admin' && isSupabaseConfigured ? (
           <View style={styles.section}>

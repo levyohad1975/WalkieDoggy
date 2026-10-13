@@ -1,0 +1,70 @@
+import { SupabaseRepository } from '../supabaseRepository';
+
+const walkId = 'da94d830-4a1d-4044-b0e3-e1f3c4f59736';
+const sessionId = 'ae7b8033-7abe-4ea7-95d9-c6f9ea510fe3';
+
+function makeClient() {
+  const calls: Array<{ table: string; method: string; value?: unknown }> = [];
+  const walkRows = [{
+    id: walkId, family_id: 'family-1', dog_id: 'dog-1', status: 'in_progress',
+    started_at: '2026-10-13T10:00:00Z', started_by_user_id: 'profile-1',
+    actual_walker_user_id: 'profile-2', responsible_user_id: 'profile-1', duplicate_resolution_group_id: null,
+  }];
+  const gpsRows = [{
+    id: sessionId, walk_id: walkId, point_count: 4, distance_meters: 83.5,
+    started_at: '2026-10-13T10:01:00Z', ended_at: '2026-10-13T10:03:00Z', created_by_user_id: 'profile-2',
+  }];
+  const client: any = {
+    from: (table: string) => {
+      const builder: any = {
+        select: (columns: string) => { calls.push({ table, method: 'select', value: columns }); return builder; },
+        eq: (column: string, value: unknown) => { calls.push({ table, method: `eq:${column}`, value }); return builder; },
+        in: (column: string, value: unknown) => {
+          calls.push({ table, method: `in:${column}`, value });
+          return Promise.resolve({ data: table === 'walks' ? walkRows : gpsRows, error: null });
+        },
+      };
+      return builder;
+    },
+    rpc: jest.fn().mockResolvedValue({ data: '7e8e9a76-d91f-45d4-a559-b1697ca46d2f', error: null }),
+  };
+  return { client, calls };
+}
+
+describe('SupabaseRepository duplicate resolution', () => {
+  it('reads only the exact family rows and GPS audit summaries, never route coordinates', async () => {
+    const { client, calls } = makeClient();
+    const repo = new SupabaseRepository(client);
+    await expect(repo.getDuplicateActiveWalkReview!('family-1', [walkId])).resolves.toEqual([{
+      walkId, familyId: 'family-1', dogId: 'dog-1', status: 'in_progress', startedAt: '2026-10-13T10:00:00Z',
+      startedByUserId: 'profile-1', actualWalkerUserId: 'profile-2', responsibleUserId: 'profile-1',
+      duplicateResolutionGroupId: undefined,
+      gpsSessions: [{ id: sessionId, pointCount: 4, distanceMeters: 83.5, startedAt: '2026-10-13T10:01:00Z', endedAt: '2026-10-13T10:03:00Z', createdByUserId: 'profile-2' }],
+    }]);
+    expect(calls.filter((call) => call.method.startsWith('eq:'))).toEqual([
+      { table: 'walks', method: 'eq:family_id', value: 'family-1' },
+      { table: 'walk_gps_sessions', method: 'eq:family_id', value: 'family-1' },
+    ]);
+    expect(calls.find((call) => call.table === 'walk_gps_sessions' && call.method === 'select')?.value).not.toContain('route_points');
+    expect(calls).toHaveLength(6);
+  });
+
+  it('calls only the authenticated Supabase RPC with the exact no-canonical request', async () => {
+    const { client, calls } = makeClient();
+    const repo = new SupabaseRepository(client);
+    const request = { walkIds: [walkId], canonicalWalkId: null, rationale: 'Approved Staging test duplicate group.', operationId: '8ac8f56c-bcda-4822-87a9-ac2731723ba0' };
+    await expect(repo.resolveDuplicateActiveWalksV12(request)).resolves.toBe('7e8e9a76-d91f-45d4-a559-b1697ca46d2f');
+    expect(client.rpc).toHaveBeenCalledWith('resolve_duplicate_active_walks_v12', {
+      p_walk_ids: [walkId], p_canonical_walk_id: null, p_rationale: request.rationale, p_operation_id: request.operationId,
+    });
+  });
+
+  it('propagates authorization and migration errors without a fallback table write', async () => {
+    const { client, calls } = makeClient();
+    client.rpc.mockResolvedValue({ data: null, error: { code: '42501', message: 'family admin required' } });
+    const repo = new SupabaseRepository(client);
+    await expect(repo.resolveDuplicateActiveWalksV12({ walkIds: [walkId], canonicalWalkId: null, rationale: 'Approved Staging test duplicate group.', operationId: '8ac8f56c-bcda-4822-87a9-ac2731723ba0' }))
+      .rejects.toMatchObject({ code: '42501' });
+    expect(calls).toHaveLength(0);
+  });
+});
