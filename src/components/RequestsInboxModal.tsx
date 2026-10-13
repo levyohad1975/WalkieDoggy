@@ -3,11 +3,12 @@ import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import type { FamilyRole } from '../lib/supabase';
 import type { SwapRequestRow, TimeChangeRequestRow } from '../lib/requests';
-import type { FamilyUser, Walk } from '../types';
+import type { FamilyUser, HealthTask, Walk } from '../types';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { Button } from './Button';
 import { computeRequestLifecycle, isRequestVisible } from '../logic/requestLifecycle';
+import { getHealthTaskLifecycle, HEALTH_TASK_CATEGORY_LABELS } from '../logic/healthTasks';
 
 interface RequestsInboxModalProps {
   visible: boolean;
@@ -30,6 +31,17 @@ interface RequestsInboxModalProps {
   onRejectSwap: (id: string) => void;
   onApproveTimeChange: (id: string) => void;
   onRejectTimeChange: (id: string) => void;
+  /**
+   * PRD §15's "תזכורות חשובות" (important reminders) item type — already
+   * filtered/sorted via logic/healthTasks.ts's getImportantHealthReminders
+   * (overdue/due/due-soon only, for the currently active dog). Optional so
+   * this modal degrades gracefully to its pre-existing two sections if a
+   * caller doesn't pass any (none currently omit it, but this keeps the
+   * prop additive rather than a breaking change).
+   */
+  healthReminders?: HealthTask[];
+  dogName?: string;
+  onOpenHealthReminders?: () => void;
   onClose: () => void;
 }
 
@@ -65,6 +77,12 @@ function StatusBadge({ status, expired }: { status: string; expired?: boolean })
  * the RPCs themselves (this UI hiding is a convenience, not the security
  * boundary; approve/reject still re-checks on the server).
  */
+const HEALTH_URGENCY_BADGE: Record<'upcoming' | 'due' | 'overdue', { label: string; color: string; bg: string }> = {
+  upcoming: { label: 'בקרוב', color: colors.statusPending, bg: colors.statusPendingBg },
+  due: { label: 'היום', color: colors.statusCurrent, bg: colors.statusCurrentBg },
+  overdue: { label: 'באיחור', color: colors.statusOverdue, bg: colors.statusOverdueBg },
+};
+
 export function RequestsInboxModal({
   visible,
   effectiveUserId,
@@ -77,6 +95,9 @@ export function RequestsInboxModal({
   onRejectSwap,
   onApproveTimeChange,
   onRejectTimeChange,
+  healthReminders,
+  dogName,
+  onOpenHealthReminders,
   onClose,
 }: RequestsInboxModalProps) {
   const walkLabel = (walkId: string) => {
@@ -165,6 +186,34 @@ export function RequestsInboxModal({
                 );
               });
             })()}
+
+            {healthReminders && healthReminders.length > 0 ? (
+              <>
+                <RtlText style={[styles.sectionTitle, styles.sectionTitleSpaced]}>תזכורות חשובות</RtlText>
+                {healthReminders.map((t) => {
+                  const lifecycle = getHealthTaskLifecycle(t) as 'upcoming' | 'due' | 'overdue';
+                  const badge = HEALTH_URGENCY_BADGE[lifecycle];
+                  return (
+                    <View key={t.id} style={styles.row}>
+                      <View style={styles.rowHeader}>
+                        <RtlText style={styles.rowText}>
+                          {dogName ? `${dogName} · ` : ''}
+                          {HEALTH_TASK_CATEGORY_LABELS[t.category]} · {t.title}
+                        </RtlText>
+                        <View style={[styles.badge, { backgroundColor: badge.bg }]}>
+                          <RtlText style={[styles.badgeText, { color: badge.color }]}>{badge.label}</RtlText>
+                        </View>
+                      </View>
+                      {onOpenHealthReminders ? (
+                        <View style={styles.rowActions}>
+                          <Button label="פתיחה" onPress={onOpenHealthReminders} style={styles.flex} />
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </>
+            ) : null}
           </ScrollView>
           <Button label="סגור" variant="secondary" onPress={onClose} style={styles.closeButton} />
         </Pressable>

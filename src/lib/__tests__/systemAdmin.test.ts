@@ -4,7 +4,7 @@ function mockSupabaseClient(rpc: jest.Mock) {
   jest.doMock('@supabase/supabase-js', () => ({
     createClient: jest.fn(() => ({
       auth: {
-        getSession: jest.fn().mockResolvedValue({ data: { session: null } }),
+        getSession: jest.fn().mockResolvedValue({ data: { session: { access_token: 'test-token', user: { id: 'test-admin' } } } }),
         signInAnonymously: jest.fn().mockResolvedValue({ error: null }),
       },
       rpc,
@@ -31,10 +31,111 @@ describe('lib/systemAdmin — Supabase mode', () => {
       EXPO_PUBLIC_SUPABASE_URL: 'https://example.supabase.co',
       EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'anon-key',
     };
+    // These tests exercise System Admin RPC wrappers. Keep the sync preflight
+    // deterministic and avoid attaching the real NetInfo listener in Jest.
+    jest.doMock('../../data', () => ({
+      repository: {
+        trySync: jest.fn().mockResolvedValue(undefined),
+        pendingSyncCount: jest.fn().mockResolvedValue(0),
+        getPendingSyncDiagnostics: jest.fn().mockResolvedValue(null),
+      },
+    }));
   });
 
   afterEach(() => {
+    jest.dontMock('../../data');
     process.env = ORIGINAL_ENV;
+  });
+
+  it('surfaces the first sanitized queue failure in the test-family switch preflight without exposing payloads', async () => {
+    const pendingFailure = {
+      operationType: 'saveWalk',
+      safeOperationId: 'op-1234',
+      queuePosition: 1,
+      endpoint: 'POST /walks',
+      httpStatus: 409,
+      errorCode: '23503',
+      errorMessage: 'schedule entry is missing',
+      category: 'permanent-conflict',
+      attemptCount: 3,
+      lastAttemptAt: '2026-10-12T04:26:00.000Z',
+    };
+    jest.doMock('../../data', () => ({
+      repository: {
+        trySync: jest.fn().mockResolvedValue(undefined),
+        pendingSyncCount: jest.fn().mockResolvedValue(2557),
+        getPendingSyncDiagnostics: jest.fn().mockResolvedValue({
+          total: 2557,
+          byOperation: { saveWalk: 1965 },
+          ownerCounts: { activeProfile: 2557, otherProfile: 0, unknown: 0 },
+          ownerIds: [{ id: 'profile-safe', count: 2557 }],
+          familyIds: [{ id: 'family-safe', count: 2358 }],
+          withoutFamilyId: 199,
+          oldestEnqueuedAt: null,
+          latestAttemptAt: pendingFailure.lastAttemptAt,
+          missingEnqueueTime: 2557,
+          neverAttempted: 2556,
+          attemptedWithUnknownOutcome: 0,
+          lastErrorCodes: { '23503': 1 },
+          firstRetryableFailure: pendingFailure,
+          lastFlush: {
+            attempted: 1,
+            skippedOtherProfile: 0,
+            succeeded: 0,
+            conflicted: 0,
+            quarantined: 0,
+            remaining: 2557,
+            stoppedOnRetryableFailure: true,
+            completedAt: pendingFailure.lastAttemptAt,
+          },
+          syncPreflight: { outcome: 'flush-finished', at: pendingFailure.lastAttemptAt },
+        }),
+      },
+    }));
+    const rpc = jest.fn();
+    mockSupabaseClient(rpc);
+    const { flushBeforeSystemAdminTestFamilySwitch } = require('../systemAdmin');
+
+    await expect(flushBeforeSystemAdminTestFamilySwitch()).rejects.toThrow(
+      /כשל ראשון: saveWalk · מזהה בטוח op-1234 · מיקום 1 · יעד POST \/walks · HTTP 409 · קוד 23503/
+    );
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('creates an isolated test family through the guarded entry RPC and trims its name', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: [{ id: 'qa-1', name: 'משפחת בדיקה', invite_code: 'QATEST' }], error: null });
+    mockSupabaseClient(rpc);
+    const { createSystemAdminTestFamily } = require('../systemAdmin');
+    const result = await createSystemAdminTestFamily(' משפחת בדיקה ');
+    expect(rpc).toHaveBeenCalledWith('system_admin_enter_test_family', { p_family_name: 'משפחת בדיקה' });
+    expect(result).toMatchObject({ familyId: 'qa-1', familyName: 'משפחת בדיקה', inviteCode: 'QATEST', dogName: null });
+  });
+
+  it('deletes only through the explicit-confirmation test-family RPC and propagates authorization failures', async () => {
+    const rpc = jest.fn()
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({ data: null, error: { message: 'return to original family first' } });
+    mockSupabaseClient(rpc);
+    const { deleteSystemAdminTestFamily } = require('../systemAdmin');
+    await expect(deleteSystemAdminTestFamily('qa-1')).rejects.toBeTruthy();
+    expect(rpc).toHaveBeenNthCalledWith(1, 'system_admin_list_test_family_photo_paths', { p_family_id: 'qa-1' });
+    expect(rpc).toHaveBeenNthCalledWith(2, 'system_admin_delete_test_family', { p_family_id: 'qa-1', p_confirm: 'DELETE TEST FAMILY' });
+  });
+
+  it('re-enters a listed test family through its guarded switch RPC', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: [{ id: 'qa-2', name: 'בדיקה קיימת', invite_code: 'QATEST' }], error: null });
+    mockSupabaseClient(rpc);
+    const { switchToSystemAdminTestFamily } = require('../systemAdmin');
+    await expect(switchToSystemAdminTestFamily('qa-2')).resolves.toMatchObject({ familyId: 'qa-2', familyName: 'בדיקה קיימת' });
+    expect(rpc).toHaveBeenCalledWith('system_admin_switch_test_family', { p_family_id: 'qa-2' });
+  });
+
+  it('restores the active identity through the dedicated guarded exit RPC', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: [{ id: 'family-original', name: 'המשפחה שלי' }], error: null });
+    mockSupabaseClient(rpc);
+    const { exitSystemAdminTestFamily } = require('../systemAdmin');
+    await expect(exitSystemAdminTestFamily()).resolves.toEqual({ id: 'family-original', name: 'המשפחה שלי' });
+    expect(rpc).toHaveBeenCalledWith('system_admin_exit_test_family');
   });
 
   it('checkIsSystemAdmin calls am_i_system_admin with no arguments and returns the boolean verbatim', async () => {

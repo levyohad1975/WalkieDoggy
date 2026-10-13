@@ -1,3 +1,6 @@
+import type { Walk } from '../types';
+import { localDateOnly } from './dateFormat';
+
 /**
  * P1 — Home today/tomorrow date ambiguity.
  *
@@ -47,6 +50,26 @@ export function walkDateContextLabel(isoDate: string, now: Date = new Date()): s
   const day = String(target.getDate()).padStart(2, '0');
   const month = String(target.getMonth() + 1).padStart(2, '0');
   return `${day}/${month}`;
+}
+
+/**
+ * A completed walk belongs to the viewer's local completion day, not
+ * necessarily the date of its original schedule occurrence. This prevents a
+ * walk completed today from being displayed as "מחר" after a schedule edit.
+ * A skipped walk has no completion moment, so its scheduled date remains the
+ * correct context.
+ */
+export function resolvedWalkDateContextLabel(
+  walk: Pick<Walk, 'date' | 'status' | 'completedAt'>,
+  now: Date = new Date()
+): string {
+  if (walk.status === 'done' && walk.completedAt) {
+    const completedAt = new Date(walk.completedAt);
+    if (!Number.isNaN(completedAt.getTime())) {
+      return walkDateContextLabel(localDateOnly(completedAt), now);
+    }
+  }
+  return walkDateContextLabel(walk.date, now);
 }
 
 /**

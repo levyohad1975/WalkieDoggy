@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { RtlText } from './RtlText';
 import type { FamilyUser } from '../types';
 import { colors } from '../theme/colors';
@@ -37,6 +38,7 @@ export function CompleteWalkModal({
   const [note, setNote] = useState('');
   const [useCustomTime, setUseCustomTime] = useState(false);
   const [actualTime, setActualTime] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -46,8 +48,20 @@ export function CompleteWalkModal({
       setNote('');
       setUseCustomTime(false);
       setActualTime(new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false }));
+      setPickerOpen(false);
     }
   }, [visible, defaultUserId]);
+
+  const timeToDate = (value: string) => {
+    const [hours, minutes] = /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value.split(':').map(Number) : [new Date().getHours(), new Date().getMinutes()];
+    return new Date(2000, 0, 1, hours, minutes, 0, 0);
+  };
+  const handleTimeChange = (event: DateTimePickerEvent, selected?: Date) => {
+    if (Platform.OS === 'android') setPickerOpen(false);
+    if (event.type !== 'dismissed' && selected) {
+      setActualTime(`${String(selected.getHours()).padStart(2, '0')}:${String(selected.getMinutes()).padStart(2, '0')}`);
+    }
+  };
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
@@ -77,16 +91,20 @@ export function CompleteWalkModal({
               </Pressable>
             </View>
             {useCustomTime ? (
-              <TextInput
-                value={actualTime}
-                onChangeText={setActualTime}
-                placeholder="19:00"
-                keyboardType="numbers-and-punctuation"
-                maxLength={5}
-                style={styles.timeInput}
-                textAlign="center"
-                accessibilityLabel="שעת ביצוע הטיול בפועל"
-              />
+              Platform.OS === 'web' ? React.createElement('input', {
+                type: 'time', value: actualTime, step: 60,
+                'aria-label': 'שעת ביצוע הטיול בפועל',
+                onChange: (event: { target: { value: string } }) => setActualTime(event.target.value),
+                style: webTimeInputStyle,
+              }) : (
+                <>
+                  <Pressable onPress={() => setPickerOpen(true)} style={styles.timePickerTrigger} accessibilityRole="button" accessibilityLabel="בחירת שעת ביצוע הטיול">
+                    <RtlText style={styles.timePickerValue}>{actualTime}</RtlText>
+                    <RtlText style={styles.timePickerHint}>בחירת שעה</RtlText>
+                  </Pressable>
+                  {pickerOpen ? <DateTimePicker value={timeToDate(actualTime)} mode="time" is24Hour display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={handleTimeChange} /> : null}
+                </>
+              )
             ) : null}
 
             <RtlText style={styles.label}>מי טייל בפועל?</RtlText>
@@ -185,6 +203,9 @@ const styles = StyleSheet.create({
   timeChoiceActive: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
   timeChoiceText: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
   timeInput: { marginTop: spacing.sm, backgroundColor: colors.surfaceMuted, borderRadius: radii.md, padding: 12, fontSize: 18, fontWeight: '700', color: colors.textPrimary },
+  timePickerTrigger: { marginTop: spacing.sm, backgroundColor: colors.surfaceMuted, borderRadius: radii.md, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
+  timePickerValue: { fontSize: 18, fontWeight: '700', color: colors.textPrimary },
+  timePickerHint: { marginTop: 2, fontSize: 12, color: colors.textSecondary },
   userRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   userChip: { alignItems: 'center', minWidth: 68, gap: spacing.xs, opacity: 0.55 },
   userChipActive: { opacity: 1 },
@@ -218,3 +239,9 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: spacing.md, marginTop: 22 },
   flex: { flex: 1 },
 });
+
+const webTimeInputStyle = {
+  display: 'block', width: '100%', minHeight: 52, boxSizing: 'border-box', padding: 12,
+  fontSize: 18, fontWeight: '700', borderRadius: radii.md, border: `1px solid ${colors.border}`,
+  backgroundColor: colors.surfaceMuted, color: colors.textPrimary, textAlign: 'center', direction: 'ltr', cursor: 'pointer',
+};

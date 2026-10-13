@@ -99,4 +99,26 @@ describe('scheduleNotificationsForWalk — local-scheduling happy path (via resc
 
     expect(scheduleWalkNotifications).not.toHaveBeenCalled();
   });
+
+  it('PRD §11 (multi-dog): resolves the WALK\'s own dog by dogId, not whichever dog is currently active/selected', async () => {
+    const { useFamilyStore } = require('../familyStore');
+    useFamilyStore.setState({
+      dog: { id: 'dog-2', familyId: 'family-1', name: 'לונה', walksPerDay: 2, sex: 'female' }, // active dog is DOG-2
+      dogs: [
+        { id: 'dog-1', familyId: 'family-1', name: 'טופי', walksPerDay: 4, sex: 'male' }, // WALK belongs to dog-1
+        { id: 'dog-2', familyId: 'family-1', name: 'לונה', walksPerDay: 2, sex: 'female' },
+      ],
+      users: [{ id: 'user-aba', familyId: 'family-1', name: 'אבא', avatar: '🧔', color: '#000', remindersEnabled: true, createdAt: new Date().toISOString() }],
+    });
+
+    await useScheduleStore.getState().rescheduleWalk('walk-1', '19:30');
+
+    expect(scheduleWalkNotifications).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'walk-1' }),
+      expect.anything(),
+      'אבא',
+      'טופי', // WALK's own dog (dog-1), never the active dog-2 ("לונה")
+      'male'
+    );
+  });
 });

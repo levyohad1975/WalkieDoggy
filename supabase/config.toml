@@ -35,7 +35,8 @@ enable_confirmations = true
 [functions.email-provider-webhook]
 # Resend's delivery-event webhook never carries a Supabase-issued JWT; this
 # function verifies Resend's own Svix-style signature itself (see its
-# source). verify_jwt stays the default (true) for every other function.
+# source). verify_jwt stays the default (true) for every function not
+# listed in this file.
 verify_jwt = false
 
 [functions.send-email]
@@ -43,4 +44,20 @@ verify_jwt = false
 # Webhooks signature (SEND_EMAIL_HOOK_SECRET), never a Supabase-issued JWT --
 # there is no end-user session at hook-call time. This function verifies
 # that signature itself (see its source).
+verify_jwt = false
+
+[functions.send-walk-reminders]
+# P0 notification-delivery fix: this function's only legitimate caller is
+# this project's own pg_cron -> pg_net trigger, which carries no
+# Supabase-issued JWT at all -- only a custom `x-cron-secret` header the
+# function verifies itself against WALK_REMINDER_CRON_SECRET (see its
+# source's own header comment). Without this declaration, the platform
+# gateway's default verify_jwt=true rejects that call with 401 before the
+# function's own code -- and thus its secret check -- ever runs, which was
+# previously only ever handled by remembering to pass `--no-verify-jwt` on
+# each manual `supabase functions deploy` call: a flag with no durable,
+# version-controlled record, silently lost on any redeploy that omits it
+# (for example, deploying the reminderMessages.ts wording fix from this
+# same investigation). Declaring it here, like the two functions above,
+# makes it durable instead of dependent on remembering a CLI flag.
 verify_jwt = false

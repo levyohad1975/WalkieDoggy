@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, ImageBackground, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
 import { colors } from '../theme/colors';
-import { breakpoints, radii, spacing, typography } from '../theme/tokens';
+import { breakpoints, elevation, radii, spacing, typography } from '../theme/tokens';
 import { Button } from '../components/Button';
 import { ensureAnonymousSession, findFamilyByInviteCode, joinFamily } from '../lib/supabase';
 import {
@@ -16,13 +16,15 @@ import {
 } from '../lib/verifiedAdminOnboarding';
 import { inspectFamilyInviteDetail, redeemFamilyInvite, type FamilyInvitePreviewDetail } from '../lib/invites';
 import { formatInviteExpiry, inviteStatusLabel, parseInviteInput } from '../logic/familyInvites';
+import { parseJoinInput } from '../logic/familyJoinCode';
 import { friendlyErrorMessage } from '../lib/errorMessages';
 import { Avatar } from '../components/Avatar';
 import { DogPhoto } from '../components/DogPhoto';
 import { WalkieMascot } from '../components/WalkieMascot';
+import { beginFamilySetup, getFamilyCreationOwnerId, markFamilyCreationPending } from '../lib/familySetupProgress';
 import type { FamilyLookupResult } from '../types';
 
-type Mode = 'choose' | 'recover' | 'create' | 'join' | 'redeem';
+type Mode = 'choose' | 'pwaChoice' | 'recover' | 'create' | 'join' | 'redeem';
 
 /**
  * Shown once per device, only in Supabase (backend) mode, before this device
@@ -36,7 +38,7 @@ type Mode = 'choose' | 'recover' | 'create' | 'join' | 'redeem';
  * new family) and "pick who you are" (an existing family being joined) with
  * no changes needed here.
  */
-export function FamilyOnboardingScreen() {
+export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: (familyId: string) => Promise<void> | void }) {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
   const setFamilyId = useAuthStore((s) => s.setFamilyId);
@@ -53,26 +55,59 @@ export function FamilyOnboardingScreen() {
     (s) => s.retryPendingInviteRedemptionVerification
   );
   const isInstalledWebApp = Platform.OS === 'web' && typeof window !== 'undefined' && Boolean(window.matchMedia?.('(display-mode: standalone)').matches || (typeof navigator !== 'undefined' && (navigator as typeof navigator & { standalone?: boolean }).standalone === true));
-  const [mode, setMode] = useState<Mode>(isInstalledWebApp ? 'recover' : 'choose');
-  const [showWelcomeWink, setShowWelcomeWink] = useState(false);
-
-  useEffect(() => {
-    if (mode !== 'choose') return;
-    let winkTimer: ReturnType<typeof setTimeout> | undefined;
-    const interval = setInterval(() => {
-      setShowWelcomeWink(true);
-      winkTimer = setTimeout(() => setShowWelcomeWink(false), 320);
-    }, 4200);
-    return () => {
-      clearInterval(interval);
-      if (winkTimer) clearTimeout(winkTimer);
-    };
-  }, [mode]);
-
+  // Family Lifecycle repair (item 1/2) — a valid invite token arriving
+  // through the URL (the HTTPS link built by buildInviteLinkText() and
+  // shared/QR'd by InviteShareModal) must take precedence over every
+  // generic onboarding screen: computed once, synchronously, before the
+  // very first render, so an invited recipient never sees 'pwaChoice' or
+  // 'choose' flash by first. Read directly off window.location rather than
+  // through parseInviteInput()'s full-message-paste path (that remains the
+  // manual-entry fallback) — this is specifically the query string of the
+  // page the recipient's device actually navigated to.
+  const [initialInviteToken] = useState<string | null>(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
+    try {
+      const raw = new URLSearchParams(window.location.search).get('invite');
+      return raw && raw.trim() ? raw.trim() : null;
+    } catch {
+      return null;
+    }
+  });
+  // Item 6 — the general family-wide sharing link (buildJoinLinkText(),
+  // Settings' FamilySharingModal), a lower-priority sibling of the above:
+  // a personal invite always claims a specific pre-created member profile
+  // and is the required primary flow (item 1), so it wins if a URL somehow
+  // carries both params. Kept on its own `join` query param (never
+  // `invite`) so the two mechanisms' launch detection can never collide or
+  // be mistaken for one another — see logic/familyJoinCode.ts.
+  const [initialJoinCode] = useState<string | null>(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
+    try {
+      const raw = new URLSearchParams(window.location.search).get('join');
+      return raw && raw.trim() ? raw.trim() : null;
+    } catch {
+      return null;
+    }
+  });
+  // An installed PWA launch is ambiguous -- it's exactly as true for a
+  // returning device reopening the icon as for a brand-new install that
+  // just added the icon during setup (no reliable synchronous client-side
+  // signal distinguishes them; even a brand-new device already has an
+  // anonymous Supabase session by the time this screen renders). Previously
+  // this defaulted straight into 'recover', silently assuming "returning"
+  // for every case including first-time installs. Show a neutral 3-way
+  // choice instead and let the device tell us which it is — UNLESS a valid
+  // invite/join link is already present, in which case that takes
+  // precedence over this ambiguity entirely (see initialInviteToken/
+  // initialJoinCode above).
+  const [mode, setMode] = useState<Mode>(
+    initialInviteToken ? 'redeem' : initialJoinCode ? 'join' : isInstalledWebApp ? 'pwaChoice' : 'choose'
+  );
   // --- create ---
   const [familyName, setFamilyName] = useState('');
   const [dogName, setDogName] = useState('');
   const [creating, setCreating] = useState(false);
+  const creatingRef = useRef(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [adminEmail, setAdminEmail] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
@@ -97,11 +132,18 @@ export function FamilyOnboardingScreen() {
   // anonymous session, or a device that never tried creating a family) --
   // get_my_family_onboarding_status() simply returns no row.
   useEffect(() => {
-    getMyFamilyOnboardingStatus()
-      .then((status) => {
+    Promise.all([getMyFamilyOnboardingStatus(), getFamilyCreationOwnerId()])
+      .then(async ([status, creationOwnerId]) => {
         if (!status) return;
         if (status.approvalStatus === 'active') {
-          setFamilyId(status.familyId);
+          if (creationOwnerId && onFamilyCreated) {
+            const identity = await getVerifiedAdminIdentity();
+            if (identity.userId === creationOwnerId) {
+              await beginFamilySetup(status.familyId, identity.userId);
+              await onFamilyCreated(status.familyId);
+            } else await setFamilyId(status.familyId);
+          }
+          else setFamilyId(status.familyId);
         } else if (status.approvalStatus === 'pending') {
           setMode('create');
           setPendingApprovalFamilyName(status.familyName);
@@ -170,7 +212,8 @@ export function FamilyOnboardingScreen() {
   };
 
   const submitCreate = async () => {
-    if (!familyName.trim() || !verifiedAdminEmail) return;
+    if (!familyName.trim() || !verifiedAdminEmail || creatingRef.current) return;
+    creatingRef.current = true;
     setCreating(true);
     setCreateError(null);
     try {
@@ -178,15 +221,26 @@ export function FamilyOnboardingScreen() {
       if (identity.email !== verifiedAdminEmail) {
         throw new Error('יש לאמת מחדש את כתובת הדוא״ל לפני יצירת המשפחה');
       }
+      // Write an intent marker before the network request. The server action
+      // is idempotent for this verified identity; after a refresh we can
+      // distinguish this device's interrupted creation from an existing
+      // family/member login and resume setup without creating a duplicate.
+      await markFamilyCreationPending(identity.userId);
       const family = await createVerifiedFamily(familyName.trim(), dogName.trim() || undefined);
       if (family.approvalStatus === 'pending') {
         setPendingApprovalFamilyName(family.name);
         return;
       }
-      await setFamilyId(family.id);
+      if (onFamilyCreated) {
+        await beginFamilySetup(family.id, identity.userId);
+        await onFamilyCreated(family.id);
+      } else {
+        await setFamilyId(family.id);
+      }
     } catch (e) {
       setCreateError(friendlyErrorMessage(e));
     } finally {
+      creatingRef.current = false;
       setCreating(false);
     }
   };
@@ -198,8 +252,8 @@ export function FamilyOnboardingScreen() {
   const [found, setFound] = useState<FamilyLookupResult | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
 
-  const lookup = async () => {
-    const trimmed = code.trim();
+  const lookup = async (overrideCode?: string) => {
+    const trimmed = (overrideCode ?? code).trim();
     if (trimmed.length < 4) return;
     setLooking(true);
     setJoinError(null);
@@ -214,11 +268,33 @@ export function FamilyOnboardingScreen() {
       if (!result) setJoinError('לא נמצאה משפחה עם הקוד הזה — בדקו שהקוד הוקלד נכון');
       else setFound(result);
     } catch (e) {
-      setJoinError(e instanceof Error ? e.message : 'לא הצלחנו לחפש את הקוד');
+      setJoinError(friendlyErrorMessage(e));
     } finally {
       setLooking(false);
     }
   };
+
+  // Family Lifecycle repair (item 6) — a family-wide join link arrived via
+  // the launch URL: pre-fill the (now bypassed) manual code box with it and
+  // look it up automatically, same treatment as initialInviteToken above.
+  // Runs once on mount only, and only when there's no higher-priority
+  // invite token already handling the launch.
+  useEffect(() => {
+    if (!initialJoinCode || initialInviteToken) return;
+    const normalized = initialJoinCode.toUpperCase();
+    setCode(normalized);
+    void lookup(normalized);
+    if (typeof window !== 'undefined' && window.history?.replaceState) {
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('join');
+        window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+      } catch {
+        // best-effort URL cleanup only.
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const confirmJoin = async () => {
     if (!found) return;
@@ -267,8 +343,8 @@ export function FamilyOnboardingScreen() {
     setRedeemError(null);
   };
 
-  const inspectInvite = async () => {
-    const parsed = parseInviteInput(redeemInput);
+  const inspectInvite = async (overrideInput?: string) => {
+    const parsed = parseInviteInput(overrideInput ?? redeemInput);
     if (!parsed) return;
     setInspecting(true);
     setInspectError(null);
@@ -283,6 +359,30 @@ export function FamilyOnboardingScreen() {
       setInspecting(false);
     }
   };
+
+  // Family Lifecycle repair (item 1/2) — a token arrived via the launch URL:
+  // pre-fill the (now bypassed) manual box with it and inspect it
+  // automatically, so the recipient lands straight on the family/member
+  // confirmation card with nothing to paste or type. Runs once on mount
+  // only; strips the query param from the visible URL right away so a
+  // later refresh (e.g. after redemption already consumed the token)
+  // doesn't re-trigger the same now-stale token automatically.
+  useEffect(() => {
+    if (!initialInviteToken) return;
+    setRedeemInput(initialInviteToken);
+    void inspectInvite(initialInviteToken);
+    if (typeof window !== 'undefined' && window.history?.replaceState) {
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('invite');
+        window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+      } catch {
+        // best-effort URL cleanup only — leaving the param in place is
+        // harmless (parseInviteInput() will just see it again on refresh).
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const confirmRedeem = async () => {
     if (!redeemToken) return;
@@ -325,6 +425,36 @@ export function FamilyOnboardingScreen() {
       setVerifying(false);
     }
   };
+
+  if (mode === 'pwaChoice') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <WalkieMascot state="ready" size={128} testID="onboarding-mascot-pwa-choice" />
+        <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">רגע לפני שממשיכים</RtlText>
+        <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
+          פתחתם את Walkie Doggy מהאייקון שנוסף למסך הבית. כדי לחבר את המכשיר הזה נכון, ספרו לנו קודם באיזה שלב אתם.
+        </RtlText>
+        <Button
+          label="המשפחה שלי כבר קיימת"
+          variant="secondary"
+          onPress={() => setMode('recover')}
+          style={styles.wideButton}
+        />
+        <Button
+          label="יש לי הזמנה"
+          variant="secondary"
+          onPress={() => setMode('redeem')}
+          style={styles.wideButton}
+        />
+        <Button
+          label="יצירת משפחה חדשה"
+          variant="secondary"
+          onPress={() => setMode('create')}
+          style={styles.wideButton}
+        />
+      </SafeAreaView>
+    );
+  }
 
   if (mode === 'recover') {
     return (
@@ -386,36 +516,16 @@ export function FamilyOnboardingScreen() {
 
   if (mode === 'choose') {
     return (
-      <View style={styles.welcomeContainer}>
-        <ImageBackground
-          source={require("../../assets/onboarding-welcome-final.png")}
-          style={[styles.referenceHero, isDesktop && styles.referenceHeroDesktop]}
-          imageStyle={[styles.referenceHeroImage, isDesktop && styles.referenceHeroImageDesktop]}
-          resizeMode={isDesktop ? "contain" : "cover"}
-          accessibilityLabel="מסך הפתיחה של Walkie Doggy"
-        >
-          {showWelcomeWink ? (
-            <Image
-              source={require("../../assets/onboarding-welcome-wink.png")}
-              style={styles.winkFrame}
-              resizeMode="cover"
-              accessibilityElementsHidden
-            />
-          ) : null}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="יצירת משפחה חדשה"
-            onPress={() => setMode('create')}
-            style={[styles.createHotspot, isDesktop && styles.createHotspotDesktop]}
-          />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="הצטרפות למשפחה קיימת"
-            onPress={() => setMode('join')}
-            style={[styles.joinHotspot, isDesktop && styles.joinHotspotDesktop]}
-          />
-        </ImageBackground>
-      </View>
+      <SafeAreaView style={styles.welcomeContainer}>
+        <View style={[styles.welcomeCard, isDesktop && styles.welcomeCardDesktop]}>
+          <WalkieMascot state="ready" size={isDesktop ? 184 : 150} accessibilityLabel="הקמע הרשמי של Walkie Doggy" />
+          <RtlText style={styles.welcomeBrand}>Walkie Doggy</RtlText>
+          <RtlText style={styles.welcomeTitle} accessibilityRole="header">מטיילים יחד, כמשפחה</RtlText>
+          <RtlText style={styles.welcomeCopy}>יוצרים בית משותף לכלבים, לבני המשפחה ולטיולים היומיים.</RtlText>
+          <Button label="יצירת משפחה חדשה" onPress={() => setMode('create')} style={styles.welcomeButton} />
+          <Button label="הצטרפות למשפחה קיימת" variant="secondary" onPress={() => setMode('join')} style={styles.welcomeButton} />
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -428,7 +538,7 @@ export function FamilyOnboardingScreen() {
           <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
             הבקשה ליצירת {rejectedFamilyName} נדחתה על ידי מנהל המערכת. לפרטים נוספים, פנו לתמיכה.
           </RtlText>
-          <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
+          <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
         </SafeAreaView>
       );
     }
@@ -441,7 +551,7 @@ export function FamilyOnboardingScreen() {
           <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
             הבקשה ליצירת {pendingApprovalFamilyName} התקבלה. נשלח עדכון לאחר אישור מנהל המערכת.
           </RtlText>
-          <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
+          <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
         </SafeAreaView>
       );
     }
@@ -452,9 +562,13 @@ export function FamilyOnboardingScreen() {
           <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
             <View style={[styles.formHero, isDesktop && styles.formHeroDesktop]}>
               <WalkieMascot state="excited" size={86} />
-              <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>בואו נקים למשפחה שלכם בית חדש 🐾</RtlText></View>
+              <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>בואו נקים למשפחה שלכם בית חדש</RtlText></View>
             </View>
-            <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">יצירת משפחה חדשה</RtlText>
+            <View style={styles.creationProgress} accessibilityLabel="שלב 1 מתוך 5">
+              {[1, 2, 3, 4, 5].map((step) => <View key={step} style={[styles.creationProgressSegment, step === 1 ? styles.creationProgressCurrent : null]} />)}
+            </View>
+            <RtlText style={styles.creationStepText}>שלב 1 מתוך 5</RtlText>
+            <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">בואו נקים את המשפחה שלכם</RtlText>
             <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>כמה פרטים קצרים ומתחילים לטייל יחד</RtlText>
 
             <View style={[styles.form, isDesktop && styles.formDesktop]}>
@@ -527,7 +641,7 @@ export function FamilyOnboardingScreen() {
 
               {verifiedAdminEmail ? (
                 <>
-                  <RtlText style={styles.stepHint}>מעולה! עכשיו רק נותנים למשפחה שם 🐾</RtlText>
+                  <RtlText style={styles.stepHint}>מעולה! עכשיו רק נותנים למשפחה שם</RtlText>
                   <RtlText style={styles.label}>שם המשפחה</RtlText>
                   <TextInput
                     value={familyName}
@@ -543,7 +657,7 @@ export function FamilyOnboardingScreen() {
                   <TextInput
                     value={dogName}
                     onChangeText={setDogName}
-                    placeholder="אפשר להוסיף גם אחר כך בהגדרות"
+                    placeholder="אפשר להוסיף בשלב הבא"
                     placeholderTextColor={colors.textSecondary}
                     style={styles.input}
                     textAlign="right"
@@ -565,7 +679,7 @@ export function FamilyOnboardingScreen() {
                   {createError}
                 </RtlText>
               ) : null}
-              <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
+              <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -592,7 +706,7 @@ export function FamilyOnboardingScreen() {
                   setInspectError(null);
                   setRedeemError(null);
                 }}
-                placeholder="dogwalkfamily://invite/... או הקוד עצמו"
+                placeholder="https://... או הקוד עצמו"
                 placeholderTextColor={colors.textSecondary}
                 style={[styles.input, styles.ltrInput]}
                 textAlign="left"
@@ -674,7 +788,7 @@ export function FamilyOnboardingScreen() {
                 variant="secondary"
                 onPress={() => {
                   resetRedeemMode();
-                  setMode('choose');
+                  setMode(isInstalledWebApp ? 'pwaChoice' : 'choose');
                 }}
                 style={styles.wideButton}
               />
@@ -692,7 +806,7 @@ export function FamilyOnboardingScreen() {
         <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
           <View style={[styles.formHero, isDesktop && styles.formHeroDesktop]}>
             <WalkieMascot state="excited" size={86} />
-            <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>קיבלתם קוד? בואו נמצא את המשפחה 🐾</RtlText></View>
+            <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>קיבלתם קוד? בואו נמצא את המשפחה</RtlText></View>
           </View>
           <RtlText style={[styles.title, styles.joinTitle, isDesktop && styles.titleDesktop]} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit>הצטרפות למשפחה קיימת</RtlText>
           <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>הקלידו את קוד ההזמנה שקיבלתם מבן/בת המשפחה</RtlText>
@@ -702,7 +816,15 @@ export function FamilyOnboardingScreen() {
             <TextInput
               value={code}
               onChangeText={(v) => {
-                setCode(v.toUpperCase());
+                // Family Lifecycle repair (item 6) — forgiving like
+                // redeem mode's parseInviteInput(): a pasted full join
+                // link/share message is recognized and reduced to the
+                // bare code, not truncated to garbage by a naive
+                // character cap. No TextInput `maxLength` here for
+                // exactly that reason — the cap is applied ourselves,
+                // after parsing, below.
+                const parsed = parseJoinInput(v) ?? '';
+                setCode(parsed.toUpperCase().slice(0, 8));
                 setFound(null);
                 setJoinError(null);
               }}
@@ -712,7 +834,6 @@ export function FamilyOnboardingScreen() {
               textAlign="center"
               autoCapitalize="characters"
               autoCorrect={false}
-              maxLength={8}
               accessibilityLabel="קוד הזמנה"
             />
 
@@ -745,7 +866,7 @@ export function FamilyOnboardingScreen() {
               />
             )}
 
-            <Button label="חזרה" variant="secondary" onPress={() => setMode('choose')} style={styles.wideButton} />
+            <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -754,20 +875,14 @@ export function FamilyOnboardingScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#173A36', overflow: 'hidden' },
-  welcomeContainer: { flex: 1, backgroundColor: '#173A36', overflow: 'hidden' },
-  winkFrame: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%' },
-  createHotspot: { position: 'absolute', left: '12%', right: '12%', top: '72%', height: '7.5%', zIndex: 2 },
-  joinHotspot: { position: 'absolute', left: '12%', right: '12%', top: '80%', height: '7.5%', zIndex: 2 },
-  // On desktop the reference image is contained inside a much wider ImageBackground.
-  // Percentage hotspots relative to that wide box land outside the visible phone artwork,
-  // so clicks appear dead. Keep the interactive areas centered on the 560px artwork.
-  createHotspotDesktop: { left: '12%', right: '12%', top: '72%' },
-  joinHotspotDesktop: { left: '12%', right: '12%', top: '80%' },
-  referenceHero: { flex: 1, width: '100%', minHeight: '100%' },
-  referenceHeroDesktop: { alignSelf: 'center', width: 560, maxWidth: '100%', backgroundColor: '#173A36' },
-  referenceHeroImage: { width: '100%', height: '100%' },
-  referenceHeroImageDesktop: { resizeMode: 'contain' },
+  container: { flex: 1, backgroundColor: colors.background, overflow: 'hidden' },
+  welcomeContainer: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
+  welcomeCard: { width: '100%', maxWidth: 480, alignItems: 'center', justifyContent: 'center', gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.xl, borderRadius: radii.xl, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  welcomeCardDesktop: { maxWidth: 560, paddingVertical: 36 },
+  welcomeBrand: { fontSize: 18, fontWeight: '800', color: colors.primaryDark },
+  welcomeTitle: { fontSize: 28, lineHeight: 36, fontWeight: '900', color: colors.textPrimary, textAlign: 'center' },
+  welcomeCopy: { ...typography.body, color: colors.textSecondary, lineHeight: 25, textAlign: 'center', marginBottom: spacing.sm },
+  welcomeButton: { width: '100%', minHeight: 52 },
   referenceOverlay: { flex: 1, justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 12, paddingBottom: 18 },
   referenceTopRow: { minHeight: 170, alignItems: 'center', justifyContent: 'center' },
   languagePill: { position: 'absolute', right: 0, top: 0, backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 28, paddingHorizontal: 18, paddingVertical: 11 },
@@ -790,13 +905,24 @@ const styles = StyleSheet.create({
   featureIcon: { color: '#102A5A', fontSize: 20, fontWeight: '900', lineHeight: 22 },
   featureLabel: { color: '#102A5A', fontSize: 10, lineHeight: 11, fontWeight: '800', textAlign: 'center' },
   smallWalks: { color: '#FFFFFF', fontSize: 13, lineHeight: 16, letterSpacing: 1.2, fontWeight: '700', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 5 },
-  formSafeArea: { flex: 1, backgroundColor: '#DFF5EE' },
-  formHero: { width: '100%', maxWidth: 560, minHeight: 82, borderRadius: 24, backgroundColor: '#BFE8DA', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 14, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#CBE9DF' },
+  // Same brand cream (colors.background) as the welcome screen's letterbox,
+  // so stepping from "choose" into create/join/redeem reads as one
+  // continuous surface rather than a hand-off into a different, pale-green
+  // page. formHero is a muted (not tinted-green) card floating on that
+  // cream, with turquoise kept to a controlled accent (the speech bubble's
+  // border) per BRAND_BIBLE's "calm cream backgrounds, turquoise as a
+  // controlled brand accent".
+  formSafeArea: { flex: 1, backgroundColor: colors.background },
+  formHero: { width: '100%', maxWidth: 560, minHeight: 82, borderRadius: 24, backgroundColor: colors.surfaceMuted, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 14, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: colors.border },
+  creationProgress: { width: '100%', maxWidth: 560, flexDirection: 'row-reverse', gap: 6, marginTop: 4, marginBottom: 6 },
+  creationProgressSegment: { flex: 1, height: 5, borderRadius: 4, backgroundColor: colors.border },
+  creationProgressCurrent: { backgroundColor: colors.primary },
+  creationStepText: { ...typography.meta, color: colors.primaryDark, textAlign: 'right', alignSelf: 'flex-end', fontWeight: '700', marginBottom: 4 },
   formHeroDesktop: { maxWidth: 680, minHeight: 104 },
-  formSpeech: { flex: 1, maxWidth: 330, backgroundColor: '#FFFFFF', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 2, borderColor: '#2AA7B8' },
+  formSpeech: { flex: 1, maxWidth: 330, backgroundColor: colors.surface, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 2, borderColor: colors.primary },
   formSpeechText: { color: '#102A5A', fontSize: 16, lineHeight: 22, fontWeight: '800', textAlign: 'center' },
   flexFull: { flex: 1 },
-  formScrollContent: { alignItems: 'center', paddingTop: 14, paddingHorizontal: 18, paddingBottom: 34, minHeight: '100%', backgroundColor: '#DFF5EE' },
+  formScrollContent: { alignItems: 'center', paddingTop: 14, paddingHorizontal: 18, paddingBottom: 34, minHeight: '100%', backgroundColor: colors.background },
   formScrollContentDesktop: { paddingTop: 28, paddingHorizontal: 32, paddingBottom: 48 },
 
   eyebrow: { ...typography.caption, letterSpacing: 3.2, color: colors.primaryDark, fontWeight: '900', textAlign: 'center', marginBottom: spacing.md },
@@ -817,7 +943,7 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 14, lineHeight: 20, color: colors.textSecondary, marginTop: 4, marginBottom: 12, textAlign: 'center', maxWidth: 520 },
   subtitleDesktop: { fontSize: 16, marginBottom: 20 },
   wideButton: { width: '100%', marginTop: 8 },
-  form: { width: '100%', maxWidth: 560, alignSelf: 'center', backgroundColor: '#FDFBF4', borderRadius: 24, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 18, borderWidth: 1, borderColor: '#B8DCCF', shadowColor: '#173A36', shadowOpacity: 0.08, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
+  form: { width: '100%', maxWidth: 560, alignSelf: 'center', backgroundColor: colors.surface, borderRadius: 24, paddingHorizontal: 18, paddingTop: 12, paddingBottom: 18, borderWidth: 1, borderColor: colors.border, ...elevation.card },
   formDesktop: { maxWidth: 680, paddingHorizontal: 28, paddingTop: 18, paddingBottom: 24 },
   label: { ...typography.meta, fontWeight: '800', color: '#6E675C', marginTop: 8, marginBottom: 5, textAlign: 'right' },
   stepHint: { fontSize: 14, lineHeight: 20, color: '#173A36', fontWeight: '800', textAlign: 'right', marginTop: 10, marginBottom: 2 },

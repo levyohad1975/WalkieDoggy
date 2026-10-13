@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Platform, Pressable, StyleSheet } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Alert, AppState, Platform, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from './src/store/authStore';
@@ -8,16 +8,35 @@ import { RootNavigator } from './src/navigation/RootNavigator';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { FamilyOnboardingScreen } from './src/screens/FamilyOnboardingScreen';
 import { SystemAdminScreen } from './src/screens/SystemAdminScreen';
+import { PhotoCropHost } from './src/components/PhotoCropHost';
 import { RtlText } from './src/components/RtlText';
 import { colors } from './src/theme/colors';
 import { requestNotificationPermissions, subscribeToWalkReminderResponses } from './src/notifications/notificationService';
 import { registerPushToken } from './src/lib/pushTokens';
+import { reconcileWebPushSubscription } from './src/lib/webPush';
 import { repository, setSyncQueueActorGetter } from './src/data';
-import { isSupabaseConfigured } from './src/lib/supabase';
+import { getCurrentFamilyIsQa, getWhoAmI, isSupabaseConfigured, supabaseProjectUrl } from './src/lib/supabase';
 import { touchLastSeen } from './src/lib/requests';
 import { useRequestsStore } from './src/store/requestsStore';
 import { useScheduleStore, reconcileScheduleNotifications } from './src/store/scheduleStore';
 import { useFamilyStore } from './src/store/familyStore';
+import { WalkieMascot } from './src/components/WalkieMascot';
+import { FamilySetupWizard } from './src/screens/FamilySetupWizard';
+import { beginFamilySetup, clearFamilySetupProgress, isFamilySetupComplete, markFamilySetupComplete, readFamilySetupProgress, saveFamilySetupProgress, type FamilySetupProgress } from './src/lib/familySetupProgress';
+import { getVerifiedAdminIdentity } from './src/lib/verifiedAdminOnboarding';
+import { canResumeFamilySetupDraft, canShowFamilySetupWizard } from './src/logic/familySetupResume';
+const isStagingSupabaseProject = (() => {
+  try { return new URL(supabaseProjectUrl).hostname === 'czbxhsoxyawprqehkfit.supabase.co'; }
+  catch { return false; }
+})();
+
+import {
+  createTestFamilyReentryDiagnosticId,
+  exitSystemAdminTestFamily,
+  getActiveSystemAdminTestFamily,
+  recordTestFamilyReentryDiagnostic,
+  type TestFamilyReentryStage,
+} from './src/lib/systemAdmin';
 
 // Reconciles local notifications against the currently loaded schedule store
 // state (A3's authoritative rule: notification content always comes from the
@@ -149,6 +168,29 @@ async function runForegroundSyncOnce(): Promise<void> {
   // 5. Presence + claim housekeeping.
   await touchLastSeen().catch(() => undefined);
   await useAuthStore.getState().revalidateClaim();
+
+  // 6. Real-device QA fix — "recovery after refresh/reopen" for Web Push.
+  // reconcileWebPushSubscription() was previously only ever called once,
+  // from a currentUserId-keyed effect in App() below (covers sign-in/
+  // mount) and from RemindersModal's own mount effect (covers explicitly
+  // reopening that modal). Neither re-runs on an ordinary foreground
+  // transition — reopening an already-signed-in installed PWA from the
+  // Home Screen resumes the SAME app instance (no remount, currentUserId
+  // never changes), so a persistence failure on the very first attempt
+  // had no other retry point short of the person manually reopening
+  // Reminders. This is the actual "every app launch/foreground" behavior
+  // reconcileWebPushSubscription()'s own doc comment already claimed —
+  // now actually wired here, matching registerPushTokenAndReconcile()'s
+  // equivalent step for native push tokens. Platform-gated (web only) the
+  // same way the standalone effect below is; web is a no-op instantly on
+  // every other platform (isWebPushSupported() short-circuits).
+  if (Platform.OS === 'web') {
+    const webPushStatus = await reconcileWebPushSubscription();
+    if (webPushStatus === 'error') {
+      // eslint-disable-next-line no-console
+      console.error('[webPush] foreground reconcile failed to persist this device\'s subscription');
+    }
+  }
 }
 
 /**
@@ -235,7 +277,76 @@ export async function registerPushTokenAndReconcile(): Promise<void> {
 setSyncQueueActorGetter(() => useAuthStore.getState().currentUserId);
 
 export default function App() {
-  const { currentUserId, familyId, hydrated, restoreSession, systemObserverActive } = useAuthStore();
+  const { currentUserId, familyId, familyRole, hydrated, restoreSession, systemObserverActive, setFamilyId } = useAuthStore();
+  const [familySetupProgress, setFamilySetupProgress] = useState<FamilySetupProgress | null>(null);
+  const [familySetupLoaded, setFamilySetupLoaded] = useState(false);
+  const [familySetupOwnerMatches, setFamilySetupOwnerMatches] = useState(false);
+  const [familySetupServerConfirmedFamilyId, setFamilySetupServerConfirmedFamilyId] = useState<string | null>(null);
+  const [isQaFamily, setIsQaFamily] = useState(false);
+  const [qaSessionLoaded, setQaSessionLoaded] = useState(false);
+  const [qaSwitchError, setQaSwitchError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!hydrated) return;
+    let mounted = true;
+    void readFamilySetupProgress().then(async (progress) => {
+      if (!mounted) return;
+      // Never expose an AsyncStorage draft while its server family is still
+      // unknown. Keep the draft on disk so a later authorized test-family
+      // entry can resume it, but clear only the in-memory wizard state.
+      setFamilySetupProgress(null);
+      setFamilySetupOwnerMatches(false);
+      setFamilySetupServerConfirmedFamilyId(null);
+      if (!progress?.ownerAuthUserId) return;
+      const identity = await getVerifiedAdminIdentity();
+      if (identity.userId !== progress.ownerAuthUserId || !mounted) return;
+      // A saved onboarding draft does not authorize a family switch. Resume it
+      // only when Supabase confirms this auth session is already mapped to the
+      // draft's family. This preserves dormant QA drafts after an admin exits
+      // back to the original family without making RLS-scoped reads go empty.
+      const serverContext = isSupabaseConfigured ? await getWhoAmI() : null;
+      if (!mounted) return;
+      if (!canResumeFamilySetupDraft(progress.familyId, serverContext?.familyId)) {
+        // If a stale local family id survived a switch, reconcile it only
+        // from whoami()'s server-confirmed family. This is a local cache fix;
+        // it never changes family membership or claims a profile.
+        if (serverContext?.familyId && useAuthStore.getState().familyId !== serverContext.familyId) {
+          await setFamilyId(serverContext.familyId);
+        }
+        return;
+      }
+      if (useAuthStore.getState().familyId !== progress.familyId) await setFamilyId(progress.familyId);
+      if (!mounted) return;
+      setFamilySetupProgress(progress);
+      setFamilySetupOwnerMatches(true);
+      setFamilySetupServerConfirmedFamilyId(serverContext?.familyId ?? null);
+    }).catch(() => {
+      // A whoami timeout is not authorization to continue with stale local
+      // family state. The persisted draft remains available for a safe retry.
+      if (mounted) {
+        setFamilySetupProgress(null);
+        setFamilySetupOwnerMatches(false);
+        setFamilySetupServerConfirmedFamilyId(null);
+      }
+    }).finally(() => { if (mounted) setFamilySetupLoaded(true); });
+    return () => { mounted = false; };
+  }, [hydrated, setFamilyId]);
+  const finishFamilySetup = async () => {
+    const scheduleReviewOnly = familySetupProgress?.scheduleReviewOnly === true;
+    if (isQaFamily && familyId && !scheduleReviewOnly) await markFamilySetupComplete(familyId);
+    await clearFamilySetupProgress();
+    setFamilySetupProgress(null);
+    setFamilySetupServerConfirmedFamilyId(null);
+    setFamilySetupOwnerMatches(false);
+  };
+  const startFamilySetup = async (createdFamilyId: string) => {
+    const progress = await readFamilySetupProgress();
+    setFamilySetupProgress(progress ?? { familyId: createdFamilyId, step: 2 });
+    setFamilySetupOwnerMatches(Boolean(progress?.ownerAuthUserId));
+    await setFamilyId(createdFamilyId);
+    // This callback only runs after the server-side family creation RPC has
+    // returned the created family id.
+    setFamilySetupServerConfirmedFamilyId(createdFamilyId);
+  };
   // In Supabase (backend) mode, a device with no familyId yet hasn't
   // created/joined a family — show that onboarding before anything else.
   // Local/demo mode always has a familyId (the seeded demo family) and
@@ -256,11 +367,141 @@ export default function App() {
   // cannot affect which family this device is a member of.
   const isSystemAdmin = useSystemAdminStore((s) => s.isSystemAdmin);
   const refreshSystemAdmin = useSystemAdminStore((s) => s.refresh);
+  const systemAdminOpenRequestId = useSystemAdminStore((s) => s.openRequestId);
   const [systemAdminOpen, setSystemAdminOpen] = useState(false);
+  const qaSwitchBusyRef = useRef(false);
+  const [qaSwitchBusy, setQaSwitchBusy] = useState(false);
+  const selectTestFamily = async (selectedFamilyId: string, suppliedDiagnosticId?: string) => {
+    if (qaSwitchBusyRef.current) throw new Error('המעבר בין המשפחות כבר מתבצע. המתינו רגע ונסו שוב.');
+    qaSwitchBusyRef.current = true;
+    setQaSwitchBusy(true);
+    const diagnosticId = suppliedDiagnosticId ?? createTestFamilyReentryDiagnosticId();
+    let stage: TestFamilyReentryStage = 'family_selection';
+    recordTestFamilyReentryDiagnostic({ diagnosticId, familyId: selectedFamilyId, stage, outcome: 'started' });
+    try {
+      // The server RPC has already authorized the switch. Reconcile local family
+      // context immediately so a later onboarding-storage failure cannot leave
+      // the UI pointing at the original family while the server is in QA.
+      setIsQaFamily(true);
+      setQaSwitchError(null);
+      await setFamilyId(selectedFamilyId);
+      recordTestFamilyReentryDiagnostic({ diagnosticId, familyId: selectedFamilyId, stage, outcome: 'succeeded' });
+
+      stage = 'identity_validation';
+      recordTestFamilyReentryDiagnostic({ diagnosticId, familyId: selectedFamilyId, stage, outcome: 'started' });
+      const identity = await getVerifiedAdminIdentity();
+      recordTestFamilyReentryDiagnostic({ diagnosticId, familyId: selectedFamilyId, stage, outcome: 'succeeded' });
+
+      stage = 'onboarding_state';
+      recordTestFamilyReentryDiagnostic({ diagnosticId, familyId: selectedFamilyId, stage, outcome: 'started' });
+      const complete = await isFamilySetupComplete(selectedFamilyId);
+      const saved = await readFamilySetupProgress();
+      let progress: FamilySetupProgress | null = null;
+      if (!complete) {
+        progress = saved?.familyId === selectedFamilyId && saved?.ownerAuthUserId === identity.userId
+          ? saved
+          : await beginFamilySetup(selectedFamilyId, identity.userId);
+        setFamilySetupProgress(progress);
+        setFamilySetupOwnerMatches(true);
+        setFamilySetupServerConfirmedFamilyId(selectedFamilyId);
+      } else {
+        if (saved?.familyId === selectedFamilyId) await clearFamilySetupProgress();
+        setFamilySetupProgress(null);
+        setFamilySetupOwnerMatches(false);
+        setFamilySetupServerConfirmedFamilyId(null);
+      }
+      recordTestFamilyReentryDiagnostic({ diagnosticId, familyId: selectedFamilyId, stage, outcome: 'succeeded' });
+    } catch (error) {
+      recordTestFamilyReentryDiagnostic({ diagnosticId, familyId: selectedFamilyId, stage, outcome: 'failed', error });
+      throw error;
+    } finally {
+      qaSwitchBusyRef.current = false;
+      setQaSwitchBusy(false);
+    }
+  };
+  const selectTestFamilyForScheduleReview = async (selectedFamilyId: string, suppliedDiagnosticId?: string) => {
+    if (!isStagingSupabaseProject || !useSystemAdminStore.getState().isSystemAdmin) throw new Error('פתיחת שלב הבדיקה זמינה רק למנהל מערכת בסביבת Staging.');
+    await selectTestFamily(selectedFamilyId, suppliedDiagnosticId);
+    const [activeTestFamily, identity] = await Promise.all([
+      getActiveSystemAdminTestFamily(),
+      getVerifiedAdminIdentity(),
+    ]);
+    if (activeTestFamily?.familyId !== selectedFamilyId || useAuthStore.getState().familyId !== selectedFamilyId) {
+      throw new Error('השרת לא אישר שמשפחת הבדיקה הנכונה פעילה. לא פתחנו את שלב לוח הטיולים.');
+    }
+    const progress: FamilySetupProgress = {
+      familyId: selectedFamilyId,
+      ownerAuthUserId: identity.userId,
+      step: 4,
+      scheduleReviewOnly: true,
+    };
+    await saveFamilySetupProgress(progress);
+    setFamilySetupProgress(progress);
+    setFamilySetupOwnerMatches(true);
+    setFamilySetupServerConfirmedFamilyId(selectedFamilyId);
+  };
+  const returnFromTestFamily = async () => {
+    if (qaSwitchBusyRef.current) return;
+    qaSwitchBusyRef.current = true;
+    setQaSwitchBusy(true);
+    setQaSwitchError(null);
+    try {
+      const restored = await exitSystemAdminTestFamily();
+      await setFamilyId(restored.id);
+      setIsQaFamily(false);
+      setFamilySetupProgress(null);
+      setFamilySetupOwnerMatches(false);
+      setFamilySetupServerConfirmedFamilyId(null);
+    } catch (cause) {
+      setQaSwitchError(cause instanceof Error ? cause.message : 'לא הצלחנו לחזור למשפחה המקורית. נסו שוב.');
+    } finally {
+      qaSwitchBusyRef.current = false;
+      setQaSwitchBusy(false);
+    }
+  };
   const [showIosInstallPrompt, setShowIosInstallPrompt] = useState(false);
   useEffect(() => {
     if (hydrated) void refreshSystemAdmin();
   }, [hydrated, refreshSystemAdmin]);
+
+  useEffect(() => {
+    if (!hydrated || !isSystemAdmin) { if (hydrated) { setIsQaFamily(false); setQaSessionLoaded(true); } return; }
+    let mounted = true;
+    setQaSessionLoaded(false);
+    void (async () => {
+      try {
+        const isQa = await getCurrentFamilyIsQa();
+        if (!mounted) return;
+        setIsQaFamily(isQa);
+        if (isQa) {
+          const active = await getActiveSystemAdminTestFamily();
+          if (active && useAuthStore.getState().familyId !== active.familyId) await setFamilyId(active.familyId);
+          const identity = await getVerifiedAdminIdentity();
+          const saved = await readFamilySetupProgress();
+          if (active && saved?.familyId === active.familyId && saved?.ownerAuthUserId === identity.userId) {
+            setFamilySetupProgress(saved);
+            setFamilySetupOwnerMatches(true);
+            setFamilySetupServerConfirmedFamilyId(active.familyId);
+          } else if (active && !(await isFamilySetupComplete(active.familyId))) {
+            const progress = await beginFamilySetup(active.familyId, identity.userId);
+            setFamilySetupProgress(progress);
+            setFamilySetupOwnerMatches(true);
+            setFamilySetupServerConfirmedFamilyId(active.familyId);
+          } else if (active) {
+            if (saved?.familyId === active.familyId) await clearFamilySetupProgress();
+            setFamilySetupProgress(null);
+            setFamilySetupOwnerMatches(false);
+            setFamilySetupServerConfirmedFamilyId(null);
+          }
+        }
+      } catch {
+        // The admin UI surfaces RPC failures when a test family operation is
+        // requested. A failed status probe must never switch family context.
+        if (mounted) setIsQaFamily(false);
+      } finally { if (mounted) setQaSessionLoaded(true); }
+    })();
+    return () => { mounted = false; };
+  }, [hydrated, isSystemAdmin, setFamilyId]);
 
   useEffect(() => {
     if (!hydrated || Platform.OS !== 'web' || typeof navigator === 'undefined' || typeof window === 'undefined') return;
@@ -268,6 +509,12 @@ export default function App() {
     const isIos = /iphone|ipad|ipod/i.test(nav.userAgent) || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1);
     const isStandalone = Boolean(window.matchMedia?.('(display-mode: standalone)').matches || nav.standalone === true);
     if (!isIos || isStandalone) return;
+    // Respect the user's choice on this device; do not interrupt every login.
+    try {
+      if (window.localStorage.getItem('walkie-ios-install-prompt-dismissed') === '1') return;
+    } catch {
+      // Private browsing may block storage; the prompt remains dismissible.
+    }
     setShowIosInstallPrompt(true);
   }, [hydrated]);
 
@@ -278,6 +525,12 @@ export default function App() {
   // console from the header entry point.
   const shouldEnterSystemAdminDirectly =
     isSupabaseConfigured && isSystemAdmin && !familyId && !currentUserId && !systemObserverActive;
+
+  useEffect(() => {
+    if (hydrated && isSystemAdmin && systemAdminOpenRequestId > 0 && !shouldEnterSystemAdminDirectly) {
+      setSystemAdminOpen(true);
+    }
+  }, [hydrated, isSystemAdmin, systemAdminOpenRequestId, shouldEnterSystemAdminDirectly]);
 
   // Section 10: remote request-push token registration — completely
   // separate from requestNotificationPermissions() below (that's the
@@ -297,6 +550,25 @@ export default function App() {
   useEffect(() => {
     if (currentUserId && !systemObserverActive) {
       void registerPushTokenAndReconcile();
+    }
+  }, [currentUserId, systemObserverActive]);
+
+  // Request-notifications repair — "refresh/reopen recovery" for Web Push,
+  // the exact web-platform counterpart of registerPushTokenAndReconcile()
+  // above. Silent and best-effort (reconcileWebPushSubscription() never
+  // throws): repairs a subscription that exists in this browser but was
+  // never (or no longer) persisted server-side, or re-subscribes if the
+  // browser invalidated it, without requiring the person to open Reminders
+  // and tap "אפשר התראות" again. A no-op whenever permission isn't already
+  // 'granted' — this never prompts on its own.
+  useEffect(() => {
+    if (Platform.OS === 'web' && currentUserId && !systemObserverActive) {
+      void reconcileWebPushSubscription().then((status) => {
+        if (status === 'error') {
+          // eslint-disable-next-line no-console
+          console.error('[webPush] mount-time reconcile failed to persist this device\'s subscription');
+        }
+      });
     }
   }, [currentUserId, systemObserverActive]);
 
@@ -346,9 +618,10 @@ export default function App() {
   // session restore resolves.
   return (
     <SafeAreaProvider>
-      {!hydrated ? (
+      {!hydrated || !familySetupLoaded || !qaSessionLoaded ? (
         <SafeAreaView style={styles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <WalkieMascot state="runIn" size={150} accessibilityLabel="Walkie Doggy טוען את האפליקציה" testID="app-loading-mascot" />
+          <RtlText style={styles.loadingText}>רק רגע, יוצאים לדרך…</RtlText>
         </SafeAreaView>
       ) : (
         <>
@@ -356,49 +629,69 @@ export default function App() {
           {showIosInstallPrompt ? (
             <Pressable style={styles.installPromptBackdrop} onPress={() => setShowIosInstallPrompt(false)}>
               <Pressable style={styles.installPromptCard} onPress={(event) => event.stopPropagation()}>
-                <RtlText style={styles.installPromptTitle}>בואו נוסיף את Walkie Doggy למסך הבית</RtlText>
-                <RtlText style={styles.installPromptText}>כך האפליקציה תהיה זמינה בלחיצה אחת ותוכל לקבל תזכורות גם כשהדפדפן סגור.</RtlText>
-                <RtlText style={styles.installPromptStep}>1️⃣ בתחתית Safari לחצו על כפתור השיתוף — הריבוע עם החץ כלפי מעלה ↑.</RtlText>
-                <RtlText style={styles.installPromptStep}>2️⃣ בתפריט שנפתח גללו ובחרו ״הוספה למסך הבית״.</RtlText>
-                <RtlText style={styles.installPromptStep}>3️⃣ במסך הבא לחצו ״הוסף״ בפינה העליונה.</RtlText>
-                <RtlText style={styles.installPromptStep}>4️⃣ חזרו למסך הבית ופתחו את Walkie Doggy מהאייקון החדש.</RtlText>
-                <RtlText style={styles.installPromptHint}>לאחר שתפתחו מהאייקון, נדריך אתכם גם בהפעלת ההתראות.</RtlText>
-                <Pressable style={styles.installPromptButton} onPress={() => setShowIosInstallPrompt(false)} accessibilityRole="button">
+                <RtlText style={styles.installPromptTitle}>Walkie Doggy במסך הבית</RtlText>
+                <RtlText style={styles.installPromptText}>פותחים את האפליקציה בלחיצה אחת!</RtlText>
+                <RtlText style={styles.installPromptStep}>① ב־Safari לחצו על שיתוף ⬆️</RtlText>
+                <RtlText style={styles.installPromptStep}>② בחרו ״הוספה למסך הבית״ ואז ״הוסף״</RtlText>
+                <RtlText style={styles.installPromptHint}>פתחו את Walkie Doggy מהסמל החדש במסך הבית.</RtlText>
+                <Pressable
+                  style={styles.installPromptButton}
+                  onPress={() => {
+                    try { window.localStorage.setItem('walkie-ios-install-prompt-dismissed', '1'); } catch {}
+                    setShowIosInstallPrompt(false);
+                  }}
+                  accessibilityRole="button"
+                >
                   <RtlText style={styles.installPromptButtonText}>הבנתי</RtlText>
+                </Pressable>
+                <Pressable
+                  style={styles.installPromptLater}
+                  onPress={() => {
+                    try { window.localStorage.setItem('walkie-ios-install-prompt-dismissed', '1'); } catch {}
+                    setShowIosInstallPrompt(false);
+                  }}
+                  accessibilityRole="button"
+                >
+                  <RtlText style={styles.installPromptLaterText}>אולי אחר כך</RtlText>
                 </Pressable>
               </Pressable>
             </Pressable>
           ) : null}
           {shouldEnterSystemAdminDirectly ? (
-            <SystemAdminScreen visible onClose={() => undefined} />
+            <SystemAdminScreen visible onClose={() => undefined} onTestFamilySelected={selectTestFamily} onTestFamilyScheduleSelected={isStagingSupabaseProject ? selectTestFamilyForScheduleReview : undefined} />
           ) : needsFamilyOnboarding ? (
-            <FamilyOnboardingScreen />
+            <FamilyOnboardingScreen onFamilyCreated={startFamilySetup} />
+          ) : canShowFamilySetupWizard({
+            progressFamilyId: familySetupProgress?.familyId,
+            localFamilyId: familyId,
+            serverConfirmedFamilyId: familySetupServerConfirmedFamilyId,
+            ownerMatches: familySetupOwnerMatches,
+            familyRole,
+          }) ? (
+            <FamilySetupWizard familyId={familySetupProgress!.familyId} progress={familySetupProgress!} onProgressChange={setFamilySetupProgress} onComplete={finishFamilySetup} />
           ) : currentUserId || systemObserverActive ? (
             <RootNavigator />
           ) : (
             <LoginScreen />
           )}
-
-          {/* BATCH 4 (item A) — see the isSystemAdmin comment above for why
-              this sits outside every other branch. A small, unobtrusive
-              corner entry point; NEVER shown unless
-              useSystemAdminStore().isSystemAdmin resolved true, and that in
-              turn only ever came from am_i_system_admin() — a fresh,
-              server-side check of the real auth identity, not a locally
-              cached/guessed value. */}
-          {isSystemAdmin && !systemObserverActive ? (
-            <Pressable
-              onPress={() => setSystemAdminOpen(true)}
-              style={styles.systemAdminEntry}
-              accessibilityRole="button"
-              accessibilityLabel="ניהול מערכת"
-            >
-              <RtlText style={styles.systemAdminEntryText}>🛡️</RtlText>
-            </Pressable>
-          ) : null}
           {!shouldEnterSystemAdminDirectly ? (
-            <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} />
+            <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} onTestFamilySelected={selectTestFamily} onTestFamilyScheduleSelected={isStagingSupabaseProject ? selectTestFamilyForScheduleReview : undefined} />
           ) : null}
+
+          {isSystemAdmin && isQaFamily && !systemObserverActive ? (
+            <>
+              <Pressable style={styles.qaReturnButton} onPress={() => void returnFromTestFamily()} disabled={qaSwitchBusy} accessibilityRole="button" accessibilityState={{ disabled: qaSwitchBusy }} accessibilityLabel="חזרה למשפחה המקורית">
+                <RtlText style={styles.qaReturnButtonText}>חזרה למשפחה המקורית</RtlText>
+              </Pressable>
+              {qaSwitchError ? <Pressable style={styles.qaError} onPress={() => void returnFromTestFamily()} accessibilityRole="button"><RtlText style={styles.qaErrorText}>{qaSwitchError} · נסו שוב</RtlText></Pressable> : null}
+            </>
+          ) : null}
+
+          {/* PRD §12 (profile-photo crop/zoom/pan) — web-only, no-op on
+              native. See PhotoCropHost.tsx's doc comment for why this sits
+              outside every other branch, same as the isSystemAdmin button
+              above. */}
+          <PhotoCropHost />
         </>
       )}
     </SafeAreaProvider>
@@ -406,10 +699,13 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },
+  center: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  loadingText: { color: colors.textSecondary, fontSize: 16, fontWeight: '700', textAlign: 'center' },
   systemAdminEntry: {
     position: 'absolute',
-    top: 14,
+    // Keep the platform-admin shortcut below the branded header so it can
+    // never cover/compete with the Walkie Doggy mascot on narrow phones.
+    top: 72,
     right: 18,
     width: 44,
     height: 44,
@@ -427,6 +723,10 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   systemAdminEntryText: { fontSize: 20 },
+  qaReturnButton: { position: 'absolute', top: 8, right: 12, zIndex: 900, elevation: 9, backgroundColor: colors.surface, borderColor: colors.primary, borderWidth: 1, borderRadius: 18, minHeight: 40, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' },
+  qaReturnButtonText: { color: colors.primaryDark, fontWeight: '800', fontSize: 13 },
+  qaError: { position: 'absolute', top: 54, right: 12, left: 12, zIndex: 901, backgroundColor: colors.surface, padding: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.statusOverdue },
+  qaErrorText: { color: colors.statusOverdue, textAlign: 'center', fontWeight: '700' },
   installPromptBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: '#00000055', alignItems: 'center', justifyContent: 'center', padding: 24, zIndex: 1000 },
   installPromptCard: { width: '100%', maxWidth: 420, backgroundColor: colors.surface, borderRadius: 20, padding: 22, gap: 10 },
   installPromptTitle: { fontSize: 20, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
@@ -435,4 +735,6 @@ const styles = StyleSheet.create({
   installPromptHint: { fontSize: 13, fontWeight: '700', color: colors.primaryDark, textAlign: 'right', lineHeight: 20, marginTop: 4 },
   installPromptButton: { marginTop: 8, minHeight: 46, borderRadius: 14, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   installPromptButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  installPromptLater: { minHeight: 40, alignItems: 'center', justifyContent: 'center' },
+  installPromptLaterText: { fontSize: 14, color: colors.textSecondary, fontWeight: '600' },
 });

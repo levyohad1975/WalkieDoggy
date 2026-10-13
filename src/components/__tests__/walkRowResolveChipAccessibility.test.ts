@@ -26,3 +26,11 @@ describe('WalkRow resolve chip Pressables — accessibility role/label', () => {
     expect(around).not.toMatch(/accessibilityLabel=(""|\{\s*\})/);
   });
 });
+
+describe('WalkRow completed-history performer', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../WalkRow.tsx'), 'utf8');
+  it('uses completedBy for a completed compact history row while preserving the scheduled assignment', () => {
+    expect(source).toMatch(/historyCompact && walk\.status === 'done' && completedBy \? completedBy : responsible/);
+    expect(source).toContain('displayedWalker?.name');
+  });
+});

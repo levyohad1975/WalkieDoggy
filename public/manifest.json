@@ -3,8 +3,8 @@
   "short_name": "Walkie Doggy",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#FBF8F3",
-  "theme_color": "#20A7B5",
+  "background_color": "#FFF8E8",
+  "theme_color": "#FFF8E8",
   "icons": [
     {
       "src": "/icon-192.png",

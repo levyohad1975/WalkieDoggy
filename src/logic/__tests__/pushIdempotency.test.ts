@@ -48,6 +48,16 @@ describe('decideClaimOutcome', () => {
   it('defaults "now" to the real current time when omitted', () => {
     expect(decideClaimOutcome(null)).toBe('claim');
   });
+
+  // Request-notifications repair (migration 0102) — see that migration's
+  // header comment: zero eligible subscriptions must never be recorded as
+  // 'sent' (a real delivery), but a later retry should still be possible.
+  it('zero-destination events ("no_destination") remain retryable, exactly like "failed"', () => {
+    const noDestination: ExistingPushEventRow = { status: 'no_destination', updatedAt: NOW.toISOString() };
+    const outcome = decideClaimOutcome(noDestination, NOW);
+    expect(outcome).toBe('claim');
+    expect(shouldSend(outcome)).toBe(true);
+  });
 });
 
 describe('shouldSend', () => {

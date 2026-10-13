@@ -60,6 +60,33 @@ describe('validateAndRoutePushEvent — swap requests', () => {
     expect(bad.authorized).toBe(false);
   });
 
+  it('routes an approved SWAP decision to the requester AND every current admin (same product decision as time-change)', () => {
+    const row = swapRow({ status: 'approved' });
+    const result = validateAndRoutePushEvent(row, 'approved', {
+      callerUserId: 'target', // only the swap target may report the decision
+      callerFamilyId: 'fam1',
+      callerIsAdmin: false,
+      familyAdminUserIds: ['admin1', 'admin2'],
+    });
+    expect(result.authorized).toBe(true);
+    expect(result.recipientUserIds.sort()).toEqual(['admin1', 'admin2', 'requester']);
+  });
+
+  it('never sends the swap target (who is also an admin) a duplicate push when they are both the actor and a recipient', () => {
+    const row = swapRow({ status: 'rejected', targetUserId: 'admin1' });
+    const result = validateAndRoutePushEvent(row, 'rejected', {
+      callerUserId: 'admin1',
+      callerFamilyId: 'fam1',
+      callerIsAdmin: true,
+      familyAdminUserIds: ['admin1', 'admin2'],
+    });
+    expect(result.authorized).toBe(true);
+    // The target/actor (admin1) is not itself owed a push for their own
+    // decision, but as an admin they're still on the admin fan-out list —
+    // deduped to appear once, alongside the other admin and the requester.
+    expect(result.recipientUserIds.sort()).toEqual(['admin1', 'admin2', 'requester']);
+  });
+
   it('rejects an event whose claimed status does not match the persisted row (cannot fake "approved" on a still-pending request)', () => {
     const row = swapRow({ status: 'pending' });
     const result = validateAndRoutePushEvent(row, 'approved', {
@@ -124,13 +151,36 @@ describe('validateAndRoutePushEvent — time-change requests', () => {
     expect(result.authorized).toBe(false);
   });
 
-  it('routes a decided time-change request back to the requester only, never all admins, when an admin reports it', () => {
+  it('routes a decided time-change request back to the requester AND every current admin (product decision: admins see every resolution)', () => {
     const row = timeChangeRow({ status: 'approved' });
     const result = validateAndRoutePushEvent(row, 'approved', {
       callerUserId: 'admin1',
       callerFamilyId: 'fam1',
       callerIsAdmin: true,
       familyAdminUserIds: ['admin1', 'admin2'],
+    });
+    expect(result.authorized).toBe(true);
+    expect(result.recipientUserIds.sort()).toEqual(['admin1', 'admin2', 'requester']);
+  });
+
+  it('never sends the requester (who is also an admin) a duplicate push for the same decision', () => {
+    const row = timeChangeRow({ status: 'rejected', requestedByUserId: 'admin1' });
+    const result = validateAndRoutePushEvent(row, 'rejected', {
+      callerUserId: 'admin2',
+      callerFamilyId: 'fam1',
+      callerIsAdmin: true,
+      familyAdminUserIds: ['admin1', 'admin2'],
+    });
+    expect(result.authorized).toBe(true);
+    expect(result.recipientUserIds.sort()).toEqual(['admin1', 'admin2']);
+  });
+
+  it('resolving a time-change decision with no admin roster supplied still notifies the requester alone (never denied for a missing roster on a decision event)', () => {
+    const row = timeChangeRow({ status: 'approved' });
+    const result = validateAndRoutePushEvent(row, 'approved', {
+      callerUserId: 'admin1',
+      callerFamilyId: 'fam1',
+      callerIsAdmin: true,
     });
     expect(result).toMatchObject({ authorized: true, recipientUserIds: ['requester'] });
   });

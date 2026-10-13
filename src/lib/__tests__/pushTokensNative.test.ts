@@ -176,7 +176,7 @@ describe('registerPushToken (native + Supabase mode)', () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
-  it('stays silent in production when no EAS projectId is configured yet', async () => {
+  it('P0 notification-delivery fix: still warns in production when no EAS projectId is configured yet — this diagnostic must stay visible on every build, including staging, not just local development', async () => {
     const rpc = jest.fn();
     configureSupabase(rpc, undefined, 'production');
     mockEligibleConstants(null);
@@ -186,7 +186,7 @@ describe('registerPushToken (native + Supabase mode)', () => {
 
     await registerPushToken();
 
-    expect(warnSpy).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
   });
 
   it('returns silently when expo-notifications cannot be loaded, even with a valid projectId', async () => {
@@ -323,23 +323,45 @@ describe('registerPushToken (native + Supabase mode)', () => {
     });
   });
 
-  it('reports "unknown" to upsert_push_token on a non-iOS/Android platform', async () => {
-    (Platform as any).OS = 'web';
+  it('reports "unknown" to upsert_push_token on a non-iOS/Android/web platform', async () => {
+    // Not 'web' — see the dedicated skip test below for why that platform
+    // is excluded from this native-registration path entirely. 'windows'
+    // (react-native-windows) is a real, if rare, RN platform value that
+    // still exercises the ios/android/else ternary's final fallback.
+    (Platform as any).OS = 'windows';
     const rpc = jest.fn().mockResolvedValue({ error: null });
     configureSupabase(rpc);
     mockEligibleConstants();
     mockDevice(true);
     const Notifications = getNotifications();
     Notifications.getPermissionsAsync = jest.fn().mockResolvedValue({ status: 'granted' });
-    Notifications.getExpoPushTokenAsync = jest.fn().mockResolvedValue({ data: 'ExponentPushToken[web]' });
+    Notifications.getExpoPushTokenAsync = jest.fn().mockResolvedValue({ data: 'ExponentPushToken[other]' });
     const { registerPushToken } = require('../pushTokens');
 
     await registerPushToken();
 
     expect(rpc).toHaveBeenCalledWith('upsert_push_token', {
-      p_token: 'ExponentPushToken[web]',
+      p_token: 'ExponentPushToken[other]',
       p_platform: 'unknown',
     });
+  });
+
+  it('P0 notification-delivery fix: skips entirely on web — this native Expo-push path can never succeed there (app.json has no notification.vapidPublicKey/serviceWorkerPath; src/lib/webPush.ts is the real web path) and must not call the browser Notification permission API on every page load for a guaranteed-dead path', async () => {
+    (Platform as any).OS = 'web';
+    const rpc = jest.fn();
+    configureSupabase(rpc);
+    mockEligibleConstants();
+    mockDevice(true);
+    const Notifications = getNotifications();
+    Notifications.getPermissionsAsync = jest.fn().mockResolvedValue({ status: 'default' });
+    Notifications.requestPermissionsAsync = jest.fn().mockResolvedValue({ status: 'granted' });
+    const { registerPushToken } = require('../pushTokens');
+
+    await registerPushToken();
+
+    expect(Notifications.getPermissionsAsync).not.toHaveBeenCalled();
+    expect(Notifications.requestPermissionsAsync).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it('records the token even when the upsert_push_token RPC fails, and logs (dev) without throwing', async () => {
@@ -448,8 +470,47 @@ describe('sendRequestPush', () => {
     expect(errorSpy).toHaveBeenCalled();
   });
 
-  it('does not log an invoke failure in production', async () => {
+  it('P0 notification-delivery fix: still logs an invoke failure in production — a push send failure must stay observable on every build, including staging, not only in local development', async () => {
     const invoke = jest.fn().mockRejectedValue(new Error('function unavailable'));
+    configureSupabase(jest.fn(), invoke, 'production');
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { sendRequestPush } = require('../pushTokens');
+
+    await sendRequestPush(payload);
+
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it('P0 notification-delivery fix: logs (does not silently discard) an HTTP-level Edge Function failure — supabase.functions.invoke() resolves {error} rather than throwing for a 404/401/5xx, which the previous version of this function never read at all', async () => {
+    const invoke = jest.fn().mockResolvedValue({ data: null, error: { message: 'Function not found', status: 404 } });
+    configureSupabase(jest.fn(), invoke, 'production');
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { sendRequestPush } = require('../pushTokens');
+
+    await expect(sendRequestPush(payload)).resolves.toBeUndefined();
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Edge Function call failed'),
+      expect.objectContaining({ message: 'Function not found' })
+    );
+  });
+
+  it('P0 notification-delivery fix: logs when the Edge Function itself reports ok:false (e.g. unauthorized/not-found-request) even though the HTTP call succeeded', async () => {
+    const invoke = jest.fn().mockResolvedValue({ data: { ok: false, sent: 0, reason: 'request not found' }, error: null });
+    configureSupabase(jest.fn(), invoke, 'production');
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { sendRequestPush } = require('../pushTokens');
+
+    await expect(sendRequestPush(payload)).resolves.toBeUndefined();
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Edge Function reported failure'),
+      expect.objectContaining({ ok: false, reason: 'request not found' })
+    );
+  });
+
+  it('does not log anything for a genuine success', async () => {
+    const invoke = jest.fn().mockResolvedValue({ data: { ok: true, sent: 1 }, error: null });
     configureSupabase(jest.fn(), invoke, 'production');
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     const { sendRequestPush } = require('../pushTokens');

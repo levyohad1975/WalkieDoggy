@@ -255,6 +255,7 @@ describe('lib/supabase — session, PIN claim, QA sandbox, whoami, impersonation
             {
               profile_id: 'user-1',
               real_profile_id: 'admin-1',
+              family_id: 'fam-1',
               family_role: 'admin',
               is_impersonating: true,
               impersonated_user_id: 'user-1',
@@ -270,6 +271,7 @@ describe('lib/supabase — session, PIN claim, QA sandbox, whoami, impersonation
       expect(result).toEqual({
         profileId: 'user-1',
         realProfileId: 'admin-1',
+        familyId: 'fam-1',
         familyRole: 'admin',
         isImpersonating: true,
         impersonatedUserId: 'user-1',

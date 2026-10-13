@@ -1,4 +1,7 @@
 import React from 'react';
+import { Platform } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
+import { buildJoinLinkText } from '../logic/familyJoinCode';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
@@ -32,6 +35,8 @@ export function FamilySharingModal({
   onRegenerate,
   onClose,
 }: FamilySharingModalProps) {
+  const appUrl = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : 'https://staging.walkielink.co.il';
+  const joinUrl = inviteCode ? buildJoinLinkText(inviteCode, appUrl) : null;
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable
@@ -50,9 +55,11 @@ export function FamilySharingModal({
                 : 'מצב מקומי (ללא Supabase) — הנתונים נשמרים רק במכשיר הזה.'}
             </RtlText>
 
+            <View style={styles.qrSection}><RtlText style={styles.qrTitle}>סרקו לפתיחת האפליקציה</RtlText><View style={styles.qrFrame}><QRCode value={appUrl} size={160} /></View></View>
             {isSupabaseConfigured && inviteCode ? (
               <>
                 <RtlText style={styles.meta}>שתפו את הקוד עם בני המשפחה כדי שיוכלו להצטרף, בלי חשבון או סיסמה.</RtlText>
+                {joinUrl ? <View style={styles.qrSection}><RtlText style={styles.qrTitle}>סרקו להצטרפות למשפחה</RtlText><View style={styles.qrFrame}><QRCode value={joinUrl} size={160} /></View><RtlText style={styles.meta}>ההצטרפות מחייבת אימות בהתאם להרשאות המשפחה.</RtlText></View> : null}
                 <View style={styles.codeCard}>
                   {/* BATCH 4 (item E): `selectable` — a real, working
                       manual-copy fallback (long-press to select/copy via
@@ -94,6 +101,9 @@ export function FamilySharingModal({
 }
 
 const styles = StyleSheet.create({
+  qrSection: { alignItems: 'center', gap: 8, marginTop: 16 },
+  qrTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
+  qrFrame: { padding: 12, backgroundColor: '#FFFFFF', borderRadius: 14 },
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: 24, maxHeight: '80%' },
   // BUG FIX (real-device regression) — see DogDetailsModal.tsx's matching

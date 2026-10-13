@@ -104,6 +104,18 @@ interface RequestRowForPush {
   requestedByUserId: string;
   targetUserId?: string;
   proposedTime?: string; // time-change only, for the notification body
+  walkId?: string;
+  expectedTime?: string; // time-change only: the walk's time AS SNAPSHOTTED when the request was created — never the walk's live current time, which approval already changes
+  // CONTENT ONLY, never authorization/routing — loaded purely to make the
+  // push body name who/what is involved (Requirement: "who made the
+  // request, who/what it concerns, requested change, result, relevant
+  // walk/time"). None of these fields are read by
+  // validateAndRoutePushEvent() above.
+  requesterName?: string;
+  targetName?: string; // swap only
+  dogName?: string;
+  walkDate?: string;
+  walkScheduledTime?: string; // the walk's current scheduled time — stable context for a swap (time never changes); NOT used as the "before" time for a time-change (see expectedTime)
 }
 
 const STATUS_FOR_EVENT: Record<PushRequestEvent, PushRequestStatus> = {
@@ -139,7 +151,10 @@ function validateAndRoutePushEvent(
     } else if (!ctx.callerIsAdmin) {
       return deny('only an admin may report a decision on a time-change request');
     }
-    recipientUserIds = [row.requestedByUserId];
+    // Product decision: a decision push goes to the requester AND every
+    // current admin (both kinds) — deduped, so a requester/actor who is
+    // also an admin never gets two pushes for the same event.
+    recipientUserIds = [...new Set([row.requestedByUserId, ...(ctx.familyAdminUserIds ?? [])].filter(Boolean))];
   } else {
     if (ctx.callerUserId !== row.requestedByUserId) return deny('only the requester may report a request as newly created');
     if (row.kind === 'swap') {
@@ -159,27 +174,87 @@ function validateAndRoutePushEvent(
   return { authorized: true, recipientUserIds };
 }
 
+// Real names/times fill these in when the content-only enrichment lookup
+// (Step 4b above) resolved them; a generic, gender-neutral term ("\u05d1\u05df/\u05d1\u05ea
+// \u05d4\u05de\u05e9\u05e4\u05d7\u05d4", "\u05d4\u05db\u05dc\u05d1/\u05d4") stands in for anything that couldn't be resolved
+// (e.g. a since-removed member, or a walk/dog that no longer exists) \u2014
+// the push is never sent with a literal "undefined" in it.
+const FALLBACK_PERSON = '\u05d1\u05df/\u05d1\u05ea \u05d4\u05de\u05e9\u05e4\u05d7\u05d4'; // \u05d1\u05df/\u05d1\u05ea \u05d4\u05de\u05e9\u05e4\u05d7\u05d4
+const FALLBACK_DOG = '\u05d4\u05db\u05dc\u05d1/\u05d4'; // \u05d4\u05db\u05dc\u05d1/\u05d4
+
+// Inlined copy of src/logic/dateFormat.ts's formatHistoryDate() \u2014 same
+// "YYYY-MM-DD" -> "\u05d4\u05d9\u05d5\u05dd" or "DD-MM-YYYY" convention the rest of the app
+// already uses for viewer-facing dates. Deno can't import that RN-project
+// file at deploy time (same limitation as pushRouting.ts's own inlined
+// copy above); kept deliberately identical in behavior.
+function formatWalkDate(isoDate: string): string {
+  const now = new Date();
+  const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  if (isoDate === localToday) return '\u05d4\u05d9\u05d5\u05dd'; // \u05d4\u05d9\u05d5\u05dd
+  const [year, month, day] = isoDate.split('-');
+  return `${day}-${month}-${year}`;
+}
+
+function walkContext(row: RequestRowForPush): string {
+  const dog = row.dogName ?? FALLBACK_DOG;
+  const time = row.walkScheduledTime;
+  const date = row.walkDate ? formatWalkDate(row.walkDate) : undefined;
+  if (time && date) return `${dog}, ${date} \u05d1\u05e9\u05e2\u05d4 ${time}`; // "{dog}, {date} \u05d1\u05e9\u05e2\u05d4 {time}"
+  if (time) return `${dog} \u05d1\u05e9\u05e2\u05d4 ${time}`; // "{dog} \u05d1\u05e9\u05e2\u05d4 {time}"
+  return dog;
+}
+
 function templateFor(kind: PushRequestKind, event: PushRequestEvent, row: RequestRowForPush): { title: string; body: string } {
+  const requester = row.requesterName ?? FALLBACK_PERSON;
+  const target = row.targetName ?? FALLBACK_PERSON;
+  const walk = walkContext(row);
+
   if (kind === 'swap') {
-    if (event === 'created') return { title: '\u05d1\u05e7\u05e9\u05ea \u05d4\u05d7\u05dc\u05e4\u05ea \u05ea\u05d5\u05e8', body: '\u05de\u05d9\u05e9\u05d4\u05d5 \u05d1\u05d9\u05e7\u05e9 \u05dc\u05d4\u05d7\u05dc\u05d9\u05e3 \u05d0\u05d9\u05ea\u05da \u05ea\u05d5\u05e8 \u05d8\u05d9\u05d5\u05dc \u2014 \u05d9\u05e9 \u05dc\u05d0\u05e9\u05e8 \u05d0\u05d5 \u05dc\u05d3\u05d7\u05d5\u05ea' };
-    if (event === 'approved') return { title: '\u05d1\u05e7\u05e9\u05ea \u05d4\u05d4\u05d7\u05dc\u05e4\u05d4 \u05e9\u05dc\u05da \u05d0\u05d5\u05e9\u05e8\u05d4', body: '\u05d1\u05e7\u05e9\u05ea \u05d4\u05d4\u05d7\u05dc\u05e4\u05d4 \u05e9\u05d1\u05d9\u05e7\u05e9\u05ea \u05d0\u05d5\u05e9\u05e8\u05d4' };
-    return { title: '\u05d1\u05e7\u05e9\u05ea \u05d4\u05d4\u05d7\u05dc\u05e4\u05d4 \u05e9\u05dc\u05da \u05e0\u05d3\u05d7\u05ea\u05d4', body: '\u05d1\u05e7\u05e9\u05ea \u05d4\u05d4\u05d7\u05dc\u05e4\u05d4 \u05e9\u05d1\u05d9\u05e7\u05e9\u05ea \u05e0\u05d3\u05d7\u05ea\u05d4' };
-  }
-
-  if (event === 'created') return { title: '\u05d1\u05e7\u05e9\u05ea \u05e9\u05d9\u05e0\u05d5\u05d9 \u05e9\u05e2\u05d4', body: '\u05d4\u05ea\u05e7\u05d1\u05dc\u05d4 \u05d1\u05e7\u05e9\u05ea \u05e9\u05d9\u05e0\u05d5\u05d9 \u05e9\u05e2\u05d4 \u05dc\u05d8\u05d9\u05d5\u05dc \u2014 \u05d9\u05e9 \u05dc\u05d0\u05e9\u05e8 \u05d0\u05d5 \u05dc\u05d3\u05d7\u05d5\u05ea' };
-
-  if (event === 'approved') {
+    if (event === 'created') {
+      return {
+        title: '\u05d1\u05e7\u05e9\u05ea \u05d4\u05d7\u05dc\u05e4\u05ea \u05ea\u05d5\u05e8', // \u05d1\u05e7\u05e9\u05ea \u05d4\u05d7\u05dc\u05e4\u05ea \u05ea\u05d5\u05e8
+        // "{requester} \u05d1\u05d9\u05e7\u05e9/\u05d4 \u05dc\u05d4\u05d7\u05dc\u05d9\u05e3 \u05d0\u05d9\u05ea\u05da \u05d0\u05ea \u05d4\u05d8\u05d9\u05d5\u05dc \u05e9\u05dc {walk} \u2014 \u05d9\u05e9 \u05dc\u05d0\u05e9\u05e8 \u05d0\u05d5 \u05dc\u05d3\u05d7\u05d5\u05ea"
+        body: `${requester} \u05d1\u05d9\u05e7\u05e9/\u05d4 \u05dc\u05d4\u05d7\u05dc\u05d9\u05e3 \u05d0\u05d9\u05ea\u05da \u05d0\u05ea \u05d4\u05d8\u05d9\u05d5\u05dc \u05e9\u05dc ${walk} \u2014 \u05d9\u05e9 \u05dc\u05d0\u05e9\u05e8 \u05d0\u05d5 \u05dc\u05d3\u05d7\u05d5\u05ea`,
+      };
+    }
+    const resultWord = event === 'approved'
+      ? '\u05d0\u05d5\u05e9\u05e8\u05d4' // \u05d0\u05d5\u05e9\u05e8\u05d4
+      : '\u05e0\u05d3\u05d7\u05ea\u05d4'; // \u05e0\u05d3\u05d7\u05ea\u05d4
     return {
-      title: '\u05d1\u05e7\u05e9\u05ea \u05e9\u05d9\u05e0\u05d5\u05d9 \u05d4\u05e9\u05e2\u05d4 \u05e9\u05dc\u05da \u05d0\u05d5\u05e9\u05e8\u05d4',
-      body: row.proposedTime
-        ? `\u05e9\u05e2\u05ea \u05d4\u05d8\u05d9\u05d5\u05dc \u05e9\u05d5\u05e0\u05ea\u05d4 \u05dc-${row.proposedTime}`
-        : '\u05e9\u05e2\u05ea \u05d4\u05d8\u05d9\u05d5\u05dc \u05e9\u05d5\u05e0\u05ea\u05d4 \u05db\u05de\u05d1\u05d5\u05e7\u05e9',
+      title: event === 'approved'
+        ? '\u05d1\u05e7\u05e9\u05ea \u05d4\u05d7\u05dc\u05e4\u05d4 \u05d0\u05d5\u05e9\u05e8\u05d4' // \u05d1\u05e7\u05e9\u05ea \u05d4\u05d7\u05dc\u05e4\u05d4 \u05d0\u05d5\u05e9\u05e8\u05d4
+        : '\u05d1\u05e7\u05e9\u05ea \u05d4\u05d7\u05dc\u05e4\u05d4 \u05e0\u05d3\u05d7\u05ea\u05d4', // \u05d1\u05e7\u05e9\u05ea \u05d4\u05d7\u05dc\u05e4\u05d4 \u05e0\u05d3\u05d7\u05ea\u05d4
+      // "{target} {\u05d0\u05d9\u05e9\u05e8/\u05d4 \u05d0\u05d5 \u05d3\u05d7\u05d4/\u05ea\u05d4} \u05d0\u05ea \u05d1\u05e7\u05e9\u05ea {requester} \u05dc\u05d4\u05d7\u05dc\u05e4\u05ea \u05d4\u05d8\u05d9\u05d5\u05dc \u05e9\u05dc {walk}"
+      body: `${target} ${event === 'approved' ? '\u05d0\u05d9\u05e9\u05e8/\u05d4' : '\u05d3\u05d7\u05d4/\u05ea\u05d4'} \u05d0\u05ea \u05d1\u05e7\u05e9\u05ea ${requester} \u05dc\u05d4\u05d7\u05dc\u05e4\u05ea \u05d4\u05d8\u05d9\u05d5\u05dc \u05e9\u05dc ${walk} \u2014 \u05d4\u05d1\u05e7\u05e9\u05d4 ${resultWord}`,
     };
   }
 
+  // time-change \u2014 "from" is the request's own snapshotted expected_time,
+  // NEVER the walk's live scheduled_time (approval already updates that to
+  // the new value, which would make "from X to X" nonsensical here).
+  const fromTo = row.proposedTime && row.expectedTime
+    ? `\u05de-${row.expectedTime} \u05dc-${row.proposedTime}` // "\u05de-{old} \u05dc-{new}"
+    : row.proposedTime
+      ? `\u05dc-${row.proposedTime}` // "\u05dc-{new}" \u2014 the old time is unknown, so don't show one at all
+      : undefined;
+
+  if (event === 'created') {
+    return {
+      title: '\u05d1\u05e7\u05e9\u05ea \u05e9\u05d9\u05e0\u05d5\u05d9 \u05e9\u05e2\u05d4', // \u05d1\u05e7\u05e9\u05ea \u05e9\u05d9\u05e0\u05d5\u05d9 \u05e9\u05e2\u05d4
+      // "{requester} \u05d1\u05d9\u05e7\u05e9/\u05d4 \u05dc\u05e9\u05e0\u05d5\u05ea \u05d0\u05ea \u05e9\u05e2\u05ea \u05d4\u05d8\u05d9\u05d5\u05dc \u05e9\u05dc {dog} ({date}) \u05de-{old} \u05dc-{new} \u2014 \u05d9\u05e9 \u05dc\u05d0\u05e9\u05e8 \u05d0\u05d5 \u05dc\u05d3\u05d7\u05d5\u05ea"
+      body: `${requester} \u05d1\u05d9\u05e7\u05e9/\u05d4 \u05dc\u05e9\u05e0\u05d5\u05ea \u05d0\u05ea \u05e9\u05e2\u05ea \u05d4\u05d8\u05d9\u05d5\u05dc \u05e9\u05dc ${row.dogName ?? FALLBACK_DOG}${row.walkDate ? ` (${formatWalkDate(row.walkDate)})` : ''}${fromTo ? ` ${fromTo}` : ''} \u2014 \u05d9\u05e9 \u05dc\u05d0\u05e9\u05e8 \u05d0\u05d5 \u05dc\u05d3\u05d7\u05d5\u05ea`,
+    };
+  }
+
+  const resultWord = event === 'approved'
+    ? '\u05d0\u05d5\u05e9\u05e8\u05d4' // \u05d0\u05d5\u05e9\u05e8\u05d4
+    : '\u05e0\u05d3\u05d7\u05ea\u05d4'; // \u05e0\u05d3\u05d7\u05ea\u05d4
   return {
-    title: '\u05d1\u05e7\u05e9\u05ea \u05e9\u05d9\u05e0\u05d5\u05d9 \u05d4\u05e9\u05e2\u05d4 \u05e9\u05dc\u05da \u05e0\u05d3\u05d7\u05ea\u05d4',
-    body: '\u05d1\u05e7\u05e9\u05ea \u05e9\u05d9\u05e0\u05d5\u05d9 \u05d4\u05e9\u05e2\u05d4 \u05e9\u05d1\u05d9\u05e7\u05e9\u05ea \u05e0\u05d3\u05d7\u05ea\u05d4',
+    title: event === 'approved'
+      ? '\u05d1\u05e7\u05e9\u05ea \u05e9\u05d9\u05e0\u05d5\u05d9 \u05e9\u05e2\u05d4 \u05d0\u05d5\u05e9\u05e8\u05d4' // \u05d1\u05e7\u05e9\u05ea \u05e9\u05d9\u05e0\u05d5\u05d9 \u05e9\u05e2\u05d4 \u05d0\u05d5\u05e9\u05e8\u05d4
+      : '\u05d1\u05e7\u05e9\u05ea \u05e9\u05d9\u05e0\u05d5\u05d9 \u05e9\u05e2\u05d4 \u05e0\u05d3\u05d7\u05ea\u05d4', // \u05d1\u05e7\u05e9\u05ea \u05e9\u05d9\u05e0\u05d5\u05d9 \u05e9\u05e2\u05d4 \u05e0\u05d3\u05d7\u05ea\u05d4
+    // "\u05d1\u05e7\u05e9\u05ea {requester} \u05dc\u05e9\u05e0\u05d5\u05ea \u05d0\u05ea \u05e9\u05e2\u05ea \u05d4\u05d8\u05d9\u05d5\u05dc \u05e9\u05dc {dog} ({date}) \u05de-{old} \u05dc-{new} {\u05d0\u05d5\u05e9\u05e8\u05d4/\u05e0\u05d3\u05d7\u05ea\u05d4}"
+    body: `\u05d1\u05e7\u05e9\u05ea ${requester} \u05dc\u05e9\u05e0\u05d5\u05ea \u05d0\u05ea \u05e9\u05e2\u05ea \u05d4\u05d8\u05d9\u05d5\u05dc \u05e9\u05dc ${row.dogName ?? FALLBACK_DOG}${row.walkDate ? ` (${formatWalkDate(row.walkDate)})` : ''}${fromTo ? ` ${fromTo}` : ''} ${resultWord}`,
   };
 }
 const corsHeaders = {
@@ -253,7 +328,7 @@ Deno.serve(async (req: Request) => {
       if (kind === 'swap') {
         const { data } = await serviceClient
           .from('walk_swap_requests')
-          .select('id, family_id, status, requested_by_user_id, target_user_id')
+          .select('id, family_id, status, requested_by_user_id, target_user_id, walk_id')
           .eq('id', requestId)
           .maybeSingle();
         if (!data) return null;
@@ -264,11 +339,12 @@ Deno.serve(async (req: Request) => {
           status: data.status,
           requestedByUserId: data.requested_by_user_id,
           targetUserId: data.target_user_id,
+          walkId: data.walk_id,
         };
       }
       const { data } = await serviceClient
         .from('time_change_requests')
-        .select('id, family_id, status, requested_by_user_id, proposed_time')
+        .select('id, family_id, status, requested_by_user_id, proposed_time, expected_time, walk_id')
         .eq('id', requestId)
         .maybeSingle();
       if (!data) return null;
@@ -279,6 +355,8 @@ Deno.serve(async (req: Request) => {
         status: data.status,
         requestedByUserId: data.requested_by_user_id,
         proposedTime: data.proposed_time,
+        expectedTime: data.expected_time,
+        walkId: data.walk_id,
       };
     }
 
@@ -288,9 +366,41 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ ok: false, error: 'request not found' }), { status: 404 });
     }
 
-    // ---- Step 5: server-side admin roster for a time-change 'created' fan-out ----
+    // ---- Step 4b: CONTENT-ONLY enrichment (names/walk/time for the push
+    // body) — never used for authorization/routing, only for wording.
+    // Best-effort: any lookup that comes back empty just falls back to a
+    // generic term in templateFor() below rather than failing the send.
+    {
+      const nameIds = [row.requestedByUserId, row.targetUserId].filter(Boolean) as string[];
+      const [walkResult, namesResult] = await Promise.all([
+        row.walkId
+          ? serviceClient.from('walks').select('date, scheduled_time, dog_id').eq('id', row.walkId).maybeSingle()
+          : Promise.resolve({ data: null }),
+        nameIds.length > 0
+          ? serviceClient.from('users').select('id, name').in('id', nameIds)
+          : Promise.resolve({ data: [] }),
+      ]);
+      const walkRow = (walkResult as any)?.data;
+      row.walkDate = walkRow?.date ?? undefined;
+      row.walkScheduledTime = walkRow?.scheduled_time ?? undefined;
+      if (walkRow?.dog_id) {
+        const { data: dogRow } = await serviceClient.from('dogs').select('name').eq('id', walkRow.dog_id).maybeSingle();
+        row.dogName = dogRow?.name ?? undefined;
+      }
+      const names: Record<string, string> = Object.fromEntries(
+        ((namesResult as any)?.data ?? []).map((u: any) => [u.id, u.name])
+      );
+      row.requesterName = names[row.requestedByUserId];
+      row.targetName = row.targetUserId ? names[row.targetUserId] : undefined;
+    }
+
+    // ---- Step 5: server-side admin roster ----
+    // Needed for a time-change 'created' fan-out (unchanged), and now also
+    // for EVERY 'approved'/'rejected' decision event on either kind
+    // (product decision: every current admin sees every resolution,
+    // alongside the requester — see validateAndRoutePushEvent above).
     let familyAdminUserIds: string[] | undefined;
-    if (row.kind === 'timeChange' && event === 'created') {
+    if ((row.kind === 'timeChange' && event === 'created') || event === 'approved' || event === 'rejected') {
       // family_auth_members is keyed by auth_user_id (a DEVICE's auth
       // identity), not by users.id (a family-member PROFILE) â€” users.
       // auth_user_id is the join. See schema.sql's own comment on this
@@ -313,6 +423,13 @@ Deno.serve(async (req: Request) => {
         familyAdminUserIds = [];
       }
     }
+
+    // Admin accounts can have a push subscription attached to a local
+    // profile that is not the profile linked to family_auth_members.
+    // Resolve destinations by verified auth identity, not profile identity.
+    const verifiedAdminAuthIds = (row.kind === 'timeChange' && event === 'created') || event === 'approved' || event === 'rejected'
+      ? (await serviceClient.from('family_auth_members').select('auth_user_id').eq('family_id', row.familyId).eq('role', 'admin')).data?.map((m: any) => m.auth_user_id).filter(Boolean) ?? []
+      : [];
 
     // ---- Step 6: candidate recipients' family membership (Requirement 7, defense in depth) ----
     // .is('removed_at', null) excludes a since-removed member from
@@ -347,7 +464,17 @@ Deno.serve(async (req: Request) => {
       recipientFamilyIds,
     });
 
-    if (!routing.authorized) {
+    // A family may have verified admin accounts but no admin-linked profile.
+    // Their device subscriptions are resolved by verified auth identity below.
+    // Preserve the persisted-request and caller checks before this fallback.
+    const adminAuthOnlyCreated = !routing.authorized
+      && row.kind === 'timeChange' && event === 'created'
+      && row.status === 'pending'
+      && callerUserId === row.requestedByUserId
+      && callerFamilyId === row.familyId
+      && verifiedAdminAuthIds.length > 0
+      && routing.reason === 'no valid same-family recipient resolved';
+    if (!routing.authorized && !adminAuthOnlyCreated) {
       // Not an error the client did anything observably wrong with (from
       // its own point of view it just asked "tell people about my
       // request") â€” respond 200/ok:false so this never surfaces as if the
@@ -387,24 +514,38 @@ Deno.serve(async (req: Request) => {
       const { data: tokenRows, error: tokenError } = await serviceClient
         .from('push_tokens')
         .select('id, user_id, token')
-        .in('user_id', routing.recipientUserIds)
+        .in('user_id', routing.recipientUserIds.length ? routing.recipientUserIds : ['00000000-0000-0000-0000-000000000000'])
         .eq('is_active', true);
       if (tokenError) throw tokenError;
 
       const { data: webPushRows, error: webPushError } = await serviceClient
         .from('web_push_subscriptions')
         .select('id, user_id, endpoint, p256dh, auth')
-        .in('user_id', routing.recipientUserIds)
+        .in('user_id', routing.recipientUserIds.length ? routing.recipientUserIds : ['00000000-0000-0000-0000-000000000000'])
         .eq('is_active', true);
       if (webPushError) throw webPushError;
 
+      // Resolve additional subscriptions by the verified admin account,
+      // restricted to the request family. Never fan out to unrelated members.
+      const { data: adminWebRows, error: adminWebError } = verifiedAdminAuthIds.length
+        ? await serviceClient.from('web_push_subscriptions')
+            .select('id, user_id, endpoint, p256dh, auth')
+            .eq('family_id', row.familyId)
+            .in('auth_user_id', verifiedAdminAuthIds)
+            .eq('is_active', true)
+        : { data: [], error: null };
+      if (adminWebError) throw adminWebError;
+
       const expoTokens = tokenRows ?? [];
-      const webSubscriptions = webPushRows ?? [];
+      const webSubscriptions = [...new Map([...(webPushRows ?? []), ...(adminWebRows ?? [])].map((sub: any) => [sub.endpoint, sub])).values()];
 
       if (expoTokens.length === 0 && webSubscriptions.length === 0) {
+        // 0102 FIX: a distinct terminal status — never 'sent', which
+        // implies a real delivery happened. See that migration's header
+        // comment for the real-device QA finding this corrects.
         await serviceClient.rpc('mark_request_push_event', {
           p_dedupe_key: dedupeKey,
-          p_status: 'sent',
+          p_status: 'no_destination',
         });
 
         return new Response(

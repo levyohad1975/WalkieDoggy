@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Dog, FamilyUser, ScheduleEntry, ScheduleRule, Walk } from '../types';
+import type { AchievementUnlock, Dog, FamilyUser, HealthTask, ScheduleEntry, ScheduleRule, Walk, WalkGpsSession } from '../types';
 import type { DeleteFamilyMemberPayload, Repository } from './repository';
 
 const QUEUE_KEY = 'dog-walk-family:sync-queue:v4';
@@ -63,6 +63,57 @@ export function setSyncQueueActorGetter(getter: () => string | null): void {
 interface QueuedItem {
   op: SyncOperation;
   claimedByUserId: string | null;
+  /** Missing on records written by app versions before queue diagnostics. */
+  enqueuedAt?: string;
+  attemptCount?: number;
+  lastAttemptAt?: string;
+  lastErrorCode?: string;
+  lastErrorHttpStatus?: number;
+  lastErrorMessage?: string;
+  lastErrorEndpoint?: string;
+  lastErrorOperationId?: string;
+  lastErrorQueuePosition?: number;
+  lastErrorCategory?: string;
+  retryAfterAt?: string;
+}
+
+export interface SyncQueueDiagnostics {
+  total: number;
+  byOperation: Record<string, number>;
+  ownerCounts: { activeProfile: number; otherProfile: number; unknown: number };
+  ownerIds: Array<{ id: string; count: number }>;
+  familyIds: Array<{ id: string; count: number }>;
+  withoutFamilyId: number;
+  oldestEnqueuedAt: string | null;
+  latestAttemptAt: string | null;
+  missingEnqueueTime: number;
+  neverAttempted: number;
+  attemptedWithUnknownOutcome: number;
+  lastErrorCodes: Record<string, number>;
+  lastFlush: {
+    attempted: number;
+    skippedOtherProfile: number;
+    succeeded: number;
+    conflicted: number;
+    quarantined: number;
+    remaining: number;
+    stoppedOnRetryableFailure: boolean;
+    completedAt: string;
+  } | null;
+  firstPendingOperation: { operationType: string; safeOperationId: string; queuePosition: number } | null;
+  firstRetryableFailure: {
+    operationType: string;
+    safeOperationId: string;
+    queuePosition: number;
+    endpoint: string;
+    httpStatus: number | null;
+    errorCode: string | null;
+    errorMessage: string;
+    category: string;
+    attemptCount: number;
+    lastAttemptAt: string;
+    retryAfterAt: string | null;
+  } | null;
 }
 
 /**
@@ -76,6 +127,9 @@ export interface SyncConflict {
   code: string | undefined;
   message: string;
   failedAt: string;
+  /** Device-local context captured at failure time; never used as server authorization. */
+  claimedByUserId?: string | null;
+  httpStatus?: number;
 }
 
 /**
@@ -161,7 +215,18 @@ export interface QuarantinedItem {
  * forever, exactly like the 23xxx/42xxx/28xxx/P0xxx bugs above did before
  * their own fixes.
  */
-function isPermanentError(error: unknown): boolean {
+/**
+ * True when retrying the same request cannot fix the server rejection.
+ *
+ * Exported for direct-write callers as well as queued replay: converting an
+ * RLS/business-rule rejection into a queued "success" loses a user edit
+ * before SyncQueue ever gets a chance to surface its conflict record.
+ */
+export function isPermanentSyncError(error: unknown): boolean {
+  // Family-scoped deletes can return 42501 when this queued intent is being
+  // replayed outside its authorized family. Preserve it in FIFO until the
+  // correct server context is restored instead of moving it to conflicts.
+  if ((error as { syncQueueRetryable?: boolean } | null | undefined)?.syncQueueRetryable) return false;
   const code = (error as { code?: string } | null | undefined)?.code;
   if (typeof code !== 'string') return false;
   return (
@@ -175,6 +240,9 @@ export type SyncOperation =
   | { type: 'deleteUser'; payload: { userId: string } }
   | { type: 'deleteFamilyMember'; payload: DeleteFamilyMemberPayload }
   | { type: 'upsertDog'; payload: Dog }
+  | { type: 'upsertHealthTask'; payload: HealthTask }
+  | { type: 'upsertGpsSession'; payload: WalkGpsSession }
+  | { type: 'upsertAchievementUnlock'; payload: AchievementUnlock }
   | { type: 'upsertScheduleRule'; payload: ScheduleRule }
   | { type: 'deleteScheduleRule'; payload: { ruleId: string } }
   | { type: 'addScheduleEntries'; payload: ScheduleEntry[] }
@@ -182,7 +250,84 @@ export type SyncOperation =
   | { type: 'deleteScheduleEntry'; payload: { entryId: string } }
   | { type: 'saveWalk'; payload: Walk }
   | { type: 'deleteWalk'; payload: { walkId: string } }
-  | { type: 'updateUserReminderSetting'; payload: { userId: string; enabled: boolean } };
+  | { type: 'updateUserReminderSetting'; payload: { userId: string; enabled: boolean } }
+  | { type: 'updateUserGamificationSetting'; payload: { userId: string; enabled: boolean } };
+
+type FlushResult = { succeeded: number; remaining: number; conflicted: number; quarantined: number };
+
+function payloadId(op: SyncOperation): string | undefined {
+  const payload = op.payload as unknown;
+  if (!payload || typeof payload !== 'object') return undefined;
+  const row = Array.isArray(payload) ? payload[0] : payload;
+  if (!row || typeof row !== 'object') return undefined;
+  const values = row as Record<string, unknown>;
+  for (const key of ['id', 'walkId', 'entryId', 'ruleId', 'userId', 'dogId', 'taskId']) {
+    if (typeof values[key] === 'string' && values[key]) return values[key] as string;
+  }
+  return undefined;
+}
+
+/** Stable opaque identifier; never places user or family identifiers in diagnostics. */
+function safeOperationId(op: SyncOperation): string {
+  const raw = payloadId(op) ?? op.type;
+  let hash = 2166136261;
+  for (let i = 0; i < raw.length; i++) hash = Math.imul(hash ^ raw.charCodeAt(i), 16777619);
+  return `op-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+function operationEndpoint(op: SyncOperation): string {
+  switch (op.type) {
+    case 'createUser':
+    case 'upsertUser':
+    case 'deleteUser':
+    case 'updateUserReminderSetting':
+    case 'updateUserGamificationSetting': return '/rest/v1/users';
+    case 'deleteFamilyMember': return '/rest/v1/rpc/admin_delete_family_member';
+    case 'upsertDog': return '/rest/v1/dogs';
+    case 'upsertHealthTask': return '/rest/v1/health_tasks';
+    case 'upsertGpsSession': return '/rest/v1/walk_gps_sessions';
+    case 'upsertAchievementUnlock': return '/rest/v1/achievement_unlocks';
+    case 'upsertScheduleRule': return '/rest/v1/schedule_rules';
+    case 'deleteScheduleRule': return '/rest/v1/rpc/delete_schedule_rule_idempotent';
+    case 'addScheduleEntries':
+    case 'updateScheduleEntry': return '/rest/v1/schedule_entries';
+    case 'deleteScheduleEntry': return '/rest/v1/rpc/delete_schedule_entry_idempotent';
+    case 'saveWalk':
+    case 'deleteWalk': return '/rest/v1/walks';
+  }
+}
+
+function errorField(error: unknown, key: string): unknown {
+  return error && typeof error === 'object' ? (error as Record<string, unknown>)[key] : undefined;
+}
+
+function sanitizedErrorMessage(error: unknown): string {
+  const raw = errorField(error, 'message');
+  let message = typeof raw === 'string' ? raw : String(error);
+  return message
+    .replace(/Bearer\s+[^\s,;]+/gi, 'Bearer [redacted]')
+    .replace(/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[redacted-token]')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted-email]')
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi, '[redacted-id]')
+    .replace(/Key \([^)]*\)=\([^)]*\)/gi, 'Key [redacted]')
+    .replace(/\s+/g, ' ')
+    .slice(0, 180);
+}
+
+function failureCategory(error: unknown, status: number | null, code: string | null): string {
+  if (errorField(error, 'syncQueueLocalPersistence') === true) return 'local-persistence';
+  const name = errorField(error, 'name');
+  const message = sanitizedErrorMessage(error).toLowerCase();
+  if (status === 409) return code ? 'http-conflict-with-code' : 'http-conflict-unclassified';
+  if (code?.startsWith('23')) return 'sql-integrity';
+  if (code === '42501' || code?.startsWith('28')) return 'authorization';
+  if (code === 'PGRST205' || code?.startsWith('42')) return 'schema-or-query';
+  if (name === 'TimeoutError' || message.includes('timeout') || message.includes('timed out')) return 'timeout';
+  if (name === 'TypeError' || message.includes('network') || message.includes('fetch')) return 'network';
+  if (status !== null && status >= 500) return 'server-temporary';
+  if (status !== null && status >= 400) return 'http-client-error';
+  return 'unclassified';
+}
 
 /**
  * Persistent FIFO queue of writes that couldn't reach Supabase yet (no
@@ -194,9 +339,11 @@ export type SyncOperation =
  */
 export class SyncQueue {
   private queue: QueuedItem[] | null = null;
+  private lastFlush: SyncQueueDiagnostics['lastFlush'] = null;
   private conflicts: SyncConflict[] | null = null;
   private quarantined: QuarantinedItem[] | null = null;
-  private flushing = false;
+  /** A concurrent caller joins the active flush instead of receiving a misleading no-op. */
+  private flushPromise: Promise<FlushResult> | null = null;
 
   private async load(): Promise<QueuedItem[]> {
     if (this.queue) return this.queue;
@@ -358,7 +505,12 @@ export class SyncQueue {
   private async quarantine(item: QueuedItem, reason: string): Promise<void> {
     const list = await this.loadQuarantined();
     list.push({ op: item.op, quarantinedAt: new Date().toISOString(), reason });
-    await this.persistQuarantined();
+    try {
+      await this.persistQuarantined();
+    } catch (error) {
+      list.pop();
+      throw error;
+    }
   }
 
   /**
@@ -374,12 +526,99 @@ export class SyncQueue {
 
   async enqueue(op: SyncOperation): Promise<void> {
     const q = await this.load();
-    q.push({ op, claimedByUserId: getClaimedUserId() });
+    q.push({ op, claimedByUserId: getClaimedUserId(), enqueuedAt: new Date().toISOString() });
     await this.persist();
   }
 
   async size(): Promise<number> {
     return (await this.load()).length;
+  }
+
+  /** Read-only, payload-free diagnostics for the System Admin sync preflight. */
+  async getDiagnostics(): Promise<SyncQueueDiagnostics> {
+    const q = await this.load();
+    const activeProfileId = getClaimedUserId();
+    const byOperation: Record<string, number> = {};
+    const ownerCounts = { activeProfile: 0, otherProfile: 0, unknown: 0 };
+    const owners = new Map<string, number>();
+    const families = new Map<string, number>();
+    const errorCodes: Record<string, number> = {};
+    const timestamps: string[] = [];
+    const attemptTimestamps: string[] = [];
+    let missingEnqueueTime = 0;
+    let neverAttempted = 0;
+    let attemptedWithUnknownOutcome = 0;
+    let withoutFamilyId = 0;
+
+    for (const item of q) {
+      byOperation[item.op.type] = (byOperation[item.op.type] ?? 0) + 1;
+      if (!item.claimedByUserId) ownerCounts.unknown++;
+      else {
+        owners.set(item.claimedByUserId, (owners.get(item.claimedByUserId) ?? 0) + 1);
+        if (activeProfileId && item.claimedByUserId === activeProfileId) ownerCounts.activeProfile++;
+        else ownerCounts.otherProfile++;
+      }
+
+      const payload = item.op.payload as unknown;
+      const payloadRows = Array.isArray(payload) ? payload : [payload];
+      const itemFamilyIds = new Set(
+        payloadRows.flatMap((row) => {
+          if (!row || typeof row !== 'object') return [];
+          const familyId = (row as Record<string, unknown>).familyId;
+          return typeof familyId === 'string' ? [familyId] : [];
+        })
+      );
+      if (itemFamilyIds.size === 0) withoutFamilyId++;
+      for (const familyId of itemFamilyIds) {
+        families.set(familyId, (families.get(familyId) ?? 0) + 1);
+      }
+      if (item.enqueuedAt && Number.isFinite(Date.parse(item.enqueuedAt))) timestamps.push(item.enqueuedAt);
+      else missingEnqueueTime++;
+      if (item.lastAttemptAt && Number.isFinite(Date.parse(item.lastAttemptAt))) attemptTimestamps.push(item.lastAttemptAt);
+      if (!item.attemptCount) neverAttempted++;
+      else if (!item.lastErrorCode && item.lastErrorHttpStatus === undefined) attemptedWithUnknownOutcome++;
+      if (item.lastErrorCode) errorCodes[item.lastErrorCode] = (errorCodes[item.lastErrorCode] ?? 0) + 1;
+    }
+
+    timestamps.sort();
+    attemptTimestamps.sort();
+    return {
+      total: q.length,
+      byOperation,
+      ownerCounts,
+      ownerIds: [...owners].map(([id, count]) => ({ id, count })).sort((a, b) => b.count - a.count).slice(0, 5),
+      familyIds: [...families].map(([id, count]) => ({ id, count })).sort((a, b) => b.count - a.count).slice(0, 5),
+      withoutFamilyId,
+      oldestEnqueuedAt: timestamps[0] ?? null,
+      latestAttemptAt: attemptTimestamps[attemptTimestamps.length - 1] ?? null,
+      missingEnqueueTime,
+      neverAttempted,
+      attemptedWithUnknownOutcome,
+      lastErrorCodes: errorCodes,
+      lastFlush: this.lastFlush,
+      firstPendingOperation: (() => {
+        const item = q.find((candidate) => candidate.claimedByUserId === activeProfileId) ?? q.find((candidate) => candidate.claimedByUserId == null) ?? null;
+        if (!item) return null;
+        return { operationType: item.op.type, safeOperationId: safeOperationId(item.op), queuePosition: q.indexOf(item) + 1 };
+      })(),
+      firstRetryableFailure: (() => {
+        const item = q.find((candidate) => candidate.lastAttemptAt && candidate.lastErrorMessage);
+        if (!item || !item.lastAttemptAt) return null;
+        return {
+          operationType: item.op.type,
+          safeOperationId: item.lastErrorOperationId ?? safeOperationId(item.op),
+          queuePosition: item.lastErrorQueuePosition ?? q.indexOf(item) + 1,
+          endpoint: item.lastErrorEndpoint ?? operationEndpoint(item.op),
+          httpStatus: item.lastErrorHttpStatus ?? null,
+          errorCode: item.lastErrorCode ?? null,
+          errorMessage: item.lastErrorMessage ?? 'Unknown error',
+          category: item.lastErrorCategory ?? 'unclassified',
+          attemptCount: item.attemptCount ?? 0,
+          lastAttemptAt: item.lastAttemptAt,
+          retryAfterAt: item.retryAfterAt ?? null,
+        };
+      })(),
+    };
   }
 
   /** Live routing hint only; never grants server authority or an owner to queued items. */
@@ -402,6 +641,21 @@ export class SyncQueue {
   async hasPendingSaveWalk(walkId: string): Promise<boolean> {
     const q = await this.load();
     return q.some((item) => item.op.type === 'saveWalk' && item.op.payload.id === walkId);
+  }
+
+  /** True while an older profile edit for this exact member is queued or in flight. */
+  async hasPendingUpsertUser(userId: string): Promise<boolean> {
+    const q = await this.load();
+    return q.some((item) => item.op.type === 'upsertUser' && item.op.payload.id === userId);
+  }
+
+  /** Drops only queued edits superseded by a newer authoritative write for this member. */
+  async discardPendingUpsertUser(userId: string): Promise<void> {
+    const q = await this.load();
+    const kept = q.filter((item) => item.op.type !== 'upsertUser' || item.op.payload.id !== userId);
+    if (kept.length === q.length) return;
+    this.queue = kept;
+    await this.persist();
   }
 
   /**
@@ -511,56 +765,81 @@ export class SyncQueue {
    * foreground/mutation once restoreSession() has resolved — never a wrong
    * actor.
    */
-  async flush(remote: Repository): Promise<{ succeeded: number; remaining: number; conflicted: number; quarantined: number }> {
-    if (this.flushing) {
-      return { succeeded: 0, remaining: (await this.load()).length, conflicted: 0, quarantined: 0 };
-    }
-    this.flushing = true;
+  async flush(remote: Repository, options: { force?: boolean } = {}): Promise<FlushResult> {
+    if (this.flushPromise) return this.flushPromise;
+    const work = this.flushOnce(remote, options);
+    this.flushPromise = work;
     try {
-      const q = await this.load();
-      let succeeded = 0;
-      let conflicted = 0;
-      let quarantinedCount = 0;
-      let i = 0;
-      while (i < q.length) {
+      return await work;
+    } finally {
+      if (this.flushPromise === work) this.flushPromise = null;
+    }
+  }
+
+  private async flushOnce(remote: Repository, options: { force?: boolean }): Promise<FlushResult> {
+    const q = await this.load();
+    let succeeded = 0;
+    let conflicted = 0;
+    let quarantinedCount = 0;
+    let attempted = 0;
+    let skippedOtherProfile = 0;
+    let stoppedOnRetryableFailure = false;
+    let i = 0;
+    while (i < q.length) {
         const item = q[i];
 
         if (item.claimedByUserId == null) {
-          q.splice(i, 1);
-          await this.persist();
+          // Persist the quarantine copy before removing the pending item. If
+          // either storage write fails, at least one durable copy remains.
           await this.quarantine(item, 'legacy/untagged operation — original actor unknown, never auto-replayed');
+          q.splice(i, 1);
+          try {
+            await this.persist();
+          } catch (error) {
+            q.splice(i, 0, item);
+            throw error;
+          }
           quarantinedCount++;
           continue; // the next item has shifted into index i
         }
 
         if (item.claimedByUserId !== getClaimedUserId()) {
+          skippedOtherProfile++;
           i++; // known owner, not currently claimed — skip, don't block others
           continue;
         }
 
+        // A retryable failure stays FIFO, but automatic foreground/enqueue
+        // syncs respect persisted exponential backoff. The explicit admin
+        // retry action may bypass this delay; it still uses the same owner
+        // guard and normal server authorization path.
+        if (!options.force && item.retryAfterAt && Date.parse(item.retryAfterAt) > Date.now()) {
+          stoppedOnRetryableFailure = true;
+          break;
+        }
+
         try {
+          attempted++;
           await this.apply(remote, item.op);
-          q.splice(i, 1);
-          succeeded++;
-          await this.persist();
-          // BUG 3 FIX (historical SyncConflict falsely breaking a later
-          // success): a `saveWalk` for this exact walk id has now actually
-          // SUCCEEDED — any conflict previously recorded for this same walk
-          // id (from an earlier, since-superseded attempt) is stale and must
-          // not keep being returned by getConflictForWalk(). Without this,
-          // scheduleStore.markDone()'s sequence (saveWalk -> hasPendingSaveWalk
-          // (now false) -> getConflictForWalk) would see hasPendingSaveWalk
-          // false (correct — nothing's queued anymore) but getConflictForWalk
-          // still return Attempt-1's old permanent-failure record, and wrongly
-          // revert THIS successful completion. Clearing here — the moment a
-          // later write for the same walk id is confirmed to have landed — is
-          // the safest point to do it: it can never race ahead of a
-          // still-in-flight attempt (this only runs once `apply` above has
-          // actually resolved), and it only ever clears conflicts for the
-          // SAME walk id, never anything unrelated.
+          // Keep the acknowledged operation in the durable FIFO until queue
+          // removal is persisted. A local storage error must not be mistaken
+          // for a remote failure after the in-memory splice.
           if (item.op.type === 'saveWalk') {
             await this.clearConflictForWalk(item.op.payload.id);
           }
+          q.splice(i, 1);
+          try {
+            await this.persist();
+          } catch (error) {
+            q.splice(i, 0, item);
+            // Keep diagnostics honest: the server accepted the write; only
+            // local queue persistence failed.
+            throw Object.assign(new Error('Local sync queue persistence failed'), {
+              syncQueueLocalPersistence: true,
+              cause: error,
+            });
+          }
+          succeeded++;
           // don't advance i — the next item has shifted into this slot
         } catch (error) {
           // QA pass v3, issue 3 fix: a queued write failing here is an
@@ -576,33 +855,77 @@ export class SyncQueue {
           // any crash-reporting integration that taps console output) for
           // diagnosis, it just doesn't take over the screen for something
           // the queue is already correctly handling.
-          console.warn(
-            'SyncQueue: operation failed (handled — recorded as a conflict or left queued for retry):',
-            item.op.type,
-            JSON.stringify(item.op.payload),
-            error
-          );
-          if (isPermanentError(error)) {
-            q.splice(i, 1);
-            await this.persist();
+          const httpStatusValue = errorField(error, 'status') ?? errorField(error, 'statusCode');
+          const httpStatus = typeof httpStatusValue === 'number' ? httpStatusValue : null;
+          const rawCode = errorField(error, 'code');
+          const errorCode = typeof rawCode === 'string' ? rawCode.slice(0, 32) : null;
+          const safeMessage = sanitizedErrorMessage(error);
+          const safeId = safeOperationId(item.op);
+          const endpoint = operationEndpoint(item.op);
+          const category = failureCategory(error, httpStatus, errorCode);
+          // Structured diagnostics deliberately exclude payload, auth/session data,
+          // family ids and raw Supabase error details that may contain user values.
+          console.warn('SyncQueue: operation failed', {
+            operationType: item.op.type,
+            safeOperationId: safeId,
+            queuePosition: i + 1,
+            endpoint,
+            httpStatus,
+            errorCode,
+            errorMessage: safeMessage,
+            category,
+          });
+          if (isPermanentSyncError(error)) {
             const conflicts = await this.loadConflicts();
             conflicts.push({
               op: item.op,
               code: (error as { code?: string } | null | undefined)?.code,
               message: error instanceof Error ? error.message : String(error),
               failedAt: new Date().toISOString(),
+              claimedByUserId: item.claimedByUserId,
+              httpStatus: (error as { status?: number } | null | undefined)?.status,
             });
-            await this.persistConflicts();
+            try {
+              // Archive first. Never remove the only durable copy of an
+              // operation before its conflict record has been persisted.
+              await this.persistConflicts();
+            } catch (archiveError) {
+              conflicts.pop();
+              throw archiveError;
+            }
+            q.splice(i, 1);
+            try {
+              await this.persist();
+            } catch (queueError) {
+              // The archive is already durable, and restoring in memory
+              // keeps the operation visible if the queue write failed.
+              q.splice(i, 0, item);
+              throw queueError;
+            }
             conflicted++;
             continue; // don't let a permanent conflict block unrelated later ops
           }
+          item.attemptCount = (item.attemptCount ?? 0) + 1;
+          item.lastAttemptAt = new Date().toISOString();
+          item.lastErrorCode = errorCode ?? undefined;
+          item.lastErrorHttpStatus = httpStatus ?? undefined;
+          item.lastErrorMessage = safeMessage;
+          item.lastErrorEndpoint = endpoint;
+          item.lastErrorOperationId = safeId;
+          item.lastErrorQueuePosition = i + 1;
+          item.lastErrorCategory = category;
+          const retryDelayMs = Math.min(15 * 60_000, 30_000 * (2 ** Math.min(item.attemptCount - 1, 5)));
+          item.retryAfterAt = new Date(Date.now() + retryDelayMs).toISOString();
+          await this.persist();
+          stoppedOnRetryableFailure = true;
           break; // retryable: keep it queued, try again on next flush
         }
-      }
-      return { succeeded, remaining: q.length, conflicted, quarantined: quarantinedCount };
-    } finally {
-      this.flushing = false;
     }
+    this.lastFlush = {
+      attempted, skippedOtherProfile, succeeded, conflicted, quarantined: quarantinedCount,
+      remaining: q.length, stoppedOnRetryableFailure, completedAt: new Date().toISOString(),
+    };
+    return { succeeded, remaining: q.length, conflicted, quarantined: quarantinedCount };
   }
 
   private async apply(remote: Repository, op: SyncOperation): Promise<void> {
@@ -617,6 +940,12 @@ export class SyncQueue {
         return remote.deleteFamilyMember(op.payload);
       case 'upsertDog':
         return remote.upsertDog(op.payload);
+      case 'upsertHealthTask':
+        return remote.upsertHealthTask(op.payload);
+      case 'upsertGpsSession':
+        return remote.upsertGpsSession(op.payload);
+      case 'upsertAchievementUnlock':
+        return remote.upsertAchievementUnlock(op.payload);
       case 'upsertScheduleRule':
         return remote.upsertScheduleRule(op.payload);
       case 'deleteScheduleRule':
@@ -633,6 +962,8 @@ export class SyncQueue {
         return remote.deleteWalk?.(op.payload.walkId);
       case 'updateUserReminderSetting':
         return remote.updateUserReminderSetting(op.payload.userId, op.payload.enabled);
+      case 'updateUserGamificationSetting':
+        return remote.updateUserGamificationSetting(op.payload.userId, op.payload.enabled);
     }
   }
 }

@@ -2,12 +2,16 @@ import { Alert, Linking } from 'react-native';
 
 const mockRequestMediaLibraryPermissionsAsync = jest.fn();
 const mockLaunchImageLibraryAsync = jest.fn();
+const mockRequestCameraPermissionsAsync = jest.fn();
+const mockLaunchCameraAsync = jest.fn();
 
 jest.mock('expo-image-picker', () => ({
   requestMediaLibraryPermissionsAsync: (...args: unknown[]) =>
     mockRequestMediaLibraryPermissionsAsync(...args),
   launchImageLibraryAsync: (...args: unknown[]) =>
     mockLaunchImageLibraryAsync(...args),
+  requestCameraPermissionsAsync: (...args: unknown[]) => mockRequestCameraPermissionsAsync(...args),
+  launchCameraAsync: (...args: unknown[]) => mockLaunchCameraAsync(...args),
 }));
 
 const ORIGINAL_ENV = process.env;
@@ -284,5 +288,34 @@ describe('pickAndUploadImage — Supabase Storage upload', () => {
     const { pickAndUploadImage } = require('../uploadImage');
 
     await expect(pickAndUploadImage('dogs', 'family-9', 'dog-3')).rejects.toBe(storageError);
+  });
+});
+
+describe('takeAndUploadImage — family photo capture', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    jest.clearAllMocks();
+    jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    jest.spyOn(Date, 'now').mockReturnValue(1700000000000);
+    mockRequestCameraPermissionsAsync.mockResolvedValue({ granted: true, canAskAgain: true });
+    mockLaunchCameraAsync.mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///camera/dog.jpg' }] });
+    configureSupabaseEnv(true);
+  });
+
+  afterEach(() => {
+    process.env = ORIGINAL_ENV;
+    jest.restoreAllMocks();
+  });
+
+  it('requests camera access and persists the captured image to the family dog folder', async () => {
+    const { uploadMock, getPublicUrlMock } = mockConfiguredSupabase();
+    jest.spyOn(global, 'fetch').mockResolvedValue({ arrayBuffer: () => Promise.resolve(new ArrayBuffer(4)) } as unknown as Response);
+    const { takeAndUploadImage } = require('../uploadImage');
+
+    await expect(takeAndUploadImage('dogs', 'family-9', 'dog-3')).resolves.toBe('https://cdn.example/photo.jpg');
+    expect(mockRequestCameraPermissionsAsync).toHaveBeenCalledTimes(1);
+    expect(mockLaunchCameraAsync).toHaveBeenCalledWith(expect.objectContaining({ allowsEditing: true, aspect: [1, 1] }));
+    expect(uploadMock).toHaveBeenCalledWith('family-9/dog/1700000000000.jpg', expect.any(ArrayBuffer), { contentType: 'image/jpeg', upsert: true });
+    expect(getPublicUrlMock).toHaveBeenCalledWith('family-9/dog/1700000000000.jpg');
   });
 });

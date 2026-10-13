@@ -20,7 +20,18 @@
  * sync if the rule ever changes.
  */
 
-export type PushEventStatus = 'sending' | 'sent' | 'failed';
+/**
+ * 'no_destination' (migration 0102) — a distinct terminal status for a
+ * claimed, authorized event that had zero active push_tokens/
+ * web_push_subscriptions rows for its resolved recipients: nothing was
+ * delivered, but this must never be recorded as 'sent' (that implies a
+ * real delivery happened — see that migration's header comment for the
+ * real-device QA finding this fixes). Reclaimable the same way 'failed'
+ * is, purely as defense in depth for a near-immediate legitimate retry
+ * finding a destination that appeared in the meantime; 'sent' itself
+ * remains the only status that is NEVER reclaimed.
+ */
+export type PushEventStatus = 'sending' | 'sent' | 'failed' | 'no_destination';
 
 export interface ExistingPushEventRow {
   status: PushEventStatus;
@@ -49,7 +60,7 @@ export function decideClaimOutcome(
 ): ClaimOutcome {
   if (!existing) return 'claim';
   if (existing.status === 'sent') return 'already_sent';
-  if (existing.status === 'failed') return 'claim'; // a failed send remains retryable, per Requirement 3
+  if (existing.status === 'failed' || existing.status === 'no_destination') return 'claim'; // both remain retryable, per Requirement 3 / migration 0102
   // status === 'sending'
   const ageMs = now.getTime() - new Date(existing.updatedAt).getTime();
   return ageMs > staleMs ? 'reclaim_stale' : 'already_sending';

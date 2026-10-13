@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 
@@ -12,6 +12,10 @@ interface AvatarProps {
 /** Shows a real photo when available (family member / dog), falling back to the emoji if there's no photo or it fails to load. */
 export function Avatar({ emoji, color, photoUrl, size = 44 }: AvatarProps) {
   const [failed, setFailed] = useState(false);
+  // An earlier URL may have failed because it was stale or still propagating
+  // through Storage. A replacement URL is a new resource and must get a new
+  // load attempt instead of leaving this avatar stuck on its emoji fallback.
+  useEffect(() => setFailed(false), [photoUrl]);
   const showPhoto = Boolean(photoUrl) && !failed;
 
   return (

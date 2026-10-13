@@ -18,24 +18,29 @@ function makeWalk(overrides: Partial<Walk> = {}): Walk {
 }
 
 describe('planWalkNotifications', () => {
-  it('schedules a pre-walk reminder 15 minutes before by default and an overdue reminder 10 minutes after', () => {
+  it('schedules all four PRD §8 stages (T-15, T, T+15, T+30) relative to the walk time, matching the server-side scheduler exactly', () => {
     const walk = makeWalk();
     const setting = defaultNotificationSetting('noam');
     const plan = planWalkNotifications(walk, setting, () => 'id');
 
-    const pre = plan.find((p) => p.kind === 'pre_walk_reminder')!;
-    const overdue = plan.find((p) => p.kind === 'overdue_reminder')!;
-
-    expect(new Date(pre.fireAt)).toEqual(new Date('2026-08-26T19:45:00'));
-    expect(new Date(overdue.fireAt)).toEqual(new Date('2026-08-26T20:10:00'));
+    expect(plan).toHaveLength(4);
+    const byKind = Object.fromEntries(plan.map((p) => [p.kind, p]));
+    expect(new Date(byKind['T-15'].fireAt)).toEqual(new Date('2026-08-26T19:45:00'));
+    expect(new Date(byKind['T'].fireAt)).toEqual(new Date('2026-08-26T20:00:00'));
+    expect(new Date(byKind['T+15'].fireAt)).toEqual(new Date('2026-08-26T20:15:00'));
+    expect(new Date(byKind['T+30'].fireAt)).toEqual(new Date('2026-08-26T20:30:00'));
   });
 
-  it('respects a custom minutesBefore/overdueMinutesAfter setting', () => {
+  it('every planned item carries the walk/family/user identifiers', () => {
     const walk = makeWalk();
-    const setting = { userId: 'noam', minutesBefore: 30, overdueMinutesAfter: 5, enabled: true };
+    const setting = defaultNotificationSetting('noam');
     const plan = planWalkNotifications(walk, setting, () => 'id');
-    expect(new Date(plan[0].fireAt)).toEqual(new Date('2026-08-26T19:30:00'));
-    expect(new Date(plan[1].fireAt)).toEqual(new Date('2026-08-26T20:05:00'));
+
+    for (const item of plan) {
+      expect(item.familyId).toBe('family-1');
+      expect(item.walkId).toBe('w1');
+      expect(item.userId).toBe('noam');
+    }
   });
 
   it('plans no notifications when the user disabled reminders', () => {

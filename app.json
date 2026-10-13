@@ -16,7 +16,8 @@
         "UIBackgroundModes": [
           "remote-notification"
         ],
-        "NSPhotoLibraryUsageDescription": "כדי לבחור תמונה של הכלב/ה שלכם או של בן משפחה מהגלריה שלכם."
+        "NSPhotoLibraryUsageDescription": "כדי לבחור תמונה של הכלב/ה שלכם או של בן משפחה מהגלריה שלכם.",
+        "NSCameraUsageDescription": "כדי לצלם תמונה של הכלב/ה או בני המשפחה."
       }
     },
     "android": {
@@ -34,7 +35,9 @@
     },
     "web": {
       "favicon": "./assets/favicon.png",
-      "output": "single"
+      "output": "single",
+      "themeColor": "#E8E5FF",
+      "backgroundColor": "#E8E5FF"
     },
     "plugins": [
       [
@@ -47,7 +50,14 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "כדי לבחור תמונה של הכלב/ה שלכם או של בן משפחה מהגלריה שלכם."
+          "photosPermission": "כדי לבחור תמונה של הכלב/ה שלכם או של בן משפחה מהגלריה שלכם.",
+          "cameraPermission": "כדי לצלם תמונה של הכלב/ה או בני המשפחה."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "כדי למדוד מרחק בזמן הטיול, נדרשת גישה למיקום כשהאפליקציה פתוחה. המיקום נשמר רק כמרחק כולל, לא כמסלול."
         }
       ],
       "@react-native-community/datetimepicker",
@@ -55,7 +65,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/splash.png",
+          "image": "./assets/branding/walkie-doggy-mascot-transparent.png",
           "backgroundColor": "#FBF8F3",
           "resizeMode": "contain",
           "imageWidth": 320

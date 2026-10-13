@@ -1,14 +1,21 @@
 import type { NotificationSetting, ScheduledNotification, Walk } from '../types';
 import { walkDateTime } from './nextWalk';
-
-export const DEFAULT_MINUTES_BEFORE = 15;
-export const DEFAULT_OVERDUE_MINUTES_AFTER = 10;
+import { REMINDER_STAGES, REMINDER_STAGE_OFFSET_MINUTES } from './reminderMessages';
 
 /**
  * Computes which notifications should exist for a given walk + the
  * responsible user's settings. Pure function: given the same inputs it
  * always returns the same plan, so the notification service just has to
  * diff this against what's already scheduled.
+ *
+ * PRD §8: exactly the four fixed stages the server-side scheduler already
+ * uses (supabase/migrations/0025_walk_reminder_scheduler.sql) — T-15, T
+ * (walk time), T+15, T+30 — via REMINDER_STAGES/REMINDER_STAGE_OFFSET_MINUTES
+ * (reminderMessages.ts), so this LOCAL fallback (see
+ * src/lib/remoteReminderChannel.ts's own doc comment on when it's actually
+ * used — only when this device has no active server-reachable push
+ * channel) matches the authoritative server timing exactly rather than a
+ * separately-tuned approximation.
  *
  * Rules:
  *  - No notifications at all if the user disabled reminders.
@@ -25,27 +32,15 @@ export function planWalkNotifications(
   if (walk.status !== 'pending') return [];
 
   const walkTime = walkDateTime(walk);
-  const preFireAt = new Date(walkTime.getTime() - setting.minutesBefore * 60000);
-  const overdueFireAt = new Date(walkTime.getTime() + setting.overdueMinutesAfter * 60000);
 
-  return [
-    {
-      id: idFactory(),
-      familyId: walk.familyId,
-      walkId: walk.id,
-      userId: setting.userId,
-      kind: 'pre_walk_reminder',
-      fireAt: preFireAt.toISOString(),
-    },
-    {
-      id: idFactory(),
-      familyId: walk.familyId,
-      walkId: walk.id,
-      userId: setting.userId,
-      kind: 'overdue_reminder',
-      fireAt: overdueFireAt.toISOString(),
-    },
-  ];
+  return REMINDER_STAGES.map((stage) => ({
+    id: idFactory(),
+    familyId: walk.familyId,
+    walkId: walk.id,
+    userId: setting.userId,
+    kind: stage,
+    fireAt: new Date(walkTime.getTime() + REMINDER_STAGE_OFFSET_MINUTES[stage] * 60000).toISOString(),
+  }));
 }
 
 /**
@@ -61,8 +56,6 @@ export function shouldSendNotification(walk: Pick<Walk, 'status'>): boolean {
 export function defaultNotificationSetting(userId: string): NotificationSetting {
   return {
     userId,
-    minutesBefore: DEFAULT_MINUTES_BEFORE,
-    overdueMinutesAfter: DEFAULT_OVERDUE_MINUTES_AFTER,
     enabled: true,
   };
 }

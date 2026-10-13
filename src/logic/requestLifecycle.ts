@@ -13,6 +13,8 @@ export interface RequestLike {
   target_user_id?: string;
   /** Time-change requests only (TimeChangeRequestRow.expected_time). */
   expected_time?: string;
+  /** Time-change requests only (TimeChangeRequestRow.proposed_time) — the requested new time, as opposed to expected_time (the walk's time as snapshotted when the request was created). */
+  proposed_time?: string;
   /** Swap requests only (SwapRequestRow's expected_* snapshot columns, migration 0018). */
   expected_responsible_user_id?: string;
   expected_scheduled_time?: string;
@@ -171,6 +173,41 @@ export function countUnreadRequestResults<T extends RequestLike>(
 }
 
 /**
+ * In-app gap fix (product decision: "ALL Family Admins... receive the
+ * result notification... represented appropriately in the in-app
+ * requests/messages experience"): countUnreadRequestResults above only
+ * ever counts a request's own REQUESTER — an admin who didn't request it
+ * (and isn't the swap target/approver either) previously got zero in-app
+ * signal when someone else's request resolved, even though they now also
+ * get a push for it (see send-request-push's admin fan-out). This counts,
+ * for an admin viewer, every OTHER member's request that resolved within
+ * the same ~24h "recently resolved" window everything else in this file
+ * already uses — `r.requested_by_user_id !== viewerUserId` avoids double-
+ * counting requests countUnreadRequestResults already covers for a viewer
+ * who is both the requester and an admin.
+ *
+ * Deliberately lighter-weight than a requester's own signal: there is no
+ * per-admin read-receipt column (requester_seen_at is requester-specific —
+ * mark_my_request_results_seen only ever updates the caller's OWN
+ * requested rows, migration 0005), so this does not clear when an admin
+ * opens the inbox and does not distinguish "an admin who just approved
+ * this themselves" from "a different admin" — it simply stops counting
+ * once the request moves from recentlyResolved to archived (~24h), same
+ * as every other lifecycle-driven display in this file. Real signal, not
+ * nothing — the alternative was silence.
+ */
+export function countRecentlyResolvedRequestsForAdmin<T extends RequestLike>(
+  requests: T[],
+  walksById: Record<string, LifecycleWalk | undefined>,
+  viewerUserId: string,
+  now: Date = new Date()
+): number {
+  return requests.filter(
+    (r) => r.requested_by_user_id !== viewerUserId && computeRequestLifecycle(r, walksById, now) === 'recentlyResolved'
+  ).length;
+}
+
+/**
  * True when `walkId` already appears — as either the source or the
  * reciprocal target — in an active pending swap request. `create_swap_request()`
  * (migration 0018) rejects naming either walk on EITHER side of a NEW request
@@ -236,4 +273,75 @@ export function countPendingRequestsForViewer(
   const swapCount = countActionableRequests(swapRequests, walksById, (r) => r.target_user_id === viewerUserId, now);
   const timeChangeCount = isAdmin ? countActionableRequests(timeChangeRequests, walksById, () => true, now) : 0;
   return swapCount + timeChangeCount;
+}
+
+/** Display-ready descriptor for one actionable pending request — see selectActionablePendingRequestsForViewer() below. Deliberately carries only raw ids/fields, never resolved names: resolving requester/target/dog names from usersById/walksById is a presentational concern, same as RequestsInboxModal's own inline `usersById[r.requested_by_user_id]?.name` lookups. */
+export type ActionablePendingRequest =
+  | {
+      kind: 'swap';
+      id: string;
+      walkId: string;
+      requestedByUserId: string;
+      targetUserId: string;
+      targetWalkId: string | null;
+      createdAt: string;
+    }
+  | {
+      kind: 'timeChange';
+      id: string;
+      walkId: string;
+      requestedByUserId: string;
+      proposedTime: string;
+      expectedTime: string;
+      createdAt: string;
+    };
+
+/**
+ * The actual actionable pending requests a viewer can approve/decline right
+ * now — the Home Dashboard pending-request card's data source. Uses the
+ * EXACT same authorization filters as countPendingRequestsForViewer() above
+ * (a swap must target this viewer; a time-change requires isAdmin) so the
+ * card can never show/offer an action the viewer isn't actually authorized
+ * to take — that authorization is still re-checked server-side regardless
+ * (this is UX only, same convention as RequestsInboxModal's canApprove).
+ * Oldest-first, matching the inbox's own created_at ordering.
+ */
+export function selectActionablePendingRequestsForViewer<
+  TSwap extends RequestLike,
+  TTimeChange extends RequestLike
+>(
+  swapRequests: TSwap[],
+  timeChangeRequests: TTimeChange[],
+  walksById: Record<string, LifecycleWalk | undefined>,
+  viewerUserId: string,
+  isAdmin: boolean,
+  now: Date = new Date()
+): ActionablePendingRequest[] {
+  const swaps: ActionablePendingRequest[] = swapRequests
+    .filter((r) => r.target_user_id === viewerUserId && isRequestActive(computeRequestLifecycle(r, walksById, now)))
+    .map((r) => ({
+      kind: 'swap' as const,
+      id: r.id,
+      walkId: r.walk_id,
+      requestedByUserId: r.requested_by_user_id ?? '',
+      targetUserId: r.target_user_id ?? '',
+      targetWalkId: r.target_walk_id ?? null,
+      createdAt: r.created_at,
+    }));
+
+  const timeChanges: ActionablePendingRequest[] = isAdmin
+    ? timeChangeRequests
+        .filter((r) => isRequestActive(computeRequestLifecycle(r, walksById, now)))
+        .map((r) => ({
+          kind: 'timeChange' as const,
+          id: r.id,
+          walkId: r.walk_id,
+          requestedByUserId: r.requested_by_user_id ?? '',
+          proposedTime: r.proposed_time ?? '',
+          expectedTime: r.expected_time ?? '',
+          createdAt: r.created_at,
+        }))
+    : [];
+
+  return [...swaps, ...timeChanges].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }

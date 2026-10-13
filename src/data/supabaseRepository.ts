@@ -1,15 +1,25 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
+  AchievementUnlock,
   Dog,
   Family,
   FamilyUser,
+  HealthTask,
   NotificationSetting,
   ScheduleEntry,
   ScheduleRule,
   Walk,
+  WalkGpsSession,
 } from '../types';
 import { defaultNotificationSetting } from '../logic/reminders';
 import type { DeleteFamilyMemberPayload, Repository } from './repository';
+import { SUPABASE_CALL_TIMEOUT_MS, withTimeout } from '../lib/withTimeout';
+// TEMPORARY DIAGNOSTIC INSTRUMENTATION — see perfTrace.ts's own doc
+// comment. Remove this import and every perfMark call in
+// upsertScheduleRule()/addScheduleEntries() once the real ~10s
+// Schedule-save bottleneck is confirmed fixed by an actual real-device
+// measurement.
+import { perfMark } from '../lib/perfTrace';
 
 /** Maps between the app's camelCase domain types and Supabase's snake_case rows. */
 
@@ -22,6 +32,7 @@ function toUser(row: any): FamilyUser {
     photoUrl: row.photo_url ?? undefined,
     color: row.color,
     remindersEnabled: row.reminders_enabled,
+    gamificationEnabled: row.gamification_enabled,
     createdAt: row.created_at,
     removedAt: row.removed_at ?? undefined,
   };
@@ -51,6 +62,8 @@ function toDog(row: any): Dog {
     familyId: row.family_id,
     name: row.name,
     photoUrl: row.photo_url ?? undefined,
+    photoCutoutUrl: row.photo_cutout_url ?? undefined,
+    heroBackgroundId: row.hero_background_id ?? undefined,
     walksPerDay: row.walks_per_day,
     notes: row.notes ?? undefined,
     sex: row.sex ?? undefined,
@@ -83,6 +96,7 @@ function toEntry(row: any): ScheduleEntry {
     time: row.time,
     responsibleUserId: row.responsible_user_id,
     createdAt: row.created_at,
+    timeOverridden: row.time_overridden ?? false,
   };
 }
 
@@ -183,6 +197,106 @@ function fromEntry(entry: ScheduleEntry) {
     date: entry.date,
     time: entry.time,
     responsible_user_id: entry.responsibleUserId,
+    time_overridden: entry.timeOverridden ?? false,
+  };
+}
+
+function toHealthTask(row: any): HealthTask {
+  return {
+    id: row.id,
+    familyId: row.family_id,
+    dogId: row.dog_id,
+    category: row.category,
+    title: row.title,
+    notes: row.notes ?? undefined,
+    weightKg: row.weight_kg ?? undefined,
+    recurrenceIntervalDays: row.recurrence_interval_days ?? undefined,
+    dueDate: row.due_date ?? undefined,
+    completedAt: row.completed_at ?? undefined,
+    completedByUserId: row.completed_by_user_id ?? undefined,
+    responsibleUserId: row.responsible_user_id ?? undefined,
+    createdByUserId: row.created_by_user_id ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function fromHealthTask(task: HealthTask) {
+  return {
+    id: task.id,
+    family_id: task.familyId,
+    dog_id: task.dogId,
+    category: task.category,
+    title: task.title,
+    notes: task.notes ?? null,
+    weight_kg: task.weightKg ?? null,
+    recurrence_interval_days: task.recurrenceIntervalDays ?? null,
+    due_date: task.dueDate ?? null,
+    completed_at: task.completedAt ?? null,
+    completed_by_user_id: task.completedByUserId ?? null,
+    responsible_user_id: task.responsibleUserId ?? null,
+    created_by_user_id: task.createdByUserId ?? null,
+  };
+}
+
+function toGpsSession(row: any): WalkGpsSession {
+  return {
+    id: row.id,
+    walkId: row.walk_id,
+    familyId: row.family_id,
+    dogId: row.dog_id,
+    distanceMeters: row.distance_meters ?? undefined,
+    pointCount: row.point_count,
+    routePoints: Array.isArray(row.route_points) ? row.route_points : undefined,
+    correctedDistanceMeters: row.corrected_distance_meters ?? undefined,
+    correctedByUserId: row.corrected_by_user_id ?? undefined,
+    startedAt: row.started_at ?? undefined,
+    endedAt: row.ended_at ?? undefined,
+    source: row.source,
+    createdByUserId: row.created_by_user_id ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function fromGpsSession(session: WalkGpsSession) {
+  return {
+    id: session.id,
+    walk_id: session.walkId,
+    family_id: session.familyId,
+    dog_id: session.dogId,
+    distance_meters: session.distanceMeters ?? null,
+    point_count: session.pointCount,
+    route_points: session.routePoints ?? null,
+    corrected_distance_meters: session.correctedDistanceMeters ?? null,
+    corrected_by_user_id: session.correctedByUserId ?? null,
+    started_at: session.startedAt ?? null,
+    ended_at: session.endedAt ?? null,
+    source: session.source,
+    created_by_user_id: session.createdByUserId ?? null,
+  };
+}
+
+function toAchievementUnlock(row: any): AchievementUnlock {
+  return {
+    id: row.id,
+    familyId: row.family_id,
+    achievementKey: row.achievement_key,
+    scope: row.scope,
+    userId: row.user_id ?? undefined,
+    unlockedAt: row.unlocked_at,
+    createdAt: row.created_at,
+  };
+}
+
+function fromAchievementUnlock(unlock: AchievementUnlock) {
+  return {
+    id: unlock.id,
+    family_id: unlock.familyId,
+    achievement_key: unlock.achievementKey,
+    scope: unlock.scope,
+    user_id: unlock.userId ?? null,
+    unlocked_at: unlock.unlockedAt,
   };
 }
 
@@ -192,6 +306,8 @@ function fromDog(dog: Dog) {
     family_id: dog.familyId,
     name: dog.name,
     photo_url: dog.photoUrl ?? null,
+    photo_cutout_url: dog.photoCutoutUrl ?? null,
+    hero_background_id: dog.heroBackgroundId ?? null,
     walks_per_day: dog.walksPerDay,
     notes: dog.notes ?? null,
     sex: dog.sex ?? null,
@@ -322,14 +438,96 @@ export class SupabaseRepository implements Repository {
     if (error) throw error;
   }
 
+  async updateUserGamificationSetting(userId: string, enabled: boolean): Promise<void> {
+    const { error } = await this.client.from('users').update({ gamification_enabled: enabled }).eq('id', userId);
+    if (error) throw error;
+  }
+
   async getDog(familyId: string): Promise<Dog | undefined> {
     const { data, error } = await this.client.from('dogs').select('*').eq('family_id', familyId).maybeSingle();
     if (error) throw error;
     return data ? toDog(data) : undefined;
   }
 
+  async getDogs(familyId: string): Promise<Dog[]> {
+    const { data, error } = await this.client.from('dogs').select('*').eq('family_id', familyId);
+    if (error) throw error;
+    return (data ?? []).map(toDog);
+  }
+
   async upsertDog(dog: Dog): Promise<void> {
-    const { error } = await this.client.from('dogs').upsert(fromDog(dog));
+    // Existing dog profile edits (including the shared Home background) are
+    // UPDATEs, not INSERTs. Using UPSERT here made every edit also require
+    // the table's INSERT policy; on staging that can reject an otherwise
+    // valid admin edit, leaving OfflineFirstRepository to queue it while a
+    // subsequent online reload fetches the old background again.
+    const row = fromDog(dog);
+    const { data, error: updateError } = await this.client
+      .from('dogs')
+      .update(row)
+      .eq('id', dog.id)
+      .select('id');
+    if (updateError) throw updateError;
+    if ((data ?? []).length > 0) return;
+
+    // No existing row: this is genuinely a newly-added dog.
+    const { error: insertError } = await this.client.from('dogs').insert(row);
+    if (insertError) throw insertError;
+  }
+
+  async getHealthTasks(dogId: string): Promise<HealthTask[]> {
+    const { data, error } = await this.client.from('health_tasks').select('*').eq('dog_id', dogId);
+    if (error) throw error;
+    return (data ?? []).map(toHealthTask);
+  }
+
+  async upsertHealthTask(task: HealthTask): Promise<void> {
+    const { error } = await this.client.from('health_tasks').upsert(fromHealthTask(task));
+    if (error) throw error;
+  }
+
+  async deleteHealthTask(taskId: string): Promise<void> {
+    const { data, error } = await this.client.from('health_tasks').delete().eq('id', taskId).is('completed_at', null).select('id');
+    if (error) throw error;
+    if ((data ?? []).length !== 1) throw new Error('Open health task was not deleted or is no longer authorized');
+  }
+
+  async getGpsSession(walkId: string): Promise<WalkGpsSession | undefined> {
+    const { data, error } = await this.client.from('walk_gps_sessions').select('*').eq('walk_id', walkId).maybeSingle();
+    if (error) throw error;
+    return data ? toGpsSession(data) : undefined;
+  }
+
+  async upsertGpsSession(session: WalkGpsSession): Promise<void> {
+    // Conflict target is walk_id (its own unique constraint, 0051), not the
+    // primary key `id` — a re-save (e.g. recording a correction after the
+    // initial device-computed reading) must update the SAME row for this
+    // walk rather than erroring on walk_id's uniqueness with a fresh id.
+    const { error } = await this.client.from('walk_gps_sessions').upsert(fromGpsSession(session), { onConflict: 'walk_id' });
+    if (error) throw error;
+  }
+
+  async getGpsSessionsForWalkIds(walkIds: string[]): Promise<WalkGpsSession[]> {
+    if (walkIds.length === 0) return [];
+    const { data, error } = await this.client.from('walk_gps_sessions').select('*').in('walk_id', walkIds);
+    if (error) throw error;
+    return (data ?? []).map(toGpsSession);
+  }
+
+  async getAchievementUnlocks(familyId: string): Promise<AchievementUnlock[]> {
+    const { data, error } = await this.client.from('achievement_unlocks').select('*').eq('family_id', familyId);
+    if (error) throw error;
+    return (data ?? []).map(toAchievementUnlock);
+  }
+
+  async upsertAchievementUnlock(unlock: AchievementUnlock): Promise<void> {
+    // Conflict target is (family_id, dedupe_key) — 0052's generated column +
+    // unique constraint — so a duplicate unlock attempt (two devices
+    // crossing the same threshold, or a retried write) is silently a no-op
+    // rather than a constraint-violation error.
+    const { error } = await this.client
+      .from('achievement_unlocks')
+      .upsert(fromAchievementUnlock(unlock), { onConflict: 'family_id,dedupe_key', ignoreDuplicates: true });
     if (error) throw error;
   }
 
@@ -340,13 +538,55 @@ export class SupabaseRepository implements Repository {
   }
 
   async upsertScheduleRule(rule: ScheduleRule): Promise<void> {
-    const { error } = await this.client.from('schedule_rules').upsert(fromRule(rule));
-    if (error) throw error;
+    // Editing an existing rule must only require UPDATE permission. UPSERT
+    // also exercises INSERT policy and could therefore make a valid edit
+    // appear saved locally, then disappear after the next server reload.
+    // Real-device QA fix — see withTimeout.ts's own doc comment: a stalled
+    // call here must reject (and surface/queue like any other transient
+    // failure), never hang the caller's `saving` state forever.
+    const row = fromRule(rule);
+    perfMark('SR.upsertScheduleRule: update request start');
+    const { data, error: updateError } = await withTimeout(
+      this.client.from('schedule_rules').update(row).eq('id', rule.id).select('id'),
+      SUPABASE_CALL_TIMEOUT_MS,
+      'schedule_rules update'
+    );
+    perfMark('SR.upsertScheduleRule: update request complete');
+    if (updateError) throw updateError;
+    if ((data ?? []).length > 0) return;
+
+    perfMark('SR.upsertScheduleRule: insert request start');
+    const { error: insertError } = await withTimeout(
+      this.client.from('schedule_rules').insert(row),
+      SUPABASE_CALL_TIMEOUT_MS,
+      'schedule_rules insert'
+    );
+    perfMark('SR.upsertScheduleRule: insert request complete');
+    if (insertError) throw insertError;
   }
 
   async deleteScheduleRule(ruleId: string): Promise<void> {
-    const { error } = await this.client.from('schedule_rules').delete().eq('id', ruleId);
-    if (error) throw error;
+    // DELETE ... RETURNING hides both absent rows and rows outside the
+    // caller's RLS scope. The RPC checks the authenticated active family,
+    // resolves only globally absent rules as idempotent, and delegates an
+    // existing same-family rule to the existing admin deletion workflow.
+    const { data, error, status } = await this.client.rpc('delete_schedule_rule_idempotent', {
+      p_rule_id: ruleId,
+    });
+    if (error) {
+      const enrichedError: Error & { code?: string; status?: number; syncQueueRetryable?: boolean } = Object.assign(
+        new Error(error.message || 'Schedule rule delete failed'),
+        error,
+        { status: status ?? (error as { status?: number }).status }
+      );
+      // Keep family/admin context failures in FIFO for a safe retry; never
+      // report an authorization failure as a successful deletion.
+      if (error.code === '42501') enrichedError.syncQueueRetryable = true;
+      throw enrichedError;
+    }
+    if (data !== 'deleted' && data !== 'already_absent') {
+      throw new Error('Schedule rule delete returned an unrecognized result');
+    }
   }
 
   async getScheduleEntries(familyId: string): Promise<ScheduleEntry[]> {
@@ -357,11 +597,54 @@ export class SupabaseRepository implements Repository {
 
   async addScheduleEntries(entries: ScheduleEntry[]): Promise<void> {
     if (entries.length === 0) return;
-    const { error } = await this.client.from('schedule_entries').upsert(entries.map(fromEntry), {
-      onConflict: 'dog_id,date,time',
-      ignoreDuplicates: true,
-    });
+    // Real-device QA fix — see withTimeout.ts's own doc comment. This is
+    // called once per addRule()/updateRule(), but is itself two sequential
+    // network calls — either one stalling with no timeout is one of the
+    // concrete hang points identified in that bug.
+    const rows = entries.map(fromEntry);
+    perfMark(`SR.addScheduleEntries: upsert request start (${rows.length} rows)`);
+    const { error } = await withTimeout(
+      this.client.from('schedule_entries').upsert(rows, {
+        onConflict: 'dog_id,date,time',
+        ignoreDuplicates: true,
+      }),
+      SUPABASE_CALL_TIMEOUT_MS,
+      'schedule_entries upsert'
+    );
+    perfMark('SR.addScheduleEntries: upsert request complete');
     if (error) throw error;
+
+    // The unique key is (dog_id,date,time), so ignoreDuplicates can keep an
+    // already-existing canonical row whose id differs from the locally
+    // generated id. A dependent walk must reference that canonical server id,
+    // not the discarded generated id. Re-read the touched keys and copy the
+    // authoritative ids back into the caller's entry objects before
+    // scheduleStore creates child walks from them.
+    const dogIds = [...new Set(rows.map((row) => row.dog_id))];
+    const dates = [...new Set(rows.map((row) => row.date))];
+    const times = [...new Set(rows.map((row) => row.time))];
+    perfMark('SR.addScheduleEntries: canonical-id read-back start');
+    const { data: canonicalRows, error: readError } = await withTimeout(
+      this.client
+        .from('schedule_entries')
+        .select('id,dog_id,date,time')
+        .in('dog_id', dogIds)
+        .in('date', dates)
+        .in('time', times),
+      SUPABASE_CALL_TIMEOUT_MS,
+      'schedule_entries canonical-id read-back'
+    );
+    perfMark('SR.addScheduleEntries: canonical-id read-back complete');
+    if (readError) throw readError;
+
+    const canonicalByKey = new Map(
+      (canonicalRows ?? []).map((row) => [`${row.dog_id}|${row.date}|${row.time}`, row.id])
+    );
+    for (const entry of entries) {
+      const canonicalId = canonicalByKey.get(`${entry.dogId}|${entry.date}|${entry.time}`);
+      if (!canonicalId) throw new Error('Schedule entry was not persisted authoritatively');
+      entry.id = canonicalId;
+    }
   }
 
   async updateScheduleEntry(entry: ScheduleEntry): Promise<void> {
@@ -370,8 +653,26 @@ export class SupabaseRepository implements Repository {
   }
 
   async deleteScheduleEntry(entryId: string): Promise<void> {
-    const { error } = await this.client.from('schedule_entries').delete().eq('id', entryId);
-    if (error) throw error;
+    // DELETE ... RETURNING can yield an empty representation both when the
+    // entry is already gone and when RLS hides it. Let the server distinguish
+    // those cases atomically under the authenticated active-family context.
+    const { data, error, status } = await this.client.rpc('delete_schedule_entry_idempotent', {
+      p_entry_id: entryId,
+    });
+    if (error) {
+      const enrichedError: Error & { code?: string; status?: number; syncQueueRetryable?: boolean } = Object.assign(
+        new Error(error.message || 'Schedule entry delete failed'),
+        error,
+        { status: status ?? (error as { status?: number }).status }
+      );
+      // Keep authorization/context failures in FIFO for safe retry after the
+      // correct family context is restored; they are never treated as deletes.
+      if (error.code === '42501') enrichedError.syncQueueRetryable = true;
+      throw enrichedError;
+    }
+    if (data !== 'deleted' && data !== 'already_absent') {
+      throw new Error('Schedule entry delete returned an unrecognized result');
+    }
   }
 
   async getWalks(familyId: string): Promise<Walk[]> {
@@ -406,14 +707,53 @@ export class SupabaseRepository implements Repository {
   }
 
   async saveWalk(walk: Walk): Promise<void> {
-    if (walk.status === 'done') {
-      const { data, error } = await this.client
-        .from('walks')
-        .update(fromWalk(walk))
-        .eq('id', walk.id)
-        .eq('status', 'pending')
-        .select('id');
-      if (error) throw error;
+    // Keep the queued source object untouched until the server confirms the
+    // write. This lets a transient failure retry with the original payload.
+    const walkToPersist: Walk = { ...walk };
+
+    // A schedule edit/removal on another device can leave a locally queued
+    // walk pointing at a schedule_entries row that no longer exists. The FK
+    // then rejects the entire walk write (23503). Preserve the walk's history
+    // fields and stable id, but persist it as a standalone walk when the
+    // optional schedule relation is genuinely absent in this family.
+    if (walkToPersist.scheduleEntryId) {
+      const scheduleEntryAbort = new AbortController();
+      const scheduleEntryQuery = this.client
+        .from('schedule_entries')
+        .select('id')
+        .eq('id', walkToPersist.scheduleEntryId)
+        .eq('family_id', walkToPersist.familyId);
+      // The timeout must also cancel the underlying fetch. Racing only the
+      // promise leaves a dead request occupying the browser's connection
+      // pool while the offline queue retries this same FIFO item later.
+      const abortableScheduleEntryQuery =
+        typeof scheduleEntryQuery.abortSignal === 'function'
+          ? scheduleEntryQuery.abortSignal(scheduleEntryAbort.signal)
+          : scheduleEntryQuery;
+      const { data: scheduleEntry, error: scheduleEntryError, status: scheduleEntryStatus } = await withTimeout(
+        abortableScheduleEntryQuery.maybeSingle(),
+        SUPABASE_CALL_TIMEOUT_MS,
+        'schedule_entries lookup for queued walk',
+        () => scheduleEntryAbort.abort()
+      );
+      if (scheduleEntryError) throw Object.assign(scheduleEntryError, { status: scheduleEntryStatus });
+      if (!scheduleEntry) walkToPersist.scheduleEntryId = undefined;
+    }
+
+    // Real-device QA fix — see withTimeout.ts's own doc comment.
+    // addRule()/updateRule() call this once PER generated occurrence (up
+    // to GENERATE_DAYS_AHEAD of them), each itself up to two sequential
+    // network calls below — this is the single highest-probability hang
+    // point identified for "the Save spinner never stops" on a real
+    // mobile connection, since it is the one call site in that chain that
+    // can run many times in a row.
+    if (walkToPersist.status === 'done') {
+      const { data, error, status } = await withTimeout(
+        this.client.from('walks').update(fromWalk(walkToPersist)).eq('id', walkToPersist.id).eq('status', 'pending').select('id'),
+        SUPABASE_CALL_TIMEOUT_MS,
+        'walks update (done)'
+      );
+      if (error) throw Object.assign(error, { status });
       if (data && data.length > 0) return; // updated the existing pending walk
 
       // No pending row matched — two possibilities: (a) this is a brand-new
@@ -422,14 +762,42 @@ export class SupabaseRepository implements Repository {
       // upsert with ignoreDuplicates handles both: inserts if the id is new,
       // and is a harmless no-op if it already exists (never overwrites the
       // other person's completion).
-      const { error: insertError } = await this.client
-        .from('walks')
-        .upsert(fromWalk(walk), { onConflict: 'id', ignoreDuplicates: true });
-      if (insertError) throw insertError;
+      const { error: insertError, status: insertStatus } = await withTimeout(
+        this.client.from('walks').upsert(fromWalk(walkToPersist), { onConflict: 'id', ignoreDuplicates: true }),
+        SUPABASE_CALL_TIMEOUT_MS,
+        'walks upsert (done, no pending match)'
+      );
+      if (insertError) throw Object.assign(insertError, { status: insertStatus });
       return;
     }
-    const { error } = await this.client.from('walks').upsert(fromWalk(walk));
-    if (error) throw error;
+    if (walkToPersist.scheduleEntryId) {
+      const walksLookupAbort = new AbortController();
+      const walksLookupQuery = this.client
+        .from('walks')
+        .select('id, status')
+        .eq('schedule_entry_id', walkToPersist.scheduleEntryId);
+      const abortableWalksLookup =
+        typeof walksLookupQuery.abortSignal === 'function'
+          ? walksLookupQuery.abortSignal(walksLookupAbort.signal)
+          : walksLookupQuery;
+      const { data: existing, error: lookupError, status: lookupStatus } = await withTimeout(
+        abortableWalksLookup.maybeSingle(),
+        SUPABASE_CALL_TIMEOUT_MS,
+        'walks lookup by schedule_entry_id',
+        () => walksLookupAbort.abort()
+      );
+      if (lookupError) throw Object.assign(lookupError, { status: lookupStatus });
+      if (existing) {
+        walkToPersist.id = existing.id;
+        if (existing.status === 'done') return;
+      }
+    }
+    const { error, status } = await withTimeout(
+      this.client.from('walks').upsert(fromWalk(walkToPersist)),
+      SUPABASE_CALL_TIMEOUT_MS,
+      'walks upsert'
+    );
+    if (error) throw Object.assign(error, { status });
   }
 
   /**

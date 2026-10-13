@@ -4,7 +4,7 @@ import type { Repository } from '../repository';
 import type { FamilyUser } from '../../types';
 
 function fakeUser(id: string): FamilyUser {
-  return { id, familyId: 'family-main', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, createdAt: new Date().toISOString() };
+  return { id, familyId: 'family-main', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: new Date().toISOString() };
 }
 
 function stubRemote(overrides: Partial<Repository> = {}): Repository {
@@ -60,6 +60,93 @@ describe('SyncQueue — permanent vs retryable conflict handling', () => {
     expect(result).toEqual({ succeeded: 0, remaining: 2, conflicted: 0, quarantined: 0 });
     expect(await queue.size()).toBe(2);
     expect(await queue.getConflicts()).toEqual([]);
+    const diagnostics = await queue.getDiagnostics();
+    expect(diagnostics.total).toBe(2);
+    expect(diagnostics.ownerCounts.activeProfile).toBe(2);
+    expect(diagnostics.byOperation.upsertUser).toBe(2);
+    expect(diagnostics.neverAttempted).toBe(1);
+    expect(diagnostics.attemptedWithUnknownOutcome).toBe(1);
+    expect(diagnostics.lastErrorCodes).toEqual({});
+    expect(diagnostics.lastFlush).toMatchObject({
+      attempted: 1,
+      skippedOtherProfile: 0,
+      succeeded: 0,
+      conflicted: 0,
+      quarantined: 0,
+      remaining: 2,
+      stoppedOnRetryableFailure: true,
+    });
+    expect(diagnostics.firstRetryableFailure).toMatchObject({
+      operationType: 'upsertUser',
+      queuePosition: 1,
+      errorMessage: expect.stringContaining('network timeout'),
+    });
+  });
+
+  it('backs off retryable failures and allows an explicit safe retry to bypass the delay', async () => {
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'upsertUser', payload: fakeUser('retry-user') });
+    const remote = stubRemote({ upsertUser: jest.fn().mockRejectedValue(new Error('network timeout')) });
+
+    await queue.flush(remote);
+    const firstDiagnostics = await queue.getDiagnostics();
+    expect(firstDiagnostics.firstRetryableFailure?.retryAfterAt).toBeTruthy();
+    await queue.flush(remote);
+    expect(remote.upsertUser).toHaveBeenCalledTimes(1);
+    expect((await queue.getDiagnostics()).lastFlush).toMatchObject({ attempted: 0, stoppedOnRetryableFailure: true, remaining: 1 });
+
+    const recovered = stubRemote({ upsertUser: jest.fn().mockResolvedValue(undefined) });
+    await queue.flush(recovered, { force: true });
+    expect(recovered.upsertUser).toHaveBeenCalledTimes(1);
+    expect(await queue.size()).toBe(0);
+  });
+
+  it('reports ownership skips separately from dispatched writes without mutating another profile queue', async () => {
+    setSyncQueueActorGetter(() => 'active-user');
+    await AsyncStorage.setItem('dog-walk-family:sync-queue:v4', JSON.stringify([
+      { op: { type: 'saveWalk', payload: { id: 'walk-a' } }, claimedByUserId: 'other-user' },
+      { op: { type: 'saveWalk', payload: { id: 'walk-b' } }, claimedByUserId: 'other-user' },
+    ]));
+    const queue = new SyncQueue();
+    const remote = stubRemote({ saveWalk: jest.fn() });
+
+    await queue.flush(remote);
+
+    expect(remote.saveWalk).not.toHaveBeenCalled();
+    expect((await queue.getDiagnostics()).lastFlush).toMatchObject({
+      attempted: 0,
+      skippedOtherProfile: 2,
+      remaining: 2,
+      stoppedOnRetryableFailure: false,
+    });
+    expect(await queue.size()).toBe(2);
+  });
+
+  it('reports large mixed-owner legacy queues without changing or exposing operation payloads', async () => {
+    const original = Array.from({ length: 2622 }, (_, index) => ({
+      op: { type: 'saveWalk', payload: { id: `walk-${index}`, familyId: index % 2 ? 'family-a' : 'family-b', note: 'private note' } },
+      claimedByUserId: index < 1300 ? 'test-user' : index < 2600 ? 'other-profile' : null,
+    }));
+    await AsyncStorage.setItem('dog-walk-family:sync-queue:v4', JSON.stringify(original));
+    const queue = new SyncQueue();
+
+    const diagnostics = await queue.getDiagnostics();
+
+    expect(diagnostics.total).toBe(2622);
+    expect(diagnostics.byOperation).toEqual({ saveWalk: 2622 });
+    expect(diagnostics.ownerCounts).toEqual({ activeProfile: 1300, otherProfile: 1300, unknown: 22 });
+    expect(diagnostics.ownerIds).toEqual([
+      { id: 'test-user', count: 1300 },
+      { id: 'other-profile', count: 1300 },
+    ]);
+    expect(diagnostics.familyIds).toEqual([
+      { id: 'family-b', count: 1311 },
+      { id: 'family-a', count: 1311 },
+    ]);
+    expect(diagnostics.missingEnqueueTime).toBe(2622);
+    expect(diagnostics.neverAttempted).toBe(2622);
+    expect(JSON.parse((await AsyncStorage.getItem('dog-walk-family:sync-queue:v4'))!).length).toBe(2622);
+    expect(JSON.stringify(diagnostics)).not.toContain('private note');
   });
 
   it('drops a permanent 23505 unique-violation, records it as a conflict, and continues flushing later ops', async () => {
@@ -701,17 +788,25 @@ describe('SyncQueue — flush() re-entrant guard and remaining apply() routes', 
     setSyncQueueActorGetter(() => null);
   });
 
-  it('returns the current remaining count without touching remote when a flush is already in progress', async () => {
+  it('joins an in-progress flush instead of starting duplicate remote writes', async () => {
     const queue = new SyncQueue();
     await queue.enqueue({ type: 'upsertUser', payload: fakeUser('a') });
     await queue.enqueue({ type: 'upsertUser', payload: fakeUser('b') });
-    (queue as unknown as { flushing: boolean }).flushing = true;
+    let releaseFirst!: () => void;
+    const firstWrite = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const upsertUser = jest.fn().mockReturnValueOnce(firstWrite).mockResolvedValueOnce(undefined);
+    const remote = stubRemote({ upsertUser });
 
-    const upsertUser = jest.fn().mockResolvedValue(undefined);
-    const result = await queue.flush(stubRemote({ upsertUser }));
+    const active = queue.flush(remote);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const joined = queue.flush(remote);
 
-    expect(result).toEqual({ succeeded: 0, remaining: 2, conflicted: 0, quarantined: 0 });
-    expect(upsertUser).not.toHaveBeenCalled();
+    expect(upsertUser).toHaveBeenCalledTimes(1);
+    releaseFirst();
+
+    await expect(active).resolves.toEqual({ succeeded: 2, remaining: 0, conflicted: 0, quarantined: 0 });
+    await expect(joined).resolves.toEqual({ succeeded: 2, remaining: 0, conflicted: 0, quarantined: 0 });
+    expect(upsertUser).toHaveBeenCalledTimes(2);
   });
 
   it('routes deleteUser, upsertDog, upsertScheduleRule, deleteScheduleRule, addScheduleEntries, deleteScheduleEntry, and updateUserReminderSetting to their matching remote methods', async () => {
@@ -924,5 +1019,129 @@ describe('SyncQueue — isPermanentError class 28, non-Error thrown values, and 
 
     const queue = new SyncQueue();
     expect(await queue.getQuarantined()).toEqual(persisted);
+  });
+});
+
+
+describe('SyncQueue — sanitized diagnostics for an unclassified HTTP conflict', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+    setSyncQueueActorGetter(() => 'test-user');
+  });
+
+  afterEach(() => {
+    setSyncQueueActorGetter(() => null);
+    jest.restoreAllMocks();
+  });
+
+  it('keeps a 409 in FIFO order, records safe response context and retries the same item', async () => {
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'saveWalk', payload: fakeWalk('123e4567-e89b-12d3-a456-426614174000') });
+    await queue.enqueue({ type: 'upsertUser', payload: fakeUser('later-user') });
+
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const conflict = Object.assign(
+      new Error('duplicate value for user@example.com, id 123e4567-e89b-12d3-a456-426614174000'),
+      { status: 409 }
+    );
+    const laterWrite = jest.fn().mockResolvedValue(undefined);
+    const firstResult = await queue.flush(
+      stubRemote({ saveWalk: jest.fn().mockRejectedValue(conflict), upsertUser: laterWrite })
+    );
+
+    expect(firstResult).toEqual({ succeeded: 0, remaining: 2, conflicted: 0, quarantined: 0 });
+    expect(laterWrite).not.toHaveBeenCalled();
+    const diagnostics = await queue.getDiagnostics();
+    expect(diagnostics.firstRetryableFailure).toMatchObject({
+      operationType: 'saveWalk',
+      queuePosition: 1,
+      endpoint: '/rest/v1/walks',
+      httpStatus: 409,
+      errorCode: null,
+      category: 'http-conflict-unclassified',
+      attemptCount: 1,
+    });
+    expect(diagnostics.firstRetryableFailure?.safeOperationId).toMatch(/^op-[0-9a-f]{8}$/);
+    expect(diagnostics.firstRetryableFailure?.errorMessage).not.toContain('user@example.com');
+    expect(diagnostics.firstRetryableFailure?.errorMessage).not.toContain('123e4567-e89b-12d3-a456-426614174000');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('later-user');
+
+    const saveWalk = jest.fn().mockResolvedValue(undefined);
+    const secondResult = await queue.flush(stubRemote({ saveWalk, upsertUser: laterWrite }), { force: true });
+    expect(saveWalk).toHaveBeenCalledTimes(1);
+    expect(laterWrite).toHaveBeenCalledTimes(1);
+    expect(secondResult).toEqual({ succeeded: 2, remaining: 0, conflicted: 0, quarantined: 0 });
+  });
+
+  it('keeps an RLS-denied schedule delete in place and does not dispatch later queue items', async () => {
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'deleteScheduleEntry', payload: { entryId: 'entry-denied' } });
+    await queue.enqueue({ type: 'upsertUser', payload: fakeUser('later-user') });
+
+    const denied = Object.assign(new Error('not authorized for active family'), {
+      code: '42501',
+      status: 403,
+      syncQueueRetryable: true,
+    });
+    const laterWrite = jest.fn().mockResolvedValue(undefined);
+    const result = await queue.flush(stubRemote({
+      deleteScheduleEntry: jest.fn().mockRejectedValue(denied),
+      upsertUser: laterWrite,
+    }));
+
+    expect(result).toEqual({ succeeded: 0, remaining: 2, conflicted: 0, quarantined: 0 });
+    expect(laterWrite).not.toHaveBeenCalled();
+    expect(await queue.getConflicts()).toEqual([]);
+    expect(await queue.size()).toBe(2);
+    expect(await queue.getDiagnostics()).toMatchObject({
+      lastFlush: { attempted: 1, succeeded: 0, remaining: 2, stoppedOnRetryableFailure: true },
+      firstRetryableFailure: {
+        operationType: 'deleteScheduleEntry',
+        queuePosition: 1,
+        endpoint: '/rest/v1/rpc/delete_schedule_entry_idempotent',
+        httpStatus: 403,
+        errorCode: '42501',
+        category: 'authorization',
+      },
+    });
+  });
+  it('keeps a denied schedule rule delete queued and reports the family-scoped RPC endpoint', async () => {
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'deleteScheduleRule', payload: { ruleId: 'rule-denied' } });
+    await queue.enqueue({ type: 'upsertUser', payload: fakeUser('later-user') });
+
+    const denied = Object.assign(new Error('Schedule rule delete is not authorized'), {
+      code: '42501',
+      status: 403,
+      syncQueueRetryable: true,
+    });
+    const laterWrite = jest.fn().mockResolvedValue(undefined);
+    const result = await queue.flush(stubRemote({
+      deleteScheduleRule: jest.fn().mockRejectedValue(denied),
+      upsertUser: laterWrite,
+    }));
+
+    expect(result).toEqual({ succeeded: 0, remaining: 2, conflicted: 0, quarantined: 0 });
+    expect(laterWrite).not.toHaveBeenCalled();
+    expect(await queue.getDiagnostics()).toMatchObject({
+      firstRetryableFailure: {
+        operationType: 'deleteScheduleRule',
+        endpoint: '/rest/v1/rpc/delete_schedule_rule_idempotent',
+        httpStatus: 403,
+        errorCode: '42501',
+        category: 'authorization',
+      },
+    });
+  });
+
+  it('does not label a 409 as permanent without a response SQLSTATE', async () => {
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'saveWalk', payload: fakeWalk('walk-conflict') });
+    const result = await queue.flush(
+      stubRemote({ saveWalk: jest.fn().mockRejectedValue(Object.assign(new Error('conflict'), { status: 409 })) })
+    );
+    expect(result.conflicted).toBe(0);
+    expect(result.remaining).toBe(1);
+    expect(await queue.getConflicts()).toEqual([]);
   });
 });

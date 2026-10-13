@@ -1,4 +1,4 @@
-import type { ScheduleEntry, ScheduleRule } from '../types';
+import type { ScheduleEntry, ScheduleRule, Walk } from '../types';
 
 /**
  * Pure scheduling logic — no I/O, no framework deps. Fully unit-testable.
@@ -120,17 +120,32 @@ export function ruleNeedsEntryBackfill(
 export interface RuleDaysReconciliationPlan {
   /** Future entries for this rule whose date no longer matches the rule's (possibly patched) daysOfWeek. */
   toRemove: ScheduleEntry[];
-  /** Future entries that still match; time/responsibleUserId recomputed against the updated rule. */
+  /** Future entries that still match AND are still freely mutable (no walk, or a 'pending' one); time/responsibleUserId recomputed against the updated rule. */
   toUpdate: ScheduleEntry[];
   /** New entries for days that just became active (in the new daysOfWeek but not the old one) and have no entry yet. */
   toAdd: ScheduleEntry[];
+  /**
+   * P0 real-device fix — a fresh entry (new id) for a date that ALREADY has
+   * an entry for this rule, because every existing entry for that date has
+   * a walk that is no longer 'pending' (done/in_progress/skipped — i.e.
+   * historical fact or an active session). That existing entry+walk are
+   * left completely out of `toUpdate`/untouched by design: mutating a
+   * resolved occurrence's scheduled time would rewrite history (a walk
+   * marked done at 09:00 must always show as done at 09:00, even after the
+   * rule's time later changes to 14:00). This is the new, separate,
+   * actionable occurrence for that date under the rule's current time —
+   * same shape as `toAdd`, just reached for a different reason (a locked
+   * existing entry, not a newly-active day).
+   */
+  toRegenerate: ScheduleEntry[];
 }
 
 /**
- * Plans how to reconcile a rule's future (`>= today`) entries when its
- * daysOfWeek is edited. Pure — no I/O — so updateRule() in scheduleStore.ts
- * can layer persistence around it and this reconciliation is directly
- * unit-testable.
+ * Plans how to reconcile a rule's future (`>= today`) entries when it is
+ * edited — originally just daysOfWeek, now also a time change whose
+ * target entry's walk has already been resolved. Pure — no I/O — so
+ * updateRule() in scheduleStore.ts can layer persistence around it and
+ * this reconciliation is directly unit-testable.
  *
  * `toAdd` is deliberately scoped to days newly added compared to
  * `previousRule.daysOfWeek`, not every day matching the new pattern: a day
@@ -139,6 +154,38 @@ export interface RuleDaysReconciliationPlan {
  * scheduleStore.ts's `deleteEntry`) — mirrors `ruleNeedsEntryBackfill`'s own
  * entry-existence-only philosophy, just scoped to the one rule edit that
  * changed which days are active.
+ *
+ * P0 real-device fix — real-iPhone QA: editing a rule's time (e.g.
+ * 09:00 -> 14:00) after today's occurrence under the OLD time had already
+ * been completed left TODAY's (and every future day's) entry silently
+ * un-reconciled — diagnosed as two independent bugs. This function fixes
+ * the second one: even once entries actually persist (see
+ * OfflineFirstRepository.updateScheduleEntry's own fix), blindly mutating
+ * `{ ...entry, time: updatedRule.time }` for EVERY future entry — the
+ * original behavior — would silently rewrite an already-'done' walk's
+ * historical scheduled time, and since that walk is not 'pending' the
+ * caller's own walk-side update is (correctly) skipped, leaving the entry
+ * and its walk disagreeing on time with no new actionable occurrence ever
+ * created. `currentWalks` (optional — every existing caller that omits it
+ * keeps today's exact prior behavior, since nothing can ever look
+ * "locked" with no walks to check) lets this function tell a freely
+ * mutable entry (no walk yet, or a 'pending' one) apart from a locked one,
+ * per calendar date: if ANY entry for a given date is still mutable, that
+ * one is updated in place as before; only when EVERY entry for a date is
+ * locked does this reach for `toRegenerate` instead — so re-editing the
+ * rule again after a regenerated entry exists updates that new pending
+ * entry in place rather than regenerating a second one.
+ *
+ * P0 FIX (same bug class as planStaleRuleEntryReconciliation's own
+ * `timeOverridden` fix below): a still-mutable, deliberately-overridden
+ * entry for a date (a one-off per-occurrence time edit) is left
+ * completely untouched by a rule-wide time edit too — the whole point of
+ * that override is that it survives independently of the rule going
+ * forward, not just across an app reload. A date whose only mutable entry
+ * is overridden is skipped entirely (no `toUpdate`, no `toRegenerate` —
+ * the existing entry already represents that date). A locked/historical
+ * overridden entry is unaffected either way, since locked entries are
+ * never rewritten by this function regardless of this flag.
  */
 export function planRuleDaysReconciliation(
   previousRule: Pick<ScheduleRule, 'daysOfWeek'>,
@@ -146,7 +193,8 @@ export function planRuleDaysReconciliation(
   currentEntries: ScheduleEntry[],
   today: string,
   endDate: string,
-  idFactory: () => string = () => `${updatedRule.id}-${Math.random().toString(36).slice(2, 10)}`
+  idFactory: () => string = () => `${updatedRule.id}-${Math.random().toString(36).slice(2, 10)}`,
+  currentWalks: Pick<Walk, 'scheduleEntryId' | 'status'>[] = []
 ): RuleDaysReconciliationPlan {
   const oldDays = previousRule.daysOfWeek.length > 0 ? previousRule.daysOfWeek : [0, 1, 2, 3, 4, 5, 6];
   const newDays = updatedRule.daysOfWeek.length > 0 ? updatedRule.daysOfWeek : [0, 1, 2, 3, 4, 5, 6];
@@ -154,13 +202,41 @@ export function planRuleDaysReconciliation(
 
   const futureEntries = currentEntries.filter((e) => e.ruleId === updatedRule.id && e.date >= today);
   const toRemove: ScheduleEntry[] = [];
-  const toUpdate: ScheduleEntry[] = [];
+  const byDate = new Map<string, ScheduleEntry[]>();
   for (const entry of futureEntries) {
     if (!newDays.includes(dayOfWeekUTC(entry.date))) {
       toRemove.push(entry);
       continue;
     }
-    toUpdate.push({ ...entry, time: updatedRule.time, responsibleUserId: resolveResponsibleForDate(updatedRule, entry.date) });
+    const forDate = byDate.get(entry.date) ?? [];
+    forDate.push(entry);
+    byDate.set(entry.date, forDate);
+  }
+
+  const isLocked = (entry: ScheduleEntry): boolean => {
+    const status = currentWalks.find((w) => w.scheduleEntryId === entry.id)?.status;
+    return Boolean(status) && status !== 'pending';
+  };
+
+  const toUpdate: ScheduleEntry[] = [];
+  const toRegenerate: ScheduleEntry[] = [];
+  for (const [date, entriesForDate] of byDate) {
+    if (entriesForDate.some((e) => e.timeOverridden && !isLocked(e))) continue; // deliberate one-off override — a rule-wide time edit must never reset it either
+    const mutable = entriesForDate.find((e) => !isLocked(e));
+    if (mutable) {
+      toUpdate.push({ ...mutable, time: updatedRule.time, responsibleUserId: resolveResponsibleForDate(updatedRule, date) });
+      continue;
+    }
+    toRegenerate.push({
+      id: idFactory(),
+      familyId: updatedRule.familyId,
+      dogId: updatedRule.dogId,
+      ruleId: updatedRule.id,
+      date,
+      time: updatedRule.time,
+      responsibleUserId: resolveResponsibleForDate(updatedRule, date),
+      createdAt: new Date().toISOString(),
+    });
   }
 
   const existingDatesForRule = new Set(futureEntries.map((e) => e.date));
@@ -171,7 +247,125 @@ export function planRuleDaysReconciliation(
         )
       : [];
 
-  return { toRemove, toUpdate, toAdd };
+  return { toRemove, toUpdate, toAdd, toRegenerate };
+}
+
+export interface StaleRuleEntryReconciliationPlan {
+  /** A stale entry (time !== its rule's current time) whose walk is still mutable — updated in place to the rule's current time. */
+  toUpdate: ScheduleEntry[];
+  /** A fresh entry (new id) for a (rule, date) where every existing entry is both stale AND locked, and the rule's time for that date has not yet passed — the active rule still needs a representation for it. */
+  toRegenerate: ScheduleEntry[];
+}
+
+/**
+ * P0 real-device fix, self-heal round — 807e4db's planRuleDaysReconciliation
+ * only prevents a FUTURE rule-time edit from corrupting its own entries; it
+ * does nothing for entries that were ALREADY left stale by edits made
+ * before that fix shipped (or by any other path that changed
+ * schedule_rules.time without reconciling schedule_entries — the fire-
+ * and-forget updateScheduleEntry bug this same round also fixed). This is
+ * the general self-heal: run on every schedule load so existing stale data
+ * converges to the correct state on its own, no new rule edit required.
+ *
+ * For every schedule_entry whose ruleId names a CURRENTLY ACTIVE rule and
+ * whose date falls in `[today, endDate]`, grouped by (ruleId, date):
+ *   - If any entry for that (rule, date) ALREADY has `time === rule.time`,
+ *     that date is correctly represented — nothing to do, regardless of
+ *     what other stale entries/history also exist for it.
+ *   - An entry whose `timeOverridden` flag is set is a DELIBERATE one-off
+ *     per-occurrence edit (scheduleStore.rescheduleWalk /
+ *     admin_reschedule_walk), never a stale leftover — `time !== rule.time`
+ *     is exactly what that feature is supposed to produce, so such an entry
+ *     is treated as correctly represented too and never touched here. See
+ *     ScheduleEntry.timeOverridden's own doc comment for the P0 bug this
+ *     fixed: without this check, every deliberate one-off time edit looked
+ *     identical to a pre-807e4db stale leftover and was silently reverted
+ *     back to the rule's time on the very next schedule load.
+ *   - Otherwise every entry for that (rule, date) is stale. If any of them
+ *     is still mutable (a 'pending' walk, or no walk at all), that one is
+ *     corrected in place (`toUpdate`) — exactly as an ordinary rule-time
+ *     edit already does, whether or not the new time has already passed
+ *     today: this is fixing an already-OPEN item's displayed time, not
+ *     creating anything new.
+ *   - If every entry for that (rule, date) is LOCKED (done/in_progress/
+ *     skipped — already resolved, preserved as history, never rewritten),
+ *     a new occurrence is needed only when the rule's time for that date
+ *     has not yet passed: a future date's time obviously hasn't, so this
+ *     always regenerates for `date > today`; for `date === today`
+ *     specifically, only if `rule.time` is still later than `now`. A
+ *     rule's occurrence for TODAY that both resolved under a stale time
+ *     AND whose current time has already gone by gets no new occurrence —
+ *     "do not create an artificial walk for a time slot that's already
+ *     gone by." This is what makes an active rule later today (e.g. 21:00
+ *     at 14:17, already resolved this morning under a stale time) still
+ *     get a fresh actionable occurrence, while one earlier today (e.g.
+ *     14:00 at 14:17) does not.
+ *
+ * Idempotent: once a (rule, date) has an entry whose time matches the
+ * rule, every later call is a no-op for it — re-running this on every
+ * load converges and then stays converged, never spawning a second
+ * regenerated entry for the same (rule, date).
+ */
+export function planStaleRuleEntryReconciliation(
+  activeRules: ScheduleRule[],
+  currentEntries: ScheduleEntry[],
+  currentWalks: Pick<Walk, 'scheduleEntryId' | 'status'>[],
+  today: string,
+  endDate: string,
+  now: Date,
+  idFactory: () => string = () => `stale-reconcile-${Math.random().toString(36).slice(2, 10)}`
+): StaleRuleEntryReconciliationPlan {
+  const toUpdate: ScheduleEntry[] = [];
+  const toRegenerate: ScheduleEntry[] = [];
+  const rulesById = new Map(activeRules.map((r) => [r.id, r]));
+
+  const byRuleDate = new Map<string, ScheduleEntry[]>();
+  for (const entry of currentEntries) {
+    if (!entry.ruleId || entry.date < today || entry.date > endDate) continue;
+    if (!rulesById.has(entry.ruleId)) continue;
+    const key = `${entry.ruleId}|${entry.date}`;
+    const list = byRuleDate.get(key) ?? [];
+    list.push(entry);
+    byRuleDate.set(key, list);
+  }
+
+  const isLocked = (entry: ScheduleEntry): boolean => {
+    const status = currentWalks.find((w) => w.scheduleEntryId === entry.id)?.status;
+    return Boolean(status) && status !== 'pending';
+  };
+
+  const ruleTimeAlreadyPassedToday = (rule: ScheduleRule): boolean => {
+    const [h, m] = rule.time.split(':').map(Number);
+    const [y, mo, d] = today.split('-').map(Number);
+    return new Date(y, mo - 1, d, h, m, 0, 0).getTime() < now.getTime();
+  };
+
+  for (const [key, entriesForRuleDate] of byRuleDate) {
+    const [ruleId, date] = key.split('|');
+    const rule = rulesById.get(ruleId)!;
+    if (entriesForRuleDate.some((e) => e.time === rule.time || e.timeOverridden)) continue; // already correctly represented (including deliberate one-off edits)
+
+    const mutable = entriesForRuleDate.find((e) => !isLocked(e));
+    if (mutable) {
+      toUpdate.push({ ...mutable, time: rule.time, responsibleUserId: resolveResponsibleForDate(rule, date) });
+      continue;
+    }
+
+    if (date === today && ruleTimeAlreadyPassedToday(rule)) continue;
+
+    toRegenerate.push({
+      id: idFactory(),
+      familyId: rule.familyId,
+      dogId: rule.dogId,
+      ruleId: rule.id,
+      date,
+      time: rule.time,
+      responsibleUserId: resolveResponsibleForDate(rule, date),
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  return { toUpdate, toRegenerate };
 }
 
 /** Builds a preview string like "דני → יעל → נועם → דני" for a given number of upcoming turns. */

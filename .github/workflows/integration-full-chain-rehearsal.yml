@@ -1,6 +1,12 @@
 name: Integration Full-Chain Supabase Rehearsal
 
 on:
+  pull_request:
+    paths:
+      - "supabase/**"
+      - "src/data/localRepository.ts"
+      - "src/store/scheduleStore.ts"
+      - ".github/workflows/integration-full-chain-rehearsal.yml"
   workflow_dispatch:
     inputs:
       target_branch:
@@ -152,6 +158,20 @@ jobs:
           # or removes anything in the actual repository.
           rm supabase/migrations/0019_request_result_read_state.sql
 
+      - name: Combine duplicate 0103 migration bodies for ephemeral replay only
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The repository has two independently committed 0103 migrations.
+          # Supabase stores the filename prefix as a unique migration version,
+          # so replaying both files fails with SQLSTATE 23505 before reaching
+          # later migrations. Combine their unchanged SQL bodies in their
+          # existing lexical order under one ephemeral 0103 file. The real
+          # migration files in Git and all remote migration ledgers remain
+          # untouched.
+          cat supabase/migrations/0103_web_push_verified_admin_identity.sql >> supabase/migrations/0103_mark_results_seen_no_raise.sql
+          rm supabase/migrations/0103_web_push_verified_admin_identity.sql
+
       - name: Reorder 0025's two function definitions for this ephemeral replay only
         shell: bash
         run: |
@@ -248,8 +268,46 @@ jobs:
         # out of this replay entirely rather than deciding how to
         # authorize a demo-only insert that was never in scope here.
 
+      - name: Make scheduled reminder registration inert in the isolated replay
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Migration 0105 requires a Vault entry that exists only in the
+          # real deployment. Supply a disposable local-only dummy and route
+          # the local cron job to a closed loopback port so rehearsal can
+          # validate the migration without reading any project secret or
+          # making a Staging/Production request.
+          python3 - <<'PYEOF'
+          path = 'supabase/migrations/0105_register_walk_reminder_cron.sql'
+          sql = open(path).read()
+          secret_marker = 'create extension if not exists supabase_vault;'
+          marker_index = sql.rfind(secret_marker)
+          assert marker_index >= 0
+          sql = (
+              sql[:marker_index]
+              + secret_marker
+              + "\n\nselect vault.create_secret('local-rehearsal-only-dummy-secret', 'walk_reminder_cron_secret', 'Isolated local rehearsal only.');"
+              + sql[marker_index + len(secret_marker):]
+          )
+          sql = sql.replace(
+              'https://czbxhsoxyawprqehkfit.supabase.co/functions/v1/send-walk-reminders',
+              'http://127.0.0.1:9/functions/v1/send-walk-reminders'
+          )
+          assert 'czbxhsoxyawprqehkfit.supabase.co/functions/v1/send-walk-reminders' not in sql
+          open(path, 'w').write(sql)
+          PYEOF
+
       - name: Replay the FULL real migration chain (00000 base + 0001-0048) from empty
         run: supabase db reset --local
+
+      - name: Rehearse schedule-entry deletion with disposable history and GPS fixtures
+        env:
+          PGPASSWORD: postgres
+          PGOPTIONS: "-c app.schedule_delete_fixture=local"
+        run: |
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/manual_tests/schedule_entry_delete_preserves_history.sql
 
       - name: Run the 0043-0048 integration rehearsal (real Postgres, not source review)
         env:

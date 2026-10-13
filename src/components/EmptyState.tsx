@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
 
-export function EmptyState({ emoji = '🐾', title, subtitle }: { emoji?: string; title: string; subtitle?: string }) {
+export function EmptyState({ emoji = 'ℹ️', title, subtitle }: { emoji?: string; title: string; subtitle?: string }) {
   return (
     <View style={styles.container}>
       <RtlText style={styles.emoji}>{emoji}</RtlText>

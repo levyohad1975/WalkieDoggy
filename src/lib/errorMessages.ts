@@ -96,6 +96,26 @@ export const SHARED_ERROR_RULES: ErrorRule[] = [
   { includes: 'deleteFamilyMember requires an internet connection and cannot be queued offline', message: 'לא ניתן להסיר בן משפחה ללא חיבור לאינטרנט. התחברו לרשת ונסו שוב.' },
 
   // ---- Admin / permission (shared across several RPCs) ----
+  // Family Chat (migration 0108).
+  { includes: 'chat message is empty', message: 'אי אפשר לשלוח הודעה ריקה.' },
+  { includes: 'chat message is too long', message: 'ההודעה ארוכה מדי — אפשר לשלוח עד 2,000 תווים.' },
+  { includes: 'chat messages are being sent too quickly', message: 'נשלחו הרבה הודעות ברצף. חכו רגע ונסו שוב.' },
+  { includes: 'chat is read-only while impersonating', message: 'בזמן התחזות לבן משפחה אחר הצ׳אט זמין לקריאה בלבד.' },
+  { includes: 'chat conversation not found', message: 'הצ׳אט המשפחתי אינו זמין לפרופיל הזה.' },
+  { includes: 'chat message not found', message: 'ההודעה כבר אינה קיימת.' },
+  // Private conversations and image messages (migration 0109).
+  { includes: 'chat member not found', message: 'אי אפשר לפתוח שיחה עם בן/בת המשפחה הזה/ו.' },
+  { includes: 'choose another family member', message: 'יש לבחור בן/בת משפחה אחר/ת.' },
+  { includes: 'chat recipient is no longer in the family', message: 'בן/בת המשפחה כבר אינם חלק מהמשפחה, ולכן אי אפשר לשלוח להם הודעות.' },
+  { includes: 'only the sender can remove this message', message: 'רק מי ששלח/ה את ההודעה יכול/ה למחוק אותה.' },
+  { includes: 'chat attachment is too large', message: 'התמונה גדולה מדי לשליחה.' },
+  { includes: 'chat attachment type is not supported', message: 'סוג התמונה הזה אינו נתמך.' },
+  { includes: 'chat attachment dimensions are not supported', message: 'ממדי התמונה גדולים מדי לשליחה.' },
+  { includes: 'chat attachment was not uploaded', message: 'העלאת התמונה לא הושלמה. נסו לשלוח שוב.' },
+  { includes: 'chat attachment is not valid', message: 'לא ניתן לצרף את התמונה הזו. נסו לבחור אותה מחדש.' },
+  { includes: 'chat image upload failed', message: 'העלאת התמונה נכשלה. נסו שוב.' },
+  { includes: 'chat image is not available', message: 'התמונה אינה זמינה.' },
+
   { includes: 'admin permission required', message: 'רק מנהל/ת יכולים לבצע פעולה זו.' },
   { includes: 'no active profile claimed on this family', message: 'לא ניתן לזהות את הפרופיל הפעיל שלכם במשפחה הזו. נסו להתחבר מחדש.' },
   { includes: 'you are no longer an active member of this family', message: 'לא ניתן לזהות את הפרופיל הפעיל שלכם במשפחה הזו. נסו להתחבר מחדש.' },
@@ -187,11 +207,61 @@ export const SHARED_ERROR_RULES: ErrorRule[] = [
   { includes: 'verified email identity required', message: 'יש לאמת מחדש את כתובת הדוא״ל לפני יצירת המשפחה.' },
   { includes: 'familyName is required', message: 'יש להזין שם למשפחה.' },
 
+  // ---- Walk lifecycle (start/finish) — migrations/0048_walk_lifecycle.sql.
+  // P0 real-device fix: start_walk()/finish_walk() had NO coverage here at
+  // all — every one of their 6 distinct raise-exception texts fell straight
+  // through to the generic "couldn't start/finish the walk" fallback no
+  // matter the real reason, which is exactly why a real-device "Start"
+  // failure always showed the unhelpful generic Hebrew message regardless
+  // of its actual server-side cause. Each text below is this migration's
+  // exact wording (checked against the .sql source, not guessed). ----
+  { includes: 'no active profile found for this session', message: 'לא ניתן לזהות את הפרופיל הפעיל שלכם. נסו להתחבר מחדש.' },
+  { includes: 'walk not found', message: 'הטיול לא נמצא. ייתכן שהמידע במסך אינו מעודכן — רעננו את המסך ונסו שוב.' },
+  { includes: 'walk is not pending', message: 'הטיול הזה כבר אינו ממתין להתחלה (ייתכן שכבר התחיל, הסתיים או דולג). רעננו את המסך ונסו שוב.' },
+  { includes: 'only the responsible member (or an admin) may start this walk', message: 'רק האחראי/ת לטיול הזה או מנהל/ת המשפחה יכולים להתחיל אותו.' },
+  { includes: 'walk is not in progress', message: 'הטיול הזה אינו בתהליך כרגע, כך שלא ניתן לסיים אותו. רעננו את המסך ונסו שוב.' },
+  { includes: 'only the responsible member (or an admin) may finish this walk', message: 'רק האחראי/ת לטיול הזה או מנהל/ת המשפחה יכולים לסיים אותו.' },
+  { includes: 'actual walker must be an active member of this family', message: 'מי שמסומן/ת כמי שביצע/ה את הטיול חייב/ת להיות בן/בת משפחה פעיל/ה.' },
+
   // ---- Generic network failure — never show a raw fetch/TypeError string ----
   { includes: 'Network request failed', message: 'אין חיבור לאינטרנט. בדקו את החיבור ונסו שוב.' },
   { includes: 'Failed to fetch', message: 'אין חיבור לאינטרנט. בדקו את החיבור ונסו שוב.' },
   { includes: 'NetworkError', message: 'אין חיבור לאינטרנט. בדקו את החיבור ונסו שוב.' },
 ];
+
+/**
+ * TEMPORARY P0 DIAGNOSTIC — this whole branch is Staging/feature-branch
+ * only (never deployed to Production; see AGENTS.md's standing rules), so
+ * this is safe to leave on unconditionally rather than gating it behind a
+ * runtime environment check. Appends the raw PostgREST/Supabase error's
+ * code/message/details/hint — NOT just `.message`, which
+ * `friendlyErrorMessage` already consults — to a shown message, so a
+ * real-device failure that still falls through to a generic fallback is
+ * actionable straight from the on-screen alert, with no Safari Web
+ * Inspector/devtools connection needed. `context` is for already-known,
+ * non-sensitive identifiers (e.g. the walkId attempted, its locally-known
+ * status) that help correlate the server error with what the client was
+ * trying to do. Remove this and its call site(s) once the real root cause
+ * of a diagnosed failure is confirmed fixed by an actual real-device
+ * attempt.
+ */
+export function appendRawDiagnostic(message: string, error: unknown, context?: Record<string, string | undefined>): string {
+  const parts: string[] = [];
+  if (error && typeof error === 'object') {
+    const e = error as { code?: unknown; message?: unknown; details?: unknown; hint?: unknown };
+    if (typeof e.code === 'string' && e.code) parts.push(`code=${e.code}`);
+    if (typeof e.message === 'string' && e.message) parts.push(`message=${e.message}`);
+    if (typeof e.details === 'string' && e.details) parts.push(`details=${e.details}`);
+    if (typeof e.hint === 'string' && e.hint) parts.push(`hint=${e.hint}`);
+  }
+  if (parts.length === 0) parts.push(`raw=${rawMessageOf(error)}`);
+  if (context) {
+    for (const [key, value] of Object.entries(context)) {
+      if (value !== undefined) parts.push(`${key}=${value}`);
+    }
+  }
+  return `${message}\n\n[DEBUG] ${parts.join(' | ')}`;
+}
 
 /**
  * Maps a raw thrown error to a friendly Hebrew message using the shared

@@ -23,21 +23,39 @@ describe('App.tsx — System Admin entry point sits OUTSIDE family/auth branchin
     expect(source).toMatch(/useEffect\(\(\) => \{\s*\n\s*if \(hydrated\) void refreshSystemAdmin\(\);\s*\n\s*\}, \[hydrated, refreshSystemAdmin\]\);/);
   });
 
-  it('the System Admin entry Pressable and SystemAdminScreen are rendered in the same fragment AFTER the needsFamilyOnboarding/currentUserId/LoginScreen ternary, never inside one of its branches', () => {
+  it('keeps the SystemAdminScreen host after the family/auth branching but no longer renders a floating admin Pressable', () => {
     const ternaryIdx = source.indexOf('{shouldEnterSystemAdminDirectly ? (');
-    const entryIdx = source.indexOf('{isSystemAdmin && !systemObserverActive ? (');
     const screenIdx = source.indexOf('<SystemAdminScreen', ternaryIdx);
     expect(ternaryIdx).toBeGreaterThan(-1);
-    expect(entryIdx).toBeGreaterThan(ternaryIdx);
     expect(screenIdx).toBeGreaterThan(ternaryIdx);
+    expect(source).not.toContain('{isSystemAdmin && !systemObserverActive ? (');
   });
 
-  it('never assigns familyId/currentUserId from the System Admin flow — this file has exactly one writer of familyId-affecting state, and it is not the System Admin block', () => {
+  it('only changes family context through the explicit test-family enter/return actions and wires the admin UI to that handler', () => {
     const adminBlockStart = source.indexOf('const isSystemAdmin = useSystemAdminStore');
-    const adminBlockEnd = source.indexOf('useEffect(() => {\n    if (currentUserId)');
+    const adminBlockEnd = source.indexOf('useEffect(() => {\n    if (currentUserId && !systemObserverActive)');
     const adminBlock = source.slice(adminBlockStart, adminBlockEnd);
-    expect(adminBlock).not.toMatch(/setFamilyId|familyId\s*=/);
+    expect(adminBlock).toContain('const selectTestFamily = async');
+    expect(adminBlock).toContain('const returnFromTestFamily = async');
+    expect(source).toContain('onTestFamilySelected={selectTestFamily}');
+    expect(adminBlock).toMatch(/await setFamilyId\(selectedFamilyId\)/);
+    expect(adminBlock).toMatch(/await setFamilyId\(restored\.id\)/);
   });
+
+  it('keeps a dormant test-family draft hidden until whoami confirms that exact family, while preserving the saved draft', () => {
+    const resumeStart = source.indexOf('void readFamilySetupProgress().then(async (progress) => {');
+    const resumeEnd = source.indexOf('}).catch(() => {', resumeStart);
+    const resumeBlock = source.slice(resumeStart, resumeEnd);
+    const serverCheck = resumeBlock.indexOf('if (!canResumeFamilySetupDraft(progress.familyId, serverContext?.familyId))');
+    const publishDraft = resumeBlock.indexOf('setFamilySetupProgress(progress);');
+
+    expect(serverCheck).toBeGreaterThan(-1);
+    expect(publishDraft).toBeGreaterThan(serverCheck);
+    expect(resumeBlock).toContain('setFamilySetupProgress(null)');
+    expect(resumeBlock).not.toContain('clearFamilySetupProgress');
+    expect(source).toContain('serverConfirmedFamilyId: familySetupServerConfirmedFamilyId');
+  });
+
   it('routes a standalone System Admin directly to the platform console before family onboarding', () => {
     expect(source).toMatch(/const shouldEnterSystemAdminDirectly =/);
     const directIdx = source.indexOf('{shouldEnterSystemAdminDirectly ? (');

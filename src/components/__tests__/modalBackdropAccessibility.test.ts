@@ -40,7 +40,15 @@ describe('Modal backdrop Pressables — accessibility role/label', () => {
     const source = fs.readFileSync(path.join(componentsDir, file), 'utf8');
     const index = source.indexOf('styles.backdrop}');
     expect(index).toBeGreaterThan(-1);
-    const around = source.slice(index, index + 400);
+    // The dismiss Pressable may be the backdrop itself or an absolute-fill
+    // sibling inside a non-interactive backdrop container. Inspect through
+    // the next dismiss target without requiring the sheet to be nested in it.
+    const dismissIndex = source.indexOf('onPress={onClose}', index);
+    const cancelIndex = source.indexOf('onPress={onCancel}', index);
+    const targetIndex =
+      dismissIndex === -1 ? cancelIndex : cancelIndex === -1 ? dismissIndex : Math.min(dismissIndex, cancelIndex);
+    expect(targetIndex).toBeGreaterThan(-1);
+    const around = source.slice(Math.max(index, targetIndex - 250), targetIndex + 400);
     expect(around).toMatch(/accessibilityRole="button"/);
     expect(around).toMatch(/accessibilityLabel=/);
     expect(around).not.toMatch(/accessibilityLabel=(""|\{\s*\})/);

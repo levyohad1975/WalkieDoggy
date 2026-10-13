@@ -1,16 +1,20 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
-import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
+import { WalkieMascot } from './WalkieMascot';
 
 interface DogPhotoProps {
   photoUrl?: string;
   size?: number;
 }
 
-/** Dog's photo, falling back to a paw emoji placeholder if there's no photo or it fails to load. */
+/** Dog's photo, falling back to the approved Walkie Doggy mascot if there's no photo or it fails to load. */
 export function DogPhoto({ photoUrl, size = 56 }: DogPhotoProps) {
   const [failed, setFailed] = useState(false);
+  // A failed old URL must not keep hiding a replacement photo. With no
+  // family photo (including removal), the only fallback is the official
+  // Walkie Doggy mascot rendered below.
+  useEffect(() => setFailed(false), [photoUrl]);
   const showPhoto = Boolean(photoUrl) && !failed;
 
   return (
@@ -24,7 +28,7 @@ export function DogPhoto({ photoUrl, size = 56 }: DogPhotoProps) {
           onError={() => setFailed(true)}
         />
       ) : (
-        <RtlText style={{ fontSize: size * 0.5 }}>🐶</RtlText>
+        <WalkieMascot state="idle" size={size * 0.82} testID="dog-photo-mascot-fallback" />
       )}
     </View>
   );

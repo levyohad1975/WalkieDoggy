@@ -26,6 +26,7 @@ export const DEMO_USERS: FamilyUser[] = [
     avatar: '👨',
     color: '#5B8DEF',
     remindersEnabled: true,
+    gamificationEnabled: true,
     createdAt: new Date().toISOString(),
   },
   {
@@ -35,6 +36,7 @@ export const DEMO_USERS: FamilyUser[] = [
     avatar: '👩',
     color: '#F2994A',
     remindersEnabled: true,
+    gamificationEnabled: true,
     createdAt: new Date().toISOString(),
   },
   {
@@ -44,6 +46,7 @@ export const DEMO_USERS: FamilyUser[] = [
     avatar: '🧑',
     color: '#27AE60',
     remindersEnabled: true,
+    gamificationEnabled: true,
     createdAt: new Date().toISOString(),
   },
   {
@@ -53,6 +56,7 @@ export const DEMO_USERS: FamilyUser[] = [
     avatar: '🧑',
     color: '#BB6BD9',
     remindersEnabled: true,
+    gamificationEnabled: true,
     createdAt: new Date().toISOString(),
   },
   {
@@ -62,6 +66,7 @@ export const DEMO_USERS: FamilyUser[] = [
     avatar: '🧑',
     color: '#EB5757',
     remindersEnabled: true,
+    gamificationEnabled: true,
     createdAt: new Date().toISOString(),
   },
 ];
@@ -71,7 +76,7 @@ export const DEMO_DOG: Dog = {
   familyId: DEMO_FAMILY.id,
   name: 'טופי',
   walksPerDay: 4,
-  notes: 'הכי טוב בעולם 🐾',
+  notes: 'הכי טוב בעולם',
 };
 
 const ALL_USER_IDS = DEMO_USERS.map((u) => u.id);

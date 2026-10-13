@@ -1,0 +1,110 @@
+name: Fix mascot sprite alpha
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/urgent-master-batch-20260925]
+    paths:
+      - '.github/workflows/fix-mascot-sprite-alpha.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix-alpha:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/urgent-master-batch-20260925
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pillow
+      - name: Remove connected black backgrounds per sprite cell
+        run: |
+          python - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          from collections import deque
+
+          root = Path("assets/mascot-animations")
+          files = [
+            "high-five.png","happy-spin.png","trophy-winner.png",
+            "sleepy-good-night.png","peek-a-boo.png","leash-ready.png",
+            "curious-listen.png","tail-wag.png"
+          ]
+          CELL=256
+          # Only remove dark, near-neutral pixels connected to each frame edge.
+          # This preserves enclosed dark mascot details such as eyes/nose.
+          # Generated source videos were flattened over near-black backgrounds.
+          # Use a wider neutral threshold, but still only flood-fill pixels connected
+          # to each cell edge so dark eyes/nose inside the mascot remain untouched.
+          HARD=72
+          SOFT=145
+          NEUTRAL=48
+          # Only edge-connected pixels are removed. The wider threshold catches
+          # the compressed charcoal/grey remnants visible on iPhone without
+          # touching enclosed mascot details.
+
+          for name in files:
+            p=root/name
+            im=Image.open(p).convert("RGBA")
+            px=im.load()
+            w,h=im.size
+            assert w % CELL == 0 and h % CELL == 0, (name, im.size)
+            for oy in range(0,h,CELL):
+              for ox in range(0,w,CELL):
+                seen=set()
+                q=deque()
+                def candidate(x,y,limit=SOFT):
+                  r,g,b,a=px[x,y]
+                  # Background remnants are dark-to-mid neutral greys. Requiring
+                  # near-neutral RGB prevents brown/orange fur from joining the flood.
+                  return a and max(r,g,b)<=limit and max(r,g,b)-min(r,g,b)<=NEUTRAL
+                for x in range(ox,ox+CELL):
+                  for y in (oy,oy+CELL-1):
+                    if candidate(x,y): q.append((x,y))
+                for y in range(oy,oy+CELL):
+                  for x in (ox,ox+CELL-1):
+                    if candidate(x,y): q.append((x,y))
+                while q:
+                  x,y=q.popleft()
+                  if (x,y) in seen or not candidate(x,y): continue
+                  seen.add((x,y))
+                  r,g,b,a=px[x,y]
+                  v=max(r,g,b)
+                  # Black background -> fully transparent. Anti-aliased dark
+                  # fringe fades smoothly instead of leaving a black halo.
+                  na=0 if v<=HARD else round(255*(v-HARD)/(SOFT-HARD))
+                  px[x,y]=(r,g,b,min(a,na))
+                  for nx,ny in ((x-1,y),(x+1,y),(x,y-1),(x,y+1),(x-1,y-1),(x+1,y-1),(x-1,y+1),(x+1,y+1)):
+                    if ox<=nx<ox+CELL and oy<=ny<oy+CELL and (nx,ny) not in seen:
+                      q.append((nx,ny))
+            im.save(p, optimize=True)
+            print(name, im.size)
+          PY
+      - name: Verify real alpha exists
+        run: |
+          python - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          for p in Path("assets/mascot-animations").glob("*.png"):
+            im=Image.open(p).convert("RGBA")
+            alpha=im.getchannel("A")
+            lo,hi=alpha.getextrema()
+            print(p.name, "alpha", lo, hi)
+            if lo != 0 or hi != 255:
+              raise SystemExit(f"{p}: expected both transparent and opaque pixels")
+          PY
+      - name: Commit processed sprite sheets
+        run: |
+          git config user.name "walkie-doggy-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add assets/mascot-animations/*.png
+          if git diff --cached --quiet; then
+            echo "No asset changes"
+            exit 0
+          fi
+          git commit -m "fix: remove black backgrounds from mascot sprites"
+          git push origin HEAD:fix/urgent-master-batch-20260925

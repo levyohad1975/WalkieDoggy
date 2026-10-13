@@ -1,3 +1,4 @@
+-- Compatibility follow-up: Supabase exposes pgcrypto in the extensions schema. Keep the SECURITY DEFINER search path explicit while allowing the same function bodies to resolve pgcrypto on staging.
 -- ============================================================================
 -- 0009_family_invites_pgcrypto_fix.sql
 --
@@ -19,7 +20,7 @@
 -- `public` is searched inside them regardless of the calling session's own
 -- search_path — this is exactly what makes SECURITY DEFINER safe against a
 -- caller manipulating search_path to shadow a function/table). Because only
--- `public` is searched, an unqualified `gen_random_bytes(...)`/`digest(...)`
+-- `public` is searched, an unqualified `extensions.gen_random_bytes(...)`/`extensions.digest(...)`
 -- call inside these functions cannot resolve on the live project, where
 -- those functions live in `extensions` rather than `public`.
 --
@@ -64,8 +65,8 @@
 -- create_family_invite(p_target_user_id uuid) — pgcrypto-qualified
 --
 -- Identical to 0008's definition in every respect except lines
--- `v_raw_token := encode(gen_random_bytes(32), 'base64');` and
--- `v_token_hash := encode(digest(v_raw_token, 'sha256'), 'hex');`, which now
+-- `v_raw_token := encode(extensions.gen_random_bytes(32), 'base64');` and
+-- `v_token_hash := encode(extensions.digest(v_raw_token, 'sha256'), 'hex');`, which now
 -- read `extensions.gen_random_bytes(32)` / `extensions.digest(...)`.
 -- ----------------------------------------------------------------------------
 
@@ -174,13 +175,13 @@ begin
 
   return query select new_id, v_raw_token, v_expires_at;
 end;
-$$ language plpgsql volatile security definer set search_path = public;
+$$ language plpgsql volatile security definer set search_path = public, extensions;
 
 -- ----------------------------------------------------------------------------
 -- inspect_family_invite(p_token text) — pgcrypto-qualified
 --
 -- Identical to 0008's definition except
--- `v_token_hash := encode(digest(p_token, 'sha256'), 'hex');`, which now
+-- `v_token_hash := encode(extensions.digest(p_token, 'sha256'), 'hex');`, which now
 -- reads `extensions.digest(...)`.
 -- ----------------------------------------------------------------------------
 
@@ -219,13 +220,13 @@ begin
     raise exception 'invite not found';
   end if;
 end;
-$$ language plpgsql stable security definer set search_path = public;
+$$ language plpgsql stable security definer set search_path = public, extensions;
 
 -- ----------------------------------------------------------------------------
 -- redeem_family_invite(p_token text) — pgcrypto-qualified
 --
 -- Identical to 0008's definition except
--- `v_token_hash := encode(digest(p_token, 'sha256'), 'hex');`, which now
+-- `v_token_hash := encode(extensions.digest(p_token, 'sha256'), 'hex');`, which now
 -- reads `extensions.digest(...)`.
 -- ----------------------------------------------------------------------------
 
@@ -369,4 +370,4 @@ begin
 
   return query select inv.family_id, v_family_name, inv.target_user_id;
 end;
-$$ language plpgsql volatile security definer set search_path = public;
+$$ language plpgsql volatile security definer set search_path = public, extensions;

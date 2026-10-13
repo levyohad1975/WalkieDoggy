@@ -20,7 +20,7 @@ insert into users (id, family_id, name, avatar, color, reminders_enabled) values
 on conflict (id) do nothing;
 
 insert into dogs (id, family_id, name, walks_per_day, notes) values
-  ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'טופי', 4, 'הכי טוב בעולם 🐾')
+  ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'טופי', 4, 'הכי טוב בעולם')
 on conflict (id) do nothing;
 
 insert into schedule_rules (id, family_id, dog_id, time, label, days_of_week, rotation_user_ids, rotation_anchor_date, sort_order, active) values

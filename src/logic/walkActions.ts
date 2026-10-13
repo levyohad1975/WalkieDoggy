@@ -375,7 +375,19 @@ export function formatCompletedAtBadge(walk: Walk): string {
 export function walkHistoryTimingLine(walk: Walk): string | null {
   if (walk.status !== 'done' || !walk.completedAt) return null;
   const actual = new Date(walk.completedAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
-  return `תוכנן ${walk.scheduledTime} · בוצע ${actual}`;
+  const started = walk.startedAt ? Date.parse(walk.startedAt) : NaN;
+  const finished = Date.parse(walk.completedAt);
+  const seconds = Number.isFinite(started) && Number.isFinite(finished) && finished >= started
+    ? Math.floor((finished - started) / 1000)
+    : undefined;
+  const duration = seconds !== undefined
+    ? (seconds >= 3600
+      ? `${Math.floor(seconds / 3600)} שע׳ ${Math.floor((seconds % 3600) / 60)} דק׳`
+      : `${Math.floor(seconds / 60)} דק׳ ${seconds % 60} שנ׳`)
+    : walk.durationMinutes !== undefined && Number.isFinite(walk.durationMinutes) && walk.durationMinutes >= 0
+      ? `${walk.durationMinutes} דק׳`
+      : null;
+  return `תוכנן ${walk.scheduledTime} · בוצע ${actual}${duration ? ` · משך ${duration}` : ''}`;
 }
 
 /** Weekly per-user completed-walk counts for the History summary. */

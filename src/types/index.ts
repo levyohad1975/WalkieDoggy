@@ -42,6 +42,8 @@ export interface FamilyUser {
   photoUrl?: string; // real profile photo (device URI in demo mode, Supabase Storage URL when configured)
   color: string; // hex, personal color used across the UI
   remindersEnabled: boolean;
+  /** PRD §9 gamification off-switch ("עם אפשרות לכיבוי") — per-user/device, same self-service-toggle shape as remindersEnabled, not a family-wide admin setting. */
+  gamificationEnabled: boolean;
   createdAt: string;
   /**
    * Set when an admin "deletes" this family member. The row is never
@@ -62,6 +64,10 @@ export interface Dog {
   familyId: string;
   name: string;
   photoUrl?: string;
+  /** Pre-processed transparent variant of photoUrl, when background removal is available. */
+  photoCutoutUrl?: string;
+  /** Family-shared Home hero scene selection (never a device-local preference). */
+  heroBackgroundId?: string;
   walksPerDay: number;
   notes?: string;
   /**
@@ -73,6 +79,58 @@ export interface Dog {
    * supabase/migrations/0022_family_timezone_and_dog_sex.sql.
    */
   sex?: 'male' | 'female';
+}
+
+/** The PRD §10 core category list for a health/grooming record. */
+export type HealthTaskCategory =
+  | 'vaccination'
+  | 'parasite_prevention'
+  | 'medication'
+  | 'vet_visit'
+  | 'weight'
+  | 'allergy'
+  | 'food'
+  | 'grooming'
+  | 'bath'
+  | 'nails'
+  | 'teeth'
+  | 'ears'
+  | 'other';
+
+/**
+ * A single row in a dog's health/grooming hub (PRD §10) — a journal entry
+ * AND task list unified onto one shape, exactly like `Walk` already unifies
+ * planned/unplanned. A record is a LOG entry once `completedAt` is set (e.g.
+ * "gave the heartworm pill today", a weight reading), a DUE task while
+ * `dueDate` is set and `completedAt` isn't (e.g. "next vet visit"), or both
+ * (a due task marked done keeps its dueDate). See
+ * supabase/migrations/0049_health_grooming_foundation.sql for the full
+ * rationale, and 0050_health_task_recurrence.sql for `recurrenceIntervalDays`.
+ */
+export interface HealthTask {
+  id: string;
+  familyId: string;
+  dogId: string;
+  category: HealthTaskCategory;
+  title: string;
+  notes?: string;
+  /** Only meaningful for category 'weight' — a weight-log entry's reading, in kg. */
+  weightKg?: number;
+  /**
+   * When set on a task, completing it auto-generates the NEXT occurrence
+   * (same category/title/notes/responsibleUserId/recurrenceIntervalDays,
+   * dueDate = this completion's date + this many days) — see
+   * healthStore.completeTask(). Undefined/absent = a one-off record, exactly
+   * today's behavior. See supabase/migrations/0050_health_task_recurrence.sql.
+   */
+  recurrenceIntervalDays?: number;
+  dueDate?: string; // "YYYY-MM-DD"
+  completedAt?: string; // ISO timestamp
+  completedByUserId?: string;
+  responsibleUserId?: string;
+  createdByUserId?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /**
@@ -106,6 +164,19 @@ export interface ScheduleEntry {
   time: string; // "HH:mm" — editable per-entry without touching the rule (single-occurrence time change)
   responsibleUserId: string;
   createdAt: string;
+  /**
+   * P0 FIX — a one-off per-occurrence time edit (admin_reschedule_walk /
+   * scheduleStore.rescheduleWalk) deliberately makes `time` diverge from
+   * this entry's rule, by design (see `time`'s own comment above). Before
+   * this flag existed, planStaleRuleEntryReconciliation() in
+   * src/logic/rotation.ts could not tell that apart from an entry genuinely
+   * stuck at a stale pre-807e4db rule time, and silently reverted every
+   * deliberate one-off edit back to the rule's time on the very next
+   * schedule load. Set to true ONLY by the one-off reschedule path; never
+   * cleared automatically, since the whole point of a one-off edit is that
+   * it survives independently of the rule going forward.
+   */
+  timeOverridden?: boolean;
 }
 
 export interface WalkSwap {
@@ -140,12 +211,79 @@ export interface Walk {
   updatedAt: string;
 }
 
-export type NotificationKind = 'pre_walk_reminder' | 'overdue_reminder';
+/**
+ * PRD §7 (Phase 4, GPS foundation) — an optional, per-walk GPS distance
+ * capture. Deliberately holds only a DERIVED aggregate (distance + point
+ * count), never raw lat/lng history — the device computes distance from an
+ * in-memory position stream it never persists anywhere (see
+ * lib/gpsTracking.ts) — see supabase/migrations/0051_walk_gps_sessions.sql
+ * for the full privacy-by-design rationale. `distanceMeters` is the
+ * original device-computed reading; `correctedDistanceMeters`, once a
+ * family member sets it (the PRD's required "assistive, not sole source of
+ * truth" correction flow), is authoritative for display/statistics instead.
+ */
+export interface WalkGpsSession {
+  id: string;
+  walkId: string;
+  familyId: string;
+  dogId: string;
+  distanceMeters?: number;
+  pointCount: number;
+  /** GPS points retained for the in-app route preview/map. */
+  routePoints?: Array<{ latitude: number; longitude: number; timestamp: number }>;
+  correctedDistanceMeters?: number;
+  correctedByUserId?: string;
+  startedAt?: string; // ISO timestamp
+  endedAt?: string; // ISO timestamp
+  /** 'device_gps' today (this device's own foreground tracking) — an open list so a future external collar/tracker adapter adds a value here, not a schema rewrite. */
+  source: 'device_gps';
+  createdByUserId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * PRD §9 gamification ("גביעים ועידוד משפחתי"): an immutable unlock ledger
+ * row, not a mutable "achievement state" table — an achievement, once
+ * unlocked, stays unlocked forever, exactly like health_tasks/dogs' own
+ * no-DELETE posture (0049/0042). 'family' scope covers milestones that
+ * belong to the whole family (e.g. first walk ever, 10/25/50 walks
+ * total); 'personal' scope covers a specific member's own behavior (e.g.
+ * on-time streak, helping out). The achievement catalog itself
+ * (thresholds, Hebrew copy) lives in logic/achievements.ts, not the DB —
+ * this table only records WHEN each key was actually crossed, so a
+ * client never re-shows the same celebration twice.
+ */
+export type AchievementScope = 'personal' | 'family';
+
+export interface AchievementUnlock {
+  id: string;
+  familyId: string;
+  /** Matches a key in logic/achievements.ts' ACHIEVEMENT_CATALOG. */
+  achievementKey: string;
+  scope: AchievementScope;
+  /** Set for 'personal' scope (who earned it); undefined for 'family' scope. */
+  userId?: string;
+  unlockedAt: string; // ISO timestamp
+  createdAt: string;
+}
+
+/**
+ * PRD §8: "T-15, at walk time, T+15, and T+30" — the same four fixed
+ * stages the server-side scheduler already uses (see
+ * supabase/migrations/0025_walk_reminder_scheduler.sql's `stages` CTE and
+ * src/logic/reminderMessages.ts's REMINDER_STAGES, the single source of
+ * truth for these literal values on the client). This is a structural
+ * duplicate of `ReminderStage` from reminderMessages.ts, not an import of
+ * it: this file is the foundational types module (no other module in
+ * src/ imports FROM it into logic/), so the two string-literal unions are
+ * kept in sync by construction (same four literals) rather than a
+ * cross-layer dependency.
+ */
+export type NotificationKind = 'T-15' | 'T' | 'T+15' | 'T+30';
 
 export interface NotificationSetting {
   userId: string;
-  minutesBefore: number; // default 15
-  overdueMinutesAfter: number; // default 10
   enabled: boolean;
 }
 
@@ -200,4 +338,68 @@ export interface UserDeletionImpact {
   // them — so without a replacement they are silently left referencing a
   // soft-deleted user forever.
   directlyAssignedWalkCount: number;
+}
+
+/**
+ * Family Chat (migration 0108). `kind` is wider than Phase 1 uses on
+ * purpose: the conversation model already accommodates the future
+ * cross-family kinds — see docs/engineering/FAMILY_CHAT_ARCHITECTURE.md.
+ */
+export type ChatConversationKind = 'family' | 'direct' | 'group';
+
+/** One image attached to a message. `path` is a private Storage object, never a URL. */
+export interface ChatAttachment {
+  path: string;
+  mime: string;
+  width: number;
+  height: number;
+  size: number; // bytes
+}
+
+/** What the Chats list shows under a conversation's name. */
+export interface ChatLastMessage {
+  id: string;
+  senderUserId?: string;
+  preview: string;
+  hasImage: boolean;
+  deleted: boolean;
+  createdAt: string; // ISO timestamp
+}
+
+export interface ChatConversationState {
+  conversationId: string;
+  /** 'family' is the one family group; 'direct' is a private conversation between two members of the same family. */
+  kind: ChatConversationKind;
+  familyId: string;
+  /** The caller's REAL profile as the server resolved it — never a client claim. */
+  userId: string;
+  /** Private conversations only: the other participant. */
+  otherUserId?: string;
+  lastReadAt: string; // ISO timestamp
+  notificationsMuted: boolean;
+  unreadCount: number;
+  /** Family conversation only, and only for a real family admin. Nobody moderates a private conversation. */
+  canModerate: boolean;
+  lastActivityAt: string; // ISO timestamp
+  lastMessage?: ChatLastMessage;
+}
+
+export type ChatDeliveryState = 'sent' | 'sending' | 'failed';
+
+export interface ChatMessage {
+  id: string;
+  conversationId: string;
+  /** The sender's family at send time. */
+  familyId: string;
+  /** Absent only if the sending profile no longer exists at all. */
+  senderUserId?: string;
+  body: string;
+  createdAt: string; // ISO timestamp
+  deletedAt?: string; // set once the message was removed; body is then empty and there is no attachment
+  deletedByUserId?: string;
+  attachment?: ChatAttachment;
+  /** Client-only: 'sent' for anything that came from the server. */
+  delivery: ChatDeliveryState;
+  /** Client-only, while this device is sending an image: local preview and upload progress (0..1). */
+  upload?: { localUri: string; progress: number };
 }
