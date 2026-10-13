@@ -82,7 +82,7 @@ declare
   affected integer;
 begin
   if auth.uid() is null or actor is null or family is null then raise exception 'active profile required'; end if;
-  if not public.is_family_admin(family) then raise exception 'family admin required'; end if;
+  if public.is_family_admin(family) is not true then raise exception 'family admin required'; end if;
   if p_operation_id is null or p_walk_ids is null or cardinality(p_walk_ids) < 2
      or array_position(p_walk_ids, null) is not null then
     raise exception 'at least two walk ids and an operation id are required';
