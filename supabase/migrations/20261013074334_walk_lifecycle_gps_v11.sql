@@ -4,6 +4,7 @@
 -- index fails closed with an actionable diagnostic if old data contains
 -- multiple active walks for a dog; operators must review that conflict in a
 -- separately approved data-change plan before this migration can proceed.
+-- Only rows bearing an administrator-created audit marker are excluded.
 
 -- Run the data gate first so a known conflict causes no preceding DDL to be
 -- applied by migration runners that do not wrap the whole file in a transaction.
@@ -15,7 +16,7 @@ begin
     from (
       select dog_id, count(*) as active_count
       from public.walks
-      where status = 'in_progress'
+      where status = 'in_progress' and duplicate_resolution_group_id is null
       group by dog_id
       having count(*) > 1
     ) as duplicates;
@@ -207,7 +208,7 @@ revoke all on function public.acknowledge_walk_lifecycle_notifications_v11(uuid[
 grant execute on function public.acknowledge_walk_lifecycle_notifications_v11(uuid[]) to authenticated;
 
 create unique index if not exists walks_one_active_per_dog_uidx
-  on public.walks (dog_id) where status = 'in_progress';
+  on public.walks (dog_id) where status = 'in_progress' and duplicate_resolution_group_id is null;
 
 create or replace function public.start_walk_v11(
   p_walk_id uuid,
@@ -234,6 +235,7 @@ begin
   if p_operation_id is null then raise exception 'operation id required'; end if;
   select * into w from public.walks where id = p_walk_id and family_id = public.current_family_id() for update;
   if not found then raise exception 'walk not found'; end if;
+  if w.duplicate_resolution_group_id is not null then raise exception 'resolved duplicate walk cannot be started'; end if;
 
   insert into public.walk_lifecycle_operations(actor_user_id, operation_id, action, walk_id, payload)
     values (actor, p_operation_id, 'start', w.id,
@@ -269,7 +271,7 @@ begin
 
   -- Serialize concurrent starts on different schedule rows for the same dog.
   perform pg_advisory_xact_lock(hashtextextended(w.dog_id::text, 0));
-  if exists (select 1 from public.walks active where active.dog_id = w.dog_id and active.status = 'in_progress' and active.id <> w.id) then
+  if exists (select 1 from public.walks active where active.dog_id = w.dog_id and active.status = 'in_progress' and active.duplicate_resolution_group_id is null and active.id <> w.id) then
     raise exception 'another active walk already exists for this dog';
   end if;
 
@@ -331,7 +333,7 @@ begin
   if not exists(select 1 from public.dogs d where d.id=p_dog_id and d.family_id=p_family_id) then raise exception 'dog not found'; end if;
   if not exists(select 1 from public.users u where u.id=actor and u.family_id=p_family_id and u.removed_at is null) then raise exception 'active family member required'; end if;
   perform pg_advisory_xact_lock(hashtextextended(p_dog_id::text, 0));
-  if exists(select 1 from public.walks active where active.dog_id=p_dog_id and active.status='in_progress') then raise exception 'another active walk already exists for this dog'; end if;
+  if exists(select 1 from public.walks active where active.dog_id=p_dog_id and active.status='in_progress' and active.duplicate_resolution_group_id is null) then raise exception 'another active walk already exists for this dog'; end if;
   perform set_config('app.trusted_write','on',true);
   insert into public.walks(id,family_id,schedule_entry_id,dog_id,date,scheduled_time,responsible_user_id,status,started_at,started_by_user_id,actual_walker_user_id,is_unplanned)
     values(p_walk_id,p_family_id,null,p_dog_id,p_date,p_scheduled_time,actor,'in_progress',now(),actor,actor,true)
@@ -383,7 +385,7 @@ begin
     raise exception 'walk finish operation is already recorded';
   end if;
   if w.status='done' and w.ended_by_user_id=actor then return w; end if;
-  if w.status <> 'in_progress' then raise exception 'walk is not in progress'; end if;
+  if w.status <> 'in_progress' or w.duplicate_resolution_group_id is not null then raise exception 'walk is not in progress'; end if;
   if p_actual_walker_id is distinct from w.actual_walker_user_id then raise exception 'actual walker cannot be changed during finish'; end if;
   if actor <> p_actual_walker_id and not (public.is_family_admin(w.family_id) and p_remote_confirmation) then
     raise exception 'actual walker or confirmed family admin required to finish';
@@ -421,7 +423,7 @@ declare
 begin
   if auth.uid() is null or profile_id is null then raise exception 'active profile required'; end if;
   select * into w from public.walks where id=p_walk_id and family_id=public.current_family_id() for update;
-  if not found or w.status <> 'in_progress' then raise exception 'active walk not found'; end if;
+  if not found or w.status <> 'in_progress' or w.duplicate_resolution_group_id is not null then raise exception 'active walk not found'; end if;
   if w.actual_walker_user_id is distinct from profile_id then raise exception 'only the actual walker can collect GPS'; end if;
   select * into owner from public.walk_gps_ownership where walk_id=w.id for update;
   if found and owner.owner_auth_user_id<>auth.uid() and not p_confirm_transfer then
@@ -456,7 +458,7 @@ declare
   profile_id uuid:=public.real_current_profile_id();
 begin
   if auth.uid() is null or profile_id is null then raise exception 'active profile required'; end if;
-  select * into w from public.walks where id=p_walk_id and family_id=public.current_family_id() and status='in_progress' for update;
+  select * into w from public.walks where id=p_walk_id and family_id=public.current_family_id() and status='in_progress' and duplicate_resolution_group_id is null for update;
   if not found or w.actual_walker_user_id is distinct from profile_id then raise exception 'active walk not found for current walker'; end if;
   select * into owner from public.walk_gps_ownership where walk_id=w.id for update;
   if not found or owner.owner_auth_user_id is distinct from auth.uid()
@@ -485,7 +487,7 @@ begin
   update public.walk_gps_ownership o set expires_at=now()+interval '45 seconds',updated_at=now()
   from public.walks w
   where o.walk_id=p_walk_id and o.fencing_epoch=p_fencing_epoch and o.owner_auth_user_id=auth.uid() and o.ended_at is null
-    and o.expires_at>now() and o.family_id=public.current_family_id() and w.id=o.walk_id and w.status='in_progress'
+    and o.expires_at>now() and o.family_id=public.current_family_id() and w.id=o.walk_id and w.status='in_progress' and w.duplicate_resolution_group_id is null
     and w.actual_walker_user_id=public.real_current_profile_id()
   returning o.expires_at into renewed;
   if renewed is null then raise exception 'GPS ownership expired or transferred'; end if;
@@ -515,7 +517,7 @@ begin
       or coalesce((point->>'longitude')::numeric,200) not between -180 and 180
       or coalesce((point->>'timestamp')::bigint,0)<=0
   ) then raise exception 'invalid GPS coordinate'; end if;
-  select * into w from public.walks where id=p_walk_id and family_id=public.current_family_id() and status='in_progress' for update;
+  select * into w from public.walks where id=p_walk_id and family_id=public.current_family_id() and status='in_progress' and duplicate_resolution_group_id is null for update;
   if not found or w.actual_walker_user_id is distinct from public.real_current_profile_id() then raise exception 'active walk not found for current walker'; end if;
   select * into owner from public.walk_gps_ownership o where o.walk_id=w.id for update;
   if not found or owner.owner_auth_user_id is distinct from auth.uid() or owner.fencing_epoch is distinct from p_fencing_epoch or owner.expires_at<=now() or owner.ended_at is not null then

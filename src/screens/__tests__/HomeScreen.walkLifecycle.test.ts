@@ -79,7 +79,7 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('אין טיולים מתוכננים היום');
     expect(home).toContain("walk.status === 'done'");
     expect(home).toContain("walk.status === 'skipped'");
-    expect(home).toContain("walk.status === 'in_progress'");
+    expect(home).toContain('isActiveWalk(walk)');
     expect(home).toContain('scrollEnabled');
     expect(home).toContain('paddingBottom: 96');
     expect(home).not.toContain('style={styles.dashboardMoreButton}');
@@ -174,7 +174,7 @@ describe('Home integrated walk lifecycle', () => {
     expect(card).toContain('label="לא בוצע"');
     expect(card).toContain('overdue && onMarkNotDone');
     expect(home).toContain('startWalk(walk.id, {');
-    expect(home).toContain("nextWalk.status === 'in_progress'");
+    expect(home).toContain('isActiveWalk(nextWalk)');
     expect(home).not.toContain('setActiveWalkSession({ walkId: nextWalk.id');
     expect(home).toContain('setCompleteWalkId(nextWalk.id)');
   });

@@ -202,6 +202,8 @@ export interface Walk {
   startedByUserId?: string; // profile that pressed Start (admin may differ from responsible)
   /** Person physically walking; captured at start and retained independently from schedule responsibility. */
   actualWalkerUserId?: string;
+  /** Audit-group ID when an administrator has explicitly resolved this test/duplicate start out of the active lifecycle. Original row/history/GPS remain intact. */
+  duplicateResolutionGroupId?: string;
   /** Local-only lifecycle reconciliation marker; never means the server has confirmed the transition. */
   lifecycleSyncStatus?: 'pending' | 'conflict';
   completedAt?: string; // ISO timestamp

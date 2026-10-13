@@ -58,6 +58,8 @@ export function HistoryScreen() {
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [historySearchQuery, setHistorySearchQuery] = useState('');
   const [historyPage, setHistoryPage] = useState(0);
+  const [duplicateResolutionAudit, setDuplicateResolutionAudit] = useState<Awaited<ReturnType<NonNullable<typeof repository.getWalkDuplicateResolutionAudit>>>>([]);
+  const [duplicateAuditError, setDuplicateAuditError] = useState(false);
   const HISTORY_PAGE_SIZE = 8;
 
   // BATCH 3 CORRECTION #2 (review #2, post-review): HistoryScreen's actual
@@ -111,6 +113,20 @@ export function HistoryScreen() {
     }
   }, []);
 
+  const refreshDuplicateResolutionAudit = useCallback(async () => {
+    if (effectiveRole !== 'admin' || !isSupabaseConfigured || !repository.getWalkDuplicateResolutionAudit) {
+      setDuplicateResolutionAudit([]);
+      return;
+    }
+    try {
+      setDuplicateResolutionAudit(await repository.getWalkDuplicateResolutionAudit(familyId));
+      setDuplicateAuditError(false);
+    } catch {
+      setDuplicateResolutionAudit([]);
+      setDuplicateAuditError(true);
+    }
+  }, [effectiveRole, familyId]);
+
   useEffect(() => {
     loadFamily(familyId);
     loadSchedule(familyId);
@@ -127,7 +143,8 @@ export function HistoryScreen() {
   useFocusEffect(
     useCallback(() => {
       void refreshHistoryDataset();
-    }, [refreshHistoryDataset, familyId, effectiveUserId])
+      void refreshDuplicateResolutionAudit();
+    }, [refreshHistoryDataset, refreshDuplicateResolutionAudit, familyId, effectiveUserId])
   );
 
   // The actual dataset this screen computes everything from: the
@@ -297,6 +314,28 @@ export function HistoryScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}>
         <RtlText style={styles.header} accessibilityRole="header" maxFontSizeMultiplier={1.35}>היסטוריה</RtlText>
+
+        {effectiveRole === 'admin' && isSupabaseConfigured ? (
+          <View style={styles.section}>
+            <RtlText style={styles.sectionTitle}>ביקורת: פתיחות כפולות שנפתרו</RtlText>
+            {duplicateAuditError ? <RtlText style={styles.auditText}>לא ניתן לטעון כרגע את נתוני הביקורת.</RtlText> : null}
+            {duplicateResolutionAudit.map((group) => (
+              <View key={group.id} style={styles.auditCard}>
+                <RtlText style={styles.auditText}>קבוצה {group.id} · כלב {group.dogId}</RtlText>
+                <RtlText style={styles.auditText}>נוצרה {group.createdAt} · מנהל/ת {group.createdByUserId}</RtlText>
+                <RtlText style={styles.auditText}>טיול פעיל קנוני: {group.canonicalWalkId ?? 'לא נבחר'}</RtlText>
+                <RtlText style={styles.auditText}>סיבה: {group.rationale}</RtlText>
+                {group.items.map((item) => (
+                  <View key={item.walkId} style={styles.auditItem}>
+                    <RtlText style={styles.auditText}>{item.disposition === 'canonical' ? 'נשאר פעיל' : 'הוחרג מפעילות'} · {item.walkId}</RtlText>
+                    <RtlText style={styles.auditText}>מקור: {String(item.originalWalk.started_at ?? 'ללא שעת התחלה')} · מבצע/ת: {String(item.originalWalk.started_by_user_id ?? 'לא ידוע')} · סטטוס מקורי: {String(item.originalWalk.status ?? 'לא ידוע')}</RtlText>
+                    <RtlText style={styles.auditText}>מזהי GPS שמורים: {item.linkedGpsSessionIds.join(', ') || 'אין'}</RtlText>
+                  </View>
+                ))}
+              </View>
+            ))}
+          </View>
+        ) : null}
 
         <View style={styles.summarySection}>
           <View style={styles.summaryHeadingRow}>
@@ -638,6 +677,9 @@ const styles = StyleSheet.create({
   summaryName: { flex: 1, fontSize: 15, fontWeight: '600', color: colors.textPrimary, textAlign: 'right' },
   summaryCount: { fontSize: 14, fontWeight: '700', color: colors.primary },
   section: { gap: 6 },
+  auditCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, padding: spacing.md, gap: 6 },
+  auditItem: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm, marginTop: spacing.xs, gap: 4 },
+  auditText: { fontSize: 12, color: colors.textSecondary, textAlign: 'right', writingDirection: 'rtl' },
   filterLabel: { fontSize: 13, fontWeight: '700', color: colors.textSecondary, textAlign: 'right', marginTop: 6 },
   // RTL/visual polish (final QA round): the toggle now sits directly above
   // the collapsible content it controls (see the JSX comment above its

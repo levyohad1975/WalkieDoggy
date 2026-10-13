@@ -14,7 +14,7 @@ import type {
   GpsRouteUpdate,
 } from '../types';
 import { defaultNotificationSetting } from '../logic/reminders';
-import type { DeleteFamilyMemberPayload, Repository } from './repository';
+import type { DeleteFamilyMemberPayload, Repository, WalkDuplicateResolutionAudit } from './repository';
 import { SUPABASE_CALL_TIMEOUT_MS, withTimeout } from '../lib/withTimeout';
 // TEMPORARY DIAGNOSTIC INSTRUMENTATION — see perfTrace.ts's own doc
 // comment. Remove this import and every perfMark call in
@@ -121,6 +121,7 @@ export function toWalk(row: any): Walk {
     startedAt: row.started_at ?? undefined,
     startedByUserId: row.started_by_user_id ?? undefined,
     actualWalkerUserId: row.actual_walker_user_id ?? row.completed_by_user_id ?? undefined,
+    duplicateResolutionGroupId: row.duplicate_resolution_group_id ?? undefined,
     completedAt: row.completed_at ?? undefined,
     completedByUserId: row.completed_by_user_id ?? undefined,
     endedByUserId: row.ended_by_user_id ?? undefined,
@@ -159,6 +160,7 @@ function fromWalk(walk: Walk) {
     status: walk.status,
     started_at: walk.startedAt ?? null,
     started_by_user_id: walk.startedByUserId ?? null,
+    duplicate_resolution_group_id: walk.duplicateResolutionGroupId ?? null,
     completed_at: walk.completedAt ?? null,
     completed_by_user_id: walk.completedByUserId ?? null,
     ended_by_user_id: walk.endedByUserId ?? null,
@@ -736,6 +738,27 @@ export class SupabaseRepository implements Repository {
     const { data, error } = await this.client.from('walks').select('*').eq('family_id', familyId);
     if (error) throw error;
     return (data ?? []).map(toWalk);
+  }
+
+  async getWalkDuplicateResolutionAudit(familyId: string): Promise<WalkDuplicateResolutionAudit[]> {
+    const { data, error } = await this.client.from('walk_duplicate_resolution_groups')
+      .select('id,created_at,created_by_user_id,dog_id,canonical_walk_id,rationale,walk_duplicate_resolution_items(walk_id,disposition,original_walk,linked_gps_session_ids)')
+      .eq('family_id', familyId).order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map((group: any) => ({
+      id: group.id,
+      createdAt: group.created_at,
+      createdByUserId: group.created_by_user_id,
+      dogId: group.dog_id,
+      canonicalWalkId: group.canonical_walk_id ?? null,
+      rationale: group.rationale,
+      items: (group.walk_duplicate_resolution_items ?? []).map((item: any) => ({
+        walkId: item.walk_id,
+        disposition: item.disposition,
+        originalWalk: item.original_walk,
+        linkedGpsSessionIds: item.linked_gps_session_ids ?? [],
+      })),
+    }));
   }
 
   /**

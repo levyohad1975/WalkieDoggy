@@ -5,7 +5,7 @@ const row = {
   scheduled_time: '08:00', responsible_user_id: 'assignee-1', actual_walker_user_id: 'walker-1',
   status: 'in_progress', started_at: '2026-10-13T05:00:00.000Z', started_by_user_id: 'actor-1',
   completed_at: null, completed_by_user_id: null, ended_by_user_id: null, had_pee: null, had_poop: null,
-  note: null, duration_minutes: null, is_unplanned: false, created_at: 'created', updated_at: 'updated',
+  note: null, duration_minutes: null, is_unplanned: false, duplicate_resolution_group_id: null, created_at: 'created', updated_at: 'updated',
 };
 
 describe('SupabaseRepository v1.1 lifecycle RPC contracts', () => {
@@ -38,6 +38,16 @@ describe('SupabaseRepository v1.1 lifecycle RPC contracts', () => {
     expect(call?.args.p_expected_actor_id).toBe('manager-1');
     expect(call?.args.p_actual_walker_id).toBe('walker-1');
     expect(call?.args.p_remote_confirmation).toBe(true);
+  });
+
+  it('maps the duplicate-resolution marker without changing lifecycle or historical attribution', async () => {
+    const resolvedRow = { ...row, duplicate_resolution_group_id: 'resolution-group-1' };
+    const client: any = { from: () => ({ select: () => ({ eq: () => Promise.resolve({ data: [resolvedRow], error: null }) }) }) };
+    const walk = (await new SupabaseRepository(client).getWalks('family-1'))[0];
+    expect(walk.duplicateResolutionGroupId).toBe('resolution-group-1');
+    expect(walk.status).toBe('in_progress');
+    expect(walk.startedAt).toBe(row.started_at);
+    expect(walk.startedByUserId).toBe(row.started_by_user_id);
   });
 
   it('passes explicit device transfer consent to the GPS lease RPC', async () => {

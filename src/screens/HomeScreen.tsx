@@ -9,6 +9,7 @@ import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { computeLastWalk, computeNextWalk, dailyWalkTimeline, isOverdue, nextWalkSelectionRefreshDelayMs, upcomingWalks, walkDateTime } from '../logic/nextWalk';
+import { isActiveWalk } from '../logic/walkLifecycle';
 import { resolvedWalkDateContextLabel, walkDateContextLabel } from '../logic/walkDateContext';
  import { repository } from '../data';
 import { canRequestChangeForWalk, computeNextWalkCardActions, formatCompletedAtBadge } from '../logic/walkActions';
@@ -333,7 +334,7 @@ export function HomeScreen() {
       const reconcile = async () => {
         if (disposed || refreshing) return;
         if (!useScheduleStore.getState().walks.some(
-          (entry) => entry.familyId === familyId && entry.status === 'in_progress'
+          (entry) => entry.familyId === familyId && isActiveWalk(entry)
         )) return;
         refreshing = true;
         try {
@@ -532,7 +533,7 @@ export function HomeScreen() {
   );
   // Active spontaneous walks may coexist with a planned next-walk card.
   const activeSpontaneousWalks = useMemo(
-    () => visibleWalks.filter((w) => w.isUnplanned && w.status === 'in_progress' && w.id !== nextWalk?.id),
+    () => visibleWalks.filter((w) => w.isUnplanned && isActiveWalk(w) && w.id !== nextWalk?.id),
     [visibleWalks, nextWalk?.id]
   );
   // Planned walks may be started from 30 minutes before their scheduled time.
@@ -775,7 +776,7 @@ export function HomeScreen() {
     // test walks without squeezing dozens of stops into one phone width.
     return timeline
       .filter((walk) => {
-        if (walk.status === 'in_progress') return true;
+        if (isActiveWalk(walk)) return true;
         if (walk.status !== 'pending') return false;
         const [hour, minute] = walk.scheduledTime.split(':').map(Number);
         return hour * 60 + minute >= nowMinutes;
@@ -819,6 +820,15 @@ export function HomeScreen() {
   // testModeUserId is set, regardless of which button or screen triggers it.
 
   const walksById = useMemo(() => Object.fromEntries(walks.map((w) => [w.id, w])), [walks]);
+  useEffect(() => {
+    const trackedWalk = gpsTrackingWalkId ? walksById[gpsTrackingWalkId] : undefined;
+    if (trackedWalk?.duplicateResolutionGroupId) {
+      // A fresh server resolution invalidates the active timer/watch. This
+      // only closes the in-memory foreground watcher; saved GPS sessions and
+      // route data are deliberately left untouched.
+      useGpsStore.getState().cancelTracking(trackedWalk.id);
+    }
+  }, [gpsTrackingWalkId, walksById]);
   const reminderPromptMessage = useMemo(() => {
     if (!reminderPrompt) return null;
     const walk = walksById[reminderPrompt.walkId];
@@ -1176,7 +1186,7 @@ export function HomeScreen() {
             tone="dashboard"
             remoteGpsAction={<RemoteGpsPanel walk={nextWalk} currentUserId={currentUserId} familyRole={actualFamilyRole} ready={!familyLoading && !scheduleLoading && Boolean(family)} />}
             onMarkDone={() => setCompleteWalkId(nextWalk.id)}
-            activeStartedAt={nextWalk.status === 'in_progress' ? nextWalk.startedAt ?? null : null}
+            activeStartedAt={isActiveWalk(nextWalk) ? nextWalk.startedAt ?? null : null}
             liveDistanceMeters={gpsTrackingWalkId === nextWalk.id ? gpsDistanceMeters : null}
             gpsPointCount={gpsTrackingWalkId === nextWalk.id ? gpsPointCount : null}
             liveRoutePoints={gpsTrackingWalkId === nextWalk.id ? gpsRoutePoints : undefined}
@@ -1197,7 +1207,7 @@ export function HomeScreen() {
             startWalkPending={startingWalkIds.includes(nextWalk.id)}
             startWalkAvailableLabel={nextWalkStartGate.label}
             onEndWalk={
-              nextWalk.status === 'in_progress' && (actualFamilyRole === 'admin' || nextWalk.actualWalkerUserId === currentUserId || (!nextWalk.actualWalkerUserId && nextWalk.responsibleUserId === currentUserId))
+              isActiveWalk(nextWalk) && (actualFamilyRole === 'admin' || nextWalk.actualWalkerUserId === currentUserId || (!nextWalk.actualWalkerUserId && nextWalk.responsibleUserId === currentUserId))
                 ? () => setCompleteWalkId(nextWalk.id)
                 : undefined
             }
@@ -1395,19 +1405,19 @@ export function HomeScreen() {
             <View style={styles.dashboardTimelineStops}>
               <View style={styles.dashboardTimelinePeople}>
                 {dashboardTimelineWalks.map((walk) => (
-                  <View key={walk.id} style={[styles.dashboardTimelineStop, walk.status === 'done' && styles.dashboardTimelineStopDone, walk.status === 'skipped' && styles.dashboardTimelineStopSkipped, walk.status === 'in_progress' && styles.dashboardTimelineStopActive]}>
+                  <View key={walk.id} style={[styles.dashboardTimelineStop, walk.status === 'done' && styles.dashboardTimelineStopDone, walk.status === 'skipped' && styles.dashboardTimelineStopSkipped, isActiveWalk(walk) && styles.dashboardTimelineStopActive]}>
                     <Avatar emoji={usersById[walk.responsibleUserId]?.avatar ?? '👤'} color={usersById[walk.responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[walk.responsibleUserId]?.photoUrl} size={22} />
                   </View>
                 ))}
               </View>
               <View style={styles.dashboardTimelineTrack} pointerEvents="none">
                 <View style={[styles.dashboardTimelineProgress, { width: `${dashboardTimelineProgress * 100}%` }]} />
-                {dashboardTimelineWalks.map((walk) => <View key={`dot-${walk.id}`} style={[styles.dashboardTimelineDot, walk.status === 'done' && styles.dashboardTimelineDotDone, walk.status === 'skipped' && styles.dashboardTimelineDotSkipped, walk.status === 'in_progress' && styles.dashboardTimelineDotActive]} />)}
+                {dashboardTimelineWalks.map((walk) => <View key={`dot-${walk.id}`} style={[styles.dashboardTimelineDot, walk.status === 'done' && styles.dashboardTimelineDotDone, walk.status === 'skipped' && styles.dashboardTimelineDotSkipped, isActiveWalk(walk) && styles.dashboardTimelineDotActive]} />)}
               </View>
               <View style={styles.dashboardTimelineLabels}>
                 {dashboardTimelineWalks.map((walk) => (
                   <View key={`label-${walk.id}`} style={styles.dashboardTimelineLabel}>
-                    <RtlText style={[styles.dashboardTimelineTime, walk.status === 'done' && styles.dashboardTimelineTimeDone, walk.status === 'skipped' && styles.dashboardTimelineTimeSkipped, walk.status === 'in_progress' && styles.dashboardTimelineTimeActive]}>{walk.status === 'done' ? `✓ ${walk.scheduledTime}` : walk.status === 'skipped' ? `– ${walk.scheduledTime}` : walk.status === 'in_progress' ? `• ${walk.scheduledTime}` : walk.scheduledTime}</RtlText>
+                    <RtlText style={[styles.dashboardTimelineTime, walk.status === 'done' && styles.dashboardTimelineTimeDone, walk.status === 'skipped' && styles.dashboardTimelineTimeSkipped, isActiveWalk(walk) && styles.dashboardTimelineTimeActive]}>{walk.status === 'done' ? `✓ ${walk.scheduledTime}` : walk.status === 'skipped' ? `– ${walk.scheduledTime}` : isActiveWalk(walk) ? `• ${walk.scheduledTime}` : walk.scheduledTime}</RtlText>
                     <RtlText style={styles.dashboardTimelineName} numberOfLines={1}>{usersById[walk.responsibleUserId]?.name ?? 'בן משפחה'}</RtlText>
                   </View>
                 ))}

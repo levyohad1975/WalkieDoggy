@@ -13,7 +13,7 @@ import type {
   WalkStartAuthorization,
   GpsRouteUpdate,
 } from '../types';
-import type { DeleteFamilyMemberPayload, Repository } from './repository';
+import type { DeleteFamilyMemberPayload, Repository, WalkDuplicateResolutionAudit } from './repository';
 import { LocalRepository } from './localRepository';
 import { isPermanentSyncError, SyncQueue } from './syncQueue';
 // TEMPORARY DIAGNOSTIC INSTRUMENTATION — see perfTrace.ts's own doc
@@ -898,6 +898,11 @@ export class OfflineFirstRepository implements Repository {
       }
     }
     return await this.pruneAndDedupeCanonicalWalks(await this.local.getWalks(familyId));
+  }
+
+  async getWalkDuplicateResolutionAudit(familyId: string): Promise<WalkDuplicateResolutionAudit[]> {
+    if (!(await this.isOnline()) || !this.remote?.getWalkDuplicateResolutionAudit) return [];
+    return this.remote.getWalkDuplicateResolutionAudit(familyId);
   }
 
   /**

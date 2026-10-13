@@ -20,6 +20,25 @@ function makeWalk(overrides: Partial<Walk>): Walk {
 const NOW = new Date('2026-08-26T18:00:00');
 
 describe('computeNextWalk', () => {
+  it('does not surface an audited duplicate start as the active card or timer source', () => {
+    const resolvedDuplicate = makeWalk({
+      id: 'resolved-duplicate', status: 'in_progress', startedAt: '2026-08-26T06:00:00Z',
+      duplicateResolutionGroupId: 'audit-group-1',
+    });
+    const pending = makeWalk({ id: 'next-pending', scheduledTime: '19:00' });
+
+    expect(computeNextWalk([resolvedDuplicate, pending], NOW)?.id).toBe('next-pending');
+  });
+
+  it('does not let an audited duplicate hide a pending copy of the same scheduled occurrence', () => {
+    const deduped = dedupeCanonicalWalks([
+      makeWalk({ id: 'resolved-copy', scheduleEntryId: 'same-entry', status: 'in_progress', duplicateResolutionGroupId: 'audit-group-1' }),
+      makeWalk({ id: 'actionable-copy', scheduleEntryId: 'same-entry', status: 'pending' }),
+    ]);
+    expect(deduped.map((walk) => walk.id)).toEqual(['actionable-copy']);
+    expect(computeNextWalk(deduped, NOW)?.id).toBe('actionable-copy');
+  });
+
   it('shows the first scheduled walk today before its time and never carries yesterday forward', () => {
     const walks = [
       makeWalk({ id: 'yesterday', date: '2026-08-25', scheduledTime: '21:00' }),

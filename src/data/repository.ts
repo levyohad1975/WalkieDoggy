@@ -22,6 +22,21 @@ export interface DeleteFamilyMemberPayload {
   updatedWalks: Walk[];
 }
 
+export interface WalkDuplicateResolutionAudit {
+  id: string;
+  createdAt: string;
+  createdByUserId: string;
+  dogId: string;
+  canonicalWalkId: string | null;
+  rationale: string;
+  items: Array<{
+    walkId: string;
+    disposition: 'canonical' | 'resolved_duplicate';
+    originalWalk: Record<string, unknown>;
+    linkedGpsSessionIds: string[];
+  }>;
+}
+
 /**
  * Data-access abstraction. The rest of the app (stores, screens) only talks
  * to this interface — never to Supabase or AsyncStorage directly — so the
@@ -138,6 +153,8 @@ export interface Repository {
   deleteScheduleEntry(entryId: string): Promise<void>;
 
   getWalks(familyId: string): Promise<Walk[]>;
+  /** Family-admin-only audit view of non-destructive duplicate-start resolutions. */
+  getWalkDuplicateResolutionAudit?(familyId: string): Promise<WalkDuplicateResolutionAudit[]>;
   saveWalk(walk: Walk): Promise<void>;
   /** Server-authoritative lifecycle operations; Supabase persists actor/time atomically. */
   startWalk?(walkId: string): Promise<Walk>;

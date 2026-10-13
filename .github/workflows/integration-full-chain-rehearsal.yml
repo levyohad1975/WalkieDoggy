@@ -297,8 +297,34 @@ jobs:
           open(path, 'w').write(sql)
           PYEOF
 
-      - name: Replay the FULL real migration chain (00000 base + 0001-0048) from empty
+      - name: Stage the v1.1 migration after the resolution fixture
+        run: mv supabase/migrations/20261013074334_walk_lifecycle_gps_v11.sql /tmp/walk_lifecycle_gps_v11.sql
+
+      - name: Replay migrations through duplicate-resolution support from empty
         run: supabase db reset --local
+
+      - name: Rehearse three conflicting active walks and audited resolution
+        env:
+          PGPASSWORD: postgres
+          PGOPTIONS: "-c app.walk_duplicate_fixture=local"
+        run: |
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/manual_tests/walk_duplicate_resolution_v12_fixture.sql
+
+      - name: Apply the actual v1.1 migration after duplicate resolution
+        run: |
+          mv /tmp/walk_lifecycle_gps_v11.sql supabase/migrations/20261013074334_walk_lifecycle_gps_v11.sql
+          supabase migration up --local
+
+      - name: Verify v1.1 constraints and preserved walk/GPS history
+        env:
+          PGPASSWORD: postgres
+          PGOPTIONS: "-c app.walk_duplicate_fixture=local"
+        run: |
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/manual_tests/walk_duplicate_resolution_v12_post_v11.sql
 
       - name: Rehearse schedule-entry deletion with disposable history and GPS fixtures
         env:
@@ -319,7 +345,11 @@ jobs:
 
       - name: Restore seed.sql
         if: always()
-        run: mv supabase/seed.sql.pending supabase/seed.sql
+        run: |
+          if [ -f /tmp/walk_lifecycle_gps_v11.sql ]; then
+            mv /tmp/walk_lifecycle_gps_v11.sql supabase/migrations/20261013074334_walk_lifecycle_gps_v11.sql
+          fi
+          if [ -f supabase/seed.sql.pending ]; then mv supabase/seed.sql.pending supabase/seed.sql; fi
 
       - name: Stop isolated stack
         if: always()
