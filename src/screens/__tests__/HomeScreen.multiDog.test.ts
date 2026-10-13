@@ -20,11 +20,13 @@ describe('HomeScreen multi-dog wiring (structural)', () => {
     expect(source).toMatch(/\{dogs\.length > 1 \? \(\s*\n\s*<DogSelectorRow dogs=\{dogs\} selectedDogId=\{selectedDogId\} onSelect=\{\(dogId\) => void selectDog\(dogId\)\} \/>/);
   });
 
-  it('derives visibleWalks (dog-filtered when there is more than one dog) and feeds it into next/last/upcoming/overdue, not the raw family-wide walks', () => {
-    expect(source).toMatch(
-      /const visibleWalks = useMemo\(\s*\n\s*\(\) => \(dogs\.length > 1 && dog \? walks\.filter\(\(w\) => w\.dogId === dog\.id\) : walks\),/
-    );
-    expect(source).toContain('const nextWalk = useMemo(() => computeNextWalk(visibleWalks)');
+  it('scopes walks to the current family and selected dog, then selects by family-local schedule time', () => {
+    expect(source).toContain('const familyWalks = walks.filter((walk) => walk.familyId === familyId);');
+    expect(source).toContain('return dogs.length > 1 && dog ? familyWalks.filter((walk) => walk.dogId === dog.id) : familyWalks;');
+    expect(source).toContain('const scheduleTimezone = family?.id === familyId ? family.timezone : undefined;');
+    expect(source).toContain('computeNextWalk(visibleWalks, new Date(), scheduleTimezone)');
+    expect(source).toContain('nextWalkSelectionRefreshDelayMs(visibleWalks, new Date(), scheduleTimezone)');
+    expect(source).toContain("AppState.addEventListener('change'");
     expect(source).toContain('const resolvedToday = computeLastWalk(visibleWalks);');
     expect(source).toContain('() => upcomingWalks(visibleWalks).filter((w) => w.id !== nextWalk?.id)');
     expect(source).toContain('visibleWalks\n        .filter(');

@@ -30,7 +30,7 @@ describe('NextWalkCard state colors', () => {
   });
 
   it('switches a pending overdue walk to the red-tinted state', () => {
-    expect(source).toContain('const overdue = isOverdue(walk)');
+    expect(source).toContain('const overdue = isOverdue(walk, new Date(), scheduleTimezone)');
     expect(source).toContain('overdue && !isActive && styles.cardOverdue');
     expect(source).toContain('cardOverdue: { backgroundColor: colors.statusOverdueBg');
   });
