@@ -187,6 +187,21 @@ describe('gpsStore', () => {
     expect(useGpsStore.getState().trackingWalkId).toBeNull();
   });
 
+  it('releases a fenced GPS lease when stopping before the first location fix', async () => {
+    const { useGpsStore } = require('../gpsStore');
+    const { repository } = require('../../data');
+    const gpsTracking = require('../../lib/gpsTracking');
+    repository.acquireGpsOwnershipV11 = jest.fn().mockResolvedValue({ fencingEpoch: 4, expiresAt: 'later' });
+    repository.releaseGpsOwnershipV11 = jest.fn().mockResolvedValue(undefined);
+    jest.spyOn(gpsTracking, 'startGpsWatch').mockResolvedValueOnce({ handle: { remove: jest.fn() }, permissionStatus: 'granted' });
+
+    await useGpsStore.getState().startTracking(walk);
+    expect(await useGpsStore.getState().attachGpsOwnership(walk)).toBe(true);
+    expect(await useGpsStore.getState().stopTracking(walk, 'user-aba')).toBeNull();
+
+    expect(repository.releaseGpsOwnershipV11).toHaveBeenCalledWith(walk.id, 4);
+  });
+
   it('stopTracking with captured points persists a session with this walk\'s familyId/dogId and removes the OS subscription', async () => {
     const { useGpsStore } = require('../gpsStore');
     const { repository } = require('../../data');

@@ -47,4 +47,11 @@ describe('SupabaseRepository v1.1 lifecycle RPC contracts', () => {
     expect(call).toEqual({ name: 'acquire_walk_gps_ownership_v11', args: { p_walk_id: 'walk-1', p_confirm_transfer: true } });
     expect(lease).toEqual({ fencingEpoch: 3, expiresAt: 'later' });
   });
+
+  it('releases GPS ownership through the fenced server RPC', async () => {
+    let call: unknown;
+    const client: any = { rpc: (name: string, args: unknown) => { call = { name, args }; return Promise.resolve({ data: true, error: null }); } };
+    await new SupabaseRepository(client).releaseGpsOwnershipV11('walk-1', 7);
+    expect(call).toEqual({ name: 'release_walk_gps_ownership_v11', args: { p_walk_id: 'walk-1', p_fencing_epoch: 7 } });
+  });
 });

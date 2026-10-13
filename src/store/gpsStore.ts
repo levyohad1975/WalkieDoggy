@@ -99,6 +99,17 @@ async function persistGpsRoute(
   }
 }
 
+async function releaseGpsOwnership(walkId: string, fencingEpoch: number | null): Promise<void> {
+  if (fencingEpoch === null || !repository.releaseGpsOwnershipV11) return;
+  try {
+    await repository.releaseGpsOwnershipV11(walkId, fencingEpoch);
+  } catch (error) {
+    // A missed release is bounded by the server lease; never discard a
+    // captured route or claim the lease was released when the request failed.
+    console.warn('[gpsStore] GPS ownership release failed; server lease will expire', error);
+  }
+}
+
 export const useGpsStore = create<GpsState>((set, get) => ({
   trackingWalkId: null,
   permissionStatus: null,
@@ -248,6 +259,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     // Nothing was ever actually captured (denied/unavailable, or stopped
     // before any fix arrived) — no session worth persisting.
     if (pointCount === 0) {
+      await releaseGpsOwnership(walk.id, gpsFencingEpoch);
       if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
       activeGpsHeartbeat = null;
       activeWatchWalkId = null;
@@ -301,6 +313,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
         set({ trackingStatus: 'interrupted' });
         throw error;
       }
+      await releaseGpsOwnership(walk.id, gpsFencingEpoch);
       if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
       activeGpsHeartbeat = null;
       activeWatchWalkId = null;
@@ -310,6 +323,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       return saved;
     }
     await repository.upsertGpsSession(session);
+    await releaseGpsOwnership(walk.id, gpsFencingEpoch);
     if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
     activeGpsHeartbeat = null;
     activeWatchWalkId = null;

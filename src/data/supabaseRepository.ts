@@ -839,6 +839,11 @@ export class SupabaseRepository implements Repository {
     return data;
   }
 
+  async releaseGpsOwnershipV11(walkId: string, fencingEpoch: number): Promise<void> {
+    const { error } = await this.client.rpc('release_walk_gps_ownership_v11', { p_walk_id: walkId, p_fencing_epoch: fencingEpoch });
+    if (error) throw error;
+  }
+
   async appendGpsRouteV11(update: GpsRouteUpdate): Promise<WalkGpsSession> {
     const { data, error } = await this.client.rpc('append_walk_gps_route_v11', {
       p_walk_id: update.walkId,

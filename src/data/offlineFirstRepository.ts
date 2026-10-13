@@ -61,6 +61,7 @@ export class OfflineFirstRepository implements Repository {
   ) => Promise<Walk>;
   finishWalkV11?: (walkId: string, actualWalkerId: string, operationId: string, details?: { hadPee?: boolean; hadPoop?: boolean; note?: string; completedAt?: string; remoteConfirmation?: boolean; actorUserId?: string }) => Promise<Walk>;
   acquireGpsOwnershipV11?: (walkId: string, confirmTransfer?: boolean) => Promise<{ fencingEpoch: number; expiresAt: string }>;
+  releaseGpsOwnershipV11?: (walkId: string, fencingEpoch: number) => Promise<void>;
   heartbeatGpsOwnershipV11?: (walkId: string, fencingEpoch: number) => Promise<string>;
   appendGpsRouteV11?: (update: GpsRouteUpdate) => Promise<WalkGpsSession>;
 
@@ -164,6 +165,7 @@ export class OfflineFirstRepository implements Repository {
         };
       }
       if (this.remote.acquireGpsOwnershipV11) this.acquireGpsOwnershipV11 = (walkId, transfer) => this.remote!.acquireGpsOwnershipV11!(walkId, transfer);
+      if (this.remote.releaseGpsOwnershipV11) this.releaseGpsOwnershipV11 = (walkId, epoch) => this.remote!.releaseGpsOwnershipV11!(walkId, epoch);
       if (this.remote.heartbeatGpsOwnershipV11) this.heartbeatGpsOwnershipV11 = (walkId, epoch) => this.remote!.heartbeatGpsOwnershipV11!(walkId, epoch);
       if (this.remote.appendGpsRouteV11) this.appendGpsRouteV11 = async (update) => {
         if (!(await this.isOnline())) throw new Error('GPS route is buffered locally until ownership can be verified online');

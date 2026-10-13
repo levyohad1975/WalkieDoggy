@@ -148,6 +148,7 @@ export interface Repository {
   finishWalk?(walkId: string, actualWalkerId: string, details?: { hadPee?: boolean; hadPoop?: boolean; note?: string; completedAt?: string }): Promise<Walk>;
   finishWalkV11?(walkId: string, actualWalkerId: string, operationId: string, details?: { hadPee?: boolean; hadPoop?: boolean; note?: string; completedAt?: string; remoteConfirmation?: boolean; actorUserId?: string }): Promise<Walk>;
   acquireGpsOwnershipV11?(walkId: string, confirmTransfer?: boolean): Promise<{ fencingEpoch: number; expiresAt: string }>;
+  releaseGpsOwnershipV11?(walkId: string, fencingEpoch: number): Promise<void>;
   heartbeatGpsOwnershipV11?(walkId: string, fencingEpoch: number): Promise<string>;
   appendGpsRouteV11?(update: GpsRouteUpdate): Promise<WalkGpsSession>;
   /**

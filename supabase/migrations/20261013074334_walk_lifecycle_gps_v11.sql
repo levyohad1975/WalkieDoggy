@@ -400,8 +400,11 @@ begin
   if not found or w.status <> 'in_progress' then raise exception 'active walk not found'; end if;
   if w.actual_walker_user_id is distinct from profile_id then raise exception 'only the actual walker can collect GPS'; end if;
   select * into owner from public.walk_gps_ownership where walk_id=w.id for update;
-  if found and owner.ended_at is null and owner.expires_at>now() and owner.owner_auth_user_id<>auth.uid() and not p_confirm_transfer then
-    raise exception 'another device owns GPS; confirm transfer on this device';
+  if found and owner.owner_auth_user_id<>auth.uid() and not p_confirm_transfer then
+    raise exception 'confirm GPS transfer on this device';
+  end if;
+  if found and owner.ended_at is null and owner.expires_at>now() and owner.owner_auth_user_id<>auth.uid() then
+    raise exception 'current GPS owner must release tracking or its lease must expire before transfer';
   end if;
   next_epoch:=case when not found then 1 when owner.owner_auth_user_id=auth.uid() and owner.ended_at is null and owner.expires_at>now() then owner.fencing_epoch else owner.fencing_epoch+1 end;
   insert into public.walk_gps_ownership(walk_id,family_id,dog_id,owner_user_id,owner_auth_user_id,fencing_epoch,expires_at,ended_at,updated_at)
@@ -416,6 +419,36 @@ end;
 $$;
 revoke all on function public.acquire_walk_gps_ownership_v11(uuid,boolean) from public, anon;
 grant execute on function public.acquire_walk_gps_ownership_v11(uuid,boolean) to authenticated;
+
+create or replace function public.release_walk_gps_ownership_v11(p_walk_id uuid,p_fencing_epoch bigint)
+returns boolean
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  w public.walks;
+  owner public.walk_gps_ownership;
+  profile_id uuid:=public.real_current_profile_id();
+begin
+  if auth.uid() is null or profile_id is null then raise exception 'active profile required'; end if;
+  select * into w from public.walks where id=p_walk_id and family_id=public.current_family_id() and status='in_progress' for update;
+  if not found or w.actual_walker_user_id is distinct from profile_id then raise exception 'active walk not found for current walker'; end if;
+  select * into owner from public.walk_gps_ownership where walk_id=w.id for update;
+  if not found or owner.owner_auth_user_id is distinct from auth.uid()
+     or owner.fencing_epoch is distinct from p_fencing_epoch or owner.ended_at is not null then
+    raise exception 'GPS ownership expired or transferred';
+  end if;
+  update public.walk_gps_ownership set fencing_epoch=fencing_epoch+1,expires_at=now(),ended_at=now(),updated_at=now()
+    where walk_id=w.id;
+  insert into public.walk_lifecycle_events(family_id,dog_id,walk_id,action,actor_user_id,original_assignee_user_id,current_assignee_user_id,actual_walker_user_id,details)
+    values(w.family_id,w.dog_id,w.id,'gps_owner_changed',profile_id,coalesce(w.swap_original_user_id,w.responsible_user_id),w.responsible_user_id,w.actual_walker_user_id,
+      jsonb_build_object('released',true,'fencing_epoch',owner.fencing_epoch+1,'device_auth_user_id',auth.uid()));
+  return true;
+end;
+$$;
+revoke all on function public.release_walk_gps_ownership_v11(uuid,bigint) from public, anon;
+grant execute on function public.release_walk_gps_ownership_v11(uuid,bigint) to authenticated;
 
 create or replace function public.heartbeat_walk_gps_ownership_v11(p_walk_id uuid,p_fencing_epoch bigint)
 returns timestamptz

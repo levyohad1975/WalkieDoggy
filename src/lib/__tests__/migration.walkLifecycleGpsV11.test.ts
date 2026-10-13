@@ -24,6 +24,8 @@ describe('Walk Lifecycle & GPS v1.1 additive migration contract', () => {
   it('fences GPS ownership and route ingestion to the current device epoch', () => {
     expect(migration).toMatch(/fencing_epoch bigint/i);
     expect(migration).toMatch(/p_confirm_transfer/i);
+    expect(migration).toMatch(/current GPS owner must release tracking or its lease must expire before transfer/i);
+    expect(migration).toMatch(/release_walk_gps_ownership_v11/i);
     expect(migration).toMatch(/owner_auth_user_id\s+is distinct from auth\.uid\(\)[\s\S]*?fencing_epoch\s+is distinct from p_fencing_epoch/i);
     expect(migration).toMatch(/jsonb_array_length\(p_points\)>250/i);
     expect(migration).toMatch(/walk_lifecycle_notifications/i);
