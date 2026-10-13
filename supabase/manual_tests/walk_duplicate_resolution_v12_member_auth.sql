@@ -21,8 +21,8 @@ begin
   if public.real_current_profile_id() is distinct from 'd2000000-0000-4000-8000-000000000002'::uuid then
     raise exception 'authorization fixture did not resolve the member profile';
   end if;
-  if public.is_family_admin('d1000000-0000-4000-8000-000000000001') is distinct from false then
-    raise exception 'member fixture admin check did not resolve explicitly to false';
+  if public.is_family_admin('d1000000-0000-4000-8000-000000000001') is true then
+    raise exception 'member fixture unexpectedly has family admin privileges';
   end if;
   begin
     perform public.resolve_duplicate_active_walks_v12(
