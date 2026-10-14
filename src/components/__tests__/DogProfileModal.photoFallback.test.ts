@@ -15,9 +15,9 @@ describe('DogProfileModal — broken photo fallback', () => {
     expect(source).toContain("pickAndUploadImage('dogs', familyId, dog.id, setPendingPhotoUrl)");
     expect(source).toContain('if (photoUrlToProcess) await saveDog({ ...dog, photoUrl: photoUrlToProcess, photoCutoutUrl: undefined });');
     expect(source).toContain('void requestDogCutout(dog.id)');
-    expect(source).toContain('await generateDogPhotoCutout(dogId)');
+    expect(source).toContain('await runDogCutoutJob(dogId)');
     expect(source).toContain('await loadFamily(familyId)');
-    expect(source).toContain("Alert.alert('התמונה המקורית נשמרה', describeDogCutoutFailure(cutoutError));");
+    expect(source).toContain('Alert.alert(feedback.title, feedback.message);');
     expect(source).toContain('accessibilityLabel="הסרת הרקע מתמונת הכלב"');
   });
 

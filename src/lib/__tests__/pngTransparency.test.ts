@@ -3,6 +3,7 @@ import {
   analyzePngTransparency,
   alphaStatsFromRgba,
   judgeAlphaStats,
+  countSolidEdges,
   isPng,
   type InflateChunks,
 } from '../../../supabase/functions/_shared/pngTransparency';
@@ -226,6 +227,51 @@ describe('generated dog cutout transparency verification', () => {
     await expect(analyzePngTransparency(interlaced, nodeInflate)).resolves.toEqual({ ok: false, reason: 'unsupported_png' });
   });
 
+  // Real-iPhone QA 2026-10-14: the provider returned a 720x720 RGBA PNG that
+  // kept the room around Buffy. Measured: 16.5% transparent (only above the
+  // head), 78% fully opaque, opaque across the whole bottom edge and the
+  // lower ~60% of both sides. The previous thresholds accepted it and Home
+  // composited it as a rectangle. This fixture reproduces that alpha profile.
+  function keptRoomAlpha(w: number, h: number) {
+    return (x: number, y: number) => {
+      const fromCentre = Math.abs((2 * x) / (w - 1) - 1);
+      const boundary = h * (0.0125 + 0.39 * Math.pow(fromCentre, 1.5));
+      if (y >= boundary + 3) return 255;
+      if (y < boundary - 3) return 0;
+      return 128; // thin feathered seam, like the provider's mask edge
+    };
+  }
+
+  it('rejects the real-QA cutout that kept the room background (former false positive)', async () => {
+    const size = 720;
+    const png = encodePng({ width: size, height: size, colorType: 6, row: rgbaRow(size, size, keptRoomAlpha(size, size)) });
+    const verdict = await analyzePngTransparency(png, nodeInflate);
+    expect(verdict).toMatchObject({ ok: false, reason: 'background_kept' });
+    if (!verdict.ok && verdict.stats) {
+      const fraction = verdict.stats.transparentPixels / verdict.stats.sampledPixels;
+      expect(fraction).toBeGreaterThan(0.12);
+      expect(fraction).toBeLessThan(0.2);
+      expect(countSolidEdges(verdict.stats)).toBe(3);
+    }
+  });
+
+  it('rejects a photo block that touches three edges even with a larger transparent band', async () => {
+    const png = encodePng({ width: W, height: H, colorType: 6, row: rgbaRow(W, H, (_x, y) => (y < H * 0.3 ? 0 : 255)) });
+    await expect(analyzePngTransparency(png, nodeInflate)).resolves.toMatchObject({ ok: false, reason: 'rectangular_subject' });
+  });
+
+  it('still accepts a dog lying in a corner (touches only the bottom and one side)', async () => {
+    const png = encodePng({
+      width: W,
+      height: H,
+      colorType: 6,
+      row: rgbaRow(W, H, (x, y) => (x > W * 0.35 && y > H * 0.45 ? 255 : 0)),
+    });
+    const verdict = await analyzePngTransparency(png, nodeInflate);
+    expect(verdict.ok).toBe(true);
+    if (verdict.ok) expect(countSolidEdges(verdict.stats)).toBe(2);
+  });
+
   it('applies the same thresholds to canvas RGBA pixels on the client', () => {
     const w = 40;
     const h = 30;
@@ -234,5 +280,12 @@ describe('generated dog cutout transparency verification', () => {
     const cut = new Uint8ClampedArray(w * h * 4);
     for (let y = 0; y < h; y += 1) for (let x = 0; x < w; x += 1) cut[(y * w + x) * 4 + 3] = dogAlpha(x, y, w, h);
     expect(judgeAlphaStats(alphaStatsFromRgba(cut, w, h)).ok).toBe(true);
+
+    // Same kept-room profile at the client's downscaled canvas size.
+    const cw = 160;
+    const keptRoom = new Uint8ClampedArray(cw * cw * 4);
+    const alpha = keptRoomAlpha(cw, cw);
+    for (let y = 0; y < cw; y += 1) for (let x = 0; x < cw; x += 1) keptRoom[(y * cw + x) * 4 + 3] = alpha(x, y);
+    expect(judgeAlphaStats(alphaStatsFromRgba(keptRoom, cw, cw)).ok).toBe(false);
   });
 });

@@ -22,7 +22,11 @@ import { alphaStatsFromRgba, judgeAlphaStats } from '../../supabase/functions/_s
 export type CutoutVerdictState = 'none' | 'pending' | 'transparent' | 'opaque' | 'unverifiable';
 type SettledVerdict = Exclude<CutoutVerdictState, 'none' | 'pending'>;
 
-const STORAGE_PREFIX = 'walkie.cutoutVerdict.v1:';
+// v2: thresholds tightened after real-iPhone QA found a cutout that kept the
+// room around the dog. Bumping the key discards verdicts stored by v1 (which
+// had cached that cutout as "transparent" on the device), so every cutout is
+// re-checked with the current rules after the update.
+const STORAGE_PREFIX = 'walkie.cutoutVerdict.v2:';
 /** The analysis is downscaled to this long side; plenty to see a background. */
 const ANALYSIS_LONG_SIDE = 160;
 const VERIFY_TIMEOUT_MS = 8000;

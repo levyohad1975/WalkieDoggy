@@ -102,27 +102,52 @@ describe('dog photo upload pipeline (client)', () => {
   it('persists the new source photo and clears the stale cutout before requesting processing', () => {
     expect(settings).toContain('await persistDog({ photoUrl: uri, photoCutoutUrl: undefined });');
     expect(settings.indexOf('await persistDog({ photoUrl: uri, photoCutoutUrl: undefined });'))
-      .toBeLessThan(settings.indexOf('await generateDogPhotoCutout(dog.id);'));
+      .toBeLessThan(settings.indexOf('await runDogCutoutJob(dog.id);'));
     expect(modal).toContain('saveDog({ ...dog, photoUrl: photoUrlToProcess, photoCutoutUrl: undefined })');
     expect(wizard).toContain('photoChanged ? { photoCutoutUrl: undefined } : {}');
   });
 
-  it('keeps the original photo and explains the failure when processing fails', () => {
-    expect(settings).toContain("Alert.alert('התמונה נשמרה ללא הסרת רקע', describeDogCutoutFailure(cutoutError));");
-    expect(modal).toContain("Alert.alert('התמונה המקורית נשמרה', describeDogCutoutFailure(cutoutError));");
+  it('keeps the original photo and gives an unambiguous outcome when processing fails or is not clean', () => {
+    expect(settings).toContain("if (cutoutResult.status !== 'ready') {");
+    expect(settings).toContain("Alert.alert('התמונה נשמרה ללא הסרת רקע', feedback.message);");
+    expect(modal).toContain('const feedback = describeDogCutoutJob(result);');
+    expect(modal).toContain('Alert.alert(feedback.title, feedback.message);');
+    expect(modal).toContain('accessibilityLiveRegion="polite"');
     expect(wizard).toContain('keeping source photo fallback');
   });
 
-  it('reloads the family after a successful job so the persisted photo_cutout_url reaches Home', () => {
-    expect(settings).toMatch(/await generateDogPhotoCutout\(dog\.id\);\s*await loadFamily\(familyId\);/);
-    expect(modal).toMatch(/await generateDogPhotoCutout\(dogId\);\s*await loadFamily\(familyId\);/);
+  it('reloads the family after a job so the persisted photo_cutout_url reaches Home', () => {
+    expect(settings).toMatch(/runDogCutoutJob\(dog\.id\);[\s\S]{0,600}await loadFamily\(familyId\)/);
+    expect(modal).toMatch(/runDogCutoutJob\(dogId\);[\s\S]{0,600}await loadFamily\(familyId\)/);
     expect(repository).toContain('photoCutoutUrl: row.photo_cutout_url ?? undefined');
     expect(repository).toContain('photo_cutout_url: dog.photoCutoutUrl ?? null');
   });
 
-  it('offers background removal again when the saved cutout has no real transparency', () => {
-    expect(modal).toContain("const cutoutNeedsProcessing = Boolean(dog?.photoUrl) && (!dog?.photoCutoutUrl || cutoutVerdict === 'opaque');");
-    expect(modal).toContain('{cutoutNeedsProcessing ? (');
-    expect(modal).toContain('accessibilityLabel="הסרת הרקע מתמונת הכלב"');
+  it('always offers background removal while a saved source photo exists, even with a stored cutout', () => {
+    // Real-iPhone QA: a stored cutout made the action disappear entirely.
+    expect(modal).not.toContain('cutoutNeedsProcessing');
+    expect(modal).toContain('{dog.photoUrl && !photoDirty ? (');
+    const action = modal.slice(modal.indexOf('{dog.photoUrl && !photoDirty ? ('), modal.indexOf("'הסרת רקע מהתמונה'"));
+    expect(action).not.toContain('photoCutoutUrl');
+    expect(action).not.toContain('cutoutVerdict');
+    expect(action).toContain('onPress={() => void requestDogCutout(dog.id)}');
+    expect(action).toContain('disabled={processingCutout || uploading || removing}');
+    expect(action).toContain('accessibilityLabel="הסרת הרקע מתמונת הכלב"');
+    expect(modal).toContain("{processingCutout ? 'מסירים רקע…' : 'הסרת רקע מהתמונה'}");
+  });
+
+  it('keeps the action behind the existing admin / non-observer permission gate', () => {
+    const gate = modal.indexOf("{familyRole === 'admin' && !systemObserverActive ? (");
+    const action = modal.indexOf('{dog.photoUrl && !photoDirty ? (');
+    const gateEnd = modal.indexOf('<DogHeroBackgroundPicker', gate);
+    expect(gate).toBeGreaterThan(0);
+    expect(action).toBeGreaterThan(gate);
+    expect(action).toBeLessThan(gateEnd);
+  });
+
+  it('ignores duplicate taps while a job is running', () => {
+    expect(modal).toContain('const cutoutJobInFlight = useRef(false);');
+    expect(modal).toMatch(/if \(cutoutJobInFlight\.current\) return;\s*cutoutJobInFlight\.current = true;/);
+    expect(modal).toMatch(/finally \{\s*cutoutJobInFlight\.current = false;\s*setProcessingCutout\(false\);/);
   });
 });

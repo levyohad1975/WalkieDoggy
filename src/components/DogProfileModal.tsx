@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RtlText } from './RtlText';
@@ -7,7 +7,7 @@ import { useFamilyStore } from '../store/familyStore';
 import { useAuthStore, useEffectiveFamilyRole } from '../store/authStore';
 import { DEMO_FAMILY } from '../data/demoData';
 import { pickAndUploadImage } from '../lib/uploadImage';
-import { describeDogCutoutFailure, generateDogPhotoCutout } from '../lib/supabase';
+import { describeDogCutoutJob, runDogCutoutJob, type DogCutoutFeedback } from '../lib/dogCutoutJob';
 import { useCutoutVerdict } from '../lib/cutoutVerification';
 import { colors } from '../theme/colors';
 import { breakpoints, radii, spacing, typography } from '../theme/tokens';
@@ -31,11 +31,15 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
   // An existing cutout without real transparency is treated like a missing
   // one: Home hides it, and the admin is offered background removal again.
   const cutoutVerdict = useCutoutVerdict(dog?.photoCutoutUrl);
-  const cutoutNeedsProcessing = Boolean(dog?.photoUrl) && (!dog?.photoCutoutUrl || cutoutVerdict === 'opaque');
+  const [cutoutFeedback, setCutoutFeedback] = useState<DogCutoutFeedback | null>(null);
+  // Guards the job synchronously: a fast double tap fires before the
+  // `processingCutout` re-render disables the button.
+  const cutoutJobInFlight = useRef(false);
 
   useEffect(() => {
     setPhotoLoadFailed(false);
     setPendingPhotoUrl(null);
+    setCutoutFeedback(null);
   }, [dog?.id, dog?.photoUrl]);
 
   const changePhoto = async () => {
@@ -53,14 +57,24 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
   };
 
   const requestDogCutout = async (dogId: string) => {
+    if (cutoutJobInFlight.current) return;
+    cutoutJobInFlight.current = true;
     setProcessingCutout(true);
+    setCutoutFeedback(null);
     try {
-      await generateDogPhotoCutout(dogId);
-      await loadFamily(familyId);
-    } catch (cutoutError) {
-      console.warn('Dog cutout generation failed; keeping source photo fallback:', cutoutError);
-      Alert.alert('התמונה המקורית נשמרה', describeDogCutoutFailure(cutoutError));
+      const result = await runDogCutoutJob(dogId);
+      if (result.status === 'failed') {
+        console.warn('Dog cutout generation failed; keeping source photo fallback:', result.error);
+      } else {
+        // The row now points at the new cutout either way; Home decides
+        // (with the same check) whether to composite it or keep the mascot.
+        await loadFamily(familyId).catch(() => {});
+      }
+      const feedback = describeDogCutoutJob(result);
+      setCutoutFeedback(feedback);
+      Alert.alert(feedback.title, feedback.message);
     } finally {
+      cutoutJobInFlight.current = false;
       setProcessingCutout(false);
     }
   };
@@ -143,7 +157,15 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
                 {displayedPhotoUrl && !photoLoadFailed ? 'תמונה אישית' : 'תמונת הכלב אינה חובה — מוצג כלב Walkie Doggy כברירת מחדל'}
               </RtlText>
               {processingCutout ? <RtlText style={styles.hint}>התמונה נשמרה; מסירים את הרקע…</RtlText> : null}
-              {!processingCutout && dog.photoCutoutUrl && cutoutVerdict === 'opaque' ? (
+              {!processingCutout && cutoutFeedback ? (
+                <RtlText
+                  style={[styles.hint, cutoutFeedback.tone === 'error' && styles.cutoutError]}
+                  accessibilityLiveRegion="polite"
+                >
+                  {cutoutFeedback.title}: {cutoutFeedback.message}
+                </RtlText>
+              ) : null}
+              {!processingCutout && !cutoutFeedback && dog.photoCutoutUrl && cutoutVerdict === 'opaque' ? (
                 <RtlText style={styles.hint}>הרקע לא הוסר מהתמונה, ולכן במסך הבית מוצג כרגע הקמע.</RtlText>
               ) : null}
               {familyRole === 'admin' && !systemObserverActive ? (
@@ -157,13 +179,18 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
                     </Pressable>
                   ) : null}
                   {photoDirty ? <Button label={removing ? 'שומר…' : 'שמור תמונה'} onPress={() => void savePhoto()} disabled={removing || uploading} /> : null}
-                  {cutoutNeedsProcessing ? (
+                  {/* Always offered while a saved source photo exists — also when a
+                      cutout is already stored — so the family can explicitly
+                      reprocess. Hidden only while an unsaved replacement is
+                      pending (saving it starts processing automatically). */}
+                  {dog.photoUrl && !photoDirty ? (
                     <Pressable
                       onPress={() => void requestDogCutout(dog.id)}
                       disabled={processingCutout || uploading || removing}
-                      style={styles.removeButton}
+                      style={[styles.removeButton, processingCutout && styles.buttonBusy]}
                       accessibilityRole="button"
                       accessibilityLabel="הסרת הרקע מתמונת הכלב"
+                      accessibilityState={{ disabled: processingCutout || uploading || removing, busy: processingCutout }}
                     >
                       <RtlText style={styles.removeText}>{processingCutout ? 'מסירים רקע…' : 'הסרת רקע מהתמונה'}</RtlText>
                     </Pressable>
@@ -220,6 +247,8 @@ const styles = StyleSheet.create({
   backgroundCheck: { fontSize: 18, fontWeight: '900', color: '#fff' },
   backgroundHint: { ...typography.meta, color: colors.textSecondary, textAlign: 'center' },
   removeButton: { paddingVertical: spacing.sm, alignItems: 'center' },
+  buttonBusy: { opacity: 0.6 },
+  cutoutError: { color: colors.statusOverdue },
   removeText: { ...typography.body, color: colors.statusOverdue, fontWeight: '700' },
   card: { width: '100%', maxWidth: 520, marginTop: spacing.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radii.lg, padding: spacing.lg, gap: spacing.sm },
   cardTitle: { ...typography.sectionTitle, color: colors.textPrimary, textAlign: 'right' },

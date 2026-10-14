@@ -16,8 +16,15 @@
 export const TRANSPARENT_ALPHA_MAX = 16;
 /** Alpha at or above this is solid subject. */
 export const OPAQUE_ALPHA_MIN = 240;
-/** At least this share of the image must be removed background. */
-export const MIN_TRANSPARENT_FRACTION = 0.04;
+/**
+ * At least this share of the image must be removed background. Real-iPhone
+ * QA (2026-10-14) produced a provider "cutout" that kept the room around the
+ * dog: only 16.5% transparent, all above the head. Genuine cutouts measured
+ * 55–60%; a frame-filling close-up still clears 20%.
+ */
+export const MIN_TRANSPARENT_FRACTION = 0.2;
+/** Below this the image is effectively opaque (no background removal at all). */
+export const FULLY_OPAQUE_TRANSPARENT_FRACTION = 0.04;
 /** At least this share of the image must be visible subject. */
 export const MIN_OPAQUE_FRACTION = 0.02;
 /**
@@ -26,6 +33,19 @@ export const MIN_OPAQUE_FRACTION = 0.02;
  * few interior pixels happen to be transparent.
  */
 export const MIN_BORDER_TRANSPARENT_FRACTION = 0.25;
+/** An edge is "solid" when at least this share of it is opaque subject. */
+export const SOLID_EDGE_OPAQUE_FRACTION = 0.5;
+/**
+ * A dog may legitimately run off the bottom edge (cropped legs) or one side,
+ * but when three or four edges are solid the result is a photo block with
+ * its background, not a cutout — the exact rectangle seen on the hero.
+ */
+export const MAX_SOLID_EDGES = 2;
+
+export interface EdgeStats {
+  samples: number;
+  opaque: number;
+}
 
 export interface AlphaStats {
   width: number;
@@ -36,6 +56,7 @@ export interface AlphaStats {
   opaquePixels: number;
   borderPixels: number;
   borderTransparentPixels: number;
+  edges: { top: EdgeStats; bottom: EdgeStats; left: EdgeStats; right: EdgeStats };
 }
 
 export type CutoutRejectionReason =
@@ -45,6 +66,8 @@ export type CutoutRejectionReason =
   | 'no_alpha_channel'
   | 'fully_opaque'
   | 'opaque_border'
+  | 'background_kept'
+  | 'rectangular_subject'
   | 'empty_subject';
 
 export type CutoutVerdict =
@@ -54,8 +77,12 @@ export type CutoutVerdict =
 /** Applies the shared thresholds to alpha statistics (server and client). */
 export function judgeAlphaStats(stats: AlphaStats): CutoutVerdict {
   const total = Math.max(1, stats.sampledPixels);
-  if (stats.transparentPixels / total < MIN_TRANSPARENT_FRACTION) {
+  const transparentFraction = stats.transparentPixels / total;
+  if (transparentFraction < FULLY_OPAQUE_TRANSPARENT_FRACTION) {
     return { ok: false, reason: 'fully_opaque', stats };
+  }
+  if (transparentFraction < MIN_TRANSPARENT_FRACTION) {
+    return { ok: false, reason: 'background_kept', stats };
   }
   if (stats.opaquePixels / total < MIN_OPAQUE_FRACTION) {
     return { ok: false, reason: 'empty_subject', stats };
@@ -64,7 +91,17 @@ export function judgeAlphaStats(stats: AlphaStats): CutoutVerdict {
   if (stats.borderTransparentPixels / border < MIN_BORDER_TRANSPARENT_FRACTION) {
     return { ok: false, reason: 'opaque_border', stats };
   }
+  if (countSolidEdges(stats) > MAX_SOLID_EDGES) {
+    return { ok: false, reason: 'rectangular_subject', stats };
+  }
   return { ok: true, stats };
+}
+
+/** Number of frame edges that are mostly solid subject. */
+export function countSolidEdges(stats: AlphaStats): number {
+  return [stats.edges.top, stats.edges.bottom, stats.edges.left, stats.edges.right]
+    .filter((edge) => edge.samples > 0 && edge.opaque / edge.samples >= SOLID_EDGE_OPAQUE_FRACTION)
+    .length;
 }
 
 /** Collects alpha statistics from straight RGBA bytes (e.g. canvas ImageData). */
@@ -210,6 +247,12 @@ function emptyStats(width: number, height: number): AlphaStats {
     opaquePixels: 0,
     borderPixels: 0,
     borderTransparentPixels: 0,
+    edges: {
+      top: { samples: 0, opaque: 0 },
+      bottom: { samples: 0, opaque: 0 },
+      left: { samples: 0, opaque: 0 },
+      right: { samples: 0, opaque: 0 },
+    },
   };
 }
 
@@ -221,7 +264,17 @@ function recordPixel(stats: AlphaStats, x: number, y: number, alpha: number): vo
   if (x === 0 || y === 0 || x === stats.width - 1 || y === stats.height - 1) {
     stats.borderPixels += 1;
     if (transparent) stats.borderTransparentPixels += 1;
+    const opaque = alpha >= OPAQUE_ALPHA_MIN;
+    if (y === 0) countEdge(stats.edges.top, opaque);
+    if (y === stats.height - 1) countEdge(stats.edges.bottom, opaque);
+    if (x === 0) countEdge(stats.edges.left, opaque);
+    if (x === stats.width - 1) countEdge(stats.edges.right, opaque);
   }
+}
+
+function countEdge(edge: EdgeStats, opaque: boolean): void {
+  edge.samples += 1;
+  if (opaque) edge.opaque += 1;
 }
 
 function readUint32(bytes: Uint8Array, at: number): number {

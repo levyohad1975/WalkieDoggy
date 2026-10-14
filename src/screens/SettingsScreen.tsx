@@ -13,10 +13,9 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { DogPhoto } from '../components/DogPhoto';
 import { breakpoints, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { pickAndUploadImage } from '../lib/uploadImage';
+import { describeDogCutoutJob, runDogCutoutJob } from '../lib/dogCutoutJob';
 import {
   isSupabaseConfigured,
-  generateDogPhotoCutout,
-  describeDogCutoutFailure,
   regenerateInviteCode,
   resetFamilyActivity,
   supabaseProjectUrl,
@@ -375,12 +374,17 @@ function SettingsScreenContent() {
         // itself is the single source of truth for whether Supabase is
         // configured; avoiding a second client-side environment gate prevents
         // deployed web builds from silently skipping the Edge Function call.
-        try {
-          await generateDogPhotoCutout(dog.id);
-          await loadFamily(familyId);
-        } catch (cutoutError) {
-          console.warn('Dog cutout generation failed; keeping source photo fallback:', cutoutError);
-          Alert.alert('התמונה נשמרה ללא הסרת רקע', describeDogCutoutFailure(cutoutError));
+        const cutoutResult = await runDogCutoutJob(dog.id);
+        if (cutoutResult.status === 'failed') {
+          console.warn('Dog cutout generation failed; keeping source photo fallback:', cutoutResult.error);
+        } else {
+          await loadFamily(familyId).catch(() => {});
+        }
+        if (cutoutResult.status !== 'ready') {
+          // Never leave the outcome ambiguous: a cutout that kept the photo's
+          // background is stored but Home keeps the mascot, so say so.
+          const feedback = describeDogCutoutJob(cutoutResult);
+          Alert.alert('התמונה נשמרה ללא הסרת רקע', feedback.message);
         }
       }
     } catch {

@@ -106,6 +106,18 @@ describe('client cutout transparency guard', () => {
     expect(again.readPixels).not.toHaveBeenCalled();
   });
 
+  it('ignores verdicts cached by the previous (looser) rules after an app update', async () => {
+    const store = installLocalStorage();
+    const url = 'https://x/cutouts/kept-room.png';
+    // What an iPhone running 766a56f stored for the false-positive cutout.
+    store.set(`walkie.cutoutVerdict.v1:${url}`, 'transparent');
+    expect(getCachedCutoutVerdict(url)).toBeUndefined();
+    const recheck = source(opaquePhoto);
+    await expect(verifyCutoutTransparency(url, recheck)).resolves.toBe('opaque');
+    expect(recheck.readPixels).toHaveBeenCalledTimes(1);
+    expect(store.get(`walkie.cutoutVerdict.v2:${url}`)).toBe('opaque');
+  });
+
   it('re-verifies when a new upload produces a new cutout URL', async () => {
     installLocalStorage();
     await verifyCutoutTransparency('https://x/cutouts/dog-old.png', source(opaquePhoto));
