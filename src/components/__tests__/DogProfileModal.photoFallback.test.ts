@@ -17,7 +17,7 @@ describe('DogProfileModal — broken photo fallback', () => {
     expect(source).toContain('void requestDogCutout(dog.id)');
     expect(source).toContain('await generateDogPhotoCutout(dogId)');
     expect(source).toContain('await loadFamily(familyId)');
-    expect(source).toContain('לא הצלחנו להסיר את הרקע כרגע. אפשר לנסות שוב מאותו מסך.');
+    expect(source).toContain("Alert.alert('התמונה המקורית נשמרה', describeDogCutoutFailure(cutoutError));");
     expect(source).toContain('accessibilityLabel="הסרת הרקע מתמונת הכלב"');
   });
 

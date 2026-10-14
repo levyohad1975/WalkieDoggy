@@ -354,10 +354,46 @@ export async function generateDogPhotoCutout(dogId: string): Promise<string> {
   const { data, error } = await supabase.functions.invoke('generate-dog-cutout', {
     body: { dogId },
   });
-  if (error) throw error;
+  if (error) throw new DogCutoutError(await readFunctionErrorCode(error), error);
   const cutoutUrl = (data as { cutoutUrl?: string } | null)?.cutoutUrl;
-  if (!cutoutUrl) throw new Error('cutout generation returned no URL');
+  if (!cutoutUrl) throw new DogCutoutError('no_cutout_url');
   return cutoutUrl;
+}
+
+/** A failed cutout job; `code` is the Edge Function's `error` field when available. */
+export class DogCutoutError extends Error {
+  constructor(public readonly code: string, public readonly detail?: unknown) {
+    super(`dog cutout generation failed: ${code}`);
+    this.name = 'DogCutoutError';
+  }
+}
+
+async function readFunctionErrorCode(error: unknown): Promise<string> {
+  // FunctionsHttpError exposes the raw Response as `context`.
+  const response = (error as { context?: { json?: () => Promise<unknown>; clone?: () => { json: () => Promise<unknown> } } } | null)?.context;
+  try {
+    const reader = typeof response?.clone === 'function' ? response.clone() : response;
+    const body = (await reader?.json?.()) as { error?: unknown } | undefined;
+    if (body && typeof body.error === 'string' && body.error) return body.error;
+  } catch {
+    // Non-JSON or already-consumed body: fall through to a generic code.
+  }
+  return 'request_failed';
+}
+
+/** Hebrew explanation for a failed background removal. The original photo is always kept. */
+export function describeDogCutoutFailure(error: unknown): string {
+  const code = error instanceof DogCutoutError ? error.code : '';
+  switch (code) {
+    case 'cutout_not_transparent':
+      return 'לא הצלחנו להפריד את הכלב מהרקע בתמונה הזו. אפשר לנסות שוב או לבחור תמונה שבה הכלב בולט יותר על הרקע.';
+    case 'background_removal_quota_exhausted':
+      return 'שירות הסרת הרקע הגיע למכסה היומית. התמונה המקורית נשמרה — נסו שוב מחר.';
+    case 'background_removal_busy':
+      return 'שירות הסרת הרקע עמוס כרגע. התמונה המקורית נשמרה — נסו שוב בעוד דקה.';
+    default:
+      return 'לא הצלחנו להסיר את הרקע כרגע. אפשר לנסות שוב מאותו מסך.';
+  }
 }
 
 export async function removeUnusedDog(dogId: string): Promise<void> {

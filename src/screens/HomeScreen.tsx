@@ -47,6 +47,7 @@ import { useAchievementStore } from '../store/achievementStore';
 import { DEMO_FAMILY } from '../data/demoData';
 import { isSupabaseConfigured, isWalkResolutionStaging } from '../lib/supabase';
 import { fetchLastResolvedWalk } from '../lib/permissionedWalks';
+import { canCompositeCutout, useCutoutVerdict } from '../lib/cutoutVerification';
 import { fetchHistoryWalks } from '../lib/permissionedWalks';
 import { useRequestsStore } from '../store/requestsStore';
 import {
@@ -121,7 +122,13 @@ export function HomeScreen() {
   useEffect(() => {
     setHeroCutoutFailed(false);
   }, [dog?.id, dog?.photoUrl, dog?.photoCutoutUrl]);
-  const showDogCutout = Boolean(dog?.photoCutoutUrl) && !heroCutoutFailed;
+  // A persisted cutout is composited only if it really has transparency. An
+  // opaque file (legacy row or provider failure) would otherwise appear as a
+  // rectangle with the original photo background over the hero scene; in
+  // that case the approved mascot fallback is shown instead.
+  const heroCutoutVerdict = useCutoutVerdict(dog?.photoCutoutUrl);
+  const showDogCutout = Boolean(dog?.photoCutoutUrl) && !heroCutoutFailed && heroCutoutVerdict !== 'opaque';
+  const heroCutoutReady = canCompositeCutout(heroCutoutVerdict);
   const [guestReactionPlaying, setGuestReactionPlaying] = useState(false);
   const guestReactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleHeroMascotPress = useCallback(() => {
@@ -1118,7 +1125,15 @@ export function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
           >
-            {showDogCutout ? <Image source={{ uri: dog!.photoCutoutUrl! }} style={styles.dashboardHeroDogCutout} resizeMode="contain" onError={() => setHeroCutoutFailed(true)} /> : null}
+            {showDogCutout ? (
+              <Image
+                source={{ uri: dog!.photoCutoutUrl! }}
+                style={[styles.dashboardHeroDogCutout, !heroCutoutReady && styles.dashboardHeroDogCutoutPending]}
+                resizeMode="contain"
+                onError={() => setHeroCutoutFailed(true)}
+                accessibilityElementsHidden={!heroCutoutReady}
+              />
+            ) : null}
             {!showDogCutout ? (
               <View
                 style={[styles.dashboardHeroMascot, celebration && styles.dashboardHeroMascotCelebrating]}
@@ -2051,7 +2066,20 @@ const styles = StyleSheet.create({
   dashboardHeroForegroundMid: { position: 'absolute', right: 118, bottom: -31, width: 106, height: 48, borderRadius: 53, backgroundColor: '#D6EBC8', opacity: 0.78, transform: [{ rotate: '5deg' }] },
   dashboardHeroForegroundDogBase: { position: 'absolute', right: -2, bottom: -25, width: 182, height: 58, borderRadius: 91, backgroundColor: '#D1E8C4', opacity: 0.94, transform: [{ rotate: '-2deg' }] },
   dashboardHeroForegroundRight: { position: 'absolute', right: -42, bottom: -17, width: 104, height: 46, borderRadius: 52, backgroundColor: '#BFDDB1', opacity: 0.86, transform: [{ rotate: '7deg' }] },
-  dashboardHeroDogCutout: { position: 'absolute', right: 4, bottom: 2, width: 166, height: 158, zIndex: 2 },
+  dashboardHeroDogCutout: {
+    position: 'absolute',
+    right: 4,
+    bottom: 2,
+    width: 166,
+    height: 158,
+    zIndex: 2,
+    // Grounds the transparent dog on the scene. drop-shadow follows the alpha
+    // edge (fur included), so it never draws a box around the cutout.
+    ...(Platform.OS === 'web' ? ({ filter: 'drop-shadow(0px 5px 6px rgba(22, 36, 91, 0.22))' } as object) : null),
+  },
+  // Kept mounted (so the image is already decoded) but invisible until its
+  // transparency has been confirmed.
+  dashboardHeroDogCutoutPending: { opacity: 0 },
   dashboardHeroCopy: { width: '52%', alignItems: 'flex-end', alignSelf: 'flex-start', paddingTop: 38, paddingHorizontal: spacing.md, zIndex: 2 },
   dashboardHeroEyebrow: { fontSize: 16, color: '#27376F', fontWeight: '700', textAlign: 'right' },
   dashboardHeroName: { fontSize: 30, lineHeight: 36, color: '#16245B', fontWeight: '900', textAlign: 'right' },

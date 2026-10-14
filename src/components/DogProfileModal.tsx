@@ -7,7 +7,8 @@ import { useFamilyStore } from '../store/familyStore';
 import { useAuthStore, useEffectiveFamilyRole } from '../store/authStore';
 import { DEMO_FAMILY } from '../data/demoData';
 import { pickAndUploadImage } from '../lib/uploadImage';
-import { generateDogPhotoCutout } from '../lib/supabase';
+import { describeDogCutoutFailure, generateDogPhotoCutout } from '../lib/supabase';
+import { useCutoutVerdict } from '../lib/cutoutVerification';
 import { colors } from '../theme/colors';
 import { breakpoints, radii, spacing, typography } from '../theme/tokens';
 import { getDogBackground, getDogBackgroundImageSource } from '../theme/dogBackgrounds';
@@ -27,6 +28,10 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
   const [processingCutout, setProcessingCutout] = useState(false);
   const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
   const [pendingPhotoUrl, setPendingPhotoUrl] = useState<string | null>(null);
+  // An existing cutout without real transparency is treated like a missing
+  // one: Home hides it, and the admin is offered background removal again.
+  const cutoutVerdict = useCutoutVerdict(dog?.photoCutoutUrl);
+  const cutoutNeedsProcessing = Boolean(dog?.photoUrl) && (!dog?.photoCutoutUrl || cutoutVerdict === 'opaque');
 
   useEffect(() => {
     setPhotoLoadFailed(false);
@@ -52,11 +57,9 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
     try {
       await generateDogPhotoCutout(dogId);
       await loadFamily(familyId);
-    } catch {
-      Alert.alert(
-        'התמונה המקורית נשמרה',
-        'לא הצלחנו להסיר את הרקע כרגע. אפשר לנסות שוב מאותו מסך.',
-      );
+    } catch (cutoutError) {
+      console.warn('Dog cutout generation failed; keeping source photo fallback:', cutoutError);
+      Alert.alert('התמונה המקורית נשמרה', describeDogCutoutFailure(cutoutError));
     } finally {
       setProcessingCutout(false);
     }
@@ -140,6 +143,9 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
                 {displayedPhotoUrl && !photoLoadFailed ? 'תמונה אישית' : 'תמונת הכלב אינה חובה — מוצג כלב Walkie Doggy כברירת מחדל'}
               </RtlText>
               {processingCutout ? <RtlText style={styles.hint}>התמונה נשמרה; מסירים את הרקע…</RtlText> : null}
+              {!processingCutout && dog.photoCutoutUrl && cutoutVerdict === 'opaque' ? (
+                <RtlText style={styles.hint}>הרקע לא הוסר מהתמונה, ולכן במסך הבית מוצג כרגע הקמע.</RtlText>
+              ) : null}
               {familyRole === 'admin' && !systemObserverActive ? (
                 <View style={styles.actions}>
                   <Pressable onPress={changePhoto} disabled={uploading || removing} style={styles.primaryButton} accessibilityRole="button">
@@ -151,7 +157,7 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
                     </Pressable>
                   ) : null}
                   {photoDirty ? <Button label={removing ? 'שומר…' : 'שמור תמונה'} onPress={() => void savePhoto()} disabled={removing || uploading} /> : null}
-                  {dog.photoUrl && !dog.photoCutoutUrl ? (
+                  {cutoutNeedsProcessing ? (
                     <Pressable
                       onPress={() => void requestDogCutout(dog.id)}
                       disabled={processingCutout || uploading || removing}
