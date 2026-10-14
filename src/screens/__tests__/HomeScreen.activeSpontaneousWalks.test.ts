@@ -7,7 +7,7 @@ describe('Home active spontaneous walks (P0 duplicate cards)', () => {
   const home = fs.readFileSync(path.join(__dirname, '..', 'HomeScreen.tsx'), 'utf8');
 
   it('groups through the shared deterministic selector over the FULL visible pool', () => {
-    expect(home).toContain("import { activeSpontaneousHomeBlocks, groupActiveSpontaneousWalks } from '../logic/activeSpontaneousWalks';");
+    expect(home).toContain("import { activeSpontaneousHomeBlocks, duplicateActiveWalkNotice, groupActiveSpontaneousWalks } from '../logic/activeSpontaneousWalks';");
     expect(home).toContain('groupActiveSpontaneousWalks(visibleWalks, {');
     expect(home).toContain("viewerIsAdmin: actualFamilyRole === 'admin',");
     expect(home).toContain('knownDogIds,');
