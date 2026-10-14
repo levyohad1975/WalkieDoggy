@@ -42,6 +42,15 @@ function roleStatus(status: string): string {
   return status;
 }
 
+function auditDetails(metadata: Record<string, unknown>): string {
+  const details = [
+    typeof metadata.date === 'string' ? `תאריך ${metadata.date}` : null,
+    typeof metadata.time === 'string' ? `שעה ${metadata.time}` : null,
+    typeof metadata.responsible_user_id === 'string' ? `אחראי/ת ${metadata.responsible_user_id}` : null,
+  ].filter((value): value is string => Boolean(value));
+  return details.join(' · ') || 'ללא פרטים נוספים';
+}
+
 export function StagingDuplicateWalkResolutionPanel() {
   const familyId = useAuthStore((state) => state.familyId);
   const profileId = useAuthStore((state) => state.currentUserId);
@@ -185,6 +194,11 @@ export function StagingDuplicateWalkResolutionPanel() {
                     <RtlText style={styles.detail}>פותח/ת: {record.startedByUserId ?? 'לא נשמר'} · הולך/ת בפועל: {record.actualWalkerUserId ?? 'לא נשמר'}</RtlText>
                     <RtlText style={styles.detail}>אחראי/ת מתוזמן/ת: {record.responsibleUserId}</RtlText>
                     <RtlText style={styles.detail}>קבוצת ביקורת קיימת: {record.duplicateResolutionGroupId ?? 'אין'}</RtlText>
+                    {record.auditEntries.length ? record.auditEntries.map((event) => (
+                      <RtlText key={event.id} style={styles.detail}>
+                        יומן ביקורת: {event.action} · {formatTimestamp(event.createdAt, authFamilyTimezone)} · מבצע/ת {event.actorUserId ?? 'לא נשמר'} · {auditDetails(event.metadata)}
+                      </RtlText>
+                    )) : <RtlText style={styles.detail}>לא נמצאה רשומת ביקורת מקושרת.</RtlText>}
                     {record.gpsSessions.length ? record.gpsSessions.map((session) => (
                       <RtlText key={session.id} style={styles.detail}>
                         GPS {session.id} · {session.pointCount} נקודות · {session.distanceMeters == null ? 'מרחק לא נשמר' : `${Math.round(session.distanceMeters)} מ׳`} · {formatTimestamp(session.startedAt, authFamilyTimezone)}–{formatTimestamp(session.endedAt, authFamilyTimezone)} · יוצר/ת {session.createdByUserId ?? 'לא נשמר'}

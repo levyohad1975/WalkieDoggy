@@ -27,7 +27,9 @@ function mockRecords() {
   return CONFIRMED_STAGING_DUPLICATE_WALK_IDS.map((walkId, index) => ({
     walkId, familyId: 'family-1', dogId: 'dog-1', status: 'in_progress',
     startedAt: `2026-10-13T10:0${index}:00Z`, startedByUserId: `profile-${index + 1}`,
-    actualWalkerUserId: `profile-${index + 1}`, responsibleUserId: 'profile-1', gpsSessions: [],
+    actualWalkerUserId: `profile-${index + 1}`, responsibleUserId: 'profile-1',
+    auditEntries: [{ id: `audit-${index}`, action: 'spontaneous_walk_added', actorUserId: 'profile-1', createdAt: `2026-10-13T10:0${index}:00Z`, metadata: { date: '2026-10-13', time: `13:0${index}` } }],
+    gpsSessions: [],
   }));
 }
 
@@ -57,6 +59,7 @@ describe('StagingDuplicateWalkResolutionPanel', () => {
 
   it('renders the three approved records and requires the explicit no-canonical confirmation before calling RPC', async () => {
     render(<StagingDuplicateWalkResolutionPanel />);
+    await waitFor(() => expect(screen.getAllByText(/יומן ביקורת: spontaneous_walk_added/)).toHaveLength(3));
     await openConfirmation();
     expect(screen.getByText('אני מאשר/ת שכל שלוש הרשומות הן פתיחות בדיקה כפולות, ושלא יישאר טיול קנוני פעיל.')).toBeTruthy();
     expect(mockRepository.resolveDuplicateActiveWalksV12).not.toHaveBeenCalled();

@@ -48,6 +48,13 @@ export interface DuplicateActiveWalkReviewRecord {
   actualWalkerUserId?: string;
   responsibleUserId: string;
   duplicateResolutionGroupId?: string;
+  auditEntries: Array<{
+    id: string;
+    action: string;
+    actorUserId?: string;
+    createdAt: string;
+    metadata: Record<string, unknown>;
+  }>;
   gpsSessions: Array<{
     id: string;
     pointCount: number;

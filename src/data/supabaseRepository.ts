@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 11795)
+Total output lines: 1072
+
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   AchievementUnlock,
@@ -516,142 +519,7 @@ export class SupabaseRepository implements Repository {
       ...session,
       distanceMeters: owner.distance_meters == null ? undefined : Number(owner.distance_meters),
       pointCount: Number(owner.point_count ?? 0),
-      startedAt: owner.route_started_at ?? session.startedAt,
-      endedAt: owner.route_ended_at ?? session.endedAt,
-      // Once v1.1 owns this walk's session, render only fenced v1.1 points;
-      // a legacy direct session upsert cannot inject coordinates into it.
-      routePoints: (points ?? []).map((point: any) => ({ latitude: Number(point.latitude), longitude: Number(point.longitude), timestamp: Number(point.point_timestamp_ms) })),
-    };
-  }
-
-  async upsertGpsSession(session: WalkGpsSession): Promise<void> {
-    // Conflict target is walk_id (its own unique constraint, 0051), not the
-    // primary key `id` — a re-save (e.g. recording a correction after the
-    // initial device-computed reading) must update the SAME row for this
-    // walk rather than erroring on walk_id's uniqueness with a fresh id.
-    const { error } = await this.client.from('walk_gps_sessions').upsert(fromGpsSession(session), { onConflict: 'walk_id' });
-    if (error) throw error;
-  }
-
-  async getGpsSessionsForWalkIds(walkIds: string[]): Promise<WalkGpsSession[]> {
-    if (walkIds.length === 0) return [];
-    const { data, error } = await this.client.from('walk_gps_sessions').select('*').in('walk_id', walkIds);
-    if (error) throw error;
-    const sessions = new Map<string, WalkGpsSession>((data ?? []).map((row: any) => [row.walk_id, toGpsSession(row)]));
-    const { data: owners, error: ownerError } = await this.client.from('walk_gps_ownership')
-      .select('walk_id,family_id,dog_id,distance_meters,point_count,route_started_at,route_ended_at').in('walk_id', walkIds);
-    if (ownerError) throw ownerError;
-    if (!owners?.length) return [...sessions.values()];
-    const ownerIds = owners.map((owner: any) => owner.walk_id);
-    const { data: points, error: pointsError } = await this.client.from('walk_gps_route_samples_v11')
-      .select('walk_id,latitude,longitude,point_timestamp_ms').in('walk_id', ownerIds).order('point_timestamp_ms', { ascending: true });
-    if (pointsError) throw pointsError;
-    const pointsByWalk = new Map<string, Array<{ latitude: number; longitude: number; timestamp: number }>>();
-    for (const point of points ?? []) {
-      const route = pointsByWalk.get(point.walk_id) ?? [];
-      route.push({ latitude: Number(point.latitude), longitude: Number(point.longitude), timestamp: Number(point.point_timestamp_ms) });
-      pointsByWalk.set(point.walk_id, route);
-    }
-    for (const owner of owners) {
-      const existing = sessions.get(owner.walk_id);
-      sessions.set(owner.walk_id, {
-        id: existing?.id ?? owner.walk_id,
-        walkId: owner.walk_id,
-        familyId: existing?.familyId ?? owner.family_id,
-        dogId: existing?.dogId ?? owner.dog_id,
-        distanceMeters: owner.distance_meters == null ? undefined : Number(owner.distance_meters),
-        pointCount: Number(owner.point_count ?? 0),
-        routePoints: pointsByWalk.get(owner.walk_id) ?? [],
-        startedAt: owner.route_started_at ?? existing?.startedAt,
-        endedAt: owner.route_ended_at ?? existing?.endedAt,
-        correctedDistanceMeters: existing?.correctedDistanceMeters,
-        correctedByUserId: existing?.correctedByUserId,
-        source: existing?.source ?? 'device_gps',
-        createdByUserId: existing?.createdByUserId,
-        createdAt: existing?.createdAt ?? owner.route_started_at ?? '',
-        updatedAt: existing?.updatedAt ?? owner.route_ended_at ?? owner.route_started_at ?? '',
-      });
-    }
-    return [...sessions.values()];
-  }
-
-  async getAchievementUnlocks(familyId: string): Promise<AchievementUnlock[]> {
-    const { data, error } = await this.client.from('achievement_unlocks').select('*').eq('family_id', familyId);
-    if (error) throw error;
-    return (data ?? []).map(toAchievementUnlock);
-  }
-
-  async upsertAchievementUnlock(unlock: AchievementUnlock): Promise<void> {
-    // Conflict target is (family_id, dedupe_key) — 0052's generated column +
-    // unique constraint — so a duplicate unlock attempt (two devices
-    // crossing the same threshold, or a retried write) is silently a no-op
-    // rather than a constraint-violation error.
-    const { error } = await this.client
-      .from('achievement_unlocks')
-      .upsert(fromAchievementUnlock(unlock), { onConflict: 'family_id,dedupe_key', ignoreDuplicates: true });
-    if (error) throw error;
-  }
-
-  async getScheduleRules(familyId: string): Promise<ScheduleRule[]> {
-    const { data, error } = await this.client.from('schedule_rules').select('*').eq('family_id', familyId);
-    if (error) throw error;
-    return (data ?? []).map(toRule);
-  }
-
-  async upsertScheduleRule(rule: ScheduleRule): Promise<void> {
-    // Editing an existing rule must only require UPDATE permission. UPSERT
-    // also exercises INSERT policy and could therefore make a valid edit
-    // appear saved locally, then disappear after the next server reload.
-    // Real-device QA fix — see withTimeout.ts's own doc comment: a stalled
-    // call here must reject (and surface/queue like any other transient
-    // failure), never hang the caller's `saving` state forever.
-    const row = fromRule(rule);
-    perfMark('SR.upsertScheduleRule: update request start');
-    const { data, error: updateError } = await withTimeout(
-      this.client.from('schedule_rules').update(row).eq('id', rule.id).select('id'),
-      SUPABASE_CALL_TIMEOUT_MS,
-      'schedule_rules update'
-    );
-    perfMark('SR.upsertScheduleRule: update request complete');
-    if (updateError) throw updateError;
-    if ((data ?? []).length > 0) return;
-
-    perfMark('SR.upsertScheduleRule: insert request start');
-    const { error: insertError } = await withTimeout(
-      this.client.from('schedule_rules').insert(row),
-      SUPABASE_CALL_TIMEOUT_MS,
-      'schedule_rules insert'
-    );
-    perfMark('SR.upsertScheduleRule: insert request complete');
-    if (insertError) throw insertError;
-  }
-
-  async deleteScheduleRule(ruleId: string): Promise<void> {
-    // DELETE ... RETURNING hides both absent rows and rows outside the
-    // caller's RLS scope. The RPC checks the authenticated active family,
-    // resolves only globally absent rules as idempotent, and delegates an
-    // existing same-family rule to the existing admin deletion workflow.
-    const { data, error, status } = await this.client.rpc('delete_schedule_rule_idempotent', {
-      p_rule_id: ruleId,
-    });
-    if (error) {
-      const enrichedError: Error & { code?: string; status?: number; syncQueueRetryable?: boolean } = Object.assign(
-        new Error(error.message || 'Schedule rule delete failed'),
-        error,
-        { status: status ?? (error as { status?: number }).status }
-      );
-      // Keep family/admin context failures in FIFO for a safe retry; never
-      // report an authorization failure as a successful deletion.
-      if (error.code === '42501') enrichedError.syncQueueRetryable = true;
-      throw enrichedError;
-    }
-    if (data !== 'deleted' && data !== 'already_absent') {
-      throw new Error('Schedule rule delete returned an unrecognized result');
-    }
-  }
-
-  async getScheduleEntries(familyId: string): Promise<ScheduleEntry[]> {
-    const { data, error } = await this.client.from('schedule_entries').select('*').eq('family_id', familyId);
+      startedAt: owner.route_starte…1795 tokens truncated…ule_entries').select('*').eq('family_id', familyId);
     if (error) throw error;
     return (data ?? []).map(toEntry);
   }
@@ -776,6 +644,11 @@ export class SupabaseRepository implements Repository {
       .select('id,walk_id,point_count,distance_meters,started_at,ended_at,created_by_user_id')
       .eq('family_id', familyId).in('walk_id', returnedWalkIds);
     if (sessionError) throw sessionError;
+    const { data: auditRows, error: auditError } = await this.client.from('audit_log')
+      .select('id,target_id,action,actor_user_id,created_at,metadata')
+      .eq('family_id', familyId).eq('target_type', 'walk')
+      .order('created_at', { ascending: true }).in('target_id', returnedWalkIds);
+    if (auditError) throw auditError;
     const sessionsByWalk = new Map<string, DuplicateActiveWalkReviewRecord['gpsSessions']>();
     for (const session of sessions ?? []) {
       const list = sessionsByWalk.get(session.walk_id) ?? [];
@@ -788,6 +661,19 @@ export class SupabaseRepository implements Repository {
         createdByUserId: session.created_by_user_id ?? undefined,
       });
       sessionsByWalk.set(session.walk_id, list);
+    }
+    const auditByWalk = new Map<string, DuplicateActiveWalkReviewRecord['auditEntries']>();
+    for (const event of auditRows ?? []) {
+      if (typeof event.target_id !== 'string' || typeof event.id !== 'string' || typeof event.created_at !== 'string') continue;
+      const list = auditByWalk.get(event.target_id) ?? [];
+      list.push({
+        id: event.id,
+        action: event.action,
+        actorUserId: event.actor_user_id ?? undefined,
+        createdAt: event.created_at,
+        metadata: event.metadata && typeof event.metadata === 'object' ? event.metadata : {},
+      });
+      auditByWalk.set(event.target_id, list);
     }
     const rowsById = new Map<string, any>(rows.map((row: any) => [row.id, row]));
     return walkIds.flatMap((walkId) => {
@@ -802,6 +688,7 @@ export class SupabaseRepository implements Repository {
         actualWalkerUserId: row.actual_walker_user_id ?? undefined,
         responsibleUserId: row.responsible_user_id,
         duplicateResolutionGroupId: row.duplicate_resolution_group_id ?? undefined,
+        auditEntries: auditByWalk.get(row.id) ?? [],
         gpsSessions: sessionsByWalk.get(row.id) ?? [],
       }] : [];
     });

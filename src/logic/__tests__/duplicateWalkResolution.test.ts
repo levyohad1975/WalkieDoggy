@@ -11,7 +11,7 @@ import {
 function reviewRecord(walkId: string, overrides: Partial<DuplicateActiveWalkReviewRecord> = {}): DuplicateActiveWalkReviewRecord {
   return {
     walkId, familyId: 'family-1', dogId: 'dog-1', status: 'in_progress', responsibleUserId: 'profile-1',
-    startedAt: '2026-10-13T10:00:00Z', startedByUserId: 'profile-1', gpsSessions: [], ...overrides,
+    startedAt: '2026-10-13T10:00:00Z', startedByUserId: 'profile-1', auditEntries: [], gpsSessions: [], ...overrides,
   };
 }
 
