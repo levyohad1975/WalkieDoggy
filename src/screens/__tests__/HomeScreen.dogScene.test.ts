@@ -43,7 +43,7 @@ describe('Home Dashboard dog scene', () => {
     expect(backgrounds).toContain('w=1200&h=600');
     expect(home).toContain('resizeMode="cover"');
     expect(home).toContain("dashboardHeroImage: { ...StyleSheet.absoluteFill, width: '100%', height: '100%' }");
-    expect(home).toContain('dashboardHeroFade: { position: \'absolute\', left: 0, right: 0, bottom: 0, height: 44, zIndex: 1 }');
+    expect(home).toContain('dashboardHeroFade: { position: \'absolute\', left: 0, right: 0, bottom: 0, height: 10, zIndex: 1 }');
     expect(home).toContain('stopColor={colors.background}');
     expect(home).toContain('height: 148,');
     expect(home).toContain('bottom: -14');
