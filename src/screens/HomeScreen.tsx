@@ -1996,7 +1996,7 @@ const styles = StyleSheet.create({
   // further into the (shorter) hero than before; easing it to -42 nets a
   // modest ~14px higher start overall while keeping roughly the same
   // visual overlap relationship with the hero as before.
-  nextWalkLift: { marginTop: -34, zIndex: 1, paddingHorizontal: spacing.xs },
+  nextWalkLift: { marginTop: -64, zIndex: 1, paddingHorizontal: spacing.xs },
   testModeBanner: {
     flexDirection: 'row',
     alignItems: 'center',
