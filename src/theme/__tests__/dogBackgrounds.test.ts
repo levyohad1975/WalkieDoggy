@@ -1,3 +1,6 @@
+import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { DEFAULT_DOG_BACKGROUND, DOG_BACKGROUNDS, getDogBackground, getDogBackgroundImageSource } from '../dogBackgrounds';
 
 /**
@@ -32,6 +35,13 @@ describe('DOG_BACKGROUNDS', () => {
     expect(DEFAULT_DOG_BACKGROUND.source).toBeDefined();
     expect(DEFAULT_DOG_BACKGROUND.uri).toBeUndefined();
     expect(getDogBackgroundImageSource(DEFAULT_DOG_BACKGROUND)).toBe(DEFAULT_DOG_BACKGROUND.source);
+  });
+
+  it('bundles the exact user-approved default park image bytes', () => {
+    const imagePath = path.resolve(__dirname, '../../../assets/images/walkie-default-park.jpg');
+    const sha256 = crypto.createHash('sha256').update(fs.readFileSync(imagePath)).digest('hex');
+
+    expect(sha256).toBe('fbd7de06881962b7f9bf269d445e023cb26572d5209c00b8a304ef4218e5feed');
   });
 
   it('preserves an explicitly selected family background', () => {
