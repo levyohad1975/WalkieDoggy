@@ -10,7 +10,9 @@ import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { computeLastWalk, computeNextWalk, dailyWalkTimeline, isOverdue, nextWalkSelectionRefreshDelayMs, upcomingWalks, walkDateTime } from '../logic/nextWalk';
 import { isActiveWalk } from '../logic/walkLifecycle';
-import { activeSpontaneousHomeBlocks, groupActiveSpontaneousWalks } from '../logic/activeSpontaneousWalks';
+import { activeSpontaneousHomeBlocks, duplicateActiveWalkNotice, groupActiveSpontaneousWalks } from '../logic/activeSpontaneousWalks';
+import { canOpenDuplicateResolution } from '../logic/duplicateWalkResolution';
+import { canAccessHistoryScreen } from '../logic/permissions';
 import { resolvedWalkDateContextLabel, walkDateContextLabel } from '../logic/walkDateContext';
  import { repository } from '../data';
 import { canRequestChangeForWalk, computeNextWalkCardActions, formatCompletedAtBadge } from '../logic/walkActions';
@@ -43,7 +45,7 @@ import { CELEBRATION_LIBRARY, selectWalkCompletionCelebration, type CompletionCe
 import { achievementDefinition, type AchievementProgress } from '../logic/achievements';
 import { useAchievementStore } from '../store/achievementStore';
 import { DEMO_FAMILY } from '../data/demoData';
-import { isSupabaseConfigured } from '../lib/supabase';
+import { isSupabaseConfigured, isWalkResolutionStaging } from '../lib/supabase';
 import { fetchLastResolvedWalk } from '../lib/permissionedWalks';
 import { fetchHistoryWalks } from '../lib/permissionedWalks';
 import { useRequestsStore } from '../store/requestsStore';
@@ -552,6 +554,25 @@ export function HomeScreen() {
     ),
     [visibleWalks, familyId, knownDogIds, nextWalk?.id, actualFamilyRole, currentUserId]
   );
+  // The Family Admin review action on the Dashboard opens the same gated
+  // History review panel; it is offered only when that panel would render
+  // for this exact viewer (real admin, Staging flag, not impersonating,
+  // observing or in test mode) and History itself is reachable.
+  const impersonatingForReview = useAuthStore((s) => Boolean(s.impersonatingUserId));
+  const systemObserverForReview = useAuthStore((s) => s.systemObserverActive);
+  const testModeForReview = useAuthStore((s) => Boolean(s.testModeUserId));
+  const permissionOverridesForReview = useFamilyStore((s) => s.permissionOverrides);
+  const permissionOverridesStatusForReview = useFamilyStore((s) => s.permissionOverridesStatus);
+  const canReviewDuplicateWalks = canOpenDuplicateResolution({
+    staging: isWalkResolutionStaging,
+    configured: isSupabaseConfigured,
+    familyId,
+    profileId: currentUserId,
+    familyRole: actualFamilyRole,
+    impersonating: impersonatingForReview,
+    systemObserver: systemObserverForReview,
+    testMode: testModeForReview,
+  }) && canAccessHistoryScreen(currentUserId, permissionOverridesForReview, permissionOverridesStatusForReview);
   // Planned walks may be started from 30 minutes before their scheduled time.
   // Spontaneous walks keep their separate always-available flow.
   const nextWalkStartGate = useMemo(() => {
@@ -1263,19 +1284,29 @@ export function HomeScreen() {
             walks can never push it down out of view. One block per dog. */}
         {activeSpontaneousWalkGroups.length > 0 ? (
           <View testID="home-active-spontaneous-walks" style={styles.activeSpontaneousSection}>
-            {activeSpontaneousWalkGroups.map((group) => group.duplicate ? (
-              <View key={`spontaneous-duplicate-${group.key}`} testID="home-active-spontaneous-duplicate" style={styles.activeSpontaneousDuplicate}>
-                <RtlText style={styles.activeSpontaneousTitle}>
-                  נמצאו {group.walks.length} רשומות של טיול ספונטני פעיל{group.dogId === null ? ' ללא שיוך כלב' : ''} · נדרשת בדיקת מנהל/ת
-                </RtlText>
-                {group.walks.map((walk) => (
-                  <RtlText key={walk.id} style={styles.activeSpontaneousAuditRow} selectable>
-                    {walk.id} · {usersById[walk.actualWalkerUserId ?? walk.responsibleUserId]?.name ?? 'בן משפחה'} · {walk.startedAt ?? walk.createdAt}{walk.id === nextWalk?.id ? ' · מוצג בכרטיס הראשי' : ''}
-                  </RtlText>
-                ))}
-                <RtlText style={styles.activeSpontaneousAuditNote}>לא ניתן להתחיל טיול נוסף או GPS מרחוק לכלב זה עד לסיום או לפתרון הרשומות הכפולות.</RtlText>
-              </View>
-            ) : (() => {
+            {activeSpontaneousWalkGroups.map((group) => group.duplicate ? (() => {
+              // No walk ids or raw timestamps here: exact audit identities are
+              // shown only inside the Family Admin review panel (History).
+              const notice = duplicateActiveWalkNotice(group, {
+                dogName: group.dogId ? dogs.find((entry) => entry.id === group.dogId)?.name : null,
+                viewerIsAdmin: actualFamilyRole === 'admin',
+                canReview: canReviewDuplicateWalks,
+              });
+              return (
+                <View key={`spontaneous-duplicate-${group.key}`} testID="home-active-spontaneous-duplicate" style={styles.activeSpontaneousDuplicate}>
+                  <RtlText style={styles.activeSpontaneousTitle} accessibilityRole="header">{notice.title}</RtlText>
+                  <RtlText style={styles.activeSpontaneousAuditNote}>{notice.body}</RtlText>
+                  {notice.reviewActionLabel ? (
+                    <Button
+                      label={notice.reviewActionLabel}
+                      onPress={() => navigation.navigate('History')}
+                      accessibilityLabel={`${notice.reviewActionLabel}: ${notice.title}`}
+                      style={{ marginTop: 8 }}
+                    />
+                  ) : null}
+                </View>
+              );
+            })() : (() => {
               const spontaneous = group.walks[0];
               return (
                 <View key={spontaneous.id} testID="home-active-spontaneous-card" style={styles.activeSpontaneousCard}>
@@ -1942,7 +1973,6 @@ const styles = StyleSheet.create({
   activeSpontaneousCard: { padding: 12, borderRadius: 12, backgroundColor: '#F1F8F3' },
   activeSpontaneousDuplicate: { padding: 12, borderRadius: 12, backgroundColor: '#FFF4E5', borderWidth: 1, borderColor: '#F3C98B' },
   activeSpontaneousTitle: { fontWeight: '700', marginBottom: 6, textAlign: 'right' },
-  activeSpontaneousAuditRow: { fontSize: 12, lineHeight: 17, marginBottom: 4, textAlign: 'right', color: colors.textSecondary },
   activeSpontaneousAuditNote: { fontSize: 13, lineHeight: 18, textAlign: 'right' },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: 0, gap: 7 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: 10, paddingHorizontal: 10 },

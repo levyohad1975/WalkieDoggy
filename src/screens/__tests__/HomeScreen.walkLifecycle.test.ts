@@ -182,7 +182,7 @@ describe('Home integrated walk lifecycle', () => {
   it('shows one grouped warning instead of repeated spontaneous cards and lets the active walker finish a single walk', () => {
     expect(home).toContain('const activeSpontaneousWalkGroups = useMemo');
     expect(home).toContain('activeSpontaneousWalkGroups.map((group) => group.duplicate ? (');
-    expect(home).toContain('נדרשת בדיקת מנהל/ת');
+    expect(home).toContain('duplicateActiveWalkNotice(group, {');
     expect(home).toContain('(spontaneous.actualWalkerUserId ?? spontaneous.responsibleUserId) === currentUserId');
     expect(home).toContain('setCompleteWalkId(spontaneous.id)');
   });

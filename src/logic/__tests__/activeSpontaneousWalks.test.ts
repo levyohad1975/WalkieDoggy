@@ -3,6 +3,7 @@ import {
   UNASSIGNED_DOG_GROUP_KEY,
   activeSpontaneousGroupKey,
   activeSpontaneousHomeBlocks,
+  duplicateActiveWalkNotice,
   groupActiveSpontaneousWalks,
 } from '../activeSpontaneousWalks';
 
@@ -147,5 +148,49 @@ describe('activeSpontaneousHomeBlocks', () => {
     expect(blocks).toHaveLength(1);
     expect(blocks[0].duplicate).toBe(true);
     expect(blocks[0].walks.map((w) => w.id)).toEqual(['walk-a', 'walk-b']);
+  });
+});
+
+describe('duplicateActiveWalkNotice', () => {
+  const uuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+  const iso = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+  const fourRecords = {
+    dogId: DOG,
+    walks: [
+      walk('0b8f6a1e-1111-4c1d-9a7e-0d1f2e3a4b5c', { startedAt: '2026-10-13T09:00:00.000Z' }),
+      walk('0b8f6a1e-2222-4c1d-9a7e-0d1f2e3a4b5c', { startedAt: '2026-10-13T12:00:00.000Z' }),
+      walk('0b8f6a1e-3333-4c1d-9a7e-0d1f2e3a4b5c', { startedAt: '2026-10-14T07:00:00.000Z' }),
+      walk('0b8f6a1e-4444-4c1d-9a7e-0d1f2e3a4b5c', { startedAt: '2026-10-14T10:00:00.000Z' }),
+    ],
+  };
+
+  it('gives a Family Admin a short Hebrew message and a review action, with no ids or raw timestamps', () => {
+    const notice = duplicateActiveWalkNotice(fourRecords, { dogName: 'רקסי', viewerIsAdmin: true, canReview: true });
+    expect(notice.title).toBe('נמצאו 4 טיולים פעילים כפולים לרקסי');
+    expect(notice.reviewActionLabel).toBe('בדיקת מנהל/ת');
+    const text = `${notice.title} ${notice.body}`;
+    expect(text).not.toMatch(uuid);
+    expect(text).not.toMatch(iso);
+    expect(text).not.toContain(AVI);
+    expect(notice.body.length).toBeLessThanOrEqual(120);
+  });
+
+  it('offers no action to an admin when the review panel is not available on this device', () => {
+    const notice = duplicateActiveWalkNotice(fourRecords, { dogName: 'רקסי', viewerIsAdmin: true, canReview: false });
+    expect(notice.reviewActionLabel).toBeNull();
+    expect(notice.body).toContain('נדרשת בדיקת מנהל/ת');
+  });
+
+  it('never offers the review action to a non-admin, even if a review gate were wrongly true', () => {
+    const notice = duplicateActiveWalkNotice(fourRecords, { dogName: 'רקסי', viewerIsAdmin: false, canReview: true });
+    expect(notice.reviewActionLabel).toBeNull();
+    expect(notice.body).toContain('מנהל/ת המשפחה');
+  });
+
+  it('names the unassigned group without a dog, and falls back when the dog name is unknown', () => {
+    expect(duplicateActiveWalkNotice({ ...fourRecords, dogId: null }, { viewerIsAdmin: true, canReview: true }).title)
+      .toBe('נמצאו 4 טיולים פעילים כפולים ללא שיוך לכלב');
+    expect(duplicateActiveWalkNotice(fourRecords, { dogName: null, viewerIsAdmin: true, canReview: true }).title)
+      .toBe('נמצאו 4 טיולים פעילים כפולים לאותו כלב');
   });
 });

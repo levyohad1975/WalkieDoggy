@@ -18,12 +18,12 @@ describe('Home active spontaneous walks (P0 duplicate cards)', () => {
     expect(home).not.toContain('groups.set(walk.dogId');
   });
 
-  it('renders one block per group: a duplicate warning with exact audit ids, never one remote-GPS card per record', () => {
-    expect(home).toContain('activeSpontaneousWalkGroups.map((group) => group.duplicate ? (');
+  it('renders one block per group: a short duplicate notice, never one remote-GPS card per record', () => {
+    expect(home).toContain('activeSpontaneousWalkGroups.map((group) => group.duplicate ? (() => {');
     expect(home).toContain('key={`spontaneous-duplicate-${group.key}`}');
-    expect(home).toContain('{group.walks.map((walk) => (');
-    expect(home).toContain('{walk.id} ·');
-    expect(home).toContain("walk.id === nextWalk?.id ? ' · מוצג בכרטיס הראשי' : ''");
+    expect(home).toContain('const notice = duplicateActiveWalkNotice(group, {');
+    expect(home).toContain('{notice.title}');
+    expect(home).toContain('{notice.body}');
     expect(home).toContain('const spontaneous = group.walks[0];');
     // Remote GPS start remains for a genuinely unique active walk only.
     const section = home.slice(home.indexOf('testID="home-active-spontaneous-walks"'), home.indexOf('<PendingRequestsCard'));
@@ -31,6 +31,30 @@ describe('Home active spontaneous walks (P0 duplicate cards)', () => {
     const duplicateBranch = section.slice(0, section.indexOf('const spontaneous = group.walks[0];'));
     expect(duplicateBranch).not.toContain('<RemoteGpsPanel');
     expect(duplicateBranch).not.toContain('setCompleteWalkId');
+  });
+
+  it('never exposes raw walk UUIDs, user ids or ISO timestamps on the Dashboard duplicate notice', () => {
+    const section = home.slice(home.indexOf('testID="home-active-spontaneous-walks"'), home.indexOf('<PendingRequestsCard'));
+    const duplicateBranch = section.slice(0, section.indexOf('const spontaneous = group.walks[0];'));
+    expect(duplicateBranch).not.toContain('group.walks.map(');
+    expect(duplicateBranch).not.toContain('{walk.id}');
+    expect(duplicateBranch).not.toContain('walk.startedAt');
+    expect(duplicateBranch).not.toContain('walk.createdAt');
+    expect(duplicateBranch).not.toContain('responsibleUserId');
+    expect(home).not.toContain('activeSpontaneousAuditRow');
+  });
+
+  it('offers the Family Admin review action only through the same gate as the History review panel', () => {
+    expect(home).toContain("import { canOpenDuplicateResolution } from '../logic/duplicateWalkResolution';");
+    expect(home).toContain('const canReviewDuplicateWalks = canOpenDuplicateResolution({');
+    expect(home).toContain('staging: isWalkResolutionStaging,');
+    expect(home).toContain('impersonating: impersonatingForReview,');
+    expect(home).toContain('systemObserver: systemObserverForReview,');
+    expect(home).toContain('testMode: testModeForReview,');
+    expect(home).toContain('&& canAccessHistoryScreen(currentUserId, permissionOverridesForReview, permissionOverridesStatusForReview);');
+    expect(home).toContain("viewerIsAdmin: actualFamilyRole === 'admin',\n                canReview: canReviewDuplicateWalks,");
+    expect(home).toContain('{notice.reviewActionLabel ? (');
+    expect(home).toContain("onPress={() => navigation.navigate('History')}");
   });
 
   it('keeps the scheduled next-walk card first, so active cards can never bury it', () => {
@@ -49,7 +73,6 @@ describe('Home active spontaneous walks (P0 duplicate cards)', () => {
 
   it('keeps RTL alignment for the active-walk and audit text', () => {
     expect(home).toContain("activeSpontaneousTitle: { fontWeight: '700', marginBottom: 6, textAlign: 'right' }");
-    expect(home).toMatch(/activeSpontaneousAuditRow: \{[^}]*textAlign: 'right'/);
     expect(home).toMatch(/activeSpontaneousAuditNote: \{[^}]*textAlign: 'right'/);
   });
 });

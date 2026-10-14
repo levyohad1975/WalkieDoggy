@@ -99,6 +99,48 @@ export function groupActiveSpontaneousWalks(
     });
 }
 
+export interface DuplicateActiveWalkNotice {
+  title: string;
+  body: string;
+  /** Label for the Family Admin review action, or null when none is offered. */
+  reviewActionLabel: string | null;
+}
+
+/**
+ * Short Dashboard copy for a duplicate group. Deliberately carries no walk
+ * ids, user ids or raw timestamps: the exact audit identities live only in
+ * the Family Admin review panel (History), which is where they are resolved.
+ */
+export function duplicateActiveWalkNotice(
+  group: Pick<ActiveSpontaneousWalkGroup, 'dogId' | 'walks'>,
+  options: { dogName?: string | null; viewerIsAdmin: boolean; canReview: boolean },
+): DuplicateActiveWalkNotice {
+  const count = group.walks.length;
+  const subject = group.dogId === null
+    ? 'ללא שיוך לכלב'
+    : options.dogName ? `ל${options.dogName}` : 'לאותו כלב';
+  const title = `נמצאו ${count} טיולים פעילים כפולים ${subject}`;
+  if (options.viewerIsAdmin && options.canReview) {
+    return {
+      title,
+      body: 'לא ניתן להתחיל טיול חדש לכלב עד שמנהל/ת המשפחה יבדוק/תבדוק את הרשומות. ההיסטוריה וה-GPS נשמרים.',
+      reviewActionLabel: 'בדיקת מנהל/ת',
+    };
+  }
+  if (options.viewerIsAdmin) {
+    return {
+      title,
+      body: 'נדרשת בדיקת מנהל/ת, אך כלי הבדיקה אינו זמין כרגע במכשיר זה. ההיסטוריה וה-GPS נשמרים.',
+      reviewActionLabel: null,
+    };
+  }
+  return {
+    title,
+    body: 'מנהל/ת המשפחה צריך/ה לבדוק את הרשומות לפני שמתחילים טיול חדש לכלב.',
+    reviewActionLabel: null,
+  };
+}
+
 /**
  * What Home should render for each group. A single active walk that is
  * already the main next-walk card is not repeated; everything else gets
