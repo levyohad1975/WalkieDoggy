@@ -62,19 +62,23 @@ function requireAuthClient(): VerifiedAdminAuthClient {
  */
 export async function requestAdminEmailVerificationWithAuth(
   auth: VerifiedAdminAuthClient,
-  email: string
+  email: string,
+  shouldCreateUser = true
 ): Promise<string> {
   const normalized = assertEmail(email);
   const { error } = await auth.signInWithOtp({
     email: normalized,
-    options: { shouldCreateUser: true },
+    options: { shouldCreateUser },
   });
   if (error) throw error;
   return normalized;
 }
 
-export function requestAdminEmailVerification(email: string): Promise<string> {
-  return requestAdminEmailVerificationWithAuth(requireAuthClient(), email);
+export function requestAdminEmailVerification(
+  email: string,
+  shouldCreateUser = true
+): Promise<string> {
+  return requestAdminEmailVerificationWithAuth(requireAuthClient(), email, shouldCreateUser);
 }
 
 /**

@@ -159,11 +159,11 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const sendAdminVerification = async () => {
+  const sendAdminVerification = async (shouldCreateUser = true) => {
     setVerifyingEmail(true);
     setCreateError(null);
     try {
-      const normalizedEmail = await requestAdminEmailVerification(adminEmail);
+      const normalizedEmail = await requestAdminEmailVerification(adminEmail, shouldCreateUser);
       setAdminEmail(normalizedEmail);
       setVerificationSent(true);
       setVerificationCode('');
@@ -462,7 +462,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
         <WalkieMascot state="waiting" size={128} testID="onboarding-mascot-recover" />
         <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">מחברים אותך למשפחה…</RtlText>
         <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
-          פתחת את Walkie Doggy מהאייקון החדש. אין צורך ליצור את המשפחה מחדש. אם אתם מנהלי המשפחה, אמתו את כתובת הדוא״ל ששימשה ליצירתה ונשחזר את החיבור.
+          אין צורך ליצור את המשפחה מחדש. אם אתם מנהלי המשפחה, אמתו את כתובת הדוא״ל ששימשה ליצירתה ונשחזר את החיבור.
         </RtlText>
         <TextInput
           value={adminEmail}
@@ -475,7 +475,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
           textAlign="right"
         />
         {!verificationSent ? (
-          <Button label={verifyingEmail ? 'שולח קוד…' : 'שלחו לי קוד אימות'} onPress={sendAdminVerification} disabled={verifyingEmail || !adminEmail.trim()} loading={verifyingEmail} style={styles.wideButton} />
+          <Button label={verifyingEmail ? 'שולח קוד…' : 'שלחו לי קוד אימות'} onPress={() => sendAdminVerification(false)} disabled={verifyingEmail || !adminEmail.trim()} loading={verifyingEmail} style={styles.wideButton} />
         ) : (
           <>
             <TextInput value={verificationCode} onChangeText={setVerificationCode} placeholder="קוד האימות שקיבלתם במייל" accessibilityLabel="קוד האימות שקיבלתם במייל" keyboardType="number-pad" style={styles.input} textAlign="right" />
@@ -524,6 +524,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
           <RtlText style={styles.welcomeCopy}>יוצרים בית משותף לכלבים, לבני המשפחה ולטיולים היומיים.</RtlText>
           <Button label="יצירת משפחה חדשה" onPress={() => setMode('create')} style={styles.welcomeButton} />
           <Button label="הצטרפות למשפחה קיימת" variant="secondary" onPress={() => setMode('join')} style={styles.welcomeButton} />
+          <Button label="המשפחה שלי כבר קיימת" variant="secondary" onPress={() => setMode('recover')} style={styles.welcomeButton} />
         </View>
       </SafeAreaView>
     );
