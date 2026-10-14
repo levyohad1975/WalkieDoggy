@@ -1069,18 +1069,18 @@ export function HomeScreen() {
             <Svg
               pointerEvents="none"
               width="100%"
-              height={44}
-              viewBox="0 0 100 44"
+              height={10}
+              viewBox="0 0 100 10"
               preserveAspectRatio="none"
               style={styles.dashboardHeroFade}
             >
               <Defs>
                 <LinearGradient id="dashboardHeroCreamFade" x1="0" y1="0" x2="0" y2="1">
                   <Stop offset="0" stopColor={colors.background} stopOpacity={0} />
-                  <Stop offset="1" stopColor={colors.background} stopOpacity={1} />
+                  <Stop offset="1" stopColor={colors.background} stopOpacity={0.25} />
                 </LinearGradient>
               </Defs>
-              <Rect x="0" y="0" width="100" height="44" fill="url(#dashboardHeroCreamFade)" />
+              <Rect x="0" y="0" width="100" height="10" fill="url(#dashboardHeroCreamFade)" />
             </Svg>
           </View>
           <View style={[styles.topRow, styles.dashboardTopRow]}>
@@ -2036,7 +2036,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   dashboardHeroImage: { ...StyleSheet.absoluteFill, width: '100%', height: '100%' },
-  dashboardHeroFade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 44, zIndex: 1 },
+  dashboardHeroFade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 10, zIndex: 1 },
   dashboardHeroDefaultSun: { position: 'absolute', width: 86, height: 86, borderRadius: 43, right: 30, top: 18, backgroundColor: '#FFF1C7' },
   dashboardHeroDefaultHillBack: { position: 'absolute', width: 330, height: 150, borderRadius: 165, left: -95, bottom: -88, backgroundColor: '#E8F1DF' },
   dashboardHeroDefaultHillFront: { position: 'absolute', width: 320, height: 142, borderRadius: 160, right: -98, bottom: -94, backgroundColor: '#DCEAD7' },
