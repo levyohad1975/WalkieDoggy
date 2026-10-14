@@ -223,6 +223,7 @@ function SettingsScreenContent() {
   // future re-add doesn't require touching that shared logic file again.
   const [pendingChildModal, setPendingChildModal] = useState<SettingsChildModal | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [processingDogCutout, setProcessingDogCutout] = useState(false);
   const [inviteCode, setInviteCode] = useState<string | undefined>(undefined);
   const [regenerating, setRegenerating] = useState(false);
   // NARROW CLIENT-FLOW FIX ("switch user"): "החלף משתמש" is a real,
@@ -391,6 +392,34 @@ function SettingsScreenContent() {
       Alert.alert('לא הצלחנו להחליף תמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
     } finally {
       setUploadingPhoto(false);
+    }
+  };
+
+  // Retry the existing source photo without opening the gallery or replacing it.
+  const retryDogCutout = async () => {
+    if (!dog?.photoUrl || processingDogCutout || uploadingPhoto || effectiveFamilyRole !== 'admin' || systemObserverActive) return;
+    setProcessingDogCutout(true);
+    try {
+      const result = await runDogCutoutJob(dog.id);
+      await loadFamily(familyId).catch(() => {});
+      const feedback = describeDogCutoutJob(result);
+      const message = result.status === 'ready'
+        ? 'הרקע הוסר. חזרו למסך הבית כדי לראות את התמונה המעודכנת.'
+        : feedback.message;
+      if (Platform.OS === 'web') {
+        (globalThis as typeof globalThis & { alert?: (message: string) => void }).alert?.(message);
+      } else {
+        Alert.alert(result.status === 'ready' ? 'הסרת הרקע הושלמה' : 'לא הצלחנו להסיר רקע', message);
+      }
+    } catch (error) {
+      const message = friendlyErrorMessage(error) || 'לא הצלחנו להסיר את הרקע. נסו שוב מאוחר יותר.';
+      if (Platform.OS === 'web') {
+        (globalThis as typeof globalThis & { alert?: (message: string) => void }).alert?.(message);
+      } else {
+        Alert.alert('שגיאה בהסרת הרקע', message);
+      }
+    } finally {
+      setProcessingDogCutout(false);
     }
   };
 
@@ -959,6 +988,8 @@ function SettingsScreenContent() {
         uploadingPhoto={uploadingPhoto}
         onChangePhoto={changeDogPhoto}
         onRemovePhoto={removeDogPhoto}
+        onRetryCutout={retryDogCutout}
+        processingCutout={processingDogCutout}
         onAddDog={() => void handleAddDog()}
         onDeleteDog={effectiveFamilyRole === 'admin' && !systemObserverActive ? confirmDeleteDog : undefined}
         deletingDog={deletingDog}
