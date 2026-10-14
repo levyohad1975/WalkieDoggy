@@ -125,9 +125,11 @@ export function AddUnplannedWalkModal({
   const [note, setNote] = useState('');
   const [duration, setDuration] = useState('');
   const [duplicateConfirmedKey, setDuplicateConfirmedKey] = useState<string | null>(null);
+  const [startNowError, setStartNowError] = useState('');
 
   useEffect(() => {
     if (visible) {
+      setStartNowError('');
       if (editingWalk) {
         setPerformedBy(editingWalk.responsibleUserId);
         setDate(editingWalk.date);
@@ -176,6 +178,18 @@ export function AddUnplannedWalkModal({
     if (selected) setTime(dateToTimeString(selected));
   };
 
+  const handleStartNow = async () => {
+    setStartNowError('');
+    try {
+      await onStartNow?.();
+    } catch {
+      // A caller may fail before scheduleStore can publish its normal action
+      // error (for example while checking a possible walk association). Do
+      // not let the fire-and-forget Pressable handler hide that rejection.
+      setStartNowError('לא הצלחנו להתחיל את הטיול. בדקו חיבור ונסו שוב.');
+    }
+  };
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       {/* Round 6C1: same KeyboardAvoidingView pattern already proven in
@@ -197,7 +211,10 @@ export function AddUnplannedWalkModal({
             <RtlText style={styles.subtitle}>{isEditing ? 'עדכון פרטי הטיול' : 'אפשר להתחיל טיול עכשיו או להזין טיול שכבר בוצע'}</RtlText>
 
             {!isEditing && onStartNow ? (
-              <Button label={startingNow ? 'מתחיל טיול…' : 'התחל טיול עכשיו'} disabled={startingNow} onPress={() => void onStartNow()} style={styles.startNowButton} />
+              <>
+                <Button label={startingNow ? 'מתחיל טיול…' : 'התחל טיול עכשיו'} disabled={startingNow} onPress={() => void handleStartNow()} style={styles.startNowButton} />
+                {startNowError ? <RtlText accessibilityLiveRegion="polite" style={styles.startNowError}>{startNowError}</RtlText> : null}
+              </>
             ) : null}
 
             <RtlText style={styles.label}>מי טייל?</RtlText>
@@ -451,6 +468,7 @@ const styles = StyleSheet.create({
   duplicateWarning: { marginTop: spacing.sm, padding: spacing.sm, borderRadius: radii.sm, backgroundColor: colors.warningSoft, borderWidth: 1, borderColor: colors.warning },
   duplicateWarningText: { color: colors.warning, fontSize: 13, fontWeight: '700', textAlign: 'right' },
   startNowButton: { marginTop: spacing.sm, marginBottom: spacing.md },
+  startNowError: { color: colors.statusOverdue, marginTop: -spacing.sm, marginBottom: spacing.md, textAlign: 'center' },
   destructiveSection: { marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
   deleteButton: { marginBottom: spacing.xs },
 });
