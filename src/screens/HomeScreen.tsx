@@ -10,6 +10,7 @@ import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { computeLastWalk, computeNextWalk, dailyWalkTimeline, isOverdue, nextWalkSelectionRefreshDelayMs, upcomingWalks, walkDateTime } from '../logic/nextWalk';
 import { isActiveWalk } from '../logic/walkLifecycle';
+import { activeSpontaneousHomeBlocks, groupActiveSpontaneousWalks } from '../logic/activeSpontaneousWalks';
 import { resolvedWalkDateContextLabel, walkDateContextLabel } from '../logic/walkDateContext';
  import { repository } from '../data';
 import { canRequestChangeForWalk, computeNextWalkCardActions, formatCompletedAtBadge } from '../logic/walkActions';
@@ -531,16 +532,26 @@ export function HomeScreen() {
     () => computeNextWalk(visibleWalks, new Date(), scheduleTimezone),
     [visibleWalks, minuteTick, scheduleTimezone]
   );
-  // Keep one visible row per dog when legacy duplicates exist. The duplicate
-  // admin review panel exposes every exact ID; home must not repeat cards.
-  const activeSpontaneousWalkGroups = useMemo(() => {
-    const groups = new Map<string, Walk[]>();
-    visibleWalks.filter((walk) => walk.isUnplanned && isActiveWalk(walk) && walk.id !== nextWalk?.id
-      && (actualFamilyRole === 'admin' || walk.actualWalkerUserId === currentUserId
-        || (!walk.actualWalkerUserId && walk.responsibleUserId === currentUserId)))
-      .forEach((walk) => groups.set(walk.dogId, [...(groups.get(walk.dogId) ?? []), walk]));
-    return [...groups.entries()].map(([dogId, walks]) => ({ dogId, walks }));
-  }, [visibleWalks, nextWalk?.id, actualFamilyRole, currentUserId]);
+  // P0 real-iPhone QA: exactly one Home block per dog for active spontaneous
+  // walks. Grouping runs over the FULL visible pool (including the walk in
+  // the main next-walk card) so a duplicate of that walk is still caught,
+  // repeated copies of one record collapse by id, and rows with a missing or
+  // unknown dogId share one unassigned group instead of fanning out. Every
+  // distinct record stays listed by exact id in the duplicate warning; the
+  // admin review panel remains the only place records are resolved.
+  const knownDogIds = useMemo(() => dogs.map((entry) => entry.id), [dogs]);
+  const activeSpontaneousWalkGroups = useMemo(
+    () => activeSpontaneousHomeBlocks(
+      groupActiveSpontaneousWalks(visibleWalks, {
+        familyId,
+        knownDogIds,
+        viewerUserId: currentUserId,
+        viewerIsAdmin: actualFamilyRole === 'admin',
+      }),
+      nextWalk?.id,
+    ),
+    [visibleWalks, familyId, knownDogIds, nextWalk?.id, actualFamilyRole, currentUserId]
+  );
   // Planned walks may be started from 30 minutes before their scheduled time.
   // Spontaneous walks keep their separate always-available flow.
   const nextWalkStartGate = useMemo(() => {
@@ -1154,33 +1165,6 @@ export function HomeScreen() {
           </Pressable>
         ) : null}
 
-        {activeSpontaneousWalkGroups.length > 0 ? (
-          <View style={{ paddingHorizontal: 16, paddingVertical: 8, gap: 8 }}>
-            {activeSpontaneousWalkGroups.map(({ dogId, walks: spontaneousWalks }) => spontaneousWalks.length > 1 ? (
-              <View key={`spontaneous-duplicate-${dogId}`} style={{ padding: 12, borderRadius: 12, backgroundColor: '#FFF4E5' }}>
-                <RtlText style={{ fontWeight: '700', marginBottom: 6 }}>נמצאו {spontaneousWalks.length} רשומות של טיול ספונטני פעיל · נדרשת בדיקת מנהל/ת</RtlText>
-                {spontaneousWalks.map((walk) => <RtlText key={walk.id} style={{ marginBottom: 4 }}>{walk.id} · {usersById[walk.responsibleUserId]?.name ?? 'בן משפחה'} · {walk.startedAt ?? walk.createdAt}</RtlText>)}
-                <RtlText>לא ניתן להתחיל טיול נוסף לכלב זה עד לסיום או לפתרון הרשומות הכפולות.</RtlText>
-              </View>
-            ) : spontaneousWalks.map((spontaneous) => (
-              <View key={spontaneous.id} style={{ padding: 12, borderRadius: 12, backgroundColor: '#F1F8F3' }}>
-                <RtlText style={{ fontWeight: '700', marginBottom: 6 }}>
-                  טיול ספונטני פעיל · {usersById[spontaneous.responsibleUserId]?.name ?? 'בן משפחה'}
-                </RtlText>
-                <RemoteGpsPanel
-                  walk={spontaneous}
-                  currentUserId={currentUserId}
-                  familyRole={actualFamilyRole}
-                  ready={!familyLoading && !scheduleLoading && Boolean(family)}
-                />
-                {(spontaneous.actualWalkerUserId ?? spontaneous.responsibleUserId) === currentUserId ? (
-                  <Button label="סיים טיול" onPress={() => setCompleteWalkId(spontaneous.id)} style={{ marginTop: 8 }} />
-                ) : null}
-              </View>
-            )))}
-          </View>
-        ) : null}
-
         <View ref={nextWalkCardRef} onLayout={measureNextWalkCard} collapsable={false} style={styles.nextWalkLift}>
           {nextWalk ? (
           <NextWalkCard
@@ -1272,6 +1256,46 @@ export function HomeScreen() {
         )}
         </View>
 
+
+        {/* Rendered BELOW the next-walk card on purpose: the scheduled walk
+            keeps its lifted position under the hero (its -34 lift would
+            otherwise overlap the last active card), and active spontaneous
+            walks can never push it down out of view. One block per dog. */}
+        {activeSpontaneousWalkGroups.length > 0 ? (
+          <View testID="home-active-spontaneous-walks" style={styles.activeSpontaneousSection}>
+            {activeSpontaneousWalkGroups.map((group) => group.duplicate ? (
+              <View key={`spontaneous-duplicate-${group.key}`} testID="home-active-spontaneous-duplicate" style={styles.activeSpontaneousDuplicate}>
+                <RtlText style={styles.activeSpontaneousTitle}>
+                  נמצאו {group.walks.length} רשומות של טיול ספונטני פעיל{group.dogId === null ? ' ללא שיוך כלב' : ''} · נדרשת בדיקת מנהל/ת
+                </RtlText>
+                {group.walks.map((walk) => (
+                  <RtlText key={walk.id} style={styles.activeSpontaneousAuditRow} selectable>
+                    {walk.id} · {usersById[walk.actualWalkerUserId ?? walk.responsibleUserId]?.name ?? 'בן משפחה'} · {walk.startedAt ?? walk.createdAt}{walk.id === nextWalk?.id ? ' · מוצג בכרטיס הראשי' : ''}
+                  </RtlText>
+                ))}
+                <RtlText style={styles.activeSpontaneousAuditNote}>לא ניתן להתחיל טיול נוסף או GPS מרחוק לכלב זה עד לסיום או לפתרון הרשומות הכפולות.</RtlText>
+              </View>
+            ) : (() => {
+              const spontaneous = group.walks[0];
+              return (
+                <View key={spontaneous.id} testID="home-active-spontaneous-card" style={styles.activeSpontaneousCard}>
+                  <RtlText style={styles.activeSpontaneousTitle}>
+                    טיול ספונטני פעיל · {usersById[spontaneous.actualWalkerUserId ?? spontaneous.responsibleUserId]?.name ?? 'בן משפחה'}
+                  </RtlText>
+                  <RemoteGpsPanel
+                    walk={spontaneous}
+                    currentUserId={currentUserId}
+                    familyRole={actualFamilyRole}
+                    ready={!familyLoading && !scheduleLoading && Boolean(family)}
+                  />
+                  {(spontaneous.actualWalkerUserId ?? spontaneous.responsibleUserId) === currentUserId ? (
+                    <Button label="סיים טיול" onPress={() => setCompleteWalkId(spontaneous.id)} style={{ marginTop: 8 }} />
+                  ) : null}
+                </View>
+              );
+            })())}
+          </View>
+        ) : null}
 
         {/* Real-device QA fix — an actionable swap/time-change request is
             urgent and must be visible the moment Home opens, without
@@ -1914,6 +1938,12 @@ const styles = StyleSheet.create({
   // Leaves the final card clear of the persistent bottom tab bar on phones
   // and in Safari/PWA, instead of letting it end underneath the navigation.
   content: { flexGrow: 1, paddingHorizontal: spacing.md, paddingTop: 0, gap: 7, paddingBottom: 96, width: '100%', backgroundColor: '#FBF8F3' },
+  activeSpontaneousSection: { gap: 8, paddingHorizontal: spacing.xs },
+  activeSpontaneousCard: { padding: 12, borderRadius: 12, backgroundColor: '#F1F8F3' },
+  activeSpontaneousDuplicate: { padding: 12, borderRadius: 12, backgroundColor: '#FFF4E5', borderWidth: 1, borderColor: '#F3C98B' },
+  activeSpontaneousTitle: { fontWeight: '700', marginBottom: 6, textAlign: 'right' },
+  activeSpontaneousAuditRow: { fontSize: 12, lineHeight: 17, marginBottom: 4, textAlign: 'right', color: colors.textSecondary },
+  activeSpontaneousAuditNote: { fontSize: 13, lineHeight: 18, textAlign: 'right' },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: 0, gap: 7 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: 10, paddingHorizontal: 10 },
   // Item 6 (mobile polish): -42 (was -48) — the hero above is now 20px
