@@ -179,6 +179,14 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('setCompleteWalkId(nextWalk.id)');
   });
 
+  it('shows one grouped warning instead of repeated spontaneous cards and lets the active walker finish a single walk', () => {
+    expect(home).toContain('const activeSpontaneousWalkGroups = useMemo');
+    expect(home).toContain('spontaneousWalks.length > 1');
+    expect(home).toContain('נדרשת בדיקת מנהל/ת');
+    expect(home).toContain('(spontaneous.actualWalkerUserId ?? spontaneous.responsibleUserId) === currentUserId');
+    expect(home).toContain('setCompleteWalkId(spontaneous.id)');
+  });
+
   it('keeps only the approved completed-walk entry instead of a redundant spontaneous-start CTA', () => {
     expect(home).toContain('הוסף טיול');
     expect(home).toContain('setAddUnplannedVisible(true)');

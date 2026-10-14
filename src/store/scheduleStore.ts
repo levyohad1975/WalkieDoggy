@@ -28,6 +28,7 @@ import { adminRescheduleWalk, adminSwapWalks } from '../lib/walkAdmin';
 import { appendRawDiagnostic, friendlyErrorMessage, rawMessageOf } from '../lib/errorMessages';
 import { useGpsStore } from './gpsStore';
 import { completeWalkLifecycleOperation, getWalkLifecycleOperationId } from '../data/walkLifecycleOperationIds';
+import { isActiveWalk } from '../logic/walkLifecycle';
 // TEMPORARY DIAGNOSTIC INSTRUMENTATION — see perfTrace.ts's own doc
 // comment. Remove this import and every perfMark call in addRule()/
 // updateRule() once the real ~10s Schedule-save bottleneck is confirmed
@@ -1290,6 +1291,10 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     // A second tap can arrive before the first async save has created its
     // in-progress row. Keep this client-side guard until the action settles.
     if (get().isStartingUnplannedWalk) return false;
+    if (get().walks.some((walk) => walk.familyId === familyId && walk.dogId === dogId && isActiveWalk(walk))) {
+      set({ actionError: 'כבר יש טיול פעיל לכלב הזה. סיימו אותו לפני שמתחילים טיול נוסף.' });
+      return false;
+    }
     set({ isStartingUnplannedWalk: true });
     try {
       const now = new Date().toISOString();

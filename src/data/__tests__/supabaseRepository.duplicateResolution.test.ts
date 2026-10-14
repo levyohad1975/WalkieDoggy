@@ -6,7 +6,8 @@ const sessionId = 'ae7b8033-7abe-4ea7-95d9-c6f9ea510fe3';
 function makeClient() {
   const calls: Array<{ table: string; method: string; value?: unknown }> = [];
   const walkRows = [{
-    id: walkId, family_id: 'family-1', dog_id: 'dog-1', status: 'in_progress',
+    id: walkId, family_id: 'family-1', dog_id: 'dog-1', status: 'in_progress', is_unplanned: true,
+    created_at: '2026-10-13T09:59:00Z',
     started_at: '2026-10-13T10:00:00Z', started_by_user_id: 'profile-1',
     actual_walker_user_id: 'profile-2', responsible_user_id: 'profile-1', duplicate_resolution_group_id: null,
   }];
@@ -22,7 +23,11 @@ function makeClient() {
     from: (table: string) => {
       const builder: any = {
         select: (columns: string) => { calls.push({ table, method: 'select', value: columns }); return builder; },
-        eq: (column: string, value: unknown) => { calls.push({ table, method: `eq:${column}`, value }); return builder; },
+        eq: (column: string, value: unknown) => {
+          calls.push({ table, method: `eq:${column}`, value });
+          return table === 'walks' && column === 'status'
+            ? Promise.resolve({ data: walkRows, error: null }) : builder;
+        },
         in: (column: string, value: unknown) => {
           calls.push({ table, method: `in:${column}`, value });
           return Promise.resolve({ data: table === 'walks' ? walkRows : table === 'walk_gps_sessions' ? gpsRows : auditRows, error: null });
@@ -41,8 +46,9 @@ describe('SupabaseRepository duplicate resolution', () => {
     const { client, calls } = makeClient();
     const repo = new SupabaseRepository(client);
     await expect(repo.getDuplicateActiveWalkReview!('family-1', [walkId])).resolves.toEqual([{
-      walkId, familyId: 'family-1', dogId: 'dog-1', status: 'in_progress', startedAt: '2026-10-13T10:00:00Z',
-      startedByUserId: 'profile-1', actualWalkerUserId: 'profile-2', responsibleUserId: 'profile-1',
+      walkId, familyId: 'family-1', dogId: 'dog-1', status: 'in_progress', isUnplanned: true,
+      createdAt: '2026-10-13T09:59:00Z', startedAt: '2026-10-13T10:00:00Z',
+      startedByUserId: 'profile-1', actualWalkerUserId: undefined, responsibleUserId: 'profile-1',
       duplicateResolutionGroupId: undefined,
       auditEntries: [{ id: 'audit-1', action: 'spontaneous_walk_added', actorUserId: 'profile-1', createdAt: '2026-10-13T10:00:00Z', metadata: { date: '2026-10-13', time: '13:00' } }],
       gpsSessions: [{ id: sessionId, pointCount: 4, distanceMeters: 83.5, startedAt: '2026-10-13T10:01:00Z', endedAt: '2026-10-13T10:03:00Z', createdByUserId: 'profile-2' }],
@@ -56,6 +62,16 @@ describe('SupabaseRepository duplicate resolution', () => {
     expect(calls.find((call) => call.table === 'walk_gps_sessions' && call.method === 'select')?.value).not.toContain('route_points');
     expect(calls.find((call) => call.table === 'audit_log' && call.method === 'select')?.value).toBe('id,target_id,action,actor_user_id,created_at,metadata');
     expect(calls).toHaveLength(11);
+  });
+
+  it('enumerates all current-family active walks on v12-only Staging without selecting v1.1 columns', async () => {
+    const { client, calls } = makeClient();
+    const repo = new SupabaseRepository(client);
+    await expect(repo.getDuplicateActiveWalkReview!('family-1', [])).resolves.toHaveLength(1);
+    expect(calls).toContainEqual({ table: 'walks', method: 'eq:status', value: 'in_progress' });
+    const selectedWalkColumns = calls.find((call) => call.table === 'walks' && call.method === 'select')?.value as string;
+    expect(selectedWalkColumns).toContain('duplicate_resolution_group_id');
+    expect(selectedWalkColumns).not.toContain('actual_walker_user_id');
   });
 
   it('calls only the authenticated Supabase RPC with the exact no-canonical request', async () => {

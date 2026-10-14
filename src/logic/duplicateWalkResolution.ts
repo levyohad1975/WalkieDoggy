@@ -1,23 +1,48 @@
 import type { DuplicateActiveWalkReviewRecord } from '../data/repository';
 
-export const CONFIRMED_STAGING_DUPLICATE_WALK_IDS = [
-  'da94d830-4a1d-4044-b0e3-e1f3c4f59736',
-  'f4c94498-2cfc-4ff0-b5e8-daaa9ed67847',
-  'a40f80ad-b434-4603-a2b8-bea6f0fbcd00',
-] as const;
-
 export const TEST_DUPLICATE_RESOLUTION_RATIONALE =
-  'Confirmed real-iPhone test-generated duplicate active starts; no canonical walk selected by product owner.';
+  'Family Admin confirmed the selected test-generated duplicate active walks; no canonical walk selected.';
+
+export interface DuplicateActiveWalkGroup {
+  familyId: string;
+  dogId: string;
+  records: DuplicateActiveWalkReviewRecord[];
+  walkIds: string[];
+}
+
+/** Group only the current family's unresolved active rows, by dog. */
+export function getDuplicateActiveWalkGroups(
+  records: DuplicateActiveWalkReviewRecord[],
+  familyId: string,
+): DuplicateActiveWalkGroup[] {
+  const byDog = new Map<string, DuplicateActiveWalkReviewRecord[]>();
+  for (const record of records) {
+    if (record.familyId !== familyId || record.status !== 'in_progress' || record.duplicateResolutionGroupId) continue;
+    const group = byDog.get(record.dogId) ?? [];
+    group.push(record);
+    byDog.set(record.dogId, group);
+  }
+  return [...byDog.entries()]
+    .filter(([, group]) => group.length > 1)
+    .map(([dogId, group]) => ({
+      familyId,
+      dogId,
+      records: [...group].sort((a, b) => (a.createdAt ?? a.startedAt ?? '').localeCompare(b.createdAt ?? b.startedAt ?? '') || a.walkId.localeCompare(b.walkId)),
+      walkIds: group.map((record) => record.walkId).sort(),
+    }))
+    .sort((a, b) => a.dogId.localeCompare(b.dogId));
+}
 
 export type DuplicateResolutionReadiness = 'ready' | 'missing_records' | 'already_resolved' | 'invalid_group';
 
 export function getDuplicateResolutionReadiness(
   records: DuplicateActiveWalkReviewRecord[],
   familyId: string,
+  walkIds: string[],
 ): DuplicateResolutionReadiness {
   const byId = new Map(records.map((record) => [record.walkId, record]));
-  if (CONFIRMED_STAGING_DUPLICATE_WALK_IDS.some((id) => !byId.has(id))) return 'missing_records';
-  const selected = CONFIRMED_STAGING_DUPLICATE_WALK_IDS.map((id) => byId.get(id)!);
+  if (walkIds.length < 2 || new Set(walkIds).size !== walkIds.length || walkIds.some((id) => !byId.has(id))) return 'missing_records';
+  const selected = walkIds.map((id) => byId.get(id)!);
   if (selected.some((record) => record.familyId !== familyId || record.status !== 'in_progress'
       || record.duplicateResolutionGroupId)) return 'already_resolved';
   if (new Set(selected.map((record) => record.dogId)).size !== 1) return 'invalid_group';

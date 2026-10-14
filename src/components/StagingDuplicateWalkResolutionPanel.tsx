@@ -9,7 +9,7 @@ import {
 } from '../data/walkLifecycleOperationIds';
 import {
   canOpenDuplicateResolution,
-  CONFIRMED_STAGING_DUPLICATE_WALK_IDS,
+  getDuplicateActiveWalkGroups,
   getDuplicateResolutionErrorKind,
   getDuplicateResolutionErrorMessage,
   getDuplicateResolutionReviewErrorMessage,
@@ -35,13 +35,6 @@ function formatTimestamp(value: string | undefined, timeZone: string): string {
   }
 }
 
-function roleStatus(status: string): string {
-  if (status === 'in_progress') return 'פעיל';
-  if (status === 'done') return 'הסתיים';
-  if (status === 'skipped') return 'דולג';
-  return status;
-}
-
 function auditDetails(metadata: Record<string, unknown>): string {
   const details = [
     typeof metadata.date === 'string' ? `תאריך ${metadata.date}` : null,
@@ -49,6 +42,10 @@ function auditDetails(metadata: Record<string, unknown>): string {
     typeof metadata.responsible_user_id === 'string' ? `אחראי/ת ${metadata.responsible_user_id}` : null,
   ].filter((value): value is string => Boolean(value));
   return details.join(' · ') || 'ללא פרטים נוספים';
+}
+
+function operationScope(familyId: string, walkIds: string[]): string {
+  return `${familyId}:${[...walkIds].sort().join(',')}`;
 }
 
 export function StagingDuplicateWalkResolutionPanel() {
@@ -75,17 +72,26 @@ export function StagingDuplicateWalkResolutionPanel() {
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
   const [outcomeUncertain, setOutcomeUncertain] = useState(false);
-  const [retryOperationExists, setRetryOperationExists] = useState(false);
+  const [retryScopes, setRetryScopes] = useState<string[]>([]);
+  const [confirmDogId, setConfirmDogId] = useState('');
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [checked, setChecked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [resolvedGroupId, setResolvedGroupId] = useState('');
   const busyRef = useRef(false);
 
-  const operationScope = useMemo(() => {
-    if (!familyId) return '';
-    return `${familyId}:${[...CONFIRMED_STAGING_DUPLICATE_WALK_IDS].sort().join(',')}`;
-  }, [familyId]);
+  const groups = useMemo(
+    () => familyId ? getDuplicateActiveWalkGroups(records, familyId) : [],
+    [records, familyId],
+  );
+  const confirmGroup = groups.find((group) => group.dogId === confirmDogId);
+  const confirmWalkIds = confirmGroup?.walkIds ?? [];
+  const confirmScope = familyId && confirmWalkIds.length ? operationScope(familyId, confirmWalkIds) : '';
+  const readiness = familyId && confirmGroup
+    ? getDuplicateResolutionReadiness(records, familyId, confirmGroup.walkIds)
+    : 'missing_records';
+  const mayRetrySameOperation = Boolean(confirmScope && retryScopes.includes(confirmScope));
+  const maySubmit = readiness === 'ready' || mayRetrySameOperation;
 
   const refresh = useCallback(async () => {
     if (!allowed || !familyId || !profileId) {
@@ -97,79 +103,67 @@ export function StagingDuplicateWalkResolutionPanel() {
     setLoadError('');
     try {
       if (!repository.getDuplicateActiveWalkReview) throw new Error('Staging duplicate review is not configured');
-      const [reviewRecords, existingId] = await Promise.all([
-        repository.getDuplicateActiveWalkReview(familyId, [...CONFIRMED_STAGING_DUPLICATE_WALK_IDS]),
-        getExistingWalkLifecycleOperationId(ACTION, operationScope, profileId),
-      ]);
+      const reviewRecords = await repository.getDuplicateActiveWalkReview(familyId, []);
+      const reviewGroups = getDuplicateActiveWalkGroups(reviewRecords, familyId);
+      const existingScopes = await Promise.all(reviewGroups.map(async (group) => {
+        const scope = operationScope(familyId, group.walkIds);
+        const existingId = await getExistingWalkLifecycleOperationId(ACTION, scope, profileId);
+        return existingId ? scope : null;
+      }));
       setRecords(reviewRecords);
-      setRetryOperationExists(Boolean(existingId));
+      setRetryScopes(existingScopes.filter((scope): scope is string => Boolean(scope)));
     } catch (error) {
       setRecords([]);
+      setRetryScopes([]);
       setLoadError(getDuplicateResolutionReviewErrorMessage(error));
     } finally {
       setLoading(false);
     }
-  }, [allowed, familyId, profileId, operationScope]);
+  }, [allowed, familyId, profileId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  const byId = useMemo(() => new Map(records.map((record) => [record.walkId, record])), [records]);
-  const readiness = familyId ? getDuplicateResolutionReadiness(records, familyId) : 'missing_records';
-  const mayRetrySameOperation = retryOperationExists && readiness !== 'ready';
-  const mayStartOrRetry = readiness === 'ready' || mayRetrySameOperation;
-
   const submitResolution = useCallback(async () => {
-    if (busyRef.current || !checked || !allowed || !familyId || !profileId || !mayStartOrRetry) return;
+    if (busyRef.current || !checked || !allowed || !familyId || !profileId || !confirmGroup || !maySubmit) return;
     busyRef.current = true;
     setBusy(true);
     setActionError('');
     setOutcomeUncertain(false);
     try {
-      // The same exact request scope and actor always reuse the persisted UUID.
-      // Persistence failure blocks the RPC so a later retry cannot silently
-      // acquire a different operation id.
-      const operationId = await getWalkLifecycleOperationId(ACTION, operationScope, profileId);
+      // Persist and reuse one UUID for this exact family + sorted walk set + actor.
+      const scope = operationScope(familyId, confirmGroup.walkIds);
+      const operationId = await getWalkLifecycleOperationId(ACTION, scope, profileId);
       if (!repository.resolveDuplicateActiveWalksV12) throw new Error('Staging duplicate resolution RPC is not configured');
       const groupId = await repository.resolveDuplicateActiveWalksV12({
-        walkIds: [...CONFIRMED_STAGING_DUPLICATE_WALK_IDS],
+        walkIds: [...confirmGroup.walkIds],
         canonicalWalkId: null,
         rationale: TEST_DUPLICATE_RESOLUTION_RATIONALE,
         operationId,
       });
       setResolvedGroupId(groupId);
-      await completeWalkLifecycleOperation(ACTION, operationScope, profileId);
-      setRetryOperationExists(false);
+      await completeWalkLifecycleOperation(ACTION, scope, profileId);
+      setRetryScopes((current) => current.filter((candidate) => candidate !== scope));
       setConfirmVisible(false);
       setChecked(false);
+      setConfirmDogId('');
       await refresh();
     } catch (error) {
       const errorKind = getDuplicateResolutionErrorKind(error);
       setOutcomeUncertain(errorKind === 'network' && !/no resolution request was sent/i.test(String((error as { message?: string })?.message ?? error)));
       setActionError(getDuplicateResolutionErrorMessage(error));
-      // Do not clear the persisted operation UUID on any failure. If the
-      // database committed but the response was lost, the explicit retry is
-      // resolved by the server's idempotency record.
-      setRetryOperationExists(true);
+      if (confirmScope) setRetryScopes((current) => current.includes(confirmScope) ? current : [...current, confirmScope]);
     } finally {
       busyRef.current = false;
       setBusy(false);
     }
-  }, [allowed, familyId, profileId, checked, mayStartOrRetry, operationScope, refresh]);
+  }, [allowed, familyId, profileId, checked, confirmGroup, maySubmit, confirmScope, refresh]);
 
   if (!allowed) return null;
 
-  const readinessLabel = readiness === 'ready'
-    ? 'שלוש הרשומות הפעילות אומתו מאותו כלב ובאותה משפחה.'
-    : readiness === 'missing_records'
-      ? 'לא ניתן לאמת כעת את כל שלוש הרשומות במשפחה הפעילה.'
-      : readiness === 'already_resolved'
-        ? 'לפחות אחת מהרשומות כבר אינה פתיחה פעילה לא פתורה.'
-        : 'הרשומות אינן שייכות לאותו כלב; הפעולה חסומה.';
-
   return (
     <View style={styles.panel}>
-      <RtlText style={styles.title} accessibilityRole="header">פתיחות בדיקה כפולות · Staging</RtlText>
-      <RtlText style={styles.body}>כלי מוגבל למנהל/ת משפחה בסביבת Supabase Staging המאושרת. הרשומות המקוריות ונתוני ה-GPS נשמרים.</RtlText>
+      <RtlText style={styles.title} accessibilityRole="header">בדיקת טיולים פעילים כפולים · Staging</RtlText>
+      <RtlText style={styles.body}>הכלי קורא את כל הטיולים הפעילים במשפחה הנוכחית. כל קבוצה מוצגת לפי כלב, ורק מנהל/ת משפחה יכול/ה לאשר פתרון לא־הרסני. ההיסטוריה ורשומות ה-GPS נשמרות.</RtlText>
 
       {loading ? <ActivityIndicator accessibilityLabel="טוען נתוני בדיקה מהשרת" color={colors.primary} /> : null}
       {loadError ? (
@@ -181,19 +175,23 @@ export function StagingDuplicateWalkResolutionPanel() {
 
       {!loading && !loadError ? (
         <>
-          <RtlText style={styles.statusText}>{readinessLabel}</RtlText>
-          {CONFIRMED_STAGING_DUPLICATE_WALK_IDS.map((walkId) => {
-            const record = byId.get(walkId);
+          {groups.length === 0 ? (
+            <RtlText style={styles.statusText}>לא נמצאו במשפחה זו קבוצות של יותר מטיול פעיל לא פתור אחד לאותו כלב.</RtlText>
+          ) : (
+            <RtlText style={styles.statusText}>נמצאו {groups.length} קבוצות פעילות לבדיקה. לא יבוצע שינוי ללא אישור מפורש של כל הקבוצה המוצגת.</RtlText>
+          )}
+          {groups.map((group) => {
+            const scope = familyId ? operationScope(familyId, group.walkIds) : '';
+            const retryExists = retryScopes.includes(scope);
             return (
-              <View key={walkId} style={styles.record}>
-                <RtlText style={styles.recordHeading}>טיול {walkId}</RtlText>
-                {record ? (
-                  <>
-                    <RtlText style={styles.detail}>משפחה: {record.familyId} · כלב: {record.dogId} · סטטוס: {roleStatus(record.status)}</RtlText>
-                    <RtlText style={styles.detail}>התחלה: {formatTimestamp(record.startedAt, authFamilyTimezone)}</RtlText>
-                    <RtlText style={styles.detail}>פותח/ת: {record.startedByUserId ?? 'לא נשמר'} · הולך/ת בפועל: {record.actualWalkerUserId ?? 'לא נשמר'}</RtlText>
-                    <RtlText style={styles.detail}>אחראי/ת מתוזמן/ת: {record.responsibleUserId}</RtlText>
-                    <RtlText style={styles.detail}>קבוצת ביקורת קיימת: {record.duplicateResolutionGroupId ?? 'אין'}</RtlText>
+              <View key={group.dogId} style={styles.group}>
+                <RtlText style={styles.groupHeading}>כלב {group.dogId} · {group.records.length} טיולים פעילים לא פתורים</RtlText>
+                {group.records.map((record) => (
+                  <View key={record.walkId} style={styles.record}>
+                    <RtlText style={styles.recordHeading}>טיול {record.walkId}</RtlText>
+                    <RtlText style={styles.detail}>משפחה: {record.familyId} · כלב: {record.dogId} · סוג: {record.isUnplanned ? 'ספונטני' : 'מתוזמן'}{record.scheduleEntryId ? ` · מופע ${record.scheduleEntryId}` : ''}</RtlText>
+                    <RtlText style={styles.detail}>נוצר: {formatTimestamp(record.createdAt, authFamilyTimezone)} · התחיל: {formatTimestamp(record.startedAt, authFamilyTimezone)}</RtlText>
+                    <RtlText style={styles.detail}>פותח/ת: {record.startedByUserId ?? 'לא נשמר'} · אחראי/ת: {record.responsibleUserId}</RtlText>
                     {record.auditEntries.length ? record.auditEntries.map((event) => (
                       <RtlText key={event.id} style={styles.detail}>
                         יומן ביקורת: {event.action} · {formatTimestamp(event.createdAt, authFamilyTimezone)} · מבצע/ת {event.actorUserId ?? 'לא נשמר'} · {auditDetails(event.metadata)}
@@ -204,8 +202,13 @@ export function StagingDuplicateWalkResolutionPanel() {
                         GPS {session.id} · {session.pointCount} נקודות · {session.distanceMeters == null ? 'מרחק לא נשמר' : `${Math.round(session.distanceMeters)} מ׳`} · {formatTimestamp(session.startedAt, authFamilyTimezone)}–{formatTimestamp(session.endedAt, authFamilyTimezone)} · יוצר/ת {session.createdByUserId ?? 'לא נשמר'}
                       </RtlText>
                     )) : <RtlText style={styles.detail}>לא נמצאה רשומת GPS מקושרת.</RtlText>}
-                  </>
-                ) : <RtlText style={styles.detail}>הרשומה לא נמצאה במשפחה הפעילה.</RtlText>}
+                  </View>
+                ))}
+                <ActionButton
+                  title={retryExists ? 'בדיקת / ניסיון חוזר בטוח לקבוצה' : `סקירה ואישור של ${group.records.length} רשומות`}
+                  onPress={() => { setConfirmDogId(group.dogId); setChecked(false); setActionError(''); setConfirmVisible(true); }}
+                  disabled={busy}
+                />
               </View>
             );
           })}
@@ -213,18 +216,10 @@ export function StagingDuplicateWalkResolutionPanel() {
           {actionError ? (
             <View style={styles.messageBox}>
               <RtlText style={styles.errorText}>{actionError}</RtlText>
-              {outcomeUncertain ? <RtlText style={styles.body}>הפעולה לא תישלח עם מזהה חדש. ניסיון חוזר ישתמש באותו UUID ויחזיר את קבוצת הביקורת הקיימת אם השרת כבר השלים אותה.</RtlText> : null}
+              {outcomeUncertain ? <RtlText style={styles.body}>לא ייווצר מזהה פעולה חדש. ניסיון חוזר לאותה קבוצת הליכות ישתמש באותו UUID; רענון הנתונים יבדוק אם השרת כבר השלים את הפעולה.</RtlText> : null}
             </View>
           ) : null}
-          {resolvedGroupId ? <RtlText style={styles.successText}>נשמרה קבוצת ביקורת {resolvedGroupId}. היסטוריית ההליכות וה-GPS נשארה שמורה.</RtlText> : null}
-
-          {mayStartOrRetry ? (
-            <ActionButton
-              title={retryOperationExists ? 'בדיקה / ניסיון חוזר בטוח' : 'סקירה ואישור'}
-              onPress={() => { setChecked(false); setConfirmVisible(true); }}
-              disabled={busy}
-            />
-          ) : null}
+          {resolvedGroupId ? <RtlText style={styles.successText}>נשמרה קבוצת ביקורת {resolvedGroupId}. הסטטוסים והיסטוריית ה-GPS המקוריים נשמרו.</RtlText> : null}
           <ActionButton title="רענון נתונים" onPress={() => void refresh()} disabled={busy || loading} secondary />
         </>
       ) : null}
@@ -232,11 +227,11 @@ export function StagingDuplicateWalkResolutionPanel() {
       <Modal visible={confirmVisible} transparent animationType="fade" onRequestClose={() => { if (!busy) setConfirmVisible(false); }}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <RtlText style={styles.modalTitle} accessibilityRole="header">אישור פתרון של שלוש כפילויות</RtlText>
-            <RtlText style={styles.body}>השרת יסמן את שלוש הפתיחות ככפילויות פתורות, ללא בחירת טיול קנוני. הסטטוסים, הזמנים, המבצעים ורשומות ה-GPS המקוריות יישמרו.</RtlText>
+            <RtlText style={styles.modalTitle} accessibilityRole="header">אישור פתרון של {confirmWalkIds.length} כפילויות</RtlText>
+            <RtlText style={styles.body}>השרת יסמן את הרשומות המדויקות שלהלן ככפילויות פתורות, ללא טיול קנוני. הסטטוס, הזמנים, השיוך ורשומות ה-GPS יישמרו.</RtlText>
             <ScrollView style={styles.modalList}>
-              {CONFIRMED_STAGING_DUPLICATE_WALK_IDS.map((id) => (
-                <RtlText key={id} style={styles.detail}>{id}{byId.has(id) ? ` · ${formatTimestamp(byId.get(id)?.startedAt, authFamilyTimezone)}` : ' · לא נמצא בבדיקה'}</RtlText>
+              {confirmGroup?.records.map((record) => (
+                <RtlText key={record.walkId} style={styles.detail}>{record.walkId} · {formatTimestamp(record.createdAt ?? record.startedAt, authFamilyTimezone)}</RtlText>
               ))}
             </ScrollView>
             <Pressable
@@ -246,11 +241,11 @@ export function StagingDuplicateWalkResolutionPanel() {
               style={styles.checkboxRow}
             >
               <View style={[styles.checkbox, checked && styles.checkboxChecked]}>{checked ? <RtlText style={styles.checkmark}>✓</RtlText> : null}</View>
-              <RtlText style={styles.checkboxLabel}>אני מאשר/ת שכל שלוש הרשומות הן פתיחות בדיקה כפולות, ושלא יישאר טיול קנוני פעיל.</RtlText>
+              <RtlText style={styles.checkboxLabel}>אני מאשר/ת שכל {confirmWalkIds.length} הרשומות המוצגות הן טיולי בדיקה כפולים, ושלא יישאר טיול קנוני פעיל.</RtlText>
             </Pressable>
             <View style={styles.modalActions}>
               <ActionButton title="ביטול" onPress={() => setConfirmVisible(false)} disabled={busy} secondary />
-              <ActionButton title={busy ? 'שולח בקשה…' : 'אישור מנהל/ת'} onPress={() => void submitResolution()} disabled={!checked || busy || !mayStartOrRetry} />
+              <ActionButton title={busy ? 'שולח בקשה…' : 'אישור מנהל/ת'} onPress={() => void submitResolution()} disabled={!checked || busy || !maySubmit} />
             </View>
             {busy ? <ActivityIndicator accessibilityLabel="ממתין לאישור השרת" color={colors.primary} /> : null}
           </View>
@@ -279,7 +274,9 @@ const styles = StyleSheet.create({
   title: { color: colors.textPrimary, fontSize: 17, fontWeight: '800', textAlign: 'right' },
   body: { color: colors.textSecondary, fontSize: 13, lineHeight: 20, textAlign: 'right' },
   statusText: { color: colors.textPrimary, fontSize: 13, lineHeight: 20, fontWeight: '700', textAlign: 'right' },
-  record: { padding: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 10, gap: 5 },
+  group: { padding: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 10, gap: 8 },
+  groupHeading: { color: colors.textPrimary, fontSize: 13, fontWeight: '800', textAlign: 'right' },
+  record: { padding: 10, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, borderRadius: 10, gap: 5 },
   recordHeading: { color: colors.textPrimary, fontSize: 12, fontWeight: '800', textAlign: 'right' },
   detail: { color: colors.textSecondary, fontSize: 12, lineHeight: 18, textAlign: 'right' },
   messageBox: { padding: 10, borderRadius: 10, backgroundColor: colors.dangerSoft, gap: 8 },

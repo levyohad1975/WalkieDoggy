@@ -764,10 +764,15 @@ export class SupabaseRepository implements Repository {
   }
 
   async getDuplicateActiveWalkReview(familyId: string, walkIds: string[]): Promise<DuplicateActiveWalkReviewRecord[]> {
-    if (walkIds.length === 0) return [];
-    const { data: walks, error: walkError } = await this.client.from('walks')
-      .select('id,family_id,dog_id,status,started_at,started_by_user_id,actual_walker_user_id,responsible_user_id,duplicate_resolution_group_id')
-      .eq('family_id', familyId).in('id', walkIds);
+    let walkQuery = this.client.from('walks')
+      // Keep this compatible with v12-only Staging: actual_walker_user_id is
+      // introduced by v1.1, which must wait until duplicate review succeeds.
+      .select('id,family_id,dog_id,schedule_entry_id,is_unplanned,status,created_at,started_at,started_by_user_id,responsible_user_id,duplicate_resolution_group_id')
+      .eq('family_id', familyId);
+    walkQuery = walkIds.length > 0
+      ? walkQuery.in('id', walkIds)
+      : walkQuery.eq('status', 'in_progress');
+    const { data: walks, error: walkError } = await walkQuery;
     if (walkError) throw walkError;
     const rows = walks ?? [];
     if (rows.length === 0) return [];
@@ -808,16 +813,22 @@ export class SupabaseRepository implements Repository {
       auditByWalk.set(event.target_id, list);
     }
     const rowsById = new Map<string, any>(rows.map((row: any) => [row.id, row]));
-    return walkIds.flatMap((walkId) => {
+    const requestedIds = walkIds.length > 0 ? walkIds : rows.map((row: any) => row.id);
+    return requestedIds.flatMap((walkId) => {
       const row = rowsById.get(walkId);
       return row ? [{
         walkId: row.id,
         familyId: row.family_id,
         dogId: row.dog_id,
+        scheduleEntryId: row.schedule_entry_id ?? undefined,
+        isUnplanned: row.is_unplanned ?? undefined,
         status: row.status,
+        createdAt: row.created_at ?? undefined,
         startedAt: row.started_at ?? undefined,
         startedByUserId: row.started_by_user_id ?? undefined,
-        actualWalkerUserId: row.actual_walker_user_id ?? undefined,
+        // The actual-walker field is intentionally absent from the read
+        // until v1.1 is installed; show the persisted actor/assignee instead.
+        actualWalkerUserId: undefined,
         responsibleUserId: row.responsible_user_id,
         duplicateResolutionGroupId: row.duplicate_resolution_group_id ?? undefined,
         auditEntries: auditByWalk.get(row.id) ?? [],

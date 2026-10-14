@@ -42,7 +42,10 @@ export interface DuplicateActiveWalkReviewRecord {
   walkId: string;
   familyId: string;
   dogId: string;
+  scheduleEntryId?: string;
+  isUnplanned?: boolean;
   status: string;
+  createdAt?: string;
   startedAt?: string;
   startedByUserId?: string;
   actualWalkerUserId?: string;
@@ -190,7 +193,7 @@ export interface Repository {
   getWalks(familyId: string): Promise<Walk[]>;
   /** Family-admin-only audit view of non-destructive duplicate-start resolutions. */
   getWalkDuplicateResolutionAudit?(familyId: string): Promise<WalkDuplicateResolutionAudit[]>;
-  /** Online, read-only, exact-ID review query; never returns stored route coordinates. */
+  /** Online, read-only review of exact IDs, or all current-family active rows when walkIds is empty; never returns route coordinates. */
   getDuplicateActiveWalkReview?(familyId: string, walkIds: string[]): Promise<DuplicateActiveWalkReviewRecord[]>;
   /** Direct authenticated RPC only; intentionally never enters the offline SyncQueue. */
   resolveDuplicateActiveWalksV12?(request: ResolveDuplicateActiveWalksRequest): Promise<string>;

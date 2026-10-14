@@ -531,11 +531,16 @@ export function HomeScreen() {
     () => computeNextWalk(visibleWalks, new Date(), scheduleTimezone),
     [visibleWalks, minuteTick, scheduleTimezone]
   );
-  // Active spontaneous walks may coexist with a planned next-walk card.
-  const activeSpontaneousWalks = useMemo(
-    () => visibleWalks.filter((w) => w.isUnplanned && isActiveWalk(w) && w.id !== nextWalk?.id),
-    [visibleWalks, nextWalk?.id]
-  );
+  // Keep one visible row per dog when legacy duplicates exist. The duplicate
+  // admin review panel exposes every exact ID; home must not repeat cards.
+  const activeSpontaneousWalkGroups = useMemo(() => {
+    const groups = new Map<string, Walk[]>();
+    visibleWalks.filter((walk) => walk.isUnplanned && isActiveWalk(walk) && walk.id !== nextWalk?.id
+      && (actualFamilyRole === 'admin' || walk.actualWalkerUserId === currentUserId
+        || (!walk.actualWalkerUserId && walk.responsibleUserId === currentUserId)))
+      .forEach((walk) => groups.set(walk.dogId, [...(groups.get(walk.dogId) ?? []), walk]));
+    return [...groups.entries()].map(([dogId, walks]) => ({ dogId, walks }));
+  }, [visibleWalks, nextWalk?.id, actualFamilyRole, currentUserId]);
   // Planned walks may be started from 30 minutes before their scheduled time.
   // Spontaneous walks keep their separate always-available flow.
   const nextWalkStartGate = useMemo(() => {
@@ -1149,9 +1154,15 @@ export function HomeScreen() {
           </Pressable>
         ) : null}
 
-        {actualFamilyRole === 'admin' && activeSpontaneousWalks.length > 0 ? (
+        {activeSpontaneousWalkGroups.length > 0 ? (
           <View style={{ paddingHorizontal: 16, paddingVertical: 8, gap: 8 }}>
-            {activeSpontaneousWalks.map((spontaneous) => (
+            {activeSpontaneousWalkGroups.map(({ dogId, walks: spontaneousWalks }) => spontaneousWalks.length > 1 ? (
+              <View key={`spontaneous-duplicate-${dogId}`} style={{ padding: 12, borderRadius: 12, backgroundColor: '#FFF4E5' }}>
+                <RtlText style={{ fontWeight: '700', marginBottom: 6 }}>נמצאו {spontaneousWalks.length} רשומות של טיול ספונטני פעיל · נדרשת בדיקת מנהל/ת</RtlText>
+                {spontaneousWalks.map((walk) => <RtlText key={walk.id} style={{ marginBottom: 4 }}>{walk.id} · {usersById[walk.responsibleUserId]?.name ?? 'בן משפחה'} · {walk.startedAt ?? walk.createdAt}</RtlText>)}
+                <RtlText>לא ניתן להתחיל טיול נוסף לכלב זה עד לסיום או לפתרון הרשומות הכפולות.</RtlText>
+              </View>
+            ) : spontaneousWalks.map((spontaneous) => (
               <View key={spontaneous.id} style={{ padding: 12, borderRadius: 12, backgroundColor: '#F1F8F3' }}>
                 <RtlText style={{ fontWeight: '700', marginBottom: 6 }}>
                   טיול ספונטני פעיל · {usersById[spontaneous.responsibleUserId]?.name ?? 'בן משפחה'}
@@ -1162,8 +1173,11 @@ export function HomeScreen() {
                   familyRole={actualFamilyRole}
                   ready={!familyLoading && !scheduleLoading && Boolean(family)}
                 />
+                {(spontaneous.actualWalkerUserId ?? spontaneous.responsibleUserId) === currentUserId ? (
+                  <Button label="סיים טיול" onPress={() => setCompleteWalkId(spontaneous.id)} style={{ marginTop: 8 }} />
+                ) : null}
               </View>
-            ))}
+            )))}
           </View>
         ) : null}
 
