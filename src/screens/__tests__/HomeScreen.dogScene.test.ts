@@ -26,7 +26,8 @@ describe('Home Dashboard dog scene', () => {
     expect(home).toContain('style={[styles.dashboardHeroDogCutout, !heroCutoutReady && styles.dashboardHeroDogCutoutPending]}');
     expect(home).toContain('dashboardHeroDogCutoutPending: { opacity: 0 },');
     // The cutout stays in the approved hero slot, with no frame, background or radius.
-    const cutoutStyle = home.slice(home.indexOf('dashboardHeroDogCutout: {'), home.indexOf('dashboardHeroDogCutoutPending'));
+    const cutoutStyle = home.slice(home.indexOf('dashboardHeroDogCutout: {'), home.indexOf('dashboardHeroDogCutoutPending: {'));
+    expect(cutoutStyle.length).toBeGreaterThan(0);
     expect(cutoutStyle).toContain("position: 'absolute',");
     expect(cutoutStyle).toContain('right: 4,');
     expect(cutoutStyle).toContain('bottom: 2,');
