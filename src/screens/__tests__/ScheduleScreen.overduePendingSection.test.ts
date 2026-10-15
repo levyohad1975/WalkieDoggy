@@ -44,7 +44,10 @@ describe('ScheduleScreen "ממתינים לעדכון" — the full, date-unboun
   });
 
   it('shows the count in the header and only renders when at least one such walk exists', () => {
-    expect(source).toContain('ממתינים לעדכון ({allOverduePending.length})');
+    expect(source).toContain("{overdueExpanded ? 'הסתר ממתינים לעדכון' : 'ממתינים לעדכון'} ({allOverduePending.length})");
+    expect(source).toContain('accessibilityState={{ expanded: overdueExpanded }}');
+    expect(source).toContain('onPress={() => setOverdueExpanded((expanded) => !expanded)}');
+    expect(source).toContain('{overdueExpanded ? <View style={styles.list}>');
     expect(source).toContain('{allOverduePending.length > 0 ? (');
   });
 });
