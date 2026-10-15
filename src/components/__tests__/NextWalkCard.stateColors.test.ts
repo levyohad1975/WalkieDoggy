@@ -26,7 +26,16 @@ describe('NextWalkCard state colors', () => {
   it('uses green for an active walk and gives it priority over overdue red', () => {
     expect(source).toContain('isActive && styles.cardActive');
     expect(source).toContain('cardActive: { backgroundColor: colors.successSoft');
-    expect(source).toContain("isActive ? `בזמן טיול · ${dogName}`");
+  });
+
+  /**
+   * P0 real-iPhone report (2026-10-15): this card is now reused by
+   * HomeScreen for both scheduled AND spontaneous active walks (see
+   * HomeScreen.activeSpontaneousWalks.test.ts) — it must still say WHICH
+   * kind of walk is active rather than the same label for both.
+   */
+  it('labels an active walk\'s eyebrow as spontaneous or scheduled, driven by walk.isUnplanned', () => {
+    expect(source).toContain('walk.isUnplanned ? `טיול ספונטני פעיל · ${dogName}` : `בזמן טיול · ${dogName}`');
   });
 
   it('switches a pending overdue walk to the red-tinted state', () => {

@@ -75,4 +75,48 @@ describe('Home active spontaneous walks (P0 duplicate cards)', () => {
     expect(home).toContain("activeSpontaneousTitle: { fontWeight: '700', marginBottom: 6, textAlign: 'right' }");
     expect(home).toMatch(/activeSpontaneousAuditNote: \{[^}]*textAlign: 'right'/);
   });
+
+  /**
+   * P0 real-iPhone report (2026-10-15, 17:32): a genuinely unique active
+   * spontaneous walk showed only "טיול ספונטני פעיל · אבי" + the Remote GPS
+   * panel + "סיים טיול" — no elapsed timer, no local GPS activation, no
+   * map, no distance, unlike the scheduled NextWalkCard above it. Requirement:
+   * scheduled and spontaneous active walks share the SAME unified card
+   * (NextWalkCard), not a second reduced implementation.
+   */
+  describe('the single active spontaneous walk reuses the unified NextWalkCard (not a reduced card)', () => {
+    const nonDuplicateBranch = home.slice(
+      home.indexOf('const spontaneous = group.walks[0];'),
+      home.indexOf('})())}'),
+    );
+
+    it('renders NextWalkCard, not a bespoke block', () => {
+      expect(nonDuplicateBranch).toContain('<NextWalkCard');
+      expect(nonDuplicateBranch).not.toContain("styles.activeSpontaneousCard");
+    });
+
+    it("derives the elapsed timer from the walk's persisted started_at, same as a scheduled active walk", () => {
+      expect(nonDuplicateBranch).toContain('activeStartedAt={isActiveWalk(spontaneous) ? spontaneous.startedAt ?? null : null}');
+    });
+
+    it('wires local GPS activation, live route/map and distance keyed to this exact walk', () => {
+      expect(nonDuplicateBranch).toContain('liveDistanceMeters={gpsTrackingWalkId === spontaneous.id ? gpsDistanceMeters : null}');
+      expect(nonDuplicateBranch).toContain('gpsPointCount={gpsTrackingWalkId === spontaneous.id ? gpsPointCount : null}');
+      expect(nonDuplicateBranch).toContain('liveRoutePoints={gpsTrackingWalkId === spontaneous.id ? gpsRoutePoints : undefined}');
+      expect(nonDuplicateBranch).toContain('gpsTrackingStatus={gpsTrackingWalkId === spontaneous.id ? gpsTrackingStatus : null}');
+      expect(nonDuplicateBranch).toContain('onRetryGps={() => {');
+      expect(nonDuplicateBranch).toContain('useGpsStore.getState().startTracking(spontaneous)');
+    });
+
+    it("uses the authoritative actual-walker field (never a display-name match) for identity, local-GPS gating and finish authorization", () => {
+      expect(nonDuplicateBranch).toContain('const spontaneousWalkerId = spontaneous.actualWalkerUserId ?? spontaneous.responsibleUserId;');
+      expect(nonDuplicateBranch).toContain('responsible={usersById[spontaneousWalkerId]}');
+      expect(nonDuplicateBranch).toMatch(/gpsNotTrackedHere=\{\s*\n\s*isActiveWalk\(spontaneous\) && gpsTrackingWalkId !== spontaneous\.id\s*\n\s*\? \(spontaneousWalkerId === currentUserId \? 'walker_here' : 'elsewhere'\)/);
+      expect(nonDuplicateBranch).toContain("canResolve={effectiveRole === 'admin' || spontaneousWalkerId === effectiveUserId}");
+    });
+
+    it('still finishes the walk, for the actual walker or any family admin', () => {
+      expect(nonDuplicateBranch).toMatch(/onEndWalk=\{\s*\n\s*actualFamilyRole === 'admin' \|\| spontaneous\.actualWalkerUserId === currentUserId \|\| \(!spontaneous\.actualWalkerUserId && spontaneous\.responsibleUserId === currentUserId\)\s*\n\s*\? \(\) => setCompleteWalkId\(spontaneous\.id\)/);
+    });
+  });
 });

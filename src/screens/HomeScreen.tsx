@@ -1338,20 +1338,61 @@ export function HomeScreen() {
               );
             })() : (() => {
               const spontaneous = group.walks[0];
+              // P0 real-iPhone report (2026-10-15, 17:32): a spontaneous
+              // active walk showed only a label, the Remote GPS panel and a
+              // finish button — no timer, local GPS activation, map or
+              // distance, unlike a scheduled active walk's NextWalkCard.
+              // Reuse that same unified card (see its own `walk.isUnplanned`
+              // eyebrow branch) instead of a second, reduced implementation,
+              // wired with the exact same GPS/identity props the scheduled
+              // card above uses — including the authoritative walker field
+              // (actualWalkerUserId falling back to responsibleUserId, never
+              // a display-name match).
+              const spontaneousDog = dogs.find((entry) => entry.id === spontaneous.dogId);
+              const spontaneousWalkerId = spontaneous.actualWalkerUserId ?? spontaneous.responsibleUserId;
               return (
-                <View key={spontaneous.id} testID="home-active-spontaneous-card" style={styles.activeSpontaneousCard}>
-                  <RtlText style={styles.activeSpontaneousTitle}>
-                    טיול ספונטני פעיל · {usersById[spontaneous.actualWalkerUserId ?? spontaneous.responsibleUserId]?.name ?? 'בן משפחה'}
-                  </RtlText>
-                  <RemoteGpsPanel
+                <View key={spontaneous.id} testID="home-active-spontaneous-card">
+                  <NextWalkCard
                     walk={spontaneous}
-                    currentUserId={currentUserId}
-                    familyRole={actualFamilyRole}
-                    ready={!familyLoading && !scheduleLoading && Boolean(family)}
+                    responsible={usersById[spontaneousWalkerId]}
+                    currentUserId={effectiveUserId}
+                    dogName={spontaneousDog?.name ?? dog?.name ?? 'הכלב/ה'}
+                    dogPhotoUrl={spontaneousDog?.photoUrl}
+                    showDogPhoto={false}
+                    showMascot={false}
+                    dogSex={spontaneousDog?.sex}
+                    scheduleTimezone={scheduleTimezone}
+                    tone="dashboard"
+                    remoteGpsAction={<RemoteGpsPanel walk={spontaneous} currentUserId={currentUserId} familyRole={actualFamilyRole} ready={!familyLoading && !scheduleLoading && Boolean(family)} />}
+                    onMarkDone={() => setCompleteWalkId(spontaneous.id)}
+                    activeStartedAt={isActiveWalk(spontaneous) ? spontaneous.startedAt ?? null : null}
+                    liveDistanceMeters={gpsTrackingWalkId === spontaneous.id ? gpsDistanceMeters : null}
+                    gpsPointCount={gpsTrackingWalkId === spontaneous.id ? gpsPointCount : null}
+                    liveRoutePoints={gpsTrackingWalkId === spontaneous.id ? gpsRoutePoints : undefined}
+                    gpsStatus={gpsTrackingWalkId === spontaneous.id ? gpsPermissionStatus : null}
+                    gpsTrackingStatus={gpsTrackingWalkId === spontaneous.id ? gpsTrackingStatus : null}
+                    gpsNotTrackedHere={
+                      isActiveWalk(spontaneous) && gpsTrackingWalkId !== spontaneous.id
+                        ? (spontaneousWalkerId === currentUserId ? 'walker_here' : 'elsewhere')
+                        : null
+                    }
+                    gpsLastStopLabel={gpsLastStop?.walkId === spontaneous.id
+                      ? `${gpsLastStop.kind === 'stop' ? 'נעצר' : 'בוטל'} (${gpsLastStop.reason}) · ${new Date(gpsLastStop.at).toLocaleTimeString('he-IL')}`
+                      : null}
+                    onRetryGps={() => {
+                      if (gpsTrackingWalkId === spontaneous.id && gpsTrackingStatus === 'interrupted') {
+                        setGpsTransferWalk(spontaneous);
+                        return;
+                      }
+                      void useGpsStore.getState().startTracking(spontaneous).then(() => useGpsStore.getState().attachGpsOwnership(spontaneous)).catch(() => undefined);
+                    }}
+                    onEndWalk={
+                      actualFamilyRole === 'admin' || spontaneous.actualWalkerUserId === currentUserId || (!spontaneous.actualWalkerUserId && spontaneous.responsibleUserId === currentUserId)
+                        ? () => setCompleteWalkId(spontaneous.id)
+                        : undefined
+                    }
+                    canResolve={effectiveRole === 'admin' || spontaneousWalkerId === effectiveUserId}
                   />
-                  {(spontaneous.actualWalkerUserId ?? spontaneous.responsibleUserId) === currentUserId ? (
-                    <Button label="סיים טיול" onPress={() => setCompleteWalkId(spontaneous.id)} style={{ marginTop: 8 }} />
-                  ) : null}
                 </View>
               );
             })())}

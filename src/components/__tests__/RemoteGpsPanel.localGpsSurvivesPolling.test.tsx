@@ -560,3 +560,27 @@ describe('Legitimate GPS session endings still work and are reason-coded', () =>
     expect(serialized).not.toContain(String(fixA.longitude));
   });
 });
+
+/**
+ * P0 real-iPhone report (2026-10-15, 17:32): אבי started and was actively
+ * walking his own spontaneous walk on his own iPhone, and was ALSO a family
+ * admin — the panel offered him "📍 בקש אישור GPS ממכשיר המטייל/ת" (request
+ * remote GPS consent from the walker's device), nonsensical when that
+ * device is this one. Identity must come from the lifecycle actor field
+ * (actualWalkerUserId, falling back to responsibleUserId), never a
+ * display-name match or familyRole alone.
+ */
+describe('An admin who is ALSO the actual walker on this device is never treated as a remote observer', () => {
+  it('does not offer to request remote GPS from the walker\'s device when the admin IS that walker', async () => {
+    render(<RemoteGpsPanel walk={walk} currentUserId={WALKER} familyRole="admin" ready mode="home" />);
+    await flush();
+    expect(screen.queryByText('📍 בקש אישור GPS ממכשיר המטייל/ת')).toBeNull();
+  });
+
+  it('still offers a genuinely different admin the remote-request action for this same walk', async () => {
+    const otherAdmin = 'user-other-admin';
+    render(<RemoteGpsPanel walk={walk} currentUserId={otherAdmin} familyRole="admin" ready mode="home" />);
+    await flush();
+    expect(screen.getByText('📍 בקש אישור GPS ממכשיר המטייל/ת')).toBeTruthy();
+  });
+});

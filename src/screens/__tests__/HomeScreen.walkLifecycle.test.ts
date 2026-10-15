@@ -179,11 +179,16 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('setCompleteWalkId(nextWalk.id)');
   });
 
-  it('shows one grouped warning instead of repeated spontaneous cards and lets the active walker finish a single walk', () => {
+  it('shows one grouped warning instead of repeated spontaneous cards and lets the active walker (or any family admin) finish a single walk', () => {
     expect(home).toContain('const activeSpontaneousWalkGroups = useMemo');
     expect(home).toContain('activeSpontaneousWalkGroups.map((group) => group.duplicate ? (');
     expect(home).toContain('duplicateActiveWalkNotice(group, {');
-    expect(home).toContain('(spontaneous.actualWalkerUserId ?? spontaneous.responsibleUserId) === currentUserId');
+    // P0 real-iPhone report (2026-10-15, 17:32): the single-walk branch now
+    // reuses NextWalkCard's own onEndWalk — richer than a bare walker-only
+    // check, matching the same admin-or-actual-walker rule scheduled active
+    // walks already use (see HomeScreen.activeSpontaneousWalks.test.ts for
+    // the full unified-card wiring this drives).
+    expect(home).toContain("actualFamilyRole === 'admin' || spontaneous.actualWalkerUserId === currentUserId || (!spontaneous.actualWalkerUserId && spontaneous.responsibleUserId === currentUserId)");
     expect(home).toContain('setCompleteWalkId(spontaneous.id)');
   });
 

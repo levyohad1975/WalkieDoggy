@@ -41,6 +41,14 @@ export function RemoteGpsPanel({walk,currentUserId,familyRole,ready,mode='home'}
   const timer=setTimeout(()=>finish(false),15_000);
   unsubscribe=useGpsStore.subscribe(state=>{if(state.trackingWalkId!==walkId||state.permissionStatus==='denied'||state.permissionStatus==='unavailable')finish(false);else if(state.permissionStatus==='granted'&&state.pointCount>0)finish(true);});
  }),[]);
+ // P0 real-iPhone report (2026-10-15, 17:32): an admin who is ALSO the
+ // walk's actual walker on this same device was offered "בקש אישור GPS
+ // ממכשיר המטייל/ת" (request remote consent from the walker's device) —
+ // nonsensical when that device IS this device. Identity is the lifecycle
+ // actor field, never the display name: actualWalkerUserId falls back to
+ // responsibleUserId exactly like every other walker-identity check in
+ // this app (HomeScreen's onEndWalk gate, gpsNotTrackedHere).
+ const isActualWalkerHere=walk?(walk.actualWalkerUserId??walk.responsibleUserId)===currentUserId:false;
  const refresh=useCallback(async()=>{if(!isSupabaseConfigured)return; try{const [s,cs]=await Promise.all([getRemoteGpsSettings(),getMyRemoteGpsCommands()]);setSettings(s);setCommand(cs.find(c=>c.status==='tracking')??cs.find(c=>c.status==='pending')??null);if(walk&&familyRole==='admin'){const statuses=await getRemoteGpsWalkStatus(walk.id);setWalkStatus(statuses[0]?.status??null);}}catch{/* offline/error remain opt-in closed */}},[walk?.id,familyRole]);
  useEffect(()=>{void refresh(); const timer=setInterval(()=>{if(AppState.currentState==='active')void refresh();},6000);const sub=AppState.addEventListener('change',state=>{if(state==='active')void refresh();});return()=>{clearInterval(timer);sub.remove();};},[refresh]);
  const processPending=useCallback(async()=>{
@@ -110,7 +118,7 @@ export function RemoteGpsPanel({walk,currentUserId,familyRole,ready,mode='home'}
  return <View style={mode==='home'?styles.compactPanel:styles.panel}>
   {mode==='settings'&&settings?.isAdmin?<Pressable accessibilityRole="switch" accessibilityState={{checked:settings.familyEnabled}} onPress={()=>void toggleFamily()} style={styles.row}><RtlText style={styles.text}>הפעלת GPS מרחוק למשפחה</RtlText><RtlText style={styles.state}>{settings.familyEnabled?'פעיל':'כבוי'}</RtlText></Pressable>:null}
   {mode==='settings'?<Pressable accessibilityRole="switch" accessibilityState={{checked:settings?.consentEnabled??false}} onPress={()=>void toggleConsent()} style={styles.row}><RtlText style={styles.text}>אני מסכים/ה להפעלת GPS מרחוק</RtlText><RtlText style={styles.state}>{settings?.consentEnabled?'פעיל':'כבוי'}</RtlText></Pressable>:null}
-  {mode==='home'&&familyRole==='admin'&&settings?.familyEnabled&&walk?.status==='in_progress'?<Pressable accessibilityRole="button" disabled={busy} onPress={()=>void chooseRemote()} style={styles.compactAction}><RtlText style={styles.compactActionText}>📍 בקש אישור GPS ממכשיר המטייל/ת</RtlText></Pressable>:null}
+  {mode==='home'&&!isActualWalkerHere&&familyRole==='admin'&&settings?.familyEnabled&&walk?.status==='in_progress'?<Pressable accessibilityRole="button" disabled={busy} onPress={()=>void chooseRemote()} style={styles.compactAction}><RtlText style={styles.compactActionText}>📍 בקש אישור GPS ממכשיר המטייל/ת</RtlText></Pressable>:null}
   {mode==='home'&&feedback?<RtlText accessibilityLiveRegion="polite" style={styles.status}>{feedback}</RtlText>:null}
   {mode==='home'&&selecting?targets.map(t=><Pressable key={t.target_auth_user_id} accessibilityRole="button" accessibilityLabel={`${t.display_name}, ${t.device_label}`} onPress={()=>void selectTarget(t)} style={styles.target}><RtlText style={styles.text}>{t.display_name} · {t.device_label}</RtlText></Pressable>):null}
   {mode==='home'&&familyRole==='admin'&&walkStatus?<RtlText accessibilityLiveRegion="polite" style={styles.status}>מצב בקשת GPS: {({pending:'ממתינה למכשיר היעד',tracking:'המעקב פעיל במכשיר היעד',failed:'הבקשה נכשלה',expired:'הבקשה פגה',stopped:'המעקב נעצר'} as Record<string,string>)[walkStatus]??walkStatus}</RtlText>:null}
