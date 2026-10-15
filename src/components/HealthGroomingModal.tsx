@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { TimePickerField } from './TimePickerField';
@@ -8,7 +8,9 @@ import { Button } from './Button';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { generateId } from '../lib/id';
-import { HEALTH_TASK_CATEGORY_LABELS as CATEGORY_LABELS, getHealthTaskLifecycle } from '../logic/healthTasks';
+import { confirmAction, showMessage } from '../lib/dialogs';
+import { useFormSheetLayout } from '../lib/formSheetLayout';
+import { HEALTH_TASK_CATEGORY_LABELS as CATEGORY_LABELS, getHealthTaskLifecycle, healthTaskDeleteErrorMessage } from '../logic/healthTasks';
 import type { Dog, FamilyUser, HealthTask, HealthTaskCategory } from '../types';
 
 const APPOINTMENT_CATEGORIES: HealthTaskCategory[] = ['vet_visit', 'grooming'];
@@ -260,6 +262,11 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
   const [recurrenceDays, setRecurrenceDays] = useState('');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Synchronous re-entry guards: state updates land a render later, so a
+  // fast double tap could otherwise start two saves or two deletes.
+  const saveInFlight = useRef(false);
+  const deleteInFlight = useRef(false);
+  const sheetLayout = useFormSheetLayout();
 
   useEffect(() => {
     if (!visible) return;
@@ -279,29 +286,31 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
   const handleSave = async () => {
     const effectiveTitle = category === 'vet_visit' ? vetPurposes.join(' · ') : 'תספורת';
     if (category === 'vet_visit' && vetPurposes.length === 0) {
-      Alert.alert('חסרה מטרת התור', 'יש לבחור לפחות מטרה אחת לתור הווטרינר.');
+      showMessage('חסרה מטרת התור', 'יש לבחור לפחות מטרה אחת לתור הווטרינר.');
       return;
     }
     if (category === 'vet_visit' && vetPurposes.includes('אחר') && !title.trim()) {
-      Alert.alert('חסר פירוט', 'יש לפרט את מטרת התור האחרת.');
+      showMessage('חסר פירוט', 'יש לפרט את מטרת התור האחרת.');
       return;
     }
     if (!dueDate) {
-      Alert.alert('חסר תאריך', 'יש לבחור תאריך לתור.');
+      showMessage('חסר תאריך', 'יש לבחור תאריך לתור.');
       return;
     }
     const trimmedWeight = weightKg.trim();
     const parsedWeight = trimmedWeight ? Number(trimmedWeight) : undefined;
     if (category === 'weight' && trimmedWeight && (Number.isNaN(parsedWeight) || (parsedWeight as number) <= 0)) {
-      Alert.alert('משקל לא תקין', 'יש להזין משקל חיובי בק"ג.');
+      showMessage('משקל לא תקין', 'יש להזין משקל חיובי בק"ג.');
       return;
     }
     const trimmedRecurrence = recurrenceDays.trim();
     const parsedRecurrence = trimmedRecurrence ? Number(trimmedRecurrence) : undefined;
     if (trimmedRecurrence && (!Number.isInteger(parsedRecurrence) || (parsedRecurrence as number) <= 0)) {
-      Alert.alert('תדירות לא תקינה', 'יש להזין מספר ימים חיובי, או להשאיר ריק לרשומה חד-פעמית.');
+      showMessage('תדירות לא תקינה', 'יש להזין מספר ימים חיובי, או להשאיר ריק לרשומה חד-פעמית.');
       return;
     }
+    if (saveInFlight.current) return;
+    saveInFlight.current = true;
     setSaving(true);
     try {
       const now = new Date().toISOString();
@@ -329,36 +338,70 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
         updatedAt: now,
       });
     } catch {
-      Alert.alert('לא הצלחנו לשמור', 'נסו שוב בעוד רגע.');
+      showMessage('לא הצלחנו לשמור', 'נסו שוב בעוד רגע.');
     } finally {
+      saveInFlight.current = false;
       setSaving(false);
     }
   };
 
-  const confirmDelete = () => {
-    if (!task || task.completedAt) return;
-    Alert.alert('מחיקת משימה', 'למחוק את המשימה הפתוחה? פעולה זו אינה ניתנת לביטול.', [
-      { text: 'ביטול', style: 'cancel' },
-      {
-        text: 'מחיקה',
-        style: 'destructive',
-        onPress: () => {
-          setDeleting(true);
-          void onDelete(task.id)
-            .catch(() => Alert.alert('לא הצלחנו למחוק', 'נסו שוב בעוד רגע.'))
-            .finally(() => setDeleting(false));
-        },
-      },
-    ]);
+  /**
+   * Explicit confirmation, then exactly one delete request. Uses
+   * confirmAction()/showMessage() rather than Alert.alert: on iPhone Safari /
+   * the Home Screen PWA (react-native-web) Alert.alert is a silent no-op, so
+   * the old confirmation never appeared and the delete never ran. The sheet
+   * is closed by the parent only after onDelete resolves (server-confirmed);
+   * any failure keeps it open and says, in Hebrew, that nothing was deleted.
+   */
+  const confirmDelete = async () => {
+    if (!task || task.completedAt || deleteInFlight.current) return;
+    deleteInFlight.current = true;
+    try {
+      const when = task.dueDate ? ` מתאריך ${formatDisplayDate(task.dueDate)}` : '';
+      const recurrenceNote = task.recurrenceIntervalDays
+        ? '\nזו משימה חוזרת — המחיקה תעצור גם את החזרות הבאות שלה. רשומות שכבר בוצעו יישארו בהיסטוריה.'
+        : '';
+      const confirmed = await confirmAction({
+        title: 'מחיקת משימה',
+        message: `למחוק את "${taskTypeLabel(task)}"${when}? פעולה זו אינה ניתנת לביטול.${recurrenceNote}`,
+        confirmLabel: 'מחיקה',
+        cancelLabel: 'ביטול',
+        destructive: true,
+      });
+      if (!confirmed) return;
+      setDeleting(true);
+      await onDelete(task.id);
+    } catch (error) {
+      showMessage('לא הצלחנו למחוק', healthTaskDeleteErrorMessage(error));
+    } finally {
+      deleteInFlight.current = false;
+      setDeleting(false);
+    }
   };
+
+  const isWeb = Platform.OS === 'web';
+  // When the keyboard is up it already covers the home indicator.
+  const footerPaddingBottom = isWeb && sheetLayout.backdropPaddingBottom > 0 ? spacing.sm : sheetLayout.footerPaddingBottom;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
-        <View style={styles.backdrop}>
-          <Pressable style={styles.formSheet} onPress={(e) => e.stopPropagation()}>
-            <ScrollView style={styles.formScroll} contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} showsVerticalScrollIndicator>
-              <RtlText style={styles.title} accessibilityRole="header">{task ? 'עריכת רשומה' : 'רשומה חדשה'}</RtlText>
+        <View testID="health-task-form-backdrop" style={[styles.backdrop, isWeb && { paddingBottom: sheetLayout.backdropPaddingBottom }]}>
+          {/*
+            iPhone Safari / PWA: the sheet is sized in px from the real
+            viewport (minus the keyboard overlap) instead of a % chain, the
+            body is the only scrolling region, and Save/Delete/Cancel live in
+            a footer OUTSIDE the scroll that never leaves the screen and
+            clears the home indicator. Native keeps its % height inside the
+            KeyboardAvoidingView, which already shrinks for the keyboard.
+          */}
+          <Pressable
+            testID="health-task-form-sheet"
+            style={[styles.formSheet, isWeb && sheetLayout.sheetHeight !== undefined && { height: sheetLayout.sheetHeight, maxHeight: sheetLayout.sheetHeight }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <RtlText style={styles.title} accessibilityRole="header">{task ? 'עריכת רשומה' : 'רשומה חדשה'}</RtlText>
+            <ScrollView testID="health-task-form-scroll" style={styles.formScroll} contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} showsVerticalScrollIndicator>
 
               <RtlText style={styles.label}>קטגוריה</RtlText>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
@@ -503,12 +546,33 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
                 accessibilityLabel="הערות"
               />
 
-              <Button label="שמירה" onPress={() => void handleSave()} loading={saving} style={styles.saveButton} />
-              {task && !task.completedAt ? (
-                <Button label="מחיקת משימה" variant="secondary" onPress={confirmDelete} loading={deleting} style={styles.deleteButton} />
-              ) : null}
-              <Button label="ביטול" variant="secondary" onPress={onClose} style={styles.closeButton} />
             </ScrollView>
+            <View
+              testID="health-task-form-footer"
+              style={[
+                styles.formFooter,
+                // Web: also honour the CSS safe-area inset directly (viewport-fit=cover),
+                // unless the keyboard is up and already covers the home indicator.
+                { paddingBottom: isWeb && sheetLayout.backdropPaddingBottom === 0 ? (`max(${footerPaddingBottom}px, env(safe-area-inset-bottom, 0px))` as unknown as number) : footerPaddingBottom },
+              ]}
+            >
+              <Button label="שמירה" onPress={() => void handleSave()} loading={saving} disabled={deleting} style={styles.saveButton} />
+              <View testID="health-task-form-secondary-actions" style={styles.secondaryActions}>
+                <Button label="ביטול" variant="secondary" compact onPress={onClose} disabled={deleting} style={styles.secondaryAction} />
+                {task && !task.completedAt ? (
+                  <Button
+                    label="מחיקת משימה"
+                    variant="secondary"
+                    compact
+                    onPress={() => void confirmDelete()}
+                    loading={deleting}
+                    disabled={saving}
+                    accessibilityHint="יוצג אישור לפני מחיקת המשימה"
+                    style={styles.secondaryAction}
+                  />
+                ) : null}
+              </View>
+            </View>
           </Pressable>
         </View>
       </KeyboardAvoidingView>
@@ -520,10 +584,16 @@ const styles = StyleSheet.create({
   flexFull: { flex: 1 },
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: radii.xl, maxHeight: '85%' },
-  formSheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: radii.xl, height: '88%', maxHeight: '88%' },
+  formSheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, paddingTop: radii.xl, paddingHorizontal: radii.xl, height: '88%', maxHeight: '88%', overflow: 'hidden' },
   scroll: { flexGrow: 0, flexShrink: 1 },
-  formScroll: { flex: 1 },
-  formScrollContent: { paddingBottom: spacing.xl * 3 },
+  // minHeight 0 lets the body shrink below its content inside the column so
+  // it scrolls instead of pushing the footer off-screen.
+  formScroll: { flex: 1, minHeight: 0 },
+  formScrollContent: { paddingBottom: spacing.lg },
+  formFooter: { flexShrink: 0, paddingTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, backgroundColor: colors.surface },
+  // Explicit RTL order, matching this file's other rows: Cancel on the right, Delete on the left.
+  secondaryActions: { flexDirection: 'row-reverse', gap: spacing.sm, marginTop: spacing.sm },
+  secondaryAction: { flex: 1 },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: spacing.sm },
   sectionLabel: { ...typography.sectionTitle, fontSize: 15, color: colors.textPrimary, textAlign: 'right', marginTop: spacing.md, marginBottom: spacing.xs },
   emptyHint: { ...typography.meta, color: colors.textSecondary, textAlign: 'right' },
@@ -559,8 +629,7 @@ const styles = StyleSheet.create({
   categoryChipActive: { backgroundColor: colors.statusCurrentBg, borderColor: colors.primary },
   categoryChipText: { ...typography.meta, color: colors.textSecondary, fontWeight: '600' },
   categoryChipTextActive: { color: colors.primaryDark, fontWeight: '700' },
-  saveButton: { marginTop: spacing.xl },
-  deleteButton: { marginTop: spacing.sm },
+  saveButton: {},
 });
 
 const webDateInputStyle = {

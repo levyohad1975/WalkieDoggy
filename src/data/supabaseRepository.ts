@@ -513,7 +513,15 @@ export class SupabaseRepository implements Repository {
   async deleteHealthTask(taskId: string): Promise<void> {
     const { data, error } = await this.client.from('health_tasks').delete().eq('id', taskId).is('completed_at', null).select('id');
     if (error) throw error;
-    if ((data ?? []).length !== 1) throw new Error('Open health task was not deleted or is no longer authorized');
+    if ((data ?? []).length === 1) return;
+    // Zero rows deleted. Retry-safe: if a previous attempt's response was lost
+    // after the server already deleted the row, the row is gone and the
+    // delete is confirmed. If the row is still visible, RLS refused it
+    // (other family / completed) — report that, never pretend success.
+    const { data: remaining, error: checkError } = await this.client.from('health_tasks').select('id').eq('id', taskId).maybeSingle();
+    if (checkError) throw checkError;
+    if (!remaining) return;
+    throw new Error('Open health task was not deleted or is no longer authorized');
   }
 
   async getGpsSession(walkId: string): Promise<WalkGpsSession | undefined> {

@@ -71,7 +71,15 @@ describe('HealthGroomingModal (structural)', () => {
   it('offers deletion only for an existing open task and requires confirmation', () => {
     expect(source).toContain('task && !task.completedAt');
     expect(source).toContain('label="מחיקת משימה"');
-    expect(source).toContain("Alert.alert('מחיקת משימה'");
+    expect(source).toContain("title: 'מחיקת משימה'");
+    expect(source).toContain('await confirmAction({');
     expect(source).toContain('onDelete(task.id)');
+  });
+
+  it('never gates the delete behind Alert.alert, which is a silent no-op on web (iPhone Safari / PWA)', () => {
+    const formStart = source.indexOf('function HealthTaskFormModal');
+    const form = source.slice(formStart);
+    expect(form).not.toMatch(/Alert\.alert\(/);
+    expect(source).toContain("import { confirmAction, showMessage } from '../lib/dialogs';");
   });
 });
