@@ -66,7 +66,7 @@ describe('Home active spontaneous walks (P0 duplicate cards)', () => {
     expect(pendingRequests).toBeGreaterThan(activeSection);
     // The next-walk card keeps its hero lift and the scroll content keeps
     // clearance above the fixed bottom tab bar on iPhone Safari/PWA.
-    expect(home).toContain('nextWalkLift: { marginTop: -64');
+    expect(home).toContain('nextWalkLift: { marginTop: -16');
     expect(home).toContain('scrollEnabled');
     expect(home).toContain('paddingBottom: 96');
   });
