@@ -335,6 +335,12 @@ jobs:
             exit 1
           fi
 
+          # Verified System Admin maintenance path over the same unresolved
+          # duplicates; rolled back so the Family Admin path below runs as before.
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/manual_tests/system_admin_duplicate_walk_repair_v12.sql
+
           psql "postgresql://postgres@127.0.0.1:54322/postgres" \
             -v ON_ERROR_STOP=1 \
             -v walk_fixture_resolve_only=1 \

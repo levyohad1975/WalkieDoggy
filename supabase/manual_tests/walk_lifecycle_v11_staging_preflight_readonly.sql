@@ -28,6 +28,7 @@ select 'A.expected' as section, expected.version, expected.label,
        exists (select 1 from supabase_migrations.schema_migrations m where m.version = expected.version) as recorded
 from (values
   ('20261013070000', 'walk_duplicate_resolution_v12 (expected: recorded)'),
+  ('20261013073000', 'system_admin_duplicate_walk_repair_v12 (expected: recorded before resolution)'),
   ('20261013074334', 'walk_lifecycle_gps_v11 (expected: NOT recorded until approved)'),
   ('20261015090000', 'walk_lifecycle_capabilities_v11 (expected: NOT recorded until approved)')
 ) as expected(version, label)
@@ -180,5 +181,25 @@ from public.walks w
 where w.status = 'in_progress'
   and (w.started_at is null or w.started_at < now() - interval '24 hours' or w.duplicate_resolution_group_id is not null)
 order by w.started_at nulls first;
+
+-- I. System Admin maintenance authorizations (only after 20261013073000)
+do $maintenance$
+declare r record;
+begin
+  if to_regclass('public.system_maintenance_duplicate_walk_authorizations') is null then
+    raise notice 'I.maintenance: table absent (20261013073000 not applied yet)';
+    return;
+  end if;
+  for r in execute $q$
+    select a.id, a.family_id, a.dog_id, a.walk_ids, a.expires_at, a.consumed_at, a.consumed_group_id,
+      (select count(*) from public.walks w where w.id = any(a.walk_ids) and w.family_id = a.family_id
+         and w.dog_id = a.dog_id and w.status = 'in_progress' and w.duplicate_resolution_group_id is null) as unresolved
+    from public.system_maintenance_duplicate_walk_authorizations a order by a.created_at
+  $q$ loop
+    raise notice 'I.maintenance: id=% family=% dog=% walks=% unresolved=% expires=% consumed=% group=%',
+      r.id, r.family_id, r.dog_id, r.walk_ids, r.unresolved, r.expires_at, r.consumed_at, r.consumed_group_id;
+  end loop;
+end;
+$maintenance$;
 
 rollback;

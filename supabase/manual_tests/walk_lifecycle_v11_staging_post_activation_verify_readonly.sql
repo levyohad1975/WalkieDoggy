@@ -24,7 +24,9 @@ with expected_rpc(signature, security_definer) as (
     ('public.finish_walk_lifecycle_notification_delivery_v11(uuid[],boolean,text)', true),
     ('public.acknowledge_walk_lifecycle_notifications_v11(uuid[])', true),
     ('public.resolve_duplicate_active_walks_v12(uuid[],uuid,text,uuid)', true),
-    ('public.walk_lifecycle_server_capabilities()', false)
+    ('public.walk_lifecycle_server_capabilities()', false),
+    ('public.system_admin_list_duplicate_walk_authorizations()', true),
+    ('public.system_admin_resolve_authorized_duplicate_walks_v12(uuid,uuid)', true)
 ),
 rpc_checks as (
   select 'rpc ' || e.signature as check_name,
@@ -52,7 +54,8 @@ internal_checks as (
   from unnest(array[
     'public.prune_walk_gps_route_samples_v11()',
     'public.prevent_untrusted_actual_walker_change()',
-    'public.prevent_untrusted_duplicate_resolution_marker_change()'
+    'public.prevent_untrusted_duplicate_resolution_marker_change()',
+    'public.require_verified_system_admin_for_maintenance()'
   ]) as sig
 ),
 table_checks as (
@@ -80,7 +83,8 @@ table_checks as (
     ('public.walk_gps_route_samples_v11', true),
     ('public.walk_lifecycle_notifications', true),
     ('public.walk_duplicate_resolution_groups', true),
-    ('public.walk_duplicate_resolution_items', true)
+    ('public.walk_duplicate_resolution_items', true),
+    ('public.system_maintenance_duplicate_walk_authorizations', false)
   ) as t(name, authenticated_select)
   left join pg_class c on c.oid = to_regclass(t.name)
 ),
@@ -104,7 +108,7 @@ ledger_checks as (
   select 'ledger ' || v as check_name,
          exists (select 1 from supabase_migrations.schema_migrations m where m.version = v) as ok,
          '{}'::jsonb as detail
-  from unnest(array['20261013070000', '20261013074334', '20261015090000']) as v
+  from unnest(array['20261013070000', '20261013073000', '20261013074334', '20261015090000']) as v
 ),
 gate_checks as (
   select 'no unresolved duplicate active walks' as check_name,

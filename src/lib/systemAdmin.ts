@@ -1,5 +1,6 @@
 import { supabase, SupabaseNotConfiguredError } from './supabase';
 import { repository } from '../data';
+import { completeWalkLifecycleOperation, getWalkLifecycleOperationId } from '../data/walkLifecycleOperationIds';
 
 /**
  * BATCH 4 (item A — System Admin V1, read-only). Thin client wrappers over
@@ -549,4 +550,59 @@ export async function getSystemAdminEmailDeliveryLog(limit?: number): Promise<Sy
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   }));
+}
+
+/**
+ * Staging maintenance (PR #150): owner-approved, single-use authorizations
+ * for a verified System Admin to mark specific test-generated active walks
+ * as resolved duplicates. Marker only — nothing is deleted. See
+ * supabase/migrations/20261013073000_system_admin_duplicate_walk_repair_v12.sql.
+ */
+export interface DuplicateWalkMaintenanceAuthorization {
+  authorizationId: string;
+  familyId: string;
+  familyName: string;
+  dogId: string;
+  dogName: string;
+  walkIds: string[];
+  unresolvedActiveCount: number;
+  reason: string;
+  expiresAt: string;
+  consumedAt: string | null;
+  consumedGroupId: string | null;
+}
+
+export async function listDuplicateWalkMaintenanceAuthorizations(): Promise<DuplicateWalkMaintenanceAuthorization[]> {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc('system_admin_list_duplicate_walk_authorizations');
+  if (error) throw error;
+  const rows = (data ?? []) as Array<{
+    authorization_id: string; family_id: string; family_name: string; dog_id: string; dog_name: string;
+    walk_ids: string[]; unresolved_active_count: number; reason: string; expires_at: string;
+    consumed_at: string | null; consumed_group_id: string | null;
+  }>;
+  return rows.map((r) => ({
+    authorizationId: r.authorization_id, familyId: r.family_id, familyName: r.family_name,
+    dogId: r.dog_id, dogName: r.dog_name, walkIds: r.walk_ids ?? [],
+    unresolvedActiveCount: Number(r.unresolved_active_count ?? 0), reason: r.reason,
+    expiresAt: r.expires_at, consumedAt: r.consumed_at, consumedGroupId: r.consumed_group_id,
+  }));
+}
+
+/**
+ * Applies one authorization. The operation id is persisted per authorization
+ * before the request, so a retry after a lost response reuses it and the
+ * server returns the same audit group instead of failing.
+ */
+export async function resolveDuplicateWalkMaintenanceAuthorization(authorizationId: string): Promise<string> {
+  const client = requireSupabase();
+  const operationId = await getWalkLifecycleOperationId('resolve_duplicates', `system-maintenance:${authorizationId}`, 'system-admin');
+  const { data, error } = await client.rpc('system_admin_resolve_authorized_duplicate_walks_v12', {
+    p_authorization_id: authorizationId,
+    p_operation_id: operationId,
+  });
+  if (error) throw error;
+  if (typeof data !== 'string' || !data) throw new Error('Maintenance RPC returned an invalid audit group id');
+  await completeWalkLifecycleOperation('resolve_duplicates', `system-maintenance:${authorizationId}`, 'system-admin');
+  return data;
 }

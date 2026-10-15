@@ -11,6 +11,8 @@ import { REMINDER_ANIMATION_LIBRARY, type ReminderAnimationMoment } from '../log
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { friendlyErrorMessage } from '../lib/errorMessages';
+import { isWalkResolutionStaging } from '../lib/supabase';
+import { SystemAdminDuplicateWalkMaintenancePanel } from '../components/SystemAdminDuplicateWalkMaintenancePanel';
 import { useAuthStore } from '../store/authStore';
 import { useSystemAdminStore } from '../store/systemAdminStore';
 import { clearFamilySetupCompletion, clearFamilySetupProgress, readFamilySetupProgress } from '../lib/familySetupProgress';
@@ -784,6 +786,8 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
                 <RtlText style={styles.healthLine}>משפחות שנדחו: {overview.rejectedFamilies}</RtlText>
                 <RtlText style={styles.healthLine}>כשלים/החזרות ביומן האימיילים האחרון: {overview.emailFailures}</RtlText>
               </View>
+
+              {isSystemAdmin && isWalkResolutionStaging ? <SystemAdminDuplicateWalkMaintenancePanel /> : null}
 
               <View style={styles.testFamilyCard}>
                 <RtlText style={styles.sectionTitle}>בדיקת תהליך הצטרפות</RtlText>

@@ -242,6 +242,15 @@ export const SHARED_ERROR_RULES: ErrorRule[] = [
   { includes: 'walk finish operation is already recorded', message: 'סיום הטיול כבר נרשם. רעננו את המסך.' },
   { includes: 'completion time cannot be in the future', message: 'זמן הסיום אינו יכול להיות בעתיד.' },
 
+  // ---- System Admin duplicate-walk maintenance (20261013073000_system_admin_duplicate_walk_repair_v12.sql) ----
+  { includes: 'verified system admin required', message: 'הפעולה זמינה רק למנהל/ת מערכת מאומת/ת. לא בוצע שינוי.' },
+  { includes: 'exit observation or impersonation before maintenance', message: 'יש לצאת ממצב צפייה במשפחה או התחזות לפני פעולת תחזוקה. לא בוצע שינוי.' },
+  { includes: 'system admin profile required', message: 'לחשבון מנהל/ת המערכת אין פרופיל משפחה פעיל לרישום הביקורת. לא בוצע שינוי.' },
+  { includes: 'maintenance authorization not found', message: 'הרשאת התחזוקה לא נמצאה. לא בוצע שינוי.' },
+  { includes: 'maintenance authorization expired', message: 'תוקף הרשאת התחזוקה פג. נדרש אישור חדש; לא בוצע שינוי.' },
+  { includes: 'maintenance authorization was already used', message: 'הרשאת התחזוקה כבר נוצלה בפעולה אחרת. לא בוצע שינוי נוסף.' },
+  { includes: 'authorized walks changed since approval; re-review required', message: 'הטיולים השתנו מאז האישור, ולכן הסימון בוטל. נדרשת בדיקה מחודשת; לא בוצע שינוי.' },
+
   // ---- Generic network failure — never show a raw fetch/TypeError string ----
   { includes: 'Network request failed', message: 'אין חיבור לאינטרנט. בדקו את החיבור ונסו שוב.' },
   { includes: 'Failed to fetch', message: 'אין חיבור לאינטרנט. בדקו את החיבור ונסו שוב.' },
