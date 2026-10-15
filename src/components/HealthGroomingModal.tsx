@@ -596,7 +596,7 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
 
 const styles = StyleSheet.create({
   flexFull: { flex: 1 },
-  deleteOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: '#00000070', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, zIndex: 30 },
+  deleteOverlay: { ...StyleSheet.absoluteFill, backgroundColor: '#00000070', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, zIndex: 30 },
   deleteDialog: { width: '100%', maxWidth: 420, borderRadius: 24, backgroundColor: colors.surface, padding: 22, gap: 12 },
   deleteDialogTitle: { fontSize: 22, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
   deleteDialogHint: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', lineHeight: 22 },
