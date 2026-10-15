@@ -213,6 +213,7 @@ export function HomeScreen() {
   const gpsPermissionStatus = useGpsStore((s) => s.permissionStatus);
   const gpsTrackingStatus = useGpsStore((s) => s.trackingStatus);
   const gpsSessionsByWalkId = useGpsStore((s) => s.sessionsByWalkId);
+  const gpsLastStop = useGpsStore((s) => s.lastGpsStop);
 
   const [completeWalkId, setCompleteWalkId] = useState<string | null>(null);
   const [remoteFinishRequest, setRemoteFinishRequest] = useState<{ walkId: string; walkerId: string; hadPee: boolean; hadPoop: boolean; note?: string; completedAt?: string } | null>(null);
@@ -407,9 +408,9 @@ export function HomeScreen() {
       // that left the card stuck in "GPS interrupted". A retry reuses the
       // same lifecycle operation id, so a start whose response was lost is
       // simply confirmed by the server and tracking begins again.
-      if (!started && !remoteStart) useGpsStore.getState().cancelTracking(walk.id);
+      if (!started && !remoteStart) useGpsStore.getState().cancelTracking(walk.id, 'walk_start_failed');
     }, () => {
-      if (!remoteStart) useGpsStore.getState().cancelTracking(walk.id);
+      if (!remoteStart) useGpsStore.getState().cancelTracking(walk.id, 'walk_start_failed');
     });
   }, [currentUserId, startWalk]);
 
@@ -876,7 +877,7 @@ export function HomeScreen() {
       // A fresh server resolution invalidates the active timer/watch. This
       // only closes the in-memory foreground watcher; saved GPS sessions and
       // route data are deliberately left untouched.
-      useGpsStore.getState().cancelTracking(trackedWalk.id);
+      useGpsStore.getState().cancelTracking(trackedWalk.id, 'duplicate_walk_resolved');
     }
   }, [gpsTrackingWalkId, walksById]);
   const reminderPromptMessage = useMemo(() => {
@@ -1237,6 +1238,9 @@ export function HomeScreen() {
                 ? ((nextWalk.actualWalkerUserId ?? nextWalk.responsibleUserId) === currentUserId ? 'walker_here' : 'elsewhere')
                 : null
             }
+            gpsLastStopLabel={gpsLastStop?.walkId === nextWalk.id
+              ? `${gpsLastStop.kind === 'stop' ? 'נעצר' : 'בוטל'} (${gpsLastStop.reason}) · ${new Date(gpsLastStop.at).toLocaleTimeString('he-IL')}`
+              : null}
             onRetryGps={() => {
               if (gpsTrackingWalkId === nextWalk.id && gpsTrackingStatus === 'interrupted') {
                 setGpsTransferWalk(nextWalk);

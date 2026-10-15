@@ -64,6 +64,8 @@ interface NextWalkCardProps {
    * needs a user gesture); 'elsewhere' says GPS belongs to the walker's device.
    */
   gpsNotTrackedHere?: 'walker_here' | 'elsewhere' | null;
+  /** Diagnostic (Staging P0): why GPS last ended/was discarded on this device for this walk — a reason code, never location data. */
+  gpsLastStopLabel?: string | null;
   /** GPS samples from the active walk, updated as the phone moves. */
   liveRoutePoints?: Array<{ latitude: number; longitude: number; timestamp: number }>;
   /**
@@ -124,6 +126,7 @@ export function NextWalkCard({
   gpsTrackingStatus,
   onRetryGps,
   gpsNotTrackedHere,
+  gpsLastStopLabel,
   liveRoutePoints,
   onMarkNotDone,
   canResolve = true,
@@ -284,6 +287,11 @@ export function NextWalkCard({
                 : 'GPS פעיל'}`
                       : '📍 מפעיל GPS…'}
         </RtlText>
+        {gpsNotTrackedHere === 'walker_here' && gpsLastStopLabel ? (
+          <RtlText style={styles.gpsDiagnostic} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE} testID="gps-last-stop-diagnostic">
+            {`אבחון GPS: ${gpsLastStopLabel}`}
+          </RtlText>
+        ) : null}
         {onRetryGps && gpsNotTrackedHere === 'walker_here' ? (
           <Pressable onPress={onRetryGps} accessibilityRole="button" accessibilityLabel="הפעל GPS לטיול הזה במכשיר הזה" style={styles.gpsRetry}>
             <RtlText style={styles.gpsRetryText}>הפעל GPS</RtlText>
@@ -501,6 +509,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     marginBottom: 8,
   },
+  gpsDiagnostic: { fontSize: 11, color: colors.textSecondary },
   gpsRetry: { alignSelf: 'flex-start', minHeight: 36, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 18, backgroundColor: '#E7F5F4' },
   gpsRetryText: { color: colors.primary, fontSize: 13, fontWeight: '700' },
   activeWalkBanner: {

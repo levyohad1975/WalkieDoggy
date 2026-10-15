@@ -1041,7 +1041,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
             // refuses that without confirmation if another device owns GPS.
             const gps = useGpsStore.getState();
             if (gps.gpsFencingEpoch === null && gps.pointCount > 0) await gps.attachGpsOwnership(walk);
-            await useGpsStore.getState().stopTracking(walk, completedByUserId);
+            await useGpsStore.getState().stopTracking(walk, completedByUserId, 'walk_finished');
           } catch (error) {
             // GPS is assistive, never a precondition for the walk lifecycle.
             // The route already persisted under the lease stays saved; the
@@ -1072,7 +1072,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         // repository writes locally first and queues remote retries offline.
         if (!gpsFinalizedBeforeFinish) {
           try {
-            await useGpsStore.getState().stopTracking(updated, completedByUserId);
+            await useGpsStore.getState().stopTracking(updated, completedByUserId, 'walk_finished');
           } catch (error) {
             console.error('[finishWalk] GPS session persistence failed', { walkId, error });
             set({ actionError: 'הטיול הסתיים, אך לא הצלחנו לשמור את נתוני ה-GPS. הנתונים נשארו במכשיר — נסו לרענן ולדווח לתמיכה אם הבעיה חוזרת.' });
@@ -1106,7 +1106,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       // (a no-op if this walk was never being tracked, e.g. it was marked
       // done without ever being started) so a GPS watch started via
       // startWalk can never keep running past a walk that's already done.
-      void useGpsStore.getState().stopTracking(updated, completedByUserId);
+      void useGpsStore.getState().stopTracking(updated, completedByUserId, 'walk_marked_done');
 
       // A2 fix: OfflineFirstRepository.saveWalk() never throws even when the
       // remote write ultimately failed — it always writes locally first
@@ -1345,7 +1345,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
           void useGpsStore.getState().attachGpsOwnership(started);
           return true;
         } catch (e) {
-          useGpsStore.getState().cancelTracking(walk.id);
+          useGpsStore.getState().cancelTracking(walk.id, 'walk_start_failed');
           set((s) => ({ walks: s.walks.filter((item) => item.id !== walk.id), actionError: friendlyErrorMessage(e, [], 'לא הצלחנו להתחיל את הטיול. בדקו חיבור ונסו שוב.') }));
           return false;
         }
@@ -1353,7 +1353,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       try {
         await repository.saveWalk(walk);
       } catch (e) {
-        useGpsStore.getState().cancelTracking(walk.id);
+        useGpsStore.getState().cancelTracking(walk.id, 'walk_start_failed');
         set((s) => ({ walks: s.walks.filter((w) => w.id !== walk.id), actionError: 'לא הצלחנו להתחיל את הטיול' }));
         return false;
       }
@@ -1372,7 +1372,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
           // Already-surfaced actionError from startWalk() above stands.
         }
         set((s) => ({ walks: s.walks.filter((w) => w.id !== walk.id) }));
-        useGpsStore.getState().cancelTracking(walk.id);
+        useGpsStore.getState().cancelTracking(walk.id, 'walk_start_failed');
       }
       return started;
     } finally {

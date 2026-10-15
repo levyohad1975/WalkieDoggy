@@ -7,6 +7,7 @@ import type { GpsTrackingStatus, GpsWatchStartResult } from '../../lib/gpsTracki
 import { RemoteGpsPanel } from '../RemoteGpsPanel';
 import { RoutePreview } from '../RoutePreview';
 import { useGpsStore } from '../../store/gpsStore';
+import { __resetGpsLifecycleLogForTests, getGpsLifecycleLog } from '../../lib/gpsLifecycleLog';
 
 /**
  * P0 real-iPhone regression (2026-10-15, PR #150 feature Preview).
@@ -182,7 +183,8 @@ beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();
   mockScheduleState.walks = [walk];
-  useGpsStore.setState({ trackingWalkId: null, permissionStatus: null, trackingStatus: null, trackingStartedAt: null, distanceMeters: 0, pointCount: 0, routePoints: [], gpsFencingEpoch: null, trackingSource: null, sessionsByWalkId: {} });
+  useGpsStore.setState({ trackingWalkId: null, permissionStatus: null, trackingStatus: null, trackingStartedAt: null, distanceMeters: 0, pointCount: 0, routePoints: [], gpsFencingEpoch: null, trackingSource: null, remoteGpsCommandId: null, lastGpsStop: null, sessionsByWalkId: {} });
+  __resetGpsLifecycleLogForTests();
   // A family with Remote GPS enabled and this walker's consent on: the
   // poller is live on Home, exactly as on the tester's Staging family.
   remoteGps.getRemoteGpsSettings.mockResolvedValue({ familyEnabled: true, consentEnabled: true, isAdmin: false });
@@ -270,7 +272,7 @@ describe('Local "הפעל GPS" tracking survives the Remote GPS poller (P0 real-
 describe('Remote GPS sessions keep their own lifecycle', () => {
   const trackingCommand = { command_id: 'cmd-1', walk_id: walk.id, status: 'tracking', expires_at: '2026-10-15T12:00:00Z' };
 
-  it('still stops a remote-acknowledged session once the admin\'s command is no longer tracking, saving the route', async () => {
+  async function startRemoteSession(commandId = 'cmd-1') {
     const safari = installSafariWatch();
     renderHome();
     await flush();
@@ -278,19 +280,59 @@ describe('Remote GPS sessions keep their own lifecycle', () => {
     safari.deliver(fixA);
     safari.deliver(fixB);
     await act(async () => { await tap; });
-    expect(useGpsStore.getState().markRemoteTracking(walk.id)).toBe(true);
-
-    remoteGps.getMyRemoteGpsCommands.mockResolvedValue([trackingCommand]);
+    expect(useGpsStore.getState().markRemoteTracking(walk.id, commandId)).toBe(true);
+    remoteGps.getMyRemoteGpsCommands.mockResolvedValue([{ ...trackingCommand, command_id: commandId }]);
     await advance(6_000);
-    expect(remoteGps.heartbeatRemoteGpsTracking).toHaveBeenCalledWith('cmd-1');
+    expect(remoteGps.heartbeatRemoteGpsTracking).toHaveBeenCalledWith(commandId);
     expect(useGpsStore.getState().trackingWalkId).toBe(walk.id);
+    return safari;
+  }
 
+  it.each([
+    [{ status: 'failed', failure_reason: 'consent_revoked' }, 'failed/consent_revoked'],
+    [{ status: 'failed', failure_reason: 'family_disabled' }, 'failed/family_disabled'],
+    [{ status: 'stopped', failure_reason: null }, 'stopped'],
+  ])('ends a remote session on an authorized termination (%j), saving the route with a reason', async (outcome, described) => {
+    const safari = await startRemoteSession();
+    remoteGps.getRemoteGpsCommandOutcome.mockResolvedValue(outcome);
     remoteGps.getMyRemoteGpsCommands.mockResolvedValue([]);
     await advance(6_000);
-    expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: null, trackingSource: null });
+
+    expect(remoteGps.getRemoteGpsCommandOutcome).toHaveBeenCalledWith('cmd-1');
+    expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: null, trackingSource: null, remoteGpsCommandId: null });
+    expect(useGpsStore.getState().lastGpsStop).toMatchObject({ walkId: walk.id, kind: 'stop', reason: `remote_command_terminated:${described}` });
     expect(finalRouteWrites()).toHaveLength(1);
     expect(repository.releaseGpsOwnershipV11).toHaveBeenCalledWith(walk.id, 3);
     expect(safari.handle.remove).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['target_inactive housekeeping', { status: 'failed', failure_reason: 'target_inactive' }],
+    ['expiry', { status: 'expired', failure_reason: 'expired' }],
+    ['an unreadable command', null],
+  ])('keeps a remote session running as local after %s', async (_label, outcome) => {
+    const safari = await startRemoteSession();
+    remoteGps.getRemoteGpsCommandOutcome.mockResolvedValue(outcome);
+    remoteGps.getMyRemoteGpsCommands.mockResolvedValue([]);
+    await advance(6_000);
+    await advance(6_000);
+
+    expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: walk.id, trackingSource: 'local', remoteGpsCommandId: null, lastGpsStop: null });
+    expect(finalRouteWrites()).toHaveLength(0);
+    expect(repository.releaseGpsOwnershipV11).not.toHaveBeenCalled();
+    expect(safari.handle.remove).not.toHaveBeenCalled();
+    expect(getGpsLifecycleLog().some((e) => e.event === 'remote_detached')).toBe(true);
+  });
+
+  it('keeps the session when the command outcome lookup itself fails', async () => {
+    await startRemoteSession();
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    remoteGps.getRemoteGpsCommandOutcome.mockRejectedValue(new Error('network down'));
+    remoteGps.getMyRemoteGpsCommands.mockResolvedValue([]);
+    await advance(6_000);
+    expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: walk.id, trackingSource: 'local' });
+    expect(finalRouteWrites()).toHaveLength(0);
+    warn.mockRestore();
   });
 
   it('only the tracked walk can be marked remote, and the mark is cleared with the session', async () => {
@@ -301,9 +343,11 @@ describe('Remote GPS sessions keep their own lifecycle', () => {
     expect(useGpsStore.getState().trackingSource).toBe('local');
     expect(useGpsStore.getState().markRemoteTracking('some-other-walk')).toBe(false);
     expect(useGpsStore.getState().trackingSource).toBe('local');
-    expect(useGpsStore.getState().markRemoteTracking(walk.id)).toBe(true);
-    useGpsStore.getState().cancelTracking(walk.id);
-    expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: null, trackingSource: null });
+    expect(useGpsStore.getState().markRemoteTracking(walk.id, 'cmd-9')).toBe(true);
+    expect(useGpsStore.getState().remoteGpsCommandId).toBe('cmd-9');
+    useGpsStore.getState().cancelTracking(walk.id, 'test_cleanup');
+    expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: null, trackingSource: null, remoteGpsCommandId: null });
+    expect(useGpsStore.getState().lastGpsStop).toMatchObject({ walkId: walk.id, kind: 'cancel', reason: 'test_cleanup' });
   });
 
   it('a poller tick during an in-flight remote activation does not cancel it; the session becomes remote only after acknowledgement', async () => {
@@ -440,5 +484,79 @@ describe('A remote-acknowledged session on the walker\'s own device survives a h
     await flush();
     expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: walk.id, pointCount: 6, trackingStatus: 'active' });
     expect(repository.appendGpsRouteV11.mock.calls.length).toBeGreaterThan(appendsBefore);
+  });
+});
+
+describe('Legitimate GPS session endings still work and are reason-coded', () => {
+  it('the walker\'s explicit "עצירת מעקב GPS" ends the remote session with a reason and stops the command', async () => {
+    const safari = installSafariWatch();
+    let commands: unknown[] = [{ command_id: 'cmd-u', walk_id: walk.id, status: 'pending', expires_at: '2026-10-15T13:04:05Z' }];
+    remoteGps.getMyRemoteGpsCommands.mockImplementation(async () => commands);
+    render(<RemoteGpsPanel walk={walk} currentUserId={WALKER} familyRole="admin" ready mode="home" />);
+    await flush();
+    fireEvent.press(screen.getByText('אישור והפעלת GPS במכשיר הזה'));
+    await flush();
+    safari.deliver(fixA);
+    await flush(20);
+    commands = [{ command_id: 'cmd-u', walk_id: walk.id, status: 'tracking', expires_at: '2026-10-15T13:04:05Z' }];
+    await flush();
+
+    fireEvent.press(screen.getByText('עצירת מעקב GPS'));
+    await flush(20);
+    expect(useGpsStore.getState().trackingWalkId).toBeNull();
+    expect(useGpsStore.getState().lastGpsStop).toMatchObject({ kind: 'stop', reason: 'remote_gps_stopped_by_user' });
+    expect(remoteGps.stopRemoteGpsTracking).toHaveBeenCalledWith('cmd-u');
+    expect(finalRouteWrites()).toHaveLength(1);
+  });
+
+  it('finishing the walk ends the session with walk_finished', async () => {
+    const safari = installSafariWatch();
+    const tap = tapActivateGps();
+    safari.deliver(fixA);
+    safari.deliver(fixB);
+    await act(async () => { await tap; });
+    await act(async () => { await useGpsStore.getState().stopTracking(walk, WALKER, 'walk_finished'); });
+    expect(useGpsStore.getState().lastGpsStop).toMatchObject({ walkId: walk.id, kind: 'stop', reason: 'walk_finished' });
+    expect(finalRouteWrites()).toHaveLength(1);
+    expect(repository.releaseGpsOwnershipV11).toHaveBeenCalledWith(walk.id, 3);
+  });
+
+  it('a legitimately revoked lease (another device took over) interrupts without ending the session or dropping the route', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const safari = installSafariWatch();
+    renderHome();
+    await flush();
+    const tap = tapActivateGps();
+    safari.deliver(fixA);
+    safari.deliver(fixB);
+    await act(async () => { await tap; });
+    repository.heartbeatGpsOwnershipV11.mockRejectedValue(new Error('GPS ownership expired or transferred'));
+    repository.acquireGpsOwnershipV11.mockRejectedValue(new Error('current GPS owner must release tracking or its lease must expire before transfer'));
+    await advance(15_000);
+    await flush(20);
+
+    expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: walk.id, trackingStatus: 'interrupted', gpsFencingEpoch: null, pointCount: 2 });
+    expect(useGpsStore.getState().routePoints).toHaveLength(2);
+    expect(finalRouteWrites()).toHaveLength(0);
+    expect(useGpsStore.getState().lastGpsStop).toBeNull();
+    expect(getGpsLifecycleLog().filter((e) => e.event === 'lease_lost').map((e) => e.reason)).toEqual(expect.arrayContaining(['heartbeat_rejected', 'acquire_rejected']));
+    warn.mockRestore();
+  });
+
+  it('the lifecycle log is reason-coded and never holds location values', async () => {
+    const safari = installSafariWatch();
+    const tap = tapActivateGps();
+    safari.deliver(fixA);
+    safari.deliver(fixB);
+    await act(async () => { await tap; });
+    await act(async () => { await useGpsStore.getState().stopTracking(walk, WALKER, 'walk_finished'); });
+
+    const log = getGpsLifecycleLog();
+    expect(log.map((e) => e.event)).toEqual(expect.arrayContaining(['start', 'first_fix', 'lease_acquired', 'stop', 'lease_released']));
+    expect(log.find((e) => e.event === 'stop')?.reason).toBe('walk_finished');
+    const serialized = JSON.stringify(log);
+    expect(serialized).not.toMatch(/latitude|longitude|accuracy/);
+    expect(serialized).not.toContain(String(fixA.latitude));
+    expect(serialized).not.toContain(String(fixA.longitude));
   });
 });

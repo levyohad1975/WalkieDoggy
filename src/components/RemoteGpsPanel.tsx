@@ -11,8 +11,9 @@ import type { Walk } from '../types';
 import {
  acknowledgeRemoteGpsStart,getMyRemoteGpsCommands,getRemoteGpsSettings,listRemoteGpsTargets,
  requestRemoteGpsStart,sendRemoteGpsNotification,setFamilyRemoteGpsEnabled,setRemoteGpsConsent,
- stopRemoteGpsTracking,getRemoteGpsWalkStatus,heartbeatRemoteGpsTracking,type RemoteGpsCommand,type RemoteGpsTarget,
+ stopRemoteGpsTracking,getRemoteGpsWalkStatus,heartbeatRemoteGpsTracking,getRemoteGpsCommandOutcome,type RemoteGpsCommand,type RemoteGpsTarget,
 } from '../lib/remoteGps';
+import { describeRemoteGpsOutcome, isAuthorizedRemoteGpsTermination } from '../logic/remoteGpsTermination';
 
 /** React Native Alert.alert is a no-op in react-native-web (iPhone Safari / Android browser). */
 function showGpsMessage(title:string,message:string){
@@ -47,12 +48,23 @@ export function RemoteGpsPanel({walk,currentUserId,familyRole,ready,mode='home'}
   if(processingRef.current)return;processingRef.current=true;
   try{const commands=await getMyRemoteGpsCommands();const activeWalk=useGpsStore.getState().trackingWalkId;
    for(const tracked of commands.filter(c=>c.status==='tracking')){if(activeWalk===tracked.walk_id)await heartbeatRemoteGpsTracking(tracked.command_id);else await stopRemoteGpsTracking(tracked.command_id);}
-   // Stop only a session a Remote GPS command started and whose command has
-   // ended. The walker's own Start / "הפעל GPS" session never has a remote
-   // command; stopping it here reset iPhone GPS seconds after the first fix
-   // (P0 2026-10-15). A remote activation still in flight stays 'local'
-   // until acknowledged, so a poll tick cannot cancel it either.
-   if(activeWalk&&useGpsStore.getState().trackingSource==='remote'&&!commands.some(c=>c.status==='tracking'&&c.walk_id===activeWalk)){const oldWalk=useScheduleStore.getState().walks.find(w=>w.id===activeWalk);if(oldWalk)await useGpsStore.getState().stopTracking(oldWalk,currentUserId);}
+   // Only a session a Remote GPS command started is ever affected here — the
+   // walker's own Start / "הפעל GPS" session never has a command (P0 fix
+   // e717b60). And a command that merely vanished from the active list is not
+   // proof of an authorized stop: the admin-side status check fails a
+   // command as 'target_inactive' after 30 s, which ended a live iPhone
+   // session ~34 s after its first fix while the walk stayed active (P0
+   // 2026-10-15). Read the command's own final state and end the session only
+   // for an authorized termination; otherwise keep it running as local.
+   const gpsNow=useGpsStore.getState();
+   if(activeWalk&&gpsNow.trackingSource==='remote'&&!commands.some(c=>c.status==='tracking'&&c.walk_id===activeWalk)){
+    const commandId=gpsNow.remoteGpsCommandId;
+    let outcome:{status:string;failure_reason:string|null}|null=null;
+    try{outcome=commandId?await getRemoteGpsCommandOutcome(commandId):null;}catch(e){console.warn('Remote GPS command outcome unavailable; keeping the walker\'s GPS session',e);}
+    const oldWalk=useScheduleStore.getState().walks.find(w=>w.id===activeWalk);
+    if(isAuthorizedRemoteGpsTermination(outcome)&&oldWalk)await useGpsStore.getState().stopTracking(oldWalk,currentUserId,'remote_command_terminated',describeRemoteGpsOutcome(outcome));
+    else useGpsStore.getState().detachRemoteTracking(activeWalk,describeRemoteGpsOutcome(outcome));
+   }
    const pending=commands.find(c=>c.status==='pending');if(!pending)return;
    const walk=useScheduleStore.getState().walks.find(w=>w.id===pending.walk_id);if(!walk||walk.familyId!==useFamilyStore.getState().family?.id||(walk.actualWalkerUserId??walk.responsibleUserId)!==currentUserId){await acknowledgeRemoteGpsStart(pending.command_id,false,'walk_unavailable');return;}
    // Remote GPS is consent to request a device location session, never an
@@ -79,8 +91,8 @@ export function RemoteGpsPanel({walk,currentUserId,familyRole,ready,mode='home'}
    const fixReceived=lease&&await waitForFirstGpsFix(walk.id);const gps=useGpsStore.getState();const tracking=Boolean(fixReceived&&gps.trackingWalkId===walk.id&&gps.permissionStatus==='granted'&&gps.pointCount>0);
    const failureReason=tracking?undefined:(gps.permissionStatus==='granted'?'no_gps_fix':gps.permissionStatus??'location_unavailable');
    await acknowledgeRemoteGpsStart(command.command_id,tracking,failureReason);
-   if(tracking){useGpsStore.getState().markRemoteTracking(walk.id);setCommand({...command,status:'tracking'});setFeedback('GPS פעיל במכשיר הזה.');}
-   else{useGpsStore.getState().cancelTracking(walk.id);setFeedback(`GPS לא הופעל: ${failureReason??'מיקום לא זמין'}. אפשר לנסות שוב מהטיול הפעיל.`);}
+   if(tracking){useGpsStore.getState().markRemoteTracking(walk.id,command.command_id);setCommand({...command,status:'tracking'});setFeedback('GPS פעיל במכשיר הזה.');}
+   else{useGpsStore.getState().cancelTracking(walk.id,'remote_activation_failed');setFeedback(`GPS לא הופעל: ${failureReason??'מיקום לא זמין'}. אפשר לנסות שוב מהטיול הפעיל.`);}
   }catch(e){setFeedback('לא ניתן להפעיל GPS. בדקו הרשאת מיקום וחיבור ונסו שוב.');showGpsMessage('הפעלת GPS נכשלה','הטיול נשאר פעיל. בדקו שהרשאת המיקום מופעלת ונסו שוב.');}
   finally{setBusy(false);}
  },[command,busy,currentUserId,waitForFirstGpsFix]);
@@ -89,7 +101,7 @@ export function RemoteGpsPanel({walk,currentUserId,familyRole,ready,mode='home'}
  const toggleFamily=async()=>{if(busy||!settings)return;setBusy(true);try{await setFamilyRemoteGpsEnabled(!settings.familyEnabled);await refresh();}catch{showGpsMessage('לא ניתן לעדכן הגדרת משפחה','נדרשת הרשאת מנהל המשפחה.');}finally{setBusy(false);}};
  const chooseRemote=async()=>{if(!walk||walk.status!=='in_progress'||busy)return;setBusy(true);setFeedback('בודק מכשירים זמינים להפעלה מרחוק…');try{const eligible=await listRemoteGpsTargets(walk.id);setTargets(eligible);if(!eligible.length){setFeedback('לא נמצא מכשיר מורשה לטיול זה. בדקו הסכמה והרשאת מיקום במכשיר של בן המשפחה.');showGpsMessage('אין מכשיר מורשה','המשפחה צריכה לאפשר מעקב, ובן המשפחה צריך להפעיל הסכמה במכשיר שלו.');return;}setSelecting(true);setFeedback('בחרו את המכשיר של בן המשפחה להפעלת המעקב.');}catch{setFeedback('בדיקת המכשירים נכשלה. בדקו חיבור והרשאות.');showGpsMessage('לא ניתן לשלוח בקשה','בדקו שהמשפחה ומכשיר היעד מחוברים והסכמה פעילה.');}finally{setBusy(false);}};
  const selectTarget=async(target:RemoteGpsTarget)=>{if(!walk)return;setBusy(true);setSelecting(false);setFeedback('שולח בקשת GPS למכשיר היעד…');try{const id=await requestRemoteGpsStart(walk.id,target.target_auth_user_id);try{await sendRemoteGpsNotification(id);}catch{/* command remains pending; target foreground polling is authoritative */}setFeedback('הבקשה נשלחה למכשיר היעד; ממתינים למיקום GPS אמיתי.');showGpsMessage('הבקשה נשלחה',`הבקשה נשלחה אל ${target.display_name}. המעקב ייחשב פעיל רק לאחר אישור GPS ממכשיר היעד.`);}catch{setFeedback('השרת דחה את הבקשה. בדקו הסכמה והרשאות.');showGpsMessage('הבקשה לא נשלחה','השרת דחה את הבקשה או שההסכמה אינה פעילה.');}finally{setBusy(false);}};
- const stop=async()=>{if(!command||busy)return;setBusy(true);try{const walk=useScheduleStore.getState().walks.find(w=>w.id===command.walk_id);if(walk)await useGpsStore.getState().stopTracking(walk,currentUserId);await stopRemoteGpsTracking(command.command_id);setCommand(null);}catch{showGpsMessage('לא ניתן לעצור את המעקב','נסו שוב כשהחיבור יחזור.');}finally{setBusy(false);}};
+ const stop=async()=>{if(!command||busy)return;setBusy(true);try{const walk=useScheduleStore.getState().walks.find(w=>w.id===command.walk_id);if(walk)await useGpsStore.getState().stopTracking(walk,currentUserId,'remote_gps_stopped_by_user');await stopRemoteGpsTracking(command.command_id);setCommand(null);}catch{showGpsMessage('לא ניתן לעצור את המעקב','נסו שוב כשהחיבור יחזור.');}finally{setBusy(false);}};
  if(!isSupabaseConfigured)return null;
  const visible=Boolean(settings&&(familyRole==='admin'||settings.consentEnabled||command||walk?.status==='pending'||walk?.status==='in_progress'));
  if(!visible && mode==='home')return null;

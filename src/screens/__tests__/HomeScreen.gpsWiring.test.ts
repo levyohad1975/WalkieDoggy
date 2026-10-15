@@ -32,8 +32,8 @@ describe('HomeScreen wires gpsStore\'s live tracking state into NextWalkCard (st
   // "no longer owns GPS" error that left the card stuck as interrupted.
   it('discards (never persists) the provisional GPS watch when the start is not accepted', () => {
     const startAction = source.slice(source.indexOf('const startWalkAs ='), source.indexOf('// PRD §9 gamification — an unlocked'));
-    expect(startAction).toMatch(/if \(!started && !remoteStart\) useGpsStore\.getState\(\)\.cancelTracking\(walk\.id\)/);
-    expect(startAction).toMatch(/\}, \(\) => \{\s*if \(!remoteStart\) useGpsStore\.getState\(\)\.cancelTracking\(walk\.id\)/);
+    expect(startAction).toMatch(/if \(!started && !remoteStart\) useGpsStore\.getState\(\)\.cancelTracking\(walk\.id, 'walk_start_failed'\)/);
+    expect(startAction).toMatch(/\}, \(\) => \{\s*if \(!remoteStart\) useGpsStore\.getState\(\)\.cancelTracking\(walk\.id, 'walk_start_failed'\)/);
     expect(startAction).not.toMatch(/getState\(\)\.stopTracking\(/);
   });
 });
