@@ -1,6 +1,6 @@
 import React from 'react';
 import { AppState, Text } from 'react-native';
-import { act, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import type { Walk } from '../../types';
 import { accumulateDistance, createGpsAccumulator, formatDistanceMeters, type GpsAccumulator, type GpsPoint } from '../../logic/gpsDistance';
 import type { GpsTrackingStatus, GpsWatchStartResult } from '../../lib/gpsTracking';
@@ -181,7 +181,7 @@ beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();
   mockScheduleState.walks = [walk];
-  useGpsStore.setState({ trackingWalkId: null, permissionStatus: null, trackingStatus: null, trackingStartedAt: null, distanceMeters: 0, pointCount: 0, routePoints: [], gpsFencingEpoch: null, sessionsByWalkId: {} });
+  useGpsStore.setState({ trackingWalkId: null, permissionStatus: null, trackingStatus: null, trackingStartedAt: null, distanceMeters: 0, pointCount: 0, routePoints: [], gpsFencingEpoch: null, trackingSource: null, sessionsByWalkId: {} });
   // A family with Remote GPS enabled and this walker's consent on: the
   // poller is live on Home, exactly as on the tester's Staging family.
   remoteGps.getRemoteGpsSettings.mockResolvedValue({ familyEnabled: true, consentEnabled: true, isAdmin: false });
@@ -262,5 +262,111 @@ describe('Local "הפעל GPS" tracking survives the Remote GPS poller (P0 real-
     expect(screen.queryByText(/ממתין למיקום GPS ראשון/)).toBeNull();
     expect(repository.releaseGpsOwnershipV11).not.toHaveBeenCalled();
     expect(safari.handle.remove).not.toHaveBeenCalled();
+  });
+});
+
+describe('Remote GPS sessions keep their own lifecycle', () => {
+  const trackingCommand = { command_id: 'cmd-1', walk_id: walk.id, status: 'tracking', expires_at: '2026-10-15T12:00:00Z' };
+
+  it('still stops a remote-acknowledged session once the admin\'s command is no longer tracking, saving the route', async () => {
+    const safari = installSafariWatch();
+    renderHome();
+    await flush();
+    const tap = tapActivateGps();
+    safari.deliver(fixA);
+    safari.deliver(fixB);
+    await act(async () => { await tap; });
+    expect(useGpsStore.getState().markRemoteTracking(walk.id)).toBe(true);
+
+    remoteGps.getMyRemoteGpsCommands.mockResolvedValue([trackingCommand]);
+    await advance(6_000);
+    expect(remoteGps.heartbeatRemoteGpsTracking).toHaveBeenCalledWith('cmd-1');
+    expect(useGpsStore.getState().trackingWalkId).toBe(walk.id);
+
+    remoteGps.getMyRemoteGpsCommands.mockResolvedValue([]);
+    await advance(6_000);
+    expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: null, trackingSource: null });
+    expect(finalRouteWrites()).toHaveLength(1);
+    expect(repository.releaseGpsOwnershipV11).toHaveBeenCalledWith(walk.id, 3);
+    expect(safari.handle.remove).toHaveBeenCalled();
+  });
+
+  it('only the tracked walk can be marked remote, and the mark is cleared with the session', async () => {
+    const safari = installSafariWatch();
+    const tap = tapActivateGps();
+    safari.deliver(fixA);
+    await act(async () => { await tap; });
+    expect(useGpsStore.getState().trackingSource).toBe('local');
+    expect(useGpsStore.getState().markRemoteTracking('some-other-walk')).toBe(false);
+    expect(useGpsStore.getState().trackingSource).toBe('local');
+    expect(useGpsStore.getState().markRemoteTracking(walk.id)).toBe(true);
+    useGpsStore.getState().cancelTracking(walk.id);
+    expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: null, trackingSource: null });
+  });
+
+  it('a poller tick during an in-flight remote activation does not cancel it; the session becomes remote only after acknowledgement', async () => {
+    const safari = installSafariWatch();
+    let commands: unknown[] = [{ ...trackingCommand, status: 'pending' }];
+    remoteGps.getMyRemoteGpsCommands.mockImplementation(async () => commands);
+    render(<RemoteGpsPanel walk={walk} currentUserId={WALKER} familyRole="admin" ready mode="home" />);
+    await flush();
+
+    fireEvent.press(screen.getByText('אישור והפעלת GPS במכשיר הזה'));
+    await flush();
+    expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: walk.id, trackingSource: 'local' });
+
+    await advance(6_000); // poller sees only the still-pending command
+    expect(useGpsStore.getState().trackingWalkId).toBe(walk.id);
+
+    safari.deliver(fixA);
+    safari.deliver(fixB);
+    await flush(20);
+    expect(remoteGps.acknowledgeRemoteGpsStart).toHaveBeenCalledWith('cmd-1', true, undefined);
+    expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: walk.id, trackingSource: 'remote', gpsFencingEpoch: 3 });
+
+    commands = [trackingCommand];
+    await advance(6_000);
+    expect(useGpsStore.getState().trackingWalkId).toBe(walk.id);
+    expect(repository.releaseGpsOwnershipV11).not.toHaveBeenCalled();
+  });
+});
+
+describe('Local session robustness on the same screen', () => {
+  it('a second "הפעל GPS" tap during Safari startup creates no second watch and no second lease request', async () => {
+    const safari = installSafariWatch();
+    renderHome();
+    await flush();
+    const first = tapActivateGps();
+    const second = tapActivateGps();
+    await flush();
+    safari.deliver(fixA);
+    await act(async () => { await Promise.all([first, second]); });
+    await flush();
+
+    expect(mockStartGpsWatch).toHaveBeenCalledTimes(1);
+    expect(repository.acquireGpsOwnershipV11).toHaveBeenCalledTimes(1);
+    expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: walk.id, gpsFencingEpoch: 3, trackingSource: 'local' });
+  });
+
+  it('a temporary signal loss keeps the captured route and recovers on the next fix across poller ticks', async () => {
+    const safari = installSafariWatch();
+    renderHome();
+    await flush();
+    const tap = tapActivateGps();
+    safari.deliver(fixA);
+    safari.deliver(fixB);
+    await act(async () => { await tap; });
+
+    safari.signalLoss();
+    await advance(6_000);
+    expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: walk.id, trackingStatus: 'interrupted', pointCount: 2 });
+    expect(useGpsStore.getState().routePoints).toHaveLength(2);
+    expect(screen.queryByText(/ממתין למיקום GPS ראשון/)).toBeNull();
+
+    safari.deliver({ ...fixB, latitude: fixB.latitude + 10 / METERS_PER_DEGREE_LAT, timestamp: fixB.timestamp + 5_000 });
+    await advance(6_000);
+    expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: walk.id, trackingStatus: 'active', pointCount: 3 });
+    expect(Math.round(useGpsStore.getState().distanceMeters)).toBe(18);
+    expect(repository.releaseGpsOwnershipV11).not.toHaveBeenCalled();
   });
 });

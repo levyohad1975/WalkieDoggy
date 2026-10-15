@@ -47,7 +47,12 @@ export function RemoteGpsPanel({walk,currentUserId,familyRole,ready,mode='home'}
   if(processingRef.current)return;processingRef.current=true;
   try{const commands=await getMyRemoteGpsCommands();const activeWalk=useGpsStore.getState().trackingWalkId;
    for(const tracked of commands.filter(c=>c.status==='tracking')){if(activeWalk===tracked.walk_id)await heartbeatRemoteGpsTracking(tracked.command_id);else await stopRemoteGpsTracking(tracked.command_id);}
-   if(activeWalk&&!commands.some(c=>c.status==='tracking'&&c.walk_id===activeWalk)){const oldWalk=useScheduleStore.getState().walks.find(w=>w.id===activeWalk);if(oldWalk)await useGpsStore.getState().stopTracking(oldWalk,currentUserId);}
+   // Stop only a session a Remote GPS command started and whose command has
+   // ended. The walker's own Start / "הפעל GPS" session never has a remote
+   // command; stopping it here reset iPhone GPS seconds after the first fix
+   // (P0 2026-10-15). A remote activation still in flight stays 'local'
+   // until acknowledged, so a poll tick cannot cancel it either.
+   if(activeWalk&&useGpsStore.getState().trackingSource==='remote'&&!commands.some(c=>c.status==='tracking'&&c.walk_id===activeWalk)){const oldWalk=useScheduleStore.getState().walks.find(w=>w.id===activeWalk);if(oldWalk)await useGpsStore.getState().stopTracking(oldWalk,currentUserId);}
    const pending=commands.find(c=>c.status==='pending');if(!pending)return;
    const walk=useScheduleStore.getState().walks.find(w=>w.id===pending.walk_id);if(!walk||walk.familyId!==useFamilyStore.getState().family?.id||(walk.actualWalkerUserId??walk.responsibleUserId)!==currentUserId){await acknowledgeRemoteGpsStart(pending.command_id,false,'walk_unavailable');return;}
    // Remote GPS is consent to request a device location session, never an
@@ -74,7 +79,7 @@ export function RemoteGpsPanel({walk,currentUserId,familyRole,ready,mode='home'}
    const fixReceived=lease&&await waitForFirstGpsFix(walk.id);const gps=useGpsStore.getState();const tracking=Boolean(fixReceived&&gps.trackingWalkId===walk.id&&gps.permissionStatus==='granted'&&gps.pointCount>0);
    const failureReason=tracking?undefined:(gps.permissionStatus==='granted'?'no_gps_fix':gps.permissionStatus??'location_unavailable');
    await acknowledgeRemoteGpsStart(command.command_id,tracking,failureReason);
-   if(tracking){setCommand({...command,status:'tracking'});setFeedback('GPS פעיל במכשיר הזה.');}
+   if(tracking){useGpsStore.getState().markRemoteTracking(walk.id);setCommand({...command,status:'tracking'});setFeedback('GPS פעיל במכשיר הזה.');}
    else{useGpsStore.getState().cancelTracking(walk.id);setFeedback(`GPS לא הופעל: ${failureReason??'מיקום לא זמין'}. אפשר לנסות שוב מהטיול הפעיל.`);}
   }catch(e){setFeedback('לא ניתן להפעיל GPS. בדקו הרשאת מיקום וחיבור ונסו שוב.');showGpsMessage('הפעלת GPS נכשלה','הטיול נשאר פעיל. בדקו שהרשאת המיקום מופעלת ונסו שוב.');}
   finally{setBusy(false);}

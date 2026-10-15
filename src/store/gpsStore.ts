@@ -32,6 +32,8 @@ let gpsLeaseLost = false;
  * remembered and honored as soon as this same watch finishes starting.
  */
 let pendingOwnership: { walk: Walk; confirmTransfer: boolean } | null = null;
+/** The same-device lease acquisition currently in flight, shared by concurrent callers for that walk. */
+let ownershipRequest: { walkId: string; promise: Promise<boolean> } | null = null;
 
 /** Server answers that prove this device no longer holds a valid lease. */
 export function isGpsLeaseLostError(error: unknown): boolean {
@@ -53,6 +55,16 @@ interface GpsState {
   pointCount: number;
   routePoints: Array<{ latitude: number; longitude: number; timestamp: number }>;
   gpsFencingEpoch: number | null;
+  /**
+   * Who started the current tracking session. 'local' is this device's own
+   * Start / "הפעל GPS" / transfer tap; 'remote' is a family admin's Remote GPS
+   * command that this device has acknowledged as tracking. Only a 'remote'
+   * session may be stopped by RemoteGpsPanel's command poller when its
+   * command ends — a local session never has a remote command, and treating
+   * that absence as "stopped" reset real-iPhone tracking seconds after the
+   * first fix (P0 2026-10-15).
+   */
+  trackingSource: 'local' | 'remote' | null;
   /** Persisted sessions this device has loaded/saved, keyed by walkId — a cache, not the source of truth (the repository is); populated by loadSession()/stopTracking()/correctDistance(). */
   sessionsByWalkId: Record<string, WalkGpsSession>;
 
@@ -65,6 +77,8 @@ interface GpsState {
    */
   startTracking: (walk: Pick<Walk, 'id' | 'familyId' | 'dogId'>) => Promise<void>;
   attachGpsOwnership: (walk: Walk, confirmTransfer?: boolean) => Promise<boolean>;
+  /** Marks the running session as owned by an acknowledged Remote GPS command (see trackingSource). Returns false if this walk is not the one being tracked. */
+  markRemoteTracking: (walkId: string) => boolean;
   /** Adopt the authoritative server walk ID after start_walk resolves a local schedule occurrence to its canonical row. */
   rebindTrackingWalk: (
     localWalk: Pick<Walk, 'id' | 'familyId' | 'dogId' | 'scheduleEntryId'>,
@@ -138,6 +152,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
   pointCount: 0,
   routePoints: [],
   gpsFencingEpoch: null,
+  trackingSource: null,
   sessionsByWalkId: {},
 
   startTracking: async (walk) => {
@@ -166,7 +181,10 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     lastPersistedGpsTimestamp = 0;
     gpsLeaseLost = false;
     if (pendingOwnership && pendingOwnership.walk.id !== walk.id) pendingOwnership = null;
-    set({ trackingWalkId: walk.id, permissionStatus: null, trackingStatus: 'requesting', trackingStartedAt: priorStartedAt, distanceMeters: priorDistance, pointCount: priorPointCount, routePoints: priorRoute, gpsFencingEpoch: null });
+    // A retry of the same walk keeps its origin; any new session is local
+    // until a Remote GPS command acknowledgement says otherwise.
+    const trackingSource = current.trackingWalkId === walk.id ? current.trackingSource ?? 'local' : 'local';
+    set({ trackingWalkId: walk.id, permissionStatus: null, trackingStatus: 'requesting', trackingStartedAt: priorStartedAt, distanceMeters: priorDistance, pointCount: priorPointCount, routePoints: priorRoute, gpsFencingEpoch: null, trackingSource });
 
     const result = await startGpsWatch((acc: GpsAccumulator) => {
       // Ignore a late callback from a watch that's since been stopped/
@@ -221,57 +239,76 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       return false;
     }
     if (get().gpsFencingEpoch !== null && !confirmTransfer) return true;
-    try {
-      const lease = await repository.acquireGpsOwnershipV11(walk.id, confirmTransfer);
-      if (get().trackingWalkId !== walk.id || activeWatchWalkId !== walk.id) return false;
-      const recoveredLease = gpsLeaseLost;
-      gpsLeaseLost = false;
-      set({
-        gpsFencingEpoch: lease.fencingEpoch,
-        ...(recoveredLease && get().trackingStatus === 'interrupted' && get().pointCount > 0 ? { trackingStatus: 'active' as const } : {}),
-      });
-      lastPersistedGpsTimestamp = 0;
-      if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
-      activeGpsHeartbeat = repository.heartbeatGpsOwnershipV11
-        ? setInterval(() => {
-            void repository.heartbeatGpsOwnershipV11!(walk.id, lease.fencingEpoch).catch((error) => {
-              if (get().trackingWalkId !== walk.id || get().gpsFencingEpoch !== lease.fencingEpoch) return;
-              if (!isGpsLeaseLostError(error)) {
-                // A dropped request does not prove the server lease ended.
-                // Keep the epoch; the next heartbeat (or the server's own
-                // expiry answer) decides. Route writes stay fenced server-side.
-                console.warn('[gpsStore] GPS ownership heartbeat failed; retrying on the next interval', error);
-                return;
-              }
-              // Typical on iPhone Safari after the screen was locked longer
-              // than the lease. Renew on this same device without transfer
-              // confirmation; the server refuses that if another device now
-              // owns GPS for this walk, which leaves the walk interrupted.
-              console.warn('[gpsStore] GPS ownership lease ended; renewing on this device', error);
-              if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
-              activeGpsHeartbeat = null;
-              gpsLeaseLost = true;
-              set({ gpsFencingEpoch: null, trackingStatus: 'interrupted' });
-              void get().attachGpsOwnership(walk);
-            });
-          }, 15_000)
-        : null;
-      await persistGpsRoute(walk.id, {
-        distanceMeters: get().distanceMeters,
-        pointCount: get().pointCount,
-        routePoints: get().routePoints,
-      });
-      return true;
-    } catch (error) {
-      console.warn('[gpsStore] GPS ownership was not acquired', error);
-      if (get().trackingWalkId === walk.id) {
-        gpsLeaseLost = true;
+    // One lease request per walk at a time: a second "הפעל GPS" tap during
+    // Safari's startup (its deferred request plus the tap's own .then) joins
+    // the acquisition already in flight instead of racing it for a second
+    // fencing epoch. An explicit transfer confirmation always goes through.
+    if (!confirmTransfer && ownershipRequest?.walkId === walk.id) return ownershipRequest.promise;
+    const request = (async (): Promise<boolean> => {
+      try {
+        const lease = await repository.acquireGpsOwnershipV11!(walk.id, confirmTransfer);
+        if (get().trackingWalkId !== walk.id || activeWatchWalkId !== walk.id) return false;
+        const recoveredLease = gpsLeaseLost;
+        gpsLeaseLost = false;
+        set({
+          gpsFencingEpoch: lease.fencingEpoch,
+          ...(recoveredLease && get().trackingStatus === 'interrupted' && get().pointCount > 0 ? { trackingStatus: 'active' as const } : {}),
+        });
+        lastPersistedGpsTimestamp = 0;
         if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
-        activeGpsHeartbeat = null;
+        activeGpsHeartbeat = repository.heartbeatGpsOwnershipV11
+          ? setInterval(() => {
+              void repository.heartbeatGpsOwnershipV11!(walk.id, lease.fencingEpoch).catch((error) => {
+                if (get().trackingWalkId !== walk.id || get().gpsFencingEpoch !== lease.fencingEpoch) return;
+                if (!isGpsLeaseLostError(error)) {
+                  // A dropped request does not prove the server lease ended.
+                  // Keep the epoch; the next heartbeat (or the server's own
+                  // expiry answer) decides. Route writes stay fenced server-side.
+                  console.warn('[gpsStore] GPS ownership heartbeat failed; retrying on the next interval', error);
+                  return;
+                }
+                // Typical on iPhone Safari after the screen was locked longer
+                // than the lease. Renew on this same device without transfer
+                // confirmation; the server refuses that if another device now
+                // owns GPS for this walk, which leaves the walk interrupted.
+                console.warn('[gpsStore] GPS ownership lease ended; renewing on this device', error);
+                if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
+                activeGpsHeartbeat = null;
+                gpsLeaseLost = true;
+                set({ gpsFencingEpoch: null, trackingStatus: 'interrupted' });
+                void get().attachGpsOwnership(walk);
+              });
+            }, 15_000)
+          : null;
+        await persistGpsRoute(walk.id, {
+          distanceMeters: get().distanceMeters,
+          pointCount: get().pointCount,
+          routePoints: get().routePoints,
+        });
+        return true;
+      } catch (error) {
+        console.warn('[gpsStore] GPS ownership was not acquired', error);
+        if (get().trackingWalkId === walk.id) {
+          gpsLeaseLost = true;
+          if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
+          activeGpsHeartbeat = null;
+        }
+        set({ gpsFencingEpoch: null, trackingStatus: get().permissionStatus === 'denied' ? 'denied' : 'interrupted' });
+        return false;
       }
-      set({ gpsFencingEpoch: null, trackingStatus: get().permissionStatus === 'denied' ? 'denied' : 'interrupted' });
-      return false;
+    })();
+    if (!confirmTransfer) ownershipRequest = { walkId: walk.id, promise: request };
+    try {
+      return await request;
+    } finally {
+      if (ownershipRequest?.promise === request) ownershipRequest = null;
     }
+  },
+
+  markRemoteTracking: (walkId) => {
+    if (get().trackingWalkId !== walkId || activeWatchWalkId !== walkId) return false;
+    set({ trackingSource: 'remote' });
+    return true;
   },
 
   rebindTrackingWalk: (localWalk, canonicalWalk) => {
@@ -292,19 +329,21 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     if (get().trackingWalkId !== walkId || activeWatchWalkId !== walkId) return;
     startGeneration += 1;
     pendingOwnership = null;
+    ownershipRequest = null;
     activeWatch?.remove();
     activeWatch = null;
     if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
     activeGpsHeartbeat = null;
     activeWatchWalkId = null;
     gpsLeaseLost = false;
-    set({ trackingWalkId: null, permissionStatus: null, trackingStatus: null, trackingStartedAt: null, distanceMeters: 0, pointCount: 0, routePoints: [], gpsFencingEpoch: null });
+    set({ trackingWalkId: null, permissionStatus: null, trackingStatus: null, trackingStartedAt: null, distanceMeters: 0, pointCount: 0, routePoints: [], gpsFencingEpoch: null, trackingSource: null });
   },
 
   stopTracking: async (walk, userId) => {
     const wasTracking = get().trackingWalkId === walk.id;
     if (wasTracking) startGeneration += 1;
     if (wasTracking) pendingOwnership = null;
+    if (wasTracking) ownershipRequest = null;
     if (activeWatch && wasTracking) {
       activeWatch.remove();
       activeWatch = null;
@@ -322,7 +361,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       activeGpsHeartbeat = null;
       activeWatchWalkId = null;
       gpsLeaseLost = false;
-      set({ trackingWalkId: null, trackingStartedAt: null, trackingStatus: null, permissionStatus: null, gpsFencingEpoch: null });
+      set({ trackingWalkId: null, trackingStartedAt: null, trackingStatus: null, permissionStatus: null, gpsFencingEpoch: null, trackingSource: null });
       return null;
     }
 
@@ -377,7 +416,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       activeGpsHeartbeat = null;
       activeWatchWalkId = null;
       gpsLeaseLost = false;
-      set({ trackingWalkId: null, trackingStartedAt: null, trackingStatus: null, permissionStatus: null, gpsFencingEpoch: null });
+      set({ trackingWalkId: null, trackingStartedAt: null, trackingStatus: null, permissionStatus: null, gpsFencingEpoch: null, trackingSource: null });
       set((s) => ({ sessionsByWalkId: { ...s.sessionsByWalkId, [walk.id]: saved } }));
       set({ routePoints: [] });
       return saved;
@@ -388,7 +427,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     activeGpsHeartbeat = null;
     activeWatchWalkId = null;
     gpsLeaseLost = false;
-    set({ trackingWalkId: null, trackingStartedAt: null, trackingStatus: null, permissionStatus: null, gpsFencingEpoch: null });
+    set({ trackingWalkId: null, trackingStartedAt: null, trackingStatus: null, permissionStatus: null, gpsFencingEpoch: null, trackingSource: null });
     set((s) => ({ sessionsByWalkId: { ...s.sessionsByWalkId, [walk.id]: session } }));
     set({ routePoints: [] });
     return session;
