@@ -55,6 +55,7 @@ jest.mock('../../lib/remoteGps', () => ({
   sendRemoteGpsNotification: jest.fn(),
   setFamilyRemoteGpsEnabled: jest.fn(),
   setRemoteGpsConsent: jest.fn(),
+  getRemoteGpsCommandOutcome: jest.fn(),
 }));
 jest.mock('../../store/scheduleStore', () => ({
   useScheduleStore: { getState: () => mockScheduleState },
@@ -190,6 +191,7 @@ beforeEach(() => {
   remoteGps.heartbeatRemoteGpsTracking.mockResolvedValue(undefined);
   remoteGps.stopRemoteGpsTracking.mockResolvedValue(undefined);
   remoteGps.acknowledgeRemoteGpsStart.mockResolvedValue(undefined);
+  remoteGps.getRemoteGpsCommandOutcome.mockResolvedValue(null);
   repository.acquireGpsOwnershipV11.mockResolvedValue({ fencingEpoch: 3, expiresAt: '2026-10-15T11:00:00Z' });
   repository.heartbeatGpsOwnershipV11.mockResolvedValue(undefined);
   repository.releaseGpsOwnershipV11.mockResolvedValue(undefined);
@@ -368,5 +370,75 @@ describe('Local session robustness on the same screen', () => {
     expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: walk.id, trackingStatus: 'active', pointCount: 3 });
     expect(Math.round(useGpsStore.getState().distanceMeters)).toBe(18);
     expect(repository.releaseGpsOwnershipV11).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * P0 #2 (real iPhone, 2026-10-15 16:02 IDT, Preview e717b60). Staging row:
+ * walk_gps_sessions started_at 13:02:35.9, created_at 13:02:37.8, ended_at
+ * 13:03:10.1 (≈34 s), point_count 5, distance 0 — while the walk stayed
+ * in_progress and the card fell back to "GPS לא פעיל במכשיר הזה".
+ *
+ * Only a client stopTracking() writes walk_gps_sessions.ended_at
+ * (append_walk_gps_route_v11 p_ended_at). After e717b60 the only automatic
+ * caller is the Remote GPS poller for a session started by a remote command.
+ * Its trigger is the admin-side status check (get_remote_gps_walk_status,
+ * refreshed every 6 s on an admin's Home) that fails a 'tracking' command as
+ * 'target_inactive' once acknowledged_at is >30 s old: 30 s + one 6 s poll
+ * after the acknowledgement at ≈13:02:38 is ≈13:03:10.
+ */
+describe('A remote-acknowledged session on the walker\'s own device survives a housekeeping command end (P0 #2)', () => {
+  const pendingCommand = { command_id: 'cmd-34s', walk_id: walk.id, status: 'pending', expires_at: '2026-10-15T13:04:05Z' };
+  const trackingCommand = { ...pendingCommand, status: 'tracking' };
+
+  it('GPS starts → 5 points persist → ~34 s → command lapses as target_inactive → session is NOT ended and the walk keeps live GPS', async () => {
+    const safari = installSafariWatch();
+    let commands: unknown[] = [pendingCommand];
+    remoteGps.getMyRemoteGpsCommands.mockImplementation(async () => commands);
+    remoteGps.getRemoteGpsCommandOutcome.mockResolvedValue({ status: 'failed', failure_reason: 'target_inactive' });
+    // Admin and walker are the same person on the same iPhone.
+    render(
+      <>
+        <LiveWalkGpsProbe walkId={walk.id} />
+        <RemoteGpsPanel walk={walk} currentUserId={WALKER} familyRole="admin" ready mode="home" />
+      </>
+    );
+    await flush();
+
+    fireEvent.press(screen.getByText('אישור והפעלת GPS במכשיר הזה'));
+    await flush();
+    // Five stationary fixes: point_count 5, distance 0, as on Staging.
+    for (let i = 0; i < 5; i += 1) safari.deliver({ ...fixA, timestamp: fixA.timestamp + i * 1_000 });
+    await flush(20);
+    expect(remoteGps.acknowledgeRemoteGpsStart).toHaveBeenCalledWith('cmd-34s', true, undefined);
+    expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: walk.id, pointCount: 5, distanceMeters: 0, gpsFencingEpoch: 3 });
+    expect(repository.appendGpsRouteV11).toHaveBeenCalled();
+    commands = [trackingCommand];
+    await advance(6_000);
+    await advance(6_000);
+    await advance(6_000);
+    await advance(6_000);
+    await advance(6_000);
+    expect(useGpsStore.getState().trackingWalkId).toBe(walk.id);
+
+    // ≈34 s: the server no longer lists the command as tracking.
+    commands = [];
+    await advance(6_000);
+    await advance(6_000);
+
+    const state = useGpsStore.getState();
+    expect(state).toMatchObject({ trackingWalkId: walk.id, pointCount: 5, gpsFencingEpoch: 3 });
+    expect(finalRouteWrites()).toHaveLength(0);
+    expect(repository.releaseGpsOwnershipV11).not.toHaveBeenCalled();
+    expect(safari.handle.remove).not.toHaveBeenCalled();
+    expect(screen.getByTestId('gps-line').props.children).not.toBe('GPS לא פעיל במכשיר הזה');
+    expect(screen.queryByText(/ממתין למיקום GPS ראשון/)).toBeNull();
+
+    // Tracking really continues: the next fix is accepted and persisted.
+    const appendsBefore = repository.appendGpsRouteV11.mock.calls.length;
+    safari.deliver({ ...fixB, timestamp: fixA.timestamp + 40_000 });
+    await flush();
+    expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: walk.id, pointCount: 6, trackingStatus: 'active' });
+    expect(repository.appendGpsRouteV11.mock.calls.length).toBeGreaterThan(appendsBefore);
   });
 });
