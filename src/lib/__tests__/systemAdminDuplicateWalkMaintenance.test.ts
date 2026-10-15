@@ -77,7 +77,7 @@ describe('lib/systemAdmin — duplicate-walk maintenance', () => {
 describe('System Admin duplicate-walk maintenance panel (structural)', () => {
   const screen = fs.readFileSync(path.join(__dirname, '..', '..', 'screens', 'SystemAdminScreen.tsx'), 'utf8');
   const panel = fs.readFileSync(path.join(__dirname, '..', '..', 'components', 'SystemAdminDuplicateWalkMaintenancePanel.tsx'), 'utf8');
-  const migration = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'supabase', 'migrations', '20261013073000_system_admin_duplicate_walk_repair_v12.sql'), 'utf8');
+  const migration = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'supabase', 'migrations', '20261015100000_system_admin_duplicate_walk_repair_v12.sql'), 'utf8');
 
   it('renders only for a System Admin on the Staging walk-resolution build', () => {
     expect(screen).toContain('{isSystemAdmin && isWalkResolutionStaging ? <SystemAdminDuplicateWalkMaintenancePanel /> : null}');
@@ -91,10 +91,10 @@ describe('System Admin duplicate-walk maintenance panel (structural)', () => {
 
   it('is ordered before the v1.1 migration it unblocks, and never deletes walk data', () => {
     const migrations = fs.readdirSync(path.join(__dirname, '..', '..', '..', 'supabase', 'migrations')).sort();
-    expect(migrations.indexOf('20261013073000_system_admin_duplicate_walk_repair_v12.sql'))
-      .toBeLessThan(migrations.indexOf('20261013074334_walk_lifecycle_gps_v11.sql'));
-    expect(migrations.indexOf('20261013070000_walk_duplicate_resolution_v12.sql'))
-      .toBeLessThan(migrations.indexOf('20261013073000_system_admin_duplicate_walk_repair_v12.sql'));
+    expect(migrations.indexOf('20261015100000_system_admin_duplicate_walk_repair_v12.sql'))
+      .toBeLessThan(migrations.indexOf('20261015100100_walk_lifecycle_gps_v11.sql'));
+    expect(migrations.indexOf('20261013164442_walk_duplicate_resolution_v12.sql'))
+      .toBeLessThan(migrations.indexOf('20261015100000_system_admin_duplicate_walk_repair_v12.sql'));
     expect(migration).not.toMatch(/\bdelete\s+from\s+public\.walk/i);
     expect(migration).not.toMatch(/\bupdate\s+public\.walk_gps/i);
     expect(migration).toMatch(/update public\.walks set duplicate_resolution_group_id = v_group/);

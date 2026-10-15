@@ -302,8 +302,8 @@ jobs:
         # with it: `supabase migration up` refuses to insert v1.1 before an
         # already-applied later migration.
         run: |
-          mv supabase/migrations/20261013074334_walk_lifecycle_gps_v11.sql /tmp/walk_lifecycle_gps_v11.sql
-          mv supabase/migrations/20261015090000_walk_lifecycle_capabilities_v11.sql /tmp/walk_lifecycle_capabilities_v11.sql
+          mv supabase/migrations/20261015100100_walk_lifecycle_gps_v11.sql /tmp/walk_lifecycle_gps_v11.sql
+          mv supabase/migrations/20261015100200_walk_lifecycle_capabilities_v11.sql /tmp/walk_lifecycle_capabilities_v11.sql
 
       - name: Replay migrations through duplicate-resolution support from empty
         run: supabase db reset --local
@@ -352,8 +352,8 @@ jobs:
 
       - name: Apply the actual v1.1 migration after duplicate resolution
         run: |
-          mv /tmp/walk_lifecycle_gps_v11.sql supabase/migrations/20261013074334_walk_lifecycle_gps_v11.sql
-          mv /tmp/walk_lifecycle_capabilities_v11.sql supabase/migrations/20261015090000_walk_lifecycle_capabilities_v11.sql
+          mv /tmp/walk_lifecycle_gps_v11.sql supabase/migrations/20261015100100_walk_lifecycle_gps_v11.sql
+          mv /tmp/walk_lifecycle_capabilities_v11.sql supabase/migrations/20261015100200_walk_lifecycle_capabilities_v11.sql
           supabase migration up --local
 
       - name: Verify v1.1 constraints and preserved walk/GPS history
@@ -413,10 +413,10 @@ jobs:
         if: always()
         run: |
           if [ -f /tmp/walk_lifecycle_gps_v11.sql ]; then
-            mv /tmp/walk_lifecycle_gps_v11.sql supabase/migrations/20261013074334_walk_lifecycle_gps_v11.sql
+            mv /tmp/walk_lifecycle_gps_v11.sql supabase/migrations/20261015100100_walk_lifecycle_gps_v11.sql
           fi
           if [ -f /tmp/walk_lifecycle_capabilities_v11.sql ]; then
-            mv /tmp/walk_lifecycle_capabilities_v11.sql supabase/migrations/20261015090000_walk_lifecycle_capabilities_v11.sql
+            mv /tmp/walk_lifecycle_capabilities_v11.sql supabase/migrations/20261015100200_walk_lifecycle_capabilities_v11.sql
           fi
           if [ -f supabase/seed.sql.pending ]; then mv supabase/seed.sql.pending supabase/seed.sql; fi
 

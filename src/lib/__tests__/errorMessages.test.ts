@@ -326,7 +326,7 @@ describe('friendlyErrorMessage — create-verified-family Edge Function', () => 
 
 /**
  * P0 real-iPhone (2026-10-15): Walk Lifecycle v1.1 server version gate and
- * the exact raise texts of 20261013074334_walk_lifecycle_gps_v11.sql. Before
+ * the exact raise texts of 20261015100100_walk_lifecycle_gps_v11.sql. Before
  * this, a v1.1 rejection fell through to the generic fallback plus a raw
  * diagnostic dump.
  */

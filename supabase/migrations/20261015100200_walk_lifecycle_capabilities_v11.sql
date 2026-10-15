@@ -1,6 +1,6 @@
 -- Walk Lifecycle v1.1 — server capability probe (read-only, additive).
 --
--- Must be applied AFTER 20261013074334_walk_lifecycle_gps_v11.sql.
+-- Must be applied AFTER 20261015100100_walk_lifecycle_gps_v11.sql.
 --
 -- Why: a v1.1 client deployed against a database that does not yet have the
 -- v1.1 schema called start_walk_v11 and got PGRST202 on a real iPhone. The

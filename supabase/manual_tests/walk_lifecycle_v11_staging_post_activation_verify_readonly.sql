@@ -1,8 +1,8 @@
 -- Walk Lifecycle v1.1 — Staging POST-ACTIVATION verification (READ-ONLY).
 --
 -- Target: Staging project czbxhsoxyawprqehkfit ONLY, after the separately
--- approved application of 20261013074334_walk_lifecycle_gps_v11.sql and
--- 20261015090000_walk_lifecycle_capabilities_v11.sql. Runs in a READ ONLY
+-- approved application of 20261015100100_walk_lifecycle_gps_v11.sql and
+-- 20261015100200_walk_lifecycle_capabilities_v11.sql. Runs in a READ ONLY
 -- transaction and ends with ROLLBACK. Every row must report ok = true; the
 -- final row summarizes. No data is read beyond catalog metadata and counts.
 -- If the capability migration was not applied, the whole query errors with
@@ -108,7 +108,7 @@ ledger_checks as (
   select 'ledger ' || v as check_name,
          exists (select 1 from supabase_migrations.schema_migrations m where m.version = v) as ok,
          '{}'::jsonb as detail
-  from unnest(array['20261013070000', '20261013073000', '20261013074334', '20261015090000']) as v
+  from unnest(array['20261013164442', '20261015100000', '20261015100100', '20261015100200']) as v
 ),
 gate_checks as (
   select 'no unresolved duplicate active walks' as check_name,

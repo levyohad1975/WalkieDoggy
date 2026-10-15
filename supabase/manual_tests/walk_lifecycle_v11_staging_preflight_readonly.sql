@@ -27,12 +27,122 @@ order by version;
 select 'A.expected' as section, expected.version, expected.label,
        exists (select 1 from supabase_migrations.schema_migrations m where m.version = expected.version) as recorded
 from (values
-  ('20261013070000', 'walk_duplicate_resolution_v12 (expected: recorded)'),
-  ('20261013073000', 'system_admin_duplicate_walk_repair_v12 (expected: recorded before resolution)'),
-  ('20261013074334', 'walk_lifecycle_gps_v11 (expected: NOT recorded until approved)'),
-  ('20261015090000', 'walk_lifecycle_capabilities_v11 (expected: NOT recorded until approved)')
+  ('20261013164442', 'walk_duplicate_resolution_v12 (expected: recorded)'),
+  ('20261015100000', 'system_admin_duplicate_walk_repair_v12 (expected: recorded before the System Admin repair)'),
+  ('20261015100100', 'walk_lifecycle_gps_v11 (expected: NOT recorded until the duplicate gate is clear)'),
+  ('20261015100200', 'walk_lifecycle_capabilities_v11 (expected: recorded only after v1.1)')
 ) as expected(version, label)
 order by expected.version;
+
+-- A2. Ledger <-> repository reconciliation. Generated from the repository's
+-- supabase/migrations at the commit that contains this file. Any row here
+-- other than the three expected pending v1.1-path versions is drift that must
+-- be explained before anything is applied.
+with repo(version, file) as (values
+    ('0001','0001_family_management_and_walk_details'),
+    ('0002','0002_invite_codes_and_family_membership'),
+    ('0003','0003_family_admin_roles'),
+    ('0004','0004_admin_permissions_and_member_deletion'),
+    ('0005','0005_requests_audit_presence'),
+    ('0006','0006_qa_impersonation'),
+    ('0007','0007_multi_admin_roles'),
+    ('0008','0008_family_invites'),
+    ('0009','0009_family_invites_pgcrypto_fix'),
+    ('0010','0010_walk_not_done_status'),
+    ('0011','0011_unplanned_walk_edit_delete'),
+    ('0012','0012_walk_resolve_own_only'),
+    ('0013','0013_push_tokens'),
+    ('0014','0014_request_push_events'),
+    ('0015','0015_scheduled_walk_occurrence_delete'),
+    ('0016','0016_profile_pin_reclaim_and_qa_sandbox'),
+    ('0017','0017_realtime_publication'),
+    ('0018','0018_mutual_walk_swap_requests'),
+    ('0019','0019_request_result_read_state'),
+    ('0019','0019_request_result_seen_state'),
+    ('0020','0020_multi_device_profile_sessions'),
+    ('0021','0021_web_push_subscriptions'),
+    ('0022','0022_family_timezone_and_dog_sex'),
+    ('0023','0023_member_permission_overrides'),
+    ('0024','0024_system_admin_foundation'),
+    ('0025','0025_walk_reminder_scheduler'),
+    ('0026','0026_admin_reschedule_walk'),
+    ('0027','0027_history_statistics_server_enforcement'),
+    ('0028','0028_family_invite_detail_preview'),
+    ('0029','0029_system_admin_v1_readonly'),
+    ('0030','0030_system_admin_verified_identity_only'),
+    ('0031','0031_admin_mutual_walk_swap'),
+    ('0032','0032_verified_family_onboarding'),
+    ('0033','0033_verified_family_onboarding_cutover'),
+    ('0034','0034_email_delivery_log'),
+    ('0035','0035_system_admin_family_approval_status'),
+    ('0036','0036_create_verified_family_timezone'),
+    ('0037','0037_deactivate_push_on_member_removal'),
+    ('0038','0038_restore_persona_authorization_with_active_family_gate'),
+    ('0039','0039_clear_family_auth_membership_on_member_removal'),
+    ('0040','0040_prevent_cross_family_membership_overwrite'),
+    ('0041','0041_fail_closed_member_removal_completeness_check'),
+    ('0042','0042_dogs_no_client_delete'),
+    ('0043','0043_system_admin_global_audit'),
+    ('0044','0044_system_admin_hidden_observer'),
+    ('0045','0045_system_admin_observer_all_family_statuses'),
+    ('0046','0046_system_admin_data_hotfix'),
+    ('0047','0047_system_admin_global_audit_email_type_hotfix'),
+    ('0048','0048_walk_lifecycle'),
+    ('0049','0049_health_grooming_foundation'),
+    ('0050','0050_health_task_recurrence'),
+    ('0051','0051_walk_gps_sessions'),
+    ('0052','0052_gamification_achievements'),
+    ('0053','0053_walk_gps_route_points'),
+    ('0054','0054_spontaneous_live_walk'),
+    ('0055','0055_admin_remove_unused_dog'),
+    ('0056','0056_admin_only_walk_delete'),
+    ('0057','0057_dog_home_scene'),
+    ('0058','0058_settings_permission'),
+    ('0090','0090_gps_retention_and_family_activity_reset'),
+    ('0091','0091_enable_gps_retention_cron'),
+    ('0092','0092_fix_destructive_family_operations'),
+    ('0093','0093_add_dog_home_visual_fields'),
+    ('0094','0094_republish_family_activity_reset_rpc'),
+    ('0096','0096_fix_delete_schedule_rule_admin_check'),
+    ('0097','0097_delete_open_health_tasks'),
+    ('0098','0098_preserve_schedule_entries_on_activity_reset'),
+    ('0099','0099_prevent_duplicate_active_schedule_rules'),
+    ('0100','0100_reset_generated_schedule_entries'),
+    ('0101','0101_fix_redeem_invite_profile_session'),
+    ('0102','0102_request_push_events_no_destination_status'),
+    ('0103','0103_mark_results_seen_no_raise'),
+    ('0103','0103_web_push_verified_admin_identity'),
+    ('0104','0104_preserve_schedule_entries_on_activity_reset'),
+    ('0105','0105_register_walk_reminder_cron'),
+    ('0106','0106_schedule_entry_time_override_flag'),
+    ('0107','0107_prevent_overlapping_schedule_rules'),
+    ('0108','0108_family_chat'),
+    ('0109','0109_private_chat_and_images'),
+    ('0110','0110_remote_gps_commands'),
+    ('20261010123756','20261010123756_chat_deletion_controls'),
+    ('20261010160000','20261010160000_chat_admin_clear_direct'),
+    ('20261010170000','20261010170000_remote_gps_activation'),
+    ('20261010173000','20261010173000_remote_gps_heartbeat'),
+    ('20261010174500','20261010174500_remote_gps_device_picker'),
+    ('20261010180000','20261010180000_remote_gps_push_device_binding'),
+    ('20261011104342','20261011104342_system_admin_test_families'),
+    ('20261011104913','20261011104913_system_admin_test_family_storage_cleanup'),
+    ('20261011180000','20261011180000_fix_system_admin_test_family_exit_ambiguous_id'),
+    ('20261012053936','20261012053936_idempotent_schedule_entry_delete'),
+    ('20261012061512','20261012061512_idempotent_schedule_rule_delete'),
+    ('20261012154059','20261012154059_prevent_walk_cascade_on_schedule_entry_delete'),
+    ('20261013164442','20261013164442_walk_duplicate_resolution_v12'),
+    ('20261015100000','20261015100000_system_admin_duplicate_walk_repair_v12'),
+    ('20261015100100','20261015100100_walk_lifecycle_gps_v11'),
+    ('20261015100200','20261015100200_walk_lifecycle_capabilities_v11')
+),
+ledger as (select version, name from supabase_migrations.schema_migrations)
+select 'A2.repo_not_in_ledger' as section, r.version, r.file as detail
+from repo r where not exists (select 1 from ledger l where l.version = r.version)
+union all
+select 'A2.ledger_not_in_repo', l.version, l.name
+from ledger l where not exists (select 1 from repo r where r.version = l.version)
+order by 1, 2;
 
 -- B. lifecycle RPC inventory ------------------------------------------------
 select 'B.rpc' as section,
@@ -69,6 +179,15 @@ select 'C.objects' as section, item, present from (
   union all select 'v1.1 dependency unique walk_gps_sessions(walk_id)', exists (
     select 1 from pg_index i join pg_attribute a on a.attrelid = i.indrelid and a.attnum = any(i.indkey)
     where i.indrelid = 'public.walk_gps_sessions'::regclass and i.indisunique and i.indnatts = 1 and a.attname = 'walk_id')
+  union all select 'repair dependency function public.is_system_admin()', to_regprocedure('public.is_system_admin()') is not null
+  union all select 'repair dependency function public.active_system_admin_observer_family()', to_regprocedure('public.active_system_admin_observer_family()') is not null
+  union all select 'repair dependency function public.active_impersonation_target()', to_regprocedure('public.active_impersonation_target()') is not null
+  union all select 'repair dependency table public.system_audit_log (actor_auth_user_id, action, target_type, target_id, metadata)', (
+    select count(*) = 5 from information_schema.columns where table_schema='public' and table_name='system_audit_log'
+      and column_name in ('actor_auth_user_id','action','target_type','target_id','metadata'))
+  union all select 'repair dependency column auth.users.is_anonymous', exists (select 1 from information_schema.columns where table_schema='auth' and table_name='users' and column_name='is_anonymous')
+  union all select 'repair dependency: walk write trigger honors app.trusted_write', coalesce((select prosrc like '%app.trusted_write%' from pg_proc where oid = to_regprocedure('public.enforce_walk_write_authorization()')), false)
+  union all select 'repair dependency: v1.2 marker guard trigger present', exists (select 1 from pg_trigger where tgrelid = 'public.walks'::regclass and tgname = 'walks_duplicate_resolution_marker_guard')
   union all select 'pg_cron extension (for v1.1 route-sample pruning)', exists (select 1 from pg_extension where extname = 'pg_cron')
 ) objects order by item;
 
@@ -182,12 +301,12 @@ where w.status = 'in_progress'
   and (w.started_at is null or w.started_at < now() - interval '24 hours' or w.duplicate_resolution_group_id is not null)
 order by w.started_at nulls first;
 
--- I. System Admin maintenance authorizations (only after 20261013073000)
+-- I. System Admin maintenance authorizations (only after 20261015100000)
 do $maintenance$
 declare r record;
 begin
   if to_regclass('public.system_maintenance_duplicate_walk_authorizations') is null then
-    raise notice 'I.maintenance: table absent (20261013073000 not applied yet)';
+    raise notice 'I.maintenance: table absent (20261015100000 not applied yet)';
     return;
   end if;
   for r in execute $q$

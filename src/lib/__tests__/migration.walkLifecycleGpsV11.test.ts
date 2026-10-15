@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 const migration = fs.readFileSync(
-  path.resolve(__dirname, '../../../supabase/migrations/20261013074334_walk_lifecycle_gps_v11.sql'),
+  path.resolve(__dirname, '../../../supabase/migrations/20261015100100_walk_lifecycle_gps_v11.sql'),
   'utf8',
 );
 

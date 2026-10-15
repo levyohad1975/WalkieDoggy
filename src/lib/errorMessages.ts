@@ -224,7 +224,7 @@ export const SHARED_ERROR_RULES: ErrorRule[] = [
   { includes: 'actual walker must be an active member of this family', message: 'מי שמסומן/ת כמי שביצע/ה את הטיול חייב/ת להיות בן/בת משפחה פעיל/ה.' },
 
   // ---- Walk Lifecycle v1.1 — server version gate (walkLifecycleCapability.ts)
-  // and the exact raise texts of 20261013074334_walk_lifecycle_gps_v11.sql.
+  // and the exact raise texts of 20261015100100_walk_lifecycle_gps_v11.sql.
   // P0 real-iPhone: a v1.1 build against a pre-v1.1 database returned
   // PGRST202 for start_walk_v11 and showed only a generic failure. The app
   // now fails closed before any local change and says so explicitly; the
@@ -242,7 +242,7 @@ export const SHARED_ERROR_RULES: ErrorRule[] = [
   { includes: 'walk finish operation is already recorded', message: 'סיום הטיול כבר נרשם. רעננו את המסך.' },
   { includes: 'completion time cannot be in the future', message: 'זמן הסיום אינו יכול להיות בעתיד.' },
 
-  // ---- System Admin duplicate-walk maintenance (20261013073000_system_admin_duplicate_walk_repair_v12.sql) ----
+  // ---- System Admin duplicate-walk maintenance (20261015100000_system_admin_duplicate_walk_repair_v12.sql) ----
   { includes: 'verified system admin required', message: 'הפעולה זמינה רק למנהל/ת מערכת מאומת/ת. לא בוצע שינוי.' },
   { includes: 'exit observation or impersonation before maintenance', message: 'יש לצאת ממצב צפייה במשפחה או התחזות לפני פעולת תחזוקה. לא בוצע שינוי.' },
   { includes: 'system admin profile required', message: 'לחשבון מנהל/ת המערכת אין פרופיל משפחה פעיל לרישום הביקורת. לא בוצע שינוי.' },

@@ -1,12 +1,13 @@
 -- System Admin duplicate-walk maintenance (Staging repair), v1.2 audit model.
 --
--- ORDER: deliberately timestamped between 20261013070000_walk_duplicate_
--- resolution_v12 (which it builds on) and 20261013074334_walk_lifecycle_gps_v11
--- (which it unblocks). v1.1 fails closed while any dog has more than one
--- unresolved active walk, and the existing resolve_duplicate_active_walks_v12()
--- requires a Family Admin of the affected family. On Staging the blocking
--- family's admin is not available, so a verified System Admin needs a
--- narrowly scoped, audited way to apply the SAME non-destructive marker.
+-- ORDER: after 20261013164442_walk_duplicate_resolution_v12 (which it
+-- builds on; that is the version recorded in the Staging ledger) and before
+-- 20261015100100_walk_lifecycle_gps_v11 (which it unblocks). v1.1 fails
+-- closed while any dog has more than one unresolved active walk, and the
+-- existing resolve_duplicate_active_walks_v12() requires a Family Admin of
+-- the affected family. On Staging the blocking family's admin is not
+-- available, so a verified System Admin needs a narrowly scoped, audited way
+-- to apply the SAME non-destructive marker.
 --
 -- Scope and safety:
 -- * Nothing is deleted or rewritten. Walk status, timestamps, attribution,

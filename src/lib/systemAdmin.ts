@@ -556,7 +556,7 @@ export async function getSystemAdminEmailDeliveryLog(limit?: number): Promise<Sy
  * Staging maintenance (PR #150): owner-approved, single-use authorizations
  * for a verified System Admin to mark specific test-generated active walks
  * as resolved duplicates. Marker only — nothing is deleted. See
- * supabase/migrations/20261013073000_system_admin_duplicate_walk_repair_v12.sql.
+ * supabase/migrations/20261015100000_system_admin_duplicate_walk_repair_v12.sql.
  */
 export interface DuplicateWalkMaintenanceAuthorization {
   authorizationId: string;

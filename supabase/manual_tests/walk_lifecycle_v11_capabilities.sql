@@ -1,5 +1,5 @@
--- Isolated CI rehearsal only. Runs after 20261013074334_walk_lifecycle_gps_v11.sql
--- and 20261015090000_walk_lifecycle_capabilities_v11.sql. Everything below is
+-- Isolated CI rehearsal only. Runs after 20261015100100_walk_lifecycle_gps_v11.sql
+-- and 20261015100200_walk_lifecycle_capabilities_v11.sql. Everything below is
 -- rolled back.
 --
 -- Covers the client's Walk Lifecycle v1.1 server version gate:

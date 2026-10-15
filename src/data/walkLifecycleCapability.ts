@@ -10,7 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  * PGRST202 for public.start_walk_v11.
  *
  * The client now asks the server (walk_lifecycle_server_capabilities, added
- * by 20261015090000_walk_lifecycle_capabilities_v11.sql) before any v1.1
+ * by 20261015100200_walk_lifecycle_capabilities_v11.sql) before any v1.1
  * lifecycle write and fails closed when v1.1 is absent or incomplete. It
  * deliberately does NOT fall back to the legacy start_walk()/finish_walk():
  * those do not enforce one active walk per dog, which is how duplicates can
