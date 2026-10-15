@@ -22,6 +22,16 @@ let lastPersistedGpsTimestamp = 0;
 // True while a v1.1 watch is running without a valid server lease. Fixes are
 // still shown, but nothing is persisted, so the UI must not report "active".
 let gpsLeaseLost = false;
+/**
+ * Real-iPhone fix: Safari resolves the foreground watch only at the first
+ * fix (or an 18s deadline), but the walk start RPC usually returns first.
+ * attachGpsOwnership() used to bail out because permission was not yet
+ * "granted" and nobody retried, so no v1.1 lease existed: every fix stayed
+ * in memory, nothing reached the server during the walk, and the final
+ * upload depended on a last-moment lease at Finish. The request is now
+ * remembered and honored as soon as this same watch finishes starting.
+ */
+let pendingOwnership: { walk: Walk; confirmTransfer: boolean } | null = null;
 
 /** Server answers that prove this device no longer holds a valid lease. */
 export function isGpsLeaseLostError(error: unknown): boolean {
@@ -155,6 +165,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     activeGpsHeartbeat = null;
     lastPersistedGpsTimestamp = 0;
     gpsLeaseLost = false;
+    if (pendingOwnership && pendingOwnership.walk.id !== walk.id) pendingOwnership = null;
     set({ trackingWalkId: walk.id, permissionStatus: null, trackingStatus: 'requesting', trackingStartedAt: priorStartedAt, distanceMeters: priorDistance, pointCount: priorPointCount, routePoints: priorRoute, gpsFencingEpoch: null });
 
     const result = await startGpsWatch((acc: GpsAccumulator) => {
@@ -192,12 +203,23 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     }
     activeWatch = result.handle;
     set({ permissionStatus: 'granted', trackingStatus: get().pointCount > 0 ? 'active' : result.trackingStatus, trackingStartedAt: priorStartedAt ?? trackingStartedAt });
+    const deferred = pendingOwnership;
+    if (deferred && deferred.walk.id === activeWatchWalkId) {
+      pendingOwnership = null;
+      void get().attachGpsOwnership(deferred.walk, deferred.confirmTransfer);
+    }
   },
 
   attachGpsOwnership: async (walk, confirmTransfer = false) => {
     if (!repository.acquireGpsOwnershipV11) return true;
     if (get().trackingWalkId !== walk.id || activeWatchWalkId !== walk.id) return false;
-    if (get().permissionStatus !== 'granted') return false;
+    if (get().permissionStatus !== 'granted') {
+      // Still starting up (permission prompt / first fix pending): defer to
+      // the end of startTracking() instead of dropping the request.
+      const startingUp = get().permissionStatus === null && !activeWatch;
+      if (startingUp) pendingOwnership = { walk, confirmTransfer };
+      return false;
+    }
     if (get().gpsFencingEpoch !== null && !confirmTransfer) return true;
     try {
       const lease = await repository.acquireGpsOwnershipV11(walk.id, confirmTransfer);
@@ -269,6 +291,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
   cancelTracking: (walkId) => {
     if (get().trackingWalkId !== walkId || activeWatchWalkId !== walkId) return;
     startGeneration += 1;
+    pendingOwnership = null;
     activeWatch?.remove();
     activeWatch = null;
     if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
@@ -281,6 +304,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
   stopTracking: async (walk, userId) => {
     const wasTracking = get().trackingWalkId === walk.id;
     if (wasTracking) startGeneration += 1;
+    if (wasTracking) pendingOwnership = null;
     if (activeWatch && wasTracking) {
       activeWatch.remove();
       activeWatch = null;

@@ -251,6 +251,74 @@ describe('gpsStore', () => {
     expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: walk.id, trackingStatus: 'interrupted', pointCount: 1, routePoints: [routePoint], gpsFencingEpoch: 1 });
   });
 
+  // Real-iPhone P0 (2026-10-15): Safari resolves the watch only at its first
+  // fix, after the start RPC returned. The immediate attachGpsOwnership() then
+  // bailed out ("permission not granted yet") and was never retried, so no
+  // v1.1 lease existed and no route reached the server during the walk.
+  describe('GPS lease requested while the watch is still starting', () => {
+    function pendingWatch() {
+      const gpsTracking = require('../../lib/gpsTracking');
+      let resolveWatch!: (result: any) => void;
+      jest.spyOn(gpsTracking, 'startGpsWatch').mockImplementationOnce(() => new Promise((resolve) => { resolveWatch = resolve; }));
+      return (result: any) => resolveWatch(result);
+    }
+    const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+    it('acquires the lease as soon as the same watch finishes starting', async () => {
+      const { useGpsStore } = require('../gpsStore');
+      const { repository } = require('../../data');
+      const acquire = jest.fn().mockResolvedValue({ fencingEpoch: 4, expiresAt: 'later' });
+      repository.acquireGpsOwnershipV11 = acquire;
+      repository.heartbeatGpsOwnershipV11 = undefined;
+      const resolveWatch = pendingWatch();
+      const started = useGpsStore.getState().startTracking(walk);
+
+      await expect(useGpsStore.getState().attachGpsOwnership({ ...walk, status: 'in_progress' } as Walk)).resolves.toBe(false);
+      expect(acquire).not.toHaveBeenCalled();
+
+      resolveWatch({ handle: { remove: jest.fn() }, permissionStatus: 'granted', trackingStatus: 'active' });
+      await started;
+      await flush();
+
+      expect(acquire).toHaveBeenCalledTimes(1);
+      expect(acquire).toHaveBeenCalledWith(walk.id, false);
+      expect(useGpsStore.getState().gpsFencingEpoch).toBe(4);
+    });
+
+    it('never acquires a lease for a watch that was cancelled while starting (failed walk start)', async () => {
+      const { useGpsStore } = require('../gpsStore');
+      const { repository } = require('../../data');
+      const acquire = jest.fn().mockResolvedValue({ fencingEpoch: 4, expiresAt: 'later' });
+      repository.acquireGpsOwnershipV11 = acquire;
+      const remove = jest.fn();
+      const resolveWatch = pendingWatch();
+      const started = useGpsStore.getState().startTracking(walk);
+      await useGpsStore.getState().attachGpsOwnership({ ...walk, status: 'in_progress' } as Walk);
+      useGpsStore.getState().cancelTracking(walk.id);
+
+      resolveWatch({ handle: { remove }, permissionStatus: 'granted', trackingStatus: 'active' });
+      await started;
+      await flush();
+
+      expect(acquire).not.toHaveBeenCalled();
+      expect(remove).toHaveBeenCalled();
+      expect(useGpsStore.getState().trackingWalkId).toBeNull();
+    });
+
+    it('does not defer when permission was already refused', async () => {
+      const { useGpsStore } = require('../gpsStore');
+      const { repository } = require('../../data');
+      const acquire = jest.fn();
+      repository.acquireGpsOwnershipV11 = acquire;
+      const gpsTracking = require('../../lib/gpsTracking');
+      jest.spyOn(gpsTracking, 'startGpsWatch').mockResolvedValueOnce({ handle: null, permissionStatus: 'denied', trackingStatus: 'denied' });
+      await useGpsStore.getState().startTracking(walk);
+      await expect(useGpsStore.getState().attachGpsOwnership({ ...walk, status: 'in_progress' } as Walk)).resolves.toBe(false);
+      await flush();
+      expect(acquire).not.toHaveBeenCalled();
+    });
+  });
+
   describe('v1.1 lease heartbeat', () => {
     const flush = () => new Promise((resolve) => setImmediate(resolve));
     let heartbeatTick: (() => void) | undefined;

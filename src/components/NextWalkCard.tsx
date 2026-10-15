@@ -56,6 +56,14 @@ interface NextWalkCardProps {
   gpsStatus?: 'granted' | 'denied' | 'unavailable' | null;
   gpsTrackingStatus?: GpsTrackingStatus | null;
   onRetryGps?: () => void;
+  /**
+   * Set when this walk is active but THIS device holds no GPS session for it
+   * (e.g. the PWA was relaunched mid-walk, or another device is the walker's).
+   * Without it the card fell through to "מפעיל GPS…" forever although nothing
+   * was starting. 'walker_here' offers an explicit activation tap (Safari
+   * needs a user gesture); 'elsewhere' says GPS belongs to the walker's device.
+   */
+  gpsNotTrackedHere?: 'walker_here' | 'elsewhere' | null;
   /** GPS samples from the active walk, updated as the phone moves. */
   liveRoutePoints?: Array<{ latitude: number; longitude: number; timestamp: number }>;
   /**
@@ -115,6 +123,7 @@ export function NextWalkCard({
   gpsStatus,
   gpsTrackingStatus,
   onRetryGps,
+  gpsNotTrackedHere,
   liveRoutePoints,
   onMarkNotDone,
   canResolve = true,
@@ -251,7 +260,11 @@ export function NextWalkCard({
       {isActive ? (
         <>
         <RtlText style={styles.gpsStatusLine} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE} accessibilityLiveRegion="polite">
-          {gpsTrackingStatus === 'requesting'
+          {gpsNotTrackedHere === 'walker_here'
+            ? '📍 GPS לא פעיל במכשיר הזה'
+            : gpsNotTrackedHere === 'elsewhere'
+              ? '📍 ה-GPS נאסף במכשיר של מי שיוצא/ת לטיול'
+          : gpsTrackingStatus === 'requesting'
             ? '📍 מבקש גישה למיקום…'
             : gpsTrackingStatus === 'waiting'
               ? '📍 ממתין למיקום GPS ראשון…'
@@ -271,7 +284,11 @@ export function NextWalkCard({
                 : 'GPS פעיל'}`
                       : '📍 מפעיל GPS…'}
         </RtlText>
-        {onRetryGps && (gpsTrackingStatus === 'timeout' || gpsTrackingStatus === 'unavailable' || gpsTrackingStatus === 'interrupted') ? (
+        {onRetryGps && gpsNotTrackedHere === 'walker_here' ? (
+          <Pressable onPress={onRetryGps} accessibilityRole="button" accessibilityLabel="הפעל GPS לטיול הזה במכשיר הזה" style={styles.gpsRetry}>
+            <RtlText style={styles.gpsRetryText}>הפעל GPS</RtlText>
+          </Pressable>
+        ) : onRetryGps && (gpsTrackingStatus === 'timeout' || gpsTrackingStatus === 'unavailable' || gpsTrackingStatus === 'interrupted') ? (
           <Pressable onPress={onRetryGps} accessibilityRole="button" accessibilityLabel="נסה להפעיל GPS שוב" style={styles.gpsRetry}>
             <RtlText style={styles.gpsRetryText}>נסה שוב</RtlText>
           </Pressable>

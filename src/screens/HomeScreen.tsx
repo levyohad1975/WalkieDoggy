@@ -1232,8 +1232,13 @@ export function HomeScreen() {
             liveRoutePoints={gpsTrackingWalkId === nextWalk.id ? gpsRoutePoints : undefined}
             gpsStatus={gpsTrackingWalkId === nextWalk.id ? gpsPermissionStatus : null}
             gpsTrackingStatus={gpsTrackingWalkId === nextWalk.id ? gpsTrackingStatus : null}
+            gpsNotTrackedHere={
+              isActiveWalk(nextWalk) && gpsTrackingWalkId !== nextWalk.id
+                ? ((nextWalk.actualWalkerUserId ?? nextWalk.responsibleUserId) === currentUserId ? 'walker_here' : 'elsewhere')
+                : null
+            }
             onRetryGps={() => {
-              if (gpsTrackingStatus === 'interrupted') {
+              if (gpsTrackingWalkId === nextWalk.id && gpsTrackingStatus === 'interrupted') {
                 setGpsTransferWalk(nextWalk);
                 return;
               }
