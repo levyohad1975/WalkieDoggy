@@ -43,13 +43,18 @@ Do not overwrite existing global Preview or Production variables. Keep these var
 - A failed start discards the provisional GPS watch (`cancelTracking`) instead of persisting it.
 - GPS history reads tolerate a pre-v1.1 server (missing `walk_gps_ownership`) instead of silently falling back to device-only data.
 
-### Activation order (each step is a separate approval)
+### Activation order (Staging only; approved 2026-10-15)
 
-1. Run `supabase/manual_tests/walk_lifecycle_v11_staging_preflight_readonly.sql` in the Staging SQL editor (read-only transaction). Confirm ledger, absent v1.1 objects, and capture sections E–G for the duplicate review.
-2. Owner-approved, non-destructive duplicate resolution through the authenticated Family Admin flow (`resolve_duplicate_active_walks_v12`). It only sets `duplicate_resolution_group_id` and snapshots each row; it never edits status, timestamps, attribution or GPS. Re-run step 1 until section E is empty.
-3. Apply `20261013074334_walk_lifecycle_gps_v11.sql` then `20261015090000_walk_lifecycle_capabilities_v11.sql`, in that order, to Staging only.
-4. Run `supabase/manual_tests/walk_lifecycle_v11_staging_post_activation_verify_readonly.sql`. Every row must be `ok = true`.
-5. Deploy the reviewed SHA and pin `staging.walkielink.co.il` to it; verify the deployment SHA in Vercel.
-6. Real-iPhone acceptance.
+The Family Admin of the blocking family (f806158f…, dog 62c6b367…) is not available, so the duplicates are resolved by a verified System Admin through `20261013073000_system_admin_duplicate_walk_repair_v12.sql`, which applies the same marker-only resolution with an owner-approved, single-use, expiring authorization and a system audit row.
 
-Until step 3 the app shows the `WL11-SERVER` message on Start/Finish instead of PGRST202; nothing is written.
+1. Run `supabase/manual_tests/walk_lifecycle_v11_staging_preflight_readonly.sql`. Section F must list exactly `088a73c5-0dd9-47fd-9bd1-fb44bc739eb3` and `2a495898-6936-487c-8da9-5fcaeb3b0b60` for that family/dog, both `in_progress`, unresolved.
+2. From a checkout of the deployed SHA: `supabase link --project-ref czbxhsoxyawprqehkfit`, `supabase migration list`, then `supabase db push --dry-run`. Pending must be exactly `20261013073000`, `20261013074334`, `20261015090000`.
+3. `supabase db push`. Expected: `20261013073000` applies (and seeds the one authorization); `20261013074334` then stops at its duplicate gate and rolls back atomically. Nothing else changes.
+4. Re-run the preflight; section I must show the authorization with `unresolved=2`.
+5. As a verified System Admin on `staging.walkielink.co.il` (not observing or impersonating): System Admin screen → "תחזוקת Staging — טיולים פעילים כפולים" → "סמן ככפילויות (ללא מחיקה)" → "אישור סופי". Record the audit group id shown.
+6. Re-run the preflight; section E must be empty and section I must show the authorization consumed.
+7. `supabase db push` again: applies `20261013074334` then `20261015090000`.
+8. Run `supabase/manual_tests/walk_lifecycle_v11_staging_post_activation_verify_readonly.sql`; every row must be `ok = true` (35 checks).
+9. Real-iPhone acceptance.
+
+Until step 7 the app shows the `WL11-SERVER` message on Start/Finish instead of PGRST202; nothing is written.
