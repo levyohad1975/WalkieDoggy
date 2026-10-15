@@ -1758,7 +1758,26 @@ export function HomeScreen() {
             return;
           }
           const started = await startUnplannedWalk(familyId, dog.id, effectiveUserId);
-          if (started) setAddUnplannedVisible(false);
+          if (started) {
+            setAddUnplannedVisible(false);
+            return;
+          }
+          // A legitimate refusal (most commonly: an active walk already
+          // exists for this dog, including one left stuck by an earlier
+          // test/duplicate — see duplicateResolutionGroupId/isActiveWalk)
+          // lands here as a resolved `false`, never a thrown rejection. Left
+          // alone, the only trace was scheduleStore.actionError surfacing as
+          // a SEPARATE stacked "אופס" dialog behind/beside this still-open
+          // modal — on iPhone Safari that reads as "nothing happened" when
+          // the user taps "התחל טיול עכשיו" (P0 2026-10-15). Re-surface the
+          // exact reason INSIDE this modal (handleStartNow's own catch),
+          // where the user is actually looking, and drop the duplicate
+          // standalone alert so the two don't compete.
+          const reason = useScheduleStore.getState().actionError;
+          if (reason) useScheduleStore.setState({ actionError: null });
+          const error = new Error(reason ?? 'לא הצלחנו להתחיל את הטיול. בדקו חיבור ונסו שוב.');
+          if (reason) (error as Error & { knownReason?: boolean }).knownReason = true;
+          throw error;
         }}
         onConfirm={async (result: UnplannedWalkResult) => {
           // Keep the form visible until persistence succeeds. Closing it before

@@ -198,4 +198,30 @@ describe('Home integrated walk lifecycle', () => {
     expect(card).toContain('backgroundColor: colors.statusOverdueBg');
     expect(card).toContain('isActive && styles.cardActive');
   });
+
+  /**
+   * P0 real-user report (2026-10-15): "cannot start a spontaneous walk".
+   * startUnplannedWalk()'s existing active-walk-conflict guard (added for
+   * the P0 duplicate-active-walk fix) refuses a dog that already has an
+   * unresolved active walk — including one left stuck by an unresolved
+   * Staging duplicate (see the PR's own "not yet executed" disposition
+   * note). That refusal is legitimate, but it used to resolve `false` and
+   * rely ENTIRELY on a separate, later-mounted "אופס" ConfirmModal to
+   * explain why — invisible/easy to miss stacked behind the still-open Add
+   * Walk modal on iPhone Safari, reading as a dead tap. The fix re-throws
+   * the real scheduleStore.actionError, tagged `knownReason`, so
+   * AddUnplannedWalkModal's own inline handleStartNow catch shows the EXACT
+   * reason right where the user is looking, and clears the store-level
+   * actionError so the two alerts cannot compete.
+   */
+  it('surfaces a legitimate "already active" refusal inline in the Add Walk modal instead of only a separate stacked alert', () => {
+    const onStartNow = home.slice(home.indexOf('onStartNow={async () => {'), home.indexOf('onConfirm={async (result: UnplannedWalkResult) => {'));
+    expect(onStartNow).toContain('const started = await startUnplannedWalk(familyId, dog.id, effectiveUserId);');
+    expect(onStartNow).toMatch(/if \(started\) \{\s*\n\s*setAddUnplannedVisible\(false\);\s*\n\s*return;\s*\n\s*\}/);
+    expect(onStartNow).toContain('const reason = useScheduleStore.getState().actionError;');
+    expect(onStartNow).toContain('if (reason) useScheduleStore.setState({ actionError: null });');
+    expect(onStartNow).toMatch(/const error = new Error\(reason \?\? '.*'\);/);
+    expect(onStartNow).toContain('if (reason) (error as Error & { knownReason?: boolean }).knownReason = true;');
+    expect(onStartNow).toContain('throw error;');
+  });
 });

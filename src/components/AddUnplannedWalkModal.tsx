@@ -182,11 +182,17 @@ export function AddUnplannedWalkModal({
     setStartNowError('');
     try {
       await onStartNow?.();
-    } catch {
+    } catch (e) {
       // A caller may fail before scheduleStore can publish its normal action
       // error (for example while checking a possible walk association). Do
       // not let the fire-and-forget Pressable handler hide that rejection.
-      setStartNowError('לא הצלחנו להתחיל את הטיול. בדקו חיבור ונסו שוב.');
+      // A legitimate refusal (e.g. an active walk already exists for this
+      // dog) is tagged `knownReason` by the caller and carries its own
+      // specific Hebrew explanation — show that verbatim. Anything else (a
+      // raw network/RPC exception) keeps the generic fallback, unchanged
+      // (P0 2026-10-15).
+      const known = e instanceof Error && (e as Error & { knownReason?: boolean }).knownReason && e.message;
+      setStartNowError(known || 'לא הצלחנו להתחיל את הטיול. בדקו חיבור ונסו שוב.');
     }
   };
 
