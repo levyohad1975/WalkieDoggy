@@ -9,7 +9,8 @@ import { confirmAction, showMessage } from '../dialogs';
  */
 describe('dialogs', () => {
   const originalOs = Platform.OS;
-  const host = globalThis as typeof globalThis & { confirm?: unknown; alert?: unknown };
+  // Loosely typed: the DOM lib types confirm/alert as required functions.
+  const host = globalThis as unknown as { confirm?: unknown; alert?: unknown };
   const originalConfirm = host.confirm;
   const originalAlert = host.alert;
 

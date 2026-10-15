@@ -16,12 +16,13 @@ jest.mock('@react-native-community/datetimepicker', () => ({ __esModule: true, d
  * These tests render the real modal on the web platform with a mocked
  * browser confirm/alert and verify the fixed layout and delete flow.
  */
-type Host = typeof globalThis & {
+// Loosely typed on purpose: the DOM lib types window/confirm/alert as required.
+type Host = {
   confirm?: jest.Mock;
   alert?: jest.Mock;
   window?: unknown;
 };
-const host = globalThis as Host;
+const host = globalThis as unknown as Host;
 
 /** jest-expo runs in Node: give the hooks a minimal iPhone SE browser window (layout viewport 667px). */
 type FakeWindow = { innerHeight: number; visualViewport?: unknown; scrollY: number; scrollTo: jest.Mock };
