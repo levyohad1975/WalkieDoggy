@@ -197,15 +197,13 @@ describe('HealthGroomingModal edit sheet on iPhone Safari / PWA — layout (P0-A
 
 describe('HealthGroomingModal edit sheet on iPhone Safari / PWA — delete (P0-B)', () => {
   it('tapping "מחיקת משימה" shows a real browser confirmation naming the entry (Alert.alert is a no-op on web)', async () => {
-    host.confirm!.mockReturnValue(false);
     const screen = render(<Harness initial={[haircut]} deleteImpl={jest.fn()} />);
     openHaircut(screen);
     fireEvent.press(screen.getByText('מחיקת משימה'));
-    await waitFor(() => expect(host.confirm).toHaveBeenCalledTimes(1));
-    const text = host.confirm!.mock.calls[0][0] as string;
-    expect(text).toContain('מחיקת משימה');
-    expect(text).toContain('"תספורת"');
-    expect(text).toContain('20-10-2099');
+    expect(screen.getByTestId('health-task-delete-confirmation')).toBeTruthy();
+    expect(screen.getByText('מחיקת משימה?')).toBeTruthy();
+    expect(screen.getByText('20-10-2099')).toBeTruthy();
+    expect(screen.getByText('מחק משימה')).toBeTruthy();
   });
 
   it('cancelling the confirmation leaves the entry unchanged and the sheet open', async () => {
@@ -214,7 +212,7 @@ describe('HealthGroomingModal edit sheet on iPhone Safari / PWA — delete (P0-B
     const screen = render(<Harness initial={[haircut, vet]} deleteImpl={deleteImpl} />);
     openHaircut(screen);
     fireEvent.press(screen.getByText('מחיקת משימה'));
-    await waitFor(() => expect(host.confirm).toHaveBeenCalledTimes(1));
+    fireEvent.press(within(screen.getByTestId('health-task-delete-confirmation')).getByLabelText('ביטול'));
     await act(async () => {});
     expect(deleteImpl).not.toHaveBeenCalled();
     expect(screen.getByText('עריכת רשומה')).toBeTruthy();
@@ -230,9 +228,11 @@ describe('HealthGroomingModal edit sheet on iPhone Safari / PWA — delete (P0-B
     const button = screen.getByText('מחיקת משימה');
     fireEvent.press(button);
     fireEvent.press(button);
+    fireEvent.press(screen.getByText('מחק משימה'));
+    fireEvent.press(screen.getByText('מחק משימה'));
+    fireEvent.press(screen.getByText('מחק משימה'));
     await waitFor(() => expect(deleteImpl).toHaveBeenCalledTimes(1));
     expect(deleteImpl).toHaveBeenCalledWith('task-haircut');
-    expect(host.confirm).toHaveBeenCalledTimes(1);
     // No success state before the server confirms: the sheet is still open.
     expect(screen.getByText('עריכת רשומה')).toBeTruthy();
 
@@ -253,6 +253,7 @@ describe('HealthGroomingModal edit sheet on iPhone Safari / PWA — delete (P0-B
     openHaircut(screen);
 
     fireEvent.press(screen.getByText('מחיקת משימה'));
+    fireEvent.press(screen.getByText('מחק משימה'));
     await waitFor(() => expect(host.alert).toHaveBeenCalledTimes(1));
     const message = host.alert!.mock.calls[0][0] as string;
     expect(message).toContain('לא הצלחנו למחוק');
@@ -262,6 +263,7 @@ describe('HealthGroomingModal edit sheet on iPhone Safari / PWA — delete (P0-B
 
     await waitFor(() => expect(screen.getByText('מחיקת משימה')).toBeTruthy());
     fireEvent.press(screen.getByText('מחיקת משימה'));
+    fireEvent.press(screen.getByText('מחק משימה'));
     await waitFor(() => expect(deleteImpl).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByLabelText(/^עריכת תספורת/)).toBeNull());
     expect(screen.getByLabelText(/^עריכת חיסון כלבת/)).toBeTruthy();
@@ -272,6 +274,7 @@ describe('HealthGroomingModal edit sheet on iPhone Safari / PWA — delete (P0-B
     const screen = render(<Harness initial={[haircut]} deleteImpl={deleteImpl} />);
     openHaircut(screen);
     fireEvent.press(screen.getByText('מחיקת משימה'));
+    fireEvent.press(screen.getByText('מחק משימה'));
     await waitFor(() => expect(host.alert).toHaveBeenCalledTimes(1));
     expect(host.alert!.mock.calls[0][0]).toContain('אין הרשאה');
     expect(screen.getByLabelText(/^עריכת תספורת/)).toBeTruthy();
@@ -282,6 +285,7 @@ describe('HealthGroomingModal edit sheet on iPhone Safari / PWA — delete (P0-B
     const screen = render(<Harness initial={[haircut, vet]} deleteImpl={deleteImpl} />);
     openHaircut(screen);
     fireEvent.press(screen.getByText('מחיקת משימה'));
+    fireEvent.press(screen.getByText('מחק משימה'));
     await waitFor(() => expect(deleteImpl).toHaveBeenCalledTimes(1));
     expect(host.alert).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByLabelText(/^עריכת תספורת/)).toBeNull());
@@ -299,8 +303,9 @@ describe('HealthGroomingModal edit sheet on iPhone Safari / PWA — delete (P0-B
     const screen = render(<Harness initial={[haircut, vet]} deleteImpl={deleteImpl} />);
     fireEvent.press(screen.getByLabelText(/^עריכת חיסון כלבת/));
     fireEvent.press(screen.getByText('מחיקת משימה'));
+    fireEvent.press(screen.getByText('מחק משימה'));
     await waitFor(() => expect(deleteImpl).toHaveBeenCalledTimes(1));
-    expect(host.confirm!.mock.calls[0][0]).toContain('משימה חוזרת');
+    expect(screen.queryByTestId('health-task-delete-confirmation')).toBeNull();
     expect(deleteImpl).toHaveBeenCalledWith('task-vet');
     await waitFor(() => expect(screen.getByLabelText(/^עריכת תספורת/)).toBeTruthy());
   });
