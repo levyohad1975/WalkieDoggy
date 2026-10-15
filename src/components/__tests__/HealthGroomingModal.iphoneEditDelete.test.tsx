@@ -282,6 +282,9 @@ describe('HealthGroomingModal edit sheet on iPhone Safari / PWA — delete (P0-B
     const screen = render(<Harness initial={[haircut, vet]} deleteImpl={deleteImpl} />);
     openHaircut(screen);
     fireEvent.press(screen.getByText('מחיקת משימה'));
+    await waitFor(() => expect(deleteImpl).toHaveBeenCalledTimes(1));
+    expect(host.alert).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByLabelText(/^עריכת תספורת/)).toBeNull());
     await waitFor(() => expect(screen.queryByText('עריכת רשומה')).toBeNull());
 
     fireEvent.press(screen.getByText('סגור'));
