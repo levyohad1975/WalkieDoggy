@@ -401,9 +401,15 @@ export function HomeScreen() {
       substitutionConfirmed: !remoteStart && actualWalkerUserId !== walk.responsibleUserId,
       remoteStart,
     }).then((started) => {
-      if (!started && !remoteStart) void useGpsStore.getState().stopTracking(walk, currentUserId);
+      // A start the server did not accept must DISCARD the provisional watch.
+      // stopTracking() would persist it: an orphan GPS session for an
+      // unstarted walk on a legacy server, or (v1.1, no lease) a thrown error
+      // that left the card stuck in "GPS interrupted". A retry reuses the
+      // same lifecycle operation id, so a start whose response was lost is
+      // simply confirmed by the server and tracking begins again.
+      if (!started && !remoteStart) useGpsStore.getState().cancelTracking(walk.id);
     }, () => {
-      if (!remoteStart) void useGpsStore.getState().stopTracking(walk, currentUserId);
+      if (!remoteStart) useGpsStore.getState().cancelTracking(walk.id);
     });
   }, [currentUserId, startWalk]);
 

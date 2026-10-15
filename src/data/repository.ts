@@ -13,6 +13,7 @@ import type {
   GpsRouteUpdate,
 } from '../types';
 import type { QuarantinedItem, SyncConflict, SyncQueueDiagnostics } from './syncQueue';
+import type { WalkLifecycleCapability } from './walkLifecycleCapability';
 
 /** Payload for Repository.deleteFamilyMember — see its doc comment below. */
 export interface DeleteFamilyMemberPayload {
@@ -200,6 +201,14 @@ export interface Repository {
   saveWalk(walk: Walk): Promise<void>;
   /** Server-authoritative lifecycle operations; Supabase persists actor/time atomically. */
   startWalk?(walkId: string): Promise<Walk>;
+  /**
+   * Read-only server probe for Walk Lifecycle v1.1. Implemented by the
+   * Supabase repository only; a remote without it (demo/test doubles) is
+   * treated as supporting the v1.1 methods it implements.
+   */
+  getWalkLifecycleCapability?(): Promise<WalkLifecycleCapability>;
+  /** Throws an explicit error when the server cannot run Walk Lifecycle v1.1 (offline-first layer only). */
+  assertWalkLifecycleV11Available?(): Promise<void>;
   /** Versioned, idempotent lifecycle path. Requires the v1.1 migration before Supabase use. */
   startWalkV11?(walkId: string, authorization: WalkStartAuthorization): Promise<Walk>;
   /** Atomic spontaneous create-and-start; never exposes a persisted pending stub. */

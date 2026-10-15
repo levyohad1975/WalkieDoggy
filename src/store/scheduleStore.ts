@@ -426,6 +426,7 @@ async function loadScheduleForFamily(
 }
 
 const startWalkPromises = new Map<string, Promise<boolean>>();
+const finishWalkPromises = new Map<string, Promise<boolean>>();
 
 export const useScheduleStore = create<ScheduleState>((set, get) => ({
   rules: [],
@@ -1012,66 +1013,82 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     return tracked;
   },
 
-  finishWalk: async (walkId: string, completedByUserId: string, details: WalkCompletionDetails = {}) => {
-    if (!guardTestModeMutation()) return false;
-    const walk = get().walks.find((w) => w.id === walkId);
-    if (!walk) return false;
-    try {
-      // With GPS fencing enabled, upload the final route while the lease is
-      // still valid. finish_walk_v11 closes the lease in the same server
-      // transaction after this final route write.
-      let gpsFinalizedBeforeFinish = false;
-      let gpsFinalizationFailed = false;
-      if (repository.finishWalkV11 && useGpsStore.getState().trackingWalkId === walkId) {
-        gpsFinalizedBeforeFinish = true;
-        try {
-          // A lease that lapsed while the phone was locked (or after a lost
-          // heartbeat) is renewed on this same device first. The server
-          // refuses that without confirmation if another device owns GPS.
-          const gps = useGpsStore.getState();
-          if (gps.gpsFencingEpoch === null && gps.pointCount > 0) await gps.attachGpsOwnership(walk);
-          await useGpsStore.getState().stopTracking(walk, completedByUserId);
-        } catch (error) {
-          // GPS is assistive, never a precondition for the walk lifecycle.
-          // The route already persisted under the lease stays saved; the
-          // unsaved tail stays in memory, and the walk is still finished
-          // (online or through the offline lifecycle outbox).
-          gpsFinalizationFailed = true;
-          console.error('[finishWalk] final GPS route was not saved before finish', { walkId, error });
+  finishWalk: (walkId: string, completedByUserId: string, details: WalkCompletionDetails = {}) => {
+    // A second tap (or a remote-confirmation retry) while a finish is still
+    // in flight joins the same attempt instead of racing it: one GPS final
+    // upload, one lease release, one finish_walk_v11 call per operation id.
+    const inFlight = finishWalkPromises.get(walkId);
+    if (inFlight) return inFlight;
+    const operation = (async () => {
+      if (!guardTestModeMutation()) return false;
+      const walk = get().walks.find((w) => w.id === walkId);
+      if (!walk) return false;
+      try {
+        // Version gate first: on a server without Walk Lifecycle v1.1 the
+        // finish cannot succeed, so the live GPS route must stay untouched in
+        // memory rather than being half-finalized into an "interrupted" state.
+        if (repository.finishWalkV11) await repository.assertWalkLifecycleV11Available?.();
+        // With GPS fencing enabled, upload the final route while the lease is
+        // still valid. finish_walk_v11 closes the lease in the same server
+        // transaction after this final route write.
+        let gpsFinalizedBeforeFinish = false;
+        let gpsFinalizationFailed = false;
+        if (repository.finishWalkV11 && useGpsStore.getState().trackingWalkId === walkId) {
+          gpsFinalizedBeforeFinish = true;
+          try {
+            // A lease that lapsed while the phone was locked (or after a lost
+            // heartbeat) is renewed on this same device first. The server
+            // refuses that without confirmation if another device owns GPS.
+            const gps = useGpsStore.getState();
+            if (gps.gpsFencingEpoch === null && gps.pointCount > 0) await gps.attachGpsOwnership(walk);
+            await useGpsStore.getState().stopTracking(walk, completedByUserId);
+          } catch (error) {
+            // GPS is assistive, never a precondition for the walk lifecycle.
+            // The route already persisted under the lease stays saved; the
+            // unsaved tail stays in memory, and the walk is still finished
+            // (online or through the offline lifecycle outbox).
+            gpsFinalizationFailed = true;
+            console.error('[finishWalk] final GPS route was not saved before finish', { walkId, error });
+          }
         }
-      }
-      let updated: Walk;
-      if (repository.finishWalkV11) {
-        const actorUserId = details.actorUserId ?? completedByUserId;
-        const operationId = await getWalkLifecycleOperationId('finish', walkId, actorUserId);
-        updated = await repository.finishWalkV11(walkId, completedByUserId, operationId, { ...details, actorUserId });
-        await completeWalkLifecycleOperation('finish', walkId, actorUserId);
-      } else if (repository.finishWalk) updated = await repository.finishWalk(walkId, completedByUserId, details);
-      else updated = markWalkDone(walk, completedByUserId, details);
-      set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
-      if (gpsFinalizationFailed) {
-        set({ actionError: 'הטיול הסתיים, אך לא הצלחנו לשמור את נתוני ה-GPS. הנתונים נשארו במכשיר — נסו לרענן ולדווח לתמיכה אם הבעיה חוזרת.' });
-      }
-      // Notification cleanup is secondary; it must never skip the GPS
-      // finalization after the server has already completed the walk.
-      void cancelWalkNotifications(walkId).catch((error) => {
-        console.warn('[finishWalk] notification cleanup failed', { walkId, error });
-      });
-      // Stop and persist the captured route before returning success. The
-      // repository writes locally first and queues remote retries offline.
-      if (!gpsFinalizedBeforeFinish) {
-        try {
-          await useGpsStore.getState().stopTracking(updated, completedByUserId);
-        } catch (error) {
-          console.error('[finishWalk] GPS session persistence failed', { walkId, error });
+        let updated: Walk;
+        if (repository.finishWalkV11) {
+          const actorUserId = details.actorUserId ?? completedByUserId;
+          const operationId = await getWalkLifecycleOperationId('finish', walkId, actorUserId);
+          updated = await repository.finishWalkV11(walkId, completedByUserId, operationId, { ...details, actorUserId });
+          await completeWalkLifecycleOperation('finish', walkId, actorUserId);
+        } else if (repository.finishWalk) updated = await repository.finishWalk(walkId, completedByUserId, details);
+        else updated = markWalkDone(walk, completedByUserId, details);
+        set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
+        if (gpsFinalizationFailed) {
           set({ actionError: 'הטיול הסתיים, אך לא הצלחנו לשמור את נתוני ה-GPS. הנתונים נשארו במכשיר — נסו לרענן ולדווח לתמיכה אם הבעיה חוזרת.' });
         }
+        // Notification cleanup is secondary; it must never skip the GPS
+        // finalization after the server has already completed the walk.
+        void cancelWalkNotifications(walkId).catch((error) => {
+          console.warn('[finishWalk] notification cleanup failed', { walkId, error });
+        });
+        // Stop and persist the captured route before returning success. The
+        // repository writes locally first and queues remote retries offline.
+        if (!gpsFinalizedBeforeFinish) {
+          try {
+            await useGpsStore.getState().stopTracking(updated, completedByUserId);
+          } catch (error) {
+            console.error('[finishWalk] GPS session persistence failed', { walkId, error });
+            set({ actionError: 'הטיול הסתיים, אך לא הצלחנו לשמור את נתוני ה-GPS. הנתונים נשארו במכשיר — נסו לרענן ולדווח לתמיכה אם הבעיה חוזרת.' });
+          }
+        }
+        return true;
+      } catch (e) {
+        set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו לסיים את הטיול') });
+        return false;
       }
-      return true;
-    } catch (e) {
-      set({ actionError: friendlyErrorMessage(e, [], 'לא הצלחנו לסיים את הטיול') });
-      return false;
-    }
+    })();
+    const tracked = operation.finally(() => {
+      finishWalkPromises.delete(walkId);
+    });
+    finishWalkPromises.set(walkId, tracked);
+    return tracked;
   },
 
   markDone: async (walkId: string, completedByUserId: string, details: WalkCompletionDetails = {}) => {

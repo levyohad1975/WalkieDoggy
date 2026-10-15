@@ -16,6 +16,22 @@ import type {
 import { defaultNotificationSetting } from '../logic/reminders';
 import type { DeleteFamilyMemberPayload, DuplicateActiveWalkReviewRecord, Repository, ResolveDuplicateActiveWalksRequest, WalkDuplicateResolutionAudit } from './repository';
 import { SUPABASE_CALL_TIMEOUT_MS, withTimeout } from '../lib/withTimeout';
+import {
+  capabilityFromProbe,
+  isMissingFunctionError,
+  isMissingRelationError,
+  WalkLifecycleUnavailableError,
+  type WalkLifecycleCapability,
+} from './walkLifecycleCapability';
+
+/**
+ * A v1.1 lifecycle RPC that does not exist on this server is a version
+ * mismatch, not a transient failure. Surface it as one typed error so the
+ * offline-first layer re-probes and the UI says so explicitly.
+ */
+function lifecycleRpcError(rpcName: string, error: unknown): unknown {
+  return isMissingFunctionError(error) ? new WalkLifecycleUnavailableError('missing_rpc', rpcName) : error;
+}
 // TEMPORARY DIAGNOSTIC INSTRUMENTATION — see perfTrace.ts's own doc
 // comment. Remove this import and every perfMark call in
 // upsertScheduleRule()/addScheduleEntries() once the real ~10s
@@ -503,8 +519,11 @@ export class SupabaseRepository implements Repository {
   async getGpsSession(walkId: string): Promise<WalkGpsSession | undefined> {
     const { data, error } = await this.client.from('walk_gps_sessions').select('*').eq('walk_id', walkId).maybeSingle();
     if (error) throw error;
-    const { data: owner, error: ownerError } = await this.client.from('walk_gps_ownership').select('distance_meters,point_count,route_started_at,route_ended_at').eq('walk_id', walkId).maybeSingle();
-    if (ownerError) throw ownerError;
+    const { data: ownerRow, error: ownerError } = await this.client.from('walk_gps_ownership').select('distance_meters,point_count,route_started_at,route_ended_at').eq('walk_id', walkId).maybeSingle();
+    // A server without the v1.1 schema has no fenced GPS data at all; that is
+    // "no v1.1 owner", not a read failure that should hide the legacy session.
+    if (ownerError && !isMissingRelationError(ownerError)) throw ownerError;
+    const owner = ownerError ? null : ownerRow;
     if (!data && !owner) return undefined;
     const session = data ? toGpsSession(data) : {
       id: walkId, walkId, familyId: '', dogId: '', pointCount: 0, source: 'device_gps' as const, createdAt: '', updatedAt: '',
@@ -538,9 +557,12 @@ export class SupabaseRepository implements Repository {
     const { data, error } = await this.client.from('walk_gps_sessions').select('*').in('walk_id', walkIds);
     if (error) throw error;
     const sessions = new Map<string, WalkGpsSession>((data ?? []).map((row: any) => [row.walk_id, toGpsSession(row)]));
-    const { data: owners, error: ownerError } = await this.client.from('walk_gps_ownership')
+    const { data: ownerRows, error: ownerError } = await this.client.from('walk_gps_ownership')
       .select('walk_id,family_id,dog_id,distance_meters,point_count,route_started_at,route_ended_at').in('walk_id', walkIds);
-    if (ownerError) throw ownerError;
+    // Pre-v1.1 server: return the legacy sessions instead of failing the whole
+    // read (which made History/Statistics silently fall back to device-only data).
+    if (ownerError && !isMissingRelationError(ownerError)) throw ownerError;
+    const owners = ownerError ? null : ownerRows;
     if (!owners?.length) return [...sessions.values()];
     const ownerIds = owners.map((owner: any) => owner.walk_id);
     const { data: points, error: pointsError } = await this.client.from('walk_gps_route_samples_v11')
@@ -849,6 +871,18 @@ export class SupabaseRepository implements Repository {
     return data;
   }
 
+  async getWalkLifecycleCapability(): Promise<WalkLifecycleCapability> {
+    const { data, error } = await this.client.rpc('walk_lifecycle_server_capabilities');
+    if (error) {
+      // The probe itself is part of the v1.1 rollout: its absence means the
+      // server has not been activated for v1.1. Anything else (network,
+      // auth) is not an answer and must not be cached as one.
+      if (isMissingFunctionError(error)) return { status: 'not_installed', checkedAt: new Date().toISOString() };
+      throw error;
+    }
+    return capabilityFromProbe(data);
+  }
+
   /**
    * Handles the "two people mark done at once" race atomically: the update
    * is conditioned on the row still being 'pending' server-side, so whichever
@@ -884,7 +918,7 @@ export class SupabaseRepository implements Repository {
       p_substitution_confirmed: authorization.substitutionConfirmed ?? false,
       p_remote_start: authorization.remoteStart ?? false,
     });
-    if (error) throw error;
+    if (error) throw lifecycleRpcError('start_walk_v11', error);
     const walk = toWalk(data);
     if (authorization.remoteStart) await this.dispatchWalkLifecycleNotification(walk.id);
     return walk;
@@ -900,7 +934,7 @@ export class SupabaseRepository implements Repository {
       p_expected_actor_id: actorUserId,
       p_operation_id: operationId,
     });
-    if (error) throw error;
+    if (error) throw lifecycleRpcError('start_spontaneous_walk_v11', error);
     return toWalk(data);
   }
 
@@ -929,7 +963,7 @@ export class SupabaseRepository implements Repository {
       p_completed_at: details.completedAt ?? null,
       p_remote_confirmation: details.remoteConfirmation ?? false,
     });
-    if (error) throw error;
+    if (error) throw lifecycleRpcError('finish_walk_v11', error);
     const walk = toWalk(data);
     if (details.remoteConfirmation) await this.dispatchWalkLifecycleNotification(walk.id);
     return walk;
@@ -937,7 +971,7 @@ export class SupabaseRepository implements Repository {
 
   async acquireGpsOwnershipV11(walkId: string, confirmTransfer = false): Promise<{ fencingEpoch: number; expiresAt: string }> {
     const { data, error } = await this.client.rpc('acquire_walk_gps_ownership_v11', { p_walk_id: walkId, p_confirm_transfer: confirmTransfer });
-    if (error) throw error;
+    if (error) throw lifecycleRpcError('acquire_walk_gps_ownership_v11', error);
     const row = Array.isArray(data) ? data[0] : data;
     if (!row || typeof row.fencing_epoch !== 'number' || typeof row.expires_at !== 'string') throw new Error('GPS ownership response was invalid');
     return { fencingEpoch: row.fencing_epoch, expiresAt: row.expires_at };
@@ -945,14 +979,14 @@ export class SupabaseRepository implements Repository {
 
   async heartbeatGpsOwnershipV11(walkId: string, fencingEpoch: number): Promise<string> {
     const { data, error } = await this.client.rpc('heartbeat_walk_gps_ownership_v11', { p_walk_id: walkId, p_fencing_epoch: fencingEpoch });
-    if (error) throw error;
+    if (error) throw lifecycleRpcError('heartbeat_walk_gps_ownership_v11', error);
     if (typeof data !== 'string') throw new Error('GPS ownership heartbeat response was invalid');
     return data;
   }
 
   async releaseGpsOwnershipV11(walkId: string, fencingEpoch: number): Promise<void> {
     const { error } = await this.client.rpc('release_walk_gps_ownership_v11', { p_walk_id: walkId, p_fencing_epoch: fencingEpoch });
-    if (error) throw error;
+    if (error) throw lifecycleRpcError('release_walk_gps_ownership_v11', error);
   }
 
   async appendGpsRouteV11(update: GpsRouteUpdate): Promise<WalkGpsSession> {
@@ -965,7 +999,7 @@ export class SupabaseRepository implements Repository {
       p_started_at: update.startedAt ?? null,
       p_ended_at: update.endedAt ?? null,
     });
-    if (error) throw error;
+    if (error) throw lifecycleRpcError('append_walk_gps_route_v11', error);
     return (await this.getGpsSession(update.walkId)) ?? toGpsSession(data);
   }
 
