@@ -2112,7 +2112,9 @@ const styles = StyleSheet.create({
   // further into the (shorter) hero than before; easing it to -42 nets a
   // modest ~14px higher start overall while keeping roughly the same
   // visual overlap relationship with the hero as before.
-  nextWalkLift: { marginTop: -64, zIndex: 1, paddingHorizontal: spacing.xs },
+  // iPhone Safari QA: keep the active-walk title visible below the hero instead of
+  // pulling the card 64px upward under the top edge. Preserve a small overlap.
+  nextWalkLift: { marginTop: -16, zIndex: 1, paddingHorizontal: spacing.xs },
   testModeBanner: {
     flexDirection: 'row',
     alignItems: 'center',
