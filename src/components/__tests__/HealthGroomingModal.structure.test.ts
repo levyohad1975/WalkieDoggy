@@ -71,8 +71,9 @@ describe('HealthGroomingModal (structural)', () => {
   it('offers deletion only for an existing open task and requires confirmation', () => {
     expect(source).toContain('task && !task.completedAt');
     expect(source).toContain('label="מחיקת משימה"');
-    expect(source).toContain("title: 'מחיקת משימה'");
-    expect(source).toContain('await confirmAction({');
+    expect(source).toContain('health-task-delete-confirmation');
+    expect(source).toContain('מחיקת משימה?');
+    expect(source).toContain('executeDelete');
     expect(source).toContain('onDelete(task.id)');
   });
 
