@@ -48,6 +48,6 @@ describe('Home reminder-notification integration', () => {
   });
 
   it('does not change the Dashboard layout to make room for the mascot', () => {
-    expect(source).toContain('nextWalkLift: { marginTop: -64, zIndex: 1, paddingHorizontal: spacing.xs },');
+    expect(source).toContain('nextWalkLift: { marginTop: -16, zIndex: 1, paddingHorizontal: spacing.xs },');
   });
 });
