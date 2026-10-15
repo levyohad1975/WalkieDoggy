@@ -131,6 +131,7 @@ export function ScheduleScreen() {
   const [range, setRange] = useState<RangeKey>('week');
   const [selectedDate, setSelectedDate] = useState(() => toLocalDateOnly(new Date()));
   const [completedExpanded, setCompletedExpanded] = useState(false);
+  const [overdueExpanded, setOverdueExpanded] = useState(true);
   const [editingWalkId, setEditingWalkId] = useState<string | null>(null);
   const [ruleFormVisible, setRuleFormVisible] = useState(false);
   const [editingRule, setEditingRule] = useState<ScheduleRule | null>(null);
@@ -299,10 +300,20 @@ export function ScheduleScreen() {
             extra scroll-targeting logic. */}
         {allOverduePending.length > 0 ? (
           <View style={styles.section} testID="schedule-overdue-pending-section">
-            <RtlText style={styles.sectionTitle} accessibilityRole="header">
-              ממתינים לעדכון ({allOverduePending.length})
-            </RtlText>
-            <View style={styles.list}>
+            <Pressable
+              onPress={() => setOverdueExpanded((expanded) => !expanded)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: overdueExpanded }}
+              accessibilityLabel={overdueExpanded ? 'הסתר ממתינים לעדכון' : 'הצג ממתינים לעדכון'}
+              style={styles.completedGroupHeader}
+              testID="schedule-overdue-pending-toggle"
+            >
+              <RtlText style={styles.sectionTitle}>
+                {overdueExpanded ? 'הסתר ממתינים לעדכון' : 'ממתינים לעדכון'} ({allOverduePending.length})
+              </RtlText>
+              <RtlText style={styles.completedChevron}>{overdueExpanded ? '⌃' : '⌄'}</RtlText>
+            </Pressable>
+            {overdueExpanded ? <View style={styles.list}>
               {allOverduePending.map((w) => (
                 <WalkRow
                   key={w.id}
@@ -312,7 +323,7 @@ export function ScheduleScreen() {
                   onMarkNotDone={() => skip(w.id)}
                 />
               ))}
-            </View>
+            </View> : null}
           </View>
         ) : null}
 
