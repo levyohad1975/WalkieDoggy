@@ -1,0 +1,93 @@
+-- Walk Lifecycle v1.1 — server capability probe (read-only, additive).
+--
+-- Must be applied AFTER 20261013074334_walk_lifecycle_gps_v11.sql.
+--
+-- Why: a v1.1 client deployed against a database that does not yet have the
+-- v1.1 schema called start_walk_v11 and got PGRST202 on a real iPhone. The
+-- client now probes this function before any v1.1 lifecycle write and fails
+-- closed with an explicit message when it is absent or incomplete; it never
+-- falls back to the legacy start_walk()/finish_walk() RPCs, which do not
+-- enforce one-active-walk-per-dog.
+--
+-- This function only reads catalog metadata. It changes no data, grants no
+-- new table access, and is SECURITY INVOKER: privilege checks below are
+-- evaluated for the calling role, so `missing` reports exactly what that
+-- authenticated caller would be refused.
+
+create or replace function public.walk_lifecycle_server_capabilities()
+returns jsonb
+language plpgsql
+stable
+security invoker
+set search_path = pg_catalog, public
+as $$
+declare
+  required_functions text[] := array[
+    'public.start_walk_v11(uuid,uuid,uuid,uuid,boolean,boolean)',
+    'public.start_spontaneous_walk_v11(uuid,uuid,uuid,date,text,uuid,uuid)',
+    'public.finish_walk_v11(uuid,uuid,uuid,uuid,boolean,boolean,text,timestamptz,boolean)',
+    'public.acquire_walk_gps_ownership_v11(uuid,boolean)',
+    'public.heartbeat_walk_gps_ownership_v11(uuid,bigint)',
+    'public.release_walk_gps_ownership_v11(uuid,bigint)',
+    'public.append_walk_gps_route_v11(uuid,bigint,jsonb,numeric,integer,timestamptz,timestamptz)',
+    'public.claim_walk_lifecycle_notifications_v11(uuid)',
+    'public.finish_walk_lifecycle_notification_delivery_v11(uuid[],boolean,text)',
+    'public.acknowledge_walk_lifecycle_notifications_v11(uuid[])'
+  ];
+  required_tables text[] := array[
+    'public.walk_lifecycle_events',
+    'public.walk_gps_ownership',
+    'public.walk_gps_route_samples_v11',
+    'public.walk_lifecycle_notifications'
+  ];
+  missing text[] := '{}';
+  signature text;
+  fn regprocedure;
+  rel regclass;
+begin
+  foreach signature in array required_functions loop
+    fn := to_regprocedure(signature);
+    if fn is null then
+      missing := missing || ('function:' || signature);
+    elsif not has_function_privilege(fn, 'execute') then
+      missing := missing || ('execute:' || signature);
+    end if;
+  end loop;
+
+  foreach signature in array required_tables loop
+    rel := to_regclass(signature);
+    if rel is null then
+      missing := missing || ('table:' || signature);
+    elsif not has_table_privilege(rel, 'select') then
+      missing := missing || ('select:' || signature);
+    end if;
+  end loop;
+
+  if not exists (
+    select 1 from pg_attribute
+    where attrelid = 'public.walks'::regclass and attname = 'actual_walker_user_id' and not attisdropped
+  ) then
+    missing := missing || 'column:public.walks.actual_walker_user_id'::text;
+  end if;
+  if not exists (
+    select 1 from pg_attribute
+    where attrelid = 'public.walks'::regclass and attname = 'duplicate_resolution_group_id' and not attisdropped
+  ) then
+    missing := missing || 'column:public.walks.duplicate_resolution_group_id'::text;
+  end if;
+  if to_regclass('public.walks_one_active_per_dog_uidx') is null then
+    missing := missing || 'index:public.walks_one_active_per_dog_uidx'::text;
+  end if;
+
+  return jsonb_build_object(
+    'lifecycle_version', '1.1',
+    'missing', to_jsonb(missing)
+  );
+end;
+$$;
+
+revoke all on function public.walk_lifecycle_server_capabilities() from public, anon;
+grant execute on function public.walk_lifecycle_server_capabilities() to authenticated;
+
+comment on function public.walk_lifecycle_server_capabilities() is
+  'Read-only Walk Lifecycle v1.1 capability probe for clients. Returns {lifecycle_version, missing[]}; an empty missing list means every v1.1 RPC, table, column and the one-active-walk index exist and are usable by the caller.';

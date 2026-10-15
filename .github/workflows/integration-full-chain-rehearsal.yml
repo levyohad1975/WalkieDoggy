@@ -298,7 +298,12 @@ jobs:
           PYEOF
 
       - name: Stage the v1.1 migration after the resolution fixture
-        run: mv supabase/migrations/20261013074334_walk_lifecycle_gps_v11.sql /tmp/walk_lifecycle_gps_v11.sql
+        # The capability probe migration is ordered after v1.1, so it is staged
+        # with it: `supabase migration up` refuses to insert v1.1 before an
+        # already-applied later migration.
+        run: |
+          mv supabase/migrations/20261013074334_walk_lifecycle_gps_v11.sql /tmp/walk_lifecycle_gps_v11.sql
+          mv supabase/migrations/20261015090000_walk_lifecycle_capabilities_v11.sql /tmp/walk_lifecycle_capabilities_v11.sql
 
       - name: Replay migrations through duplicate-resolution support from empty
         run: supabase db reset --local
@@ -342,6 +347,7 @@ jobs:
       - name: Apply the actual v1.1 migration after duplicate resolution
         run: |
           mv /tmp/walk_lifecycle_gps_v11.sql supabase/migrations/20261013074334_walk_lifecycle_gps_v11.sql
+          mv /tmp/walk_lifecycle_capabilities_v11.sql supabase/migrations/20261015090000_walk_lifecycle_capabilities_v11.sql
           supabase migration up --local
 
       - name: Verify v1.1 constraints and preserved walk/GPS history
@@ -371,6 +377,15 @@ jobs:
             -v ON_ERROR_STOP=1 \
             -f supabase/manual_tests/walk_lifecycle_v11_hardening.sql
 
+      - name: Verify the Walk Lifecycle v1.1 capability probe used by the client version gate (rolled back)
+        env:
+          PGPASSWORD: postgres
+          PGOPTIONS: "-c app.walk_duplicate_fixture=local"
+        run: |
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/manual_tests/walk_lifecycle_v11_capabilities.sql
+
       - name: Rehearse schedule-entry deletion with disposable history and GPS fixtures
         env:
           PGPASSWORD: postgres
@@ -393,6 +408,9 @@ jobs:
         run: |
           if [ -f /tmp/walk_lifecycle_gps_v11.sql ]; then
             mv /tmp/walk_lifecycle_gps_v11.sql supabase/migrations/20261013074334_walk_lifecycle_gps_v11.sql
+          fi
+          if [ -f /tmp/walk_lifecycle_capabilities_v11.sql ]; then
+            mv /tmp/walk_lifecycle_capabilities_v11.sql supabase/migrations/20261015090000_walk_lifecycle_capabilities_v11.sql
           fi
           if [ -f supabase/seed.sql.pending ]; then mv supabase/seed.sql.pending supabase/seed.sql; fi
 
