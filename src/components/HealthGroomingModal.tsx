@@ -262,6 +262,7 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
   const [recurrenceDays, setRecurrenceDays] = useState('');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deletePromptVisible, setDeletePromptVisible] = useState(false);
   // Synchronous re-entry guards: state updates land a render later, so a
   // fast double tap could otherwise start two saves or two deletes.
   const saveInFlight = useRef(false);
@@ -278,6 +279,7 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
     const savedTime = appointmentTimeFromNotes(task?.notes);
     setAppointmentTime(savedTime ?? '09:00');
     setShowTimePicker(false);
+    setDeletePromptVisible(false);
     setWeightKg(task?.weightKg != null ? String(task.weightKg) : '');
     setResponsibleUserId(task?.responsibleUserId);
     setRecurrenceDays(task?.recurrenceIntervalDays != null ? String(task.recurrenceIntervalDays) : '');
@@ -345,31 +347,19 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
     }
   };
 
-  /**
-   * Explicit confirmation, then exactly one delete request. Uses
-   * confirmAction()/showMessage() rather than Alert.alert: on iPhone Safari /
-   * the Home Screen PWA (react-native-web) Alert.alert is a silent no-op, so
-   * the old confirmation never appeared and the delete never ran. The sheet
-   * is closed by the parent only after onDelete resolves (server-confirmed);
-   * any failure keeps it open and says, in Hebrew, that nothing was deleted.
-   */
-  const confirmDelete = async () => {
-    if (!task || task.completedAt || deleteInFlight.current) return;
+  // Keep the confirmation inside our own RTL sheet instead of the unstyled
+  // browser confirm(), which ignores app typography and button labels.
+  const confirmDelete = () => {
+    if (!task || task.completedAt || deleteInFlight.current || saving) return;
+    setDeletePromptVisible(true);
+  };
+
+  const executeDelete = async () => {
+    if (!task || deleteInFlight.current) return;
     deleteInFlight.current = true;
+    setDeletePromptVisible(false);
+    setDeleting(true);
     try {
-      const when = task.dueDate ? ` מתאריך ${formatDisplayDate(task.dueDate)}` : '';
-      const recurrenceNote = task.recurrenceIntervalDays
-        ? '\nזו משימה חוזרת — המחיקה תעצור גם את החזרות הבאות שלה. רשומות שכבר בוצעו יישארו בהיסטוריה.'
-        : '';
-      const confirmed = await confirmAction({
-        title: 'מחיקת משימה',
-        message: `למחוק את "${taskTypeLabel(task)}"${when}? פעולה זו אינה ניתנת לביטול.${recurrenceNote}`,
-        confirmLabel: 'מחיקה',
-        cancelLabel: 'ביטול',
-        destructive: true,
-      });
-      if (!confirmed) return;
-      setDeleting(true);
       await onDelete(task.id);
     } catch (error) {
       showMessage('לא הצלחנו למחוק', healthTaskDeleteErrorMessage(error));
@@ -575,6 +565,30 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
             </View>
           </Pressable>
         </View>
+          {deletePromptVisible && task && (
+            <View testID="health-task-delete-confirmation" style={styles.deleteOverlay}>
+              <View style={styles.deleteDialog} accessibilityRole="alert">
+                <RtlText style={styles.deleteDialogTitle}>מחיקת משימה?</RtlText>
+                <RtlText style={styles.deleteDialogHint}>האם למחוק את המשימה הבאה?</RtlText>
+                <View style={styles.deleteDialogDetails}>
+                  <RtlText style={styles.deleteDialogTask}>{taskTypeLabel(task)}</RtlText>
+                  <RtlText style={styles.deleteDialogDate}>{task.dueDate ? formatDisplayDate(task.dueDate) : ''}</RtlText>
+                </View>
+                {task.recurrenceIntervalDays ? (
+                  <RtlText style={styles.deleteDialogHint}>המחיקה תעצור גם חזרות עתידיות. משימות שהושלמו יישארו בהיסטוריה.</RtlText>
+                ) : null}
+                <RtlText style={styles.deleteDialogWarning}>המחיקה סופית ולא ניתן לבטל אותה.</RtlText>
+                <View style={styles.deleteDialogActions}>
+                  <Pressable accessibilityRole="button" accessibilityLabel="ביטול" style={styles.deleteCancel} onPress={() => setDeletePromptVisible(false)}>
+                    <RtlText style={styles.deleteCancelText}>ביטול</RtlText>
+                  </Pressable>
+                  <Pressable accessibilityRole="button" accessibilityLabel="מחק משימה" style={styles.deleteConfirm} onPress={() => void executeDelete()}>
+                    <RtlText style={styles.deleteConfirmText}>מחק משימה</RtlText>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          )}
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -582,6 +596,19 @@ function HealthTaskFormModal({ visible, dog, task, users, currentUserId, onSave,
 
 const styles = StyleSheet.create({
   flexFull: { flex: 1 },
+  deleteOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: '#00000070', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, zIndex: 30 },
+  deleteDialog: { width: '100%', maxWidth: 420, borderRadius: 24, backgroundColor: colors.surface, padding: 22, gap: 12 },
+  deleteDialogTitle: { fontSize: 22, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
+  deleteDialogHint: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', lineHeight: 22 },
+  deleteDialogDetails: { borderRadius: 14, backgroundColor: colors.surfaceMuted, padding: 14, gap: 4 },
+  deleteDialogTask: { fontSize: 16, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
+  deleteDialogDate: { fontSize: 14, color: colors.textSecondary, textAlign: 'center' },
+  deleteDialogWarning: { fontSize: 13, color: colors.textSecondary, textAlign: 'center' },
+  deleteDialogActions: { flexDirection: 'row-reverse', gap: 10, marginTop: 8 },
+  deleteCancel: { flex: 1, paddingVertical: 14, alignItems: 'center', backgroundColor: colors.surfaceMuted, borderRadius: 12 },
+  deleteCancelText: { color: colors.textPrimary, fontWeight: '700', fontSize: 15 },
+  deleteConfirm: { flex: 1, paddingVertical: 14, alignItems: 'center', backgroundColor: '#FCE8E6', borderRadius: 12 },
+  deleteConfirmText: { color: '#B42318', fontWeight: '700', fontSize: 15 },
   backdrop: { flex: 1, backgroundColor: '#00000055', justifyContent: 'flex-end' },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, padding: radii.xl, maxHeight: '85%' },
   formSheet: { backgroundColor: colors.surface, borderTopLeftRadius: radii.xl, borderTopRightRadius: radii.xl, paddingTop: radii.xl, paddingHorizontal: radii.xl, height: '88%', maxHeight: '88%', overflow: 'hidden' },
