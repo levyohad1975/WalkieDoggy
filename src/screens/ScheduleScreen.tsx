@@ -261,6 +261,19 @@ export function ScheduleScreen() {
     isOverdue(w) &&
     (familyRole === 'admin' || w.responsibleUserId === effectiveUserId);
 
+  // P1 (2026-10-15): the full "ממתינים לעדכון" list used to render directly
+  // on the Dashboard — every unresolved overdue walk regardless of age,
+  // which on real family data meant months of historical cards pushing
+  // everything else off Home. Home now shows only a compact count and
+  // links here; this is the one place the full, date-unbounded list lives
+  // — same data (visibleWalks, already dog-scoped above) and the exact
+  // same canResolveWalk/resolveWalk/skip authorization this screen's own
+  // day view already used, not a second data source or permission rule.
+  const allOverduePending = useMemo(
+    () => visibleWalks.filter(canResolveWalk).sort((a, b) => `${a.date}T${a.scheduledTime}`.localeCompare(`${b.date}T${b.scheduledTime}`)),
+    [visibleWalks, familyRole, effectiveUserId]
+  );
+
   const resolveWalk = resolveWalkId ? walks.find((w) => w.id === resolveWalkId) : undefined;
 
   const requestSwapWalk = requestSwapWalkId ? walks.find((w) => w.id === requestSwapWalkId) : undefined;
@@ -278,6 +291,29 @@ export function ScheduleScreen() {
             entirely for a single-dog family. */}
         {dogs.length > 1 ? (
           <DogSelectorRow dogs={dogs} selectedDogId={selectedDogId} onSelect={(dogId) => void selectDog(dogId)} />
+        ) : null}
+
+        {/* P1 (2026-10-15): the full, date-unbounded "ממתינים לעדכון" list —
+            reachable from Home's compact summary, kept at the very top of
+            this screen so simply navigating here surfaces it without any
+            extra scroll-targeting logic. */}
+        {allOverduePending.length > 0 ? (
+          <View style={styles.section} testID="schedule-overdue-pending-section">
+            <RtlText style={styles.sectionTitle} accessibilityRole="header">
+              ממתינים לעדכון ({allOverduePending.length})
+            </RtlText>
+            <View style={styles.list}>
+              {allOverduePending.map((w) => (
+                <WalkRow
+                  key={w.id}
+                  walk={w}
+                  responsible={usersById[w.responsibleUserId]}
+                  onMarkDone={() => setResolveWalkId(w.id)}
+                  onMarkNotDone={() => skip(w.id)}
+                />
+              ))}
+            </View>
+          </View>
         ) : null}
 
         <View style={styles.tabs}>

@@ -19,7 +19,6 @@ import { canRequestChangeForWalk, computeNextWalkCardActions, formatCompletedAtB
 import { colors } from '../theme/colors';
 import { breakpoints, elevation, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { NextWalkCard } from '../components/NextWalkCard';
-import { WalkRow } from '../components/WalkRow';
 import { EmptyState, ErrorState } from '../components/EmptyState';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { UserPickerModal } from '../components/UserPickerModal';
@@ -361,6 +360,23 @@ export function HomeScreen() {
     }, [familyId])
   );
 
+  // P0 real-iPhone QA (2026-10-15, 18:06): the Dashboard could render
+  // scrolled partway down — most visibly, the newly-inserted active-walk
+  // card after starting a spontaneous walk sat above the viewport, forcing
+  // a manual scroll up. A bottom-tab screen stays mounted across tab
+  // switches (no fresh ScrollView/no reset scroll offset for free), so
+  // returning to Home kept whatever position was left from the previous
+  // visit. Reset to the top on every focus — a transparent Modal fully
+  // occludes this ScrollView while open, so resetting it then is invisible
+  // and harmless; this never fires on GPS/timer/data-refresh rerenders,
+  // only on an actual focus transition.
+  const scrollViewRef = useRef<ScrollView>(null);
+  useFocusEffect(
+    useCallback(() => {
+      scrollViewRef.current?.scrollTo({ y: 0, animated: false });
+    }, [])
+  );
+
   const usersById = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u])), [users]);
   // Active-only — for pickers that assign NEW work (who's completing/
   // swapping/logging a walk): a removed member must never be offered here.
@@ -568,6 +584,27 @@ export function HomeScreen() {
     ),
     [visibleWalks, familyId, knownDogIds, nextWalk?.id, actualFamilyRole, currentUserId]
   );
+  // P0 real-iPhone QA (2026-10-15, 18:06): starting a spontaneous walk
+  // inserts its active card into the page without changing whatever the
+  // ScrollView's position already was — if the user had scrolled down to
+  // reach "הוסף טיול", the new card (which renders near the top, right
+  // after the scheduled next-walk card) could still be above the visible
+  // viewport. Scroll to the top exactly once, on the actual appear
+  // transition (false -> true), never on a GPS/timer rerender while the
+  // walk stays active.
+  const myActiveSpontaneousWalkId = useMemo(
+    () => activeSpontaneousWalkGroups
+      .flatMap((group) => group.walks)
+      .find((walk) => (walk.actualWalkerUserId ?? walk.responsibleUserId) === currentUserId)?.id ?? null,
+    [activeSpontaneousWalkGroups, currentUserId]
+  );
+  const priorActiveSpontaneousWalkIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (myActiveSpontaneousWalkId && !priorActiveSpontaneousWalkIdRef.current) {
+      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+    }
+    priorActiveSpontaneousWalkIdRef.current = myActiveSpontaneousWalkId;
+  }, [myActiveSpontaneousWalkId]);
   // The Family Admin review action on the Dashboard opens the same gated
   // History review panel; it is offered only when that panel would render
   // for this exact viewer (real admin, Staging flag, not impersonating,
@@ -1054,6 +1091,7 @@ export function HomeScreen() {
           visible on every tab while impersonating, not just this one. See
           components/ImpersonationBanner.tsx's doc comment. */}
       <ScrollView
+        ref={scrollViewRef}
         // The dashboard contains real, variable family data. It must remain
         // reachable on Safari too: the bottom tab bar is fixed, so disabling
         // Web scrolling cuts the schedule/approval cards off below it.
@@ -1568,25 +1606,28 @@ export function HomeScreen() {
         </View>
 
         <View style={styles.dashboardOverflow}>
-        {/* Keep only unresolved overdue walks here. Future walks are already
-            represented by the compact "בהמשך היום" timeline above; rendering
-            them again as "טיולים קרובים" duplicated the same information and
-            unnecessarily lengthened Home. */}
+        {/* P1 real-iPhone QA (2026-10-15, 18:08): this used to render every
+            unresolved overdue walk as a full WalkRow directly on the
+            Dashboard — on a real family's data that meant months of
+            September/October historical cards, pushing all other Dashboard
+            content out of view above the fixed bottom nav. Home now shows
+            only a compact count; the full list (same canResolveWalk/
+            markDone/skip data path as before — see ScheduleScreen's own
+            "ממתינים לעדכון" section) lives in the Schedule tab, reachable
+            by tapping this summary. Future walks are already represented
+            by the compact "בהמשך היום" timeline above, so only overdue
+            items are summarized here. */}
         {overduePending.length > 0 ? (
-          <View style={styles.section}>
-            <RtlText style={styles.sectionTitle}>ממתינים לעדכון</RtlText>
-            <View style={styles.list}>
-              {overduePending.map((w) => (
-                <WalkRow
-                  key={w.id}
-                  walk={w}
-                  responsible={usersById[w.responsibleUserId]}
-                  onMarkDone={() => setCompleteWalkId(w.id)}
-                  onMarkNotDone={() => skip(w.id)}
-                />
-              ))}
-            </View>
-          </View>
+          <Pressable
+            onPress={() => navigation.navigate('Schedule')}
+            style={styles.dashboardPendingSummary}
+            accessibilityRole="button"
+            accessibilityLabel={`ממתינים לעדכון, ${overduePending.length} טיולים. פתיחה בלוח הזמנים`}
+          >
+            <RtlText style={styles.dashboardPendingSummaryIcon}>⏳</RtlText>
+            <RtlText style={styles.dashboardPendingSummaryTitle}>ממתינים לעדכון · {overduePending.length}</RtlText>
+            <RtlText style={styles.dashboardPendingSummaryChevron}>‹</RtlText>
+          </Pressable>
         ) : null}
 
         </View>
@@ -2164,6 +2205,14 @@ const styles = StyleSheet.create({
   dashboardAddWalkTitle: { fontSize: 17, lineHeight: 21, fontWeight: '700', color: '#0E7E84', textAlign: 'right' },
   dashboardAddWalkSubtitle: { marginTop: 1, fontSize: 11, lineHeight: 15, fontWeight: '500', color: colors.textSecondary, textAlign: 'right' },
   dashboardAddWalkChevron: { fontSize: 22, color: '#0E7E84' },
+  // P1 (2026-10-15, 18:08): the compact "ממתינים לעדכון" summary that
+  // replaced a full WalkRow list on Home — same row shape as
+  // dashboardAddWalk above, warning-tinted since these are overdue items,
+  // not a neutral action.
+  dashboardPendingSummary: { minHeight: 46, borderRadius: 22, backgroundColor: colors.warningSoft, borderWidth: 1, borderColor: colors.warning + '55', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
+  dashboardPendingSummaryIcon: { fontSize: 18 },
+  dashboardPendingSummaryTitle: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.warning, textAlign: 'right' },
+  dashboardPendingSummaryChevron: { fontSize: 20, color: colors.warning },
   dashboardSection: { gap: 3 },
   dashboardExternalHeading: { minHeight: 24, paddingHorizontal: 4, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   dashboardExternalTitle: { fontSize: 17, fontWeight: '800', color: '#17345B', textAlign: 'right' },
