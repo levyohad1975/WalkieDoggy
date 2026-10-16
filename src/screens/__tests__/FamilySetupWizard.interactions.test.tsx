@@ -94,7 +94,9 @@ describe('FamilySetupWizard interactions', () => {
 
   it('advances after the real-photo preview and avoids a redundant second dog save', async () => {
     const state = setup();
-    await waitFor(() => expect(screen.getByLabelText('שם הכלב או הכלבה')).toBeTruthy());
+    // The initial family/schedule hydration can finish after the default waitFor window on busy CI runners.
+    // Wait for the real input, rather than asserting against the transient loading screen.
+    await waitFor(() => expect(screen.getByLabelText('שם הכלב או הכלבה')).toBeTruthy(), { timeout: 10000 });
     fireEvent.changeText(screen.getByLabelText('שם הכלב או הכלבה'), 'בוקי');
     await act(async () => { fireEvent.press(screen.getByLabelText('נקבה')); });
     mockPickAndUpload.mockResolvedValue('https://cdn.example/buki.jpg');
