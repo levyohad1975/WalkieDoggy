@@ -321,18 +321,35 @@ export function NextWalkCard({
       ) : null}
 
 
-      {isActive && onEndWalk && canResolve ? (
-        <Button label="סיים טיול" icon="■" onPress={onEndWalk} style={styles.endWalkButton} shrinkToFit />
+      {isActive && tone === 'dashboard' ? (
+        <>
+          <View style={styles.activeWalkerSummary}>
+            <RtlText style={styles.activeWalkerSummaryText}>מתוכנן ל: {responsible?.name ?? '—'} · מבצע בפועל: {actualWalker?.name ?? 'טרם עודכן'}</RtlText>
+            <RtlText style={styles.activeWalkerSummaryTime}>שעה מתוכננת: {walk.scheduledTime}</RtlText>
+          </View>
+          {isActive && (onRecordPee || onRecordPoop) ? (
+        <View style={styles.walkEventRow}>
+          {onRecordPee ? <View style={styles.walkEventGroup}><Pressable accessibilityRole="button" accessibilityLabel="הוסף סימון פיפי" onPress={onRecordPee} style={styles.walkEventButton}><RtlText>💧 {recordedPeeCount}</RtlText></Pressable>{onUndoPee && recordedPeeCount > 0 ? <Pressable accessibilityRole="button" accessibilityLabel="בטל סימון פיפי אחד" onPress={onUndoPee} style={styles.walkEventUndo}><RtlText>−</RtlText></Pressable> : null}</View> : null}
+          {onRecordPoop ? <View style={styles.walkEventGroup}><Pressable accessibilityRole="button" accessibilityLabel="הוסף סימון קקי" onPress={onRecordPoop} style={styles.walkEventButton}><RtlText>💩 {recordedPoopCount}</RtlText></Pressable>{onUndoPoop && recordedPoopCount > 0 ? <Pressable accessibilityRole="button" accessibilityLabel="בטל סימון קקי אחד" onPress={onUndoPoop} style={styles.walkEventUndo}><RtlText>−</RtlText></Pressable> : null}</View> : null}
+        </View>
       ) : null}
 
-      {tone === 'dashboard' ? (
-        <>
         {isActive ? (
           <View style={styles.activeMapPanel}>
             <RoutePreview live session={{ routePoints: liveRoutePoints ?? [] } as import('../types').WalkGpsSession} />
           </View>
         ) : null}
-        <View style={[styles.dashboardThreeColumnRow, isWeb && styles.webMainRow]}>
+      {isActive && onEndWalk && canResolve ? (
+        <Button label="סיים טיול" icon="■" onPress={onEndWalk} style={styles.endWalkButton} shrinkToFit />
+      ) : null}
+
+
+        </>
+      ) : null}
+
+      {tone === 'dashboard' ? (
+        <>
+        {!isActive ? <View style={[styles.dashboardThreeColumnRow, isWeb && styles.webMainRow]}>
           <View style={styles.dashboardPersonColumn}>
             {responsible ? <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={isWeb ? 46 : 50} /> : null}
             <RtlText style={styles.dashboardPersonName} numberOfLines={1}>{responsible?.name ?? '—'}</RtlText>
@@ -346,7 +363,7 @@ export function NextWalkCard({
           <View style={[styles.dashboardCountdownColumn, isActive && styles.liveMapColumn]}>
             {isActive ? <RtlText style={styles.activeGpsLabel}>GPS פעיל</RtlText> : !overdue ? <Countdown target={walkDateTime(walk, scheduleTimezone)} compact /> : null}
           </View>
-        </View>
+        </View> : null}
         </>
       ) : (
         <View style={[styles.mainRow, isWeb && styles.webMainRow]}>
@@ -380,13 +397,6 @@ export function NextWalkCard({
         <RtlText style={styles.requestStatusLine} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
           {requestStatusLine}
         </RtlText>
-      ) : null}
-
-      {isActive && (onRecordPee || onRecordPoop) ? (
-        <View style={styles.walkEventRow}>
-          {onRecordPee ? <View style={styles.walkEventGroup}><Pressable accessibilityRole="button" accessibilityLabel="הוסף סימון פיפי" onPress={onRecordPee} style={styles.walkEventButton}><RtlText>💧 {recordedPeeCount}</RtlText></Pressable>{onUndoPee && recordedPeeCount > 0 ? <Pressable accessibilityRole="button" accessibilityLabel="בטל סימון פיפי אחד" onPress={onUndoPee} style={styles.walkEventUndo}><RtlText>−</RtlText></Pressable> : null}</View> : null}
-          {onRecordPoop ? <View style={styles.walkEventGroup}><Pressable accessibilityRole="button" accessibilityLabel="הוסף סימון קקי" onPress={onRecordPoop} style={styles.walkEventButton}><RtlText>💩 {recordedPoopCount}</RtlText></Pressable>{onUndoPoop && recordedPoopCount > 0 ? <Pressable accessibilityRole="button" accessibilityLabel="בטל סימון קקי אחד" onPress={onUndoPoop} style={styles.walkEventUndo}><RtlText>−</RtlText></Pressable> : null}</View> : null}
-        </View>
       ) : null}
 
       {!canResolve ? (
@@ -505,6 +515,9 @@ const styles = StyleSheet.create({
   walkEventRow: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginVertical: 6 },
   walkEventButton: { minWidth: 46, height: 46, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center', borderRadius: 14, backgroundColor: colors.surfaceMuted },
   activeMapPanel: { width: '100%', marginVertical: 4 },
+  activeWalkerSummary: { alignItems: 'center', gap: 2, marginTop: 4, marginBottom: 2 },
+  activeWalkerSummaryText: { fontSize: 14, fontWeight: '700', color: '#17345B', textAlign: 'center' },
+  activeWalkerSummaryTime: { fontSize: 12, color: '#7B746B', textAlign: 'center' },
   actualWalkerLabel: { fontSize: 12, fontWeight: '700', color: colors.primaryDark, textAlign: 'center' },
   activeGpsLabel: { fontSize: 12, color: colors.primaryDark, textAlign: 'center', fontWeight: '600' },
   liveMapColumn: { minWidth: 0, overflow: 'hidden' },
