@@ -366,8 +366,11 @@ export async function permanentlyDeleteSystemAdminFamily(
   }
   for (const [bucket, paths] of byBucket) {
     for (let offset = 0; offset < paths.length; offset += 1000) {
-      const { error } = await client.storage.from(bucket).remove(paths.slice(offset, offset + 1000));
-      if (error) throw error;
+      const batch = paths.slice(offset, offset + 1000);
+      const { error } = await client.storage.from(bucket).remove(batch);
+      if (error) {
+        throw new Error(`מחיקת קבצי המשפחה נכשלה (Storage: ${bucket}, ${offset + 1}-${offset + batch.length}): ${error.message}`);
+      }
     }
   }
 
