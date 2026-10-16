@@ -74,6 +74,14 @@ begin
     insert into public.dogs(family_id,name) values('e1000000-0000-4000-8000-000000000101','stale queue replay');
     raise exception 'deleting-family write was accepted';
   exception when check_violation then null; end;
+  begin
+    delete from public.dogs where family_id='e1000000-0000-4000-8000-000000000101';
+    raise exception 'deleting-family delete was accepted';
+  exception when check_violation then null; end;
+  begin
+    delete from public.families where id='e1000000-0000-4000-8000-000000000101';
+    raise exception 'deleting-family row delete was accepted';
+  exception when check_violation then null; end;
   perform public.system_admin_finalize_family_deletion('e1000000-0000-4000-8000-000000000101');
 end;
 $begin$;

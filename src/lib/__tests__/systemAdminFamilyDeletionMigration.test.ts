@@ -3,6 +3,8 @@ import path from 'node:path';
 
 const migrationPath = path.resolve(__dirname, '../../../supabase/migrations/20261016115245_permanent_family_deletion.sql');
 const sql = fs.readFileSync(migrationPath, 'utf8').toLowerCase();
+const freezeMigrationPath = path.resolve(__dirname, '../../../supabase/migrations/20261016153000_freeze_family_deletion_window.sql');
+const freezeSql = fs.readFileSync(freezeMigrationPath, 'utf8').toLowerCase();
 
 describe('permanent family deletion migration safety contract', () => {
   it('requires verified System Admin authorization in each privileged entry point and rejects observer modes', () => {
@@ -22,6 +24,16 @@ describe('permanent family deletion migration safety contract', () => {
     expect(sql).toContain('prevent_deleted_family_id_reuse');
     expect(sql).toContain("state in ('deleting','deleted')");
     expect(sql).not.toContain('syncqueue');
+  });
+
+  it('freezes deletes during the resumable window while allowing the verified purge transaction', () => {
+    expect(freezeSql).toContain('before insert or update or delete');
+    expect(freezeSql).toContain('before delete on public.families');
+    expect(freezeSql).toContain("state in ('deleting','deleted')");
+    expect(freezeSql).toContain("current_setting('app.system_admin_family_deletion',true)='on'");
+    const rehearsal = fs.readFileSync(path.resolve(__dirname, '../../../supabase/manual_tests/system_admin_permanent_family_deletion.sql'), 'utf8').toLowerCase();
+    expect(rehearsal).toContain('deleting-family delete was accepted');
+    expect(rehearsal).toContain('deleting-family row delete was accepted');
   });
 
   it('deletes Storage through RLS-scoped authenticated Storage API, never SQL object deletion', () => {
