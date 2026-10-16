@@ -70,6 +70,16 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).not.toContain('walkDateContextLabel(lastWalk.date)');
   });
 
+  it('places the full upcoming timeline before lower-priority last-walk and add-walk cards on a short iPhone viewport', () => {
+    const timeline = home.indexOf('<Pressable style={styles.dashboardTimeline}');
+    const lastWalk = home.indexOf('>הטיול האחרון</RtlText>');
+    const addWalk = home.indexOf('accessibilityLabel="הוסף טיול"');
+    expect(timeline).toBeGreaterThan(-1);
+    expect(lastWalk).toBeGreaterThan(timeline);
+    expect(addWalk).toBeGreaterThan(timeline);
+    expect(home).toContain('scrollEnabled');
+  });
+
   it('keeps a compact, always-present full daily Dashboard timeline instead of a future-only list', () => {
     expect(home).toContain('const dashboardTimelineWalks = useMemo');
     expect(home).toContain('dailyWalkTimeline(visibleWalks, now)');
