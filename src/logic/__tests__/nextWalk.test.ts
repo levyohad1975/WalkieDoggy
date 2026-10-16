@@ -450,3 +450,34 @@ describe('dailyWalkTimeline', () => {
     expect(dailyWalkTimeline(walks, NOW).map((item) => item.id)).toEqual(['done', 'skipped', 'active', 'future']);
   });
 });
+
+
+describe('legacy pending orphan replay duplicates', () => {
+  const base = {
+    familyId: 'family-a', dogId: 'dog-a', date: '2026-10-16',
+    scheduledTime: '14:05', responsibleUserId: 'dad',
+    scheduleEntryId: undefined, status: 'pending' as const,
+    isUnplanned: false,
+  };
+  it('shows only one of two same-slot pending orphan rows created 27 seconds apart', () => {
+    const first = makeWalk({ ...base, id: 'first', createdAt: '2026-10-12T07:38:04Z' });
+    const second = makeWalk({ ...base, id: 'second', createdAt: '2026-10-12T07:38:31Z' });
+    expect(dedupeCanonicalWalks([first, second]).map(w => w.id)).toEqual(['first']);
+    expect(dedupeCanonicalWalks([second, first]).map(w => w.id)).toEqual(['first']);
+  });
+  it('preserves independently planned slots and different dogs, families or assignees', () => {
+    const first = makeWalk({ ...base, id: 'first', createdAt: '2026-10-12T07:38:04Z' });
+    const separate = makeWalk({ ...base, id: 'later', createdAt: '2026-10-12T07:40:04Z' });
+    const otherDog = makeWalk({ ...base, id: 'other-dog', dogId: 'dog-b', createdAt: '2026-10-12T07:38:31Z' });
+    const otherFamily = makeWalk({ ...base, id: 'other-family', familyId: 'family-b', createdAt: '2026-10-12T07:38:31Z' });
+    const otherAssignee = makeWalk({ ...base, id: 'other-assignee', responsibleUserId: 'mom', createdAt: '2026-10-12T07:38:31Z' });
+    expect(dedupeCanonicalWalks([first, separate, otherDog, otherFamily, otherAssignee])).toHaveLength(5);
+  });
+  it('never merges completed, spontaneous or separately linked scheduled walks', () => {
+    const first = makeWalk({ ...base, id: 'first', createdAt: '2026-10-12T07:38:04Z' });
+    const done = makeWalk({ ...base, id: 'done', status: 'done', createdAt: '2026-10-12T07:38:31Z' });
+    const spontaneous = makeWalk({ ...base, id: 'spontaneous', isUnplanned: true, createdAt: '2026-10-12T07:38:31Z' });
+    const linked = makeWalk({ ...base, id: 'linked', scheduleEntryId: 'entry-other', createdAt: '2026-10-12T07:38:31Z' });
+    expect(dedupeCanonicalWalks([first, done, spontaneous, linked])).toHaveLength(4);
+  });
+});
