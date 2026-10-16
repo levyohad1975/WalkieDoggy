@@ -8,7 +8,7 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
-import { computeLastWalk, computeNextWalk, dailyWalkTimeline, isOverdue, nextWalkSelectionRefreshDelayMs, upcomingWalks, walkDateTime } from '../logic/nextWalk';
+import { computeLastWalk, computeNextWalk, dailyWalkTimeline, familyDateOnly, isOverdue, nextWalkSelectionRefreshDelayMs, upcomingWalks, walkDateTime } from '../logic/nextWalk';
 import { isActiveWalk } from '../logic/walkLifecycle';
 import { activeSpontaneousHomeBlocks, duplicateActiveWalkNotice, groupActiveSpontaneousWalks } from '../logic/activeSpontaneousWalks';
 import { canOpenDuplicateResolution } from '../logic/duplicateWalkResolution';
@@ -930,6 +930,7 @@ export function HomeScreen() {
           (w) =>
             w.status === 'pending' &&
             w.id !== nextWalk?.id &&
+            w.date === familyDateOnly(new Date(), scheduleTimezone) &&
             isOverdue(w, new Date(), scheduleTimezone) &&
             (effectiveRole === 'admin' || w.responsibleUserId === effectiveUserId)
         )
