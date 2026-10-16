@@ -23,7 +23,7 @@ describe('ScheduleScreen multi-dog wiring (structural)', () => {
 
   it('derives dog-filtered visibleWalks/visibleRules and feeds them into grouped/sortedRules, not the raw family-wide walks/rules', () => {
     expect(source).toMatch(
-      /const visibleWalks = useMemo\(\s*\n\s*\(\) => \(dogs\.length > 1 && dog \? walks\.filter\(\(w\) => w\.dogId === dog\.id\) : walks\),/
+      /const visibleWalks = useMemo\(\s*\n\s*\(\) => dedupeCanonicalWalks\(dogs\.length > 1 && dog \? walks\.filter\(\(w\) => w\.dogId === dog\.id\) : walks\),/
     );
     expect(source).toMatch(
       /const visibleRules = useMemo\(\s*\n\s*\(\) => \(dogs\.length > 1 && dog \? rules\.filter\(\(r\) => r\.dogId === dog\.id\) : rules\),/
