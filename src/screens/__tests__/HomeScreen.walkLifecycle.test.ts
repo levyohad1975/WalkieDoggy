@@ -70,13 +70,13 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).not.toContain('walkDateContextLabel(lastWalk.date)');
   });
 
-  it('places the full upcoming timeline before lower-priority last-walk and add-walk cards on a short iPhone viewport', () => {
+  it('keeps add-walk above the timeline and last-walk below it on a short iPhone viewport', () => {
     const timeline = home.indexOf('<Pressable style={styles.dashboardTimeline}');
     const lastWalk = home.indexOf('>הטיול האחרון</RtlText>');
     const addWalk = home.indexOf('accessibilityLabel="הוסף טיול"');
     expect(timeline).toBeGreaterThan(-1);
+    expect(addWalk).toBeLessThan(timeline);
     expect(lastWalk).toBeGreaterThan(timeline);
-    expect(addWalk).toBeGreaterThan(timeline);
     expect(home).toContain('scrollEnabled');
   });
 
@@ -169,8 +169,8 @@ describe('Home integrated walk lifecycle', () => {
     const addWalkIndex = home.indexOf('style={styles.dashboardAddWalk}');
     const timelineIndex = home.indexOf('style={styles.dashboardTimeline}');
     expect(lastWalkIndex).toBeGreaterThan(-1);
+    expect(addWalkIndex).toBeLessThan(timelineIndex);
     expect(timelineIndex).toBeLessThan(lastWalkIndex);
-    expect(lastWalkIndex).toBeLessThan(addWalkIndex);
     expect(home).toContain("dashboardLastWalk: { minHeight: 76, borderRadius: 24, backgroundColor: '#F4FAFD'");
     expect(home).toContain("dashboardAddWalk: { minHeight: 46, borderRadius: 22, backgroundColor: '#F0FAF8'");
     expect(home).toContain("backgroundColor: '#12A5AB'");
