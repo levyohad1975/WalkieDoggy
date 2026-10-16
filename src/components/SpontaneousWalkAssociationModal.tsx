@@ -23,17 +23,17 @@ export function SpontaneousWalkAssociationModal({ visible, dogName, candidates, 
       <Pressable style={styles.backdrop} onPress={onCancel} accessibilityRole="button" accessibilityLabel="ביטול בחירת שיוך הטיול">
         <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
           <RtlText style={styles.title} accessibilityRole="header">הטיול של {dogName} קרוב לשעה מתוכננת</RtlText>
-          <RtlText style={styles.message}>בחרו אם לשייך אותו לטיול קיים או לפתוח טיול נפרד.</RtlText>
+          <RtlText style={styles.message}>טיול ספונטני יכול להחליף טיול מתוכנן עד שעתיים מראש. רק בחירה מפורשת תחליף אותו; אחרת הטיול המתוכנן יישאר כרגיל.</RtlText>
           {candidates.map((walk) => (
             <Button
               key={walk.id}
-              label={`שייך לטיול המתוכנן · ${walk.scheduledTime} · ${assigneeNames[walk.responsibleUserId] ?? 'בן משפחה'}`}
+              label={`החלף את הטיול המתוכנן · ${walk.scheduledTime} · ${assigneeNames[walk.responsibleUserId] ?? 'בן משפחה'}`}
               onPress={() => onAssociate(walk)}
               variant="secondary"
               wrap
             />
           ))}
-          <Button label="טיול ספונטני נפרד" onPress={onSeparate} />
+          <Button label="השאר את הטיול המתוכנן וצור טיול נפרד" onPress={onSeparate} />
           <Pressable onPress={onCancel} style={styles.cancel}><RtlText style={styles.cancelText}>ביטול</RtlText></Pressable>
         </Pressable>
       </Pressable>
