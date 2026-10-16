@@ -21,7 +21,7 @@ import { RequestTimeChangeModal } from '../components/RequestTimeChangeModal';
 import { DEMO_FAMILY } from '../data/demoData';
 import { generateId } from '../lib/id';
 import { localDateOnly } from '../logic/dateFormat';
-import { familyDateOnly, isOverdue } from '../logic/nextWalk';
+import { dedupeCanonicalWalks, familyDateOnly, isOverdue } from '../logic/nextWalk';
 import { previewRotation } from '../logic/rotation';
 import { canRequestChangeForWalk } from '../logic/walkActions';
 import { walkHasActiveSwapRequest, walkHasActiveTimeChangeRequest } from '../logic/requestLifecycle';
@@ -165,7 +165,7 @@ export function ScheduleScreen() {
   // unfiltered `walks` on purpose — they resolve one already-known walk
   // regardless of which dog is currently selected.
   const visibleWalks = useMemo(
-    () => (dogs.length > 1 && dog ? walks.filter((w) => w.dogId === dog.id) : walks),
+    () => dedupeCanonicalWalks(dogs.length > 1 && dog ? walks.filter((w) => w.dogId === dog.id) : walks),
     [walks, dogs.length, dog?.id]
   );
   const visibleRules = useMemo(
