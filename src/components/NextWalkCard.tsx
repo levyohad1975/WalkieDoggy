@@ -321,6 +321,10 @@ export function NextWalkCard({
       ) : null}
 
 
+      {isActive && onEndWalk && canResolve ? (
+        <Button label="סיים טיול" icon="■" onPress={onEndWalk} style={styles.endWalkButton} shrinkToFit />
+      ) : null}
+
       {tone === 'dashboard' ? (
         <>
         {isActive ? (
@@ -391,7 +395,7 @@ export function NextWalkCard({
           {responsible?.name ?? 'האחראי/ת'}
         </RtlText>
       ) : isActive && onEndWalk ? (
-        <Button label="סיים טיול" icon="■" onPress={onEndWalk} style={styles.endWalkButton} shrinkToFit />
+        null
       ) : onStartWalk ? (
         <>
           <Button
