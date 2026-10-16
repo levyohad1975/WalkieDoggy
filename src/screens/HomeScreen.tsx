@@ -923,23 +923,6 @@ export function HomeScreen() {
     if (last <= first) return 0;
     return Math.max(0, Math.min(1, (minutesNow - first) / (last - first)));
   }, [dashboardTimelineWalks, minuteTick]);
-  const overduePending = useMemo(
-    () =>
-      visibleWalks
-        .filter(
-          (w) =>
-            w.status === 'pending' &&
-            w.id !== nextWalk?.id &&
-            w.date === familyDateOnly(new Date(), scheduleTimezone) &&
-            isOverdue(w, new Date(), scheduleTimezone) &&
-            (effectiveRole === 'admin' || w.responsibleUserId === effectiveUserId)
-        )
-        .sort((a, b) =>
-          `${a.date}T${a.scheduledTime}`.localeCompare(`${b.date}T${b.scheduledTime}`)
-        ),
-    [visibleWalks, nextWalk, minuteTick, effectiveRole, effectiveUserId, scheduleTimezone]
-  );
-
   // ADMIN TEST MODE mutation-blocking (requirement 1) now lives centrally in
   // every store action itself (see src/lib/testModeGuard.ts's doc comment
   // for why) — scheduleStore, familyStore, and requestsStore each call
@@ -1660,30 +1643,6 @@ export function HomeScreen() {
         </View>
 
         <View style={styles.dashboardOverflow}>
-        {/* P1 real-iPhone QA (2026-10-15, 18:08): this used to render every
-            unresolved overdue walk as a full WalkRow directly on the
-            Dashboard — on a real family's data that meant months of
-            September/October historical cards, pushing all other Dashboard
-            content out of view above the fixed bottom nav. Home now shows
-            only a compact count; the full list (same canResolveWalk/
-            markDone/skip data path as before — see ScheduleScreen's own
-            "ממתינים לעדכון" section) lives in the Schedule tab, reachable
-            by tapping this summary. Future walks are already represented
-            by the compact "בהמשך היום" timeline above, so only overdue
-            items are summarized here. */}
-        {overduePending.length > 0 ? (
-          <Pressable
-            onPress={() => navigation.navigate('Schedule')}
-            style={styles.dashboardPendingSummary}
-            accessibilityRole="button"
-            accessibilityLabel={`ממתינים לעדכון, ${overduePending.length} טיולים. פתיחה בלוח הזמנים`}
-          >
-            <RtlText style={styles.dashboardPendingSummaryIcon}>⏳</RtlText>
-            <RtlText style={styles.dashboardPendingSummaryTitle}>ממתינים לעדכון · {overduePending.length}</RtlText>
-            <RtlText style={styles.dashboardPendingSummaryChevron}>‹</RtlText>
-          </Pressable>
-        ) : null}
-
         </View>
       </ScrollView>
 
@@ -2275,10 +2234,6 @@ const styles = StyleSheet.create({
   // replaced a full WalkRow list on Home — same row shape as
   // dashboardAddWalk above, warning-tinted since these are overdue items,
   // not a neutral action.
-  dashboardPendingSummary: { minHeight: 46, borderRadius: 22, backgroundColor: colors.warningSoft, borderWidth: 1, borderColor: colors.warning + '55', paddingHorizontal: spacing.md, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
-  dashboardPendingSummaryIcon: { fontSize: 18 },
-  dashboardPendingSummaryTitle: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.warning, textAlign: 'right' },
-  dashboardPendingSummaryChevron: { fontSize: 20, color: colors.warning },
   dashboardSection: { gap: 3 },
   dashboardExternalHeading: { minHeight: 24, paddingHorizontal: 4, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   dashboardExternalTitle: { fontSize: 17, fontWeight: '800', color: '#17345B', textAlign: 'right' },
