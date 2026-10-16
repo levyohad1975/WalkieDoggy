@@ -10,7 +10,7 @@ import { CELEBRATION_LIBRARY, type CompletionCelebration } from '../logic/walkCo
 import { REMINDER_ANIMATION_LIBRARY, type ReminderAnimationMoment } from '../logic/reminderAnimationLibrary';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
-import { friendlyErrorMessage } from '../lib/errorMessages';
+import { appendRawDiagnostic, friendlyErrorMessage } from '../lib/errorMessages';
 import { isWalkResolutionStaging } from '../lib/supabase';
 import { SystemAdminDuplicateWalkMaintenancePanel } from '../components/SystemAdminDuplicateWalkMaintenancePanel';
 import { useAuthStore } from '../store/authStore';
@@ -354,7 +354,7 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
       setFamilyDeletionTypedName('');
       await loadFamilies(search);
     } catch (e) {
-      setFamilyDeletionError(friendlyErrorMessage(e, [], 'המחיקה לא הושלמה. אם המחיקה כבר התחילה, המשפחה נשארה נעולה וניתן להמשיך את אותה פעולה לאחר תיקון החיבור.'));
+      setFamilyDeletionError(appendRawDiagnostic(friendlyErrorMessage(e, [], 'המחיקה לא הושלמה. המשפחה נשארה נעולה וניתן לחדש את אותה פעולה.'), e));
     } finally {
       familyDeletionBusyRef.current = false;
       setFamilyDeletionBusy(false);
