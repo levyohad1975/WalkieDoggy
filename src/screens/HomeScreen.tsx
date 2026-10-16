@@ -1495,6 +1495,20 @@ export function HomeScreen() {
           onOpenInbox={openRequestsInbox}
         />
 
+        <Pressable
+          onPress={() => setAddUnplannedVisible(true)}
+          style={styles.dashboardAddWalk}
+          accessibilityRole="button"
+          accessibilityLabel="הוסף טיול"
+        >
+          <RtlText style={styles.dashboardAddWalkIcon}>＋</RtlText>
+          <View style={styles.dashboardAddWalkCopy}>
+            <RtlText style={styles.dashboardAddWalkTitle}>הוסף טיול</RtlText>
+            <RtlText style={styles.dashboardAddWalkSubtitle}>טיול ספונטני עכשיו או הזנת טיול שבוצע</RtlText>
+          </View>
+          <RtlText style={styles.dashboardAddWalkChevron}>⌄</RtlText>
+        </Pressable>
+
         <View style={styles.dashboardSection}>
           <View style={styles.dashboardExternalHeading}>
             <RtlText style={styles.dashboardExternalTitle}>
@@ -1627,20 +1641,6 @@ export function HomeScreen() {
             </View>
           );
         })() : null}
-
-        <Pressable
-          onPress={() => setAddUnplannedVisible(true)}
-          style={styles.dashboardAddWalk}
-          accessibilityRole="button"
-          accessibilityLabel="הוסף טיול"
-        >
-          <RtlText style={styles.dashboardAddWalkIcon}>＋</RtlText>
-          <View style={styles.dashboardAddWalkCopy}>
-            <RtlText style={styles.dashboardAddWalkTitle}>הוסף טיול</RtlText>
-            <RtlText style={styles.dashboardAddWalkSubtitle}>טיול ספונטני עכשיו או הזנת טיול שבוצע</RtlText>
-          </View>
-          <RtlText style={styles.dashboardAddWalkChevron}>⌄</RtlText>
-        </Pressable>
 
         <View style={styles.dashboardOverflow}>
         </View>
