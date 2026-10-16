@@ -37,6 +37,8 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
   const [uploading, setUploading] = useState(false);
   const [removingPhoto, setRemovingPhoto] = useState(false);
   const [pendingPhotoPick, setPendingPhotoPick] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const saveUserPhoto = useFamilyStore((s) => s.saveUserPhoto);
   // Keep latest values available while the hosted web cropper is open.
   // The upload effect must not restart/cancel just because the parent or form re-renders.
@@ -45,12 +47,27 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
 
   useEffect(() => {
     if (visible) {
+      setSaveError(null);
+      setSaving(false);
       setName(editingUser?.name ?? '');
       setAvatar(editingUser?.avatar ?? EMOJI_OPTIONS[0]);
       setColor(editingUser?.color ?? userPalette[0]);
       setPhotoUrl(editingUser?.photoUrl);
     }
   }, [visible, editingUser]);
+
+  const submit = async () => {
+    if (saving || !name.trim()) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await onSave({ name: name.trim(), avatar, color, photoUrl });
+    } catch {
+      setSaveError('לא הצלחנו לשמור את הפרטים. השינויים לא אושרו. בדקו את החיבור ונסו שוב.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const pickPhoto = async () => {
     // On Web, the crop UI is hosted above this form modal. Hide the form
@@ -185,7 +202,7 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
               accessibilityLabel="שם"
             />
 
-            <RtlText style={styles.label}>סמל (אם אין תמונה)</RtlText>
+            <RtlText style={styles.label}>בחירת דמות (אם לא הועלתה תמונה)</RtlText>
             <View style={styles.optionRow}>
               {EMOJI_OPTIONS.map((e) => (
                 <Pressable
@@ -215,11 +232,14 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
               ))}
             </View>
 
+            {saveError ? <RtlText style={styles.saveError} accessibilityRole="alert" accessibilityLiveRegion="polite">{saveError}</RtlText> : null}
+
             <View style={styles.actions}>
               <Button
-                label="שמירה"
-                disabled={!name.trim()}
-                onPress={() => onSave({ name: name.trim(), avatar, color, photoUrl })}
+                label={saving ? 'שומר…' : 'שמירה'}
+                disabled={!name.trim() || saving}
+                loading={saving}
+                onPress={() => void submit()}
                 style={styles.flex}
               />
               <Button label="ביטול" onPress={onClose} variant="secondary" style={styles.flex} />
@@ -241,6 +261,7 @@ const styles = StyleSheet.create({
   photoButton: { paddingVertical: 10, paddingHorizontal: spacing.lg, borderRadius: 12, backgroundColor: colors.surfaceMuted },
   photoLink: { color: colors.primaryDark, fontWeight: '600', fontSize: typography.cardTitle.fontSize },
   label: { fontSize: typography.meta.fontSize, fontWeight: '700', color: colors.textSecondary, marginTop: spacing.lg, marginBottom: spacing.sm, textAlign: 'right' },
+  saveError: { color: colors.danger, textAlign: 'right', marginTop: spacing.md, lineHeight: 20 },
   input: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, padding: 14, fontSize: typography.body.fontSize, color: colors.textPrimary },
   optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   emojiChip: {

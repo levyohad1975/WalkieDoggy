@@ -616,6 +616,14 @@ export default function App() {
   // using useSafeAreaInsets) throws if it renders before a provider ancestor
   // exists, and `hydrated` is false on every cold start until the async
   // session restore resolves.
+  const familySetupWizardVisible = canShowFamilySetupWizard({
+    progressFamilyId: familySetupProgress?.familyId,
+    localFamilyId: familyId,
+    serverConfirmedFamilyId: familySetupServerConfirmedFamilyId,
+    ownerMatches: familySetupOwnerMatches,
+    familyRole,
+  });
+
   return (
     <SafeAreaProvider>
       {!hydrated || !familySetupLoaded || !qaSessionLoaded ? (
@@ -661,14 +669,8 @@ export default function App() {
             <SystemAdminScreen visible onClose={() => undefined} onTestFamilySelected={selectTestFamily} onTestFamilyScheduleSelected={isStagingSupabaseProject ? selectTestFamilyForScheduleReview : undefined} />
           ) : needsFamilyOnboarding ? (
             <FamilyOnboardingScreen onFamilyCreated={startFamilySetup} />
-          ) : canShowFamilySetupWizard({
-            progressFamilyId: familySetupProgress?.familyId,
-            localFamilyId: familyId,
-            serverConfirmedFamilyId: familySetupServerConfirmedFamilyId,
-            ownerMatches: familySetupOwnerMatches,
-            familyRole,
-          }) ? (
-            <FamilySetupWizard familyId={familySetupProgress!.familyId} progress={familySetupProgress!} onProgressChange={setFamilySetupProgress} onComplete={finishFamilySetup} />
+          ) : familySetupWizardVisible ? (
+            <FamilySetupWizard familyId={familySetupProgress!.familyId} progress={familySetupProgress!} onProgressChange={setFamilySetupProgress} onComplete={finishFamilySetup} onReturnToOriginalFamily={isSystemAdmin && isQaFamily && !systemObserverActive ? () => void returnFromTestFamily() : undefined} returningToOriginalFamily={qaSwitchBusy} returnFamilyError={qaSwitchError} />
           ) : currentUserId || systemObserverActive ? (
             <RootNavigator />
           ) : (
@@ -678,7 +680,7 @@ export default function App() {
             <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} onTestFamilySelected={selectTestFamily} onTestFamilyScheduleSelected={isStagingSupabaseProject ? selectTestFamilyForScheduleReview : undefined} />
           ) : null}
 
-          {isSystemAdmin && isQaFamily && !systemObserverActive ? (
+          {isSystemAdmin && isQaFamily && !systemObserverActive && !familySetupWizardVisible ? (
             <>
               <Pressable style={styles.qaReturnButton} onPress={() => void returnFromTestFamily()} disabled={qaSwitchBusy} accessibilityRole="button" accessibilityState={{ disabled: qaSwitchBusy }} accessibilityLabel="חזרה למשפחה המקורית">
                 <RtlText style={styles.qaReturnButtonText}>חזרה למשפחה המקורית</RtlText>
