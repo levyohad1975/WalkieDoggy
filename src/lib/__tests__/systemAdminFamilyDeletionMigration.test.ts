@@ -34,6 +34,9 @@ describe('permanent family deletion migration safety contract', () => {
     const rehearsal = fs.readFileSync(path.resolve(__dirname, '../../../supabase/manual_tests/system_admin_permanent_family_deletion.sql'), 'utf8').toLowerCase();
     expect(rehearsal).toContain('deleting-family delete was accepted');
     expect(rehearsal).toContain('deleting-family row delete was accepted');
+    const workflow = fs.readFileSync(path.resolve(__dirname, '../../../.github/workflows/integration-full-chain-rehearsal.yml'), 'utf8').toLowerCase();
+    expect(workflow).toContain('freeze_family_deletion_window.sql /tmp/freeze_family_deletion_window.sql');
+    expect(workflow).toContain('mv /tmp/freeze_family_deletion_window.sql supabase/migrations/20261016153000_freeze_family_deletion_window.sql');
   });
 
   it('deletes Storage through RLS-scoped authenticated Storage API, never SQL object deletion', () => {

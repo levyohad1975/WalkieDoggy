@@ -309,6 +309,9 @@ jobs:
           # applied without asking Supabase CLI to insert migrations before
           # an already-applied newer version.
           mv supabase/migrations/20261016115245_permanent_family_deletion.sql /tmp/permanent_family_deletion.sql
+          # Keep the follow-up freeze migration with its prerequisite; otherwise
+          # the empty replay would apply it before the tombstone table exists.
+          mv supabase/migrations/20261016153000_freeze_family_deletion_window.sql /tmp/freeze_family_deletion_window.sql
 
       - name: Replay migrations through duplicate-resolution support from empty
         run: supabase db reset --local
@@ -403,6 +406,7 @@ jobs:
           PGOPTIONS: "-c app.system_admin_family_deletion_fixture=local"
         run: |
           mv /tmp/permanent_family_deletion.sql supabase/migrations/20261016115245_permanent_family_deletion.sql
+          mv /tmp/freeze_family_deletion_window.sql supabase/migrations/20261016153000_freeze_family_deletion_window.sql
           supabase migration up --local
           psql "postgresql://postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 \
             -f supabase/manual_tests/system_admin_permanent_family_deletion.sql
@@ -435,6 +439,9 @@ jobs:
           fi
           if [ -f /tmp/permanent_family_deletion.sql ]; then
             mv /tmp/permanent_family_deletion.sql supabase/migrations/20261016115245_permanent_family_deletion.sql
+          fi
+          if [ -f /tmp/freeze_family_deletion_window.sql ]; then
+            mv /tmp/freeze_family_deletion_window.sql supabase/migrations/20261016153000_freeze_family_deletion_window.sql
           fi
           if [ -f supabase/seed.sql.pending ]; then mv supabase/seed.sql.pending supabase/seed.sql; fi
 
