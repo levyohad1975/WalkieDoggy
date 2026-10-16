@@ -169,8 +169,8 @@ describe('Home integrated walk lifecycle', () => {
     const addWalkIndex = home.indexOf('style={styles.dashboardAddWalk}');
     const timelineIndex = home.indexOf('style={styles.dashboardTimeline}');
     expect(lastWalkIndex).toBeGreaterThan(-1);
+    expect(timelineIndex).toBeLessThan(lastWalkIndex);
     expect(lastWalkIndex).toBeLessThan(addWalkIndex);
-    expect(addWalkIndex).toBeLessThan(timelineIndex);
     expect(home).toContain("dashboardLastWalk: { minHeight: 76, borderRadius: 24, backgroundColor: '#F4FAFD'");
     expect(home).toContain("dashboardAddWalk: { minHeight: 46, borderRadius: 22, backgroundColor: '#F0FAF8'");
     expect(home).toContain("backgroundColor: '#12A5AB'");
