@@ -1290,6 +1290,7 @@ export function HomeScreen() {
           <NextWalkCard
             walk={nextWalk}
             responsible={usersById[nextWalk.responsibleUserId]}
+            actualWalker={nextWalk.status === 'in_progress' && nextWalk.actualWalkerUserId ? usersById[nextWalk.actualWalkerUserId] : undefined}
             currentUserId={effectiveUserId}
             dogName={dog?.name ?? 'הכלב/ה'}
             dogPhotoUrl={dog?.photoUrl}
@@ -1438,6 +1439,7 @@ export function HomeScreen() {
                   <NextWalkCard
                     walk={spontaneous}
                     responsible={usersById[spontaneousWalkerId]}
+                    actualWalker={spontaneous.status === 'in_progress' && spontaneous.actualWalkerUserId ? usersById[spontaneous.actualWalkerUserId] : undefined}
                     currentUserId={effectiveUserId}
                     dogName={spontaneousDog?.name ?? dog?.name ?? 'הכלב/ה'}
                     dogPhotoUrl={spontaneousDog?.photoUrl}
