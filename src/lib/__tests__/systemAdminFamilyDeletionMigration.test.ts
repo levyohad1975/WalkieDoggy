@@ -37,5 +37,8 @@ describe('permanent family deletion migration safety contract', () => {
     expect(sql).toContain('test family deletion is retired');
     expect(sql).not.toMatch(/delete\s+from\s+auth\.users/);
     expect(sql).not.toMatch(/delete\s+from\s+public\.system_admins/);
+    expect(sql).toContain("update public.audit_log set family_id=null");
+    expect(sql).toContain("update public.system_activity_audit_log set family_id=null");
+    expect(sql).toContain('reject_updates_to_deleting_family');
   });
 });

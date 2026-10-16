@@ -304,6 +304,11 @@ jobs:
         run: |
           mv supabase/migrations/20261015100100_walk_lifecycle_gps_v11.sql /tmp/walk_lifecycle_gps_v11.sql
           mv supabase/migrations/20261015100200_walk_lifecycle_capabilities_v11.sql /tmp/walk_lifecycle_capabilities_v11.sql
+          # The permanent-deletion migration is newer and has its own Postgres
+          # rehearsal below. Hide it too so the older v1.1 files can be
+          # applied without asking Supabase CLI to insert migrations before
+          # an already-applied newer version.
+          mv supabase/migrations/20261016115245_permanent_family_deletion.sql /tmp/permanent_family_deletion.sql
 
       - name: Replay migrations through duplicate-resolution support from empty
         run: supabase db reset --local
@@ -392,6 +397,16 @@ jobs:
             -v ON_ERROR_STOP=1 \
             -f supabase/manual_tests/walk_lifecycle_v11_capabilities.sql
 
+      - name: Apply and rehearse permanent family deletion on synthetic fixtures
+        env:
+          PGPASSWORD: postgres
+          PGOPTIONS: "-c app.system_admin_family_deletion_fixture=local"
+        run: |
+          mv /tmp/permanent_family_deletion.sql supabase/migrations/20261016115245_permanent_family_deletion.sql
+          supabase migration up --local
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 \
+            -f supabase/manual_tests/system_admin_permanent_family_deletion.sql
+
       - name: Rehearse schedule-entry deletion with disposable history and GPS fixtures
         env:
           PGPASSWORD: postgres
@@ -417,6 +432,9 @@ jobs:
           fi
           if [ -f /tmp/walk_lifecycle_capabilities_v11.sql ]; then
             mv /tmp/walk_lifecycle_capabilities_v11.sql supabase/migrations/20261015100200_walk_lifecycle_capabilities_v11.sql
+          fi
+          if [ -f /tmp/permanent_family_deletion.sql ]; then
+            mv /tmp/permanent_family_deletion.sql supabase/migrations/20261016115245_permanent_family_deletion.sql
           fi
           if [ -f supabase/seed.sql.pending ]; then mv supabase/seed.sql.pending supabase/seed.sql; fi
 

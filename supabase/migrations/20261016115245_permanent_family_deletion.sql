@@ -76,12 +76,13 @@ revoke all on function public.system_admin_list_family_deletion_storage_objects(
 grant execute on function public.system_admin_list_family_deletion_storage_objects(uuid) to authenticated;
 
 create or replace function public.reject_writes_for_deleting_family() returns trigger language plpgsql security definer set search_path=pg_catalog,public as $$
-declare v_family_id uuid;
+declare v_family_id uuid; v_old_family_id uuid;
 begin
  if tg_op='DELETE' then return old; end if;
  if current_setting('app.system_admin_family_deletion',true)='on' and public.is_verified_system_admin() then return new; end if;
  v_family_id:=nullif(to_jsonb(new)->>'family_id','')::uuid;
- if v_family_id is not null and exists(select 1 from public.family_deletion_tombstones where family_id=v_family_id and state in ('deleting','deleted')) then raise exception using errcode='23514',message='family is deleted or permanently locked for deletion'; end if;
+ if tg_op='UPDATE' then v_old_family_id:=nullif(to_jsonb(old)->>'family_id','')::uuid; end if;
+ if exists(select 1 from public.family_deletion_tombstones where family_id in (v_family_id,v_old_family_id) and state in ('deleting','deleted')) then raise exception using errcode='23514',message='family is deleted or permanently locked for deletion'; end if;
  return new;
 end; $$;
 revoke all on function public.reject_writes_for_deleting_family() from public,anon,authenticated;
@@ -97,6 +98,15 @@ begin if exists(select 1 from public.family_deletion_tombstones where family_id=
 revoke all on function public.prevent_deleted_family_id_reuse() from public,anon,authenticated;
 drop trigger if exists prevent_deleted_family_id_reuse on public.families;
 create trigger prevent_deleted_family_id_reuse before insert on public.families for each row execute function public.prevent_deleted_family_id_reuse();
+create or replace function public.reject_updates_to_deleting_family() returns trigger language plpgsql security definer set search_path=pg_catalog,public as $$
+begin
+ if current_setting('app.system_admin_family_deletion',true)='on' and public.is_verified_system_admin() then return new; end if;
+ if exists(select 1 from public.family_deletion_tombstones where family_id=old.id and state in ('deleting','deleted')) then raise exception using errcode='23514',message='family is deleted or permanently locked for deletion'; end if;
+ return new;
+end; $$;
+revoke all on function public.reject_updates_to_deleting_family() from public,anon,authenticated;
+drop trigger if exists reject_updates_to_deleting_family on public.families;
+create trigger reject_updates_to_deleting_family before update on public.families for each row execute function public.reject_updates_to_deleting_family();
 
 create or replace function public.guard_family_storage_upload_during_deletion() returns trigger language plpgsql security definer set search_path=pg_catalog,public,storage as $$
 declare v_family_id uuid;
