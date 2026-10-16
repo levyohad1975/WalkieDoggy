@@ -362,7 +362,7 @@ jobs:
         run: |
           mv /tmp/walk_lifecycle_gps_v11.sql supabase/migrations/20261015100100_walk_lifecycle_gps_v11.sql
           mv /tmp/walk_lifecycle_capabilities_v11.sql supabase/migrations/20261015100200_walk_lifecycle_capabilities_v11.sql
-          supabase migration up --local
+          supabase migration up --local --include-all
 
       - name: Verify v1.1 constraints and preserved walk/GPS history
         env:
@@ -407,7 +407,7 @@ jobs:
         run: |
           mv /tmp/permanent_family_deletion.sql supabase/migrations/20261016115245_permanent_family_deletion.sql
           mv /tmp/freeze_family_deletion_window.sql supabase/migrations/20261016153000_freeze_family_deletion_window.sql
-          supabase migration up --local
+          supabase migration up --local --include-all
           psql "postgresql://postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 \
             -f supabase/manual_tests/system_admin_permanent_family_deletion.sql
 
