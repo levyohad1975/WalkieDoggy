@@ -308,6 +308,12 @@ export function NextWalkCard({
 
 
       {tone === 'dashboard' ? (
+        <>
+        {isActive ? (
+          <View style={styles.activeMapPanel}>
+            <RoutePreview live session={{ routePoints: liveRoutePoints ?? [] } as import('../types').WalkGpsSession} />
+          </View>
+        ) : null}
         <View style={[styles.dashboardThreeColumnRow, isWeb && styles.webMainRow]}>
           <View style={styles.dashboardPersonColumn}>
             {responsible ? <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={isWeb ? 46 : 50} /> : null}
@@ -319,9 +325,10 @@ export function NextWalkCard({
             <RtlText style={styles.dashboardDate}>{walkDateContextLabel(walk.date)}</RtlText>
           </View>
           <View style={[styles.dashboardCountdownColumn, isActive && styles.liveMapColumn]}>
-            {isActive ? <RoutePreview live session={{ routePoints: liveRoutePoints ?? [] } as import('../types').WalkGpsSession} /> : !overdue ? <Countdown target={walkDateTime(walk, scheduleTimezone)} compact /> : null}
+            {isActive ? <RtlText style={styles.activeGpsLabel}>GPS פעיל</RtlText> : !overdue ? <Countdown target={walkDateTime(walk, scheduleTimezone)} compact /> : null}
           </View>
         </View>
+        </>
       ) : (
         <View style={[styles.mainRow, isWeb && styles.webMainRow]}>
           <View style={styles.timeBlock}>
@@ -467,6 +474,8 @@ const TIME_MAX_FONT_SCALE = 1.35;
 const CARD_MAX_FONT_SCALE = 1.35;
 
 const styles = StyleSheet.create({
+  activeMapPanel: { width: '100%', marginVertical: 8 },
+  activeGpsLabel: { fontSize: 12, color: colors.primaryDark, textAlign: 'center', fontWeight: '600' },
   liveMapColumn: { minWidth: 0, overflow: 'hidden' },
   liveRouteMap: { width: '100%', marginVertical: 8, gap: 6 },
   liveRouteLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'center' },
