@@ -100,7 +100,7 @@ begin
   begin
     insert into public.dogs(family_id,name) values('e1000000-0000-4000-8000-000000000101','stale replay');
     raise exception 'stale family write was accepted';
-  exception when foreign_key_violation then null; end;
+  exception when check_violation or foreign_key_violation then null; end;
 end;
 $verify$;
 reset role;
