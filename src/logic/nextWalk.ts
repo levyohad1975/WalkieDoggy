@@ -219,7 +219,32 @@ export function dedupeCanonicalWalks(walks: Walk[]): Walk[] {
     }
   }
   const kept = new Set(canonicalByEntry.values());
-  return walks.filter((walk) => !walk.scheduleEntryId || kept.has(walk));
+
+  // Legacy scheduled walks can lose their schedule_entry_id after a schedule
+  // reset. Two distinct pending rows created seconds apart for the exact same
+  // slot are an offline replay artifact, not two independently planned slots.
+  // Collapse only this narrow case for presentation; do not mutate either
+  // persisted row, and never merge completed, active or spontaneous walks.
+  const legacyPending = walks.filter((walk) =>
+    !walk.scheduleEntryId && !walk.isUnplanned && walk.status === 'pending' &&
+    Number.isFinite(Date.parse(walk.createdAt))
+  );
+  for (const walk of legacyPending) {
+    const duplicate = legacyPending.find((other) =>
+      other.id !== walk.id &&
+      other.familyId === walk.familyId &&
+      other.dogId === walk.dogId &&
+      other.date === walk.date &&
+      other.scheduledTime === walk.scheduledTime &&
+      other.responsibleUserId === walk.responsibleUserId &&
+      Math.abs(Date.parse(other.createdAt) - Date.parse(walk.createdAt)) <= 60_000 &&
+      (Date.parse(other.createdAt) < Date.parse(walk.createdAt) ||
+        (other.createdAt === walk.createdAt && other.id < walk.id))
+    );
+    if (duplicate) kept.delete(walk);
+    else kept.add(walk);
+  }
+  return walks.filter((walk) => !walk.scheduleEntryId ? !legacyPending.includes(walk) || kept.has(walk) : kept.has(walk));
 }
 
 /** Finds the most recently completed (or skipped) walk, for the "last walk" home card. */
