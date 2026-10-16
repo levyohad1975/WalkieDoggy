@@ -29,7 +29,7 @@ describe('HomeScreen multi-dog wiring (structural)', () => {
     expect(source).toContain("AppState.addEventListener('change'");
     expect(source).toContain('const resolvedToday = computeLastWalk(visibleWalks);');
     expect(source).toContain('() => upcomingWalks(visibleWalks).filter((w) => w.id !== nextWalk?.id)');
-    expect(source).toContain('visibleWalks\n        .filter(');
+    expect(source).toContain('dailyWalkTimeline(visibleWalks, now)');
   });
 
   it('a walk-swap candidate list only ever offers walks belonging to the SAME dog as the one being edited/swapped', () => {
