@@ -215,6 +215,28 @@ export function HomeScreen() {
   const gpsLastStop = useGpsStore((s) => s.lastGpsStop);
 
   const [completeWalkId, setCompleteWalkId] = useState<string | null>(null);
+  const [walkEventCounts, setWalkEventCounts] = useState<Record<string, { pee: number; poop: number }>>({});
+  const recordWalkEvent = useCallback((walkId: string, kind: 'pee' | 'poop') => {
+    setWalkEventCounts((previous) => {
+      const current = previous[walkId] ?? { pee: 0, poop: 0 };
+      const next = { ...previous, [walkId]: { ...current, [kind]: current[kind] + 1 } };
+      if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+        try { localStorage.setItem('walkie:walk-events:' + walkId, JSON.stringify(next[walkId])); } catch { /* private browsing may deny storage */ }
+      }
+      return next;
+    });
+  }, []);
+  const readWalkEvents = useCallback((walkId: string) => {
+    if (walkEventCounts[walkId]) return walkEventCounts[walkId];
+    if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+      try {
+        const saved = JSON.parse(localStorage.getItem('walkie:walk-events:' + walkId) ?? 'null');
+        if (saved && Number.isSafeInteger(saved.pee) && saved.pee >= 0 && Number.isSafeInteger(saved.poop) && saved.poop >= 0) return saved as { pee: number; poop: number };
+      } catch { /* ignore unavailable storage */ }
+    }
+    return { pee: 0, poop: 0 };
+  }, [walkEventCounts]);
+
   const [remoteFinishRequest, setRemoteFinishRequest] = useState<{ walkId: string; walkerId: string; hadPee: boolean; hadPoop: boolean; note?: string; completedAt?: string } | null>(null);
   const [gpsTransferWalk, setGpsTransferWalk] = useState<Walk | null>(null);
   const [startWalkFlowId, setStartWalkFlowId] = useState<string | null>(null);
@@ -1264,6 +1286,10 @@ export function HomeScreen() {
             primaryLabel={isOverdue(nextWalk, new Date(), scheduleTimezone) ? 'ממתין לעדכון' : undefined}
             tone="dashboard"
             remoteGpsAction={<RemoteGpsPanel walk={nextWalk} currentUserId={currentUserId} familyRole={actualFamilyRole} ready={!familyLoading && !scheduleLoading && Boolean(family)} />}
+            onRecordPee={isActiveWalk(nextWalk) ? () => recordWalkEvent(nextWalk.id, 'pee') : undefined}
+            onRecordPoop={isActiveWalk(nextWalk) ? () => recordWalkEvent(nextWalk.id, 'poop') : undefined}
+            recordedPeeCount={readWalkEvents(nextWalk.id).pee}
+            recordedPoopCount={readWalkEvents(nextWalk.id).poop}
             onMarkDone={() => setCompleteWalkId(nextWalk.id)}
             activeStartedAt={isActiveWalk(nextWalk) ? nextWalk.startedAt ?? null : null}
             liveDistanceMeters={gpsTrackingWalkId === nextWalk.id ? gpsDistanceMeters : null}
@@ -1637,6 +1663,8 @@ export function HomeScreen() {
         visible={!!completeWalkId}
         dogName={dog?.name ?? 'הכלב/ה'}
         scheduledTime={completeWalkId ? walksById[completeWalkId]?.scheduledTime : undefined}
+        initialHadPee={completeWalkId ? readWalkEvents(completeWalkId).pee > 0 : false}
+        initialHadPoop={completeWalkId ? readWalkEvents(completeWalkId).poop > 0 : false}
         users={completeWalkId && walksById[completeWalkId]?.status === 'in_progress'
           ? activeUsers.filter((u) => u.id === (walksById[completeWalkId]?.actualWalkerUserId ?? walksById[completeWalkId]?.responsibleUserId))
           : activeUsers}
@@ -1664,6 +1692,14 @@ export function HomeScreen() {
           // is purely cosmetic — never re-thrown, never blocks markDone's
           // own error handling.
           if (completed) {
+            setWalkEventCounts((previous) => {
+              const next = { ...previous };
+              delete next[walkId];
+              return next;
+            });
+            if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+              try { localStorage.removeItem('walkie:walk-events:' + walkId); } catch { /* storage unavailable */ }
+            }
             showWalkCompletionCelebration(walkBeingCompleted?.durationMinutes);
             checkForNewAchievementUnlocks();
           }
