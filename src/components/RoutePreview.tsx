@@ -89,7 +89,7 @@ export function RoutePreview({ session, large = false, compact = false, live = f
 const styles = StyleSheet.create({
   wrapper: { width: 92, height: 72, borderRadius: 12, overflow: 'hidden', backgroundColor: colors.statusCurrentBg, alignItems: 'center', justifyContent: 'center' },
   compactWrapper: { width: 72, height: 48, borderRadius: 9 },
-  liveWrapper: { width: '100%', height: 112, borderRadius: 12 },
+  liveWrapper: { width: '100%', height: 180, borderRadius: 12 },
   mapBackdrop: { flex: 1, backgroundColor: '#0008', justifyContent: 'center', padding: 16 },
   mapCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 12, gap: 8 },
   closeMap: { padding: 12, alignSelf: 'flex-end' },
@@ -103,7 +103,7 @@ const styles = StyleSheet.create({
 /** Free vector basemap via OpenFreeMap and MapLibre. GPS coordinates never leave the browser except as ordinary map rendering data. */
 function buildMapHtml(points: number[][], expanded: boolean, live: boolean): string {
   const coords = JSON.stringify(points);
-  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"><style>html,body,#map{margin:0;width:100%;height:100%;overflow:hidden} .maplibregl-control-container{font:10px system-ui} .maplibregl-ctrl-attrib{font-size:10px!important} .maplibregl-ctrl-bottom-right{max-width:100%}</style></head><body><div id="map"></div>${expanded ? '<button id="replay" style="position:absolute;z-index:5;top:12px;left:12px;border:0;border-radius:20px;padding:10px 16px;background:#fff;color:#183e48;font:600 14px system-ui">▶ הפעל מסלול</button>' : ''}<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script><script>
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"><style>html,body,#map{margin:0;width:100%;height:100%;overflow:hidden} .maplibregl-control-container{font:10px system-ui} .maplibregl-ctrl-attrib{font-size:10px!important} .maplibregl-ctrl-bottom-right{max-width:100%}</style></head><body><div id="map"></div>${expanded && !live ? '<button id="replay" style="position:absolute;z-index:5;top:12px;left:12px;border:0;border-radius:20px;padding:10px 16px;background:#fff;color:#183e48;font:600 14px system-ui">▶ נגן מסלול</button>' : ''}<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script><script>
   const points = ${coords};
   // MapLibre's RTL plugin performs Unicode bidi shaping for Hebrew labels on vector tiles.
   // Do not reverse the text or mirror the map: both corrupt street names and route geometry.
