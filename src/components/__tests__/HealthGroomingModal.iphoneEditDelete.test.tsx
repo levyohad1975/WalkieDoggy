@@ -227,9 +227,7 @@ describe('HealthGroomingModal edit sheet on iPhone Safari / PWA — delete (P0-B
 
     const button = screen.getByText('מחיקת משימה');
     fireEvent.press(button);
-    const approve = screen.getByText('מחק משימה');
-    fireEvent.press(approve);
-    fireEvent.press(approve);
+    fireEvent.press(screen.getByText('מחק משימה'));
     fireEvent.press(screen.getByText('מחק משימה'));
     await waitFor(() => expect(deleteImpl).toHaveBeenCalledTimes(1));
     expect(deleteImpl).toHaveBeenCalledWith('task-haircut');
