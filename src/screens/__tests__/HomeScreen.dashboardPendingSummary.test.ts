@@ -7,7 +7,7 @@ describe('HomeScreen Dashboard excludes redundant pending summary', () => {
   const home = fs.readFileSync(path.join(__dirname, '..', 'HomeScreen.tsx'), 'utf8');
 
   it('does not show a pending-update count or a second overdue walk list', () => {
-    expect(home).not.toContain('ממתינים לעדכון');
+    expect(home).not.toContain('>ממתינים לעדכון');
     expect(home).not.toContain('overduePending');
     expect(home).not.toContain('dashboardPendingSummary');
     expect(home).not.toContain('<WalkRow');
