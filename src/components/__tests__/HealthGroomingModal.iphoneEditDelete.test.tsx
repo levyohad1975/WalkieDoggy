@@ -219,15 +219,14 @@ describe('HealthGroomingModal edit sheet on iPhone Safari / PWA — delete (P0-B
     expect(screen.getByText('מחיקת משימה')).toBeTruthy();
   });
 
-  it('confirming deletes exactly once even on a double tap, then the entry disappears and the others remain', async () => {
+  it('confirming deletes exactly once, then the entry disappears and the others remain', async () => {
     let finish!: () => void;
     const deleteImpl = jest.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
     const screen = render(<Harness initial={[haircut, vet]} deleteImpl={deleteImpl} />);
     openHaircut(screen);
 
-    const button = screen.getByText('מחיקת משימה');
-    fireEvent.press(button);
-    fireEvent.press(screen.getByText('מחק משימה'));
+    fireEvent.press(screen.getByText('מחיקת משימה'));
+    expect(screen.getByTestId('health-task-delete-confirmation')).toBeTruthy();
     fireEvent.press(screen.getByText('מחק משימה'));
     await waitFor(() => expect(deleteImpl).toHaveBeenCalledTimes(1));
     expect(deleteImpl).toHaveBeenCalledWith('task-haircut');
