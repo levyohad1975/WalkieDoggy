@@ -33,6 +33,11 @@ function clockParts(date: Date, timeZone?: string): FamilyClock {
   };
 }
 
+/** Calendar date in the family's timezone; safe across midnight and DST. */
+export function familyDateOnly(now: Date = new Date(), timeZone?: string): string {
+  return clockParts(now, timeZone).date;
+}
+
 function wallClockDate(date: string, time: string, timeZone?: string): Date {
   const [year, month, day] = date.split('-').map(Number);
   const [hour, minute] = time.split(':').map(Number);
