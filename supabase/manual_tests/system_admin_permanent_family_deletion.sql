@@ -74,6 +74,16 @@ begin
     insert into public.dogs(family_id,name) values('e1000000-0000-4000-8000-000000000101','stale queue replay');
     raise exception 'deleting-family write was accepted';
   exception when check_violation then null; end;
+end;
+$begin$;
+
+-- The synthetic authenticated System Admin cannot see dogs through the
+-- ordinary client DELETE policy, so perform trigger-only delete assertions as
+-- the isolated local database owner. This verifies the freeze itself rather
+-- than accidentally passing because RLS affected zero rows.
+reset role;
+do $freeze_deletes$
+begin
   begin
     delete from public.dogs where family_id='e1000000-0000-4000-8000-000000000101';
     raise exception 'deleting-family delete was accepted';
@@ -82,9 +92,15 @@ begin
     delete from public.families where id='e1000000-0000-4000-8000-000000000101';
     raise exception 'deleting-family row delete was accepted';
   exception when check_violation then null; end;
+end;
+$freeze_deletes$;
+
+set local role authenticated;
+do $finalize$
+begin
   perform public.system_admin_finalize_family_deletion('e1000000-0000-4000-8000-000000000101');
 end;
-$begin$;
+$finalize$;
 
 -- Verify the neighboring fixture as the trusted rehearsal connection; the
 -- authenticated System Admin's normal family RLS correctly hides it.
