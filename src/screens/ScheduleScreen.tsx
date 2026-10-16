@@ -21,7 +21,7 @@ import { RequestTimeChangeModal } from '../components/RequestTimeChangeModal';
 import { DEMO_FAMILY } from '../data/demoData';
 import { generateId } from '../lib/id';
 import { localDateOnly } from '../logic/dateFormat';
-import { isOverdue } from '../logic/nextWalk';
+import { familyDateOnly, isOverdue } from '../logic/nextWalk';
 import { previewRotation } from '../logic/rotation';
 import { canRequestChangeForWalk } from '../logic/walkActions';
 import { walkHasActiveSwapRequest, walkHasActiveTimeChangeRequest } from '../logic/requestLifecycle';
@@ -64,7 +64,7 @@ function formatDateLabel(dateStr: string): string {
 }
 
 export function ScheduleScreen() {
-  const { users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, load: loadFamily } = useFamilyStore();
+  const { family, users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, load: loadFamily } = useFamilyStore();
   const {
     walks,
     rules,
@@ -271,8 +271,8 @@ export function ScheduleScreen() {
   // same canResolveWalk/resolveWalk/skip authorization this screen's own
   // day view already used, not a second data source or permission rule.
   const allOverduePending = useMemo(
-    () => visibleWalks.filter(canResolveWalk).sort((a, b) => `${a.date}T${a.scheduledTime}`.localeCompare(`${b.date}T${b.scheduledTime}`)),
-    [visibleWalks, familyRole, effectiveUserId]
+    () => visibleWalks.filter((w) => w.date === familyDateOnly(new Date(), family?.timezone) && canResolveWalk(w)).sort((a, b) => `${a.date}T${a.scheduledTime}`.localeCompare(`${b.date}T${b.scheduledTime}`)),
+    [visibleWalks, familyRole, effectiveUserId, family?.timezone]
   );
 
   const resolveWalk = resolveWalkId ? walks.find((w) => w.id === resolveWalkId) : undefined;
