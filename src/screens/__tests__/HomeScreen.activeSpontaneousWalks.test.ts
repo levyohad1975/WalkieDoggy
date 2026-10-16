@@ -68,7 +68,7 @@ describe('Home active spontaneous walks (P0 duplicate cards)', () => {
     // clearance above the fixed bottom tab bar on iPhone Safari/PWA.
     expect(home).toContain('nextWalkLift: { marginTop: -16');
     expect(home).toContain('scrollEnabled');
-    expect(home).toContain('paddingBottom: 96');
+    expect(home).toContain('paddingBottom: 180');
   });
 
   it('keeps RTL alignment for the active-walk and audit text', () => {
