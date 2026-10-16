@@ -41,6 +41,10 @@ interface NextWalkCardProps {
   startWalkPending?: boolean;
   startWalkAvailableLabel?: string;
   onEndWalk?: () => void;
+  onRecordPee?: () => void;
+  onRecordPoop?: () => void;
+  recordedPeeCount?: number;
+  recordedPoopCount?: number;
   activeStartedAt?: string | null;
   /**
    * Phase 4 (GPS foundation, PRD §7 — "In Progress" card state: "מרחק/מצב
@@ -119,6 +123,10 @@ export function NextWalkCard({
   startWalkPending = false,
   startWalkAvailableLabel,
   onEndWalk,
+  onRecordPee,
+  onRecordPoop,
+  recordedPeeCount = 0,
+  recordedPoopCount = 0,
   activeStartedAt,
   liveDistanceMeters,
   gpsPointCount,
@@ -307,6 +315,13 @@ export function NextWalkCard({
       ) : null}
 
 
+      {isActive && (onRecordPee || onRecordPoop) ? (
+        <View style={styles.walkEventRow}>
+          {onRecordPee ? <Pressable accessibilityRole="button" accessibilityLabel="סמן פיפי במהלך הטיול" onPress={onRecordPee} style={styles.walkEventButton}><RtlText>💧{recordedPeeCount > 0 ? ` ${recordedPeeCount}` : ''}</RtlText></Pressable> : null}
+          {onRecordPoop ? <Pressable accessibilityRole="button" accessibilityLabel="סמן קקי במהלך הטיול" onPress={onRecordPoop} style={styles.walkEventButton}><RtlText>💩{recordedPoopCount > 0 ? ` ${recordedPoopCount}` : ''}</RtlText></Pressable> : null}
+        </View>
+      ) : null}
+
       {tone === 'dashboard' ? (
         <>
         {isActive ? (
@@ -474,6 +489,8 @@ const TIME_MAX_FONT_SCALE = 1.35;
 const CARD_MAX_FONT_SCALE = 1.35;
 
 const styles = StyleSheet.create({
+  walkEventRow: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginVertical: 6 },
+  walkEventButton: { minWidth: 46, height: 46, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center', borderRadius: 14, backgroundColor: colors.surfaceMuted },
   activeMapPanel: { width: '100%', marginVertical: 8 },
   activeGpsLabel: { fontSize: 12, color: colors.primaryDark, textAlign: 'center', fontWeight: '600' },
   liveMapColumn: { minWidth: 0, overflow: 'hidden' },
