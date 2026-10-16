@@ -23,6 +23,7 @@ interface NextWalkCardProps {
   /** IANA timezone that owns the family schedule. */
   scheduleTimezone?: string;
   responsible?: FamilyUser;
+  actualWalker?: FamilyUser;
   currentUserId: string;
   dogName: string;
   dogPhotoUrl?: string;
@@ -113,6 +114,7 @@ export function NextWalkCard({
   walk,
   scheduleTimezone,
   responsible,
+  actualWalker,
   currentUserId,
   dogName,
   dogPhotoUrl,
@@ -330,7 +332,8 @@ export function NextWalkCard({
           <View style={styles.dashboardPersonColumn}>
             {responsible ? <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={isWeb ? 46 : 50} /> : null}
             <RtlText style={styles.dashboardPersonName} numberOfLines={1}>{responsible?.name ?? '—'}</RtlText>
-            <RtlText style={styles.dashboardColumnLabel}>אחראי לטיול</RtlText>
+            <RtlText style={styles.dashboardColumnLabel}>מתוכנן ל</RtlText>
+            {isActive && actualWalker ? <RtlText style={styles.actualWalkerLabel} numberOfLines={2}>מבצע בפועל: {actualWalker.name}</RtlText> : null}
           </View>
           <View style={styles.dashboardTimeColumn}>
             <RtlText style={styles.dashboardTime} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{walk.scheduledTime}</RtlText>
@@ -497,7 +500,8 @@ const styles = StyleSheet.create({
   walkEventUndo: { width: 44, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
   walkEventRow: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginVertical: 6 },
   walkEventButton: { minWidth: 46, height: 46, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center', borderRadius: 14, backgroundColor: colors.surfaceMuted },
-  activeMapPanel: { width: '100%', marginVertical: 8 },
+  activeMapPanel: { width: '100%', marginVertical: 4 },
+  actualWalkerLabel: { fontSize: 12, fontWeight: '700', color: colors.primaryDark, textAlign: 'center' },
   activeGpsLabel: { fontSize: 12, color: colors.primaryDark, textAlign: 'center', fontWeight: '600' },
   liveMapColumn: { minWidth: 0, overflow: 'hidden' },
   liveRouteMap: { width: '100%', marginVertical: 8, gap: 6 },
