@@ -8,7 +8,7 @@ import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { summarizeWalksByUser } from '../logic/walkActions';
-import { isOverdue } from '../logic/nextWalk';
+import { familyDateOnly, isOverdue } from '../logic/nextWalk';
 import { formatHistoryDate, localDateOnly } from '../logic/dateFormat';
 import { isWalkEligibleForHistory, walkMatchesHistorySearch } from '../logic/history';
 import { canAccessHistoryScreen } from '../logic/permissions';
@@ -40,7 +40,7 @@ const RANGE_LABELS: [RangeFilter, string][] = [
 ];
 
 export function HistoryScreen() {
-  const { users, dog, loading: familyLoading, load: loadFamily, permissionOverrides, permissionOverridesStatus } = useFamilyStore();
+  const { family, users, dog, loading: familyLoading, load: loadFamily, permissionOverrides, permissionOverridesStatus } = useFamilyStore();
   const { walks, loading: scheduleLoading, error, load: loadSchedule, editDoneDetails, editUnplannedWalk, deleteUnplannedWalk, deleteScheduledWalkOccurrence, skip, markDone } = useScheduleStore();
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const effectiveRole = useEffectiveFamilyRole();
@@ -477,7 +477,7 @@ export function HistoryScreen() {
                   {dayWalks.map((w) => (
                     <View key={w.id} style={styles.historyItem}>
                       <WalkRow
-                        walk={w}
+                        walk={w.status === 'pending' && !w.isUnplanned && w.date < familyDateOnly(new Date(), family?.timezone) ? { ...w, status: 'skipped' } : w}
                         routeSession={gpsSessions[w.id]}
                         historyCompact
                         responsible={usersById[w.responsibleUserId]}
