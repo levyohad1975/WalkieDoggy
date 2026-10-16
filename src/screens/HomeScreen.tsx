@@ -226,6 +226,23 @@ export function HomeScreen() {
       return next;
     });
   }, []);
+  const undoWalkEvent = useCallback((walkId: string, kind: 'pee' | 'poop') => {
+    setWalkEventCounts((previous) => {
+      let current = previous[walkId];
+      if (!current && Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+        try {
+          const saved = JSON.parse(localStorage.getItem('walkie:walk-events:' + walkId) ?? 'null');
+          if (saved && Number.isSafeInteger(saved.pee) && saved.pee >= 0 && Number.isSafeInteger(saved.poop) && saved.poop >= 0) current = saved;
+        } catch { /* storage unavailable */ }
+      }
+      const safe = current ?? { pee: 0, poop: 0 };
+      const updated = { ...safe, [kind]: Math.max(0, safe[kind] - 1) };
+      if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+        try { localStorage.setItem('walkie:walk-events:' + walkId, JSON.stringify(updated)); } catch { /* storage unavailable */ }
+      }
+      return { ...previous, [walkId]: updated };
+    });
+  }, []);
   const readWalkEvents = useCallback((walkId: string) => {
     if (walkEventCounts[walkId]) return walkEventCounts[walkId];
     if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
@@ -1288,6 +1305,8 @@ export function HomeScreen() {
             remoteGpsAction={<RemoteGpsPanel walk={nextWalk} currentUserId={currentUserId} familyRole={actualFamilyRole} ready={!familyLoading && !scheduleLoading && Boolean(family)} />}
             onRecordPee={isActiveWalk(nextWalk) ? () => recordWalkEvent(nextWalk.id, 'pee') : undefined}
             onRecordPoop={isActiveWalk(nextWalk) ? () => recordWalkEvent(nextWalk.id, 'poop') : undefined}
+            onUndoPee={() => undoWalkEvent(nextWalk.id, 'pee')}
+            onUndoPoop={() => undoWalkEvent(nextWalk.id, 'poop')}
             recordedPeeCount={readWalkEvents(nextWalk.id).pee}
             recordedPoopCount={readWalkEvents(nextWalk.id).poop}
             onMarkDone={() => setCompleteWalkId(nextWalk.id)}
@@ -1430,6 +1449,8 @@ export function HomeScreen() {
                     remoteGpsAction={<RemoteGpsPanel walk={spontaneous} currentUserId={currentUserId} familyRole={actualFamilyRole} ready={!familyLoading && !scheduleLoading && Boolean(family)} />}
                     onRecordPee={() => recordWalkEvent(spontaneous.id, 'pee')}
                     onRecordPoop={() => recordWalkEvent(spontaneous.id, 'poop')}
+            onUndoPee={() => undoWalkEvent(spontaneous.id, 'pee')}
+            onUndoPoop={() => undoWalkEvent(spontaneous.id, 'poop')}
                     recordedPeeCount={readWalkEvents(spontaneous.id).pee}
                     recordedPoopCount={readWalkEvents(spontaneous.id).poop}
                     onMarkDone={() => setCompleteWalkId(spontaneous.id)}
