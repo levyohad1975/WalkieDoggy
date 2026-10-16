@@ -81,7 +81,7 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain("walk.status === 'skipped'");
     expect(home).toContain('isActiveWalk(walk)');
     expect(home).toContain('scrollEnabled');
-    expect(home).toContain('paddingBottom: 96');
+    expect(home).toContain('paddingBottom: 180');
     expect(home).not.toContain('style={styles.dashboardMoreButton}');
   });
 
