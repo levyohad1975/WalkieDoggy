@@ -315,13 +315,6 @@ export function NextWalkCard({
       ) : null}
 
 
-      {isActive && (onRecordPee || onRecordPoop) ? (
-        <View style={styles.walkEventRow}>
-          {onRecordPee ? <Pressable accessibilityRole="button" accessibilityLabel="סמן פיפי במהלך הטיול" onPress={onRecordPee} style={styles.walkEventButton}><RtlText>💧{recordedPeeCount > 0 ? ` ${recordedPeeCount}` : ''}</RtlText></Pressable> : null}
-          {onRecordPoop ? <Pressable accessibilityRole="button" accessibilityLabel="סמן קקי במהלך הטיול" onPress={onRecordPoop} style={styles.walkEventButton}><RtlText>💩{recordedPoopCount > 0 ? ` ${recordedPoopCount}` : ''}</RtlText></Pressable> : null}
-        </View>
-      ) : null}
-
       {tone === 'dashboard' ? (
         <>
         {isActive ? (
@@ -376,6 +369,13 @@ export function NextWalkCard({
         <RtlText style={styles.requestStatusLine} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
           {requestStatusLine}
         </RtlText>
+      ) : null}
+
+      {isActive && (onRecordPee || onRecordPoop) ? (
+        <View style={styles.walkEventRow}>
+          {onRecordPee ? <Pressable accessibilityRole="button" accessibilityLabel="סמן פיפי במהלך הטיול" onPress={onRecordPee} style={styles.walkEventButton}><RtlText>💧{recordedPeeCount > 0 ? ` ${recordedPeeCount}` : ''}</RtlText></Pressable> : null}
+          {onRecordPoop ? <Pressable accessibilityRole="button" accessibilityLabel="סמן קקי במהלך הטיול" onPress={onRecordPoop} style={styles.walkEventButton}><RtlText>💩{recordedPoopCount > 0 ? ` ${recordedPoopCount}` : ''}</RtlText></Pressable> : null}
+        </View>
       ) : null}
 
       {!canResolve ? (
