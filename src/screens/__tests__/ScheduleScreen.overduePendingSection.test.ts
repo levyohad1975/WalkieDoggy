@@ -5,20 +5,20 @@ import path from 'path';
  * P1 real-iPhone QA (2026-10-15, 18:08): the Dashboard's full "ממתינים
  * לעדכון" list was replaced with a compact count (see
  * HomeScreen.dashboardPendingSummary.test.ts) that links here. This is the
- * one place the full, date-unbounded list now lives — reusing
+ * one place the current-day list now lives — reusing
  * ScheduleScreen's OWN existing data (visibleWalks) and resolution path
  * (canResolveWalk / resolveWalkId+CompleteWalkModal / skip), not a second
  * data source, a second permission rule or a new screen.
  * Source-scan convention: this repo has no render-test harness for screens.
  */
-describe('ScheduleScreen "ממתינים לעדכון" — the full, date-unbounded pending list (structural)', () => {
+describe('ScheduleScreen "ממתינים לעדכון" — the current-day pending list (structural)', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'ScheduleScreen.tsx'), 'utf8');
 
   it('computes the full list from the same dog-scoped walks and the same canResolveWalk rule the day view already uses — not a second data source', () => {
     const idx = source.indexOf('const allOverduePending = useMemo(');
     expect(idx).toBeGreaterThan(-1);
     const block = source.slice(idx, source.indexOf(');', idx));
-    expect(block).toContain('visibleWalks.filter(canResolveWalk)');
+    expect(block).toContain('visibleWalks.filter((w) => w.date === familyDateOnly(new Date(), family?.timezone) && canResolveWalk(w))');
     expect(source).toContain('const canResolveWalk = (w: Walk): boolean =>\n    w.status === \'pending\' &&\n    isOverdue(w) &&\n    (familyRole === \'admin\' || w.responsibleUserId === effectiveUserId);');
   });
 
