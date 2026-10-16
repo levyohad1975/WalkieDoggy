@@ -1428,6 +1428,10 @@ export function HomeScreen() {
                     scheduleTimezone={scheduleTimezone}
                     tone="dashboard"
                     remoteGpsAction={<RemoteGpsPanel walk={spontaneous} currentUserId={currentUserId} familyRole={actualFamilyRole} ready={!familyLoading && !scheduleLoading && Boolean(family)} />}
+                    onRecordPee={() => recordWalkEvent(spontaneous.id, 'pee')}
+                    onRecordPoop={() => recordWalkEvent(spontaneous.id, 'poop')}
+                    recordedPeeCount={readWalkEvents(spontaneous.id).pee}
+                    recordedPoopCount={readWalkEvents(spontaneous.id).poop}
                     onMarkDone={() => setCompleteWalkId(spontaneous.id)}
                     activeStartedAt={isActiveWalk(spontaneous) ? spontaneous.startedAt ?? null : null}
                     liveDistanceMeters={gpsTrackingWalkId === spontaneous.id ? gpsDistanceMeters : null}
