@@ -8,7 +8,7 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
-import { computeLastWalk, computeNextWalk, dailyWalkTimeline, familyDateOnly, isOverdue, nextWalkSelectionRefreshDelayMs, upcomingWalks, walkDateTime } from '../logic/nextWalk';
+import { computeLastWalk, computeNextWalk, dailyWalkTimeline, dedupeCanonicalWalks, familyDateOnly, isOverdue, nextWalkSelectionRefreshDelayMs, upcomingWalks, walkDateTime } from '../logic/nextWalk';
 import { isActiveWalk } from '../logic/walkLifecycle';
 import { activeSpontaneousHomeBlocks, duplicateActiveWalkNotice, groupActiveSpontaneousWalks } from '../logic/activeSpontaneousWalks';
 import { canOpenDuplicateResolution } from '../logic/duplicateWalkResolution';
@@ -568,7 +568,7 @@ export function HomeScreen() {
   // which dog is selected (e.g. a modal opened before a dog switch).
   const visibleWalks = useMemo(() => {
     const familyWalks = walks.filter((walk) => walk.familyId === familyId);
-    return dogs.length > 1 && dog ? familyWalks.filter((walk) => walk.dogId === dog.id) : familyWalks;
+    return dedupeCanonicalWalks(dogs.length > 1 && dog ? familyWalks.filter((walk) => walk.dogId === dog.id) : familyWalks);
   }, [walks, familyId, dogs.length, dog?.id]);
   const scheduleTimezone = family?.id === familyId ? family.timezone : undefined;
 
@@ -2163,7 +2163,7 @@ const styles = StyleSheet.create({
   addFirstDogButton: { marginTop: spacing.md },
   // Leaves the final card clear of the persistent bottom tab bar on phones
   // and in Safari/PWA, instead of letting it end underneath the navigation.
-  content: { flexGrow: 1, paddingHorizontal: spacing.md, paddingTop: 0, gap: 7, paddingBottom: 96, width: '100%', backgroundColor: '#FBF8F3' },
+  content: { flexGrow: 1, paddingHorizontal: spacing.md, paddingTop: 0, gap: 7, paddingBottom: 180, width: '100%', backgroundColor: '#FBF8F3' },
   activeSpontaneousSection: { gap: 8, paddingHorizontal: spacing.xs },
   activeSpontaneousCard: { padding: 12, borderRadius: 12, backgroundColor: '#F1F8F3' },
   activeSpontaneousDuplicate: { padding: 12, borderRadius: 12, backgroundColor: '#FFF4E5', borderWidth: 1, borderColor: '#F3C98B' },
