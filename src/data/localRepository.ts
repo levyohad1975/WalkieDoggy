@@ -150,6 +150,14 @@ export class LocalRepository implements Repository {
     await this.persist();
   }
 
+  /** Drops only the matching tenant cache; pending SyncQueue data is intentionally separate and untouched. */
+  async clearLocalFamilyCache(familyId: string): Promise<void> {
+    const current = await this.load();
+    if (current.family.id !== familyId) return;
+    this.cache = seedStore();
+    await this.persist();
+  }
+
   async getFamily(familyId: string): Promise<Family | undefined> {
     const s = await this.load();
     return s.family.id === familyId ? s.family : undefined;

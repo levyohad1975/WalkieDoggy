@@ -68,6 +68,16 @@ describe('LocalRepository — family isolation', () => {
     const otherFamilyWalks = await repo.getWalks(otherFamily.id);
     expect(otherFamilyWalks).toEqual([otherWalk]);
   });
+
+  it('clears only the confirmed deleted tenant cache and leaves another family cache alone', async () => {
+    const repo = new LocalRepository();
+    await repo.getUsers('family-main');
+    await repo.clearLocalFamilyCache('unrelated-family');
+    expect(await repo.getFamily('family-main')).toBeDefined();
+    await repo.clearLocalFamilyCache('family-main');
+    expect(await repo.getFamily('family-main')).toBe(DEMO_FAMILY);
+    expect(await AsyncStorage.getItem('dog-walk-family:sync-queue')).toBeNull();
+  });
 });
 
 describe('LocalRepository — schedule + walk CRUD', () => {

@@ -215,6 +215,10 @@ export class OfflineFirstRepository implements Repository {
     }
   }
 
+  async clearLocalFamilyCache(familyId: string): Promise<void> {
+    await this.local.clearLocalFamilyCache(familyId);
+  }
+
   private async isOnline(): Promise<boolean> {
     if (!this.remote) return false;
     try {

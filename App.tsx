@@ -338,6 +338,15 @@ export default function App() {
     setFamilySetupServerConfirmedFamilyId(null);
     setFamilySetupOwnerMatches(false);
   };
+  const handleSystemAdminFamilyDeleted = async (deletedFamilyId: string) => {
+    await useAuthStore.getState().clearDeletedFamilyContext(deletedFamilyId);
+    if (familySetupProgress?.familyId === deletedFamilyId) {
+      setFamilySetupProgress(null);
+      setFamilySetupOwnerMatches(false);
+      setFamilySetupServerConfirmedFamilyId(null);
+    }
+    if (familyId === deletedFamilyId) setIsQaFamily(false);
+  };
   const startFamilySetup = async (createdFamilyId: string) => {
     const progress = await readFamilySetupProgress();
     setFamilySetupProgress(progress ?? { familyId: createdFamilyId, step: 2 });
@@ -666,7 +675,7 @@ export default function App() {
             </Pressable>
           ) : null}
           {shouldEnterSystemAdminDirectly ? (
-            <SystemAdminScreen visible onClose={() => undefined} onTestFamilySelected={selectTestFamily} onTestFamilyScheduleSelected={isStagingSupabaseProject ? selectTestFamilyForScheduleReview : undefined} />
+            <SystemAdminScreen visible onClose={() => undefined} onTestFamilySelected={selectTestFamily} onTestFamilyScheduleSelected={isStagingSupabaseProject ? selectTestFamilyForScheduleReview : undefined} onFamilyDeleted={handleSystemAdminFamilyDeleted} />
           ) : needsFamilyOnboarding ? (
             <FamilyOnboardingScreen onFamilyCreated={startFamilySetup} />
           ) : familySetupWizardVisible ? (
@@ -677,7 +686,7 @@ export default function App() {
             <LoginScreen />
           )}
           {!shouldEnterSystemAdminDirectly ? (
-            <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} onTestFamilySelected={selectTestFamily} onTestFamilyScheduleSelected={isStagingSupabaseProject ? selectTestFamilyForScheduleReview : undefined} />
+            <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} onTestFamilySelected={selectTestFamily} onTestFamilyScheduleSelected={isStagingSupabaseProject ? selectTestFamilyForScheduleReview : undefined} onFamilyDeleted={handleSystemAdminFamilyDeleted} />
           ) : null}
 
           {isSystemAdmin && isQaFamily && !systemObserverActive && !familySetupWizardVisible ? (
