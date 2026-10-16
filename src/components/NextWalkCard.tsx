@@ -43,6 +43,8 @@ interface NextWalkCardProps {
   onEndWalk?: () => void;
   onRecordPee?: () => void;
   onRecordPoop?: () => void;
+  onUndoPee?: () => void;
+  onUndoPoop?: () => void;
   recordedPeeCount?: number;
   recordedPoopCount?: number;
   activeStartedAt?: string | null;
@@ -125,6 +127,8 @@ export function NextWalkCard({
   onEndWalk,
   onRecordPee,
   onRecordPoop,
+  onUndoPee,
+  onUndoPoop,
   recordedPeeCount = 0,
   recordedPoopCount = 0,
   activeStartedAt,
@@ -373,8 +377,8 @@ export function NextWalkCard({
 
       {isActive && (onRecordPee || onRecordPoop) ? (
         <View style={styles.walkEventRow}>
-          {onRecordPee ? <Pressable accessibilityRole="button" accessibilityLabel="סמן פיפי במהלך הטיול" onPress={onRecordPee} style={styles.walkEventButton}><RtlText>💧{recordedPeeCount > 0 ? ` ${recordedPeeCount}` : ''}</RtlText></Pressable> : null}
-          {onRecordPoop ? <Pressable accessibilityRole="button" accessibilityLabel="סמן קקי במהלך הטיול" onPress={onRecordPoop} style={styles.walkEventButton}><RtlText>💩{recordedPoopCount > 0 ? ` ${recordedPoopCount}` : ''}</RtlText></Pressable> : null}
+          {onRecordPee ? <View style={styles.walkEventGroup}><Pressable accessibilityRole="button" accessibilityLabel="הוסף סימון פיפי" onPress={onRecordPee} style={styles.walkEventButton}><RtlText>💧 {recordedPeeCount}</RtlText></Pressable>{onUndoPee && recordedPeeCount > 0 ? <Pressable accessibilityRole="button" accessibilityLabel="בטל סימון פיפי אחד" onPress={onUndoPee} style={styles.walkEventUndo}><RtlText>−</RtlText></Pressable> : null}</View> : null}
+          {onRecordPoop ? <View style={styles.walkEventGroup}><Pressable accessibilityRole="button" accessibilityLabel="הוסף סימון קקי" onPress={onRecordPoop} style={styles.walkEventButton}><RtlText>💩 {recordedPoopCount}</RtlText></Pressable>{onUndoPoop && recordedPoopCount > 0 ? <Pressable accessibilityRole="button" accessibilityLabel="בטל סימון קקי אחד" onPress={onUndoPoop} style={styles.walkEventUndo}><RtlText>−</RtlText></Pressable> : null}</View> : null}
         </View>
       ) : null}
 
@@ -489,6 +493,8 @@ const TIME_MAX_FONT_SCALE = 1.35;
 const CARD_MAX_FONT_SCALE = 1.35;
 
 const styles = StyleSheet.create({
+  walkEventGroup: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  walkEventUndo: { width: 44, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
   walkEventRow: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginVertical: 6 },
   walkEventButton: { minWidth: 46, height: 46, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center', borderRadius: 14, backgroundColor: colors.surfaceMuted },
   activeMapPanel: { width: '100%', marginVertical: 8 },
