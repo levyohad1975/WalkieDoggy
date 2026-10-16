@@ -23,9 +23,27 @@ describe('findSpontaneousAssociationCandidates', () => {
       walk('done', '2026-10-13', '08:00', { status: 'done' }),
       walk('spontaneous', '2026-10-13', '08:00', { isUnplanned: true, scheduleEntryId: undefined }),
       walk('other-dog', '2026-10-13', '08:00', { dogId: 'other' }),
-      walk('far', '2026-10-13', '09:15'),
+      walk('far', '2026-10-13', '11:00'),
     ], 'dog', now, 'Asia/Jerusalem');
     expect(candidates).toEqual([]);
+  });
+
+  it('offers a scheduled walk 90 minutes ahead but not one more than two hours ahead', () => {
+    const now = new Date('2026-10-13T05:00:00.000Z'); // 08:00 in Israel
+    const candidates = findSpontaneousAssociationCandidates([
+      walk('replaceable', '2026-10-13', '09:30'),
+      walk('too-far', '2026-10-13', '10:01'),
+    ], 'dog', now, 'Asia/Jerusalem');
+    expect(candidates.map((item) => item.id).toEqual(['replaceable']);
+  });
+
+  it('keeps the existing 30-minute window for overdue scheduled walks', () => {
+    const now = new Date('2026-10-13T06:00:00.000Z'); // 09:00 in Israel
+    const candidates = findSpontaneousAssociationCandidates([
+      walk('recent', '2026-10-13', '08:30'),
+      walk('old', '2026-10-13', '08:29'),
+    ], 'dog', now, 'Asia/Jerusalem');
+    expect(candidates.map((item) => item.id).toEqual(['recent']);
   });
 
   it('orders identical-time choices deterministically by id', () => {
