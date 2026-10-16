@@ -1495,6 +1495,51 @@ export function HomeScreen() {
           onOpenInbox={openRequestsInbox}
         />
 
+        <View style={styles.dashboardSection}>
+          <View style={styles.dashboardExternalHeading}>
+            <RtlText style={styles.dashboardExternalTitle}>
+              {dashboardTimelineWalks.length > 0
+                ? `בהמשך היום · ${dashboardTimelineWalks.length === 1 ? 'טיול אחד' : `${dashboardTimelineWalks.length} טיולים`}`
+                : 'בהמשך היום'}
+            </RtlText>
+            <RtlText style={styles.dashboardTimelineChevron}>‹</RtlText>
+          </View>
+          <Pressable style={styles.dashboardTimeline} onPress={() => navigation.navigate('Schedule')} accessibilityRole="button" accessibilityLabel="פתיחת המשך הטיולים של היום בלוח הזמנים">
+          {dashboardTimelineWalks.length === 1 ? (
+            <View style={styles.dashboardSingleUpcoming}>
+              <Avatar emoji={usersById[dashboardTimelineWalks[0].responsibleUserId]?.avatar ?? '👤'} color={usersById[dashboardTimelineWalks[0].responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[dashboardTimelineWalks[0].responsibleUserId]?.photoUrl} size={34} />
+              <View style={styles.dashboardSingleUpcomingText}>
+                <RtlText style={styles.dashboardSingleUpcomingTime}>{dashboardTimelineWalks[0].scheduledTime}</RtlText>
+                <RtlText style={styles.dashboardSingleUpcomingName}>{usersById[dashboardTimelineWalks[0].responsibleUserId]?.name ?? 'בן משפחה'}</RtlText>
+              </View>
+              <RtlText style={styles.dashboardSingleUpcomingHint}>הטיול הבא היום</RtlText>
+            </View>
+          ) : dashboardTimelineWalks.length > 1 ? (
+            <View style={styles.dashboardTimelineStops}>
+              <View style={styles.dashboardTimelinePeople}>
+                {dashboardTimelineWalks.map((walk) => (
+                  <View key={walk.id} style={[styles.dashboardTimelineStop, walk.status === 'done' && styles.dashboardTimelineStopDone, walk.status === 'skipped' && styles.dashboardTimelineStopSkipped, isActiveWalk(walk) && styles.dashboardTimelineStopActive]}>
+                    <Avatar emoji={usersById[walk.responsibleUserId]?.avatar ?? '👤'} color={usersById[walk.responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[walk.responsibleUserId]?.photoUrl} size={22} />
+                  </View>
+                ))}
+              </View>
+              <View style={styles.dashboardTimelineTrack} pointerEvents="none">
+                <View style={[styles.dashboardTimelineProgress, { width: `${dashboardTimelineProgress * 100}%` }]} />
+                {dashboardTimelineWalks.map((walk) => <View key={`dot-${walk.id}`} style={[styles.dashboardTimelineDot, walk.status === 'done' && styles.dashboardTimelineDotDone, walk.status === 'skipped' && styles.dashboardTimelineDotSkipped, isActiveWalk(walk) && styles.dashboardTimelineDotActive]} />)}
+              </View>
+              <View style={styles.dashboardTimelineLabels}>
+                {dashboardTimelineWalks.map((walk) => (
+                  <View key={`label-${walk.id}`} style={styles.dashboardTimelineLabel}>
+                    <RtlText style={[styles.dashboardTimelineTime, walk.status === 'done' && styles.dashboardTimelineTimeDone, walk.status === 'skipped' && styles.dashboardTimelineTimeSkipped, isActiveWalk(walk) && styles.dashboardTimelineTimeActive]}>{walk.status === 'done' ? `✓ ${walk.scheduledTime}` : walk.status === 'skipped' ? `– ${walk.scheduledTime}` : isActiveWalk(walk) ? `• ${walk.scheduledTime}` : walk.scheduledTime}</RtlText>
+                    <RtlText style={styles.dashboardTimelineName} numberOfLines={1}>{usersById[walk.responsibleUserId]?.name ?? 'בן משפחה'}</RtlText>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : <RtlText style={styles.dashboardTimelineEmpty}>אין טיולים מתוכננים היום · לפתיחת לוח הזמנים</RtlText>}
+          </Pressable>
+        </View>
+
         {lastWalk ? (() => {
           const canEditLastWalk =
             lastWalkIsEditable &&
@@ -1596,51 +1641,6 @@ export function HomeScreen() {
           </View>
           <RtlText style={styles.dashboardAddWalkChevron}>⌄</RtlText>
         </Pressable>
-
-        <View style={styles.dashboardSection}>
-          <View style={styles.dashboardExternalHeading}>
-            <RtlText style={styles.dashboardExternalTitle}>
-              {dashboardTimelineWalks.length > 0
-                ? `בהמשך היום · ${dashboardTimelineWalks.length === 1 ? 'טיול אחד' : `${dashboardTimelineWalks.length} טיולים`}`
-                : 'בהמשך היום'}
-            </RtlText>
-            <RtlText style={styles.dashboardTimelineChevron}>‹</RtlText>
-          </View>
-          <Pressable style={styles.dashboardTimeline} onPress={() => navigation.navigate('Schedule')} accessibilityRole="button" accessibilityLabel="פתיחת המשך הטיולים של היום בלוח הזמנים">
-          {dashboardTimelineWalks.length === 1 ? (
-            <View style={styles.dashboardSingleUpcoming}>
-              <Avatar emoji={usersById[dashboardTimelineWalks[0].responsibleUserId]?.avatar ?? '👤'} color={usersById[dashboardTimelineWalks[0].responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[dashboardTimelineWalks[0].responsibleUserId]?.photoUrl} size={34} />
-              <View style={styles.dashboardSingleUpcomingText}>
-                <RtlText style={styles.dashboardSingleUpcomingTime}>{dashboardTimelineWalks[0].scheduledTime}</RtlText>
-                <RtlText style={styles.dashboardSingleUpcomingName}>{usersById[dashboardTimelineWalks[0].responsibleUserId]?.name ?? 'בן משפחה'}</RtlText>
-              </View>
-              <RtlText style={styles.dashboardSingleUpcomingHint}>הטיול הבא היום</RtlText>
-            </View>
-          ) : dashboardTimelineWalks.length > 1 ? (
-            <View style={styles.dashboardTimelineStops}>
-              <View style={styles.dashboardTimelinePeople}>
-                {dashboardTimelineWalks.map((walk) => (
-                  <View key={walk.id} style={[styles.dashboardTimelineStop, walk.status === 'done' && styles.dashboardTimelineStopDone, walk.status === 'skipped' && styles.dashboardTimelineStopSkipped, isActiveWalk(walk) && styles.dashboardTimelineStopActive]}>
-                    <Avatar emoji={usersById[walk.responsibleUserId]?.avatar ?? '👤'} color={usersById[walk.responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[walk.responsibleUserId]?.photoUrl} size={22} />
-                  </View>
-                ))}
-              </View>
-              <View style={styles.dashboardTimelineTrack} pointerEvents="none">
-                <View style={[styles.dashboardTimelineProgress, { width: `${dashboardTimelineProgress * 100}%` }]} />
-                {dashboardTimelineWalks.map((walk) => <View key={`dot-${walk.id}`} style={[styles.dashboardTimelineDot, walk.status === 'done' && styles.dashboardTimelineDotDone, walk.status === 'skipped' && styles.dashboardTimelineDotSkipped, isActiveWalk(walk) && styles.dashboardTimelineDotActive]} />)}
-              </View>
-              <View style={styles.dashboardTimelineLabels}>
-                {dashboardTimelineWalks.map((walk) => (
-                  <View key={`label-${walk.id}`} style={styles.dashboardTimelineLabel}>
-                    <RtlText style={[styles.dashboardTimelineTime, walk.status === 'done' && styles.dashboardTimelineTimeDone, walk.status === 'skipped' && styles.dashboardTimelineTimeSkipped, isActiveWalk(walk) && styles.dashboardTimelineTimeActive]}>{walk.status === 'done' ? `✓ ${walk.scheduledTime}` : walk.status === 'skipped' ? `– ${walk.scheduledTime}` : isActiveWalk(walk) ? `• ${walk.scheduledTime}` : walk.scheduledTime}</RtlText>
-                    <RtlText style={styles.dashboardTimelineName} numberOfLines={1}>{usersById[walk.responsibleUserId]?.name ?? 'בן משפחה'}</RtlText>
-                  </View>
-                ))}
-              </View>
-            </View>
-          ) : <RtlText style={styles.dashboardTimelineEmpty}>אין טיולים מתוכננים היום · לפתיחת לוח הזמנים</RtlText>}
-          </Pressable>
-        </View>
 
         <View style={styles.dashboardOverflow}>
         </View>
