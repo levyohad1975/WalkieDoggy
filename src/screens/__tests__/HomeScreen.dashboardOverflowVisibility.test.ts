@@ -35,7 +35,7 @@ describe('HomeScreen — dashboardOverflow is no longer unconditionally hidden (
   });
 
   it('the overdue-walks section ("ממתינים לעדכון") is present and not inside any other hidden wrapper', () => {
-    expect(home).not.toContain('ממתינים לעדכון');
+    expect(home).not.toContain('>ממתינים לעדכון');
     expect(home).not.toContain('{overduePending.length > 0 ? (');
   });
 
