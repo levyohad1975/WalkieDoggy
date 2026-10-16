@@ -78,6 +78,9 @@ begin
 end;
 $begin$;
 
+-- Verify the neighboring fixture as the trusted rehearsal connection; the
+-- authenticated System Admin's normal family RLS correctly hides it.
+reset role;
 do $verify$
 begin
   if exists(select 1 from public.families where id='e1000000-0000-4000-8000-000000000101') then raise exception 'target family remains'; end if;
