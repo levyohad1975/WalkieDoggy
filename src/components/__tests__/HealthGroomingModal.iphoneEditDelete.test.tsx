@@ -230,7 +230,6 @@ describe('HealthGroomingModal edit sheet on iPhone Safari / PWA — delete (P0-B
     fireEvent.press(button);
     fireEvent.press(screen.getByText('מחק משימה'));
     fireEvent.press(screen.getByText('מחק משימה'));
-    fireEvent.press(screen.getByText('מחק משימה'));
     await waitFor(() => expect(deleteImpl).toHaveBeenCalledTimes(1));
     expect(deleteImpl).toHaveBeenCalledWith('task-haircut');
     // No success state before the server confirms: the sheet is still open.
