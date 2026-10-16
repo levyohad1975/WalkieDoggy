@@ -624,9 +624,11 @@ export function FamilySetupWizard({ familyId, progress, onProgressChange, onComp
                 {managerProfileSaved ? <><View style={styles.card}>
                   <RtlText style={styles.cardTitle}>בני המשפחה</RtlText>
                   {activeUsers.map((user) => <View key={user.id} style={styles.memberRow}>
-                    <Avatar emoji={user.avatar} color={user.color} photoUrl={user.photoUrl} size={42} />
-                    <RtlText style={styles.rowTitle}>{user.name}{user.id === progress.adminUserId ? ' · מנהל/ת' : ''}</RtlText>
-                    <Pressable onPress={() => { setEditingMember(user); setMemberFormVisible(true); }} style={styles.memberAction} accessibilityRole="button" accessibilityLabel={`עריכת ${user.name}`}><RtlText style={styles.editRuleText}>✎</RtlText></Pressable>
+                    <Pressable onPress={() => { setEditingMember(user); setMemberFormVisible(true); }} style={styles.memberIdentity} accessibilityRole="button" accessibilityLabel={`עריכת ${user.name}`}>
+                      <Avatar emoji={user.avatar} color={user.color} photoUrl={user.photoUrl} size={42} />
+                      <RtlText style={styles.rowTitle}>{user.name}{user.id === progress.adminUserId ? ' · מנהל/ת' : ''}</RtlText>
+                      <RtlText style={styles.editRuleText}>✎</RtlText>
+                    </Pressable>
                     {user.id !== progress.adminUserId && user.id !== currentUserId ? <Pressable onPress={() => confirmRemoveMember(user)} style={styles.memberAction} accessibilityRole="button" accessibilityLabel={`הסרת ${user.name}`}><RtlText style={styles.removeRuleText}>×</RtlText></Pressable> : null}
                   </View>)}
                   <Button label="הוספת בן או בת משפחה" variant="secondary" onPress={() => { setEditingMember(null); setMemberFormVisible(true); }} disabled={memberSaving} />
@@ -756,6 +758,7 @@ const styles = StyleSheet.create({
   sexChoiceTextActive: { color: colors.primaryDark, fontWeight: '800' },
   summaryRow: { width: '100%', minWidth: 0, minHeight: 48, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xs },
   memberRow: { width: '100%', minWidth: 0, minHeight: 52, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.xs, borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: spacing.xs },
+  memberIdentity: { flex: 1, minWidth: 0, minHeight: 44, flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.xs },
   memberAction: { width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radii.md, backgroundColor: colors.surfaceMuted },
   rowTitle: { ...typography.body, color: colors.textPrimary, textAlign: 'right', fontWeight: '700', flexShrink: 1, minWidth: 0 },
   ruleRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: spacing.sm },
