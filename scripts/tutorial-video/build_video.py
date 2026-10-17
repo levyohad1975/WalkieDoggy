@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -175,12 +176,13 @@ def card(edit: dict, scene: dict, w: int, h: int, path: Path, *, slate: bool = F
         if scene['id'] == 'S1-open':
             # The wordmark PNG carries a soft near-white matte; seat it on the
             # brand's white surface card so the matte is invisible (asset untouched).
-            wm = Image.open(REPO / b['wordmark']).convert('RGBA')
+            wm = Image.open(REPO / b['wordmark'] if not Path(b['wordmark']).is_absolute() else b['wordmark']).convert('RGBA')
             ww = int(W * (0.24 if not vertical else 0.56))
             wm = wm.resize((ww, int(wm.height * ww / wm.width)), Image.LANCZOS)
             pad = int(ww * 0.06)
-            d.rounded_rectangle(((W - ww) // 2 - pad, y, (W + ww) // 2 + pad, y + wm.height + 2 * pad),
-                                radius=int(pad * 1.4), fill=hex_rgb(b['surface']), outline=hex_rgb(b['border']), width=4)
+            if b.get('wordmarkCard', True):
+                d.rounded_rectangle(((W - ww) // 2 - pad, y, (W + ww) // 2 + pad, y + wm.height + 2 * pad),
+                                    radius=int(pad * 1.4), fill=hex_rgb(b['surface']), outline=hex_rgb(b['border']), width=4)
             img.paste(wm, ((W - ww) // 2, y + pad), wm)
             y += wm.height + 2 * pad + int(H * 0.03)
         else:
@@ -275,7 +277,8 @@ def make_narration(args, cues: list[dict], scene_end: dict, total: float, work: 
     end is re-timed to the spoken length (+0.4 s), never past the next cue or
     the scene end. --vo: one continuous take, used as-is (cue times must
     already be aligned in edit.json). Neither: None → silent animatic."""
-    norm = 'loudnorm=I=-16:TP=-1:LRA=11,aresample=48000,aformat=channel_layouts=stereo'
+    norm = 'aresample=48000,aformat=channel_layouts=stereo'
+    raw = work / 'narration_raw.wav'
     out = work / 'narration.wav'
     if args.vo_dir:
         vo_dir = Path(args.vo_dir)
@@ -296,12 +299,76 @@ def make_narration(args, cues: list[dict], scene_end: dict, total: float, work: 
             labels.append(f'[a{i}]')
         fc = ';'.join(chains) + f";{''.join(labels)}amix=inputs={len(labels)}:normalize=0:dropout_transition=0," \
              f"apad,atrim=0:{total},{norm}[out]"
-        sh('ffmpeg', '-y', '-loglevel', 'error', *inputs, '-filter_complex', fc, '-map', '[out]', '-ar', '48000', str(out))
+        sh('ffmpeg', '-y', '-loglevel', 'error', *inputs, '-filter_complex', fc, '-map', '[out]', '-ar', '48000', str(raw))
+        loudnorm_2pass(raw, out, -16)
         return out
     if args.vo:
-        sh('ffmpeg', '-y', '-loglevel', 'error', '-i', args.vo, '-af', f'apad,atrim=0:{total},{norm}', '-ar', '48000', str(out))
+        sh('ffmpeg', '-y', '-loglevel', 'error', '-i', args.vo, '-af', f'apad,atrim=0:{total},{norm}', '-ar', '48000', str(raw))
+        loudnorm_2pass(raw, out, -16)
         return out
     return None
+
+
+def loudnorm_2pass(src: Path, dst: Path, target_i: float, target_tp: float = -1.0, lra: float = 11.0) -> None:
+    """Measure, then apply an exact linear gain (EBU R128). Single-pass
+    loudnorm is dynamic and undershoots on speech with long pauses."""
+    err = subprocess.run(['ffmpeg', '-hide_banner', '-nostats', '-i', str(src), '-af',
+                          f'loudnorm=I={target_i}:TP={target_tp}:LRA={lra}:print_format=json', '-f', 'null', '-'],
+                         capture_output=True, text=True).stderr
+    m = json.loads(re.search(r'\{[^{}]*"input_i"[^{}]*\}', err, re.S).group(0))
+    af = (f"loudnorm=I={target_i}:TP={target_tp}:LRA={lra}:measured_I={m['input_i']}:measured_TP={m['input_tp']}:"
+          f"measured_LRA={m['input_lra']}:measured_thresh={m['input_thresh']}:offset={m['target_offset']}:linear=true,"
+          f"aresample=48000")
+    sh('ffmpeg', '-y', '-loglevel', 'error', '-i', str(src), '-af', af, '-ar', '48000', str(dst))
+
+
+def music_license(music: Path, allow_pending: bool) -> dict:
+    """Every music file needs <file>.license.json; unapproved music is DRAFT-only."""
+    lic_path = Path(str(music) + '.license.json')
+    if not lic_path.exists():
+        raise SystemExit(f'refusing music without a licence record: {lic_path}')
+    lic = json.loads(lic_path.read_text(encoding='utf-8'))
+    for key in ('title', 'source', 'license', 'rightsHolder', 'approvedBy'):
+        if not lic.get(key):
+            raise SystemExit(f'music licence record is missing "{key}"')
+    digest = hashlib.sha256(music.read_bytes()).hexdigest()
+    if lic.get('fileSha256') and lic['fileSha256'] != digest:
+        raise SystemExit('music file does not match the SHA-256 in its licence record')
+    pending = str(lic['license']).startswith('PENDING') or str(lic['approvedBy']).startswith('PENDING')
+    if pending and not allow_pending:
+        raise SystemExit('music licence/approval is PENDING — pass --draft to use it in a DRAFT render only')
+    print(f"music: {lic['title']} | licence: {lic['license']} | approved: {lic['approvedBy']}")
+    return lic
+
+
+def mix_music(args, narration: Path | None, total: float, work: Path) -> Path | None:
+    """Subtle bed: levelled to −30 LUFS, faded, ducked under narration
+    (side-chain), final mix −16 LUFS / −1 dBTP. Without narration the bed is
+    left at −24 LUFS for DRAFT previews."""
+    if not args.music:
+        return narration
+    music = Path(args.music)
+    music_license(music, args.draft)
+    out = work / 'mix.wav'
+    bed = (f"[m]aformat=channel_layouts=stereo,aresample=48000,apad,atrim=0:{total},"
+           f"afade=t=in:d=1.5,afade=t=out:st={max(total - 3, 0):.3f}:d=3")
+    shaped = work / 'bed_shaped.wav'
+    sh('ffmpeg', '-y', '-loglevel', 'error', '-i', str(music), '-filter_complex', bed.replace('[m]', '[0:a]', 1) + '[out]',
+       '-map', '[out]', '-ar', '48000', str(shaped))
+    if narration is None:
+        loudnorm_2pass(shaped, out, -24, -3, 7)
+        return out
+    levelled = work / 'bed_levelled.wav'
+    loudnorm_2pass(shaped, levelled, -30, -6, 7)
+    raw = work / 'mix_raw.wav'
+    # Gentle side-chain ducking (≈8–10 dB under speech), slow release to avoid pumping.
+    fc = ("[0:a]asplit=2[vo][key];"
+          "[1:a][key]sidechaincompress=threshold=0.05:ratio=3:attack=40:release=600:makeup=1[ducked];"
+          "[vo][ducked]amix=inputs=2:normalize=0:dropout_transition=0[out]")
+    sh('ffmpeg', '-y', '-loglevel', 'error', '-i', str(narration), '-i', str(levelled), '-filter_complex', fc,
+       '-map', '[out]', '-ar', '48000', str(raw))
+    loudnorm_2pass(raw, out, -16)
+    return out
 
 
 def build(edit: dict, args, w: int, h: int, tag: str, out: Path, work: Path) -> Path:
@@ -341,6 +408,7 @@ def build(edit: dict, args, w: int, h: int, tag: str, out: Path, work: Path) -> 
     total = t
     scene_end = {s['id']: z for s, _, z, _ in timeline}
     narration = make_narration(args, cues, scene_end, total, work)
+    narration = mix_music(args, narration, total, work)
     lst = work / f'{tag}_concat.txt'
     lst.write_text(''.join(f"file '{p}'\n" for p in segs))
     silent = work / f'{tag}_video.mp4'
@@ -384,6 +452,9 @@ def main() -> None:
     ap.add_argument('--vo-dir', help='per-cue takes cue-01.wav … (run audio_qa.py first); captions re-time to the takes')
     ap.add_argument('--captures', default=str(REPO / 'docs/product/tutorial-video/captures'))
     ap.add_argument('--include-gps', action='store_true', help='only after real-iPhone GPS acceptance')
+    ap.add_argument('--music', help='background bed; requires <file>.license.json')
+    ap.add_argument('--draft', action='store_true', help='allow PENDING music/assets (DRAFT renders only)')
+    ap.add_argument('--wordmark', help='override wordmark PNG (e.g. the clean DRAFT candidate; requires --draft)')
     ap.add_argument('--vertical', action='store_true')
     args = ap.parse_args()
 
@@ -393,6 +464,11 @@ def main() -> None:
     digest = hashlib.sha256((REPO / edit['brand']['mascot']).read_bytes()).hexdigest()
     if digest != edit['brand']['mascotSha256']:
         raise SystemExit(f'mascot asset is not the approved derivative (sha256 {digest})')
+    if args.wordmark:
+        if 'DRAFT' in Path(args.wordmark).name and not args.draft:
+            raise SystemExit('a DRAFT wordmark can only be used with --draft')
+        edit['brand']['wordmark'] = str(Path(args.wordmark).resolve())
+        edit['brand']['wordmarkCard'] = False   # a clean transparent wordmark sits directly on cream
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     work = out / 'work'
