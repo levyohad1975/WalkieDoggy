@@ -33,7 +33,11 @@ export async function getRemoteGpsCommandOutcome(commandId: string): Promise<{ s
   return (data as { status: string; failure_reason: string | null } | null) ?? null;
 }
 export async function sendRemoteGpsNotification(commandId: string): Promise<void> {
-  if (!supabase) return;
-  const { error } = await supabase.functions.invoke('remote-gps-notify',{body:{commandId}});
+  if (!supabase) throw new Error('Supabase is not configured');
+  const { data, error } = await supabase.functions.invoke('remote-gps-notify', { body: { commandId } });
   if (error) throw error;
+  const result = data as { ok?: boolean; expoSent?: number; webSent?: number; error?: string } | null;
+  if (!result || result.ok !== true || (result.expoSent ?? 0) + (result.webSent ?? 0) === 0) {
+    throw new Error(result?.error ?? 'No push notifications were delivered to a push service');
+  }
 }
