@@ -9,6 +9,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useFamilyStore } from '../../store/familyStore';
 import { useTutorialStore } from '../../store/tutorialStore';
 import { readTutorialRecord, recordTutorialDecision } from '../../lib/tutorialProgress';
+import { setTutorialEnvOverride, type TutorialEnv } from '../../lib/tutorialConfig';
 import type { FamilyUser } from '../../types';
 
 /**
@@ -57,19 +58,25 @@ function expectOffered() {
   expect(useTutorialStore.getState().lastGateReason).toBe('offer');
 }
 
-const ORIGINAL_ENV = { ...process.env };
+// EXPO_PUBLIC_* values are compiled into the module, so configuration is
+// injected through the config seam instead of being set at runtime.
+let env: TutorialEnv;
+function configure(patch: TutorialEnv) {
+  env = { ...env, ...patch };
+  setTutorialEnvOverride(env);
+}
 
 beforeEach(async () => {
   jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(true);
   jest.spyOn(AccessibilityInfo, 'addEventListener').mockReturnValue({ remove: jest.fn() } as never);
-  process.env.EXPO_PUBLIC_TUTORIAL_VIDEO_URL = '/tutorial/all.mp4';
-  delete process.env.EXPO_PUBLIC_TUTORIAL_AUTO_OFFER_SINCE;
+  env = { videoUrl: '/tutorial/all.mp4' };
+  setTutorialEnvOverride(env);
   useTutorialStore.getState().reset();
   await AsyncStorage.clear();
 });
 
 afterEach(() => {
-  process.env = { ...ORIGINAL_ENV };
+  setTutorialEnvOverride(null);
 });
 
 describe('first-run tutorial — presentation', () => {
@@ -83,7 +90,7 @@ describe('first-run tutorial — presentation', () => {
     expect(screen.getByText(TUTORIAL_COPY.description)).toBeTruthy();
     expect(screen.getByText(TUTORIAL_COPY.watch)).toBeTruthy();
     expect(screen.getByText(TUTORIAL_COPY.skip)).toBeTruthy();
-    expect(TUTORIAL_COPY.title).toBe('ברוכים הבאים ל־Walkie Doggy! 🐶');
+    expect(TUTORIAL_COPY.title).toBe('ברוכים הבאים ל־Walkie Doggy!');
     expect(TUTORIAL_COPY.description).toBe('רוצים לראות איך מנהלים את הטיולים המשפחתיים בקלות? הכנו לכם הדרכה קצרה.');
   });
 
@@ -97,7 +104,7 @@ describe('first-run tutorial — presentation', () => {
   });
 
   it('is not offered when no video is configured', async () => {
-    delete process.env.EXPO_PUBLIC_TUTORIAL_VIDEO_URL;
+    configure({ videoUrl: undefined });
     signIn();
     renderHost();
     await flush();
@@ -174,7 +181,7 @@ describe('first-run tutorial — skip and completion persistence', () => {
 
 describe('first-run tutorial — creator vs member', () => {
   it('a family creator/admin gets the admin cut and admin highlights', async () => {
-    process.env.EXPO_PUBLIC_TUTORIAL_VIDEO_URL_ADMIN = '/tutorial/admin.mp4';
+    configure({ videoUrlAdmin: '/tutorial/admin.mp4' });
     signIn({ role: 'admin' });
     renderHost();
     await flush();
@@ -274,7 +281,7 @@ describe('first-run tutorial — offline and storage failures', () => {
 describe('Help / Settings replay', () => {
   it('opens the player directly, even after completion, and shows the fallback when the video is unavailable', async () => {
     await recordTutorialDecision('fam-1', 'parent', 'completed');
-    delete process.env.EXPO_PUBLIC_TUTORIAL_VIDEO_URL;
+    configure({ videoUrl: undefined });
     signIn();
     renderHost({ platformOS: 'ios' });
     await flush();

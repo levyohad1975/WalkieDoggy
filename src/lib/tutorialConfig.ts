@@ -35,7 +35,20 @@ export interface TutorialSource {
   role: TutorialRole;
 }
 
+let envOverride: TutorialEnv | null = null;
+
+/**
+ * Test seam. babel-preset-expo substitutes each literal
+ * `process.env.EXPO_PUBLIC_*` read with its value when the file is compiled,
+ * so changing process.env at runtime (e.g. inside a Jest test) has no
+ * effect. Tests inject configuration here instead; pass null to restore.
+ */
+export function setTutorialEnvOverride(env: TutorialEnv | null): void {
+  envOverride = env;
+}
+
 export function readTutorialEnv(): TutorialEnv {
+  if (envOverride) return envOverride;
   return {
     videoUrl: process.env.EXPO_PUBLIC_TUTORIAL_VIDEO_URL,
     videoUrlAdmin: process.env.EXPO_PUBLIC_TUTORIAL_VIDEO_URL_ADMIN,
