@@ -37,7 +37,7 @@ function renderPlayer(video: MockVideo, props: Partial<React.ComponentProps<type
     <TutorialVideoPlayer source={SOURCE} platformOS="web" initialOnline onEnded={onEnded} onClose={onClose} {...props} />,
     { createNodeMock: (element: { type: unknown }) => (element.type === 'video' ? video : null) },
   );
-  const videoNode = () => screen.UNSAFE_root.findAll((n) => (n.type as unknown) === 'video')[0];
+  const videoNode = () => screen.UNSAFE_root.findAll((n: { type: unknown }) => n.type === 'video')[0];
   return { onEnded, onClose, videoNode };
 }
 
@@ -95,7 +95,7 @@ describe('TutorialVideoPlayer (web: iPhone Safari / Android Chrome)', () => {
   it('ships a Hebrew captions track', () => {
     const video = makeVideo();
     const { videoNode } = renderPlayer(video);
-    const track = videoNode().findAll((n) => (n.type as unknown) === 'track')[0];
+    const track = videoNode().findAll((n: { type: unknown }) => n.type === 'track')[0];
     expect(track.props).toMatchObject({ kind: 'captions', srcLang: 'he', src: '/tutorial/member.he.vtt' });
   });
 
