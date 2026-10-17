@@ -2155,7 +2155,7 @@ const styles = StyleSheet.create({
   topRow: { position: 'relative', minHeight: 54, alignItems: 'center', justifyContent: 'center' },
   // Item 6 (mobile polish): trimmed from 58/6 — a shorter header row so the
   // Dashboard's real content (Next Walk, timeline) starts higher on screen.
-  dashboardTopRow: { minHeight: 48, paddingHorizontal: spacing.md, paddingTop: Platform.OS === 'web' ? 0 : 4, zIndex: 4, alignSelf: 'flex-start', maxWidth: '48%' },
+  dashboardTopRow: { minHeight: 48, paddingHorizontal: spacing.md, paddingTop: Platform.OS === 'web' ? 0 : 4, zIndex: 4 },
   brandWordmark: { width: 132, height: 42 },
   mascotHeaderButton: { position: 'absolute', left: spacing.md, top: 7, width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   dashboardHero: {
