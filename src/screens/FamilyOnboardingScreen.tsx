@@ -478,7 +478,9 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
           <Button label={verifyingEmail ? 'שולח קוד…' : 'שלחו לי קוד אימות'} onPress={() => sendAdminVerification(false)} disabled={verifyingEmail || !adminEmail.trim()} loading={verifyingEmail} style={styles.wideButton} />
         ) : (
           <>
-            <TextInput value={verificationCode} onChangeText={setVerificationCode} placeholder="קוד האימות שקיבלתם במייל" accessibilityLabel="קוד האימות שקיבלתם במייל" keyboardType="number-pad" style={styles.input} textAlign="right" />
+            <TextInput value={verificationCode} onChangeText={setVerificationCode} placeholder="קוד האימות שקיבלתם במייל" accessibilityLabel="קוד האימות שקיבלתם במייל" keyboardType="number-pad"
+                    autoComplete="one-time-code"
+                    textContentType="oneTimeCode" style={styles.input} textAlign="right" />
             <Button label={verifyingEmail ? 'מחבר למשפחה…' : 'המשך למשפחה שלי'} onPress={recoverExistingFamily} disabled={verifyingEmail || !verificationCode.trim()} loading={verifyingEmail} style={styles.wideButton} />
           </>
         )}
@@ -615,6 +617,8 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
                     style={[styles.input, styles.codeInput]}
                     textAlign="center"
                     keyboardType="number-pad"
+                    autoComplete="one-time-code"
+                    textContentType="oneTimeCode"
                     autoCorrect={false}
                     maxLength={8}
                     accessibilityLabel="קוד האימות שקיבלת בדוא״ל"
