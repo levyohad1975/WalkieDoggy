@@ -65,8 +65,9 @@ describe('accumulateDistance', () => {
   it('does not accumulate distance from GPS jitter below MIN_MOVEMENT_METERS', () => {
     let acc = createGpsAccumulator();
     acc = accumulateDistance(acc, point({ latitude: 32.08000000, longitude: 34.78000000, timestamp: 1 }));
-    // ~0.5m jitter — well under the floor.
-    acc = accumulateDistance(acc, point({ latitude: 32.08000450, longitude: 34.78000000, timestamp: 2 }));
+    // ~0.5m jitter one second later — well under the floor, and a plausible
+    // 0.5 m/s so the 35bff06 speed filter keeps it as an observed point.
+    acc = accumulateDistance(acc, point({ latitude: 32.08000450, longitude: 34.78000000, timestamp: 1_001 }));
 
     expect(acc.distanceMeters).toBe(0);
     expect(acc.pointCount).toBe(2);
@@ -79,8 +80,9 @@ describe('accumulateDistance', () => {
     acc = accumulateDistance(acc, point({ latitude: 32.08000000, longitude: 34.78000000, timestamp: 1 }));
     expect(acc.routePoints).toEqual([point({ latitude: 32.08000000, longitude: 34.78000000, timestamp: 1 })]);
     // ~0.5m jitter — well under the floor; must not accumulate distance
-    // AND must not drop routePoints off the returned accumulator.
-    acc = accumulateDistance(acc, point({ latitude: 32.08000450, longitude: 34.78000000, timestamp: 2 }));
+    // AND must not drop routePoints off the returned accumulator. One second
+    // later so this exercises the sub-floor branch, not the speed filter.
+    acc = accumulateDistance(acc, point({ latitude: 32.08000450, longitude: 34.78000000, timestamp: 1_001 }));
     expect(acc.routePoints).toEqual([point({ latitude: 32.08000000, longitude: 34.78000000, timestamp: 1 })]);
   });
 
@@ -91,7 +93,9 @@ describe('accumulateDistance', () => {
       // Tiny alternating jitter, each individually under MIN_MOVEMENT_METERS
       // from the ORIGINAL point.
       const jitter = i % 2 === 0 ? 0.0000005 : -0.0000005;
-      acc = accumulateDistance(acc, point({ latitude: 32.08 + jitter, longitude: 34.78, timestamp: i + 2 }));
+      // One fix per second, so each stays under the speed filter and reaches
+      // the sub-floor branch this test is about.
+      acc = accumulateDistance(acc, point({ latitude: 32.08 + jitter, longitude: 34.78, timestamp: 1 + (i + 1) * 1_000 }));
     }
     expect(acc.distanceMeters).toBe(0);
   });
