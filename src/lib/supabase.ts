@@ -2,6 +2,7 @@ import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import type { FamilyLookupResult } from '../types';
+import { withSyncIdentityFence } from './syncIdentityFence';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const supabasePublishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '';
@@ -57,6 +58,18 @@ export const supabase = isSupabaseConfigured
     })
   : null;
 
+let currentSupabaseAuthUserId: string | null = null;
+if (supabase) {
+  supabase.auth.onAuthStateChange?.((_event, session) => {
+    currentSupabaseAuthUserId = session?.user.id ?? null;
+  });
+}
+
+/** Cached auth.uid() hint; SyncQueue still verifies it with the server before replay. */
+export function getCurrentSupabaseAuthUserId(): string | null {
+  return currentSupabaseAuthUserId;
+}
+
 /**
  * Every device needs *some* Supabase Auth session for Row Level Security to
  * evaluate at all (see supabase/schema.sql — `current_family_id()` reads
@@ -68,10 +81,16 @@ export const supabase = isSupabaseConfigured
  */
 export async function ensureAnonymousSession(): Promise<void> {
   if (!supabase) return;
-  const { data } = await supabase.auth.getSession();
-  if (data.session) return;
-  const { error } = await supabase.auth.signInAnonymously();
-  if (error) throw error;
+  await withSyncIdentityFence(async () => {
+    const { data } = await supabase!.auth.getSession();
+    if (data.session) {
+      currentSupabaseAuthUserId = data.session.user?.id ?? null;
+      return;
+    }
+    const { data: signedIn, error } = await supabase!.auth.signInAnonymously();
+    if (error) throw error;
+    currentSupabaseAuthUserId = signedIn?.session?.user?.id ?? null;
+  });
 }
 
 /**
@@ -95,8 +114,10 @@ export async function ensureAnonymousSession(): Promise<void> {
  */
 export async function claimFamilyProfile(userId: string): Promise<void> {
   if (!supabase) return;
-  const { error } = await supabase.rpc('claim_family_profile', { target_user_id: userId });
-  if (error) throw error;
+  await withSyncIdentityFence(async () => {
+    const { error } = await supabase!.rpc('claim_family_profile', { target_user_id: userId });
+    if (error) throw error;
+  });
 }
 
 /**
@@ -145,10 +166,10 @@ export async function setProfilePin(userId: string, pin: string | null): Promise
  */
 export async function claimFamilyProfileWithPin(userId: string, pin: string): Promise<void> {
   if (!supabase) throw new SupabaseNotConfiguredError();
-  const { data, error } = await supabase.rpc('claim_family_profile_with_pin', {
+  const { data, error } = await withSyncIdentityFence(async () => await supabase!.rpc('claim_family_profile_with_pin', {
     p_target_user_id: userId,
     p_pin: pin,
-  });
+  }));
   if (error) throw error;
 
   const result = data as { success?: boolean; reason?: string } | null;
@@ -209,7 +230,7 @@ export async function findFamilyByInviteCode(code: string): Promise<FamilyLookup
  */
 export async function joinFamily(code: string): Promise<{ id: string; name: string }> {
   if (!supabase) throw new SupabaseNotConfiguredError();
-  const { data, error } = await supabase.rpc('join_family', { code });
+  const { data, error } = await withSyncIdentityFence(async () => await supabase!.rpc('join_family', { code }));
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) throw new Error('לא נמצאה משפחה עם הקוד הזה');
@@ -228,10 +249,10 @@ export async function createFamily(
   dogName?: string
 ): Promise<{ id: string; name: string; inviteCode: string }> {
   if (!supabase) throw new SupabaseNotConfiguredError();
-  const { data, error } = await supabase.rpc('create_family', {
+  const { data, error } = await withSyncIdentityFence(async () => await supabase!.rpc('create_family', {
     family_name: familyName,
     dog_name: dogName ?? null,
-  });
+  }));
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) throw new Error('יצירת המשפחה נכשלה');

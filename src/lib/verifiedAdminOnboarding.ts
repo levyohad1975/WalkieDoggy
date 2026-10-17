@@ -1,5 +1,6 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase, SupabaseNotConfiguredError } from './supabase';
+import { withSyncIdentityFence } from './syncIdentityFence';
 
 export type VerifiedAdminIdentity = {
   userId: string;
@@ -96,11 +97,11 @@ export async function verifyAdminEmailOtpWithAuth(
   const normalizedToken = token.trim();
   if (!normalizedToken) throw new Error('יש להזין את קוד האימות');
 
-  const { data, error } = await auth.verifyOtp({
+  const { data, error } = await withSyncIdentityFence(async () => await auth.verifyOtp({
     email: normalized,
     token: normalizedToken,
     type: 'email',
-  });
+  }));
   if (error) throw error;
 
   const user = data.user ?? data.session?.user;
