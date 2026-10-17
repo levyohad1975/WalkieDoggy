@@ -234,7 +234,10 @@ def capture_segment(edit: dict, scene: dict, src: Path, seconds: float, w: int, 
         rtl_text(d, (w - int(w * 0.05), int(h * 0.05)), scene['chapter'], font(FONT_BOLD, int(min(w, h) * 0.045)), hex_rgb(b['primaryDark']), anchor='ra')
     img.save(bg_png)
     vertical = h > w
-    ph = int(h * (0.80 if not vertical else 0.78))
+    # Safe area: below the chapter title, above the bottom caption band, so
+    # captions never cover app UI (e.g. buttons at the bottom of the screen).
+    ph = int(h * (0.70 if not vertical else 0.74))
+    top = int(h * (0.11 if not vertical else 0.10))
     mask = work / f"{scene['id']}_mask.png"
     pw_guess = int(ph * 0.4615)  # iPhone 19.5:9 portrait
     m = Image.new('L', (pw_guess, ph), 0)
@@ -244,7 +247,7 @@ def capture_segment(edit: dict, scene: dict, src: Path, seconds: float, w: int, 
     fc = (f"[0:v]scale={pw_guess}:{ph}:force_original_aspect_ratio=decrease,pad={pw_guess}:{ph}:(ow-iw)/2:(oh-ih)/2:color={bg},"
           f"fps={fps},tpad=stop_mode=clone:stop_duration={seconds},trim=duration={seconds},setpts=PTS-STARTPTS,format=rgba[cap];"
           f"[2:v]format=gray[m];[cap][m]alphamerge[rounded];"
-          f"[1:v][rounded]overlay=(W-w)/2:(H-h)/2+{int(h * 0.03)}:shortest=0,"
+          f"[1:v][rounded]overlay=(W-w)/2:{top}:shortest=0,"
           f"fade=t=in:st=0:d={FADE}:color={bg},fade=t=out:st={seconds - FADE:.3f}:d={FADE}:color={bg},format=yuv420p[v]")
     sh('ffmpeg', '-y', '-loglevel', 'error', '-i', str(src), '-loop', '1', '-i', str(bg_png), '-loop', '1', '-i', str(mask),
        '-filter_complex', fc, '-map', '[v]', '-t', f'{seconds}', '-c:v', 'libx264', '-preset', 'medium', '-crf', '18',
