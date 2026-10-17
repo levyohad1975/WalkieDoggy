@@ -12,3 +12,6 @@ android/
 
 *.before-*
 supabase/.temp/
+
+# Tutorial video raw screen recordings (private, large) — never commit
+docs/product/tutorial-video/captures/

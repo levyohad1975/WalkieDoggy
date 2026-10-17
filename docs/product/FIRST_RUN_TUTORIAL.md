@@ -112,6 +112,8 @@ Accepted URL forms: `https://…` or a same-origin path beginning with `/`. Anyt
 
 ## 4. Storyboard & Hebrew narration — `DRAFT` for approval
 
+> **Superseded for video production** by the owner's *Tutorial Video Production Brief* (2026-10-17): 2–3 min, 16:9 master + 9:16 in-app cut. See `tutorial-video/PRODUCTION_PLAN.md` and `tutorial-video/edit.json`. The outline below is kept for history.
+
 Visual system: warm cream background `#FBF8F3`, white rounded cards, turquoise `#20A7B5` used only for the active highlight ring/pointer, system Hebrew font, RTL. Calm pacing, one idea per scene, no fast zooms. Authentic Staging screens recorded on a 390 × 844 iPhone viewport with a demo family whose dog is **not** presented as the mascot. The mascot appears only in the intro and outro and uses the approved transparent derivative `assets/branding/walkie-doggy-mascot-transparent.png` (static, or an already-approved pose — no new mascot generation).
 
 Two cuts share scenes 1–7. Target length: **member ≈ 58 s**, **admin ≈ 66 s** (both inside 45–75 s). Narration budget ≈ 2.2 Hebrew words/second.

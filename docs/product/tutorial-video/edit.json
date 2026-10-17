@@ -1,0 +1,89 @@
+{
+  "_status": "DRAFT — timeline approved for review only. Capture scenes are placeholders until genuine Staging recordings are supplied (see PRODUCTION_PLAN.md §3).",
+  "version": 1,
+  "fps": 30,
+  "canvas": { "w": 1920, "h": 1080 },
+  "vertical": { "w": 1080, "h": 1920 },
+  "brand": {
+    "background": "#FBF8F3",
+    "surface": "#FFFFFF",
+    "border": "#EAE2D3",
+    "primary": "#20A7B5",
+    "primaryDark": "#0B5C75",
+    "text": "#2E2A24",
+    "textSecondary": "#8A8171",
+    "mascot": "assets/branding/walkie-doggy-mascot-transparent.png",
+    "mascotSha256": "8ab9b6320261234d45062ff16b2dbde8b11857902c7bb1343e707c4a3d51f6d6",
+    "wordmark": "assets/walkie-doggy-link-wordmark-transparent.png",
+    "font": "DejaVu Sans",
+    "fontBold": "DejaVu Sans:style=Bold"
+  },
+  "scenes": [
+    {
+      "id": "S1-open", "start": 0, "end": 15, "type": "brand",
+      "title": "Walkie Doggy Link", "subtitle": "כל המשפחה מתאמת את הטיולים עם הכלב",
+      "motion": "fade-in 0.6 s, mascot scale 1.00 → 1.03 (whole-image, no character redraw), fade-out 0.4 s"
+    },
+    {
+      "id": "S2-family", "start": 15, "end": 40, "type": "capture", "chapter": "יצירת משפחה והכלב",
+      "capture": "captures/C01-family-create-dog.mp4",
+      "needs": "Test family creation → dog details (name, photo optional) in the real onboarding wizard."
+    },
+    {
+      "id": "S3-members-schedule", "start": 40, "end": 60, "type": "capture", "chapter": "בני משפחה ולו״ז",
+      "capture": "captures/C02-members-roles-schedule.mp4",
+      "needs": "Add test members, show role, set weekly walk times and responsible member; end on Home next-walk card."
+    },
+    {
+      "id": "S4a-walk", "start": 60, "end": 72, "type": "capture", "chapter": "יוצאים לטיול",
+      "capture": "captures/C03-dashboard-start-walk.mp4",
+      "needs": "Home next-walk card → tap ״התחל טיול״ (requires Walk Lifecycle v1.1 active on Staging)."
+    },
+    {
+      "id": "S4b-gps", "start": 72, "end": 88, "type": "capture", "chapter": "מעקב מיקום",
+      "capture": "captures/C04-gps-live-map.mp4",
+      "gated": "GPS real-iPhone acceptance",
+      "pendingLabel": "מעקב GPS — ממתין לאימות באייפון אמיתי. לא יוצג עד לאישור.",
+      "needs": "Real iPhone, real outdoor walk: permission prompt, first fix, live route and distance. Do NOT simulate."
+    },
+    {
+      "id": "S4c-finish", "start": 88, "end": 95, "type": "capture", "chapter": "סיום טיול",
+      "capture": "captures/C05-finish-walk.mp4",
+      "needs": "Tap ״סיים טיול״ → completion sheet → celebration → Home updated."
+    },
+    {
+      "id": "S5-requests", "start": 95, "end": 115, "type": "capture", "chapter": "החלפה ושינוי שעה",
+      "capture": "captures/C06-swap-time-change.mp4",
+      "needs": "Member: ״בקש החלפה״ and ״בקש שינוי שעה״ on a future walk; status line; approver opens requests inbox and approves."
+    },
+    {
+      "id": "S6-history-admin", "start": 115, "end": 140, "type": "capture", "chapter": "לו״ז, היסטוריה ונתונים",
+      "capture": "captures/C07-schedule-history-stats-admin.mp4",
+      "needs": "Schedule week view → History → Statistics (נתונים) → Family tab admin controls (roles, member edit) → dog details."
+    },
+    {
+      "id": "S7-close", "start": 140, "end": 155, "type": "brand",
+      "title": "טיולים נעימים!", "subtitle": "אפשר לצפות שוב בכל רגע דרך ״סרטון הדרכה״",
+      "motion": "fade-in 0.4 s, mascot scale 1.00 → 1.03, hold, fade-out 0.8 s"
+    }
+  ],
+  "cues": [
+    { "start": 1.5, "end": 5.0, "scene": "S1-open", "text": "ברוכים הבאים ל־Walkie Doggy Link!" },
+    { "start": 5.5, "end": 11.0, "scene": "S1-open", "text": "כאן כל המשפחה מתאמת את הטיולים עם הכלב, בקלות ובמקום אחד." },
+    { "start": 16.0, "end": 21.5, "scene": "S2-family", "text": "מתחילים ביצירת משפחה, מוסיפים את פרטי הכלב," },
+    { "start": 30.0, "end": 34.0, "scene": "S2-family", "text": "ומזמינים את בני המשפחה להצטרף." },
+    { "start": 41.0, "end": 47.0, "scene": "S3-members-schedule", "text": "בשלב הבא מגדירים את שעות הטיול ואת מי שאחראי לכל טיול." },
+    { "start": 53.0, "end": 58.5, "scene": "S3-members-schedule", "text": "במסך הבית אפשר לראות מהו הטיול הבא, ומי אמור לצאת." },
+    { "start": 61.0, "end": 66.5, "scene": "S4a-walk", "text": "כשהגיע הזמן, פותחים את הטיול ולוחצים על התחלת טיול." },
+    { "start": 73.0, "end": 80.0, "scene": "S4b-gps", "gated": true, "text": "כשמעקב המיקום זמין ומאושר, ניתן לראות את המסלול ואת המרחק במפה." },
+    { "start": 89.0, "end": 92.0, "scene": "S4c-finish", "text": "בסיום, לוחצים על סיום טיול." },
+    { "start": 96.0, "end": 102.0, "scene": "S5-requests", "text": "לא יכולים לצאת בזמן? אפשר לבקש החלפה או שינוי שעה," },
+    { "start": 107.0, "end": 110.5, "scene": "S5-requests", "text": "ולעקוב אחר הטיפול בבקשה." },
+    { "start": 116.0, "end": 119.5, "scene": "S6-history-admin", "text": "בלוח השבועי רואים את התכנון קדימה," },
+    { "start": 123.0, "end": 128.5, "scene": "S6-history-admin", "text": "ובהיסטוריה ובסטטיסטיקות אפשר לעיין בטיולים שכבר בוצעו." },
+    { "start": 132.0, "end": 137.5, "scene": "S6-history-admin", "text": "מנהלי המשפחה יכולים לעדכן בני משפחה, תפקידים ופרטי כלב." },
+    { "start": 141.0, "end": 142.6, "scene": "S7-close", "text": "זה הכול!" },
+    { "start": 143.0, "end": 149.0, "scene": "S7-close", "text": "עם Walkie Doggy Link, כולם יודעים מתי יוצאים, מי אחראי, ומה כבר בוצע." },
+    { "start": 149.8, "end": 152.5, "scene": "S7-close", "text": "טיולים נעימים!" }
+  ]
+}
