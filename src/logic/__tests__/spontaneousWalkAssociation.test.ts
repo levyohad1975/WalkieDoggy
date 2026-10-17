@@ -34,7 +34,7 @@ describe('findSpontaneousAssociationCandidates', () => {
       walk('replaceable', '2026-10-13', '09:30'),
       walk('too-far', '2026-10-13', '10:01'),
     ], 'dog', now, 'Asia/Jerusalem');
-    expect(candidates.map((item) => item.id).toEqual(['replaceable']);
+    expect(candidates.map((item) => item.id)).toEqual(['replaceable']);
   });
 
   it('keeps the existing 30-minute window for overdue scheduled walks', () => {
@@ -43,7 +43,7 @@ describe('findSpontaneousAssociationCandidates', () => {
       walk('recent', '2026-10-13', '08:30'),
       walk('old', '2026-10-13', '08:29'),
     ], 'dog', now, 'Asia/Jerusalem');
-    expect(candidates.map((item) => item.id).toEqual(['recent']);
+    expect(candidates.map((item) => item.id)).toEqual(['recent']);
   });
 
   it('orders identical-time choices deterministically by id', () => {
