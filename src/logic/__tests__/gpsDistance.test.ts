@@ -54,8 +54,8 @@ describe('accumulateDistance', () => {
   it('sums real movement across multiple points', () => {
     let acc = createGpsAccumulator();
     acc = accumulateDistance(acc, point({ latitude: 32.0800, longitude: 34.7800, timestamp: 1 }));
-    acc = accumulateDistance(acc, point({ latitude: 32.0810, longitude: 34.7800, timestamp: 2 })); // ~111m north
-    acc = accumulateDistance(acc, point({ latitude: 32.0820, longitude: 34.7800, timestamp: 3 })); // ~111m more
+    acc = accumulateDistance(acc, point({ latitude: 32.0810, longitude: 34.7800, timestamp: 60_001 })); // ~111m north
+    acc = accumulateDistance(acc, point({ latitude: 32.0820, longitude: 34.7800, timestamp: 120_001 })); // ~111m more
 
     expect(acc.pointCount).toBe(3);
     expect(acc.distanceMeters).toBeGreaterThan(200);
@@ -108,8 +108,25 @@ describe('accumulateDistance', () => {
   it('accepts a fix at exactly the accuracy threshold', () => {
     let acc = createGpsAccumulator();
     acc = accumulateDistance(acc, point({ latitude: 32.0800, longitude: 34.7800, timestamp: 1, accuracy: MAX_ACCURACY_METERS }));
-    acc = accumulateDistance(acc, point({ latitude: 32.0810, longitude: 34.7800, timestamp: 2, accuracy: MAX_ACCURACY_METERS }));
+    acc = accumulateDistance(acc, point({ latitude: 32.0810, longitude: 34.7800, timestamp: 60_001, accuracy: MAX_ACCURACY_METERS }));
     expect(acc.distanceMeters).toBeGreaterThan(0);
+  });
+
+
+  it('rejects an implausible GPS jump and retains the last trusted route point', () => {
+    const start = point({ timestamp: 1000 });
+    const trusted = accumulateDistance(createGpsAccumulator(), start);
+    const jumped = accumulateDistance(trusted, point({ latitude: 32.09, timestamp: 6000 }));
+    expect(jumped).toEqual(trusted);
+    const recovered = accumulateDistance(jumped, point({ latitude: 32.0854, timestamp: 11000 }));
+    expect(recovered.routePoints).toHaveLength(2);
+    expect(recovered.distanceMeters).toBeGreaterThan(3);
+  });
+
+  it('rejects stale or out-of-order GPS timestamps', () => {
+    const start = accumulateDistance(createGpsAccumulator(), point({ timestamp: 5000 }));
+    expect(accumulateDistance(start, point({ latitude: 32.0854, timestamp: 5000 }))).toEqual(start);
+    expect(accumulateDistance(start, point({ latitude: 32.0854, timestamp: 4000 }))).toEqual(start);
   });
 
   it('MIN_MOVEMENT_METERS is a small, sane floor (not accidentally huge or zero)', () => {
