@@ -89,6 +89,8 @@ export interface ResolveDuplicateActiveWalksRequest {
  * used for tests and the "no backend configured yet" demo mode.
  */
 export interface Repository {
+  /** Server-verified identity used to fence offline SyncQueue replay. */
+  getSyncReplayIdentity?(): Promise<{ authUserId: string; profileId: string; familyId: string }>;
   /** Clears only the local cache for a family confirmed permanently deleted by the server. Never touches SyncQueue. */
   clearLocalFamilyCache?(familyId: string): Promise<void>;
   getFamily(familyId: string): Promise<Family | undefined>;

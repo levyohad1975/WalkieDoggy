@@ -14,8 +14,8 @@ import { colors } from './src/theme/colors';
 import { requestNotificationPermissions, subscribeToWalkReminderResponses } from './src/notifications/notificationService';
 import { registerPushToken } from './src/lib/pushTokens';
 import { reconcileWebPushSubscription } from './src/lib/webPush';
-import { repository, setSyncQueueActorGetter } from './src/data';
-import { getCurrentFamilyIsQa, getWhoAmI, isSupabaseConfigured, supabaseProjectUrl } from './src/lib/supabase';
+import { repository, setSyncQueueActorGetter, setSyncQueueAuthUserGetter, setSyncQueueFamilyGetter } from './src/data';
+import { getCurrentFamilyIsQa, getCurrentSupabaseAuthUserId, getWhoAmI, isSupabaseConfigured, supabaseProjectUrl } from './src/lib/supabase';
 import { touchLastSeen } from './src/lib/requests';
 import { useRequestsStore } from './src/store/requestsStore';
 import { useScheduleStore, reconcileScheduleNotifications } from './src/store/scheduleStore';
@@ -277,6 +277,8 @@ export async function registerPushTokenAndReconcile(): Promise<void> {
 // App.tsx already imports both authStore and the data layer, so it's the
 // natural place to introduce this one-directional wiring.
 setSyncQueueActorGetter(() => useAuthStore.getState().currentUserId);
+setSyncQueueFamilyGetter?.(() => useAuthStore.getState().familyId);
+setSyncQueueAuthUserGetter?.(() => getCurrentSupabaseAuthUserId());
 
 export default function App() {
   const { currentUserId, familyId, familyRole, hydrated, restoreSession, systemObserverActive, setFamilyId } = useAuthStore();

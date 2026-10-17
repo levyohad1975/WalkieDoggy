@@ -1,6 +1,7 @@
 import { supabase, SupabaseNotConfiguredError } from './supabase';
 import { repository } from '../data';
 import { completeWalkLifecycleOperation, getWalkLifecycleOperationId } from '../data/walkLifecycleOperationIds';
+import { withSyncIdentityFence } from './syncIdentityFence';
 
 /**
  * BATCH 4 (item A — System Admin V1, read-only). Thin client wrappers over
@@ -176,7 +177,7 @@ export async function flushBeforeSystemAdminTestFamilySwitch(): Promise<void> {
 export async function createSystemAdminTestFamily(familyName: string): Promise<SystemAdminTestFamily> {
   const client = requireSupabase();
   await flushBeforeSystemAdminTestFamilySwitch();
-  const { data, error } = await client.rpc('system_admin_enter_test_family', { p_family_name: familyName.trim() });
+  const { data, error } = await withSyncIdentityFence(async () => await client.rpc('system_admin_enter_test_family', { p_family_name: familyName.trim() }));
   if (error) throw error;
   const row = rowOrThrow(data as Array<{ id: string; name: string; invite_code: string }> | null, 'יצירת משפחת הבדיקה נכשלה');
   return { familyId: row.id, familyName: row.name, inviteCode: row.invite_code, createdAt: new Date().toISOString(), dogName: null };
@@ -229,7 +230,7 @@ export async function switchToSystemAdminTestFamily(familyId: string): Promise<S
   recordTestFamilyReentryDiagnostic({ diagnosticId, familyId, stage: 'rpc', outcome: 'started' });
   let data: unknown;
   try {
-    const result = await client.rpc('system_admin_switch_test_family', { p_family_id: familyId });
+    const result = await withSyncIdentityFence(async () => await client.rpc('system_admin_switch_test_family', { p_family_id: familyId }));
     if (result.error) throw result.error;
     data = result.data;
     recordTestFamilyReentryDiagnostic({ diagnosticId, familyId, stage: 'rpc', outcome: 'succeeded' });
@@ -383,7 +384,7 @@ export async function permanentlyDeleteSystemAdminFamily(
 /** Leaves the active QA family and restores the original family/profile snapshot. */
 export async function exitSystemAdminTestFamily(): Promise<{ id: string; name: string }> {
   const client = requireSupabase();
-  const { data, error } = await client.rpc('system_admin_exit_test_family');
+  const { data, error } = await withSyncIdentityFence(async () => await client.rpc('system_admin_exit_test_family'));
   if (error) throw error;
   const row = rowOrThrow(data as Array<{ id: string; name: string }> | null, 'החזרה למשפחה המקורית נכשלה');
   return row;

@@ -348,6 +348,24 @@ function fromDog(dog: Dog) {
 export class SupabaseRepository implements Repository {
   constructor(private client: SupabaseClient) {}
 
+  /** Verify the current bearer session and its claimed profile/family at the server. */
+  async getSyncReplayIdentity(): Promise<{ authUserId: string; profileId: string; familyId: string }> {
+    const { data: authData, error: authError } = await this.client.auth.getUser();
+    if (authError) throw authError;
+    const authUserId = authData.user?.id;
+    if (!authUserId) throw new Error('Sync identity verification failed: authenticated user is unavailable');
+
+    const { data, error } = await this.client.rpc('whoami');
+    if (error) throw error;
+    const row = Array.isArray(data) ? data[0] : data;
+    const profileId = row?.real_profile_id;
+    const familyId = row?.family_id;
+    if (!row || row.is_impersonating || typeof profileId !== 'string' || typeof familyId !== 'string') {
+      throw new Error('Sync identity verification failed: server has no unambiguous active profile and family');
+    }
+    return { authUserId, profileId, familyId };
+  }
+
   async getFamily(familyId: string): Promise<Family | undefined> {
     const { data, error } = await this.client.from('families').select('*').eq('id', familyId).maybeSingle();
     if (error) throw error;
