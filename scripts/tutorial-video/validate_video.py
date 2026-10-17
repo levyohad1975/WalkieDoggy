@@ -108,7 +108,7 @@ def main() -> None:
                              capture_output=True, text=True).stderr
         m = re.search(r'max_volume: (-?[\d.inf]+) dB', vol)
         print(f'INFO {name}: audio max_volume {m.group(1) if m else "?"} dB '
-              f'({"silent — animatic, no narration yet" if m and m.group(1) in ("-inf", "-91.0") else "narration present"})')
+              f'({"silent — animatic, no audio yet" if m and m.group(1) in ("-inf", "-91.0") else "audio present (narration and/or music)"})')
 
     vtt = out / 'tutorial.he.vtt'
     cues = parse_vtt(vtt)
