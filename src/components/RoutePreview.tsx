@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Circle, Polyline } from 'react-native-svg';
 import type { WalkGpsSession } from '../types';
+import { accumulateDistance, createGpsAccumulator } from '../logic/gpsDistance';
 import { colors } from '../theme/colors';
 import { RtlText } from './RtlText';
 
@@ -14,7 +15,14 @@ interface RoutePreviewProps {
 
 /** Lightweight in-app route drawing. It deliberately has no map provider dependency. */
 export function RoutePreview({ session, large = false, compact = false, live = false }: RoutePreviewProps) {
-  const points = session?.routePoints ?? [];
+  // Display-only filtering: never mutate persisted routePoints or the recorded distance.
+  // Re-apply the shared walking-speed and accuracy gates to legacy sessions
+  // that may have been captured before live GPS jump filtering existed.
+  const rawPoints = session?.routePoints ?? [];
+  const points = useMemo(() => rawPoints.reduce(
+    (acc, point) => accumulateDistance(acc, point),
+    createGpsAccumulator(),
+  ).routePoints, [rawPoints]);
   const [mapOpen, setMapOpen] = useState(false);
   const mapPoints = points.filter(p => Number.isFinite(p.latitude) && Number.isFinite(p.longitude) && Math.abs(p.latitude) <= 90 && Math.abs(p.longitude) <= 180).map(p => [p.latitude, p.longitude]);
   const webMap = Platform.OS === 'web' && mapPoints.length >= 1;
