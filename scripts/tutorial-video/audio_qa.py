@@ -19,7 +19,13 @@ What this script CANNOT judge: whether the voice is female, native Israeli
 Hebrew, warm, or correctly pronounced. That is a mandatory human review by a
 native Hebrew speaker (see PRODUCTION_PLAN.md §6) — the report says so.
 
-Usage: python3 scripts/tutorial-video/audio_qa.py <vo-dir-or-file> [--include-gps]
+With --write-approval-template (per-cue directory, only when 0 failures) it
+writes <vo-dir>/narration.approval.json: the SHA-256 of every take plus
+PENDING fields for the voice licence, the native-speaker pronunciation review
+and the owner approval. build_video.py refuses final (non --draft) renders
+until those are filled in and the hashes still match the takes.
+
+Usage: python3 scripts/tutorial-video/audio_qa.py <vo-dir-or-file> [--include-gps] [--write-approval-template]
 """
 from __future__ import annotations
 
@@ -112,7 +118,8 @@ def main() -> None:
             dur = check_file(f, f'cue-{n:02}')
             start = c['start'] + spans[c['scene']][2]
             nxt = cues[idx + 1][1]['start'] + spans[cues[idx + 1][1]['scene']][2] if idx + 1 < len(cues) else total
-            room = min(nxt, spans[c['scene']][1]) - start - 0.15
+            # Same rule as build_video.make_narration and narration_timing.py.
+            room = min(nxt, spans[c['scene']][1]) - start - 0.1
             check(dur <= room, f'cue-{n:02}: {dur:.2f}s fits before next cue/scene end ({room:.2f}s available)')
     else:
         dur = check_file(src, src.name)
@@ -121,6 +128,24 @@ def main() -> None:
               '(edit "cues" in edit.json) before building.')
     print('\nMANUAL (not automatable): native Israeli-Hebrew female voice · warmth · pronunciation of '
           '"Walkie Doggy Link", button labels and Hebrew construct forms — owner/native-speaker sign-off required.')
+    if '--write-approval-template' in sys.argv and src.is_dir():
+        rec_path = src / 'narration.approval.json'
+        if failures:
+            print('INFO approval template not written: fix the failures first')
+        elif rec_path.exists():
+            print(f'INFO {rec_path.name} already exists — not overwritten')
+        else:
+            import hashlib
+            takes = sorted(p for p in src.iterdir() if re.fullmatch(r'cue-\d\d\.(wav|m4a|mp3|flac)', p.name))
+            rec_path.write_text(json.dumps({
+                'voiceArtist': 'PENDING — name / agency',
+                'license': 'PENDING — e.g. buyout: perpetual, worldwide, in-app + web + social, no attribution',
+                'takesSha256': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in takes},
+                'nativeSpeakerReview': {'reviewer': 'PENDING', 'date': 'PENDING', 'decision': 'PENDING',
+                                        'form': 'docs/product/tutorial-video/PRONUNCIATION_QA_FORM.md'},
+                'ownerApproval': 'PENDING — owner name and date after listening to the assembled DRAFT',
+            }, ensure_ascii=False, indent=2), encoding='utf-8')
+            print(f'INFO wrote {rec_path} ({len(takes)} take hashes; licence/review/approval PENDING)')
     print(f'{len(failures)} failure(s)')
     sys.exit(1 if failures else 0)
 

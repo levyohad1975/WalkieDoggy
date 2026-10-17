@@ -10,11 +10,15 @@ Checks (exit 1 on any failure):
     cues do not overlap, ≤ 2 lines × 42 chars, every line RTL-embedded.
   * Duration of every MP4 matches the edited timeline (±0.2 s).
   * Audio: reports whether the track is silent (animatic) or carries narration.
+  * build_report.json: matches the current edit.json; with --final it must show
+    no --draft render, no DRAFT slate, every capture scene cut (in/out set),
+    narration and music present, and every asset approval signed (no PENDING).
 
-Usage: python3 scripts/tutorial-video/validate_video.py <build-dir> [--include-gps]
+Usage: python3 scripts/tutorial-video/validate_video.py <build-dir> [--include-gps] [--final]
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -73,6 +77,34 @@ def parse_vtt(path: Path) -> list[tuple[float, float, list[str]]]:
     return cues
 
 
+def check_report(out: Path, final: bool) -> None:
+    path = out / 'build_report.json'
+    if not path.exists():
+        check(not final, 'build_report.json present' + ('' if final else ' (older build — skipped)'))
+        return
+    rep = json.loads(path.read_text(encoding='utf-8'))
+    edit_sha = hashlib.sha256((REPO / 'docs/product/tutorial-video/edit.json').read_bytes()).hexdigest()
+    check(rep.get('editSha256') == edit_sha, 'build_report: rendered from the current edit.json')
+    kinds = {sc['id']: sc['kind'] for r in rep.get('renders', {}).values() for sc in r['scenes']}
+    slates = sorted(k for k, v in kinds.items() if v == 'DRAFT slate')
+    uncut = sorted(k for r in rep.get('renders', {}).values() for k, c in r.get('captures', {}).items() if c.get('uncut'))
+    print(f"INFO build_report: draft={rep.get('draft')} slates={slates or 'none'} uncut={uncut or 'none'} "
+          f"narration={'yes' if rep.get('narration') else 'no'} music={'yes' if rep.get('music') else 'no'}")
+    if not final:
+        return
+    check(rep.get('draft') is False, 'final: rendered without --draft')
+    check(not slates, f'final: no DRAFT slates ({", ".join(slates) or "none"})')
+    check(not uncut, f'final: every capture scene cut with in/out points ({", ".join(uncut) or "all cut"})')
+    check(bool(rep.get('narration')), 'final: narration present')
+    check(bool(rep.get('narration')) and not any(x in str((rep.get('narration') or {}).get('approval')) for x in ('PENDING', 'DRAFT')),
+          'final: narration licensed, native-speaker reviewed and owner-approved')
+    music = rep.get('music') or {}
+    check(bool(music) and 'PENDING' not in str(music.get('license')) + str(music.get('approvedBy')),
+          'final: music licensed and approved')
+    check('PENDING' not in str((rep.get('wordmark') or {}).get('approval')) and 'DRAFT' not in str((rep.get('wordmark') or {}).get('approval')),
+          'final: wordmark approved incl. final visual QA')
+
+
 def main() -> None:
     out = Path(sys.argv[1])
     include_gps = '--include-gps' in sys.argv
@@ -127,6 +159,8 @@ def main() -> None:
     if not include_gps:
         check(all('GPS' not in ' '.join(t) and 'מעקב המיקום' not in ' '.join(t) for _, _, t in cues),
               'gated GPS narration absent from captions')
+
+    check_report(out, '--final' in sys.argv)
 
     print(f'\n{len(failures)} failure(s)')
     sys.exit(1 if failures else 0)
