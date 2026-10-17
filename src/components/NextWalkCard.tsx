@@ -352,7 +352,7 @@ export function NextWalkCard({
         {!isActive ? <View style={[styles.dashboardThreeColumnRow, isWeb && styles.webMainRow]}>
           <View style={styles.dashboardPersonColumn}>
             {responsible ? <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={isWeb ? 46 : 50} /> : null}
-            <RtlText style={styles.dashboardPersonName} numberOfLines={1}>{responsible?.name ?? '—'}</RtlText>
+            <RtlText style={styles.dashboardPersonName} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>{responsible?.name ?? '—'}</RtlText>
             <RtlText style={styles.dashboardColumnLabel}>מתוכנן ל</RtlText>
             {isActive && actualWalker ? <RtlText style={styles.actualWalkerLabel} numberOfLines={2}>מבצע בפועל: {actualWalker.name}</RtlText> : null}
           </View>
@@ -604,8 +604,8 @@ const styles = StyleSheet.create({
   // assignee circle reads as its own block instead of touching the time.
   dashboardMainRow: { gap: 34, paddingHorizontal: 10, marginTop: 4, marginBottom: 10, minHeight: 82 },
   dashboardThreeColumnRow: { flexDirection: 'row', alignItems: 'stretch', justifyContent: 'space-between', marginTop: 1, marginBottom: 3, minHeight: 70, gap: 0 },
-  dashboardPersonColumn: { flex: 0.75, alignItems: 'center', justifyContent: 'center', gap: 2, minWidth: 0, paddingHorizontal: 2 },
-  dashboardPersonName: { fontSize: 16, fontWeight: '800', color: '#17345B', textAlign: 'center' },
+  dashboardPersonColumn: { flex: 0.95, alignItems: 'center', justifyContent: 'center', gap: 2, minWidth: 0, paddingHorizontal: 2 },
+  dashboardPersonName: { width: '100%', fontSize: 16, lineHeight: 20, fontWeight: '800', color: '#17345B', textAlign: 'center' },
   dashboardColumnLabel: { fontSize: 11, fontWeight: '600', color: '#7B746B', textAlign: 'center' },
   dashboardTimeColumn: { flex: 1.3, alignItems: 'center', justifyContent: 'center', minWidth: 102, borderLeftWidth: 1, borderRightWidth: 1, borderColor: '#D9D3C8', paddingHorizontal: 2 },
   dashboardTime: { width: '100%', fontSize: 31, lineHeight: 38, fontWeight: '900', color: '#111111', fontVariant: ['tabular-nums'], textAlign: 'center' },
