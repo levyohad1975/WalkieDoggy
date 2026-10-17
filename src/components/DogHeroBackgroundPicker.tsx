@@ -47,7 +47,7 @@ export function DogHeroBackgroundPicker({ dog, onSave }: { dog: Dog; onSave: (pa
               accessibilityState={{ selected }}
               accessibilityLabel={`בחירת רקע ${item.label}`}
             >
-              <Image source={getDogBackgroundImageSource(item)} style={[styles.thumb, item.id === 'walkie-park' && styles.walkieParkThumb]} resizeMode={item.id === 'walkie-park' ? 'contain' : 'cover'} />
+              <Image source={getDogBackgroundImageSource(item)} style={styles.thumb} resizeMode="cover" />
               <View style={styles.labelWrap}><RtlText style={styles.label}>{item.label}</RtlText></View>
               {selected ? <View style={styles.check}><RtlText style={styles.checkText}>✓</RtlText></View> : null}
             </Pressable>
@@ -72,8 +72,7 @@ const styles = StyleSheet.create({
   defaultHillBack: { position: 'absolute', width: 170, height: 78, borderRadius: 85, left: -48, bottom: -40, backgroundColor: '#E8F1DF' },
   defaultHillFront: { position: 'absolute', width: 165, height: 74, borderRadius: 82, right: -48, bottom: -43, backgroundColor: '#DCEAD7' },
   defaultGround: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 16, backgroundColor: '#F2E4C9' },
-  thumb: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
-  walkieParkThumb: { backgroundColor: '#F8F4EA' },
+  thumb: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, width: '100%', height: '100%' },
   labelWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#00000088', paddingVertical: 4, paddingHorizontal: 6 },
   label: { color: '#fff', fontSize: 12, fontWeight: '800', textAlign: 'center' },
   check: { position: 'absolute', top: 5, right: 5, width: 24, height: 24, borderRadius: 12, backgroundColor: colors.primaryDark, alignItems: 'center', justifyContent: 'center' },
