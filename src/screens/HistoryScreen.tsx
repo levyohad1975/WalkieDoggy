@@ -1,3 +1,4 @@
+import { summarizeWalkEvents } from '../logic/walkEventCounts';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
@@ -472,7 +473,7 @@ export function HistoryScreen() {
               {dailySummary.map(([date, dayWalks]) => (
                 <View key={date} style={styles.dayGroup}>
                   <RtlText style={styles.dayLabel}>
-                    {formatHistoryDate(date)} - {dayWalks.length} טיולים · {dayWalks.filter((w) => w.hadPee).length} 💧 · {dayWalks.filter((w) => w.hadPoop).length} 💩
+                    {formatHistoryDate(date)} - {dayWalks.length} טיולים · {summarizeWalkEvents(dayWalks).pee} 💧 · {summarizeWalkEvents(dayWalks).poop} 💩
                   </RtlText>
                   {dayWalks.map((w) => (
                     <View key={w.id} style={styles.historyItem}>
