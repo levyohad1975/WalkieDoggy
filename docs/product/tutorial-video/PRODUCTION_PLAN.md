@@ -139,10 +139,12 @@ Outputs: `tutorial_16x9.mp4` (master, soft subs), `tutorial_16x9_review.mp4` (bu
 
 Visual frame inspection at 16:9 and 9:16 (brand open/close, slates, every caption style): RTL order and punctuation, mixed Hebrew/Latin lines, line length, caption/content collisions, mascot identity unchanged (approved file, hash-checked), cream/turquoise usage. Defects found and fixed during QA: wordmark matte on cream, caption/subtitle collision, sentence-final punctuation on the wrong side, reversed mixed-direction captions, vertical subtitle overflow, slate/caption overlap. Technical checks: `ffprobe` stream/profile/faststart verification and cue timing (see the delivery report).
 
-## 11. Open dependencies
+## 11. Open dependencies (updated)
 
-1. Genuine recordings C01–C07 (owner or tester on iPhone, test family) — **cannot be captured from this environment** (no access to a phone or signed-in browser; OTP sign-in needs the test inbox).
-2. Narration audio (owner-selected voice + native-speaker approval).
-3. Walk Lifecycle v1.1 active on Staging for C03/C05; real-iPhone GPS acceptance for C04.
-4. Owner decisions: button-label wording; “סטטיסטיקות” vs “נתונים”; music bed (licensed) or none; clean wordmark export.
+Companion documents: `CAPTURE_CHECKLIST.md` (safe test-family workflow, C01–C07), `NARRATION_PACKAGE.md` (script v2, voice brief, pronunciation sign-off), `FINAL_MP4_PLAN.md` (phases, gates, acceptance), `assets/WORDMARK_PROVENANCE.md`.
+
+1. Genuine recordings C01–C07: owner on iPhone, in a System Admin test family. Needs authorisation for hosted Staging writes inside the test family.
+2. Narration: voice artist or owner-chosen TTS, plus a signed native-speaker pronunciation form.
+3. Walk Lifecycle v1.1 active on Staging (C03/C05); real-iPhone GPS acceptance (C04).
+4. Owner approvals: script v2 (four label alignments); clean wordmark DRAFT; music, either the original generated bed (licence record PENDING, needs a listen) or a licensed library track with a licence record.
 5. Separate approvals for hosting, env configuration and activation on Staging.

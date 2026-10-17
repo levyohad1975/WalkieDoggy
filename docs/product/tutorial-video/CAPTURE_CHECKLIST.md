@@ -2,6 +2,32 @@
 
 Companion to `PRODUCTION_PLAN.md` §3. Every scene below is currently a **DRAFT slate** in the animatic. A slate is replaced only by an authentic recording of `staging.walkielink.co.il`, never by simulated or reconstructed UI.
 
+## Safe capture workflow — disposable System Admin test family
+
+Uses the app's existing, reviewed mechanism (`system_admin_enter_test_family`, migration `20261011104342`). Your own family is never opened while recording.
+
+| Property | How it works |
+| --- | --- |
+| Isolation | The test family is a separate family row flagged `is_qa = true`. Ordinary `family_id` RLS remains the boundary, and nothing is shared with real families. |
+| Reversible | Entering snapshots this device's real family/profile context (`family_membership_snapshots`). **״חזרה למשפחה המקורית״** restores it. |
+| No test inbox | Uses the owner's existing System Admin session; no email OTP is shown or needed. |
+| Real onboarding | Entering a new test family launches the real setup wizard, so C01 is genuine onboarding. |
+
+**Authorisation needed first:** each step below writes to hosted **Staging** data (inside the test family only). This round forbids hosted-data changes, so run it only after you authorise a capture session.
+
+1. **Prepare (not recorded).** iPhone settings below → open the Staging PWA → confirm SHA → System Admin (🛡️) → create a test family named “משפחת דוגמה”.
+2. **Start recording only once the setup wizard is on screen** (the System Admin console must not appear). Record **C01** through the wizard with the fictional names; stop.
+3. **C02:** add נועה / איתי / מיכל, set a weekly walk time and responsible member; end on Home.
+4. **C03/C05:** only when Walk Lifecycle v1.1 is active on Staging — start a walk, then finish it with completion details.
+5. **C06:** swap and time-change requests as איתי (second device, or a PIN profile switch with the PIN pad off-camera), then approve as the admin.
+6. **C07:** walk through Schedule (השבוע), History, נתונים and Family admin controls, which by now hold test data.
+7. **C04 (later):** only after real-iPhone GPS acceptance, record a genuine outdoor walk in a public place.
+8. **Exit:** stop recording → System Admin → ״חזרה למשפחה המקורית״ → confirm your real family is back.
+9. **Keep** the test family (it is flagged `is_qa`) for reshoots. Permanent deletion uses the existing System Admin flow and needs separate approval.
+10. Transfer the original `.MOV` files privately; never commit them (git-ignored `captures/`).
+
+**Stop conditions:** any real-family name appears; a System Admin, OTP, PIN or invite-code screen is captured; Staging SHA differs from the expected build; walk-lifecycle errors appear (do not record error flows as tutorial footage).
+
 ## Before any capture session
 
 - [ ] Staging SHA verified on the day (`staging.walkielink.co.il` → expected build); note it in the file name or a log.

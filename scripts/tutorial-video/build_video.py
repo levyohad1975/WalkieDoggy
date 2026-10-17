@@ -464,6 +464,8 @@ def main() -> None:
     digest = hashlib.sha256((REPO / edit['brand']['mascot']).read_bytes()).hexdigest()
     if digest != edit['brand']['mascotSha256']:
         raise SystemExit(f'mascot asset is not the approved derivative (sha256 {digest})')
+    if args.music:
+        music_license(Path(args.music), args.draft)   # fail fast, before any rendering
     if args.wordmark:
         if 'DRAFT' in Path(args.wordmark).name and not args.draft:
             raise SystemExit('a DRAFT wordmark can only be used with --draft')
