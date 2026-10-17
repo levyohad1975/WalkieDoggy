@@ -49,6 +49,7 @@ import { repository } from '../data';
 import type { SyncQueueDiagnostics } from '../data/syncQueue';
 import { shouldShowStagingSyncDiagnostics } from '../logic/syncDiagnosticsGate';
 import { SyncDiagnosticsActionButton } from '../components/SyncDiagnosticsActionButton';
+import { openTutorialFromHelp } from '../components/tutorial/useFirstRunTutorial';
 import { summarizeSyncConflicts, summarizeSyncQuarantine } from '../logic/syncQuarantineDiagnostics';
 import { buildSyncDiagnosticExport } from '../logic/syncDiagnosticExport';
 
@@ -849,6 +850,25 @@ function SettingsScreenContent() {
             <RtlText style={styles.hubLabel}>🛰️ מיקום, GPS ונגישות</RtlText>
           </Pressable>
         </View>
+
+        {/* First-run tutorial — permanently reachable from Help. Opens the
+            player directly; works (with its fallback) even when no video is
+            configured, offline, or on native builds. */}
+        {!systemObserverActive ? (
+          <View style={styles.section}>
+            <RtlText style={styles.sectionTitle}>❓ עזרה</RtlText>
+            <Pressable
+              style={styles.hubRow}
+              onPress={() => { openTutorialFromHelp(); }}
+              accessibilityRole="button"
+              accessibilityLabel="סרטון הדרכה"
+              testID="settings-tutorial-entry"
+            >
+              <RtlText style={styles.hubChevron}>‹</RtlText>
+              <RtlText style={styles.hubLabel}>▶ סרטון הדרכה</RtlText>
+            </Pressable>
+          </View>
+        ) : null}
 
         {canShowSyncDiagnostics ? (
           <View style={styles.section}>

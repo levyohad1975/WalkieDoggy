@@ -25,6 +25,8 @@ import { FamilySetupWizard } from './src/screens/FamilySetupWizard';
 import { beginFamilySetup, clearFamilySetupProgress, isFamilySetupComplete, markFamilySetupComplete, readFamilySetupProgress, saveFamilySetupProgress, type FamilySetupProgress } from './src/lib/familySetupProgress';
 import { getVerifiedAdminIdentity } from './src/lib/verifiedAdminOnboarding';
 import { canResumeFamilySetupDraft, canShowFamilySetupWizard } from './src/logic/familySetupResume';
+import { TutorialOverlay } from './src/components/tutorial/TutorialOverlay';
+import { useFirstRunTutorial } from './src/components/tutorial/useFirstRunTutorial';
 const isStagingSupabaseProject = (() => {
   try { return new URL(supabaseProjectUrl).hostname === 'czbxhsoxyawprqehkfit.supabase.co'; }
   catch { return false; }
@@ -632,6 +634,10 @@ export default function App() {
     ownerMatches: familySetupOwnerMatches,
     familyRole,
   });
+  // Optional first-run tutorial invitation. Evaluated only after a profile
+  // is claimed (never during verification/onboarding), never while the
+  // setup wizard or the iOS install prompt is showing.
+  useFirstRunTutorial({ familySetupWizardVisible, competingOverlayVisible: showIosInstallPrompt });
 
   return (
     <SafeAreaProvider>
@@ -681,7 +687,10 @@ export default function App() {
           ) : familySetupWizardVisible ? (
             <FamilySetupWizard familyId={familySetupProgress!.familyId} progress={familySetupProgress!} onProgressChange={setFamilySetupProgress} onComplete={finishFamilySetup} onReturnToOriginalFamily={isSystemAdmin && isQaFamily && !systemObserverActive ? () => void returnFromTestFamily() : undefined} returningToOriginalFamily={qaSwitchBusy} returnFamilyError={qaSwitchError} />
           ) : currentUserId || systemObserverActive ? (
-            <RootNavigator />
+            <>
+              <RootNavigator />
+              <TutorialOverlay />
+            </>
           ) : (
             <LoginScreen />
           )}
