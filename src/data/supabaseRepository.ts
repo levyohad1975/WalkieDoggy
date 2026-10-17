@@ -143,6 +143,8 @@ export function toWalk(row: any): Walk {
     endedByUserId: row.ended_by_user_id ?? undefined,
     hadPee: row.had_pee ?? undefined,
     hadPoop: row.had_poop ?? undefined,
+    peeCount: typeof row.pee_count === 'number' && Number.isSafeInteger(row.pee_count) && row.pee_count >= 0 ? row.pee_count : undefined,
+    poopCount: typeof row.poop_count === 'number' && Number.isSafeInteger(row.poop_count) && row.poop_count >= 0 ? row.poop_count : undefined,
     note: row.note ?? undefined,
     durationMinutes: row.duration_minutes ?? undefined,
     isUnplanned: row.is_unplanned ?? undefined,
