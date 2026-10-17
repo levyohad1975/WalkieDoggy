@@ -1,7 +1,16 @@
 import { isSupabaseConfigured, supabase } from './supabase';
 
 export interface RemoteGpsTarget { target_auth_user_id: string; target_user_id: string; display_name: string; device_label: string }
-export interface RemoteGpsCommand { command_id: string; walk_id: string; status: 'pending'|'tracking'|'failed'|'expired'|'stopped'; expires_at: string }
+export interface RemoteGpsCommand {
+  command_id: string;
+  walk_id: string;
+  status: 'pending'|'tracking'|'failed'|'expired'|'stopped';
+  expires_at: string;
+  /** Server snapshot; local schedule state can lag a walk-start RPC. */
+  walk_status: 'pending'|'in_progress'|'done'|'skipped';
+  walk_family_id: string;
+  walk_actual_walker_user_id: string;
+}
 export interface RemoteGpsWalkStatus { command_id: string; status: RemoteGpsCommand['status']; failure_reason: string|null; expires_at: string }
 
 async function rpc<T>(name: string, args?: Record<string, unknown>): Promise<T> {

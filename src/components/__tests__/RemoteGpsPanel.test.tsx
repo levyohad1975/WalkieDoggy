@@ -6,8 +6,8 @@ const source=fs.readFileSync(path.resolve(__dirname,'../RemoteGpsPanel.tsx'),'ut
 describe('RemoteGpsPanel target-device contract',()=>{
  it('polls commands only while the target app is foregrounded and checks the selected profile belongs to the walk',()=>{
   expect(source).toMatch(/AppState\.currentState!=='active'/);
-  expect(source).toMatch(/\(walk\.actualWalkerUserId\?\?walk\.responsibleUserId\)!==currentUserId/);
-  expect(source).toContain("if(walk.status!=='in_progress')");
+  expect(source).toMatch(/pending\.walk_actual_walker_user_id!==currentUserId/);
+  expect(source).toContain('pending.walk_status');
   expect(source).toContain('walk_not_started');
   expect(source).toMatch(/getMyRemoteGpsCommands\(\)/);
  });

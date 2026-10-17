@@ -74,20 +74,28 @@ export function RemoteGpsPanel({walk,currentUserId,familyRole,ready,mode='home'}
     else useGpsStore.getState().detachRemoteTracking(activeWalk,describeRemoteGpsOutcome(outcome));
    }
    const pending=commands.find(c=>c.status==='pending');if(!pending)return;
-   const walk=useScheduleStore.getState().walks.find(w=>w.id===pending.walk_id);if(!walk||walk.familyId!==useFamilyStore.getState().family?.id||(walk.actualWalkerUserId??walk.responsibleUserId)!==currentUserId){await acknowledgeRemoteGpsStart(pending.command_id,false,'walk_unavailable');return;}
+   const familyId=useFamilyStore.getState().family?.id;
+   // The command RPC has already verified auth.uid(), active profile, family,
+   // command target and walk row. Never reject a valid request because the
+   // Android/iOS schedule cache has not yet observed the server's start RPC.
+   if(pending.walk_family_id!==familyId||pending.walk_actual_walker_user_id!==currentUserId){await acknowledgeRemoteGpsStart(pending.command_id,false,'walk_unavailable');return;}
    // Remote GPS is consent to request a device location session, never an
    // implicit walk start. The actual walker must first start the walk and
    // then explicitly tap the activation button below (required by Safari's
    // user-gesture permission model).
-   if(walk.status!=='in_progress'){await acknowledgeRemoteGpsStart(pending.command_id,false,'walk_not_started');return;}
-   setCommand(pending);setFeedback('בקשת GPS ממתינה לאישור שלך במכשיר הזה.');
+   if(pending.walk_status==='done'||pending.walk_status==='skipped'){
+    await acknowledgeRemoteGpsStart(pending.command_id,false,'walk_not_started');return;
+   }
+   setCommand(pending);
+   setFeedback(pending.walk_status==='in_progress'?'בקשת GPS ממתינה לאישור שלך במכשיר הזה.':'הבקשה התקבלה; ממתינים לאישור תחילת הטיול מהשרת.');
    return;
   }catch(e){console.warn('Remote GPS command check failed',e);}finally{processingRef.current=false;}
  },[settings,currentUserId,ready]);
  const activatePendingGps=useCallback(async()=>{
   if(!command||command.status!=='pending'||busy)return;
   const walk=useScheduleStore.getState().walks.find(w=>w.id===command.walk_id);
-  if(!walk||walk.status!=='in_progress'||walk.familyId!==useFamilyStore.getState().family?.id||(walk.actualWalkerUserId??walk.responsibleUserId)!==currentUserId){setFeedback('הטיול אינו פעיל או שאינך המטייל/ת בפועל.');return;}
+  if(command.walk_status!=='in_progress'||command.walk_family_id!==useFamilyStore.getState().family?.id||command.walk_actual_walker_user_id!==currentUserId){setFeedback('ממתינים לאימות מצב הטיול והמטייל/ת מול השרת.');return;}
+  if(!walk||walk.familyId!==command.walk_family_id){setFeedback('פרטי הטיול עדיין נטענים במכשיר. הבקשה נשמרה; נסו שוב בעוד רגע.');return;}
   setBusy(true);setFeedback('מבקש הרשאת מיקום במכשיר הזה…');
   try{
    // This call is deliberately made synchronously from the button handler
@@ -101,7 +109,7 @@ export function RemoteGpsPanel({walk,currentUserId,familyRole,ready,mode='home'}
    await acknowledgeRemoteGpsStart(command.command_id,tracking,failureReason);
    if(tracking){useGpsStore.getState().markRemoteTracking(walk.id,command.command_id);setCommand({...command,status:'tracking'});setFeedback('GPS פעיל במכשיר הזה.');}
    else{useGpsStore.getState().cancelTracking(walk.id,'remote_activation_failed');setFeedback(`GPS לא הופעל: ${failureReason??'מיקום לא זמין'}. אפשר לנסות שוב מהטיול הפעיל.`);}
-  }catch(e){setFeedback('לא ניתן להפעיל GPS. בדקו הרשאת מיקום וחיבור ונסו שוב.');showGpsMessage('הפעלת GPS נכשלה','הטיול נשאר פעיל. בדקו שהרשאת המיקום מופעלת ונסו שוב.');}
+  }catch(e){if(useGpsStore.getState().trackingWalkId===walk.id)useGpsStore.getState().cancelTracking(walk.id,'remote_activation_failed');setFeedback('השרת לא אישר את הפעלת ה-GPS. הטיול נשאר ללא שינוי. בדקו חיבור ומצב טיול ונסו שוב.');showGpsMessage('הפעלת GPS לא אושרה','השרת לא אישר שהטיול עדיין פעיל. הטיול עצמו לא שונה; נסו שוב לאחר בדיקת מצב הטיול.');}
   finally{setBusy(false);}
  },[command,busy,currentUserId,waitForFirstGpsFix]);
  useEffect(()=>{void processPending();const timer=setInterval(()=>void processPending(),6000);return()=>clearInterval(timer);},[processPending]);
@@ -113,7 +121,7 @@ export function RemoteGpsPanel({walk,currentUserId,familyRole,ready,mode='home'}
  if(!isSupabaseConfigured)return null;
  const visible=Boolean(settings&&(familyRole==='admin'||settings.consentEnabled||command||walk?.status==='pending'||walk?.status==='in_progress'));
  if(!visible && mode==='home')return null;
-  if(mode==='home' && !selecting && !walkStatus && !(command && trackingWalkId===command.walk_id) && !(familyRole==='admin' && settings?.familyEnabled && walk && (walk.status==='pending'||walk.status==='in_progress')))return null;
+  if(mode==='home' && !selecting && !walkStatus && !(command && (trackingWalkId===command.walk_id||command.status==='pending')) && !(familyRole==='admin' && settings?.familyEnabled && walk && (walk.status==='pending'||walk.status==='in_progress')))return null;
  const targetName=targets.find(t=>t.target_user_id===currentUserId)?.display_name??users.find(u=>u.id===currentUserId)?.name??'בן משפחה';
  return <View style={mode==='home'?styles.compactPanel:styles.panel}>
   {mode==='settings'&&settings?.isAdmin?<Pressable accessibilityRole="switch" accessibilityState={{checked:settings.familyEnabled}} onPress={()=>void toggleFamily()} style={styles.row}><RtlText style={styles.text}>הפעלת GPS מרחוק למשפחה</RtlText><RtlText style={styles.state}>{settings.familyEnabled?'פעיל':'כבוי'}</RtlText></Pressable>:null}
@@ -123,7 +131,7 @@ export function RemoteGpsPanel({walk,currentUserId,familyRole,ready,mode='home'}
   {mode==='home'&&selecting?targets.map(t=><Pressable key={t.target_auth_user_id} accessibilityRole="button" accessibilityLabel={`${t.display_name}, ${t.device_label}`} onPress={()=>void selectTarget(t)} style={styles.target}><RtlText style={styles.text}>{t.display_name} · {t.device_label}</RtlText></Pressable>):null}
   {mode==='home'&&familyRole==='admin'&&walkStatus?<RtlText accessibilityLiveRegion="polite" style={styles.status}>מצב בקשת GPS: {({pending:'ממתינה למכשיר היעד',tracking:'המעקב פעיל במכשיר היעד',failed:'הבקשה נכשלה',expired:'הבקשה פגה',stopped:'המעקב נעצר'} as Record<string,string>)[walkStatus]??walkStatus}</RtlText>:null}
   {mode==='home'&&command&&trackingWalkId===command.walk_id?<View accessibilityLiveRegion="polite" style={styles.active}><RtlText style={styles.activeText}>מעקב GPS הופעל מרחוק על ידי מנהל המשפחה{targetName?` · ${targetName}`:''}</RtlText><RtlText accessibilityRole="text" style={styles.status}>מעקב GPS פעיל במכשיר הזה</RtlText><Pressable accessibilityRole="button" onPress={()=>void stop()} style={styles.stop}><RtlText style={styles.stopText}>עצירת מעקב GPS</RtlText></Pressable></View>:null}
-  {mode==='home'&&command&&trackingWalkId!==command.walk_id?<View><RtlText style={styles.status}>בקשת GPS ממנהל המשפחה ממתינה לאישור שלך. הטיול נשאר פעיל ללא GPS עד שתאשר/י.</RtlText>{command.status==='pending'&&settings?.familyEnabled&&settings.consentEnabled?<Pressable accessibilityRole="button" disabled={busy} onPress={()=>void activatePendingGps()} style={styles.compactAction}><RtlText style={styles.compactActionText}>אישור והפעלת GPS במכשיר הזה</RtlText></Pressable>:<RtlText style={styles.status}>יש לאשר GPS בהגדרות המשפחה לפני ההפעלה.</RtlText>}</View>:null}
+  {mode==='home'&&command&&trackingWalkId!==command.walk_id?<View><RtlText style={styles.status}>בקשת GPS ממנהל המשפחה ממתינה לאישור שלך. הטיול נשאר פעיל ללא GPS עד שתאשר/י.</RtlText>{command.status==='pending'&&command.walk_status==='in_progress'&&command.walk_actual_walker_user_id===currentUserId&&command.walk_family_id===useFamilyStore.getState().family?.id&&useScheduleStore.getState().walks.some(w=>w.id===command.walk_id)&&settings?.familyEnabled&&settings.consentEnabled?<Pressable accessibilityRole="button" disabled={busy} onPress={()=>void activatePendingGps()} style={styles.compactAction}><RtlText style={styles.compactActionText}>אישור והפעלת GPS במכשיר הזה</RtlText></Pressable>:<RtlText style={styles.status}>{command.walk_status==='pending'?'הבקשה נשמרה; ממתינים לאישור תחילת הטיול מהשרת.':!useScheduleStore.getState().walks.some(w=>w.id===command.walk_id)?'הטיול נטען במכשיר; הבקשה נשארת בהמתנה.':'יש לאשר GPS בהגדרות המשפחה לפני ההפעלה.'}</RtlText>}</View>:null}
   {mode==='home'&&permissionStatus==='denied'?<RtlText style={styles.status}>הפעלת GPS נכשלה: הרשאת מיקום נדחתה</RtlText>:null}
  </View>;
 }

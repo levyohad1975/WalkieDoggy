@@ -272,7 +272,7 @@ describe('Local "הפעל GPS" tracking survives the Remote GPS poller (P0 real-
 });
 
 describe('Remote GPS sessions keep their own lifecycle', () => {
-  const trackingCommand = { command_id: 'cmd-1', walk_id: walk.id, status: 'tracking', expires_at: '2026-10-15T12:00:00Z' };
+  const trackingCommand = { command_id: 'cmd-1', walk_id: walk.id, status: 'tracking', expires_at: '2026-10-15T12:00:00Z', walk_status: 'in_progress', walk_family_id: walk.familyId, walk_actual_walker_user_id: WALKER };
 
   async function startRemoteSession(commandId = 'cmd-1') {
     const safari = installSafariWatch();
@@ -434,7 +434,7 @@ describe('Local session robustness on the same screen', () => {
  * after the acknowledgement at ≈13:02:38 is ≈13:03:10.
  */
 describe('A remote-acknowledged session on the walker\'s own device survives a housekeeping command end (P0 #2)', () => {
-  const pendingCommand = { command_id: 'cmd-34s', walk_id: walk.id, status: 'pending', expires_at: '2026-10-15T13:04:05Z' };
+  const pendingCommand = { command_id: 'cmd-34s', walk_id: walk.id, status: 'pending', expires_at: '2026-10-15T13:04:05Z', walk_status: 'in_progress', walk_family_id: walk.familyId, walk_actual_walker_user_id: WALKER };
   const trackingCommand = { ...pendingCommand, status: 'tracking' };
 
   it('GPS starts → 5 points persist → ~34 s → command lapses as target_inactive → session is NOT ended and the walk keeps live GPS', async () => {
@@ -492,7 +492,7 @@ describe('A remote-acknowledged session on the walker\'s own device survives a h
 describe('Legitimate GPS session endings still work and are reason-coded', () => {
   it('the walker\'s explicit "עצירת מעקב GPS" ends the remote session with a reason and stops the command', async () => {
     const safari = installSafariWatch();
-    let commands: unknown[] = [{ command_id: 'cmd-u', walk_id: walk.id, status: 'pending', expires_at: '2026-10-15T13:04:05Z' }];
+    let commands: unknown[] = [{ command_id: 'cmd-u', walk_id: walk.id, status: 'pending', expires_at: '2026-10-15T13:04:05Z', walk_status: 'in_progress', walk_family_id: walk.familyId, walk_actual_walker_user_id: WALKER }];
     remoteGps.getMyRemoteGpsCommands.mockImplementation(async () => commands);
     render(<RemoteGpsPanel walk={walk} currentUserId={WALKER} familyRole="admin" ready mode="home" />);
     await flush();
@@ -500,7 +500,7 @@ describe('Legitimate GPS session endings still work and are reason-coded', () =>
     await flush();
     safari.deliver(fixA);
     await flush(20);
-    commands = [{ command_id: 'cmd-u', walk_id: walk.id, status: 'tracking', expires_at: '2026-10-15T13:04:05Z' }];
+    commands = [{ command_id: 'cmd-u', walk_id: walk.id, status: 'tracking', expires_at: '2026-10-15T13:04:05Z', walk_status: 'in_progress', walk_family_id: walk.familyId, walk_actual_walker_user_id: WALKER }];
     await flush();
 
     fireEvent.press(screen.getByText('עצירת מעקב GPS'));
@@ -560,6 +560,52 @@ describe('Legitimate GPS session endings still work and are reason-coded', () =>
     expect(serialized).not.toMatch(/latitude|longitude|accuracy/);
     expect(serialized).not.toContain(String(fixA.latitude));
     expect(serialized).not.toContain(String(fixA.longitude));
+  });
+});
+
+describe('Remote GPS requests use authoritative walk lifecycle state', () => {
+  const serverActiveCommand = {
+    command_id: 'cmd-server-active', walk_id: walk.id, status: 'pending',
+    expires_at: '2026-10-15T13:04:05Z', walk_status: 'in_progress',
+    walk_family_id: walk.familyId, walk_actual_walker_user_id: WALKER,
+  };
+
+  it('does not reject a server-active request when Android has a stale pending walk snapshot', async () => {
+    mockScheduleState.walks = [{ ...walk, status: 'pending' } as Walk];
+    remoteGps.getMyRemoteGpsCommands.mockResolvedValue([serverActiveCommand] as never);
+
+    render(<RemoteGpsPanel walk={{ ...walk, status: 'pending' } as Walk} currentUserId={WALKER} familyRole="member" ready mode="home" />);
+    await flush();
+
+    expect(remoteGps.acknowledgeRemoteGpsStart).not.toHaveBeenCalledWith('cmd-server-active', false, 'walk_not_started');
+    expect(screen.getByText('אישור והפעלת GPS במכשיר הזה')).toBeTruthy();
+    expect(screen.getByText('בקשת GPS ממנהל המשפחה ממתינה לאישור שלך. הטיול נשאר פעיל ללא GPS עד שתאשר/י.')).toBeTruthy();
+  });
+
+  it('keeps and displays a valid pending command while the local schedule row is unavailable', async () => {
+    mockScheduleState.walks = [];
+    remoteGps.getMyRemoteGpsCommands.mockResolvedValue([serverActiveCommand] as never);
+
+    render(<RemoteGpsPanel currentUserId={WALKER} familyRole="member" ready mode="home" />);
+    await flush();
+
+    expect(remoteGps.acknowledgeRemoteGpsStart).not.toHaveBeenCalled();
+    expect(screen.getByText('בקשת GPS ממנהל המשפחה ממתינה לאישור שלך. הטיול נשאר פעיל ללא GPS עד שתאשר/י.')).toBeTruthy();
+    expect(screen.getByText('הטיול נטען במכשיר; הבקשה נשארת בהמתנה.')).toBeTruthy();
+    expect(screen.queryByText('אישור והפעלת GPS במכשיר הזה')).toBeNull();
+  });
+
+  it('holds a pre-start request until the server confirms walk start', async () => {
+    remoteGps.getMyRemoteGpsCommands.mockResolvedValue([{
+      ...serverActiveCommand, walk_status: 'pending',
+    }] as never);
+
+    render(<RemoteGpsPanel walk={walk} currentUserId={WALKER} familyRole="member" ready mode="home" />);
+    await flush();
+
+    expect(remoteGps.acknowledgeRemoteGpsStart).not.toHaveBeenCalled();
+    expect(screen.getByText('הבקשה נשמרה; ממתינים לאישור תחילת הטיול מהשרת.')).toBeTruthy();
+    expect(screen.queryByText('אישור והפעלת GPS במכשיר הזה')).toBeNull();
   });
 });
 
