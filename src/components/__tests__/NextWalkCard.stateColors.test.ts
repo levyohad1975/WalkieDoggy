@@ -24,8 +24,8 @@ describe('NextWalkCard state colors', () => {
   });
 
   it('shows long Hebrew assignee names on two RTL lines without truncating the dashboard time', () => {
-    expect(source).toContain('<RtlText style={styles.dashboardPersonName} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>');
-    expect(source).toContain("dashboardPersonColumn: { flex: 0.95,");
+    expect(source).toContain('<RtlText style={styles.dashboardPersonName} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.72} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>');
+    expect(source).toContain("dashboardPersonColumn: { flex: 1.15,");
     expect(source).toContain("dashboardPersonName: { width: '100%', fontSize: 16, lineHeight: 20,");
     expect(source).toContain('style={styles.dashboardTime} numberOfLines={1} adjustsFontSizeToFit');
     expect(source).toContain('<Countdown target={walkDateTime(walk, scheduleTimezone)} compact />');
