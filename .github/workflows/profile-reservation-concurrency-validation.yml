@@ -1,0 +1,52 @@
+name: Temporary Profile Reservation Concurrency Validation
+
+on:
+  push:
+    branches:
+      - validation/profile-reservation-race
+
+permissions:
+  contents: read
+
+jobs:
+  profile-reservation-postgres-race:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Create synthetic-only database fixture
+        run: psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/manual_tests/system_admin_profile_reservation_fixture.sql
+
+      - name: Apply profile reservation migration
+        run: psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261017160000_reserve_profiles_during_system_admin_qa.sql
+
+      - name: Verify idempotent reapplication and T8/T9
+        run: |
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261017160000_reserve_profiles_during_system_admin_qa.sql
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f supabase/manual_tests/system_admin_profile_reservation_readonly.sql
+
+      - name: Rehearse rollback, independent claims, row locks, and restoration
+        run: bash supabase/manual_tests/system_admin_profile_reservation_concurrency.sh
