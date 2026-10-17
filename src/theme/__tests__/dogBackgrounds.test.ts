@@ -23,10 +23,13 @@ describe('DOG_BACKGROUNDS', () => {
     expect(new Set(labels).size).toBe(labels.length);
   });
 
-  it('still resolves the approved photographic Walkie Park entry by id', () => {
+  it('resolves the Walkie Park selection to the approved bundled park asset (4761eb1)', () => {
     const match = getDogBackground('walkie-park');
     expect(match?.label).toBe('Walkie Park');
-    expect(match?.uri).toMatch(/^https:\/\//);
+    // Pinned to the exact user-approved bundled image, never a remote photo.
+    expect(match?.source).toBe(DEFAULT_DOG_BACKGROUND.source);
+    expect(match?.uri).toBeUndefined();
+    expect(getDogBackgroundImageSource(match!)).toBe(DEFAULT_DOG_BACKGROUND.source);
   });
 
   it('uses the bundled approved park as the implicit and legacy default', () => {
@@ -45,9 +48,13 @@ describe('DOG_BACKGROUNDS', () => {
   });
 
   it('preserves an explicitly selected family background', () => {
-    const selected = getDogBackground('walkie-park');
-    expect(selected?.id).toBe('walkie-park');
+    // 'walkie-park' now renders the bundled default itself, so a remote-backed
+    // selection is what proves an explicit choice is never swapped for it.
+    const selected = getDogBackground('dog-park');
+    expect(selected?.id).toBe('dog-park');
+    expect(selected?.uri).toMatch(/^https:\/\//);
     expect(getDogBackgroundImageSource(selected!)).toEqual({ uri: selected!.uri });
+    expect(getDogBackgroundImageSource(selected!)).not.toBe(DEFAULT_DOG_BACKGROUND.source);
   });
 
   it('returns undefined for an unknown id rather than a false match', () => {
