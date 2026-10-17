@@ -85,7 +85,9 @@ const walk = {
 // Tel Aviv; B is ~8.0 m north of A — the distance the iPhone briefly showed.
 const METERS_PER_DEGREE_LAT = (6371000 * Math.PI) / 180;
 const fixA: GpsPoint = { latitude: 32.0853, longitude: 34.7818, timestamp: 1_760_000_000_000, accuracy: 6 };
-const fixB: GpsPoint = { latitude: 32.0853 + 8 / METERS_PER_DEGREE_LAT, longitude: 34.7818, timestamp: 1_760_000_001_000, accuracy: 5 };
+// 8 m north, 5 s after fixA (1.6 m/s): a plausible walking fix under the
+// MAX_WALK_SPEED_METERS_PER_SECOND filter added in 35bff06.
+const fixB: GpsPoint = { latitude: 32.0853 + 8 / METERS_PER_DEGREE_LAT, longitude: 34.7818, timestamp: 1_760_000_005_000, accuracy: 5 };
 
 interface SafariWatch {
   handle: { remove: jest.Mock };
