@@ -110,6 +110,9 @@ export function computeNextWalkCardActions(
 export interface WalkCompletionDetails {
   hadPee?: boolean;
   hadPoop?: boolean;
+  /** Exact event totals; undefined for legacy yes/no completion. */
+  peeCount?: number;
+  poopCount?: number;
   note?: string;
   durationMinutes?: number;
   /** Actual completion time when a late report corrects the default now timestamp. */
@@ -159,8 +162,10 @@ export function markWalkDone(
     status: 'done',
     completedAt: details.completedAt ?? now.toISOString(),
     completedByUserId,
-    hadPee: details.hadPee,
-    hadPoop: details.hadPoop,
+    hadPee: details.peeCount !== undefined ? details.peeCount > 0 : details.hadPee,
+    hadPoop: details.poopCount !== undefined ? details.poopCount > 0 : details.hadPoop,
+    peeCount: details.peeCount,
+    poopCount: details.poopCount,
     note: details.note,
     durationMinutes: details.durationMinutes,
     updatedAt: now.toISOString(),
@@ -184,7 +189,13 @@ export function editWalkDetails(walk: Walk, details: WalkCompletionDetails, now:
   if (walk.status !== 'done' && walk.status !== 'skipped') {
     throw new WalkActionError('אפשר לערוך פרטים רק לטיול שהסתיים');
   }
-  return { ...walk, ...details, updatedAt: now.toISOString() };
+  return {
+    ...walk,
+    ...details,
+    hadPee: details.peeCount !== undefined ? details.peeCount > 0 : (details.hadPee ?? walk.hadPee),
+    hadPoop: details.poopCount !== undefined ? details.poopCount > 0 : (details.hadPoop ?? walk.hadPoop),
+    updatedAt: now.toISOString(),
+  };
 }
 
 /**
