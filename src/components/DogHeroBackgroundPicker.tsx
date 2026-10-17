@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Image, Pressable, StyleSheet, View } from 'react-native';
 import type { Dog } from '../types';
-import { DOG_BACKGROUNDS } from '../theme/dogBackgrounds';
+import { DOG_BACKGROUNDS, getDogBackgroundImageSource } from '../theme/dogBackgrounds';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { RtlText } from './RtlText';
@@ -47,7 +47,7 @@ export function DogHeroBackgroundPicker({ dog, onSave }: { dog: Dog; onSave: (pa
               accessibilityState={{ selected }}
               accessibilityLabel={`בחירת רקע ${item.label}`}
             >
-              <Image source={{ uri: item.uri }} style={styles.thumb} resizeMode="cover" />
+              <Image source={getDogBackgroundImageSource(item)} style={styles.thumb} resizeMode="cover" />
               <View style={styles.labelWrap}><RtlText style={styles.label}>{item.label}</RtlText></View>
               {selected ? <View style={styles.check}><RtlText style={styles.checkText}>✓</RtlText></View> : null}
             </Pressable>
