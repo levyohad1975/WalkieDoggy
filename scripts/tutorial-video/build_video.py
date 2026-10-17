@@ -349,7 +349,10 @@ def build(edit: dict, args, w: int, h: int, tag: str, out: Path, work: Path) -> 
     if tag == '16x9':
         shutil.copy(ass, out / 'tutorial.he.ass')
     enc = ['-c:v', 'libx264', '-profile:v', 'high', '-level', '4.1', '-pix_fmt', 'yuv420p', '-preset', 'slow', '-crf', '20',
-           '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-movflags', '+faststart', '-shortest']
+           '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-movflags', '+faststart',
+           # Explicit length: -shortest would stop at the last caption when a
+           # soft subtitle stream is muxed, truncating the closing card.
+           '-t', f'{total:.3f}']
     master = out / f'tutorial_{tag}.mp4'
     if tag == '16x9':
         sh('ffmpeg', '-y', '-loglevel', 'error', '-i', str(silent), *audio, '-i', str(out / 'tutorial.he.srt'),

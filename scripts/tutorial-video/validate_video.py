@@ -84,7 +84,10 @@ def main() -> None:
                                ('tutorial_9x16.mp4', (1080, 1920), False)):
         path = out / name
         if not path.exists():
-            check(name == 'tutorial_9x16.mp4', f'{name}: present (optional vertical cut)')
+            if name == 'tutorial_9x16.mp4':
+                print(f'SKIP {name}: not built (optional vertical cut, --vertical)')
+            else:
+                check(False, f'{name}: present')
             continue
         info = probe(path)
         v = next(s for s in info['streams'] if s['codec_type'] == 'video')
