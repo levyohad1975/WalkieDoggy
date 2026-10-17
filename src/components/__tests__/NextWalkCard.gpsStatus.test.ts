@@ -38,3 +38,31 @@ describe('NextWalkCard surfaces live GPS distance/status while active (structura
     expect(source).toMatch(/formatDistanceMeters\(liveDistanceMeters\)/);
   });
 });
+
+/**
+ * Real-iPhone P0 (2026-10-15): the timer ran, the card said "מפעיל GPS…" and
+ * the map waited for a first fix forever, with location allowed. That text
+ * was the fall-through for "this device holds no GPS session for the shown
+ * active walk" (PWA relaunched mid-walk, duplicate active walk shown, remote
+ * start): nothing was actually starting and no action was offered.
+ */
+describe('NextWalkCard — active walk with no GPS session on this device (structural)', () => {
+  const card = fs.readFileSync(require.resolve('../NextWalkCard'), 'utf8').replace(/\r\n/g, '\n');
+  const home = fs.readFileSync(require.resolve('../../screens/HomeScreen'), 'utf8').replace(/\r\n/g, '\n');
+
+  it('states the real condition before any tracking status, and offers an explicit activation tap to the walker', () => {
+    const statusStart = card.indexOf('{gpsNotTrackedHere === \'walker_here\'');
+    expect(statusStart).toBeGreaterThan(-1);
+    expect(statusStart).toBeLessThan(card.indexOf('gpsTrackingStatus === \'requesting\''));
+    expect(card).toContain('GPS לא פעיל במכשיר הזה');
+    expect(card).toContain('ה-GPS נאסף במכשיר של מי שיוצא/ת לטיול');
+    expect(card).toMatch(/onRetryGps && gpsNotTrackedHere === 'walker_here' \? \(\s*<Pressable onPress=\{onRetryGps\}/);
+    expect(card).toContain('הפעל GPS');
+  });
+
+  it('Home derives it from the tracked walk id and the actual walker, never from a different walk', () => {
+    expect(home).toMatch(/gpsNotTrackedHere=\{\s*isActiveWalk\(nextWalk\) && gpsTrackingWalkId !== nextWalk\.id\s*\?\s*\(\(nextWalk\.actualWalkerUserId \?\? nextWalk\.responsibleUserId\) === currentUserId \? 'walker_here' : 'elsewhere'\)\s*:\s*null\s*\}/);
+    // The transfer dialog is only for an interrupted session of THIS walk.
+    expect(home).toContain("if (gpsTrackingWalkId === nextWalk.id && gpsTrackingStatus === 'interrupted') {");
+  });
+});

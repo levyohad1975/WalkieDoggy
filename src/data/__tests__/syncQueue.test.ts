@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SyncQueue, setSyncQueueActorGetter } from '../syncQueue';
+import { SyncQueue, getSyncQueueActorHint, getSyncQueueAuthUserHint, setSyncQueueActorGetter, setSyncQueueAuthUserGetter, setSyncQueueFamilyGetter } from '../syncQueue';
 import type { Repository } from '../repository';
 import type { FamilyUser } from '../../types';
 
@@ -28,9 +28,21 @@ function stubRemote(overrides: Partial<Repository> = {}): Repository {
     getWalks: jest.fn(),
     saveWalk: jest.fn().mockResolvedValue(undefined),
     getNotificationSettings: jest.fn(),
+    getSyncReplayIdentity: jest.fn(async () => ({ authUserId: getSyncQueueAuthUserHint() ?? '', profileId: getSyncQueueActorHint() ?? '', familyId: 'family-main' })),
     ...overrides,
   } as unknown as Repository;
 }
+
+beforeEach(() => {
+  setSyncQueueActorGetter(() => 'test-user');
+  setSyncQueueFamilyGetter(() => 'family-main');
+  setSyncQueueAuthUserGetter(() => 'auth-test');
+});
+afterEach(() => {
+  setSyncQueueActorGetter(() => null);
+  setSyncQueueFamilyGetter(() => null);
+  setSyncQueueAuthUserGetter(() => null);
+});
 
 describe('SyncQueue — permanent vs retryable conflict handling', () => {
   beforeEach(async () => {
@@ -41,10 +53,12 @@ describe('SyncQueue — permanent vs retryable conflict handling', () => {
     // items through to apply() exactly as before, rather than skipping or
     // quarantining them.
     setSyncQueueActorGetter(() => 'test-user');
+    setSyncQueueFamilyGetter(() => 'family-main');
   });
 
   afterEach(() => {
     setSyncQueueActorGetter(() => null);
+    setSyncQueueFamilyGetter(() => null);
   });
 
   it('keeps a retryable (no Postgres code) failure queued and stops the flush there', async () => {
@@ -115,7 +129,7 @@ describe('SyncQueue — permanent vs retryable conflict handling', () => {
     expect(remote.saveWalk).not.toHaveBeenCalled();
     expect((await queue.getDiagnostics()).lastFlush).toMatchObject({
       attempted: 0,
-      skippedOtherProfile: 2,
+      skippedOtherProfile: 1,
       remaining: 2,
       stoppedOnRetryableFailure: false,
     });
@@ -333,7 +347,7 @@ describe('SyncQueue — flush() verifies current profile ownership before replay
     setSyncQueueActorGetter(() => null);
   });
 
-  it('a legacy/untagged (claimedByUserId null) item is never attempted against the server, under any profile', async () => {
+  it('a legacy/untagged item is held in FIFO and never quarantined or replayed under another profile', async () => {
     // Simulate a v3-migrated item directly (see the v3 -> v4 describe block
     // below for the migration path itself) rather than depending on it here.
     await AsyncStorage.setItem(
@@ -347,11 +361,9 @@ describe('SyncQueue — flush() verifies current profile ownership before replay
     const result = await queue.flush(stubRemote({ upsertUser }));
 
     expect(upsertUser).not.toHaveBeenCalled(); // never even attempted — no actor to trust
-    expect(result).toEqual({ succeeded: 0, remaining: 0, conflicted: 0, quarantined: 1 });
-    expect(await queue.size()).toBe(0); // removed from the live queue...
-    const quarantined = await queue.getQuarantined();
-    expect(quarantined).toHaveLength(1); // ...but surfaced, not silently dropped
-    expect(quarantined[0].op.type).toBe('upsertUser');
+    expect(result).toEqual({ succeeded: 0, remaining: 1, conflicted: 0, quarantined: 0 });
+    expect(await queue.size()).toBe(1);
+    expect(await queue.getQuarantined()).toEqual([]);
   });
 
   it('an item tagged for profile A is never replayed while profile B is currently claimed', async () => {
@@ -366,6 +378,66 @@ describe('SyncQueue — flush() verifies current profile ownership before replay
     expect(upsertUser).not.toHaveBeenCalled(); // A's write must not run under B's claim
     expect(result).toEqual({ succeeded: 0, remaining: 1, conflicted: 0, quarantined: 0 });
     expect(await queue.size()).toBe(1); // left queued, untouched, for when A returns
+  });
+
+  it('holds the queue unchanged when the server reports a different active profile or family', async () => {
+    setSyncQueueActorGetter(() => 'user-a');
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'upsertUser', payload: fakeUser('same-family') });
+    await queue.enqueue({ type: 'upsertUser', payload: { ...fakeUser('foreign-family'), familyId: 'family-other' } });
+    const before = await AsyncStorage.getItem('dog-walk-family:sync-queue:v4');
+    const upsertUser = jest.fn().mockResolvedValue(undefined);
+    const wrongProfile = stubRemote({
+      getSyncReplayIdentity: jest.fn().mockResolvedValue({ authUserId: 'auth-test', profileId: 'user-b', familyId: 'family-main' }),
+      upsertUser,
+    });
+
+    await queue.flush(wrongProfile);
+    expect(await AsyncStorage.getItem('dog-walk-family:sync-queue:v4')).toBe(before);
+    expect(upsertUser).not.toHaveBeenCalled();
+
+    const rightProfileWrongFamily = stubRemote({
+      getSyncReplayIdentity: jest.fn().mockResolvedValue({ authUserId: 'auth-test', profileId: 'user-a', familyId: 'family-other' }),
+      upsertUser,
+    });
+    await queue.flush(rightProfileWrongFamily);
+    expect(await AsyncStorage.getItem('dog-walk-family:sync-queue:v4')).toBe(before);
+    expect(upsertUser).not.toHaveBeenCalled();
+  });
+
+  it('fails closed on identity timeout without changing queue order, contents, conflicts, or quarantine', async () => {
+    setSyncQueueActorGetter(() => 'user-a');
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'upsertUser', payload: fakeUser('first') });
+    await queue.enqueue({ type: 'upsertUser', payload: fakeUser('second') });
+    const key = 'dog-walk-family:sync-queue:v4';
+    const before = await AsyncStorage.getItem(key);
+    const upsertUser = jest.fn();
+    await expect(queue.flush(stubRemote({
+      getSyncReplayIdentity: jest.fn().mockRejectedValue(new Error('whoami timeout')),
+      upsertUser,
+    }))).rejects.toThrow('whoami timeout');
+    expect(await AsyncStorage.getItem(key)).toBe(before);
+    expect(await queue.getConflicts()).toEqual([]);
+    expect(await queue.getQuarantined()).toEqual([]);
+    expect(upsertUser).not.toHaveBeenCalled();
+  });
+
+  it('retries the same ordered operations after authoritative identity is restored', async () => {
+    setSyncQueueActorGetter(() => 'user-a');
+    const queue = new SyncQueue();
+    await queue.enqueue({ type: 'upsertUser', payload: fakeUser('first') });
+    await queue.enqueue({ type: 'upsertUser', payload: fakeUser('second') });
+    const upsertUser = jest.fn().mockResolvedValue(undefined);
+    await queue.flush(stubRemote({
+      getSyncReplayIdentity: jest.fn().mockResolvedValue({ authUserId: 'auth-test', profileId: 'user-b', familyId: 'family-main' }),
+      upsertUser,
+    }));
+    expect(upsertUser).not.toHaveBeenCalled();
+    setSyncQueueActorGetter(() => 'user-a');
+    const result = await queue.flush(stubRemote({ upsertUser }));
+    expect(upsertUser.mock.calls.map((call) => call[0].id)).toEqual(['first', 'second']);
+    expect(result).toMatchObject({ succeeded: 2, remaining: 0 });
   });
 
   it('an item tagged for profile A replays normally once profile A is the currently claimed profile', async () => {
@@ -385,7 +457,7 @@ describe('SyncQueue — flush() verifies current profile ownership before replay
     expect(result).toEqual({ succeeded: 1, remaining: 0, conflicted: 0, quarantined: 0 });
   });
 
-  it('an unrelated operation belonging to the CURRENTLY claimed profile still flushes even while an earlier item for a different profile is stuck', async () => {
+  it('preserves FIFO when an earlier operation belongs to another profile', async () => {
     setSyncQueueActorGetter(() => 'user-a');
     const queue = new SyncQueue();
     await queue.enqueue({ type: 'upsertUser', payload: fakeUser('a') }); // A's, queued first
@@ -396,26 +468,17 @@ describe('SyncQueue — flush() verifies current profile ownership before replay
     const upsertUser = jest.fn().mockResolvedValue(undefined);
     const result = await queue.flush(stubRemote({ upsertUser }));
 
-    // Only B's own operation ran — A's stays queued rather than blocking B,
-    // and (just as importantly) rather than running under B's claim.
-    expect(upsertUser).toHaveBeenCalledTimes(1);
-    expect(upsertUser).toHaveBeenCalledWith(
-  expect.objectContaining({
-    id: 'b',
-    familyId: 'family-main',
-  }),
-);
-    expect(result).toEqual({ succeeded: 1, remaining: 1, conflicted: 0, quarantined: 0 });
+    expect(upsertUser).not.toHaveBeenCalled();
+    expect(result).toEqual({ succeeded: 0, remaining: 2, conflicted: 0, quarantined: 0 });
 
     setSyncQueueActorGetter(() => 'user-a'); // A returns to this device
     const secondResult = await queue.flush(stubRemote({ upsertUser }));
-    expect(upsertUser).toHaveBeenCalledWith(
-  expect.objectContaining({
-    id: 'a',
-    familyId: 'family-main',
-  }),
-);
-    expect(secondResult).toEqual({ succeeded: 1, remaining: 0, conflicted: 0, quarantined: 0 });
+    expect(upsertUser.mock.calls.map((call) => call[0].id)).toEqual(['a']);
+    expect(secondResult).toEqual({ succeeded: 1, remaining: 1, conflicted: 0, quarantined: 0 });
+    setSyncQueueActorGetter(() => 'user-b');
+    const thirdResult = await queue.flush(stubRemote({ upsertUser }));
+    expect(upsertUser.mock.calls.map((call) => call[0].id)).toEqual(['a', 'b']);
+    expect(thirdResult).toEqual({ succeeded: 1, remaining: 0, conflicted: 0, quarantined: 0 });
   });
 
   it('no audit actor is ever silently misattributed: a startup-time flush before any profile is restored neither drops nor replays a tagged item', async () => {
@@ -477,19 +540,22 @@ describe('SyncQueue — v3 -> v4 migration', () => {
     const queue = new SyncQueue();
     expect(await queue.size()).toBe(2);
 
-    // Legacy v3 items have no trustworthy actor identity, so they must never
-// be replayed under whichever profile happens to be active after upgrade.
-// They are preserved by moving them to quarantine instead.
+    // Without a verifiable active session, even an untagged item is left
+    // byte-for-byte pending. Its owner cannot be inferred from the new session.
 const upsertUser = jest.fn().mockResolvedValue(undefined);
 const saveWalk = jest.fn().mockResolvedValue(undefined);
 const result = await queue.flush(stubRemote({ upsertUser, saveWalk }));
 
 expect(result).toEqual({
   succeeded: 0,
-  remaining: 0,
+  remaining: 2,
   conflicted: 0,
-  quarantined: 2,
+  quarantined: 0,
 });
+expect(await queue.getQuarantined()).toEqual([]);
+setSyncQueueActorGetter(() => 'user-a');
+expect(await queue.flush(stubRemote({ upsertUser, saveWalk }))).toMatchObject({ remaining: 2, quarantined: 0 });
+expect(upsertUser).not.toHaveBeenCalled();
 
 expect(upsertUser).not.toHaveBeenCalled();
 expect(saveWalk).not.toHaveBeenCalled();
@@ -529,9 +595,12 @@ expect(saveWalk).not.toHaveBeenCalled();
     expect(await queue.hasPendingForOtherUser('user-a')).toBe(true);
     expect(await queue.hasPendingForOtherUser('user-b')).toBe(true);
 
-    // Once it actually flushes, the switch is no longer blocked.
+    // It cannot be handled before an authenticated profile is available.
     await queue.flush(stubRemote());
-    expect(await queue.hasPendingForOtherUser('user-b')).toBe(false);
+    expect(await queue.hasPendingForOtherUser('user-b')).toBe(true);
+    setSyncQueueActorGetter(() => 'user-a');
+    await queue.flush(stubRemote());
+    expect(await queue.hasPendingForOtherUser('user-b')).toBe(true);
   });
 
   it('an existing v4 queue loads unchanged and never triggers the v3 migration path', async () => {
@@ -614,7 +683,7 @@ describe('SyncQueue — legacy deleteFamilyMember entries are discarded, never r
       V4_KEY,
       JSON.stringify([
         { op: { type: 'deleteFamilyMember', payload: legacyPayload }, claimedByUserId: 'user-a' },
-        { op: { type: 'upsertUser', payload: fakeUser('a') }, claimedByUserId: 'user-a' },
+        { op: { type: 'upsertUser', payload: fakeUser('a') }, claimedByUserId: 'user-a', claimedByAuthUserId: 'auth-test', claimedByFamilyId: 'family-main' },
       ])
     );
 

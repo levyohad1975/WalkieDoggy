@@ -10,13 +10,15 @@ import { CELEBRATION_LIBRARY, type CompletionCelebration } from '../logic/walkCo
 import { REMINDER_ANIMATION_LIBRARY, type ReminderAnimationMoment } from '../logic/reminderAnimationLibrary';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
-import { friendlyErrorMessage } from '../lib/errorMessages';
+import { appendRawDiagnostic, friendlyErrorMessage } from '../lib/errorMessages';
+import { isWalkResolutionStaging } from '../lib/supabase';
+import { SystemAdminDuplicateWalkMaintenancePanel } from '../components/SystemAdminDuplicateWalkMaintenancePanel';
 import { useAuthStore } from '../store/authStore';
 import { useSystemAdminStore } from '../store/systemAdminStore';
-import { clearFamilySetupCompletion, clearFamilySetupProgress, readFamilySetupProgress } from '../lib/familySetupProgress';
 import {
   createSystemAdminTestFamily,
-  deleteSystemAdminTestFamily,
+  getSystemAdminFamilyDeletionImpact,
+  permanentlyDeleteSystemAdminFamily,
   getSystemAdminEmailDeliveryLog,
   getSystemAdminGlobalAudit,
   getSystemAdminFamilyDetail,
@@ -30,6 +32,7 @@ import {
   type SystemAdminFamilyDetail,
   type SystemAdminFamilyListItem,
   type SystemAdminTestFamily,
+  type SystemAdminFamilyDeletionImpact,
 } from '../lib/systemAdmin';
 
 interface SystemAdminScreenProps {
@@ -37,6 +40,15 @@ interface SystemAdminScreenProps {
   onClose: () => void;
   onTestFamilySelected?: (familyId: string, diagnosticId?: string) => Promise<void>;
   onTestFamilyScheduleSelected?: (familyId: string, diagnosticId?: string) => Promise<void>;
+  onFamilyDeleted?: (familyId: string) => Promise<void>;
+}
+
+function deletionImpactCount(impact: SystemAdminFamilyDeletionImpact, keys: string[]): number {
+  return keys.reduce((sum, key) => sum + (Number(impact.counts[key]) || 0), 0);
+}
+
+function deletionCountLine(label: string, count: number): string {
+  return `${label}: ${count.toLocaleString('he-IL')}`;
 }
 
 /** Hebrew label for families.approval_status (0032/0035) — falls back to the raw value for any future status this screen doesn't know about yet, rather than hiding it. */
@@ -137,7 +149,7 @@ function emailStatusLabel(status: string): string {
  * here cannot change the device's own active family or create membership,
  * by construction (there is no code path here that touches those stores).
  */
-export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTestFamilyScheduleSelected }: SystemAdminScreenProps) {
+export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTestFamilyScheduleSelected, onFamilyDeleted }: SystemAdminScreenProps) {
   const isSystemAdmin = useSystemAdminStore((s) => s.isSystemAdmin);
   const activeFamilyId = useAuthStore((s) => s.familyId);
   const [search, setSearch] = useState('');
@@ -152,7 +164,14 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
   const [testFamilyError, setTestFamilyError] = useState<string | null>(null);
   const [testFamilyBusy, setTestFamilyBusy] = useState(false);
   const testFamilyBusyRef = React.useRef(false);
-  const [confirmTestDeleteId, setConfirmTestDeleteId] = useState<string | null>(null);
+  const [familyDeletionImpact, setFamilyDeletionImpact] = useState<SystemAdminFamilyDeletionImpact | null>(null);
+  const [familyDeletionTargetName, setFamilyDeletionTargetName] = useState('');
+  const [familyDeletionStage, setFamilyDeletionStage] = useState<'closed' | 'impact' | 'confirm'>('closed');
+  const [familyDeletionTypedName, setFamilyDeletionTypedName] = useState('');
+  const [familyDeletionError, setFamilyDeletionError] = useState<string | null>(null);
+  const [familyDeletionLoading, setFamilyDeletionLoading] = useState(false);
+  const [familyDeletionBusy, setFamilyDeletionBusy] = useState(false);
+  const familyDeletionBusyRef = React.useRef(false);
 
   const [selectedFamilyId, setSelectedFamilyId] = useState<string | null>(null);
   const [detail, setDetail] = useState<SystemAdminFamilyDetail | null>(null);
@@ -287,23 +306,58 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
     }
   };
 
-  const deleteTestFamily = async (familyId: string) => {
-    if (testFamilyBusyRef.current) return;
-    testFamilyBusyRef.current = true;
-    setTestFamilyBusy(true);
-    setTestFamilyError(null);
+  const openFamilyDeletion = async (family: { familyId: string; familyName: string }) => {
+    if (familyDeletionBusyRef.current) return;
+    setFamilyDeletionStage('impact');
+    setFamilyDeletionImpact(null);
+    setFamilyDeletionTargetName(family.familyName);
+    setFamilyDeletionTypedName('');
+    setFamilyDeletionError(null);
+    setFamilyDeletionLoading(true);
     try {
-      await deleteSystemAdminTestFamily(familyId);
-      await clearFamilySetupCompletion(familyId);
-      const progress = await readFamilySetupProgress();
-      if (progress?.familyId === familyId) await clearFamilySetupProgress();
-      setConfirmTestDeleteId(null);
+      const impact = await getSystemAdminFamilyDeletionImpact(family.familyId);
+      if (impact.state === 'deleted') {
+        await onFamilyDeleted?.(family.familyId);
+        setFamilyDeletionStage('closed');
+        await loadFamilies(search);
+        return;
+      }
+      setFamilyDeletionImpact(impact);
+    } catch (e) {
+      setFamilyDeletionError(friendlyErrorMessage(e, [], 'לא הצלחנו לחשב את השפעת המחיקה. המשפחה לא שונתה.'));
+    } finally {
+      setFamilyDeletionLoading(false);
+    }
+  };
+
+  const closeFamilyDeletion = () => {
+    if (familyDeletionBusyRef.current) return;
+    setFamilyDeletionStage('closed');
+    setFamilyDeletionImpact(null);
+    setFamilyDeletionTargetName('');
+    setFamilyDeletionTypedName('');
+    setFamilyDeletionError(null);
+  };
+
+  const permanentlyDeleteFamily = async () => {
+    if (!familyDeletionImpact || familyDeletionBusyRef.current) return;
+    familyDeletionBusyRef.current = true;
+    setFamilyDeletionBusy(true);
+    setFamilyDeletionError(null);
+    try {
+      await permanentlyDeleteSystemAdminFamily(familyDeletionImpact, familyDeletionTypedName.trim());
+      await onFamilyDeleted?.(familyDeletionImpact.familyId);
+      if (selectedFamilyId === familyDeletionImpact.familyId) backToList();
+      setFamilyDeletionStage('closed');
+      setFamilyDeletionImpact(null);
+      setFamilyDeletionTargetName('');
+      setFamilyDeletionTypedName('');
       await loadFamilies(search);
     } catch (e) {
-      setTestFamilyError(friendlyErrorMessage(e, [], 'מחיקת משפחת הבדיקה נכשלה. הנתונים נשארו ללא שינוי.'));
+      setFamilyDeletionError(appendRawDiagnostic(friendlyErrorMessage(e, [], 'המחיקה לא הושלמה. המשפחה נשארה נעולה וניתן לחדש את אותה פעולה.'), e));
     } finally {
-      testFamilyBusyRef.current = false;
-      setTestFamilyBusy(false);
+      familyDeletionBusyRef.current = false;
+      setFamilyDeletionBusy(false);
     }
   };
 
@@ -407,6 +461,7 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
   };
 
   return (
+    <>
     <Modal visible={visible && isSystemAdmin} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
@@ -638,6 +693,7 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
                         compact
                       />
                       <RtlText style={styles.observerHint}>מציג את כל המסכים וההגדרות כמנהל המשפחה, ללא אפשרות לשנות נתונים וללא נוכחות גלויה למשפחה.</RtlText>
+                      <Button label="מחיקה מלאה לצמיתות…" onPress={() => void openFamilyDeletion({ familyId: detail.family!.id, familyName: detail.family!.name })} compact />
                     </View>
                   ) : null}
                   {detail.family && detail.family.approvalStatus !== 'active' ? (
@@ -785,6 +841,8 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
                 <RtlText style={styles.healthLine}>כשלים/החזרות ביומן האימיילים האחרון: {overview.emailFailures}</RtlText>
               </View>
 
+              {isSystemAdmin && isWalkResolutionStaging ? <SystemAdminDuplicateWalkMaintenancePanel /> : null}
+
               <View style={styles.testFamilyCard}>
                 <RtlText style={styles.sectionTitle}>בדיקת תהליך הצטרפות</RtlText>
                 <RtlText style={styles.cardLine}>הפעולה יוצרת סביבת בדיקה נפרדת ומעבירה אליה את המכשיר. אפשר לחזור למשפחה המקורית בכל רגע.</RtlText>
@@ -825,17 +883,7 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
                         finally { testFamilyBusyRef.current = false; setTestFamilyBusy(false); }
                       }} />}
                       {onTestFamilyScheduleSelected ? <Button label="פתיחת שלב לוח הטיולים" compact disabled={testFamilyBusy} onPress={() => void reopenTestFamilySchedule(testFamily.familyId)} /> : null}
-                      {activeFamilyId === testFamily.familyId ? null : confirmTestDeleteId === testFamily.familyId ? (
-                        <>
-                          <RtlText style={styles.deleteWarning}>מחיקה לצמיתות של המשפחה, הכלב, המשתמשים והטיולים. אי אפשר לשחזר.</RtlText>
-                          <Button label="אישור מחיקה" compact disabled={testFamilyBusy} onPress={() => void deleteTestFamily(testFamily.familyId)} />
-                          <Button label="ביטול" compact disabled={testFamilyBusy} onPress={() => setConfirmTestDeleteId(null)} />
-                        </>
-                      ) : (
-                        <Pressable onPress={() => setConfirmTestDeleteId(testFamily.familyId)} disabled={testFamilyBusy} accessibilityRole="button" accessibilityLabel={`מחיקת משפחת בדיקה ${testFamily.familyName}`}>
-                          <RtlText style={styles.deleteLink}>מחיקה</RtlText>
-                        </Pressable>
-                      )}
+                      <Button label="מחיקה מלאה לצמיתות…" compact disabled={testFamilyBusy} onPress={() => void openFamilyDeletion(testFamily)} />
                     </View>
                   </View>
                 ))}
@@ -882,6 +930,41 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
         onDismiss={() => setReminderTestVisible(false)}
       />
     </Modal>
+    <Modal visible={visible && isSystemAdmin && familyDeletionStage !== 'closed'} animationType="fade" onRequestClose={closeFamilyDeletion}>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <ScrollView contentContainerStyle={styles.deletionContent} keyboardShouldPersistTaps="handled">
+          <RtlText style={styles.deletionTitle} accessibilityRole="header">מחיקה מלאה לצמיתות</RtlText>
+          {familyDeletionLoading ? <ActivityIndicator color={colors.primary} accessibilityLabel="טוען…" /> : null}
+          {familyDeletionImpact ? (
+            <>
+              <RtlText style={styles.deletionText}>הפעולה תמחק לצמיתות את משפחת {familyDeletionImpact.familyName} ואת כל הנתונים ששייכים לה. לא ניתן לבטל או לשחזר.</RtlText>
+              <View style={styles.deletionImpactCard}>
+                <RtlText style={styles.deletionLine}>{deletionCountLine('רשומות משפחתיות', familyDeletionImpact.totalRows)}</RtlText>
+                <RtlText style={styles.deletionLine}>{deletionCountLine('חברים ופרופילים', deletionImpactCount(familyDeletionImpact, ['users', 'family_auth_members', 'family_membership_snapshots']))}</RtlText>
+                <RtlText style={styles.deletionLine}>{deletionCountLine('כלבים', deletionImpactCount(familyDeletionImpact, ['dogs']))}</RtlText>
+                <RtlText style={styles.deletionLine}>{deletionCountLine('טיולים ולוחות זמנים', deletionImpactCount(familyDeletionImpact, ['walks', 'schedule_entries', 'schedule_rules']))}</RtlText>
+                <RtlText style={styles.deletionLine}>{deletionCountLine('נתוני GPS ומיקום', deletionImpactCount(familyDeletionImpact, ['walk_gps_sessions', 'walk_gps_route_samples_v11', 'remote_gps_audit', 'remote_gps_commands', 'remote_gps_consents']))}</RtlText>
+                <RtlText style={styles.deletionLine}>{deletionCountLine('שיחות, הודעות וקבצים מצורפים', deletionImpactCount(familyDeletionImpact, ['chat_conversations', 'chat_messages', 'chat_conversation_members', 'chat_push_events']) + (familyDeletionImpact.counts['storage.chat_attachments'] ?? 0))}</RtlText>
+                <RtlText style={styles.deletionLine}>{deletionCountLine('תמונות משפחה', familyDeletionImpact.counts['storage.family_photos'] ?? 0)}</RtlText>
+                <RtlText style={styles.deletionLine}>{deletionCountLine('הזמנות, התראות ובקשות', deletionImpactCount(familyDeletionImpact, ['family_invites', 'notifications', 'family_onboarding_requests', 'requests']))}</RtlText>
+              </View>
+              {familyDeletionImpact.state === 'deleting' ? <RtlText style={styles.deletionWarning}>מחיקה זו כבר החלה ונעולה לכתיבה. המשך ישלים את אותה מחיקה.</RtlText> : null}
+              {familyDeletionStage === 'impact' ? <Button label="המשך לאישור סופי" onPress={() => setFamilyDeletionStage('confirm')} /> : (
+                <>
+                  <RtlText style={styles.deletionWarning}>לא יימחקו חשבונות התחברות או הרשאות System Admin. יישמר רק סימון ביקורת מצומצם למניעת שחזור.</RtlText>
+                  <RtlText style={styles.deletionText}>להמשך, הקלידו את שם המשפחה בדיוק: {familyDeletionImpact.familyName}</RtlText>
+                  <TextInput value={familyDeletionTypedName} onChangeText={setFamilyDeletionTypedName} placeholder="שם המשפחה" placeholderTextColor={colors.textSecondary} style={styles.searchInput} textAlign="right" accessibilityLabel="הקלדת שם המשפחה לאישור מחיקה" autoCapitalize="none" />
+                  <Button label={familyDeletionBusy ? 'מוחק נתוני משפחה…' : 'מחיקה לצמיתות — אין דרך חזרה'} disabled={familyDeletionBusy || familyDeletionTypedName.trim() !== familyDeletionImpact.familyName} onPress={() => void permanentlyDeleteFamily()} />
+                </>
+              )}
+            </>
+          ) : null}
+          {familyDeletionError ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{familyDeletionError}</RtlText> : null}
+          <Button label="ביטול" disabled={familyDeletionBusy} onPress={closeFamilyDeletion} />
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+    </>
   );
 }
 
@@ -964,6 +1047,12 @@ const styles = StyleSheet.create({
   activeTestLabel: { ...typography.caption, color: colors.primaryDark, textAlign: 'right', fontWeight: '800', paddingVertical: spacing.sm },
   deleteLink: { color: colors.statusOverdue, fontWeight: '800', paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
   deleteWarning: { ...typography.caption, color: colors.statusOverdue, textAlign: 'right', flexBasis: '100%' },
+  deletionContent: { flexGrow: 1, padding: spacing.xl, paddingBottom: spacing.xxxl, gap: spacing.md, justifyContent: 'center' },
+  deletionTitle: { ...typography.screenTitle, color: colors.statusOverdue, textAlign: 'right' },
+  deletionText: { ...typography.body, color: colors.textPrimary, textAlign: 'right' },
+  deletionWarning: { ...typography.meta, color: colors.statusOverdue, fontWeight: '800', textAlign: 'right' },
+  deletionImpactCard: { backgroundColor: colors.surfaceMuted, borderWidth: 1, borderColor: colors.border, borderRadius: radii.lg, padding: spacing.md, gap: spacing.xs },
+  deletionLine: { ...typography.meta, color: colors.textPrimary, textAlign: 'right' },
   healthTitle: { ...typography.cardTitle, color: colors.textPrimary, textAlign: 'right' },
   healthLine: { ...typography.meta, color: colors.textSecondary, textAlign: 'right' },
   auditHint: { ...typography.meta, color: colors.textSecondary, textAlign: 'right', marginBottom: spacing.sm },

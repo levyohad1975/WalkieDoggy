@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { analyzePngTransparency } from "../_shared/pngTransparency.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -76,29 +77,32 @@ Deno.serve(async (req: Request) => {
     return new Response(JSON.stringify({ error: "source_too_large" }), { status: 413, headers: jsonHeaders });
   }
 
-  const form = new FormData();
-  form.append("file", new Blob([sourceBytes], { type: sourceType }), "dog-photo");
-  const processed = await fetch("https://bgninja.com/api/remove", {
-    method: "POST",
-    body: form,
-    signal: AbortSignal.timeout(45_000),
-  });
+  const processed = await requestBackgroundRemoval(sourceBytes, sourceType);
   if (!processed.ok) {
-    const providerBody = (await processed.text()).slice(0, 300);
-    console.error("background removal provider failed", processed.status, providerBody);
-    return new Response(JSON.stringify({ error: "background_removal_failed" }), { status: 502, headers: jsonHeaders });
+    return new Response(JSON.stringify({ error: processed.error }), { status: processed.status, headers: jsonHeaders });
   }
+  const png = processed.png;
 
-  const png = await processed.arrayBuffer();
-  if (png.byteLength === 0) {
-    return new Response(JSON.stringify({ error: "empty_cutout" }), { status: 502, headers: jsonHeaders });
+  // Never persist a "cutout" without verifying it. The Home hero composites
+  // this file directly over the family background, so an opaque result (the
+  // provider returning the original, a solid-background PNG, a JPEG, etc.)
+  // would render as a rectangle with the original background. Rejecting here
+  // leaves photo_url untouched and the dog row without a cutout, so Home
+  // keeps the mascot fallback and the family can retry.
+  const verdict = await analyzePngTransparency(png, inflateChunks);
+  if (!verdict.ok) {
+    console.error("background removal output rejected", verdict.reason, verdict.stats ?? null);
+    return new Response(
+      JSON.stringify({ error: "cutout_not_transparent", reason: verdict.reason }),
+      { status: 422, headers: jsonHeaders },
+    );
   }
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
   const path = `${dog.family_id}/dog/cutouts/${dog.id}-${Date.now()}.png`;
   const { error: uploadError } = await admin.storage
     .from("family-photos")
-    .upload(path, png, { contentType: "image/png", upsert: false });
+    .upload(path, png, { contentType: "image/png", upsert: false, cacheControl: "31536000" });
   if (uploadError) {
     console.error("cutout upload failed", uploadError);
     return new Response(JSON.stringify({ error: "cutout_upload_failed" }), { status: 500, headers: jsonHeaders });
@@ -139,3 +143,61 @@ Deno.serve(async (req: Request) => {
 
   return new Response(JSON.stringify({ cutoutUrl }), { status: 200, headers: jsonHeaders });
 });
+
+type RemovalResult =
+  | { ok: true; png: Uint8Array }
+  | { ok: false; status: number; error: string };
+
+// BGNinja (keyless, staging-only): POST multipart `file`; omitting `bg`
+// yields a transparent PNG. Documented limits: 2 concurrent requests and a
+// small daily quota per egress IP (402 when exhausted, 429 when busy).
+async function requestBackgroundRemoval(sourceBytes: ArrayBuffer, sourceType: string): Promise<RemovalResult> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const form = new FormData();
+    form.append("file", new Blob([sourceBytes], { type: sourceType }), "dog-photo");
+    let response: Response;
+    try {
+      response = await fetch("https://bgninja.com/api/remove", {
+        method: "POST",
+        body: form,
+        signal: AbortSignal.timeout(45_000),
+      });
+    } catch (error) {
+      console.error("background removal provider unreachable", String(error));
+      return { ok: false, status: 502, error: "background_removal_failed" };
+    }
+
+    if (response.status === 429 && attempt === 0) {
+      await response.body?.cancel();
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      continue;
+    }
+    if (!response.ok) {
+      const providerBody = (await response.text()).slice(0, 300);
+      console.error("background removal provider failed", response.status, providerBody);
+      if (response.status === 402) return { ok: false, status: 503, error: "background_removal_quota_exhausted" };
+      if (response.status === 429) return { ok: false, status: 503, error: "background_removal_busy" };
+      return { ok: false, status: 502, error: "background_removal_failed" };
+    }
+
+    const png = new Uint8Array(await response.arrayBuffer());
+    if (png.byteLength === 0) return { ok: false, status: 502, error: "empty_cutout" };
+    return { ok: true, png };
+  }
+  return { ok: false, status: 503, error: "background_removal_busy" };
+}
+
+async function* inflateChunks(zlibData: Uint8Array): AsyncIterable<Uint8Array> {
+  // Copy into a plain ArrayBuffer-backed view (BlobPart typing / no SharedArrayBuffer).
+  const stream = new Blob([new Uint8Array(zlibData)]).stream().pipeThrough(new DecompressionStream("deflate"));
+  const reader = stream.getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      yield value;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}

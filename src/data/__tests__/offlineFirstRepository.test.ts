@@ -4,6 +4,14 @@ import type { AchievementUnlock, Dog, FamilyUser, HealthTask, ScheduleEntry, Sch
 
 function stubRemote(overrides: Partial<Repository> = {}): Repository {
   return {
+    getSyncReplayIdentity: jest.fn(async () => {
+      const queue = require('../syncQueue');
+      return {
+        authUserId: queue.getSyncQueueAuthUserHint(),
+        profileId: queue.getSyncQueueActorHint(),
+        familyId: queue.getSyncQueueFamilyHint(),
+      };
+    }),
     getFamily: jest.fn(),
     getUsers: jest.fn().mockResolvedValue([]),
     createUser: jest.fn().mockResolvedValue(undefined),
@@ -437,8 +445,10 @@ describe('OfflineFirstRepository.upsertUser — online direct write during queue
       upsertUser: jest.fn().mockResolvedValue(undefined),
     });
     const repo = await makeRepo(true, remote);
-    const { setSyncQueueActorGetter } = require('../syncQueue');
+    const { setSyncQueueActorGetter, setSyncQueueFamilyGetter, setSyncQueueAuthUserGetter } = require('../syncQueue');
     setSyncQueueActorGetter(() => 'user-1');
+    setSyncQueueFamilyGetter(() => 'family-1');
+    setSyncQueueAuthUserGetter(() => 'auth-user-1');
 
     const queuedDog: Dog = { id: 'dog-1', familyId: 'family-1', name: 'טופי', walksPerDay: 2 };
     await (repo as any).queue.enqueue({ type: 'upsertDog', payload: queuedDog });
@@ -466,8 +476,10 @@ describe('OfflineFirstRepository.upsertUser — online direct write during queue
       upsertUser: jest.fn().mockReturnValueOnce(olderEdit).mockResolvedValueOnce(undefined),
     });
     const repo = await makeRepo(true, remote);
-    const { setSyncQueueActorGetter } = require('../syncQueue');
+    const { setSyncQueueActorGetter, setSyncQueueFamilyGetter, setSyncQueueAuthUserGetter } = require('../syncQueue');
     setSyncQueueActorGetter(() => 'user-1');
+    setSyncQueueFamilyGetter(() => 'family-1');
+    setSyncQueueAuthUserGetter(() => 'auth-user-1');
 
     const olderMember: FamilyUser = {
       id: 'user-1', familyId: 'family-1', name: 'עידן', avatar: '🧑', color: '#123456',
@@ -495,8 +507,10 @@ describe('OfflineFirstRepository.upsertUser — online direct write during queue
     const denied = Object.assign(new Error('new row violates row-level security policy'), { code: '42501' });
     const remote = stubRemote({ upsertUser: jest.fn().mockRejectedValue(denied) });
     const repo = await makeRepo(true, remote);
-    const { setSyncQueueActorGetter } = require('../syncQueue');
+    const { setSyncQueueActorGetter, setSyncQueueFamilyGetter, setSyncQueueAuthUserGetter } = require('../syncQueue');
     setSyncQueueActorGetter(() => 'user-1');
+    setSyncQueueFamilyGetter(() => 'family-1');
+    setSyncQueueAuthUserGetter(() => 'auth-user-1');
     const memberWithPhoto: FamilyUser = {
       id: 'user-1', familyId: 'family-1', name: 'עידן', avatar: '🧑', color: '#123456',
       photoUrl: 'https://example.test/member-photo.jpg', remindersEnabled: true, gamificationEnabled: true, createdAt: 'now',
@@ -1007,8 +1021,10 @@ describe('OfflineFirstRepository — sync conflicts/quarantine surfaced for revi
     // otherwise (no actor claimed) it would be quarantined instead of
     // attempted at all; see SyncQueue.flush()'s own `claimedByUserId ==
     // null` branch, covered separately below.
-    const { setSyncQueueActorGetter } = require('../syncQueue');
+    const { setSyncQueueActorGetter, setSyncQueueFamilyGetter, setSyncQueueAuthUserGetter } = require('../syncQueue');
     setSyncQueueActorGetter(() => 'test-user');
+    setSyncQueueFamilyGetter(() => 'family-1');
+    setSyncQueueAuthUserGetter(() => 'auth-test');
 
     // upsertDog is intentionally server-authoritative while online and now
     // propagates a rejected save directly. Seed the queue explicitly here:
@@ -1032,8 +1048,10 @@ describe('OfflineFirstRepository — sync conflicts/quarantine surfaced for revi
     const dog: Dog = { id: 'dog-1', familyId: 'family-1', name: 'ריקי', walksPerDay: 2 };
     const conflictError = Object.assign(new Error('duplicate key'), { code: '23505' });
     const repo = await makeRepo(true, stubRemote({ upsertDog: jest.fn().mockRejectedValue(conflictError) }));
-    const { setSyncQueueActorGetter } = require('../syncQueue');
+    const { setSyncQueueActorGetter, setSyncQueueFamilyGetter, setSyncQueueAuthUserGetter } = require('../syncQueue');
     setSyncQueueActorGetter(() => 'test-user');
+    setSyncQueueFamilyGetter(() => 'family-1');
+    setSyncQueueAuthUserGetter(() => 'auth-test');
     await (repo as any).queue.enqueue({ type: 'upsertDog', payload: dog });
     await repo.trySync();
     expect(await repo.getSyncConflicts!()).toHaveLength(1);
@@ -1048,21 +1066,24 @@ describe('OfflineFirstRepository — sync conflicts/quarantine surfaced for revi
     await expect(repo.getQuarantinedSyncItems!()).resolves.toEqual([]);
   });
 
-  it('getQuarantinedSyncItems reflects a real untagged/legacy write that flush() refused to attempt', async () => {
-    // No actor claimed on this device (setSyncQueueActorGetter never
-    // called) — flush() quarantines rather than attempts an untagged
-    // write, per SyncQueue's own audit-attribution safety guarantee.
-    // Uses updateUserReminderSetting (always enqueue+trySync, unlike
-    // upsertDog's direct-online-write-first shortcut) so this exercises
-    // the queue's flush() path, not an early return before it.
+  it('keeps an untagged/legacy write pending when flush() cannot verify its owner', async () => {
+    // Unknown ownership must stay in the durable FIFO for an authorized
+    // reconciliation; it is never quarantined, discarded, or replayed.
     const updateUserReminderSetting = jest.fn().mockResolvedValue(undefined);
     const repo = await makeRepo(true, stubRemote({ updateUserReminderSetting }));
-
-    await repo.updateUserReminderSetting('u1', false);
+    const { setSyncQueueActorGetter, setSyncQueueFamilyGetter, setSyncQueueAuthUserGetter } = require('../syncQueue');
+    setSyncQueueActorGetter(() => null);
+    setSyncQueueFamilyGetter(() => null);
+    setSyncQueueAuthUserGetter(() => null);
+    await (repo as any).queue.enqueue({ type: 'updateUserReminderSetting', payload: { userId: 'u1', enabled: false } });
+    setSyncQueueActorGetter(() => 'user-1');
+    setSyncQueueFamilyGetter(() => 'family-1');
+    setSyncQueueAuthUserGetter(() => 'auth-user-1');
+    await repo.trySync();
 
     const quarantined = await repo.getQuarantinedSyncItems!();
-    expect(quarantined).toHaveLength(1);
-    expect(quarantined[0].op.type).toBe('updateUserReminderSetting');
-    expect(updateUserReminderSetting).not.toHaveBeenCalled(); // never even attempted
+    expect(quarantined).toHaveLength(0);
+    expect(await repo.pendingSyncCount()).toBe(1);
+    expect(updateUserReminderSetting).not.toHaveBeenCalled();
   });
 });

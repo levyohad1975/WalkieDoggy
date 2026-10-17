@@ -10,8 +10,10 @@ import type {
   ScheduleRule,
   Walk,
   WalkGpsSession,
+  WalkStartAuthorization,
+  GpsRouteUpdate,
 } from '../types';
-import type { DeleteFamilyMemberPayload, Repository } from './repository';
+import type { DeleteFamilyMemberPayload, DuplicateActiveWalkReviewRecord, Repository, ResolveDuplicateActiveWalksRequest, WalkDuplicateResolutionAudit } from './repository';
 import { LocalRepository } from './localRepository';
 import { isPermanentSyncError, SyncQueue } from './syncQueue';
 // TEMPORARY DIAGNOSTIC INSTRUMENTATION — see perfTrace.ts's own doc
@@ -20,6 +22,17 @@ import { isPermanentSyncError, SyncQueue } from './syncQueue';
 // bottleneck is confirmed fixed by an actual real-device measurement.
 import { perfMark } from '../lib/perfTrace';
 import { dedupeCanonicalWalks } from '../logic/nextWalk';
+import { enqueueWalkLifecycleIntent, listWalkLifecycleIntents, remapWalkLifecycleIntentWalkId, removeWalkLifecycleIntent, updateWalkLifecycleIntent } from './walkLifecycleOperationIds';
+import {
+  isWalkLifecycleUnavailableError,
+  persistWalkLifecycleCapability,
+  readPersistedWalkLifecycleCapability,
+  SUPPORTED_CAPABILITY_TTL_MS,
+  UNSUPPORTED_CAPABILITY_TTL_MS,
+  unavailableErrorFor,
+  WalkLifecycleUnverifiedOfflineError,
+  type WalkLifecycleCapability,
+} from './walkLifecycleCapability';
 
 /**
  * The repository the app actually uses. Reads always come from the local
@@ -35,6 +48,9 @@ export class OfflineFirstRepository implements Repository {
   private lastSyncPreflight: { outcome: 'not-run' | 'network-gated' | 'flush-finished' | 'flush-error' | 'remote-unconfigured'; at: string | null } = { outcome: 'not-run', at: null };
   /** Serializes writes for one member so an earlier edit cannot finish after a newer photo. */
   private userWriteTails = new Map<string, Promise<void>>();
+  /** Last server answer for Walk Lifecycle v1.1 (see walkLifecycleCapability.ts). */
+  private walkLifecycleCapability: { value: WalkLifecycleCapability; at: number } | null = null;
+  private walkLifecycleProbe: Promise<WalkLifecycleCapability> | null = null;
 
   // start_walk()/finish_walk() (0048) are server-authoritative,
   // authorization-checked RPCs (admin-or-responsible-member only) — the
@@ -49,14 +65,37 @@ export class OfflineFirstRepository implements Repository {
   // that merely throws in demo mode would always be truthy and break that
   // fallback instead of triggering it.
   startWalk?: (walkId: string) => Promise<Walk>;
+  startWalkV11?: (walkId: string, authorization: WalkStartAuthorization) => Promise<Walk>;
+  startSpontaneousWalkV11?: (walk: Walk, operationId: string, actorUserId?: string) => Promise<Walk>;
   finishWalk?: (
     walkId: string,
     actualWalkerId: string,
     details?: { hadPee?: boolean; hadPoop?: boolean; note?: string; completedAt?: string }
   ) => Promise<Walk>;
+  finishWalkV11?: (walkId: string, actualWalkerId: string, operationId: string, details?: { hadPee?: boolean; hadPoop?: boolean; note?: string; completedAt?: string; remoteConfirmation?: boolean; actorUserId?: string }) => Promise<Walk>;
+  acquireGpsOwnershipV11?: (walkId: string, confirmTransfer?: boolean) => Promise<{ fencingEpoch: number; expiresAt: string }>;
+  releaseGpsOwnershipV11?: (walkId: string, fencingEpoch: number) => Promise<void>;
+  heartbeatGpsOwnershipV11?: (walkId: string, fencingEpoch: number) => Promise<string>;
+  appendGpsRouteV11?: (update: GpsRouteUpdate) => Promise<WalkGpsSession>;
+  getDuplicateActiveWalkReview?: (familyId: string, walkIds: string[]) => Promise<DuplicateActiveWalkReviewRecord[]>;
+  resolveDuplicateActiveWalksV12?: (request: ResolveDuplicateActiveWalksRequest) => Promise<string>;
 
   constructor(private remote: Repository | null) {
     if (this.remote) {
+      if (this.remote.getDuplicateActiveWalkReview) {
+        this.getDuplicateActiveWalkReview = async (familyId, walkIds) => {
+          if (!(await this.isOnline())) throw new Error('Network unavailable; duplicate records could not be verified from Staging.');
+          return this.remote!.getDuplicateActiveWalkReview!(familyId, walkIds);
+        };
+      }
+      if (this.remote.resolveDuplicateActiveWalksV12) {
+        // Security-sensitive owner action: direct authenticated RPC only.
+        // It must never be placed in SyncQueue or replayed offline.
+        this.resolveDuplicateActiveWalksV12 = async (request) => {
+          if (!(await this.isOnline())) throw new Error('Network unavailable; no resolution request was sent.');
+          return this.remote!.resolveDuplicateActiveWalksV12!(request);
+        };
+      }
       this.startWalk = async (walkId: string): Promise<Walk> => {
         if (!(await this.isOnline())) {
           throw new Error('אין חיבור לשרת. כדי להתחיל מעקב טיול יש להתחבר לאינטרנט.');
@@ -90,6 +129,52 @@ export class OfflineFirstRepository implements Repository {
           return walk;
         }
       };
+      if (this.remote.startWalkV11) {
+        this.startWalkV11 = async (walkId, authorization) => {
+          const actorUserId = authorization.actorUserId ?? authorization.actualWalkerUserId;
+          const online = await this.isOnline();
+          // Fail closed BEFORE any local provisional state or outbox intent
+          // exists: a v1.1 start must never be shown or queued against a
+          // server that cannot honor it.
+          await this.requireWalkLifecycleV11(online);
+          if (!online) {
+            const existing = await this.local.findWalkById(walkId);
+            if (!existing) throw new Error('לא ניתן לשמור התחלה לא מקוונת לפני שהטיול נשמר במכשיר.');
+            const operationId = authorization.operationId;
+            await enqueueWalkLifecycleIntent({
+              action: 'start', walkId, familyId: existing.familyId, actorUserId,
+              actualWalkerUserId: authorization.actualWalkerUserId, operationId,
+              substitutionConfirmed: authorization.substitutionConfirmed ?? false,
+              remoteStart: authorization.remoteStart ?? false, state: 'pending',
+            });
+            const provisional: Walk = { ...existing, status: 'in_progress', startedAt: existing.startedAt ?? new Date().toISOString(), actualWalkerUserId: authorization.actualWalkerUserId, lifecycleSyncStatus: 'pending', updatedAt: new Date().toISOString() };
+            await this.local.saveWalk(provisional);
+            return provisional;
+          }
+          // This new lifecycle path must not replay the legacy SyncQueue as
+          // a side effect; it may contain quarantined operations from older
+          // app versions. Resolve only this walk's canonical row by read.
+          const resolvedId = await this.resolveCanonicalWalkId(walkId);
+          const walk = await this.withWalkLifecycleErrors(() => this.remote!.startWalkV11!(resolvedId, authorization));
+          await this.local.saveWalk({ ...walk, lifecycleSyncStatus: undefined });
+          return walk;
+        };
+      }
+      if (this.remote.startSpontaneousWalkV11) {
+        this.startSpontaneousWalkV11 = async (walk, operationId, actorUserId = walk.responsibleUserId) => {
+          const online = await this.isOnline();
+          await this.requireWalkLifecycleV11(online);
+          if (!online) {
+            await enqueueWalkLifecycleIntent({ action: 'start_spontaneous', walk: { ...walk, status: 'in_progress', startedAt: new Date().toISOString(), actualWalkerUserId: actorUserId, lifecycleSyncStatus: 'pending' }, familyId: walk.familyId, actorUserId, operationId, state: 'pending' });
+            const provisional: Walk = { ...walk, status: 'in_progress', startedAt: new Date().toISOString(), actualWalkerUserId: actorUserId, lifecycleSyncStatus: 'pending', updatedAt: new Date().toISOString() };
+            await this.local.saveWalk(provisional);
+            return provisional;
+          }
+          const started = await this.withWalkLifecycleErrors(() => this.remote!.startSpontaneousWalkV11!(walk, operationId, actorUserId));
+          await this.local.saveWalk({ ...started, lifecycleSyncStatus: undefined });
+          return started;
+        };
+      }
       this.finishWalk = async (walkId, actualWalkerId, details) => {
         if (!(await this.isOnline())) {
           throw new Error('אין חיבור לשרת. כדי לסיים מעקב טיול יש להתחבר לאינטרנט.');
@@ -98,7 +183,40 @@ export class OfflineFirstRepository implements Repository {
         await this.local.saveWalk(walk);
         return walk;
       };
+      if (this.remote.finishWalkV11) {
+        this.finishWalkV11 = async (walkId, actualWalkerId, operationId, details) => {
+          const actorUserId = details?.actorUserId ?? actualWalkerId;
+          const online = await this.isOnline();
+          await this.requireWalkLifecycleV11(online);
+          if (!online) {
+            const existing = await this.local.findWalkById(walkId);
+            if (!existing || existing.status !== 'in_progress') throw new Error('לא נמצא בטיול פעיל שניתן לסיים במצב לא מקוון.');
+            await enqueueWalkLifecycleIntent({ action: 'finish', walkId, familyId: existing.familyId, actorUserId, actualWalkerUserId: actualWalkerId, operationId, details: details ?? {}, state: 'pending' });
+            const now = details?.completedAt ?? new Date().toISOString();
+            const provisional: Walk = { ...existing, status: 'done', completedAt: now, completedByUserId: actualWalkerId, endedByUserId: actorUserId, hadPee: details?.hadPee, hadPoop: details?.hadPoop, note: details?.note, lifecycleSyncStatus: 'pending', updatedAt: now };
+            await this.local.saveWalk(provisional);
+            return provisional;
+          }
+          const walk = await this.withWalkLifecycleErrors(() => this.remote!.finishWalkV11!(walkId, actualWalkerId, operationId, details));
+          await this.local.saveWalk({ ...walk, lifecycleSyncStatus: undefined });
+          return walk;
+        };
+      }
+      if (this.remote.acquireGpsOwnershipV11) this.acquireGpsOwnershipV11 = async (walkId, transfer) => {
+        await this.requireWalkLifecycleV11(await this.isOnline());
+        return this.withWalkLifecycleErrors(() => this.remote!.acquireGpsOwnershipV11!(walkId, transfer));
+      };
+      if (this.remote.releaseGpsOwnershipV11) this.releaseGpsOwnershipV11 = (walkId, epoch) => this.remote!.releaseGpsOwnershipV11!(walkId, epoch);
+      if (this.remote.heartbeatGpsOwnershipV11) this.heartbeatGpsOwnershipV11 = (walkId, epoch) => this.remote!.heartbeatGpsOwnershipV11!(walkId, epoch);
+      if (this.remote.appendGpsRouteV11) this.appendGpsRouteV11 = async (update) => {
+        if (!(await this.isOnline())) throw new Error('GPS route is buffered locally until ownership can be verified online');
+        return this.remote!.appendGpsRouteV11!(update);
+      };
     }
+  }
+
+  async clearLocalFamilyCache(familyId: string): Promise<void> {
+    await this.local.clearLocalFamilyCache(familyId);
   }
 
   private async isOnline(): Promise<boolean> {
@@ -108,6 +226,153 @@ export class OfflineFirstRepository implements Repository {
       return Boolean(state.isConnected && state.isInternetReachable !== false);
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Public, side-effect-free gate for callers that must decide before
+   * touching other state (e.g. finishWalk finalizes GPS before the RPC).
+   */
+  async assertWalkLifecycleV11Available(): Promise<void> {
+    if (!this.remote) return;
+    await this.requireWalkLifecycleV11(await this.isOnline());
+  }
+
+  /**
+   * Resolves the server's Walk Lifecycle v1.1 capability. Online it asks the
+   * server (cached: a positive answer for SUPPORTED_CAPABILITY_TTL_MS, a
+   * negative one only briefly so an approved migration takes effect without
+   * a reload). Offline it uses the last answer this device received; with no
+   * answer at all it refuses rather than guessing.
+   */
+  private async requireWalkLifecycleV11(online: boolean): Promise<void> {
+    if (!this.remote?.getWalkLifecycleCapability) return;
+    let capability: WalkLifecycleCapability | null;
+    if (online) {
+      capability = await this.currentWalkLifecycleCapability();
+    } else {
+      capability = this.walkLifecycleCapability?.value ?? (await readPersistedWalkLifecycleCapability());
+      if (!capability) throw new WalkLifecycleUnverifiedOfflineError();
+    }
+    const unavailable = unavailableErrorFor(capability);
+    if (unavailable) throw unavailable;
+  }
+
+  private async currentWalkLifecycleCapability(): Promise<WalkLifecycleCapability> {
+    const cached = this.walkLifecycleCapability;
+    if (cached) {
+      const ttl = cached.value.status === 'supported' ? SUPPORTED_CAPABILITY_TTL_MS : UNSUPPORTED_CAPABILITY_TTL_MS;
+      if (Date.now() - cached.at < ttl) return cached.value;
+    }
+    if (!this.walkLifecycleProbe) {
+      this.walkLifecycleProbe = (async () => {
+        try {
+          const value = await this.remote!.getWalkLifecycleCapability!();
+          await this.recordWalkLifecycleCapability(value);
+          return value;
+        } finally {
+          this.walkLifecycleProbe = null;
+        }
+      })();
+    }
+    return this.walkLifecycleProbe;
+  }
+
+  private async recordWalkLifecycleCapability(value: WalkLifecycleCapability): Promise<void> {
+    this.walkLifecycleCapability = { value, at: Date.now() };
+    await persistWalkLifecycleCapability(value);
+  }
+
+  /**
+   * A v1.1 RPC reported missing after the probe said otherwise (rollback,
+   * partial activation, stale cache): record that immediately so no further
+   * v1.1 work is attempted or queued, then rethrow the explicit error.
+   */
+  private async withWalkLifecycleErrors<T>(call: () => Promise<T>): Promise<T> {
+    try {
+      return await call();
+    } catch (error) {
+      if (isWalkLifecycleUnavailableError(error) && this.remote?.getWalkLifecycleCapability) {
+        await this.recordWalkLifecycleCapability({
+          status: 'incomplete',
+          checkedAt: new Date().toISOString(),
+          missing: [`function:${error.detail ?? 'unknown'}`],
+        });
+      }
+      throw error;
+    }
+  }
+
+  /** Reconciles only the new v1.1 journal; the 531 legacy SyncQueue entries are never read or transformed here. */
+  private async flushWalkLifecycleOutbox(): Promise<void> {
+    if (!this.remote) return;
+    const intents = await listWalkLifecycleIntents();
+    if (!intents.some((intent) => intent.state === 'pending')) return;
+    try {
+      await this.requireWalkLifecycleV11(true);
+    } catch (error) {
+      // Not replayable on this server (yet). Keep every intent pending with
+      // its exact operation id; the walk keeps showing "pending sync".
+      console.warn('[walkLifecycle] outbox replay deferred: server does not support Walk Lifecycle v1.1', error);
+      return;
+    }
+    for (const intent of intents) {
+      if (intent.state === 'conflict') continue;
+      try {
+        let confirmed: Walk;
+        if (intent.action === 'start') {
+          if (!this.remote.startWalkV11) return;
+          const canonicalId = await this.resolveCanonicalWalkId(intent.walkId);
+          confirmed = await this.remote.startWalkV11(canonicalId, {
+            actorUserId: intent.actorUserId,
+            actualWalkerUserId: intent.actualWalkerUserId,
+            operationId: intent.operationId,
+            substitutionConfirmed: intent.substitutionConfirmed,
+            remoteStart: intent.remoteStart,
+          });
+        } else if (intent.action === 'start_spontaneous') {
+          if (!this.remote.startSpontaneousWalkV11) return;
+          confirmed = await this.remote.startSpontaneousWalkV11(intent.walk, intent.operationId, intent.actorUserId);
+        } else {
+          if (!this.remote.finishWalkV11) return;
+          confirmed = await this.remote.finishWalkV11(intent.walkId, intent.actualWalkerUserId, intent.operationId, { ...intent.details, actorUserId: intent.actorUserId });
+        }
+        await this.local.saveWalk({ ...confirmed, lifecycleSyncStatus: undefined });
+        await removeWalkLifecycleIntent(intent.operationId);
+        if (intent.action === 'start' && confirmed.id !== intent.walkId) {
+          // The server settled this occurrence on a different canonical row.
+          // Later intents queued under the local id (typically the offline
+          // finish) must follow it, both on disk and in this pass.
+          const localWalkId = intent.walkId;
+          await remapWalkLifecycleIntentWalkId(localWalkId, confirmed.id);
+          for (const later of intents) {
+            if (later !== intent && later.state === 'pending' && later.action !== 'start_spontaneous' && later.walkId === localWalkId) later.walkId = confirmed.id;
+          }
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (isWalkLifecycleUnavailableError(error)) {
+          // A server version mismatch is neither a business conflict nor a
+          // network blip: record it on the intent (still pending, exact
+          // operation id preserved) and stop replaying until the server
+          // reports v1.1 support again.
+          if (this.remote.getWalkLifecycleCapability) {
+            await this.recordWalkLifecycleCapability({ status: 'incomplete', checkedAt: new Date().toISOString(), missing: [`function:${error.detail ?? 'unknown'}`] });
+          }
+          await updateWalkLifecycleIntent(intent.operationId, { error: message });
+          break;
+        }
+        const permanentConflict = /another active walk|not pending|not in progress|actual walker|family mismatch|operation id reused|profile changed|not authorized|admin required|only assigned member|confirmed substitute|walk not found|walk is not pending|walk is not in progress|completion time/i.test(message);
+        if (permanentConflict) {
+          await updateWalkLifecycleIntent(intent.operationId, { state: 'conflict', error: message });
+          const stale = intent.action === 'start_spontaneous' ? intent.walk : await this.local.findWalkById(intent.walkId);
+          if (stale) await this.local.saveWalk({ ...stale, lifecycleSyncStatus: 'conflict' });
+          continue;
+        }
+        // Leave transient failures pending, preserving the exact operation id
+        // for safe server-side idempotency on the next foreground retry.
+        break;
+      }
     }
   }
 
@@ -199,6 +464,7 @@ export class OfflineFirstRepository implements Repository {
     }
     try {
       await this.queue.flush(this.remote, options);
+      await this.flushWalkLifecycleOutbox();
       this.lastSyncPreflight = { outcome: 'flush-finished', at: new Date().toISOString() };
     } catch (error) {
       this.lastSyncPreflight = { outcome: 'flush-error', at: new Date().toISOString() };
@@ -781,6 +1047,11 @@ export class OfflineFirstRepository implements Repository {
       }
     }
     return await this.pruneAndDedupeCanonicalWalks(await this.local.getWalks(familyId));
+  }
+
+  async getWalkDuplicateResolutionAudit(familyId: string): Promise<WalkDuplicateResolutionAudit[]> {
+    if (!(await this.isOnline()) || !this.remote?.getWalkDuplicateResolutionAudit) return [];
+    return this.remote.getWalkDuplicateResolutionAudit(familyId);
   }
 
   /**

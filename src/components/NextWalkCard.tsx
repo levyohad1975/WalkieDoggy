@@ -6,7 +6,7 @@ import { isOverdue, relativeTimeLabel, walkDateTime } from '../logic/nextWalk';
 import { isWalkRequiringAttention } from '../logic/walkAttention';
 import { walkDateContextLabel } from '../logic/walkDateContext';
 import { colors } from '../theme/colors';
-import { nativeDirection, radii } from '../theme/tokens';
+import { nativeDirection, radii, spacing } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 import { DogPhoto } from './DogPhoto';
@@ -23,6 +23,7 @@ interface NextWalkCardProps {
   /** IANA timezone that owns the family schedule. */
   scheduleTimezone?: string;
   responsible?: FamilyUser;
+  actualWalker?: FamilyUser;
   currentUserId: string;
   dogName: string;
   dogPhotoUrl?: string;
@@ -41,6 +42,12 @@ interface NextWalkCardProps {
   startWalkPending?: boolean;
   startWalkAvailableLabel?: string;
   onEndWalk?: () => void;
+  onRecordPee?: () => void;
+  onRecordPoop?: () => void;
+  onUndoPee?: () => void;
+  onUndoPoop?: () => void;
+  recordedPeeCount?: number;
+  recordedPoopCount?: number;
   activeStartedAt?: string | null;
   /**
    * Phase 4 (GPS foundation, PRD §7 — "In Progress" card state: "מרחק/מצב
@@ -56,6 +63,16 @@ interface NextWalkCardProps {
   gpsStatus?: 'granted' | 'denied' | 'unavailable' | null;
   gpsTrackingStatus?: GpsTrackingStatus | null;
   onRetryGps?: () => void;
+  /**
+   * Set when this walk is active but THIS device holds no GPS session for it
+   * (e.g. the PWA was relaunched mid-walk, or another device is the walker's).
+   * Without it the card fell through to "מפעיל GPS…" forever although nothing
+   * was starting. 'walker_here' offers an explicit activation tap (Safari
+   * needs a user gesture); 'elsewhere' says GPS belongs to the walker's device.
+   */
+  gpsNotTrackedHere?: 'walker_here' | 'elsewhere' | null;
+  /** Diagnostic (Staging P0): why GPS last ended/was discarded on this device for this walk — a reason code, never location data. */
+  gpsLastStopLabel?: string | null;
   /** GPS samples from the active walk, updated as the phone moves. */
   liveRoutePoints?: Array<{ latitude: number; longitude: number; timestamp: number }>;
   /**
@@ -97,6 +114,7 @@ export function NextWalkCard({
   walk,
   scheduleTimezone,
   responsible,
+  actualWalker,
   currentUserId,
   dogName,
   dogPhotoUrl,
@@ -109,12 +127,20 @@ export function NextWalkCard({
   startWalkPending = false,
   startWalkAvailableLabel,
   onEndWalk,
+  onRecordPee,
+  onRecordPoop,
+  onUndoPee,
+  onUndoPoop,
+  recordedPeeCount = 0,
+  recordedPoopCount = 0,
   activeStartedAt,
   liveDistanceMeters,
   gpsPointCount,
   gpsStatus,
   gpsTrackingStatus,
   onRetryGps,
+  gpsNotTrackedHere,
+  gpsLastStopLabel,
   liveRoutePoints,
   onMarkNotDone,
   canResolve = true,
@@ -197,7 +223,9 @@ export function NextWalkCard({
       <View style={[styles.eyebrowRow, isWeb && styles.webEyebrowRow]}>
         {showDogPhoto ? <DogPhoto photoUrl={dogPhotoUrl} size={isWeb ? 60 : 72} /> : null}
         <RtlText style={styles.eyebrow} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>
-          {isActive ? `בזמן טיול · ${dogName}` : (primaryLabel ?? `הטיול הבא של ${dogName}`)}
+          {isActive
+            ? (walk.isUnplanned ? `טיול ספונטני פעיל · ${dogName}` : `בזמן טיול · ${dogName}`)
+            : (primaryLabel ?? `הטיול הבא של ${dogName}`)}
         </RtlText>
         {/* The Walkie Doggy MASCOT (brand character) — deliberately separate
             from DogPhoto above (the family's REAL dog), never interchanged,
@@ -210,6 +238,17 @@ export function NextWalkCard({
             (onboarding, reminder, celebration) are untouched. */}
         {showMascot ? <WalkieMascot state={mascotState} size={isWeb ? 52 : 58} testID="next-walk-mascot" /> : null}
       </View>
+
+      {walk.lifecycleSyncStatus ? (
+        <RtlText
+          style={[styles.lifecycleSyncStatus, walk.lifecycleSyncStatus === 'conflict' && styles.lifecycleSyncConflict]}
+          accessibilityLiveRegion="polite"
+        >
+          {walk.lifecycleSyncStatus === 'pending'
+            ? 'הפעולה ממתינה לאישור השרת. אין עדיין אישור שהטיול פעיל בכל המכשירים.'
+            : 'השרת לא אישר את הפעולה. הטיול הקיים נשמר; יש לרענן ולבדוק לפני ניסיון נוסף.'}
+        </RtlText>
+      ) : null}
 
       {/* An overdue card is an operational decision, not a greeting. Keeping
           the mascot copy out of that state gives the time, assignee and the
@@ -240,7 +279,11 @@ export function NextWalkCard({
       {isActive ? (
         <>
         <RtlText style={styles.gpsStatusLine} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE} accessibilityLiveRegion="polite">
-          {gpsTrackingStatus === 'requesting'
+          {gpsNotTrackedHere === 'walker_here'
+            ? '📍 GPS לא פעיל במכשיר הזה'
+            : gpsNotTrackedHere === 'elsewhere'
+              ? '📍 ה-GPS נאסף במכשיר של מי שיוצא/ת לטיול'
+          : gpsTrackingStatus === 'requesting'
             ? '📍 מבקש גישה למיקום…'
             : gpsTrackingStatus === 'waiting'
               ? '📍 ממתין למיקום GPS ראשון…'
@@ -260,7 +303,16 @@ export function NextWalkCard({
                 : 'GPS פעיל'}`
                       : '📍 מפעיל GPS…'}
         </RtlText>
-        {onRetryGps && (gpsTrackingStatus === 'timeout' || gpsTrackingStatus === 'unavailable' || gpsTrackingStatus === 'interrupted') ? (
+        {gpsNotTrackedHere === 'walker_here' && gpsLastStopLabel ? (
+          <RtlText style={styles.gpsDiagnostic} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE} testID="gps-last-stop-diagnostic">
+            {`אבחון GPS: ${gpsLastStopLabel}`}
+          </RtlText>
+        ) : null}
+        {onRetryGps && gpsNotTrackedHere === 'walker_here' ? (
+          <Pressable onPress={onRetryGps} accessibilityRole="button" accessibilityLabel="הפעל GPS לטיול הזה במכשיר הזה" style={styles.gpsRetry}>
+            <RtlText style={styles.gpsRetryText}>הפעל GPS</RtlText>
+          </Pressable>
+        ) : onRetryGps && (gpsTrackingStatus === 'timeout' || gpsTrackingStatus === 'unavailable' || gpsTrackingStatus === 'interrupted') ? (
           <Pressable onPress={onRetryGps} accessibilityRole="button" accessibilityLabel="נסה להפעיל GPS שוב" style={styles.gpsRetry}>
             <RtlText style={styles.gpsRetryText}>נסה שוב</RtlText>
           </Pressable>
@@ -269,21 +321,50 @@ export function NextWalkCard({
       ) : null}
 
 
+      {isActive && tone === 'dashboard' ? (
+        <>
+          <View style={styles.activeWalkerSummary}>
+            <RtlText style={styles.activeWalkerSummaryText}>מתוכנן ל: {responsible?.name ?? '—'} · מבצע בפועל: {actualWalker?.name ?? 'טרם עודכן'}</RtlText>
+            <RtlText style={styles.activeWalkerSummaryTime}>שעה מתוכננת: {walk.scheduledTime}</RtlText>
+          </View>
+          {isActive && (onRecordPee || onRecordPoop) ? (
+        <View style={styles.walkEventRow}>
+          {onRecordPee ? <View style={styles.walkEventGroup}><Pressable accessibilityRole="button" accessibilityLabel="הוסף סימון פיפי" onPress={onRecordPee} style={styles.walkEventButton}><RtlText>💧 {recordedPeeCount}</RtlText></Pressable>{onUndoPee && recordedPeeCount > 0 ? <Pressable accessibilityRole="button" accessibilityLabel="בטל סימון פיפי אחד" onPress={onUndoPee} style={styles.walkEventUndo}><RtlText>−</RtlText></Pressable> : null}</View> : null}
+          {onRecordPoop ? <View style={styles.walkEventGroup}><Pressable accessibilityRole="button" accessibilityLabel="הוסף סימון קקי" onPress={onRecordPoop} style={styles.walkEventButton}><RtlText>💩 {recordedPoopCount}</RtlText></Pressable>{onUndoPoop && recordedPoopCount > 0 ? <Pressable accessibilityRole="button" accessibilityLabel="בטל סימון קקי אחד" onPress={onUndoPoop} style={styles.walkEventUndo}><RtlText>−</RtlText></Pressable> : null}</View> : null}
+        </View>
+      ) : null}
+
+        {isActive ? (
+          <View style={styles.activeMapPanel}>
+            <RoutePreview live session={{ routePoints: liveRoutePoints ?? [] } as import('../types').WalkGpsSession} />
+          </View>
+        ) : null}
+      {isActive && onEndWalk && canResolve ? (
+        <Button label="סיים טיול" icon="■" onPress={onEndWalk} style={styles.endWalkButton} shrinkToFit />
+      ) : null}
+
+
+        </>
+      ) : null}
+
       {tone === 'dashboard' ? (
-        <View style={[styles.dashboardThreeColumnRow, isWeb && styles.webMainRow]}>
+        <>
+        {!isActive ? <View style={[styles.dashboardThreeColumnRow, isWeb && styles.webMainRow]}>
           <View style={styles.dashboardPersonColumn}>
             {responsible ? <Avatar emoji={responsible.avatar} color={responsible.color} photoUrl={responsible.photoUrl} size={isWeb ? 46 : 50} /> : null}
-            <RtlText style={styles.dashboardPersonName} numberOfLines={1}>{responsible?.name ?? '—'}</RtlText>
-            <RtlText style={styles.dashboardColumnLabel}>אחראי לטיול</RtlText>
+            <RtlText style={styles.dashboardPersonName} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.72} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE}>{responsible?.name ?? '—'}</RtlText>
+            <RtlText style={styles.dashboardColumnLabel}>מתוכנן ל</RtlText>
+            {isActive && actualWalker ? <RtlText style={styles.actualWalkerLabel} numberOfLines={2}>מבצע בפועל: {actualWalker.name}</RtlText> : null}
           </View>
           <View style={styles.dashboardTimeColumn}>
             <RtlText style={styles.dashboardTime} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{walk.scheduledTime}</RtlText>
             <RtlText style={styles.dashboardDate}>{walkDateContextLabel(walk.date)}</RtlText>
           </View>
           <View style={[styles.dashboardCountdownColumn, isActive && styles.liveMapColumn]}>
-            {isActive ? <RoutePreview live session={{ routePoints: liveRoutePoints ?? [] } as import('../types').WalkGpsSession} /> : !overdue ? <Countdown target={walkDateTime(walk, scheduleTimezone)} compact /> : null}
+            {isActive ? <RtlText style={styles.activeGpsLabel}>GPS פעיל</RtlText> : !overdue ? <Countdown target={walkDateTime(walk, scheduleTimezone)} compact /> : null}
           </View>
-        </View>
+        </View> : null}
+        </>
       ) : (
         <View style={[styles.mainRow, isWeb && styles.webMainRow]}>
           <View style={styles.timeBlock}>
@@ -324,7 +405,7 @@ export function NextWalkCard({
           {responsible?.name ?? 'האחראי/ת'}
         </RtlText>
       ) : isActive && onEndWalk ? (
-        <Button label="סיים טיול" icon="■" onPress={onEndWalk} style={styles.endWalkButton} shrinkToFit />
+        null
       ) : onStartWalk ? (
         <>
           <Button
@@ -429,6 +510,16 @@ const TIME_MAX_FONT_SCALE = 1.35;
 const CARD_MAX_FONT_SCALE = 1.35;
 
 const styles = StyleSheet.create({
+  walkEventGroup: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  walkEventUndo: { width: 44, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
+  walkEventRow: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginVertical: 6 },
+  walkEventButton: { minWidth: 46, height: 46, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center', borderRadius: 14, backgroundColor: colors.surfaceMuted },
+  activeMapPanel: { width: '100%', marginVertical: 4 },
+  activeWalkerSummary: { alignItems: 'center', gap: 2, marginTop: 4, marginBottom: 2 },
+  activeWalkerSummaryText: { fontSize: 14, fontWeight: '700', color: '#17345B', textAlign: 'center' },
+  activeWalkerSummaryTime: { fontSize: 12, color: '#7B746B', textAlign: 'center' },
+  actualWalkerLabel: { fontSize: 12, fontWeight: '700', color: colors.primaryDark, textAlign: 'center' },
+  activeGpsLabel: { fontSize: 12, color: colors.primaryDark, textAlign: 'center', fontWeight: '600' },
   liveMapColumn: { minWidth: 0, overflow: 'hidden' },
   liveRouteMap: { width: '100%', marginVertical: 8, gap: 6 },
   liveRouteLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'center' },
@@ -457,6 +548,8 @@ const styles = StyleSheet.create({
   eyebrowRow: { flexDirection: 'row-reverse', ...nativeDirection('ltr'), alignItems: 'center', gap: 8, marginBottom: 4 },
   webEyebrowRow: { marginBottom: 2 },
   eyebrow: { flex: 1, fontSize: 18, fontWeight: '900', color: '#17345B', textAlign: 'right' },
+  lifecycleSyncStatus: { color: colors.warning, backgroundColor: colors.warningSoft, borderRadius: radii.sm, padding: spacing.sm, fontSize: 12, fontWeight: '700', textAlign: 'right', marginBottom: spacing.sm },
+  lifecycleSyncConflict: { color: colors.danger, backgroundColor: colors.dangerSoft },
   mascotMessage: {
     fontSize: 13,
     fontWeight: '600',
@@ -471,6 +564,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     marginBottom: 8,
   },
+  gpsDiagnostic: { fontSize: 11, color: colors.textSecondary },
   gpsRetry: { alignSelf: 'flex-start', minHeight: 36, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 18, backgroundColor: '#E7F5F4' },
   gpsRetryText: { color: colors.primary, fontSize: 13, fontWeight: '700' },
   activeWalkBanner: {
@@ -510,13 +604,13 @@ const styles = StyleSheet.create({
   // assignee circle reads as its own block instead of touching the time.
   dashboardMainRow: { gap: 34, paddingHorizontal: 10, marginTop: 4, marginBottom: 10, minHeight: 82 },
   dashboardThreeColumnRow: { flexDirection: 'row', alignItems: 'stretch', justifyContent: 'space-between', marginTop: 1, marginBottom: 3, minHeight: 70, gap: 0 },
-  dashboardPersonColumn: { flex: 0.75, alignItems: 'center', justifyContent: 'center', gap: 2, minWidth: 0, paddingHorizontal: 2 },
-  dashboardPersonName: { fontSize: 16, fontWeight: '800', color: '#17345B', textAlign: 'center' },
+  dashboardPersonColumn: { flex: 1.15, alignItems: 'center', justifyContent: 'center', gap: 2, minWidth: 0, paddingHorizontal: 2 },
+  dashboardPersonName: { width: '100%', fontSize: 16, lineHeight: 20, fontWeight: '800', color: '#17345B', textAlign: 'center' },
   dashboardColumnLabel: { fontSize: 11, fontWeight: '600', color: '#7B746B', textAlign: 'center' },
-  dashboardTimeColumn: { flex: 1.3, alignItems: 'center', justifyContent: 'center', minWidth: 102, borderLeftWidth: 1, borderRightWidth: 1, borderColor: '#D9D3C8', paddingHorizontal: 2 },
+  dashboardTimeColumn: { flex: 1.2, alignItems: 'center', justifyContent: 'center', minWidth: 102, borderLeftWidth: 1, borderRightWidth: 1, borderColor: '#D9D3C8', paddingHorizontal: 2 },
   dashboardTime: { width: '100%', fontSize: 31, lineHeight: 38, fontWeight: '900', color: '#111111', fontVariant: ['tabular-nums'], textAlign: 'center' },
   dashboardDate: { fontSize: 13, fontWeight: '700', color: '#7B746B', marginTop: 2, textAlign: 'center' },
-  dashboardCountdownColumn: { flex: 1, alignItems: 'center', justifyContent: 'center', minWidth: 0, paddingHorizontal: 2 },
+  dashboardCountdownColumn: { flex: 0.9, alignItems: 'center', justifyContent: 'center', minWidth: 0, paddingHorizontal: 2 },
   personBlock: { flex: 1, alignItems: 'flex-end', gap: 5, minWidth: 0, paddingStart: 8 },
   personName: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'left' },
   responsibleLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'left' },

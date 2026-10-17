@@ -2,6 +2,7 @@ import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import type { FamilyLookupResult } from '../types';
+import { withSyncIdentityFence } from './syncIdentityFence';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const supabasePublishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '';
@@ -23,6 +24,27 @@ export const isSupabaseConfigured = Boolean(supabaseUrl && supabasePublishableKe
 export const supabaseProjectUrl = supabaseUrl;
 export const supabaseClientKey = supabasePublishableKey;
 
+/** This destructive-looking admin control is compiled in but visible only when
+ * the app is connected to the exact authorized Staging Supabase project. */
+export function isAuthorizedWalkResolutionStagingUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'https:' && parsed.hostname.toLowerCase() === 'czbxhsoxyawprqehkfit.supabase.co'
+      && parsed.port === '' && parsed.username === '' && parsed.password === '';
+  } catch {
+    return false;
+  }
+}
+
+export function isStagingDuplicateResolutionEnabled(value: string, explicitStagingFlag: string | undefined): boolean {
+  return explicitStagingFlag === 'true' && isAuthorizedWalkResolutionStagingUrl(value);
+}
+
+// The explicit opt-in must be a branch-scoped Staging Preview variable. It is
+// intentionally absent from Production; URL identity alone is not a rollout flag.
+export const isWalkResolutionStaging = isSupabaseConfigured
+  && isStagingDuplicateResolutionEnabled(supabaseUrl, process.env.EXPO_PUBLIC_STAGING_WALK_DUPLICATE_RESOLUTION);
+
 // Both env vars are read from process.env (not hardcoded) as required —
 // see .env.example for the keys and README "Configuring Supabase".
 export const supabase = isSupabaseConfigured
@@ -36,6 +58,18 @@ export const supabase = isSupabaseConfigured
     })
   : null;
 
+let currentSupabaseAuthUserId: string | null = null;
+if (supabase) {
+  supabase.auth.onAuthStateChange?.((_event, session) => {
+    currentSupabaseAuthUserId = session?.user.id ?? null;
+  });
+}
+
+/** Cached auth.uid() hint; SyncQueue still verifies it with the server before replay. */
+export function getCurrentSupabaseAuthUserId(): string | null {
+  return currentSupabaseAuthUserId;
+}
+
 /**
  * Every device needs *some* Supabase Auth session for Row Level Security to
  * evaluate at all (see supabase/schema.sql — `current_family_id()` reads
@@ -47,10 +81,16 @@ export const supabase = isSupabaseConfigured
  */
 export async function ensureAnonymousSession(): Promise<void> {
   if (!supabase) return;
-  const { data } = await supabase.auth.getSession();
-  if (data.session) return;
-  const { error } = await supabase.auth.signInAnonymously();
-  if (error) throw error;
+  await withSyncIdentityFence(async () => {
+    const { data } = await supabase!.auth.getSession();
+    if (data.session) {
+      currentSupabaseAuthUserId = data.session.user?.id ?? null;
+      return;
+    }
+    const { data: signedIn, error } = await supabase!.auth.signInAnonymously();
+    if (error) throw error;
+    currentSupabaseAuthUserId = signedIn?.session?.user?.id ?? null;
+  });
 }
 
 /**
@@ -74,8 +114,10 @@ export async function ensureAnonymousSession(): Promise<void> {
  */
 export async function claimFamilyProfile(userId: string): Promise<void> {
   if (!supabase) return;
-  const { error } = await supabase.rpc('claim_family_profile', { target_user_id: userId });
-  if (error) throw error;
+  await withSyncIdentityFence(async () => {
+    const { error } = await supabase!.rpc('claim_family_profile', { target_user_id: userId });
+    if (error) throw error;
+  });
 }
 
 /**
@@ -124,10 +166,10 @@ export async function setProfilePin(userId: string, pin: string | null): Promise
  */
 export async function claimFamilyProfileWithPin(userId: string, pin: string): Promise<void> {
   if (!supabase) throw new SupabaseNotConfiguredError();
-  const { data, error } = await supabase.rpc('claim_family_profile_with_pin', {
+  const { data, error } = await withSyncIdentityFence(async () => await supabase!.rpc('claim_family_profile_with_pin', {
     p_target_user_id: userId,
     p_pin: pin,
-  });
+  }));
   if (error) throw error;
 
   const result = data as { success?: boolean; reason?: string } | null;
@@ -188,7 +230,7 @@ export async function findFamilyByInviteCode(code: string): Promise<FamilyLookup
  */
 export async function joinFamily(code: string): Promise<{ id: string; name: string }> {
   if (!supabase) throw new SupabaseNotConfiguredError();
-  const { data, error } = await supabase.rpc('join_family', { code });
+  const { data, error } = await withSyncIdentityFence(async () => await supabase!.rpc('join_family', { code }));
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) throw new Error('לא נמצאה משפחה עם הקוד הזה');
@@ -207,10 +249,10 @@ export async function createFamily(
   dogName?: string
 ): Promise<{ id: string; name: string; inviteCode: string }> {
   if (!supabase) throw new SupabaseNotConfiguredError();
-  const { data, error } = await supabase.rpc('create_family', {
+  const { data, error } = await withSyncIdentityFence(async () => await supabase!.rpc('create_family', {
     family_name: familyName,
     dog_name: dogName ?? null,
-  });
+  }));
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) throw new Error('יצירת המשפחה נכשלה');
@@ -333,10 +375,46 @@ export async function generateDogPhotoCutout(dogId: string): Promise<string> {
   const { data, error } = await supabase.functions.invoke('generate-dog-cutout', {
     body: { dogId },
   });
-  if (error) throw error;
+  if (error) throw new DogCutoutError(await readFunctionErrorCode(error), error);
   const cutoutUrl = (data as { cutoutUrl?: string } | null)?.cutoutUrl;
-  if (!cutoutUrl) throw new Error('cutout generation returned no URL');
+  if (!cutoutUrl) throw new DogCutoutError('no_cutout_url');
   return cutoutUrl;
+}
+
+/** A failed cutout job; `code` is the Edge Function's `error` field when available. */
+export class DogCutoutError extends Error {
+  constructor(public readonly code: string, public readonly detail?: unknown) {
+    super(`dog cutout generation failed: ${code}`);
+    this.name = 'DogCutoutError';
+  }
+}
+
+async function readFunctionErrorCode(error: unknown): Promise<string> {
+  // FunctionsHttpError exposes the raw Response as `context`.
+  const response = (error as { context?: { json?: () => Promise<unknown>; clone?: () => { json: () => Promise<unknown> } } } | null)?.context;
+  try {
+    const reader = typeof response?.clone === 'function' ? response.clone() : response;
+    const body = (await reader?.json?.()) as { error?: unknown } | undefined;
+    if (body && typeof body.error === 'string' && body.error) return body.error;
+  } catch {
+    // Non-JSON or already-consumed body: fall through to a generic code.
+  }
+  return 'request_failed';
+}
+
+/** Hebrew explanation for a failed background removal. The original photo is always kept. */
+export function describeDogCutoutFailure(error: unknown): string {
+  const code = error instanceof DogCutoutError ? error.code : '';
+  switch (code) {
+    case 'cutout_not_transparent':
+      return 'לא הצלחנו להפריד את הכלב מהרקע בתמונה הזו. אפשר לנסות שוב או לבחור תמונה שבה הכלב בולט יותר על הרקע.';
+    case 'background_removal_quota_exhausted':
+      return 'שירות הסרת הרקע הגיע למכסה היומית. התמונה המקורית נשמרה — נסו שוב מחר.';
+    case 'background_removal_busy':
+      return 'שירות הסרת הרקע עמוס כרגע. התמונה המקורית נשמרה — נסו שוב בעוד דקה.';
+    default:
+      return 'לא הצלחנו להסיר את הרקע כרגע. אפשר לנסות שוב מאותו מסך.';
+  }
 }
 
 export async function removeUnusedDog(dogId: string): Promise<void> {

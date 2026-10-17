@@ -136,4 +136,19 @@ describe('scheduleStore.startUnplannedWalk', () => {
     expect(useScheduleStore.getState().walks.filter((walk) => walk.isUnplanned && walk.status === 'in_progress')).toHaveLength(1);
     saveSpy.mockRestore();
   });
+
+  it('refuses a sequential second spontaneous start for the same dog once one active walk exists', async () => {
+    await useScheduleStore.getState().load(FAMILY_ID);
+    const { repository } = require('../../data');
+    const saveSpy = jest.spyOn(repository, 'saveWalk');
+
+    await expect(useScheduleStore.getState().startUnplannedWalk(FAMILY_ID, 'dog-topi', 'user-eidan')).resolves.toBe(true);
+    const countAfterStart = useScheduleStore.getState().walks.length;
+    await expect(useScheduleStore.getState().startUnplannedWalk(FAMILY_ID, 'dog-topi', 'user-eidan')).resolves.toBe(false);
+
+    expect(useScheduleStore.getState().walks).toHaveLength(countAfterStart);
+    expect(useScheduleStore.getState().actionError).toMatch(/כבר יש טיול פעיל/);
+    expect(saveSpy).toHaveBeenCalledTimes(1);
+    saveSpy.mockRestore();
+  });
 });

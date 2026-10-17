@@ -20,6 +20,8 @@ interface DogDetailsModalProps {
   uploadingPhoto: boolean;
   onChangePhoto: () => void;
   onRemovePhoto: () => void;
+  onRetryCutout?: () => void;
+  processingCutout?: boolean;
   onAddDog?: () => void;
   onDeleteDog?: () => void;
   deletingDog?: boolean;
@@ -28,7 +30,7 @@ interface DogDetailsModalProps {
   onClose: () => void;
 }
 
-export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, onRemovePhoto, onAddDog, onDeleteDog, deletingDog = false, canManageDog = false, onSave, onClose }: DogDetailsModalProps) {
+export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, onRemovePhoto, onRetryCutout, processingCutout = false, onAddDog, onDeleteDog, deletingDog = false, canManageDog = false, onSave, onClose }: DogDetailsModalProps) {
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -54,6 +56,11 @@ export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, o
                   <Pressable onPress={onChangePhoto} disabled={uploadingPhoto} style={styles.photoButton} accessibilityRole="button" accessibilityLabel="החלפת תמונת הכלב">
                     <RtlText style={styles.photoLink}>{uploadingPhoto ? 'מעלה תמונה...' : dog.photoUrl ? 'החלף תמונה' : 'הוסף תמונה מהגלריה'}</RtlText>
                   </Pressable>
+                  {dog.photoUrl && canManageDog && onRetryCutout ? (
+                    <Pressable onPress={onRetryCutout} disabled={uploadingPhoto || processingCutout} style={styles.photoButton} accessibilityRole="button" accessibilityLabel="הסרת רקע מהתמונה">
+                      <RtlText style={styles.photoLink}>{processingCutout ? 'מסיר רקע…' : 'הסרת רקע מהתמונה'}</RtlText>
+                    </Pressable>
+                  ) : null}
                   {dog.photoUrl ? (
                     <Pressable onPress={onRemovePhoto} disabled={uploadingPhoto} style={styles.removePhotoButton} accessibilityRole="button" accessibilityLabel="מחיקת תמונת הכלב וחזרה למסקוט">
                       <RtlText style={styles.removePhotoLink}>הסר תמונה</RtlText>

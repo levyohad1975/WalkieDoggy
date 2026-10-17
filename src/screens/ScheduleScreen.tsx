@@ -21,7 +21,7 @@ import { RequestTimeChangeModal } from '../components/RequestTimeChangeModal';
 import { DEMO_FAMILY } from '../data/demoData';
 import { generateId } from '../lib/id';
 import { localDateOnly } from '../logic/dateFormat';
-import { isOverdue } from '../logic/nextWalk';
+import { dedupeCanonicalWalks, familyDateOnly, isOverdue } from '../logic/nextWalk';
 import { previewRotation } from '../logic/rotation';
 import { canRequestChangeForWalk } from '../logic/walkActions';
 import { walkHasActiveSwapRequest, walkHasActiveTimeChangeRequest } from '../logic/requestLifecycle';
@@ -64,7 +64,7 @@ function formatDateLabel(dateStr: string): string {
 }
 
 export function ScheduleScreen() {
-  const { users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, load: loadFamily } = useFamilyStore();
+  const { family, users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, load: loadFamily } = useFamilyStore();
   const {
     walks,
     rules,
@@ -131,6 +131,7 @@ export function ScheduleScreen() {
   const [range, setRange] = useState<RangeKey>('week');
   const [selectedDate, setSelectedDate] = useState(() => toLocalDateOnly(new Date()));
   const [completedExpanded, setCompletedExpanded] = useState(false);
+  const [overdueExpanded, setOverdueExpanded] = useState(true);
   const [editingWalkId, setEditingWalkId] = useState<string | null>(null);
   const [ruleFormVisible, setRuleFormVisible] = useState(false);
   const [editingRule, setEditingRule] = useState<ScheduleRule | null>(null);
@@ -164,7 +165,7 @@ export function ScheduleScreen() {
   // unfiltered `walks` on purpose — they resolve one already-known walk
   // regardless of which dog is currently selected.
   const visibleWalks = useMemo(
-    () => (dogs.length > 1 && dog ? walks.filter((w) => w.dogId === dog.id) : walks),
+    () => dedupeCanonicalWalks(dogs.length > 1 && dog ? walks.filter((w) => w.dogId === dog.id) : walks),
     [walks, dogs.length, dog?.id]
   );
   const visibleRules = useMemo(
@@ -261,6 +262,19 @@ export function ScheduleScreen() {
     isOverdue(w) &&
     (familyRole === 'admin' || w.responsibleUserId === effectiveUserId);
 
+  // P1 (2026-10-15): the full "ממתינים לעדכון" list used to render directly
+  // on the Dashboard — every unresolved overdue walk regardless of age,
+  // which on real family data meant months of historical cards pushing
+  // everything else off Home. Home now shows only a compact count and
+  // links here; this is the one place the full, date-unbounded list lives
+  // — same data (visibleWalks, already dog-scoped above) and the exact
+  // same canResolveWalk/resolveWalk/skip authorization this screen's own
+  // day view already used, not a second data source or permission rule.
+  const allOverduePending = useMemo(
+    () => visibleWalks.filter((w) => w.date === familyDateOnly(new Date(), family?.timezone) && canResolveWalk(w)).sort((a, b) => `${a.date}T${a.scheduledTime}`.localeCompare(`${b.date}T${b.scheduledTime}`)),
+    [visibleWalks, familyRole, effectiveUserId, family?.timezone]
+  );
+
   const resolveWalk = resolveWalkId ? walks.find((w) => w.id === resolveWalkId) : undefined;
 
   const requestSwapWalk = requestSwapWalkId ? walks.find((w) => w.id === requestSwapWalkId) : undefined;
@@ -278,6 +292,39 @@ export function ScheduleScreen() {
             entirely for a single-dog family. */}
         {dogs.length > 1 ? (
           <DogSelectorRow dogs={dogs} selectedDogId={selectedDogId} onSelect={(dogId) => void selectDog(dogId)} />
+        ) : null}
+
+        {/* P1 (2026-10-15): the full, date-unbounded "ממתינים לעדכון" list —
+            reachable from Home's compact summary, kept at the very top of
+            this screen so simply navigating here surfaces it without any
+            extra scroll-targeting logic. */}
+        {allOverduePending.length > 0 ? (
+          <View style={styles.section} testID="schedule-overdue-pending-section">
+            <Pressable
+              onPress={() => setOverdueExpanded((expanded) => !expanded)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: overdueExpanded }}
+              accessibilityLabel={overdueExpanded ? 'הסתר ממתינים לעדכון' : 'הצג ממתינים לעדכון'}
+              style={styles.completedGroupHeader}
+              testID="schedule-overdue-pending-toggle"
+            >
+              <RtlText style={styles.sectionTitle}>
+                {overdueExpanded ? 'הסתר ממתינים לעדכון' : 'ממתינים לעדכון'} ({allOverduePending.length})
+              </RtlText>
+              <RtlText style={styles.completedChevron}>{overdueExpanded ? '⌃' : '⌄'}</RtlText>
+            </Pressable>
+            {overdueExpanded ? <View style={styles.list}>
+              {allOverduePending.map((w) => (
+                <WalkRow
+                  key={w.id}
+                  walk={w}
+                  responsible={usersById[w.responsibleUserId]}
+                  onMarkDone={() => setResolveWalkId(w.id)}
+                  onMarkNotDone={() => skip(w.id)}
+                />
+              ))}
+            </View> : null}
+          </View>
         ) : null}
 
         <View style={styles.tabs}>

@@ -1,3 +1,4 @@
+import { summarizeWalkEvents } from '../logic/walkEventCounts';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from '../components/RtlText';
@@ -8,7 +9,7 @@ import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { summarizeWalksByUser } from '../logic/walkActions';
-import { isOverdue } from '../logic/nextWalk';
+import { familyDateOnly, isOverdue } from '../logic/nextWalk';
 import { formatHistoryDate, localDateOnly } from '../logic/dateFormat';
 import { isWalkEligibleForHistory, walkMatchesHistorySearch } from '../logic/history';
 import { canAccessHistoryScreen } from '../logic/permissions';
@@ -40,7 +41,7 @@ const RANGE_LABELS: [RangeFilter, string][] = [
 ];
 
 export function HistoryScreen() {
-  const { users, dog, loading: familyLoading, load: loadFamily, permissionOverrides, permissionOverridesStatus } = useFamilyStore();
+  const { family, users, dog, loading: familyLoading, load: loadFamily, permissionOverrides, permissionOverridesStatus } = useFamilyStore();
   const { walks, loading: scheduleLoading, error, load: loadSchedule, editDoneDetails, editUnplannedWalk, deleteUnplannedWalk, deleteScheduledWalkOccurrence, skip, markDone } = useScheduleStore();
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const effectiveRole = useEffectiveFamilyRole();
@@ -196,7 +197,7 @@ export function HistoryScreen() {
   const history = useMemo(
     () =>
       allHistory.filter((w) => {
-        if (userFilter && w.completedByUserId !== userFilter && w.responsibleUserId !== userFilter) return false;
+        if (userFilter && w.actualWalkerUserId !== userFilter && w.completedByUserId !== userFilter && w.responsibleUserId !== userFilter) return false;
         if (planFilter === 'planned' && w.isUnplanned) return false;
         if (planFilter === 'unplanned' && !w.isUnplanned) return false;
         if (rangeFilter === 'today' && w.date !== todayString) return false;
@@ -472,16 +473,16 @@ export function HistoryScreen() {
               {dailySummary.map(([date, dayWalks]) => (
                 <View key={date} style={styles.dayGroup}>
                   <RtlText style={styles.dayLabel}>
-                    {formatHistoryDate(date)} - {dayWalks.length} טיולים · {dayWalks.filter((w) => w.hadPee).length} 💧 · {dayWalks.filter((w) => w.hadPoop).length} 💩
+                    {formatHistoryDate(date)} - {dayWalks.length} טיולים · {summarizeWalkEvents(dayWalks).pee} 💧 · {summarizeWalkEvents(dayWalks).poop} 💩
                   </RtlText>
                   {dayWalks.map((w) => (
                     <View key={w.id} style={styles.historyItem}>
                       <WalkRow
-                        walk={w}
+                        walk={w.status === 'pending' && !w.isUnplanned && w.date < familyDateOnly(new Date(), family?.timezone) ? { ...w, status: 'skipped' } : w}
                         routeSession={gpsSessions[w.id]}
                         historyCompact
                         responsible={usersById[w.responsibleUserId]}
-                        completedBy={w.completedByUserId ? usersById[w.completedByUserId] : undefined}
+                        completedBy={usersById[w.actualWalkerUserId ?? w.completedByUserId ?? '']}
                         onMarkDone={canResolveWalk(w) ? () => setResolveWalkId(w.id) : undefined}
                         onMarkNotDone={
                           canResolveWalk(w)

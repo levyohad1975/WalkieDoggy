@@ -6,6 +6,7 @@ import { Button } from '../components/Button';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
 import { supabase } from '../lib/supabase';
+import { withSyncIdentityFence } from '../lib/syncIdentityFence';
 import { useSystemAdminStore } from '../store/systemAdminStore';
 
 interface Props {
@@ -40,17 +41,17 @@ export function SystemAdminLoginScreen({ visible, onClose }: Props) {
     setSigningIn(true);
     setError(null);
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({
+      const { error: authError } = await withSyncIdentityFence(async () => await supabase!.auth.signInWithPassword({
         email: normalized,
         password,
-      });
+      }));
       if (authError) throw authError;
 
       // Authentication alone is never enough: refresh() asks the backend
       // whether this authenticated identity is actually a System Admin.
       await refreshSystemAdmin();
       if (!useSystemAdminStore.getState().isSystemAdmin) {
-        await supabase.auth.signOut();
+        await withSyncIdentityFence(async () => await supabase!.auth.signOut());
         setPassword('');
         setError('פרטי הכניסה אינם מורשים לניהול המערכת.');
         return;

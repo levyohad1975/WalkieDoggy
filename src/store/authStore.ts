@@ -14,7 +14,12 @@ import {
 } from '../lib/supabase';
 import { DEMO_FAMILY } from '../data/demoData';
 import { repository } from '../data';
-import { beginSystemAdminObserver as beginSystemAdminObserverRpc, endSystemAdminObserver as endSystemAdminObserverRpc } from '../lib/systemAdmin';
+import {
+  beginSystemAdminObserver as beginSystemAdminObserverRpc,
+  endSystemAdminObserver as endSystemAdminObserverRpc,
+  wasFamilyPermanentlyDeleted,
+} from '../lib/systemAdmin';
+import { clearFamilySetupCompletion, clearFamilySetupProgress, readFamilySetupProgress } from '../lib/familySetupProgress';
 
 const CURRENT_USER_KEY = 'dog-walk-family:current-user-id';
 // Device-local: which family THIS device belongs to. Deliberately separate
@@ -95,6 +100,8 @@ interface AuthState {
   beginSystemObserver: (familyId: string) => Promise<void>;
   endSystemObserver: () => Promise<void>;
   restoreSession: () => Promise<void>;
+  /** Clears this device's family context/cache after the server confirms that tenant was permanently deleted. */
+  clearDeletedFamilyContext: (familyId: string) => Promise<void>;
   signIn: (userId: string) => Promise<void>;
   /**
    * COMPLETION PASS — 7B/7D (single-claim-at-a-time reclaim). Same
@@ -458,13 +465,44 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       AsyncStorage.getItem(CURRENT_USER_KEY),
       AsyncStorage.getItem(FAMILY_ID_KEY),
     ]);
+    let savedUserId = savedUser;
+    let savedFamilyId = savedFamily;
+    const localSetupProgress = await readFamilySetupProgress().catch(() => null);
+    const candidateDeletedFamilyId = savedFamilyId ?? localSetupProgress?.familyId ?? null;
+    if (isSupabaseConfigured && candidateDeletedFamilyId) {
+      try {
+        if (await wasFamilyPermanentlyDeleted(candidateDeletedFamilyId)) {
+          await repository.clearLocalFamilyCache?.(candidateDeletedFamilyId);
+          await clearFamilySetupCompletion(candidateDeletedFamilyId);
+          if (localSetupProgress?.familyId === candidateDeletedFamilyId) await clearFamilySetupProgress();
+          if (savedFamilyId === candidateDeletedFamilyId) {
+            await AsyncStorage.removeItem(FAMILY_ID_KEY);
+            savedFamilyId = null;
+            await AsyncStorage.removeItem(CURRENT_USER_KEY);
+            savedUserId = null;
+          }
+          const pendingInvite = await AsyncStorage.getItem(PENDING_REDEMPTION_KEY);
+          if (pendingInvite) {
+            try {
+              if (JSON.parse(pendingInvite)?.familyId === candidateDeletedFamilyId) {
+                await AsyncStorage.removeItem(PENDING_REDEMPTION_KEY);
+              }
+            } catch {
+              // Invalid pending state is cleared only when it cannot be safely associated with another family.
+            }
+          }
+        }
+      } catch {
+        // A failed/offline tombstone check is not proof of deletion; preserve local state until online verification.
+      }
+    }
     // Server-authoritative recovery for verified family creators: a browser can
     // lose the app's own AsyncStorage key while Supabase's persisted verified
     // session is still perfectly valid. In that case, do not send the creator
     // back through create/join onboarding. Recover the active family from the
     // onboarding-status RPC and repair the local cache. This RPC is scoped to
     // the authenticated caller and returns null for ordinary anonymous devices.
-    let familyId = isSupabaseConfigured ? savedFamily : DEMO_FAMILY.id;
+    let familyId = isSupabaseConfigured ? savedFamilyId : DEMO_FAMILY.id;
     if (isSupabaseConfigured && !familyId) {
       try {
         const { supabase } = await import('../lib/supabase');
@@ -484,7 +522,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     }
 
-    let currentUserId = savedUser;
+    let currentUserId = savedUserId;
 
     if (isSupabaseConfigured && savedUser && !isUuid(savedUser)) {
       await AsyncStorage.removeItem(CURRENT_USER_KEY);
@@ -594,6 +632,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   clearStaleClaimNotice: () => set({ staleClaimRecovered: false, staleClaimUserId: null }),
+
+  clearDeletedFamilyContext: async (familyId: string) => {
+    await repository.clearLocalFamilyCache?.(familyId);
+    await clearFamilySetupCompletion(familyId);
+    const progress = await readFamilySetupProgress().catch(() => null);
+    if (progress?.familyId === familyId) await clearFamilySetupProgress();
+    const pendingInvite = await AsyncStorage.getItem(PENDING_REDEMPTION_KEY);
+    if (pendingInvite) {
+      try {
+        if (JSON.parse(pendingInvite)?.familyId === familyId) {
+          await AsyncStorage.removeItem(PENDING_REDEMPTION_KEY);
+        }
+      } catch {
+        // Leave an unparseable marker untouched; it cannot be safely attributed to this family.
+      }
+    }
+    if (get().familyId !== familyId) return;
+    await AsyncStorage.multiRemove([FAMILY_ID_KEY, CURRENT_USER_KEY]);
+    set({ familyId: null, currentUserId: null, familyRole: null, isQaFamily: false, testModeUserId: null, impersonatingUserId: null, pendingInviteRedemption: null });
+  },
 
   revalidateClaim: async () => {
     const { currentUserId } = get();

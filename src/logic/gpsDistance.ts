@@ -65,6 +65,11 @@ export const MIN_MOVEMENT_METERS = 3;
 /** A fix this inaccurate (device-reported, in meters) is more likely to be noise than movement — discarded rather than accumulated. Generous on purpose: real GPS accuracy varies a lot by device/environment, and rejecting too aggressively would just undercount instead. */
 export const MAX_ACCURACY_METERS = 50;
 
+/** Reject implausible walking-speed jumps; retain the last trusted fix so a
+ * single noisy sample cannot drag the route or inflate distance. */
+export const MAX_WALK_SPEED_METERS_PER_SECOND = 4;
+
+
 export interface GpsAccumulator {
   distanceMeters: number;
   pointCount: number;
@@ -97,7 +102,12 @@ export function accumulateDistance(acc: GpsAccumulator, point: GpsPoint): GpsAcc
   if (!acc.lastPoint) {
     return { ...acc, pointCount: acc.pointCount + 1, lastPoint: point, routePoints: [point] };
   }
+  // Stale/out-of-order fixes and GPS jumps must never alter the trusted route.
+  // A generous 4 m/s threshold tolerates brisk walking and short runs.
+  const elapsedSeconds = (point.timestamp - acc.lastPoint.timestamp) / 1000;
+  if (!Number.isFinite(elapsedSeconds) || elapsedSeconds <= 0) return acc;
   const delta = haversineDistanceMeters(acc.lastPoint, point);
+  if (delta / elapsedSeconds > MAX_WALK_SPEED_METERS_PER_SECOND) return acc;
   if (delta < MIN_MOVEMENT_METERS) {
     // Still counts as an observed point (for pointCount/diagnostics), but
     // doesn't move `lastPoint` forward — otherwise a string of sub-floor
