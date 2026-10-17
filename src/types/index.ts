@@ -211,6 +211,9 @@ export interface Walk {
   endedByUserId?: string; // profile that pressed End (admin may differ from actual walker)
   hadPee?: boolean;
   hadPoop?: boolean;
+  /** Number of events, when supported by the persisted walk schema. Undefined for legacy walks. */
+  peeCount?: number;
+  poopCount?: number;
   note?: string;
   durationMinutes?: number;
   isUnplanned?: boolean; // true for a walk logged via "add a walk that already happened", never generated from a rule
