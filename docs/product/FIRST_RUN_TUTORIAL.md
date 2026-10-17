@@ -16,6 +16,7 @@ Classification (AGENTS.md routing): **Joint** — Creative defines flow, copy an
 | Creators/managers and joining members | Role-aware video source (`admin` / `member` cut) and role-aware storyboard. |
 | Permanently accessible | "▶ סרטון הדרכה" row in **Settings → ❓ עזרה**, and in **Family → ❓ עזרה** (Settings is permission-gated for members, Family is always visible). |
 | Never autoplay with sound | Nothing autoplays. Playback begins only after "▶ צפה בהדרכה" / the play control. If the browser refuses the start, the player waits on its poster with a play button. |
+| Welcome title copy | Implemented as "ברוכים הבאים ל־Walkie Doggy!" — the brief's trailing 🐶 is omitted because the brand guard (`DogPhoto.mascotOnlyFallback.test.ts`, `MASCOT_SPEC.md`) bans generic dog emoji from production UI; the approved mascot renders above the title. **Needs owner confirmation.** |
 | Never block normal usage if the video is unavailable | Missing config, load error, playback error or offline all fall back to a poster with text highlights and a close action. No auto-offer is made when no video source is configured. |
 
 ---

@@ -21,7 +21,10 @@ import { TutorialVideoPlayer } from './TutorialVideoPlayer';
  */
 
 export const TUTORIAL_COPY = {
-  title: 'ברוכים הבאים ל־Walkie Doggy! 🐶',
+  // The brief's copy ended with a generic dog emoji; the brand guard
+  // (DogPhoto.mascotOnlyFallback.test.ts, MASCOT_SPEC.md) keeps generic dog
+  // imagery out of production UI. The official mascot renders above it.
+  title: 'ברוכים הבאים ל־Walkie Doggy!',
   description: 'רוצים לראות איך מנהלים את הטיולים המשפחתיים בקלות? הכנו לכם הדרכה קצרה.',
   watch: '▶ צפה בהדרכה',
   skip: 'דלג והתחל',
