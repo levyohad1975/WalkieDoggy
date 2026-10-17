@@ -51,6 +51,12 @@ const flush = () => act(async () => {
   for (let i = 0; i < 3; i += 1) await new Promise((resolve) => setImmediate(resolve));
 });
 
+// Asserting the gate's own reason first makes a failure say WHY the
+// invitation was withheld instead of only "element not found".
+function expectOffered() {
+  expect(useTutorialStore.getState().lastGateReason).toBe('offer');
+}
+
 const ORIGINAL_ENV = { ...process.env };
 
 beforeEach(async () => {
@@ -71,6 +77,7 @@ describe('first-run tutorial — presentation', () => {
     signIn();
     renderHost();
     await flush();
+    expectOffered();
     expect(screen.getByTestId('tutorial-welcome')).toBeTruthy();
     expect(screen.getByText(TUTORIAL_COPY.title)).toBeTruthy();
     expect(screen.getByText(TUTORIAL_COPY.description)).toBeTruthy();
@@ -84,6 +91,7 @@ describe('first-run tutorial — presentation', () => {
     signIn();
     renderHost();
     await flush();
+    expectOffered();
     expect(screen.getByLabelText(TUTORIAL_COPY.mascotLabel)).toBeTruthy();
     expect(JSON.stringify(screen.toJSON())).not.toContain('טופי');
   });
@@ -113,6 +121,7 @@ describe('first-run tutorial — presentation', () => {
     expect(screen.queryByTestId('tutorial-overlay')).toBeNull();
     rerender(<SafeAreaProvider initialMetrics={metrics}><Host /></SafeAreaProvider>);
     await flush();
+    expectOffered();
     expect(screen.getByTestId('tutorial-overlay')).toBeTruthy();
   });
 
@@ -133,6 +142,7 @@ describe('first-run tutorial — skip and completion persistence', () => {
     signIn();
     const first = renderHost();
     await flush();
+    expectOffered();
     fireEvent.press(screen.getByText(TUTORIAL_COPY.skip));
     await flush();
     expect(screen.queryByTestId('tutorial-overlay')).toBeNull();
@@ -149,6 +159,7 @@ describe('first-run tutorial — skip and completion persistence', () => {
     signIn();
     renderHost();
     await flush();
+    expectOffered();
     fireEvent.press(screen.getByText(TUTORIAL_COPY.watch));
     expect(screen.getByTestId('tutorial-player')).toBeTruthy();
     act(() => { useTutorialStore.getState().markEnded(); });
@@ -167,6 +178,7 @@ describe('first-run tutorial — creator vs member', () => {
     signIn({ role: 'admin' });
     renderHost();
     await flush();
+    expectOffered();
     expect(useTutorialStore.getState().context?.role).toBe('admin');
     fireEvent.press(screen.getByText(TUTORIAL_COPY.watch));
     // Jest renders the native fallback, which lists the role's highlights.
@@ -178,6 +190,7 @@ describe('first-run tutorial — creator vs member', () => {
     signIn({ userId: 'child', role: 'member' });
     renderHost({ platformOS: 'web' });
     await flush();
+    expectOffered();
     expect(useTutorialStore.getState().context?.role).toBe('member');
     fireEvent.press(screen.getByText(TUTORIAL_COPY.watch));
     expect(screen.getByText(/מגדירים מנהלי המשפחה/)).toBeTruthy();
@@ -198,6 +211,7 @@ describe('first-run tutorial — profile and family switching', () => {
     signIn();
     renderHost();
     await flush();
+    expectOffered();
     expect(screen.getByTestId('tutorial-overlay')).toBeTruthy();
     act(() => { useAuthStore.setState({ currentUserId: null } as never); });
     await flush();
@@ -210,6 +224,7 @@ describe('first-run tutorial — profile and family switching', () => {
     signIn({ userId: 'child', role: 'member' });
     renderHost();
     await flush();
+    expectOffered();
     expect(screen.getByTestId('tutorial-overlay')).toBeTruthy();
   });
 
@@ -218,6 +233,7 @@ describe('first-run tutorial — profile and family switching', () => {
     signIn({ familyId: 'fam-2' });
     renderHost();
     await flush();
+    expectOffered();
     expect(screen.getByTestId('tutorial-overlay')).toBeTruthy();
   });
 

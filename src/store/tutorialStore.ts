@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { TutorialRole } from '../lib/tutorialConfig';
 import { recordTutorialDecision, recordTutorialOffer, type TutorialDecision } from '../lib/tutorialProgress';
-import { tutorialContextKey } from '../logic/tutorialGate';
+import { tutorialContextKey, type TutorialGateReason } from '../logic/tutorialGate';
 
 /**
  * In-memory presentation state for the first-run tutorial overlay.
@@ -30,6 +30,9 @@ interface TutorialState {
   handledKeys: Record<string, true>;
   /** True when the last decision could not be persisted (diagnostics/tests). */
   lastWriteFailed: boolean;
+  /** Why the automatic invitation was last offered or withheld (QA/diagnostics). */
+  lastGateReason: TutorialGateReason | 'role_unknown' | null;
+  setGateReason: (reason: TutorialGateReason | 'role_unknown') => void;
   offerFirstRun: (context: TutorialContext) => void;
   openFromHelp: (context: TutorialContext) => void;
   startPlayback: () => void;
@@ -48,6 +51,7 @@ const initial = {
   context: null,
   handledKeys: {} as Record<string, true>,
   lastWriteFailed: false,
+  lastGateReason: null as TutorialGateReason | 'role_unknown' | null,
 };
 
 export const useTutorialStore = create<TutorialState>((set, get) => {
@@ -105,6 +109,10 @@ export const useTutorialStore = create<TutorialState>((set, get) => {
       if (!context) return;
       if (context.familyId === familyId && context.profileId === profileId) return;
       set({ visible: false, origin: null, mode: 'welcome', context: null });
+    },
+
+    setGateReason: (reason) => {
+      if (get().lastGateReason !== reason) set({ lastGateReason: reason });
     },
 
     reset: () => set({ ...initial, handledKeys: {} }),

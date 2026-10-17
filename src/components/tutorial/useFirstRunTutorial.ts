@@ -53,8 +53,12 @@ export function useFirstRunTutorial({ familySetupWizardVisible, competingOverlay
   const handledThisSession = key ? Boolean(handledKeys[key]) : false;
 
   useEffect(() => {
+    const report = useTutorialStore.getState().setGateReason;
+    if (!familyId || !currentUserId) { report('no_profile'); return; }
+    // Already offered/decided this session: keep the reason that led here.
+    if (handledThisSession) return;
     // Wait for the verified role so admins never receive the member cut.
-    if (!familyId || !currentUserId || !familyRole || handledThisSession) return;
+    if (!familyRole) { report('role_unknown'); return; }
     let cancelled = false;
     void (async () => {
       const source = resolveTutorialSource(familyRole);
@@ -76,11 +80,12 @@ export function useFirstRunTutorial({ familySetupWizardVisible, competingOverlay
       // Cheap synchronous rules first, so storage/network are only touched
       // when an invitation is actually possible.
       const pre = evaluateTutorialGate({ ...base, online: true, stored: { ok: true, record: null } });
-      if (pre !== 'offer') return;
+      if (pre !== 'offer') { report(pre); return; }
       const stored = await readTutorialRecord(familyId, currentUserId);
       const online = await isLikelyOnline(platformOS);
       if (cancelled) return;
       const decision = evaluateTutorialGate({ ...base, online, stored });
+      report(decision);
       if (decision !== 'offer') return;
       const auth = useAuthStore.getState();
       // Context may have changed while awaiting storage/network.
