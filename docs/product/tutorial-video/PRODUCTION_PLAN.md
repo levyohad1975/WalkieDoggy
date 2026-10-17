@@ -52,6 +52,11 @@ Spoken length ≈ 110 words ≈ 50–55 s at a calm pace, inside a 2:35 timeline
 
 ## 3. Privacy-safe capture plan (genuine Staging only)
 
+> **Updated 2026-10-17.** The detailed, authoritative versions are `CAPTURE_SESSION_AUTHORIZATION.md` (exact hosted operations, rollback, cleanup) and `CAPTURE_CHECKLIST.md` (iPhone guide and shot list).
+> * A System Admin session in a QA family shows an admin-only ״חזרה למשפחה המקורית״ button. So only the setup wizard (C01, one continuous take) is recorded on the System Admin device.
+> * Home, requests, schedule, history, נתונים and family admin are recorded from a separate, ordinary capture identity that joins the QA family: C02b, C06, C06b, C07, and later C03/C05.
+> * The table below is kept as the original outline.
+
 ### Environment
 
 * **Staging only** (`staging.walkielink.co.il`, SHA verified on the day of capture). Never Production.

@@ -6,35 +6,46 @@ Everything in the pipeline is built and verified (§6). What remains is real inp
 
 ## 1. Phases, owners and gates
 
-| # | Phase | Owner | Inputs | Gate to exit |
-| --- | --- | --- | --- | --- |
-| P1 | **Approve the plan** | Owner | Script v2 (`NARRATION_PACKAGE.md` §2), clean wordmark DRAFT, music bed (audition), capture workflow | Written approval of: script v2, wordmark, music licence (or a replacement licensed track), go-ahead for a Staging capture session |
-| P2 | **Capture C01, C02, C06, C07** | Owner on iPhone | Disposable System Admin test family (`CAPTURE_CHECKLIST.md`) | Each recording passes the per-recording acceptance check; no private data |
-| P3 | **Capture C03, C05** | Owner | **Walk Lifecycle v1.1 active on Staging** | Same check; start/finish shown without errors |
-| P4 | **Narration** | Voice artist or owner-chosen TTS | Script v2, delivery spec | `audio_qa.py` 0 failures **and** signed native-speaker pronunciation form |
-| P5 | **Assemble DRAFT v1** | Claude | P2–P4 outputs | `validate_video.py` 0 failures; frame review; tap highlights added on real tap points |
-| P6 | **Owner review** | Owner | DRAFT v1 on a real iPhone + Android | Change list resolved (≤ 2 revision rounds) |
-| P7 | **Final master** | Claude | Approved DRAFT | Re-render without `--draft` (all assets approved); validation 0 failures; checksums recorded |
-| P8 | **GPS scene (optional, later)** | Owner + Claude | Real-iPhone GPS acceptance → C04 | Rebuild with `--include-gps`; validation passes; owner approval |
-| P9 | **Hosting & activation** | Separate approval | Final files | Separate approvals for upload (Staging first), env vars, redeploy and re-alias. **Not part of this plan's authority.** |
+| # | Phase | Owner | Inputs | Gate to exit | Status (2026-10-17) |
+| --- | --- | --- | --- | --- | --- |
+| P1 | **Approve the plan** | Owner | Script v2, clean wordmark, music bed, narrator type, capture workflow | Written decisions | **Mostly done.** Approved: script v2 and its UI labels; the clean wordmark for continued production (final visual QA pending); the original generated bed, pending a final listen; a professional female narrator; GPS stays excluded. **Open:** the capture-session authorization (`CAPTURE_SESSION_AUTHORIZATION.md` D1–D4) |
+| P2 | **Capture C01, C02b, C06, C06b, C07** | Owner, 2 iPhones | QA family ״משפחת דוגמה״ (`CAPTURE_SESSION_AUTHORIZATION.md` Phases A+B; `CAPTURE_CHECKLIST.md` §4) | `check_captures.py` 0 failures; contact sheets pass the stop conditions | Waiting for authorization |
+| P3 | **Capture C03, C05** | Owner, Device B | **Walk Lifecycle v1.1 active on Staging** (read-only T5) | Same as P2 | Blocked (v1.1 not active) |
+| P4 | **Narration** | Professional narrator | `NARRATION_PACKAGE.md`, CSV cue sheet | `audio_qa.py` 0 failures **and** signed `PRONUNCIATION_QA_FORM.md` **and** completed `narration.approval.json` (licence, review, owner) | Casting not started |
+| P5 | **Assemble DRAFT v1** | Claude | P2 (P3 if ready), P4 | Set `captureEdit` in/out, crops and taps; `validate_video.py` 0 failures; frame review | Pipeline ready (§6) |
+| P6 | **Owner review** | Owner | DRAFT v1 on a real iPhone + Android; wordmark final visual QA; final listen to the bed with the voice | Change list resolved (≤ 2 rounds); `finalVisualQA` signed; music licence + approval filled in | — |
+| P7 | **Final master** | Claude | Approved DRAFT | Re-render **without `--draft`**; `validate_video.py --final` 0 failures; checksums from `build_report.json` | — |
+| P8 | **GPS scene (optional, later)** | Owner + Claude | Real-iPhone GPS acceptance → C04; bed regenerated at 155 s (new hash → new approval) | Rebuild with `--include-gps`; validation passes; owner approval | Gated |
+| P9 | **Hosting & activation** | Separate approval | Final files | Separate approvals for upload (Staging first), env vars, redeploy and re-alias. **Not part of this plan's authority.** | — |
 
-P2/P3 write hosted Staging data inside the test family, and therefore need explicit authorisation before they start.
+P2/P3 write hosted Staging data inside the QA family only (plus a reversible context switch of the owner's System Admin device). They start only after the explicit authorization in `CAPTURE_SESSION_AUTHORIZATION.md` §11.
 
-## 2. Commands (final assembly)
+## 2. Commands
 
 ```
-# narration gate
-python3 scripts/tutorial-video/audio_qa.py takes/
+# capture intake (contact sheets for the privacy review)
+python3 scripts/tutorial-video/check_captures.py docs/product/tutorial-video/captures
 
-# final render (no --draft: refuses any PENDING asset or licence)
-python3 scripts/tutorial-video/build_video.py --out out/ --vertical \
-    --captures docs/product/tutorial-video/captures \
-    --vo-dir takes/ --music music/approved-bed.wav \
-    [--wordmark assets/<approved clean wordmark>.png] [--include-gps]
+# narration: studio cue sheet, then the technical gate + approval record
+python3 scripts/tutorial-video/narration_timing.py --csv cue-sheet.csv
+python3 scripts/tutorial-video/audio_qa.py takes/ --write-approval-template
 
-# technical gate
-python3 scripts/tutorial-video/validate_video.py out/ [--include-gps]
+# DRAFT assembly (PENDING approvals allowed, clearly marked DRAFT)
+python3 scripts/tutorial-video/build_video.py --out out/ --vertical --draft \
+    --vo-dir takes/ --music music/tutorial-bed.wav \
+    --wordmark docs/product/tutorial-video/assets/walkie-doggy-link-wordmark-clean.DRAFT.png
+python3 scripts/tutorial-video/validate_video.py out/
+
+# FINAL (no --draft: refuses any PENDING licence, approval, review or QA)
+python3 scripts/tutorial-video/build_video.py --out final/ --vertical --vo-dir takes/ \
+    --music music/tutorial-bed.wav --wordmark docs/product/tutorial-video/assets/walkie-doggy-link-wordmark-clean.DRAFT.png
+python3 scripts/tutorial-video/validate_video.py final/ --final
+
+# tooling regression
+python3 scripts/tutorial-video/selftest.py
 ```
+
+The bed is regenerated byte-identically with `python3 scripts/tutorial-video/compose_music.py music/tutorial-bed.wav` (SHA-256 `8b672c4d…`, recorded in its `.license.json`).
 
 ## 3. Deliverables
 
@@ -62,8 +73,10 @@ python3 scripts/tutorial-video/validate_video.py out/ [--include-gps]
 | Risk | Mitigation |
 | --- | --- |
 | Walk Lifecycle v1.1 still inactive on Staging | Capture P2 first; C03/C05 wait. Optionally ship v1 without the walk scenes — this needs a script change and owner approval. |
-| TTS sounds non-native | Prefer a voice artist; the native-speaker gate is mandatory either way. |
-| cue-16 too long for its slot | Shift cues 16–17 in `edit.json` (the closing card has slack); never time-stretch speech. |
+| Narration not native-sounding | Professional native narrator (owner decision); native-speaker sign-off is mandatory and hash-bound to the takes. |
+| cue-16 too long for its slot | **Resolved:** cue-17 moved to 150.6 s, so cue-16 has 7.5 s for a 6.2–6.7 s read. Never time-stretch speech. |
+| Admin-only button in System Admin footage | Two identities (`CAPTURE_SESSION_AUTHORIZATION.md` §1); wizard header row cropped if D3 = crop (≤ 20 %, disclosed in `build_report.json`). |
+| Device A local data (possibly quarantined operations) | Never remove/reinstall A's Home Screen app or clear its website data; A's queue must be empty before switching (the app enforces it). |
 | Recordings contain private data | Stop conditions in the capture workflow; frame review before assembly. |
 | Wordmark resolution (608 px source) | Acceptable at current sizes; request a vector master for future large formats. |
 | Bed taste | The original bed is optional; any licensed track works if it comes with a licence record. |
@@ -75,3 +88,12 @@ python3 scripts/tutorial-video/validate_video.py out/ [--include-gps]
 * Music: licence gate (missing record, hash mismatch, PENDING without `--draft` — refused before rendering); two-pass loudness −16.0 LUFS; ducking ≈ 6.8 dB; voice ≈ 21 LU over the bed.
 * Capture framing with a test pattern: rounded phone mask, holds the last frame, clear of the caption band in both formats.
 * Clean wordmark candidate: round-trip error mean 0.66 levels; no halo, band or fringe on four backgrounds.
+* **2026-10-17 additions:**
+  * `selftest.py` 25/25.
+  * Full integration dry run: labelled TEST-PATTERN stand-ins for all seven recordings, 16 synthetic tone takes, the bed and the clean wordmark, all through the real pipeline. The checks below passed; `READINESS_REPORT.md` §5 has the numbers:
+    * Every cut lands on its in-point (frame timecodes checked).
+    * The status-bar crop leaves no sliver.
+    * Tap rings appear only at their tap times.
+    * The mix measures −16.0 LUFS.
+    * `validate_video.py` reports 0 failures, and `--final` fails **only** on the four human approvals (draft flag, narration, music, wordmark).
+  * Local rehearsal of the real test-family RPCs: the owner's real-family state is identical after exit (`CAPTURE_SESSION_AUTHORIZATION.md` §8).
