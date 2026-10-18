@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { getUserColorLabel } from '../UserFormModal';
 
 /**
  * QA Guardian sweep (accessibility labels on non-Button Pressable elements):
@@ -29,6 +30,26 @@ describe('UserFormModal — avatar/color chip accessibility', () => {
     const around = source.slice(index, index + 300);
     expect(around).toMatch(/accessibilityRole="radio"/);
     expect(around).toMatch(/accessibilityState=\{\{\s*selected:\s*color === c\s*\}\}/);
-    expect(around).toMatch(/accessibilityLabel=\{`צבע \$\{c\}`\}/);
+    expect(around).toMatch(/accessibilityLabel=\{`צבע \$\{getUserColorLabel\(c\)\}`\}/);
+  });
+
+  it('uses non-color selected marks and minimum 44px color targets', () => {
+    expect(source).toMatch(/emojiSelectedMark/);
+    expect(source).toMatch(/colorSelectedMark/);
+    expect(source).toMatch(/colorChip:\s*\{\s*width:\s*44,\s*height:\s*44/);
+  });
+
+  it('announces color names instead of raw hex values', () => {
+    expect(getUserColorLabel('#5b8def')).toBe('כחול');
+    expect(getUserColorLabel('#F2994A')).toBe('כתום');
+    expect(getUserColorLabel('#27AE60')).toBe('ירוק');
+    expect(getUserColorLabel('#BB6BD9')).toBe('סגול');
+    expect(getUserColorLabel('#EB5757')).toBe('אדום');
+    expect(getUserColorLabel('#2D9CDB')).toBe('תכלת');
+    expect(getUserColorLabel('#123456')).toBe('מותאם אישית');
+  });
+
+  it('explains that the chosen emoji is the fallback when a photo is unavailable', () => {
+    expect(source).toContain('דמות חלופית (תוצג כשאין תמונה)');
   });
 });

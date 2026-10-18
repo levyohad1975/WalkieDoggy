@@ -18,6 +18,18 @@ export function shouldAutoSaveUploadedMemberPhoto(editingUser: FamilyUser | null
 }
 
 const EMOJI_OPTIONS = ['🧑', '👨', '👩', '🧒', '👦', '👧', '👴', '👵'];
+const USER_COLOR_LABELS: Record<string, string> = {
+  '#5B8DEF': 'כחול',
+  '#F2994A': 'כתום',
+  '#27AE60': 'ירוק',
+  '#BB6BD9': 'סגול',
+  '#EB5757': 'אדום',
+  '#2D9CDB': 'תכלת',
+};
+
+export function getUserColorLabel(color: string): string {
+  return USER_COLOR_LABELS[color.toUpperCase()] ?? 'מותאם אישית';
+}
 
 interface UserFormModalProps {
   visible: boolean;
@@ -202,7 +214,7 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
               accessibilityLabel="שם"
             />
 
-            <RtlText style={styles.label}>בחירת דמות (אם לא הועלתה תמונה)</RtlText>
+            <RtlText style={styles.label}>דמות חלופית (תוצג כשאין תמונה)</RtlText>
             <View style={styles.optionRow}>
               {EMOJI_OPTIONS.map((e) => (
                 <Pressable
@@ -214,6 +226,11 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
                   accessibilityLabel={`סמל ${e}`}
                 >
                   <RtlText style={styles.emojiText}>{e}</RtlText>
+                  {avatar === e ? (
+                    <View pointerEvents="none" accessible={false} style={styles.emojiSelectedMark}>
+                      <RtlText style={styles.emojiSelectedMarkText}>✓</RtlText>
+                    </View>
+                  ) : null}
                 </Pressable>
               ))}
             </View>
@@ -227,8 +244,14 @@ export function UserFormModal({ visible, editingUser, familyId, onSave, onClose 
                   style={[styles.colorChip, { backgroundColor: c }, color === c && styles.colorChipActive]}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: color === c }}
-                  accessibilityLabel={`צבע ${c}`}
-                />
+                  accessibilityLabel={`צבע ${getUserColorLabel(c)}`}
+                >
+                  {color === c ? (
+                    <View pointerEvents="none" accessible={false} style={styles.colorSelectedMark}>
+                      <RtlText style={styles.colorSelectedMarkText}>✓</RtlText>
+                    </View>
+                  ) : null}
+                </Pressable>
               ))}
             </View>
 
@@ -260,11 +283,12 @@ const styles = StyleSheet.create({
   photoRow: { alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
   photoButton: { paddingVertical: 10, paddingHorizontal: spacing.lg, borderRadius: 12, backgroundColor: colors.surfaceMuted },
   photoLink: { color: colors.primaryDark, fontWeight: '600', fontSize: typography.cardTitle.fontSize },
-  label: { fontSize: typography.meta.fontSize, fontWeight: '700', color: colors.textSecondary, marginTop: spacing.lg, marginBottom: spacing.sm, textAlign: 'right' },
+  label: { fontSize: typography.meta.fontSize, fontWeight: '700', color: colors.textPrimary, marginTop: spacing.lg, marginBottom: spacing.sm, textAlign: 'right' },
   saveError: { color: colors.danger, textAlign: 'right', marginTop: spacing.md, lineHeight: 20 },
   input: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, padding: 14, fontSize: typography.body.fontSize, color: colors.textPrimary },
   optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   emojiChip: {
+    position: 'relative',
     width: 48,
     height: 48,
     borderRadius: radii.xl,
@@ -276,8 +300,33 @@ const styles = StyleSheet.create({
   },
   emojiChipActive: { borderColor: colors.primary },
   emojiText: { fontSize: typography.screenTitle.fontSize },
-  colorChip: { width: 36, height: 36, borderRadius: radii.lg, borderWidth: 2, borderColor: 'transparent' },
+  emojiSelectedMark: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    width: 18,
+    height: 18,
+    borderRadius: radii.round,
+    backgroundColor: colors.primaryDark,
+    borderWidth: 2,
+    borderColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emojiSelectedMarkText: { color: colors.textInverse, fontSize: 10, lineHeight: 12, fontWeight: '800' },
+  colorChip: { width: 44, height: 44, borderRadius: radii.round, borderWidth: 2, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
   colorChipActive: { borderColor: colors.textPrimary },
+  colorSelectedMark: {
+    width: 22,
+    height: 22,
+    borderRadius: radii.round,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.textPrimary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  colorSelectedMarkText: { color: colors.textPrimary, fontSize: 14, lineHeight: 17, fontWeight: '800' },
   actions: { flexDirection: 'row', gap: spacing.md, marginTop: 22 },
   flex: { flex: 1 },
 });
