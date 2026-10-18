@@ -35,6 +35,8 @@ describe('walk event count persistence migration', () => {
     expect(migration).toMatch(/public\.finish_walk_v12\(uuid,uuid,uuid,uuid,boolean,boolean,text,timestamptz,boolean,integer,integer\)/i);
     expect(migration).toMatch(/column:public\.walks\.pee_count/i);
     expect(migration).toMatch(/column:public\.walks\.poop_count/i);
+    expect(migration).toMatch(/prior record/i);
+    expect(migration).not.toMatch(/prior public\.walk_lifecycle_operations/i);
     expect(migration).not.toMatch(/delete\s+from\s+public\.walks/i);
   });
 });

@@ -44,7 +44,11 @@ as $$
 declare
   w public.walks;
   actor uuid := public.real_current_profile_id();
-  prior public.walk_lifecycle_operations;
+  -- The v1.1 migration is deliberately staged later in the isolated full-chain
+  -- rehearsal. Use a generic row here so this function can be created before
+  -- that migration creates walk_lifecycle_operations; calls still occur only
+  -- after the lifecycle capability gate confirms the server schema.
+  prior record;
   event_action text;
   request_payload jsonb;
   is_new boolean;
