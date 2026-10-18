@@ -1,1 +1,1456 @@
-YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíÛxá:-jZ.¶›­–)Ş³^û»ö–×÷'B²7&VFRÒg&öÒw§W7FæBs°¦–×÷'BG—R²66†VGVÆTVçG'’Â66†VGVÆU'VÆRÂVçÆææVEvÆ´–çWBÂvÆ²Òg&öÒrââ÷G—W2s°¦–×÷'B²&W÷6—F÷'’Òg&öÒrââöFFs°¦–×÷'B°¢vVæW&FU&÷FF–öå66†VGVÆRÀ¢Æå'VÆTF—5&V6öæ6–Æ–F–öâÀ¢Æå7FÆU'VÆTVçG'•&V6öæ6–Æ–F–öâÀ¢&W6öÇfU&W7öç6–&ÆTf÷$FFRÀ¢'VÆTæVVG4VçG'”&6¶f–ÆÂÀ§Òg&öÒrââöÆöv–2÷&÷FF–öâs°¦–×÷'B²Æö6ÄFFTöæÇ’Òg&öÒrââöÆöv–2öFFTf÷&ÖBs°¦–×÷'B²–6¶W$FFUFõF–ÖRÒg&öÒrââöÆöv–2÷F–ÖT–çWBs°¦–×÷'B°¢VF—EvÆ´FWF–Ç2À¢Ö&µvÆ´FöæRÀ¢Ö&µvÆµ6¶—VBÀ¢7vvÆ²27vvÆµW&RÀ¢7vvÆ·4×WGVÂÀ¢vÆ´7F–öäW'&÷"À¢G—RvÆ´6ö×ÆWF–öäFWF–Ç2À§Òg&öÒrââöÆöv–2÷vÆ´7F–öç2s°¦–×÷'B²vVæW&FT–BÒg&öÒrââöÆ–"ö–Bs°¦–×÷'B²6æ6VÅvÆ´æ÷F–f–6F–öç2Â&V6öæ6–ÆUvÆ´æ÷F–f–6F–öç2Â66†VGVÆUvÆ´æ÷F–f–6F–öç2Òg&öÒrââöæ÷F–f–6F–öç2öæ÷F–f–6F–öå6W'f–6Rs°¦–×÷'B²wV&EFW7DÖöFT×WFF–öâÒg&öÒrââöÆ–"÷FW7DÖöFTwV&Bs°¦–×÷'B²†47F—fU&VÖ÷FU&VÖ–æFW$6†ææVÂÒg&öÒrââöÆ–"÷&VÖ÷FU&VÖ–æFW$6†ææVÂs°¦–×÷'B²FVÆWFU66†VGVÆU'VÆUv—F„ö67W'&Væ6W2Â—57W&6T6öæf–wW&VBÒg&öÒrââöÆ–"÷7W&6Rs°¦–×÷'B²FÖ–å&W66†VGVÆUvÆ²ÂFÖ–å7vvÆ·2Òg&öÒrââöÆ–"÷vÆ´FÖ–âs°¦–×÷'B²VæE&tF–væ÷7F–2Âg&–VæFÇ”W'&÷$ÖW76vRÂ&tÖW76vTöbÒg&öÒrââöÆ–"öW'&÷$ÖW76vW2s°¦–×÷'B²W6Tw57F÷&RÒg&öÒrâöw57F÷&Rs°¦–×÷'B²6ö×ÆWFUvÆ´Æ–fV7–6ÆT÷W&F–öâÂvWEvÆ´Æ–fV7–6ÆT÷W&F–öä–BÒg&öÒrââöFF÷vÆ´Æ–fV7–6ÆT÷W&F–öä–G2s°¦–×÷'B²—47F—fUvÆ²Òg&öÒrââöÆöv–2÷vÆ´Æ–fV7–6ÆRs°¢òòDTÕõ$%’D”täõ5D”2”å5E%TÔTåDD”ôâ(	B6VRW&eG&6RçG2w2÷vâFö0¢òò6öÖÖVçBâ&VÖ÷fRF†—2–×÷'BæBWfW'’W&dÖ&²6ÆÂ–âFE'VÆR‚’ğ¢òòWFFU'VÆR‚’öæ6RF†R&VÂã266†VGVÆR×6fR&÷GFÆVæV6²—26öæf—&ÖV@¢òòf—†VB'’â7GVÂ&VÂÖFWf–6RÖV7W&VÖVçBà¦–×÷'B²W&dÖ&²Òg&öÒrââöÆ–"÷W&eG&6Rs° ¦6öç7BtTäU$DUôD•5ô„TBÒC° ¢ò¢ ¢¢&VÂÖFWf–6Rf—‚†F÷V&ÆR×F-zyíyzyB"fÇ6RÖf–ÇW&R'Vr’(	BÖ–w&F–öà¢¢“’w266†VGVÆU÷'VÆW5ö7F—fUö–FVçF—G•÷V–G‚—2Væ—VR–æFW‚öà¢¢†fÖ–Ç•ö–BÂFöuö–BÂF–ÖRÂF—5ööe÷vVV²Â&÷FF–öå÷W6W%ö–G2À¢¢&÷FF–öåöæ6†÷%öFFR’v†W&R7F—fRÒG'VRÂÖVçBFò7F÷GWÆ–6FP¢¢7F—fR'VÆRg&öÒvVæW&F–ærGWÆ–6FRgWGW&RvÆ²ö67W'&Væ6W2à¢¢'VÆTf÷&ÔÖöFÂçG7‚æ÷rF—6&ÆW2—G2÷vâ6fR'WGFöâf÷"F†RGW&F–öâö`¢¢FE'VÆR‚’‡6VR—G2÷vâ6f–æv7FFR’Âv†–6‚6Æ÷6W2öfbF†R÷&–v–æÀ¢¢G&–vvW"(	BF–ær6fRGv–6R&Vf÷&RF†Rf—'7BFB†B&W6öÇfVBW6VBFğ¢¢f—&RGvò–æFWVæFVçBFE'VÆR‚’6ÆÇ2v—F‚F†R4ÔRFF†V6‚vWG2—G0¢¢÷vâg&W6‚'VÆR–Bg&öÒvVæW&FT–B‚w'VÆRr’–â66†VGVÆU67&VVâçG7‚Â6òF†P¢¢–B—G6VÆbæWfW"6öÆÆ–FW2(	BöæÇ’F†—2–æFW‚w2÷F†W"6öÇVÖç2Fò’âF†P¢¢d•%5B–ç6W'BÇv—2vöã²F†R4T4ôäB†—BF†—26öç7G&–çBæB7W&f6VB¢¢&r÷7Fw&W2&GWÆ–6FR¶W’"W'&÷"v—F‚æòVçG'’–âW'&÷$ÖW76vW2çG2w0¢¢F&ÆRÂfÆÆ–ær&6²FòF†RvVæW&–2-yÍyyMzmyÍy}zyRyÍyMy]zyz2yz¢zz-z¢yMyyy]yÂ"f÷ ¢¢6fRF†BÂg&öÒF†RVæB7FFRw2W'7V7F—fRÂ†BÇ&VG’7V66VVFVBà¢¢F†—26†V6²7F—22FVfVç6RÖ–âÖFWF‚f÷"ç’÷F†W"F‚F†B6÷VÆ@¢¢7F–ÆÂ&6RGvò–FVçF–6Â–ç6W'G2†&WG&–VBæWGv÷&²&WVW7BÂgWGW&P¢¢6ÆÆW"F†BFöW6âwBvòF‡&÷Vv‚'VÆTf÷&ÔÖöFÂ’(	B6VRFE'VÆR‚’w2÷vâW6P¢¢öb—B&VÆ÷rà¢¢ğ¦gVæ7F–öâ—4GWÆ–6FT7F—fU66†VGVÆU'VÆTW'&÷"†W'&÷#¢Væ¶æ÷vâ“¢&ööÆVâ°¢&WGW&â&tÖW76vTöb†W'&÷"’æ–æ6ÇVFW2‚w66†VGVÆU÷'VÆW5ö7F—fUö–FVçF—G•÷V–G‚r“°§Ğ ¢òò%Trd•‚†GWÆ–6FR66†VGVÆRVçG&–W2÷vÆ·2’(	B6VRÆöB‚’w2Fö26öÖÖVç@¢òò&VÆ÷rf÷"F†RgVÆÂ&6RÖ6öæF—F–öâF†—2wV&G2v–ç7Bâ¶W–VB'¢òòfÖ–Ç”–B6òGvòF–ffW&VçBfÖ–Æ–W2rÆöG2æWfW"&Æö6²öâV6‚÷F†W"à¦6öç7BÆöE&öÖ—6T'”fÖ–Ç”–C¢&V6÷&CÇ7G&–ærÂ&öÖ—6SÆ&ööÆVããâÒ·Ó° ¦–çFW&f6R66†VGVÆU7FFR°¢'VÆW3¢66†VGVÆU'VÆUµÓ°¢VçG&–W3¢66†VGVÆTVçG'•µÓ°¢vÆ·3¢vÆµµÓ°¢ÆöF–æs¢&ööÆVã°¢W'&÷#¢7G&–ærÂçVÆÃ°¢7F–öäW'&÷#¢7G&–ærÂçVÆÃ° ¢òò&W6öÇfW2G'VRv†Vâg&W6‚ÂWF†÷&—FF—fRFFv2ÆöFVB‡vÆ·2öVçG&–W2ğ¢òò'VÆW2ÆÂ&VfÆV7BF†R&W÷6—F÷'’2öbF†—26ÆÂ’æBfÇ6Rv†VâF†P¢òòÆöBf–ÆVB(	B–âv†–6‚66RW'&÷&—26WB†f÷"67&VVâÖÆWfVÂF—7Æ’À¢òòVæ6†ævVBU‚’æBvÆ·6öVçG&–W6ö'VÆW6&RÆVgBW†7FÇ’2F†W¢òòvW&R†æWfW"6ÆV&VBFòV×G’öâf–ÇW&R’âæWfW"&V¦V7G3¢WfW'’W†—7F–æp¢òò67&VVâÖÆWfVÂ6ÆÆW"F†B§W7BFöW2v—BÆöB†fÖ–Ç”–B–æBF†Vâ&VG0¢òòW'&÷&öfbF†R7F÷&R¶VW2v÷&¶–ærVæÖöF–f–VBâ÷&6†W7G&F–öâ6öFP¢òò„çG7‚w2'Väf÷&Vw&÷VæE7–æ2‚’’W6W2F†R&ööÆVâFòFV6–FRv†WF†W"—B—0¢òò6fRFò&V6öæ6–ÆRæ÷F–f–6F–öç2v–ç7BvÆ·62e$U4‚FFà¢ÆöC¢†fÖ–Ç”–C¢7G&–ær’Óâ&öÖ—6SÆ&ööÆVãã° ¢òòF–ÖR×6Æ÷B‡'VÆR’ÖævVÖVçB(	B#BvÆ·2F’"ÂVF—F&ÆRöFF&ÆR÷&VÖ÷f&ÆRà¢FE'VÆS¢‡'VÆS¢66†VGVÆU'VÆR’Óâ&öÖ—6SÇfö–Cã°¢WFFU'VÆS¢€¢'VÆT–C¢7G&–ærÀ¢F6ƒ¢'F–ÃÅ–6³Å66†VGVÆU'VÆRÂwF–ÖRrÂvÆ&VÂrÂw&÷FF–öåW6W$–G2rÂvF—4öevVV²sãà¢’Óâ&öÖ—6SÇfö–Cã°¢FVÆWFU'VÆS¢‡'VÆT–C¢7G&–ær’Óâ&öÖ—6SÇfö–Cã°¢&V÷&FW%'VÆW3¢†÷&FW&VE'VÆT–G3¢7G&–æuµÒ’Óâ&öÖ—6SÇfö–Cã° ¢òò6–ævÆRÖö67W'&Væ6RVF—G2(	BæWfW"F÷V6‚F†R'VÆR÷"gWGW&R&÷FF–öâà¢&W66†VGVÆUvÆ³¢‡vÆ´–C¢7G&–ærÂæWuF–ÖS¢7G&–ær’Óâ&öÖ—6SÇfö–Cã°¢FVÆWFTVçG'“¢†VçG'”–C¢7G&–ær’Óâ&öÖ—6SÇfö–Cã° ¢7F'EvÆ³¢‡vÆ´–C¢7G&–ærÂ÷F–öç3ó¢²7F'Dw3ó¢&ööÆVã²&VÖ÷FT7F—fF–öãó¢&ööÆVã²7F÷%W6W$–Có¢7G&–æs²7GVÅvÆ¶W%W6W$–Có¢7G&–æs²7V'7F—GWF–öä6öæf—&ÖVCó¢&ööÆVã²&VÖ÷FU7F'Có¢&ööÆVâÒ’Óâ&öÖ—6SÆ&ööÆVãã°¢f–æ—6…vÆ³¢‡vÆ´–C¢7G&–ærÂ6ö×ÆWFVD'•W6W$–C¢7G&–ærÂFWF–Ç3ó¢vÆ´6ö×ÆWF–öäFWF–Ç2’Óâ&öÖ—6SÆ&ööÆVãã°¢Ö&´FöæS¢‡vÆ´–C¢7G&–ærÂ6ö×ÆWFVD'•W6W$–C¢7G&–ærÂFWF–Ç3ó¢vÆ´6ö×ÆWF–öäFWF–Ç2’Óâ&öÖ—6SÆ&ööÆVãã°¢VF—DFöæTFWF–Ç3¢‡vÆ´–C¢7G&–ærÂFWF–Ç3¢vÆ´6ö×ÆWF–öäFWF–Ç2’Óâ&öÖ—6SÇfö–Cã°¢6¶—¢‡vÆ´–C¢7G&–ær’Óâ&öÖ—6SÇfö–Cã°¢7v¢‡vÆ´–C¢7G&–ærÂæWuW6W$–C¢7G&–ærÂ7vVD'•W6W$–C¢7G&–ær’Óâ&öÖ—6SÇfö–Cã°¢7vGvõvÆ·3¢‡vÆ´–C¢7G&–ærÂvÆ´$–C¢7G&–ærÂ7vVD'•W6W$–C¢7G&–ær’Óâ&öÖ—6SÇfö–Cã°¢FEVçÆææVEvÆ³¢†–çWC¢VçÆææVEvÆ´–çWB’Óâ&öÖ—6SÆ&ööÆVãã°¢ò¢ ¢¢v—fW27öçFæV÷W2vÆ²F†R6ÖRÆ—fR7F'E÷vÆ²öf–æ—6…÷vÆ²Æ–fV7–6ÆP¢¢ÆææVBvÆ²vWG2‚&66R"(	B6VRÖ–w&F–öâSB’ÂÆöæw6–FR†æWfW ¢¢–ç7FVBöb’FEVçÆææVEvÆ²w2W†—7F–ærgFW"×F†RÖf7BÆövv–ær‚&66P¢¢""ÂVæ6†ævVB’â7&VFW2'&æBÖæWrVæF–ævvÆ²&÷r†—5VçÆææVBÀ¢¢æò66†VGVÆTVçG'”–B(	BæWfW"F÷V6†W2F†R&÷FF–öâ÷66†VGVÆR’GG&–'WFV@¢¢FòF†R6ÆÆW"ÂF†Vâ–ÖÖVF–FVÇ’'Vç2—BF‡&÷Vv‚F†RW†—7F–æp¢¢7F'EvÆ²‚’7F–öâ6ò—BvöW2F‡&÷Vv‚F†R4ÔR7F'E÷vÆ²%2À¢¢WF†÷&—¦F–öâÂæBu2×G&6¶–ær¶–6¶öfb2ç’66†VGVÆVBvÆ²à¢¢6W'fW"×6–FRWF†÷&—¦F–öâf÷"F†R–æ—F–Â–ç6W'B—2Ö–w&F–öâSBw0¢¢G&–vvW"W‡FVç6–öâ(	Bç’fÖ–Ç’ÖVÖ&W"Ö’–ç6W'BF†V—"õtâVæF–ærÀ¢¢æ÷B×–WB×7F'FVBö6ö×ÆWFVBVçÆææVBvÆ³²F†R7GVÂVæF–ærĞ¢¢æ–å÷&öw&W72ÓæFöæRG&ç6—F–öç2&RöæÇ’WfW"w&—GFVâ'¢¢7F'E÷vÆ²‚’öf–æ—6…÷vÆ²‚’F†V×6VÇfW2ÂæWfW"'’F†—2–ç6W'Bà¢¢6ö×WFTæW‡EvÆ²‚’‡6VRÆöv–2öæW‡EvÆ²çG2’Ç&VG’–6·2F†Rf—'7@¢¢–å÷&öw&W76vÆ²&Vv&FÆW72öb—5VçÆææVBÂ6òF†—2æVVG2æğ¢¢†öÖR×67&VVâ6†ævW2f÷"F†R&W7VÇF–ærvÆ²Fò6†÷rW–âF†Ræ÷&ÖÀ¢¢&7W'&VçBvÆ²"6&Bv—F‚—G2æ÷&ÖÂ-zyyyÒyyy]yÂ"7F–öâÂv—&VBFòF†P¢¢W†—7F–ærf–æ—6…vÆ²‚’âFVÆ–&W&FVÇ’Çv—2GG&–'WFVBFòF†R6ÆÆW ¢¢†æWfW"–6¶W"f÷"6öÖVöæRVÇ6R’(	B7F'F–ærvÆ²—2$’ÒFö–æp¢¢F†—2&–v‡Bæ÷r"Âæ÷B&6¶f–ÆÂà¢¢ğ¢7F'EVçÆææVEvÆ³¢†fÖ–Ç”–C¢7G&–ærÂFöt–C¢7G&–ærÂW6W$–C¢7G&–ær’Óâ&öÖ—6SÆ&ööÆVãã°¢—57F'F–æuVçÆææVEvÆ³¢&ööÆVã°¢ò¢¢vÆ²”G2v—F‚âWF†÷&—FF—fR7F'B&WVW7B–âfÆ–v‡C²W6VBFòF—6&ÆRGWÆ–6FRF2â¢ğ¢7F'F–æuvÆ´–G3¢7G&–æuµÓ°¢ò¢ ¢¢6V7F–öâ#¢VF—G2âW†—7F–ærVçÆææVB÷7öçFæV÷W2vÆ²”âÄ4R(	B6ÖP¢¢&V6÷&BÂæWfW"GWÆ–6FRâF6†Ö’–æ6ÇVFRç’7V'6WBöbF†Rf–VÆG0¢¢F†R&FBvÆ²F†BÇ&VG’†VæVB"fÆ÷r—G6VÆb6öÆÆV7G2‡F–ÖRöFFRÀ¢¢&W7öç6–&ÆRÖVÖ&W"ÂGW&F–öâÂVR÷ö÷Âæ÷FW2’â&VgW6W2†æòÖ÷Â6WG0¢¢7F–öäW'&÷"’f÷"vÆ²F†B—6âwB7GVÆÇ’VçÆææVB(	BF†—27F–öâ—0¢¢æ÷BvVæW&–2vÆ²VF—F÷"ÂVF—EvÆ´ÖöFÂöVF—DFöæTFWF–Ç2÷vâF†Bà¢¢ğ¢VF—EVçÆææVEvÆ³¢€¢vÆ´–C¢7G&–ærÀ¢F6ƒ¢'F–ÃÅ–6³ÅvÆ²ÂvFFRrÂw66†VGVÆVEF–ÖRrÂw&W7öç6–&ÆUW6W$–BrÂv†EVRrÂv†Eö÷rÂvæ÷FRrÂvGW&F–öäÖ–çWFW2sãà¢’Óâ&öÖ—6SÇfö–Cã°¢ò¢¢6V7F–öâ#¢FVÆWFW2âVçÆææVBvÆ²VçFW&VB'’Ö—7F¶RâF†R6ÆÆW"‡F†RT’’—2W‡V7FVBFò6öæf—&Òv—F‚F†RW6W"f—'7B(	B6VRF†R6öæf—&ÔÖöFÂW6vRBF†R6ÆÂ6—FRâ¢ğ¢FVÆWFUVçÆææVEvÆ³¢‡vÆ´–C¢7G&–ær’Óâ&öÖ—6SÇfö–Cã° ¢ò¢ ¢¢f–æÂ&÷VæBc"†—FVÒB6ö×ÆWF–öâ“¢FVÆWFW2&W6öÇfVB†FöæR÷ ¢¢6¶—VB’44„TETÄTBvÆ²ô45U%$Tä4R(	B6÷'&V7F–öâöbÖ—2×&V6÷&FV@¢¢VçG'’ÂæWfW"7F–ÆÂ×VæF–ærvÆ²æBæWfW"F†R&V7W'&–ær'VÆRö—G0¢¢÷F†W"ö67W'&Væ6W2âÖ—'&÷'2FVÆWFUVçÆææVEvÆ²w2÷vâ÷F–Ö—7F–2Ğ¢¢WFFR÷&WfW'BÖöâÖf–ÇW&R6†RW†7FÇ“²6W'fW"×6–FRWF†÷&—¦F–öâ—0¢¢Ö–w&F–öâRw2DTÄUDR'&æ6‚†FÖ–âõ"F†RvÆ²w2÷vâ&W7öç6–&ÆP¢¢ÖVÖ&W"’â6VR7&2öÆöv–2÷vÆ´7F–öç2çG2w26äFVÆWFU66†VGVÆVEvÆ²‚’f÷ ¢¢F†R6Æ–VçB×6–FRÖ—'&÷"öbF†B6ÖR'VÆR‡W6VBf÷"T’vF–æröæÇ’(	@¢¢F†—27F–öâ—G6VÆbFöW2æ÷B&RÖ6†V6²–FVçF—G’ÂÖF6†–ærWfW'’÷F†W ¢¢7F–öâ–âF†—27F÷&RÂv†–6‚ÆÂ&VÇ’öâF†R67&VVâÇ&VG’†f–æp¢¢vFVBF†Rff÷&Fæ6RÇW2F†RD"G&–vvW"2F†R&VÂVæf÷&6VÖVçB’à¢¢FVÆ–&W&FVÇ’FöW2äõBF÷V6‚F†RvÆ²w266†VGVÆUöVçG'•ö–B&÷r(	B6VP¢¢Ö–w&F–öâRw2÷vâ†VFW"6öÖÖVçBf÷"v‡’F†B—2v†BÖ¶W2F†—0¢¢6fRg&öÒ66†VGVÆU7F÷&RæÆöB‚’w2'VÆRÖ&6VB&6¶f–ÆÂà¢¢ğ¢FVÆWFU66†VGVÆVEvÆ´ö67W'&Væ6S¢‡vÆ´–C¢7G&–ær’Óâ&öÖ—6SÇfö–Cã° ¢6ÆV$7F–öäW'&÷#¢‚’Óâfö–C°§Ğ ¦gVæ7F–öâ†5ÆææVEvÆ´f÷$VçG'’‡vÆ·3¢vÆµµÒÂVçG'“¢66†VGVÆTVçG'’ÂfÖ–Ç”–C¢7G&–ær“¢&ööÆVâ°¢&WGW&âvÆ·2ç6öÖR€¢‡vÆ²’Óà¢vÆ²æ—5VçÆææVBb`¢vÆ²æfÖ–Ç”–BÓÓÒfÖ–Ç”–Bb`¢vÆ²æFöt–BÓÓÒVçG'’æFöt–Bb`¢vÆ²æFFRÓÓÒVçG'’æFFRb`¢vÆ²ç66†VGVÆVEF–ÖRÓÓÒVçG'’çF–ÖP¢“°§Ğ ¦gVæ7F–öâvÆ´g&öÔVçG'’†VçG'“¢66†VGVÆTVçG'’ÂfÖ–Ç”–C¢7G&–ær“¢vÆ²°¢6öç7Bæ÷rÒæWrFFR‚’çFô•4õ7G&–ær‚“°¢&WGW&â°¢–C¢vVæW&FT–B‚wvÆ²r’À¢fÖ–Ç”–BÀ¢66†VGVÆTVçG'”–C¢VçG'’æ–BÀ¢Föt–C¢VçG'’æFöt–BÀ¢FFS¢VçG'’æFFRÀ¢66†VGVÆVEF–ÖS¢VçG'’çF–ÖRÀ¢&W7öç6–&ÆUW6W$–C¢VçG'’ç&W7öç6–&ÆUW6W$–BÀ¢7FGW3¢wVæF–ærrÀ¢7&VFVDC¢æ÷rÀ¢WFFVDC¢æ÷rÀ¢Ó°§Ğ ¦7–æ2gVæ7F–öâ66†VGVÆTæ÷F–f–6F–öç4f÷%vÆ²‡vÆ³¢vÆ²’°¢òò&F6‚"òFV6—6–öâB†6†ææVÂ×6VÆV7F–öâöFVGWöÆ–7’(	B6VP¢òò7&2öÆ–"÷&VÖ÷FU&VÖ–æFW$6†ææVÂçG2“¢öæ6RF†—2FWf–6R†2â7F—fP¢òò&VÖ÷FRW6‚6†ææVÂÂF†R6W'fW"×6–FR66†VGVÆW"—2WF†÷&—FF—fRf÷ ¢òòF†—2&öf–ÆRw2&VÖ–æFW'2(	BÆö6Â66†VGVÆ–ær—26¶—VB†æBç¢òòÇ&VG’×66†VGVÆVBÆö6Â&VÖ–æFW"f÷"F†—2W†7BvÆ²—26æ6VÆÆVB¢òò&F†W"F†â&—6²GWÆ–6FR'W§¢g&öÒ&÷F‚7—7FV×2à¢–b†v—B†47F—fU&VÖ÷FU&VÖ–æFW$6†ææVÂ‚’’°¢v—B6æ6VÅvÆ´æ÷F–f–6F–öç2‡vÆ²æ–B“°¢&WGW&ã°¢Ğ¢6öç7B²W6TfÖ–Ç•7F÷&RÒÒ&WV—&R‚râöfÖ–Ç•7F÷&Rr’2G—Vöb–×÷'B‚râöfÖ–Ç•7F÷&Rr“°¢6öç7B²W6W'2ÂFös¢7F—fTFörÂFöw2ÒÒW6TfÖ–Ç•7F÷&RævWE7FFR‚“°¢6öç7BW6W"ÒW6W'2æf–æB‚‡R’ÓâRæ–BÓÓÒvÆ²ç&W7öç6–&ÆUW6W$–B“°¢òò×VÇF’ÖFör…$B*s“¢&W6öÇfRD„•2vÆ²w2÷vâFör'’vÆ²æFöt–BÂæWfW ¢òòF†RvÆö&ÆÇ’×6VÆV7FVB7F—fRFör(	BvÆ²&V–ær‡&R—66†VGVÆVB6à¢òò&VÆöærFòç’öbF†RfÖ–Ç’w2Föw2&Vv&FÆW72öbv†–6‚öæR—0¢òò7W'&VçFÇ’7F—fR–âF†RT’âfÆÇ2&6²FòF†R7F—fRFöröæÇ’–`¢òòvÆ²æFöt–B6öÖV†÷r—6âwB–âFöw6‡6†÷VÆFâwBæ÷&ÖÆÇ’†Vâ’Â6ò¢òòvVçV–æVÇ’66†VGVÆ&ÆR&VÖ–æFW"—2æWfW"6–ÆVçFÇ’G&÷VBà¢6öç7BFörÒFöw2æf–æB‚†B’ÓâBæ–BÓÓÒvÆ²æFöt–B’óò7F—fTFös°¢–b‚W6W"ÇÂW6W"ç&VÖ–æFW'4Væ&ÆVBÇÂFör’&WGW&ã°¢6öç7B6WGF–æw2Òv—B&W÷6—F÷'’ævWDæ÷F–f–6F–öå6WGF–æw2‡vÆ²æfÖ–Ç”–B“°¢6öç7B6WGF–ærÒ6WGF–æw2æf–æB‚‡2’Óâ2çW6W$–BÓÓÒW6W"æ–B“°¢–b‚6WGF–ær’&WGW&ã°¢v—B66†VGVÆUvÆ´æ÷F–f–6F–öç2‡vÆ²Â6WGF–ærÂW6W"ææÖRÂFörææÖRÂFörç6W‚“°§Ğ ¢ò¢ ¢¢gVÆÂ&V6öæ6–Æ–F–öâöbÄÂöbF†—2fÖ–Ç’w2æ÷F–f–6F–öç2v–ç7BF†P¢¢5U%$TåDÅ’U%4•5DTBvÆ²ö67W'&Væ6W2„2w2WF†÷&—FF—fR'VÆR’(	B6æ6VÇ0¢¢ç—F†–ær7FÆRf÷"æöâ×VæF–ær÷&VÖ÷fVBvÆ²Â‡&R—66†VGVÆW2WfW'—F†–æp¢¢7F–ÆÂVæF–ærg&öÒ—G27W'&VçBFFâW‡÷'FVB6òçG7‚6âÇ6ò'Vâ—@¢¢öâ7F'GWöf÷&Vw&÷VæBÂ–æFWVæFVçBöbgVÆÂ66†VGVÆR&VÆöBà¢¢ğ¦W‡÷'B7–æ2gVæ7F–öâ&V6öæ6–ÆU66†VGVÆTæ÷F–f–6F–öç2†fÖ–Ç”–C¢7G&–ærÂvÆ·3¢vÆµµÒ“¢&öÖ—6SÇfö–Câ°¢òò&F6‚"òFV6—6–öâB(	B6VR66†VGVÆTæ÷F–f–6F–öç4f÷%vÆ²‚’w2–FVçF–6À¢òòvFR§W7B&÷fRf÷"F†RgVÆÂ&V6öæ–ærâ6æ6VÂ&F†W"F†â&V6öæ6–ÆS ¢òòç’Æö6Â&VÖ–æFW"ÆVgB÷fW"g&öÒ&Vf÷&RF†—2&öf–ÆR†B&VÖ÷FP¢òò6†ææVÂ×W7Bæ÷B7W'f—fRÆöæw6–FRF†Ræ÷rÖWF†÷&—FF—fR6W'fW"6VæG2à¢–b†v—B†47F—fU&VÖ÷FU&VÖ–æFW$6†ææVÂ‚’’°¢v—B&öÖ—6RæÆÂ‡vÆ·2æÖ‚‡r’Óâ6æ6VÅvÆ´æ÷F–f–6F–öç2‡ræ–B’’“°¢&WGW&ã°¢Ğ¢6öç7B²W6TfÖ–Ç•7F÷&RÒÒ&WV—&R‚râöfÖ–Ç•7F÷&Rr’2G—Vöb–×÷'B‚râöfÖ–Ç•7F÷&Rr“°¢6öç7B²W6W'2ÂFös¢7F—fTFörÂFöw2ÒÒW6TfÖ–Ç•7F÷&RævWE7FFR‚“°¢–b‚7F—fTFörbbFöw2æÆVæwF‚ÓÓÒ’&WGW&ã°¢6öç7BW6W'4'”–BÒæWrÖ‡W6W'2æÖ‚‡R’Óâ·Ræ–BÂUÒ’“°¢òò×VÇF’ÖFör…$B*s“¢W"×vÆ²För&W6öÇWF–öâÂ6ÖR&V6öæ–ær0¢òò66†VGVÆTæ÷F–f–6F–öç4f÷%vÆ²‚’&÷fR(	BF†—2&V6öæ6–Æ–F–öâ72'Vç0¢òò÷fW"F†RfÖ–Ç’w2t„ôÄRvÆ²6WBÂv†–6‚6â7âWfW'’öæRöb—G0¢òòFöw2Âæ÷B§W7Bv†–6†WfW"öæR—27W'&VçFÇ’7F—fRà¢6öç7BFöw4'”–BÒæWrÖ†Föw2æÖ‚†B’Óâ¶Bæ–BÂEÒ’“°¢6öç7B6WGF–æw2Òv—B&W÷6—F÷'’ævWDæ÷F–f–6F–öå6WGF–æw2†fÖ–Ç”–B“°¢6öç7B6WGF–æw4'•W6W$–BÒæWrÖ‡6WGF–æw2æÖ‚‡2’Óâ·2çW6W$–BÂ5Ò’“°¢v—B&V6öæ6–ÆUvÆ´æ÷F–f–6F–öç2€¢vÆ·2À¢7–æ2‡W6W$–B’Óâ°¢6öç7BW6W"ÒW6W'4'”–BævWB‡W6W$–B“°¢–b‚W6W"ÇÂW6W"ç&VÖ–æFW'4Væ&ÆVB’&WGW&âVæFVf–æVC°¢&WGW&â6WGF–æw4'•W6W$–BævWB‡W6W$–B“°¢ÒÀ¢‡W6W$–B’ÓâW6W'4'”–BævWB‡W6W$–B“òææÖRÀ¢†Föt–B’ÓâFöw4'”–BævWB†Föt–B’óò7F—fTFöróòVæFVf–æV@¢“°§Ğ ¢ò¢ ¢¢F†R7GVÂ&öG’öbÆöB‚’(	BfWF6†W2F†—2fÖ–Ç’w2'VÆW2öVçG&–W2÷vÆ·2æ@¢¢6VÆbÖ†VÇ2ç’'VÆRF†Bw2Ö—76–ær—G2W6öÖ–ærVçG&–W2âW‡G&7FVBFò¢¢7FæFÆöæRgVæ7F–öâ6òÆöB‚’—G6VÆb6âw&6–ævÆR–âÖfÆ–v‡B6ÆÂW ¢¢fÖ–Ç”–B&V†–æB&öÖ—6RwV&B‡6VRÆöB‚’w2Fö26öÖÖVçB’–ç7FVBö`¢¢&R×'Vææ–ærF†—2v†öÆRfWF6‚¶&6¶f–ÆÂf÷"WfW'’6öæ7W'&VçB6ÆÆW"à¢¢ğ¦7–æ2gVæ7F–öâÆöE66†VGVÆTf÷$fÖ–Ç’€¢fÖ–Ç”–C¢7G&–ærÀ¢6WC¢‡'F–Ã¢'F–ÃÅ66†VGVÆU7FFSâÂ‚‡3¢66†VGVÆU7FFR’Óâ'F–ÃÅ66†VGVÆU7FFSâ’’Óâfö–@¢“¢&öÖ—6SÆ&ööÆVãâ°¢6WB‡²ÆöF–æs¢G'VRÂW'&÷#¢çVÆÂÒ“°¢G'’°¢6öç7B·'VÆW2ÂVçG&–W2ÂvÆ·5ÒÒv—B&öÖ—6RæÆÂ…°¢&W÷6—F÷'’ævWE66†VGVÆU'VÆW2†fÖ–Ç”–B’À¢&W÷6—F÷'’ævWE66†VGVÆTVçG&–W2†fÖ–Ç”–B’À¢&W÷6—F÷'’ævWEvÆ·2†fÖ–Ç”–B’À¢Ò“° ¢òò&V7W'&–ær'VÆW2&R6öæf–wW&F–öâæB7W'f—fRâ7F—f—G’&W6WBâ&V'V–Æ@¢òòöæÇ’F†ReUEU$Rö67W'&Væ6R†÷&—¦öâv†Vâ7W'f—f–ær7F—fR'VÆR†2æğ¢òòW6öÖ–ærVçG&–W2Â6ò†öÖR6â7F–ÆÂ&W6öÇfR&æW‡BvÆ²"gFW"&W6WBà¢òòW†—7F–ærgWGW&RVçG&–W2&RæWfW"GWÆ–6FVC²F†R&W÷6—F÷'’ôD"–FVçF—G¢òò6öç7G&–çG2&VÖ–âF†Rf–æÂ6öæ7W'&Væ7’wV&Bà¢ÆWBf–æÄVçG&–W2ÒVçG&–W3°¢ÆWBf–æÅvÆ·2ÒvÆ·3°¢6öç7BFöF’ÒÆö6ÄFFTöæÇ’†æWrFFR‚’“°¢6öç7BVæDFFRÒÆö6ÄFFTöæÇ’†æWrFFR„FFRææ÷r‚’²tTäU$DUôD•5ô„TB¢ƒcC’“°¢6öç7B'VÆW4æVVF–ætgWGW&RÒ'VÆW2æf–ÇFW"‚‡'VÆR’Óâ'VÆTæVVG4VçG'”&6¶f–ÆÂ‡'VÆRÂf–æÄVçG&–W2ÂFöF’’“°¢f÷"†6öç7B'VÆRöb'VÆW4æVVF–ætgWGW&R’°¢6öç7BvVæW&FVBÒvVæW&FU&÷FF–öå66†VGVÆR‡'VÆRÂFöF’ÂVæDFFRÂ‚’ÓâvVæW&FT–B‚vVçG'’r’“°¢–b†vVæW&FVBæÆVæwF‚ÓÓÒ’6öçF–çVS°¢v—B&W÷6—F÷'’æFE66†VGVÆTVçG&–W2†vVæW&FVB“°¢6öç7BW†—7F–æt¶W—2ÒæWr6WB†f–æÄVçG&–W2æÖ‚†R’ÓâG¶RæFöt–G×ÂG¶RæFFW×ÂG¶RçF–ÖWÖ’“°¢6öç7BG'VÇ”æWrÒvVæW&FVBæf–ÇFW"‚†R’ÓâW†—7F–æt¶W—2æ†2†G¶RæFöt–G×ÂG¶RæFFW×ÂG¶RçF–ÖWÖ’“°¢6öç7BvVæW&FVEvÆ·2ÒG'VÇ”æWp¢æf–ÇFW"‚†VçG'’’Óâ†5ÆææVEvÆ´f÷$VçG'’†f–æÅvÆ·2ÂVçG'’Â'VÆRæfÖ–Ç”–B’¢æÖ‚†VçG'’’ÓâvÆ´g&öÔVçG'’†VçG'’Â'VÆRæfÖ–Ç”–B’“°¢f÷"†6öç7BvÆ²öbvVæW&FVEvÆ·2’v—B&W÷6—F÷'’ç6fUvÆ²‡vÆ²“°¢f–æÄVçG&–W2Ò²ââæf–æÄVçG&–W2ÂââçG'VÇ”æWuÓ°¢f–æÅvÆ·2Ò²ââæf–æÅvÆ·2ÂââævVæW&FVEvÆ·5Ó°¢Ğ ¢òò7F—f—G’&W6WBFVÆ–&W&FVÇ’&W6W'fW2&V7W'&–ær66†VGVÆRVçG&–W2âF†B6à¢òòÆVfRfÆ–BFöF’ögWGW&RVçG'’v—F†÷WB—G2FW&—fVBvÆ²&÷râG&VBF†@¢òò2&W—&&ÆRFW&—fVBÖFFv¢†öÖR&VæFW'2vÆ·2Âæ÷B&&RVçG&–W2à¢òò&V7&VFRöæÇ’ö67W'&Væ6W2–âF†R7F—fR†÷&—¦öâæBöæÇ’v†VâæòvÆ°¢òòÇ&VG’&VfW&Væ6W2F†R6æöæ–6Â66†VGVÆRÖVçG'’–Bà¢6öç7B7F—fU'VÆW2Ò'VÆW2æf–ÇFW"‚‡'VÆR’Óâ'VÆRæ7F—fR“°¢6öç7B7F—fU'VÆT–G2ÒæWr6WB†7F—fU'VÆW2æÖ‚‡'VÆR’Óâ'VÆRæ–B’“°¢6öç7BvÆ´VçG'”–G2ÒæWr6WB€¢f–æÅvÆ·2æÖ‚‡vÆ²’ÓâvÆ²ç66†VGVÆTVçG'”–B’æf–ÇFW"‚†–B“¢–B—27G&–ærÓâ&ööÆVâ†–B’¢“°¢6öç7BVçG'”&VÆöæw5Fô7F—fU'VÆRÒ†VçG'“¢66†VGVÆTVçG'’“¢&ööÆVâÓâ°¢–b†VçG'’ç'VÆT–B’&WGW&â7F—fU'VÆT–G2æ†2†VçG'’ç'VÆT–B“°¢òòÆVv7’÷&W6W'fVB66†VGVÆRVçG&–W26â&VFFR'VÆUö–BÆ–æ¶vRâF†W’&P¢òò7F–ÆÂ6æöæ–6Âö67W'&Væ6W2gFW"7F—f—G’&W6WBÂ6ò&V6÷fW"F†VÒ'¢òòF†R7F—fR'VÆR–FVçF—G’–ç7FVBöbG&÷–ærFöF’w2vÆ²g&öÒ†öÖRà¢&WGW&â7F—fU'VÆW2ç6öÖR‚‡'VÆR’Óâ°¢6öç7BF—2Ò'VÆRæF—4öevVV²æÆVæwF‚âò'VÆRæF—4öevVV²¢³ÂÂ"Â2ÂBÂRÂeÓ°¢6öç7BF’ÒæWrFFR†G¶VçG'’æFFWÕC££¦’ævWEUD4F’‚“°¢&WGW&â'VÆRæFöt–BÓÓÒVçG'’æFöt–Bbb'VÆRçF–ÖRÓÓÒVçG'’çF–ÖRbbF—2æ–æ6ÇVFW2†F’“°¢Ò“°¢Ó°¢6öç7B÷'†ägWGW&TVçG&–W2Òf–æÄVçG&–W2æf–ÇFW"€¢†VçG'’’Óà¢VçG'’æFFRãÒFöF’b`¢VçG'’æFFRÃÒVæDFFRb`¢VçG'”&VÆöæw5Fô7F—fU'VÆR†VçG'’’b`¢vÆ´VçG'”–G2æ†2†VçG'’æ–B’b`¢†5ÆææVEvÆ´f÷$VçG'’†f–æÅvÆ·2ÂVçG'’ÂfÖ–Ç”–B¢“°¢–b†÷'†ägWGW&TVçG&–W2æÆVæwF‚â’°¢6öç7B&W—&VEvÆ·2Ò÷'†ägWGW&TVçG&–W2æÖ‚†VçG'’’ÓâvÆ´g&öÔVçG'’†VçG'’ÂfÖ–Ç”–B’“°¢–b‡&W÷6—F÷'’çVWVUvÆ·4f÷$&6¶w&÷VæE7–æ2’°¢v—B&W÷6—F÷'’çVWVUvÆ·4f÷$&6¶w&÷VæE7–æ2‡&W—&VEvÆ·2“½wç-¢G§²ÚîÆ­yÖâW'6—7FVæ6Rf–ÆVBrÂ²vÆ´–BÂW'&÷"Ò“°¢6WB‡²7F–öäW'&÷#¢}yMyyy]yÂyMzz­yyyÒÂyy¢yÍyyMzmyÍy}zyRyÍzyíy]z‚yz¢zz­y]zy’yBÔu2âyMzz­y]zyyÒzzyzyRyyíy½zyz‚(	BzzyRyÍzz-zyòy]yÍy=y]y]yryÍz­yíyy½yByyÒyMyz-yyBy}y]ymzz¢ârÒ“°¢Ğ¢Ğ¢&WGW&âG'VS°¢Ò6F6‚†R’°¢6WB‡²7F–öäW'&÷#¢g&–VæFÇ”W'&÷$ÖW76vR†RÂµÒÂ}yÍyyMzmyÍy}zyRyÍzyyyÒyz¢yMyyy]yÂr’Ò“°¢&WGW&âfÇ6S°¢Ğ¢Ò’‚“°¢6öç7BG&6¶VBÒ÷W&F–öâæf–æÆÇ’‚‚’Óâ°¢f–æ—6…vÆµ&öÖ—6W2æFVÆWFR‡vÆ´–B“°¢Ò“°¢f–æ—6…vÆµ&öÖ—6W2ç6WB‡vÆ´–BÂG&6¶VB“°¢&WGW&âG&6¶VC°¢ÒÀ ¢Ö&´FöæS¢7–æ2‡vÆ´–C¢7G&–ærÂ6ö×ÆWFVD'•W6W$–C¢7G&–ærÂFWF–Ç3¢vÆ´6ö×ÆWF–öäFWF–Ç2Ò·Ò’Óâ°¢–b‚wV&EFW7DÖöFT×WFF–öâ‚’’&WGW&âfÇ6S°¢6öç7BvÆ²ÒvWB‚’çvÆ·2æf–æB‚‡r’Óâræ–BÓÓÒvÆ´–B“°¢–b‚vÆ²’&WGW&âfÇ6S°¢G'’°¢6öç7BWFFVBÒÖ&µvÆ´FöæR‡vÆ²Â6ö×ÆWFVD'•W6W$–BÂFWF–Ç2“°¢òò÷F–Ö—7F–2WFFR6òF†R†öÖR67&VVâ&VfÆV7G2—Bv—F†–âF†R&fWr6V6öæG2"U‚vöÂà¢6WB‚‡2’Óâ‡²vÆ·3¢2çvÆ·2æÖ‚‡r’Óâ‡ræ–BÓÓÒvÆ´–BòWFFVB¢r’’Â7F–öäW'&÷#¢çVÆÂÒ’“°¢v—B&W÷6—F÷'’ç6fUvÆ²‡WFFVB“°¢v—B6æ6VÅvÆ´æ÷F–f–6F–öç2‡vÆ´–B“°¢òòÖ&´FöæR—2F†R.)É2zyíyòy½yy]zmz""fÆÆ&6²F‚6öÖVöæRÖ–v‡BW6P¢òò–ç7FVBöbF†Rf÷&ÖÂ-zyyyÒyyy]yÂ"7F–öâ(	B7F÷G&6¶–ær†W&RFöğ¢òò†æòÖ÷–bF†—2vÆ²v2æWfW"&V–ærG&6¶VBÂRærâ—Bv2Ö&¶V@¢òòFöæRv—F†÷WBWfW"&V–ær7F'FVB’6òu2vF6‚7F'FVBf–¢òò7F'EvÆ²6âæWfW"¶VW'Vææ–ær7BvÆ²F†Bw2Ç&VG’FöæRà¢fö–BW6Tw57F÷&RævWE7FFR‚’ç7F÷G&6¶–ær‡WFFVBÂ6ö×ÆWFVD'•W6W$–BÂwvÆµöÖ&¶VEöFöæRr“° ¢òò"f—ƒ¢öffÆ–æTf—'7E&W÷6—F÷'’ç6fUvÆ²‚’æWfW"F‡&÷w2WfVâv†VâF†P¢òò&VÖ÷FRw&—FRVÇF–ÖFVÇ’f–ÆVB(	B—BÇv—2w&—FW2Æö6ÆÇ’f—'7@¢òò‡6òF†R7F—2W6&ÆRöffÆ–æR’æBW6†W2FòF†R6W'fW ¢òò&W7BÖVff÷'Bf–F†R7–æ5VWVRÂv†–6‚7vÆÆ÷w2f–ÇW&W2–çFW&æÆÇ¢òò‡&WG'–&ÆRöæW27F’VWVVBf÷"F†RæW‡B7–æ3²W&ÖæVçBöæW2&P¢òò&V6÷&FVB26öæfÆ–7BæBG&÷VB(	B6VR7–æ5VWVRçG2’âæ—fVÇ¢òò&VfWF6†–ærg&öÒF†R6W'fW"&–v‡BgFW"6fUvÆ²‚–&W6öÇfVBW6VBFğ¢òò6–ÆVçFÇ’$UdU%BF†R÷F–Ö—7F–2&FöæR"7FFR&6²Fòv†FWfW"F†P¢òò6W'fW"7F–ÆÂ†B(	Bv—F‚æòW'&÷"6†÷vâ(	Bv†VæWfW"F†Bw&—FR†Fâw@¢òò7GVÆÇ’ÆæFVB–WB†6Æ÷r÷G&ç6–VçBæWGv÷&²Â÷"W&ÖæVç@¢òò6öæfÆ–7B’âF†B—2F†R6öæ7&WFR&6ö×ÆWF–öâæ÷B7–æ6–ær6÷'&V7FÇ’ ¢òò'Vs¢F†R6†V6¶Ö&²v÷VÆBfÆ6‚æBF†VâF—6V"à¢òğ¢òòf—ƒ¢öæÇ’G'W7B6W'fW"&VfWF6‚öæ6RvR¶æ÷rD„•2vÆ²w2w&—FR†0¢òò7GVÆÇ’&VVâ&W6öÇfVB‡7V66VVFVB÷"W&ÖæVçFÇ’f–ÆVB’(	B’æRâ—@¢òò—2æòÆöævW"6—GF–ær–âF†RVWVRâv†–ÆR—Bw27F–ÆÂVWVV@¢òò‡&WG'–&ÆRæWGv÷&²f–ÇW&R’Â¶VWF†R÷F–Ö—7F–2Æö6Â7FFR2Ö—3°¢òò—Bv–ÆÂ&V6öæ6–ÆR6÷'&V7FÇ’öâF†RæW‡B7V66W76gVÂ7–æ2â–b—Bv0¢òòG&÷VB2W&ÖæVçB6öæfÆ–7BÂ7W&f6RF†B2&VÂf–ÇW&P¢òò–ç7FVBöb6–ÆVçFÇ’&W6VçF–ærF†R&WfW'FVB7FFR27V66W72à¢6öç7B7F–ÆÅVæF–ærÒv—B&W÷6—F÷'’æ†5VæF–æu6fUvÆ³òâ‡vÆ´–B“°¢–b‡7F–ÆÅVæF–ær’°¢&WGW&âG'VS²òòÆö6ÆÇ’6fVBæBVWVVC²¶VWF†R÷F–Ö—7F–26ö×ÆWF–öâ–çF7@¢Ğ ¢6öç7B6öæfÆ–7BÒv—B&W÷6—F÷'’ævWD6öæfÆ–7Df÷%vÆ³òâ‡vÆ´–B“°¢–b†6öæfÆ–7B’°¢òò&WfW'BF†R÷F–Ö—7F–2WFFR(	BF†R6W'fW"&V¦V7FVBF†Rw&—FR(	@¢òòæBFVÆÂF†RW6W"Â&F†W"F†â6–ÆVçFÇ’6†÷v–ær—B2FöæRà¢6WB‚‡2’Óâ‡°¢vÆ·3¢2çvÆ·2æÖ‚‡r’Óâ‡ræ–BÓÓÒvÆ´–BòvÆ²¢r’’À¢7F–öäW'&÷#¢}yÍyyMzmyÍy}zyRyÍzyíy]z‚yz¢yMzyyíy]yòyzzz¢âzzyRyÍzz-zyòy]yÍzyíyòzy]yârÀ¢Ò’“°¢&WGW&âfÇ6S°¢Ğ ¢òòw&—FR—26öæf—&ÖVB&W6öÇfVB‡7–æ6VBÂ÷"F†W&Rv2æWfW"&VÖ÷FRFğ¢òò&Vv–âv—F‚’(	Bæ÷r—Bw26fRFò&R×7–æ2g&öÒF†R&W÷6—F÷'’–â66R¢òò6öæ7W'&VçB6ö×ÆWF–öâ'’æ÷F†W"fÖ–Ç’ÖVÖ&W"vöâF†R&6R‡6VP¢òò&W÷6—F÷'’ç6fUvÆ²Fö72’à¢6öç7Bg&W6‚Òv—B&W÷6—F÷'’ævWEvÆ·2‡vÆ²æfÖ–Ç”–B“°¢6WB‡²vÆ·3¢g&W6‚Ò“°¢&WGW&âG'VS°¢Ò6F6‚†R’°¢6WB‡²7F–öäW'&÷#¢R–ç7Fæ6VöbvÆ´7F–öäW'&÷"òRæÖW76vR¢}yÍyyMzmyÍy}zyRyÍzyíyòyz¢yMyyy]yÂy½yy]zmz"rÒ“°¢&WGW&âfÇ6S°¢Ğ¢ÒÀ ¢VF—DFöæTFWF–Ç3¢7–æ2‡vÆ´–C¢7G&–ærÂFWF–Ç3¢vÆ´6ö×ÆWF–öäFWF–Ç2’Óâ°¢–b‚wV&EFW7DÖöFT×WFF–öâ‚’’&WGW&ã°¢6öç7BvÆ²ÒvWB‚’çvÆ·2æf–æB‚‡r’Óâræ–BÓÓÒvÆ´–B“°¢–b‚vÆ²’&WGW&ã°¢G'’°¢6öç7BWFFVBÒVF—EvÆ´FWF–Ç2‡vÆ²ÂFWF–Ç2“°¢6WB‚‡2’Óâ‡²vÆ·3¢2çvÆ·2æÖ‚‡r’Óâ‡ræ–BÓÓÒvÆ´–BòWFFVB¢r’’Â7F–öäW'&÷#¢çVÆÂÒ’“°¢v—B&W÷6—F÷'’ç6fUvÆ²‡WFFVB“°¢Ò6F6‚†R’°¢6WB‡²7F–öäW'&÷#¢R–ç7Fæ6VöbvÆ´7F–öäW'&÷"òRæÖW76vR¢}yÍyyMzmyÍy}zyRyÍz-y=y½yòyz¢zMzyy’yMyyy]yÂrÒ“°¢Ğ¢ÒÀ ¢6¶—¢7–æ2‡vÆ´–C¢7G&–ær’Óâ°¢–b‚wV&EFW7DÖöFT×WFF–öâ‚’’&WGW&ã°¢6öç7BvÆ²ÒvWB‚’çvÆ·2æf–æB‚‡r’Óâræ–BÓÓÒvÆ´–B“°¢–b‚vÆ²’&WGW&ã°¢G'’°¢6öç7BWFFVBÒÖ&µvÆµ6¶—VB‡vÆ²“°¢6WB‚‡2’Óâ‡²vÆ·3¢2çvÆ·2æÖ‚‡r’Óâ‡ræ–BÓÓÒvÆ´–BòWFFVB¢r’’Â7F–öäW'&÷#¢çVÆÂÒ’“°¢v—B&W÷6—F÷'’ç6fUvÆ²‡WFFVB“°¢v—B6æ6VÅvÆ´æ÷F–f–6F–öç2‡vÆ´–B“°¢Ò6F6‚†R’°¢6WB‡²7F–öäW'&÷#¢R–ç7Fæ6VöbvÆ´7F–öäW'&÷"òRæÖW76vR¢}yÍyyMzmyÍy}zyRyÍy=yÍy"z-yÂyMyyy]yÂrÒ“°¢Ğ¢ÒÀ ¢7v¢7–æ2‡vÆ´–C¢7G&–ærÂæWuW6W$–C¢7G&–ærÂ7vVD'•W6W$–C¢7G&–ær’Óâ°¢–b‚wV&EFW7DÖöFT×WFF–öâ‚’’&WGW&ã°¢6öç7BvÆ²ÒvWB‚’çvÆ·2æf–æB‚‡r’Óâræ–BÓÓÒvÆ´–B“°¢–b‚vÆ²’&WGW&ã°¢G'’°¢6öç7BWFFVBÒ7vvÆµW&R‡vÆ²ÂæWuW6W$–BÂ7vVD'•W6W$–B“°¢6WB‚‡2’Óâ‡²vÆ·3¢2çvÆ·2æÖ‚‡r’Óâ‡ræ–BÓÓÒvÆ´–BòWFFVB¢r’’Â7F–öäW'&÷#¢çVÆÂÒ’“°¢v—B&W÷6—F÷'’ç6fUvÆ²‡WFFVB“°¢v—B66†VGVÆTæ÷F–f–6F–öç4f÷%vÆ²‡WFFVB“°¢Ò6F6‚†R’°¢6WB‡²7F–öäW'&÷#¢R–ç7Fæ6VöbvÆ´7F–öäW'&÷"òRæÖW76vR¢}yÍyyMzmyÍy}zyRyÍyMy}yÍyz2yz¢yMz­y]z‚rÒ“°¢Ğ¢ÒÀ ¢ò¢ ¢¢&VÂGvò×v’W†6†ævR&WGvVVâGvò7V6–f–2vÆ·2â¶VW$õD‚W†V7WF–öà¢¢&÷w2†vÆ·6’æBF†V—"&6¶–ær66†VGVÆRö67W'&Væ6W2†66†VGVÆUöVçG&–W6¢¢–â7–æ2Â÷F†W'v—6RÆFW"&VÆöBö&6¶f–ÆÂ6â&RÖ76W'BF†RöÆB÷væW"öà¢¢öæR6–FRöbF†RW†6†ævRâF†RöffÆ–æRÖf—'7B&W÷6—F÷'’W'6—7G2V6€¢¢6†ævVBVçG'’÷vÆ²Æö6ÆÇ’–ÖÖVF–FVÇ’æBVWVW2F†R6ÖRw&—FW2f÷"F†P¢¢6W'fW"Â6òF†Rf÷W"w&—FW26öçfW&vRFövWF†W"v†Vâ6öææV7F—f—G’&WGW&ç2à¢¢ğ¢7vGvõvÆ·3¢7–æ2‡vÆ´–C¢7G&–ærÂvÆ´$–C¢7G&–ærÂ7vVD'•W6W$–C¢7G&–ær’Óâ°¢–b‚wV&EFW7DÖöFT×WFF–öâ‚’’&WGW&ã°¢6öç7B&Vf÷&RÒvWB‚“°¢6öç7BvÆ´Ò&Vf÷&RçvÆ·2æf–æB‚‡r’Óâræ–BÓÓÒvÆ´–B“°¢6öç7BvÆ´"Ò&Vf÷&RçvÆ·2æf–æB‚‡r’Óâræ–BÓÓÒvÆ´$–B“°¢–b‚vÆ´ÇÂvÆ´"’&WGW&ã° ¢6öç7BVçG'”ÒvÆ´ç66†VGVÆTVçG'”–Bò&Vf÷&RæVçG&–W2æf–æB‚†R’ÓâRæ–BÓÓÒvÆ´ç66†VGVÆTVçG'”–B’¢VæFVf–æVC°¢6öç7BVçG'”"ÒvÆ´"ç66†VGVÆTVçG'”–Bò&Vf÷&RæVçG&–W2æf–æB‚†R’ÓâRæ–BÓÓÒvÆ´"ç66†VGVÆTVçG'”–B’¢VæFVf–æVC° ¢G'’°¢6öç7B·WFFVDÂWFFVD%ÒÒ7vvÆ·4×WGVÂ‡vÆ´ÂvÆ´"Â7vVD'•W6W$–B“°¢6öç7BWFFVDVçG'”ÒVçG'”ò²ââæVçG'”Â&W7öç6–&ÆUW6W$–C¢WFFVDç&W7öç6–&ÆUW6W$–BÒ¢VæFVf–æVC°¢6öç7BWFFVDVçG'”"ÒVçG'”"ò²ââæVçG'”"Â&W7öç6–&ÆUW6W$–C¢WFFVD"ç&W7öç6–&ÆUW6W$–BÒ¢VæFVf–æVC° ¢–b†—57W&6T6öæf–wW&VB’°¢òòFÖ–å÷7v÷vÆ·2ƒ3’—2F†R6öÆRWF†÷&—FF—fR7W&6Rw&—FRà¢òò—BW†6†ævW2&÷F‚vÆ²÷væW'2æB&÷F‚Æ–æ¶VB66†VGVÆRVçG&–W2–à¢òòöæR6W'fW"G&ç67F–öââFòæ÷BföÆÆ÷r—Bv—F‚&r&W÷6—F÷'’w&—FW2à¢v—BFÖ–å7vvÆ·2‡vÆ´–BÂvÆ´$–B“°¢ÒVÇ6R°¢òòÆö6ÂöFVÖòÖöFR†2æò%2Â6ò&W6W'fRF†R&W÷6—F÷'’&V†f–÷"à¢–b‡WFFVDVçG'”’v—B&W÷6—F÷'’çWFFU66†VGVÆTVçG'’‡WFFVDVçG'”“°¢–b‡WFFVDVçG'”"’v—B&W÷6—F÷'’çWFFU66†VGVÆTVçG'’‡WFFVDVçG'”"“°¢v—B&W÷6—F÷'’ç6fUvÆ²‡WFFVD“°¢v—B&W÷6—F÷'’ç6fUvÆ²‡WFFVD"“°¢Ğ ¢6WB‚‡2’Óâ‡°¢vÆ·3¢2çvÆ·2æÖ‚‡r’Óâ‡ræ–BÓÓÒvÆ´–BòWFFVD¢ræ–BÓÓÒvÆ´$–BòWFFVD"¢r’’À¢VçG&–W3¢2æVçG&–W2æÖ‚†R’Óà¢WFFVDVçG'”bbRæ–BÓÓÒWFFVDVçG'”æ–BòWFFVDVçG'”¢WFFVDVçG'”"bbRæ–BÓÓÒWFFVDVçG'”"æ–BòWFFVDVçG'”"¢P¢’À¢7F–öäW'&÷#¢çVÆÂÀ¢Ò’“° ¢v—B66†VGVÆTæ÷F–f–6F–öç4f÷%vÆ²‡WFFVD“°¢v—B66†VGVÆTæ÷F–f–6F–öç4f÷%vÆ²‡WFFVD"“°¢Ò6F6‚†R’°¢òò&WfW'BöæÇ’F†RGvò7V6–f–2vÆ·2öVçG&–W2&6²FòF†V—"&R×7v ¢òòfÇVW2ÂÖW&vVBv–ç7Bv†FWfW"F†R5U%$TåB7FFR—2(	BæWfW"&p¢òò÷fW'w&—FRöbF†Rv†öÆRvÆ·6öVçG&–W6'&—2g&öÒF†R&Vf÷&V ¢òò6Æ÷7W&Râ&VÇF–ÖR&VÆöB‡6VR7&2öÆ–"÷&VÇF–ÖRçG2’6âÆæ@¢òò&WGvVVâF†R6æ6†÷B&÷fRæBF†—26F6‚f—&–ær†Rærâæ÷F†W ¢òòfÖ–Ç’ÖVÖ&W"w2FWf–6RÖ&·2âVç&VÆFVBvÆ²FöæRv†–ÆRF†—0¢òò%2—2–âfÆ–v‡B’ÂæBF†BÆVv—F–ÖFR6öæ7W'&VçBWFFR×W7Bæ÷@¢òò&R6–ÆVçFÇ’F—66&FVBâWfW'’6–&Æ–ær7F–öâ–âF†—2f–ÆR†Ö&´FöæRÀ¢òò6¶—Â7vÂVF—DFöæTFWF–Ç2’Ç&VG’&WfW'G2F†—2v“²F†—2v2F†P¢òòöæR÷WFÆ–W"à¢6WB‚‡2’Óâ‡°¢vÆ·3¢2çvÆ·2æÖ‚‡r’Óâ‡ræ–BÓÓÒvÆ´–BòvÆ´¢ræ–BÓÓÒvÆ´$–BòvÆ´"¢r’’À¢VçG&–W3¢2æVçG&–W2æÖ‚†R’Óà¢VçG'”bbRæ–BÓÓÒVçG'”æ–BòVçG'”¢VçG'”"bbRæ–BÓÓÒVçG'”"æ–BòVçG'”"¢P¢’À¢7F–öäW'&÷# ¢R–ç7Fæ6VöbvÆ´7F–öäW'&÷ ¢òRæÖW76vP¢¢R–ç7Fæ6VöbW'&÷ ¢òg&–VæFÇ”W'&÷$ÖW76vR†R¢¢}yÍyyMzmyÍy}zyRyÍyMy}yÍyz2yyyòyMyyy]yÍyyÒrÀ¢Ò’“°¢Ğ¢ÒÀ ¢ò¢¢Æöw2vÆ²F†BÇ&VG’†VæVBv—F‚æò&–÷"Æâ(	BæWfW"F÷V6†W2F†R&÷FF–öââ¢ğ¢FEVçÆææVEvÆ³¢7–æ2†–çWC¢VçÆææVEvÆ´–çWB’Óâ°¢–b‚wV&EFW7DÖöFT×WFF–öâ‚’’&WGW&âfÇ6S°¢6öç7Bæ÷rÒæWrFFR‚’çFô•4õ7G&–ær‚“°¢6öç7B6ö×ÆWFVDBÒæWrFFR†G¶–çWBæFFWÕBG¶–çWBçF–ÖWÓ£’çFô•4õ7G&–ær‚“°¢6öç7BvÆ³¢vÆ²Ò°¢–C¢vVæW&FT–B‚wvÆ²r’À¢fÖ–Ç”–C¢–çWBæfÖ–Ç”–BÀ¢Föt–C¢–çWBæFöt–BÀ¢FFS¢–çWBæFFRÀ¢66†VGVÆVEF–ÖS¢–çWBçF–ÖRÀ¢&W7öç6–&ÆUW6W$–C¢–çWBçW&f÷&ÖVD'•W6W$–BÀ¢7FGW3¢vFöæRrÀ¢6ö×ÆWFVDBÀ¢6ö×ÆWFVD'•W6W$–C¢–çWBçW&f÷&ÖVD'•W6W$–BÀ¢†EVS¢–çWBæ†EVRÀ¢†Eö÷¢–çWBæ†Eö÷À¢æ÷FS¢–çWBææ÷FRÀ¢GW&F–öäÖ–çWFW3¢–çWBæGW&F–öäÖ–çWFW2À¢—5VçÆææVC¢G'VRÀ¢7&VFVDC¢æ÷rÀ¢WFFVDC¢æ÷rÀ¢Ó°¢6WB‚‡2’Óâ‡²vÆ·3¢²ââç2çvÆ·2ÂvÆµÒÂ7F–öäW'&÷#¢çVÆÂÒ’“°¢G'’°¢v—B&W÷6—F÷'’ç6fUvÆ²‡vÆ²“°¢&WGW&âG'VS°¢Ò6F6‚†R’°¢6WB‚‡2’Óâ‡²vÆ·3¢2çvÆ·2æf–ÇFW"‚‡r’Óâræ–BÓÒvÆ²æ–B’Â7F–öäW'&÷#¢}yÍyyMzmyÍy}zyRyÍzyíy]z‚yz¢yMyyy]yÂrÒ’“°¢&WGW&âfÇ6S°¢Ğ¢ÒÀ ¢7F'EVçÆææVEvÆ³¢7–æ2†fÖ–Ç”–C¢7G&–ærÂFöt–C¢7G&–ærÂW6W$–C¢7G&–ær’Óâ°¢–b‚wV&EFW7DÖöFT×WFF–öâ‚’’&WGW&âfÇ6S°¢òò6V6öæBF6â'&—fR&Vf÷&RF†Rf—'7B7–æ26fR†27&VFVB—G0¢òò–â×&öw&W72&÷râ¶VWF†—26Æ–VçB×6–FRwV&BVçF–ÂF†R7F–öâ6WGFÆW2à¢–b†vWB‚’æ—57F'F–æuVçÆææVEvÆ²’&WGW&âfÇ6S°¢–b†vWB‚’çvÆ·2ç6öÖR‚‡vÆ²’ÓâvÆ²æfÖ–Ç”–BÓÓÒfÖ–Ç”–BbbvÆ²æFöt–BÓÓÒFöt–Bbb—47F—fUvÆ²‡vÆ²’’’°¢6WB‡²7F–öäW'&÷#¢}y½yz‚yz’yyy]yÂzMz-yyÂyÍy½yÍyyMymyBâzyyyíyRyy]z­yRyÍzMzy’zyíz­y}yyÍyyÒyyy]yÂzy]zz2ârÒ“°¢&WGW&âfÇ6S°¢Ğ¢6WB‡²—57F'F–æuVçÆææVEvÆ³¢G'VRÒ“°¢G'’°¢6öç7Bæ÷rÒæWrFFR‚’çFô•4õ7G&–ær‚“°¢6öç7BvÆ³¢vÆ²Ò°¢–C¢vVæW&FT–B‚wvÆ²r’À¢fÖ–Ç”–BÀ¢Föt–BÀ¢FFS¢Æö6ÄFFTöæÇ’†æWrFFR‚’’À¢66†VGVÆVEF–ÖS¢–6¶W$FFUFõF–ÖR†æWrFFR‚’’À¢&W7öç6–&ÆUW6W$–C¢W6W$–BÀ¢7FGW3¢wVæF–ærrÀ¢—5VçÆææVC¢G'VRÀ¢7&VFVDC¢æ÷rÀ¢WFFVDC¢æ÷rÀ¢Ó°¢òò÷F–Ö—7F–2ÂÆ–¶RFEVçÆææVEvÆ²&÷fR(	B&WfW'FVB&VÆ÷r–bF†P¢òò–æ—F–Â6fRf–Ç2â7F'EvÆ²‚’†6ÆÆVBæW‡B’FöW2—G2÷và¢òò÷F–Ö—7F–2WFFR÷&öÆÆ&6²f÷"F†RVæF–ærÓæ–å÷&öw&W727FWÂ6ğ¢òòF†—27F–öâöæÇ’÷vç2vWGF–ærF†RæWr&÷rFòW†—7BBÆÂà¢6WB‚‡2’Óâ‡²vÆ·3¢²ââç2çvÆ·2ÂvÆµÒÂ7F–öäW'&÷#¢çVÆÂÒ’“°¢òò&Vv–âF†Rf÷&Vw&÷VæBvF6‚7–æ6‡&öæ÷W6Ç’–âF†R÷&–v–æÂF7F6°¢òò6ò6f&’6â†öæ÷"—G2vW7GW&RÖ&÷VæBvVöÆö6F–öâW&Ö—76–öâfÆ÷rà¢òòu2—2&÷f—6–öæÂVçF–ÂF†RWF†÷&—FF—fRvÆ²7F'B7V66VVG2à¢fö–BW6Tw57F÷&RævWE7FFR‚’ç7F'EG&6¶–ær‡vÆ²’æ6F6‚‚‚’ÓâVæFVf–æVB“°¢–b‡&W÷6—F÷'’ç7F'E7öçFæV÷W5vÆµc’°¢G'’°¢6öç7B÷W&F–öä–BÒv—BvWEvÆ´Æ–fV7–6ÆT÷W&F–öä–B‚w7F'E÷7öçFæV÷W2rÂvÆ²æ–BÂW6W$–B“°¢6öç7B7F'FVBÒv—B&W÷6—F÷'’ç7F'E7öçFæV÷W5vÆµc‡vÆ²Â÷W&F–öä–BÂW6W$–B“°¢v—B6ö×ÆWFUvÆ´Æ–fV7–6ÆT÷W&F–öâ‚w7F'E÷7öçFæV÷W2rÂvÆ²æ–BÂW6W$–B“°¢6WB‚‡2’Óâ‡²vÆ·3¢²ââç2çvÆ·2æf–ÇFW"‚†—FVÒ’Óâ—FVÒæ–BÓÒvÆ²æ–B’Â7F'FVEÒÂ7F–öäW'&÷#¢çVÆÂÒ’“°¢fö–BW6Tw57F÷&RævWE7FFR‚’æGF6„w4÷væW'6†—‡7F'FVB“°¢&WGW&âG'VS°¢Ò6F6‚†R’°¢W6Tw57F÷&RævWE7FFR‚’æ6æ6VÅG&6¶–ær‡vÆ²æ–BÂwvÆµ÷7F'Eöf–ÆVBr“°¢6WB‚‡2’Óâ‡²vÆ·3¢2çvÆ·2æf–ÇFW"‚†—FVÒ’Óâ—FVÒæ–BÓÒvÆ²æ–B’Â7F–öäW'&÷#¢g&–VæFÇ”W'&÷$ÖW76vR†RÂµÒÂ}yÍyyMzmyÍy}zyRyÍyMz­y}yyÂyz¢yMyyy]yÂâyy=z}yRy}yyy]z‚y]zzyRzy]yâr’Ò’“°¢&WGW&âfÇ6S°¢Ğ¢Ğ¢G'’°¢v—B&W÷6—F÷'’ç6fUvÆ²‡vÆ²“°¢Ò6F6‚†R’°¢W6Tw57F÷&RævWE7FFR‚’æ6æ6VÅG&6¶–ær‡vÆ²æ–BÂwvÆµ÷7F'Eöf–ÆVBr“°¢6WB‚‡2’Óâ‡²vÆ·3¢2çvÆ·2æf–ÇFW"‚‡r’Óâræ–BÓÒvÆ²æ–B’Â7F–öäW'&÷#¢}yÍyyMzmyÍy}zyRyÍyMz­y}yyÂyz¢yMyyy]yÂrÒ’“°¢&WGW&âfÇ6S°¢Ğ¢6öç7B7F'FVBÒv—BvWB‚’ç7F'EvÆ²‡vÆ²æ–BÂ²7F'Dw3¢fÇ6RÒ“°¢–b‚7F'FVB’°¢òò7F'EvÆ²‚’Ç&VG’6WB—G2÷vâ7F–öäW'&÷"†RærâöffÆ–æR(	@¢òò7F'EvÆ²öf–æ—6…vÆ²&R6W'fW"ÖWF†÷&—FF—fR%72v—F‚æò&Æ–æ@¢òòöffÆ–æR&WÆ’Â6ÖR266†VGVÆVBvÆ²’â&VÖ÷fRF†Ræ÷rÖ÷'†æV@¢òòVæF–ær&÷r&F†W"F†âÆVf–ær†çFöÒvÆ²F†Bv÷VÆB6ö×WFP¢òòv—F‚F†R&VÂæW‡B×66†VGVÆVB×vÆ²6&B(	B&W7BÖVff÷'C²–bF†—2Ç6ğ¢òòf–Ç2ÂF†RÖVÖ&W"6â7F–ÆÂ&VÖ÷fR—BÖçVÆÇ’Æ–¶Rç’÷F†W ¢òòVçÆææVBvÆ²†FVÆWFUVçÆææVEvÆ²’à¢G'’°¢v—B&W÷6—F÷'’æFVÆWFUvÆ³òâ‡vÆ²æ–B“°¢Ò6F6‚°¢òòÇ&VG’×7W&f6VB7F–öäW'&÷"g&öÒ7F'EvÆ²‚’&÷fR7FæG2à¢Ğ¢6WB‚‡2’Óâ‡²vÆ·3¢2çvÆ·2æf–ÇFW"‚‡r’Óâræ–BÓÒvÆ²æ–B’Ò’“°¢W6Tw57F÷&RævWE7FFR‚’æ6æ6VÅG&6¶–ær‡vÆ²æ–BÂwvÆµ÷7F'Eöf–ÆVBr“°¢Ğ¢&WGW&â7F'FVC°¢Òf–æÆÇ’°¢6WB‡²—57F'F–æuVçÆææVEvÆ³¢fÇ6RÒ“°¢Ğ¢ÒÀ ¢VF—EVçÆææVEvÆ³¢7–æ2‡vÆ´–BÂF6‚’Óâ°¢–b‚wV&EFW7DÖöFT×WFF–öâ‚’’&WGW&ã°¢6öç7BvÆ²ÒvWB‚’çvÆ·2æf–æB‚‡r’Óâræ–BÓÓÒvÆ´–B“°¢–b‚vÆ²’&WGW&ã°¢–b‚vÆ²æ—5VçÆææVB’°¢6WB‡²7F–öäW'&÷#¢}yzMzz‚yÍz-zy]y¢y½y¢zzryyy]yÂzzMy]zyzy’rÒ“°¢&WGW&ã°¢Ğ¢6öç7BWFFVC¢vÆ²Ò²ââçvÆ²ÂââçF6‚ÂWFFVDC¢æWrFFR‚’çFô•4õ7G&–ær‚’Ó°¢6WB‚‡2’Óâ‡²vÆ·3¢2çvÆ·2æÖ‚‡r’Óâ‡ræ–BÓÓÒvÆ´–BòWFFVB¢r’’Â7F–öäW'&÷#¢çVÆÂÒ’“°¢G'’°¢v—B&W÷6—F÷'’ç6fUvÆ²‡WFFVB“°¢Ò6F6‚†R’°¢òò&WfW'BF†R÷F–Ö—7F–2WFFRöâf–ÇW&RÂ6ÖRGFW&â2WfW'¢òò÷F†W"×WFF–ær7F–öâ–âF†—27F÷&Rà¢6WB‚‡2’Óâ‡²vÆ·3¢2çvÆ·2æÖ‚‡r’Óâ‡ræ–BÓÓÒvÆ´–BòvÆ²¢r’’Â7F–öäW'&÷#¢}yÍyyMzmyÍy}zyRyÍz-y=y½yòyz¢yMyyy]yÂyMzzMy]zyzy’rÒ’“°¢Ğ¢ÒÀ ¢FVÆWFUVçÆææVEvÆ³¢7–æ2‡vÆ´–B’Óâ°¢–b‚wV&EFW7DÖöFT×WFF–öâ‚’’&WGW&ã°¢6öç7BvÆ²ÒvWB‚’çvÆ·2æf–æB‚‡r’Óâræ–BÓÓÒvÆ´–B“°¢–b‚vÆ²’&WGW&ã°¢–b‚vÆ²æ—5VçÆææVB’°¢6WB‡²7F–öäW'&÷#¢}yzMzz‚yÍyíy}y]zry½y¢zzryyy]yÂzzMy]zyzy’rÒ“°¢&WGW&ã°¢Ğ¢6WB‚‡2’Óâ‡²vÆ·3¢2çvÆ·2æf–ÇFW"‚‡r’Óâræ–BÓÒvÆ´–B’Â7F–öäW'&÷#¢çVÆÂÒ’“°¢G'’°¢v—B&W÷6—F÷'’æFVÆWFUvÆ³òâ‡vÆ´–B“°¢Ò6F6‚†R’°¢òò&W7F÷&RF†RvÆ²Æö6ÆÇ’(	BF†RFVÆWFRF–FâwB7GVÆÇ’7V66VVBà¢6WB‚‡2’Óâ‡²vÆ·3¢²ââç2çvÆ·2ÂvÆµÒÂ7F–öäW'&÷#¢}yÍyyMzmyÍy}zyRyÍyíy}y]zryz¢yMyyy]yÂyMzzMy]zyzy’rÒ’“°¢Ğ¢ÒÀ ¢FVÆWFU66†VGVÆVEvÆ´ö67W'&Væ6S¢7–æ2‡vÆ´–B’Óâ°¢–b‚wV&EFW7DÖöFT×WFF–öâ‚’’&WGW&ã°¢6öç7BvÆ²ÒvWB‚’çvÆ·2æf–æB‚‡r’Óâræ–BÓÓÒvÆ´–B“°¢–b‚vÆ²’&WGW&ã°¢–b‡vÆ²æ—5VçÆææVB’°¢òòw&öærFö÷"(	BâVçÆææVBvÆ²†2—G2÷vâFVÆWFUVçÆææVEvÆ°¢òò&÷fRÂÖF6†–ærVF—EVçÆææVEvÆ²w2–FVçF–6ÂwV&B6†Rà¢6WB‡²7F–öäW'&÷#¢}yzMzz‚yÍyíy}y]zry½y¢zzryyy]yÂyíz­y]y½zyòrÒ“°¢&WGW&ã°¢Ğ¢–b‡vÆ²ç7FGW2ÓÒvFöæRrbbvÆ²ç7FGW2ÓÒw6¶—VBr’°¢6WB‡²7F–öäW'&÷#¢}yzMzz‚yÍyíy}y]zrzzryyy]yÂzyMzz­yyyÒrÒ“°¢&WGW&ã°¢Ğ¢6WB‚‡2’Óâ‡²vÆ·3¢2çvÆ·2æf–ÇFW"‚‡r’Óâræ–BÓÒvÆ´–B’Â7F–öäW'&÷#¢çVÆÂÒ’“°¢G'’°¢òòFVÆ–&W&FVÇ’&WW6W2F†R4ÔR&W÷6—F÷'’æFVÆWFUvÆ³òâ‚’WfW'’Æ–W ¢òò†Æö6ÂööffÆ–æRÖf—'7Bõ7W&6R÷7–æ5VWVR’Ç&VG’–×ÆVÖVçG2f÷ ¢òòFVÆWFUVçÆææVEvÆ²(	BF†RöæÇ’F†–ærF—7F–æwV—6†–ærF†—2g&öÒF†@¢òòF‚—26W'fW"×6–FRWF†÷&—¦F–öâ†Ö–w&F–öâRw2æWrDTÄUDP¢òò'&æ6‚’Âæ÷BF–ffW&VçB6Æ–VçB×6–FRÖV6†æ—6Òà¢v—B&W÷6—F÷'’æFVÆWFUvÆ³òâ‡vÆ´–B“°¢Ò6F6‚†R’°¢òò&W7F÷&RF†RvÆ²Æö6ÆÇ’(	BF†RFVÆWFRF–FâwB7GVÆÇ’7V66VV@¢òò†Ö÷7B6öÖÖöæÇ“¢F†RD"G&–vvW"&V¦V7FVB—BÂRærâF†RvÆ²v0¢òò&V76–væVBFò6öÖVöæRVÇ6R&WGvVVâF†—267&VVâÆöF–æræBF†P¢òòFVÆWFR&V–ærGFV×FVB’à¢6WB‚‡2’Óâ‡²vÆ·3¢²ââç2çvÆ·2ÂvÆµÒÂ7F–öäW'&÷#¢}yÍyyMzmyÍy}zyRyÍyíy}y]zryz¢yMyyy]yÂrÒ’“°¢Ğ¢ÒÀ ¢6ÆV$7F–öäW'&÷#¢‚’Óâ6WB‡²7F–öäW'&÷#¢çVÆÂÒ’À§Ò’“°
+ï»¿import { create } from 'zustand';
+import type { ScheduleEntry, ScheduleRule, UnplannedWalkInput, Walk } from '../types';
+import { repository } from '../data';
+import {
+  generateRotationSchedule,
+  planRuleDaysReconciliation,
+  planStaleRuleEntryReconciliation,
+  resolveResponsibleForDate,
+  ruleNeedsEntryBackfill,
+} from '../logic/rotation';
+import { localDateOnly } from '../logic/dateFormat';
+import { pickerDateToTime } from '../logic/timeInput';
+import {
+  editWalkDetails,
+  markWalkDone,
+  markWalkSkipped,
+  swapWalk as swapWalkPure,
+  swapWalksMutual,
+  WalkActionError,
+  type WalkCompletionDetails,
+} from '../logic/walkActions';
+import { generateId } from '../lib/id';
+import { cancelWalkNotifications, reconcileWalkNotifications, scheduleWalkNotifications } from '../notifications/notificationService';
+import { guardTestModeMutation } from '../lib/testModeGuard';
+import { hasActiveRemoteReminderChannel } from '../lib/remoteReminderChannel';
+import { deleteScheduleRuleWithOccurrences, isSupabaseConfigured } from '../lib/supabase';
+import { adminRescheduleWalk, adminSwapWalks } from '../lib/walkAdmin';
+import { appendRawDiagnostic, friendlyErrorMessage, rawMessageOf } from '../lib/errorMessages';
+import { useGpsStore } from './gpsStore';
+import { completeWalkLifecycleOperation, getWalkLifecycleOperationId } from '../data/walkLifecycleOperationIds';
+import { isActiveWalk } from '../logic/walkLifecycle';
+// TEMPORARY DIAGNOSTIC INSTRUMENTATION â€” see perfTrace.ts's own doc
+// comment. Remove this import and every perfMark call in addRule()/
+// updateRule() once the real ~10s Schedule-save bottleneck is confirmed
+// fixed by an actual real-device measurement.
+import { perfMark } from '../lib/perfTrace';
+
+const GENERATE_DAYS_AHEAD = 14;
+
+/**
+ * Real-device QA fix (double-tap "×©××™×¨×”" false-failure bug) â€” migration
+ * 0099's schedule_rules_active_identity_uidx is a unique index on
+ * (family_id, dog_id, time, days_of_week, rotation_user_ids,
+ * rotation_anchor_date) where active = true, meant to stop a duplicate
+ * active rule from generating duplicate future walk occurrences.
+ * RuleFormModal.tsx now disables its own Save button for the duration of
+ * addRule() (see its own `saving` state), which closes off the original
+ * trigger â€” tapping Save twice before the first add had resolved used to
+ * fire two independent addRule() calls with the SAME data (each gets its
+ * own fresh rule id from generateId('rule') in ScheduleScreen.tsx, so the
+ * id itself never collides â€” only this index's other columns do). The
+ * FIRST insert always won; the SECOND hit this constraint and surfaced a
+ * raw Postgres "duplicate key" error with no entry in errorMessages.ts's
+ * table, falling back to the generic "×œ× ×”×¦×œ×—× ×• ×œ×”×•×¡×™×£ ××ª ×©×¢×ª ×”×˜×™×•×œ" for
+ * a save that, from the end state's perspective, had already succeeded.
+ * This check stays as defense-in-depth for any other path that could
+ * still race two identical inserts (a retried network request, a future
+ * caller that doesn't go through RuleFormModal) â€” see addRule()'s own use
+ * of it below.
+ */
+function isDuplicateActiveScheduleRuleError(error: unknown): boolean {
+  return rawMessageOf(error).includes('schedule_rules_active_identity_uidx');
+}
+
+// BUG FIX (duplicate schedule entries/walks) â€” see load()'s doc comment
+// below for the full race-condition this guards against. Keyed by
+// familyId so two different families' loads never block on each other.
+const loadPromiseByFamilyId: Record<string, Promise<boolean>> = {};
+
+interface ScheduleState {
+  rules: ScheduleRule[];
+  entries: ScheduleEntry[];
+  walks: Walk[];
+  loading: boolean;
+  error: string | null;
+  actionError: string | null;
+
+  // Resolves true when fresh, authoritative data was loaded (walks/entries/
+  // rules all reflect the repository as of this call) and false when the
+  // load failed â€” in which case `error` is set (for screen-level display,
+  // unchanged UX) and `walks`/`entries`/`rules` are left exactly as they
+  // were (never cleared to empty on failure). Never rejects: every existing
+  // screen-level caller that just does `await load(familyId)` and then reads
+  // `error` off the store keeps working unmodified. Orchestration code
+  // (App.tsx's runForegroundSync()) uses the boolean to decide whether it is
+  // safe to reconcile notifications against `walks` as FRESH data.
+  load: (familyId: string) => Promise<boolean>;
+
+  // Time-slot (rule) management â€” "4 walks a day", editable/addable/removable.
+  addRule: (rule: ScheduleRule) => Promise<void>;
+  updateRule: (
+    ruleId: string,
+    patch: Partial<Pick<ScheduleRule, 'time' | 'label' | 'rotationUserIds' | 'daysOfWeek'>>
+  ) => Promise<void>;
+  deleteRule: (ruleId: string) => Promise<void>;
+  reorderRules: (orderedRuleIds: string[]) => Promise<void>;
+
+  // Single-occurrence edits â€” never touch the rule or future rotation.
+  rescheduleWalk: (walkId: string, newTime: string) => Promise<void>;
+  deleteEntry: (entryId: string) => Promise<void>;
+
+  startWalk: (walkId: string, options?: { startGps?: boolean; remoteActivation?: boolean; actorUserId?: string; actualWalkerUserId?: string; substitutionConfirmed?: boolean; remoteStart?: boolean }) => Promise<boolean>;
+  finishWalk: (walkId: string, completedByUserId: string, details?: WalkCompletionDetails) => Promise<boolean>;
+  markDone: (walkId: string, completedByUserId: string, details?: WalkCompletionDetails) => Promise<boolean>;
+  editDoneDetails: (walkId: string, details: WalkCompletionDetails) => Promise<void>;
+  skip: (walkId: string) => Promise<void>;
+  swap: (walkId: string, newUserId: string, swappedByUserId: string) => Promise<void>;
+  swapTwoWalks: (walkAId: string, walkBId: string, swappedByUserId: string) => Promise<void>;
+  addUnplannedWalk: (input: UnplannedWalkInput) => Promise<boolean>;
+  /**
+   * Gives a spontaneous walk the same live start_walk/finish_walk lifecycle
+   * a planned walk gets ("case A" â€” see migration 0054), alongside (never
+   * instead of) addUnplannedWalk's existing after-the-fact logging ("case
+   * B", unchanged). Creates a brand-new `pending` walk row (isUnplanned,
+   * no scheduleEntryId â€” never touches the rotation/schedule) attributed
+   * to the caller, then immediately runs it through the existing
+   * startWalk() action so it goes through the SAME start_walk RPC,
+   * authorization, and GPS-tracking kickoff as any scheduled walk.
+   * Server-side authorization for the initial insert is migration 0054's
+   * trigger extension â€” any family member may insert their OWN pending,
+   * not-yet-started/completed unplanned walk; the actual pending-
+   * >in_progress->done transitions are only ever written by
+   * start_walk()/finish_walk() themselves, never by this insert.
+   * computeNextWalk() (see logic/nextWalk.ts) already picks the first
+   * `in_progress` walk regardless of isUnplanned, so this needs no
+   * Home-screen changes for the resulting walk to show up in the normal
+   * "current walk" card with its normal "×¡×™×™× ×˜×™×•×œ" action, wired to the
+   * existing finishWalk(). Deliberately always attributed to the caller
+   * (never a picker for someone else) â€” starting a walk is "I am doing
+   * this right now", not a backfill.
+   */
+  startUnplannedWalk: (familyId: string, dogId: string, userId: string) => Promise<boolean>;
+  isStartingUnplannedWalk: boolean;
+  /** Walk IDs with an authoritative start request in flight; used to disable duplicate taps. */
+  startingWalkIds: string[];
+  /**
+   * Section 2: edits an existing unplanned/spontaneous walk IN PLACE â€” same
+   * record, never a duplicate. `patch` may include any subset of the fields
+   * the "add a walk that already happened" flow itself collects (time/date,
+   * responsible member, duration, pee/poop, notes). Refuses (no-op, sets
+   * actionError) for a walk that isn't actually unplanned â€” this action is
+   * not a generic walk editor, EditWalkModal/editDoneDetails own that.
+   */
+  editUnplannedWalk: (
+    walkId: string,
+    patch: Partial<Pick<Walk, 'date' | 'scheduledTime' | 'responsibleUserId' | 'hadPee' | 'hadPoop' | 'note' | 'durationMinutes'>>
+  ) => Promise<void>;
+  /** Section 2: deletes an unplanned walk entered by mistake. The caller (the UI) is expected to confirm with the user first â€” see the ConfirmModal usage at the call site. */
+  deleteUnplannedWalk: (walkId: string) => Promise<void>;
+
+  /**
+   * Final QA round v2 (item D completion): deletes a resolved (done or
+   * skipped) SCHEDULED walk OCCURRENCE â€” a correction of a mis-recorded
+   * entry, never a still-pending walk and never the recurring rule/its
+   * other occurrences. Mirrors deleteUnplannedWalk's own optimistic-
+   * update/revert-on-failure shape exactly; server-side authorization is
+   * migration 0015's DELETE branch (admin OR the walk's own responsible
+   * member). See src/logic/walkActions.ts's canDeleteScheduledWalk() for
+   * the client-side mirror of that same rule (used for UI gating only â€”
+   * this action itself does not re-check identity, matching every other
+   * action in this store, which all rely on the screen already having
+   * gated the affordance plus the DB trigger as the real enforcement).
+   * Deliberately does NOT touch the walk's schedule_entry_id row â€” see
+   * migration 0015's own header comment for why that is what makes this
+   * safe from scheduleStore.load()'s rule-based backfill.
+   */
+  deleteScheduledWalkOccurrence: (walkId: string) => Promise<void>;
+
+  clearActionError: () => void;
+}
+
+function hasPlannedWalkForEntry(walks: Walk[], entry: ScheduleEntry, familyId: string): boolean {
+  return walks.some(
+    (walk) =>
+      !walk.isUnplanned &&
+      walk.familyId === familyId &&
+      walk.dogId === entry.dogId &&
+      walk.date === entry.date &&
+      walk.scheduledTime === entry.time
+  );
+}
+
+function walkFromEntry(entry: ScheduleEntry, familyId: string): Walk {
+  const now = new Date().toISOString();
+  return {
+    id: generateId('walk'),
+    familyId,
+    scheduleEntryId: entry.id,
+    dogId: entry.dogId,
+    date: entry.date,
+    scheduledTime: entry.time,
+    responsibleUserId: entry.responsibleUserId,
+    status: 'pending',
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+async function scheduleNotificationsForWalk(walk: Walk) {
+  // Batch 2 / Decision 4 (channel-selection/dedup policy â€” see
+  // src/lib/remoteReminderChannel.ts): once this device has an active
+  // remote push channel, the server-side scheduler is authoritative for
+  // this profile's reminders â€” local scheduling is skipped (and any
+  // already-scheduled local reminder for this exact walk is cancelled)
+  // rather than risk a duplicate buzz from both systems.
+  if (await hasActiveRemoteReminderChannel()) {
+    await cancelWalkNotifications(walk.id);
+    return;
+  }
+  const { useFamilyStore } = require('./familyStore') as typeof import('./familyStore');
+  const { users, dog: activeDog, dogs } = useFamilyStore.getState();
+  const user = users.find((u) => u.id === walk.responsibleUserId);
+  // Multi-dog (PRD Â§11): resolve THIS walk's own dog by walk.dogId, never
+  // the globally-selected active dog â€” a walk being (re)scheduled can
+  // belong to any of the family's dogs regardless of which one is
+  // currently active in the UI. Falls back to the active dog only if
+  // walk.dogId somehow isn't in `dogs` (shouldn't normally happen), so a
+  // genuinely schedulable reminder is never silently dropped.
+  const dog = dogs.find((d) => d.id === walk.dogId) ?? activeDog;
+  if (!user || !user.remindersEnabled || !dog) return;
+  const settings = await repository.getNotificationSettings(walk.familyId);
+  const setting = settings.find((s) => s.userId === user.id);
+  if (!setting) return;
+  await scheduleWalkNotifications(walk, setting, user.name, dog.name, dog.sex);
+}
+
+/**
+ * Full reconciliation of ALL of this family's notifications against the
+ * CURRENTLY PERSISTED walk occurrences (A3's authoritative rule) â€” cancels
+ * anything stale for a non-pending/removed walk, (re)schedules everything
+ * still pending from its current data. Exported so App.tsx can also run it
+ * on startup/foreground, independent of a full schedule reload.
+ */
+export async function reconcileScheduleNotifications(familyId: string, walks: Walk[]): Promise<void> {
+  // Batch 2 / Decision 4 â€” see scheduleNotificationsForWalk()'s identical
+  // gate just above for the full reasoning. Cancel rather than reconcile:
+  // any local reminder left over from before this profile had a remote
+  // channel must not survive alongside the now-authoritative server sends.
+  if (await hasActiveRemoteReminderChannel()) {
+    await Promise.all(walks.map((w) => cancelWalkNotifications(w.id)));
+    return;
+  }
+  const { useFamilyStore } = require('./familyStore') as typeof import('./familyStore');
+  const { users, dog: activeDog, dogs } = useFamilyStore.getState();
+  if (!activeDog && dogs.length === 0) return;
+  const usersById = new Map(users.map((u) => [u.id, u]));
+  // Multi-dog (PRD Â§11): per-walk dog resolution, same reasoning as
+  // scheduleNotificationsForWalk() above â€” this reconciliation pass runs
+  // over the family's WHOLE walk set, which can span every one of its
+  // dogs, not just whichever one is currently active.
+  const dogsById = new Map(dogs.map((d) => [d.id, d]));
+  const settings = await repository.getNotificationSettings(familyId);
+  const settingsByUserId = new Map(settings.map((s) => [s.userId, s]));
+  await reconcileWalkNotifications(
+    walks,
+    async (userId) => {
+      const user = usersById.get(userId);
+      if (!user || !user.remindersEnabled) return undefined;
+      return settingsByUserId.get(userId);
+    },
+    (userId) => usersById.get(userId)?.name,
+    (dogId) => dogsById.get(dogId) ?? activeDog ?? undefined
+  );
+}
+
+/**
+ * The actual body of load() â€” fetches this family's rules/entries/walks and
+ * self-heals any rule that's missing its upcoming entries. Extracted to a
+ * standalone function so load() itself can wrap a single in-flight call per
+ * familyId behind a promise guard (see load()'s doc comment) instead of
+ * re-running this whole fetch+backfill for every concurrent caller.
+ */
+async function loadScheduleForFamily(
+  familyId: string,
+  set: (partial: Partial<ScheduleState> | ((s: ScheduleState) => Partial<ScheduleState>)) => void
+): Promise<boolean> {
+  set({ loading: true, error: null });
+  try {
+    const [rules, entries, walks] = await Promise.all([
+      repository.getScheduleRules(familyId),
+      repository.getScheduleEntries(familyId),
+      repository.getWalks(familyId),
+    ]);
+
+    // Recurring rules are configuration and survive an activity reset. Rebuild
+    // only the FUTURE occurrence horizon when a surviving active rule has no
+    // upcoming entries, so Home can still resolve "next walk" after reset.
+    // Existing future entries are never duplicated; the repository/DB identity
+    // constraints remain the final concurrency guard.
+    let finalEntries = entries;
+    let finalWalks = walks;
+    const today = localDateOnly(new Date());
+    const endDate = localDateOnly(new Date(Date.now() + GENERATE_DAYS_AHEAD * 86400000));
+    const rulesNeedingFuture = rules.filter((rule) => ruleNeedsEntryBackfill(rule, finalEntries, today));
+    for (const rule of rulesNeedingFuture) {
+      const generated = generateRotationSchedule(rule, today, endDate, () => generateId('entry'));
+      if (generated.length === 0) continue;
+      await repository.addScheduleEntries(generated);
+      const existingKeys = new Set(finalEntries.map((e) => `${e.dogId}|${e.date}|${e.time}`));
+      const trulyNew = generated.filter((e) => !existingKeys.has(`${e.dogId}|${e.date}|${e.time}`));
+      const generatedWalks = trulyNew
+        .filter((entry) => !hasPlannedWalkForEntry(finalWalks, entry, rule.familyId))
+        .map((entry) => walkFromEntry(entry, rule.familyId));
+      for (const walk of generatedWalks) await repository.saveWalk(walk);
+      finalEntries = [...finalEntries, ...trulyNew];
+      finalWalks = [...finalWalks, ...generatedWalks];
+    }
+
+    // Activity reset deliberately preserves recurring schedule entries. That can
+    // leave a valid today/future entry without its derived walk row. Treat that
+    // as a repairable derived-data gap: Home renders walks, not bare entries.
+    // Recreate only occurrences in the active horizon and only when no walk
+    // already references the canonical schedule-entry id.
+    const activeRules = rules.filter((rule) => rule.active);
+    const activeRuleIds = new Set(activeRules.map((rule) => rule.id));
+    const walkEntryIds = new Set(
+      finalWalks.map((walk) => walk.scheduleEntryId).filter((id): id is string => Boolean(id))
+    );
+    const entryBelongsToActiveRule = (entry: ScheduleEntry): boolean => {
+      if (entry.ruleId) return activeRuleIds.has(entry.ruleId);
+      // Legacy/preserved schedule entries can predate rule_id linkage. They are
+      // still canonical occurrences after Activity Reset, so recover them by
+      // the active rule identity instead of dropping today's walk from Home.
+      return activeRules.some((rule) => {
+        const days = rule.daysOfWeek.length > 0 ? rule.daysOfWeek : [0, 1, 2, 3, 4, 5, 6];
+        const day = new Date(`${entry.date}T00:00:00Z`).getUTCDay();
+        return rule.dogId === entry.dogId && rule.time === entry.time && days.includes(day);
+      });
+    };
+    const orphanFutureEntries = finalEntries.filter(
+      (entry) =>
+        entry.date >= today &&
+        entry.date <= endDate &&
+        entryBelongsToActiveRule(entry) &&
+        !walkEntryIds.has(entry.id) &&
+        !hasPlannedWalkForEntry(finalWalks, entry, familyId)
+    );
+    if (orphanFutureEntries.length > 0) {
+      const repairedWalks = orphanFutureEntries.map((entry) => walkFromEntry(entry, familyId));
+      if (repository.queueWalksForBackgroundSync) {
+        await repository.queueWalksForBackgroundSync(repairedWalks);
+      } else {
+        for (const walk of repairedWalks) await repository.saveWalk(walk);
+      }
+      finalWalks = [...finalWalks, ...repairedWalks];
+    }
+
+    // P0 real-device self-heal: a rule edit made BEFORE 807e4db's
+    // updateScheduleEntry/planRuleDaysReconciliation fix (or any other path
+    // that changed schedule_rules.time without reconciling
+    // schedule_entries) can have left entries permanently stuck at a stale
+    // time, with no further rule edit ever correcting them. Runs on every
+    // load â€” see planStaleRuleEntryReconciliation's own doc comment for the
+    // exact per-(rule,date) semantics (mutate an open stale entry in
+    // place; regenerate a fresh occurrence only when every existing entry
+    // is already resolved AND the rule's time for that date hasn't passed
+    // yet; never touch an already-resolved entry's recorded time).
+    // Idempotent â€” a (rule, date) already correctly represented is a
+    // complete no-op on every subsequent load.
+    const staleReconciliation = planStaleRuleEntryReconciliation(
+      activeRules,
+      finalEntries,
+      finalWalks,
+      today,
+      endDate,
+      new Date(),
+      () => generateId('entry')
+    );
+    if (staleReconciliation.toUpdate.length > 0) {
+      for (const entry of staleReconciliation.toUpdate) {
+        await repository.updateScheduleEntry(entry);
+      }
+      const staleUpdatedWalks: Walk[] = [];
+      for (const entry of staleReconciliation.toUpdate) {
+        const walk = finalWalks.find((w) => w.scheduleEntryId === entry.id);
+        if (!walk || walk.status !== 'pending') continue;
+        const updatedWalk: Walk = { ...walk, scheduledTime: entry.time, responsibleUserId: entry.responsibleUserId, updatedAt: new Date().toISOString() };
+        await repository.saveWalk(updatedWalk);
+        staleUpdatedWalks.push(updatedWalk);
+      }
+      finalEntries = finalEntries.map((e) => staleReconciliation.toUpdate.find((ue) => ue.id === e.id) ?? e);
+      finalWalks = finalWalks.map((w) => staleUpdatedWalks.find((uw) => uw.id === w.id) ?? w);
+    }
+    if (staleReconciliation.toRegenerate.length > 0) {
+      await repository.addScheduleEntries(staleReconciliation.toRegenerate);
+      const regeneratedWalks = staleReconciliation.toRegenerate
+        .filter((entry) => !hasPlannedWalkForEntry(finalWalks, entry, familyId))
+        .map((entry) => walkFromEntry(entry, familyId));
+      const todayRegeneratedWalks = regeneratedWalks.filter((w) => w.date === today);
+      const futureRegeneratedWalks = regeneratedWalks.filter((w) => w.date !== today);
+      for (const w of todayRegeneratedWalks) await repository.saveWalk(w);
+      if (futureRegeneratedWalks.length > 0) {
+        if (repository.queueWalksForBackgroundSync) {
+          await repository.queueWalksForBackgroundSync(futureRegeneratedWalks);
+        } else {
+          for (const w of futureRegeneratedWalks) await repository.saveWalk(w);
+        }
+      }
+      finalEntries = [...finalEntries, ...staleReconciliation.toRegenerate];
+      finalWalks = [...finalWalks, ...regeneratedWalks];
+    }
+
+    // Walk status is changed only by an explicit lifecycle action. The Home
+    // selector advances by scheduled time while leaving unresolved older walks
+    // pending for History/reporting.
+    set({ rules, entries: finalEntries, walks: finalWalks, loading: false });
+    // Full reconciliation (A3): cancels anything stale for a
+    // done/skipped/removed walk and (re)schedules everything still
+    // pending from its CURRENT persisted data â€” not just "schedule the
+    // pending ones", which would leave a stale notification alive for a
+    // walk that is no longer pending after this reload.
+    void reconcileScheduleNotifications(familyId, finalWalks);
+    return true;
+  } catch (e) {
+    // Deliberately does NOT touch rules/entries/walks here â€” the previous,
+    // still-displayed schedule stays visible rather than being wiped out
+    // by a failed reload. Only `error`/`loading` change.
+    // NOTE: intentionally NOT friendlyErrorMessage() here (unlike the
+    // actionError sites below) â€” this field is the initial-load failure
+    // banner, and existing callers/tests rely on the raw Error.message
+    // surfacing unchanged (e.g. a real network failure reason), not a
+    // substring-mapped/generic Hebrew fallback.
+    set({ error: e instanceof Error ? e.message : '×©×’×™××” ×‘×˜×¢×™× ×ª ×”×ª×•×¨× ×•×™×•×ª', loading: false });
+    return false;
+  }
+}
+
+const startWalkPromises = new Map<string, Promise<boolean>>();
+const finishWalkPromises = new Map<string, Promise<boolean>>();
+
+export const useScheduleStore = create<ScheduleState>((set, get) => ({
+  rules: [],
+  entries: [],
+  walks: [],
+  loading: false,
+  error: null,
+  actionError: null,
+  isStartingUnplannedWalk: false,
+  startingWalkIds: [],
+
+  load: async (familyId: string): Promise<boolean> => {
+    // BUG FIX (duplicate schedule entries/walks): load() is called from
+    // several independent, unsynchronized places â€” ScheduleScreen's mount
+    // effect, RootNavigator's realtime-subscription callback, App.tsx's
+    // runForegroundSync, requestsStore's reloadScheduleAndNotifications â€”
+    // any of which can fire close together on a real device (app
+    // foregrounding right as a screen mounts, or a realtime event landing
+    // mid-navigation). Without a shared in-flight guard, two concurrent
+    // calls each fetch the same stale rules/entries snapshot, each
+    // independently decide the same rule "needs backfill", and each
+    // generate + save their own entry/walk for the same dog/date/time â€” the
+    // DB's unique(dog_id,date,time) constraint dedupes the schedule_entry
+    // row, but each call's own distinct client-generated Walk id still gets
+    // saved locally, producing a real, visible duplicate. Mirrors App.tsx's
+    // runForegroundSync in-flight-promise guard, keyed by familyId so two
+    // different families' loads never block on each other.
+    const inFlight = loadPromiseByFamilyId[familyId];
+    if (inFlight) return inFlight;
+    const promise = loadScheduleForFamily(familyId, set);
+    loadPromiseByFamilyId[familyId] = promise;
+    try {
+      return await promise;
+    } finally {
+      delete loadPromiseByFamilyId[familyId];
+    }
+  },
+
+  addRule: async (rule: ScheduleRule) => {
+    perfMark('A0 addRule entered');
+    if (!guardTestModeMutation()) return;
+    perfMark('A1 local validation complete');
+    try {
+      perfMark('A2 upsertScheduleRule start');
+      await repository.upsertScheduleRule(rule);
+      perfMark('A3 upsertScheduleRule complete');
+      // Local calendar day, not UTC â€” `entries`/`walks` dates are the
+      // family's local "today" (see dateFormat.ts), and a UTC-anchored
+      // "today" would be wrong for a few hours after local midnight for
+      // anyone ahead of UTC (e.g. Israel), generating a day-early entry.
+      const today = localDateOnly(new Date());
+      const endDate = localDateOnly(new Date(Date.now() + GENERATE_DAYS_AHEAD * 86400000));
+      const newEntries = generateRotationSchedule(rule, today, endDate, () => generateId('entry'));
+      perfMark('A4 addScheduleEntries start');
+      await repository.addScheduleEntries(newEntries);
+      perfMark('A6 addScheduleEntries complete (upsert + canonical-id readback)');
+
+      const existingKeys = new Set(get().entries.map((e) => `${e.dogId}|${e.date}|${e.time}`));
+      const trulyNew = newEntries.filter((e) => !existingKeys.has(`${e.dogId}|${e.date}|${e.time}`));
+      const newWalks = trulyNew
+        .filter((entry) => !hasPlannedWalkForEntry(get().walks, entry, rule.familyId))
+        .map((entry) => walkFromEntry(entry, rule.familyId));
+      // Real-device QA fix â€” "Save spinner lingers ~10s": this used to be
+      // `for (const w of newWalks) await repository.saveWalk(w);` â€” up to
+      // GENERATE_DAYS_AHEAD (14) SEQUENTIAL network round trips (each
+      // saveWalk() itself up to two calls), measured at ~10s on a real
+      // iPhone for a full-week rule. The rule itself and its schedule
+      // entries (the two awaited calls above) are the only parts of this
+      // save the person is actually watching; these generated FUTURE
+      // occurrence walks are a derived background effect. See
+      // queueWalksForBackgroundSync()'s own doc comment
+      // (offlineFirstRepository.ts) for why this is a durable queue
+      // handoff, never a bare fire-and-forget: both the local write and
+      // the SyncQueue enqueue happen here, so the data survives a PWA
+      // restart even if the opportunistic trySync() it kicks off hasn't
+      // reached the server yet â€” exactly like any other queued offline
+      // write already behaves. Falls back to the original sequential
+      // await for any Repository implementation that doesn't provide
+      // this optional method (none in production â€” repository is always
+      // OfflineFirstRepository â€” only a hypothetical bare test double).
+      perfMark(`A7 handing off ${newWalks.length} generated walks for background sync`);
+      // Today's occurrence is immediately user-visible on Home. Persist it
+      // authoritatively before returning so a foreground reload cannot replace
+      // it with the still-stale remote snapshot while the background queue is
+      // catching up. Future occurrences remain safe to hand off in bulk.
+      const todayWalks = newWalks.filter((w) => w.scheduleEntryId && trulyNew.some((e) => e.id === w.scheduleEntryId && e.date === today));
+      const futureWalks = newWalks.filter((w) => !w.scheduleEntryId || !trulyNew.some((e) => e.id === w.scheduleEntryId && e.date === today));
+      for (const w of todayWalks) await repository.saveWalk(w);
+      if (futureWalks.length > 0) {
+        if (repository.queueWalksForBackgroundSync) {
+          await repository.queueWalksForBackgroundSync(futureWalks);
+        } else {
+          for (const w of futureWalks) await repository.saveWalk(w);
+        }
+      }
+      perfMark('A8 generated walks persisted/queued');
+
+      set((s) => {
+        // saveWalk() may replace a freshly generated local walk id with the
+        // canonical server id when this occurrence already exists remotely.
+        // Never append that canonical occurrence beside the stale/local copy:
+        // one schedule_entry_id represents exactly one planned walk.
+        const newEntryIds = new Set(trulyNew.map((entry) => entry.id));
+        const newWalkIds = new Set(newWalks.map((walk) => walk.id));
+        const newWalkEntryIds = new Set(
+          newWalks.map((walk) => walk.scheduleEntryId).filter((id): id is string => Boolean(id))
+        );
+        return {
+          rules: [...s.rules.filter((r) => r.id !== rule.id), rule],
+          entries: [
+            ...s.entries.filter(
+              (entry) =>
+                !newEntryIds.has(entry.id) &&
+                !trulyNew.some(
+                  (fresh) => fresh.dogId === entry.dogId && fresh.date === entry.date && fresh.time === entry.time
+                )
+            ),
+            ...trulyNew,
+          ],
+          walks: [
+            ...s.walks.filter(
+              (walk) =>
+                !newWalkIds.has(walk.id) &&
+                !(walk.scheduleEntryId && newWalkEntryIds.has(walk.scheduleEntryId))
+            ),
+            ...newWalks,
+          ],
+          actionError: null,
+        };
+      });
+      newWalks.forEach((w) => void scheduleNotificationsForWalk(w));
+      perfMark('A11 addRule returning (success)');
+    } catch (e) {
+      // A thrown error here (storage failure, bad data, etc.) must never
+      // leave the new rule invisible with no explanation â€” surface it the
+      // same way every other schedule action in this store does.
+      // BUG FIX: offlineFirstRepository.saveWalk() deliberately rethrows a
+      // PERMANENT sync failure as the raw Postgrest error object it got
+      // from supabase-js â€” a plain {message,details,hint,code}, NOT an
+      // `instanceof Error`. The old `e instanceof Error ? e.message :
+      // '<generic fallback>'` check here always took the generic branch for
+      // exactly that case, discarding the one piece of information (the
+      // real Postgres/RLS rejection reason) that would let anyone diagnose
+      // why the add failed. friendlyErrorMessage()'s own rawMessageOf()
+      // already handles both shapes.
+      //
+      // Real-device QA fix: a duplicate-active-rule constraint violation
+      // (see isDuplicateActiveScheduleRuleError's own doc comment above)
+      // means this exact time slot already exists â€” most likely a racing
+      // duplicate of a call that already succeeded. Reload from the
+      // server and report success; never show a scary "couldn't add"
+      // error for a save whose end state is already correct.
+      if (isDuplicateActiveScheduleRuleError(e)) {
+        perfMark('A9 load() start (duplicate-constraint recovery path)');
+        await get().load(rule.familyId);
+        perfMark('A10 load() complete');
+        set({ actionError: null });
+        perfMark('A11 addRule returning (duplicate-constraint recovery)');
+        return;
+      }
+      perfMark('A11 addRule returning (error)');
+      set({ actionError: friendlyErrorMessage(e, [], '×œ× ×”×¦×œ×—× ×• ×œ×”×•×¡×™×£ ××ª ×©×¢×ª ×”×˜×™×•×œ') });
+    }
+  },
+
+  /**
+   * Edits a time slot's time/label/rotation/days. Past and already-executed
+   * occurrences are left untouched; only still-pending future occurrences
+   * (today included) are regenerated against the new rule â€” this is what
+   * "change the default time without losing history" means in practice.
+   *
+   * If `daysOfWeek` itself changes, this also reconciles which days have
+   * entries at all: a day dropped from the rule has its still-pending
+   * future entries/walks removed (a disabled day must stop showing and
+   * reminding â€” e.g. an admin turning off Saturday for Shabbat), and a day
+   * newly added to the rule gets entries generated for it within the same
+   * window `addRule`/`load` use, instead of silently waiting up to
+   * `GENERATE_DAYS_AHEAD` days for the rule's entries to run out. See
+   * `planRuleDaysReconciliation` (logic/rotation.ts) for why this is scoped
+   * to just-changed days rather than every matching day.
+   */
+  updateRule: async (ruleId, patch) => {
+    if (!guardTestModeMutation()) return;
+    const rule = get().rules.find((r) => r.id === ruleId);
+    if (!rule) return;
+    try {
+      const updatedRule: ScheduleRule = { ...rule, ...patch };
+      await repository.upsertScheduleRule(updatedRule);
+
+      // Local calendar day, not UTC â€” `entries`/`walks` dates are the
+      // family's local "today" (see dateFormat.ts), and a UTC-anchored
+      // "today" would be wrong for a few hours after local midnight for
+      // anyone ahead of UTC (e.g. Israel), generating a day-early entry.
+      const today = localDateOnly(new Date());
+      const endDate = localDateOnly(new Date(Date.now() + GENERATE_DAYS_AHEAD * 86400000));
+      // P0 real-device fix: `get().walks` lets planRuleDaysReconciliation
+      // tell a freely-mutable entry (pending, or no walk yet) apart from a
+      // LOCKED one (done/in_progress/skipped) per date â€” see its own doc
+      // comment. Without this, a rule time edit after today's occurrence
+      // was already completed either silently rewrote that completed
+      // walk's historical time, or (since the walk-side update below only
+      // ever touches 'pending' walks) left the entry and its done walk
+      // disagreeing on time with no new actionable occurrence for today at
+      // all â€” exactly the real-device symptom this fixes.
+      const { toRemove, toUpdate, toAdd, toRegenerate } = planRuleDaysReconciliation(
+        rule,
+        updatedRule,
+        get().entries,
+        today,
+        endDate,
+        () => generateId('entry'),
+        get().walks
+      );
+
+      // Days dropped from the rule: only a still-pending occurrence is
+      // actually removed (its entry + walk, via FK cascade) â€” matches
+      // deleteRule's own history-preserving behavior for a done/skipped
+      // walk's entry.
+      const removedEntryIds = new Set<string>();
+      for (const entry of toRemove) {
+        const walk = get().walks.find((w) => w.scheduleEntryId === entry.id);
+        if (walk && walk.status === 'pending') {
+          await cancelWalkNotifications(walk.id);
+          await repository.deleteScheduleEntry(entry.id);
+          removedEntryIds.add(entry.id);
+        }
+      }
+
+      for (const entry of toUpdate) {
+        await repository.updateScheduleEntry(entry);
+      }
+      const updatedWalks: Walk[] = [];
+      for (const entry of toUpdate) {
+        const walk = get().walks.find((w) => w.scheduleEntryId === entry.id);
+        if (!walk || walk.status !== 'pending') continue;
+        const updatedWalk: Walk = { ...walk, scheduledTime: entry.time, responsibleUserId: entry.responsibleUserId, updatedAt: new Date().toISOString() };
+        await repository.saveWalk(updatedWalk);
+        updatedWalks.push(updatedWalk);
+      }
+
+      // Days newly added to the rule, OR a date whose only existing
+      // entry is locked by an already-resolved walk (toRegenerate â€” see
+      // planRuleDaysReconciliation's doc comment): generate entries/walks
+      // for them now, same as addRule. Real-device QA fix â€” same
+      // deferred-background handoff as addRule() uses for its own newly
+      // generated walks (see that function's own comment and
+      // queueWalksForBackgroundSync()'s doc comment in
+      // offlineFirstRepository.ts): a rule edit that adds several days
+      // back would otherwise hit the exact same sequential-network-
+      // round-trips bottleneck this fix targets. The OLD (locked) entry
+      // and its already-resolved walk are never touched â€” they remain
+      // exactly as they were, preserved as history.
+      const allNewEntries = [...toAdd, ...toRegenerate];
+      if (allNewEntries.length > 0) await repository.addScheduleEntries(allNewEntries);
+      const newWalks = allNewEntries
+        .filter((entry) => !hasPlannedWalkForEntry(get().walks, entry, updatedRule.familyId))
+        .map((entry) => walkFromEntry(entry, updatedRule.familyId));
+      const todayNewWalks = newWalks.filter((w) => w.scheduleEntryId && allNewEntries.some((e) => e.id === w.scheduleEntryId && e.date === today));
+      const futureNewWalks = newWalks.filter((w) => !w.scheduleEntryId || !allNewEntries.some((e) => e.id === w.scheduleEntryId && e.date === today));
+      for (const w of todayNewWalks) await repository.saveWalk(w);
+      if (futureNewWalks.length > 0) {
+        if (repository.queueWalksForBackgroundSync) {
+          await repository.queueWalksForBackgroundSync(futureNewWalks);
+        } else {
+          for (const w of futureNewWalks) await repository.saveWalk(w);
+        }
+      }
+
+      set((s) => ({
+        rules: s.rules.map((r) => (r.id === ruleId ? updatedRule : r)),
+        entries: [
+          ...s.entries.filter((e) => !removedEntryIds.has(e.id)).map((e) => toUpdate.find((ue) => ue.id === e.id) ?? e),
+          ...allNewEntries,
+        ],
+        walks: [
+          ...s.walks
+            .filter((w) => !(w.scheduleEntryId && removedEntryIds.has(w.scheduleEntryId)))
+            .map((w) => updatedWalks.find((uw) => uw.id === w.id) ?? w),
+          ...newWalks,
+        ],
+        actionError: null,
+      }));
+      updatedWalks.forEach((w) => void scheduleNotificationsForWalk(w));
+      newWalks.forEach((w) => void scheduleNotificationsForWalk(w));
+    } catch (e) {
+      set({ actionError: friendlyErrorMessage(e, [], '×œ× ×”×¦×œ×—× ×• ×œ×¢×“×›×Ÿ ××ª ×©×¢×ª ×”×˜×™×•×œ') });
+    }
+  },
+
+  /** Deletes a time slot. Future not-yet-done occurrences disappear from the schedule; history is kept. */
+  deleteRule: async (ruleId: string) => {
+    if (!guardTestModeMutation()) return;
+    try {
+      const { entries, walks } = get();
+      const removedEntryIds = new Set(entries.filter((e) => e.ruleId === ruleId).map((e) => e.id));
+
+      if (isSupabaseConfigured) {
+        // One server transaction owns the FK-sensitive delete ordering.
+        await deleteScheduleRuleWithOccurrences(ruleId);
+      } else {
+        const today = localDateOnly(new Date());
+        const futureEntries = entries.filter((e) => e.ruleId === ruleId && e.date >= today);
+        for (const entry of futureEntries) {
+          const walk = walks.find((w) => w.scheduleEntryId === entry.id);
+          if (walk?.status === 'pending') await repository.deleteWalk?.(walk.id);
+          await repository.deleteScheduleEntry(entry.id);
+        }
+        await repository.deleteScheduleRule(ruleId);
+      }
+
+      set((s) => ({
+        rules: s.rules.filter((r) => r.id !== ruleId),
+        entries: s.entries.filter((e) => !removedEntryIds.has(e.id)),
+        walks: s.walks
+          .filter((w) => !(w.scheduleEntryId && removedEntryIds.has(w.scheduleEntryId) && w.status === 'pending'))
+          .map((w) =>
+            w.scheduleEntryId && removedEntryIds.has(w.scheduleEntryId)
+              ? { ...w, scheduleEntryId: undefined }
+              : w
+          ),
+        actionError: null,
+      }));
+    } catch (e) {
+      set({ actionError: friendlyErrorMessage(e, [], '×œ× ×”×¦×œ×—× ×• ×œ××—×•×§ ××ª ×©×¢×ª ×”×˜×™×•×œ') });
+    }
+  },
+
+  reorderRules: async (orderedRuleIds: string[]) => {
+    if (!guardTestModeMutation()) return;
+    try {
+      const { rules } = get();
+      const updated: ScheduleRule[] = [];
+      orderedRuleIds.forEach((id, index) => {
+        const rule = rules.find((r) => r.id === id);
+        if (rule && rule.sortOrder !== index) updated.push({ ...rule, sortOrder: index });
+      });
+      for (const rule of updated) await repository.upsertScheduleRule(rule);
+      set((s) => ({ rules: s.rules.map((r) => updated.find((ur) => ur.id === r.id) ?? r), actionError: null }));
+    } catch (e) {
+      set({ actionError: friendlyErrorMessage(e, [], '×œ× ×”×¦×œ×—× ×• ×œ×©× ×•×ª ××ª ×¡×“×¨ ×”×©×¢×•×ª') });
+    }
+  },
+
+  /**
+   * Moves a single occurrence to a different time, without touching the
+   * rule or any other day.
+   *
+   * BATCH 3 (Task 6 â€” direct admin time edit): this action is only ever
+   * reached from the admin-only EditWalkModal (HomeScreen.tsx gates
+   * `onEdit`/`onChangeTime` on `effectiveRole === 'admin'`; a member gets
+   * `onRequestTimeChange` â€” the request/approval flow â€” instead, see
+   * logic/walkActions.ts's canRequestChangeForWalk). So in Supabase mode
+   * this is always a Family Admin DIRECT edit, never a request. It is now
+   * routed through the server-authoritative admin_reschedule_walk RPC
+   * (migration 0026) FIRST, before any local write: that RPC is where
+   * authorization is actually enforced (is_family_admin() â€” never a
+   * client-supplied flag, and already false while impersonating), where
+   * the schedule_entries time-collision check happens, and where the
+   * walk_admin_rescheduled audit event is written. A rejection there (not
+   * an admin, walk no longer pending, time collision, ...) throws and is
+   * caught below exactly like any other action error in this store â€” no
+   * local state is touched on failure.
+   *
+   * CORRECTED (Batch 3 correction #3, post-review): admin_reschedule_walk
+   * (migration 0026) already updates BOTH walks.scheduled_time and the
+   * linked schedule_entries.time server-side, collision-checked and
+   * audited, in one transaction. The original Batch 3 version of this
+   * action then ALSO ran repository.saveWalk()/repository.updateScheduleEntry()
+   * unconditionally afterward â€” in Supabase mode that was a second, raw
+   * client mutation of the exact same rows through
+   * enforce_walk_write_authorization() again: redundant when it also
+   * succeeded, and a real risk of a split outcome when it didn't (the RPC's
+   * server-side change had already happened, but the UI would still report
+   * failure because this second write failed). So the RPC is now the SOLE
+   * authoritative server mutation in Supabase mode: once it resolves, this
+   * action only synchronizes local Zustand state (`set()` below) â€” no
+   * second network write of data the RPC already wrote.
+   *
+   * Local/demo mode (no Supabase configured, adminRescheduleWalk() never
+   * called) is UNCHANGED from before this correction: repository.saveWalk()
+   * + repository.updateScheduleEntry() remain the one and only mutation
+   * there, exactly as they always were â€” there is no server RPC to defer to
+   * in that mode, so the local repository write is still the authoritative
+   * one, keeping this action fully usable offline/in demo mode and keeping
+   * scheduleNotificationsForWalk / reconcileScheduleNotifications working
+   * unchanged (they read from this store's own `walks`, not from the
+   * server).
+   *
+   * Either branch: a rejection (not an admin, walk no longer pending, time
+   * collision, a local repository failure, ...) throws and is caught below
+   * exactly like any other action error in this store, BEFORE the `set()`
+   * call â€” so local state is never optimistically left at the new time on
+   * failure.
+   */
+  rescheduleWalk: async (walkId: string, newTime: string) => {
+    if (!guardTestModeMutation()) return;
+    const walk = get().walks.find((w) => w.id === walkId);
+    if (!walk) return;
+    try {
+      if (walk.status !== 'pending') throw new WalkActionError('××¤×©×¨ ×œ×©× ×•×ª ×©×¢×” ×¨×§ ×œ×˜×™×•×œ ×©×××ª×™×Ÿ');
+
+      const updatedWalk: Walk = { ...walk, scheduledTime: newTime, updatedAt: new Date().toISOString() };
+
+      if (isSupabaseConfigured) {
+        // admin_reschedule_walk (0026) is the SOLE authoritative write here
+        // â€” it already updates walks.scheduled_time AND the linked
+        // schedule_entries.time server-side. No second raw
+        // repository.saveWalk()/updateScheduleEntry() call follows it; only
+        // local state is synchronized once it succeeds.
+        await adminRescheduleWalk(walkId, newTime);
+      } else {
+        // Local/demo mode: no RPC exists to defer to (adminRescheduleWalk
+        // would throw SupabaseNotConfiguredError) â€” the repository mutation
+        // IS the authoritative write here, unchanged from before this
+        // correction.
+        await repository.saveWalk(updatedWalk);
+        if (walk.scheduleEntryId) {
+          const entry = get().entries.find((e) => e.id === walk.scheduleEntryId);
+          // P0 FIX: mark this entry as a deliberate one-off override â€” see
+          // ScheduleEntry.timeOverridden's doc comment. Without this,
+          // planStaleRuleEntryReconciliation() (src/logic/rotation.ts),
+          // which runs on every schedule load, could not tell this edit
+          // apart from a stale pre-807e4db leftover and silently reverted
+          // it back to the rule's time on the very next load.
+          if (entry) await repository.updateScheduleEntry({ ...entry, time: newTime, timeOverridden: true });
+        }
+      }
+
+      set((s) => ({
+        walks: s.walks.map((w) => (w.id === walkId ? updatedWalk : w)),
+        entries: s.entries.map((e) => (e.id === walk.scheduleEntryId ? { ...e, time: newTime, timeOverridden: true } : e)),
+        actionError: null,
+      }));
+      await scheduleNotificationsForWalk(updatedWalk);
+    } catch (e) {
+      set({
+        actionError:
+          e instanceof WalkActionError ? e.message : e instanceof Error ? friendlyErrorMessage(e) : '×œ× ×”×¦×œ×—× ×• ×œ×©× ×•×ª ××ª ×”×©×¢×”',
+      });
+    }
+  },
+
+  deleteEntry: async (entryId: string) => {
+    if (!guardTestModeMutation()) return;
+    const walk = get().walks.find((w) => w.scheduleEntryId === entryId);
+    if (walk) await cancelWalkNotifications(walk.id);
+    await repository.deleteScheduleEntry(entryId);
+    set((s) => ({
+      entries: s.entries.filter((e) => e.id !== entryId),
+      // Server deletion detaches resolved walks. Preserve their history locally.
+      walks: s.walks.flatMap((w) => {
+        if (w.scheduleEntryId !== entryId) return [w];
+        return w.status === 'pending' ? [] : [{ ...w, scheduleEntryId: undefined }];
+      }),
+    }));
+  },
+
+  startWalk: (walkId: string, options: { startGps?: boolean; remoteActivation?: boolean; actorUserId?: string; actualWalkerUserId?: string; substitutionConfirmed?: boolean; remoteStart?: boolean } = {}) => {
+    const inFlight = startWalkPromises.get(walkId);
+    if (inFlight) return inFlight;
+    set((s) => ({ startingWalkIds: s.startingWalkIds.includes(walkId) ? s.startingWalkIds : [...s.startingWalkIds, walkId] }));
+    const operation = (async () => {
+    if (!guardTestModeMutation()) return false;
+    const walk = get().walks.find((w) => w.id === walkId);
+    if (!walk) return false;
+    // Defense in depth: the Home button is disabled before this point, but
+    // no other caller may start a planned walk more than 30 minutes early.
+    // Unplanned/spontaneous walks are intentionally exempt.
+    if (!options.remoteActivation && !walk.isUnplanned && walk.status === 'pending') {
+      const scheduledAt = new Date(`${walk.date}T${walk.scheduledTime}:00`).getTime();
+      const unlockAt = scheduledAt - 30 * 60 * 1000;
+      if (Number.isFinite(unlockAt) && Date.now() < unlockAt) {
+        const unlock = new Date(unlockAt);
+        const hh = String(unlock.getHours()).padStart(2, '0');
+        const mm = String(unlock.getMinutes()).padStart(2, '0');
+        set({ actionError: `× ×™×ª×Ÿ ×œ×”×ª×—×™×œ ××ª ×”×˜×™×•×œ ×”×—×œ ×Ö¾${hh}:${mm}` });
+        return false;
+      }
+    }
+    // Real-device QA fix â€” if an EARLIER background sync for this exact
+    // walk (e.g. loadScheduleForFamily's orphan-walk-repair, which calls
+    // queueWalksForBackgroundSync() without waiting for the server write to
+    // actually land) was permanently rejected, SyncQueue drops it and
+    // records a conflict instead of retrying forever (see syncQueue.ts's
+    // isPermanentSyncError doc comment). markDone() below already
+    // established this exact check (see its own doc comment) for the
+    // equivalent saveWalk case; this is the same check for startWalk,
+    // proactive rather than after-the-fact since there is no optimistic
+    // local write to protect here.
+    //
+    // P0 FOLLOW-UP: a `23505` (unique_violation) conflict specifically
+    // means a walk for this schedule_entry_id already exists server-side
+    // under a DIFFERENT id â€” not an unrecoverable state. OfflineFirstRepo
+    // sitory.startWalk's resolveCanonicalWalkId now reconciles exactly
+    // this case (finds the canonical row, adopts its id, retries) before
+    // ever calling start_walk, so a 23505 conflict is deliberately let
+    // through to that normal path instead of being hard-blocked here. Any
+    // OTHER recorded code (RLS rejection, a business-rule raise, etc.) is
+    // not something id-reconciliation can fix, so those still stop here.
+    try {
+      const startConflict = await repository.getConflictForWalk?.(walkId);
+      if (startConflict && startConflict.code !== '23505') {
+        set({
+          actionError: appendRawDiagnostic(
+            '×”×˜×™×•×œ ×”×–×” ×œ× × ×©××¨ ×‘×”×¦×œ×—×” ×‘×©×¨×ª ×‘×¢×‘×¨ ×•×œ×›×Ÿ ××™ ××¤×©×¨ ×œ×”×ª×—×™×œ ××•×ª×•. ×¨×¢× × ×• ××ª ×”××¡×š ×•× ×¡×• ×©×•×‘ â€” ×× ×–×” ×—×•×–×¨, ×™×© ×œ×“×•×•×— ×œ×ª××™×›×”.',
+            { message: startConflict.message, code: startConflict.code },
+            { walkId, conflictFailedAt: startConflict.failedAt }
+          ),
+        });
+        return false;
+      }
+      let updated: Walk;
+      const actualWalkerUserId = options.actualWalkerUserId ?? walk.actualWalkerUserId ?? walk.responsibleUserId;
+      if (repository.startWalkV11) {
+        const actorUserId = options.actorUserId ?? actualWalkerUserId;
+        const operationId = await getWalkLifecycleOperationId('start', walkId, actorUserId);
+        updated = await repository.startWalkV11(walkId, { actorUserId, actualWalkerUserId, operationId, substitutionConfirmed: options.substitutionConfirmed, remoteStart: options.remoteStart });
+        await completeWalkLifecycleOperation('start', walkId, actorUserId);
+      } else if (repository.startWalk) updated = await repository.startWalk(walkId);
+      else updated = { ...walk, status: 'in_progress', startedAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      // Some remote activation/start responses omit started_at even when the
+      // transition succeeded. Keep the active card timer moving from the
+      // acknowledgement time instead of rendering a permanent 00:00.
+      if (updated.status === 'in_progress' && !updated.startedAt) {
+        updated = { ...updated, startedAt: new Date().toISOString() };
+      }
+      set((s) => {
+        const walks: Walk[] = [];
+        let inserted = false;
+        for (const current of s.walks) {
+          if (current.id !== walkId && current.id !== updated.id) { walks.push(current); continue; }
+          if (!inserted) { walks.push(updated); inserted = true; }
+        }
+        if (!inserted) walks.push(updated);
+        return { walks, actionError: null };
+      });
+      // Home starts the foreground GPS watch in the original tap handler,
+      // before this server-authoritative RPC. OfflineFirstRepository may
+      // resolve that local occurrence to an existing canonical server walk
+      // with a different ID. Move the live GPS session to that same ID so
+      // the dashboard keeps showing fixes and finishWalk can persist them.
+      if (updated.id !== walk.id) {
+        useGpsStore.getState().rebindTrackingWalk(walk, updated);
+      }
+      // Notification cleanup is secondary to the authoritative walk start.
+      // A local notification adapter failure must not make Home stop the GPS
+      // watch or report that an already-started walk failed.
+      void cancelWalkNotifications(walkId).catch((error) => {
+        console.warn('[startWalk] notification cleanup failed', { walkId, error });
+      });
+      // Phase 4 (GPS foundation, PRD Â§7): best-effort, fire-and-forget â€”
+      // GPS is assistive, never a precondition for the walk lifecycle
+      // itself (permission denial/unavailability must never fail or delay
+      // Start). See gpsStore.startTracking's own doc comment.
+      if (options.startGps !== false) void useGpsStore.getState().startTracking(updated);
+      if (useGpsStore.getState().trackingWalkId === updated.id) void useGpsStore.getState().attachGpsOwnership(updated);
+      return true;
+    } catch (e) {
+      // TEMPORARY P0 DIAGNOSTIC â€” real-device QA: "Start" failed on a real
+      // iPhone PWA with only the generic Hebrew fallback below, which hid
+      // the actual server rejection. console.error the full raw error here
+      // (this call site previously logged nothing at all, despite
+      // errorMessages.ts's own doc comment claiming every call site does).
+      // See appendRawDiagnostic's doc comment for why the shown message
+      // also gets the raw code/message/details/hint appended, but ONLY
+      // when friendlyErrorMessage() still fell through to the generic
+      // fallback â€” a rule that already matched means the real reason is
+      // already known and shown, so there is nothing to add.
+      console.error('[startWalk] failed', { walkId, localStatus: walk.status, responsibleUserId: walk.responsibleUserId, error: e });
+      const fallback = '×œ× ×”×¦×œ×—× ×• ×œ×”×ª×—×™×œ ××ª ×”×˜×™×•×œ';
+      const friendly = friendlyErrorMessage(e, [], fallback);
+      const shown = friendly === fallback
+        ? appendRawDiagnostic(friendly, e, { walkId, localStatus: walk.status, responsibleUserId: walk.responsibleUserId })
+        : friendly;
+      set({ actionError: shown });
+      return false;
+    }
+    })();
+    const tracked = operation.finally(() => {
+      startWalkPromises.delete(walkId);
+      set((s) => ({ startingWalkIds: s.startingWalkIds.filter((id) => id !== walkId) }));
+    });
+    startWalkPromises.set(walkId, tracked);
+    return tracked;
+  },
+
+  finishWalk: (walkId: string, completedByUserId: string, details: WalkCompletionDetails = {}) => {
+    // A second tap (or a remote-confirmation retry) while a finish is still
+    // in flight joins the same attempt instead of racing it: one GPS final
+    // upload, one lease release, one finish_walk_v11 call per operation id.
+    const inFlight = finishWalkPromises.get(walkId);
+    if (inFlight) return inFlight;
+    const operation = (async () => {
+      if (!guardTestModeMutation()) return false;
+      const walk = get().walks.find((w) => w.id === walkId);
+      if (!walk) return false;
+      try {
+        // Version gate first: on a server without Walk Lifecycle v1.1 the
+        // finish cannot succeed, so the live GPS route must stay untouched in
+        // memory rather than being half-finalized into an "interrupted" state.
+        if (repository.finishWalkV12 || repository.finishWalkV11) await repository.assertWalkLifecycleV11Available?.();
+        // With GPS fencing enabled, upload the final route while the lease is
+        // still valid. The server finish RPC closes the lease in the same
+        // transaction after this final route write.
+        let gpsFinalizedBeforeFinish = false;
+        let gpsFinalizationFailed = false;
+        if ((repository.finishWalkV12 || repository.finishWalkV11) && useGpsStore.getState().trackingWalkId === walkId) {
+          gpsFinalizedBeforeFinish = true;
+          try {
+            // A lease that lapsed while the phone was locked (or after a lost
+            // heartbeat) is renewed on this same device first. The server
+            // refuses that without confirmation if another device owns GPS.
+            const gps = useGpsStore.getState();
+            if (gps.gpsFencingEpoch === null && gps.pointCount > 0) await gps.attachGpsOwnership(walk);
+            await useGpsStore.getState().stopTracking(walk, completedByUserId, 'walk_finished');
+          } catch (error) {
+            // GPS is assistive, never a precondition for the walk lifecycle.
+            // The route already persisted under the lease stays saved; the
+            // unsaved tail stays in memory, and the walk is still finished
+            // (online or through the offline lifecycle outbox).
+            gpsFinalizationFailed = true;
+            console.error('[finishWalk] final GPS route was not saved before finish', { walkId, error });
+          }
+        }
+        let updated: Walk;
+        if (repository.finishWalkV12) {
+          const actorUserId = details.actorUserId ?? completedByUserId;
+          const operationId = await getWalkLifecycleOperationId('finish', walkId, actorUserId);
+          updated = await repository.finishWalkV12(walkId, completedByUserId, operationId, { ...details, actorUserId });
+          await completeWalkLifecycleOperation('finish', walkId, actorUserId);
+        } else if (repository.finishWalkV11) {
+          const actorUserId = details.actorUserId ?? completedByUserId;
+          const operationId = await getWalkLifecycleOperationId('finish', walkId, actorUserId);
+          updated = await repository.finishWalkV11(walkId, completedByUserId, operationId, { ...details, actorUserId });
+          await completeWalkLifecycleOperation('finish', walkId, actorUserId);
+        } else if (repository.finishWalk) updated = await repository.finishWalk(walkId, completedByUserId, details);
+        else updated = markWalkDone(walk, completedByUserId, details);
+        set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
+        if (gpsFinalizationFailed) {
+          set({ actionError: '×”×˜×™×•×œ ×”×¡×ª×™×™×, ××š ×œ× ×”×¦×œ×—× ×• ×œ×©××•×¨ ××ª × ×ª×•× ×™ ×”-GPS. ×”× ×ª×•× ×™× × ×©××¨×• ×‘××›×©×™×¨ â€” × ×¡×• ×œ×¨×¢× ×Ÿ ×•×œ×“×•×•×— ×œ×ª××™×›×” ×× ×”×‘×¢×™×” ×—×•×–×¨×ª.' });
+        }
+        // Notification cleanup is secondary; it must never skip the GPS
+        // finalization after the server has already completed the walk.
+        void cancelWalkNotifications(walkId).catch((error) => {
+          console.warn('[finishWalk] notification cleanup failed', { walkId, error });
+        });
+        // Stop and persist the captured route before returning success. The
+        // repository writes locally first and queues remote retries offline.
+        if (!gpsFinalizedBeforeFinish) {
+          try {
+            await useGpsStore.getState().stopTracking(updated, completedByUserId, 'walk_finished');
+          } catch (error) {
+            console.error('[finishWalk] GPS session persistence failed', { walkId, error });
+            set({ actionError: '×”×˜×™×•×œ ×”×¡×ª×™×™×, ××š ×œ× ×”×¦×œ×—× ×• ×œ×©××•×¨ ××ª × ×ª×•× ×™ ×”-GPS. ×”× ×ª×•× ×™× × ×©××¨×• ×‘××›×©×™×¨ â€” × ×¡×• ×œ×¨×¢× ×Ÿ ×•×œ×“×•×•×— ×œ×ª××™×›×” ×× ×”×‘×¢×™×” ×—×•×–×¨×ª.' });
+          }
+        }
+        return true;
+      } catch (e) {
+        set({ actionError: friendlyErrorMessage(e, [], '×œ× ×”×¦×œ×—× ×• ×œ×¡×™×™× ××ª ×”×˜×™×•×œ') });
+        return false;
+      }
+    })();
+    const tracked = operation.finally(() => {
+      finishWalkPromises.delete(walkId);
+    });
+    finishWalkPromises.set(walkId, tracked);
+    return tracked;
+  },
+
+  markDone: async (walkId: string, completedByUserId: string, details: WalkCompletionDetails = {}) => {
+    if (!guardTestModeMutation()) return false;
+    const walk = get().walks.find((w) => w.id === walkId);
+    if (!walk) return false;
+    try {
+      const updated = markWalkDone(walk, completedByUserId, details);
+      // Optimistic update so the Home screen reflects it within the "few seconds" UX goal.
+      set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
+      await repository.saveWalk(updated);
+      await cancelWalkNotifications(walkId);
+      // markDone is the "âœ“ ×¡××Ÿ ×›×‘×•×¦×¢" fallback path someone might use
+      // instead of the formal "×¡×™×™× ×˜×™×•×œ" action â€” stop tracking here too
+      // (a no-op if this walk was never being tracked, e.g. it was marked
+      // done without ever being started) so a GPS watch started via
+      // startWalk can never keep running past a walk that's already done.
+      void useGpsStore.getState().stopTracking(updated, completedByUserId, 'walk_marked_done');
+
+      // A2 fix: OfflineFirstRepository.saveWalk() never throws even when the
+      // remote write ultimately failed â€” it always writes locally first
+      // (so the app stays usable offline) and pushes to the server
+      // best-effort via the SyncQueue, which swallows failures internally
+      // (retryable ones stay queued for the next sync; permanent ones are
+      // recorded as a conflict and dropped â€” see syncQueue.ts). Naively
+      // refetching from the server right after `saveWalk()` resolved used to
+      // silently REVERT the optimistic "done" state back to whatever the
+      // server still had â€” with no error shown â€” whenever that write hadn't
+      // actually landed yet (a slow/transient network, or a permanent
+      // conflict). That is the concrete "completion not syncing correctly"
+      // bug: the checkmark would flash and then disappear.
+      //
+      // Fix: only trust a server refetch once we know THIS walk's write has
+      // actually been resolved (succeeded or permanently failed) â€” i.e. it
+      // is no longer sitting in the queue. While it's still queued
+      // (retryable network failure), keep the optimistic local state as-is;
+      // it will reconcile correctly on the next successful sync. If it was
+      // dropped as a permanent conflict, surface that as a real failure
+      // instead of silently presenting the reverted state as success.
+      const stillPending = await repository.hasPendingSaveWalk?.(walkId);
+      if (stillPending) {
+        return true; // locally saved and queued; keep the optimistic completion intact
+      }
+
+      const conflict = await repository.getConflictForWalk?.(walkId);
+      if (conflict) {
+        // Revert the optimistic update â€” the server rejected the write â€”
+        // and tell the user, rather than silently showing it as done.
+        set((s) => ({
+          walks: s.walks.map((w) => (w.id === walkId ? walk : w)),
+          actionError: '×œ× ×”×¦×œ×—× ×• ×œ×©××•×¨ ××ª ×”×¡×™××•×Ÿ ×‘×©×¨×ª. × ×¡×• ×œ×¨×¢× ×Ÿ ×•×œ×¡××Ÿ ×©×•×‘.',
+        }));
+        return false;
+      }
+
+      // Write is confirmed resolved (synced, or there was never a remote to
+      // begin with) â€” now it's safe to re-sync from the repository in case a
+      // concurrent completion by another family member won the race (see
+      // repository.saveWalk docs).
+      const fresh = await repository.getWalks(walk.familyId);
+      set({ walks: fresh });
+      return true;
+    } catch (e) {
+      set({ actionError: e instanceof WalkActionError ? e.message : '×œ× ×”×¦×œ×—× ×• ×œ×¡××Ÿ ××ª ×”×˜×™×•×œ ×›×‘×•×¦×¢' });
+      return false;
+    }
+  },
+
+  editDoneDetails: async (walkId: string, details: WalkCompletionDetails) => {
+    if (!guardTestModeMutation()) return;
+    const walk = get().walks.find((w) => w.id === walkId);
+    if (!walk) return;
+    try {
+      const updated = editWalkDetails(walk, details);
+      set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
+      await repository.saveWalk(updated);
+    } catch (e) {
+      set({ actionError: e instanceof WalkActionError ? e.message : '×œ× ×”×¦×œ×—× ×• ×œ×¢×“×›×Ÿ ××ª ×¤×¨×˜×™ ×”×˜×™×•×œ' });
+    }
+  },
+
+  skip: async (walkId: string) => {
+    if (!guardTestModeMutation()) return;
+    const walk = get().walks.find((w) => w.id === walkId);
+    if (!walk) return;
+    try {
+      const updated = markWalkSkipped(walk);
+      set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
+      await repository.saveWalk(updated);
+      await cancelWalkNotifications(walkId);
+    } catch (e) {
+      set({ actionError: e instanceof WalkActionError ? e.message : '×œ× ×”×¦×œ×—× ×• ×œ×“×œ×’ ×¢×œ ×”×˜×™×•×œ' });
+    }
+  },
+
+  swap: async (walkId: string, newUserId: string, swappedByUserId: string) => {
+    if (!guardTestModeMutation()) return;
+    const walk = get().walks.find((w) => w.id === walkId);
+    if (!walk) return;
+    try {
+      const updated = swapWalkPure(walk, newUserId, swappedByUserId);
+      set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
+      await repository.saveWalk(updated);
+      await scheduleNotificationsForWalk(updated);
+    } catch (e) {
+      set({ actionError: e instanceof WalkActionError ? e.message : '×œ× ×”×¦×œ×—× ×• ×œ×”×—×œ×™×£ ××ª ×”×ª×•×¨' });
+    }
+  },
+
+  /**
+   * Real two-way exchange between two specific walks. Keep BOTH execution
+   * rows (`walks`) and their backing schedule occurrences (`schedule_entries`)
+   * in sync, otherwise a later reload/backfill can re-assert the old owner on
+   * one side of the exchange. The offline-first repository persists each
+   * changed entry/walk locally immediately and queues the same writes for the
+   * server, so the four writes converge together when connectivity returns.
+   */
+  swapTwoWalks: async (walkAId: string, walkBId: string, swappedByUserId: string) => {
+    if (!guardTestModeMutation()) return;
+    const before = get();
+    const walkA = before.walks.find((w) => w.id === walkAId);
+    const walkB = before.walks.find((w) => w.id === walkBId);
+    if (!walkA || !walkB) return;
+
+    const entryA = walkA.scheduleEntryId ? before.entries.find((e) => e.id === walkA.scheduleEntryId) : undefined;
+    const entryB = walkB.scheduleEntryId ? before.entries.find((e) => e.id === walkB.scheduleEntryId) : undefined;
+
+    try {
+      const [updatedA, updatedB] = swapWalksMutual(walkA, walkB, swappedByUserId);
+      const updatedEntryA = entryA ? { ...entryA, responsibleUserId: updatedA.responsibleUserId } : undefined;
+      const updatedEntryB = entryB ? { ...entryB, responsibleUserId: updatedB.responsibleUserId } : undefined;
+
+      if (isSupabaseConfigured) {
+        // admin_swap_walks (0031) is the sole authoritative Supabase write.
+        // It exchanges both walk owners and both linked schedule entries in
+        // one server transaction. Do not follow it with raw repository writes.
+        await adminSwapWalks(walkAId, walkBId);
+      } else {
+        // Local/demo mode has no RPC, so preserve the repository behavior.
+        if (updatedEntryA) await repository.updateScheduleEntry(updatedEntryA);
+        if (updatedEntryB) await repository.updateScheduleEntry(updatedEntryB);
+        await repository.saveWalk(updatedA);
+        await repository.saveWalk(updatedB);
+      }
+
+      set((s) => ({
+        walks: s.walks.map((w) => (w.id === walkAId ? updatedA : w.id === walkBId ? updatedB : w)),
+        entries: s.entries.map((e) =>
+          updatedEntryA && e.id === updatedEntryA.id ? updatedEntryA : updatedEntryB && e.id === updatedEntryB.id ? updatedEntryB : e
+        ),
+        actionError: null,
+      }));
+
+      await scheduleNotificationsForWalk(updatedA);
+      await scheduleNotificationsForWalk(updatedB);
+    } catch (e) {
+      // Revert only the two specific walks/entries back to their pre-swap
+      // values, merged against whatever the CURRENT state is â€” never a raw
+      // overwrite of the whole `walks`/`entries` arrays from the `before`
+      // closure. A realtime reload (see src/lib/realtime.ts) can land
+      // between the snapshot above and this catch firing (e.g. another
+      // family member's device marks an unrelated walk done while this
+      // RPC is in flight), and that legitimate concurrent update must not
+      // be silently discarded. Every sibling action in this file (markDone,
+      // skip, swap, editDoneDetails) already reverts this way; this was the
+      // one outlier.
+      set((s) => ({
+        walks: s.walks.map((w) => (w.id === walkAId ? walkA : w.id === walkBId ? walkB : w)),
+        entries: s.entries.map((e) =>
+          entryA && e.id === entryA.id ? entryA : entryB && e.id === entryB.id ? entryB : e
+        ),
+        actionError:
+          e instanceof WalkActionError
+            ? e.message
+            : e instanceof Error
+              ? friendlyErrorMessage(e)
+              : '×œ× ×”×¦×œ×—× ×• ×œ×”×—×œ×™×£ ×‘×™×Ÿ ×”×˜×™×•×œ×™×',
+      }));
+    }
+  },
+
+  /** Logs a walk that already happened with no prior plan â€” never touches the rotation. */
+  addUnplannedWalk: async (input: UnplannedWalkInput) => {
+    if (!guardTestModeMutation()) return false;
+    const now = new Date().toISOString();
+    const completedAt = new Date(`${input.date}T${input.time}:00`).toISOString();
+    const walk: Walk = {
+      id: generateId('walk'),
+      familyId: input.familyId,
+      dogId: input.dogId,
+      date: input.date,
+      scheduledTime: input.time,
+      responsibleUserId: input.performedByUserId,
+      status: 'done',
+      completedAt,
+      completedByUserId: input.performedByUserId,
+      hadPee: input.hadPee,
+      hadPoop: input.hadPoop,
+      note: input.note,
+      durationMinutes: input.durationMinutes,
+      isUnplanned: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    set((s) => ({ walks: [...s.walks, walk], actionError: null }));
+    try {
+      await repository.saveWalk(walk);
+      return true;
+    } catch (e) {
+      set((s) => ({ walks: s.walks.filter((w) => w.id !== walk.id), actionError: '×œ× ×”×¦×œ×—× ×• ×œ×©××•×¨ ××ª ×”×˜×™×•×œ' }));
+      return false;
+    }
+  },
+
+  startUnplannedWalk: async (familyId: string, dogId: string, userId: string) => {
+    if (!guardTestModeMutation()) return false;
+    // A second tap can arrive before the first async save has created its
+    // in-progress row. Keep this client-side guard until the action settles.
+    if (get().isStartingUnplannedWalk) return false;
+    if (get().walks.some((walk) => walk.familyId === familyId && walk.dogId === dogId && isActiveWalk(walk))) {
+      set({ actionError: '×›×‘×¨ ×™×© ×˜×™×•×œ ×¤×¢×™×œ ×œ×›×œ×‘ ×”×–×”. ×¡×™×™××• ××•×ª×• ×œ×¤× ×™ ×©××ª×—×™×œ×™× ×˜×™×•×œ × ×•×¡×£.' });
+      return false;
+    }
+    set({ isStartingUnplannedWalk: true });
+    try {
+      const now = new Date().toISOString();
+      const walk: Walk = {
+        id: generateId('walk'),
+        familyId,
+        dogId,
+        date: localDateOnly(new Date()),
+        scheduledTime: pickerDateToTime(new Date()),
+        responsibleUserId: userId,
+        status: 'pending',
+        isUnplanned: true,
+        createdAt: now,
+        updatedAt: now,
+      };
+    // Optimistic, like addUnplannedWalk above â€” reverted below if the
+    // initial save fails. startWalk() (called next) does its own
+    // optimistic update/rollback for the pending->in_progress step, so
+    // this action only owns getting the new row to exist at all.
+      set((s) => ({ walks: [...s.walks, walk], actionError: null }));
+      // Begin the foreground watch synchronously in the original tap stack
+      // so Safari can honor its gesture-bound geolocation permission flow.
+      // GPS is provisional until the authoritative walk start succeeds.
+      void useGpsStore.getState().startTracking(walk).catch(() => undefined);
+      if (repository.startSpontaneousWalkV11) {
+        try {
+          const operationId = await getWalkLifecycleOperationId('start_spontaneous', walk.id, userId);
+          const started = await repository.startSpontaneousWalkV11(walk, operationId, userId);
+          await completeWalkLifecycleOperation('start_spontaneous', walk.id, userId);
+          set((s) => ({ walks: [...s.walks.filter((item) => item.id !== walk.id), started], actionError: null }));
+          void useGpsStore.getState().attachGpsOwnership(started);
+          return true;
+        } catch (e) {
+          useGpsStore.getState().cancelTracking(walk.id, 'walk_start_failed');
+          set((s) => ({ walks: s.walks.filter((item) => item.id !== walk.id), actionError: friendlyErrorMessage(e, [], '×œ× ×”×¦×œ×—× ×• ×œ×”×ª×—×™×œ ××ª ×”×˜×™×•×œ. ×‘×“×§×• ×—×™×‘×•×¨ ×•× ×¡×• ×©×•×‘.') }));
+          return false;
+        }
+      }
+      try {
+        await repository.saveWalk(walk);
+      } catch (e) {
+        useGpsStore.getState().cancelTracking(walk.id, 'walk_start_failed');
+        set((s) => ({ walks: s.walks.filter((w) => w.id !== walk.id), actionError: '×œ× ×”×¦×œ×—× ×• ×œ×”×ª×—×™×œ ××ª ×”×˜×™×•×œ' }));
+        return false;
+      }
+      const started = await get().startWalk(walk.id, { startGps: false });
+      if (!started) {
+      // startWalk() already set its own actionError (e.g. offline â€”
+      // startWalk/finishWalk are server-authoritative RPCs with no blind
+      // offline replay, same as a scheduled walk). Remove the now-orphaned
+      // pending row rather than leaving a phantom walk that would compete
+      // with the real next-scheduled-walk card â€” best-effort; if this also
+      // fails, the member can still remove it manually like any other
+      // unplanned walk (deleteUnplannedWalk).
+        try {
+          await repository.deleteWalk?.(walk.id);
+        } catch {
+          // Already-surfaced actionError from startWalk() above stands.
+        }
+        set((s) => ({ walks: s.walks.filter((w) => w.id !== walk.id) }));
+        useGpsStore.getState().cancelTracking(walk.id, 'walk_start_failed');
+      }
+      return started;
+    } finally {
+      set({ isStartingUnplannedWalk: false });
+    }
+  },
+
+  editUnplannedWalk: async (walkId, patch) => {
+    if (!guardTestModeMutation()) return;
+    const walk = get().walks.find((w) => w.id === walkId);
+    if (!walk) return;
+    if (!walk.isUnplanned) {
+      set({ actionError: '××¤×©×¨ ×œ×¢×¨×•×š ×›×š ×¨×§ ×˜×™×•×œ ×¡×¤×•× ×˜× ×™' });
+      return;
+    }
+    const updated: Walk = { ...walk, ...patch, updatedAt: new Date().toISOString() };
+    set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
+    try {
+      await repository.saveWalk(updated);
+    } catch (e) {
+      // Revert the optimistic update on failure, same pattern as every
+      // other mutating action in this store.
+      set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? walk : w)), actionError: '×œ× ×”×¦×œ×—× ×• ×œ×¢×“×›×Ÿ ××ª ×”×˜×™×•×œ ×”×¡×¤×•× ×˜× ×™' }));
+    }
+  },
+
+  deleteUnplannedWalk: async (walkId) => {
+    if (!guardTestModeMutation()) return;
+    const walk = get().walks.find((w) => w.id === walkId);
+    if (!walk) return;
+    if (!walk.isUnplanned) {
+      set({ actionError: '××¤×©×¨ ×œ××—×•×§ ×›×š ×¨×§ ×˜×™×•×œ ×¡×¤×•× ×˜× ×™' });
+      return;
+    }
+    set((s) => ({ walks: s.walks.filter((w) => w.id !== walkId), actionError: null }));
+    try {
+      await repository.deleteWalk?.(walkId);
+    } catch (e) {
+      // Restore the walk locally â€” the delete didn't actually succeed.
+      set((s) => ({ walks: [...s.walks, walk], actionError: '×œ× ×”×¦×œ×—× ×• ×œ××—×•×§ ××ª ×”×˜×™×•×œ ×”×¡×¤×•× ×˜× ×™' }));
+    }
+  },
+
+  deleteScheduledWalkOccurrence: async (walkId) => {
+    if (!guardTestModeMutation()) return;
+    const walk = get().walks.find((w) => w.id === walkId);
+    if (!walk) return;
+    if (walk.isUnplanned) {
+      // Wrong door â€” an unplanned walk has its own deleteUnplannedWalk
+      // above, matching editUnplannedWalk's identical guard shape.
+      set({ actionError: '××¤×©×¨ ×œ××—×•×§ ×›×š ×¨×§ ×˜×™×•×œ ××ª×•×›× ×Ÿ' });
+      return;
+    }
+    if (walk.status !== 'done' && walk.status !== 'skipped') {
+      set({ actionError: '××¤×©×¨ ×œ××—×•×§ ×¨×§ ×˜×™×•×œ ×©×”×¡×ª×™×™×' });
+      return;
+    }
+    set((s) => ({ walks: s.walks.filter((w) => w.id !== walkId), actionError: null }));
+    try {
+      // Deliberately reuses the SAME repository.deleteWalk?.() every layer
+      // (local/offline-first/Supabase/syncQueue) already implements for
+      // deleteUnplannedWalk â€” the only thing distinguishing this from that
+      // path is server-side authorization (migration 0015's new DELETE
+      // branch), not a different client-side mechanism.
+      await repository.deleteWalk?.(walkId);
+    } catch (e) {
+      // Restore the walk locally â€” the delete didn't actually succeed
+      // (most commonly: the DB trigger rejected it, e.g. the walk was
+      // reassigned to someone else between this screen loading and the
+      // delete being attempted).
+      set((s) => ({ walks: [...s.walks, walk], actionError: '×œ× ×”×¦×œ×—× ×• ×œ××—×•×§ ××ª ×”×˜×™×•×œ' }));
+    }
+  },
+
+  clearActionError: () => set({ actionError: null }),
+}));
