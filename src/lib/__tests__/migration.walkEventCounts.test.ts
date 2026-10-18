@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 const migration = fs.readFileSync(
-  path.resolve(__dirname, '../../../supabase/migrations/20261018141642_persist_walk_event_counts.sql'),
+  path.resolve(__dirname, '../../../supabase/migrations/20261018150255_persist_walk_event_counts.sql'),
   'utf8',
 );
 
