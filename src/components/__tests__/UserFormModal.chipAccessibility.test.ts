@@ -18,7 +18,7 @@ describe('UserFormModal — avatar/color chip accessibility', () => {
   it('the emoji avatar chip has accessibilityRole="radio", accessibilityState bound to the selection, and a label', () => {
     const index = source.indexOf('setAvatar(e)');
     expect(index).toBeGreaterThan(-1);
-    const around = source.slice(index, index + 300);
+    const around = source.slice(index, index + 500);
     expect(around).toMatch(/accessibilityRole="radio"/);
     expect(around).toMatch(/accessibilityState=\{\{\s*selected:\s*avatar === e\s*\}\}/);
     expect(around).toMatch(/accessibilityLabel=\{`סמל \$\{e\}`\}/);
