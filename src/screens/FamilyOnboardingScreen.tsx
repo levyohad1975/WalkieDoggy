@@ -489,7 +489,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
               style={styles.wideButton} />
           </>
         )}
-        {createError ? <RtlText style={styles.error} accessibilityRole="alert">{createError}</RtlText> : null}
+        {createError ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{createError}</RtlText> : null}
         <Button label="חזרה" variant="secondary"
           onPress={() => { setMode(isInstalledWebApp ? 'pwaChoice' : 'choose'); setVerificationCode(''); }}
           style={styles.wideButton} />
