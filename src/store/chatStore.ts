@@ -80,6 +80,8 @@ interface ChatState {
   threads: Record<string, ChatThread>;
   /** The conversation currently open on screen, if any. */
   activeConversationId: string | null;
+  /** Message requested by a tapped push; cleared after locating it or reaching history end. */
+  notificationMessageId: string | null;
   /** Unread messages across ALL conversations — the Chat tab badge. */
   unreadCount: number;
   /** Read marker captured when the open conversation was entered — positions the "new messages" divider. */
@@ -97,12 +99,13 @@ interface ChatState {
   stop: () => void;
   refresh: () => Promise<void>;
   resync: () => Promise<void>;
-  openConversation: (conversationId: string) => void;
+  openConversation: (conversationId: string, messageId?: string) => void;
   /** Opens a conversation as soon as it is known (used by a tapped notification that can arrive before the list). */
-  requestOpenConversation: (conversationId: string) => void;
+  requestOpenConversation: (conversationId: string, messageId?: string) => void;
+  clearNotificationMessage: (messageId: string) => void;
   closeConversation: () => void;
   startDirect: (otherUserId: string) => Promise<string | null>;
-  loadOlder: () => Promise<void>;
+  loadOlder: () => Promise<boolean>;
   send: (draft: string) => ChatSendResult;
   sendImage: (image: PreparedChatImage, caption: string) => ChatSendResult;
   retry: (messageId: string) => void;
@@ -126,6 +129,7 @@ const INITIAL = {
   conversations: [] as ChatConversationState[],
   threads: {} as Record<string, ChatThread>,
   activeConversationId: null as string | null,
+  notificationMessageId: null as string | null,
   unreadCount: 0,
   unreadDividerFrom: null as string | null,
   live: 'reconnecting' as ChatLiveStatus,
@@ -138,7 +142,7 @@ let generation = 0;
 let activeSessionKey: string | null = null;
 let unsubscribe: (() => void) | null = null;
 let hasBeenLive = false;
-let pendingOpenId: string | null = null;
+let pendingOpen: { conversationId: string; messageId?: string } | null = null;
 const inFlight = new Set<string>();
 /** Ids already counted, so a redelivered Realtime event never bumps the badge twice. */
 const countedIds = new Set<string>();
@@ -265,10 +269,18 @@ export const useChatStore = create<ChatState>((set, get) => {
       });
     }
 
-    if (pendingOpenId && listing.conversations.some((c) => c.conversationId === pendingOpenId)) {
-      const target = pendingOpenId;
-      pendingOpenId = null;
-      get().openConversation(target);
+    if (pendingOpen && listing.conversations.some((c) => c.conversationId === pendingOpen?.conversationId)) {
+      const target = pendingOpen;
+      pendingOpen = null;
+      get().openConversation(target.conversationId, target.messageId);
+    } else if (pendingOpen) {
+      // The server-authoritative list is the access check. Do not keep a
+      // notification target around if this profile cannot see the chat.
+      pendingOpen = null;
+      set({
+        notificationMessageId: null,
+        actionError: 'השיחה אינה זמינה לחשבון הזה.',
+      });
     }
   };
 
@@ -477,7 +489,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     stop: () => {
       generation += 1;
       activeSessionKey = null;
-      pendingOpenId = null;
+      pendingOpen = null;
       clearTimers();
       inFlight.clear();
       countedIds.clear();
@@ -514,13 +526,14 @@ export const useChatStore = create<ChatState>((set, get) => {
       if (isCurrent(token) && get().status === 'ready') await flushUnsent(token);
     },
 
-    openConversation: (conversationId) => {
+    openConversation: (conversationId, messageId) => {
       const conversation = get().conversations.find((c) => c.conversationId === conversationId);
       if (!conversation) return;
       const token = generation;
       set({
         activeConversationId: conversationId,
         unreadDividerFrom: conversation.unreadCount > 0 ? conversation.lastReadAt : null,
+        notificationMessageId: messageId ?? null,
       });
       if (threadOf(conversationId).status === 'ready') {
         if (get().screenActive) scheduleMarkRead();
@@ -531,13 +544,17 @@ export const useChatStore = create<ChatState>((set, get) => {
       }
     },
 
-    requestOpenConversation: (conversationId) => {
+    requestOpenConversation: (conversationId, messageId) => {
       if (get().conversations.some((c) => c.conversationId === conversationId)) {
-        get().openConversation(conversationId);
+        get().openConversation(conversationId, messageId);
         return;
       }
-      pendingOpenId = conversationId;
+      pendingOpen = { conversationId, messageId };
       if (get().status === 'ready') scheduleListRefresh();
+    },
+
+    clearNotificationMessage: (messageId) => {
+      if (get().notificationMessageId === messageId) set({ notificationMessageId: null });
     },
 
     closeConversation: () => {
@@ -569,11 +586,11 @@ export const useChatStore = create<ChatState>((set, get) => {
 
     loadOlder: async () => {
       const conversationId = get().activeConversationId;
-      if (!conversationId) return;
+      if (!conversationId) return false;
       const thread = threadOf(conversationId);
-      if (!thread.hasMore || thread.loadingOlder) return;
+      if (!thread.hasMore || thread.loadingOlder) return false;
       const oldest = thread.messages.find((m) => m.delivery === 'sent');
-      if (!oldest) return;
+      if (!oldest) return false;
       const token = generation;
       patchThread(conversationId, { loadingOlder: true });
       try {
@@ -581,7 +598,7 @@ export const useChatStore = create<ChatState>((set, get) => {
           before: oldest.createdAt,
           limit: CHAT_PAGE_SIZE,
         });
-        if (!isCurrent(token)) return;
+        if (!isCurrent(token)) return false;
         const current = threadOf(conversationId);
         const known = new Set(current.messages.map((m) => m.id));
         const fresh = page.filter((m) => !known.has(m.id));
@@ -592,10 +609,12 @@ export const useChatStore = create<ChatState>((set, get) => {
           hasMore: fresh.length > 0 && page.length >= CHAT_PAGE_SIZE,
           loadingOlder: false,
         });
+        return fresh.length > 0;
       } catch (error) {
-        if (!isCurrent(token)) return;
+        if (!isCurrent(token)) return false;
         patchThread(conversationId, { loadingOlder: false });
         set({ actionError: friendlyErrorMessage(error, [], 'לא הצלחנו לטעון הודעות קודמות. נסו שוב.') });
+        return false;
       }
     },
 

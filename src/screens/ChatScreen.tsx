@@ -38,6 +38,8 @@ export function ChatScreen() {
   const online = useChatStore((s) => s.online);
   const conversations = useChatStore((s) => s.conversations);
   const activeConversationId = useChatStore((s) => s.activeConversationId);
+  const notificationMessageId = useChatStore((s) => s.notificationMessageId);
+  const clearNotificationMessage = useChatStore((s) => s.clearNotificationMessage);
   const refresh = useChatStore((s) => s.refresh);
   const setScreenActive = useChatStore((s) => s.setScreenActive);
   const openConversation = useChatStore((s) => s.openConversation);
@@ -158,6 +160,8 @@ export function ChatScreen() {
       users={users}
       showBack={!twoPane}
       keyboardPadding={keyboardPadding}
+      focusMessageId={notificationMessageId}
+      onFocusMessageHandled={clearNotificationMessage}
     />
   ) : null;
 

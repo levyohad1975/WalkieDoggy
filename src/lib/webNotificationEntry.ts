@@ -48,7 +48,9 @@ export function consumeInitialWebNotificationParam(): void {
   try {
     const raw = new URLSearchParams(window.location.search).get('notif');
     if (!raw) return;
-    const data = JSON.parse(decodeURIComponent(raw));
+    // URLSearchParams already percent-decodes the value. Decoding it again
+    // corrupts valid JSON strings containing literal percent sequences.
+    const data = JSON.parse(raw);
     dispatch(data);
   } catch {
     // Malformed/foreign query param — never let a bad URL break Home.
