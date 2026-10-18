@@ -202,6 +202,18 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('setCompleteWalkId(spontaneous.id)');
   });
 
+  it('preserves live event totals at completion and celebrates only a successful remote finish', () => {
+    expect(home).toContain('resolveCompletionWalkEventCounts(');
+    expect(home).toMatch(/finishWalk\(walkId, completedByUserId, \{ hadPee, hadPoop, peeCount, poopCount/);
+    const remoteStart = home.indexOf('visible={Boolean(remoteFinishRequest)}');
+    const remoteEnd = home.indexOf('</ConfirmModal>', remoteStart);
+    const remoteFinish = home.slice(remoteStart, remoteEnd);
+    expect(remoteFinish).toContain('const completed = await finishWalk(');
+    expect(remoteFinish).toContain('peeCount: request.peeCount');
+    expect(remoteFinish).toContain('poopCount: request.poopCount');
+    expect(remoteFinish).toMatch(/if \(completed\)[\s\S]*showWalkCompletionCelebration\(/);
+  });
+
   it('keeps only the approved completed-walk entry instead of a redundant spontaneous-start CTA', () => {
     expect(home).toContain('הוסף טיול');
     expect(home).toContain('setAddUnplannedVisible(true)');

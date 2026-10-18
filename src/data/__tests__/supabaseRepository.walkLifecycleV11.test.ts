@@ -4,7 +4,7 @@ const row = {
   id: 'walk-1', family_id: 'family-1', schedule_entry_id: 'entry-1', dog_id: 'dog-1', date: '2026-10-13',
   scheduled_time: '08:00', responsible_user_id: 'assignee-1', actual_walker_user_id: 'walker-1',
   status: 'in_progress', started_at: '2026-10-13T05:00:00.000Z', started_by_user_id: 'actor-1',
-  completed_at: null, completed_by_user_id: null, ended_by_user_id: null, had_pee: null, had_poop: null,
+  completed_at: null, completed_by_user_id: null, ended_by_user_id: null, had_pee: null, had_poop: null, pee_count: null, poop_count: null,
   note: null, duration_minutes: null, is_unplanned: false, duplicate_resolution_group_id: null, created_at: 'created', updated_at: 'updated',
 };
 
@@ -40,6 +40,25 @@ describe('SupabaseRepository v1.1 lifecycle RPC contracts', () => {
     expect(call?.args.p_remote_confirmation).toBe(true);
   });
 
+  it('finishes with exact event counts in the idempotent server RPC and maps the persisted totals', async () => {
+    let call: { name: string; args: Record<string, unknown> } | undefined;
+    const client: any = {
+      rpc: (name: string, args: Record<string, unknown>) => {
+        call = { name, args };
+        return Promise.resolve({ data: { ...row, status: 'done', had_pee: true, pee_count: 3, had_poop: false, poop_count: 0 }, error: null });
+      },
+    };
+    const finished = await new SupabaseRepository(client).finishWalkV12('walk-1', 'walker-1', 'operation-3', {
+      actorUserId: 'walker-1', hadPee: true, peeCount: 3, hadPoop: false, poopCount: 0,
+    });
+    expect(call).toEqual({ name: 'finish_walk_v12', args: {
+      p_walk_id: 'walk-1', p_expected_actor_id: 'walker-1', p_actual_walker_id: 'walker-1', p_operation_id: 'operation-3',
+      p_had_pee: true, p_had_poop: false, p_note: null, p_completed_at: null, p_remote_confirmation: false,
+      p_pee_count: 3, p_poop_count: 0,
+    } });
+    expect(finished).toMatchObject({ hadPee: true, peeCount: 3, hadPoop: false, poopCount: 0 });
+  });
+
   it('maps the duplicate-resolution marker without changing lifecycle or historical attribution', async () => {
     const resolvedRow = { ...row, duplicate_resolution_group_id: 'resolution-group-1' };
     const client: any = { from: () => ({ select: () => ({ eq: () => Promise.resolve({ data: [resolvedRow], error: null }) }) }) };
@@ -58,7 +77,7 @@ describe('SupabaseRepository v1.1 lifecycle RPC contracts', () => {
     const repo = new SupabaseRepository(client);
     const base = {
       id: 'walk-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-10-13', scheduledTime: '08:00',
-      responsibleUserId: 'assignee-1', status: 'in_progress' as const, isUnplanned: true,
+      responsibleUserId: 'assignee-1', status: 'in_progress' as const, isUnplanned: true, peeCount: 3, poopCount: 0,
       createdAt: 'created', updatedAt: 'updated',
     };
     // A stale copy cached before an admin resolved the walk, and a fresh one.
@@ -68,6 +87,7 @@ describe('SupabaseRepository v1.1 lifecycle RPC contracts', () => {
     for (const payload of payloads) {
       expect(payload).not.toHaveProperty('duplicate_resolution_group_id');
       expect(payload).not.toHaveProperty('actual_walker_user_id');
+      expect(payload).toMatchObject({ pee_count: 3, poop_count: 0 });
     }
   });
 

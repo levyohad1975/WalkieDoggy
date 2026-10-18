@@ -74,4 +74,19 @@ describe('v1.1 lifecycle journal isolation and idempotency', () => {
     expect(byOp['op-other']).toMatchObject({ walkId: 'walk-other' });
     expect(await AsyncStorage.getItem('dog-walk-family:sync-queue:v4')).toBe(legacyQueueSnapshot);
   });
+
+  it('durably carries exact pee/poop totals in an offline finish intent without touching SyncQueue', async () => {
+    const legacyQueueSnapshot = '[{"type":"isolated-operation"}]';
+    await AsyncStorage.setItem('dog-walk-family:sync-queue:v4', legacyQueueSnapshot);
+    await enqueueWalkLifecycleIntent({
+      action: 'finish', walkId: 'walk-1', familyId: 'family-1', actorUserId: 'walker-1',
+      actualWalkerUserId: 'walker-1', operationId: 'op-counts',
+      details: { actorUserId: 'walker-1', hadPee: true, peeCount: 3, hadPoop: true, poopCount: 2 }, state: 'pending',
+    });
+    await expect(listWalkLifecycleIntents()).resolves.toEqual([expect.objectContaining({
+      operationId: 'op-counts',
+      details: expect.objectContaining({ peeCount: 3, poopCount: 2 }),
+    })]);
+    expect(await AsyncStorage.getItem('dog-walk-family:sync-queue:v4')).toBe(legacyQueueSnapshot);
+  });
 });

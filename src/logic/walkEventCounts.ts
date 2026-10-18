@@ -3,6 +3,20 @@ import type { Walk } from '../types';
 /** Counts are authoritative only when persisted. Legacy walks stored flags. */
 export interface WalkEventCounts { pee: number; poop: number }
 
+/** Use the completion checkboxes as a final correction while retaining every
+ * event recorded during the live walk. A checked event with no prior taps is
+ * still one event; an unchecked event is explicitly zero. */
+export function resolveCompletionWalkEventCounts(
+  recorded: WalkEventCounts,
+  hadPee: boolean,
+  hadPoop: boolean,
+): WalkEventCounts {
+  return {
+    pee: hadPee ? Math.max(1, validWalkEventCount(recorded.pee) ? recorded.pee : 0) : 0,
+    poop: hadPoop ? Math.max(1, validWalkEventCount(recorded.poop) ? recorded.poop : 0) : 0,
+  };
+}
+
 export function validWalkEventCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }

@@ -174,6 +174,30 @@ describe('OfflineFirstRepository — Walk Lifecycle v1.1 server version gate', (
     expect(await listWalkLifecycleIntents()).toEqual([expect.objectContaining({ action: 'start', operationId: 'op-start', state: 'pending' })]);
   });
 
+  it('keeps exact event totals in the separate offline lifecycle outbox and local walk record', async () => {
+    const { persistWalkLifecycleCapability } = require('../walkLifecycleCapability');
+    await persistWalkLifecycleCapability({ status: 'supported', checkedAt: 't' });
+    netinfoFetch.mockResolvedValue({ isConnected: false, isInternetReachable: false });
+    const { repo, remote, started, LocalRepository } = setup({ finishWalkV12: jest.fn() });
+    await new LocalRepository().saveWalk(started);
+    const { listWalkLifecycleIntents } = require('../walkLifecycleOperationIds');
+    const sentinel = '[{"id":"protected-syncqueue-op"}]';
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.setItem('dog-walk-family:sync-queue:v4', sentinel);
+
+    await expect(repo.finishWalkV12!('walk-1', 'user-1', 'op-finish-counts', {
+      actorUserId: 'user-1', hadPee: true, peeCount: 3, hadPoop: true, poopCount: 2,
+    })).resolves.toMatchObject({ status: 'done', peeCount: 3, poopCount: 2, lifecycleSyncStatus: 'pending' });
+
+    expect(await listWalkLifecycleIntents()).toEqual([expect.objectContaining({
+      operationId: 'op-finish-counts',
+      details: expect.objectContaining({ peeCount: 3, poopCount: 2 }),
+    })]);
+    expect(await new LocalRepository().findWalkById('walk-1')).toMatchObject({ peeCount: 3, poopCount: 2 });
+    expect(await AsyncStorage.getItem('dog-walk-family:sync-queue:v4')).toBe(sentinel);
+    expect(remote.finishWalkV12).not.toHaveBeenCalled();
+  });
+
   it('offline after a NEGATIVE verified answer: refuses and queues nothing', async () => {
     const { persistWalkLifecycleCapability } = require('../walkLifecycleCapability');
     await persistWalkLifecycleCapability({ status: 'not_installed', checkedAt: 't' });

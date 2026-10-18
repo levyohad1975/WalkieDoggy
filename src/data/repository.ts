@@ -219,6 +219,8 @@ export interface Repository {
   startSpontaneousWalkV11?(walk: Walk, operationId: string, actorUserId?: string): Promise<Walk>;
   finishWalk?(walkId: string, actualWalkerId: string, details?: { hadPee?: boolean; hadPoop?: boolean; note?: string; completedAt?: string }): Promise<Walk>;
   finishWalkV11?(walkId: string, actualWalkerId: string, operationId: string, details?: { hadPee?: boolean; hadPoop?: boolean; note?: string; completedAt?: string; remoteConfirmation?: boolean; actorUserId?: string }): Promise<Walk>;
+  /** Count-preserving lifecycle completion introduced with walk event count persistence. */
+  finishWalkV12?(walkId: string, actualWalkerId: string, operationId: string, details?: { hadPee?: boolean; hadPoop?: boolean; peeCount?: number; poopCount?: number; note?: string; completedAt?: string; remoteConfirmation?: boolean; actorUserId?: string }): Promise<Walk>;
   acquireGpsOwnershipV11?(walkId: string, confirmTransfer?: boolean): Promise<{ fencingEpoch: number; expiresAt: string }>;
   releaseGpsOwnershipV11?(walkId: string, fencingEpoch: number): Promise<void>;
   heartbeatGpsOwnershipV11?(walkId: string, fencingEpoch: number): Promise<string>;

@@ -47,6 +47,11 @@ describe('markWalkDone', () => {
     expect(done.note).toBe('הכל טוב');
   });
 
+  it('stores exact event counts and keeps legacy flags consistent with those counts', () => {
+    const done = markWalkDone(makeWalk(), 'yael', { peeCount: 3, poopCount: 0 });
+    expect(done).toMatchObject({ peeCount: 3, poopCount: 0, hadPee: true, hadPoop: false });
+  });
+
   it('allows completedByUserId to differ from the originally responsible user', () => {
     const walk = makeWalk({ responsibleUserId: 'noam' });
     const done = markWalkDone(walk, 'yael');
