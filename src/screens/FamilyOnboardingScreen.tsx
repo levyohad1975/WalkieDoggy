@@ -3,6 +3,7 @@ import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleShe
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
+import { useSystemAdminStore } from '../store/systemAdminStore';
 import { colors } from '../theme/colors';
 import { breakpoints, elevation, radii, spacing, typography } from '../theme/tokens';
 import { Button } from '../components/Button';
@@ -24,7 +25,7 @@ import { WalkieMascot } from '../components/WalkieMascot';
 import { beginFamilySetup, getFamilyCreationOwnerId, markFamilyCreationPending } from '../lib/familySetupProgress';
 import type { FamilyLookupResult } from '../types';
 
-type Mode = 'choose' | 'pwaChoice' | 'recover' | 'create' | 'join' | 'redeem';
+type Mode = 'choose' | 'pwaChoice' | 'recover' | 'create' | 'join' | 'redeem' | 'systemAdmin';
 
 /**
  * Shown once per device, only in Supabase (backend) mode, before this device
@@ -103,6 +104,21 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
   const [mode, setMode] = useState<Mode>(
     initialInviteToken ? 'redeem' : initialJoinCode ? 'join' : isInstalledWebApp ? 'pwaChoice' : 'choose'
   );
+  const adminTapCount = useRef(0);
+  const adminLastTap = useRef(0);
+  const handleAdminMascotTap = () => {
+    const now = Date.now();
+    adminTapCount.current = now - adminLastTap.current <= 700 ? adminTapCount.current + 1 : 1;
+    adminLastTap.current = now;
+    if (adminTapCount.current >= 4) {
+      adminTapCount.current = 0;
+      setAdminEmail('');
+      setVerificationCode('');
+      setVerificationSent(false);
+      setCreateError(null);
+      setMode('systemAdmin');
+    }
+  };
   // --- create ---
   const [familyName, setFamilyName] = useState('');
   const [dogName, setDogName] = useState('');
@@ -426,10 +442,65 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
     }
   };
 
+  if (mode === 'systemAdmin') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <WalkieMascot state="ready" size={128} accessibilityLabel="Walkie Doggy" />
+        <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">כניסת מנהל מערכת</RtlText>
+        <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>אימות מאובטח ללא כניסה למשפחה</RtlText>
+        <TextInput
+          value={adminEmail}
+          onChangeText={(value) => { setAdminEmail(value); setVerificationSent(false); setVerificationCode(''); setCreateError(null); }}
+          placeholder="כתובת אימייל" accessibilityLabel="כתובת אימייל"
+          keyboardType="email-address" autoCapitalize="none" autoCorrect={false}
+          editable={!verifyingEmail} style={styles.input} textAlign="left"
+        />
+        {!verificationSent ? (
+          <Button label={verifyingEmail ? 'שולח קוד…' : 'שליחת קוד OTP'}
+            onPress={() => sendAdminVerification(false)} disabled={verifyingEmail || !adminEmail.trim()}
+            loading={verifyingEmail} style={styles.wideButton} />
+        ) : (
+          <>
+            <TextInput value={verificationCode} onChangeText={setVerificationCode}
+              placeholder="קוד האימות" accessibilityLabel="קוד האימות"
+              keyboardType="number-pad" autoComplete="one-time-code" textContentType="oneTimeCode"
+              style={styles.input} textAlign="center" />
+            <Button label={verifyingEmail ? 'מאמת…' : 'כניסה לממשק הניהול'}
+              disabled={verifyingEmail || !verificationCode.trim()} loading={verifyingEmail}
+              onPress={async () => {
+                setVerifyingEmail(true);
+                setCreateError(null);
+                try {
+                  await verifyAdminEmailOtp(adminEmail, verificationCode);
+                  await useSystemAdminStore.getState().refresh();
+                  if (!useSystemAdminStore.getState().isSystemAdmin) {
+                    throw new Error('לכתובת זו אין הרשאת מנהל מערכת.');
+                  }
+                  // App.tsx opens the platform console directly for an authenticated
+                  // System Admin without a claimed family/profile.
+                } catch (error) {
+                  setCreateError(friendlyErrorMessage(error));
+                } finally {
+                  setVerifyingEmail(false);
+                }
+              }} style={styles.wideButton} />
+            <Button label="שליחת קוד חדש" variant="secondary"
+              onPress={() => sendAdminVerification(false)} disabled={verifyingEmail}
+              style={styles.wideButton} />
+          </>
+        )}
+        {createError ? <RtlText style={styles.error} accessibilityRole="alert">{createError}</RtlText> : null}
+        <Button label="חזרה" variant="secondary"
+          onPress={() => { setMode(isInstalledWebApp ? 'pwaChoice' : 'choose'); setVerificationCode(''); }}
+          style={styles.wideButton} />
+      </SafeAreaView>
+    );
+  }
+
   if (mode === 'pwaChoice') {
     return (
       <SafeAreaView style={styles.container}>
-        <WalkieMascot state="ready" size={128} testID="onboarding-mascot-pwa-choice" />
+        <Pressable onPress={handleAdminMascotTap} accessibilityLabel="הקמע של Walkie Doggy"><WalkieMascot state="ready" size={128} testID="onboarding-mascot-pwa-choice" /></Pressable>
         <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">רגע לפני שממשיכים</RtlText>
         <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
           פתחתם את Walkie Doggy מהאייקון שנוסף למסך הבית. כדי לחבר את המכשיר הזה נכון, ספרו לנו קודם באיזה שלב אתם.
@@ -520,7 +591,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
     return (
       <SafeAreaView style={styles.welcomeContainer}>
         <View style={[styles.welcomeCard, isDesktop && styles.welcomeCardDesktop]}>
-          <WalkieMascot state="ready" size={isDesktop ? 184 : 150} accessibilityLabel="הקמע הרשמי של Walkie Doggy" />
+          <Pressable onPress={handleAdminMascotTap} accessibilityLabel="הקמע הרשמי של Walkie Doggy"><WalkieMascot state="ready" size={isDesktop ? 184 : 150} accessibilityLabel="הקמע הרשמי של Walkie Doggy" /></Pressable>
           <RtlText style={styles.welcomeBrand}>Walkie Doggy</RtlText>
           <RtlText style={styles.welcomeTitle} accessibilityRole="header">מטיילים יחד, כמשפחה</RtlText>
           <RtlText style={styles.welcomeCopy}>יוצרים בית משותף לכלבים, לבני המשפחה ולטיולים היומיים.</RtlText>
