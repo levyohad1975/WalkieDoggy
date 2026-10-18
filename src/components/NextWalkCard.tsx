@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { RtlText } from './RtlText';
-import type { Dog, FamilyUser, Walk } from '../types';
+import type { Dog, FamilyUser, Walk, WalkGpsSession } from '../types';
 import { isOverdue, relativeTimeLabel, walkDateTime } from '../logic/nextWalk';
 import { isWalkRequiringAttention } from '../logic/walkAttention';
 import { walkDateContextLabel } from '../logic/walkDateContext';
@@ -75,6 +75,8 @@ interface NextWalkCardProps {
   gpsLastStopLabel?: string | null;
   /** GPS samples from the active walk, updated as the phone moves. */
   liveRoutePoints?: Array<{ latitude: number; longitude: number; timestamp: number }>;
+  /** Server-persisted route from the actual walker's device, used by other family devices. */
+  remoteGpsSession?: WalkGpsSession | null;
   /**
    * ✕ "לא בוצע" for an overdue-unresolved walk (Section 3). Only rendered
    * once the walk is actually overdue AND canResolve is true.
@@ -142,6 +144,7 @@ export function NextWalkCard({
   gpsNotTrackedHere,
   gpsLastStopLabel,
   liveRoutePoints,
+  remoteGpsSession,
   onMarkNotDone,
   canResolve = true,
   onSwap,
@@ -279,7 +282,9 @@ export function NextWalkCard({
       {isActive ? (
         <>
         <RtlText style={styles.gpsStatusLine} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE} accessibilityLiveRegion="polite">
-          {gpsNotTrackedHere === 'walker_here'
+          {remoteGpsSession && remoteGpsSession.pointCount > 0
+            ? `📍 GPS פעיל במכשיר המטייל/ת${remoteGpsSession.distanceMeters != null ? ` · ${formatDistanceMeters(remoteGpsSession.distanceMeters)}` : ''}`
+            : gpsNotTrackedHere === 'walker_here'
             ? '📍 GPS לא פעיל במכשיר הזה'
             : gpsNotTrackedHere === 'elsewhere'
               ? '📍 ה-GPS נאסף במכשיר של מי שיוצא/ת לטיול'
@@ -303,12 +308,12 @@ export function NextWalkCard({
                 : 'GPS פעיל'}`
                       : '📍 מפעיל GPS…'}
         </RtlText>
-        {gpsNotTrackedHere === 'walker_here' && gpsLastStopLabel ? (
+        {!remoteGpsSession?.pointCount && gpsNotTrackedHere === 'walker_here' && gpsLastStopLabel ? (
           <RtlText style={styles.gpsDiagnostic} numberOfLines={2} maxFontSizeMultiplier={CARD_MAX_FONT_SCALE} testID="gps-last-stop-diagnostic">
             {`אבחון GPS: ${gpsLastStopLabel}`}
           </RtlText>
         ) : null}
-        {onRetryGps && gpsNotTrackedHere === 'walker_here' ? (
+        {!remoteGpsSession?.pointCount && onRetryGps && gpsNotTrackedHere === 'walker_here' ? (
           <Pressable onPress={onRetryGps} accessibilityRole="button" accessibilityLabel="הפעל GPS לטיול הזה במכשיר הזה" style={styles.gpsRetry}>
             <RtlText style={styles.gpsRetryText}>הפעל GPS</RtlText>
           </Pressable>
@@ -336,7 +341,7 @@ export function NextWalkCard({
 
         {isActive ? (
           <View style={styles.activeMapPanel}>
-            <RoutePreview live session={{ routePoints: liveRoutePoints ?? [] } as import('../types').WalkGpsSession} />
+            <RoutePreview live session={{ routePoints: liveRoutePoints ?? remoteGpsSession?.routePoints ?? [] } as import('../types').WalkGpsSession} />
           </View>
         ) : null}
       {isActive && onEndWalk && canResolve ? (

@@ -105,7 +105,8 @@ describe('Home active spontaneous walks (P0 duplicate cards)', () => {
       expect(nonDuplicateBranch).toContain('liveRoutePoints={gpsTrackingWalkId === spontaneous.id ? gpsRoutePoints : undefined}');
       expect(nonDuplicateBranch).toContain('gpsTrackingStatus={gpsTrackingWalkId === spontaneous.id ? gpsTrackingStatus : null}');
       expect(nonDuplicateBranch).toContain('onRetryGps={() => {');
-      expect(nonDuplicateBranch).toContain('useGpsStore.getState().startTracking(spontaneous)');
+      expect(nonDuplicateBranch).toContain('activateGpsForWalk(spontaneous)');
+      expect(nonDuplicateBranch).toContain('remoteGpsSession={remoteGpsSessionForWalk(spontaneous.id)}');
     });
 
     it("uses the authoritative actual-walker field (never a display-name match) for identity, local-GPS gating and finish authorization", () => {

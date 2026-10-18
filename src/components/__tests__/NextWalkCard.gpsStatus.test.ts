@@ -14,6 +14,13 @@ describe('NextWalkCard surfaces live GPS distance/status while active (structura
     expect(source).toMatch(/gpsStatus\?: 'granted' \| 'denied' \| 'unavailable' \| null;/);
   });
 
+  it('renders a server-persisted remote GPS session and its route without depending on this device\'s gpsStore watch', () => {
+    expect(source).toMatch(/remoteGpsSession\?: WalkGpsSession \| null;/);
+    expect(source).toMatch(/remoteGpsSession && remoteGpsSession\.pointCount > 0/);
+    expect(source).toContain('GPS פעיל במכשיר המטייל/ת');
+    expect(source).toMatch(/liveRoutePoints \?\? remoteGpsSession\?\.routePoints \?\? \[\]/);
+  });
+
   it('renders the GPS state while the card is active, including before permission resolves', () => {
     const idx = source.indexOf('{isActive ? (');
     expect(idx).toBeGreaterThan(-1);
@@ -51,7 +58,7 @@ describe('NextWalkCard — active walk with no GPS session on this device (struc
   const home = fs.readFileSync(require.resolve('../../screens/HomeScreen'), 'utf8').replace(/\r\n/g, '\n');
 
   it('states the real condition before any tracking status, and offers an explicit activation tap to the walker', () => {
-    const statusStart = card.indexOf('{gpsNotTrackedHere === \'walker_here\'');
+    const statusStart = card.indexOf(': gpsNotTrackedHere === \'walker_here\'');
     expect(statusStart).toBeGreaterThan(-1);
     expect(statusStart).toBeLessThan(card.indexOf('gpsTrackingStatus === \'requesting\''));
     expect(card).toContain('GPS לא פעיל במכשיר הזה');

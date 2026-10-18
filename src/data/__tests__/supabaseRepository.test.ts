@@ -346,6 +346,37 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
     ]);
   });
 
+  it('getGpsSessionsForWalkIds hydrates a server-fenced route for the other family device', async () => {
+    const client: any = {
+      from: (table: string) => ({
+        select: () => ({
+          in: () => ({
+            order: async () => ({ data: [
+              { walk_id: 'walk-live', latitude: 32.1, longitude: 34.8, point_timestamp_ms: 1000 },
+              { walk_id: 'walk-live', latitude: 32.1001, longitude: 34.8001, point_timestamp_ms: 2000 },
+            ], error: null }),
+            then: (resolve: (value: unknown) => unknown) => Promise.resolve({
+              data: table === 'walk_gps_sessions' ? [] : [{ walk_id: 'walk-live', family_id: 'fam-42', dog_id: 'dog-1', distance_meters: 16, point_count: 2, route_started_at: 'start', route_ended_at: null }],
+              error: null,
+            }).then(resolve),
+          }),
+        }),
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+
+    const sessions = await repo.getGpsSessionsForWalkIds(['walk-live']);
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({
+      walkId: 'walk-live', familyId: 'fam-42', dogId: 'dog-1', distanceMeters: 16, pointCount: 2,
+      startedAt: 'start', routePoints: [
+        { latitude: 32.1, longitude: 34.8, timestamp: 1000 },
+        { latitude: 32.1001, longitude: 34.8001, timestamp: 2000 },
+      ],
+    });
+  });
+
   it('getGpsSessionsForWalkIds returns [] without querying for an empty id list', async () => {
     const fromMock = jest.fn();
     const client: any = { from: fromMock };

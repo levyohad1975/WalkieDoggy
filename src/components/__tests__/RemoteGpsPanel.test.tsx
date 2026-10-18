@@ -35,4 +35,9 @@ describe('RemoteGpsPanel target-device contract',()=>{
   expect(source).toContain('הבקשה נכשלה');
   expect(source).toContain('הבקשה פגה');
  });
+ it('uses a persisted server GPS session as the admin-facing truth when the command is pending or failed',()=>{
+  expect(source).toMatch(/gpsSession\?: WalkGpsSession \| null/);
+  expect(source).toMatch(/const displayedWalkStatus=gpsSession\?\.pointCount\? 'tracking' : walkStatus/);
+  expect(source).toContain('המעקב פעיל והמיקום נשמר בשרת');
+ });
 });

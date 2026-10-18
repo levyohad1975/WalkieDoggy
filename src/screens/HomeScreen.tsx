@@ -72,6 +72,7 @@ import { getImportantHealthReminders, summarizeHealthTasksForHome } from '../log
 import { getDogBackground, getDogBackgroundImageSource } from '../theme/dogBackgrounds';
 import { useGpsStore } from '../store/gpsStore';
 import { RemoteGpsPanel } from '../components/RemoteGpsPanel';
+import { acknowledgeRemoteGpsStart, getMyRemoteGpsCommands } from '../lib/remoteGps';
 
 export function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
@@ -213,6 +214,7 @@ export function HomeScreen() {
   const gpsTrackingStatus = useGpsStore((s) => s.trackingStatus);
   const gpsSessionsByWalkId = useGpsStore((s) => s.sessionsByWalkId);
   const gpsLastStop = useGpsStore((s) => s.lastGpsStop);
+  const [serverGpsSessions, setServerGpsSessions] = useState<{ familyId: string; sessions: Record<string, WalkGpsSession> }>({ familyId: '', sessions: {} });
 
   const [completeWalkId, setCompleteWalkId] = useState<string | null>(null);
   const [walkEventCounts, setWalkEventCounts] = useState<Record<string, { pee: number; poop: number }>>({});
@@ -469,6 +471,54 @@ export function HomeScreen() {
     });
   }, [currentUserId, startWalk]);
 
+  // The walker's ordinary "הפעל GPS" tap is also an explicit response to a
+  // still-pending remote request. Once server ownership is acquired and a
+  // real fix exists, reconcile that request on the server. This closes the
+  // gap where local GPS worked but the admin kept seeing a pending command.
+  const activateGpsForWalk = useCallback(async (walk: Walk) => {
+    try {
+      await useGpsStore.getState().startTracking(walk);
+      const owned = await useGpsStore.getState().attachGpsOwnership(walk);
+      if (!owned) return;
+      const firstFix = await new Promise<boolean>((resolve) => {
+        const ready = () => {
+          const state = useGpsStore.getState();
+          return state.trackingWalkId === walk.id && state.permissionStatus === 'granted' && state.pointCount > 0 && state.gpsFencingEpoch != null;
+        };
+        if (ready()) { resolve(true); return; }
+        let settled = false;
+        let unsubscribe = () => {};
+        const finish = (value: boolean) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          unsubscribe();
+          resolve(value);
+        };
+        const timer = setTimeout(() => finish(false), 15_000);
+        unsubscribe = useGpsStore.subscribe((state) => {
+          if (state.trackingWalkId !== walk.id || state.permissionStatus === 'denied' || state.permissionStatus === 'unavailable') finish(false);
+          else if (ready()) finish(true);
+        });
+      });
+      if (!firstFix) return;
+      const gps = useGpsStore.getState();
+      if (gps.trackingWalkId !== walk.id || gps.permissionStatus !== 'granted' || gps.pointCount < 1 || gps.gpsFencingEpoch == null) return;
+      const pending = (await getMyRemoteGpsCommands()).find((candidate) =>
+        candidate.status === 'pending' && candidate.walk_id === walk.id &&
+        candidate.walk_family_id === familyId && candidate.walk_actual_walker_user_id === currentUserId &&
+        candidate.walk_status === 'in_progress'
+      );
+      if (!pending) return;
+      await acknowledgeRemoteGpsStart(pending.command_id, true);
+      useGpsStore.getState().markRemoteTracking(walk.id, pending.command_id);
+    } catch (error) {
+      // A command reconciliation failure must not cancel a valid local GPS
+      // watch. The pending request remains visible and is safe to retry.
+      console.warn('Manual GPS activation could not reconcile a remote request', error);
+    }
+  }, [currentUserId, familyId]);
+
   // PRD §9 gamification — an unlocked achievement reuses the SAME
   // celebration modal/state as an ordinary walk-completion celebration
   // (`celebration`/`setCelebration` above), sequenced through it rather
@@ -571,6 +621,54 @@ export function HomeScreen() {
     return dedupeCanonicalWalks(dogs.length > 1 && dog ? familyWalks.filter((walk) => walk.dogId === dog.id) : familyWalks);
   }, [walks, familyId, dogs.length, dog?.id]);
   const scheduleTimezone = family?.id === familyId ? family.timezone : undefined;
+
+  // GPS is collected on the walker's device. A different family device has
+  // no local gpsStore watch, so hydrate the server-fenced route for active
+  // walks while Home is visible. This is intentionally scoped to current
+  // family + active walk IDs; realtime is supplemental and polling recovers
+  // missed subscription events/backgrounded Safari tabs.
+  useEffect(() => {
+    let disposed = false;
+    let running = false;
+    const refreshRemoteGps = async () => {
+      if (disposed || running) return;
+      const ids = visibleWalks
+        .filter((entry) => entry.status === 'in_progress' && entry.id !== gpsTrackingWalkId)
+        .map((entry) => entry.id);
+      if (!isSupabaseConfigured || ids.length === 0) {
+        setServerGpsSessions({ familyId, sessions: {} });
+        return;
+      }
+      running = true;
+      try {
+        const sessions = await repository.getGpsSessionsForWalkIds(ids);
+        if (disposed) return;
+        setServerGpsSessions({
+          familyId,
+          sessions: Object.fromEntries(sessions.map((session) => [session.walkId, session])),
+        });
+      } catch {
+        // Keep the last authoritative snapshot across a transient network
+        // error; never replace it with local GPS state from another walk.
+      } finally {
+        running = false;
+      }
+    };
+    void refreshRemoteGps();
+    const timer = setInterval(() => {
+      if (AppState.currentState === 'active') void refreshRemoteGps();
+    }, 6_000);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void refreshRemoteGps();
+    });
+    return () => {
+      disposed = true;
+      clearInterval(timer);
+      subscription.remove();
+    };
+  }, [familyId, visibleWalks, gpsTrackingWalkId]);
+  const remoteGpsSessionForWalk = (walkId: string) =>
+    serverGpsSessions.familyId === familyId ? serverGpsSessions.sessions[walkId] ?? null : null;
 
   // Recompute at the next family-local walk boundary (and local minute for
   // countdown copy), not a drifting 60-second interval. Foregrounding also
@@ -1287,7 +1385,7 @@ export function HomeScreen() {
             }
             primaryLabel={isOverdue(nextWalk, new Date(), scheduleTimezone) ? 'ממתין לעדכון' : undefined}
             tone="dashboard"
-            remoteGpsAction={<RemoteGpsPanel walk={nextWalk} currentUserId={currentUserId} familyRole={actualFamilyRole} ready={!familyLoading && !scheduleLoading && Boolean(family)} />}
+            remoteGpsAction={<RemoteGpsPanel walk={nextWalk} currentUserId={currentUserId} familyRole={actualFamilyRole} ready={!familyLoading && !scheduleLoading && Boolean(family)} gpsSession={remoteGpsSessionForWalk(nextWalk.id)} />}
             onRecordPee={isActiveWalk(nextWalk) ? () => recordWalkEvent(nextWalk.id, 'pee') : undefined}
             onRecordPoop={isActiveWalk(nextWalk) ? () => recordWalkEvent(nextWalk.id, 'poop') : undefined}
             onUndoPee={() => undoWalkEvent(nextWalk.id, 'pee')}
@@ -1299,6 +1397,7 @@ export function HomeScreen() {
             liveDistanceMeters={gpsTrackingWalkId === nextWalk.id ? gpsDistanceMeters : null}
             gpsPointCount={gpsTrackingWalkId === nextWalk.id ? gpsPointCount : null}
             liveRoutePoints={gpsTrackingWalkId === nextWalk.id ? gpsRoutePoints : undefined}
+            remoteGpsSession={remoteGpsSessionForWalk(nextWalk.id)}
             gpsStatus={gpsTrackingWalkId === nextWalk.id ? gpsPermissionStatus : null}
             gpsTrackingStatus={gpsTrackingWalkId === nextWalk.id ? gpsTrackingStatus : null}
             gpsNotTrackedHere={
@@ -1314,7 +1413,7 @@ export function HomeScreen() {
                 setGpsTransferWalk(nextWalk);
                 return;
               }
-              void useGpsStore.getState().startTracking(nextWalk).then(() => useGpsStore.getState().attachGpsOwnership(nextWalk)).catch(() => undefined);
+              void activateGpsForWalk(nextWalk);
             }}
             onStartWalk={() => {
               if (nextWalk.responsibleUserId === currentUserId) startWalkAs(nextWalk, currentUserId, false);
@@ -1432,7 +1531,7 @@ export function HomeScreen() {
                     dogSex={spontaneousDog?.sex}
                     scheduleTimezone={scheduleTimezone}
                     tone="dashboard"
-                    remoteGpsAction={<RemoteGpsPanel walk={spontaneous} currentUserId={currentUserId} familyRole={actualFamilyRole} ready={!familyLoading && !scheduleLoading && Boolean(family)} />}
+                    remoteGpsAction={<RemoteGpsPanel walk={spontaneous} currentUserId={currentUserId} familyRole={actualFamilyRole} ready={!familyLoading && !scheduleLoading && Boolean(family)} gpsSession={remoteGpsSessionForWalk(spontaneous.id)} />}
                     onRecordPee={() => recordWalkEvent(spontaneous.id, 'pee')}
                     onRecordPoop={() => recordWalkEvent(spontaneous.id, 'poop')}
             onUndoPee={() => undoWalkEvent(spontaneous.id, 'pee')}
@@ -1444,6 +1543,7 @@ export function HomeScreen() {
                     liveDistanceMeters={gpsTrackingWalkId === spontaneous.id ? gpsDistanceMeters : null}
                     gpsPointCount={gpsTrackingWalkId === spontaneous.id ? gpsPointCount : null}
                     liveRoutePoints={gpsTrackingWalkId === spontaneous.id ? gpsRoutePoints : undefined}
+                    remoteGpsSession={remoteGpsSessionForWalk(spontaneous.id)}
                     gpsStatus={gpsTrackingWalkId === spontaneous.id ? gpsPermissionStatus : null}
                     gpsTrackingStatus={gpsTrackingWalkId === spontaneous.id ? gpsTrackingStatus : null}
                     gpsNotTrackedHere={
@@ -1459,7 +1559,7 @@ export function HomeScreen() {
                         setGpsTransferWalk(spontaneous);
                         return;
                       }
-                      void useGpsStore.getState().startTracking(spontaneous).then(() => useGpsStore.getState().attachGpsOwnership(spontaneous)).catch(() => undefined);
+                      void activateGpsForWalk(spontaneous);
                     }}
                     onEndWalk={
                       actualFamilyRole === 'admin' || spontaneous.actualWalkerUserId === currentUserId || (!spontaneous.actualWalkerUserId && spontaneous.responsibleUserId === currentUserId)

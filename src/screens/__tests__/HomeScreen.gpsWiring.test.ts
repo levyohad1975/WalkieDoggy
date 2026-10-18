@@ -19,6 +19,26 @@ describe('HomeScreen wires gpsStore\'s live tracking state into NextWalkCard (st
     expect(source).toMatch(/gpsStatus=\{gpsTrackingWalkId === nextWalk\.id \? gpsPermissionStatus : null\}/);
   });
 
+  it('hydrates active walks from family-scoped server GPS sessions for other devices and renders their persisted route', () => {
+    expect(source).toMatch(/repository\.getGpsSessionsForWalkIds\(ids\)/);
+    expect(source).toMatch(/entry\.status === 'in_progress' && entry\.id !== gpsTrackingWalkId/);
+    expect(source).toMatch(/serverGpsSessions\.familyId === familyId \? serverGpsSessions\.sessions\[walkId\] \?\? null : null/);
+    expect(source).toMatch(/remoteGpsSession=\{remoteGpsSessionForWalk\(nextWalk\.id\)\}/);
+    expect(source).toMatch(/remoteGpsSession=\{remoteGpsSessionForWalk\(spontaneous\.id\)\}/);
+  });
+
+  it('reconciles a pending remote command only after a manual tap, server GPS lease, and first location fix', () => {
+    const activation = source.slice(source.indexOf('const activateGpsForWalk ='), source.indexOf('// PRD §9 gamification — an unlocked'));
+    expect(activation).toMatch(/attachGpsOwnership\(walk\)/);
+    expect(activation).toMatch(/gps\.permissionStatus !== 'granted' \|\| gps\.pointCount < 1 \|\| gps\.gpsFencingEpoch == null/);
+    expect(activation).toContain('15_000');
+    expect(activation).toMatch(/if \(!firstFix\) return/);
+    expect(activation).toMatch(/candidate\.walk_family_id === familyId/);
+    expect(activation).toMatch(/candidate\.walk_actual_walker_user_id === currentUserId/);
+    expect(activation).toMatch(/acknowledgeRemoteGpsStart\(pending\.command_id, true\)/);
+    expect(activation).toMatch(/markRemoteTracking\(walk\.id, pending\.command_id\)/);
+  });
+
   it('starts one foreground GPS watch from the Start button gesture before the walk RPC', () => {
     const startAction = source.slice(source.indexOf('const startWalkAs ='), source.indexOf('// PRD §9 gamification — an unlocked'));
     expect(startAction).toMatch(/if \(!remoteStart\) void useGpsStore\.getState\(\)\.startTracking\(walk\)/);
