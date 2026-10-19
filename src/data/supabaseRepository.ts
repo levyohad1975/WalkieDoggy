@@ -794,6 +794,13 @@ export class SupabaseRepository implements Repository {
     return (data ?? []).map(toWalk);
   }
 
+  /** Read one walk directly from the authenticated server; RLS is authoritative. */
+  async getWalkAuthoritative(familyId: string, walkId: string): Promise<Walk | undefined> {
+    const { data, error } = await this.client.from('walks').select('*').eq('id', walkId).eq('family_id', familyId).maybeSingle();
+    if (error) throw error;
+    return data ? toWalk(data) : undefined;
+  }
+
   async getWalkDuplicateResolutionAudit(familyId: string): Promise<WalkDuplicateResolutionAudit[]> {
     const { data, error } = await this.client.from('walk_duplicate_resolution_groups')
       .select('id,created_at,created_by_user_id,dog_id,canonical_walk_id,rationale,walk_duplicate_resolution_items(walk_id,disposition,original_walk,linked_gps_session_ids)')

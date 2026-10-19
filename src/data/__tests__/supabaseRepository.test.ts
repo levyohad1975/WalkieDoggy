@@ -706,6 +706,27 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
     const client: any = { from: () => ({ select: () => ({ eq: () => Promise.resolve({ data: null, error: null }) }) }) };
     expect(await new SupabaseRepository(client).getWalks('fam-42')).toEqual([]);
   });
+
+  it('gets a Remote GPS walk from the authenticated server with both ID and family filters', async () => {
+    const filters: Array<[string, string]> = [];
+    const row = { id: 'walk-1', family_id: 'fam-42', dog_id: 'dog-1', date: '2026-10-19', scheduled_time: '09:00', responsible_user_id: 'user-1', actual_walker_user_id: 'user-1', status: 'in_progress', created_at: 'created', updated_at: 'updated' };
+    const query = {
+      eq: (field: string, value: string) => { filters.push([field, value]); return query; },
+      maybeSingle: async () => ({ data: row, error: null }),
+    };
+    const client: any = { from: (table: string) => { expect(table).toBe('walks'); return { select: (columns: string) => { expect(columns).toBe('*'); return query; } }; } };
+
+    const result = await new SupabaseRepository(client).getWalkAuthoritative('fam-42', 'walk-1');
+
+    expect(filters).toEqual([['id', 'walk-1'], ['family_id', 'fam-42']]);
+    expect(result).toMatchObject({ id: 'walk-1', familyId: 'fam-42', dogId: 'dog-1', status: 'in_progress', actualWalkerUserId: 'user-1' });
+  });
+
+  it('treats an RLS-filtered authoritative walk as unavailable instead of falling back to cache', async () => {
+    const query = { eq: () => query, maybeSingle: async () => ({ data: null, error: null }) };
+    const client: any = { from: () => ({ select: () => query }) };
+    await expect(new SupabaseRepository(client).getWalkAuthoritative('family-other', 'walk-1')).resolves.toBeUndefined();
+  });
 });
 
 /**

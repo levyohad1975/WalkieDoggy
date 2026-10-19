@@ -1085,6 +1085,17 @@ export class OfflineFirstRepository implements Repository {
     return await this.pruneAndDedupeCanonicalWalks(await this.local.getWalks(familyId));
   }
 
+  /**
+   * Security-sensitive callers such as Remote GPS must not treat an offline
+   * cache entry as current server authorization. This read has no local
+   * fallback and fails closed when offline or when the backend lacks it.
+   */
+  async getWalkAuthoritative(familyId: string, walkId: string): Promise<Walk | undefined> {
+    if (!this.remote?.getWalkAuthoritative) throw new Error('Authoritative walk lookup is unavailable');
+    if (!(await this.isOnline())) throw new Error('Network unavailable; walk could not be verified from the server');
+    return this.remote.getWalkAuthoritative(familyId, walkId);
+  }
+
   async getWalkDuplicateResolutionAudit(familyId: string): Promise<WalkDuplicateResolutionAudit[]> {
     if (!(await this.isOnline()) || !this.remote?.getWalkDuplicateResolutionAudit) return [];
     return this.remote.getWalkDuplicateResolutionAudit(familyId);

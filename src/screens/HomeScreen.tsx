@@ -1471,6 +1471,7 @@ export function HomeScreen() {
             <RtlText style={styles.onDemandTitle}>יוצאים לטיול?</RtlText>
             <RtlText style={styles.onDemandSubtitle}>לא חייבים לקבוע לו״ז מראש. אפשר להתחיל עכשיו ו-Walkie Doggy יתעד את הטיול וה-GPS.</RtlText>
             <Button label="התחל טיול" icon="▶" onPress={() => setAddUnplannedVisible(true)} style={styles.onDemandStartButton} shrinkToFit />
+            {!activeSpontaneousWalkGroups.length ? <RemoteGpsPanel currentUserId={currentUserId} familyRole={actualFamilyRole} ready={!familyLoading && !scheduleLoading && Boolean(family)} /> : null}
           </View>
         )}
         </View>

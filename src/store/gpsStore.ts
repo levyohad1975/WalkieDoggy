@@ -13,7 +13,7 @@ import { recordGpsLifecycle } from '../lib/gpsLifecycleLog';
  */
 export type GpsStopReason = 'walk_finished' | 'walk_marked_done' | 'remote_gps_stopped_by_user' | 'remote_command_terminated';
 /** Ways a provisional/unwanted watch is DISCARDED without persisting anything. */
-export type GpsCancelReason = 'walk_start_failed' | 'remote_activation_failed' | 'duplicate_walk_resolved' | 'test_cleanup';
+export type GpsCancelReason = 'walk_start_failed' | 'remote_activation_failed' | 'remote_command_terminated' | 'duplicate_walk_resolved' | 'test_cleanup';
 
 // Not store state — the live OS subscription handle. Kept outside the
 // store (like localRepository's in-memory cache, or notificationService's

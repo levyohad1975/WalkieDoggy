@@ -196,6 +196,8 @@ export interface Repository {
   deleteScheduleEntry(entryId: string): Promise<void>;
 
   getWalks(familyId: string): Promise<Walk[]>;
+  /** Online, read-only walk lookup that must bypass local cache fallbacks. */
+  getWalkAuthoritative?(familyId: string, walkId: string): Promise<Walk | undefined>;
   /** Family-admin-only audit view of non-destructive duplicate-start resolutions. */
   getWalkDuplicateResolutionAudit?(familyId: string): Promise<WalkDuplicateResolutionAudit[]>;
   /** Online, read-only review of exact IDs, or all current-family active rows when walkIds is empty; never returns route coordinates. */

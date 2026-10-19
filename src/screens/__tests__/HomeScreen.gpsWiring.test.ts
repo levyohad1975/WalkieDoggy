@@ -27,6 +27,10 @@ describe('HomeScreen wires gpsStore\'s live tracking state into NextWalkCard (st
     expect(source).toMatch(/remoteGpsSession=\{remoteGpsSessionForWalk\(spontaneous\.id\)\}/);
   });
 
+  it('keeps the Remote GPS receiver mounted when no walk exists in the local schedule cache', () => {
+    expect(source).toMatch(/!activeSpontaneousWalkGroups\.length \? <RemoteGpsPanel currentUserId=\{currentUserId\} familyRole=\{actualFamilyRole\}/);
+  });
+
   it('reconciles a pending remote command only after a manual tap, server GPS lease, and first location fix', () => {
     const activation = source.slice(source.indexOf('const activateGpsForWalk ='), source.indexOf('// PRD §9 gamification — an unlocked'));
     expect(activation).toMatch(/attachGpsOwnership\(walk\)/);
