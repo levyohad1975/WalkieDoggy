@@ -2,10 +2,10 @@
 -- System Admin chat viewer migration. No hosted project is modified.
 begin;
 insert into auth.users (id,is_anonymous,email,email_confirmed_at) values
- ('00000000-0000-0000-0000-000000cafe001',false,'chat-admin@example.invalid',now()),
- ('00000000-0000-0000-0000-000000cafe002',true,null,null)
+ ('00000000-0000-0000-0000-0000cafe0001',false,'chat-admin@example.invalid',now()),
+ ('00000000-0000-0000-0000-0000cafe0002',true,null,null)
 on conflict(id) do update set is_anonymous=excluded.is_anonymous,email=excluded.email,email_confirmed_at=excluded.email_confirmed_at;
-insert into system_admins(auth_user_id) values ('00000000-0000-0000-0000-000000cafe001') on conflict do nothing;
+insert into system_admins(auth_user_id) values ('00000000-0000-0000-0000-0000cafe0001') on conflict do nothing;
 
 create temporary table t_system_admin_chat_qa(f1 uuid,f2 uuid,a uuid,b uuid,c_family uuid,c_direct uuid,c_group uuid,old_read timestamptz);
 do $$
@@ -15,8 +15,8 @@ begin
   insert into families(name,invite_code) values ('Chat Isolation QA','CHATQA02') returning id into f2;
   insert into users(family_id,name,avatar,color,role) values(f1,'QA Admin','🐶','#111111','admin') returning id into a;
   insert into users(family_id,name,avatar,color,role) values(f1,'QA Member','🐕','#222222','member') returning id into b;
-  insert into family_auth_members(family_id,auth_user_id,role) values(f1,'00000000-0000-0000-0000-000000cafe002','member');
-  insert into profile_auth_sessions(auth_user_id,family_id,user_id) values('00000000-0000-0000-0000-000000cafe002',f1,b);
+  insert into family_auth_members(family_id,auth_user_id,role) values(f1,'00000000-0000-0000-0000-0000cafe0002','member');
+  insert into profile_auth_sessions(auth_user_id,family_id,user_id) values('00000000-0000-0000-0000-0000cafe0002',f1,b);
   insert into chat_conversations(kind,family_id,title) values('family',f1,'Family QA') returning id into c_family;
   insert into chat_conversations(kind,family_id,direct_user_low,direct_user_high,title)
     values('direct',f1,least(a,b),greatest(a,b),null) returning id into c_direct;
@@ -36,7 +36,7 @@ end $$;
 grant select on t_system_admin_chat_qa to authenticated;
 
 set local role authenticated;
-set local request.jwt.claims='{"sub":"00000000-0000-0000-0000-000000cafe001","is_anonymous":false}';
+set local request.jwt.claims='{"sub":"00000000-0000-0000-0000-0000cafe0001","is_anonymous":false}';
 do $$
 declare x t_system_admin_chat_qa; v_messages jsonb;
 begin
@@ -64,7 +64,7 @@ begin
 end $$;
 
 set local role authenticated;
-set local request.jwt.claims='{"sub":"00000000-0000-0000-0000-000000cafe002","is_anonymous":true}';
+set local request.jwt.claims='{"sub":"00000000-0000-0000-0000-0000cafe0002","is_anonymous":true}';
 do $$
 declare x t_system_admin_chat_qa;
 begin
