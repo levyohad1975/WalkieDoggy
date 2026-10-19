@@ -316,6 +316,14 @@ jobs:
       - name: Replay migrations through duplicate-resolution support from empty
         run: supabase db reset --local
 
+      - name: Verify read-only System Admin family chat access in isolated Postgres
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/manual_tests/system_admin_family_chats_readonly.sql
+
       - name: Rehearse three conflicting active walks and audited resolution
         env:
           PGPASSWORD: postgres
