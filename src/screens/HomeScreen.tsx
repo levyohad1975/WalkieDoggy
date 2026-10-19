@@ -134,8 +134,8 @@ export function HomeScreen() {
   // rectangle with the original photo background over the hero scene; in
   // that case the approved mascot fallback is shown instead.
   const heroCutoutVerdict = useCutoutVerdict(dog?.photoCutoutUrl);
-  const showDogCutout = Boolean(dog?.photoCutoutUrl) && !heroCutoutFailed && heroCutoutVerdict !== 'opaque';
   const heroCutoutReady = canCompositeCutout(heroCutoutVerdict);
+  const showDogCutout = Boolean(dog?.photoCutoutUrl) && !heroCutoutFailed && heroCutoutReady;
   const [guestReactionPlaying, setGuestReactionPlaying] = useState(false);
   const guestReactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleHeroMascotPress = useCallback(() => {

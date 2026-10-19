@@ -56,6 +56,9 @@ export interface AlphaStats {
   opaquePixels: number;
   borderPixels: number;
   borderTransparentPixels: number;
+  foregroundPixels: number;
+  foregroundBounds: { left: number; top: number; right: number; bottom: number } | null;
+  sampleStride: number;
   edges: { top: EdgeStats; bottom: EdgeStats; left: EdgeStats; right: EdgeStats };
 }
 
@@ -91,10 +94,28 @@ export function judgeAlphaStats(stats: AlphaStats): CutoutVerdict {
   if (stats.borderTransparentPixels / border < MIN_BORDER_TRANSPARENT_FRACTION) {
     return { ok: false, reason: 'opaque_border', stats };
   }
-  if (countSolidEdges(stats) > MAX_SOLID_EDGES) {
+  if (countSolidEdges(stats) > MAX_SOLID_EDGES || hasRectangularForeground(stats)) {
     return { ok: false, reason: 'rectangular_subject', stats };
   }
   return { ok: true, stats };
+}
+
+/** Reject a photo-like filled rectangle surrounded by transparent margin. */
+function hasRectangularForeground(stats: AlphaStats): boolean {
+  const bounds = stats.foregroundBounds;
+  if (!bounds || stats.sampledPixels === 0) return false;
+  // Cropped subjects and edge-touching fur are legitimate. A detached photo
+  // remnant must have a transparent moat on every side to match this rule.
+  if (bounds.left <= 0 || bounds.top <= 0 || bounds.right >= stats.width - 1 || bounds.bottom >= stats.height - 1) return false;
+  const stride = Math.max(1, stats.sampleStride);
+  const width = Math.ceil((bounds.right - bounds.left) / stride) + 1;
+  const height = Math.ceil((bounds.bottom - bounds.top) / stride) + 1;
+  const boxSamples = width * height;
+  const frameSamples = Math.max(1, Math.ceil(stats.width / stride) * Math.ceil(stats.height / stride));
+  // Rounded and fluffy dog silhouettes have a visibly irregular contour and
+  // do not fill almost every sample in their bounding box. This deliberately
+  // conservative rule leaves boundary-touching fur/cropped paws unaffected.
+  return boxSamples / frameSamples >= 0.2 && stats.foregroundPixels / boxSamples >= 0.96;
 }
 
 /** Number of frame edges that are mostly solid subject. */
@@ -106,7 +127,7 @@ export function countSolidEdges(stats: AlphaStats): number {
 
 /** Collects alpha statistics from straight RGBA bytes (e.g. canvas ImageData). */
 export function alphaStatsFromRgba(rgba: ArrayLike<number>, width: number, height: number): AlphaStats {
-  const stats = emptyStats(width, height);
+  const stats = emptyStats(width, height, 1);
   for (let y = 0; y < height; y += 1) {
     const rowOffset = y * width * 4;
     for (let x = 0; x < width; x += 1) {
@@ -195,8 +216,8 @@ export async function analyzePngTransparency(png: Uint8Array, inflate: InflateCh
     cursor += part.length;
   }
 
-  const stats = emptyStats(width, height);
   const step = Math.max(1, Math.ceil(Math.max(width, height) / SAMPLE_LONG_SIDE));
+  const stats = emptyStats(width, height, step);
   let previous = new Uint8Array(stride);
   let current = new Uint8Array(stride);
   const pending = new Uint8Array(stride + 1);
@@ -238,7 +259,7 @@ export async function analyzePngTransparency(png: Uint8Array, inflate: InflateCh
   return judgeAlphaStats(stats);
 }
 
-function emptyStats(width: number, height: number): AlphaStats {
+function emptyStats(width: number, height: number, sampleStride: number): AlphaStats {
   return {
     width,
     height,
@@ -247,6 +268,9 @@ function emptyStats(width: number, height: number): AlphaStats {
     opaquePixels: 0,
     borderPixels: 0,
     borderTransparentPixels: 0,
+    foregroundPixels: 0,
+    foregroundBounds: null,
+    sampleStride,
     edges: {
       top: { samples: 0, opaque: 0 },
       bottom: { samples: 0, opaque: 0 },
@@ -260,7 +284,17 @@ function recordPixel(stats: AlphaStats, x: number, y: number, alpha: number): vo
   stats.sampledPixels += 1;
   const transparent = alpha <= TRANSPARENT_ALPHA_MAX;
   if (transparent) stats.transparentPixels += 1;
-  else if (alpha >= OPAQUE_ALPHA_MIN) stats.opaquePixels += 1;
+  else {
+    stats.foregroundPixels += 1;
+    if (!stats.foregroundBounds) stats.foregroundBounds = { left: x, top: y, right: x, bottom: y };
+    else {
+      stats.foregroundBounds.left = Math.min(stats.foregroundBounds.left, x);
+      stats.foregroundBounds.top = Math.min(stats.foregroundBounds.top, y);
+      stats.foregroundBounds.right = Math.max(stats.foregroundBounds.right, x);
+      stats.foregroundBounds.bottom = Math.max(stats.foregroundBounds.bottom, y);
+    }
+    if (alpha >= OPAQUE_ALPHA_MIN) stats.opaquePixels += 1;
+  }
   if (x === 0 || y === 0 || x === stats.width - 1 || y === stats.height - 1) {
     stats.borderPixels += 1;
     if (transparent) stats.borderTransparentPixels += 1;

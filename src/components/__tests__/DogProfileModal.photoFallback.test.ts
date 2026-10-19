@@ -18,7 +18,7 @@ describe('DogProfileModal — broken photo fallback', () => {
     expect(source).toContain('await runDogCutoutJob(dogId)');
     expect(source).toContain('await loadFamily(familyId)');
     expect(source).toContain('Alert.alert(feedback.title, feedback.message);');
-    expect(source).toContain('accessibilityLabel="הסרת הרקע מתמונת הכלב"');
+    expect(source).toContain("accessibilityLabel={dog.photoCutoutUrl ? 'שפר חיתוך רקע' : 'הסרת רקע מהתמונה'}");
   });
 
   it('keeps the original photo saved and removes the rectangular hero fallback', () => {

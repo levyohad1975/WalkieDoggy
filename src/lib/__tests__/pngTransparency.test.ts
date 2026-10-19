@@ -129,7 +129,14 @@ describe('generated dog cutout transparency verification', () => {
       width: W,
       height: H,
       colorType: 6,
-      row: rgbaRow(W, H, (x, y) => (y > H * 0.4 && x > W * 0.2 && x < W * 0.8 ? 255 : 0)),
+      row: rgbaRow(W, H, (x, y) => {
+        const dx = (x - W * 0.5) / (W * 0.3);
+        const dy = (y - H * 0.68) / (H * 0.36);
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < 0.9) return 255;
+        if (distance < 1.06) return 128;
+        return 0;
+      }),
     });
     expect((await analyzePngTransparency(png, nodeInflate)).ok).toBe(true);
   });
@@ -260,16 +267,35 @@ describe('generated dog cutout transparency verification', () => {
     await expect(analyzePngTransparency(png, nodeInflate)).resolves.toMatchObject({ ok: false, reason: 'rectangular_subject' });
   });
 
+  it('rejects a detached rectangular photo remnant surrounded by a transparent frame', async () => {
+    const png = encodePng({
+      width: W,
+      height: H,
+      colorType: 6,
+      row: rgbaRow(W, H, (x, y) => {
+        const inside = x >= 22 && x <= 98 && y >= 18 && y <= 82;
+        const edge = x === 22 || x === 98 || y === 18 || y === 82;
+        return inside ? (edge ? 128 : 255) : 0;
+      }),
+    });
+    await expect(analyzePngTransparency(png, nodeInflate)).resolves.toMatchObject({ ok: false, reason: 'rectangular_subject' });
+  });
+
   it('still accepts a dog lying in a corner (touches only the bottom and one side)', async () => {
     const png = encodePng({
       width: W,
       height: H,
       colorType: 6,
-      row: rgbaRow(W, H, (x, y) => (x > W * 0.35 && y > H * 0.45 ? 255 : 0)),
+      row: rgbaRow(W, H, (x, y) => {
+        const dx = (x - W * 0.62) / (W * 0.38);
+        const dy = (y - H * 0.62) / (H * 0.38);
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        return distance < 0.88 ? 255 : distance < 1.04 ? 128 : 0;
+      }),
     });
     const verdict = await analyzePngTransparency(png, nodeInflate);
     expect(verdict.ok).toBe(true);
-    if (verdict.ok) expect(countSolidEdges(verdict.stats)).toBe(2);
+    if (verdict.ok) expect(verdict.stats.foregroundBounds?.right).toBeGreaterThan(W * 0.9);
   });
 
   it('applies the same thresholds to canvas RGBA pixels on the client', () => {

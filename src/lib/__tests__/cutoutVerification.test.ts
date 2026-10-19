@@ -63,9 +63,14 @@ describe('client cutout transparency guard', () => {
     expect(classifyCutoutPixels(opaquePhoto, W, H)).toBe('opaque');
   });
 
-  it('only allows compositing verified or server-trusted cutouts', () => {
+  it('rejects a central rectangular remnant even though the outer frame is transparent', () => {
+    const rectangle = pixels((x, y) => x >= 8 && x <= 39 && y >= 7 && y <= 32 ? 255 : 0);
+    expect(classifyCutoutPixels(rectangle, W, H)).toBe('opaque');
+  });
+
+  it('only allows compositing cutouts whose pixels were verified on this client', () => {
     expect(canCompositeCutout('transparent')).toBe(true);
-    expect(canCompositeCutout('unverifiable')).toBe(true);
+    expect(canCompositeCutout('unverifiable')).toBe(false);
     expect(canCompositeCutout('opaque')).toBe(false);
     expect(canCompositeCutout('pending')).toBe(false);
     expect(canCompositeCutout('none')).toBe(false);
@@ -75,12 +80,13 @@ describe('client cutout transparency guard', () => {
     await expect(verifyCutoutTransparency('https://x/cutouts/opaque.png', source(opaquePhoto))).resolves.toBe('opaque');
   });
 
-  it('falls back to server trust when pixels cannot be read (network/CORS) and retries next launch', async () => {
+  it('fails closed when pixels cannot be read (network/CORS) and retries next launch', async () => {
     const store = installLocalStorage();
     const failing = { readPixels: jest.fn(async () => { throw new Error('cors'); }) };
     await expect(verifyCutoutTransparency('https://x/cutouts/flaky.png', failing)).resolves.toBe('unverifiable');
     expect(store.size).toBe(0);
     await expect(verifyCutoutTransparency('https://x/cutouts/flaky.png', null)).resolves.toBe('unverifiable');
+    expect(canCompositeCutout('unverifiable')).toBe(false);
   });
 
   it('deduplicates concurrent checks and caches the verdict for refreshes', async () => {
@@ -110,12 +116,12 @@ describe('client cutout transparency guard', () => {
     const store = installLocalStorage();
     const url = 'https://x/cutouts/kept-room.png';
     // What an iPhone running 766a56f stored for the false-positive cutout.
-    store.set(`walkie.cutoutVerdict.v1:${url}`, 'transparent');
+    store.set(`walkie.cutoutVerdict.v2:${url}`, 'transparent');
     expect(getCachedCutoutVerdict(url)).toBeUndefined();
     const recheck = source(opaquePhoto);
     await expect(verifyCutoutTransparency(url, recheck)).resolves.toBe('opaque');
     expect(recheck.readPixels).toHaveBeenCalledTimes(1);
-    expect(store.get(`walkie.cutoutVerdict.v2:${url}`)).toBe('opaque');
+    expect(store.get(`walkie.cutoutVerdict.v3:${url}`)).toBe('opaque');
   });
 
   it('re-verifies when a new upload produces a new cutout URL', async () => {
@@ -145,5 +151,16 @@ describe('client cutout transparency guard', () => {
     await waitFor(() => expect(result.current).toBe('opaque'));
     rerender({ url: undefined });
     expect(result.current).toBe('none');
+  });
+
+  it('does not reuse a previous URL verdict for a newly regenerated cutout, even for the first render', async () => {
+    const src = source(transparentDog);
+    const { result, rerender } = renderHook(({ url }: { url: string }) => useCutoutVerdict(url, src), {
+      initialProps: { url: 'https://x/cutouts/old.png' },
+    });
+    await waitFor(() => expect(result.current).toBe('transparent'));
+    rerender({ url: 'https://x/cutouts/new.png' });
+    expect(result.current).toBe('pending');
+    await waitFor(() => expect(src.readPixels).toHaveBeenCalledTimes(2));
   });
 });

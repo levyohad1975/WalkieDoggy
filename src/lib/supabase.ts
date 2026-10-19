@@ -406,6 +406,8 @@ async function readFunctionErrorCode(error: unknown): Promise<string> {
 export function describeDogCutoutFailure(error: unknown): string {
   const code = error instanceof DogCutoutError ? error.code : '';
   switch (code) {
+    case 'admin_permission_required':
+      return 'רק מנהל/ת משפחה יכולים לשפר את חיתוך הרקע. התמונה הקיימת נשמרה.';
     case 'cutout_not_transparent':
       return 'לא הצלחנו להפריד את הכלב מהרקע בתמונה הזו. אפשר לנסות שוב או לבחור תמונה שבה הכלב בולט יותר על הרקע.';
     case 'background_removal_quota_exhausted':

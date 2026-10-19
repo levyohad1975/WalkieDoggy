@@ -57,8 +57,8 @@ export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, o
                     <RtlText style={styles.photoLink}>{uploadingPhoto ? 'מעלה תמונה...' : dog.photoUrl ? 'החלף תמונה' : 'הוסף תמונה מהגלריה'}</RtlText>
                   </Pressable>
                   {dog.photoUrl && canManageDog && onRetryCutout ? (
-                    <Pressable onPress={onRetryCutout} disabled={uploadingPhoto || processingCutout} style={styles.photoButton} accessibilityRole="button" accessibilityLabel="הסרת רקע מהתמונה">
-                      <RtlText style={styles.photoLink}>{processingCutout ? 'מסיר רקע…' : 'הסרת רקע מהתמונה'}</RtlText>
+                    <Pressable onPress={onRetryCutout} disabled={uploadingPhoto || processingCutout} style={styles.photoButton} accessibilityRole="button" accessibilityLabel={dog.photoCutoutUrl ? 'שפר חיתוך רקע' : 'הסרת רקע מהתמונה'} accessibilityState={{ disabled: uploadingPhoto || processingCutout, busy: processingCutout }}>
+                      <RtlText style={styles.photoLink}>{processingCutout ? 'משפרים את חיתוך הרקע…' : dog.photoCutoutUrl ? 'שפר חיתוך רקע' : 'הסרת רקע מהתמונה'}</RtlText>
                     </Pressable>
                   ) : null}
                   {dog.photoUrl ? (

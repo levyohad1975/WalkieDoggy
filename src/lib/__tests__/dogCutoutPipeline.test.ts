@@ -48,6 +48,7 @@ describe('generateDogPhotoCutout client errors', () => {
     const lib = loadSupabaseLib();
     expect(lib.describeDogCutoutFailure(new lib.DogCutoutError('background_removal_quota_exhausted'))).toContain('מכסה');
     expect(lib.describeDogCutoutFailure(new lib.DogCutoutError('background_removal_busy'))).toContain('עמוס');
+    expect(lib.describeDogCutoutFailure(new lib.DogCutoutError('admin_permission_required'))).toContain('רק מנהל/ת משפחה');
     expect(lib.describeDogCutoutFailure(new Error('boom'))).toBe('לא הצלחנו להסיר את הרקע כרגע. אפשר לנסות שוב מאותו מסך.');
 
     mockInvoke.mockResolvedValue({ data: null, error: Object.assign(new Error('network'), { context: undefined }) });
@@ -76,6 +77,21 @@ describe('generate-dog-cutout Edge Function contract', () => {
     expect(rejectBlock).toContain('status: 422');
     expect(rejectBlock).not.toContain('.upload(');
     expect(rejectBlock).not.toContain('.update(');
+  });
+
+  it('checks real admin permission before creating the service-role client', () => {
+    const authorization = fn.indexOf('caller.rpc("is_family_admin"');
+    const elevatedClient = fn.indexOf('createClient(supabaseUrl, serviceRoleKey');
+    expect(authorization).toBeGreaterThan(0);
+    expect(authorization).toBeLessThan(elevatedClient);
+    expect(fn).toContain('callerIsAdmin !== true');
+    expect(fn).toContain('"admin_permission_required"');
+    expect(fn).toContain('serviceRoleKey');
+  });
+
+  it('uses a unique immutable object path so retries cannot read an old cached image', () => {
+    expect(fn).toContain('crypto.randomUUID()');
+    expect(fn).toContain('cacheControl: "31536000"');
   });
 
   it('requests a transparent PNG (no bg colour) and maps quota/busy failures', () => {
@@ -127,13 +143,14 @@ describe('dog photo upload pipeline (client)', () => {
     // Real-iPhone QA: a stored cutout made the action disappear entirely.
     expect(modal).not.toContain('cutoutNeedsProcessing');
     expect(modal).toContain('{dog.photoUrl && !photoDirty ? (');
-    const action = modal.slice(modal.indexOf('{dog.photoUrl && !photoDirty ? ('), modal.indexOf("'הסרת רקע מהתמונה'"));
-    expect(action).not.toContain('photoCutoutUrl');
+    const action = modal.slice(modal.indexOf('{dog.photoUrl && !photoDirty ? ('), modal.indexOf('<DogHeroBackgroundPicker', modal.indexOf('{dog.photoUrl && !photoDirty ? (')));
+    expect(action).toContain('dog.photoCutoutUrl ?');
     expect(action).not.toContain('cutoutVerdict');
     expect(action).toContain('onPress={() => void requestDogCutout(dog.id)}');
     expect(action).toContain('disabled={processingCutout || uploading || removing}');
-    expect(action).toContain('accessibilityLabel="הסרת הרקע מתמונת הכלב"');
-    expect(modal).toContain("{processingCutout ? 'מסירים רקע…' : 'הסרת רקע מהתמונה'}");
+    expect(action).toContain("accessibilityLabel={dog.photoCutoutUrl ? 'שפר חיתוך רקע' : 'הסרת רקע מהתמונה'}");
+    expect(modal).toContain("processingCutout ? 'משפרים את חיתוך הרקע…'");
+    expect(modal).toContain("'שפר חיתוך רקע'");
   });
 
   it('keeps the action behind the existing admin / non-observer permission gate', () => {

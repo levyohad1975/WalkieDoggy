@@ -11,7 +11,7 @@ describe('Home Dashboard dog scene', () => {
     expect(home).toContain('getDogBackground(dog?.heroBackgroundId)');
     expect(home).toContain('getDogBackgroundImageSource(heroBackground)');
     expect(home).toContain('const heroCutoutVerdict = useCutoutVerdict(dog?.photoCutoutUrl);');
-    expect(home).toContain("const showDogCutout = Boolean(dog?.photoCutoutUrl) && !heroCutoutFailed && heroCutoutVerdict !== 'opaque';");
+    expect(home).toContain('const showDogCutout = Boolean(dog?.photoCutoutUrl) && !heroCutoutFailed && heroCutoutReady;');
     expect(home).toContain('onError={() => setHeroCutoutFailed(true)}');
     expect(home).toContain("source={{ uri: dog!.photoCutoutUrl! }}");
     expect(home).toContain('{!showDogCutout ? (');
@@ -37,6 +37,12 @@ describe('Home Dashboard dog scene', () => {
     // Grounding shadow follows the alpha edge rather than drawing a box.
     expect(cutoutStyle).toContain('drop-shadow(');
     expect(cutoutStyle).not.toContain('boxShadow');
+  });
+
+  it('uses the approved mascot while verification is pending, unavailable, or rejected', () => {
+    expect(home).toContain('&& heroCutoutReady;');
+    expect(home).toContain('{!showDogCutout ? (');
+    expect(home).toContain('<WalkieMascot state={guestReactionPlaying ?');
   });
 
   it('fits the photo background to a 2:1 iPhone hero and fades into the existing cream surface', () => {

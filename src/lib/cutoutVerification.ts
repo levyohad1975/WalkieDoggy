@@ -14,19 +14,16 @@ import { alphaStatsFromRgba, judgeAlphaStats } from '../../supabase/functions/_s
  * Verdicts:
  * - `transparent`  — genuine cutout; composite it.
  * - `opaque`       — no usable transparency; never composite, show mascot.
- * - `unverifiable` — could not inspect (network/CORS/no canvas). The server is
- *                    the primary gate, so the cutout is shown.
+ * - `unverifiable` — could not inspect (network/CORS/no canvas); fail closed
+ *                    and show the approved mascot.
  * - `pending`      — still checking; the slot stays visually empty.
  * - `none`         — no cutout URL.
  */
 export type CutoutVerdictState = 'none' | 'pending' | 'transparent' | 'opaque' | 'unverifiable';
 type SettledVerdict = Exclude<CutoutVerdictState, 'none' | 'pending'>;
 
-// v2: thresholds tightened after real-iPhone QA found a cutout that kept the
-// room around the dog. Bumping the key discards verdicts stored by v1 (which
-// had cached that cutout as "transparent" on the device), so every cutout is
-// re-checked with the current rules after the update.
-const STORAGE_PREFIX = 'walkie.cutoutVerdict.v2:';
+// v3 discards older permissive verdicts and reruns the current geometry gate.
+const STORAGE_PREFIX = 'walkie.cutoutVerdict.v3:';
 /** The analysis is downscaled to this long side; plenty to see a background. */
 const ANALYSIS_LONG_SIDE = 160;
 const VERIFY_TIMEOUT_MS = 8000;
@@ -88,34 +85,40 @@ export function resetCutoutVerificationCache(): void {
 }
 
 export function useCutoutVerdict(url: string | undefined | null, source?: CutoutPixelSource | null): CutoutVerdictState {
-  const [state, setState] = useState<CutoutVerdictState>(() => (url ? getCachedCutoutVerdict(url) ?? 'pending' : 'none'));
+  const normalizedUrl = url ?? null;
+  const [result, setResult] = useState<{ url: string | null; state: CutoutVerdictState }>(() => ({
+    url: normalizedUrl,
+    state: normalizedUrl ? getCachedCutoutVerdict(normalizedUrl) ?? 'pending' : 'none',
+  }));
 
   useEffect(() => {
     if (!url) {
-      setState('none');
+      setResult({ url: null, state: 'none' });
       return;
     }
     const cached = getCachedCutoutVerdict(url);
     if (cached) {
-      setState(cached);
+      setResult({ url, state: cached });
       return;
     }
-    setState('pending');
+    setResult({ url, state: 'pending' });
     let active = true;
     void verifyCutoutTransparency(url, source === undefined ? defaultPixelSource() : source).then((verdict) => {
-      if (active) setState(verdict);
+      if (active) setResult({ url, state: verdict });
     });
     return () => {
       active = false;
     };
   }, [url, source]);
 
-  return state;
+  if (!normalizedUrl) return 'none';
+  if (result.url !== normalizedUrl) return getCachedCutoutVerdict(normalizedUrl) ?? 'pending';
+  return result.state;
 }
 
 /** Whether a verdict allows the cutout to be composited over the hero. */
 export function canCompositeCutout(state: CutoutVerdictState): boolean {
-  return state === 'transparent' || state === 'unverifiable';
+  return state === 'transparent';
 }
 
 function defaultPixelSource(): CutoutPixelSource | null {

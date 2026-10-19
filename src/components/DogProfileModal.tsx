@@ -11,7 +11,7 @@ import { describeDogCutoutJob, runDogCutoutJob, type DogCutoutFeedback } from '.
 import { useCutoutVerdict } from '../lib/cutoutVerification';
 import { colors } from '../theme/colors';
 import { breakpoints, radii, spacing, typography } from '../theme/tokens';
-import { getDogBackground, getDogBackgroundImageSource } from '../theme/dogBackgrounds';
+import { DEFAULT_DOG_BACKGROUND, getDogBackground, getDogBackgroundImageSource } from '../theme/dogBackgrounds';
 import { DogHeroBackgroundPicker } from './DogHeroBackgroundPicker';
 import { Button } from './Button';
 
@@ -28,9 +28,11 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
   const [processingCutout, setProcessingCutout] = useState(false);
   const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
   const [pendingPhotoUrl, setPendingPhotoUrl] = useState<string | null>(null);
+  const [cutoutPreviewUrl, setCutoutPreviewUrl] = useState<string | null>(null);
   // An existing cutout without real transparency is treated like a missing
   // one: Home hides it, and the admin is offered background removal again.
   const cutoutVerdict = useCutoutVerdict(dog?.photoCutoutUrl);
+  const previewVerdict = useCutoutVerdict(cutoutPreviewUrl);
   const [cutoutFeedback, setCutoutFeedback] = useState<DogCutoutFeedback | null>(null);
   // Guards the job synchronously: a fast double tap fires before the
   // `processingCutout` re-render disables the button.
@@ -39,6 +41,7 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
   useEffect(() => {
     setPhotoLoadFailed(false);
     setPendingPhotoUrl(null);
+    setCutoutPreviewUrl(null);
     setCutoutFeedback(null);
   }, [dog?.id, dog?.photoUrl]);
 
@@ -66,8 +69,7 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
       if (result.status === 'failed') {
         console.warn('Dog cutout generation failed; keeping source photo fallback:', result.error);
       } else {
-        // The row now points at the new cutout either way; Home decides
-        // (with the same check) whether to composite it or keep the mascot.
+        setCutoutPreviewUrl(result.cutoutUrl);
         await loadFamily(familyId).catch(() => {});
       }
       const feedback = describeDogCutoutJob(result);
@@ -168,6 +170,23 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
               {!processingCutout && !cutoutFeedback && dog.photoCutoutUrl && cutoutVerdict === 'opaque' ? (
                 <RtlText style={styles.hint}>הרקע לא הוסר מהתמונה, ולכן במסך הבית מוצג כרגע הקמע.</RtlText>
               ) : null}
+              {cutoutPreviewUrl && previewVerdict === 'transparent' ? (
+                <View style={styles.cutoutPreview} accessibilityLabel="תצוגה מקדימה של הכלב על הרקע שנבחר">
+                  <Image
+                    source={getDogBackgroundImageSource(getDogBackground(dog.heroBackgroundId) ?? DEFAULT_DOG_BACKGROUND)}
+                    style={styles.cutoutPreviewBackground}
+                    resizeMode="cover"
+                  />
+                  <Image
+                    source={{ uri: cutoutPreviewUrl }}
+                    style={styles.cutoutPreviewDog}
+                    resizeMode="contain"
+                  />
+                  <View style={styles.cutoutPreviewCaption}>
+                    <RtlText style={styles.cutoutPreviewCaptionText}>תצוגה מקדימה על הרקע שנבחר</RtlText>
+                  </View>
+                </View>
+              ) : null}
               {familyRole === 'admin' && !systemObserverActive ? (
                 <View style={styles.actions}>
                   <Pressable onPress={changePhoto} disabled={uploading || removing} style={styles.primaryButton} accessibilityRole="button">
@@ -189,10 +208,10 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
                       disabled={processingCutout || uploading || removing}
                       style={[styles.removeButton, processingCutout && styles.buttonBusy]}
                       accessibilityRole="button"
-                      accessibilityLabel="הסרת הרקע מתמונת הכלב"
+                      accessibilityLabel={dog.photoCutoutUrl ? 'שפר חיתוך רקע' : 'הסרת רקע מהתמונה'}
                       accessibilityState={{ disabled: processingCutout || uploading || removing, busy: processingCutout }}
                     >
-                      <RtlText style={styles.removeText}>{processingCutout ? 'מסירים רקע…' : 'הסרת רקע מהתמונה'}</RtlText>
+                      <RtlText style={styles.removeText}>{processingCutout ? 'משפרים את חיתוך הרקע…' : dog.photoCutoutUrl ? 'שפר חיתוך רקע' : 'הסרת רקע מהתמונה'}</RtlText>
                     </Pressable>
                   ) : null}
                   <DogHeroBackgroundPicker dog={dog} onSave={(patch) => saveDog({ ...dog, ...patch })} />
@@ -228,6 +247,11 @@ const styles = StyleSheet.create({
   // The uploaded photo is shown as the complete preview scene. No secondary
   // background or visible frame is composited behind it.
   photo: { width: '100%', height: 210, borderRadius: 24, borderWidth: 0 },
+  cutoutPreview: { width: '100%', maxWidth: 420, height: 220, borderRadius: radii.xl, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceMuted },
+  cutoutPreviewBackground: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
+  cutoutPreviewDog: { width: 190, height: 184, position: 'absolute', right: 16, bottom: 26 },
+  cutoutPreviewCaption: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFFD9' },
+  cutoutPreviewCaptionText: { ...typography.meta, color: colors.textPrimary, fontWeight: '700' },
   name: { ...typography.screenTitle, color: colors.textPrimary, textAlign: 'center' },
   hint: { ...typography.meta, color: colors.textSecondary, textAlign: 'center' },
   actions: { width: '100%', maxWidth: 420, gap: spacing.sm, marginTop: spacing.sm },

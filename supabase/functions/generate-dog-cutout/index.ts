@@ -55,6 +55,15 @@ Deno.serve(async (req: Request) => {
   if (dogError || !dog) {
     return new Response(JSON.stringify({ error: "dog_not_found" }), { status: 404, headers: jsonHeaders });
   }
+  // This function later uses a service-role client, which bypasses RLS. Row
+  // visibility proves family membership only; explicitly authorize the real
+  // family admin first. is_family_admin() also denies active impersonation.
+  const { data: callerIsAdmin, error: roleError } = await caller.rpc("is_family_admin", {
+    target_family_id: dog.family_id,
+  });
+  if (roleError || callerIsAdmin !== true) {
+    return new Response(JSON.stringify({ error: "admin_permission_required" }), { status: 403, headers: jsonHeaders });
+  }
   if (!dog.photo_url) {
     return new Response(JSON.stringify({ error: "dog_has_no_photo" }), { status: 409, headers: jsonHeaders });
   }
@@ -99,7 +108,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
-  const path = `${dog.family_id}/dog/cutouts/${dog.id}-${Date.now()}.png`;
+  const path = `${dog.family_id}/dog/cutouts/${dog.id}-${crypto.randomUUID()}.png`;
   const { error: uploadError } = await admin.storage
     .from("family-photos")
     .upload(path, png, { contentType: "image/png", upsert: false, cacheControl: "31536000" });
