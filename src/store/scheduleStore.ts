@@ -282,6 +282,13 @@ async function loadScheduleForFamily(
       repository.getWalks(familyId),
     ]);
 
+    // Publish the authoritative server snapshot before optional reconciliation.
+    // A slow or failed backfill must never make a successfully fetched schedule
+    // appear empty on Home and Schedule (especially on a cold PWA start).
+    // Keep loading=true until reconciliation finishes; later publish the
+    // reconciled snapshot as usual.
+    set({ rules, entries, walks, loading: true });
+
     // Recurring rules are configuration and survive an activity reset. Rebuild
     // only the FUTURE occurrence horizon when a surviving active rule has no
     // upcoming entries, so Home can still resolve "next walk" after reset.
