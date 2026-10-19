@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { Button } from './Button';
@@ -29,9 +29,19 @@ export function SystemAdminFamilyChatsPanel() {
   const [loading, setLoading] = useState(false);
   const [olderLoading, setOlderLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const openingRef = useRef(false);
+  const olderRef = useRef(false);
+  const attachmentRef = useRef(new Set<string>());
 
   const loadFamilies = useCallback(async (append = false) => { setLoading(true); setError(null); const offset = append ? familyOffset + 100 : 0; try { const page = await listAdminChatFamilies(search, offset); setFamilies((current) => append ? [...current, ...page] : page); setFamilyOffset(offset); } catch (e) { setError(friendly(e)); } finally { setLoading(false); } }, [search, familyOffset]);
-  useEffect(() => { void loadFamilies(); }, [loadFamilies]);
+  useEffect(() => {
+    let active = true;
+    setLoading(true); setError(null);
+    void listAdminChatFamilies(search).then((page) => { if (active) { setFamilies(page); setFamilyOffset(0); } })
+      .catch((e) => { if (active) setError(friendly(e)); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [search]);
 
   const chooseFamily = async (item: AdminChatFamily) => {
     setFamily(item); setConversation(null); setReason(null); setMessages([]); setAttachmentUrls({}); setError(null); setLoading(true);
@@ -39,25 +49,28 @@ export function SystemAdminFamilyChatsPanel() {
   };
   const openConversation = (item: AdminChatConversation) => { setConversation(item); setReason(null); setMessages([]); setAttachmentUrls({}); setError(null); };
   const openContents = async (selectedReason: ChatAccessReason) => {
-    if (!family || !conversation || loading) return;
+    if (!family || !conversation || openingRef.current) return;
+    openingRef.current = true;
     setReason(selectedReason); setLoading(true); setError(null);
     try { setMessages(await readAdminChatMessages({ familyId: family.id, conversationId: conversation.id, reason: selectedReason })); }
     catch (e) { setReason(null); setError(friendly(e)); }
-    finally { setLoading(false); }
+    finally { openingRef.current = false; setLoading(false); }
   };
   const loadOlder = async () => {
-    if (!family || !conversation || !reason || !messages.length || olderLoading) return;
+    if (!family || !conversation || !reason || !messages.length || olderRef.current) return;
+    olderRef.current = true;
     setOlderLoading(true); setError(null);
     try {
       const page = await readAdminChatMessages({ familyId: family.id, conversationId: conversation.id, reason, before: messages[messages.length - 1] });
       setMessages((current) => [...current, ...page]);
-    } catch (e) { setError(friendly(e)); } finally { setOlderLoading(false); }
+    } catch (e) { setError(friendly(e)); } finally { olderRef.current = false; setOlderLoading(false); }
   };
   const loadAttachment = async (message: AdminChatMessage) => {
-    if (!family || !conversation || !reason) return;
+    if (!family || !conversation || !reason || attachmentRef.current.has(message.id)) return;
+    attachmentRef.current.add(message.id);
     setError(null);
     try { const signedUrl = await getAdminChatAttachment({ familyId: family.id, conversationId: conversation.id, messageId: message.id, reason }); setAttachmentUrls((current) => ({ ...current, [message.id]: signedUrl })); }
-    catch (e) { setError(friendly(e)); }
+    catch (e) { attachmentRef.current.delete(message.id); setError(friendly(e)); }
   };
 
   return <ScrollView contentContainerStyle={styles.root} keyboardShouldPersistTaps="handled">
@@ -66,7 +79,7 @@ export function SystemAdminFamilyChatsPanel() {
     {!family ? <>
       <View style={styles.row}>
         <TextInput value={search} onChangeText={setSearch} placeholder="חיפוש לפי שם או מזהה משפחה" placeholderTextColor={colors.textSecondary} style={styles.input} textAlign="right" accessibilityLabel="חיפוש משפחה לפי שם או מזהה" onSubmitEditing={() => void loadFamilies()} />
-        <Button label="חיפוש" compact onPress={() => void loadFamilies()} />
+        <Button label="חיפוש" compact onPress={() => void loadFamilies()} disabled={loading} />
       </View>
       {loading ? <ActivityIndicator color={colors.primary} accessibilityLabel="טוען משפחות" /> : null}
       {families.map((item) => <Pressable key={item.id} style={styles.card} onPress={() => void chooseFamily(item)} accessibilityRole="button" accessibilityLabel={`פתיחת משפחת ${item.name}, מזהה ${item.id}`}>
