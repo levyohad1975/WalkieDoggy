@@ -33,6 +33,7 @@ import { AddUnplannedWalkModal, type UnplannedWalkResult } from '../components/A
 import { EditDoneDetailsModal } from '../components/EditDoneDetailsModal';
 import { RequestTimeChangeModal } from '../components/RequestTimeChangeModal';
 import { RequestsInboxModal } from '../components/RequestsInboxModal';
+import { RemindersModal } from '../components/RemindersModal';
 import { Button } from '../components/Button';
 import { WalkCompletionCelebration } from '../components/WalkCompletionCelebration';
 import { ReminderMascotPrompt } from '../components/ReminderMascotPrompt';
@@ -105,6 +106,10 @@ export function HomeScreen() {
   }, []);
   const [heroCutoutFailed, setHeroCutoutFailed] = useState(false);
   const currentUserId = useAuthStore((s) => s.currentUserId)!;
+  const [personalNotificationsVisible, setPersonalNotificationsVisible] = useState(false);
+  const personalNotificationsReadOnly = useAuthStore((s) => Boolean(
+    s.systemObserverActive || s.impersonatingUserId || s.impersonationStarting || s.testModeUserId
+  ));
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const effectiveRole = useEffectiveFamilyRole();
   const actualFamilyRole = useAuthStore((s) => s.familyRole);
@@ -117,6 +122,7 @@ export function HomeScreen() {
   const clearTestModeIfInvalid = useAuthStore((s) => s.clearTestModeIfInvalid);
   const clearImpersonationIfInvalid = useAuthStore((s) => s.clearImpersonationIfInvalid);
   const { family, users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, error: familyError, load: loadFamily } = useFamilyStore();
+  const setReminderEnabled = useFamilyStore((s) => s.setReminderEnabled);
   // Use the established coastal photo as the default instead of the flat placeholder scene.
   // Explicit family background choices always take precedence.
   const heroBackground = getDogBackground(dog?.heroBackgroundId);
@@ -448,6 +454,7 @@ export function HomeScreen() {
   // authenticated identity (currentUserId) and REAL familyRole never
   // change, and are never used for mutations/RLS/audit either way.
   const effectiveUserId = useEffectiveUserId()!; // HomeScreen only renders once currentUserId is set (see the `!` above)
+  const canManagePersonalNotifications = !personalNotificationsReadOnly && effectiveUserId === currentUserId;
 
   const startWalkAs = useCallback((walk: Walk, actualWalkerUserId: string, remoteStart: boolean) => {
     // iPhone Safari requires location permission to be requested in the
@@ -1324,6 +1331,19 @@ export function HomeScreen() {
             ) : null}
           </Pressable>
         </View>
+
+        {canManagePersonalNotifications ? (
+          <Pressable
+            style={styles.personalNotificationsCard}
+            onPress={() => setPersonalNotificationsVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel="🔔 ההתראות שלי"
+            accessibilityHint="פתיחת הגדרות ההתראות במכשיר הזה"
+          >
+            <RtlText style={styles.personalNotificationsTitle}>🔔 ההתראות שלי</RtlText>
+            <RtlText style={styles.personalNotificationsDescription}>הפעלת התראות ושמירת ההעדפה האישית שלך</RtlText>
+          </Pressable>
+        ) : null}
 
         {/* PRD §11: "ב-Home יש בחירת כלב קלה כאשר יש יותר מכלב אחד" — an
             easy dog picker on Home whenever there's more than one dog.
@@ -2208,6 +2228,20 @@ export function HomeScreen() {
         onClose={() => setRequestsInboxVisible(false)}
       />
 
+      <RemindersModal
+        visible={personalNotificationsVisible && canManagePersonalNotifications}
+        users={users}
+        effectiveFamilyRole={effectiveRole}
+        effectiveUserId={currentUserId}
+        personalOnly
+        onSetReminderEnabled={(userId, enabled) => {
+          if (canManagePersonalNotifications && userId === currentUserId) {
+            void setReminderEnabled(userId, enabled);
+          }
+        }}
+        onClose={() => setPersonalNotificationsVisible(false)}
+      />
+
       <ConfirmModal
         visible={!!actionError}
         title="אופס"
@@ -2257,6 +2291,9 @@ const styles = StyleSheet.create({
   // iPhone Safari QA: keep the active-walk title visible below the hero instead of
   // pulling the card 64px upward under the top edge. Preserve a small overlap.
   nextWalkLift: { marginTop: -16, zIndex: 1, paddingHorizontal: spacing.xs },
+  personalNotificationsCard: { marginHorizontal: spacing.xs, paddingVertical: spacing.md, paddingHorizontal: spacing.md, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: spacing.xs },
+  personalNotificationsTitle: { fontSize: typography.body.fontSize, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
+  personalNotificationsDescription: { fontSize: typography.cardTitle.fontSize, lineHeight: typography.cardTitle.lineHeight, color: colors.textSecondary, textAlign: 'right' },
   testModeBanner: {
     flexDirection: 'row',
     alignItems: 'center',
