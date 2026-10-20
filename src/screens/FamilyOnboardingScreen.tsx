@@ -839,8 +839,8 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
                 );
               })() : null}
               {otpDiagnosticsEnabled && otpConnectivity ? (
-                <RtlText style={styles.stepHint} accessibilityLabel="תוצאת בדיקת קישוריות Auth">
-                  בדיקת Auth: {otpConnectivity.category === 'http_response'
+                <RtlText style={styles.stepHint} accessibilityLabel="תוצאת בדיקת CORS וקישוריות Auth">
+                  בדיקת CORS/Auth: {otpConnectivity.category === 'http_response'
                     ? `HTTP ${otpConnectivity.httpStatus ?? 'תגובה'}`
                     : otpConnectivity.category.toUpperCase()} · {otpConnectivity.elapsedMs}ms
                 </RtlText>

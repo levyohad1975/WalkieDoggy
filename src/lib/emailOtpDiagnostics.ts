@@ -160,8 +160,12 @@ export function createOtpDiagnosticFetch(
 }
 
 /**
- * A no-credential GET to Auth's health endpoint. Any HTTP response proves
- * browser transport reached an HTTP server; this does not test OTP delivery.
+ * A harmless POST to Auth's read-only health endpoint using synthetic values
+ * for the headers and method used by the OTP request. In a browser this forces
+ * a CORS preflight for POST plus apikey/authorization/content-type/x-client-info
+ * without calling /otp, sending an email, or using a real key or session.
+ * Any HTTP response proves that preflight and the follow-up request reached an
+ * HTTP server; it does not test the /otp route or email delivery.
  */
 export async function probeAuthEndpointConnectivity(
   supabaseUrl: string,
@@ -177,10 +181,16 @@ export async function probeAuthEndpointConnectivity(
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetcher(`${STAGING_SUPABASE_URL}/auth/v1/health`, {
-      method: 'GET',
+      method: 'POST',
       mode: 'cors',
       credentials: 'omit',
       cache: 'no-store',
+      headers: {
+        apikey: 'staging-cors-probe',
+        Authorization: 'Bearer staging-cors-probe',
+        'Content-Type': 'application/json',
+        'X-Client-Info': 'walkie-otp-cors-probe',
+      },
       signal: controller.signal,
     });
     return {
