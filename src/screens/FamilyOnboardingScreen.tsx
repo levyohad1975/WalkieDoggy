@@ -19,6 +19,13 @@ import { inspectFamilyInviteDetail, redeemFamilyInvite, type FamilyInvitePreview
 import { formatInviteExpiry, inviteStatusLabel, parseInviteInput } from '../logic/familyInvites';
 import { parseJoinInput } from '../logic/familyJoinCode';
 import { friendlyErrorMessage } from '../lib/errorMessages';
+import {
+  acquireOtpRequestLock,
+  createOtpDiagnosticTrace,
+  getOtpDiagnosticSummary,
+  isOtpDiagnosticsEnabled,
+  type OtpDiagnosticSink,
+} from '../lib/emailOtpDiagnostics';
 import { Avatar } from '../components/Avatar';
 import { DogPhoto } from '../components/DogPhoto';
 import { WalkieMascot } from '../components/WalkieMascot';
@@ -130,6 +137,8 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
   const [verificationSent, setVerificationSent] = useState(false);
   const [verifiedAdminEmail, setVerifiedAdminEmail] = useState<string | null>(null);
   const [verifyingEmail, setVerifyingEmail] = useState(false);
+  const otpDiagnosticsEnabled = isOtpDiagnosticsEnabled();
+  const [otpDiagnostic, setOtpDiagnostic] = useState<ReturnType<typeof createOtpDiagnosticTrace>['snapshot'] | null>(null);
   // State updates render asynchronously. A ref closes the short window in
   // which two rapid taps could start duplicate Auth/email requests.
   const emailVerificationRequestRef = useRef(false);
@@ -179,16 +188,32 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
   }, []);
 
   const sendAdminVerification = async (shouldCreateUser = true) => {
-    if (emailVerificationRequestRef.current) return;
-    emailVerificationRequestRef.current = true;
+    if (!acquireOtpRequestLock(emailVerificationRequestRef)) return;
     setVerifyingEmail(true);
     setCreateError(null);
+    const trace = otpDiagnosticsEnabled ? createOtpDiagnosticTrace() : null;
+    const diagnostics: OtpDiagnosticSink | undefined = trace ? {
+      record(stage, error, category) {
+        try {
+          trace.sink.record(stage, error, category);
+          setOtpDiagnostic({ ...trace.snapshot, events: [...trace.snapshot.events] });
+        } catch {
+          // Diagnostics are best-effort and never block the auth operation.
+        }
+      },
+    } : undefined;
+    diagnostics?.record('button_handler_entered');
     try {
-      const normalizedEmail = await requestAdminEmailVerification(adminEmail, shouldCreateUser);
+      const normalizedEmail = await requestAdminEmailVerification(adminEmail, shouldCreateUser, diagnostics);
       setAdminEmail(normalizedEmail);
       setVerificationSent(true);
       setVerificationCode('');
     } catch (e) {
+      const lastStage = trace ? getOtpDiagnosticSummary(trace.snapshot)?.stage : undefined;
+      if (diagnostics && lastStage !== 'input_validation_failed'
+        && lastStage !== 'promise_rejected' && lastStage !== 'auth_error_returned') {
+        diagnostics.record('handler_failed_before_auth', e);
+      }
       setCreateError(friendlyErrorMessage(e));
     } finally {
       emailVerificationRequestRef.current = false;
@@ -661,6 +686,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
                   setVerifiedAdminEmail(null);
                   setVerificationCode('');
                   setCreateError(null);
+                  setOtpDiagnostic(null);
                 }}
                 placeholder="name@example.com"
                 placeholderTextColor={colors.textSecondary}
@@ -764,6 +790,15 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
                   {createError}
                 </RtlText>
               ) : null}
+              {otpDiagnosticsEnabled && otpDiagnostic ? (() => {
+                const summary = getOtpDiagnosticSummary(otpDiagnostic);
+                if (!summary) return null;
+                return (
+                  <RtlText style={styles.stepHint} accessibilityLabel="אבחון זמני של בקשת האימות">
+                    אבחון זמני {otpDiagnostic.reference} · {summary.category.toUpperCase()} · {summary.stage} · {summary.elapsedMs}ms
+                  </RtlText>
+                );
+              })() : null}
               <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
             </View>
           </ScrollView>

@@ -87,18 +87,21 @@ describe('FamilyOnboardingScreen — create/join auth guard and error mapping (s
     expect(lookupBody).not.toMatch(/e instanceof Error \? e\.message/);
   });
 
-  it('prevents duplicate verification requests before the async state update', () => {
+  it('uses a synchronous request lock and records Staging-only OTP diagnostics', () => {
     const start = source.indexOf('const sendAdminVerification = async (shouldCreateUser = true) => {');
     const end = source.indexOf('\n  };', start);
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
     const body = source.slice(start, end);
 
-    expect(body.indexOf('if (emailVerificationRequestRef.current) return;')).toBeGreaterThan(-1);
-    expect(body.indexOf('emailVerificationRequestRef.current = true;')).toBeLessThan(
+    expect(body).toContain('if (!acquireOtpRequestLock(emailVerificationRequestRef)) return;');
+    expect(body.indexOf('acquireOtpRequestLock(emailVerificationRequestRef)')).toBeLessThan(
       body.indexOf('requestAdminEmailVerification(')
     );
     expect(body).toContain('emailVerificationRequestRef.current = false;');
+    expect(body).toContain("diagnostics?.record('button_handler_entered')");
+    expect(body).toContain('requestAdminEmailVerification(adminEmail, shouldCreateUser, diagnostics)');
+    expect(source).toContain('isOtpDiagnosticsEnabled()');
     expect(source).toContain('בקשת הקוד התקבלה');
   });
 });
