@@ -3,9 +3,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import type { FamilyLookupResult } from '../types';
 import { withSyncIdentityFence } from './syncIdentityFence';
+import { createOtpDiagnosticFetch, isOtpDiagnosticsEnabled } from './emailOtpDiagnostics';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const supabasePublishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '';
+const stagingOtpDiagnosticFetch = isOtpDiagnosticsEnabled() && typeof globalThis.fetch === 'function'
+  ? createOtpDiagnosticFetch(globalThis.fetch.bind(globalThis), isOtpDiagnosticsEnabled)
+  : undefined;
 
 /**
  * True when EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY are set
@@ -55,6 +59,7 @@ export const supabase = isSupabaseConfigured
         persistSession: true,
         detectSessionInUrl: false,
       },
+      ...(stagingOtpDiagnosticFetch ? { global: { fetch: stagingOtpDiagnosticFetch } } : {}),
     })
   : null;
 

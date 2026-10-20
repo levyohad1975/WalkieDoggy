@@ -7,7 +7,7 @@ import { useSystemAdminStore } from '../store/systemAdminStore';
 import { colors } from '../theme/colors';
 import { breakpoints, elevation, radii, spacing, typography } from '../theme/tokens';
 import { Button } from '../components/Button';
-import { ensureAnonymousSession, findFamilyByInviteCode, joinFamily } from '../lib/supabase';
+import { ensureAnonymousSession, findFamilyByInviteCode, joinFamily, supabaseProjectUrl } from '../lib/supabase';
 import {
   createVerifiedFamily,
   getMyFamilyOnboardingStatus,
@@ -24,6 +24,8 @@ import {
   createOtpDiagnosticTrace,
   getOtpDiagnosticSummary,
   isOtpDiagnosticsEnabled,
+  probeAuthEndpointConnectivity,
+  type OtpConnectivityResult,
   type OtpDiagnosticSink,
 } from '../lib/emailOtpDiagnostics';
 import { Avatar } from '../components/Avatar';
@@ -137,6 +139,8 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
   const [verificationSent, setVerificationSent] = useState(false);
   const [verifiedAdminEmail, setVerifiedAdminEmail] = useState<string | null>(null);
   const [verifyingEmail, setVerifyingEmail] = useState(false);
+  const [probingOtpEndpoint, setProbingOtpEndpoint] = useState(false);
+  const [otpConnectivity, setOtpConnectivity] = useState<OtpConnectivityResult | null>(null);
   const otpDiagnosticsEnabled = isOtpDiagnosticsEnabled();
   const [otpDiagnostic, setOtpDiagnostic] = useState<ReturnType<typeof createOtpDiagnosticTrace>['snapshot'] | null>(null);
   // State updates render asynchronously. A ref closes the short window in
@@ -218,6 +222,20 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
     } finally {
       emailVerificationRequestRef.current = false;
       setVerifyingEmail(false);
+    }
+  };
+
+  const testStagingAuthConnectivity = async () => {
+    if (!otpDiagnosticsEnabled || probingOtpEndpoint || verifyingEmail) return;
+    setProbingOtpEndpoint(true);
+    setOtpConnectivity(null);
+    try {
+      setOtpConnectivity(await probeAuthEndpointConnectivity(supabaseProjectUrl));
+    } catch {
+      // This probe is diagnostic-only and must not affect onboarding state.
+      setOtpConnectivity({ category: 'javascript', elapsedMs: 0 });
+    } finally {
+      setProbingOtpEndpoint(false);
     }
   };
 
@@ -687,6 +705,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
                   setVerificationCode('');
                   setCreateError(null);
                   setOtpDiagnostic(null);
+                  setOtpConnectivity(null);
                 }}
                 placeholder="name@example.com"
                 placeholderTextColor={colors.textSecondary}
@@ -703,8 +722,18 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
                 <Button
                   label={verifyingEmail ? 'שולח קוד...' : 'שליחת קוד אימות'}
                   onPress={sendAdminVerification}
-                  disabled={!adminEmail.trim() || verifyingEmail}
+                  disabled={!adminEmail.trim() || verifyingEmail || probingOtpEndpoint}
                   loading={verifyingEmail}
+                  style={styles.wideButton}
+                />
+              ) : null}
+              {otpDiagnosticsEnabled && !verifiedAdminEmail ? (
+                <Button
+                  label={probingOtpEndpoint ? 'בודק חיבור ל־Auth...' : 'בדיקת חיבור ל־Auth'}
+                  variant="secondary"
+                  onPress={testStagingAuthConnectivity}
+                  disabled={probingOtpEndpoint || verifyingEmail}
+                  loading={probingOtpEndpoint}
                   style={styles.wideButton}
                 />
               ) : null}
@@ -793,12 +822,29 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
               {otpDiagnosticsEnabled && otpDiagnostic ? (() => {
                 const summary = getOtpDiagnosticSummary(otpDiagnostic);
                 if (!summary) return null;
+                const fetchEvent = [...otpDiagnostic.events].reverse().find((event) =>
+                  event.stage === 'auth_fetch_invoked'
+                  || event.stage === 'auth_fetch_resolved'
+                  || event.stage === 'auth_fetch_rejected'
+                );
+                const fetchSummary = fetchEvent
+                  ? ` · ${fetchEvent.stage.replace('auth_fetch_', 'fetch_')}${fetchEvent.httpStatus ? ` HTTP ${fetchEvent.httpStatus}` : ''}`
+                  : otpDiagnostic.events.some((event) => event.stage === 'auth_client_rejected_before_fetch')
+                    ? ' · לפני fetch'
+                    : '';
                 return (
                   <RtlText style={styles.stepHint} accessibilityLabel="אבחון זמני של בקשת האימות">
-                    אבחון זמני {otpDiagnostic.reference} · {summary.category.toUpperCase()} · {summary.stage} · {summary.elapsedMs}ms
+                    אבחון זמני {otpDiagnostic.reference} · {summary.category.toUpperCase()} · {summary.stage}{fetchSummary} · {summary.elapsedMs}ms
                   </RtlText>
                 );
               })() : null}
+              {otpDiagnosticsEnabled && otpConnectivity ? (
+                <RtlText style={styles.stepHint} accessibilityLabel="תוצאת בדיקת קישוריות Auth">
+                  בדיקת Auth: {otpConnectivity.category === 'http_response'
+                    ? `HTTP ${otpConnectivity.httpStatus ?? 'תגובה'}`
+                    : otpConnectivity.category.toUpperCase()} · {otpConnectivity.elapsedMs}ms
+                </RtlText>
+              ) : null}
               <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
             </View>
           </ScrollView>

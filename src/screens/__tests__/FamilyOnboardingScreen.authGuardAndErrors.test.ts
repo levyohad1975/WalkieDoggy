@@ -102,6 +102,10 @@ describe('FamilyOnboardingScreen — create/join auth guard and error mapping (s
     expect(body).toContain("diagnostics?.record('button_handler_entered')");
     expect(body).toContain('requestAdminEmailVerification(adminEmail, shouldCreateUser, diagnostics)');
     expect(source).toContain('isOtpDiagnosticsEnabled()');
+    expect(source).toContain('probeAuthEndpointConnectivity(supabaseProjectUrl)');
+    expect(source).toContain('auth_client_rejected_before_fetch');
+    expect(source).toContain('auth_fetch_rejected');
+    expect(source).toContain('בדיקת חיבור ל־Auth');
     expect(source).toContain('בקשת הקוד התקבלה');
   });
 });

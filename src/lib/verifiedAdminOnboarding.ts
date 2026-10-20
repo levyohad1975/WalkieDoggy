@@ -1,7 +1,7 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase, SupabaseNotConfiguredError } from './supabase';
 import { withSyncIdentityFence } from './syncIdentityFence';
-import type { OtpDiagnosticSink } from './emailOtpDiagnostics';
+import { beginOtpFetchTrace, type OtpDiagnosticSink } from './emailOtpDiagnostics';
 
 export type VerifiedAdminIdentity = {
   userId: string;
@@ -91,6 +91,7 @@ export async function requestAdminEmailVerificationWithAuth(
   }
 
   recordOtpDiagnostic(diagnostics, 'sign_in_with_otp_invoked');
+  const fetchTrace = diagnostics ? beginOtpFetchTrace(diagnostics) : null;
   let result: { error: unknown | null };
   try {
     result = await auth.signInWithOtp({
@@ -99,8 +100,13 @@ export async function requestAdminEmailVerificationWithAuth(
     });
     recordOtpDiagnostic(diagnostics, 'promise_resolved');
   } catch (error) {
+    if (fetchTrace && !fetchTrace.fetchWasInvoked()) {
+      recordOtpDiagnostic(diagnostics, 'auth_client_rejected_before_fetch', error);
+    }
     recordOtpDiagnostic(diagnostics, 'promise_rejected', error);
     throw error;
+  } finally {
+    fetchTrace?.close();
   }
   if (result.error) {
     recordOtpDiagnostic(diagnostics, 'auth_error_returned', result.error);

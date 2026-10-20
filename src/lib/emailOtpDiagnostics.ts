@@ -1,5 +1,4 @@
 import { Platform } from 'react-native';
-import { supabaseProjectUrl } from './supabase';
 
 /**
  * Temporary, in-memory diagnostics for the Staging iPhone Safari OTP issue.
@@ -23,6 +22,10 @@ export type OtpDiagnosticStage =
   | 'promise_resolved'
   | 'auth_error_returned'
   | 'promise_rejected'
+  | 'auth_fetch_invoked'
+  | 'auth_fetch_resolved'
+  | 'auth_fetch_rejected'
+  | 'auth_client_rejected_before_fetch'
   | 'handler_failed_before_auth';
 
 export type OtpDiagnosticEvent = {
@@ -42,6 +45,13 @@ export type OtpDiagnosticSnapshot = {
 
 export type OtpDiagnosticSink = {
   record: (stage: OtpDiagnosticStage, error?: unknown, category?: OtpDiagnosticCategory) => void;
+};
+
+export type OtpConnectivityResult = {
+  category: 'http_response' | 'network' | 'timeout' | 'javascript' | 'disabled';
+  elapsedMs: number;
+  httpStatus?: number;
+  errorName?: string;
 };
 
 /** Synchronous lock used before React state has time to re-render the button. */
@@ -83,12 +93,111 @@ export function isOtpDiagnosticsEnabledFor(input: {
 }
 
 export function isOtpDiagnosticsEnabled(): boolean {
-  if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
+  if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.location) return false;
   return isOtpDiagnosticsEnabledFor({
     platform: Platform.OS,
     hostname: window.location.hostname,
-    supabaseUrl: supabaseProjectUrl,
+    supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
   });
+}
+
+type ActiveOtpFetchTrace = { sink: OtpDiagnosticSink; fetchInvoked: boolean };
+let activeOtpFetchTrace: ActiveOtpFetchTrace | null = null;
+
+export function beginOtpFetchTrace(sink: OtpDiagnosticSink): {
+  fetchWasInvoked: () => boolean;
+  close: () => void;
+} {
+  const previous = activeOtpFetchTrace;
+  const current: ActiveOtpFetchTrace = { sink, fetchInvoked: false };
+  activeOtpFetchTrace = current;
+  return {
+    fetchWasInvoked: () => current.fetchInvoked,
+    close: () => {
+      if (activeOtpFetchTrace === current) activeOtpFetchTrace = previous;
+    },
+  };
+}
+
+function getAuthOtpPath(input: RequestInfo | URL): string | null {
+  try {
+    const rawUrl = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    return new URL(rawUrl, STAGING_SUPABASE_URL).pathname;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Instruments only the final browser fetch for /auth/v1/otp. It forwards the
+ * original arguments unchanged and records no URL query, headers, or body.
+ */
+export function createOtpDiagnosticFetch(
+  fetcher: typeof fetch,
+  enabled: () => boolean
+): typeof fetch {
+  return async (input, init) => {
+    const trace = enabled() && getAuthOtpPath(input) === '/auth/v1/otp'
+      ? activeOtpFetchTrace
+      : null;
+    if (!trace) return fetcher(input, init);
+
+    trace.fetchInvoked = true;
+    trace.sink.record('auth_fetch_invoked');
+    try {
+      const response = await fetcher(input, init);
+      trace.sink.record(
+        'auth_fetch_resolved',
+        { status: response.status },
+        response.ok ? 'none' : 'auth_http'
+      );
+      return response;
+    } catch (error) {
+      trace.sink.record('auth_fetch_rejected', error);
+      throw error;
+    }
+  };
+}
+
+/**
+ * A no-credential GET to Auth's health endpoint. Any HTTP response proves
+ * browser transport reached an HTTP server; this does not test OTP delivery.
+ */
+export async function probeAuthEndpointConnectivity(
+  supabaseUrl: string,
+  fetcher: typeof fetch = globalThis.fetch,
+  timeoutMs = 8000
+): Promise<OtpConnectivityResult> {
+  if (supabaseUrl !== STAGING_SUPABASE_URL || typeof fetcher !== 'function') {
+    return { category: 'disabled', elapsedMs: 0 };
+  }
+
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetcher(`${STAGING_SUPABASE_URL}/auth/v1/health`, {
+      method: 'GET',
+      mode: 'cors',
+      credentials: 'omit',
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    return {
+      category: 'http_response',
+      elapsedMs: Math.max(0, Date.now() - startedAt),
+      httpStatus: response.status,
+    };
+  } catch (error) {
+    const errorCategory = classifyOtpError(error);
+    return {
+      category: errorCategory === 'network' || errorCategory === 'timeout' ? errorCategory : 'javascript',
+      elapsedMs: Math.max(0, Date.now() - startedAt),
+      ...getSafeErrorDetails(error),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function randomReference(): string {
@@ -108,9 +217,9 @@ function randomReference(): string {
 function getSafeErrorDetails(error: unknown): Pick<OtpDiagnosticEvent, 'errorName' | 'httpStatus' | 'errorCode'> {
   if (typeof error !== 'object' || error === null) return {};
   const value = error as { name?: unknown; status?: unknown; code?: unknown };
-  const name = typeof value.name === 'string' && SAFE_ERROR_NAMES.has(value.name)
-    ? value.name
-    : 'OtherError';
+  const name = typeof value.name === 'string'
+    ? SAFE_ERROR_NAMES.has(value.name) ? value.name : 'OtherError'
+    : undefined;
   const status = typeof value.status === 'number' && Number.isInteger(value.status)
     && value.status >= 100 && value.status <= 599
     ? value.status
@@ -119,7 +228,7 @@ function getSafeErrorDetails(error: unknown): Pick<OtpDiagnosticEvent, 'errorNam
     ? value.code
     : undefined;
   return {
-    errorName: name,
+    ...(name === undefined ? {} : { errorName: name }),
     ...(status === undefined ? {} : { httpStatus: status }),
     ...(code === undefined ? {} : { errorCode: code }),
   };

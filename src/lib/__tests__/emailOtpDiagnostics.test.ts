@@ -1,9 +1,12 @@
 import {
   acquireOtpRequestLock,
+  beginOtpFetchTrace,
   classifyOtpError,
+  createOtpDiagnosticFetch,
   createOtpDiagnosticTrace,
   getOtpDiagnosticSummary,
   isOtpDiagnosticsEnabledFor,
+  probeAuthEndpointConnectivity,
 } from '../emailOtpDiagnostics';
 import {
   requestAdminEmailVerificationWithAuth,
@@ -159,6 +162,104 @@ describe('temporary Staging email OTP diagnostics', () => {
     expect(classifyOtpError(Object.assign(new Error('bad response'), { status: 400 }))).toBe('auth_http');
     expect(classifyOtpError(new TypeError('Load failed'))).toBe('network');
     expect(classifyOtpError(new Error('unexpected'))).toBe('javascript');
+  });
+
+  it('probes only the exact Staging Auth endpoint without credentials and reports HTTP status', async () => {
+    const fetcher = jest.fn().mockResolvedValue({ status: 401 } as Response);
+    const result = await probeAuthEndpointConnectivity(
+      'https://czbxhsoxyawprqehkfit.supabase.co',
+      fetcher,
+    );
+    expect(result).toMatchObject({ category: 'http_response', httpStatus: 401 });
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://czbxhsoxyawprqehkfit.supabase.co/auth/v1/health',
+      expect.objectContaining({ method: 'GET', mode: 'cors', credentials: 'omit', cache: 'no-store' }),
+    );
+    const [, init] = fetcher.mock.calls[0];
+    expect(init).not.toHaveProperty('headers');
+    expect(JSON.stringify(fetcher.mock.calls)).not.toMatch(/apikey|authorization|token|email/i);
+  });
+
+  it('does not send connectivity probes to a non-Staging Supabase URL', async () => {
+    const fetcher = jest.fn();
+    await expect(probeAuthEndpointConnectivity('https://prod.supabase.co', fetcher))
+      .resolves.toMatchObject({ category: 'disabled' });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [new TypeError('Load failed'), 'network'],
+    [Object.assign(new Error('probe timeout'), { name: 'TimeoutError' }), 'timeout'],
+  ] as const)('classifies a rejected connectivity probe as %s', async (error, category) => {
+    const fetcher = jest.fn().mockRejectedValue(error);
+    await expect(probeAuthEndpointConnectivity(
+      'https://czbxhsoxyawprqehkfit.supabase.co',
+      fetcher,
+    )).resolves.toMatchObject({ category });
+  });
+
+  it('records whether the raw browser fetch ran and whether it returned HTTP or rejected', async () => {
+    const trace = createOtpDiagnosticTrace();
+    const close = beginOtpFetchTrace(trace.sink);
+    const log = jest.spyOn(console, 'info').mockImplementation(() => undefined);
+    const fetcher = jest.fn().mockResolvedValue({ ok: false, status: 429 } as Response);
+    try {
+      const instrumented = createOtpDiagnosticFetch(fetcher, () => true);
+      const response = await instrumented(
+        'https://czbxhsoxyawprqehkfit.supabase.co/auth/v1/otp',
+        { method: 'POST', body: '{"email":"private@example.com"}' },
+      );
+      expect(response.status).toBe(429);
+      expect(close.fetchWasInvoked()).toBe(true);
+      expect(trace.snapshot.events.map((event) => event.stage)).toEqual([
+        'auth_fetch_invoked', 'auth_fetch_resolved',
+      ]);
+      expect(getOtpDiagnosticSummary(trace.snapshot)).toMatchObject({
+        category: 'auth_http', httpStatus: 429, stage: 'auth_fetch_resolved',
+      });
+      const serialized = JSON.stringify(trace.snapshot) + JSON.stringify(log.mock.calls);
+      expect(serialized).not.toContain('private@example.com');
+      expect(serialized).not.toContain('"email"');
+    } finally {
+      close.close();
+      log.mockRestore();
+    }
+  });
+
+  it('records a raw fetch network rejection without capturing request payloads', async () => {
+    const trace = createOtpDiagnosticTrace();
+    const close = beginOtpFetchTrace(trace.sink);
+    const fetcher = jest.fn().mockRejectedValue(new TypeError('email private@example.com; token 123456'));
+    const log = jest.spyOn(console, 'info').mockImplementation(() => undefined);
+    try {
+      const instrumented = createOtpDiagnosticFetch(fetcher, () => true);
+      await expect(instrumented(
+        'https://czbxhsoxyawprqehkfit.supabase.co/auth/v1/otp',
+        { method: 'POST', body: '{"email":"private@example.com","token":"123456"}' },
+      )).rejects.toBeInstanceOf(TypeError);
+      expect(trace.snapshot.events.map((event) => event.stage)).toEqual([
+        'auth_fetch_invoked', 'auth_fetch_rejected',
+      ]);
+      expect(JSON.stringify(trace.snapshot) + JSON.stringify(log.mock.calls))
+        .not.toMatch(/private@example\.com|123456|token/);
+    } finally {
+      close.close();
+      log.mockRestore();
+    }
+  });
+
+  it('marks a rejected Auth promise when the raw fetch was never invoked', async () => {
+    const auth = authClient();
+    auth.signInWithOtp.mockRejectedValue(new Error('local setup failure'));
+    const trace = createOtpDiagnosticTrace();
+    await expect(requestAdminEmailVerificationWithAuth(
+      auth,
+      'admin@example.com',
+      true,
+      trace.sink,
+    )).rejects.toBeTruthy();
+    expect(trace.snapshot.events.map((event) => event.stage)).toContain('auth_client_rejected_before_fetch');
+    expect(getOtpDiagnosticSummary(trace.snapshot)?.stage).toBe('promise_rejected');
   });
 
   it('locks repeated taps synchronously and permits a retry after the first request settles', () => {
