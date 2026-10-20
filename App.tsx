@@ -205,7 +205,20 @@ async function runForegroundSyncOnce(): Promise<void> {
  * App.test.ts's "cold-start sync race" tests.
  */
 export async function performColdStart(restoreSession: () => Promise<void>): Promise<void> {
-  await restoreSession();
+  try {
+    await restoreSession();
+  } catch {
+    // A rejected local-storage/session-restore promise must not leave the
+    // first-run UI behind its permanent splash screen. On cold start the
+    // store still contains only its default (unclaimed) identity if restore
+    // failed before server validation; keep the persisted auth/session data
+    // untouched and allow the normal onboarding flow to render. Never start
+    // sync under an identity that was not restored successfully.
+    useAuthStore.setState({ hydrated: true });
+    // eslint-disable-next-line no-console
+    console.error('[startup] session restoration failed; showing safe onboarding state');
+    return;
+  }
   await runForegroundSync();
 }
 
