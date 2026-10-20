@@ -130,6 +130,9 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
   const [verificationSent, setVerificationSent] = useState(false);
   const [verifiedAdminEmail, setVerifiedAdminEmail] = useState<string | null>(null);
   const [verifyingEmail, setVerifyingEmail] = useState(false);
+  // State updates render asynchronously. A ref closes the short window in
+  // which two rapid taps could start duplicate Auth/email requests.
+  const emailVerificationRequestRef = useRef(false);
   const [pendingApprovalFamilyName, setPendingApprovalFamilyName] = useState<string | null>(null);
   // Set when get_my_family_onboarding_status() reports 'rejected' -- a
   // System Admin declined this device's family-creation request.
@@ -176,6 +179,8 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
   }, []);
 
   const sendAdminVerification = async (shouldCreateUser = true) => {
+    if (emailVerificationRequestRef.current) return;
+    emailVerificationRequestRef.current = true;
     setVerifyingEmail(true);
     setCreateError(null);
     try {
@@ -186,6 +191,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
     } catch (e) {
       setCreateError(friendlyErrorMessage(e));
     } finally {
+      emailVerificationRequestRef.current = false;
       setVerifyingEmail(false);
     }
   };
@@ -679,6 +685,9 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
 
               {verificationSent && !verifiedAdminEmail ? (
                 <>
+                  <RtlText style={styles.stepHint} accessibilityLiveRegion="polite">
+                    בקשת הקוד התקבלה. בדקו את תיבת הדואר ואת תיקיית הספאם. האישור הזה אינו מבטיח שהמייל נמסר.
+                  </RtlText>
                   <RtlText style={styles.label}>קוד האימות שקיבלת בדוא״ל</RtlText>
                   <TextInput
                     value={verificationCode}

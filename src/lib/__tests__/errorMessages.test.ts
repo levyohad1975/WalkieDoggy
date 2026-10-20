@@ -364,3 +364,24 @@ describe('friendlyErrorMessage — Walk Lifecycle v1.1', () => {
     expect(friendlyErrorMessage({ code: 'P0001', message: raw }, [], 'fallback')).toContain(expected);
   });
 });
+
+describe('friendlyErrorMessage — email OTP delivery', () => {
+  it('maps the iOS WebKit fetch failure without exposing raw technical text', () => {
+    expect(friendlyErrorMessage(new TypeError('Load failed'))).toBe(
+      'לא הצלחנו להתחבר לשרת. בדקו את החיבור ונסו שוב.'
+    );
+  });
+
+  it.each([
+    ['over_email_send_rate_limit', 'נשלחו יותר מדי בקשות קוד'],
+    ['Email rate limit exceeded', 'נשלחו יותר מדי בקשות קוד'],
+    ['Email address not authorized', 'השרת אינו מורשה לשלוח'],
+    ['email provider is not configured', 'שירות שליחת הדוא״ל אינו מוגדר'],
+    ['email provider failed', 'שליחת הדוא״ל נכשלה'],
+  ])('gives safe guidance for Auth delivery error %p', (raw, expected) => {
+    const message = friendlyErrorMessage(new Error(raw));
+    expect(message).toContain(expected);
+    expect(message).not.toContain('account');
+    expect(message).not.toContain('email exists');
+  });
+});

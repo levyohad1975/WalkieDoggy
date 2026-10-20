@@ -86,4 +86,19 @@ describe('FamilyOnboardingScreen — create/join auth guard and error mapping (s
     expect(lookupBody).toMatch(/setJoinError\(friendlyErrorMessage\(e\)\)/);
     expect(lookupBody).not.toMatch(/e instanceof Error \? e\.message/);
   });
+
+  it('prevents duplicate verification requests before the async state update', () => {
+    const start = source.indexOf('const sendAdminVerification = async (shouldCreateUser = true) => {');
+    const end = source.indexOf('\n  };', start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const body = source.slice(start, end);
+
+    expect(body.indexOf('if (emailVerificationRequestRef.current) return;')).toBeGreaterThan(-1);
+    expect(body.indexOf('emailVerificationRequestRef.current = true;')).toBeLessThan(
+      body.indexOf('requestAdminEmailVerification(')
+    );
+    expect(body).toContain('emailVerificationRequestRef.current = false;');
+    expect(source).toContain('בקשת הקוד התקבלה');
+  });
 });

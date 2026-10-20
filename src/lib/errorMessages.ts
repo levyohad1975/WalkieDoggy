@@ -253,8 +253,21 @@ export const SHARED_ERROR_RULES: ErrorRule[] = [
 
   // ---- Generic network failure — never show a raw fetch/TypeError string ----
   { includes: 'Network request failed', message: 'אין חיבור לאינטרנט. בדקו את החיבור ונסו שוב.' },
+  // WebKit on iOS Safari reports failed fetches as "Load failed". In
+  // private browsing this is especially opaque to users; keep the same safe,
+  // actionable guidance instead of falling through to the generic error.
+  { includes: 'Load failed', message: 'לא הצלחנו להתחבר לשרת. בדקו את החיבור ונסו שוב.' },
   { includes: 'Failed to fetch', message: 'אין חיבור לאינטרנט. בדקו את החיבור ונסו שוב.' },
   { includes: 'NetworkError', message: 'אין חיבור לאינטרנט. בדקו את החיבור ונסו שוב.' },
+  // Supabase Auth can reject OTP requests because of its delivery throttle
+  // or SMTP/provider configuration. These messages deliberately do not say
+  // whether an account exists for the submitted address.
+  { includes: 'over_email_send_rate_limit', message: 'נשלחו יותר מדי בקשות קוד. המתינו כדקה לפני ניסיון נוסף.' },
+  { includes: 'Email rate limit exceeded', message: 'נשלחו יותר מדי בקשות קוד. המתינו כדקה לפני ניסיון נוסף.' },
+  { includes: 'For security purposes, you can only request this after', message: 'נשלח קוד לאחרונה. המתינו כדקה לפני בקשה נוספת.' },
+  { includes: 'Email address not authorized', message: 'השרת אינו מורשה לשלוח לכתובת הזו כרגע. פנו לתמיכה.' },
+  { includes: 'email provider is not configured', message: 'שירות שליחת הדוא״ל אינו מוגדר כרגע. פנו לתמיכה.' },
+  { includes: 'email provider failed', message: 'שליחת הדוא״ל נכשלה כרגע. בדקו שוב מאוחר יותר או פנו לתמיכה.' },
 ];
 
 /**
