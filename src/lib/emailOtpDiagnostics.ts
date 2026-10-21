@@ -54,6 +54,13 @@ export type OtpConnectivityResult = {
   errorName?: string;
 };
 
+type OtpSdkProbeClient = {
+  signInWithOtp: (args: {
+    email: string;
+    options: { shouldCreateUser: boolean };
+  }) => Promise<{ error: unknown | null }>;
+};
+
 /** Synchronous lock used before React state has time to re-render the button. */
 export function acquireOtpRequestLock(lock: { current: boolean }): boolean {
   if (lock.current) return false;
@@ -210,6 +217,55 @@ export async function probeOtpEndpointConnectivity(
     };
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+/**
+ * Exercises the real Supabase Auth SDK and its configured fetch/headers while
+ * sending an empty email. Auth cannot send a message or create an account from
+ * this request; an HTTP validation response is the expected result. This is
+ * only exposed by the exact Staging-only UI gate.
+ */
+export async function probeOtpSdkTransport(
+  auth: OtpSdkProbeClient | null | undefined,
+  timeoutMs = 8000
+): Promise<OtpConnectivityResult> {
+  if (!auth || typeof auth.signInWithOtp !== 'function') {
+    return { category: 'disabled', elapsedMs: 0 };
+  }
+
+  const startedAt = Date.now();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const request = Promise.resolve()
+    .then(() => auth.signInWithOtp({ email: '', options: { shouldCreateUser: true } }))
+    .then(({ error }) => {
+      const status = getSafeErrorDetails(error).httpStatus;
+      return {
+        category: 'http_response' as const,
+        elapsedMs: Math.max(0, Date.now() - startedAt),
+        httpStatus: status ?? 200,
+      };
+    })
+    .catch((error: unknown) => {
+      const category = classifyOtpError(error);
+      return {
+        category: category === 'network' || category === 'timeout' ? category : 'javascript',
+        elapsedMs: Math.max(0, Date.now() - startedAt),
+        ...getSafeErrorDetails(error),
+      } satisfies OtpConnectivityResult;
+    });
+  const deadline = new Promise<OtpConnectivityResult>((resolve) => {
+    timeout = setTimeout(() => resolve({
+      category: 'timeout',
+      elapsedMs: Math.max(0, Date.now() - startedAt),
+      errorName: 'TimeoutError',
+    }), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([request, deadline]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
   }
 }
 

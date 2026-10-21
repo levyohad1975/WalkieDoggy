@@ -7,6 +7,7 @@ import {
   getOtpDiagnosticSummary,
   isOtpDiagnosticsEnabledFor,
   probeOtpEndpointConnectivity,
+  probeOtpSdkTransport,
 } from '../emailOtpDiagnostics';
 import {
   requestAdminEmailVerificationWithAuth,
@@ -187,6 +188,39 @@ describe('temporary Staging email OTP diagnostics', () => {
     expect(init.body).toBe('{}');
     expect(JSON.stringify(result)).not.toMatch(/public-test-key|authorization|apikey|email/i);
     expect(JSON.stringify(fetcher.mock.calls)).not.toMatch(/@|otp-code|access_token|refresh_token|"email"|"phone"/i);
+  });
+
+  it('runs the SDK transport probe with the empty-email request shape and reports the expected HTTP validation response', async () => {
+    const auth = authClient();
+    auth.signInWithOtp.mockResolvedValue({
+      error: Object.assign(new Error('email must be supplied'), { status: 400 }),
+    });
+
+    await expect(probeOtpSdkTransport(auth)).resolves.toMatchObject({
+      category: 'http_response',
+      httpStatus: 400,
+    });
+    expect(auth.signInWithOtp).toHaveBeenCalledWith({
+      email: '',
+      options: { shouldCreateUser: true },
+    });
+    expect(JSON.stringify(auth.signInWithOtp.mock.calls)).not.toMatch(/@|email must be supplied/i);
+  });
+
+  it('classifies SDK transport network rejection without exposing the underlying message', async () => {
+    const auth = authClient();
+    auth.signInWithOtp.mockRejectedValue(new TypeError('Failed to fetch private@example.com'));
+
+    const result = await probeOtpSdkTransport(auth);
+    expect(result.category).toBe('network');
+    expect(JSON.stringify(result)).not.toMatch(/private@example\.com|Failed to fetch/i);
+  });
+
+  it('times out an unresolved SDK transport probe and disables itself without an Auth client', async () => {
+    const auth = authClient();
+    auth.signInWithOtp.mockReturnValue(new Promise(() => undefined));
+    await expect(probeOtpSdkTransport(auth, 1)).resolves.toMatchObject({ category: 'timeout' });
+    await expect(probeOtpSdkTransport(null)).resolves.toMatchObject({ category: 'disabled' });
   });
 
   it('does not send connectivity probes to a non-Staging Supabase URL', async () => {

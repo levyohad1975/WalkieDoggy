@@ -7,7 +7,7 @@ import { useSystemAdminStore } from '../store/systemAdminStore';
 import { colors } from '../theme/colors';
 import { breakpoints, elevation, radii, spacing, typography } from '../theme/tokens';
 import { Button } from '../components/Button';
-import { ensureAnonymousSession, findFamilyByInviteCode, joinFamily, supabaseClientKey, supabaseProjectUrl } from '../lib/supabase';
+import { ensureAnonymousSession, findFamilyByInviteCode, joinFamily, supabase } from '../lib/supabase';
 import {
   createVerifiedFamily,
   getMyFamilyOnboardingStatus,
@@ -24,7 +24,7 @@ import {
   createOtpDiagnosticTrace,
   getOtpDiagnosticSummary,
   isOtpDiagnosticsEnabled,
-  probeOtpEndpointConnectivity,
+  probeOtpSdkTransport,
   type OtpConnectivityResult,
   type OtpDiagnosticSink,
 } from '../lib/emailOtpDiagnostics';
@@ -230,7 +230,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
     setProbingOtpEndpoint(true);
     setOtpConnectivity(null);
     try {
-      setOtpConnectivity(await probeOtpEndpointConnectivity(supabaseProjectUrl, supabaseClientKey));
+      setOtpConnectivity(await probeOtpSdkTransport(supabase?.auth));
     } catch {
       // This probe is diagnostic-only and must not affect onboarding state.
       setOtpConnectivity({ category: 'javascript', elapsedMs: 0 });
@@ -729,7 +729,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
               ) : null}
               {otpDiagnosticsEnabled && !verifiedAdminEmail ? (
                 <Button
-                  label={probingOtpEndpoint ? 'בודק נתיב OTP ללא אימייל...' : 'בדיקת נתיב OTP (ללא אימייל)'}
+                  label={probingOtpEndpoint ? 'בודק SDK לנתיב OTP...' : 'בדיקת SDK לנתיב OTP (ללא אימייל)'}
                   variant="secondary"
                   onPress={testStagingAuthConnectivity}
                   disabled={probingOtpEndpoint || verifyingEmail}
@@ -839,8 +839,8 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
                 );
               })() : null}
               {otpDiagnosticsEnabled && otpConnectivity ? (
-                <RtlText style={styles.stepHint} accessibilityLabel="תוצאת בדיקת נתיב OTP ללא אימייל">
-                  בדיקת נתיב OTP ללא אימייל: {otpConnectivity.category === 'http_response'
+                <RtlText style={styles.stepHint} accessibilityLabel="תוצאת בדיקת SDK לנתיב OTP ללא אימייל">
+                  בדיקת SDK לנתיב OTP ללא אימייל: {otpConnectivity.category === 'http_response'
                     ? `HTTP ${otpConnectivity.httpStatus ?? 'תגובה'}`
                     : otpConnectivity.category.toUpperCase()} · {otpConnectivity.elapsedMs}ms
                 </RtlText>
