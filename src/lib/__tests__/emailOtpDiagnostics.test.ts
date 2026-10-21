@@ -6,7 +6,7 @@ import {
   createOtpDiagnosticTrace,
   getOtpDiagnosticSummary,
   isOtpDiagnosticsEnabledFor,
-  probeAuthEndpointConnectivity,
+  probeOtpEndpointConnectivity,
 } from '../emailOtpDiagnostics';
 import {
   requestAdminEmailVerificationWithAuth,
@@ -164,32 +164,45 @@ describe('temporary Staging email OTP diagnostics', () => {
     expect(classifyOtpError(new Error('unexpected'))).toBe('javascript');
   });
 
-  it('probes Staging POST preflight using synthetic Auth headers and reports HTTP status', async () => {
+  it('probes the exact Staging OTP route with Auth headers but no email or phone', async () => {
     const fetcher = jest.fn().mockResolvedValue({ status: 401 } as Response);
-    const result = await probeAuthEndpointConnectivity(
+    const result = await probeOtpEndpointConnectivity(
       'https://czbxhsoxyawprqehkfit.supabase.co',
+      'public-test-key',
       fetcher,
     );
     expect(result).toMatchObject({ category: 'http_response', httpStatus: 401 });
     expect(fetcher).toHaveBeenCalledWith(
-      'https://czbxhsoxyawprqehkfit.supabase.co/auth/v1/health',
+      'https://czbxhsoxyawprqehkfit.supabase.co/auth/v1/otp',
       expect.objectContaining({ method: 'POST', mode: 'cors', credentials: 'omit', cache: 'no-store' }),
     );
     const [, init] = fetcher.mock.calls[0];
     expect(init.headers).toEqual({
-      apikey: 'staging-cors-probe',
-      Authorization: 'Bearer staging-cors-probe',
-      'Content-Type': 'application/json',
-      'X-Client-Info': 'walkie-otp-cors-probe',
+      apikey: 'public-test-key',
+      Authorization: 'Bearer staging-otp-transport-probe',
+      'Content-Type': 'application/json;charset=UTF-8',
+      'X-Client-Info': 'walkie-otp-transport-probe',
+      'X-Supabase-Api-Version': '2024-01-01',
     });
-    expect(JSON.stringify(result)).not.toMatch(/staging-cors-probe|authorization|apikey|email/i);
-    expect(JSON.stringify(fetcher.mock.calls)).not.toMatch(/@|otp-code|access_token|refresh_token/i);
+    expect(init.body).toBe('{}');
+    expect(JSON.stringify(result)).not.toMatch(/public-test-key|authorization|apikey|email/i);
+    expect(JSON.stringify(fetcher.mock.calls)).not.toMatch(/@|otp-code|access_token|refresh_token|"email"|"phone"/i);
   });
 
   it('does not send connectivity probes to a non-Staging Supabase URL', async () => {
     const fetcher = jest.fn();
-    await expect(probeAuthEndpointConnectivity('https://prod.supabase.co', fetcher))
+    await expect(probeOtpEndpointConnectivity('https://prod.supabase.co', 'public-test-key', fetcher))
       .resolves.toMatchObject({ category: 'disabled' });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('does not send an OTP transport probe without the Staging public client key', async () => {
+    const fetcher = jest.fn();
+    await expect(probeOtpEndpointConnectivity(
+      'https://czbxhsoxyawprqehkfit.supabase.co',
+      '',
+      fetcher,
+    )).resolves.toMatchObject({ category: 'disabled' });
     expect(fetcher).not.toHaveBeenCalled();
   });
 
@@ -198,8 +211,9 @@ describe('temporary Staging email OTP diagnostics', () => {
     [Object.assign(new Error('probe timeout'), { name: 'TimeoutError' }), 'timeout'],
   ] as const)('classifies a rejected connectivity probe as %s', async (error, category) => {
     const fetcher = jest.fn().mockRejectedValue(error);
-    await expect(probeAuthEndpointConnectivity(
+    await expect(probeOtpEndpointConnectivity(
       'https://czbxhsoxyawprqehkfit.supabase.co',
+      'public-test-key',
       fetcher,
     )).resolves.toMatchObject({ category });
   });

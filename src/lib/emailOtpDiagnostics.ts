@@ -160,19 +160,20 @@ export function createOtpDiagnosticFetch(
 }
 
 /**
- * A harmless POST to Auth's read-only health endpoint using synthetic values
- * for the headers and method used by the OTP request. In a browser this forces
- * a CORS preflight for POST plus apikey/authorization/content-type/x-client-info
- * without calling /otp, sending an email, or using a real key or session.
- * Any HTTP response proves that preflight and the follow-up request reached an
- * HTTP server; it does not test the /otp route or email delivery.
+ * A Staging-only transport probe for the exact Auth OTP route. It deliberately
+ * omits both email and phone, so Auth cannot send a message or create a user.
+ * The public publishable key is already present in the app and is needed to
+ * exercise the same gateway route; no session/token is used. Any HTTP response
+ * proves that the browser completed CORS and reached an HTTP handler, but does
+ * not test email delivery or verification.
  */
-export async function probeAuthEndpointConnectivity(
+export async function probeOtpEndpointConnectivity(
   supabaseUrl: string,
+  publishableKey: string,
   fetcher: typeof fetch = globalThis.fetch,
   timeoutMs = 8000
 ): Promise<OtpConnectivityResult> {
-  if (supabaseUrl !== STAGING_SUPABASE_URL || typeof fetcher !== 'function') {
+  if (supabaseUrl !== STAGING_SUPABASE_URL || !publishableKey || typeof fetcher !== 'function') {
     return { category: 'disabled', elapsedMs: 0 };
   }
 
@@ -180,17 +181,19 @@ export async function probeAuthEndpointConnectivity(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetcher(`${STAGING_SUPABASE_URL}/auth/v1/health`, {
+    const response = await fetcher(`${STAGING_SUPABASE_URL}/auth/v1/otp`, {
       method: 'POST',
       mode: 'cors',
       credentials: 'omit',
       cache: 'no-store',
       headers: {
-        apikey: 'staging-cors-probe',
-        Authorization: 'Bearer staging-cors-probe',
-        'Content-Type': 'application/json',
-        'X-Client-Info': 'walkie-otp-cors-probe',
+        apikey: publishableKey,
+        Authorization: 'Bearer staging-otp-transport-probe',
+        'Content-Type': 'application/json;charset=UTF-8',
+        'X-Client-Info': 'walkie-otp-transport-probe',
+        'X-Supabase-Api-Version': '2024-01-01',
       },
+      body: '{}',
       signal: controller.signal,
     });
     return {

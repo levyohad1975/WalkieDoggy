@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 15374)
+Total output lines: 1145
+
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
 import { RtlText } from '../components/RtlText';
@@ -7,7 +10,7 @@ import { useSystemAdminStore } from '../store/systemAdminStore';
 import { colors } from '../theme/colors';
 import { breakpoints, elevation, radii, spacing, typography } from '../theme/tokens';
 import { Button } from '../components/Button';
-import { ensureAnonymousSession, findFamilyByInviteCode, joinFamily, supabaseProjectUrl } from '../lib/supabase';
+import { ensureAnonymousSession, findFamilyByInviteCode, joinFamily, supabaseClientKey, supabaseProjectUrl } from '../lib/supabase';
 import {
   createVerifiedFamily,
   getMyFamilyOnboardingStatus,
@@ -24,7 +27,7 @@ import {
   createOtpDiagnosticTrace,
   getOtpDiagnosticSummary,
   isOtpDiagnosticsEnabled,
-  probeAuthEndpointConnectivity,
+  probeOtpEndpointConnectivity,
   type OtpConnectivityResult,
   type OtpDiagnosticSink,
 } from '../lib/emailOtpDiagnostics';
@@ -230,7 +233,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
     setProbingOtpEndpoint(true);
     setOtpConnectivity(null);
     try {
-      setOtpConnectivity(await probeAuthEndpointConnectivity(supabaseProjectUrl));
+      setOtpConnectivity(await probeOtpEndpointConnectivity(supabaseProjectUrl, supabaseClientKey));
     } catch {
       // This probe is diagnostic-only and must not affect onboarding state.
       setOtpConnectivity({ category: 'javascript', elapsedMs: 0 });
@@ -512,241 +515,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
           <>
             <TextInput value={verificationCode} onChangeText={setVerificationCode}
               placeholder="קוד האימות" accessibilityLabel="קוד האימות"
-              keyboardType="number-pad" autoComplete="one-time-code" textContentType="oneTimeCode"
-              style={styles.input} textAlign="center" />
-            <Button label={verifyingEmail ? 'מאמת…' : 'כניסה לממשק הניהול'}
-              disabled={verifyingEmail || !verificationCode.trim()} loading={verifyingEmail}
-              onPress={async () => {
-                setVerifyingEmail(true);
-                setCreateError(null);
-                try {
-                  await verifyAdminEmailOtp(adminEmail, verificationCode);
-                  await useSystemAdminStore.getState().refresh();
-                  if (!useSystemAdminStore.getState().isSystemAdmin) {
-                    throw new Error('לכתובת זו אין הרשאת מנהל מערכת.');
-                  }
-                  // App.tsx opens the platform console directly for an authenticated
-                  // System Admin without a claimed family/profile.
-                } catch (error) {
-                  setCreateError(friendlyErrorMessage(error));
-                } finally {
-                  setVerifyingEmail(false);
-                }
-              }} style={styles.wideButton} />
-            <Button label="שליחת קוד חדש" variant="secondary"
-              onPress={() => sendAdminVerification(false)} disabled={verifyingEmail}
-              style={styles.wideButton} />
-          </>
-        )}
-        {createError ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{createError}</RtlText> : null}
-        <Button label="חזרה" variant="secondary"
-          onPress={() => { setMode(isInstalledWebApp ? 'pwaChoice' : 'choose'); setVerificationCode(''); }}
-          style={styles.wideButton} />
-      </SafeAreaView>
-    );
-  }
-
-  if (mode === 'pwaChoice') {
-    return (
-      <SafeAreaView style={styles.container}>
-        <Pressable onPress={handleAdminMascotTap} accessibilityLabel="הקמע של Walkie Doggy"><WalkieMascot state="ready" size={128} testID="onboarding-mascot-pwa-choice" /></Pressable>
-        <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">רגע לפני שממשיכים</RtlText>
-        <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
-          פתחתם את Walkie Doggy מהאייקון שנוסף למסך הבית. כדי לחבר את המכשיר הזה נכון, ספרו לנו קודם באיזה שלב אתם.
-        </RtlText>
-        <Button
-          label="המשפחה שלי כבר קיימת"
-          variant="secondary"
-          onPress={() => setMode('recover')}
-          style={styles.wideButton}
-        />
-        <Button
-          label="יש לי הזמנה"
-          variant="secondary"
-          onPress={() => setMode('redeem')}
-          style={styles.wideButton}
-        />
-        <Button
-          label="יצירת משפחה חדשה"
-          variant="secondary"
-          onPress={() => setMode('create')}
-          style={styles.wideButton}
-        />
-      </SafeAreaView>
-    );
-  }
-
-  if (mode === 'recover') {
-    return (
-      <SafeAreaView style={styles.container}>
-        <WalkieMascot state="waiting" size={128} testID="onboarding-mascot-recover" />
-        <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">מחברים אותך למשפחה…</RtlText>
-        <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
-          אין צורך ליצור את המשפחה מחדש. אם אתם מנהלי המשפחה, אמתו את כתובת הדוא״ל ששימשה ליצירתה ונשחזר את החיבור.
-        </RtlText>
-        <TextInput
-          value={adminEmail}
-          onChangeText={setAdminEmail}
-          placeholder="כתובת הדוא״ל של מנהל המשפחה"
-          accessibilityLabel="כתובת הדוא״ל של מנהל המשפחה"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          style={styles.input}
-          textAlign="right"
-        />
-        {!verificationSent ? (
-          <Button label={verifyingEmail ? 'שולח קוד…' : 'שלחו לי קוד אימות'} onPress={() => sendAdminVerification(false)} disabled={verifyingEmail || !adminEmail.trim()} loading={verifyingEmail} style={styles.wideButton} />
-        ) : (
-          <>
-            <TextInput value={verificationCode} onChangeText={setVerificationCode} placeholder="קוד האימות שקיבלתם במייל" accessibilityLabel="קוד האימות שקיבלתם במייל" keyboardType="number-pad"
-                    autoComplete="one-time-code"
-                    textContentType="oneTimeCode" style={styles.input} textAlign="right" />
-            <Button label={verifyingEmail ? 'מחבר למשפחה…' : 'המשך למשפחה שלי'} onPress={recoverExistingFamily} disabled={verifyingEmail || !verificationCode.trim()} loading={verifyingEmail} style={styles.wideButton} />
-          </>
-        )}
-        {createError ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{createError}</RtlText> : null}
-        <Button label="אני בן משפחה — יש לי הזמנה" variant="secondary" onPress={() => setMode('redeem')} style={styles.wideButton} />
-        <Button label="זו באמת משפחה חדשה" variant="secondary" onPress={() => setMode('create')} style={styles.wideButton} />
-      </SafeAreaView>
-    );
-  }
-
-  if (mode === 'choose' && pendingInviteRedemption) {
-    // Round 4 — a redemption already succeeded server-side but this device
-    // hasn't confirmed it yet (see authStore.ts). Deliberately NOT the
-    // ordinary paste form — retrying with the same token would replay an
-    // already-consumed invite and (correctly, but confusingly) fail with
-    // "ההזמנה הזו כבר נוצלה". Only whoami() verification is retried.
-    return (
-      <SafeAreaView style={styles.container}>
-        <WalkieMascot state="waiting" size={128} testID="onboarding-mascot-verifying" />
-        <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">ממתין לאימות</RtlText>
-        <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
-          ההצטרפות למשפחה כבר בוצעה בהצלחה, אך לא הצלחנו לאמת זאת במכשיר הזה כרגע — כנראה בעיית חיבור. אין
-          צורך להזין את ההזמנה מחדש.
-        </RtlText>
-        <Button
-          label={verifying ? 'מאמת...' : 'נסה שוב לאמת'}
-          onPress={retryVerification}
-          disabled={verifying}
-          loading={verifying}
-          style={styles.wideButton}
-          />
-      </SafeAreaView>
-    );
-  }
-
-  if (mode === 'choose') {
-    return (
-      <SafeAreaView style={styles.welcomeContainer}>
-        <View style={[styles.welcomeCard, isDesktop && styles.welcomeCardDesktop]}>
-          <Pressable onPress={handleAdminMascotTap} accessibilityLabel="הקמע הרשמי של Walkie Doggy"><WalkieMascot state="ready" size={isDesktop ? 184 : 150} accessibilityLabel="הקמע הרשמי של Walkie Doggy" /></Pressable>
-          <RtlText style={styles.welcomeBrand}>Walkie Doggy</RtlText>
-          <RtlText style={styles.welcomeTitle} accessibilityRole="header">מטיילים יחד, כמשפחה</RtlText>
-          <RtlText style={styles.welcomeCopy}>יוצרים בית משותף לכלבים, לבני המשפחה ולטיולים היומיים.</RtlText>
-          <Button label="יצירת משפחה חדשה" onPress={() => setMode('create')} style={styles.welcomeButton} />
-          <Button label="הצטרפות למשפחה קיימת" variant="secondary" onPress={() => setMode('join')} style={styles.welcomeButton} />
-          <Button label="המשפחה שלי כבר קיימת" variant="secondary" onPress={() => setMode('recover')} style={styles.welcomeButton} />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (mode === 'create') {
-    if (rejectedFamilyName) {
-      return (
-        <SafeAreaView style={styles.container}>
-          <WalkieMascot state="concerned" size={128} testID="onboarding-mascot-rejected" />
-          <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">הבקשה נדחתה</RtlText>
-          <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
-            הבקשה ליצירת {rejectedFamilyName} נדחתה על ידי מנהל המערכת. לפרטים נוספים, פנו לתמיכה.
-          </RtlText>
-          <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
-        </SafeAreaView>
-      );
-    }
-
-    if (pendingApprovalFamilyName) {
-      return (
-        <SafeAreaView style={styles.container}>
-          <WalkieMascot state="waiting" size={128} testID="onboarding-mascot-pending" />
-          <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">המשפחה ממתינה לאישור</RtlText>
-          <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
-            הבקשה ליצירת {pendingApprovalFamilyName} התקבלה. נשלח עדכון לאחר אישור מנהל המערכת.
-          </RtlText>
-          <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
-        </SafeAreaView>
-      );
-    }
-
-    return (
-      <SafeAreaView style={styles.formSafeArea}>
-        <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
-            <View style={[styles.formHero, isDesktop && styles.formHeroDesktop]}>
-              <WalkieMascot state="excited" size={86} />
-              <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>בואו נקים למשפחה שלכם בית חדש</RtlText></View>
-            </View>
-            <View style={styles.creationProgress} accessibilityLabel="שלב 1 מתוך 5">
-              {[1, 2, 3, 4, 5].map((step) => <View key={step} style={[styles.creationProgressSegment, step === 1 ? styles.creationProgressCurrent : null]} />)}
-            </View>
-            <RtlText style={styles.creationStepText}>שלב 1 מתוך 5</RtlText>
-            <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">בואו נקים את המשפחה שלכם</RtlText>
-            <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>כמה פרטים קצרים ומתחילים לטייל יחד</RtlText>
-
-            <View style={[styles.form, isDesktop && styles.formDesktop]}>
-              <RtlText style={styles.label}>דוא״ל של מנהל/ת המשפחה</RtlText>
-              <TextInput
-                value={adminEmail}
-                onChangeText={(value) => {
-                  setAdminEmail(value);
-                  setVerificationSent(false);
-                  setVerifiedAdminEmail(null);
-                  setVerificationCode('');
-                  setCreateError(null);
-                  setOtpDiagnostic(null);
-                  setOtpConnectivity(null);
-                }}
-                placeholder="name@example.com"
-                placeholderTextColor={colors.textSecondary}
-                style={styles.input}
-                textAlign="left"
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="email-address"
-                editable={!verifyingEmail && !verifiedAdminEmail}
-                accessibilityLabel="דוא״ל של מנהל/ת המשפחה"
-              />
-
-              {!verificationSent && !verifiedAdminEmail ? (
-                <Button
-                  label={verifyingEmail ? 'שולח קוד...' : 'שליחת קוד אימות'}
-                  onPress={sendAdminVerification}
-                  disabled={!adminEmail.trim() || verifyingEmail || probingOtpEndpoint}
-                  loading={verifyingEmail}
-                  style={styles.wideButton}
-                />
-              ) : null}
-              {otpDiagnosticsEnabled && !verifiedAdminEmail ? (
-                <Button
-                  label={probingOtpEndpoint ? 'בודק חיבור ל־Auth...' : 'בדיקת חיבור ל־Auth'}
-                  variant="secondary"
-                  onPress={testStagingAuthConnectivity}
-                  disabled={probingOtpEndpoint || verifyingEmail}
-                  loading={probingOtpEndpoint}
-                  style={styles.wideButton}
-                />
-              ) : null}
-
-              {verificationSent && !verifiedAdminEmail ? (
-                <>
-                  <RtlText style={styles.stepHint} accessibilityLiveRegion="polite">
-                    בקשת הקוד התקבלה. בדקו את תיבת הדואר ואת תיקיית הספאם. האישור הזה אינו מבטיח שהמייל נמסר.
-                  </RtlText>
-                  <RtlText style={styles.label}>קוד האימות שקיבלת בדוא״ל</RtlText>
-                  <TextInput
-                    value={verificationCode}
-                    onChangeText={setVerificationCode}
+              keyboardType="number-pad" autoComplete="one-time-code" textContentTyp…3374 tokens truncated…ficationCode}
                     placeholder="123456"
                     placeholderTextColor={colors.textSecondary}
                     style={[styles.input, styles.codeInput]}
@@ -839,8 +608,8 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
                 );
               })() : null}
               {otpDiagnosticsEnabled && otpConnectivity ? (
-                <RtlText style={styles.stepHint} accessibilityLabel="תוצאת בדיקת CORS וקישוריות Auth">
-                  בדיקת CORS/Auth: {otpConnectivity.category === 'http_response'
+                <RtlText style={styles.stepHint} accessibilityLabel="תוצאת בדיקת נתיב OTP ללא אימייל">
+                  בדיקת נתיב OTP ללא אימייל: {otpConnectivity.category === 'http_response'
                     ? `HTTP ${otpConnectivity.httpStatus ?? 'תגובה'}`
                     : otpConnectivity.category.toUpperCase()} · {otpConnectivity.elapsedMs}ms
                 </RtlText>
