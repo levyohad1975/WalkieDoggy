@@ -125,11 +125,14 @@ export function AddUnplannedWalkModal({
   const [note, setNote] = useState('');
   const [duration, setDuration] = useState('');
   const [duplicateConfirmedKey, setDuplicateConfirmedKey] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [startNowError, setStartNowError] = useState('');
 
   useEffect(() => {
     if (visible) {
       setStartNowError('');
+      setSaving(false);
+      setDuplicateConfirmedKey(null);
       if (editingWalk) {
         setPerformedBy(editingWalk.responsibleUserId);
         setDate(editingWalk.date);
@@ -193,6 +196,24 @@ export function AddUnplannedWalkModal({
       // (P0 2026-10-15).
       const known = e instanceof Error && (e as Error & { knownReason?: boolean }).knownReason && e.message;
       setStartNowError(known || 'לא הצלחנו להתחיל את הטיול. בדקו חיבור ונסו שוב.');
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (saving || !valid) return;
+    if (possibleDuplicates.length > 0 && duplicateConfirmedKey !== duplicateKey) {
+      setDuplicateConfirmedKey(duplicateKey);
+      return;
+    }
+
+    // The parent optimistically adds the completed walk before its repository
+    // save settles. Keep duplicate detection out of that intermediate render;
+    // otherwise the just-submitted row is mistaken for a previous walk.
+    setSaving(true);
+    try {
+      await onConfirm(result);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -348,7 +369,7 @@ export function AddUnplannedWalkModal({
             />
 
             </ScrollView>
-            {possibleDuplicates.length > 0 && duplicateConfirmedKey !== duplicateKey ? (
+            {!saving && possibleDuplicates.length > 0 && duplicateConfirmedKey !== duplicateKey ? (
               <View accessibilityRole="alert" style={styles.duplicateWarning}>
                 <RtlText style={styles.duplicateWarningText}>
                   נמצא טיול קיים לכלב/ה ולמטייל/ת באותו זמן ({possibleDuplicates.length}). בדקו את ההיסטוריה לפני השמירה. לחיצה נוספת תשמור את הטיול הנפרד.
@@ -358,14 +379,9 @@ export function AddUnplannedWalkModal({
             <View style={styles.actions}>
               <Button
                 label={isEditing ? 'שמור שינויים' : 'שמור טיול'}
-                disabled={!valid}
-                onPress={() => {
-                  if (possibleDuplicates.length > 0 && duplicateConfirmedKey !== duplicateKey) {
-                    setDuplicateConfirmedKey(duplicateKey);
-                    return;
-                  }
-                  onConfirm(result);
-                }}
+                disabled={!valid || saving}
+                loading={saving}
+                onPress={() => void handleConfirm()}
                 style={styles.flex}
               />
               <Button label="ביטול" onPress={onClose} variant="secondary" style={styles.flex} />
