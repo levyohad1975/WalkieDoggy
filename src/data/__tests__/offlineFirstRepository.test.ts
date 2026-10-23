@@ -27,6 +27,7 @@ function stubRemote(overrides: Partial<Repository> = {}): Repository {
     upsertHealthTask: jest.fn(),
     getGpsSession: jest.fn(),
     upsertGpsSession: jest.fn(),
+    saveGpsReconstructionUpdateV1: jest.fn().mockResolvedValue(undefined),
     getGpsSessionsForWalkIds: jest.fn(),
     getAchievementUnlocks: jest.fn(),
     upsertAchievementUnlock: jest.fn(),
@@ -762,12 +763,27 @@ describe('OfflineFirstRepository — writes with a remote repository configured:
       id: 'gps-1', walkId: 'walk-1', familyId: 'family-1', dogId: 'dog-1',
       distanceMeters: 500, pointCount: 20, source: 'device_gps',
       createdAt: 'c', updatedAt: 'u',
+      reconstruction: { routePoints: [{ latitude: 32, longitude: 34, timestamp: 1 }], distanceMeters: 200, durationSeconds: 180, confidence: 'high', sourceWalkId: 'walk-old' },
     };
 
     await repo.upsertGpsSession(session);
 
     await expect(repo.getGpsSession('walk-1')).resolves.toEqual(session);
     expect(await repo.pendingSyncCount()).toBe(1);
+  });
+
+  it('caches reconstruction locally and queues only an estimate-only RPC payload for safe offline replay', async () => {
+    const remote = stubRemote();
+    const repo = await makeRepo(false, remote);
+    const session: WalkGpsSession = {
+      id: 'gps-1', walkId: 'walk-1', familyId: 'family-1', dogId: 'dog-1', distanceMeters: 500, pointCount: 20,
+      routePoints: [{ latitude: 32.01, longitude: 34, timestamp: 1_800_100_000_000 }], source: 'device_gps', createdAt: 'c', updatedAt: 'u',
+      reconstruction: { routePoints: [{ latitude: 32, longitude: 34, timestamp: 0 }, { latitude: 32.001, longitude: 34, timestamp: 0 }], distanceMeters: 120, durationSeconds: 100, confidence: 'high', sourceWalkId: 'walk-old' },
+    };
+    await repo.saveGpsReconstructionV1(session);
+    await expect(repo.getGpsSession('walk-1')).resolves.toEqual(session);
+    expect(await repo.pendingSyncCount()).toBe(1);
+    expect(remote.saveGpsReconstructionUpdateV1).not.toHaveBeenCalled();
   });
 
   it('updateUserGamificationSetting updates the local flag and enqueues a sync op', async () => {

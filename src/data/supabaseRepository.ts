@@ -12,6 +12,7 @@ import type {
   WalkGpsSession,
   WalkStartAuthorization,
   GpsRouteUpdate,
+  GpsReconstructionUpdate,
 } from '../types';
 import { defaultNotificationSetting } from '../logic/reminders';
 import type { DeleteFamilyMemberPayload, DuplicateActiveWalkReviewRecord, Repository, ResolveDuplicateActiveWalksRequest, WalkDuplicateResolutionAudit } from './repository';
@@ -75,6 +76,9 @@ function fromUser(user: FamilyUser) {
 }
 
 function toDog(row: any): Dog {
+  const homeLocation = Number.isFinite(Number(row.home_latitude)) && Number.isFinite(Number(row.home_longitude)) && row.home_verified_at && row.home_verified_by_user_id
+    ? { latitude: Number(row.home_latitude), longitude: Number(row.home_longitude), accuracyMeters: Number(row.home_accuracy_meters ?? 0), verifiedAt: row.home_verified_at, verifiedByUserId: row.home_verified_by_user_id }
+    : undefined;
   return {
     id: row.id,
     familyId: row.family_id,
@@ -85,6 +89,7 @@ function toDog(row: any): Dog {
     walksPerDay: row.walks_per_day,
     notes: row.notes ?? undefined,
     sex: row.sex ?? undefined,
+    homeLocation,
   };
 }
 
@@ -275,6 +280,7 @@ function toGpsSession(row: any): WalkGpsSession {
     distanceMeters: row.distance_meters ?? undefined,
     pointCount: row.point_count,
     routePoints: Array.isArray(row.route_points) ? row.route_points : undefined,
+    reconstruction: row.reconstruction && typeof row.reconstruction === 'object' ? row.reconstruction : undefined,
     correctedDistanceMeters: row.corrected_distance_meters ?? undefined,
     correctedByUserId: row.corrected_by_user_id ?? undefined,
     startedAt: row.started_at ?? undefined,
@@ -295,6 +301,7 @@ function fromGpsSession(session: WalkGpsSession) {
     distance_meters: session.distanceMeters ?? null,
     point_count: session.pointCount,
     route_points: session.routePoints ?? null,
+    reconstruction: session.reconstruction ?? null,
     corrected_distance_meters: session.correctedDistanceMeters ?? null,
     corrected_by_user_id: session.correctedByUserId ?? null,
     started_at: session.startedAt ?? null,
@@ -338,6 +345,11 @@ function fromDog(dog: Dog) {
     walks_per_day: dog.walksPerDay,
     notes: dog.notes ?? null,
     sex: dog.sex ?? null,
+    home_latitude: dog.homeLocation?.latitude ?? null,
+    home_longitude: dog.homeLocation?.longitude ?? null,
+    home_accuracy_meters: dog.homeLocation?.accuracyMeters ?? null,
+    home_verified_at: dog.homeLocation?.verifiedAt ?? null,
+    home_verified_by_user_id: dog.homeLocation?.verifiedByUserId ?? null,
   };
 }
 
@@ -618,6 +630,7 @@ export class SupabaseRepository implements Repository {
         endedAt: owner.route_ended_at ?? existing?.endedAt,
         correctedDistanceMeters: existing?.correctedDistanceMeters,
         correctedByUserId: existing?.correctedByUserId,
+        reconstruction: existing?.reconstruction,
         source: existing?.source ?? 'device_gps',
         createdByUserId: existing?.createdByUserId,
         createdAt: existing?.createdAt ?? owner.route_started_at ?? '',
@@ -1058,6 +1071,19 @@ export class SupabaseRepository implements Repository {
     });
     if (error) throw lifecycleRpcError('append_walk_gps_route_v11', error);
     return (await this.getGpsSession(update.walkId)) ?? toGpsSession(data);
+  }
+
+  async saveGpsReconstructionUpdateV1(update: GpsReconstructionUpdate): Promise<void> {
+    const { error } = await this.client.rpc('save_walk_gps_reconstruction_v1', {
+      p_walk_id: update.walkId,
+      p_reconstruction: update.reconstruction,
+    });
+    if (error && isMissingFunctionError(error)) {
+      // Preserve this estimate-only operation at the FIFO head until the
+      // separately approved additive migration is present.
+      throw Object.assign(new Error('GPS reconstruction server migration is not installed yet'), { syncQueueRetryable: true });
+    }
+    if (error) throw error;
   }
 
   async saveWalk(walk: Walk): Promise<void> {

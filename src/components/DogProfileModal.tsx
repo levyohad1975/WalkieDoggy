@@ -14,6 +14,8 @@ import { breakpoints, radii, spacing, typography } from '../theme/tokens';
 import { DEFAULT_DOG_BACKGROUND, getDogBackground, getDogBackgroundImageSource } from '../theme/dogBackgrounds';
 import { DogHeroBackgroundPicker } from './DogHeroBackgroundPicker';
 import { Button } from './Button';
+import { getCurrentReliableGpsFix } from '../lib/gpsTracking';
+import { GPS_CURRENT_FIX_MAX_ACCURACY_METERS } from '../logic/gpsReconstruction';
 
 export function DogProfileModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const dog = useFamilyStore((s) => s.dog);
@@ -23,8 +25,10 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const familyRole = useEffectiveFamilyRole();
   const systemObserverActive = useAuthStore((s) => s.systemObserverActive);
+  const currentUserId = useAuthStore((s) => s.currentUserId);
   const [uploading, setUploading] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [savingHomeLocation, setSavingHomeLocation] = useState(false);
   const [processingCutout, setProcessingCutout] = useState(false);
   const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
   const [pendingPhotoUrl, setPendingPhotoUrl] = useState<string | null>(null);
@@ -118,6 +122,33 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
       Alert.alert('לא הצלחנו לשמור את התמונה', 'נסו שוב בעוד רגע.');
     } finally {
       setRemoving(false);
+    }
+  };
+
+  const verifyHomeLocation = async () => {
+    if (!dog || !currentUserId || familyRole !== 'admin' || systemObserverActive || savingHomeLocation) return;
+    setSavingHomeLocation(true);
+    try {
+      const fix = await getCurrentReliableGpsFix();
+      if (fix.accuracy == null || fix.accuracy > GPS_CURRENT_FIX_MAX_ACCURACY_METERS) {
+        Alert.alert('המיקום אינו מדויק מספיק', 'נסו שוב במקום פתוח. נדרש דיוק של עד 25 מטרים.');
+        return;
+      }
+      await saveDog({
+        ...dog,
+        homeLocation: {
+          latitude: fix.latitude,
+          longitude: fix.longitude,
+          accuracyMeters: fix.accuracy,
+          verifiedAt: new Date().toISOString(),
+          verifiedByUserId: currentUserId,
+        },
+      });
+      Alert.alert('מיקום הבית נשמר', 'הנקודה נשמרה למכשירי המשפחה ותשמש רק כנקודת ייחוס למסלולים.');
+    } catch (error) {
+      Alert.alert('לא הצלחנו לשמור מיקום בית', error instanceof Error && /permission/i.test(error.message) ? 'יש לאפשר גישה למיקום ולנסות שוב.' : 'בדקו את חיבור המיקום והאינטרנט ונסו שוב.');
+    } finally {
+      setSavingHomeLocation(false);
     }
   };
 
@@ -215,6 +246,13 @@ export function DogProfileModal({ visible, onClose }: { visible: boolean; onClos
                     </Pressable>
                   ) : null}
                   <DogHeroBackgroundPicker dog={dog} onSave={(patch) => saveDog({ ...dog, ...patch })} />
+                  <View style={styles.card}>
+                    <RtlText style={styles.cardTitle}>מיקום הבית למסלולי GPS</RtlText>
+                    <RtlText style={styles.backgroundHint}>
+                      {dog.homeLocation ? 'מיקום הבית מאומת. הנקודה המדויקת משותפת רק לבני המשפחה.' : 'סמנו מיקום זה רק כשאתם נמצאים בבית. בלי אימות, לא ננחש את נקודת הבית.'}
+                    </RtlText>
+                    <Button label={savingHomeLocation ? 'בודקים ושומרים…' : dog.homeLocation ? 'עדכון מיקום הבית' : 'אימות מיקום הבית'} onPress={() => void verifyHomeLocation()} disabled={savingHomeLocation} />
+                  </View>
                 </View>
               ) : null}
               <View style={styles.card}>

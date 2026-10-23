@@ -75,6 +75,8 @@ interface NextWalkCardProps {
   gpsLastStopLabel?: string | null;
   /** GPS samples from the active walk, updated as the phone moves. */
   liveRoutePoints?: Array<{ latitude: number; longitude: number; timestamp: number }>;
+  liveReconstruction?: WalkGpsSession['reconstruction'] | null;
+  gpsReconstructionNotice?: 'history_unavailable' | 'home_unverified' | null;
   /** Server-persisted route from the actual walker's device, used by other family devices. */
   remoteGpsSession?: WalkGpsSession | null;
   /**
@@ -144,6 +146,8 @@ export function NextWalkCard({
   gpsNotTrackedHere,
   gpsLastStopLabel,
   liveRoutePoints,
+  liveReconstruction,
+  gpsReconstructionNotice,
   remoteGpsSession,
   onMarkNotDone,
   canResolve = true,
@@ -341,7 +345,8 @@ export function NextWalkCard({
 
         {isActive ? (
           <View style={styles.activeMapPanel}>
-            <RoutePreview live session={{ routePoints: liveRoutePoints ?? remoteGpsSession?.routePoints ?? [] } as import('../types').WalkGpsSession} />
+            <RoutePreview live session={{ routePoints: liveRoutePoints ?? remoteGpsSession?.routePoints ?? [], distanceMeters: liveDistanceMeters ?? remoteGpsSession?.distanceMeters, reconstruction: liveReconstruction ?? remoteGpsSession?.reconstruction } as import('../types').WalkGpsSession} />
+            {gpsReconstructionNotice ? <RtlText style={styles.gpsEstimateNote}>{gpsReconstructionNotice === 'home_unverified' ? 'לשחזור אוטומטי נדרש מיקום בית מאומת בפרופיל הכלב.' : 'הטיול ממשיך כרגיל. אין כרגע מספיק מסלולים קודמים לשחזור אמין.'}</RtlText> : null}
           </View>
         ) : null}
       {isActive && onEndWalk && canResolve ? (
@@ -527,6 +532,7 @@ const styles = StyleSheet.create({
   activeGpsLabel: { fontSize: 12, color: colors.primaryDark, textAlign: 'center', fontWeight: '600' },
   liveMapColumn: { minWidth: 0, overflow: 'hidden' },
   liveRouteMap: { width: '100%', marginVertical: 8, gap: 6 },
+  gpsEstimateNote: { fontSize: 12, color: colors.textSecondary, textAlign: 'right', paddingHorizontal: 4 },
   liveRouteLabel: { fontSize: 13, color: colors.textSecondary, textAlign: 'center' },
   card: {
     backgroundColor: colors.surface,

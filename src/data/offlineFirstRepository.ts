@@ -12,6 +12,7 @@ import type {
   WalkGpsSession,
   WalkStartAuthorization,
   GpsRouteUpdate,
+  GpsReconstructionUpdate,
 } from '../types';
 import type { DeleteFamilyMemberPayload, DuplicateActiveWalkReviewRecord, Repository, ResolveDuplicateActiveWalksRequest, WalkDuplicateResolutionAudit } from './repository';
 import { LocalRepository } from './localRepository';
@@ -826,6 +827,21 @@ export class OfflineFirstRepository implements Repository {
       }
     }
     return this.local.getGpsSession(walkId);
+  }
+
+  /** Cache the full local view, but queue only the estimate-only RPC payload. */
+  async saveGpsReconstructionV1(session: WalkGpsSession): Promise<void> {
+    if (!session.reconstruction) return;
+    await this.local.upsertGpsSession(session);
+    if (!this.remote?.saveGpsReconstructionUpdateV1) return;
+    const update: GpsReconstructionUpdate = {
+      walkId: session.walkId,
+      familyId: session.familyId,
+      dogId: session.dogId,
+      reconstruction: session.reconstruction,
+    };
+    await this.queue.enqueue({ type: 'saveGpsReconstructionV1', payload: update });
+    await this.trySync();
   }
 
   async upsertGpsSession(session: WalkGpsSession): Promise<void> {

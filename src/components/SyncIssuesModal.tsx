@@ -15,6 +15,7 @@ const OP_LABEL: Record<SyncOperation['type'], string> = {
   upsertDog: 'עדכון פרטי כלב',
   upsertHealthTask: 'עדכון רשומת בריאות/טיפוח',
   upsertGpsSession: 'עדכון נתוני GPS',
+  saveGpsReconstructionV1: 'שמירת מסלול GPS משוער',
   upsertAchievementUnlock: 'עדכון הישג',
   upsertScheduleRule: 'עדכון שעה קבועה',
   deleteScheduleRule: 'מחיקת שעה קבועה',

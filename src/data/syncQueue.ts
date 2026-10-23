@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { AchievementUnlock, Dog, FamilyUser, HealthTask, ScheduleEntry, ScheduleRule, Walk, WalkGpsSession } from '../types';
+import type { AchievementUnlock, Dog, FamilyUser, GpsReconstructionUpdate, HealthTask, ScheduleEntry, ScheduleRule, Walk, WalkGpsSession } from '../types';
 import type { DeleteFamilyMemberPayload, Repository } from './repository';
 import { withSyncIdentityFence } from '../lib/syncIdentityFence';
 
@@ -264,6 +264,7 @@ export type SyncOperation =
   | { type: 'upsertDog'; payload: Dog }
   | { type: 'upsertHealthTask'; payload: HealthTask }
   | { type: 'upsertGpsSession'; payload: WalkGpsSession }
+  | { type: 'saveGpsReconstructionV1'; payload: GpsReconstructionUpdate }
   | { type: 'upsertAchievementUnlock'; payload: AchievementUnlock }
   | { type: 'upsertScheduleRule'; payload: ScheduleRule }
   | { type: 'deleteScheduleRule'; payload: { ruleId: string } }
@@ -315,6 +316,7 @@ function operationEndpoint(op: SyncOperation): string {
     case 'upsertDog': return '/rest/v1/dogs';
     case 'upsertHealthTask': return '/rest/v1/health_tasks';
     case 'upsertGpsSession': return '/rest/v1/walk_gps_sessions';
+    case 'saveGpsReconstructionV1': return '/rest/v1/rpc/save_walk_gps_reconstruction_v1';
     case 'upsertAchievementUnlock': return '/rest/v1/achievement_unlocks';
     case 'upsertScheduleRule': return '/rest/v1/schedule_rules';
     case 'deleteScheduleRule': return '/rest/v1/rpc/delete_schedule_rule_idempotent';
@@ -989,6 +991,9 @@ export class SyncQueue {
         return remote.upsertHealthTask(op.payload);
       case 'upsertGpsSession':
         return remote.upsertGpsSession(op.payload);
+      case 'saveGpsReconstructionV1':
+        if (!remote.saveGpsReconstructionUpdateV1) throw new Error('GPS reconstruction sync is not available on this server');
+        return remote.saveGpsReconstructionUpdateV1(op.payload);
       case 'upsertAchievementUnlock':
         return remote.upsertAchievementUnlock(op.payload);
       case 'upsertScheduleRule':

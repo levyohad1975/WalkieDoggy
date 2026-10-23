@@ -65,6 +65,31 @@ describe('gpsStore', () => {
     expect(state.pointCount).toBe(7);
   });
 
+  it('automatically reconstructs a same-dog completed route on a reliable late first fix', async () => {
+    const { useGpsStore } = require('../gpsStore');
+    const { repository } = require('../../data');
+    const gpsTracking = require('../../lib/gpsTracking');
+    const homeLocation = { latitude: 32, longitude: 34, accuracyMeters: 8, verifiedAt: '2026-10-20T10:00:00Z', verifiedByUserId: 'admin-1' };
+    const historicalPoints = [
+      [32, 34], [32.0005, 34], [32.001, 34], [32.0015, 34], [32.002, 34], [32.0015, 34], [32.001, 34], [32.0005, 34], [32, 34],
+    ].map(([latitude, longitude], index) => ({ latitude, longitude, timestamp: 1_800_000_000_000 + index * 60_000 }));
+    const completedSession = { id: 'gps-old', walkId: 'walk-old', familyId: 'family-1', dogId: 'dog-1', pointCount: 9, distanceMeters: 900, routePoints: historicalPoints, endedAt: '2026-10-20T10:20:00Z', source: 'device_gps', createdAt: 'c', updatedAt: 'u' };
+    jest.spyOn(repository, 'getDogs').mockResolvedValue([{ id: 'dog-1', familyId: 'family-1', name: 'Buki', walksPerDay: 3, homeLocation }]);
+    jest.spyOn(repository, 'getWalks').mockResolvedValue([{ id: 'walk-old', familyId: 'family-1', dogId: 'dog-1', date: '2026-10-20', scheduledTime: '08:00', responsibleUserId: 'member-1', status: 'done', completedAt: '2026-10-20T10:20:00Z', createdAt: 'c', updatedAt: 'u' }]);
+    jest.spyOn(repository, 'getGpsSessionsForWalkIds').mockResolvedValue([completedSession]);
+    let feed: (acc: any) => void = () => undefined;
+    jest.spyOn(gpsTracking, 'startGpsWatch').mockImplementationOnce(async (onUpdate: any) => {
+      feed = onUpdate;
+      return { handle: { remove: jest.fn() }, permissionStatus: 'granted' };
+    });
+    await useGpsStore.getState().startTracking(walk);
+    feed({ distanceMeters: 0, pointCount: 1, routePoints: [{ latitude: 32.002, longitude: 34, timestamp: 1_800_100_000_000, accuracy: 8 }] });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(useGpsStore.getState().reconstruction).toMatchObject({ confidence: 'high', sourceWalkId: 'walk-old' });
+    expect(useGpsStore.getState().distanceMeters).toBe(0);
+    expect(useGpsStore.getState().routePoints).toEqual([{ latitude: 32.002, longitude: 34, timestamp: 1_800_100_000_000 }]);
+  });
+
   it('rebinds an active foreground watch to the canonical server walk ID and persists the collected GPS session there', async () => {
     const { useGpsStore } = require('../gpsStore');
     const { repository } = require('../../data');

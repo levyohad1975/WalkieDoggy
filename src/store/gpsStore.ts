@@ -5,6 +5,7 @@ import { generateId } from '../lib/id';
 import { startGpsWatch, type GpsPermissionStatus, type GpsTrackingStatus, type GpsWatchHandle } from '../lib/gpsTracking';
 import type { GpsAccumulator } from '../logic/gpsDistance';
 import { recordGpsLifecycle } from '../lib/gpsLifecycleLog';
+import { isPotentialLateGpsStart, reconstructMissingRoute, GPS_CURRENT_FIX_MAX_ACCURACY_METERS } from '../logic/gpsReconstruction';
 
 /**
  * Every way a device GPS session may legitimately END (write ended_at and
@@ -44,6 +45,47 @@ let gpsLeaseLost = false;
 let pendingOwnership: { walk: Walk; confirmTransfer: boolean } | null = null;
 /** The same-device lease acquisition currently in flight, shared by concurrent callers for that walk. */
 let ownershipRequest: { walkId: string; promise: Promise<boolean> } | null = null;
+const reconstructionAttempts = new Set<string>();
+
+async function attemptMissingRouteReconstruction(
+  walk: Pick<Walk, 'id' | 'familyId' | 'dogId'>,
+  generation: number,
+  firstFix: { latitude: number; longitude: number; timestamp: number; accuracy?: number | null },
+  nextFix?: { latitude: number; longitude: number; timestamp: number },
+): Promise<void> {
+  if (reconstructionAttempts.has(walk.id)) return;
+  reconstructionAttempts.add(walk.id);
+  try {
+    const dogs = await repository.getDogs(walk.familyId);
+    const dog = dogs.find((item) => item.id === walk.dogId && item.familyId === walk.familyId);
+    if (!dog?.homeLocation || !isPotentialLateGpsStart(dog.homeLocation, firstFix)) {
+      if (!dog?.homeLocation && firstFix.accuracy != null && firstFix.accuracy <= GPS_CURRENT_FIX_MAX_ACCURACY_METERS) {
+        useGpsStore.setState((state) => startGeneration === generation && activeWatchWalkId != null && state.trackingWalkId === activeWatchWalkId ? { reconstructionNotice: 'home_unverified' } : {});
+      }
+      return;
+    }
+    const walks = (await repository.getWalks(walk.familyId))
+      .filter((item) => item.familyId === walk.familyId && item.dogId === walk.dogId && item.status === 'done')
+      .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''))
+      .slice(0, 30);
+    const sessions = await repository.getGpsSessionsForWalkIds(walks.map((item) => item.id));
+    const reconstruction = reconstructMissingRoute({
+      familyId: walk.familyId,
+      dogId: walk.dogId,
+      home: dog.homeLocation,
+      firstFix,
+      nextFix,
+      historicalSessions: sessions,
+    });
+    useGpsStore.setState((state) => startGeneration === generation && activeWatchWalkId != null && state.trackingWalkId === activeWatchWalkId
+      ? reconstruction ? { reconstruction, reconstructionNotice: null } : { reconstructionNotice: 'history_unavailable' }
+      : {});
+  } catch {
+    useGpsStore.setState((state) => startGeneration === generation && activeWatchWalkId != null && state.trackingWalkId === activeWatchWalkId ? { reconstructionNotice: 'history_unavailable' } : {});
+  } finally {
+    reconstructionAttempts.delete(walk.id);
+  }
+}
 
 /** Server answers that prove this device no longer holds a valid lease. */
 export function isGpsLeaseLostError(error: unknown): boolean {
@@ -64,6 +106,8 @@ interface GpsState {
   distanceMeters: number;
   pointCount: number;
   routePoints: Array<{ latitude: number; longitude: number; timestamp: number }>;
+  reconstruction: WalkGpsSession['reconstruction'] | null;
+  reconstructionNotice: 'history_unavailable' | 'home_unverified' | null;
   gpsFencingEpoch: number | null;
   /**
    * Who started the current tracking session. 'local' is this device's own
@@ -168,6 +212,8 @@ export const useGpsStore = create<GpsState>((set, get) => ({
   distanceMeters: 0,
   pointCount: 0,
   routePoints: [],
+  reconstruction: null,
+  reconstructionNotice: null,
   gpsFencingEpoch: null,
   trackingSource: null,
   remoteGpsCommandId: null,
@@ -206,7 +252,9 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     const trackingSource = sameWalk ? current.trackingSource ?? 'local' : 'local';
     const remoteGpsCommandId = sameWalk ? current.remoteGpsCommandId : null;
     recordGpsLifecycle('start', walk.id, sameWalk ? 'retry_same_walk' : 'new_session', { source: trackingSource, priorPoints: priorPointCount });
-    set({ trackingWalkId: walk.id, permissionStatus: null, trackingStatus: 'requesting', trackingStartedAt: priorStartedAt, distanceMeters: priorDistance, pointCount: priorPointCount, routePoints: priorRoute, gpsFencingEpoch: null, trackingSource, remoteGpsCommandId });
+    if (!sameWalk) reconstructionAttempts.delete(walk.id);
+    const priorReconstruction = sameWalk ? current.reconstruction : null;
+    set({ trackingWalkId: walk.id, permissionStatus: null, trackingStatus: 'requesting', trackingStartedAt: priorStartedAt, distanceMeters: priorDistance, pointCount: priorPointCount, routePoints: priorRoute, reconstruction: priorReconstruction, reconstructionNotice: null, gpsFencingEpoch: null, trackingSource, remoteGpsCommandId });
 
     const result = await startGpsWatch((acc: GpsAccumulator) => {
       // Ignore a late callback from a watch that's since been stopped/
@@ -217,8 +265,12 @@ export const useGpsStore = create<GpsState>((set, get) => ({
         ? [...priorRoute, ...newPoints.filter((point) => !priorRoute.some((saved) => saved.timestamp === point.timestamp))]
         : newPoints;
       const combined = { distanceMeters: priorDistance + acc.distanceMeters, pointCount: priorPointCount + acc.pointCount, routePoints: combinedRoute };
+      const isFirstReliableFix = get().pointCount === 0 && combined.pointCount > 0;
       if (get().pointCount === 0 && combined.pointCount > 0) recordGpsLifecycle('first_fix', activeWatchWalkId);
       set({ distanceMeters: combined.distanceMeters, pointCount: combined.pointCount, trackingStatus: gpsLeaseLost ? 'interrupted' : 'active', routePoints: combinedRoute });
+      if (!preserveCapturedRoute && isFirstReliableFix && acc.routePoints?.[0]) {
+        void attemptMissingRouteReconstruction(walk, generation, acc.routePoints[0], acc.routePoints[1]);
+      }
       if (activeWatchWalkId) void persistGpsRoute(activeWatchWalkId, combined).catch((error) => console.warn('[gpsStore] route persistence failed', error));
     }, (trackingStatus) => {
       if (startGeneration === generation && get().trackingWalkId === activeWatchWalkId) set({ trackingStatus });
@@ -372,7 +424,8 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     activeGpsHeartbeat = null;
     activeWatchWalkId = null;
     gpsLeaseLost = false;
-    set({ trackingWalkId: null, permissionStatus: null, trackingStatus: null, trackingStartedAt: null, distanceMeters: 0, pointCount: 0, routePoints: [], gpsFencingEpoch: null, trackingSource: null, remoteGpsCommandId: null, lastGpsStop: { walkId, kind: 'cancel', reason: cancelReason, at: new Date().toISOString() } });
+    reconstructionAttempts.delete(walkId);
+    set({ trackingWalkId: null, permissionStatus: null, trackingStatus: null, trackingStartedAt: null, distanceMeters: 0, pointCount: 0, routePoints: [], reconstruction: null, reconstructionNotice: null, gpsFencingEpoch: null, trackingSource: null, remoteGpsCommandId: null, lastGpsStop: { walkId, kind: 'cancel', reason: cancelReason, at: new Date().toISOString() } });
   },
 
   stopTracking: async (walk, userId, reason, detail) => {
@@ -400,7 +453,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       activeGpsHeartbeat = null;
       activeWatchWalkId = null;
       gpsLeaseLost = false;
-      set({ trackingWalkId: null, trackingStartedAt: null, trackingStatus: null, permissionStatus: null, gpsFencingEpoch: null, trackingSource: null, remoteGpsCommandId: null, lastGpsStop: stopMark });
+      set({ trackingWalkId: null, trackingStartedAt: null, trackingStatus: null, permissionStatus: null, gpsFencingEpoch: null, trackingSource: null, remoteGpsCommandId: null, reconstruction: null, reconstructionNotice: null, lastGpsStop: stopMark });
       return null;
     }
 
@@ -413,6 +466,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       distanceMeters,
       pointCount,
       routePoints: get().routePoints,
+      reconstruction: get().reconstruction ?? undefined,
       source: 'device_gps',
       // Schema/repository layer already round-trips these (migration
       // 0051); this store previously never populated them at all. Bug
@@ -426,6 +480,13 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       updatedAt: now,
     };
     if (repository.appendGpsRouteV11) {
+      // Persist estimate metadata via an estimate-only, identity-fenced RPC
+      // before attempting the online, GPS-lease-fenced measured route upload.
+      // Offline replay must never send raw points or bypass the GPS lease.
+      if (session.reconstruction && repository.saveGpsReconstructionV1) {
+        try { await repository.saveGpsReconstructionV1(session); }
+        catch (error) { console.warn('[gpsStore] estimated route retained locally for sync', error); }
+      }
       if (gpsFencingEpoch === null) {
         set({ trackingStatus: 'interrupted' });
         throw new Error('GPS route was not saved because this device no longer owns GPS for the walk');
@@ -455,10 +516,12 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       activeGpsHeartbeat = null;
       activeWatchWalkId = null;
       gpsLeaseLost = false;
-      set({ trackingWalkId: null, trackingStartedAt: null, trackingStatus: null, permissionStatus: null, gpsFencingEpoch: null, trackingSource: null, remoteGpsCommandId: null, lastGpsStop: stopMark });
-      set((s) => ({ sessionsByWalkId: { ...s.sessionsByWalkId, [walk.id]: saved } }));
+      set({ trackingWalkId: null, trackingStartedAt: null, trackingStatus: null, permissionStatus: null, gpsFencingEpoch: null, trackingSource: null, remoteGpsCommandId: null, reconstruction: null, reconstructionNotice: null, lastGpsStop: stopMark });
+      reconstructionAttempts.delete(walk.id);
+      const completeSaved = { ...saved, reconstruction: session.reconstruction };
+      set((s) => ({ sessionsByWalkId: { ...s.sessionsByWalkId, [walk.id]: completeSaved } }));
       set({ routePoints: [] });
-      return saved;
+      return completeSaved;
     }
     await repository.upsertGpsSession(session);
     await releaseGpsOwnership(walk.id, gpsFencingEpoch);
@@ -466,7 +529,8 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     activeGpsHeartbeat = null;
     activeWatchWalkId = null;
     gpsLeaseLost = false;
-    set({ trackingWalkId: null, trackingStartedAt: null, trackingStatus: null, permissionStatus: null, gpsFencingEpoch: null, trackingSource: null, remoteGpsCommandId: null, lastGpsStop: stopMark });
+    set({ trackingWalkId: null, trackingStartedAt: null, trackingStatus: null, permissionStatus: null, gpsFencingEpoch: null, trackingSource: null, remoteGpsCommandId: null, reconstruction: null, reconstructionNotice: null, lastGpsStop: stopMark });
+    reconstructionAttempts.delete(walk.id);
     set((s) => ({ sessionsByWalkId: { ...s.sessionsByWalkId, [walk.id]: session } }));
     set({ routePoints: [] });
     return session;

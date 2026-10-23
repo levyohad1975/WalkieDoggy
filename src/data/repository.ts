@@ -11,6 +11,7 @@ import type {
   WalkGpsSession,
   WalkStartAuthorization,
   GpsRouteUpdate,
+  GpsReconstructionUpdate,
 } from '../types';
 import type { QuarantinedItem, SyncConflict, SyncQueueDiagnostics } from './syncQueue';
 import type { WalkLifecycleCapability } from './walkLifecycleCapability';
@@ -227,6 +228,10 @@ export interface Repository {
   releaseGpsOwnershipV11?(walkId: string, fencingEpoch: number): Promise<void>;
   heartbeatGpsOwnershipV11?(walkId: string, fencingEpoch: number): Promise<string>;
   appendGpsRouteV11?(update: GpsRouteUpdate): Promise<WalkGpsSession>;
+  /** Offline-first local cache plus estimate-only fenced synchronization. */
+  saveGpsReconstructionV1?(session: WalkGpsSession): Promise<void>;
+  /** Offline-safe, idempotent estimate-only write; never updates measured route fields. */
+  saveGpsReconstructionUpdateV1?(update: GpsReconstructionUpdate): Promise<void>;
   /**
    * Section 2: permanently deletes an unplanned/spontaneous walk entered by
    * mistake. Callers (scheduleStore.deleteUnplannedWalk) must only call this

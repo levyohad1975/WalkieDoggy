@@ -162,12 +162,13 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
   it('upsertDog sends family_id mapped from dog.familyId', async () => {
     const { client, calls } = makeMockClient();
     const repo = new SupabaseRepository(client);
-    const dog: Dog = { id: 'dog-1', familyId: 'fam-42', name: 'טופי', walksPerDay: 4 };
+    const dog: Dog = { id: 'dog-1', familyId: 'fam-42', name: 'טופי', walksPerDay: 4, homeLocation: { latitude: 32, longitude: 34, accuracyMeters: 8, verifiedAt: 'verified', verifiedByUserId: 'admin-1' } };
 
     await repo.upsertDog(dog);
 
     expect(calls[0].table).toBe('dogs');
     expect((calls[0].payload as any).family_id).toBe('fam-42');
+    expect(calls[0].payload).toMatchObject({ home_latitude: 32, home_longitude: 34, home_accuracy_meters: 8, home_verified_at: 'verified', home_verified_by_user_id: 'admin-1' });
   });
 
   it('upsertHealthTask sends dog_id/family_id mapped from task.dogId/familyId', async () => {
@@ -254,6 +255,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
       id: 'gps-1', walkId: 'walk-1', familyId: 'fam-42', dogId: 'dog-1',
       distanceMeters: 640.2, pointCount: 30, source: 'device_gps',
       createdAt: 'c', updatedAt: 'u',
+      reconstruction: { routePoints: [{ latitude: 32, longitude: 34, timestamp: 1 }], distanceMeters: 120, durationSeconds: 100, confidence: 'low', sourceWalkId: 'walk-old' },
     };
 
     await repo.upsertGpsSession(session);
@@ -262,6 +264,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
     expect((calls[0].payload as any).walk_id).toBe('walk-1');
     expect((calls[0].payload as any).dog_id).toBe('dog-1');
     expect((calls[0].payload as any).family_id).toBe('fam-42');
+    expect((calls[0].payload as any).reconstruction).toEqual(session.reconstruction);
     expect(calls[0].options).toEqual({ onConflict: 'walk_id' });
   });
 
@@ -272,6 +275,20 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
       pointCount: 0, source: 'device_gps', createdAt: 'c', updatedAt: 'u',
     };
     await expect(new SupabaseRepository(client).upsertGpsSession(session)).rejects.toBeTruthy();
+  });
+
+  it('saves reconstructed route through the estimate-only RPC payload', async () => {
+    const calls: Array<{ name: string; args: unknown }> = [];
+    const client: any = { rpc: (name: string, args: unknown) => { calls.push({ name, args }); return Promise.resolve({ error: null }); } };
+    const reconstruction = { routePoints: [{ latitude: 32, longitude: 34, timestamp: 0 }], distanceMeters: 120, durationSeconds: 100, confidence: 'low' as const, sourceWalkId: 'walk-old' };
+    await new SupabaseRepository(client).saveGpsReconstructionUpdateV1({ walkId: 'walk-1', familyId: 'family-1', dogId: 'dog-1', reconstruction });
+    expect(calls).toEqual([{ name: 'save_walk_gps_reconstruction_v1', args: { p_walk_id: 'walk-1', p_reconstruction: reconstruction } }]);
+  });
+
+  it('keeps estimate sync retryable until the additive RPC migration is installed', async () => {
+    const client: any = { rpc: () => Promise.resolve({ error: { code: 'PGRST202', message: 'Could not find the function' } }) };
+    const update: any = { walkId: 'walk-1', familyId: 'family-1', dogId: 'dog-1', reconstruction: { routePoints: [], distanceMeters: 100, durationSeconds: 100, confidence: 'low', sourceWalkId: 'walk-old' } };
+    await expect(new SupabaseRepository(client).saveGpsReconstructionUpdateV1(update)).rejects.toMatchObject({ syncQueueRetryable: true });
   });
 
   it('getGpsSession maps a row via toGpsSession, including nullish correction fields -> undefined', async () => {

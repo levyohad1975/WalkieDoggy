@@ -81,6 +81,8 @@ export interface Dog {
    * supabase/migrations/0022_family_timezone_and_dog_sex.sql.
    */
   sex?: 'male' | 'female';
+  /** Exact family-shared home pin; only stored after an admin explicitly verifies the device is at home. */
+  homeLocation?: { latitude: number; longitude: number; accuracyMeters: number; verifiedAt: string; verifiedByUserId: string };
 }
 
 /** The PRD §10 core category list for a health/grooming record. */
@@ -242,6 +244,14 @@ export interface WalkGpsSession {
   pointCount: number;
   /** GPS points retained for the in-app route preview/map. */
   routePoints?: Array<{ latitude: number; longitude: number; timestamp: number }>;
+  /** Separate, explicitly estimated prefix; never included in measured route or distance fields. */
+  reconstruction?: {
+    routePoints: Array<{ latitude: number; longitude: number; timestamp: number }>;
+    distanceMeters: number;
+    durationSeconds: number;
+    confidence: 'high' | 'low';
+    sourceWalkId: string;
+  };
   correctedDistanceMeters?: number;
   correctedByUserId?: string;
   startedAt?: string; // ISO timestamp
@@ -269,6 +279,13 @@ export interface GpsRouteUpdate {
   pointCount: number;
   startedAt?: string;
   endedAt?: string;
+}
+
+export interface GpsReconstructionUpdate {
+  walkId: string;
+  familyId: string;
+  dogId: string;
+  reconstruction: NonNullable<WalkGpsSession['reconstruction']>;
 }
 
 /**
