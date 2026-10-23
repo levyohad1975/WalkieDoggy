@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 35553)
-Total output lines: 2644
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, AppState, Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
@@ -1111,7 +1108,422 @@ export function HomeScreen() {
   );
 
   // Request-notifications repair, item B — the actual actionable items for
-  // the Home Dashboard pendi…5553 tokens truncated…               accessibilityLabel={`${notice.reviewActionLabel}: ${notice.title}`}
+  // the Home Dashboard pending-request card (PendingRequestsCard), using
+  // the exact same authorization filters as pendingForMe above so the
+  // count and the detailed cards can never disagree.
+  const actionablePendingRequests = selectActionablePendingRequestsForViewer(
+    swapRequests,
+    timeChangeRequests,
+    walksById,
+    effectiveUserId,
+    effectiveRole === 'admin'
+  );
+
+  const unreadResultsForMe =
+    countUnreadRequestResults(swapRequests, walksById, effectiveUserId) +
+    countUnreadRequestResults(timeChangeRequests, walksById, effectiveUserId) +
+    (effectiveRole === 'admin'
+      ? countRecentlyResolvedRequestsForAdmin(swapRequests, walksById, effectiveUserId) +
+        countRecentlyResolvedRequestsForAdmin(timeChangeRequests, walksById, effectiveUserId)
+      : 0);
+  const bellBadgeCount = pendingForMe + unreadResultsForMe;
+
+  const openRequestsInbox = () => {
+    setRequestsInboxVisible(true);
+    // Only the real profile may persist read-state. During Admin
+    // impersonation/test display, effectiveUserId differs from currentUserId;
+    // opening the simulated inbox must not mutate anybody's read receipts.
+    if (effectiveUserId === currentUserId && unreadResultsForMe > 0) {
+      void markResultsSeen();
+    }
+  };
+
+  const requestSwapWalk = requestSwapWalkId ? walksById[requestSwapWalkId] : undefined;
+  const requestTimeChangeWalk = requestTimeChangeWalkId ? walksById[requestTimeChangeWalkId] : undefined;
+
+  const editingWalk = editWalkId ? walks.find((w) => w.id === editWalkId) ?? null : null;
+  const otherPendingWalks = useMemo(() => {
+  if (!editingWalk) return [];
+
+  // Multi-dog (PRD §11): a swap target must belong to the SAME dog as the
+  // walk being edited — matching the dogId filter both SwapWalkPickerModal
+  // call sites below already apply. Without this, a multi-dog family could
+  // be offered to "swap" one dog's walk with a completely different dog's
+  // occurrence.
+  return upcomingWalks(walks, new Date(), 50)
+    .filter((w) => w.id !== editingWalk.id && w.dogId === editingWalk.dogId)
+    .slice(0, 12)
+    .map((w) => ({
+      walk: w,
+      responsible: usersById[w.responsibleUserId],
+    }));
+}, [walks, editingWalk, usersById]);
+
+  const loading = familyLoading || scheduleLoading;
+  const error = familyError || scheduleError;
+
+  const onRefresh = async () => {
+  setRefreshing(true);
+
+  await Promise.all([
+    loadFamily(familyId),
+    loadSchedule(familyId),
+    ...(isSupabaseConfigured ? [loadRequests()] : []),
+  ]);
+
+  setRefreshing(false);
+};
+
+  if (loading && walks.length === 0) {
+    return (
+      <SafeAreaView style={styles.center}>
+        <ActivityIndicator size="large" color={colors.primary} accessibilityLabel="טוען…" />
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.center}>
+        <ErrorState message={error} onRetry={onRefresh} />
+      </SafeAreaView>
+    );
+  }
+
+  // PRD §25's "no dog" state — a dog is genuinely optional at family
+  // creation (FamilyOnboardingScreen), so an admin can land here with a
+  // fully-loaded, dogless family. Previously this fell through to the
+  // generic "אין טיולים ממתינים" (no pending walks) empty state below,
+  // which misleadingly implies walks exist but happen to be scheduled
+  // elsewhere, rather than that there is nothing to walk at all yet.
+  // Gated on !familyLoading so this never flashes before the real family
+  // data (and its dog, if any) has actually loaded.
+  if (!dog && !familyLoading) {
+    return (
+      <SafeAreaView style={styles.center}>
+        <WalkieMascot
+          state="excited"
+          size={150}
+          accessibilityLabel="Walkie Doggy מזמין אתכם להוסיף את הכלב הראשון"
+          testID="no-dog-mascot"
+        />
+        <RtlText style={styles.noDogTitle}>עדיין אין כלב במשפחה</RtlText>
+        <RtlText style={styles.noDogSubtitle}>בואו נכיר את החבר החדש שלנו. הוסיפו את הכלב הראשון כדי להתחיל לטייל עם Walkie Doggy</RtlText>
+        <Button label="הוספת כלב" onPress={() => navigation.navigate('Settings')} style={styles.addFirstDogButton} />
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container} edges={[]}>
+      {/* QA/UX round, Part F2 fix: this used to be rendered here, only on
+          Home — moved to a single persistent instance at the navigator
+          root (RootNavigator.tsx's <ImpersonationBanner />) so it stays
+          visible on every tab while impersonating, not just this one. See
+          components/ImpersonationBanner.tsx's doc comment. */}
+      <ScrollView
+        ref={scrollViewRef}
+        // The dashboard contains real, variable family data. It must remain
+        // reachable on Safari too: the bottom tab bar is fixed, so disabling
+        // Web scrolling cuts the schedule/approval cards off below it.
+        scrollEnabled
+        contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        <View style={styles.dashboardHeroShell}>
+          <View pointerEvents="none" style={styles.dashboardHeroBackdrop}>
+            {heroBackground ? (
+              <Image source={getDogBackgroundImageSource(heroBackground)} style={styles.dashboardHeroImage} resizeMode="cover" />
+            ) : (
+              <>
+                <View style={styles.dashboardHeroDefaultSun} />
+                <View style={styles.dashboardHeroDefaultHillBack} />
+                <View style={styles.dashboardHeroDefaultHillFront} />
+                <View style={styles.dashboardHeroDefaultGround} />
+              </>
+            )}
+            <Svg
+              pointerEvents="none"
+              width="100%"
+              height={10}
+              viewBox="0 0 100 10"
+              preserveAspectRatio="none"
+              style={styles.dashboardHeroFade}
+            >
+              <Defs>
+                <LinearGradient id="dashboardHeroCreamFade" x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0" stopColor={colors.background} stopOpacity={0} />
+                  <Stop offset="1" stopColor={colors.background} stopOpacity={0.25} />
+                </LinearGradient>
+              </Defs>
+              <Rect x="0" y="0" width="100" height="10" fill="url(#dashboardHeroCreamFade)" />
+            </Svg>
+          </View>
+          <View style={[styles.topRow, styles.dashboardTopRow]}>
+            <Image
+              source={require('../../assets/walkie-doggy-link-wordmark-transparent.png')}
+              style={styles.brandWordmark}
+              resizeMode="contain"
+              accessibilityLabel="Walkie Doggy Link"
+            />
+            <Pressable
+              onPress={handleHeaderMascotPress}
+              style={[styles.mascotHeaderButton, celebration && styles.homeMascotSuppressed]}
+              accessibilityRole="button"
+              accessibilityLabel="פתיחת פרופיל הכלב"
+              accessibilityElementsHidden={!!celebration}
+              importantForAccessibility={celebration ? 'no-hide-descendants' : 'auto'}
+              pointerEvents={celebration ? 'none' : 'auto'}
+            >
+              <WalkieMascot state="idle" size={38} accessibilityLabel="Walkie Doggy" />
+            </Pressable>
+            <Pressable
+              onPress={openRequestsInbox}
+              style={styles.notificationButton}
+              accessibilityRole="button"
+              accessibilityLabel={bellBadgeCount > 0 ? `התראות בקשות: ${bellBadgeCount}` : 'בקשות'}
+            >
+              <RtlText style={styles.notificationIcon}>🔔</RtlText>
+              {bellBadgeCount > 0 ? (
+                <View style={styles.requestsCountBadge}>
+                  <RtlText style={styles.requestsCountText}>{bellBadgeCount}</RtlText>
+                </View>
+              ) : null}
+            </Pressable>
+          </View>
+
+          {/* Issue #145: the approved calm composition remains the default;
+              a manager-selected family scene replaces it and a transparent dog
+              cutout is composited over it when one exists. */}
+          <Pressable
+            onPress={handleHeroMascotPress}
+            style={styles.dashboardHero}
+            accessibilityRole="button"
+            accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
+          >
+            {showDogCutout ? (
+              <Image
+                source={{ uri: dog!.photoCutoutUrl! }}
+                style={[styles.dashboardHeroDogCutout, !heroCutoutReady && styles.dashboardHeroDogCutoutPending]}
+                resizeMode="contain"
+                onError={() => setHeroCutoutFailed(true)}
+                accessibilityElementsHidden={!heroCutoutReady}
+              />
+            ) : null}
+            {!showDogCutout ? (
+              <View
+                style={[styles.dashboardHeroMascot, celebration && styles.dashboardHeroMascotCelebrating]}
+                pointerEvents="none"
+                accessibilityElementsHidden={!!celebration}
+                importantForAccessibility={celebration ? 'no-hide-descendants' : 'auto'}
+              >
+                {/* Keep the hero slot mounted so the approved Dashboard geometry never
+                    jumps, but suppress the default mascot while the dedicated completion
+                    mascot owns the stage. Uploaded family-dog imagery above is untouched. */}
+                <WalkieMascot state={guestReactionPlaying ? 'excited' : 'idle'} size={158} accessibilityLabel="הקמע הרשמי של Walkie Doggy" />
+              </View>
+            ) : null}
+            {dog?.heroBackgroundId === 'walkie-park' && !showDogCutout ? (
+              <View pointerEvents="none" style={styles.dashboardHeroForeground}>
+                <View style={styles.dashboardHeroForegroundLeft} />
+                <View style={styles.dashboardHeroForegroundMid} />
+                <View style={styles.dashboardHeroForegroundDogBase} />
+                <View style={styles.dashboardHeroForegroundRight} />
+              </View>
+            ) : null}
+          </Pressable>
+        </View>
+
+        {canManagePersonalNotifications ? (
+          <Pressable
+            style={styles.personalNotificationsCard}
+            onPress={() => setPersonalNotificationsVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel="🔔 ההתראות שלי"
+            accessibilityHint="פתיחת הגדרות ההתראות במכשיר הזה"
+          >
+            <RtlText style={styles.personalNotificationsTitle}>🔔 ההתראות שלי</RtlText>
+            <RtlText style={styles.personalNotificationsDescription}>הפעלת התראות ושמירת ההעדפה האישית שלך</RtlText>
+          </Pressable>
+        ) : null}
+
+        {/* PRD §11: "ב-Home יש בחירת כלב קלה כאשר יש יותר מכלב אחד" — an
+            easy dog picker on Home whenever there's more than one dog.
+            Selecting a chip makes that dog active (selectDog(), persisted),
+            which visibleWalks above (and every card below) then reflects.
+            Hidden entirely for a single-dog family — no change there. */}
+        {dogs.length > 1 ? (
+          <DogSelectorRow dogs={dogs} selectedDogId={selectedDogId} onSelect={(dogId) => void selectDog(dogId)} />
+        ) : null}
+
+        {/*
+          Health & Grooming summary (PRD §10) — deliberately a single slim,
+          dismissible-feeling pill, never a full list here: this screen's
+          job is the walk experience, so the badge only ever tells the
+          member "something needs attention" and hands off to Settings'
+          Health sheet (via healthStore.requestOpen(), a cross-tab signal —
+          see that store's own doc comment) for the actual list. Rendered
+          only when there's genuinely something to flag, so a family with no
+          open tasks — or none due/overdue yet — sees nothing extra at all.
+        */}
+        {healthSummary.overdueCount + healthSummary.dueSoonCount > 0 ? (
+          <Pressable
+            style={[styles.healthSummaryPill, healthSummary.overdueCount > 0 && styles.healthSummaryPillOverdue]}
+            onPress={() => {
+              requestOpenHealthModal();
+              navigation.navigate('Settings');
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={
+              healthSummary.overdueCount > 0
+                ? `${healthSummary.overdueCount} משימות בריאות וטיפוח באיחור, מעבר להגדרות`
+                : `${healthSummary.dueSoonCount} משימות בריאות וטיפוח קרובות, מעבר להגדרות`
+            }
+          >
+            <RtlText style={styles.healthSummaryIcon}>🏥</RtlText>
+            <RtlText style={styles.healthSummaryText}>
+              {healthSummary.overdueCount > 0
+                ? `${healthSummary.overdueCount} משימות בריאות באיחור`
+                : `${healthSummary.dueSoonCount} משימות בריאות קרובות`}
+            </RtlText>
+            <RtlText style={styles.healthSummaryChevron}>‹</RtlText>
+          </Pressable>
+        ) : null}
+
+        <View ref={nextWalkCardRef} onLayout={measureNextWalkCard} collapsable={false} style={styles.nextWalkLift}>
+          {nextWalk ? (
+          <NextWalkCard
+            walk={nextWalk}
+            responsible={usersById[nextWalk.responsibleUserId]}
+            actualWalker={nextWalk.status === 'in_progress' && nextWalk.actualWalkerUserId ? usersById[nextWalk.actualWalkerUserId] : undefined}
+            currentUserId={effectiveUserId}
+            dogName={dog?.name ?? 'הכלב/ה'}
+            dogPhotoUrl={dog?.photoUrl}
+            showDogPhoto={false}
+            showMascot={false}
+            dogSex={dog?.sex}
+            scheduleTimezone={scheduleTimezone}
+            requestStatusLine={
+              computeWalkRequestStatusLine(nextWalk, swapRequests, timeChangeRequests, walksById, new Date(), effectiveUserId)?.text
+            }
+            primaryLabel={isOverdue(nextWalk, new Date(), scheduleTimezone) ? 'ממתין לעדכון' : undefined}
+            tone="dashboard"
+            remoteGpsAction={<RemoteGpsPanel walk={nextWalk} currentUserId={currentUserId} familyRole={actualFamilyRole} ready={!familyLoading && !scheduleLoading && Boolean(family)} gpsSession={remoteGpsSessionForWalk(nextWalk.id)} />}
+            onRecordPee={isActiveWalk(nextWalk) ? () => recordWalkEvent(nextWalk.id, 'pee') : undefined}
+            onRecordPoop={isActiveWalk(nextWalk) ? () => recordWalkEvent(nextWalk.id, 'poop') : undefined}
+            onUndoPee={() => undoWalkEvent(nextWalk.id, 'pee')}
+            onUndoPoop={() => undoWalkEvent(nextWalk.id, 'poop')}
+            recordedPeeCount={readWalkEvents(nextWalk.id).pee}
+            recordedPoopCount={readWalkEvents(nextWalk.id).poop}
+            onMarkDone={() => setCompleteWalkId(nextWalk.id)}
+            activeStartedAt={isActiveWalk(nextWalk) ? nextWalk.startedAt ?? null : null}
+            liveDistanceMeters={gpsTrackingWalkId === nextWalk.id ? gpsDistanceMeters : null}
+            gpsPointCount={gpsTrackingWalkId === nextWalk.id ? gpsPointCount : null}
+            liveRoutePoints={gpsTrackingWalkId === nextWalk.id ? gpsRoutePoints : undefined}
+            liveReconstruction={gpsTrackingWalkId === nextWalk.id ? gpsReconstruction : null}
+            gpsReconstructionNotice={gpsTrackingWalkId === nextWalk.id ? gpsReconstructionNotice : null}
+            remoteGpsSession={remoteGpsSessionForWalk(nextWalk.id)}
+            gpsStatus={gpsTrackingWalkId === nextWalk.id ? gpsPermissionStatus : null}
+            gpsTrackingStatus={gpsTrackingWalkId === nextWalk.id ? gpsTrackingStatus : null}
+            gpsNotTrackedHere={
+              isActiveWalk(nextWalk) && gpsTrackingWalkId !== nextWalk.id
+                ? ((nextWalk.actualWalkerUserId ?? nextWalk.responsibleUserId) === currentUserId ? 'walker_here' : 'elsewhere')
+                : null
+            }
+            gpsLastStopLabel={gpsLastStop?.walkId === nextWalk.id
+              ? `${gpsLastStop.kind === 'stop' ? 'נעצר' : 'בוטל'} (${gpsLastStop.reason}) · ${new Date(gpsLastStop.at).toLocaleTimeString('he-IL')}`
+              : null}
+            onRetryGps={() => {
+              if (gpsTrackingWalkId === nextWalk.id && gpsTrackingStatus === 'interrupted') {
+                setGpsTransferWalk(nextWalk);
+                return;
+              }
+              void activateGpsForWalk(nextWalk);
+            }}
+            onStartWalk={() => {
+              if (nextWalk.responsibleUserId === currentUserId) startWalkAs(nextWalk, currentUserId, false);
+              else setStartWalkFlowId(nextWalk.id);
+            }}
+            startWalkDisabled={nextWalkStartGate.disabled}
+            startWalkPending={startingWalkIds.includes(nextWalk.id)}
+            startWalkAvailableLabel={nextWalkStartGate.label}
+            onEndWalk={
+              isActiveWalk(nextWalk) && (actualFamilyRole === 'admin' || nextWalk.actualWalkerUserId === currentUserId || (!nextWalk.actualWalkerUserId && nextWalk.responsibleUserId === currentUserId))
+                ? () => setCompleteWalkId(nextWalk.id)
+                : undefined
+            }
+            // AUTHORIZATION CORRECTION: ✓/✕ resolution is admin-or-
+            // currently-responsible-user only (migration 0012) — not "any
+            // member" as an earlier pass had it.
+            onMarkNotDone={() => skip(nextWalk.id)}
+            canResolve={effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId}
+            // Direct reassignment/edit is Admin-only (requirement 6) — a
+            // Member (real or simulated via test mode) gets the contextual
+            // approval-based actions instead (requirement 4).
+            //
+            // BATCH 3 FIX (Task 5 — walk-card action authority): this used
+            // to compute `effectiveRole === 'admin'`/`effectiveRole !==
+            // 'admin'` inline, which meant ANY non-admin member saw "בקש
+            // שינוי שעה"/"בקש החלפה" for the top Action Card, even for a
+            // walk they are not responsible for. Now driven by
+            // nextWalkCardActions (computeNextWalkCardActions in
+            // logic/walkActions.ts), the same rule ScheduleScreen's lower
+            // list already used — see that function's doc comment for the
+            // full "responsible member / non-responsible member /
+            // non-responsible admin" rule and its own unit tests.
+            //
+            // onEdit/onSwap below also require `nextWalk.status ===
+            // 'pending'` — an admin editing/swapping a walk that's already
+            // in_progress/done doesn't make sense.
+            onEdit={effectiveRole === 'admin' && nextWalk.status === 'pending' ? () => setEditWalkId(nextWalk.id) : undefined}
+            onSwap={effectiveRole === 'admin' && nextWalk.status === 'pending' ? () => setSwapWalkId(nextWalk.id) : undefined}
+            onRequestSwap={
+              nextWalkCardActions?.canRequestSwap && !walkHasActiveSwapRequest(nextWalk.id, swapRequests, walksById)
+                ? () => setRequestSwapWalkId(nextWalk.id)
+                : undefined
+            }
+            onRequestTimeChange={
+              nextWalkCardActions?.canRequestTimeChange &&
+              !walkHasActiveTimeChangeRequest(nextWalk.id, timeChangeRequests, walksById)
+                ? () => setRequestTimeChangeWalkId(nextWalk.id)
+                : undefined
+            }
+          />
+        ) : (
+          <View style={styles.emptyCard}>
+            <WalkieMascot state="ready" size={72} accessibilityLabel="Walkie Doggy מוכן לטיול" />
+            <RtlText style={styles.onDemandTitle}>יוצאים לטיול?</RtlText>
+            <RtlText style={styles.onDemandSubtitle}>לא חייבים לקבוע לו״ז מראש. אפשר להתחיל עכשיו ו-Walkie Doggy יתעד את הטיול וה-GPS.</RtlText>
+            <Button label="התחל טיול" icon="▶" onPress={() => setAddUnplannedVisible(true)} style={styles.onDemandStartButton} shrinkToFit />
+            {!activeSpontaneousWalkGroups.length ? <RemoteGpsPanel currentUserId={currentUserId} familyRole={actualFamilyRole} ready={!familyLoading && !scheduleLoading && Boolean(family)} /> : null}
+          </View>
+        )}
+        </View>
+
+
+        {/* Rendered BELOW the next-walk card on purpose: the scheduled walk
+            keeps its lifted position under the hero (its -34 lift would
+            otherwise overlap the last active card), and active spontaneous
+            walks can never push it down out of view. One block per dog. */}
+        {activeSpontaneousWalkGroups.length > 0 ? (
+          <View testID="home-active-spontaneous-walks" style={styles.activeSpontaneousSection}>
+            {activeSpontaneousWalkGroups.map((group) => group.duplicate ? (() => {
+              // No walk ids or raw timestamps here: exact audit identities are
+              // shown only inside the Family Admin review panel (History).
+              const notice = duplicateActiveWalkNotice(group, {
+                dogName: group.dogId ? dogs.find((entry) => entry.id === group.dogId)?.name : null,
+                viewerIsAdmin: actualFamilyRole === 'admin',
+                canReview: canReviewDuplicateWalks,
+              });
+              return (
+                <View key={`spontaneous-duplicate-${group.key}`} testID="home-active-spontaneous-duplicate" style={styles.activeSpontaneousDuplicate}>
+                  <RtlText style={styles.activeSpontaneousTitle} accessibilityRole="header">{notice.title}</RtlText>
+                  <RtlText style={styles.activeSpontaneousAuditNote}>{notice.body}</RtlText>
+                  {notice.reviewActionLabel ? (
+                    <Button
+                      label={notice.reviewActionLabel}
+                      onPress={() => navigation.navigate('History')}
+                      accessibilityLabel={`${notice.reviewActionLabel}: ${notice.title}`}
                       style={{ marginTop: 8 }}
                     />
                   ) : null}
