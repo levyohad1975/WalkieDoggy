@@ -69,8 +69,15 @@ replay and all SQL rehearsals succeed. It contains only a normalized
 `public`/`storage` schema dump, catalog and bucket manifests, source file
 hashes and checksums — no application rows, Auth users, secrets or Storage
 objects. It is deterministic for a pinned source SHA and is explicitly not a
-Production apply script. Its first validation must be the CI run for the
-commit that adds this workflow step.
+Production apply script. Its portable checksum manifest was independently
+downloaded and verified after Integration Full-Chain run
+`40007070809` (#240, success) for branch commit
+`41af8a720c565afcde358bebd9f123b99dfb861e`; artifact
+`12524244039` contains 50 RLS public tables, 195 public functions, 64
+policies, 241 triggers and the two expected buckets. The workflow ran in the
+standard PR merge context (artifact name
+`production-bootstrap-evidence-3270378192cd73dcdc7a96ebf6c9ae053c7312f1`);
+the workflow run records the reviewed branch head above.
 
 ## Migration reconciliation
 
@@ -168,9 +175,9 @@ All items below must be complete before any destructive Production operation.
    been produced. The current execution environment has no Docker daemon,
    Postgres client or database connection credentials, so it cannot safely
    create or validate the required external dump.
-2. The new data-free bootstrap evidence artifact still needs its first
-   successful CI run for the exact release SHA. It is evidence for the
-   reviewed bootstrap procedure, not authorization to apply destructive SQL.
+2. The data-free bootstrap evidence artifact has passed its isolated replay
+   and independent checksum validation. It remains evidence for the reviewed
+   bootstrap procedure, not authorization to apply destructive SQL.
 3. Production Edge Functions are incomplete and legacy configuration differs
    from the repository; Production secrets, Auth URLs/redirects/sender and
    Vercel variable values remain unverified by design.
