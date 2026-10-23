@@ -1,6 +1,6 @@
 # Production Bootstrap Readiness
 
-**Status:** BLOCKED AT THE PRODUCTION APPROVAL GATE
+**Status:** NO-GO — BLOCKED BEFORE THE PRODUCTION APPROVAL GATE
 **Scope:** `zxolmnkevbtorxmcyvnz` only; no Production mutation is authorized by this document.
 
 This is an evidence-backed, fail-closed runbook for turning the existing
@@ -20,6 +20,57 @@ does not contain a destructive migration or an automatic deployment command.
 | Production legacy archive | `legacy_archive_20261023` with 26 tables | This is not an independently verified external backup and must not be treated as one. |
 | Production Storage | Only `family-photos` | The required private chat-attachments bucket is absent. |
 | Vercel `walkie-doggy` | No live Production deployment; no `walkielink.co.il` project-domain mapping; latest branch preview is READY | DNS and Production routing must remain untouched until the final gate. |
+
+## Final-readiness audit (2026-10-23)
+
+All checks in this section were read-only against hosted services. No Production
+data, schema, Auth setting, secret, Edge Function, Vercel variable, DNS record
+or deployment was changed.
+
+| Area | Verified result | Go-live consequence |
+| --- | --- | --- |
+| Production project | Active/healthy, Postgres 17.6; Production API URL exists and it has one enabled legacy anon key and one enabled publishable key | Keys/URL must still be compared under a controlled secret review; values were not retrieved. |
+| Edge Functions | Repository has 11 deployable functions; Staging has 10 active; Production has only legacy `send-request-push` and `send-walk-reminders` | Production is missing the current function set. In particular, the client invokes `send-walk-lifecycle-notification`, which is not active in Staging or Production. |
+| Function authentication | Production's legacy `send-request-push` has `verify_jwt=false`; current Staging/repository configuration has it enabled. The three intentionally unauthenticated hooks are `send-email`, `email-provider-webhook`, and cron-gated `send-walk-reminders`. | Promote only reviewed source functions after the database bootstrap, with their custom signature/cron checks and Production-only secrets verified. |
+| Required Edge Function secret names | Source requires the managed Supabase URL/key plus `WELCOME_EMAIL_FROM`, `SEND_EMAIL_HOOK_SECRET`, `RESEND_WEBHOOK_SECRET`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `WALK_REMINDER_CRON_SECRET`, `CHAT_CLEANUP_CRON_SECRET`, and `SYSTEM_OWNER_EMAIL` where applicable | Presence and Production-specific values could not be safely enumerated through the available read-only connector. Confirm at the final secret-review gate without disclosing values. |
+| Auth | Local config intentionally enables anonymous sign-ins; both hosted advisors report anonymous-auth exposure and leaked-password protection disabled | Anonymous onboarding is an application requirement and must be explicitly accepted with its RLS/RPC boundaries. Enable leaked-password protection and verify Production Auth URLs, redirects, mail sender/domain and hook configuration during cutover. |
+| Vercel Production env | Non-decrypting inventory shows Production-scoped Supabase URL, publishable key and VAPID public key entries; branch Preview entries are separately scoped to Staging | Existence is verified, but values were not decrypted, so correct Production targeting is still a blocker. |
+| Vercel routing | `walkie-doggy` has no live deployment and only its built-in `.vercel.app` Production domain. `walkielink.co.il` is not mapped. Preview for `a3f10ed` is READY. | Do not attach DNS or promote a deployment before final approval. |
+
+## Security Advisor disposition
+
+The Advisor was rerun on both projects on 2026-10-23. Production currently
+reports 9 RLS-enabled/no-policy informational findings, four mutable
+`search_path` warnings, 74 anon and 74 authenticated SECURITY DEFINER execute
+warnings, anonymous-auth exposure, and leaked-password protection disabled.
+Staging reports the analogous categories, including one SECURITY DEFINER
+function without a pinned search path.
+
+`20261023110000_harden_function_search_path.sql` is the only justified
+source remediation prepared here. It is an idempotent, data-free migration
+that pins `pg_catalog, public` on each present reported legacy helper
+function. It has **not** been applied to Staging or Production. Broad
+`EXECUTE` revocation is not safe without a complete RPC authorization map:
+the application deliberately exposes RPCs to anonymous sessions for its
+anonymous-family onboarding model, and each function must be reviewed
+individually. Tables with RLS but no policy default-deny by design and need a
+function-by-function server-access review rather than a blanket policy.
+
+The following risks are therefore not accepted silently and remain cutover
+requirements: Production Auth leaked-password protection, anonymous-auth
+authorization review, all SECURITY DEFINER grants, and the legacy archive's
+advisor findings.
+
+## Deterministic bootstrap evidence artifact
+
+The Integration Full-Chain workflow now emits a 30-day,
+`production-bootstrap-evidence-<Git SHA>` artifact after the full isolated
+replay and all SQL rehearsals succeed. It contains only a normalized
+`public`/`storage` schema dump, catalog and bucket manifests, source file
+hashes and checksums — no application rows, Auth users, secrets or Storage
+objects. It is deterministic for a pinned source SHA and is explicitly not a
+Production apply script. Its first validation must be the CI run for the
+commit that adds this workflow step.
 
 ## Migration reconciliation
 
@@ -117,12 +168,14 @@ All items below must be complete before any destructive Production operation.
    been produced. The current execution environment has no Docker daemon,
    Postgres client or database connection credentials, so it cannot safely
    create or validate the required external dump.
-2. A final immutable clean-bootstrap artifact has not been reviewed for the
-   exact Production release SHA. The existing CI rehearsal validates the
-   source chain but intentionally does not emit a deployable destructive SQL
-   artifact.
-3. Production domain binding is absent from the Vercel project, and the
+2. The new data-free bootstrap evidence artifact still needs its first
+   successful CI run for the exact release SHA. It is evidence for the
+   reviewed bootstrap procedure, not authorization to apply destructive SQL.
+3. Production Edge Functions are incomplete and legacy configuration differs
+   from the repository; Production secrets, Auth URLs/redirects/sender and
+   Vercel variable values remain unverified by design.
+4. Production domain binding is absent from the Vercel project, and the
    separate `walkie-doggy-staging` project could not be inspected through the
    current Vercel permission scope.
-4. Production security/performance advisor findings require explicit review;
+5. Production security/performance advisor findings require explicit review;
    they cannot be silently dismissed during a bootstrap.
