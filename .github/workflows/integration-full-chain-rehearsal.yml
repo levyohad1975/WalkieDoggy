@@ -478,7 +478,12 @@ jobs:
             sha256sum supabase/schema.sql
             find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 | sort -z | xargs -0 sha256sum
           } > "$bundle_dir/source-sha256.txt"
-          sha256sum "$bundle_dir/schema-public-storage.sql" "$bundle_dir/catalog-counts.tsv" "$bundle_dir/storage-buckets.tsv" "$bundle_dir/source-sha256.txt" > "$bundle_dir/SHA256SUMS"
+          # Record relative names so SHA256SUMS can be verified after this
+          # bundle is downloaded and extracted on a different machine.
+          (
+            cd "$bundle_dir"
+            sha256sum schema-public-storage.sql catalog-counts.tsv storage-buckets.tsv source-sha256.txt > SHA256SUMS
+          )
           tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
             -czf "/tmp/production-bootstrap-evidence-${GITHUB_SHA}.tar.gz" \
             -C /tmp "$(basename "$bundle_dir")"
