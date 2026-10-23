@@ -436,6 +436,61 @@ jobs:
             -v ON_ERROR_STOP=1 \
             -f supabase/manual_tests/0043_0048_integration_rehearsal_acl.sql
 
+      - name: Build data-free bootstrap evidence bundle
+        # This is an evidence artifact, not a Production apply command. It is
+        # generated only after every isolated replay and fixture rehearsal has
+        # passed, contains no table rows or Storage objects, and is pinned to
+        # the exact commit that created it. Production cutover still requires
+        # the separately approved clean-bootstrap procedure and verified
+        # legacy backup/restore evidence.
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          bundle_dir="/tmp/production-bootstrap-evidence-${GITHUB_SHA}"
+          mkdir -p "$bundle_dir"
+
+          pg_dump \
+            --dbname "postgresql://postgres@127.0.0.1:54322/postgres" \
+            --schema-only \
+            --schema public \
+            --schema storage \
+            --no-owner \
+            --no-privileges \
+            > "$bundle_dir/schema-public-storage.sql"
+          # PostgreSQL 17 adds per-dump psql restriction tokens. They are
+          # intentionally removed so the content hash remains deterministic.
+          sed -i -E '/^\\(un)?restrict /d' "$bundle_dir/schema-public-storage.sql"
+
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -At -F $'\t' \
+            -c "select 'public_tables', count(*) from pg_tables where schemaname = 'public' union all select 'public_rls_tables', count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r' and c.relrowsecurity union all select 'public_functions', count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' union all select 'policies', count(*) from pg_policies where schemaname in ('public', 'storage') union all select 'triggers', count(*) from information_schema.triggers where trigger_schema = 'public' union all select 'storage_buckets', count(*) from storage.buckets;" \
+            > "$bundle_dir/catalog-counts.tsv"
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -At -F $'\t' \
+            -c "select id, public, coalesce(file_size_limit::text, ''), coalesce(array_to_string(allowed_mime_types, ','), '') from storage.buckets order by id;" \
+            > "$bundle_dir/storage-buckets.tsv"
+
+          {
+            printf 'commit=%s\n' "$GITHUB_SHA"
+            sha256sum supabase/schema.sql
+            find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 | sort -z | xargs -0 sha256sum
+          } > "$bundle_dir/source-sha256.txt"
+          sha256sum "$bundle_dir/schema-public-storage.sql" "$bundle_dir/catalog-counts.tsv" "$bundle_dir/storage-buckets.tsv" "$bundle_dir/source-sha256.txt" > "$bundle_dir/SHA256SUMS"
+          tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
+            -czf "/tmp/production-bootstrap-evidence-${GITHUB_SHA}.tar.gz" \
+            -C /tmp "$(basename "$bundle_dir")"
+
+      - name: Upload data-free bootstrap evidence bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-bootstrap-evidence-${{ github.sha }}
+          path: /tmp/production-bootstrap-evidence-${{ github.sha }}.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Restore seed.sql
         if: always()
         run: |
