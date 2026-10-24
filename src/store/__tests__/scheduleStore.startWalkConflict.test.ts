@@ -164,7 +164,7 @@ describe('scheduleStore.startWalk — surfaces the real reason instead of a gene
 
     const finished = await useScheduleStore.getState().finishWalk('walk-x', 'user-a');
     expect(finished).toBe(true);
-    expect(stopSpy).toHaveBeenCalledWith(completed, 'user-a');
+    expect(stopSpy).toHaveBeenCalledWith(completed, 'user-a', 'walk_finished');
     await Promise.resolve();
     warnings.mockRestore();
     stopSpy.mockRestore();

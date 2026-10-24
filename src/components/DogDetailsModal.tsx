@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { colors } from '../theme/colors';
 import { radii, spacing, typography } from '../theme/tokens';
@@ -7,6 +7,9 @@ import { DogPhoto } from './DogPhoto';
 import { Button } from './Button';
 import { DogHeroBackgroundPicker } from './DogHeroBackgroundPicker';
 import type { Dog } from '../types';
+import { useAuthStore } from '../store/authStore';
+import { getCurrentReliableGpsFix } from '../lib/gpsTracking';
+import { GPS_CURRENT_FIX_MAX_ACCURACY_METERS } from '../logic/gpsReconstruction';
 
 const SEX_OPTIONS: { value: Dog['sex'] | undefined; label: string }[] = [
   { value: 'male', label: 'זכר' },
@@ -20,17 +23,45 @@ interface DogDetailsModalProps {
   uploadingPhoto: boolean;
   onChangePhoto: () => void;
   onRemovePhoto: () => void;
+  onRetryCutout?: () => void;
+  processingCutout?: boolean;
   onAddDog?: () => void;
   onDeleteDog?: () => void;
   deletingDog?: boolean;
   canManageDog?: boolean;
-  onSave: (patch: Partial<Dog>) => void;
+  onSave: (patch: Partial<Dog>) => void | Promise<void>;
   onClose: () => void;
 }
 
-export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, onRemovePhoto, onAddDog, onDeleteDog, deletingDog = false, canManageDog = false, onSave, onClose }: DogDetailsModalProps) {
+export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, onRemovePhoto, onRetryCutout, processingCutout = false, onAddDog, onDeleteDog, deletingDog = false, canManageDog = false, onSave, onClose }: DogDetailsModalProps) {
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
+  const [savingHomeLocation, setSavingHomeLocation] = useState(false);
+  const currentUserId = useAuthStore((state) => state.currentUserId);
+  const verifyHomeLocation = async () => {
+    if (!canManageDog || !currentUserId || savingHomeLocation) return;
+    setSavingHomeLocation(true);
+    try {
+      const fix = await getCurrentReliableGpsFix();
+      if (fix.accuracy == null || fix.accuracy > GPS_CURRENT_FIX_MAX_ACCURACY_METERS) {
+        showHomeFeedback('המיקום אינו מדויק מספיק', 'נסו שוב במקום פתוח. נדרש דיוק של עד 25 מטרים.');
+        return;
+      }
+      await onSave({ homeLocation: { latitude: fix.latitude, longitude: fix.longitude, accuracyMeters: fix.accuracy, verifiedAt: new Date().toISOString(), verifiedByUserId: currentUserId } });
+      showHomeFeedback('מיקום הבית נשמר', 'הנקודה המאומתת תשמש לשחזור מסלולי GPS.');
+    } catch (error) {
+      showHomeFeedback('לא הצלחנו לשמור מיקום בית', error instanceof Error && /permission/i.test(error.message) ? 'יש לאפשר גישה למיקום ולנסות שוב.' : 'בדקו את חיבור המיקום והאינטרנט ונסו שוב.');
+    } finally {
+      setSavingHomeLocation(false);
+    }
+  };
+  const showHomeFeedback = (title: string, message: string) => {
+    if (Platform.OS === 'web') {
+      (globalThis as typeof globalThis & { alert?: (text: string) => void }).alert?.(`${title}\n${message}`);
+    } else {
+      Alert.alert(title, message);
+    }
+  };
 
   useEffect(() => {
     if (visible && dog) {
@@ -54,6 +85,11 @@ export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, o
                   <Pressable onPress={onChangePhoto} disabled={uploadingPhoto} style={styles.photoButton} accessibilityRole="button" accessibilityLabel="החלפת תמונת הכלב">
                     <RtlText style={styles.photoLink}>{uploadingPhoto ? 'מעלה תמונה...' : dog.photoUrl ? 'החלף תמונה' : 'הוסף תמונה מהגלריה'}</RtlText>
                   </Pressable>
+                  {dog.photoUrl && canManageDog && onRetryCutout ? (
+                    <Pressable onPress={onRetryCutout} disabled={uploadingPhoto || processingCutout} style={styles.photoButton} accessibilityRole="button" accessibilityLabel={dog.photoCutoutUrl ? 'שפר חיתוך רקע' : 'הסרת רקע מהתמונה'} accessibilityState={{ disabled: uploadingPhoto || processingCutout, busy: processingCutout }}>
+                      <RtlText style={styles.photoLink}>{processingCutout ? 'משפרים את חיתוך הרקע…' : dog.photoCutoutUrl ? 'שפר חיתוך רקע' : 'הסרת רקע מהתמונה'}</RtlText>
+                    </Pressable>
+                  ) : null}
                   {dog.photoUrl ? (
                     <Pressable onPress={onRemovePhoto} disabled={uploadingPhoto} style={styles.removePhotoButton} accessibilityRole="button" accessibilityLabel="מחיקת תמונת הכלב וחזרה למסקוט">
                       <RtlText style={styles.removePhotoLink}>הסר תמונה</RtlText>
@@ -85,6 +121,13 @@ export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, o
               <TextInput value={notes} onChangeText={setNotes} onBlur={() => onSave({ notes: notes.trim() || undefined })} style={styles.input} textAlign="right" placeholder="למשל: אוהב להריח כל עמוד" placeholderTextColor={colors.textSecondary} accessibilityLabel="הערות" />
               <RtlText style={styles.hint}>{dog.walksPerDay} טיולים ביום · שינוי בלוח זמנים</RtlText>
               {canManageDog ? <DogHeroBackgroundPicker dog={dog} onSave={onSave} /> : null}
+              {canManageDog ? (
+                <View style={styles.homeCard}>
+                  <RtlText style={styles.label}>מיקום הבית למסלולי GPS</RtlText>
+                  <RtlText style={styles.hint}>{dog.homeLocation ? 'מיקום הבית מאומת. אפשר לעדכן אותו כשנמצאים בבית.' : 'יש לאמת את המיקום כשנמצאים בבית. ללא אימות לא נשחזר את תחילת המסלול.'}</RtlText>
+                  <Button label={savingHomeLocation ? 'בודקים ושומרים…' : dog.homeLocation ? 'עדכון מיקום הבית' : 'אימות מיקום הבית'} onPress={() => void verifyHomeLocation()} disabled={savingHomeLocation} />
+                </View>
+              ) : null}
               {onAddDog ? (
                 <Pressable onPress={onAddDog} style={styles.addDogSecondary} accessibilityRole="button" accessibilityLabel="הוספת כלב נוסף למשפחה">
                   <RtlText style={styles.addDogSecondaryText}>＋ הוספת כלב נוסף למשפחה</RtlText>
@@ -124,6 +167,7 @@ const styles = StyleSheet.create({
   sexChipTextActive: { color: colors.primaryDark, fontWeight: '700' },
   input: { backgroundColor: colors.surfaceMuted, borderRadius: radii.md, padding: radii.md, fontSize: typography.body.fontSize, color: colors.textPrimary },
   hint: { fontSize: 12, color: colors.textSecondary, textAlign: 'right', marginTop: radii.sm, lineHeight: 18 },
+  homeCard: { marginTop: spacing.lg, padding: spacing.md, backgroundColor: colors.surfaceMuted, borderRadius: radii.md, gap: spacing.sm },
   addDogSecondary: { alignSelf: 'center', paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
   addDogSecondaryText: { color: colors.primaryDark, fontWeight: '600', textAlign: 'center' },
   deleteDogButton: { alignSelf: 'center', marginTop: spacing.lg, paddingVertical: spacing.sm, paddingHorizontal: spacing.lg },

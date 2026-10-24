@@ -7,12 +7,10 @@ import path from 'path';
  * context, which this Jest/RN project has no execution harness for.
  *
  * Mascot-notification-experiences round: `notificationclick` previously
- * only focused/opened a window with no way for the app to know WHICH
- * notification was tapped — src/lib/webNotificationEntry.ts now needs that
- * data via either a postMessage (app already open) or a `notif` URL param
- * (app closed). This asserts the handler forwards the SAME data the push
- * already carried (never invents new fields) through both paths, and that
- * the original plain fallback is preserved when there is no data at all.
+ * used a one-shot postMessage for an existing client; if an installed PWA
+ * was still resuming, React had no listener and silently lost the tap. The
+ * click must navigate an existing client or open a new one with the exact
+ * data in `notif`, so startup handles both cold launch and resume.
  */
 describe('public/sw.js — notificationclick forwards notification data (structural)', () => {
   const source = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'public', 'sw.js'), 'utf8').replace(/\r\n/g, '\n');
@@ -24,23 +22,22 @@ describe('public/sw.js — notificationclick forwards notification data (structu
     expect(closeIdx).toBeGreaterThan(dataIdx);
   });
 
-  it('postMessages the exact tapped data to an existing client, using the agreed "walkie-notification-click" source marker', () => {
-    expect(source).toContain("client.postMessage({ source: 'walkie-notification-click', data });");
+  it('puts the exact notification data in a URL consumed on startup', () => {
+    expect(source).toContain("targetUrl += '?notif=' + encodeURIComponent(JSON.stringify(data));");
   });
 
-  it('never postMessages when there is no data, preserving the original plain-focus fallback', () => {
-    const postIdx = source.indexOf('client.postMessage');
-    const guardBlock = source.slice(postIdx - 80, postIdx);
-    expect(guardBlock).toMatch(/if\s*\(data\s*&&/);
+  it('navigates and focuses an existing installed-PWA client instead of relying on a lossy message event', () => {
+    expect(source).toContain('client.navigate(notificationUrl)');
+    expect(source).toContain('const notificationUrl = new URL(targetUrl, self.location.origin).href;');
+    expect(source).toContain("if (navigated && 'focus' in navigated) return navigated.focus();");
   });
 
-  it('opening a NEW window (no existing client) carries the data as a `notif` query param, never anything regenerated here', () => {
-    expect(source).toContain("'/?notif=' + encodeURIComponent(JSON.stringify(data))");
+  it('opening a NEW window also carries the data as a `notif` query param', () => {
+    expect(source).toContain('if (clients.openWindow) return clients.openWindow(targetUrl);');
   });
 
-  it('still falls back to opening a bare "/" when there is no data at all', () => {
-    const openWindowCalls = [...source.matchAll(/clients\.openWindow\(([^)]*)\)/g)].map((m) => m[1].trim());
-    expect(openWindowCalls).toContain("'/'");
+  it('falls back to the app root when there is no valid data', () => {
+    expect(source).toContain("let targetUrl = '/';");
   });
 
   it('the push event handler itself is unchanged — still shows a notification exactly from the server payload', () => {

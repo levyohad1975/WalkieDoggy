@@ -7,6 +7,7 @@ const screen = fs.readFileSync(path.join(root, 'src/screens/SystemAdminScreen.ts
 const client = fs.readFileSync(path.join(root, 'src/lib/systemAdmin.ts'), 'utf8');
 const sql = fs.readFileSync(path.join(root, 'supabase/migrations/20261011104342_system_admin_test_families.sql'), 'utf8');
 const storageSql = fs.readFileSync(path.join(root, 'supabase/migrations/20261011104913_system_admin_test_family_storage_cleanup.sql'), 'utf8');
+const deletionSql = fs.readFileSync(path.join(root, 'supabase/migrations/20261016115245_permanent_family_deletion.sql'), 'utf8');
 
 describe('System Admin test-family isolation contract', () => {
   it('exposes the control only in the verified System Admin surface and starts the existing setup wizard', () => {
@@ -38,13 +39,14 @@ describe('System Admin test-family isolation contract', () => {
     expect(sql).toContain('create or replace function public.system_admin_switch_test_family');
   });
 
-  it('refuses non-test or currently active family deletion and requires explicit confirmation', () => {
-    expect(sql).toContain("p_confirm is distinct from 'DELETE TEST FAMILY'");
-    expect(sql).toContain("if not v_is_qa then raise exception 'refusing to delete a non-test family'");
-    expect(sql).toContain("return to the original family before deleting this test family");
-    expect(storageSql).toContain("bucket_id = 'family-photos' and o.name like p_family_id::text || '/%'");
-    expect(storageSql).toContain('system_admin_list_test_family_photo_paths');
-    expect(client).toContain("client.storage.from('family-photos').remove");
+  it('routes QA and all-family deletion through the complete audited, double-confirmed flow', () => {
+    expect(screen).toContain('openFamilyDeletion(testFamily)');
+    expect(screen).toContain('openFamilyDeletion({ familyId: detail.family!.id');
+    expect(deletionSql).toContain("p_confirmation_phrase is distinct from 'DELETE FAMILY PERMANENTLY'");
+    expect(deletionSql).toContain('public.is_verified_system_admin()');
+    expect(deletionSql).toContain('system_admin_list_family_deletion_storage_objects');
+    expect(deletionSql).toContain('family_deletion_tombstones');
+    expect(client).toContain('client.storage.from(bucket).remove');
   });
 
   it('keeps the existing QA exit RPC unchanged and provides a distinct admin-only exit path', () => {

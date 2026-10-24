@@ -82,10 +82,10 @@ async function renderChats(fake: Fake) {
 }
 
 /** Renders the Chats list and opens one conversation, as a tap on its row does. */
-async function renderThread(fake: Fake, conversationId = FAMILY) {
+async function renderThread(fake: Fake, conversationId = FAMILY, messageId?: string) {
   const view = await renderChats(fake);
   await act(async () => {
-    useChatStore.getState().openConversation(conversationId);
+    useChatStore.getState().openConversation(conversationId, messageId);
   });
   await waitFor(() => expect(useChatStore.getState().threads[conversationId]?.status).toBe('ready'));
   return view;
@@ -208,6 +208,45 @@ describe('ChatScreen', () => {
       mount();
       expect(screen.getByText('הצ׳אט המשפחתי פרטי')).toBeTruthy();
       expect(screen.queryByText('פרטי')).toBeNull();
+    });
+  });
+
+  describe('opening from a message notification', () => {
+    it('opens the authorized conversation and highlights the exact message', async () => {
+      const fake = createFake({ messages: [
+        msg({ id: 'm1', body: 'קודם', createdAt: '2026-10-09T10:00:00.000Z' }),
+        msg({ id: 'm2', body: 'הודעת push', createdAt: '2026-10-09T10:01:00.000Z' }),
+      ] });
+      await renderThread(fake, FAMILY, 'm2');
+
+      const target = await screen.findByTestId('chat-message-m2');
+      expect(StyleSheet.flatten(target.props.style)).toMatchObject({ borderColor: '#D79A00', borderWidth: 3 });
+      expect(screen.getByText('הודעת push')).toBeTruthy();
+    });
+
+    it('loads an older page when the push points outside the newest messages', async () => {
+      const messages = Array.from({ length: 45 }, (_, index) =>
+        msg({ id: `history-${index}`, body: `הודעה ${index}`, createdAt: new Date(Date.UTC(2026, 9, 9, 10, index)).toISOString() })
+      );
+      await renderThread(createFake({ messages }), FAMILY, 'history-0');
+
+      const target = await screen.findByTestId('chat-message-history-0');
+      expect(StyleSheet.flatten(target.props.style)).toMatchObject({ borderColor: '#D79A00', borderWidth: 3 });
+      expect(useChatStore.getState().threads[FAMILY].messages).toHaveLength(45);
+    });
+
+    it('shows a safe deleted-message placeholder when the push target was removed', async () => {
+      const fake = createFake({ messages: [msg({ id: 'deleted-1', body: 'הודעה סודית', deletedAt: '2026-10-09T10:02:00.000Z' })] });
+      await renderThread(fake, FAMILY, 'deleted-1');
+
+      expect(await screen.findByText('ההודעה הוסרה על ידי מנהל/ת')).toBeTruthy();
+      expect(screen.queryByText('הודעה סודית')).toBeNull();
+    });
+
+    it('explains when the target message is no longer visible in the authorized thread', async () => {
+      await renderThread(createFake({ messages: [msg({ id: 'other', body: 'עדכון אחר' })] }), FAMILY, 'missing-1');
+
+      expect(await screen.findByText('ההודעה כבר אינה זמינה. מוצגות ההודעות האחרונות בשיחה.')).toBeTruthy();
     });
   });
 

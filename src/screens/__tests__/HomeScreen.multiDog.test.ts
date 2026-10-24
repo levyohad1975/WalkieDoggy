@@ -22,14 +22,14 @@ describe('HomeScreen multi-dog wiring (structural)', () => {
 
   it('scopes walks to the current family and selected dog, then selects by family-local schedule time', () => {
     expect(source).toContain('const familyWalks = walks.filter((walk) => walk.familyId === familyId);');
-    expect(source).toContain('return dogs.length > 1 && dog ? familyWalks.filter((walk) => walk.dogId === dog.id) : familyWalks;');
+    expect(source).toContain('return dedupeCanonicalWalks(dogs.length > 1 && dog ? familyWalks.filter((walk) => walk.dogId === dog.id) : familyWalks);');
     expect(source).toContain('const scheduleTimezone = family?.id === familyId ? family.timezone : undefined;');
     expect(source).toContain('computeNextWalk(visibleWalks, new Date(), scheduleTimezone)');
     expect(source).toContain('nextWalkSelectionRefreshDelayMs(visibleWalks, new Date(), scheduleTimezone)');
     expect(source).toContain("AppState.addEventListener('change'");
     expect(source).toContain('const resolvedToday = computeLastWalk(visibleWalks);');
     expect(source).toContain('() => upcomingWalks(visibleWalks).filter((w) => w.id !== nextWalk?.id)');
-    expect(source).toContain('visibleWalks\n        .filter(');
+    expect(source).toContain('dailyWalkTimeline(visibleWalks, now)');
   });
 
   it('a walk-swap candidate list only ever offers walks belonging to the SAME dog as the one being edited/swapped', () => {

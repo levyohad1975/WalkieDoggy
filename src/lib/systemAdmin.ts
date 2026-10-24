@@ -1,5 +1,7 @@
 import { supabase, SupabaseNotConfiguredError } from './supabase';
 import { repository } from '../data';
+import { completeWalkLifecycleOperation, getWalkLifecycleOperationId } from '../data/walkLifecycleOperationIds';
+import { withSyncIdentityFence } from './syncIdentityFence';
 
 /**
  * BATCH 4 (item A — System Admin V1, read-only). Thin client wrappers over
@@ -175,7 +177,7 @@ export async function flushBeforeSystemAdminTestFamilySwitch(): Promise<void> {
 export async function createSystemAdminTestFamily(familyName: string): Promise<SystemAdminTestFamily> {
   const client = requireSupabase();
   await flushBeforeSystemAdminTestFamilySwitch();
-  const { data, error } = await client.rpc('system_admin_enter_test_family', { p_family_name: familyName.trim() });
+  const { data, error } = await withSyncIdentityFence(async () => await client.rpc('system_admin_enter_test_family', { p_family_name: familyName.trim() }));
   if (error) throw error;
   const row = rowOrThrow(data as Array<{ id: string; name: string; invite_code: string }> | null, 'יצירת משפחת הבדיקה נכשלה');
   return { familyId: row.id, familyName: row.name, inviteCode: row.invite_code, createdAt: new Date().toISOString(), dogName: null };
@@ -228,7 +230,7 @@ export async function switchToSystemAdminTestFamily(familyId: string): Promise<S
   recordTestFamilyReentryDiagnostic({ diagnosticId, familyId, stage: 'rpc', outcome: 'started' });
   let data: unknown;
   try {
-    const result = await client.rpc('system_admin_switch_test_family', { p_family_id: familyId });
+    const result = await withSyncIdentityFence(async () => await client.rpc('system_admin_switch_test_family', { p_family_id: familyId }));
     if (result.error) throw result.error;
     data = result.data;
     recordTestFamilyReentryDiagnostic({ diagnosticId, familyId, stage: 'rpc', outcome: 'succeeded' });
@@ -296,26 +298,93 @@ export async function getActiveSystemAdminTestFamily(): Promise<{ familyId: stri
   return row?.family_id && row?.family_name ? { familyId: row.family_id, familyName: row.family_name } : null;
 }
 
-export async function deleteSystemAdminTestFamily(familyId: string): Promise<void> {
+export interface SystemAdminFamilyDeletionImpact {
+  familyId: string;
+  familyName: string;
+  inviteCode: string;
+  approvalStatus: string;
+  state: 'ready' | 'deleting' | 'deleted';
+  counts: Record<string, number>;
+  totalRows: number;
+  storageObjects: number;
+}
+
+export async function getSystemAdminFamilyDeletionImpact(familyId: string): Promise<SystemAdminFamilyDeletionImpact> {
   const client = requireSupabase();
-  const { data: photoRows, error: photoListError } = await client.rpc('system_admin_list_test_family_photo_paths', { p_family_id: familyId });
-  if (photoListError) throw photoListError;
-  const paths = ((photoRows ?? []) as Array<{ object_path: string }>).map((row) => row.object_path).filter(Boolean);
-  for (let offset = 0; offset < paths.length; offset += 1000) {
-    const { error } = await client.storage.from('family-photos').remove(paths.slice(offset, offset + 1000));
-    if (error) throw error;
-  }
-  const { error } = await client.rpc('system_admin_delete_test_family', {
-    p_family_id: familyId,
-    p_confirm: 'DELETE TEST FAMILY',
-  });
+  const { data, error } = await client.rpc('system_admin_family_deletion_impact', { p_family_id: familyId });
   if (error) throw error;
+  const row = rowOrThrow<Record<string, unknown>>(data as Record<string, unknown> | null, 'לא התקבל פירוט השפעת המחיקה');
+  return {
+    familyId: String(row.family_id ?? row.familyId ?? familyId),
+    familyName: String(row.family_name ?? row.familyName ?? ''),
+    inviteCode: String(row.invite_code ?? row.inviteCode ?? ''),
+    approvalStatus: String(row.approval_status ?? row.approvalStatus ?? ''),
+    state: (row.state === 'deleting' || row.state === 'deleted' ? row.state : 'ready'),
+    counts: (row.counts && typeof row.counts === 'object' ? row.counts : {}) as Record<string, number>,
+    totalRows: Number(row.total_rows ?? row.totalRows ?? 0),
+    storageObjects: Number(row.storage_objects ?? row.storageObjects ?? 0),
+  };
+}
+
+/** Opaque yes/no check used to clear this device's cache after a server-confirmed deletion. */
+export async function wasFamilyPermanentlyDeleted(familyId: string): Promise<boolean> {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc('was_family_permanently_deleted', { p_family_id: familyId });
+  if (error) throw error;
+  return data === true;
+}
+
+/**
+ * Server-authorized, resumable family purge. SQL freezes family writes and
+ * verifies both confirmations; the authenticated Storage API then removes
+ * tenant-prefixed objects; the final RPC purges the relational graph in one
+ * transaction. No service-role credential is present in the client.
+ */
+export async function permanentlyDeleteSystemAdminFamily(
+  impact: SystemAdminFamilyDeletionImpact,
+  confirmedFamilyName: string
+): Promise<void> {
+  const client = requireSupabase();
+  const { error: beginError } = await client.rpc('system_admin_begin_family_deletion', {
+    p_family_id: impact.familyId,
+    p_confirmation_name: confirmedFamilyName,
+    p_confirmation_phrase: 'DELETE FAMILY PERMANENTLY',
+    p_expected_counts: impact.counts,
+  });
+  if (beginError) throw beginError;
+
+  const { data: objectRows, error: listError } = await client.rpc('system_admin_list_family_deletion_storage_objects', {
+    p_family_id: impact.familyId,
+  });
+  if (listError) throw listError;
+  const objects = (objectRows ?? []) as Array<{ bucket_id: string; object_name: string }>;
+  const byBucket = new Map<string, string[]>();
+  for (const item of objects) {
+    if (!item.object_name || !['family-photos', 'chat-attachments'].includes(item.bucket_id)) continue;
+    const bucketPaths = byBucket.get(item.bucket_id) ?? [];
+    bucketPaths.push(item.object_name);
+    byBucket.set(item.bucket_id, bucketPaths);
+  }
+  for (const [bucket, paths] of byBucket) {
+    for (let offset = 0; offset < paths.length; offset += 1000) {
+      const batch = paths.slice(offset, offset + 1000);
+      const { error } = await client.storage.from(bucket).remove(batch);
+      if (error) {
+        throw new Error(`מחיקת קבצי המשפחה נכשלה (Storage: ${bucket}, ${offset + 1}-${offset + batch.length}): ${error.message}`);
+      }
+    }
+  }
+
+  const { error: finalizeError } = await client.rpc('system_admin_finalize_family_deletion', {
+    p_family_id: impact.familyId,
+  });
+  if (finalizeError) throw finalizeError;
 }
 
 /** Leaves the active QA family and restores the original family/profile snapshot. */
 export async function exitSystemAdminTestFamily(): Promise<{ id: string; name: string }> {
   const client = requireSupabase();
-  const { data, error } = await client.rpc('system_admin_exit_test_family');
+  const { data, error } = await withSyncIdentityFence(async () => await client.rpc('system_admin_exit_test_family'));
   if (error) throw error;
   const row = rowOrThrow(data as Array<{ id: string; name: string }> | null, 'החזרה למשפחה המקורית נכשלה');
   return row;
@@ -549,4 +618,59 @@ export async function getSystemAdminEmailDeliveryLog(limit?: number): Promise<Sy
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   }));
+}
+
+/**
+ * Staging maintenance (PR #150): owner-approved, single-use authorizations
+ * for a verified System Admin to mark specific test-generated active walks
+ * as resolved duplicates. Marker only — nothing is deleted. See
+ * supabase/migrations/20261015100000_system_admin_duplicate_walk_repair_v12.sql.
+ */
+export interface DuplicateWalkMaintenanceAuthorization {
+  authorizationId: string;
+  familyId: string;
+  familyName: string;
+  dogId: string;
+  dogName: string;
+  walkIds: string[];
+  unresolvedActiveCount: number;
+  reason: string;
+  expiresAt: string;
+  consumedAt: string | null;
+  consumedGroupId: string | null;
+}
+
+export async function listDuplicateWalkMaintenanceAuthorizations(): Promise<DuplicateWalkMaintenanceAuthorization[]> {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc('system_admin_list_duplicate_walk_authorizations');
+  if (error) throw error;
+  const rows = (data ?? []) as Array<{
+    authorization_id: string; family_id: string; family_name: string; dog_id: string; dog_name: string;
+    walk_ids: string[]; unresolved_active_count: number; reason: string; expires_at: string;
+    consumed_at: string | null; consumed_group_id: string | null;
+  }>;
+  return rows.map((r) => ({
+    authorizationId: r.authorization_id, familyId: r.family_id, familyName: r.family_name,
+    dogId: r.dog_id, dogName: r.dog_name, walkIds: r.walk_ids ?? [],
+    unresolvedActiveCount: Number(r.unresolved_active_count ?? 0), reason: r.reason,
+    expiresAt: r.expires_at, consumedAt: r.consumed_at, consumedGroupId: r.consumed_group_id,
+  }));
+}
+
+/**
+ * Applies one authorization. The operation id is persisted per authorization
+ * before the request, so a retry after a lost response reuses it and the
+ * server returns the same audit group instead of failing.
+ */
+export async function resolveDuplicateWalkMaintenanceAuthorization(authorizationId: string): Promise<string> {
+  const client = requireSupabase();
+  const operationId = await getWalkLifecycleOperationId('resolve_duplicates', `system-maintenance:${authorizationId}`, 'system-admin');
+  const { data, error } = await client.rpc('system_admin_resolve_authorized_duplicate_walks_v12', {
+    p_authorization_id: authorizationId,
+    p_operation_id: operationId,
+  });
+  if (error) throw error;
+  if (typeof data !== 'string' || !data) throw new Error('Maintenance RPC returned an invalid audit group id');
+  await completeWalkLifecycleOperation('resolve_duplicates', `system-maintenance:${authorizationId}`, 'system-admin');
+  return data;
 }

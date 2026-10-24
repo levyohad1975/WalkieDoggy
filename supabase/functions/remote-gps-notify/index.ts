@@ -23,9 +23,10 @@ Deno.serve(async(req:Request)=>{
    admin.from('web_push_subscriptions').select('endpoint,p256dh,auth').eq('user_id',targetUserId).eq('auth_user_id',targetAuthUserId).eq('is_active',true),
   ]);if(expoError)throw expoError;if(webError)throw webError;
   const message={to:'',title:'Walkie Doggy',body:'מנהל המשפחה ביקש להתחיל מעקב טיול. פתחו את Walkie Doggy כדי לעבד את הבקשה.',sound:'default',priority:'high',data:{type:'remote_gps_start',commandId}};
-  const expoTokens=[...new Set((expo??[]).map(x=>x.token))];let expoSent=0;let webSent=0;
+  const expoTokens=[...new Set((expo??[]).map(x=>x.token))];let expoSent=0;let webSent=0;const deliveryErrors:string[]=[];
   if(expoTokens.length){const response=await fetch('https://exp.host/--/api/v2/push/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(expoTokens.map(to=>({...message,to})))});if(response.ok)expoSent=expoTokens.length;}
-  if(vapidPublic&&vapidPrivate){for(const sub of web??[]){try{await webpush.sendNotification({endpoint:sub.endpoint,keys:{p256dh:sub.p256dh,auth:sub.auth}},JSON.stringify({title:message.title,body:message.body,data:message.data}));webSent++;}catch{/* per-device delivery can fail while other destinations succeed */}}}
-  return json({ok:true,expoSent,webSent});
+  if(vapidPublic&&vapidPrivate){for(const sub of web??[]){try{await webpush.sendNotification({endpoint:sub.endpoint,keys:{p256dh:sub.p256dh,auth:sub.auth}},JSON.stringify({title:message.title,body:message.body,data:message.data}));webSent++;}catch(error){console.error('remote GPS Web Push delivery failed',error);deliveryErrors.push('web delivery failed');}}}
+  if(expoSent+webSent===0)return json({ok:false,expoSent,webSent,error:'No push service accepted the notification',deliveryErrors});
+  return json({ok:true,expoSent,webSent,deliveryErrors});
  }catch(error){console.error('remote-gps-notify failed',error);return json({ok:false,error:'notification delivery failed'},500);}
 });

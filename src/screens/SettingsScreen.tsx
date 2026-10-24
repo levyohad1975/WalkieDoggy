@@ -13,9 +13,9 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { DogPhoto } from '../components/DogPhoto';
 import { breakpoints, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { pickAndUploadImage } from '../lib/uploadImage';
+import { describeDogCutoutJob, runDogCutoutJob } from '../lib/dogCutoutJob';
 import {
   isSupabaseConfigured,
-  generateDogPhotoCutout,
   regenerateInviteCode,
   resetFamilyActivity,
   supabaseProjectUrl,
@@ -49,6 +49,7 @@ import { repository } from '../data';
 import type { SyncQueueDiagnostics } from '../data/syncQueue';
 import { shouldShowStagingSyncDiagnostics } from '../logic/syncDiagnosticsGate';
 import { SyncDiagnosticsActionButton } from '../components/SyncDiagnosticsActionButton';
+import { openTutorialFromHelp } from '../components/tutorial/useFirstRunTutorial';
 import { summarizeSyncConflicts, summarizeSyncQuarantine } from '../logic/syncQuarantineDiagnostics';
 import { buildSyncDiagnosticExport } from '../logic/syncDiagnosticExport';
 
@@ -223,6 +224,7 @@ function SettingsScreenContent() {
   // future re-add doesn't require touching that shared logic file again.
   const [pendingChildModal, setPendingChildModal] = useState<SettingsChildModal | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [processingDogCutout, setProcessingDogCutout] = useState(false);
   const [inviteCode, setInviteCode] = useState<string | undefined>(undefined);
   const [regenerating, setRegenerating] = useState(false);
   // NARROW CLIENT-FLOW FIX ("switch user"): "החלף משתמש" is a real,
@@ -374,21 +376,51 @@ function SettingsScreenContent() {
         // itself is the single source of truth for whether Supabase is
         // configured; avoiding a second client-side environment gate prevents
         // deployed web builds from silently skipping the Edge Function call.
-        try {
-          await generateDogPhotoCutout(dog.id);
-          await loadFamily(familyId);
-        } catch (cutoutError) {
-          console.warn('Dog cutout generation failed; keeping source photo fallback:', cutoutError);
-          Alert.alert(
-            'התמונה נשמרה ללא הסרת רקע',
-            'התמונה המקורית נשמרה. לא הצלחנו להסיר את הרקע אוטומטית כרגע, ואפשר לנסות שוב בהחלפת התמונה.',
-          );
+        const cutoutResult = await runDogCutoutJob(dog.id);
+        if (cutoutResult.status === 'failed') {
+          console.warn('Dog cutout generation failed; keeping source photo fallback:', cutoutResult.error);
+        } else {
+          await loadFamily(familyId).catch(() => {});
+        }
+        if (cutoutResult.status !== 'ready') {
+          // Never leave the outcome ambiguous: a cutout that kept the photo's
+          // background is stored but Home keeps the mascot, so say so.
+          const feedback = describeDogCutoutJob(cutoutResult);
+          Alert.alert('התמונה נשמרה ללא הסרת רקע', feedback.message);
         }
       }
     } catch {
       Alert.alert('לא הצלחנו להחליף תמונה', 'בדקו הרשאת תמונות וחיבור לאינטרנט ונסו שוב.');
     } finally {
       setUploadingPhoto(false);
+    }
+  };
+
+  // Retry the existing source photo without opening the gallery or replacing it.
+  const retryDogCutout = async () => {
+    if (!dog?.photoUrl || processingDogCutout || uploadingPhoto || effectiveFamilyRole !== 'admin' || systemObserverActive) return;
+    setProcessingDogCutout(true);
+    try {
+      const result = await runDogCutoutJob(dog.id);
+      await loadFamily(familyId).catch(() => {});
+      const feedback = describeDogCutoutJob(result);
+      const message = result.status === 'ready'
+        ? 'הרקע הוסר. חזרו למסך הבית כדי לראות את התמונה המעודכנת.'
+        : feedback.message;
+      if (Platform.OS === 'web') {
+        (globalThis as typeof globalThis & { alert?: (message: string) => void }).alert?.(message);
+      } else {
+        Alert.alert(result.status === 'ready' ? 'הסרת הרקע הושלמה' : 'לא הצלחנו להסיר רקע', message);
+      }
+    } catch (error) {
+      const message = friendlyErrorMessage(error) || 'לא הצלחנו להסיר את הרקע. נסו שוב מאוחר יותר.';
+      if (Platform.OS === 'web') {
+        (globalThis as typeof globalThis & { alert?: (message: string) => void }).alert?.(message);
+      } else {
+        Alert.alert('שגיאה בהסרת הרקע', message);
+      }
+    } finally {
+      setProcessingDogCutout(false);
     }
   };
 
@@ -819,6 +851,25 @@ function SettingsScreenContent() {
           </Pressable>
         </View>
 
+        {/* First-run tutorial — permanently reachable from Help. Opens the
+            player directly; works (with its fallback) even when no video is
+            configured, offline, or on native builds. */}
+        {!systemObserverActive ? (
+          <View style={styles.section}>
+            <RtlText style={styles.sectionTitle}>❓ עזרה</RtlText>
+            <Pressable
+              style={styles.hubRow}
+              onPress={() => { openTutorialFromHelp(); }}
+              accessibilityRole="button"
+              accessibilityLabel="סרטון הדרכה"
+              testID="settings-tutorial-entry"
+            >
+              <RtlText style={styles.hubChevron}>‹</RtlText>
+              <RtlText style={styles.hubLabel}>▶ סרטון הדרכה</RtlText>
+            </Pressable>
+          </View>
+        ) : null}
+
         {canShowSyncDiagnostics ? (
           <View style={styles.section}>
             <RtlText style={styles.sectionTitle}>🛡️ אבחון סנכרון · Staging</RtlText>
@@ -957,6 +1008,8 @@ function SettingsScreenContent() {
         uploadingPhoto={uploadingPhoto}
         onChangePhoto={changeDogPhoto}
         onRemovePhoto={removeDogPhoto}
+        onRetryCutout={retryDogCutout}
+        processingCutout={processingDogCutout}
         onAddDog={() => void handleAddDog()}
         onDeleteDog={effectiveFamilyRole === 'admin' && !systemObserverActive ? confirmDeleteDog : undefined}
         deletingDog={deletingDog}

@@ -99,6 +99,7 @@ interface MessageRowProps {
   onRetry: (messageId: string) => void;
   onDiscard: (messageId: string) => void;
   onOpenImage: (message: ChatMessage) => void;
+  highlighted: boolean;
 }
 
 const MessageRow = React.memo(function MessageRow({
@@ -115,6 +116,7 @@ const MessageRow = React.memo(function MessageRow({
   onRetry,
   onDiscard,
   onOpenImage,
+  highlighted,
 }: MessageRowProps) {
   const { message, isMine, startsGroup } = item;
   const removed = Boolean(message.deletedAt);
@@ -135,6 +137,7 @@ const MessageRow = React.memo(function MessageRow({
 
   const bubble = (
     <View
+      testID={`chat-message-${message.id}`}
       style={[
         styles.bubble,
         isMine ? styles.bubbleMine : styles.bubbleTheirs,
@@ -142,6 +145,7 @@ const MessageRow = React.memo(function MessageRow({
         removed && styles.bubbleRemoved,
         message.delivery === 'failed' && styles.bubbleFailed,
         selected && styles.bubbleSelected,
+        highlighted && styles.bubbleHighlighted,
       ]}
     >
       {showSender && startsGroup ? (
@@ -308,10 +312,12 @@ interface ChatThreadProps {
   showBack: boolean;
   /** Extra bottom padding while the on-screen keyboard covers the page (web). */
   keyboardPadding: number;
+  focusMessageId?: string | null;
+  onFocusMessageHandled?: (messageId: string) => void;
 }
 
 /** One open conversation — the family group or a private one — with its composer. */
-export function ChatThread({ conversation, users, showBack, keyboardPadding }: ChatThreadProps) {
+export function ChatThread({ conversation, users, showBack, keyboardPadding, focusMessageId, onFocusMessageHandled }: ChatThreadProps) {
   const testModeUserId = useAuthStore((s) => s.testModeUserId);
   const impersonatingUserId = useAuthStore((s) => s.impersonatingUserId);
 
@@ -356,6 +362,10 @@ export function ChatThread({ conversation, users, showBack, keyboardPadding }: C
   // react-native-web's multiline field does not grow with its content by
   // itself; native does. Track the content height for web only.
   const [webInputHeight, setWebInputHeight] = useState(INPUT_LINE_HEIGHT);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const [focusMessageMissing, setFocusMessageMissing] = useState(false);
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const failedHistoryFocus = useRef<{ messageId: string; messageCount: number } | null>(null);
 
   const listRef = useRef<FlatList<ChatListItem>>(null);
   const stickToBottom = useRef(true);
@@ -434,6 +444,45 @@ export function ChatThread({ conversation, users, showBack, keyboardPadding }: C
   useEffect(() => {
     if (keyboardPadding > 0) scrollToLatest(false);
   }, [keyboardPadding, scrollToLatest]);
+
+  useEffect(() => () => {
+    if (highlightTimer.current) clearTimeout(highlightTimer.current);
+  }, []);
+
+  // A push can point to a message older than the first page. Load history
+  // page by page (under the same authenticated conversation access) until
+  // the target is present, or explain that it is no longer available.
+  useEffect(() => {
+    if (!focusMessageId || thread.status !== 'ready') return;
+    if (failedHistoryFocus.current?.messageId === focusMessageId) {
+      if (failedHistoryFocus.current.messageCount === messages.length) return;
+      failedHistoryFocus.current = null;
+    }
+    const index = items.findIndex((item) => 'message' in item && item.message.id === focusMessageId);
+    if (index >= 0) {
+      setFocusMessageMissing(false);
+      setHighlightedMessageId(focusMessageId);
+      const timer = setTimeout(() => {
+        listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+      }, 80);
+      if (highlightTimer.current) clearTimeout(highlightTimer.current);
+      highlightTimer.current = setTimeout(() => {
+        setHighlightedMessageId((current) => current === focusMessageId ? null : current);
+        onFocusMessageHandled?.(focusMessageId);
+      }, 3500);
+      return () => clearTimeout(timer);
+    }
+    if (hasMore && !loadingOlder) {
+      void loadOlder().then((loaded) => {
+        if (!loaded) failedHistoryFocus.current = { messageId: focusMessageId, messageCount: messages.length };
+      });
+      return;
+    }
+    if (!hasMore && !loadingOlder) {
+      setFocusMessageMissing(true);
+      onFocusMessageHandled?.(focusMessageId);
+    }
+  }, [focusMessageId, thread.status, items, messages.length, hasMore, loadingOlder, loadOlder, onFocusMessageHandled]);
 
   const draftLength = chatBodyLength(draft.trim());
   const overLimit = draftLength > CHAT_MESSAGE_MAX_LENGTH;
@@ -608,10 +657,11 @@ export function ChatThread({ conversation, users, showBack, keyboardPadding }: C
           onRetry={retry}
           onDiscard={discard}
           onOpenImage={setViewerMessage}
+          highlighted={highlightedMessageId === item.message.id}
         />
       );
     },
-    [usersById, isPrivate, conversation.canModerate, selectedIds, sendErrors, imageMaxWidth, retry, discard, toggleSelected]
+    [usersById, isPrivate, conversation.canModerate, selectedIds, sendErrors, imageMaxWidth, retry, discard, toggleSelected, highlightedMessageId]
   );
 
   const readOnlyReason = impersonatingUserId
@@ -719,22 +769,25 @@ export function ChatThread({ conversation, users, showBack, keyboardPadding }: C
           onContentSizeChange={handleContentSizeChange}
           onLayout={handleListLayout}
           onScroll={handleScroll}
+          onScrollToIndexFailed={({ index }) => {
+            setTimeout(() => listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 }), 100);
+          }}
           scrollEventThrottle={64}
           keyboardShouldPersistTaps="handled"
           initialNumToRender={40}
           windowSize={21}
           removeClippedSubviews={false}
           ListHeaderComponent={
-            hasMore ? (
+            focusMessageMissing ? (
+              <View style={styles.focusMissing} accessibilityRole="alert">
+                <RtlText style={styles.focusMissingText}>ההודעה כבר אינה זמינה. מוצגות ההודעות האחרונות בשיחה.</RtlText>
+              </View>
+            ) : hasMore ? (
               <View style={styles.olderRow}>
                 {loadingOlder ? (
                   <ActivityIndicator color={colors.primary} accessibilityLabel="טוען…" />
                 ) : (
-                  <Pressable
-                    onPress={handleLoadOlder}
-                    accessibilityRole="button"
-                    style={({ pressed }) => [styles.olderButton, pressed && styles.pressed]}
-                  >
+                  <Pressable onPress={handleLoadOlder} accessibilityRole="button" style={({ pressed }) => [styles.olderButton, pressed && styles.pressed]}>
                     <RtlText style={styles.olderLabel}>הודעות קודמות</RtlText>
                   </Pressable>
                 )}
@@ -1099,6 +1152,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   olderLabel: { ...typography.meta, fontWeight: '700', color: colors.primaryDark, textAlign: 'center' },
+  focusMissing: { marginHorizontal: spacing.md, marginTop: spacing.sm, padding: spacing.sm, borderRadius: radii.md, backgroundColor: colors.surfaceMuted },
+  focusMissingText: { ...typography.meta, color: colors.textSecondary, textAlign: 'center' },
 
   dayRow: { alignItems: 'center', marginTop: spacing.lg, marginBottom: spacing.sm },
   dayLabel: {
@@ -1140,6 +1195,7 @@ const styles = StyleSheet.create({
   },
   bubbleTheirs: { backgroundColor: colors.surface, borderColor: colors.border, ...elevation.card },
   bubbleMine: { backgroundColor: colors.primarySoft, borderColor: '#C5EBEE' },
+  bubbleHighlighted: { backgroundColor: '#FFF4C2', borderColor: '#D79A00', borderWidth: 3 },
   bubbleRemoved: { backgroundColor: colors.surfaceMuted, borderColor: colors.border, shadowOpacity: 0, elevation: 0 },
   bubbleFailed: { borderColor: colors.statusOverdue, borderStyle: 'dashed' },
   bubbleSelected: { borderColor: colors.primary, borderWidth: 2, paddingHorizontal: spacing.md - 1, paddingTop: spacing.sm - 1, paddingBottom: 5 },

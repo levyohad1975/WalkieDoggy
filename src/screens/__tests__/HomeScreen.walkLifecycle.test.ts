@@ -5,6 +5,14 @@ describe('Home integrated walk lifecycle', () => {
   const home = fs.readFileSync(path.join(__dirname, '..', 'HomeScreen.tsx'), 'utf8');
   const card = fs.readFileSync(path.join(__dirname, '..', '..', 'components', 'NextWalkCard.tsx'), 'utf8');
 
+  it('requires the explicit start-flow choice for another member and records the selected actual walker', () => {
+    expect(home).toContain('<WalkStartFlowModal');
+    expect(home).toContain('onStart={(actualWalkerUserId, remote) => {');
+    expect(home).toContain('startWalkAs(target, actualWalkerUserId, remote)');
+    expect(home).toContain('startWalkAs(nextWalk, currentUserId, false)');
+    expect(home).toContain('setStartWalkFlowId(nextWalk.id)');
+  });
+
   it('keeps the branded Walkie Park default hero while using persisted family-dog imagery safely', () => {
     expect(home).toContain('showDogPhoto');
     expect(home).toContain('style={styles.dashboardHero}');
@@ -62,6 +70,16 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).not.toContain('walkDateContextLabel(lastWalk.date)');
   });
 
+  it('keeps add-walk above the timeline and last-walk below it on a short iPhone viewport', () => {
+    const timeline = home.indexOf('<Pressable style={styles.dashboardTimeline}');
+    const lastWalk = home.indexOf('>הטיול האחרון</RtlText>');
+    const addWalk = home.indexOf('accessibilityLabel="הוסף טיול"');
+    expect(timeline).toBeGreaterThan(-1);
+    expect(addWalk).toBeLessThan(timeline);
+    expect(lastWalk).toBeGreaterThan(timeline);
+    expect(home).toContain('scrollEnabled');
+  });
+
   it('keeps a compact, always-present full daily Dashboard timeline instead of a future-only list', () => {
     expect(home).toContain('const dashboardTimelineWalks = useMemo');
     expect(home).toContain('dailyWalkTimeline(visibleWalks, now)');
@@ -71,9 +89,9 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('אין טיולים מתוכננים היום');
     expect(home).toContain("walk.status === 'done'");
     expect(home).toContain("walk.status === 'skipped'");
-    expect(home).toContain("walk.status === 'in_progress'");
+    expect(home).toContain('isActiveWalk(walk)');
     expect(home).toContain('scrollEnabled');
-    expect(home).toContain('paddingBottom: 96');
+    expect(home).toContain('paddingBottom: 180');
     expect(home).not.toContain('style={styles.dashboardMoreButton}');
   });
 
@@ -151,8 +169,8 @@ describe('Home integrated walk lifecycle', () => {
     const addWalkIndex = home.indexOf('style={styles.dashboardAddWalk}');
     const timelineIndex = home.indexOf('style={styles.dashboardTimeline}');
     expect(lastWalkIndex).toBeGreaterThan(-1);
-    expect(lastWalkIndex).toBeLessThan(addWalkIndex);
     expect(addWalkIndex).toBeLessThan(timelineIndex);
+    expect(timelineIndex).toBeLessThan(lastWalkIndex);
     expect(home).toContain("dashboardLastWalk: { minHeight: 76, borderRadius: 24, backgroundColor: '#F4FAFD'");
     expect(home).toContain("dashboardAddWalk: { minHeight: 46, borderRadius: 22, backgroundColor: '#F0FAF8'");
     expect(home).toContain("backgroundColor: '#12A5AB'");
@@ -165,10 +183,35 @@ describe('Home integrated walk lifecycle', () => {
     expect(card).toContain('label="בוצע"');
     expect(card).toContain('label="לא בוצע"');
     expect(card).toContain('overdue && onMarkNotDone');
-    expect(home).toContain('startWalk(nextWalk.id, { startGps: false })');
-    expect(home).toContain("nextWalk.status === 'in_progress'");
+    expect(home).toContain('startWalk(walk.id, {');
+    expect(home).toContain('isActiveWalk(nextWalk)');
     expect(home).not.toContain('setActiveWalkSession({ walkId: nextWalk.id');
     expect(home).toContain('setCompleteWalkId(nextWalk.id)');
+  });
+
+  it('shows one grouped warning instead of repeated spontaneous cards and lets the active walker (or any family admin) finish a single walk', () => {
+    expect(home).toContain('const activeSpontaneousWalkGroups = useMemo');
+    expect(home).toContain('activeSpontaneousWalkGroups.map((group) => group.duplicate ? (');
+    expect(home).toContain('duplicateActiveWalkNotice(group, {');
+    // P0 real-iPhone report (2026-10-15, 17:32): the single-walk branch now
+    // reuses NextWalkCard's own onEndWalk — richer than a bare walker-only
+    // check, matching the same admin-or-actual-walker rule scheduled active
+    // walks already use (see HomeScreen.activeSpontaneousWalks.test.ts for
+    // the full unified-card wiring this drives).
+    expect(home).toContain("actualFamilyRole === 'admin' || spontaneous.actualWalkerUserId === currentUserId || (!spontaneous.actualWalkerUserId && spontaneous.responsibleUserId === currentUserId)");
+    expect(home).toContain('setCompleteWalkId(spontaneous.id)');
+  });
+
+  it('preserves live event totals at completion and celebrates only a successful remote finish', () => {
+    expect(home).toContain('resolveCompletionWalkEventCounts(');
+    expect(home).toMatch(/finishWalk\(walkId, completedByUserId, \{ hadPee, hadPoop, peeCount, poopCount/);
+    const remoteStart = home.indexOf('visible={Boolean(remoteFinishRequest)}');
+    const remoteEnd = home.indexOf('</ConfirmModal>', remoteStart);
+    const remoteFinish = home.slice(remoteStart, remoteEnd);
+    expect(remoteFinish).toContain('const completed = await finishWalk(');
+    expect(remoteFinish).toContain('peeCount: request.peeCount');
+    expect(remoteFinish).toContain('poopCount: request.poopCount');
+    expect(remoteFinish).toMatch(/if \(completed\)[\s\S]*showWalkCompletionCelebration\(/);
   });
 
   it('keeps only the approved completed-walk entry instead of a redundant spontaneous-start CTA', () => {
@@ -181,5 +224,31 @@ describe('Home integrated walk lifecycle', () => {
     expect(card).toContain('overdue && !isActive && styles.cardOverdue');
     expect(card).toContain('backgroundColor: colors.statusOverdueBg');
     expect(card).toContain('isActive && styles.cardActive');
+  });
+
+  /**
+   * P0 real-user report (2026-10-15): "cannot start a spontaneous walk".
+   * startUnplannedWalk()'s existing active-walk-conflict guard (added for
+   * the P0 duplicate-active-walk fix) refuses a dog that already has an
+   * unresolved active walk — including one left stuck by an unresolved
+   * Staging duplicate (see the PR's own "not yet executed" disposition
+   * note). That refusal is legitimate, but it used to resolve `false` and
+   * rely ENTIRELY on a separate, later-mounted "אופס" ConfirmModal to
+   * explain why — invisible/easy to miss stacked behind the still-open Add
+   * Walk modal on iPhone Safari, reading as a dead tap. The fix re-throws
+   * the real scheduleStore.actionError, tagged `knownReason`, so
+   * AddUnplannedWalkModal's own inline handleStartNow catch shows the EXACT
+   * reason right where the user is looking, and clears the store-level
+   * actionError so the two alerts cannot compete.
+   */
+  it('surfaces a legitimate "already active" refusal inline in the Add Walk modal instead of only a separate stacked alert', () => {
+    const onStartNow = home.slice(home.indexOf('onStartNow={async () => {'), home.indexOf('onConfirm={async (result: UnplannedWalkResult) => {'));
+    expect(onStartNow).toContain('const started = await startUnplannedWalk(familyId, dog.id, effectiveUserId);');
+    expect(onStartNow).toMatch(/if \(started\) \{\s*\n\s*setAddUnplannedVisible\(false\);\s*\n\s*return;\s*\n\s*\}/);
+    expect(onStartNow).toContain('const reason = useScheduleStore.getState().actionError;');
+    expect(onStartNow).toContain('if (reason) useScheduleStore.setState({ actionError: null });');
+    expect(onStartNow).toMatch(/const error = new Error\(reason \?\? '.*'\);/);
+    expect(onStartNow).toContain('if (reason) (error as Error & { knownReason?: boolean }).knownReason = true;');
+    expect(onStartNow).toContain('throw error;');
   });
 });

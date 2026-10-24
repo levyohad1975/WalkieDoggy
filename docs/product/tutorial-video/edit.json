@@ -1,0 +1,372 @@
+{
+  "_status": "DRAFT — script v2 approved by the owner (2026-10-17). Capture scenes stay DRAFT slates until genuine Staging recordings are supplied (CAPTURE_CHECKLIST.md); captureEdit in/out points are filled in from those recordings.",
+  "version": 1,
+  "fps": 30,
+  "canvas": {
+    "w": 1920,
+    "h": 1080
+  },
+  "vertical": {
+    "w": 1080,
+    "h": 1920
+  },
+  "brand": {
+    "background": "#FBF8F3",
+    "surface": "#FFFFFF",
+    "border": "#EAE2D3",
+    "primary": "#20A7B5",
+    "primaryDark": "#0B5C75",
+    "text": "#2E2A24",
+    "textSecondary": "#8A8171",
+    "mascot": "assets/branding/walkie-doggy-mascot-transparent.png",
+    "mascotSha256": "8ab9b6320261234d45062ff16b2dbde8b11857902c7bb1343e707c4a3d51f6d6",
+    "wordmark": "assets/walkie-doggy-link-wordmark-transparent.png",
+    "font": "DejaVu Sans",
+    "fontBold": "DejaVu Sans:style=Bold"
+  },
+  "scriptVersion": 2,
+  "_scriptNote": "v2 aligns four phrases to the exact on-screen labels; original wording kept in v1Text. Owner approval required before narration is recorded.",
+  "_captureEditNote": "captureEdit.segments cut genuine recordings in real time only (no speed change, no compositing). cropTop/cropBottom (fractions of the recording height, max 0.20) may only remove the iOS status bar or the admin-only ״חזרה למשפחה המקורית״ row (CAPTURE_SESSION_AUTHORIZATION.md D3). taps: {t (scene seconds), x, y (0–1 of the framed recording)} draw a highlight ring where a real tap happened. null = not set yet.",
+  "scenes": [
+    {
+      "id": "S1-open",
+      "start": 0,
+      "end": 15,
+      "type": "brand",
+      "title": "Walkie Doggy Link",
+      "subtitle": "כל המשפחה מתאמת את הטיולים עם הכלב",
+      "motion": "fade-in 0.6 s, mascot scale 1.00 → 1.03 (whole-image, no character redraw), fade-out 0.4 s"
+    },
+    {
+      "id": "S2-family",
+      "start": 15,
+      "end": 40,
+      "type": "capture",
+      "chapter": "יצירת משפחה והכלב",
+      "capture": "captures/C01-family-create-dog.mp4",
+      "needs": "Device A (System Admin), one continuous take of the real setup wizard in the QA family: step 1 ״המשפחה נוצרה״ → step 2 dog ״בוני״ → step 3 profiles + the ״הזמנה בקישור או בקוד QR״ card (modal never opened). Same take continues into step 4 (used by S3).",
+      "captureEdit": {
+        "segments": [
+          {
+            "src": "C01-family-create-dog.mp4",
+            "in": null,
+            "out": null,
+            "cropTop": null,
+            "cropBottom": null
+          },
+          {
+            "src": "C01-family-create-dog.mp4",
+            "in": null,
+            "out": null,
+            "cropTop": null,
+            "cropBottom": null
+          }
+        ],
+        "taps": []
+      }
+    },
+    {
+      "id": "S3-members-schedule",
+      "start": 40,
+      "end": 60,
+      "type": "capture",
+      "chapter": "בני משפחה ולו״ז",
+      "capture": "captures/C02b-home-next-walk.mp4",
+      "needs": "Segment 1: wizard step 4 from the C01 take (walk times 07:30/18:00 with the responsible member). Segment 2: Device B (capture identity), Home next-walk card showing time + responsible member.",
+      "captureEdit": {
+        "segments": [
+          {
+            "src": "C01-family-create-dog.mp4",
+            "in": null,
+            "out": null,
+            "cropTop": null,
+            "cropBottom": null
+          },
+          {
+            "src": "C02b-home-next-walk.mp4",
+            "in": null,
+            "out": null,
+            "cropTop": null,
+            "cropBottom": null
+          }
+        ],
+        "taps": []
+      }
+    },
+    {
+      "id": "S4a-walk",
+      "start": 60,
+      "end": 72,
+      "type": "capture",
+      "chapter": "יוצאים לטיול",
+      "capture": "captures/C03-dashboard-start-walk.mp4",
+      "needs": "Device B, after Walk Lifecycle v1.1 is active on Staging: Home next-walk card → real tap on ״התחל טיול״ → active-walk state.",
+      "captureEdit": {
+        "segments": [
+          {
+            "src": "C03-dashboard-start-walk.mp4",
+            "in": null,
+            "out": null,
+            "cropTop": null,
+            "cropBottom": null
+          }
+        ],
+        "taps": []
+      }
+    },
+    {
+      "id": "S4b-gps",
+      "start": 72,
+      "end": 88,
+      "type": "capture",
+      "chapter": "מעקב מיקום",
+      "capture": "captures/C04-gps-live-map.mp4",
+      "gated": "GPS real-iPhone acceptance",
+      "pendingLabel": "מעקב GPS — ממתין לאימות באייפון אמיתי. לא יוצג עד לאישור.",
+      "needs": "Real iPhone, real outdoor walk: permission prompt, first fix, live route and distance. Do NOT simulate.",
+      "captureEdit": {
+        "segments": [
+          {
+            "src": "C04-gps-live-map.mp4",
+            "in": null,
+            "out": null,
+            "cropTop": null,
+            "cropBottom": null
+          }
+        ],
+        "taps": []
+      }
+    },
+    {
+      "id": "S4c-finish",
+      "start": 88,
+      "end": 95,
+      "type": "capture",
+      "chapter": "סיום טיול",
+      "capture": "captures/C05-finish-walk.mp4",
+      "needs": "Device B, after v1.1 activation: active walk → ״סיים טיול״ → completion sheet → celebration → Home updated.",
+      "captureEdit": {
+        "segments": [
+          {
+            "src": "C05-finish-walk.mp4",
+            "in": null,
+            "out": null,
+            "cropTop": null,
+            "cropBottom": null
+          },
+          {
+            "src": "C05-finish-walk.mp4",
+            "in": null,
+            "out": null,
+            "cropTop": null,
+            "cropBottom": null
+          }
+        ],
+        "taps": []
+      }
+    },
+    {
+      "id": "S5-requests",
+      "start": 95,
+      "end": 115,
+      "type": "capture",
+      "chapter": "החלפה ושינוי שעה",
+      "capture": "captures/C06-swap-time-change.mp4",
+      "needs": "Device B as ״איתי״: ״בקש החלפה״ and ״בקש שינוי שעה״ on a real walk row with the resulting status line (C06). Then, as ״נועה״ (admin), the request approved from the requests inbox (C06b). Profile switches and PIN entry happen off camera.",
+      "captureEdit": {
+        "segments": [
+          {
+            "src": "C06-swap-time-change.mp4",
+            "in": null,
+            "out": null,
+            "cropTop": null,
+            "cropBottom": null
+          },
+          {
+            "src": "C06b-approve-request.mp4",
+            "in": null,
+            "out": null,
+            "cropTop": null,
+            "cropBottom": null
+          }
+        ],
+        "taps": []
+      }
+    },
+    {
+      "id": "S6-history-admin",
+      "start": 115,
+      "end": 140,
+      "type": "capture",
+      "chapter": "לו״ז, היסטוריה ונתונים",
+      "capture": "captures/C07-schedule-history-stats-admin.mp4",
+      "needs": "Device B as ״נועה״ (admin): ״לוח השבוע״ → History → ״נתונים״ → Family tab admin controls (member details/role) → dog details.",
+      "captureEdit": {
+        "segments": [
+          {
+            "src": "C07-schedule-history-stats-admin.mp4",
+            "in": null,
+            "out": null,
+            "cropTop": null,
+            "cropBottom": null
+          },
+          {
+            "src": "C07-schedule-history-stats-admin.mp4",
+            "in": null,
+            "out": null,
+            "cropTop": null,
+            "cropBottom": null
+          },
+          {
+            "src": "C07-schedule-history-stats-admin.mp4",
+            "in": null,
+            "out": null,
+            "cropTop": null,
+            "cropBottom": null
+          }
+        ],
+        "taps": []
+      }
+    },
+    {
+      "id": "S7-close",
+      "start": 140,
+      "end": 155,
+      "type": "brand",
+      "title": "טיולים נעימים!",
+      "subtitle": "אפשר לצפות שוב בכל רגע דרך ״סרטון הדרכה״",
+      "motion": "fade-in 0.4 s, mascot scale 1.00 → 1.03, hold, fade-out 0.8 s"
+    }
+  ],
+  "cues": [
+    {
+      "start": 1.5,
+      "end": 5.0,
+      "scene": "S1-open",
+      "text": "ברוכים הבאים ל־Walkie Doggy Link!",
+      "onScreen": "Opening brand card (rendered)."
+    },
+    {
+      "start": 5.5,
+      "end": 11.0,
+      "scene": "S1-open",
+      "text": "כאן כל המשפחה מתאמת את הטיולים עם הכלב, בקלות ובמקום אחד.",
+      "onScreen": "Opening brand card (rendered)."
+    },
+    {
+      "start": 16.0,
+      "end": 21.5,
+      "scene": "S2-family",
+      "text": "מתחילים ביצירת משפחה, מוסיפים את פרטי הכלב,",
+      "onScreen": "Wizard step 1 ״המשפחה נוצרה״, then step 2 ״הכירו את הכלב שלכם״ with the dog name being entered."
+    },
+    {
+      "start": 30.0,
+      "end": 34.0,
+      "scene": "S2-family",
+      "text": "ומזמינים את בני המשפחה להצטרף.",
+      "onScreen": "Wizard step 3 ״מי יוצא לטייל עם הכלב?״ with the ״הזמנה בקישור או בקוד QR״ card in view (not opened)."
+    },
+    {
+      "start": 41.0,
+      "end": 47.0,
+      "scene": "S3-members-schedule",
+      "text": "בשלב הבא מגדירים את שעות הטיול ואת מי שאחראי לכל טיול.",
+      "onScreen": "Wizard step 4 ״מתי יוצאים לטיול?״: a walk time is added and its responsible member chosen."
+    },
+    {
+      "start": 53.0,
+      "end": 58.5,
+      "scene": "S3-members-schedule",
+      "text": "במסך הבית אפשר לראות מהו הטיול הבא, ומי אמור לצאת.",
+      "onScreen": "Device B Home: next-walk card with time and responsible member."
+    },
+    {
+      "start": 61.0,
+      "end": 66.5,
+      "scene": "S4a-walk",
+      "text": "כשמגיע הזמן, לוחצים על ״התחל טיול״.",
+      "v1Text": "כשהגיע הזמן, פותחים את הטיול ולוחצים על התחלת טיול.",
+      "alignedTo": "Button label is ״התחל טיול״ on the next-walk card (NextWalkCard.tsx); there is no separate 'open the walk' step.",
+      "onScreen": "Home next-walk card; the real tap on ״התחל טיול״ lands 2–4 s into the scene (tap ring)."
+    },
+    {
+      "start": 73.0,
+      "end": 80.0,
+      "scene": "S4b-gps",
+      "gated": true,
+      "text": "כשמעקב המיקום זמין ומאושר, ניתן לראות את המסלול ואת המרחק במפה.",
+      "onScreen": "GPS-gated: live route and distance during a genuine outdoor walk."
+    },
+    {
+      "start": 89.0,
+      "end": 92.0,
+      "scene": "S4c-finish",
+      "text": "בסיום, לוחצים על ״סיים טיול״.",
+      "v1Text": "בסיום, לוחצים על סיום טיול.",
+      "alignedTo": "Button label is ״סיים טיול״ (NextWalkCard.tsx).",
+      "onScreen": "Active walk; the real tap on ״סיים טיול״ lands 1.5–3 s into the scene, then the completion sheet."
+    },
+    {
+      "start": 96.0,
+      "end": 102.0,
+      "scene": "S5-requests",
+      "text": "לא יכולים לצאת בזמן? אפשר לבקש החלפה או שינוי שעה,",
+      "onScreen": "A walk row's ״בקש החלפה״ / ״בקש שינוי שעה״ buttons, tapped by ״איתי״."
+    },
+    {
+      "start": 107.0,
+      "end": 110.5,
+      "scene": "S5-requests",
+      "text": "ולעקוב אחר הטיפול בבקשה.",
+      "onScreen": "The request status line (״ממתין לאישור״ → approved) or the requests inbox."
+    },
+    {
+      "start": 116.0,
+      "end": 119.5,
+      "scene": "S6-history-admin",
+      "text": "בלו״ז רואים את התכנון לשבוע הקרוב,",
+      "v1Text": "בלוח השבועי רואים את התכנון קדימה,",
+      "alignedTo": "Tab label is ״לו״ז״ with a ״השבוע״ view (RootNavigator TAB_LABEL, ScheduleScreen).",
+      "onScreen": "Schedule screen, ״לוח השבוע״ view."
+    },
+    {
+      "start": 123.0,
+      "end": 128.5,
+      "scene": "S6-history-admin",
+      "text": "ובמסכי ההיסטוריה והנתונים אפשר לעיין בטיולים שכבר בוצעו.",
+      "v1Text": "ובהיסטוריה ובסטטיסטיקות אפשר לעיין בטיולים שכבר בוצעו.",
+      "alignedTo": "Tabs are ״היסטוריה״ and ״נתונים״ (screen title ״סטטיסטיקה ותובנות״).",
+      "onScreen": "History list, then ״נתונים״ (statistics)."
+    },
+    {
+      "start": 132.0,
+      "end": 137.5,
+      "scene": "S6-history-admin",
+      "text": "מנהלי המשפחה יכולים לעדכן בני משפחה, תפקידים ופרטי כלב.",
+      "onScreen": "Family tab admin controls: member details/role and dog details (as ״נועה״, admin)."
+    },
+    {
+      "start": 141.0,
+      "end": 142.6,
+      "scene": "S7-close",
+      "text": "זה הכול!",
+      "onScreen": "Closing brand card (rendered)."
+    },
+    {
+      "start": 143.0,
+      "end": 149.0,
+      "scene": "S7-close",
+      "text": "עם Walkie Doggy Link, כולם יודעים מתי יוצאים, מי אחראי, ומה כבר בוצע.",
+      "onScreen": "Closing brand card (rendered)."
+    },
+    {
+      "start": 150.6,
+      "end": 153.4,
+      "scene": "S7-close",
+      "text": "טיולים נעימים!",
+      "onScreen": "Closing brand card (rendered).",
+      "timingNote": "Moved from 149.8–152.5 (2026-10-17) so cue-16, the densest line (13 words), has 7.5 s instead of 6.7 s; text unchanged."
+    }
+  ]
+}

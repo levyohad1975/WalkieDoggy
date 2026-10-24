@@ -1,5 +1,7 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase, SupabaseNotConfiguredError } from './supabase';
+import { withSyncIdentityFence } from './syncIdentityFence';
+import { beginOtpFetchTrace, type OtpDiagnosticSink } from './emailOtpDiagnostics';
 
 export type VerifiedAdminIdentity = {
   userId: string;
@@ -53,6 +55,19 @@ function requireAuthClient(): VerifiedAdminAuthClient {
   return supabase.auth as VerifiedAdminAuthClient;
 }
 
+function recordOtpDiagnostic(
+  diagnostics: OtpDiagnosticSink | undefined,
+  stage: Parameters<OtpDiagnosticSink['record']>[0],
+  error?: unknown,
+  category?: Parameters<OtpDiagnosticSink['record']>[2]
+): void {
+  try {
+    diagnostics?.record(stage, error, category);
+  } catch {
+    // Temporary diagnostics must never block or change the Auth request.
+  }
+}
+
 /**
  * Starts passwordless email verification for a prospective family admin.
  *
@@ -62,19 +77,50 @@ function requireAuthClient(): VerifiedAdminAuthClient {
  */
 export async function requestAdminEmailVerificationWithAuth(
   auth: VerifiedAdminAuthClient,
-  email: string
+  email: string,
+  shouldCreateUser = true,
+  diagnostics?: OtpDiagnosticSink
 ): Promise<string> {
-  const normalized = assertEmail(email);
-  const { error } = await auth.signInWithOtp({
-    email: normalized,
-    options: { shouldCreateUser: true },
-  });
-  if (error) throw error;
+  let normalized: string;
+  try {
+    normalized = assertEmail(email);
+    recordOtpDiagnostic(diagnostics, 'input_validation_completed');
+  } catch (error) {
+    recordOtpDiagnostic(diagnostics, 'input_validation_failed', error, 'validation');
+    throw error;
+  }
+
+  recordOtpDiagnostic(diagnostics, 'sign_in_with_otp_invoked');
+  const fetchTrace = diagnostics ? beginOtpFetchTrace(diagnostics) : null;
+  let result: { error: unknown | null };
+  try {
+    result = await auth.signInWithOtp({
+      email: normalized,
+      options: { shouldCreateUser },
+    });
+    recordOtpDiagnostic(diagnostics, 'promise_resolved');
+  } catch (error) {
+    if (fetchTrace && !fetchTrace.fetchWasInvoked()) {
+      recordOtpDiagnostic(diagnostics, 'auth_client_rejected_before_fetch', error);
+    }
+    recordOtpDiagnostic(diagnostics, 'promise_rejected', error);
+    throw error;
+  } finally {
+    fetchTrace?.close();
+  }
+  if (result.error) {
+    recordOtpDiagnostic(diagnostics, 'auth_error_returned', result.error);
+    throw result.error;
+  }
   return normalized;
 }
 
-export function requestAdminEmailVerification(email: string): Promise<string> {
-  return requestAdminEmailVerificationWithAuth(requireAuthClient(), email);
+export function requestAdminEmailVerification(
+  email: string,
+  shouldCreateUser = true,
+  diagnostics?: OtpDiagnosticSink
+): Promise<string> {
+  return requestAdminEmailVerificationWithAuth(requireAuthClient(), email, shouldCreateUser, diagnostics);
 }
 
 /**
@@ -92,11 +138,11 @@ export async function verifyAdminEmailOtpWithAuth(
   const normalizedToken = token.trim();
   if (!normalizedToken) throw new Error('יש להזין את קוד האימות');
 
-  const { data, error } = await auth.verifyOtp({
+  const { data, error } = await withSyncIdentityFence(async () => await auth.verifyOtp({
     email: normalized,
     token: normalizedToken,
     type: 'email',
-  });
+  }));
   if (error) throw error;
 
   const user = data.user ?? data.session?.user;

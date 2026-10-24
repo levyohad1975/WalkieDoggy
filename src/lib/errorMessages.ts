@@ -223,10 +223,51 @@ export const SHARED_ERROR_RULES: ErrorRule[] = [
   { includes: 'only the responsible member (or an admin) may finish this walk', message: 'רק האחראי/ת לטיול הזה או מנהל/ת המשפחה יכולים לסיים אותו.' },
   { includes: 'actual walker must be an active member of this family', message: 'מי שמסומן/ת כמי שביצע/ה את הטיול חייב/ת להיות בן/בת משפחה פעיל/ה.' },
 
+  // ---- Walk Lifecycle v1.1 — server version gate (walkLifecycleCapability.ts)
+  // and the exact raise texts of 20261015100100_walk_lifecycle_gps_v11.sql.
+  // P0 real-iPhone: a v1.1 build against a pre-v1.1 database returned
+  // PGRST202 for start_walk_v11 and showed only a generic failure. The app
+  // now fails closed before any local change and says so explicitly; the
+  // trailing code lets support identify it from a screenshot. ----
+  { includes: 'walk lifecycle v1.1 is not available on this server', message: 'השרת עדיין לא עודכן לגרסת הטיולים החדשה, ולכן הפעולה לא בוצעה ושום דבר לא נשמר. נסו שוב לאחר השלמת העדכון. (WL11-SERVER)' },
+  { includes: 'walk lifecycle server version could not be verified offline', message: 'אין חיבור לשרת, ולא ניתן לוודא שהשרת תומך בגרסת הטיולים החדשה. התחברו לאינטרנט ונסו שוב. (WL11-OFFLINE)' },
+  { includes: 'another active walk already exists for this dog', message: 'כבר יש טיול פעיל לכלב הזה. סיימו אותו לפני שמתחילים טיול נוסף.' },
+  { includes: 'resolved duplicate walk cannot be started', message: 'הטיול הזה סומן ככפילות על ידי מנהל/ת המשפחה ולא ניתן להתחיל אותו.' },
+  { includes: 'profile changed; lifecycle action must be reviewed by the current member', message: 'הפרופיל הפעיל השתנה. רעננו את המסך ובצעו את הפעולה שוב מהפרופיל הנכון.' },
+  { includes: 'assigned member can only start for themselves', message: 'האחראי/ת לטיול יכול/ה להתחיל אותו רק עבור עצמו/ה.' },
+  { includes: 'only assigned member or confirmed substitute may start this walk', message: 'רק האחראי/ת לטיול או מי שאישר/ה שהוא/היא מחליפ/ה יכולים להתחיל אותו.' },
+  { includes: 'family admin required for remote start', message: 'רק מנהל/ת משפחה יכול/ה להתחיל טיול מרחוק.' },
+  { includes: 'actual walker or confirmed family admin required to finish', message: 'רק מי שיצא/ה לטיול או מנהל/ת משפחה שאישר/ה יכולים לסיים אותו.' },
+  { includes: 'actual walker cannot be changed during finish', message: 'לא ניתן לשנות את מי שיצא/ה לטיול בזמן הסיום. רעננו את המסך ונסו שוב.' },
+  { includes: 'walk finish operation is already recorded', message: 'סיום הטיול כבר נרשם. רעננו את המסך.' },
+  { includes: 'completion time cannot be in the future', message: 'זמן הסיום אינו יכול להיות בעתיד.' },
+
+  // ---- System Admin duplicate-walk maintenance (20261015100000_system_admin_duplicate_walk_repair_v12.sql) ----
+  { includes: 'verified system admin required', message: 'הפעולה זמינה רק למנהל/ת מערכת מאומת/ת. לא בוצע שינוי.' },
+  { includes: 'exit observation or impersonation before maintenance', message: 'יש לצאת ממצב צפייה במשפחה או התחזות לפני פעולת תחזוקה. לא בוצע שינוי.' },
+  { includes: 'system admin profile required', message: 'לחשבון מנהל/ת המערכת אין פרופיל משפחה פעיל לרישום הביקורת. לא בוצע שינוי.' },
+  { includes: 'maintenance authorization not found', message: 'הרשאת התחזוקה לא נמצאה. לא בוצע שינוי.' },
+  { includes: 'maintenance authorization expired', message: 'תוקף הרשאת התחזוקה פג. נדרש אישור חדש; לא בוצע שינוי.' },
+  { includes: 'maintenance authorization was already used', message: 'הרשאת התחזוקה כבר נוצלה בפעולה אחרת. לא בוצע שינוי נוסף.' },
+  { includes: 'authorized walks changed since approval; re-review required', message: 'הטיולים השתנו מאז האישור, ולכן הסימון בוטל. נדרשת בדיקה מחודשת; לא בוצע שינוי.' },
+
   // ---- Generic network failure — never show a raw fetch/TypeError string ----
   { includes: 'Network request failed', message: 'אין חיבור לאינטרנט. בדקו את החיבור ונסו שוב.' },
+  // WebKit on iOS Safari reports failed fetches as "Load failed". In
+  // private browsing this is especially opaque to users; keep the same safe,
+  // actionable guidance instead of falling through to the generic error.
+  { includes: 'Load failed', message: 'לא הצלחנו להתחבר לשרת. בדקו את החיבור ונסו שוב.' },
   { includes: 'Failed to fetch', message: 'אין חיבור לאינטרנט. בדקו את החיבור ונסו שוב.' },
   { includes: 'NetworkError', message: 'אין חיבור לאינטרנט. בדקו את החיבור ונסו שוב.' },
+  // Supabase Auth can reject OTP requests because of its delivery throttle
+  // or SMTP/provider configuration. These messages deliberately do not say
+  // whether an account exists for the submitted address.
+  { includes: 'over_email_send_rate_limit', message: 'נשלחו יותר מדי בקשות קוד. המתינו כדקה לפני ניסיון נוסף.' },
+  { includes: 'Email rate limit exceeded', message: 'נשלחו יותר מדי בקשות קוד. המתינו כדקה לפני ניסיון נוסף.' },
+  { includes: 'For security purposes, you can only request this after', message: 'נשלח קוד לאחרונה. המתינו כדקה לפני בקשה נוספת.' },
+  { includes: 'Email address not authorized', message: 'השרת אינו מורשה לשלוח לכתובת הזו כרגע. פנו לתמיכה.' },
+  { includes: 'email provider is not configured', message: 'שירות שליחת הדוא״ל אינו מוגדר כרגע. פנו לתמיכה.' },
+  { includes: 'email provider failed', message: 'שליחת הדוא״ל נכשלה כרגע. בדקו שוב מאוחר יותר או פנו לתמיכה.' },
 ];
 
 /**

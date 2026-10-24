@@ -12,6 +12,8 @@ interface CompleteWalkModalProps {
   visible: boolean;
   dogName: string;
   scheduledTime?: string;
+  initialHadPee?: boolean;
+  initialHadPoop?: boolean;
   users: FamilyUser[];
   defaultUserId: string;
   onConfirm: (result: { completedByUserId: string; hadPee: boolean; hadPoop: boolean; note: string; completedAt?: string }) => void;
@@ -27,6 +29,8 @@ export function CompleteWalkModal({
   visible,
   dogName,
   scheduledTime,
+  initialHadPee = false,
+  initialHadPoop = false,
   users,
   defaultUserId,
   onConfirm,
@@ -43,14 +47,14 @@ export function CompleteWalkModal({
   useEffect(() => {
     if (visible) {
       setPerformedBy(defaultUserId);
-      setHadPee(false);
-      setHadPoop(false);
+      setHadPee(initialHadPee);
+      setHadPoop(initialHadPoop);
       setNote('');
       setUseCustomTime(false);
       setActualTime(new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false }));
       setPickerOpen(false);
     }
-  }, [visible, defaultUserId]);
+  }, [visible, defaultUserId, initialHadPee, initialHadPoop]);
 
   const timeToDate = (value: string) => {
     const [hours, minutes] = /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value.split(':').map(Number) : [new Date().getHours(), new Date().getMinutes()];

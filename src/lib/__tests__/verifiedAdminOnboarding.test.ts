@@ -52,6 +52,19 @@ describe('verified admin onboarding', () => {
     });
   });
 
+  it('requests recovery OTP for an existing admin without allowing Auth signup', async () => {
+    const auth = authClient();
+    auth.signInWithOtp.mockResolvedValue({ error: null });
+
+    await expect(
+      requestAdminEmailVerificationWithAuth(auth, '  Admin@Example.COM ', false)
+    ).resolves.toBe('admin@example.com');
+    expect(auth.signInWithOtp).toHaveBeenCalledWith({
+      email: 'admin@example.com',
+      options: { shouldCreateUser: false },
+    });
+  });
+
   it('rejects an invalid email before calling Supabase', async () => {
     const auth = authClient();
 
@@ -207,6 +220,18 @@ describe('the requireAuthClient()-backed exports (delegate to the real supabase.
     expect(mockAuth.signInWithOtp).toHaveBeenCalledWith({
       email: 'admin@example.com',
       options: { shouldCreateUser: true },
+    });
+  });
+
+  it('requestAdminEmailVerification() can request OTP without creating a new Auth user', async () => {
+    mockAuth.signInWithOtp.mockResolvedValue({ error: null });
+
+    await expect(requestAdminEmailVerification('admin@example.com', false)).resolves.toBe(
+      'admin@example.com'
+    );
+    expect(mockAuth.signInWithOtp).toHaveBeenCalledWith({
+      email: 'admin@example.com',
+      options: { shouldCreateUser: false },
     });
   });
 

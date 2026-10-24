@@ -297,8 +297,127 @@ jobs:
           open(path, 'w').write(sql)
           PYEOF
 
-      - name: Replay the FULL real migration chain (00000 base + 0001-0048) from empty
+      - name: Stage the v1.1 migration after the resolution fixture
+        # The capability probe migration is ordered after v1.1, so it is staged
+        # with it: `supabase migration up` refuses to insert v1.1 before an
+        # already-applied later migration.
+        run: |
+          mv supabase/migrations/20261015100100_walk_lifecycle_gps_v11.sql /tmp/walk_lifecycle_gps_v11.sql
+          mv supabase/migrations/20261015100200_walk_lifecycle_capabilities_v11.sql /tmp/walk_lifecycle_capabilities_v11.sql
+          # The permanent-deletion migration is newer and has its own Postgres
+          # rehearsal below. Hide it too so the older v1.1 files can be
+          # applied without asking Supabase CLI to insert migrations before
+          # an already-applied newer version.
+          mv supabase/migrations/20261016115245_permanent_family_deletion.sql /tmp/permanent_family_deletion.sql
+          # Keep the follow-up freeze migration with its prerequisite; otherwise
+          # the empty replay would apply it before the tombstone table exists.
+          mv supabase/migrations/20261016153000_freeze_family_deletion_window.sql /tmp/freeze_family_deletion_window.sql
+
+      - name: Replay migrations through duplicate-resolution support from empty
         run: supabase db reset --local
+
+      - name: Verify read-only System Admin family chat access in isolated Postgres
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/manual_tests/system_admin_family_chats_readonly.sql
+
+      - name: Rehearse three conflicting active walks and audited resolution
+        env:
+          PGPASSWORD: postgres
+          PGOPTIONS: "-c app.walk_duplicate_fixture=local"
+        run: |
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -v walk_fixture_resolve_only=0 \
+            -v walk_fixture_seed_only=1 \
+            -f supabase/manual_tests/walk_duplicate_resolution_v12_fixture.sql
+
+          set +e
+          output=$(psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f /tmp/walk_lifecycle_gps_v11.sql 2>&1)
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          if [ "$status" -eq 0 ]; then
+            echo "v1.1 migration unexpectedly accepted unresolved duplicate active walks"
+            exit 1
+          fi
+          if ! grep -Fq "duplicate active walks require owner-reviewed resolution" <<<"$output"; then
+            echo "v1.1 migration failed for a reason other than its duplicate preflight"
+            exit 1
+          fi
+
+          # Verified System Admin maintenance path over the same unresolved
+          # duplicates; rolled back so the Family Admin path below runs as before.
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/manual_tests/system_admin_duplicate_walk_repair_v12.sql
+
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -v walk_fixture_resolve_only=1 \
+            -v walk_fixture_seed_only=0 \
+            -f supabase/manual_tests/walk_duplicate_resolution_v12_fixture.sql
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/manual_tests/walk_duplicate_resolution_v12_member_auth.sql
+
+      - name: Apply the actual v1.1 migration after duplicate resolution
+        run: |
+          mv /tmp/walk_lifecycle_gps_v11.sql supabase/migrations/20261015100100_walk_lifecycle_gps_v11.sql
+          mv /tmp/walk_lifecycle_capabilities_v11.sql supabase/migrations/20261015100200_walk_lifecycle_capabilities_v11.sql
+          supabase migration up --local --include-all
+
+      - name: Verify v1.1 constraints and preserved walk/GPS history
+        env:
+          PGPASSWORD: postgres
+          PGOPTIONS: "-c app.walk_duplicate_fixture=local"
+        run: |
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/manual_tests/walk_duplicate_resolution_v12_post_v11.sql
+
+      - name: Verify a walk active before v1.1 can still be finished (rolled back)
+        env:
+          PGPASSWORD: postgres
+          PGOPTIONS: "-c app.walk_duplicate_fixture=local"
+        run: |
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/manual_tests/walk_lifecycle_v11_legacy_active_finish.sql
+
+      - name: Verify v1.1 hardening - actual walker guard, GPS lease continuity, completion bounds, delivery state (rolled back)
+        env:
+          PGPASSWORD: postgres
+          PGOPTIONS: "-c app.walk_duplicate_fixture=local"
+        run: |
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/manual_tests/walk_lifecycle_v11_hardening.sql
+
+      - name: Verify the Walk Lifecycle v1.1 capability probe used by the client version gate (rolled back)
+        env:
+          PGPASSWORD: postgres
+          PGOPTIONS: "-c app.walk_duplicate_fixture=local"
+        run: |
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/manual_tests/walk_lifecycle_v11_capabilities.sql
+
+      - name: Apply and rehearse permanent family deletion on synthetic fixtures
+        env:
+          PGPASSWORD: postgres
+          PGOPTIONS: "-c app.system_admin_family_deletion_fixture=local"
+        run: |
+          mv /tmp/permanent_family_deletion.sql supabase/migrations/20261016115245_permanent_family_deletion.sql
+          mv /tmp/freeze_family_deletion_window.sql supabase/migrations/20261016153000_freeze_family_deletion_window.sql
+          supabase migration up --local --include-all
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 \
+            -f supabase/manual_tests/system_admin_permanent_family_deletion.sql
 
       - name: Rehearse schedule-entry deletion with disposable history and GPS fixtures
         env:
@@ -317,9 +436,82 @@ jobs:
             -v ON_ERROR_STOP=1 \
             -f supabase/manual_tests/0043_0048_integration_rehearsal_acl.sql
 
+      - name: Build data-free bootstrap evidence bundle
+        # This is an evidence artifact, not a Production apply command. It is
+        # generated only after every isolated replay and fixture rehearsal has
+        # passed, contains no table rows or Storage objects, and is pinned to
+        # the exact commit that created it. Production cutover still requires
+        # the separately approved clean-bootstrap procedure and verified
+        # legacy backup/restore evidence.
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          bundle_dir="/tmp/production-bootstrap-evidence-${GITHUB_SHA}"
+          mkdir -p "$bundle_dir"
+
+          pg_dump \
+            --dbname "postgresql://postgres@127.0.0.1:54322/postgres" \
+            --schema-only \
+            --schema public \
+            --schema storage \
+            --no-owner \
+            --no-privileges \
+            > "$bundle_dir/schema-public-storage.sql"
+          # PostgreSQL 17 adds per-dump psql restriction tokens. They are
+          # intentionally removed so the content hash remains deterministic.
+          sed -i -E '/^\\(un)?restrict /d' "$bundle_dir/schema-public-storage.sql"
+
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -At -F $'\t' \
+            -c "select 'public_tables', count(*) from pg_tables where schemaname = 'public' union all select 'public_rls_tables', count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r' and c.relrowsecurity union all select 'public_functions', count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' union all select 'policies', count(*) from pg_policies where schemaname in ('public', 'storage') union all select 'triggers', count(*) from information_schema.triggers where trigger_schema = 'public' union all select 'storage_buckets', count(*) from storage.buckets;" \
+            > "$bundle_dir/catalog-counts.tsv"
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -At -F $'\t' \
+            -c "select id, public, coalesce(file_size_limit::text, ''), coalesce(array_to_string(allowed_mime_types, ','), '') from storage.buckets order by id;" \
+            > "$bundle_dir/storage-buckets.tsv"
+
+          {
+            printf 'commit=%s\n' "$GITHUB_SHA"
+            sha256sum supabase/schema.sql
+            find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 | sort -z | xargs -0 sha256sum
+          } > "$bundle_dir/source-sha256.txt"
+          # Record relative names so SHA256SUMS can be verified after this
+          # bundle is downloaded and extracted on a different machine.
+          (
+            cd "$bundle_dir"
+            sha256sum schema-public-storage.sql catalog-counts.tsv storage-buckets.tsv source-sha256.txt > SHA256SUMS
+          )
+          tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
+            -czf "/tmp/production-bootstrap-evidence-${GITHUB_SHA}.tar.gz" \
+            -C /tmp "$(basename "$bundle_dir")"
+
+      - name: Upload data-free bootstrap evidence bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-bootstrap-evidence-${{ github.sha }}
+          path: /tmp/production-bootstrap-evidence-${{ github.sha }}.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Restore seed.sql
         if: always()
-        run: mv supabase/seed.sql.pending supabase/seed.sql
+        run: |
+          if [ -f /tmp/walk_lifecycle_gps_v11.sql ]; then
+            mv /tmp/walk_lifecycle_gps_v11.sql supabase/migrations/20261015100100_walk_lifecycle_gps_v11.sql
+          fi
+          if [ -f /tmp/walk_lifecycle_capabilities_v11.sql ]; then
+            mv /tmp/walk_lifecycle_capabilities_v11.sql supabase/migrations/20261015100200_walk_lifecycle_capabilities_v11.sql
+          fi
+          if [ -f /tmp/permanent_family_deletion.sql ]; then
+            mv /tmp/permanent_family_deletion.sql supabase/migrations/20261016115245_permanent_family_deletion.sql
+          fi
+          if [ -f /tmp/freeze_family_deletion_window.sql ]; then
+            mv /tmp/freeze_family_deletion_window.sql supabase/migrations/20261016153000_freeze_family_deletion_window.sql
+          fi
+          if [ -f supabase/seed.sql.pending ]; then mv supabase/seed.sql.pending supabase/seed.sql; fi
 
       - name: Stop isolated stack
         if: always()

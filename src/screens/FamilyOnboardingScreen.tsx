@@ -3,10 +3,11 @@ import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleShe
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
+import { useSystemAdminStore } from '../store/systemAdminStore';
 import { colors } from '../theme/colors';
 import { breakpoints, elevation, radii, spacing, typography } from '../theme/tokens';
 import { Button } from '../components/Button';
-import { ensureAnonymousSession, findFamilyByInviteCode, joinFamily } from '../lib/supabase';
+import { ensureAnonymousSession, findFamilyByInviteCode, joinFamily, supabase } from '../lib/supabase';
 import {
   createVerifiedFamily,
   getMyFamilyOnboardingStatus,
@@ -18,13 +19,22 @@ import { inspectFamilyInviteDetail, redeemFamilyInvite, type FamilyInvitePreview
 import { formatInviteExpiry, inviteStatusLabel, parseInviteInput } from '../logic/familyInvites';
 import { parseJoinInput } from '../logic/familyJoinCode';
 import { friendlyErrorMessage } from '../lib/errorMessages';
+import {
+  acquireOtpRequestLock,
+  createOtpDiagnosticTrace,
+  getOtpDiagnosticSummary,
+  isOtpDiagnosticsEnabled,
+  probeOtpSdkTransport,
+  type OtpConnectivityResult,
+  type OtpDiagnosticSink,
+} from '../lib/emailOtpDiagnostics';
 import { Avatar } from '../components/Avatar';
 import { DogPhoto } from '../components/DogPhoto';
 import { WalkieMascot } from '../components/WalkieMascot';
 import { beginFamilySetup, getFamilyCreationOwnerId, markFamilyCreationPending } from '../lib/familySetupProgress';
 import type { FamilyLookupResult } from '../types';
 
-type Mode = 'choose' | 'pwaChoice' | 'recover' | 'create' | 'join' | 'redeem';
+type Mode = 'choose' | 'pwaChoice' | 'recover' | 'create' | 'join' | 'redeem' | 'systemAdmin';
 
 /**
  * Shown once per device, only in Supabase (backend) mode, before this device
@@ -103,6 +113,21 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
   const [mode, setMode] = useState<Mode>(
     initialInviteToken ? 'redeem' : initialJoinCode ? 'join' : isInstalledWebApp ? 'pwaChoice' : 'choose'
   );
+  const adminTapCount = useRef(0);
+  const adminLastTap = useRef(0);
+  const handleAdminMascotTap = () => {
+    const now = Date.now();
+    adminTapCount.current = now - adminLastTap.current <= 700 ? adminTapCount.current + 1 : 1;
+    adminLastTap.current = now;
+    if (adminTapCount.current >= 4) {
+      adminTapCount.current = 0;
+      setAdminEmail('');
+      setVerificationCode('');
+      setVerificationSent(false);
+      setCreateError(null);
+      setMode('systemAdmin');
+    }
+  };
   // --- create ---
   const [familyName, setFamilyName] = useState('');
   const [dogName, setDogName] = useState('');
@@ -114,6 +139,13 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
   const [verificationSent, setVerificationSent] = useState(false);
   const [verifiedAdminEmail, setVerifiedAdminEmail] = useState<string | null>(null);
   const [verifyingEmail, setVerifyingEmail] = useState(false);
+  const [probingOtpEndpoint, setProbingOtpEndpoint] = useState(false);
+  const [otpConnectivity, setOtpConnectivity] = useState<OtpConnectivityResult | null>(null);
+  const otpDiagnosticsEnabled = isOtpDiagnosticsEnabled();
+  const [otpDiagnostic, setOtpDiagnostic] = useState<ReturnType<typeof createOtpDiagnosticTrace>['snapshot'] | null>(null);
+  // State updates render asynchronously. A ref closes the short window in
+  // which two rapid taps could start duplicate Auth/email requests.
+  const emailVerificationRequestRef = useRef(false);
   const [pendingApprovalFamilyName, setPendingApprovalFamilyName] = useState<string | null>(null);
   // Set when get_my_family_onboarding_status() reports 'rejected' -- a
   // System Admin declined this device's family-creation request.
@@ -159,18 +191,51 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const sendAdminVerification = async () => {
+  const sendAdminVerification = async (shouldCreateUser = true) => {
+    if (!acquireOtpRequestLock(emailVerificationRequestRef)) return;
     setVerifyingEmail(true);
     setCreateError(null);
+    const trace = otpDiagnosticsEnabled ? createOtpDiagnosticTrace() : null;
+    const diagnostics: OtpDiagnosticSink | undefined = trace ? {
+      record(stage, error, category) {
+        try {
+          trace.sink.record(stage, error, category);
+          setOtpDiagnostic({ ...trace.snapshot, events: [...trace.snapshot.events] });
+        } catch {
+          // Diagnostics are best-effort and never block the auth operation.
+        }
+      },
+    } : undefined;
+    diagnostics?.record('button_handler_entered');
     try {
-      const normalizedEmail = await requestAdminEmailVerification(adminEmail);
+      const normalizedEmail = await requestAdminEmailVerification(adminEmail, shouldCreateUser, diagnostics);
       setAdminEmail(normalizedEmail);
       setVerificationSent(true);
       setVerificationCode('');
     } catch (e) {
+      const lastStage = trace ? getOtpDiagnosticSummary(trace.snapshot)?.stage : undefined;
+      if (diagnostics && lastStage !== 'input_validation_failed'
+        && lastStage !== 'promise_rejected' && lastStage !== 'auth_error_returned') {
+        diagnostics.record('handler_failed_before_auth', e);
+      }
       setCreateError(friendlyErrorMessage(e));
     } finally {
+      emailVerificationRequestRef.current = false;
       setVerifyingEmail(false);
+    }
+  };
+
+  const testStagingAuthConnectivity = async () => {
+    if (!otpDiagnosticsEnabled || probingOtpEndpoint || verifyingEmail) return;
+    setProbingOtpEndpoint(true);
+    setOtpConnectivity(null);
+    try {
+      setOtpConnectivity(await probeOtpSdkTransport(supabase?.auth));
+    } catch {
+      // This probe is diagnostic-only and must not affect onboarding state.
+      setOtpConnectivity({ category: 'javascript', elapsedMs: 0 });
+    } finally {
+      setProbingOtpEndpoint(false);
     }
   };
 
@@ -426,10 +491,65 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
     }
   };
 
+  if (mode === 'systemAdmin') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <WalkieMascot state="ready" size={128} accessibilityLabel="Walkie Doggy" />
+        <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">כניסת מנהל מערכת</RtlText>
+        <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>אימות מאובטח ללא כניסה למשפחה</RtlText>
+        <TextInput
+          value={adminEmail}
+          onChangeText={(value) => { setAdminEmail(value); setVerificationSent(false); setVerificationCode(''); setCreateError(null); }}
+          placeholder="כתובת אימייל" accessibilityLabel="כתובת אימייל"
+          keyboardType="email-address" autoCapitalize="none" autoCorrect={false}
+          editable={!verifyingEmail} style={styles.input} textAlign="left"
+        />
+        {!verificationSent ? (
+          <Button label={verifyingEmail ? 'שולח קוד…' : 'שליחת קוד OTP'}
+            onPress={() => sendAdminVerification(false)} disabled={verifyingEmail || !adminEmail.trim()}
+            loading={verifyingEmail} style={styles.wideButton} />
+        ) : (
+          <>
+            <TextInput value={verificationCode} onChangeText={setVerificationCode}
+              placeholder="קוד האימות" accessibilityLabel="קוד האימות"
+              keyboardType="number-pad" autoComplete="one-time-code" textContentType="oneTimeCode"
+              style={styles.input} textAlign="center" />
+            <Button label={verifyingEmail ? 'מאמת…' : 'כניסה לממשק הניהול'}
+              disabled={verifyingEmail || !verificationCode.trim()} loading={verifyingEmail}
+              onPress={async () => {
+                setVerifyingEmail(true);
+                setCreateError(null);
+                try {
+                  await verifyAdminEmailOtp(adminEmail, verificationCode);
+                  await useSystemAdminStore.getState().refresh();
+                  if (!useSystemAdminStore.getState().isSystemAdmin) {
+                    throw new Error('לכתובת זו אין הרשאת מנהל מערכת.');
+                  }
+                  // App.tsx opens the platform console directly for an authenticated
+                  // System Admin without a claimed family/profile.
+                } catch (error) {
+                  setCreateError(friendlyErrorMessage(error));
+                } finally {
+                  setVerifyingEmail(false);
+                }
+              }} style={styles.wideButton} />
+            <Button label="שליחת קוד חדש" variant="secondary"
+              onPress={() => sendAdminVerification(false)} disabled={verifyingEmail}
+              style={styles.wideButton} />
+          </>
+        )}
+        {createError ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{createError}</RtlText> : null}
+        <Button label="חזרה" variant="secondary"
+          onPress={() => { setMode(isInstalledWebApp ? 'pwaChoice' : 'choose'); setVerificationCode(''); }}
+          style={styles.wideButton} />
+      </SafeAreaView>
+    );
+  }
+
   if (mode === 'pwaChoice') {
     return (
       <SafeAreaView style={styles.container}>
-        <WalkieMascot state="ready" size={128} testID="onboarding-mascot-pwa-choice" />
+        <Pressable onPress={handleAdminMascotTap} accessibilityLabel="הקמע של Walkie Doggy"><WalkieMascot state="ready" size={128} testID="onboarding-mascot-pwa-choice" /></Pressable>
         <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">רגע לפני שממשיכים</RtlText>
         <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
           פתחתם את Walkie Doggy מהאייקון שנוסף למסך הבית. כדי לחבר את המכשיר הזה נכון, ספרו לנו קודם באיזה שלב אתם.
@@ -462,7 +582,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
         <WalkieMascot state="waiting" size={128} testID="onboarding-mascot-recover" />
         <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">מחברים אותך למשפחה…</RtlText>
         <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
-          פתחת את Walkie Doggy מהאייקון החדש. אין צורך ליצור את המשפחה מחדש. אם אתם מנהלי המשפחה, אמתו את כתובת הדוא״ל ששימשה ליצירתה ונשחזר את החיבור.
+          אין צורך ליצור את המשפחה מחדש. אם אתם מנהלי המשפחה, אמתו את כתובת הדוא״ל ששימשה ליצירתה ונשחזר את החיבור.
         </RtlText>
         <TextInput
           value={adminEmail}
@@ -475,10 +595,12 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
           textAlign="right"
         />
         {!verificationSent ? (
-          <Button label={verifyingEmail ? 'שולח קוד…' : 'שלחו לי קוד אימות'} onPress={sendAdminVerification} disabled={verifyingEmail || !adminEmail.trim()} loading={verifyingEmail} style={styles.wideButton} />
+          <Button label={verifyingEmail ? 'שולח קוד…' : 'שלחו לי קוד אימות'} onPress={() => sendAdminVerification(false)} disabled={verifyingEmail || !adminEmail.trim()} loading={verifyingEmail} style={styles.wideButton} />
         ) : (
           <>
-            <TextInput value={verificationCode} onChangeText={setVerificationCode} placeholder="קוד האימות שקיבלתם במייל" accessibilityLabel="קוד האימות שקיבלתם במייל" keyboardType="number-pad" style={styles.input} textAlign="right" />
+            <TextInput value={verificationCode} onChangeText={setVerificationCode} placeholder="קוד האימות שקיבלתם במייל" accessibilityLabel="קוד האימות שקיבלתם במייל" keyboardType="number-pad"
+                    autoComplete="one-time-code"
+                    textContentType="oneTimeCode" style={styles.input} textAlign="right" />
             <Button label={verifyingEmail ? 'מחבר למשפחה…' : 'המשך למשפחה שלי'} onPress={recoverExistingFamily} disabled={verifyingEmail || !verificationCode.trim()} loading={verifyingEmail} style={styles.wideButton} />
           </>
         )}
@@ -518,12 +640,13 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
     return (
       <SafeAreaView style={styles.welcomeContainer}>
         <View style={[styles.welcomeCard, isDesktop && styles.welcomeCardDesktop]}>
-          <WalkieMascot state="ready" size={isDesktop ? 184 : 150} accessibilityLabel="הקמע הרשמי של Walkie Doggy" />
+          <Pressable onPress={handleAdminMascotTap} accessibilityLabel="הקמע הרשמי של Walkie Doggy"><WalkieMascot state="ready" size={isDesktop ? 184 : 150} accessibilityLabel="הקמע הרשמי של Walkie Doggy" /></Pressable>
           <RtlText style={styles.welcomeBrand}>Walkie Doggy</RtlText>
           <RtlText style={styles.welcomeTitle} accessibilityRole="header">מטיילים יחד, כמשפחה</RtlText>
           <RtlText style={styles.welcomeCopy}>יוצרים בית משותף לכלבים, לבני המשפחה ולטיולים היומיים.</RtlText>
           <Button label="יצירת משפחה חדשה" onPress={() => setMode('create')} style={styles.welcomeButton} />
           <Button label="הצטרפות למשפחה קיימת" variant="secondary" onPress={() => setMode('join')} style={styles.welcomeButton} />
+          <Button label="המשפחה שלי כבר קיימת" variant="secondary" onPress={() => setMode('recover')} style={styles.welcomeButton} />
         </View>
       </SafeAreaView>
     );
@@ -581,6 +704,8 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
                   setVerifiedAdminEmail(null);
                   setVerificationCode('');
                   setCreateError(null);
+                  setOtpDiagnostic(null);
+                  setOtpConnectivity(null);
                 }}
                 placeholder="name@example.com"
                 placeholderTextColor={colors.textSecondary}
@@ -597,14 +722,27 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
                 <Button
                   label={verifyingEmail ? 'שולח קוד...' : 'שליחת קוד אימות'}
                   onPress={sendAdminVerification}
-                  disabled={!adminEmail.trim() || verifyingEmail}
+                  disabled={!adminEmail.trim() || verifyingEmail || probingOtpEndpoint}
                   loading={verifyingEmail}
+                  style={styles.wideButton}
+                />
+              ) : null}
+              {otpDiagnosticsEnabled && !verifiedAdminEmail ? (
+                <Button
+                  label={probingOtpEndpoint ? 'בודק SDK לנתיב OTP...' : 'בדיקת SDK לנתיב OTP (ללא אימייל)'}
+                  variant="secondary"
+                  onPress={testStagingAuthConnectivity}
+                  disabled={probingOtpEndpoint || verifyingEmail}
+                  loading={probingOtpEndpoint}
                   style={styles.wideButton}
                 />
               ) : null}
 
               {verificationSent && !verifiedAdminEmail ? (
                 <>
+                  <RtlText style={styles.stepHint} accessibilityLiveRegion="polite">
+                    בקשת הקוד התקבלה. בדקו את תיבת הדואר ואת תיקיית הספאם. האישור הזה אינו מבטיח שהמייל נמסר.
+                  </RtlText>
                   <RtlText style={styles.label}>קוד האימות שקיבלת בדוא״ל</RtlText>
                   <TextInput
                     value={verificationCode}
@@ -614,6 +752,8 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
                     style={[styles.input, styles.codeInput]}
                     textAlign="center"
                     keyboardType="number-pad"
+                    autoComplete="one-time-code"
+                    textContentType="oneTimeCode"
                     autoCorrect={false}
                     maxLength={8}
                     accessibilityLabel="קוד האימות שקיבלת בדוא״ל"
@@ -677,6 +817,32 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
               {createError ? (
                 <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">
                   {createError}
+                </RtlText>
+              ) : null}
+              {otpDiagnosticsEnabled && otpDiagnostic ? (() => {
+                const summary = getOtpDiagnosticSummary(otpDiagnostic);
+                if (!summary) return null;
+                const fetchEvent = [...otpDiagnostic.events].reverse().find((event) =>
+                  event.stage === 'auth_fetch_invoked'
+                  || event.stage === 'auth_fetch_resolved'
+                  || event.stage === 'auth_fetch_rejected'
+                );
+                const fetchSummary = fetchEvent
+                  ? ` · ${fetchEvent.stage.replace('auth_fetch_', 'fetch_')}${fetchEvent.httpStatus ? ` HTTP ${fetchEvent.httpStatus}` : ''}`
+                  : otpDiagnostic.events.some((event) => event.stage === 'auth_client_rejected_before_fetch')
+                    ? ' · לפני fetch'
+                    : '';
+                return (
+                  <RtlText style={styles.stepHint} accessibilityLabel="אבחון זמני של בקשת האימות">
+                    אבחון זמני {otpDiagnostic.reference} · {summary.category.toUpperCase()} · {summary.stage}{fetchSummary} · {summary.elapsedMs}ms
+                  </RtlText>
+                );
+              })() : null}
+              {otpDiagnosticsEnabled && otpConnectivity ? (
+                <RtlText style={styles.stepHint} accessibilityLabel="תוצאת בדיקת SDK לנתיב OTP ללא אימייל">
+                  בדיקת SDK לנתיב OTP ללא אימייל: {otpConnectivity.category === 'http_response'
+                    ? `HTTP ${otpConnectivity.httpStatus ?? 'תגובה'}`
+                    : otpConnectivity.category.toUpperCase()} · {otpConnectivity.elapsedMs}ms
                 </RtlText>
               ) : null}
               <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
