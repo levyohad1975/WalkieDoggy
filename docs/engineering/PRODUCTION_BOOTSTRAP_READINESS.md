@@ -1,12 +1,42 @@
 # Production Bootstrap Readiness
 
-**Status:** NO-GO — BLOCKED BEFORE THE PRODUCTION APPROVAL GATE
-**Scope:** `zxolmnkevbtorxmcyvnz` only; no Production mutation is authorized by this document.
+**Status:** CONDITIONAL NO-GO — cutover is authorized, but activation is still
+blocked until the Production-only secret/Auth/Vercel review is complete.
+**Scope:** `zxolmnkevbtorxmcyvnz` only; do not attach DNS or deploy the public
+application before the final smoke tests pass.
 
 This is an evidence-backed, fail-closed runbook for turning the existing
 Supabase project into a clean Walkie Doggy Link Production environment without
 copying legacy Dog Walk Family data or any Staging family data. It deliberately
 does not contain a destructive migration or an automatic deployment command.
+
+## Execution update (2026-10-25)
+
+The legacy Production backup and restore gate is now complete. An AES-encrypted
+external archive is stored in the operator's OneDrive under
+`WalkieDoggy-External-Backup`; its archive test and SHA-256 manifest were
+verified. A fresh isolated Supabase restore also passed with
+`auth_users=62`, `public_tables=24`, `storage_metadata=6`, and
+`storage_files=6`; every restored Storage object was downloaded again and
+matched its source SHA-256. These numbers are evidence of the legacy state,
+not data to import into the new application.
+
+Production itself remains on the legacy data at this point: `auth.users` has
+62 rows and `storage.objects` has 6 rows. The bootstrap intentionally refuses
+to replace `public` until both are empty. A no-op managed-Storage capability
+probe was recorded as migration `20261025073436`; it created and dropped a
+temporary policy in one transaction and left no policy or application data
+behind. It proved that the Supabase migration executor, rather than a direct
+`psql` login, is the correct supported path for `storage.objects` policies.
+
+The current bootstrap generator separates the managed surfaces correctly:
+`public` is rebuilt by the fail-closed clean bootstrap, while buckets and
+Storage policies are applied by the Supabase migration executor. The reminder
+cron registration is generated separately for
+`https://zxolmnkevbtorxmcyvnz.supabase.co/functions/v1/send-walk-reminders`
+and references the existing Vault secret by name only. It never includes the
+secret value. The final artifact must be taken only from a successful
+Integration Full-Chain run for the exact release SHA.
 
 ## Verified inventory (2026-10-23)
 
@@ -172,18 +202,15 @@ All items below must be complete before any destructive Production operation.
 
 ## Current blockers
 
-1. An independent legacy backup plus a successful restore rehearsal has not
-   been produced. The current execution environment has no Docker daemon,
-   Postgres client or database connection credentials, so it cannot safely
-   create or validate the required external dump.
-2. The data-free bootstrap evidence artifact has passed its isolated replay
-   and independent checksum validation. It remains evidence for the reviewed
-   bootstrap procedure, not authorization to apply destructive SQL.
-3. Production Edge Functions are incomplete and legacy configuration differs
+1. The final data-free bootstrap evidence artifact must be generated from the
+   exact release SHA after the reminder-cron verification passes. It remains
+   evidence for the reviewed bootstrap procedure, not authorization to apply
+   destructive SQL on its own.
+2. Production Edge Functions are incomplete and legacy configuration differs
    from the repository; Production secrets, Auth URLs/redirects/sender and
    Vercel variable values remain unverified by design.
-4. Production domain binding is absent from the Vercel project, and the
+3. Production domain binding is absent from the Vercel project, and the
    separate `walkie-doggy-staging` project could not be inspected through the
    current Vercel permission scope.
-5. Production security/performance advisor findings require explicit review;
+4. Production security/performance advisor findings require explicit review;
    they cannot be silently dismissed during a bootstrap.
