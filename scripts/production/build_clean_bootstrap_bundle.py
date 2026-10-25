@@ -32,6 +32,11 @@ def public_schema_without_schema_creation(source: str) -> str:
         if normalized in {
             "create schema public;",
             "alter schema public owner to postgres;",
+            # pg_dump 17 emits this setting, while the isolated Supabase
+            # rehearsal currently runs PostgreSQL 15.  It is a session
+            # control, not schema state, and is deliberately omitted so the
+            # artifact is portable across both supported server versions.
+            "set transaction_timeout = 0;",
         }:
             continue
         # PostgreSQL 17 emits these per-dump random restriction tokens.  They
