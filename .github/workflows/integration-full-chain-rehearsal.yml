@@ -458,6 +458,24 @@ jobs:
             --no-owner \
             --no-privileges \
             > "$bundle_dir/schema-public-storage.sql"
+          # The full public/storage dump remains evidence only.  Produce
+          # separately scoped dumps for the actual clean-bootstrap bundle:
+          # the Production procedure may replace application-owned `public`,
+          # but must never replace Supabase's managed `storage` schema.
+          pg_dump \
+            --dbname "postgresql://postgres@127.0.0.1:54322/postgres" \
+            --schema-only \
+            --schema public \
+            --no-owner \
+            --no-privileges \
+            > "$bundle_dir/raw-public.sql"
+          pg_dump \
+            --dbname "postgresql://postgres@127.0.0.1:54322/postgres" \
+            --schema-only \
+            --schema storage \
+            --no-owner \
+            --no-privileges \
+            > "$bundle_dir/raw-storage.sql"
           # PostgreSQL 17 adds per-dump psql restriction tokens. They are
           # intentionally removed so the content hash remains deterministic.
           sed -i -E '/^\\(un)?restrict /d' "$bundle_dir/schema-public-storage.sql"
@@ -473,20 +491,75 @@ jobs:
             -c "select id, public, coalesce(file_size_limit::text, ''), coalesce(array_to_string(allowed_mime_types, ','), '') from storage.buckets order by id;" \
             > "$bundle_dir/storage-buckets.tsv"
 
+          python3 scripts/production/build_clean_bootstrap_bundle.py \
+            --public-dump "$bundle_dir/raw-public.sql" \
+            --storage-dump "$bundle_dir/raw-storage.sql" \
+            --bucket-manifest "$bundle_dir/storage-buckets.tsv" \
+            --output-dir "$bundle_dir"
+          rm "$bundle_dir/raw-public.sql" "$bundle_dir/raw-storage.sql"
+
           {
             printf 'commit=%s\n' "$GITHUB_SHA"
-            sha256sum supabase/schema.sql
-            find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 | sort -z | xargs -0 sha256sum
+            # The rehearsal intentionally rewrites a disposable checkout
+            # (duplicate migration handling and inert local cron wiring).
+            # Hash the committed blobs, never those temporary files, so the
+            # evidence is genuinely pinned to GITHUB_SHA.
+            for path in supabase/schema.sql scripts/production/build_clean_bootstrap_bundle.py; do
+              printf '%s  %s\n' "$(git show "$GITHUB_SHA:$path" | sha256sum | awk '{print $1}')" "$path"
+            done
+            git ls-tree -r --name-only "$GITHUB_SHA" -- supabase/migrations \
+              | sort \
+              | while IFS= read -r path; do
+                  printf '%s  %s\n' "$(git show "$GITHUB_SHA:$path" | sha256sum | awk '{print $1}')" "$path"
+                done
           } > "$bundle_dir/source-sha256.txt"
           # Record relative names so SHA256SUMS can be verified after this
           # bundle is downloaded and extracted on a different machine.
           (
             cd "$bundle_dir"
-            sha256sum schema-public-storage.sql catalog-counts.tsv storage-buckets.tsv source-sha256.txt > SHA256SUMS
+            sha256sum schema-public-storage.sql clean-public-schema.sql storage-configuration.sql apply-clean-bootstrap.sql catalog-counts.tsv storage-buckets.tsv source-sha256.txt > SHA256SUMS
           )
           tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
             -czf "/tmp/production-bootstrap-evidence-${GITHUB_SHA}.tar.gz" \
             -C /tmp "$(basename "$bundle_dir")"
+
+      - name: Rehearse the generated clean bootstrap without replacing managed Storage
+        # This is the hosted-Production shape in a disposable local database:
+        # legacy Auth/Storage data must be cleared through their APIs first;
+        # then only `public` and the archived legacy schema are replaced.
+        # It proves the generated public schema and application-owned Storage
+        # policies can be restored without dropping/recreating `storage`.
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          bundle_dir="/tmp/production-bootstrap-evidence-${GITHUB_SHA}"
+          db_url="postgresql://postgres@127.0.0.1:54322/postgres"
+
+          # Test-only cleanup.  The real cutover refuses to proceed until
+          # Auth users and Storage objects have been removed via their
+          # supported service APIs and verified empty.
+          psql "$db_url" -v ON_ERROR_STOP=1 <<'SQL'
+          delete from storage.objects;
+          drop schema if exists public cascade;
+          create schema public;
+          delete from auth.users;
+          SQL
+
+          (
+            cd "$bundle_dir"
+            psql "$db_url" -v ON_ERROR_STOP=1 -f apply-clean-bootstrap.sql
+          )
+
+          psql "$db_url" -v ON_ERROR_STOP=1 -At -F $'\t' \
+            -c "select 'public_tables', count(*) from pg_tables where schemaname = 'public' union all select 'public_rls_tables', count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r' and c.relrowsecurity union all select 'public_functions', count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' union all select 'policies', count(*) from pg_policies where schemaname in ('public', 'storage') union all select 'triggers', count(*) from information_schema.triggers where trigger_schema = 'public' union all select 'storage_buckets', count(*) from storage.buckets;" \
+            > /tmp/clean-bootstrap-catalog-counts.tsv
+          diff -u "$bundle_dir/catalog-counts.tsv" /tmp/clean-bootstrap-catalog-counts.tsv
+
+          psql "$db_url" -v ON_ERROR_STOP=1 -At -F $'\t' \
+            -c "select id, public, coalesce(file_size_limit::text, ''), coalesce(array_to_string(allowed_mime_types, ','), '') from storage.buckets order by id;" \
+            > /tmp/clean-bootstrap-storage-buckets.tsv
+          diff -u "$bundle_dir/storage-buckets.tsv" /tmp/clean-bootstrap-storage-buckets.tsv
 
       - name: Upload data-free bootstrap evidence bundle
         uses: actions/upload-artifact@v4
