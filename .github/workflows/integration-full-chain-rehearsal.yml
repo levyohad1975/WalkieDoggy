@@ -495,6 +495,7 @@ jobs:
             --public-dump "$bundle_dir/raw-public.sql" \
             --storage-dump "$bundle_dir/raw-storage.sql" \
             --bucket-manifest "$bundle_dir/storage-buckets.tsv" \
+            --walk-reminder-url "https://zxolmnkevbtorxmcyvnz.supabase.co/functions/v1/send-walk-reminders" \
             --output-dir "$bundle_dir"
           rm "$bundle_dir/raw-public.sql" "$bundle_dir/raw-storage.sql"
 
@@ -517,7 +518,7 @@ jobs:
           # bundle is downloaded and extracted on a different machine.
           (
             cd "$bundle_dir"
-            sha256sum schema-public-storage.sql clean-public-schema.sql storage-configuration.sql apply-clean-bootstrap.sql catalog-counts.tsv storage-buckets.tsv source-sha256.txt > SHA256SUMS
+            sha256sum schema-public-storage.sql clean-public-schema.sql storage-configuration.sql register-walk-reminder-cron.sql apply-clean-bootstrap.sql catalog-counts.tsv storage-buckets.tsv source-sha256.txt > SHA256SUMS
           )
           tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
             -czf "/tmp/production-bootstrap-evidence-${GITHUB_SHA}.tar.gz" \
@@ -561,6 +562,24 @@ jobs:
           psql "postgresql://supabase_admin:postgres@127.0.0.1:54322/postgres" \
             -v ON_ERROR_STOP=1 \
             -f "$bundle_dir/storage-configuration.sql"
+
+          # Rebuild the same generator output with a closed local endpoint
+          # for execution testing. The downloaded artifact itself remains
+          # Production-targeted and cannot emit live traffic during CI.
+          local_cron_dir=/tmp/production-bootstrap-local-cron
+          mkdir -p "$local_cron_dir"
+          python3 scripts/production/build_clean_bootstrap_bundle.py \
+            --public-dump "$bundle_dir/clean-public-schema.sql" \
+            --storage-dump "$bundle_dir/storage-configuration.sql" \
+            --bucket-manifest "$bundle_dir/storage-buckets.tsv" \
+            --walk-reminder-url "http://127.0.0.1:9/functions/v1/send-walk-reminders" \
+            --output-dir "$local_cron_dir"
+          psql "postgresql://supabase_admin:postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f "$local_cron_dir/register-walk-reminder-cron.sql"
+          psql "$db_url" -v ON_ERROR_STOP=1 -At \
+            -c "select command like '%http://127.0.0.1:9/functions/v1/send-walk-reminders%' from cron.job where jobname = 'walkie-send-walk-reminders';" \
+            | grep -x true
 
           psql "$db_url" -v ON_ERROR_STOP=1 -At -F $'\t' \
             -c "select 'public_tables', count(*) from pg_tables where schemaname = 'public' union all select 'public_rls_tables', count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r' and c.relrowsecurity union all select 'public_functions', count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' union all select 'policies', count(*) from pg_policies where schemaname in ('public', 'storage') union all select 'triggers', count(*) from information_schema.triggers where trigger_schema = 'public' union all select 'storage_buckets', count(*) from storage.buckets;" \
