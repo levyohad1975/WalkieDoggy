@@ -540,7 +540,10 @@ jobs:
           # Auth users and Storage objects have been removed via their
           # supported service APIs and verified empty.
           psql "$db_url" -v ON_ERROR_STOP=1 <<'SQL'
+          begin;
+          set local storage.allow_delete_query = 'true';
           delete from storage.objects;
+          commit;
           drop schema if exists public cascade;
           create schema public;
           delete from auth.users;
