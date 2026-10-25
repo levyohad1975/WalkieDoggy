@@ -90,11 +90,68 @@ def bucket_values(manifest: str) -> list[str]:
     return values
 
 
+def walk_reminder_cron_sql(reminder_url: str) -> str:
+    """Build the environment-specific, secret-free reminder cron registration.
+
+    The application schema deliberately has no permanent HTTP endpoint in it.
+    The target endpoint belongs in the generated Production artifact instead,
+    while the shared credential remains in the project's Vault.
+    """
+    if not re.fullmatch(
+        r"(?:https://[a-z0-9]{20}\.supabase\.co|http://127\.0\.0\.1:9)/functions/v1/send-walk-reminders",
+        reminder_url,
+    ):
+        raise ValueError("walk reminder URL must be a Supabase send-walk-reminders HTTPS endpoint")
+    return f"""-- Generated from the isolated full-chain rehearsal.
+-- Apply only after the send-walk-reminders Edge Function is deployed with the
+-- same WALK_REMINDER_CRON_SECRET that is present in Vault. This script never
+-- contains the secret value.
+do $$
+declare
+  existing_job_id bigint;
+begin
+  if not exists (
+    select 1 from vault.decrypted_secrets where name = 'walk_reminder_cron_secret'
+  ) then
+    raise exception 'Vault secret walk_reminder_cron_secret is required before registering reminders';
+  end if;
+
+  select jobid into existing_job_id
+  from cron.job
+  where jobname = 'walkie-send-walk-reminders';
+
+  if existing_job_id is not null then
+    perform cron.unschedule(existing_job_id);
+  end if;
+
+  perform cron.schedule(
+    'walkie-send-walk-reminders',
+    '* * * * *',
+    $cron$
+    select net.http_post(
+      url := '{reminder_url}',
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'x-cron-secret', (
+          select decrypted_secret
+          from vault.decrypted_secrets
+          where name = 'walk_reminder_cron_secret'
+        )
+      ),
+      body := '{{}}'::jsonb
+    );
+    $cron$
+  );
+end $$;
+"""
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--public-dump", type=Path, required=True)
     parser.add_argument("--storage-dump", type=Path, required=True)
     parser.add_argument("--bucket-manifest", type=Path, required=True)
+    parser.add_argument("--walk-reminder-url", required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
 
@@ -127,6 +184,9 @@ def main() -> None:
     storage_lines.append("")
     storage_lines.extend(statement + "\n" for _, statement in policies)
     (output_dir / "storage-configuration.sql").write_text("\n".join(storage_lines))
+    (output_dir / "register-walk-reminder-cron.sql").write_text(
+        walk_reminder_cron_sql(args.walk_reminder_url)
+    )
 
     # psql meta-commands are intentional: this entrypoint makes the exact
     # destructive boundary and its fail-closed preconditions reviewable.
