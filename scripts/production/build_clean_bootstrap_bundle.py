@@ -110,6 +110,8 @@ def main() -> None:
     storage_lines = [
         "-- Generated from the isolated full-chain rehearsal.",
         "-- This file intentionally does not create, alter, or drop the managed storage schema.",
+        "-- Apply this file through the Supabase migration executor, not a direct psql",
+        "-- connection: storage.objects is owned by Supabase's managed Storage role.",
         "insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)",
         "values",
         ",\n".join(f"  {value}" for value in buckets),
@@ -118,8 +120,6 @@ def main() -> None:
         "  public = excluded.public,",
         "  file_size_limit = excluded.file_size_limit,",
         "  allowed_mime_types = excluded.allowed_mime_types;",
-        "",
-        "alter table storage.objects enable row level security;",
         "",
     ]
     for name, _ in policies:
@@ -135,6 +135,9 @@ def main() -> None:
 -- Run only with psql against the approved Production project, after the
 -- external backup/restore evidence has been accepted and legacy Auth users
 -- and Storage objects have been removed through their supported APIs.
+-- Then apply storage-configuration.sql through the Supabase migration
+-- executor. It deliberately is not included here because storage.objects
+-- is owned by the managed Storage service, not the psql login role.
 begin;
 
 do $$
@@ -151,7 +154,6 @@ drop schema if exists public cascade;
 drop schema if exists legacy_archive_20261023 cascade;
 create schema public;
 \\i clean-public-schema.sql
-\\i storage-configuration.sql
 commit;
 """
     )
