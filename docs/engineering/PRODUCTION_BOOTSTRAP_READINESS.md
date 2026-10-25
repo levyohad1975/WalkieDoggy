@@ -38,6 +38,16 @@ and references the existing Vault secret by name only. It never includes the
 secret value. The final artifact must be taken only from a successful
 Integration Full-Chain run for the exact release SHA.
 
+The latest verified artifact is
+`production-bootstrap-evidence-2ebbc3806e3a779c505a07c5da1edf0e8a351c4c`
+from Integration Full-Chain run `40174179644` for branch commit
+`d09e182ef97f84dd02b27233a171f29039aa70d2`. Its GitHub artifact digest is
+`sha256:03a8df10328a2bbbf802ac6cffd8d6a52c7f7ae7cd0feee932555c9abd52913d`.
+The archive and every file in its internal `SHA256SUMS` manifest were
+downloaded and independently verified. The artifact reports 50 public RLS
+tables, 195 public functions, 64 policies, 241 triggers, and the two required
+Storage buckets.
+
 ## Verified inventory (2026-10-23)
 
 | Surface | Verified state | Consequence |
@@ -202,15 +212,11 @@ All items below must be complete before any destructive Production operation.
 
 ## Current blockers
 
-1. The final data-free bootstrap evidence artifact must be generated from the
-   exact release SHA after the reminder-cron verification passes. It remains
-   evidence for the reviewed bootstrap procedure, not authorization to apply
-   destructive SQL on its own.
-2. Production Edge Functions are incomplete and legacy configuration differs
+1. Production Edge Functions are incomplete and legacy configuration differs
    from the repository; Production secrets, Auth URLs/redirects/sender and
    Vercel variable values remain unverified by design.
-3. Production domain binding is absent from the Vercel project, and the
+2. Production domain binding is absent from the Vercel project, and the
    separate `walkie-doggy-staging` project could not be inspected through the
    current Vercel permission scope.
-4. Production security/performance advisor findings require explicit review;
+3. Production security/performance advisor findings require explicit review;
    they cannot be silently dismissed during a bootstrap.
