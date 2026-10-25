@@ -554,6 +554,14 @@ jobs:
             psql "$db_url" -v ON_ERROR_STOP=1 -f apply-clean-bootstrap.sql
           )
 
+          # Hosted Supabase applies Storage policies through its migration
+          # executor, whose managed role owns storage.objects.  The local
+          # equivalent is supabase_admin; the ordinary postgres login must
+          # never be granted ownership of the managed Storage schema.
+          psql "postgresql://supabase_admin:postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f "$bundle_dir/storage-configuration.sql"
+
           psql "$db_url" -v ON_ERROR_STOP=1 -At -F $'\t' \
             -c "select 'public_tables', count(*) from pg_tables where schemaname = 'public' union all select 'public_rls_tables', count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r' and c.relrowsecurity union all select 'public_functions', count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' union all select 'policies', count(*) from pg_policies where schemaname in ('public', 'storage') union all select 'triggers', count(*) from information_schema.triggers where trigger_schema = 'public' union all select 'storage_buckets', count(*) from storage.buckets;" \
             > /tmp/clean-bootstrap-catalog-counts.tsv
