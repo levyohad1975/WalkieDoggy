@@ -41,7 +41,7 @@ def public_schema_without_schema_creation(source: str) -> str:
             continue
         # PostgreSQL 17 emits these per-dump random restriction tokens.  They
         # are not schema and make a content-addressed artifact non-deterministic.
-        if re.match(r"^\\(?:un\\)?restrict ", line):
+        if re.match(r"^\\(?:un)?restrict ", line):
             continue
         kept.append(line)
     result = "".join(kept)
