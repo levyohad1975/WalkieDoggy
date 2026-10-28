@@ -36,7 +36,6 @@ declare
     'admin_list_family_activity',
     'admin_remove_unused_dog',
     'admin_reschedule_walk',
-    'admin_reset_family_activity',
     'admin_swap_walks',
     'am_i_system_admin',
     'append_walk_gps_route_v11',
@@ -140,3 +139,7 @@ begin
   end loop;
 end;
 $$;
+
+-- The client calls only the confirmation-gated overload.  Do not grant the
+-- historical zero-argument reset merely because it shares the same name.
+grant execute on function public.admin_reset_family_activity(boolean) to authenticated;
