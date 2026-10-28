@@ -41,6 +41,7 @@ begin
     'public.claim_family_profile_with_pin(uuid,text)'::regprocedure,
     'public.get_my_family_onboarding_status()'::regprocedure,
     'public.start_walk_v11(uuid,uuid,uuid,uuid,boolean,boolean)'::regprocedure,
+    'public.admin_reset_family_activity(boolean)'::regprocedure,
     'public.chat_open_family_conversation()'::regprocedure,
     'public.chat_send_message(uuid,uuid,text)'::regprocedure,
     'public.set_remote_gps_consent(boolean)'::regprocedure,
