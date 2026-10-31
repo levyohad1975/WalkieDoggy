@@ -253,32 +253,65 @@ describe('the requireAuthClient()-backed exports (delegate to the real supabase.
     });
   });
 
-  it('uses the direct browser Auth transport instead of the SDK on web', async () => {
-    const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200 });
+  it('sends Production OTP through same-origin XHR without invoking fetch or the SDK', async () => {
+    const fetchMock = jest.fn();
     Object.defineProperty(globalThis, 'fetch', { configurable: true, value: fetchMock });
+    const xhr = {
+      open: jest.fn(), setRequestHeader: jest.fn(), send: jest.fn(),
+      status: 200, responseText: '', timeout: 0, withCredentials: true,
+      onload: null as null | (() => void),
+      onerror: null as null | (() => void),
+      ontimeout: null as null | (() => void),
+      onabort: null as null | (() => void),
+    };
+    const originalXhr = Object.getOwnPropertyDescriptor(globalThis, 'XMLHttpRequest');
+    Object.defineProperty(globalThis, 'XMLHttpRequest', { configurable: true, value: jest.fn(() => xhr) });
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
       value: { location: { hostname: 'walkielink.co.il', origin: 'https://walkielink.co.il' } },
     });
+    try {
+      const pending = requestAdminEmailVerification(' Admin@Example.com ');
+      expect(xhr.open).toHaveBeenCalledWith('POST', 'https://walkielink.co.il/_walkie-auth/otp', true);
+      expect(xhr.withCredentials).toBe(false);
+      expect(xhr.timeout).toBe(15000);
+      expect(xhr.setRequestHeader).toHaveBeenCalledWith('apikey', 'publishable-key');
+      expect(xhr.send).toHaveBeenCalledWith(JSON.stringify({
+        email: 'admin@example.com', data: {}, create_user: true, gotrue_meta_security: {},
+      }));
+      xhr.onload?.();
+      await expect(pending).resolves.toBe('admin@example.com');
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(mockAuth.signInWithOtp).not.toHaveBeenCalled();
+    } finally {
+      if (originalXhr) Object.defineProperty(globalThis, 'XMLHttpRequest', originalXhr);
+      else Reflect.deleteProperty(globalThis, 'XMLHttpRequest');
+    }
+  });
 
-    await expect(requestAdminEmailVerification(' Admin@Example.com ')).resolves.toBe('admin@example.com');
-    expect(mockAuth.signInWithOtp).not.toHaveBeenCalled();
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://walkielink.co.il/_walkie-auth/otp',
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-          apikey: 'publishable-key',
-          Authorization: 'Bearer publishable-key',
-        }),
-        body: JSON.stringify({
-          email: 'admin@example.com',
-          data: {},
-          create_user: true,
-          gotrue_meta_security: {},
-        }),
-      })
-    );
+  it('rejects XHR network errors without exposing email or response body', async () => {
+    const xhr = {
+      open: jest.fn(), setRequestHeader: jest.fn(), send: jest.fn(),
+      status: 0, responseText: '', timeout: 0, withCredentials: false,
+      onload: null as null | (() => void),
+      onerror: null as null | (() => void),
+      ontimeout: null as null | (() => void),
+      onabort: null as null | (() => void),
+    };
+    const originalXhr = Object.getOwnPropertyDescriptor(globalThis, 'XMLHttpRequest');
+    Object.defineProperty(globalThis, 'XMLHttpRequest', { configurable: true, value: jest.fn(() => xhr) });
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { location: { hostname: 'walkielink.co.il', origin: 'https://walkielink.co.il' } },
+    });
+    try {
+      const pending = requestAdminEmailVerification('admin@example.com');
+      xhr.onerror?.();
+      await expect(pending).rejects.toThrow('email OTP network error');
+    } finally {
+      if (originalXhr) Object.defineProperty(globalThis, 'XMLHttpRequest', originalXhr);
+      else Reflect.deleteProperty(globalThis, 'XMLHttpRequest');
+    }
   });
 
   it('verifyAdminEmailOtp() calls supabase.auth.verifyOtp and returns the confirmed identity', async () => {
