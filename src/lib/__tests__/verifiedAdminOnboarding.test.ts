@@ -256,12 +256,15 @@ describe('the requireAuthClient()-backed exports (delegate to the real supabase.
   it('uses the direct browser Auth transport instead of the SDK on web', async () => {
     const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200 });
     Object.defineProperty(globalThis, 'fetch', { configurable: true, value: fetchMock });
-    Object.defineProperty(globalThis, 'window', { configurable: true, value: {} });
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { location: { hostname: 'walkielink.co.il' } },
+    });
 
     await expect(requestAdminEmailVerification(' Admin@Example.com ')).resolves.toBe('admin@example.com');
     expect(mockAuth.signInWithOtp).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://example.supabase.co/auth/v1/otp',
+      '/_walkie-auth/otp',
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({

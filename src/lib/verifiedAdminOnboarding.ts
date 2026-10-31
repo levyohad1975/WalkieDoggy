@@ -186,11 +186,24 @@ function canUseBrowserOtpTransport(): boolean {
   return true;
 }
 
+function browserOtpEndpoint(): string {
+  // Production Safari has rejected this cross-origin Auth request before it
+  // reached Supabase. On the public Production host, keep the browser request
+  // same-origin and let the narrowly scoped Vercel rewrite forward only this
+  // OTP endpoint. Staging and previews continue to call their own Supabase
+  // project directly.
+  if (window.location?.hostname.toLowerCase() === 'walkielink.co.il') {
+    return '/_walkie-auth/otp';
+  }
+
+  return `${supabaseProjectUrl.replace(/\/$/, '')}/auth/v1/otp`;
+}
+
 async function requestEmailOtpOverBrowserTransport(
   email: string,
   shouldCreateUser: boolean
 ): Promise<void> {
-  const response = await globalThis.fetch(`${supabaseProjectUrl.replace(/\/$/, '')}/auth/v1/otp`, {
+  const response = await globalThis.fetch(browserOtpEndpoint(), {
     method: 'POST',
     mode: 'cors',
     credentials: 'omit',
