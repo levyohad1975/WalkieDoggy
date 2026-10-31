@@ -33,6 +33,11 @@ describe('temporary Staging email OTP diagnostics', () => {
     expect(isOtpDiagnosticsEnabledFor({ ...staging, hostname: 'walkielink.co.il' })).toBe(false);
     expect(isOtpDiagnosticsEnabledFor({ ...staging, supabaseUrl: 'https://prod.supabase.co' })).toBe(false);
     expect(isOtpDiagnosticsEnabledFor({ ...staging, platform: 'ios' })).toBe(false);
+    const production = { platform: 'web', hostname: 'walkielink.co.il', supabaseUrl: 'https://zxolmnkevbtorxmcyvnz.supabase.co', diagnosticOptIn: true };
+    expect(isOtpDiagnosticsEnabledFor(production)).toBe(true);
+    expect(isOtpDiagnosticsEnabledFor({ ...production, diagnosticOptIn: false })).toBe(false);
+    expect(isOtpDiagnosticsEnabledFor({ ...production, supabaseUrl: staging.supabaseUrl })).toBe(false);
+    expect(isOtpDiagnosticsEnabledFor({ ...production, hostname: 'fake.walkielink.co.il' })).toBe(false);
   });
 
   it('records handler, validation, invocation, and successful promise resolution in order', async () => {
