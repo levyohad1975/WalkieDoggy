@@ -58,6 +58,15 @@ export const supabase = isSupabaseConfigured
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: false,
+        // This app verifies an email address with a numeric OTP entered in
+        // the same client; it does not complete an Auth redirect. PKCE creates
+        // and persists a verifier before it sends /auth/v1/otp. On iOS Safari
+        // that browser-storage step can reject before the network request,
+        // leaving the user with no code at all. The implicit flow avoids that
+        // pre-request PKCE dependency while verifyOtp() still validates the
+        // short-lived, server-issued code before replacing the anonymous
+        // session with the verified email session.
+        flowType: 'implicit',
       },
       ...(stagingOtpDiagnosticFetch ? { global: { fetch: stagingOtpDiagnosticFetch } } : {}),
     })
