@@ -1,0 +1,8 @@
+{
+  "asset": "docs/product/tutorial-video/assets/walkie-doggy-link-wordmark-clean.DRAFT.png",
+  "fileSha256": "d7b6151cb0fa5dfa257de2997c2dc92c6944a153afb4334187de6d3ecd61375b",
+  "provenance": "WORDMARK_PROVENANCE.md (deterministic matte extraction, method v2) — derived from the official wordmark; the official mascot is not part of this file and is unchanged",
+  "approvedForProduction": "Owner, 2026-10-17: approved for continued production, subject to final visual QA",
+  "finalVisualQA": "PENDING — owner sign-off on the assembled DRAFT v1 (iPhone + desktop, light background), FINAL_MP4_PLAN.md P6",
+  "useInFinalRenderOnlyAfter": "finalVisualQA is replaced by the reviewer name, date and decision"
+}

@@ -9,8 +9,12 @@ import type {
   ScheduleRule,
   Walk,
   WalkGpsSession,
+  WalkStartAuthorization,
+  GpsRouteUpdate,
+  GpsReconstructionUpdate,
 } from '../types';
 import type { QuarantinedItem, SyncConflict, SyncQueueDiagnostics } from './syncQueue';
+import type { WalkLifecycleCapability } from './walkLifecycleCapability';
 
 /** Payload for Repository.deleteFamilyMember — see its doc comment below. */
 export interface DeleteFamilyMemberPayload {
@@ -18,6 +22,59 @@ export interface DeleteFamilyMemberPayload {
   updatedRules: ScheduleRule[];
   updatedEntries: ScheduleEntry[];
   updatedWalks: Walk[];
+}
+
+export interface WalkDuplicateResolutionAudit {
+  id: string;
+  createdAt: string;
+  createdByUserId: string;
+  dogId: string;
+  canonicalWalkId: string | null;
+  rationale: string;
+  items: Array<{
+    walkId: string;
+    disposition: 'canonical' | 'resolved_duplicate';
+    originalWalk: Record<string, unknown>;
+    linkedGpsSessionIds: string[];
+  }>;
+}
+
+/** Minimal, read-only review data for the owner-confirmed Staging test duplicates. */
+export interface DuplicateActiveWalkReviewRecord {
+  walkId: string;
+  familyId: string;
+  dogId: string;
+  scheduleEntryId?: string;
+  isUnplanned?: boolean;
+  status: string;
+  createdAt?: string;
+  startedAt?: string;
+  startedByUserId?: string;
+  actualWalkerUserId?: string;
+  responsibleUserId: string;
+  duplicateResolutionGroupId?: string;
+  auditEntries: Array<{
+    id: string;
+    action: string;
+    actorUserId?: string;
+    createdAt: string;
+    metadata: Record<string, unknown>;
+  }>;
+  gpsSessions: Array<{
+    id: string;
+    pointCount: number;
+    distanceMeters?: number;
+    startedAt?: string;
+    endedAt?: string;
+    createdByUserId?: string;
+  }>;
+}
+
+export interface ResolveDuplicateActiveWalksRequest {
+  walkIds: string[];
+  canonicalWalkId: string | null;
+  rationale: string;
+  operationId: string;
 }
 
 /**
@@ -33,6 +90,10 @@ export interface DeleteFamilyMemberPayload {
  * used for tests and the "no backend configured yet" demo mode.
  */
 export interface Repository {
+  /** Server-verified identity used to fence offline SyncQueue replay. */
+  getSyncReplayIdentity?(): Promise<{ authUserId: string; profileId: string; familyId: string }>;
+  /** Clears only the local cache for a family confirmed permanently deleted by the server. Never touches SyncQueue. */
+  clearLocalFamilyCache?(familyId: string): Promise<void>;
   getFamily(familyId: string): Promise<Family | undefined>;
 
   getUsers(familyId: string): Promise<FamilyUser[]>;
@@ -136,10 +197,41 @@ export interface Repository {
   deleteScheduleEntry(entryId: string): Promise<void>;
 
   getWalks(familyId: string): Promise<Walk[]>;
+  /** Online, read-only walk lookup that must bypass local cache fallbacks. */
+  getWalkAuthoritative?(familyId: string, walkId: string): Promise<Walk | undefined>;
+  /** Family-admin-only audit view of non-destructive duplicate-start resolutions. */
+  getWalkDuplicateResolutionAudit?(familyId: string): Promise<WalkDuplicateResolutionAudit[]>;
+  /** Online, read-only review of exact IDs, or all current-family active rows when walkIds is empty; never returns route coordinates. */
+  getDuplicateActiveWalkReview?(familyId: string, walkIds: string[]): Promise<DuplicateActiveWalkReviewRecord[]>;
+  /** Direct authenticated RPC only; intentionally never enters the offline SyncQueue. */
+  resolveDuplicateActiveWalksV12?(request: ResolveDuplicateActiveWalksRequest): Promise<string>;
   saveWalk(walk: Walk): Promise<void>;
   /** Server-authoritative lifecycle operations; Supabase persists actor/time atomically. */
   startWalk?(walkId: string): Promise<Walk>;
+  /**
+   * Read-only server probe for Walk Lifecycle v1.1. Implemented by the
+   * Supabase repository only; a remote without it (demo/test doubles) is
+   * treated as supporting the v1.1 methods it implements.
+   */
+  getWalkLifecycleCapability?(): Promise<WalkLifecycleCapability>;
+  /** Throws an explicit error when the server cannot run Walk Lifecycle v1.1 (offline-first layer only). */
+  assertWalkLifecycleV11Available?(): Promise<void>;
+  /** Versioned, idempotent lifecycle path. Requires the v1.1 migration before Supabase use. */
+  startWalkV11?(walkId: string, authorization: WalkStartAuthorization): Promise<Walk>;
+  /** Atomic spontaneous create-and-start; never exposes a persisted pending stub. */
+  startSpontaneousWalkV11?(walk: Walk, operationId: string, actorUserId?: string): Promise<Walk>;
   finishWalk?(walkId: string, actualWalkerId: string, details?: { hadPee?: boolean; hadPoop?: boolean; note?: string; completedAt?: string }): Promise<Walk>;
+  finishWalkV11?(walkId: string, actualWalkerId: string, operationId: string, details?: { hadPee?: boolean; hadPoop?: boolean; note?: string; completedAt?: string; remoteConfirmation?: boolean; actorUserId?: string }): Promise<Walk>;
+  /** Count-preserving lifecycle completion introduced with walk event count persistence. */
+  finishWalkV12?(walkId: string, actualWalkerId: string, operationId: string, details?: { hadPee?: boolean; hadPoop?: boolean; peeCount?: number; poopCount?: number; note?: string; completedAt?: string; remoteConfirmation?: boolean; actorUserId?: string }): Promise<Walk>;
+  acquireGpsOwnershipV11?(walkId: string, confirmTransfer?: boolean): Promise<{ fencingEpoch: number; expiresAt: string }>;
+  releaseGpsOwnershipV11?(walkId: string, fencingEpoch: number): Promise<void>;
+  heartbeatGpsOwnershipV11?(walkId: string, fencingEpoch: number): Promise<string>;
+  appendGpsRouteV11?(update: GpsRouteUpdate): Promise<WalkGpsSession>;
+  /** Offline-first local cache plus estimate-only fenced synchronization. */
+  saveGpsReconstructionV1?(session: WalkGpsSession): Promise<void>;
+  /** Offline-safe, idempotent estimate-only write; never updates measured route fields. */
+  saveGpsReconstructionUpdateV1?(update: GpsReconstructionUpdate): Promise<void>;
   /**
    * Section 2: permanently deletes an unplanned/spontaneous walk entered by
    * mistake. Callers (scheduleStore.deleteUnplannedWalk) must only call this

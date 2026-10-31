@@ -2,7 +2,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { OfflineFirstRepository } from '../offlineFirstRepository';
 import { LocalRepository } from '../localRepository';
-import { SyncQueue, setSyncQueueActorGetter } from '../syncQueue';
+import {
+  SyncQueue, getSyncQueueActorHint, getSyncQueueAuthUserHint, getSyncQueueFamilyHint,
+  setSyncQueueActorGetter, setSyncQueueAuthUserGetter, setSyncQueueFamilyGetter,
+} from '../syncQueue';
 import type { Repository } from '../repository';
 import type { FamilyUser } from '../../types';
 
@@ -26,14 +29,23 @@ describe('first-profile creation and queue ownership', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
     setSyncQueueActorGetter(() => null);
+    setSyncQueueAuthUserGetter(() => null);
+    setSyncQueueFamilyGetter(() => null);
     online();
-    remote = { createUser: jest.fn().mockResolvedValue(undefined), upsertUser: jest.fn() } as unknown as Repository;
+    remote = {
+      createUser: jest.fn().mockResolvedValue(undefined), upsertUser: jest.fn(),
+      getSyncReplayIdentity: async () => ({
+        authUserId: getSyncQueueAuthUserHint()!, profileId: getSyncQueueActorHint()!, familyId: getSyncQueueFamilyHint()!,
+      }),
+    } as unknown as Repository;
     repo = new OfflineFirstRepository(remote);
     local = new LocalRepository();
   });
 
   afterEach(() => {
     setSyncQueueActorGetter(() => null);
+    setSyncQueueAuthUserGetter(() => null);
+    setSyncQueueFamilyGetter(() => null);
     jest.restoreAllMocks();
   });
 
@@ -87,6 +99,8 @@ describe('first-profile creation and queue ownership', () => {
 
   it('keeps claimed-user creates local-first and tagged for later sync', async () => {
     setSyncQueueActorGetter(() => 'admin');
+    setSyncQueueAuthUserGetter(() => 'auth-admin');
+    setSyncQueueFamilyGetter(() => 'new-family');
     (NetInfo.fetch as jest.Mock).mockResolvedValue({ isConnected: false });
     await repo.createUser(user);
     expect(await local.getUsers(user.familyId)).toEqual([user]);
@@ -118,15 +132,16 @@ describe('first-profile creation and queue ownership', () => {
     expect(remote.createUser).not.toHaveBeenCalled();
   });
 
-  it.each([null, 'first-profile', 'another-profile'])('never replays an ownerless createUser under actor %s', async (actor) => {
+  it.each([null, 'first-profile', 'another-profile'])('holds an ownerless createUser under actor %s until identity is restored', async (actor) => {
     const queue = new SyncQueue();
     await queue.enqueue({ type: 'createUser', payload: user });
     setSyncQueueActorGetter(() => actor);
-    expect(await queue.flush(remote)).toEqual({ succeeded: 0, remaining: 0, conflicted: 0, quarantined: 1 });
+    setSyncQueueAuthUserGetter(() => 'auth-first-profile');
+    setSyncQueueFamilyGetter(() => 'new-family');
+    expect(await queue.flush(remote)).toEqual({ succeeded: 0, remaining: 1, conflicted: 0, quarantined: 0 });
     expect(remote.createUser).not.toHaveBeenCalled();
-    expect(await queue.getQuarantined()).toEqual([
-      expect.objectContaining({ op: { type: 'createUser', payload: user } }),
-    ]);
+    expect(await queue.getQuarantined()).toEqual([]);
+    expect(await queue.size()).toBe(1);
     await new SyncQueue().flush(remote);
     expect(remote.createUser).not.toHaveBeenCalled();
   });

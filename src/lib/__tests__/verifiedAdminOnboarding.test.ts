@@ -22,6 +22,8 @@ jest.mock('../supabase', () => ({
     auth: { signInWithOtp: jest.fn(), verifyOtp: jest.fn(), getUser: jest.fn() },
     rpc: jest.fn(),
   },
+  supabaseProjectUrl: 'https://example.supabase.co',
+  supabaseClientKey: 'publishable-key',
   SupabaseNotConfiguredError: class SupabaseNotConfiguredError extends Error {},
 }));
 
@@ -49,6 +51,19 @@ describe('verified admin onboarding', () => {
     expect(auth.signInWithOtp).toHaveBeenCalledWith({
       email: 'admin@example.com',
       options: { shouldCreateUser: true },
+    });
+  });
+
+  it('requests recovery OTP for an existing admin without allowing Auth signup', async () => {
+    const auth = authClient();
+    auth.signInWithOtp.mockResolvedValue({ error: null });
+
+    await expect(
+      requestAdminEmailVerificationWithAuth(auth, '  Admin@Example.COM ', false)
+    ).resolves.toBe('admin@example.com');
+    expect(auth.signInWithOtp).toHaveBeenCalledWith({
+      email: 'admin@example.com',
+      options: { shouldCreateUser: false },
     });
   });
 
@@ -194,8 +209,24 @@ describe('verified admin onboarding', () => {
 });
 
 describe('the requireAuthClient()-backed exports (delegate to the real supabase.auth)', () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
+
   beforeEach(() => {
     jest.clearAllMocks();
+    Object.defineProperty(globalThis, 'fetch', { configurable: true, value: originalFetch });
+    // Jest supplies jsdom's window by default. Remove it for SDK/native-path
+    // tests; browser transport tests opt in explicitly below.
+    Reflect.deleteProperty(globalThis, 'window');
+  });
+
+  afterAll(() => {
+    Object.defineProperty(globalThis, 'fetch', { configurable: true, value: originalFetch });
+    if (originalWindowDescriptor) {
+      Object.defineProperty(globalThis, 'window', originalWindowDescriptor);
+    } else {
+      Reflect.deleteProperty(globalThis, 'window');
+    }
   });
 
   it('requestAdminEmailVerification() calls supabase.auth.signInWithOtp with the normalized email', async () => {
@@ -208,6 +239,79 @@ describe('the requireAuthClient()-backed exports (delegate to the real supabase.
       email: 'admin@example.com',
       options: { shouldCreateUser: true },
     });
+  });
+
+  it('requestAdminEmailVerification() can request OTP without creating a new Auth user', async () => {
+    mockAuth.signInWithOtp.mockResolvedValue({ error: null });
+
+    await expect(requestAdminEmailVerification('admin@example.com', false)).resolves.toBe(
+      'admin@example.com'
+    );
+    expect(mockAuth.signInWithOtp).toHaveBeenCalledWith({
+      email: 'admin@example.com',
+      options: { shouldCreateUser: false },
+    });
+  });
+
+  it('sends Production OTP through same-origin XHR without invoking fetch or the SDK', async () => {
+    const fetchMock = jest.fn();
+    Object.defineProperty(globalThis, 'fetch', { configurable: true, value: fetchMock });
+    const xhr = {
+      open: jest.fn(), setRequestHeader: jest.fn(), send: jest.fn(),
+      status: 200, responseText: '', timeout: 0, withCredentials: true,
+      onload: null as null | (() => void),
+      onerror: null as null | (() => void),
+      ontimeout: null as null | (() => void),
+      onabort: null as null | (() => void),
+    };
+    const originalXhr = Object.getOwnPropertyDescriptor(globalThis, 'XMLHttpRequest');
+    Object.defineProperty(globalThis, 'XMLHttpRequest', { configurable: true, value: jest.fn(() => xhr) });
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { location: { hostname: 'walkielink.co.il', origin: 'https://walkielink.co.il' } },
+    });
+    try {
+      const pending = requestAdminEmailVerification(' Admin@Example.com ');
+      expect(xhr.open).toHaveBeenCalledWith('POST', 'https://walkielink.co.il/_walkie-auth/otp', true);
+      expect(xhr.withCredentials).toBe(false);
+      expect(xhr.timeout).toBe(15000);
+      expect(xhr.setRequestHeader).toHaveBeenCalledWith('apikey', 'publishable-key');
+      expect(xhr.send).toHaveBeenCalledWith(JSON.stringify({
+        email: 'admin@example.com', data: {}, create_user: true, gotrue_meta_security: {},
+      }));
+      xhr.onload?.();
+      await expect(pending).resolves.toBe('admin@example.com');
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(mockAuth.signInWithOtp).not.toHaveBeenCalled();
+    } finally {
+      if (originalXhr) Object.defineProperty(globalThis, 'XMLHttpRequest', originalXhr);
+      else Reflect.deleteProperty(globalThis, 'XMLHttpRequest');
+    }
+  });
+
+  it('rejects XHR network errors without exposing email or response body', async () => {
+    const xhr = {
+      open: jest.fn(), setRequestHeader: jest.fn(), send: jest.fn(),
+      status: 0, responseText: '', timeout: 0, withCredentials: false,
+      onload: null as null | (() => void),
+      onerror: null as null | (() => void),
+      ontimeout: null as null | (() => void),
+      onabort: null as null | (() => void),
+    };
+    const originalXhr = Object.getOwnPropertyDescriptor(globalThis, 'XMLHttpRequest');
+    Object.defineProperty(globalThis, 'XMLHttpRequest', { configurable: true, value: jest.fn(() => xhr) });
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { location: { hostname: 'walkielink.co.il', origin: 'https://walkielink.co.il' } },
+    });
+    try {
+      const pending = requestAdminEmailVerification('admin@example.com');
+      xhr.onerror?.();
+      await expect(pending).rejects.toThrow('email OTP network error');
+    } finally {
+      if (originalXhr) Object.defineProperty(globalThis, 'XMLHttpRequest', originalXhr);
+      else Reflect.deleteProperty(globalThis, 'XMLHttpRequest');
+    }
   });
 
   it('verifyAdminEmailOtp() calls supabase.auth.verifyOtp and returns the confirmed identity', async () => {

@@ -1,7 +1,16 @@
 import { isSupabaseConfigured, supabase } from './supabase';
 
 export interface RemoteGpsTarget { target_auth_user_id: string; target_user_id: string; display_name: string; device_label: string }
-export interface RemoteGpsCommand { command_id: string; walk_id: string; status: 'pending'|'tracking'|'failed'|'expired'|'stopped'; expires_at: string }
+export interface RemoteGpsCommand {
+  command_id: string;
+  walk_id: string;
+  status: 'pending'|'tracking'|'failed'|'expired'|'stopped';
+  expires_at: string;
+  /** Server snapshot; local schedule state can lag a walk-start RPC. */
+  walk_status: 'pending'|'in_progress'|'done'|'skipped';
+  walk_family_id: string;
+  walk_actual_walker_user_id: string;
+}
 export interface RemoteGpsWalkStatus { command_id: string; status: RemoteGpsCommand['status']; failure_reason: string|null; expires_at: string }
 
 async function rpc<T>(name: string, args?: Record<string, unknown>): Promise<T> {
@@ -20,8 +29,24 @@ export const getRemoteGpsWalkStatus = (walkId: string) => rpc<RemoteGpsWalkStatu
 export const heartbeatRemoteGpsTracking = (commandId: string) => rpc<void>('heartbeat_remote_gps_tracking',{p_command_id:commandId});
 export const acknowledgeRemoteGpsStart = (commandId: string,tracking: boolean,reason?: string) => rpc<void>('acknowledge_remote_gps_start',{p_command_id:commandId,p_tracking:tracking,p_reason:reason});
 export const stopRemoteGpsTracking = (commandId: string) => rpc<void>('stop_remote_gps_tracking',{p_command_id:commandId});
-export async function sendRemoteGpsNotification(commandId: string): Promise<void> {
-  if (!supabase) return;
-  const { error } = await supabase.functions.invoke('remote-gps-notify',{body:{commandId}});
+/**
+ * The target's own read of one command's final state (RLS: "target can read
+ * own remote gps commands"). Used only to decide whether a vanished tracking
+ * command was an authorized termination; returns null when the row is not
+ * visible.
+ */
+export async function getRemoteGpsCommandOutcome(commandId: string): Promise<{ status: string; failure_reason: string | null } | null> {
+  if (!isSupabaseConfigured || !supabase) throw new Error('remote GPS requires a connected family');
+  const { data, error } = await supabase.from('remote_gps_commands').select('status,failure_reason').eq('id', commandId).maybeSingle();
   if (error) throw error;
+  return (data as { status: string; failure_reason: string | null } | null) ?? null;
+}
+export async function sendRemoteGpsNotification(commandId: string): Promise<void> {
+  if (!supabase) throw new Error('Supabase is not configured');
+  const { data, error } = await supabase.functions.invoke('remote-gps-notify', { body: { commandId } });
+  if (error) throw error;
+  const result = data as { ok?: boolean; expoSent?: number; webSent?: number; error?: string } | null;
+  if (!result || result.ok !== true || (result.expoSent ?? 0) + (result.webSent ?? 0) === 0) {
+    throw new Error(result?.error ?? 'No push notifications were delivered to a push service');
+  }
 }

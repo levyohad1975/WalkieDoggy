@@ -1,5 +1,12 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
-import { supabase, SupabaseNotConfiguredError } from './supabase';
+import {
+  supabase,
+  supabaseClientKey,
+  supabaseProjectUrl,
+  SupabaseNotConfiguredError,
+} from './supabase';
+import { withSyncIdentityFence } from './syncIdentityFence';
+import { beginOtpFetchTrace, type OtpDiagnosticSink } from './emailOtpDiagnostics';
 
 export type VerifiedAdminIdentity = {
   userId: string;
@@ -53,6 +60,19 @@ function requireAuthClient(): VerifiedAdminAuthClient {
   return supabase.auth as VerifiedAdminAuthClient;
 }
 
+function recordOtpDiagnostic(
+  diagnostics: OtpDiagnosticSink | undefined,
+  stage: Parameters<OtpDiagnosticSink['record']>[0],
+  error?: unknown,
+  category?: Parameters<OtpDiagnosticSink['record']>[2]
+): void {
+  try {
+    diagnostics?.record(stage, error, category);
+  } catch {
+    // Temporary diagnostics must never block or change the Auth request.
+  }
+}
+
 /**
  * Starts passwordless email verification for a prospective family admin.
  *
@@ -62,19 +82,174 @@ function requireAuthClient(): VerifiedAdminAuthClient {
  */
 export async function requestAdminEmailVerificationWithAuth(
   auth: VerifiedAdminAuthClient,
-  email: string
+  email: string,
+  shouldCreateUser = true,
+  diagnostics?: OtpDiagnosticSink
 ): Promise<string> {
-  const normalized = assertEmail(email);
-  const { error } = await auth.signInWithOtp({
-    email: normalized,
-    options: { shouldCreateUser: true },
-  });
-  if (error) throw error;
+  let normalized: string;
+  try {
+    normalized = assertEmail(email);
+    recordOtpDiagnostic(diagnostics, 'input_validation_completed');
+  } catch (error) {
+    recordOtpDiagnostic(diagnostics, 'input_validation_failed', error, 'validation');
+    throw error;
+  }
+
+  recordOtpDiagnostic(diagnostics, 'sign_in_with_otp_invoked');
+  const fetchTrace = diagnostics ? beginOtpFetchTrace(diagnostics) : null;
+  let result: { error: unknown | null };
+  try {
+    result = await auth.signInWithOtp({
+      email: normalized,
+      options: { shouldCreateUser },
+    });
+    recordOtpDiagnostic(diagnostics, 'promise_resolved');
+  } catch (error) {
+    if (fetchTrace && !fetchTrace.fetchWasInvoked()) {
+      recordOtpDiagnostic(diagnostics, 'auth_client_rejected_before_fetch', error);
+    }
+    recordOtpDiagnostic(diagnostics, 'promise_rejected', error);
+    throw error;
+  } finally {
+    fetchTrace?.close();
+  }
+  if (result.error) {
+    recordOtpDiagnostic(diagnostics, 'auth_error_returned', result.error);
+    throw result.error;
+  }
   return normalized;
 }
 
-export function requestAdminEmailVerification(email: string): Promise<string> {
-  return requestAdminEmailVerificationWithAuth(requireAuthClient(), email);
+export function requestAdminEmailVerification(
+  email: string,
+  shouldCreateUser = true,
+  diagnostics?: OtpDiagnosticSink
+): Promise<string> {
+  // iPhone Safari has shown an SDK-only failure before any Auth request is
+  // issued. On the web, use the documented Auth HTTP endpoint directly with
+  // the same public client credential. Native clients retain the SDK path.
+  if (canUseBrowserOtpTransport()) {
+    return requestAdminEmailVerificationWithBrowserTransport(
+      email,
+      shouldCreateUser,
+      diagnostics
+    );
+  }
+
+  return requestAdminEmailVerificationWithAuth(
+    requireAuthClient(),
+    email,
+    shouldCreateUser,
+    diagnostics
+  );
+}
+
+/**
+ * iOS Safari has intermittently rejected this app's Supabase JS OTP call
+ * before the request reaches Auth, while a standard browser fetch reaches the
+ * same endpoint. This path is intentionally web-only. It sends the same
+ * public-client request semantics as signInWithOtp; issuing and validating the
+ * OTP remains wholly server-side in Supabase Auth.
+ */
+async function requestAdminEmailVerificationWithBrowserTransport(
+  email: string,
+  shouldCreateUser: boolean,
+  diagnostics?: OtpDiagnosticSink
+): Promise<string> {
+  let normalized: string;
+  try {
+    normalized = assertEmail(email);
+    recordOtpDiagnostic(diagnostics, 'input_validation_completed');
+  } catch (error) {
+    recordOtpDiagnostic(diagnostics, 'input_validation_failed', error, 'validation');
+    throw error;
+  }
+
+  recordOtpDiagnostic(diagnostics, 'sign_in_with_otp_invoked');
+  try {
+    await requestEmailOtpOverBrowserTransport(normalized, shouldCreateUser);
+    recordOtpDiagnostic(diagnostics, 'promise_resolved');
+    return normalized;
+  } catch (error) {
+    recordOtpDiagnostic(diagnostics, 'promise_rejected', error);
+    throw error;
+  }
+}
+
+function canUseBrowserOtpTransport(): boolean {
+  if (typeof window === 'undefined'
+    || typeof XMLHttpRequest === 'undefined'
+    || !supabaseProjectUrl
+    || !supabaseClientKey) {
+    return false;
+  }
+  return true;
+}
+
+function browserOtpEndpoint(): string {
+  // Production Safari has rejected this cross-origin Auth request before it
+  // reached Supabase. On the public Production host, keep the browser request
+  // same-origin and let the narrowly scoped Vercel rewrite forward only this
+  // OTP endpoint. Staging and previews continue to call their own Supabase
+  // project directly. Use an absolute URL: Expo's web fetch implementation
+  // can reject a relative URL before it ever starts a browser request.
+  if (window.location?.hostname.toLowerCase() === 'walkielink.co.il') {
+    return `${window.location.origin}/_walkie-auth/otp`;
+  }
+
+  return `${supabaseProjectUrl.replace(/\/$/, '')}/auth/v1/otp`;
+}
+
+async function requestEmailOtpOverBrowserTransport(
+  email: string,
+  shouldCreateUser: boolean
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    let settled = false;
+    const fail = (reason: string, status?: number, code?: string) => {
+      if (settled) return;
+      settled = true;
+      const error = new Error(reason) as Error & { status?: number; code?: string };
+      if (status !== undefined) error.status = status;
+      if (code) error.code = code;
+      reject(error);
+    };
+    try {
+      xhr.open('POST', browserOtpEndpoint(), true);
+      xhr.timeout = 15000;
+      xhr.withCredentials = false;
+      xhr.setRequestHeader('apikey', supabaseClientKey);
+      xhr.setRequestHeader('Authorization', `Bearer ${supabaseClientKey}`);
+      xhr.setRequestHeader('Content-Type', 'application/json;charset=UTF-8');
+      xhr.onload = () => {
+        if (settled) return;
+        if (xhr.status >= 200 && xhr.status < 300) {
+          settled = true;
+          resolve();
+          return;
+        }
+        let code: string | undefined;
+        try {
+          const body: unknown = JSON.parse(xhr.responseText);
+          if (body && typeof body === 'object' && 'code' in body
+            && typeof body.code === 'string') code = body.code;
+        } catch { /* Never surface the response body or personal data. */ }
+        fail('email OTP request failed', xhr.status, code);
+      };
+      xhr.onerror = () => fail('email OTP network error');
+      xhr.ontimeout = () => fail('email OTP timeout');
+      xhr.onabort = () => fail('email OTP aborted');
+      xhr.send(JSON.stringify({
+        email,
+        data: {},
+        create_user: shouldCreateUser,
+        gotrue_meta_security: {},
+      }));
+    } catch {
+      fail('email OTP transport initialization failed');
+    }
+  });
 }
 
 /**
@@ -92,11 +267,11 @@ export async function verifyAdminEmailOtpWithAuth(
   const normalizedToken = token.trim();
   if (!normalizedToken) throw new Error('יש להזין את קוד האימות');
 
-  const { data, error } = await auth.verifyOtp({
+  const { data, error } = await withSyncIdentityFence(async () => await auth.verifyOtp({
     email: normalized,
     token: normalizedToken,
     type: 'email',
-  });
+  }));
   if (error) throw error;
 
   const user = data.user ?? data.session?.user;

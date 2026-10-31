@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { AchievementUnlock, Dog, FamilyUser, HealthTask, ScheduleEntry, ScheduleRule, Walk, WalkGpsSession } from '../types';
+import type { AchievementUnlock, Dog, FamilyUser, GpsReconstructionUpdate, HealthTask, ScheduleEntry, ScheduleRule, Walk, WalkGpsSession } from '../types';
 import type { DeleteFamilyMemberPayload, Repository } from './repository';
+import { withSyncIdentityFence } from '../lib/syncIdentityFence';
 
 const QUEUE_KEY = 'dog-walk-family:sync-queue:v4';
 // v3's storage shape (bare SyncOperation[], no owner tag at all) — kept
@@ -26,8 +27,26 @@ const QUARANTINE_KEY = 'dog-walk-family:sync-quarantine:v1';
  * that construct a SyncQueue directly.
  */
 let getClaimedUserId: () => string | null = () => null;
+let getClaimedFamilyId: () => string | null = () => null;
+let getClaimedAuthUserId: () => string | null = () => null;
 export function setSyncQueueActorGetter(getter: () => string | null): void {
   getClaimedUserId = getter;
+}
+export function setSyncQueueFamilyGetter(getter: () => string | null): void {
+  getClaimedFamilyId = getter;
+}
+export function setSyncQueueAuthUserGetter(getter: () => string | null): void {
+  getClaimedAuthUserId = getter;
+}
+/** Local hint only. Tests use this to model the distinct server whoami() result. */
+export function getSyncQueueActorHint(): string | null {
+  return getClaimedUserId();
+}
+export function getSyncQueueAuthUserHint(): string | null {
+  return getClaimedAuthUserId();
+}
+export function getSyncQueueFamilyHint(): string | null {
+  return getClaimedFamilyId();
 }
 
 /**
@@ -63,6 +82,9 @@ export function setSyncQueueActorGetter(getter: () => string | null): void {
 interface QueuedItem {
   op: SyncOperation;
   claimedByUserId: string | null;
+  claimedByAuthUserId?: string | null;
+  /** Family context captured when the write was queued; null means hold for review/recovery. */
+  claimedByFamilyId?: string | null;
   /** Missing on records written by app versions before queue diagnostics. */
   enqueuedAt?: string;
   attemptCount?: number;
@@ -242,6 +264,7 @@ export type SyncOperation =
   | { type: 'upsertDog'; payload: Dog }
   | { type: 'upsertHealthTask'; payload: HealthTask }
   | { type: 'upsertGpsSession'; payload: WalkGpsSession }
+  | { type: 'saveGpsReconstructionV1'; payload: GpsReconstructionUpdate }
   | { type: 'upsertAchievementUnlock'; payload: AchievementUnlock }
   | { type: 'upsertScheduleRule'; payload: ScheduleRule }
   | { type: 'deleteScheduleRule'; payload: { ruleId: string } }
@@ -267,6 +290,13 @@ function payloadId(op: SyncOperation): string | undefined {
   return undefined;
 }
 
+function familyIdFromOperation(op: SyncOperation): string | null {
+  const payload = op.payload as unknown;
+  if (!payload || typeof payload !== 'object') return null;
+  const value = (payload as { familyId?: unknown }).familyId;
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
 /** Stable opaque identifier; never places user or family identifiers in diagnostics. */
 function safeOperationId(op: SyncOperation): string {
   const raw = payloadId(op) ?? op.type;
@@ -286,6 +316,7 @@ function operationEndpoint(op: SyncOperation): string {
     case 'upsertDog': return '/rest/v1/dogs';
     case 'upsertHealthTask': return '/rest/v1/health_tasks';
     case 'upsertGpsSession': return '/rest/v1/walk_gps_sessions';
+    case 'saveGpsReconstructionV1': return '/rest/v1/rpc/save_walk_gps_reconstruction_v1';
     case 'upsertAchievementUnlock': return '/rest/v1/achievement_unlocks';
     case 'upsertScheduleRule': return '/rest/v1/schedule_rules';
     case 'deleteScheduleRule': return '/rest/v1/rpc/delete_schedule_rule_idempotent';
@@ -526,7 +557,13 @@ export class SyncQueue {
 
   async enqueue(op: SyncOperation): Promise<void> {
     const q = await this.load();
-    q.push({ op, claimedByUserId: getClaimedUserId(), enqueuedAt: new Date().toISOString() });
+    q.push({
+      op,
+      claimedByUserId: getClaimedUserId(),
+      claimedByAuthUserId: getClaimedAuthUserId(),
+      claimedByFamilyId: getClaimedFamilyId() ?? familyIdFromOperation(op),
+      enqueuedAt: new Date().toISOString(),
+    });
     await this.persist();
   }
 
@@ -707,13 +744,10 @@ export class SyncQueue {
    * just a different one: with no record of who actually queued it, there
    * is no `userId` this can safely say "yes, definitely them." This is
    * deliberately more conservative than the tagged case (QueuedItem's doc
-   * comment, and migrateLegacyV3Queue()'s). It does not, however, stay stuck
-   * forever: authStore.signIn() tries a flush before ever calling this, and
-   * flush() itself (see its doc comment) quarantines a null-tagged item
-   * immediately rather than attempting it — quarantining also removes it
-   * from the queue, so it stops blocking the moment that happens. What must
-   * never happen is replaying it silently under whichever profile's claim
-   * simply because no switch was attempted while it sat here.
+   * comment, and migrateLegacyV3Queue()'s). An unknown owner remains pending
+   * until a separately authorized reconciliation establishes a safe outcome;
+   * it is never guessed, quarantined, discarded, or replayed under whichever
+   * profile happens to be active.
    */
   async hasPendingForOtherUser(userId: string): Promise<boolean> {
     const q = await this.load();
@@ -767,7 +801,7 @@ export class SyncQueue {
    */
   async flush(remote: Repository, options: { force?: boolean } = {}): Promise<FlushResult> {
     if (this.flushPromise) return this.flushPromise;
-    const work = this.flushOnce(remote, options);
+    const work = withSyncIdentityFence(() => this.flushOnce(remote, options));
     this.flushPromise = work;
     try {
       return await work;
@@ -778,6 +812,25 @@ export class SyncQueue {
 
   private async flushOnce(remote: Repository, options: { force?: boolean }): Promise<FlushResult> {
     const q = await this.load();
+    const localProfileId = getClaimedUserId();
+    const localAuthUserId = getClaimedAuthUserId();
+    const localFamilyId = getClaimedFamilyId()
+      ?? q.find((item) => item.claimedByUserId === localProfileId)?.claimedByFamilyId
+      ?? (q.find((item) => item.claimedByUserId === localProfileId)
+        ? familyIdFromOperation(q.find((item) => item.claimedByUserId === localProfileId)!.op)
+        : null);
+    if (!localProfileId || !localAuthUserId || !localFamilyId) {
+      return { succeeded: 0, remaining: q.length, conflicted: 0, quarantined: 0 };
+    }
+    if (!remote.getSyncReplayIdentity) {
+      throw new Error('Sync identity verification is unavailable; queued writes remain pending');
+    }
+    // Verify before any queue mutation (including legacy quarantine). A timeout,
+    // stale session, missing RPC, or inconclusive response leaves the FIFO intact.
+    const serverIdentity = await remote.getSyncReplayIdentity();
+    if (serverIdentity.authUserId !== localAuthUserId || serverIdentity.profileId !== localProfileId || serverIdentity.familyId !== localFamilyId) {
+      return { succeeded: 0, remaining: q.length, conflicted: 0, quarantined: 0 };
+    }
     let succeeded = 0;
     let conflicted = 0;
     let quarantinedCount = 0;
@@ -789,24 +842,18 @@ export class SyncQueue {
         const item = q[i];
 
         if (item.claimedByUserId == null) {
-          // Persist the quarantine copy before removing the pending item. If
-          // either storage write fails, at least one durable copy remains.
-          await this.quarantine(item, 'legacy/untagged operation — original actor unknown, never auto-replayed');
-          q.splice(i, 1);
-          try {
-            await this.persist();
-          } catch (error) {
-            q.splice(i, 0, item);
-            throw error;
-          }
-          quarantinedCount++;
-          continue; // the next item has shifted into index i
+          // An unknown original owner cannot be safely replayed, archived,
+          // or discarded. Stop here so later writes cannot overtake it.
+          skippedOtherProfile++;
+          break;
         }
 
-        if (item.claimedByUserId !== getClaimedUserId()) {
+        if (item.claimedByUserId !== serverIdentity.profileId
+            || item.claimedByAuthUserId !== serverIdentity.authUserId
+            || item.claimedByFamilyId !== serverIdentity.familyId
+            || (familyIdFromOperation(item.op) !== null && familyIdFromOperation(item.op) !== serverIdentity.familyId)) {
           skippedOtherProfile++;
-          i++; // known owner, not currently claimed — skip, don't block others
-          continue;
+          break; // keep the FIFO order; don't replay later operations around a foreign item
         }
 
         // A retryable failure stays FIFO, but automatic foreground/enqueue
@@ -944,6 +991,9 @@ export class SyncQueue {
         return remote.upsertHealthTask(op.payload);
       case 'upsertGpsSession':
         return remote.upsertGpsSession(op.payload);
+      case 'saveGpsReconstructionV1':
+        if (!remote.saveGpsReconstructionUpdateV1) throw new Error('GPS reconstruction sync is not available on this server');
+        return remote.saveGpsReconstructionUpdateV1(op.payload);
       case 'upsertAchievementUnlock':
         return remote.upsertAchievementUnlock(op.payload);
       case 'upsertScheduleRule':

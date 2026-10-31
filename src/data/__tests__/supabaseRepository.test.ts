@@ -162,12 +162,13 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
   it('upsertDog sends family_id mapped from dog.familyId', async () => {
     const { client, calls } = makeMockClient();
     const repo = new SupabaseRepository(client);
-    const dog: Dog = { id: 'dog-1', familyId: 'fam-42', name: 'טופי', walksPerDay: 4 };
+    const dog: Dog = { id: 'dog-1', familyId: 'fam-42', name: 'טופי', walksPerDay: 4, homeLocation: { latitude: 32, longitude: 34, accuracyMeters: 8, verifiedAt: 'verified', verifiedByUserId: 'admin-1' } };
 
     await repo.upsertDog(dog);
 
     expect(calls[0].table).toBe('dogs');
     expect((calls[0].payload as any).family_id).toBe('fam-42');
+    expect(calls[0].payload).toMatchObject({ home_latitude: 32, home_longitude: 34, home_accuracy_meters: 8, home_verified_at: 'verified', home_verified_by_user_id: 'admin-1' });
   });
 
   it('upsertHealthTask sends dog_id/family_id mapped from task.dogId/familyId', async () => {
@@ -254,6 +255,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
       id: 'gps-1', walkId: 'walk-1', familyId: 'fam-42', dogId: 'dog-1',
       distanceMeters: 640.2, pointCount: 30, source: 'device_gps',
       createdAt: 'c', updatedAt: 'u',
+      reconstruction: { routePoints: [{ latitude: 32, longitude: 34, timestamp: 1 }], distanceMeters: 120, durationSeconds: 100, confidence: 'low', sourceWalkId: 'walk-old' },
     };
 
     await repo.upsertGpsSession(session);
@@ -262,6 +264,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
     expect((calls[0].payload as any).walk_id).toBe('walk-1');
     expect((calls[0].payload as any).dog_id).toBe('dog-1');
     expect((calls[0].payload as any).family_id).toBe('fam-42');
+    expect((calls[0].payload as any).reconstruction).toEqual(session.reconstruction);
     expect(calls[0].options).toEqual({ onConflict: 'walk_id' });
   });
 
@@ -274,19 +277,33 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
     await expect(new SupabaseRepository(client).upsertGpsSession(session)).rejects.toBeTruthy();
   });
 
+  it('saves reconstructed route through the estimate-only RPC payload', async () => {
+    const calls: Array<{ name: string; args: unknown }> = [];
+    const client: any = { rpc: (name: string, args: unknown) => { calls.push({ name, args }); return Promise.resolve({ error: null }); } };
+    const reconstruction = { routePoints: [{ latitude: 32, longitude: 34, timestamp: 0 }], distanceMeters: 120, durationSeconds: 100, confidence: 'low' as const, sourceWalkId: 'walk-old' };
+    await new SupabaseRepository(client).saveGpsReconstructionUpdateV1({ walkId: 'walk-1', familyId: 'family-1', dogId: 'dog-1', reconstruction });
+    expect(calls).toEqual([{ name: 'save_walk_gps_reconstruction_v1', args: { p_walk_id: 'walk-1', p_reconstruction: reconstruction } }]);
+  });
+
+  it('keeps estimate sync retryable until the additive RPC migration is installed', async () => {
+    const client: any = { rpc: () => Promise.resolve({ error: { code: 'PGRST202', message: 'Could not find the function' } }) };
+    const update: any = { walkId: 'walk-1', familyId: 'family-1', dogId: 'dog-1', reconstruction: { routePoints: [], distanceMeters: 100, durationSeconds: 100, confidence: 'low', sourceWalkId: 'walk-old' } };
+    await expect(new SupabaseRepository(client).saveGpsReconstructionUpdateV1(update)).rejects.toMatchObject({ syncQueueRetryable: true });
+  });
+
   it('getGpsSession maps a row via toGpsSession, including nullish correction fields -> undefined', async () => {
     const client: any = {
-      from: () => ({
+      from: (table: string) => ({
         select: () => ({
           eq: () => ({
             maybeSingle: () =>
               Promise.resolve({
-                data: {
+                data: table === 'walk_gps_sessions' ? {
                   id: 'gps-1', walk_id: 'walk-1', family_id: 'fam-42', dog_id: 'dog-1',
                   distance_meters: 640.2, point_count: 30, corrected_distance_meters: null,
                   corrected_by_user_id: null, started_at: null, ended_at: null,
                   source: 'device_gps', created_by_user_id: null, created_at: 'c', updated_at: 'u',
-                },
+                } : null,
                 error: null,
               }),
           }),
@@ -322,14 +339,14 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
   it('getGpsSessionsForWalkIds queries walk_gps_sessions with an .in(walk_id, ids) filter and maps every row', async () => {
     const inCalls: unknown[] = [];
     const client: any = {
-      from: () => ({
+      from: (table: string) => ({
         select: () => ({
           in: (column: string, ids: string[]) => {
             inCalls.push({ column, ids });
             return Promise.resolve({
-              data: [
+              data: table === 'walk_gps_sessions' ? [
                 { id: 'gps-a', walk_id: 'walk-a', family_id: 'fam-42', dog_id: 'dog-1', distance_meters: 500, point_count: 10, corrected_distance_meters: null, corrected_by_user_id: null, started_at: null, ended_at: null, source: 'device_gps', created_by_user_id: null, created_at: 'c', updated_at: 'u' },
-              ],
+              ] : [],
               error: null,
             });
           },
@@ -340,10 +357,41 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
 
     const result = await repo.getGpsSessionsForWalkIds(['walk-a', 'walk-b']);
 
-    expect(inCalls).toEqual([{ column: 'walk_id', ids: ['walk-a', 'walk-b'] }]);
+    expect(inCalls).toEqual([{ column: 'walk_id', ids: ['walk-a', 'walk-b'] }, { column: 'walk_id', ids: ['walk-a', 'walk-b'] }]);
     expect(result).toEqual([
       { id: 'gps-a', walkId: 'walk-a', familyId: 'fam-42', dogId: 'dog-1', distanceMeters: 500, pointCount: 10, correctedDistanceMeters: undefined, correctedByUserId: undefined, startedAt: undefined, endedAt: undefined, source: 'device_gps', createdByUserId: undefined, createdAt: 'c', updatedAt: 'u' },
     ]);
+  });
+
+  it('getGpsSessionsForWalkIds hydrates a server-fenced route for the other family device', async () => {
+    const client: any = {
+      from: (table: string) => ({
+        select: () => ({
+          in: () => ({
+            order: async () => ({ data: [
+              { walk_id: 'walk-live', latitude: 32.1, longitude: 34.8, point_timestamp_ms: 1000 },
+              { walk_id: 'walk-live', latitude: 32.1001, longitude: 34.8001, point_timestamp_ms: 2000 },
+            ], error: null }),
+            then: (resolve: (value: unknown) => unknown) => Promise.resolve({
+              data: table === 'walk_gps_sessions' ? [] : [{ walk_id: 'walk-live', family_id: 'fam-42', dog_id: 'dog-1', distance_meters: 16, point_count: 2, route_started_at: 'start', route_ended_at: null }],
+              error: null,
+            }).then(resolve),
+          }),
+        }),
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+
+    const sessions = await repo.getGpsSessionsForWalkIds(['walk-live']);
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({
+      walkId: 'walk-live', familyId: 'fam-42', dogId: 'dog-1', distanceMeters: 16, pointCount: 2,
+      startedAt: 'start', routePoints: [
+        { latitude: 32.1, longitude: 34.8, timestamp: 1000 },
+        { latitude: 32.1001, longitude: 34.8001, timestamp: 2000 },
+      ],
+    });
   });
 
   it('getGpsSessionsForWalkIds returns [] without querying for an empty id list', async () => {
@@ -674,6 +722,27 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
   it('getWalks falls back to an empty array when data is null', async () => {
     const client: any = { from: () => ({ select: () => ({ eq: () => Promise.resolve({ data: null, error: null }) }) }) };
     expect(await new SupabaseRepository(client).getWalks('fam-42')).toEqual([]);
+  });
+
+  it('gets a Remote GPS walk from the authenticated server with both ID and family filters', async () => {
+    const filters: Array<[string, string]> = [];
+    const row = { id: 'walk-1', family_id: 'fam-42', dog_id: 'dog-1', date: '2026-10-19', scheduled_time: '09:00', responsible_user_id: 'user-1', actual_walker_user_id: 'user-1', status: 'in_progress', created_at: 'created', updated_at: 'updated' };
+    const query = {
+      eq: (field: string, value: string) => { filters.push([field, value]); return query; },
+      maybeSingle: async () => ({ data: row, error: null }),
+    };
+    const client: any = { from: (table: string) => { expect(table).toBe('walks'); return { select: (columns: string) => { expect(columns).toBe('*'); return query; } }; } };
+
+    const result = await new SupabaseRepository(client).getWalkAuthoritative('fam-42', 'walk-1');
+
+    expect(filters).toEqual([['id', 'walk-1'], ['family_id', 'fam-42']]);
+    expect(result).toMatchObject({ id: 'walk-1', familyId: 'fam-42', dogId: 'dog-1', status: 'in_progress', actualWalkerUserId: 'user-1' });
+  });
+
+  it('treats an RLS-filtered authoritative walk as unavailable instead of falling back to cache', async () => {
+    const query = { eq: () => query, maybeSingle: async () => ({ data: null, error: null }) };
+    const client: any = { from: () => ({ select: () => query }) };
+    await expect(new SupabaseRepository(client).getWalkAuthoritative('family-other', 'walk-1')).resolves.toBeUndefined();
   });
 });
 

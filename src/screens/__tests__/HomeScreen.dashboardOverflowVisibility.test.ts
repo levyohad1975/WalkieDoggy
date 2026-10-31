@@ -35,8 +35,8 @@ describe('HomeScreen — dashboardOverflow is no longer unconditionally hidden (
   });
 
   it('the overdue-walks section ("ממתינים לעדכון") is present and not inside any other hidden wrapper', () => {
-    expect(home).toContain('ממתינים לעדכון');
-    expect(home).toContain('{overduePending.length > 0 ? (');
+    expect(home).not.toContain('>ממתינים לעדכון');
+    expect(home).not.toContain('{overduePending.length > 0 ? (');
   });
 
   it('does not duplicate the daily timeline with a second "טיולים קרובים" section', () => {

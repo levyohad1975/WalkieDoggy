@@ -8,24 +8,32 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useFamilyStore } from '../store/familyStore';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
-import { computeLastWalk, computeNextWalk, dailyWalkTimeline, isOverdue, nextWalkSelectionRefreshDelayMs, upcomingWalks, walkDateTime } from '../logic/nextWalk';
+import { computeLastWalk, computeNextWalk, dailyWalkTimeline, dedupeCanonicalWalks, familyDateOnly, isOverdue, nextWalkSelectionRefreshDelayMs, upcomingWalks, walkDateTime } from '../logic/nextWalk';
+import { isActiveWalk } from '../logic/walkLifecycle';
+import { activeSpontaneousHomeBlocks, duplicateActiveWalkNotice, groupActiveSpontaneousWalks } from '../logic/activeSpontaneousWalks';
+import { canOpenDuplicateResolution } from '../logic/duplicateWalkResolution';
+import { canAccessHistoryScreen } from '../logic/permissions';
+import { resolveCompletionWalkEventCounts, validWalkEventCount } from '../logic/walkEventCounts';
 import { resolvedWalkDateContextLabel, walkDateContextLabel } from '../logic/walkDateContext';
  import { repository } from '../data';
 import { canRequestChangeForWalk, computeNextWalkCardActions, formatCompletedAtBadge } from '../logic/walkActions';
 import { colors } from '../theme/colors';
 import { breakpoints, elevation, nativeDirection, radii, spacing, typography } from '../theme/tokens';
 import { NextWalkCard } from '../components/NextWalkCard';
-import { WalkRow } from '../components/WalkRow';
 import { EmptyState, ErrorState } from '../components/EmptyState';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { UserPickerModal } from '../components/UserPickerModal';
 import { SwapWalkPickerModal } from '../components/SwapWalkPickerModal';
 import { CompleteWalkModal } from '../components/CompleteWalkModal';
+import { WalkStartFlowModal } from '../components/WalkStartFlowModal';
+import { SpontaneousWalkAssociationModal } from '../components/SpontaneousWalkAssociationModal';
+import { findSpontaneousAssociationCandidates, DEFAULT_SPONTANEOUS_ASSOCIATION_WINDOW_MINUTES } from '../logic/spontaneousWalkAssociation';
 import { EditWalkModal } from '../components/EditWalkModal';
 import { AddUnplannedWalkModal, type UnplannedWalkResult } from '../components/AddUnplannedWalkModal';
 import { EditDoneDetailsModal } from '../components/EditDoneDetailsModal';
 import { RequestTimeChangeModal } from '../components/RequestTimeChangeModal';
 import { RequestsInboxModal } from '../components/RequestsInboxModal';
+import { RemindersModal } from '../components/RemindersModal';
 import { Button } from '../components/Button';
 import { WalkCompletionCelebration } from '../components/WalkCompletionCelebration';
 import { ReminderMascotPrompt } from '../components/ReminderMascotPrompt';
@@ -38,8 +46,9 @@ import { CELEBRATION_LIBRARY, selectWalkCompletionCelebration, type CompletionCe
 import { achievementDefinition, type AchievementProgress } from '../logic/achievements';
 import { useAchievementStore } from '../store/achievementStore';
 import { DEMO_FAMILY } from '../data/demoData';
-import { isSupabaseConfigured } from '../lib/supabase';
+import { isSupabaseConfigured, isWalkResolutionStaging } from '../lib/supabase';
 import { fetchLastResolvedWalk } from '../lib/permissionedWalks';
+import { canCompositeCutout, useCutoutVerdict } from '../lib/cutoutVerification';
 import { fetchHistoryWalks } from '../lib/permissionedWalks';
 import { useRequestsStore } from '../store/requestsStore';
 import {
@@ -65,6 +74,7 @@ import { getImportantHealthReminders, summarizeHealthTasksForHome } from '../log
 import { getDogBackground, getDogBackgroundImageSource } from '../theme/dogBackgrounds';
 import { useGpsStore } from '../store/gpsStore';
 import { RemoteGpsPanel } from '../components/RemoteGpsPanel';
+import { acknowledgeRemoteGpsStart, getMyRemoteGpsCommands } from '../lib/remoteGps';
 
 export function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
@@ -96,6 +106,10 @@ export function HomeScreen() {
   }, []);
   const [heroCutoutFailed, setHeroCutoutFailed] = useState(false);
   const currentUserId = useAuthStore((s) => s.currentUserId)!;
+  const [personalNotificationsVisible, setPersonalNotificationsVisible] = useState(false);
+  const personalNotificationsReadOnly = useAuthStore((s) => Boolean(
+    s.systemObserverActive || s.impersonatingUserId || s.impersonationStarting || s.testModeUserId
+  ));
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const effectiveRole = useEffectiveFamilyRole();
   const actualFamilyRole = useAuthStore((s) => s.familyRole);
@@ -108,13 +122,20 @@ export function HomeScreen() {
   const clearTestModeIfInvalid = useAuthStore((s) => s.clearTestModeIfInvalid);
   const clearImpersonationIfInvalid = useAuthStore((s) => s.clearImpersonationIfInvalid);
   const { family, users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, error: familyError, load: loadFamily } = useFamilyStore();
+  const setReminderEnabled = useFamilyStore((s) => s.setReminderEnabled);
   // Use the established coastal photo as the default instead of the flat placeholder scene.
   // Explicit family background choices always take precedence.
   const heroBackground = getDogBackground(dog?.heroBackgroundId);
   useEffect(() => {
     setHeroCutoutFailed(false);
   }, [dog?.id, dog?.photoUrl, dog?.photoCutoutUrl]);
-  const showDogCutout = Boolean(dog?.photoCutoutUrl) && !heroCutoutFailed;
+  // A persisted cutout is composited only if it really has transparency. An
+  // opaque file (legacy row or provider failure) would otherwise appear as a
+  // rectangle with the original photo background over the hero scene; in
+  // that case the approved mascot fallback is shown instead.
+  const heroCutoutVerdict = useCutoutVerdict(dog?.photoCutoutUrl);
+  const heroCutoutReady = canCompositeCutout(heroCutoutVerdict);
+  const showDogCutout = Boolean(dog?.photoCutoutUrl) && !heroCutoutFailed && heroCutoutReady;
   const [guestReactionPlaying, setGuestReactionPlaying] = useState(false);
   const guestReactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleHeroMascotPress = useCallback(() => {
@@ -196,11 +217,59 @@ export function HomeScreen() {
   const gpsDistanceMeters = useGpsStore((s) => s.distanceMeters);
   const gpsPointCount = useGpsStore((s) => s.pointCount);
   const gpsRoutePoints = useGpsStore((s) => s.routePoints);
+  const gpsReconstruction = useGpsStore((s) => s.reconstruction);
+  const gpsReconstructionNotice = useGpsStore((s) => s.reconstructionNotice);
   const gpsPermissionStatus = useGpsStore((s) => s.permissionStatus);
   const gpsTrackingStatus = useGpsStore((s) => s.trackingStatus);
   const gpsSessionsByWalkId = useGpsStore((s) => s.sessionsByWalkId);
+  const gpsLastStop = useGpsStore((s) => s.lastGpsStop);
+  const [serverGpsSessions, setServerGpsSessions] = useState<{ familyId: string; sessions: Record<string, WalkGpsSession> }>({ familyId: '', sessions: {} });
 
   const [completeWalkId, setCompleteWalkId] = useState<string | null>(null);
+  const [walkEventCounts, setWalkEventCounts] = useState<Record<string, { pee: number; poop: number }>>({});
+  const walkEventCountsRef = useRef(walkEventCounts);
+  walkEventCountsRef.current = walkEventCounts;
+  const persistWalkEvents = useCallback((walkId: string, counts: { pee: number; poop: number }) => {
+    if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+      try { localStorage.setItem('walkie:walk-events:' + walkId, JSON.stringify(counts)); } catch { /* private browsing may deny storage */ }
+    }
+  }, []);
+  const readWalkEvents = useCallback((walkId: string) => {
+    const inMemory = walkEventCountsRef.current[walkId] ?? walkEventCounts[walkId];
+    if (inMemory && validWalkEventCount(inMemory.pee) && validWalkEventCount(inMemory.poop)) return inMemory;
+    if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+      try {
+        const saved = JSON.parse(localStorage.getItem('walkie:walk-events:' + walkId) ?? 'null');
+        if (saved && validWalkEventCount(saved.pee) && validWalkEventCount(saved.poop)) {
+          walkEventCountsRef.current = { ...walkEventCountsRef.current, [walkId]: saved };
+          return saved as { pee: number; poop: number };
+        }
+      } catch { /* ignore unavailable storage */ }
+    }
+    return { pee: 0, poop: 0 };
+  }, [walkEventCounts]);
+  const recordWalkEvent = useCallback((walkId: string, kind: 'pee' | 'poop') => {
+    const current = readWalkEvents(walkId);
+    const next = { ...current, [kind]: current[kind] + 1 };
+    const updated = { ...walkEventCountsRef.current, [walkId]: next };
+    walkEventCountsRef.current = updated;
+    setWalkEventCounts(updated);
+    persistWalkEvents(walkId, next);
+  }, [persistWalkEvents, readWalkEvents]);
+  const undoWalkEvent = useCallback((walkId: string, kind: 'pee' | 'poop') => {
+    const current = readWalkEvents(walkId);
+    const next = { ...current, [kind]: Math.max(0, current[kind] - 1) };
+    const updated = { ...walkEventCountsRef.current, [walkId]: next };
+    walkEventCountsRef.current = updated;
+    setWalkEventCounts(updated);
+    persistWalkEvents(walkId, next);
+  }, [persistWalkEvents, readWalkEvents]);
+
+  const [remoteFinishRequest, setRemoteFinishRequest] = useState<{ walkId: string; walkerId: string; hadPee: boolean; hadPoop: boolean; peeCount: number; poopCount: number; note?: string; completedAt?: string } | null>(null);
+  const [gpsTransferWalk, setGpsTransferWalk] = useState<Walk | null>(null);
+  const [startWalkFlowId, setStartWalkFlowId] = useState<string | null>(null);
+  const [spontaneousAssociationWalks, setSpontaneousAssociationWalks] = useState<Walk[]>([]);
+  const [spontaneousAssociationVisible, setSpontaneousAssociationVisible] = useState(false);
   // BATCH 4 (C2/C3/C8) — brief "success" mascot + message shown right after
   // a walk is marked done. Purely presentational local state: never blocks
   // navigation or the completion action itself (markDone already resolved
@@ -325,7 +394,7 @@ export function HomeScreen() {
       const reconcile = async () => {
         if (disposed || refreshing) return;
         if (!useScheduleStore.getState().walks.some(
-          (entry) => entry.familyId === familyId && entry.status === 'in_progress'
+          (entry) => entry.familyId === familyId && isActiveWalk(entry)
         )) return;
         refreshing = true;
         try {
@@ -339,6 +408,23 @@ export function HomeScreen() {
       const interval = setInterval(() => { void reconcile(); }, 6000);
       return () => { disposed = true; clearInterval(interval); };
     }, [familyId])
+  );
+
+  // P0 real-iPhone QA (2026-10-15, 18:06): the Dashboard could render
+  // scrolled partway down — most visibly, the newly-inserted active-walk
+  // card after starting a spontaneous walk sat above the viewport, forcing
+  // a manual scroll up. A bottom-tab screen stays mounted across tab
+  // switches (no fresh ScrollView/no reset scroll offset for free), so
+  // returning to Home kept whatever position was left from the previous
+  // visit. Reset to the top on every focus — a transparent Modal fully
+  // occludes this ScrollView while open, so resetting it then is invisible
+  // and harmless; this never fires on GPS/timer/data-refresh rerenders,
+  // only on an actual focus transition.
+  const scrollViewRef = useRef<ScrollView>(null);
+  useFocusEffect(
+    useCallback(() => {
+      scrollViewRef.current?.scrollTo({ y: 0, animated: false });
+    }, [])
   );
 
   const usersById = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u])), [users]);
@@ -370,6 +456,78 @@ export function HomeScreen() {
   // authenticated identity (currentUserId) and REAL familyRole never
   // change, and are never used for mutations/RLS/audit either way.
   const effectiveUserId = useEffectiveUserId()!; // HomeScreen only renders once currentUserId is set (see the `!` above)
+  const canManagePersonalNotifications = !personalNotificationsReadOnly && effectiveUserId === currentUserId;
+
+  const startWalkAs = useCallback((walk: Walk, actualWalkerUserId: string, remoteStart: boolean) => {
+    // iPhone Safari requires location permission to be requested in the
+    // original user gesture. Remote starts never ask the manager's device.
+    if (!remoteStart) void useGpsStore.getState().startTracking(walk).catch(() => undefined);
+    void startWalk(walk.id, {
+      startGps: false,
+      actorUserId: currentUserId,
+      actualWalkerUserId,
+      substitutionConfirmed: !remoteStart && actualWalkerUserId !== walk.responsibleUserId,
+      remoteStart,
+    }).then((started) => {
+      // A start the server did not accept must DISCARD the provisional watch.
+      // stopTracking() would persist it: an orphan GPS session for an
+      // unstarted walk on a legacy server, or (v1.1, no lease) a thrown error
+      // that left the card stuck in "GPS interrupted". A retry reuses the
+      // same lifecycle operation id, so a start whose response was lost is
+      // simply confirmed by the server and tracking begins again.
+      if (!started && !remoteStart) useGpsStore.getState().cancelTracking(walk.id, 'walk_start_failed');
+    }, () => {
+      if (!remoteStart) useGpsStore.getState().cancelTracking(walk.id, 'walk_start_failed');
+    });
+  }, [currentUserId, startWalk]);
+
+  // The walker's ordinary "הפעל GPS" tap is also an explicit response to a
+  // still-pending remote request. Once server ownership is acquired and a
+  // real fix exists, reconcile that request on the server. This closes the
+  // gap where local GPS worked but the admin kept seeing a pending command.
+  const activateGpsForWalk = useCallback(async (walk: Walk) => {
+    try {
+      await useGpsStore.getState().startTracking(walk);
+      const owned = await useGpsStore.getState().attachGpsOwnership(walk);
+      if (!owned) return;
+      const firstFix = await new Promise<boolean>((resolve) => {
+        const ready = () => {
+          const state = useGpsStore.getState();
+          return state.trackingWalkId === walk.id && state.permissionStatus === 'granted' && state.pointCount > 0 && state.gpsFencingEpoch != null;
+        };
+        if (ready()) { resolve(true); return; }
+        let settled = false;
+        let unsubscribe = () => {};
+        const finish = (value: boolean) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          unsubscribe();
+          resolve(value);
+        };
+        const timer = setTimeout(() => finish(false), 15_000);
+        unsubscribe = useGpsStore.subscribe((state) => {
+          if (state.trackingWalkId !== walk.id || state.permissionStatus === 'denied' || state.permissionStatus === 'unavailable') finish(false);
+          else if (ready()) finish(true);
+        });
+      });
+      if (!firstFix) return;
+      const gps = useGpsStore.getState();
+      if (gps.trackingWalkId !== walk.id || gps.permissionStatus !== 'granted' || gps.pointCount < 1 || gps.gpsFencingEpoch == null) return;
+      const pending = (await getMyRemoteGpsCommands()).find((candidate) =>
+        candidate.status === 'pending' && candidate.walk_id === walk.id &&
+        candidate.walk_family_id === familyId && candidate.walk_actual_walker_user_id === currentUserId &&
+        candidate.walk_status === 'in_progress'
+      );
+      if (!pending) return;
+      await acknowledgeRemoteGpsStart(pending.command_id, true);
+      useGpsStore.getState().markRemoteTracking(walk.id, pending.command_id);
+    } catch (error) {
+      // A command reconciliation failure must not cancel a valid local GPS
+      // watch. The pending request remains visible and is safe to retry.
+      console.warn('Manual GPS activation could not reconcile a remote request', error);
+    }
+  }, [currentUserId, familyId]);
 
   // PRD §9 gamification — an unlocked achievement reuses the SAME
   // celebration modal/state as an ordinary walk-completion celebration
@@ -470,9 +628,57 @@ export function HomeScreen() {
   // which dog is selected (e.g. a modal opened before a dog switch).
   const visibleWalks = useMemo(() => {
     const familyWalks = walks.filter((walk) => walk.familyId === familyId);
-    return dogs.length > 1 && dog ? familyWalks.filter((walk) => walk.dogId === dog.id) : familyWalks;
+    return dedupeCanonicalWalks(dogs.length > 1 && dog ? familyWalks.filter((walk) => walk.dogId === dog.id) : familyWalks);
   }, [walks, familyId, dogs.length, dog?.id]);
   const scheduleTimezone = family?.id === familyId ? family.timezone : undefined;
+
+  // GPS is collected on the walker's device. A different family device has
+  // no local gpsStore watch, so hydrate the server-fenced route for active
+  // walks while Home is visible. This is intentionally scoped to current
+  // family + active walk IDs; realtime is supplemental and polling recovers
+  // missed subscription events/backgrounded Safari tabs.
+  useEffect(() => {
+    let disposed = false;
+    let running = false;
+    const refreshRemoteGps = async () => {
+      if (disposed || running) return;
+      const ids = visibleWalks
+        .filter((entry) => entry.status === 'in_progress' && entry.id !== gpsTrackingWalkId)
+        .map((entry) => entry.id);
+      if (!isSupabaseConfigured || ids.length === 0) {
+        setServerGpsSessions({ familyId, sessions: {} });
+        return;
+      }
+      running = true;
+      try {
+        const sessions = await repository.getGpsSessionsForWalkIds(ids);
+        if (disposed) return;
+        setServerGpsSessions({
+          familyId,
+          sessions: Object.fromEntries(sessions.map((session) => [session.walkId, session])),
+        });
+      } catch {
+        // Keep the last authoritative snapshot across a transient network
+        // error; never replace it with local GPS state from another walk.
+      } finally {
+        running = false;
+      }
+    };
+    void refreshRemoteGps();
+    const timer = setInterval(() => {
+      if (AppState.currentState === 'active') void refreshRemoteGps();
+    }, 6_000);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void refreshRemoteGps();
+    });
+    return () => {
+      disposed = true;
+      clearInterval(timer);
+      subscription.remove();
+    };
+  }, [familyId, visibleWalks, gpsTrackingWalkId]);
+  const remoteGpsSessionForWalk = (walkId: string) =>
+    serverGpsSessions.familyId === familyId ? serverGpsSessions.sessions[walkId] ?? null : null;
 
   // Recompute at the next family-local walk boundary (and local minute for
   // countdown copy), not a drifting 60-second interval. Foregrounding also
@@ -505,11 +711,66 @@ export function HomeScreen() {
     () => computeNextWalk(visibleWalks, new Date(), scheduleTimezone),
     [visibleWalks, minuteTick, scheduleTimezone]
   );
-  // Active spontaneous walks may coexist with a planned next-walk card.
-  const activeSpontaneousWalks = useMemo(
-    () => visibleWalks.filter((w) => w.isUnplanned && w.status === 'in_progress' && w.id !== nextWalk?.id),
-    [visibleWalks, nextWalk?.id]
+  // P0 real-iPhone QA: exactly one Home block per dog for active spontaneous
+  // walks. Grouping runs over the FULL visible pool (including the walk in
+  // the main next-walk card) so a duplicate of that walk is still caught,
+  // repeated copies of one record collapse by id, and rows with a missing or
+  // unknown dogId share one unassigned group instead of fanning out. Every
+  // distinct record stays listed by exact id in the duplicate warning; the
+  // admin review panel remains the only place records are resolved.
+  const knownDogIds = useMemo(() => dogs.map((entry) => entry.id), [dogs]);
+  const activeSpontaneousWalkGroups = useMemo(
+    () => activeSpontaneousHomeBlocks(
+      groupActiveSpontaneousWalks(visibleWalks, {
+        familyId,
+        knownDogIds,
+        viewerUserId: currentUserId,
+        viewerIsAdmin: actualFamilyRole === 'admin',
+      }),
+      nextWalk?.id,
+    ),
+    [visibleWalks, familyId, knownDogIds, nextWalk?.id, actualFamilyRole, currentUserId]
   );
+  // P0 real-iPhone QA (2026-10-15, 18:06): starting a spontaneous walk
+  // inserts its active card into the page without changing whatever the
+  // ScrollView's position already was — if the user had scrolled down to
+  // reach "הוסף טיול", the new card (which renders near the top, right
+  // after the scheduled next-walk card) could still be above the visible
+  // viewport. Scroll to the top exactly once, on the actual appear
+  // transition (false -> true), never on a GPS/timer rerender while the
+  // walk stays active.
+  const myActiveSpontaneousWalkId = useMemo(
+    () => activeSpontaneousWalkGroups
+      .flatMap((group) => group.walks)
+      .find((walk) => (walk.actualWalkerUserId ?? walk.responsibleUserId) === currentUserId)?.id ?? null,
+    [activeSpontaneousWalkGroups, currentUserId]
+  );
+  const priorActiveSpontaneousWalkIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (myActiveSpontaneousWalkId && !priorActiveSpontaneousWalkIdRef.current) {
+      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+    }
+    priorActiveSpontaneousWalkIdRef.current = myActiveSpontaneousWalkId;
+  }, [myActiveSpontaneousWalkId]);
+  // The Family Admin review action on the Dashboard opens the same gated
+  // History review panel; it is offered only when that panel would render
+  // for this exact viewer (real admin, Staging flag, not impersonating,
+  // observing or in test mode) and History itself is reachable.
+  const impersonatingForReview = useAuthStore((s) => Boolean(s.impersonatingUserId));
+  const systemObserverForReview = useAuthStore((s) => s.systemObserverActive);
+  const testModeForReview = useAuthStore((s) => Boolean(s.testModeUserId));
+  const permissionOverridesForReview = useFamilyStore((s) => s.permissionOverrides);
+  const permissionOverridesStatusForReview = useFamilyStore((s) => s.permissionOverridesStatus);
+  const canReviewDuplicateWalks = canOpenDuplicateResolution({
+    staging: isWalkResolutionStaging,
+    configured: isSupabaseConfigured,
+    familyId,
+    profileId: currentUserId,
+    familyRole: actualFamilyRole,
+    impersonating: impersonatingForReview,
+    systemObserver: systemObserverForReview,
+    testMode: testModeForReview,
+  }) && canAccessHistoryScreen(currentUserId, permissionOverridesForReview, permissionOverridesStatusForReview);
   // Planned walks may be started from 30 minutes before their scheduled time.
   // Spontaneous walks keep their separate always-available flow.
   const nextWalkStartGate = useMemo(() => {
@@ -750,7 +1011,7 @@ export function HomeScreen() {
     // test walks without squeezing dozens of stops into one phone width.
     return timeline
       .filter((walk) => {
-        if (walk.status === 'in_progress') return true;
+        if (isActiveWalk(walk)) return true;
         if (walk.status !== 'pending') return false;
         const [hour, minute] = walk.scheduledTime.split(':').map(Number);
         return hour * 60 + minute >= nowMinutes;
@@ -770,22 +1031,6 @@ export function HomeScreen() {
     if (last <= first) return 0;
     return Math.max(0, Math.min(1, (minutesNow - first) / (last - first)));
   }, [dashboardTimelineWalks, minuteTick]);
-  const overduePending = useMemo(
-    () =>
-      visibleWalks
-        .filter(
-          (w) =>
-            w.status === 'pending' &&
-            w.id !== nextWalk?.id &&
-            isOverdue(w, new Date(), scheduleTimezone) &&
-            (effectiveRole === 'admin' || w.responsibleUserId === effectiveUserId)
-        )
-        .sort((a, b) =>
-          `${a.date}T${a.scheduledTime}`.localeCompare(`${b.date}T${b.scheduledTime}`)
-        ),
-    [visibleWalks, nextWalk, minuteTick, effectiveRole, effectiveUserId, scheduleTimezone]
-  );
-
   // ADMIN TEST MODE mutation-blocking (requirement 1) now lives centrally in
   // every store action itself (see src/lib/testModeGuard.ts's doc comment
   // for why) — scheduleStore, familyStore, and requestsStore each call
@@ -794,6 +1039,15 @@ export function HomeScreen() {
   // testModeUserId is set, regardless of which button or screen triggers it.
 
   const walksById = useMemo(() => Object.fromEntries(walks.map((w) => [w.id, w])), [walks]);
+  useEffect(() => {
+    const trackedWalk = gpsTrackingWalkId ? walksById[gpsTrackingWalkId] : undefined;
+    if (trackedWalk?.duplicateResolutionGroupId) {
+      // A fresh server resolution invalidates the active timer/watch. This
+      // only closes the in-memory foreground watcher; saved GPS sessions and
+      // route data are deliberately left untouched.
+      useGpsStore.getState().cancelTracking(trackedWalk.id, 'duplicate_walk_resolved');
+    }
+  }, [gpsTrackingWalkId, walksById]);
   const reminderPromptMessage = useMemo(() => {
     if (!reminderPrompt) return null;
     const walk = walksById[reminderPrompt.walkId];
@@ -968,6 +1222,7 @@ export function HomeScreen() {
           visible on every tab while impersonating, not just this one. See
           components/ImpersonationBanner.tsx's doc comment. */}
       <ScrollView
+        ref={scrollViewRef}
         // The dashboard contains real, variable family data. It must remain
         // reachable on Safari too: the bottom tab bar is fixed, so disabling
         // Web scrolling cuts the schedule/approval cards off below it.
@@ -990,18 +1245,18 @@ export function HomeScreen() {
             <Svg
               pointerEvents="none"
               width="100%"
-              height={44}
-              viewBox="0 0 100 44"
+              height={10}
+              viewBox="0 0 100 10"
               preserveAspectRatio="none"
               style={styles.dashboardHeroFade}
             >
               <Defs>
                 <LinearGradient id="dashboardHeroCreamFade" x1="0" y1="0" x2="0" y2="1">
                   <Stop offset="0" stopColor={colors.background} stopOpacity={0} />
-                  <Stop offset="1" stopColor={colors.background} stopOpacity={1} />
+                  <Stop offset="1" stopColor={colors.background} stopOpacity={0.25} />
                 </LinearGradient>
               </Defs>
-              <Rect x="0" y="0" width="100" height="44" fill="url(#dashboardHeroCreamFade)" />
+              <Rect x="0" y="0" width="100" height="10" fill="url(#dashboardHeroCreamFade)" />
             </Svg>
           </View>
           <View style={[styles.topRow, styles.dashboardTopRow]}>
@@ -1046,7 +1301,15 @@ export function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel={`פתיחת פרופיל ${dog?.name ?? 'הכלב/ה'}`}
           >
-            {showDogCutout ? <Image source={{ uri: dog!.photoCutoutUrl! }} style={styles.dashboardHeroDogCutout} resizeMode="contain" onError={() => setHeroCutoutFailed(true)} /> : null}
+            {showDogCutout ? (
+              <Image
+                source={{ uri: dog!.photoCutoutUrl! }}
+                style={[styles.dashboardHeroDogCutout, !heroCutoutReady && styles.dashboardHeroDogCutoutPending]}
+                resizeMode="contain"
+                onError={() => setHeroCutoutFailed(true)}
+                accessibilityElementsHidden={!heroCutoutReady}
+              />
+            ) : null}
             {!showDogCutout ? (
               <View
                 style={[styles.dashboardHeroMascot, celebration && styles.dashboardHeroMascotCelebrating]}
@@ -1070,6 +1333,19 @@ export function HomeScreen() {
             ) : null}
           </Pressable>
         </View>
+
+        {canManagePersonalNotifications ? (
+          <Pressable
+            style={styles.personalNotificationsCard}
+            onPress={() => setPersonalNotificationsVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel="🔔 ההתראות שלי"
+            accessibilityHint="פתיחת הגדרות ההתראות במכשיר הזה"
+          >
+            <RtlText style={styles.personalNotificationsTitle}>🔔 ההתראות שלי</RtlText>
+            <RtlText style={styles.personalNotificationsDescription}>הפעלת התראות ושמירת ההעדפה האישית שלך</RtlText>
+          </Pressable>
+        ) : null}
 
         {/* PRD §11: "ב-Home יש בחירת כלב קלה כאשר יש יותר מכלב אחד" — an
             easy dog picker on Home whenever there's more than one dog.
@@ -1114,29 +1390,12 @@ export function HomeScreen() {
           </Pressable>
         ) : null}
 
-        {actualFamilyRole === 'admin' && activeSpontaneousWalks.length > 0 ? (
-          <View style={{ paddingHorizontal: 16, paddingVertical: 8, gap: 8 }}>
-            {activeSpontaneousWalks.map((spontaneous) => (
-              <View key={spontaneous.id} style={{ padding: 12, borderRadius: 12, backgroundColor: '#F1F8F3' }}>
-                <RtlText style={{ fontWeight: '700', marginBottom: 6 }}>
-                  טיול ספונטני פעיל · {usersById[spontaneous.responsibleUserId]?.name ?? 'בן משפחה'}
-                </RtlText>
-                <RemoteGpsPanel
-                  walk={spontaneous}
-                  currentUserId={currentUserId}
-                  familyRole={actualFamilyRole}
-                  ready={!familyLoading && !scheduleLoading && Boolean(family)}
-                />
-              </View>
-            ))}
-          </View>
-        ) : null}
-
         <View ref={nextWalkCardRef} onLayout={measureNextWalkCard} collapsable={false} style={styles.nextWalkLift}>
           {nextWalk ? (
           <NextWalkCard
             walk={nextWalk}
             responsible={usersById[nextWalk.responsibleUserId]}
+            actualWalker={nextWalk.status === 'in_progress' && nextWalk.actualWalkerUserId ? usersById[nextWalk.actualWalkerUserId] : undefined}
             currentUserId={effectiveUserId}
             dogName={dog?.name ?? 'הכלב/ה'}
             dogPhotoUrl={dog?.photoUrl}
@@ -1149,34 +1408,47 @@ export function HomeScreen() {
             }
             primaryLabel={isOverdue(nextWalk, new Date(), scheduleTimezone) ? 'ממתין לעדכון' : undefined}
             tone="dashboard"
-            remoteGpsAction={<RemoteGpsPanel walk={nextWalk} currentUserId={currentUserId} familyRole={actualFamilyRole} ready={!familyLoading && !scheduleLoading && Boolean(family)} />}
+            remoteGpsAction={<RemoteGpsPanel walk={nextWalk} currentUserId={currentUserId} familyRole={actualFamilyRole} ready={!familyLoading && !scheduleLoading && Boolean(family)} gpsSession={remoteGpsSessionForWalk(nextWalk.id)} />}
+            onRecordPee={isActiveWalk(nextWalk) ? () => recordWalkEvent(nextWalk.id, 'pee') : undefined}
+            onRecordPoop={isActiveWalk(nextWalk) ? () => recordWalkEvent(nextWalk.id, 'poop') : undefined}
+            onUndoPee={() => undoWalkEvent(nextWalk.id, 'pee')}
+            onUndoPoop={() => undoWalkEvent(nextWalk.id, 'poop')}
+            recordedPeeCount={readWalkEvents(nextWalk.id).pee}
+            recordedPoopCount={readWalkEvents(nextWalk.id).poop}
             onMarkDone={() => setCompleteWalkId(nextWalk.id)}
-            activeStartedAt={nextWalk.status === 'in_progress' ? nextWalk.startedAt ?? null : null}
+            activeStartedAt={isActiveWalk(nextWalk) ? nextWalk.startedAt ?? null : null}
             liveDistanceMeters={gpsTrackingWalkId === nextWalk.id ? gpsDistanceMeters : null}
             gpsPointCount={gpsTrackingWalkId === nextWalk.id ? gpsPointCount : null}
             liveRoutePoints={gpsTrackingWalkId === nextWalk.id ? gpsRoutePoints : undefined}
+            liveReconstruction={gpsTrackingWalkId === nextWalk.id ? gpsReconstruction : null}
+            gpsReconstructionNotice={gpsTrackingWalkId === nextWalk.id ? gpsReconstructionNotice : null}
+            remoteGpsSession={remoteGpsSessionForWalk(nextWalk.id)}
             gpsStatus={gpsTrackingWalkId === nextWalk.id ? gpsPermissionStatus : null}
             gpsTrackingStatus={gpsTrackingWalkId === nextWalk.id ? gpsTrackingStatus : null}
-            onRetryGps={() => { void useGpsStore.getState().startTracking(nextWalk).catch(() => undefined); }}
-            onStartWalk={
-              effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId
-                ? () => {
-                  // Start the single foreground watch in the tap handler so
-                  // Safari receives the gesture-bound location request. The
-                  // walk RPC remains independent: GPS never blocks the walk.
-                  void useGpsStore.getState().startTracking(nextWalk).catch(() => undefined);
-                  void startWalk(nextWalk.id, { startGps: false }).then(
-                    (started) => { if (!started) void useGpsStore.getState().stopTracking(nextWalk, effectiveUserId); },
-                    () => { void useGpsStore.getState().stopTracking(nextWalk, effectiveUserId); },
-                  );
-                }
-                : undefined
+            gpsNotTrackedHere={
+              isActiveWalk(nextWalk) && gpsTrackingWalkId !== nextWalk.id
+                ? ((nextWalk.actualWalkerUserId ?? nextWalk.responsibleUserId) === currentUserId ? 'walker_here' : 'elsewhere')
+                : null
             }
+            gpsLastStopLabel={gpsLastStop?.walkId === nextWalk.id
+              ? `${gpsLastStop.kind === 'stop' ? 'נעצר' : 'בוטל'} (${gpsLastStop.reason}) · ${new Date(gpsLastStop.at).toLocaleTimeString('he-IL')}`
+              : null}
+            onRetryGps={() => {
+              if (gpsTrackingWalkId === nextWalk.id && gpsTrackingStatus === 'interrupted') {
+                setGpsTransferWalk(nextWalk);
+                return;
+              }
+              void activateGpsForWalk(nextWalk);
+            }}
+            onStartWalk={() => {
+              if (nextWalk.responsibleUserId === currentUserId) startWalkAs(nextWalk, currentUserId, false);
+              else setStartWalkFlowId(nextWalk.id);
+            }}
             startWalkDisabled={nextWalkStartGate.disabled}
             startWalkPending={startingWalkIds.includes(nextWalk.id)}
             startWalkAvailableLabel={nextWalkStartGate.label}
             onEndWalk={
-              nextWalk.status === 'in_progress' && (effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId)
+              isActiveWalk(nextWalk) && (actualFamilyRole === 'admin' || nextWalk.actualWalkerUserId === currentUserId || (!nextWalk.actualWalkerUserId && nextWalk.responsibleUserId === currentUserId))
                 ? () => setCompleteWalkId(nextWalk.id)
                 : undefined
             }
@@ -1223,10 +1495,112 @@ export function HomeScreen() {
             <RtlText style={styles.onDemandTitle}>יוצאים לטיול?</RtlText>
             <RtlText style={styles.onDemandSubtitle}>לא חייבים לקבוע לו״ז מראש. אפשר להתחיל עכשיו ו-Walkie Doggy יתעד את הטיול וה-GPS.</RtlText>
             <Button label="התחל טיול" icon="▶" onPress={() => setAddUnplannedVisible(true)} style={styles.onDemandStartButton} shrinkToFit />
+            {!activeSpontaneousWalkGroups.length ? <RemoteGpsPanel currentUserId={currentUserId} familyRole={actualFamilyRole} ready={!familyLoading && !scheduleLoading && Boolean(family)} /> : null}
           </View>
         )}
         </View>
 
+
+        {/* Rendered BELOW the next-walk card on purpose: the scheduled walk
+            keeps its lifted position under the hero (its -34 lift would
+            otherwise overlap the last active card), and active spontaneous
+            walks can never push it down out of view. One block per dog. */}
+        {activeSpontaneousWalkGroups.length > 0 ? (
+          <View testID="home-active-spontaneous-walks" style={styles.activeSpontaneousSection}>
+            {activeSpontaneousWalkGroups.map((group) => group.duplicate ? (() => {
+              // No walk ids or raw timestamps here: exact audit identities are
+              // shown only inside the Family Admin review panel (History).
+              const notice = duplicateActiveWalkNotice(group, {
+                dogName: group.dogId ? dogs.find((entry) => entry.id === group.dogId)?.name : null,
+                viewerIsAdmin: actualFamilyRole === 'admin',
+                canReview: canReviewDuplicateWalks,
+              });
+              return (
+                <View key={`spontaneous-duplicate-${group.key}`} testID="home-active-spontaneous-duplicate" style={styles.activeSpontaneousDuplicate}>
+                  <RtlText style={styles.activeSpontaneousTitle} accessibilityRole="header">{notice.title}</RtlText>
+                  <RtlText style={styles.activeSpontaneousAuditNote}>{notice.body}</RtlText>
+                  {notice.reviewActionLabel ? (
+                    <Button
+                      label={notice.reviewActionLabel}
+                      onPress={() => navigation.navigate('History')}
+                      accessibilityLabel={`${notice.reviewActionLabel}: ${notice.title}`}
+                      style={{ marginTop: 8 }}
+                    />
+                  ) : null}
+                </View>
+              );
+            })() : (() => {
+              const spontaneous = group.walks[0];
+              // P0 real-iPhone report (2026-10-15, 17:32): a spontaneous
+              // active walk showed only a label, the Remote GPS panel and a
+              // finish button — no timer, local GPS activation, map or
+              // distance, unlike a scheduled active walk's NextWalkCard.
+              // Reuse that same unified card (see its own `walk.isUnplanned`
+              // eyebrow branch) instead of a second, reduced implementation,
+              // wired with the exact same GPS/identity props the scheduled
+              // card above uses — including the authoritative walker field
+              // (actualWalkerUserId falling back to responsibleUserId, never
+              // a display-name match).
+              const spontaneousDog = dogs.find((entry) => entry.id === spontaneous.dogId);
+              const spontaneousWalkerId = spontaneous.actualWalkerUserId ?? spontaneous.responsibleUserId;
+              return (
+                <View key={spontaneous.id} testID="home-active-spontaneous-card">
+                  <NextWalkCard
+                    walk={spontaneous}
+                    responsible={usersById[spontaneousWalkerId]}
+                    actualWalker={spontaneous.status === 'in_progress' && spontaneous.actualWalkerUserId ? usersById[spontaneous.actualWalkerUserId] : undefined}
+                    currentUserId={effectiveUserId}
+                    dogName={spontaneousDog?.name ?? dog?.name ?? 'הכלב/ה'}
+                    dogPhotoUrl={spontaneousDog?.photoUrl}
+                    showDogPhoto={false}
+                    showMascot={false}
+                    dogSex={spontaneousDog?.sex}
+                    scheduleTimezone={scheduleTimezone}
+                    tone="dashboard"
+                    remoteGpsAction={<RemoteGpsPanel walk={spontaneous} currentUserId={currentUserId} familyRole={actualFamilyRole} ready={!familyLoading && !scheduleLoading && Boolean(family)} gpsSession={remoteGpsSessionForWalk(spontaneous.id)} />}
+                    onRecordPee={() => recordWalkEvent(spontaneous.id, 'pee')}
+                    onRecordPoop={() => recordWalkEvent(spontaneous.id, 'poop')}
+            onUndoPee={() => undoWalkEvent(spontaneous.id, 'pee')}
+            onUndoPoop={() => undoWalkEvent(spontaneous.id, 'poop')}
+                    recordedPeeCount={readWalkEvents(spontaneous.id).pee}
+                    recordedPoopCount={readWalkEvents(spontaneous.id).poop}
+                    onMarkDone={() => setCompleteWalkId(spontaneous.id)}
+                    activeStartedAt={isActiveWalk(spontaneous) ? spontaneous.startedAt ?? null : null}
+                    liveDistanceMeters={gpsTrackingWalkId === spontaneous.id ? gpsDistanceMeters : null}
+                    gpsPointCount={gpsTrackingWalkId === spontaneous.id ? gpsPointCount : null}
+                    liveRoutePoints={gpsTrackingWalkId === spontaneous.id ? gpsRoutePoints : undefined}
+                    liveReconstruction={gpsTrackingWalkId === spontaneous.id ? gpsReconstruction : null}
+                    gpsReconstructionNotice={gpsTrackingWalkId === spontaneous.id ? gpsReconstructionNotice : null}
+                    remoteGpsSession={remoteGpsSessionForWalk(spontaneous.id)}
+                    gpsStatus={gpsTrackingWalkId === spontaneous.id ? gpsPermissionStatus : null}
+                    gpsTrackingStatus={gpsTrackingWalkId === spontaneous.id ? gpsTrackingStatus : null}
+                    gpsNotTrackedHere={
+                      isActiveWalk(spontaneous) && gpsTrackingWalkId !== spontaneous.id
+                        ? (spontaneousWalkerId === currentUserId ? 'walker_here' : 'elsewhere')
+                        : null
+                    }
+                    gpsLastStopLabel={gpsLastStop?.walkId === spontaneous.id
+                      ? `${gpsLastStop.kind === 'stop' ? 'נעצר' : 'בוטל'} (${gpsLastStop.reason}) · ${new Date(gpsLastStop.at).toLocaleTimeString('he-IL')}`
+                      : null}
+                    onRetryGps={() => {
+                      if (gpsTrackingWalkId === spontaneous.id && gpsTrackingStatus === 'interrupted') {
+                        setGpsTransferWalk(spontaneous);
+                        return;
+                      }
+                      void activateGpsForWalk(spontaneous);
+                    }}
+                    onEndWalk={
+                      actualFamilyRole === 'admin' || spontaneous.actualWalkerUserId === currentUserId || (!spontaneous.actualWalkerUserId && spontaneous.responsibleUserId === currentUserId)
+                        ? () => setCompleteWalkId(spontaneous.id)
+                        : undefined
+                    }
+                    canResolve={effectiveRole === 'admin' || spontaneousWalkerId === effectiveUserId}
+                  />
+                </View>
+              );
+            })())}
+          </View>
+        ) : null}
 
         {/* Real-device QA fix — an actionable swap/time-change request is
             urgent and must be visible the moment Home opens, without
@@ -1248,6 +1622,65 @@ export function HomeScreen() {
           onRejectTimeChange={rejectTimeChange}
           onOpenInbox={openRequestsInbox}
         />
+
+        <Pressable
+          onPress={() => setAddUnplannedVisible(true)}
+          style={styles.dashboardAddWalk}
+          accessibilityRole="button"
+          accessibilityLabel="הוסף טיול"
+        >
+          <RtlText style={styles.dashboardAddWalkIcon}>＋</RtlText>
+          <View style={styles.dashboardAddWalkCopy}>
+            <RtlText style={styles.dashboardAddWalkTitle}>הוסף טיול</RtlText>
+            <RtlText style={styles.dashboardAddWalkSubtitle}>טיול ספונטני עכשיו או הזנת טיול שבוצע</RtlText>
+          </View>
+          <RtlText style={styles.dashboardAddWalkChevron}>⌄</RtlText>
+        </Pressable>
+
+        <View style={styles.dashboardSection}>
+          <View style={styles.dashboardExternalHeading}>
+            <RtlText style={styles.dashboardExternalTitle}>
+              {dashboardTimelineWalks.length > 0
+                ? `בהמשך היום · ${dashboardTimelineWalks.length === 1 ? 'טיול אחד' : `${dashboardTimelineWalks.length} טיולים`}`
+                : 'בהמשך היום'}
+            </RtlText>
+            <RtlText style={styles.dashboardTimelineChevron}>‹</RtlText>
+          </View>
+          <Pressable style={styles.dashboardTimeline} onPress={() => navigation.navigate('Schedule')} accessibilityRole="button" accessibilityLabel="פתיחת המשך הטיולים של היום בלוח הזמנים">
+          {dashboardTimelineWalks.length === 1 ? (
+            <View style={styles.dashboardSingleUpcoming}>
+              <Avatar emoji={usersById[dashboardTimelineWalks[0].responsibleUserId]?.avatar ?? '👤'} color={usersById[dashboardTimelineWalks[0].responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[dashboardTimelineWalks[0].responsibleUserId]?.photoUrl} size={34} />
+              <View style={styles.dashboardSingleUpcomingText}>
+                <RtlText style={styles.dashboardSingleUpcomingTime}>{dashboardTimelineWalks[0].scheduledTime}</RtlText>
+                <RtlText style={styles.dashboardSingleUpcomingName}>{usersById[dashboardTimelineWalks[0].responsibleUserId]?.name ?? 'בן משפחה'}</RtlText>
+              </View>
+              <RtlText style={styles.dashboardSingleUpcomingHint}>הטיול הבא היום</RtlText>
+            </View>
+          ) : dashboardTimelineWalks.length > 1 ? (
+            <View style={styles.dashboardTimelineStops}>
+              <View style={styles.dashboardTimelinePeople}>
+                {dashboardTimelineWalks.map((walk) => (
+                  <View key={walk.id} style={[styles.dashboardTimelineStop, walk.status === 'done' && styles.dashboardTimelineStopDone, walk.status === 'skipped' && styles.dashboardTimelineStopSkipped, isActiveWalk(walk) && styles.dashboardTimelineStopActive]}>
+                    <Avatar emoji={usersById[walk.responsibleUserId]?.avatar ?? '👤'} color={usersById[walk.responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[walk.responsibleUserId]?.photoUrl} size={22} />
+                  </View>
+                ))}
+              </View>
+              <View style={styles.dashboardTimelineTrack} pointerEvents="none">
+                <View style={[styles.dashboardTimelineProgress, { width: `${dashboardTimelineProgress * 100}%` }]} />
+                {dashboardTimelineWalks.map((walk) => <View key={`dot-${walk.id}`} style={[styles.dashboardTimelineDot, walk.status === 'done' && styles.dashboardTimelineDotDone, walk.status === 'skipped' && styles.dashboardTimelineDotSkipped, isActiveWalk(walk) && styles.dashboardTimelineDotActive]} />)}
+              </View>
+              <View style={styles.dashboardTimelineLabels}>
+                {dashboardTimelineWalks.map((walk) => (
+                  <View key={`label-${walk.id}`} style={styles.dashboardTimelineLabel}>
+                    <RtlText style={[styles.dashboardTimelineTime, walk.status === 'done' && styles.dashboardTimelineTimeDone, walk.status === 'skipped' && styles.dashboardTimelineTimeSkipped, isActiveWalk(walk) && styles.dashboardTimelineTimeActive]}>{walk.status === 'done' ? `✓ ${walk.scheduledTime}` : walk.status === 'skipped' ? `– ${walk.scheduledTime}` : isActiveWalk(walk) ? `• ${walk.scheduledTime}` : walk.scheduledTime}</RtlText>
+                    <RtlText style={styles.dashboardTimelineName} numberOfLines={1}>{usersById[walk.responsibleUserId]?.name ?? 'בן משפחה'}</RtlText>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : <RtlText style={styles.dashboardTimelineEmpty}>אין טיולים מתוכננים היום · לפתיחת לוח הזמנים</RtlText>}
+          </Pressable>
+        </View>
 
         {lastWalk ? (() => {
           const canEditLastWalk =
@@ -1337,87 +1770,7 @@ export function HomeScreen() {
           );
         })() : null}
 
-        <Pressable
-          onPress={() => setAddUnplannedVisible(true)}
-          style={styles.dashboardAddWalk}
-          accessibilityRole="button"
-          accessibilityLabel="הוסף טיול"
-        >
-          <RtlText style={styles.dashboardAddWalkIcon}>＋</RtlText>
-          <View style={styles.dashboardAddWalkCopy}>
-            <RtlText style={styles.dashboardAddWalkTitle}>הוסף טיול</RtlText>
-            <RtlText style={styles.dashboardAddWalkSubtitle}>טיול ספונטני עכשיו או הזנת טיול שבוצע</RtlText>
-          </View>
-          <RtlText style={styles.dashboardAddWalkChevron}>⌄</RtlText>
-        </Pressable>
-
-        <View style={styles.dashboardSection}>
-          <View style={styles.dashboardExternalHeading}>
-            <RtlText style={styles.dashboardExternalTitle}>
-              {dashboardTimelineWalks.length > 0
-                ? `בהמשך היום · ${dashboardTimelineWalks.length === 1 ? 'טיול אחד' : `${dashboardTimelineWalks.length} טיולים`}`
-                : 'בהמשך היום'}
-            </RtlText>
-            <RtlText style={styles.dashboardTimelineChevron}>‹</RtlText>
-          </View>
-          <Pressable style={styles.dashboardTimeline} onPress={() => navigation.navigate('Schedule')} accessibilityRole="button" accessibilityLabel="פתיחת המשך הטיולים של היום בלוח הזמנים">
-          {dashboardTimelineWalks.length === 1 ? (
-            <View style={styles.dashboardSingleUpcoming}>
-              <Avatar emoji={usersById[dashboardTimelineWalks[0].responsibleUserId]?.avatar ?? '👤'} color={usersById[dashboardTimelineWalks[0].responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[dashboardTimelineWalks[0].responsibleUserId]?.photoUrl} size={34} />
-              <View style={styles.dashboardSingleUpcomingText}>
-                <RtlText style={styles.dashboardSingleUpcomingTime}>{dashboardTimelineWalks[0].scheduledTime}</RtlText>
-                <RtlText style={styles.dashboardSingleUpcomingName}>{usersById[dashboardTimelineWalks[0].responsibleUserId]?.name ?? 'בן משפחה'}</RtlText>
-              </View>
-              <RtlText style={styles.dashboardSingleUpcomingHint}>הטיול הבא היום</RtlText>
-            </View>
-          ) : dashboardTimelineWalks.length > 1 ? (
-            <View style={styles.dashboardTimelineStops}>
-              <View style={styles.dashboardTimelinePeople}>
-                {dashboardTimelineWalks.map((walk) => (
-                  <View key={walk.id} style={[styles.dashboardTimelineStop, walk.status === 'done' && styles.dashboardTimelineStopDone, walk.status === 'skipped' && styles.dashboardTimelineStopSkipped, walk.status === 'in_progress' && styles.dashboardTimelineStopActive]}>
-                    <Avatar emoji={usersById[walk.responsibleUserId]?.avatar ?? '👤'} color={usersById[walk.responsibleUserId]?.color ?? colors.primary} photoUrl={usersById[walk.responsibleUserId]?.photoUrl} size={22} />
-                  </View>
-                ))}
-              </View>
-              <View style={styles.dashboardTimelineTrack} pointerEvents="none">
-                <View style={[styles.dashboardTimelineProgress, { width: `${dashboardTimelineProgress * 100}%` }]} />
-                {dashboardTimelineWalks.map((walk) => <View key={`dot-${walk.id}`} style={[styles.dashboardTimelineDot, walk.status === 'done' && styles.dashboardTimelineDotDone, walk.status === 'skipped' && styles.dashboardTimelineDotSkipped, walk.status === 'in_progress' && styles.dashboardTimelineDotActive]} />)}
-              </View>
-              <View style={styles.dashboardTimelineLabels}>
-                {dashboardTimelineWalks.map((walk) => (
-                  <View key={`label-${walk.id}`} style={styles.dashboardTimelineLabel}>
-                    <RtlText style={[styles.dashboardTimelineTime, walk.status === 'done' && styles.dashboardTimelineTimeDone, walk.status === 'skipped' && styles.dashboardTimelineTimeSkipped, walk.status === 'in_progress' && styles.dashboardTimelineTimeActive]}>{walk.status === 'done' ? `✓ ${walk.scheduledTime}` : walk.status === 'skipped' ? `– ${walk.scheduledTime}` : walk.status === 'in_progress' ? `• ${walk.scheduledTime}` : walk.scheduledTime}</RtlText>
-                    <RtlText style={styles.dashboardTimelineName} numberOfLines={1}>{usersById[walk.responsibleUserId]?.name ?? 'בן משפחה'}</RtlText>
-                  </View>
-                ))}
-              </View>
-            </View>
-          ) : <RtlText style={styles.dashboardTimelineEmpty}>אין טיולים מתוכננים היום · לפתיחת לוח הזמנים</RtlText>}
-          </Pressable>
-        </View>
-
         <View style={styles.dashboardOverflow}>
-        {/* Keep only unresolved overdue walks here. Future walks are already
-            represented by the compact "בהמשך היום" timeline above; rendering
-            them again as "טיולים קרובים" duplicated the same information and
-            unnecessarily lengthened Home. */}
-        {overduePending.length > 0 ? (
-          <View style={styles.section}>
-            <RtlText style={styles.sectionTitle}>ממתינים לעדכון</RtlText>
-            <View style={styles.list}>
-              {overduePending.map((w) => (
-                <WalkRow
-                  key={w.id}
-                  walk={w}
-                  responsible={usersById[w.responsibleUserId]}
-                  onMarkDone={() => setCompleteWalkId(w.id)}
-                  onMarkNotDone={() => skip(w.id)}
-                />
-              ))}
-            </View>
-          </View>
-        ) : null}
-
         </View>
       </ScrollView>
 
@@ -1425,18 +1778,31 @@ export function HomeScreen() {
         visible={!!completeWalkId}
         dogName={dog?.name ?? 'הכלב/ה'}
         scheduledTime={completeWalkId ? walksById[completeWalkId]?.scheduledTime : undefined}
-        users={activeUsers}
-        defaultUserId={effectiveUserId}
+        initialHadPee={completeWalkId ? readWalkEvents(completeWalkId).pee > 0 : false}
+        initialHadPoop={completeWalkId ? readWalkEvents(completeWalkId).poop > 0 : false}
+        users={completeWalkId && walksById[completeWalkId]?.status === 'in_progress'
+          ? activeUsers.filter((u) => u.id === (walksById[completeWalkId]?.actualWalkerUserId ?? walksById[completeWalkId]?.responsibleUserId))
+          : activeUsers}
+        defaultUserId={completeWalkId && walksById[completeWalkId]?.status === 'in_progress'
+          ? (walksById[completeWalkId]?.actualWalkerUserId ?? walksById[completeWalkId]?.responsibleUserId ?? effectiveUserId)
+          : effectiveUserId}
         onConfirm={async ({ completedByUserId, hadPee, hadPoop, note, completedAt }) => {
           const walkId = completeWalkId;
           const walkBeingCompleted = walkId ? walksById[walkId] : undefined;
           setCompleteWalkId(null);
           if (!walkId) return;
+          const { pee: peeCount, poop: poopCount } = resolveCompletionWalkEventCounts(
+            readWalkEvents(walkId), hadPee, hadPoop,
+          );
+          if (walkBeingCompleted?.status === 'in_progress' && completedByUserId !== currentUserId && actualFamilyRole === 'admin') {
+            setRemoteFinishRequest({ walkId, walkerId: completedByUserId, hadPee, hadPoop, peeCount, poopCount, note: note || undefined, completedAt });
+            return;
+          }
           // markDone() itself refuses while Test Mode is active (see
           // scheduleStore.ts) — no separate guard needed here.
           const completed = walkBeingCompleted?.status === 'in_progress'
-            ? await finishWalk(walkId, completedByUserId, { hadPee, hadPoop, note: note || undefined, completedAt })
-            : await markDone(walkId, completedByUserId, { hadPee, hadPoop, note: note || undefined, completedAt });
+            ? await finishWalk(walkId, completedByUserId, { hadPee, hadPoop, peeCount, poopCount, note: note || undefined, completedAt, actorUserId: currentUserId })
+            : await markDone(walkId, completedByUserId, { hadPee, hadPoop, peeCount, poopCount, note: note || undefined, completedAt });
           // BATCH 4 (C2/C3/C8) — success mascot + message, best-effort only:
           // if anything about the walk/dog/user lookups above is somehow
           // unavailable, selectMessage()'s own safe fallbacks (see
@@ -1444,11 +1810,81 @@ export function HomeScreen() {
           // is purely cosmetic — never re-thrown, never blocks markDone's
           // own error handling.
           if (completed) {
+            const next = { ...walkEventCountsRef.current };
+            delete next[walkId];
+            walkEventCountsRef.current = next;
+            setWalkEventCounts(next);
+            if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+              try { localStorage.removeItem('walkie:walk-events:' + walkId); } catch { /* storage unavailable */ }
+            }
             showWalkCompletionCelebration(walkBeingCompleted?.durationMinutes);
             checkForNewAchievementUnlocks();
           }
         }}
         onCancel={() => setCompleteWalkId(null)}
+      />
+
+      <ConfirmModal
+        visible={Boolean(gpsTransferWalk)}
+        title="להעביר את מעקב ה-GPS למכשיר הזה?"
+        message="אם מכשיר אחר עדיין עוקב, הוא יפסיק לשלוח נקודות חדשות. ההעברה תירשם ביומן הטיול."
+        confirmLabel="כן, להעביר מעקב"
+        onCancel={() => setGpsTransferWalk(null)}
+        onConfirm={() => {
+          const walk = gpsTransferWalk;
+          setGpsTransferWalk(null);
+          if (walk) void useGpsStore.getState().startTracking(walk).then(() => useGpsStore.getState().attachGpsOwnership(walk, true)).catch(() => undefined);
+        }}
+      />
+
+      <ConfirmModal
+        visible={Boolean(remoteFinishRequest)}
+        title={`לסיים את הטיול של ${usersById[remoteFinishRequest?.walkerId ?? '']?.name ?? 'בן המשפחה'}?`}
+        message="אתה עומד לסיים את הטיול עבורו/ה. האם להמשיך?"
+        confirmLabel="כן, לסיים את הטיול"
+        onCancel={() => setRemoteFinishRequest(null)}
+        onConfirm={async () => {
+          const request = remoteFinishRequest;
+          setRemoteFinishRequest(null);
+          if (!request) return;
+          const walkBeingCompleted = walksById[request.walkId];
+          const completed = await finishWalk(request.walkId, request.walkerId, {
+            hadPee: request.hadPee,
+            hadPoop: request.hadPoop,
+            peeCount: request.peeCount,
+            poopCount: request.poopCount,
+            note: request.note,
+            completedAt: request.completedAt,
+            remoteConfirmation: true,
+            actorUserId: currentUserId,
+          });
+          if (completed) {
+            const next = { ...walkEventCountsRef.current };
+            delete next[request.walkId];
+            walkEventCountsRef.current = next;
+            setWalkEventCounts(next);
+            if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
+              try { localStorage.removeItem('walkie:walk-events:' + request.walkId); } catch { /* storage unavailable */ }
+            }
+            showWalkCompletionCelebration(walkBeingCompleted?.durationMinutes);
+            checkForNewAchievementUnlocks();
+          }
+        }}
+      />
+
+      <WalkStartFlowModal
+        visible={Boolean(startWalkFlowId && startWalkFlowId === nextWalk?.id)}
+        dogName={dog?.name ?? 'הכלב/ה'}
+        assignedName={startWalkFlowId ? (usersById[walksById[startWalkFlowId]?.responsibleUserId ?? '']?.name ?? 'בן משפחה') : 'בן משפחה'}
+        currentUserId={currentUserId}
+        users={activeUsers}
+        canStartRemotely={actualFamilyRole === 'admin'}
+        onClose={() => setStartWalkFlowId(null)}
+        onStart={(actualWalkerUserId, remote) => {
+          const target = startWalkFlowId ? walksById[startWalkFlowId] : undefined;
+          setStartWalkFlowId(null);
+          if (target) startWalkAs(target, actualWalkerUserId, remote);
+        }}
       />
 
       <WalkCompletionCelebration
@@ -1544,6 +1980,8 @@ export function HomeScreen() {
       <AddUnplannedWalkModal
         visible={addUnplannedVisible}
         dogName={dog?.name ?? 'הכלב/ה'}
+        dogId={dog?.id}
+        existingWalks={walks}
         users={activeUsers}
         defaultUserId={effectiveUserId}
         // A regular Member (real or admin-simulated) is always attributed
@@ -1556,8 +1994,40 @@ export function HomeScreen() {
             useScheduleStore.setState({ actionError: 'עדיין טוענים את פרטי הכלב/ה — נסו שוב בעוד רגע' });
             return;
           }
+          const candidates = findSpontaneousAssociationCandidates(
+            walks,
+            dog.id,
+            new Date(),
+            family?.timezone,
+            family?.spontaneousAssociationWindowMinutes ?? DEFAULT_SPONTANEOUS_ASSOCIATION_WINDOW_MINUTES,
+          );
+          if (candidates.length) {
+            setSpontaneousAssociationWalks(candidates);
+            setAddUnplannedVisible(false);
+            setSpontaneousAssociationVisible(true);
+            return;
+          }
           const started = await startUnplannedWalk(familyId, dog.id, effectiveUserId);
-          if (started) setAddUnplannedVisible(false);
+          if (started) {
+            setAddUnplannedVisible(false);
+            return;
+          }
+          // A legitimate refusal (most commonly: an active walk already
+          // exists for this dog, including one left stuck by an earlier
+          // test/duplicate — see duplicateResolutionGroupId/isActiveWalk)
+          // lands here as a resolved `false`, never a thrown rejection. Left
+          // alone, the only trace was scheduleStore.actionError surfacing as
+          // a SEPARATE stacked "אופס" dialog behind/beside this still-open
+          // modal — on iPhone Safari that reads as "nothing happened" when
+          // the user taps "התחל טיול עכשיו" (P0 2026-10-15). Re-surface the
+          // exact reason INSIDE this modal (handleStartNow's own catch),
+          // where the user is actually looking, and drop the duplicate
+          // standalone alert so the two don't compete.
+          const reason = useScheduleStore.getState().actionError;
+          if (reason) useScheduleStore.setState({ actionError: null });
+          const error = new Error(reason ?? 'לא הצלחנו להתחיל את הטיול. בדקו חיבור ונסו שוב.');
+          if (reason) (error as Error & { knownReason?: boolean }).knownReason = true;
+          throw error;
         }}
         onConfirm={async (result: UnplannedWalkResult) => {
           // Keep the form visible until persistence succeeds. Closing it before
@@ -1591,6 +2061,29 @@ export function HomeScreen() {
           }
         }}
         onClose={() => setAddUnplannedVisible(false)}
+      />
+
+      <SpontaneousWalkAssociationModal
+        visible={spontaneousAssociationVisible}
+        dogName={dog?.name ?? 'הכלב/ה'}
+        candidates={spontaneousAssociationWalks}
+        assigneeNames={Object.fromEntries(activeUsers.map((user) => [user.id, user.name]))}
+        onAssociate={(walk) => {
+          setSpontaneousAssociationVisible(false);
+          setSpontaneousAssociationWalks([]);
+          startWalkAs(walk, currentUserId, false);
+        }}
+        onSeparate={async () => {
+          const started = dog ? await startUnplannedWalk(familyId, dog.id, currentUserId) : false;
+          setSpontaneousAssociationVisible(false);
+          setSpontaneousAssociationWalks([]);
+          if (started) setAddUnplannedVisible(false);
+        }}
+        onCancel={() => {
+          setSpontaneousAssociationVisible(false);
+          setSpontaneousAssociationWalks([]);
+          setAddUnplannedVisible(true);
+        }}
       />
 
       {/* Item D: "הטיול האחרון" edit/delete for an UNPLANNED last walk —
@@ -1741,6 +2234,20 @@ export function HomeScreen() {
         onClose={() => setRequestsInboxVisible(false)}
       />
 
+      <RemindersModal
+        visible={personalNotificationsVisible && canManagePersonalNotifications}
+        users={users}
+        effectiveFamilyRole={effectiveRole}
+        effectiveUserId={currentUserId}
+        personalOnly
+        onSetReminderEnabled={(userId, enabled) => {
+          if (canManagePersonalNotifications && userId === currentUserId) {
+            void setReminderEnabled(userId, enabled);
+          }
+        }}
+        onClose={() => setPersonalNotificationsVisible(false)}
+      />
+
       <ConfirmModal
         visible={!!actionError}
         title="אופס"
@@ -1774,7 +2281,12 @@ const styles = StyleSheet.create({
   addFirstDogButton: { marginTop: spacing.md },
   // Leaves the final card clear of the persistent bottom tab bar on phones
   // and in Safari/PWA, instead of letting it end underneath the navigation.
-  content: { flexGrow: 1, paddingHorizontal: spacing.md, paddingTop: 0, gap: 7, paddingBottom: 96, width: '100%', backgroundColor: '#FBF8F3' },
+  content: { flexGrow: 1, paddingHorizontal: spacing.md, paddingTop: 0, gap: 7, paddingBottom: 180, width: '100%', backgroundColor: '#FBF8F3' },
+  activeSpontaneousSection: { gap: 8, paddingHorizontal: spacing.xs },
+  activeSpontaneousCard: { padding: 12, borderRadius: 12, backgroundColor: '#F1F8F3' },
+  activeSpontaneousDuplicate: { padding: 12, borderRadius: 12, backgroundColor: '#FFF4E5', borderWidth: 1, borderColor: '#F3C98B' },
+  activeSpontaneousTitle: { fontWeight: '700', marginBottom: 6, textAlign: 'right' },
+  activeSpontaneousAuditNote: { fontSize: 13, lineHeight: 18, textAlign: 'right' },
   webContent: { maxWidth: breakpoints.desktopContent, alignSelf: 'center', paddingTop: 0, gap: 7 },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.xl, borderWidth: 1, borderColor: colors.border, paddingVertical: 10, paddingHorizontal: 10 },
   // Item 6 (mobile polish): -42 (was -48) — the hero above is now 20px
@@ -1782,7 +2294,12 @@ const styles = StyleSheet.create({
   // further into the (shorter) hero than before; easing it to -42 nets a
   // modest ~14px higher start overall while keeping roughly the same
   // visual overlap relationship with the hero as before.
-  nextWalkLift: { marginTop: -34, zIndex: 1, paddingHorizontal: spacing.xs },
+  // iPhone Safari QA: keep the active-walk title visible below the hero instead of
+  // pulling the card 64px upward under the top edge. Preserve a small overlap.
+  nextWalkLift: { marginTop: -16, zIndex: 1, paddingHorizontal: spacing.xs },
+  personalNotificationsCard: { marginHorizontal: spacing.xs, paddingVertical: spacing.md, paddingHorizontal: spacing.md, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: spacing.xs },
+  personalNotificationsTitle: { fontSize: typography.body.fontSize, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
+  personalNotificationsDescription: { fontSize: typography.cardTitle.fontSize, lineHeight: typography.cardTitle.lineHeight, color: colors.textSecondary, textAlign: 'right' },
   testModeBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1822,7 +2339,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   dashboardHeroImage: { ...StyleSheet.absoluteFill, width: '100%', height: '100%' },
-  dashboardHeroFade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 44, zIndex: 1 },
+  dashboardHeroFade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 10, zIndex: 1 },
   dashboardHeroDefaultSun: { position: 'absolute', width: 86, height: 86, borderRadius: 43, right: 30, top: 18, backgroundColor: '#FFF1C7' },
   dashboardHeroDefaultHillBack: { position: 'absolute', width: 330, height: 150, borderRadius: 165, left: -95, bottom: -88, backgroundColor: '#E8F1DF' },
   dashboardHeroDefaultHillFront: { position: 'absolute', width: 320, height: 142, borderRadius: 160, right: -98, bottom: -94, backgroundColor: '#DCEAD7' },
@@ -1852,7 +2369,20 @@ const styles = StyleSheet.create({
   dashboardHeroForegroundMid: { position: 'absolute', right: 118, bottom: -31, width: 106, height: 48, borderRadius: 53, backgroundColor: '#D6EBC8', opacity: 0.78, transform: [{ rotate: '5deg' }] },
   dashboardHeroForegroundDogBase: { position: 'absolute', right: -2, bottom: -25, width: 182, height: 58, borderRadius: 91, backgroundColor: '#D1E8C4', opacity: 0.94, transform: [{ rotate: '-2deg' }] },
   dashboardHeroForegroundRight: { position: 'absolute', right: -42, bottom: -17, width: 104, height: 46, borderRadius: 52, backgroundColor: '#BFDDB1', opacity: 0.86, transform: [{ rotate: '7deg' }] },
-  dashboardHeroDogCutout: { position: 'absolute', right: 4, bottom: 2, width: 166, height: 158, zIndex: 2 },
+  dashboardHeroDogCutout: {
+    position: 'absolute',
+    right: 4,
+    bottom: 2,
+    width: 166,
+    height: 158,
+    zIndex: 2,
+    // Grounds the transparent dog on the scene. drop-shadow follows the alpha
+    // edge (fur included), so it never draws a box around the cutout.
+    ...(Platform.OS === 'web' ? ({ filter: 'drop-shadow(0px 5px 6px rgba(22, 36, 91, 0.22))' } as object) : null),
+  },
+  // Kept mounted (so the image is already decoded) but invisible until its
+  // transparency has been confirmed.
+  dashboardHeroDogCutoutPending: { opacity: 0 },
   dashboardHeroCopy: { width: '52%', alignItems: 'flex-end', alignSelf: 'flex-start', paddingTop: 38, paddingHorizontal: spacing.md, zIndex: 2 },
   dashboardHeroEyebrow: { fontSize: 16, color: '#27376F', fontWeight: '700', textAlign: 'right' },
   dashboardHeroName: { fontSize: 30, lineHeight: 36, color: '#16245B', fontWeight: '900', textAlign: 'right' },
@@ -1862,6 +2392,10 @@ const styles = StyleSheet.create({
   dashboardAddWalkTitle: { fontSize: 17, lineHeight: 21, fontWeight: '700', color: '#0E7E84', textAlign: 'right' },
   dashboardAddWalkSubtitle: { marginTop: 1, fontSize: 11, lineHeight: 15, fontWeight: '500', color: colors.textSecondary, textAlign: 'right' },
   dashboardAddWalkChevron: { fontSize: 22, color: '#0E7E84' },
+  // P1 (2026-10-15, 18:08): the compact "ממתינים לעדכון" summary that
+  // replaced a full WalkRow list on Home — same row shape as
+  // dashboardAddWalk above, warning-tinted since these are overdue items,
+  // not a neutral action.
   dashboardSection: { gap: 3 },
   dashboardExternalHeading: { minHeight: 24, paddingHorizontal: 4, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   dashboardExternalTitle: { fontSize: 17, fontWeight: '800', color: '#17345B', textAlign: 'right' },

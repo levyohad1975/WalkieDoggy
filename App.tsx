@@ -14,8 +14,8 @@ import { colors } from './src/theme/colors';
 import { requestNotificationPermissions, subscribeToWalkReminderResponses } from './src/notifications/notificationService';
 import { registerPushToken } from './src/lib/pushTokens';
 import { reconcileWebPushSubscription } from './src/lib/webPush';
-import { repository, setSyncQueueActorGetter } from './src/data';
-import { getCurrentFamilyIsQa, getWhoAmI, isSupabaseConfigured, supabaseProjectUrl } from './src/lib/supabase';
+import { repository, setSyncQueueActorGetter, setSyncQueueAuthUserGetter, setSyncQueueFamilyGetter } from './src/data';
+import { getCurrentFamilyIsQa, getCurrentSupabaseAuthUserId, getWhoAmI, isSupabaseConfigured, supabaseProjectUrl } from './src/lib/supabase';
 import { touchLastSeen } from './src/lib/requests';
 import { useRequestsStore } from './src/store/requestsStore';
 import { useScheduleStore, reconcileScheduleNotifications } from './src/store/scheduleStore';
@@ -25,6 +25,8 @@ import { FamilySetupWizard } from './src/screens/FamilySetupWizard';
 import { beginFamilySetup, clearFamilySetupProgress, isFamilySetupComplete, markFamilySetupComplete, readFamilySetupProgress, saveFamilySetupProgress, type FamilySetupProgress } from './src/lib/familySetupProgress';
 import { getVerifiedAdminIdentity } from './src/lib/verifiedAdminOnboarding';
 import { canResumeFamilySetupDraft, canShowFamilySetupWizard } from './src/logic/familySetupResume';
+import { TutorialOverlay } from './src/components/tutorial/TutorialOverlay';
+import { useFirstRunTutorial } from './src/components/tutorial/useFirstRunTutorial';
 const isStagingSupabaseProject = (() => {
   try { return new URL(supabaseProjectUrl).hostname === 'czbxhsoxyawprqehkfit.supabase.co'; }
   catch { return false; }
@@ -203,7 +205,20 @@ async function runForegroundSyncOnce(): Promise<void> {
  * App.test.ts's "cold-start sync race" tests.
  */
 export async function performColdStart(restoreSession: () => Promise<void>): Promise<void> {
-  await restoreSession();
+  try {
+    await restoreSession();
+  } catch {
+    // A rejected local-storage/session-restore promise must not leave the
+    // first-run UI behind its permanent splash screen. On cold start the
+    // store still contains only its default (unclaimed) identity if restore
+    // failed before server validation; keep the persisted auth/session data
+    // untouched and allow the normal onboarding flow to render. Never start
+    // sync under an identity that was not restored successfully.
+    useAuthStore.setState({ hydrated: true });
+    // eslint-disable-next-line no-console
+    console.error('[startup] session restoration failed; showing safe onboarding state');
+    return;
+  }
   await runForegroundSync();
 }
 
@@ -275,6 +290,8 @@ export async function registerPushTokenAndReconcile(): Promise<void> {
 // App.tsx already imports both authStore and the data layer, so it's the
 // natural place to introduce this one-directional wiring.
 setSyncQueueActorGetter(() => useAuthStore.getState().currentUserId);
+setSyncQueueFamilyGetter?.(() => useAuthStore.getState().familyId);
+setSyncQueueAuthUserGetter?.(() => getCurrentSupabaseAuthUserId());
 
 export default function App() {
   const { currentUserId, familyId, familyRole, hydrated, restoreSession, systemObserverActive, setFamilyId } = useAuthStore();
@@ -337,6 +354,15 @@ export default function App() {
     setFamilySetupProgress(null);
     setFamilySetupServerConfirmedFamilyId(null);
     setFamilySetupOwnerMatches(false);
+  };
+  const handleSystemAdminFamilyDeleted = async (deletedFamilyId: string) => {
+    await useAuthStore.getState().clearDeletedFamilyContext(deletedFamilyId);
+    if (familySetupProgress?.familyId === deletedFamilyId) {
+      setFamilySetupProgress(null);
+      setFamilySetupOwnerMatches(false);
+      setFamilySetupServerConfirmedFamilyId(null);
+    }
+    if (familyId === deletedFamilyId) setIsQaFamily(false);
   };
   const startFamilySetup = async (createdFamilyId: string) => {
     const progress = await readFamilySetupProgress();
@@ -616,6 +642,18 @@ export default function App() {
   // using useSafeAreaInsets) throws if it renders before a provider ancestor
   // exists, and `hydrated` is false on every cold start until the async
   // session restore resolves.
+  const familySetupWizardVisible = canShowFamilySetupWizard({
+    progressFamilyId: familySetupProgress?.familyId,
+    localFamilyId: familyId,
+    serverConfirmedFamilyId: familySetupServerConfirmedFamilyId,
+    ownerMatches: familySetupOwnerMatches,
+    familyRole,
+  });
+  // Optional first-run tutorial invitation. Evaluated only after a profile
+  // is claimed (never during verification/onboarding), never while the
+  // setup wizard or the iOS install prompt is showing.
+  useFirstRunTutorial({ familySetupWizardVisible, competingOverlayVisible: showIosInstallPrompt });
+
   return (
     <SafeAreaProvider>
       {!hydrated || !familySetupLoaded || !qaSessionLoaded ? (
@@ -658,27 +696,24 @@ export default function App() {
             </Pressable>
           ) : null}
           {shouldEnterSystemAdminDirectly ? (
-            <SystemAdminScreen visible onClose={() => undefined} onTestFamilySelected={selectTestFamily} onTestFamilyScheduleSelected={isStagingSupabaseProject ? selectTestFamilyForScheduleReview : undefined} />
+            <SystemAdminScreen visible onClose={() => undefined} onTestFamilySelected={selectTestFamily} onTestFamilyScheduleSelected={isStagingSupabaseProject ? selectTestFamilyForScheduleReview : undefined} onFamilyDeleted={handleSystemAdminFamilyDeleted} />
           ) : needsFamilyOnboarding ? (
             <FamilyOnboardingScreen onFamilyCreated={startFamilySetup} />
-          ) : canShowFamilySetupWizard({
-            progressFamilyId: familySetupProgress?.familyId,
-            localFamilyId: familyId,
-            serverConfirmedFamilyId: familySetupServerConfirmedFamilyId,
-            ownerMatches: familySetupOwnerMatches,
-            familyRole,
-          }) ? (
-            <FamilySetupWizard familyId={familySetupProgress!.familyId} progress={familySetupProgress!} onProgressChange={setFamilySetupProgress} onComplete={finishFamilySetup} />
+          ) : familySetupWizardVisible ? (
+            <FamilySetupWizard familyId={familySetupProgress!.familyId} progress={familySetupProgress!} onProgressChange={setFamilySetupProgress} onComplete={finishFamilySetup} onReturnToOriginalFamily={isSystemAdmin && isQaFamily && !systemObserverActive ? () => void returnFromTestFamily() : undefined} returningToOriginalFamily={qaSwitchBusy} returnFamilyError={qaSwitchError} />
           ) : currentUserId || systemObserverActive ? (
-            <RootNavigator />
+            <>
+              <RootNavigator />
+              <TutorialOverlay />
+            </>
           ) : (
             <LoginScreen />
           )}
           {!shouldEnterSystemAdminDirectly ? (
-            <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} onTestFamilySelected={selectTestFamily} onTestFamilyScheduleSelected={isStagingSupabaseProject ? selectTestFamilyForScheduleReview : undefined} />
+            <SystemAdminScreen visible={systemAdminOpen} onClose={() => setSystemAdminOpen(false)} onTestFamilySelected={selectTestFamily} onTestFamilyScheduleSelected={isStagingSupabaseProject ? selectTestFamilyForScheduleReview : undefined} onFamilyDeleted={handleSystemAdminFamilyDeleted} />
           ) : null}
 
-          {isSystemAdmin && isQaFamily && !systemObserverActive ? (
+          {isSystemAdmin && isQaFamily && !systemObserverActive && !familySetupWizardVisible ? (
             <>
               <Pressable style={styles.qaReturnButton} onPress={() => void returnFromTestFamily()} disabled={qaSwitchBusy} accessibilityRole="button" accessibilityState={{ disabled: qaSwitchBusy }} accessibilityLabel="חזרה למשפחה המקורית">
                 <RtlText style={styles.qaReturnButtonText}>חזרה למשפחה המקורית</RtlText>

@@ -302,7 +302,7 @@ export function RootNavigator() {
       // Open the conversation the notification was about (the store waits
       // for the list if it has not loaded yet, and ignores an id this
       // profile cannot see).
-      useChatStore.getState().requestOpenConversation(event.conversationId);
+      useChatStore.getState().requestOpenConversation(event.conversationId, event.messageId);
       if (navigationRef.isReady()) {
         navigationRef.navigate('Chat');
       } else {

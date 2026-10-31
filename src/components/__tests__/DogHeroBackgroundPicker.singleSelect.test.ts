@@ -24,16 +24,16 @@ describe('DogHeroBackgroundPicker — single-select source guard', () => {
   });
 
   it('never hardcodes the walkie-park id as a second, separate tile', () => {
-    expect(source).not.toContain("'walkie-park'");
-    expect(source).not.toContain('"walkie-park"');
+    expect(source).not.toContain("draftId === 'walkie-park' &&");
+    expect(source).toContain('DOG_BACKGROUNDS.map((item) =>');
   });
 
-  it('renders exactly one Pressable per DOG_BACKGROUNDS item plus the one default tile', () => {
+  it('renders exactly one Pressable per DOG_BACKGROUNDS item with no redundant default tile', () => {
     const pressableCount = source.match(/<Pressable/g)?.length ?? 0;
-    expect(pressableCount).toBe(2); // the default tile + the single DOG_BACKGROUNDS.map() tile
+    expect(pressableCount).toBe(1); // the single DOG_BACKGROUNDS.map() tile
   });
 
   it('derives selection/checkmark state from draftId === item.id — one id, one tile', () => {
-    expect(source).toContain('const selected = draftId === item.id;');
+    expect(source).toContain("const selected = draftId === item.id || (draftId === undefined && item.id === 'walkie-park');");
   });
 });

@@ -134,6 +134,8 @@ create table if not exists walks (
   completed_by_user_id uuid references users(id) on delete set null,
   had_pee boolean,
   had_poop boolean,
+  pee_count integer check (pee_count is null or pee_count >= 0),
+  poop_count integer check (poop_count is null or poop_count >= 0),
   note text,
   duration_minutes int,
   is_unplanned boolean not null default false,

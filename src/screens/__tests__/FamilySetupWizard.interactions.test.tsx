@@ -31,9 +31,10 @@ jest.mock('../../components/TimePickerField', () => ({
   },
 }));
 jest.mock('../../components/UserFormModal', () => ({
-  UserFormModal: ({ visible, onSave }: { visible: boolean; onSave: (user: { name: string; avatar: string; color: string }) => void }) => {
+  UserFormModal: ({ visible, editingUser, onSave }: { visible: boolean; editingUser: { id: string } | null; onSave: (user: { name: string; avatar: string; color: string }) => void }) => {
     const { Pressable, Text } = require('react-native');
-    return visible ? <Pressable accessibilityRole="button" accessibilityLabel="שמירת בן משפחה לבדיקה" onPress={() => onSave({ name: 'נועה בת כהן', avatar: '👧', color: '#5B8DEF' })}><Text>שמירת בן משפחה לבדיקה</Text></Pressable> : null;
+    const label = editingUser ? 'שמירת עריכת בן משפחה לבדיקה' : 'שמירת בן משפחה לבדיקה';
+    return visible ? <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={() => onSave({ name: editingUser ? 'עידן המעודכן' : 'נועה בת כהן', avatar: '👧', color: '#5B8DEF' })}><Text>{label}</Text></Pressable> : null;
   },
 }));
 jest.mock('../../components/FamilySharingModal', () => ({ FamilySharingModal: () => null }));
@@ -62,8 +63,8 @@ const progress = { familyId: FAMILY_ID, ownerAuthUserId: 'verified-owner', step:
 function setup(step: 2 | 3 | 4 | 5 = 2, pendingDogSex?: 'male' | 'female', omitAdminProgress = false) {
   const onProgressChange = jest.fn();
   const onComplete = jest.fn().mockResolvedValue(undefined);
-  const saveDog = jest.fn(async (dog: typeof DOG) => {
-    useFamilyStore.setState({ dog, dogs: [dog], selectedDogId: dog.id });
+  const saveDog = jest.fn(async (savedDog: typeof DOG) => {
+    useFamilyStore.setState((state) => ({ dog: savedDog, dogs: [...state.dogs.filter((item) => item.id !== savedDog.id), savedDog], selectedDogId: savedDog.id }));
   });
   const loadFamily = jest.fn().mockResolvedValue(undefined);
   const loadSchedule = jest.fn().mockResolvedValue(true);
@@ -73,15 +74,18 @@ function setup(step: 2 | 3 | 4 | 5 = 2, pendingDogSex?: 'male' | 'female', omitA
     return user;
   });
   const addRule = jest.fn(async (rule: any) => useScheduleStore.setState((state) => ({ rules: [...state.rules, rule] })));
-  const signIn = jest.fn().mockResolvedValue(undefined);
+  const signIn = jest.fn(async (userId?: string) => { useAuthStore.setState({ currentUserId: userId ?? ADMIN_ID }); });
+  const updateUser = jest.fn(async (user: any) => { useFamilyStore.setState((state) => ({ users: state.users.map((item) => item.id === user.id ? user : item) })); });
   useAuthStore.setState({ currentUserId: omitAdminProgress ? null : ADMIN_ID, familyId: FAMILY_ID, familyRole: 'admin', isQaFamily: omitAdminProgress, signIn } as any);
   const scheduleDog = step >= 4 ? { ...DOG } : null;
-  useFamilyStore.setState({ family: { id: FAMILY_ID, name: 'משפחת כהן', inviteCode: 'ABC123', timezone: 'Asia/Jerusalem', createdAt: '2026-01-01T00:00:00.000Z' }, dog: scheduleDog, dogs: scheduleDog ? [scheduleDog] : [], users: [ADMIN], selectedDogId: scheduleDog?.id, loading: false, error: null, load: loadFamily, saveDog, selectDog: jest.fn(), removeDogPhoto: jest.fn(), addUser, updateUser: jest.fn() } as any);
-  useScheduleStore.setState({ rules: [], entries: [], walks: [], loading: false, error: null, load: loadSchedule, addRule, updateRule: jest.fn(), deleteRule: jest.fn() } as any);
+  const selectDog = jest.fn(async (dogId: string) => { useFamilyStore.setState((state) => ({ selectedDogId: dogId, dog: state.dogs.find((item) => item.id === dogId) ?? state.dog })); });
+  useFamilyStore.setState({ family: { id: FAMILY_ID, name: 'משפחת כהן', inviteCode: 'ABC123', timezone: 'Asia/Jerusalem', createdAt: '2026-01-01T00:00:00.000Z' }, dog: scheduleDog, dogs: scheduleDog ? [scheduleDog] : [], users: [ADMIN], selectedDogId: scheduleDog?.id, loading: false, error: null, load: loadFamily, saveDog, selectDog, removeDogPhoto: jest.fn(), addUser, updateUser } as any);
+  const updateRule = jest.fn(async (id: string, patch: any) => useScheduleStore.setState((state) => ({ rules: state.rules.map((rule) => rule.id === id ? { ...rule, ...patch } : rule) })));
+  useScheduleStore.setState({ rules: [], entries: [], walks: [], loading: false, error: null, actionError: null, clearActionError: jest.fn(), load: loadSchedule, addRule, updateRule, deleteRule: jest.fn() } as any);
   mockPickAndUpload.mockReset();
   mockTakeAndUpload.mockReset();
   const view = render(<SafeAreaProvider><FamilySetupWizard familyId={FAMILY_ID} progress={{ ...progress, ...(omitAdminProgress ? { adminUserId: undefined } : {}), ...(pendingDogSex ? { pendingDogSex } : {}), step }} onProgressChange={onProgressChange} onComplete={onComplete} /></SafeAreaProvider>);
-  return { ...view, onProgressChange, onComplete, saveDog, addUser, addRule, loadFamily, loadSchedule, signIn };
+  return { ...view, onProgressChange, onComplete, saveDog, addUser, updateUser, addRule, updateRule, loadFamily, loadSchedule, signIn, selectDog };
 }
 
 describe('FamilySetupWizard interactions', () => {
@@ -90,7 +94,9 @@ describe('FamilySetupWizard interactions', () => {
 
   it('advances after the real-photo preview and avoids a redundant second dog save', async () => {
     const state = setup();
-    await waitFor(() => expect(screen.getByLabelText('שם הכלב או הכלבה')).toBeTruthy());
+    // The initial family/schedule hydration can finish after the default waitFor window on busy CI runners.
+    // Wait for the real input, rather than asserting against the transient loading screen.
+    await waitFor(() => expect(screen.getByLabelText('שם הכלב או הכלבה')).toBeTruthy(), { timeout: 10000 });
     fireEvent.changeText(screen.getByLabelText('שם הכלב או הכלבה'), 'בוקי');
     await act(async () => { fireEvent.press(screen.getByLabelText('נקבה')); });
     mockPickAndUpload.mockResolvedValue('https://cdn.example/buki.jpg');
@@ -106,7 +112,7 @@ describe('FamilySetupWizard interactions', () => {
 
     await act(async () => { fireEvent.press(screen.getByLabelText('המשך לבני המשפחה')); });
     expect(state.onProgressChange).toHaveBeenLastCalledWith(expect.objectContaining({ step: 3 }));
-    expect(screen.getByLabelText('הוספת בן או בת משפחה')).toBeTruthy();
+    expect(await screen.findByLabelText('הוספת בן או בת משפחה')).toBeTruthy();
     expect(state.saveDog).toHaveBeenCalledTimes(2);
   });
 
@@ -162,7 +168,8 @@ describe('FamilySetupWizard interactions', () => {
 
     const nameInput = screen.getByLabelText('שם מנהל המשפחה');
     fireEvent.changeText(nameInput, 'מנהל בדיקה');
-    await act(async () => { fireEvent.press(screen.getByLabelText('שמירה והמשך')); });
+    expect(screen.queryByLabelText('הוספת בן או בת משפחה')).toBeNull();
+    await act(async () => { fireEvent.press(screen.getByLabelText('שמירת פרופיל המנהל')); });
 
     expect(await screen.findByText(/פרופיל המנהל נשמר במשפחת הבדיקה/)).toBeTruthy();
     expect(state.addUser).toHaveBeenCalledTimes(1);
@@ -181,7 +188,10 @@ describe('FamilySetupWizard interactions', () => {
       expect.objectContaining({ id: ADMIN_ID, familyId: FAMILY_ID, name: 'מנהל בדיקה' }),
     ]));
 
-    await act(async () => { fireEvent.press(screen.getByLabelText('שמירה והמשך')); });
+    expect(screen.queryByLabelText('הוספת בן או בת משפחה')).toBeNull();
+    await act(async () => { fireEvent.press(screen.getByLabelText('שמירת פרופיל המנהל')); });
+    expect(screen.getByLabelText('הוספת בן או בת משפחה')).toBeTruthy();
+    await act(async () => { fireEvent.press(screen.getByLabelText('המשך להגדרת הטיולים')); });
     expect(await screen.findByText('טיולים בכל יום (0)')).toBeTruthy();
     expect(state.addUser).toHaveBeenCalledTimes(1);
     expect(state.signIn).toHaveBeenCalledTimes(2);
@@ -385,9 +395,71 @@ describe('FamilySetupWizard interactions', () => {
     expect(state.onProgressChange).toHaveBeenLastCalledWith(expect.objectContaining({ step: 4 }));
   });
 
+  it('opens existing member details and updates the same member without adding a duplicate', async () => {
+    const state = setup(3);
+    const member = { ...ADMIN, id: 'member-idan', name: 'עידן' };
+    act(() => { useFamilyStore.setState((current) => ({ users: [...current.users, member] })); });
+    fireEvent.press(await screen.findByLabelText('עריכת עידן'));
+    fireEvent.press(await screen.findByLabelText('שמירת עריכת בן משפחה לבדיקה'));
+    await waitFor(() => expect(state.updateUser).toHaveBeenCalledWith(expect.objectContaining({ id: 'member-idan', name: 'עידן המעודכן' })));
+    expect(state.addUser).not.toHaveBeenCalled();
+  });
+
+  it('configures each dog independently and persists the selected dog sex', async () => {
+    const state = setup(2);
+    await waitFor(() => expect(screen.getByLabelText('שם הכלב או הכלבה')).toBeTruthy());
+    fireEvent.changeText(screen.getByLabelText('שם הכלב או הכלבה'), 'קושקוש');
+    await act(async () => { fireEvent.press(screen.getByLabelText('המשך לבני המשפחה')); });
+    const firstDog = useFamilyStore.getState().dogs.find((item) => item.name === 'קושקוש')!;
+    await act(async () => { fireEvent.press(screen.getByText('חזרה')); });
+    fireEvent.changeText(screen.getByLabelText('שם של כלב נוסף'), 'קישקוש');
+    await act(async () => { fireEvent.press(screen.getByLabelText('הוספת כלב נוסף')); });
+    const secondDog = useFamilyStore.getState().dogs.find((item) => item.name === 'קישקוש')!;
+    fireEvent.press(screen.getByLabelText('נקבה'));
+    await waitFor(() => expect(state.saveDog).toHaveBeenLastCalledWith(expect.objectContaining({ id: secondDog.id, name: 'קישקוש', sex: 'female' })));
+    mockPickAndUpload.mockResolvedValue('https://cdn.example/kishkush.jpg');
+    await act(async () => { fireEvent.press(screen.getByLabelText('בחירת תמונה מהגלריה')); });
+    expect(mockPickAndUpload).toHaveBeenCalledWith('dogs', FAMILY_ID, secondDog.id, expect.any(Function));
+    expect(useFamilyStore.getState().dogs.find((item) => item.id === secondDog.id)?.photoUrl).toBe('https://cdn.example/kishkush.jpg');
+    expect(useFamilyStore.getState().dogs.find((item) => item.id === firstDog.id)?.name).toBe('קושקוש');
+    expect(useFamilyStore.getState().dogs.find((item) => item.id === firstDog.id)?.photoUrl).toBeUndefined();
+    expect(useFamilyStore.getState().dogs.find((item) => item.id === secondDog.id)?.sex).toBe('female');
+  });
+
+  it('edits an existing walk in place and shows its dog assignment in the multi-dog summary', async () => {
+    const state = setup(4);
+    const secondDog = { ...DOG, id: 'dog-two', name: 'קישקוש' };
+    const secondMember = { ...ADMIN, id: 'member-idan', name: 'עידן' };
+    act(() => {
+      useFamilyStore.setState({ dog: DOG, dogs: [DOG, secondDog], selectedDogId: DOG.id, users: [ADMIN, secondMember] });
+      useScheduleStore.setState({ rules: [{ id: 'rule-one', familyId: FAMILY_ID, dogId: DOG.id, time: '08:00', daysOfWeek: [0, 1, 2, 3, 4, 5, 6], rotationUserIds: [ADMIN_ID], rotationAnchorDate: '2026-10-12', sortOrder: 0, active: true, createdAt: '2026-10-12T00:00:00.000Z' }] as any });
+    });
+    fireEvent.press(await screen.findByLabelText('עריכת טיול בשעה 08:00'));
+    expect(screen.getByLabelText('עריכת טיול קבוע')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('בחירת שעת טיול'));
+    fireEvent.press(screen.getByText('עידן'));
+    await act(async () => { fireEvent.press(screen.getByLabelText('שמירת עדכון הטיול')); });
+    expect(state.updateRule).toHaveBeenCalledWith('rule-one', { time: '09:30', rotationUserIds: ['member-idan'] });
+    await act(async () => { fireEvent.press(screen.getByLabelText('המשך לסיכום')); });
+    expect(screen.getByText(/09:30/)).toBeTruthy();
+    expect(screen.getAllByText(/לוקה/).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('assigns a newly created walk to the selected dog in a multi-dog family', async () => {
+    const state = setup(4);
+    const secondDog = { ...DOG, id: 'dog-two', name: 'קישקוש' };
+    act(() => { useFamilyStore.setState({ dog: DOG, dogs: [DOG, secondDog], selectedDogId: DOG.id }); });
+    fireEvent.press(await screen.findByLabelText('לוח טיולים של קישקוש'));
+    fireEvent.press(screen.getByLabelText('בחירת שעת טיול'));
+    await act(async () => { fireEvent.press(screen.getByLabelText('הוספת שעה ללוח')); });
+    expect(state.addRule).toHaveBeenCalledWith(expect.objectContaining({ familyId: FAMILY_ID, dogId: secondDog.id, time: '09:30' }));
+    expect(screen.getAllByText(/קישקוש/).length).toBeGreaterThan(0);
+  });
+
   it('saves configured schedule times and completes directly to the dashboard callback', async () => {
     const state = setup(4);
     act(() => { useFamilyStore.setState({ dog: DOG, dogs: [DOG], selectedDogId: DOG.id }); });
+    expect(screen.queryByLabelText(`לוח טיולים של ${DOG.name}`)).toBeNull();
     await waitFor(() => expect(screen.getByLabelText('בחירת שעת טיול')).toBeTruthy());
     fireEvent.press(screen.getByLabelText('בחירת שעת טיול'));
     await act(async () => { fireEvent.press(screen.getByLabelText('הוספת שעה ללוח')); });

@@ -120,6 +120,11 @@ describe('computeMemberDistribution', () => {
     expect(completed.responsibleUserId).toBe('omer');
   });
 
+  it('uses explicit actual-walker attribution when it differs from legacy completion fields', () => {
+    const walk = makeWalk({ status: 'done', responsibleUserId: 'maor', completedByUserId: 'father', actualWalkerUserId: 'maor' });
+    expect(computeMemberDistribution([walk])).toEqual([{ userId: 'maor', count: 1 }]);
+  });
+
   it('falls back to responsibleUserId when completedByUserId is missing', () => {
     const walks = [makeWalk({ status: 'done', responsibleUserId: 'c', completedByUserId: undefined })];
     expect(computeMemberDistribution(walks)).toEqual([{ userId: 'c', count: 1 }]);
@@ -184,14 +189,15 @@ describe('applyStatisticsFilters', () => {
     expect(applyStatisticsFilters(walks, { ...DEFAULT_STATISTICS_FILTERS, dogId: 'dog-2' }).map((w) => w.id)).toEqual(['b']);
   });
 
-  it('filters by memberId matching either responsibleUserId or completedByUserId', () => {
+  it('filters by memberId matching responsibility, actual walker, or legacy completedByUserId', () => {
     const walks = [
       makeWalk({ id: 'scheduled-for', responsibleUserId: 'noam', completedByUserId: 'dana' }),
       makeWalk({ id: 'completed-by', responsibleUserId: 'other', completedByUserId: 'noam' }),
+      makeWalk({ id: 'actual-walker', responsibleUserId: 'other', completedByUserId: 'manager', actualWalkerUserId: 'noam' }),
       makeWalk({ id: 'unrelated', responsibleUserId: 'x', completedByUserId: 'y' }),
     ];
     const result = applyStatisticsFilters(walks, { ...DEFAULT_STATISTICS_FILTERS, memberId: 'noam' });
-    expect(result.map((w) => w.id).sort()).toEqual(['completed-by', 'scheduled-for']);
+    expect(result.map((w) => w.id).sort()).toEqual(['actual-walker', 'completed-by', 'scheduled-for']);
   });
 
   it('filters by status', () => {
