@@ -178,7 +178,7 @@ async function requestAdminEmailVerificationWithBrowserTransport(
 
 function canUseBrowserOtpTransport(): boolean {
   if (typeof window === 'undefined'
-    || typeof globalThis.fetch !== 'function'
+    || typeof XMLHttpRequest === 'undefined'
     || !supabaseProjectUrl
     || !supabaseClientKey) {
     return false;
@@ -204,31 +204,52 @@ async function requestEmailOtpOverBrowserTransport(
   email: string,
   shouldCreateUser: boolean
 ): Promise<void> {
-  const response = await globalThis.fetch(browserOtpEndpoint(), {
-    method: 'POST',
-    mode: 'cors',
-    credentials: 'omit',
-    cache: 'no-store',
-    headers: {
-      apikey: supabaseClientKey,
-      Authorization: `Bearer ${supabaseClientKey}`,
-      'Content-Type': 'application/json;charset=UTF-8',
-    },
-    body: JSON.stringify({
-      email,
-      data: {},
-      create_user: shouldCreateUser,
-      gotrue_meta_security: {},
-    }),
+  return new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    let settled = false;
+    const fail = (reason: string, status?: number, code?: string) => {
+      if (settled) return;
+      settled = true;
+      const error = new Error(reason) as Error & { status?: number; code?: string };
+      if (status !== undefined) error.status = status;
+      if (code) error.code = code;
+      reject(error);
+    };
+    try {
+      xhr.open('POST', browserOtpEndpoint(), true);
+      xhr.timeout = 15000;
+      xhr.withCredentials = false;
+      xhr.setRequestHeader('apikey', supabaseClientKey);
+      xhr.setRequestHeader('Authorization', `Bearer ${supabaseClientKey}`);
+      xhr.setRequestHeader('Content-Type', 'application/json;charset=UTF-8');
+      xhr.onload = () => {
+        if (settled) return;
+        if (xhr.status >= 200 && xhr.status < 300) {
+          settled = true;
+          resolve();
+          return;
+        }
+        let code: string | undefined;
+        try {
+          const body: unknown = JSON.parse(xhr.responseText);
+          if (body && typeof body === 'object' && 'code' in body
+            && typeof body.code === 'string') code = body.code;
+        } catch { /* Never surface the response body or personal data. */ }
+        fail('email OTP request failed', xhr.status, code);
+      };
+      xhr.onerror = () => fail('email OTP network error');
+      xhr.ontimeout = () => fail('email OTP timeout');
+      xhr.onabort = () => fail('email OTP aborted');
+      xhr.send(JSON.stringify({
+        email,
+        data: {},
+        create_user: shouldCreateUser,
+        gotrue_meta_security: {},
+      }));
+    } catch {
+      fail('email OTP transport initialization failed');
+    }
   });
-
-  if (response.ok) return;
-
-  const body = await response.json().catch(() => null) as { code?: unknown } | null;
-  const error = new Error('email OTP request failed') as Error & { code?: string; status?: number };
-  if (typeof body?.code === 'string') error.code = body.code;
-  error.status = response.status;
-  throw error;
 }
 
 /**
