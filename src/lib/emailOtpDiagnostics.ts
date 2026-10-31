@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 
 /**
- * Temporary, in-memory diagnostics for the Staging iPhone Safari OTP issue.
+ * Temporary, in-memory diagnostics for the iPhone Safari OTP issue.
  * Keep this allow-list narrow: never retain or emit raw error messages,
  * request bodies, email addresses, OTPs, sessions, or headers.
  * Remove this module after the Staging device issue is diagnosed.
@@ -69,6 +69,7 @@ export function acquireOtpRequestLock(lock: { current: boolean }): boolean {
 }
 
 const STAGING_SUPABASE_URL = 'https://czbxhsoxyawprqehkfit.supabase.co';
+const PRODUCTION_SUPABASE_URL = 'https://zxolmnkevbtorxmcyvnz.supabase.co';
 const SAFE_ERROR_CODES = new Set([
   'email_address_invalid',
   'email_not_confirmed',
@@ -93,10 +94,15 @@ export function isOtpDiagnosticsEnabledFor(input: {
   platform: string;
   hostname?: string | null;
   supabaseUrl?: string | null;
+  diagnosticOptIn?: boolean;
 }): boolean {
-  return input.platform === 'web'
-    && input.hostname?.toLowerCase() === 'staging.walkielink.co.il'
-    && input.supabaseUrl === STAGING_SUPABASE_URL;
+  if (input.platform !== 'web') return false;
+  if (input.hostname?.toLowerCase() === 'staging.walkielink.co.il') {
+    return input.supabaseUrl === STAGING_SUPABASE_URL;
+  }
+  return input.hostname?.toLowerCase() === 'walkielink.co.il'
+    && input.supabaseUrl === PRODUCTION_SUPABASE_URL
+    && input.diagnosticOptIn === true;
 }
 
 export function isOtpDiagnosticsEnabled(): boolean {
@@ -105,6 +111,7 @@ export function isOtpDiagnosticsEnabled(): boolean {
     platform: Platform.OS,
     hostname: window.location.hostname,
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
+    diagnosticOptIn: new URLSearchParams(window.location.search).get('otp_diag') === '1',
   });
 }
 
@@ -346,7 +353,7 @@ export function createOtpDiagnosticTrace(): {
         snapshot.events.push(event);
         // The gate is checked before a trace is created and this event object
         // contains only allow-listed metadata. It is never persisted.
-        console.info('[staging-otp-diagnostic]', JSON.stringify({ reference: snapshot.reference, ...event }));
+        console.info('[otp-diagnostic]', JSON.stringify({ reference: snapshot.reference, ...event }));
       },
     },
   };
