@@ -6,6 +6,7 @@ import {
   createOtpDiagnosticTrace,
   getOtpDiagnosticSummary,
   isOtpDiagnosticsEnabledFor,
+  isOtpDiagnosticsOptedIn,
   probeOtpEndpointConnectivity,
   probeOtpSdkTransport,
 } from '../emailOtpDiagnostics';
@@ -38,6 +39,14 @@ describe('temporary Staging email OTP diagnostics', () => {
     expect(isOtpDiagnosticsEnabledFor({ ...production, diagnosticOptIn: false })).toBe(false);
     expect(isOtpDiagnosticsEnabledFor({ ...production, supabaseUrl: staging.supabaseUrl })).toBe(false);
     expect(isOtpDiagnosticsEnabledFor({ ...production, hostname: 'fake.walkielink.co.il' })).toBe(false);
+  });
+
+  it('keeps an explicit Production opt-in when client-side navigation removes the query string', () => {
+    expect(isOtpDiagnosticsOptedIn('?otp_diag=1')).toBe(true);
+    expect(isOtpDiagnosticsOptedIn('', '1')).toBe(true);
+    expect(isOtpDiagnosticsOptedIn('', null, true)).toBe(true);
+    expect(isOtpDiagnosticsOptedIn('', null, false)).toBe(false);
+    expect(isOtpDiagnosticsOptedIn('?otp_diag=0', null, false)).toBe(false);
   });
 
   it('records handler, validation, invocation, and successful promise resolution in order', async () => {

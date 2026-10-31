@@ -70,6 +70,40 @@ export function acquireOtpRequestLock(lock: { current: boolean }): boolean {
 
 const STAGING_SUPABASE_URL = 'https://czbxhsoxyawprqehkfit.supabase.co';
 const PRODUCTION_SUPABASE_URL = 'https://zxolmnkevbtorxmcyvnz.supabase.co';
+const OTP_DIAGNOSTICS_OPT_IN_KEY = 'walkie.otp-diagnostics-opt-in';
+
+/**
+ * Preserve an explicit production diagnostic opt-in across client-side URL
+ * cleanup/navigation. The opt-in is tab-scoped and is captured only on the
+ * exact Production hostname/project pair; diagnostic records themselves
+ * remain in memory and are never persisted.
+ */
+function captureInitialOtpDiagnosticsOptIn(): boolean {
+  if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.location) return false;
+  if (window.location.hostname.toLowerCase() !== 'walkielink.co.il'
+    || process.env.EXPO_PUBLIC_SUPABASE_URL !== PRODUCTION_SUPABASE_URL) return false;
+  try {
+    if (new URLSearchParams(window.location.search).get('otp_diag') !== '1') return false;
+    window.sessionStorage?.setItem(OTP_DIAGNOSTICS_OPT_IN_KEY, '1');
+    return true;
+  } catch {
+    // The in-memory result still preserves opt-in for this loaded app session.
+    return new URLSearchParams(window.location.search).get('otp_diag') === '1';
+  }
+}
+
+const INITIAL_OTP_DIAGNOSTICS_OPT_IN = captureInitialOtpDiagnosticsOptIn();
+
+export function isOtpDiagnosticsOptedIn(
+  search: string,
+  rememberedOptIn: string | null = null,
+  initialOptIn = false
+): boolean {
+  return initialOptIn
+    || new URLSearchParams(search).get('otp_diag') === '1'
+    || rememberedOptIn === '1';
+}
+
 const SAFE_ERROR_CODES = new Set([
   'email_address_invalid',
   'email_not_confirmed',
@@ -107,11 +141,23 @@ export function isOtpDiagnosticsEnabledFor(input: {
 
 export function isOtpDiagnosticsEnabled(): boolean {
   if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.location) return false;
+  let rememberedOptIn: string | null = null;
+  try {
+    rememberedOptIn = window.sessionStorage?.getItem(OTP_DIAGNOSTICS_OPT_IN_KEY) ?? null;
+  } catch {
+    // Storage can be unavailable in private browsing; the current URL and
+    // module-load snapshot above remain valid opt-in sources.
+  }
+  const diagnosticOptIn = isOtpDiagnosticsOptedIn(
+    window.location.search,
+    rememberedOptIn,
+    INITIAL_OTP_DIAGNOSTICS_OPT_IN
+  );
   return isOtpDiagnosticsEnabledFor({
     platform: Platform.OS,
     hostname: window.location.hostname,
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
-    diagnosticOptIn: new URLSearchParams(window.location.search).get('otp_diag') === '1',
+    diagnosticOptIn,
   });
 }
 
