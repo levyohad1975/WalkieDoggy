@@ -1,5 +1,10 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
-import { supabase, SupabaseNotConfiguredError } from './supabase';
+import {
+  supabase,
+  supabaseClientKey,
+  supabaseProjectUrl,
+  SupabaseNotConfiguredError,
+} from './supabase';
 import { withSyncIdentityFence } from './syncIdentityFence';
 import { beginOtpFetchTrace, type OtpDiagnosticSink } from './emailOtpDiagnostics';
 
@@ -120,7 +125,79 @@ export function requestAdminEmailVerification(
   shouldCreateUser = true,
   diagnostics?: OtpDiagnosticSink
 ): Promise<string> {
-  return requestAdminEmailVerificationWithAuth(requireAuthClient(), email, shouldCreateUser, diagnostics);
+  return requestAdminEmailVerificationWithBrowserTransportFallback(
+    requireAuthClient(),
+    email,
+    shouldCreateUser,
+    diagnostics
+  );
+}
+
+/**
+ * iOS Safari has intermittently rejected this app's Supabase JS OTP call
+ * before the request reaches Auth, while an ordinary fetch to the same Auth
+ * endpoint succeeds. Keep the SDK as the normal path; only use this narrow
+ * browser fallback for its transport rejection. The request has the same
+ * public client credentials and server-side OTP semantics as signInWithOtp.
+ */
+async function requestAdminEmailVerificationWithBrowserTransportFallback(
+  auth: VerifiedAdminAuthClient,
+  email: string,
+  shouldCreateUser: boolean,
+  diagnostics?: OtpDiagnosticSink
+): Promise<string> {
+  try {
+    return await requestAdminEmailVerificationWithAuth(auth, email, shouldCreateUser, diagnostics);
+  } catch (error) {
+    if (!shouldUseBrowserOtpTransportFallback(error)) throw error;
+
+    const normalized = assertEmail(email);
+    await requestEmailOtpOverBrowserTransport(normalized, shouldCreateUser);
+    return normalized;
+  }
+}
+
+function shouldUseBrowserOtpTransportFallback(error: unknown): boolean {
+  if (typeof window === 'undefined'
+    || typeof globalThis.fetch !== 'function'
+    || !supabaseProjectUrl
+    || !supabaseClientKey) {
+    return false;
+  }
+
+  const name = error instanceof Error ? error.name : '';
+  return error instanceof TypeError || name === 'AuthRetryableFetchError';
+}
+
+async function requestEmailOtpOverBrowserTransport(
+  email: string,
+  shouldCreateUser: boolean
+): Promise<void> {
+  const response = await globalThis.fetch(`${supabaseProjectUrl.replace(/\/$/, '')}/auth/v1/otp`, {
+    method: 'POST',
+    mode: 'cors',
+    credentials: 'omit',
+    cache: 'no-store',
+    headers: {
+      apikey: supabaseClientKey,
+      Authorization: `Bearer ${supabaseClientKey}`,
+      'Content-Type': 'application/json;charset=UTF-8',
+    },
+    body: JSON.stringify({
+      email,
+      data: {},
+      create_user: shouldCreateUser,
+      gotrue_meta_security: {},
+    }),
+  });
+
+  if (response.ok) return;
+
+  const body = await response.json().catch(() => null) as { code?: unknown } | null;
+  const error = new Error('email OTP request failed') as Error & { code?: string; status?: number };
+  if (typeof body?.code === 'string') error.code = body.code;
+  error.status = response.status;
+  throw error;
 }
 
 /**

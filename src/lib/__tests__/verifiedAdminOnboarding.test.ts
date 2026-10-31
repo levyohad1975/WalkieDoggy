@@ -22,6 +22,8 @@ jest.mock('../supabase', () => ({
     auth: { signInWithOtp: jest.fn(), verifyOtp: jest.fn(), getUser: jest.fn() },
     rpc: jest.fn(),
   },
+  supabaseProjectUrl: 'https://example.supabase.co',
+  supabaseClientKey: 'publishable-key',
   SupabaseNotConfiguredError: class SupabaseNotConfiguredError extends Error {},
 }));
 
@@ -207,8 +209,15 @@ describe('verified admin onboarding', () => {
 });
 
 describe('the requireAuthClient()-backed exports (delegate to the real supabase.auth)', () => {
+  const originalFetch = globalThis.fetch;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    Object.defineProperty(globalThis, 'fetch', { configurable: true, value: originalFetch });
+  });
+
+  afterAll(() => {
+    Object.defineProperty(globalThis, 'fetch', { configurable: true, value: originalFetch });
   });
 
   it('requestAdminEmailVerification() calls supabase.auth.signInWithOtp with the normalized email', async () => {
@@ -233,6 +242,30 @@ describe('the requireAuthClient()-backed exports (delegate to the real supabase.
       email: 'admin@example.com',
       options: { shouldCreateUser: false },
     });
+  });
+
+  it('uses the direct browser Auth transport only after the SDK rejects before its request', async () => {
+    mockAuth.signInWithOtp.mockRejectedValue(new TypeError('Failed to fetch'));
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200 });
+    Object.defineProperty(globalThis, 'fetch', { configurable: true, value: fetchMock });
+
+    await expect(requestAdminEmailVerification(' Admin@Example.com ')).resolves.toBe('admin@example.com');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://example.supabase.co/auth/v1/otp',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          apikey: 'publishable-key',
+          Authorization: 'Bearer publishable-key',
+        }),
+        body: JSON.stringify({
+          email: 'admin@example.com',
+          data: {},
+          create_user: true,
+          gotrue_meta_security: {},
+        }),
+      })
+    );
   });
 
   it('verifyAdminEmailOtp() calls supabase.auth.verifyOtp and returns the confirmed identity', async () => {
