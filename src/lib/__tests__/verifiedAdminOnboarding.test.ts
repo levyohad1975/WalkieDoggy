@@ -210,14 +210,23 @@ describe('verified admin onboarding', () => {
 
 describe('the requireAuthClient()-backed exports (delegate to the real supabase.auth)', () => {
   const originalFetch = globalThis.fetch;
+  const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
 
   beforeEach(() => {
     jest.clearAllMocks();
     Object.defineProperty(globalThis, 'fetch', { configurable: true, value: originalFetch });
+    // Jest supplies jsdom's window by default. Remove it for SDK/native-path
+    // tests; browser transport tests opt in explicitly below.
+    Reflect.deleteProperty(globalThis, 'window');
   });
 
   afterAll(() => {
     Object.defineProperty(globalThis, 'fetch', { configurable: true, value: originalFetch });
+    if (originalWindowDescriptor) {
+      Object.defineProperty(globalThis, 'window', originalWindowDescriptor);
+    } else {
+      Reflect.deleteProperty(globalThis, 'window');
+    }
   });
 
   it('requestAdminEmailVerification() calls supabase.auth.signInWithOtp with the normalized email', async () => {
@@ -244,12 +253,13 @@ describe('the requireAuthClient()-backed exports (delegate to the real supabase.
     });
   });
 
-  it('uses the direct browser Auth transport only after the SDK rejects before its request', async () => {
-    mockAuth.signInWithOtp.mockRejectedValue(new TypeError('Failed to fetch'));
+  it('uses the direct browser Auth transport instead of the SDK on web', async () => {
     const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 200 });
     Object.defineProperty(globalThis, 'fetch', { configurable: true, value: fetchMock });
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: {} });
 
     await expect(requestAdminEmailVerification(' Admin@Example.com ')).resolves.toBe('admin@example.com');
+    expect(mockAuth.signInWithOtp).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledWith(
       'https://example.supabase.co/auth/v1/otp',
       expect.objectContaining({

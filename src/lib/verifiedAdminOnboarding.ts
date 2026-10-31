@@ -125,7 +125,18 @@ export function requestAdminEmailVerification(
   shouldCreateUser = true,
   diagnostics?: OtpDiagnosticSink
 ): Promise<string> {
-  return requestAdminEmailVerificationWithBrowserTransportFallback(
+  // iPhone Safari has shown an SDK-only failure before any Auth request is
+  // issued. On the web, use the documented Auth HTTP endpoint directly with
+  // the same public client credential. Native clients retain the SDK path.
+  if (canUseBrowserOtpTransport()) {
+    return requestAdminEmailVerificationWithBrowserTransport(
+      email,
+      shouldCreateUser,
+      diagnostics
+    );
+  }
+
+  return requestAdminEmailVerificationWithAuth(
     requireAuthClient(),
     email,
     shouldCreateUser,
@@ -135,38 +146,44 @@ export function requestAdminEmailVerification(
 
 /**
  * iOS Safari has intermittently rejected this app's Supabase JS OTP call
- * before the request reaches Auth, while an ordinary fetch to the same Auth
- * endpoint succeeds. Keep the SDK as the normal path; only use this narrow
- * browser fallback for its transport rejection. The request has the same
- * public client credentials and server-side OTP semantics as signInWithOtp.
+ * before the request reaches Auth, while a standard browser fetch reaches the
+ * same endpoint. This path is intentionally web-only. It sends the same
+ * public-client request semantics as signInWithOtp; issuing and validating the
+ * OTP remains wholly server-side in Supabase Auth.
  */
-async function requestAdminEmailVerificationWithBrowserTransportFallback(
-  auth: VerifiedAdminAuthClient,
+async function requestAdminEmailVerificationWithBrowserTransport(
   email: string,
   shouldCreateUser: boolean,
   diagnostics?: OtpDiagnosticSink
 ): Promise<string> {
+  let normalized: string;
   try {
-    return await requestAdminEmailVerificationWithAuth(auth, email, shouldCreateUser, diagnostics);
+    normalized = assertEmail(email);
+    recordOtpDiagnostic(diagnostics, 'input_validation_completed');
   } catch (error) {
-    if (!shouldUseBrowserOtpTransportFallback(error)) throw error;
+    recordOtpDiagnostic(diagnostics, 'input_validation_failed', error, 'validation');
+    throw error;
+  }
 
-    const normalized = assertEmail(email);
+  recordOtpDiagnostic(diagnostics, 'sign_in_with_otp_invoked');
+  try {
     await requestEmailOtpOverBrowserTransport(normalized, shouldCreateUser);
+    recordOtpDiagnostic(diagnostics, 'promise_resolved');
     return normalized;
+  } catch (error) {
+    recordOtpDiagnostic(diagnostics, 'promise_rejected', error);
+    throw error;
   }
 }
 
-function shouldUseBrowserOtpTransportFallback(error: unknown): boolean {
+function canUseBrowserOtpTransport(): boolean {
   if (typeof window === 'undefined'
     || typeof globalThis.fetch !== 'function'
     || !supabaseProjectUrl
     || !supabaseClientKey) {
     return false;
   }
-
-  const name = error instanceof Error ? error.name : '';
-  return error instanceof TypeError || name === 'AuthRetryableFetchError';
+  return true;
 }
 
 async function requestEmailOtpOverBrowserTransport(
