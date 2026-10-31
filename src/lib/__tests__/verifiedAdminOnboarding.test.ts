@@ -258,13 +258,13 @@ describe('the requireAuthClient()-backed exports (delegate to the real supabase.
     Object.defineProperty(globalThis, 'fetch', { configurable: true, value: fetchMock });
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
-      value: { location: { hostname: 'walkielink.co.il' } },
+      value: { location: { hostname: 'walkielink.co.il', origin: 'https://walkielink.co.il' } },
     });
 
     await expect(requestAdminEmailVerification(' Admin@Example.com ')).resolves.toBe('admin@example.com');
     expect(mockAuth.signInWithOtp).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledWith(
-      '/_walkie-auth/otp',
+      'https://walkielink.co.il/_walkie-auth/otp',
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({

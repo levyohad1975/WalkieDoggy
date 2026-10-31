@@ -191,9 +191,10 @@ function browserOtpEndpoint(): string {
   // reached Supabase. On the public Production host, keep the browser request
   // same-origin and let the narrowly scoped Vercel rewrite forward only this
   // OTP endpoint. Staging and previews continue to call their own Supabase
-  // project directly.
+  // project directly. Use an absolute URL: Expo's web fetch implementation
+  // can reject a relative URL before it ever starts a browser request.
   if (window.location?.hostname.toLowerCase() === 'walkielink.co.il') {
-    return '/_walkie-auth/otp';
+    return `${window.location.origin}/_walkie-auth/otp`;
   }
 
   return `${supabaseProjectUrl.replace(/\/$/, '')}/auth/v1/otp`;
