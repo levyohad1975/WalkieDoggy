@@ -468,7 +468,16 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
     <Modal visible={visible && isSystemAdmin} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
-          <RtlText style={styles.title} accessibilityRole="header">🛡️ ניהול מערכת</RtlText>
+          {/* Production report 2026-11-01 (iPhone): the title, four links and
+              "סגירה" shared one row, so on a phone the row overflowed and the
+              close button was off-screen with no way out. Title and close
+              now always share the first row; the links wrap below. */}
+          <View style={styles.headerTopRow}>
+            <RtlText style={styles.title} accessibilityRole="header" numberOfLines={1}>🛡️ ניהול מערכת</RtlText>
+            <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="סגירת ניהול מערכת" hitSlop={10} style={styles.closeButton}>
+              <RtlText style={styles.closeLink}>✕ סגירה</RtlText>
+            </Pressable>
+          </View>
           <View style={styles.headerActions}>
             {!selectedFamilyId && !emailLogVisible && !auditVisible && !animationTestVisible && !familyChatsVisible ? (
               <>
@@ -486,9 +495,6 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
                 </Pressable>
               </>
             ) : null}
-            <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="סגירת ניהול מערכת" hitSlop={10}>
-              <RtlText style={styles.closeLink}>סגירה</RtlText>
-            </Pressable>
           </View>
         </View>
 
@@ -985,16 +991,16 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
   header: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.md,
+    gap: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  title: { ...typography.screenTitle, fontSize: 20, color: colors.textPrimary },
-  headerActions: { flexDirection: 'row-reverse', alignItems: 'center', gap: spacing.lg },
+  headerTopRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  title: { ...typography.screenTitle, fontSize: 20, color: colors.textPrimary, flexShrink: 1 },
+  headerActions: { flexDirection: 'row-reverse', flexWrap: 'wrap', alignItems: 'center', columnGap: spacing.lg, rowGap: spacing.xs },
+  closeButton: { flexShrink: 0, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   headerLink: { color: colors.primaryDark, fontWeight: '700', fontSize: 14 },
   closeLink: { color: colors.primaryDark, fontWeight: '700', fontSize: 15 },
   backLink: { color: colors.primaryDark, fontWeight: '700', fontSize: 14, marginBottom: spacing.md },
