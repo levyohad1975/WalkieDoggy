@@ -30,9 +30,11 @@ describe('HomeScreen Dashboard scroll position (structural)', () => {
     const block = home.slice(idx, home.indexOf('// The Family Admin review action'));
     expect(block).toContain('.find((walk) => (walk.actualWalkerUserId ?? walk.responsibleUserId) === currentUserId)?.id ?? null');
     expect(block).toContain('const priorActiveSpontaneousWalkIdRef = useRef<string | null>(null);');
-    expect(block).toMatch(/if \(myActiveSpontaneousWalkId && !priorActiveSpontaneousWalkIdRef\.current\) \{\s*\n\s*scrollViewRef\.current\?\.scrollTo\(\{ y: 0, animated: true \}\);\s*\n\s*\}/);
+    // Production 2026-11-01: the scroll is repeated after the closing sheet
+    // hands focus back on web (see scrollHomeToTopAfterSheet).
+    expect(block).toMatch(/if \(myActiveSpontaneousWalkId && !priorActiveSpontaneousWalkIdRef\.current\) \{\s*\n\s*scrollHomeToTopAfterSheet\(\);\s*\n\s*\}/);
     expect(block).toContain('priorActiveSpontaneousWalkIdRef.current = myActiveSpontaneousWalkId;');
-    expect(block).toMatch(/\}, \[myActiveSpontaneousWalkId\]\);/);
+    expect(block).toMatch(/\}, \[myActiveSpontaneousWalkId, scrollHomeToTopAfterSheet\]\);/);
     // Never keyed on minute-tick/GPS state — would fire a scroll on every
     // timer tick or GPS status change while the walk stays active.
     expect(block).not.toMatch(/\[myActiveSpontaneousWalkId,\s*(minuteTick|gpsTrackingStatus|gpsTrackingWalkId)/);
