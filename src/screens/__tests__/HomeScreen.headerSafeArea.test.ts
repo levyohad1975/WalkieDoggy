@@ -45,7 +45,12 @@ describe('Home — starting my scheduled walk shows the whole live card', () => 
 
   it('scrolls back to the top once when my scheduled walk turns active', () => {
     expect(home).toContain('const myActiveScheduledWalkId = nextWalk && isActiveWalk(nextWalk)');
-    expect(home).toMatch(/if \(myActiveScheduledWalkId && myActiveScheduledWalkId !== priorActiveScheduledWalkIdRef\.current\) \{\n\s*scrollViewRef\.current\?\.scrollTo\(\{ y: 0, animated: true \}\);/);
+    expect(home).toMatch(/if \(myActiveScheduledWalkId && myActiveScheduledWalkId !== priorActiveScheduledWalkIdRef\.current\) \{\n\s*scrollHomeToTopAfterSheet\(\);/);
+  });
+
+  it('repeats the scroll after the closing sheet hands focus back (web focus restore scrolls the page)', () => {
+    expect(home).toContain('scrollTopTimersRef.current = [setTimeout(toTop, 350), setTimeout(toTop, 900)];');
+    expect(home).toMatch(/if \(myActiveSpontaneousWalkId && !priorActiveSpontaneousWalkIdRef\.current\) \{\n\s*scrollHomeToTopAfterSheet\(\);/);
   });
 
   it('labels an active walk in "בהמשך היום" as in progress, not as the next walk', () => {

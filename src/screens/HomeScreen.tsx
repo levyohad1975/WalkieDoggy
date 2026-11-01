@@ -756,13 +756,27 @@ export function HomeScreen() {
       .find((walk) => (walk.actualWalkerUserId ?? walk.responsibleUserId) === currentUserId)?.id ?? null,
     [activeSpontaneousWalkGroups, currentUserId]
   );
+  // Production report 2026-11-01 (installed iPhone app): starting a walk
+  // still left Home scrolled to the bottom. The start flow closes a sheet,
+  // and on web the closing Modal hands focus back to the button that opened
+  // it near the bottom of the page; the browser then scrolls that button
+  // into view AFTER our scroll-to-top. Repeat the scroll once that focus
+  // hand-back has happened.
+  const scrollTopTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const scrollHomeToTopAfterSheet = useCallback(() => {
+    scrollTopTimersRef.current.forEach(clearTimeout);
+    const toTop = () => scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+    toTop();
+    scrollTopTimersRef.current = [setTimeout(toTop, 350), setTimeout(toTop, 900)];
+  }, []);
+  useEffect(() => () => { scrollTopTimersRef.current.forEach(clearTimeout); }, []);
   const priorActiveSpontaneousWalkIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (myActiveSpontaneousWalkId && !priorActiveSpontaneousWalkIdRef.current) {
-      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      scrollHomeToTopAfterSheet();
     }
     priorActiveSpontaneousWalkIdRef.current = myActiveSpontaneousWalkId;
-  }, [myActiveSpontaneousWalkId]);
+  }, [myActiveSpontaneousWalkId, scrollHomeToTopAfterSheet]);
   // Production report 2026-11-01: after starting the SCHEDULED walk, Home was
   // left scrolled so the live card's title sat under the status bar. The
   // whole live card (timer, map, "סיים טיול") fits from the top, so return
@@ -772,10 +786,10 @@ export function HomeScreen() {
   const priorActiveScheduledWalkIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (myActiveScheduledWalkId && myActiveScheduledWalkId !== priorActiveScheduledWalkIdRef.current) {
-      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      scrollHomeToTopAfterSheet();
     }
     priorActiveScheduledWalkIdRef.current = myActiveScheduledWalkId;
-  }, [myActiveScheduledWalkId]);
+  }, [myActiveScheduledWalkId, scrollHomeToTopAfterSheet]);
   // The Family Admin review action on the Dashboard opens the same gated
   // History review panel; it is offered only when that panel would render
   // for this exact viewer (real admin, Staging flag, not impersonating,
