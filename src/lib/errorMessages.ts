@@ -264,6 +264,7 @@ export const SHARED_ERROR_RULES: ErrorRule[] = [
   // whether an account exists for the submitted address.
   { includes: 'over_email_send_rate_limit', message: 'נשלחו יותר מדי בקשות קוד. המתינו כדקה לפני ניסיון נוסף.' },
   { includes: 'Email rate limit exceeded', message: 'נשלחו יותר מדי בקשות קוד. המתינו כדקה לפני ניסיון נוסף.' },
+  { includes: 'email OTP request failed: HTTP 429', message: 'נשלחו יותר מדי בקשות קוד. המתינו כדקה לפני ניסיון נוסף.' },
   { includes: 'For security purposes, you can only request this after', message: 'נשלח קוד לאחרונה. המתינו כדקה לפני בקשה נוספת.' },
   { includes: 'Email address not authorized', message: 'השרת אינו מורשה לשלוח לכתובת הזו כרגע. פנו לתמיכה.' },
   { includes: 'email provider is not configured', message: 'שירות שליחת הדוא״ל אינו מוגדר כרגע. פנו לתמיכה.' },

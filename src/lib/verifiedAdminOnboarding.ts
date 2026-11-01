@@ -239,7 +239,14 @@ async function requestEmailOtpOverBrowserTransport(
           if (body && typeof body === 'object' && 'code' in body
             && typeof body.code === 'string') code = body.code;
         } catch { /* Never surface the response body or personal data. */ }
-        fail('email OTP request failed', xhr.status, code);
+        // Include only Auth's fixed error code (e.g. over_email_send_rate_limit)
+        // or the HTTP status -- never the email or response body -- so the
+        // shared friendly-message rules can explain throttling to the user.
+        fail(
+          code ? `email OTP request failed: ${code}` : `email OTP request failed: HTTP ${xhr.status}`,
+          xhr.status,
+          code
+        );
       };
       xhr.onerror = () => fail('email OTP network error');
       xhr.ontimeout = () => fail('email OTP timeout');

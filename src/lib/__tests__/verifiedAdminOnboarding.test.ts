@@ -325,6 +325,39 @@ describe('the requireAuthClient()-backed exports (delegate to the real supabase.
     }
   });
 
+  it('surfaces only Auth\'s error code for a throttled OTP request so the UI can explain it', async () => {
+    const xhr = {
+      open: jest.fn(), setRequestHeader: jest.fn(), send: jest.fn(),
+      status: 429, responseText: JSON.stringify({ code: 'over_email_send_rate_limit', msg: 'admin@example.com' }),
+      timeout: 0, withCredentials: true,
+      onload: null as null | (() => void),
+      onerror: null as null | (() => void),
+      ontimeout: null as null | (() => void),
+      onabort: null as null | (() => void),
+    };
+    const originalXhr = Object.getOwnPropertyDescriptor(globalThis, 'XMLHttpRequest');
+    Object.defineProperty(globalThis, 'XMLHttpRequest', { configurable: true, value: jest.fn(() => xhr) });
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { location: { hostname: 'walkielink.co.il', origin: 'https://walkielink.co.il' } },
+    });
+    try {
+      const pending = requestAdminEmailVerification('admin@example.com');
+      xhr.onload?.();
+      const error = await pending.catch((e: Error) => e);
+      expect((error as Error).message).toBe('email OTP request failed: over_email_send_rate_limit');
+      expect((error as Error).message).not.toContain('admin@example.com');
+      const { friendlyErrorMessage } = require('../errorMessages');
+      expect(friendlyErrorMessage(error)).toBe('נשלחו יותר מדי בקשות קוד. המתינו כדקה לפני ניסיון נוסף.');
+      expect(friendlyErrorMessage(new Error('email OTP request failed: HTTP 429'))).toBe(
+        'נשלחו יותר מדי בקשות קוד. המתינו כדקה לפני ניסיון נוסף.'
+      );
+    } finally {
+      if (originalXhr) Object.defineProperty(globalThis, 'XMLHttpRequest', originalXhr);
+      else Reflect.deleteProperty(globalThis, 'XMLHttpRequest');
+    }
+  });
+
   it('rejects XHR network errors without exposing email or response body', async () => {
     const xhr = {
       open: jest.fn(), setRequestHeader: jest.fn(), send: jest.fn(),
