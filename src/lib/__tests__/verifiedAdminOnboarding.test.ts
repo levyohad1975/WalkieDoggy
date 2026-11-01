@@ -289,6 +289,42 @@ describe('the requireAuthClient()-backed exports (delegate to the real supabase.
     }
   });
 
+  it('sends a strict boolean create_user even if a cyclic press event is passed by mistake', async () => {
+    // Production 2026-11-01: `onPress={sendAdminVerification}` delivered the
+    // React press event as `shouldCreateUser`; JSON.stringify of that cyclic
+    // object threw before any request was sent. The request must still go out.
+    const xhr = {
+      open: jest.fn(), setRequestHeader: jest.fn(), send: jest.fn(),
+      status: 200, responseText: '', timeout: 0, withCredentials: true,
+      onload: null as null | (() => void),
+      onerror: null as null | (() => void),
+      ontimeout: null as null | (() => void),
+      onabort: null as null | (() => void),
+    };
+    const originalXhr = Object.getOwnPropertyDescriptor(globalThis, 'XMLHttpRequest');
+    Object.defineProperty(globalThis, 'XMLHttpRequest', { configurable: true, value: jest.fn(() => xhr) });
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { location: { hostname: 'walkielink.co.il', origin: 'https://walkielink.co.il' } },
+    });
+    const pressEvent: Record<string, unknown> = { type: 'press' };
+    pressEvent.self = pressEvent;
+    try {
+      const pending = requestAdminEmailVerification(
+        'admin@example.com',
+        pressEvent as unknown as boolean
+      );
+      expect(xhr.send).toHaveBeenCalledWith(JSON.stringify({
+        email: 'admin@example.com', data: {}, create_user: true, gotrue_meta_security: {},
+      }));
+      xhr.onload?.();
+      await expect(pending).resolves.toBe('admin@example.com');
+    } finally {
+      if (originalXhr) Object.defineProperty(globalThis, 'XMLHttpRequest', originalXhr);
+      else Reflect.deleteProperty(globalThis, 'XMLHttpRequest');
+    }
+  });
+
   it('rejects XHR network errors without exposing email or response body', async () => {
     const xhr = {
       open: jest.fn(), setRequestHeader: jest.fn(), send: jest.fn(),

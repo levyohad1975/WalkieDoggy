@@ -122,16 +122,20 @@ export async function requestAdminEmailVerificationWithAuth(
 
 export function requestAdminEmailVerification(
   email: string,
-  shouldCreateUser = true,
+  shouldCreateUser: boolean = true,
   diagnostics?: OtpDiagnosticSink
 ): Promise<string> {
+  // Strict boolean only: a non-boolean (e.g. a UI press event passed by
+  // mistake) must never reach the JSON request body, where a cyclic value
+  // makes serialization throw before the request is sent.
+  const createUser = shouldCreateUser !== false;
   // iPhone Safari has shown an SDK-only failure before any Auth request is
   // issued. On the web, use the documented Auth HTTP endpoint directly with
   // the same public client credential. Native clients retain the SDK path.
   if (canUseBrowserOtpTransport()) {
     return requestAdminEmailVerificationWithBrowserTransport(
       email,
-      shouldCreateUser,
+      createUser,
       diagnostics
     );
   }
@@ -139,7 +143,7 @@ export function requestAdminEmailVerification(
   return requestAdminEmailVerificationWithAuth(
     requireAuthClient(),
     email,
-    shouldCreateUser,
+    createUser,
     diagnostics
   );
 }

@@ -191,7 +191,12 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const sendAdminVerification = async (shouldCreateUser = true) => {
+  const sendAdminVerification = async (shouldCreateUser: boolean = true) => {
+    // Never pass this handler directly as `onPress`: the press event would
+    // arrive as `shouldCreateUser`, and serializing that cyclic DOM/React
+    // event into the OTP request body throws before any request is sent
+    // (Production 2026-11-01). Coerce defensively to a strict boolean too.
+    const createUser = shouldCreateUser !== false;
     if (!acquireOtpRequestLock(emailVerificationRequestRef)) return;
     setVerifyingEmail(true);
     setCreateError(null);
@@ -208,7 +213,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
     } : undefined;
     diagnostics?.record('button_handler_entered');
     try {
-      const normalizedEmail = await requestAdminEmailVerification(adminEmail, shouldCreateUser, diagnostics);
+      const normalizedEmail = await requestAdminEmailVerification(adminEmail, createUser, diagnostics);
       setAdminEmail(normalizedEmail);
       setVerificationSent(true);
       setVerificationCode('');
@@ -721,7 +726,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
               {!verificationSent && !verifiedAdminEmail ? (
                 <Button
                   label={verifyingEmail ? 'שולח קוד...' : 'שליחת קוד אימות'}
-                  onPress={sendAdminVerification}
+                  onPress={() => sendAdminVerification(true)}
                   disabled={!adminEmail.trim() || verifyingEmail || probingOtpEndpoint}
                   loading={verifyingEmail}
                   style={styles.wideButton}
@@ -768,7 +773,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
                   <Button
                     label="שליחת קוד חדש"
                     variant="secondary"
-                    onPress={sendAdminVerification}
+                    onPress={() => sendAdminVerification(true)}
                     disabled={verifyingEmail}
                     style={styles.wideButton}
                   />
