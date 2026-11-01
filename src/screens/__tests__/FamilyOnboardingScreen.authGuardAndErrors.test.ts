@@ -88,7 +88,7 @@ describe('FamilyOnboardingScreen — create/join auth guard and error mapping (s
   });
 
   it('uses a synchronous request lock and records Staging-only OTP diagnostics', () => {
-    const start = source.indexOf('const sendAdminVerification = async (shouldCreateUser = true) => {');
+    const start = source.indexOf('const sendAdminVerification = async (shouldCreateUser: boolean = true) => {');
     const end = source.indexOf('\n  };', start);
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
@@ -100,7 +100,7 @@ describe('FamilyOnboardingScreen — create/join auth guard and error mapping (s
     );
     expect(body).toContain('emailVerificationRequestRef.current = false;');
     expect(body).toContain("diagnostics?.record('button_handler_entered')");
-    expect(body).toContain('requestAdminEmailVerification(adminEmail, shouldCreateUser, diagnostics)');
+    expect(body).toContain('requestAdminEmailVerification(adminEmail, createUser, diagnostics)');
     expect(source).toContain('isOtpDiagnosticsEnabled()');
     expect(source).toContain('probeOtpSdkTransport(supabase?.auth)');
     expect(source).toContain('auth_client_rejected_before_fetch');
