@@ -47,22 +47,42 @@ replayed one and runs
 `supabase/manual_tests/public_api_role_privileges_readonly.sql`, which calls
 the onboarding RPCs as an `authenticated` user and fails on any 42501.
 
-**Remediation (Production; requires explicit approval).**
+**Remediation (Production; requires explicit approval).** Tooling:
+`scripts/production/public_privileges.py` (`manifest-sql`, `remediation`,
+`rollback`).
 
-1. From a successful Integration Full-Chain run at the release SHA, download
-   `production-bootstrap-evidence-<SHA>` and verify `SHA256SUMS`.
-2. Read-only preflight on Production: the `public` relation and routine lists
-   must match the artifact's `clean-public-schema.sql` (50 tables, 2
-   sequences, 195 routines, all owned by `postgres`).
-3. Apply `public-privileges.sql` unchanged as one migration through the
-   Supabase migration executor (name `restore_public_api_privileges_<sha7>`).
-   It changes privileges only; no rows, Auth users, Storage or secrets.
-4. Verify: run the manifest query on Production and `diff` it against
-   `public-acl-manifest.tsv` (must be identical), then run
-   `public_api_role_privileges_readonly.sql`.
-5. Rollback: re-applying the file is idempotent. Reverting to the broken state
-   is never useful; if a specific grant is wrong, correct the source migration,
-   rerun the rehearsal and re-apply the new artifact's file.
+1. **Artifact.** From a successful Integration Full-Chain run at the release
+   SHA, download `production-bootstrap-evidence-<SHA>`, verify `SHA256SUMS`,
+   and render the guarded file:
+   `public_privileges.py remediation --manifest public-acl-manifest.tsv
+   --catalog-counts catalog-counts.tsv --source-commit <40-char SHA>`.
+2. **Snapshot (read-only).** Immediately before applying, run `manifest-sql`
+   on Production, save it as `production-acl-snapshot.tsv`, and confirm its
+   SHA-256 equals the last recorded value (drift check). Recorded
+   2026-11-01 08:16 UTC: `f8fca0df1e8e3c63c3d73c08e6e6fe4e4c7efba9a7065e3383c8930de9f9ab8d`
+   (123 rows: routines only — PUBLIC 11, authenticated 97, service_role 15;
+   no schema, table, column, sequence or default-privilege grants).
+   Render `public_privileges.py rollback production-acl-snapshot.tsv`.
+3. **Apply.** Apply the remediation file unchanged as ONE migration through
+   the Supabase migration executor (`restore_public_api_privileges_<sha7>`).
+   Its preflight refuses to run unless `public` has the artifact's table and
+   routine counts, every object is owned by `postgres` and the API roles
+   exist; its postconditions refuse to commit if the API roles still lack
+   schema USAGE, if `anon` can execute any SECURITY DEFINER routine, or if a
+   client role can CREATE in `public`. Any failure rolls back everything.
+   It changes privileges only — no rows, Auth users, Storage, policies,
+   function bodies or secrets.
+4. **Verify (read-only).** Run `manifest-sql` again and `diff` it against
+   `public-acl-manifest.tsv` (must be byte-identical; the query orders with
+   `COLLATE "C"`), then `public_api_role_privileges_readonly.sql` and
+   `security_definer_execute_contract.sql`, and check the API logs for the
+   absence of new 42501 errors.
+5. **Rollback.** Apply the rendered rollback file as one transaction; it
+   restores the snapshot exactly (verified by re-running `manifest-sql` and
+   diffing against the snapshot). Note that the snapshot state *is* the
+   outage, so rollback is only for an unexpected regression; the preferred
+   correction is a fixed source migration, a new rehearsal, and a new
+   artifact. Re-applying the remediation is idempotent.
 
 ## Execution update (2026-10-25)
 

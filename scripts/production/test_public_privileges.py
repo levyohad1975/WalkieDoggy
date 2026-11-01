@@ -15,7 +15,7 @@ sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from public_privileges import parse_manifest, privileges_sql  # noqa: E402
+from public_privileges import parse_manifest, privileges_sql, remediation_sql  # noqa: E402
 
 BASE = "\n".join(
     [
@@ -104,6 +104,39 @@ class PrivilegesSqlTests(unittest.TestCase):
     def test_deterministic(self) -> None:
         manifest = BASE + "\ntable\tpublic.families\tanon\tSELECT\n"
         self.assertEqual(privileges_sql(manifest), privileges_sql(manifest))
+
+
+class RemediationAndRollbackTests(unittest.TestCase):
+    COUNTS = "public_tables\t50\npublic_rls_tables\t50\npublic_functions\t195\n"
+    SHA = "0123456789abcdef0123456789abcdef01234567"
+
+    def test_remediation_guards_wrap_the_exact_privileges(self) -> None:
+        manifest = BASE + "\ntable\tpublic.families\tauthenticated\tSELECT\n"
+        sql = remediation_sql(manifest, self.COUNTS, self.SHA)
+        self.assertIn(f"-- Source commit: {self.SHA}", sql)
+        self.assertIn("expected 50 public tables", sql)
+        self.assertIn("expected 195 public routines", sql)
+        self.assertIn("not owned by postgres", sql)
+        self.assertIn("anon can execute SECURITY DEFINER routines", sql)
+        body = privileges_sql(manifest)
+        start = sql.index(body)
+        self.assertLess(sql.index("$preflight$;"), start)
+        self.assertLess(start, sql.index("do $postconditions$"))
+
+    def test_remediation_requires_full_sha_and_counts(self) -> None:
+        with self.assertRaisesRegex(ValueError, "40-character"):
+            remediation_sql(BASE, self.COUNTS, "bf3ccbc")
+        with self.assertRaisesRegex(ValueError, "public_functions"):
+            remediation_sql(BASE, "public_tables\t50\n", self.SHA)
+
+    def test_rollback_accepts_a_snapshot_without_schema_usage(self) -> None:
+        snapshot = "function\tpublic.whoami()\tauthenticated\tEXECUTE\n"
+        with self.assertRaisesRegex(ValueError, "lacks USAGE"):
+            privileges_sql(snapshot)
+        sql = privileges_sql(snapshot, require_schema_usage=False)
+        self.assertIn('grant EXECUTE on routine public.whoami() to "authenticated";', sql)
+        self.assertNotIn("grant USAGE on schema public", sql)
+        self.assertIn("revoke all on schema public", sql)
 
 
 class BundleTests(unittest.TestCase):

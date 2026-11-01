@@ -526,6 +526,14 @@ jobs:
             --walk-reminder-url "https://zxolmnkevbtorxmcyvnz.supabase.co/functions/v1/send-walk-reminders" \
             --output-dir "$bundle_dir"
           rm "$bundle_dir/raw-public.sql" "$bundle_dir/raw-storage.sql"
+          # Guarded, transaction-only repair for an already-bootstrapped
+          # database (Production 2026-11-01). Applying it still requires
+          # explicit Production approval; CI only builds and rehearses it.
+          python3 scripts/production/public_privileges.py remediation \
+            --manifest "$bundle_dir/public-acl-manifest.tsv" \
+            --catalog-counts "$bundle_dir/catalog-counts.tsv" \
+            --source-commit "$GITHUB_SHA" \
+            > "$bundle_dir/production-api-privileges-remediation.sql"
 
           {
             printf 'commit=%s\n' "$GITHUB_SHA"
@@ -546,7 +554,7 @@ jobs:
           # bundle is downloaded and extracted on a different machine.
           (
             cd "$bundle_dir"
-            sha256sum schema-public-storage.sql clean-public-schema.sql public-privileges.sql storage-configuration.sql register-walk-reminder-cron.sql apply-clean-bootstrap.sql catalog-counts.tsv public-acl-manifest.tsv storage-buckets.tsv source-sha256.txt > SHA256SUMS
+            sha256sum schema-public-storage.sql clean-public-schema.sql public-privileges.sql production-api-privileges-remediation.sql storage-configuration.sql register-walk-reminder-cron.sql apply-clean-bootstrap.sql catalog-counts.tsv public-acl-manifest.tsv storage-buckets.tsv source-sha256.txt > SHA256SUMS
           )
           tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
             -czf "/tmp/production-bootstrap-evidence-${GITHUB_SHA}.tar.gz" \
@@ -630,6 +638,16 @@ jobs:
           diff -u "$bundle_dir/public-acl-manifest.tsv" /tmp/clean-bootstrap-public-acl-manifest.tsv
           psql "$db_url" -v ON_ERROR_STOP=1 \
             -f supabase/manual_tests/public_api_role_privileges_readonly.sql
+
+          # Rehearse the live-database repair exactly as Production would run
+          # it: one transaction, guards included, then an identical manifest.
+          psql "$db_url" -v ON_ERROR_STOP=1 -1 \
+            -f "$bundle_dir/production-api-privileges-remediation.sql"
+          psql "$db_url" -v ON_ERROR_STOP=1 -At -F $'\t' \
+            -f /tmp/public-acl-manifest.sql \
+            | diff -u "$bundle_dir/public-acl-manifest.tsv" -
+          psql "$db_url" -v ON_ERROR_STOP=1 \
+            -f supabase/manual_tests/security_definer_execute_contract.sql
 
       - name: Upload data-free bootstrap evidence bundle
         uses: actions/upload-artifact@v4
