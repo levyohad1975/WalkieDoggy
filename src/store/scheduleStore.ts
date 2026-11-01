@@ -27,6 +27,7 @@ import { deleteScheduleRuleWithOccurrences, isSupabaseConfigured } from '../lib/
 import { adminRescheduleWalk, adminSwapWalks } from '../lib/walkAdmin';
 import { appendRawDiagnostic, friendlyErrorMessage, rawMessageOf } from '../lib/errorMessages';
 import { useGpsStore } from './gpsStore';
+import { recordGpsLifecycle } from '../lib/gpsLifecycleLog';
 import { completeWalkLifecycleOperation, getWalkLifecycleOperationId } from '../data/walkLifecycleOperationIds';
 import { isActiveWalk } from '../logic/walkLifecycle';
 // TEMPORARY DIAGNOSTIC INSTRUMENTATION — see perfTrace.ts's own doc
@@ -231,6 +232,23 @@ async function scheduleNotificationsForWalk(walk: Walk) {
  * still pending from its current data. Exported so App.tsx can also run it
  * on startup/foreground, independent of a full schedule reload.
  */
+
+/**
+ * Short, non-sensitive code shown with the "GPS not saved" notice so a
+ * screenshot tells support which step failed (Production 2026-11-01):
+ *   GPS-L  this device no longer held the GPS lease
+ *   GPS-N  the device reported itself offline
+ *   GPS-S  the server refused the route upload
+ *   GPS-E  anything else
+ */
+export function gpsFinalizationFailureCode(error: unknown): string {
+  const message = error instanceof Error ? error.message : String((error as { message?: unknown })?.message ?? error ?? '');
+  if (/no longer owns GPS|ownership expired or transferred/i.test(message)) return 'GPS-L';
+  if (/buffered locally|Network unavailable|offline/i.test(message)) return 'GPS-N';
+  if (/append_walk_gps_route_v11/i.test(message)) return 'GPS-S';
+  return 'GPS-E';
+}
+
 export async function reconcileScheduleNotifications(familyId: string, walks: Walk[]): Promise<void> {
   // Batch 2 / Decision 4 — see scheduleNotificationsForWalk()'s identical
   // gate just above for the full reasoning. Cancel rather than reconcile:
@@ -1040,6 +1058,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         // transaction after this final route write.
         let gpsFinalizedBeforeFinish = false;
         let gpsFinalizationFailed = false;
+        let gpsFinalizationCode = 'GPS-E';
         if ((repository.finishWalkV12 || repository.finishWalkV11) && useGpsStore.getState().trackingWalkId === walkId) {
           gpsFinalizedBeforeFinish = true;
           try {
@@ -1055,6 +1074,8 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
             // unsaved tail stays in memory, and the walk is still finished
             // (online or through the offline lifecycle outbox).
             gpsFinalizationFailed = true;
+            gpsFinalizationCode = gpsFinalizationFailureCode(error);
+            recordGpsLifecycle('finalize_failed', walkId, gpsFinalizationCode);
             console.error('[finishWalk] final GPS route was not saved before finish', { walkId, error });
           }
         }
@@ -1073,7 +1094,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         else updated = markWalkDone(walk, completedByUserId, details);
         set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
         if (gpsFinalizationFailed) {
-          set({ actionError: 'הטיול הסתיים, אך לא הצלחנו לשמור את נתוני ה-GPS. הנתונים נשארו במכשיר — נסו לרענן ולדווח לתמיכה אם הבעיה חוזרת.' });
+          set({ actionError: `הטיול הסתיים, אך לא הצלחנו לשמור את נתוני ה-GPS. הנתונים נשארו במכשיר — נסו לרענן ולדווח לתמיכה אם הבעיה חוזרת. (קוד: ${gpsFinalizationCode})` });
         }
         // Notification cleanup is secondary; it must never skip the GPS
         // finalization after the server has already completed the walk.
