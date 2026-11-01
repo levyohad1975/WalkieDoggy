@@ -763,6 +763,19 @@ export function HomeScreen() {
     }
     priorActiveSpontaneousWalkIdRef.current = myActiveSpontaneousWalkId;
   }, [myActiveSpontaneousWalkId]);
+  // Production report 2026-11-01: after starting the SCHEDULED walk, Home was
+  // left scrolled so the live card's title sat under the status bar. The
+  // whole live card (timer, map, "סיים טיול") fits from the top, so return
+  // there once when my scheduled walk turns active.
+  const myActiveScheduledWalkId = nextWalk && isActiveWalk(nextWalk)
+    && (nextWalk.actualWalkerUserId ?? nextWalk.responsibleUserId) === currentUserId ? nextWalk.id : null;
+  const priorActiveScheduledWalkIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (myActiveScheduledWalkId && myActiveScheduledWalkId !== priorActiveScheduledWalkIdRef.current) {
+      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+    }
+    priorActiveScheduledWalkIdRef.current = myActiveScheduledWalkId;
+  }, [myActiveScheduledWalkId]);
   // The Family Admin review action on the Dashboard opens the same gated
   // History review panel; it is offered only when that panel would render
   // for this exact viewer (real admin, Staging flag, not impersonating,
@@ -1675,7 +1688,7 @@ export function HomeScreen() {
                 <RtlText style={styles.dashboardSingleUpcomingTime}>{dashboardTimelineWalks[0].scheduledTime}</RtlText>
                 <RtlText style={styles.dashboardSingleUpcomingName}>{usersById[dashboardTimelineWalks[0].responsibleUserId]?.name ?? 'בן משפחה'}</RtlText>
               </View>
-              <RtlText style={styles.dashboardSingleUpcomingHint}>הטיול הבא היום</RtlText>
+              <RtlText style={styles.dashboardSingleUpcomingHint}>{isActiveWalk(dashboardTimelineWalks[0]) ? 'בטיול עכשיו' : 'הטיול הבא היום'}</RtlText>
             </View>
           ) : dashboardTimelineWalks.length > 1 ? (
             <View style={styles.dashboardTimelineStops}>

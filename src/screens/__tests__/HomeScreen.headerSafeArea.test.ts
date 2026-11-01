@@ -39,3 +39,16 @@ describe('installed iPhone app — scrolled content never slides under the statu
     expect(rule).toContain('pointer-events: none;');
   });
 });
+
+describe('Home — starting my scheduled walk shows the whole live card', () => {
+  const home: string = require('fs').readFileSync(require.resolve('../HomeScreen'), 'utf8');
+
+  it('scrolls back to the top once when my scheduled walk turns active', () => {
+    expect(home).toContain('const myActiveScheduledWalkId = nextWalk && isActiveWalk(nextWalk)');
+    expect(home).toMatch(/if \(myActiveScheduledWalkId && myActiveScheduledWalkId !== priorActiveScheduledWalkIdRef\.current\) \{\n\s*scrollViewRef\.current\?\.scrollTo\(\{ y: 0, animated: true \}\);/);
+  });
+
+  it('labels an active walk in "בהמשך היום" as in progress, not as the next walk', () => {
+    expect(home).toContain("{isActiveWalk(dashboardTimelineWalks[0]) ? 'בטיול עכשיו' : 'הטיול הבא היום'}");
+  });
+});
