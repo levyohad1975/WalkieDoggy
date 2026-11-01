@@ -2439,10 +2439,12 @@ const styles = StyleSheet.create({
   // Fixed physical lanes. Do not let RTL/flex negotiation move the relief
   // controls outside the compact iPhone card: edit is pinned left, pee/poop
   // pinned right, and the mascot anchor occupies only the centre.
-  dashboardLastWalkActions: { position: 'relative', flex: 1, minWidth: 108, height: 52 },
+  dashboardLastWalkActions: { position: 'relative', flex: 1, minWidth: 124, height: 52 },
   dashboardLastWalkEdit: { position: 'absolute', left: 0, top: 4, alignItems: 'center', justifyContent: 'center', width: 30, height: 44 },
-  dashboardLastWalkMascotLane: { position: 'absolute', left: 32, right: 56, top: 0, height: 52 },
-  dashboardLastWalkNeeds: { position: 'absolute', right: 0, top: 4, width: 54, height: 44, flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', justifyContent: 'space-between' },
+  dashboardLastWalkMascotLane: { position: 'absolute', left: 32, right: 72, top: 0, height: 52 },
+  // Wider than the two 26pt chips so marked chips (and the pee count badge)
+  // do not touch (Production feedback 2026-11-01).
+  dashboardLastWalkNeeds: { position: 'absolute', right: 0, top: 4, width: 70, height: 44, flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', justifyContent: 'space-between' },
   dashboardLastWalkNeedButton: { width: 26, height: 44, alignItems: 'center', justifyContent: 'center' },
   // The 💧 emoji is pale by design, so opacity alone could not tell a marked
   // need from an unmarked one (Production feedback 2026-11-01). A marked

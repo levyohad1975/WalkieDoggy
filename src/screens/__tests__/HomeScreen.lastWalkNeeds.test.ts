@@ -27,3 +27,13 @@ describe('HomeScreen — last walk pee/poop markers', () => {
     expect(source).toContain('`סימון פיפי בטיול האחרון, ${lastWalkPeeCount} פעמים`');
   });
 });
+
+describe('HomeScreen — last walk pee/poop spacing', () => {
+  const source: string = require('fs').readFileSync(require.resolve('../HomeScreen'), 'utf8');
+
+  it('leaves a clear gap between the two 26pt chips, and the mascot lane avoids them', () => {
+    expect(source).toContain("dashboardLastWalkNeeds: { position: 'absolute', right: 0, top: 4, width: 70, height: 44,");
+    expect(source).toContain("dashboardLastWalkNeedButton: { width: 26, height: 44,");
+    expect(source).toContain("dashboardLastWalkMascotLane: { position: 'absolute', left: 32, right: 72,");
+  });
+});
