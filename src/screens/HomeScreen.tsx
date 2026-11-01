@@ -929,6 +929,13 @@ export function HomeScreen() {
     // client-only pass.
     return serverLastResolvedWalk.walk ?? undefined;
   }, [visibleWalks, serverLastResolvedWalk, familyId]);
+  // A walk finished with the live counters stores pee_count/poop_count; the
+  // boolean flag is derived from them server-side, but a legacy row may only
+  // carry the count. Either one means the need happened.
+  const lastWalkPeeCount = lastWalk?.peeCount ?? 0;
+  const lastWalkPoopCount = lastWalk?.poopCount ?? 0;
+  const lastWalkHadPee = !!lastWalk?.hadPee || lastWalkPeeCount > 0;
+  const lastWalkHadPoop = !!lastWalk?.hadPoop || lastWalkPoopCount > 0;
   useEffect(() => {
     if (!lastWalk || lastWalk.status !== 'done') {
       setLastWalkGps(null);
@@ -1730,22 +1737,24 @@ export function HomeScreen() {
                         disabled={!canEditLastWalk}
                         hitSlop={6}
                         accessibilityRole="checkbox"
-                        accessibilityState={{ checked: !!lastWalk.hadPee, disabled: !canEditLastWalk }}
-                        accessibilityLabel="סימון פיפי בטיול האחרון"
-                        style={styles.dashboardLastWalkNeedButton}
+                        accessibilityState={{ checked: lastWalkHadPee, disabled: !canEditLastWalk }}
+                        accessibilityLabel={lastWalkPeeCount > 1 ? `סימון פיפי בטיול האחרון, ${lastWalkPeeCount} פעמים` : 'סימון פיפי בטיול האחרון'}
+                        style={[styles.dashboardLastWalkNeedButton, lastWalkHadPee && styles.dashboardLastWalkNeedActivePee]}
                       >
-                        <RtlText style={[styles.dashboardLastWalkNeed, !lastWalk.hadPee && styles.dashboardLastWalkNeedMuted]}>💧</RtlText>
+                        <RtlText style={[styles.dashboardLastWalkNeed, !lastWalkHadPee && styles.dashboardLastWalkNeedMuted]}>💧</RtlText>
+                        {lastWalkPeeCount > 1 ? <RtlText style={styles.dashboardLastWalkNeedCount}>{lastWalkPeeCount}</RtlText> : null}
                       </Pressable>
                       <Pressable
                         onPress={canEditLastWalk ? () => void editDoneDetails(lastWalk.id, { hadPoop: !lastWalk.hadPoop }) : undefined}
                         disabled={!canEditLastWalk}
                         hitSlop={6}
                         accessibilityRole="checkbox"
-                        accessibilityState={{ checked: !!lastWalk.hadPoop, disabled: !canEditLastWalk }}
-                        accessibilityLabel="סימון קקי בטיול האחרון"
-                        style={styles.dashboardLastWalkNeedButton}
+                        accessibilityState={{ checked: lastWalkHadPoop, disabled: !canEditLastWalk }}
+                        accessibilityLabel={lastWalkPoopCount > 1 ? `סימון קקי בטיול האחרון, ${lastWalkPoopCount} פעמים` : 'סימון קקי בטיול האחרון'}
+                        style={[styles.dashboardLastWalkNeedButton, lastWalkHadPoop && styles.dashboardLastWalkNeedActivePoop]}
                       >
-                        <RtlText style={[styles.dashboardLastWalkNeed, !lastWalk.hadPoop && styles.dashboardLastWalkNeedMuted]}>💩</RtlText>
+                        <RtlText style={[styles.dashboardLastWalkNeed, !lastWalkHadPoop && styles.dashboardLastWalkNeedMuted]}>💩</RtlText>
+                        {lastWalkPoopCount > 1 ? <RtlText style={styles.dashboardLastWalkNeedCount}>{lastWalkPoopCount}</RtlText> : null}
                       </Pressable>
                     </View>
                   ) : null}
@@ -2415,6 +2424,12 @@ const styles = StyleSheet.create({
   dashboardLastWalkMascotLane: { position: 'absolute', left: 32, right: 56, top: 0, height: 52 },
   dashboardLastWalkNeeds: { position: 'absolute', right: 0, top: 4, width: 54, height: 44, flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', justifyContent: 'space-between' },
   dashboardLastWalkNeedButton: { width: 26, height: 44, alignItems: 'center', justifyContent: 'center' },
+  // The 💧 emoji is pale by design, so opacity alone could not tell a marked
+  // need from an unmarked one (Production feedback 2026-11-01). A marked
+  // need gets the same tinted chip as the completion sheet's toggles.
+  dashboardLastWalkNeedActivePee: { height: 30, marginTop: 7, borderRadius: 15, borderWidth: 1.5, backgroundColor: colors.statusCurrentBg, borderColor: colors.primary },
+  dashboardLastWalkNeedActivePoop: { height: 30, marginTop: 7, borderRadius: 15, borderWidth: 1.5, backgroundColor: colors.statusSkippedBg, borderColor: colors.statusSkipped },
+  dashboardLastWalkNeedCount: { position: 'absolute', top: -7, right: -6, minWidth: 15, height: 15, borderRadius: 8, paddingHorizontal: 3, overflow: 'hidden', backgroundColor: colors.primaryDark, color: colors.textInverse, fontSize: 9, lineHeight: 15, fontWeight: '800', textAlign: 'center', writingDirection: 'ltr' },
   dashboardLastWalkEditIcon: { fontSize: 17, color: '#E6B422' },
   dashboardLastWalkEditText: { fontSize: 11, fontWeight: '600', color: '#17345B' },
   dashboardLastWalkNeed: { fontSize: 18 },
