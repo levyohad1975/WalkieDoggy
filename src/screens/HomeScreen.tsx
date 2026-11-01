@@ -95,10 +95,21 @@ export function HomeScreen() {
       requestOpenSystemAdmin();
       return;
     }
+    // Production report 2026-11-01: on the installed iPhone app three quick
+    // taps rarely registered (iOS treats tap pairs as a zoom gesture and
+    // drops their clicks; index.html now sets touch-action: manipulation),
+    // so the window is generous and a long press is a second way in.
     mascotTapTimerRef.current = setTimeout(() => {
       mascotTapCountRef.current = 0;
       mascotTapTimerRef.current = null;
-    }, 700);
+    }, 1200);
+  }, [isSystemAdmin, requestOpenSystemAdmin]);
+  const handleHeaderMascotLongPress = useCallback(() => {
+    if (!isSystemAdmin) return;
+    mascotTapCountRef.current = 0;
+    if (mascotTapTimerRef.current) clearTimeout(mascotTapTimerRef.current);
+    mascotTapTimerRef.current = null;
+    requestOpenSystemAdmin();
   }, [isSystemAdmin, requestOpenSystemAdmin]);
 
   useEffect(() => () => {
@@ -1275,6 +1286,9 @@ export function HomeScreen() {
             />
             <Pressable
               onPress={handleHeaderMascotPress}
+              onLongPress={isSystemAdmin ? handleHeaderMascotLongPress : undefined}
+              delayLongPress={600}
+              hitSlop={8}
               style={[styles.mascotHeaderButton, celebration && styles.homeMascotSuppressed]}
               accessibilityRole="button"
               accessibilityLabel="פתיחת פרופיל הכלב"

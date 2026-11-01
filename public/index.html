@@ -16,6 +16,15 @@
         height: 100%;
         margin: 0;
         background: #FFF8E8;
+        /* iOS treats two quick taps as a zoom gesture and swallows their
+           clicks, which broke repeated taps (e.g. the System Admin triple
+           tap on the header dog). Pinch-zoom stays available. */
+        touch-action: manipulation;
+      }
+      /* touch-action is not inherited past scroll containers, so tappable
+         controls get it directly as well. */
+      [role="button"] {
+        touch-action: manipulation;
       }
       /* These styles disable body scrolling if you are using <ScrollView> */
       body {
