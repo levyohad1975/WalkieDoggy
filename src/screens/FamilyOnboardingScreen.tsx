@@ -957,7 +957,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
               ) : (
                 <Button
                   label={inspecting ? 'בודק...' : 'בדיקת ההזמנה'}
-                  onPress={inspectInvite}
+                  onPress={() => { void inspectInvite(); }}
                   disabled={!parseInviteInput(redeemInput) || inspecting}
                   loading={inspecting}
                   style={styles.wideButton}
@@ -1040,7 +1040,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
             ) : (
               <Button
                 label={looking ? 'מחפש...' : 'חיפוש משפחה'}
-                onPress={lookup}
+                onPress={() => { void lookup(); }}
                 disabled={code.trim().length < 4 || looking}
                 loading={looking}
                 style={styles.wideButton}
