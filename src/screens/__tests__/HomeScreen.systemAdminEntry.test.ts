@@ -26,6 +26,13 @@ describe('HomeScreen — System Admin entry from the header dog', () => {
     expect(source).toMatch(/if \(!isSystemAdmin\) \{\n\s*setDogProfileVisible\(true\);\n\s*return;/);
   });
 
+  it('Settings has a plain System Admin row, only for System Admins', () => {
+    const settings: string = fs.readFileSync(require.resolve('../SettingsScreen'), 'utf8');
+    expect(settings).toContain("const requestOpenSystemAdmin = useSystemAdminStore((s) => s.requestOpen);");
+    expect(settings).toContain('{isSystemAdmin && !systemObserverActive ? (');
+    expect(settings).toMatch(/onPress=\{requestOpenSystemAdmin\}[\s\S]{0,200}testID="settings-system-admin-entry"/);
+  });
+
   it('disables iOS double-tap zoom so repeated taps reach the app', () => {
     expect(html).toMatch(/html,\s*body \{[^}]*touch-action: manipulation;/);
     expect(html).toMatch(/\[role="button"\] \{[^}]*touch-action: manipulation;/);

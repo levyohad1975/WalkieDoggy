@@ -75,6 +75,7 @@ function SettingsScreenContent() {
   const signOut = useAuthStore((s) => s.signOut);
   const familyId = useAuthStore((s) => s.familyId) ?? DEMO_FAMILY.id;
   const isSystemAdmin = useSystemAdminStore((s) => s.isSystemAdmin);
+  const requestOpenSystemAdmin = useSystemAdminStore((s) => s.requestOpen);
   const canShowSyncDiagnostics = isSupabaseConfigured && shouldShowStagingSyncDiagnostics(isSystemAdmin, supabaseProjectUrl);
   // Single source of truth for admin/member permissions — see authStore.
   // REAL role — deliberately NOT the effective/simulated one. This gates
@@ -866,6 +867,26 @@ function SettingsScreenContent() {
             >
               <RtlText style={styles.hubChevron}>‹</RtlText>
               <RtlText style={styles.hubLabel}>▶ סרטון הדרכה</RtlText>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {/* Production report 2026-11-01: the hidden gesture on Home's header
+            dog did not open the console on the owner's iPhone. A plain row,
+            shown only when am_i_system_admin() said yes, is the dependable
+            way in; every console RPC is still re-authorized server-side. */}
+        {isSystemAdmin && !systemObserverActive ? (
+          <View style={styles.section}>
+            <RtlText style={styles.sectionTitle}>🛡️ מנהל מערכת</RtlText>
+            <Pressable
+              style={styles.hubRow}
+              onPress={requestOpenSystemAdmin}
+              accessibilityRole="button"
+              accessibilityLabel="פתיחת ניהול מערכת"
+              testID="settings-system-admin-entry"
+            >
+              <RtlText style={styles.hubChevron}>‹</RtlText>
+              <RtlText style={styles.hubLabel}>🛡️ ניהול מערכת</RtlText>
             </Pressable>
           </View>
         ) : null}
