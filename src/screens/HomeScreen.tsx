@@ -2335,7 +2335,13 @@ const styles = StyleSheet.create({
   testModeBannerText: { flex: 1, color: colors.textInverse, fontWeight: '700', fontSize: typography.meta.fontSize, textAlign: 'right' },
   testModeBannerButton: { backgroundColor: '#ffffff33', borderRadius: radii.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   testModeBannerButtonText: { color: colors.textInverse, fontWeight: '700', fontSize: 12 },
-  dashboardHeroShell: { marginHorizontal: -spacing.md, marginTop: Platform.OS === 'web' ? 'calc(-1 * env(safe-area-inset-top, 0px))' as any : -56, paddingTop: Platform.OS === 'web' ? 'env(safe-area-inset-top, 0px)' as any : 56, backgroundColor: '#F7F3E9', overflow: 'hidden' },
+  // Web: the screen itself starts at the very top (under the status bar in
+  // the installed iPhone app), so the shell must NOT pull up by the inset;
+  // its own top padding then keeps the header row (mascot / bell) below the
+  // status bar, where iOS would otherwise swallow taps (Production report
+  // 2026-11-01: neither the bell nor the mascot responded). The scene
+  // backdrop still fills the status-bar strip.
+  dashboardHeroShell: { marginHorizontal: -spacing.md, marginTop: Platform.OS === 'web' ? 0 : -56, paddingTop: Platform.OS === 'web' ? 'env(safe-area-inset-top, 0px)' as any : 56, backgroundColor: '#F7F3E9', overflow: 'hidden' },
   dashboardHeroBackdrop: { ...StyleSheet.absoluteFill, bottom: 0 },
   topRow: { position: 'relative', minHeight: 54, alignItems: 'center', justifyContent: 'center' },
   // Item 6 (mobile polish): trimmed from 58/6 — a shorter header row so the
