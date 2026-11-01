@@ -31,7 +31,7 @@ describe('FamilyOnboardingScreen offers a neutral choice for installed-PWA launc
     );
   });
 
-  it('renders a pwaChoice branch offering all three onward modes', () => {
+  it('renders a pwaChoice branch offering all four onward modes (incl. family-code join)', () => {
     const blockStart = source.indexOf("mode === 'pwaChoice'");
     const blockEnd = source.indexOf("mode === 'recover'");
     expect(blockStart).toBeGreaterThan(-1);
@@ -40,9 +40,12 @@ describe('FamilyOnboardingScreen offers a neutral choice for installed-PWA launc
     expect(block).toMatch(/setMode\('recover'\)/);
     expect(block).toMatch(/setMode\('redeem'\)/);
     expect(block).toMatch(/setMode\('create'\)/);
+    // A member who joined with the family code in Safari must be able to
+    // join again from the home-screen icon (separate iOS session).
+    expect(block).toMatch(/setMode\('join'\)/);
     // Neutral: no option should read as the assumed/default path -- all
-    // three are the same button variant.
-    expect(block.match(/variant="secondary"/g)?.length).toBe(3);
+    // four are the same button variant.
+    expect(block.match(/variant="secondary"/g)?.length).toBe(4);
   });
 
   it('every "back to start" action is PWA-aware, not a hardcoded choose', () => {

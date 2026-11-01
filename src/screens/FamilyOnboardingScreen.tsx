@@ -565,6 +565,16 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
           onPress={() => setMode('recover')}
           style={styles.wideButton}
         />
+        {/* Production report 2026-11-01: a member who joined in Safari with
+            the family code had no way back in from the home-screen icon
+            (iOS keeps a separate session there) — only admin email
+            recovery and personal invites were offered. */}
+        <Button
+          label="הצטרפות עם קוד משפחה"
+          variant="secondary"
+          onPress={() => setMode('join')}
+          style={styles.wideButton}
+        />
         <Button
           label="יש לי הזמנה"
           variant="secondary"
