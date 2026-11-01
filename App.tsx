@@ -68,6 +68,9 @@ function reconcileNotificationsNow() {
 // unable to tell whether a sync it needs actually completed.
 let foregroundSyncPromise: Promise<void> | null = null;
 
+// Below PRESENCE_FRESH_MINUTES (5) so an open app never ages out.
+const PRESENCE_HEARTBEAT_MS = 2 * 60 * 1000;
+
 /**
  * The single, ordered "the app is now in front of a real user, with a claimed
  * profile" sync sequence — run once after cold-start's restoreSession()
@@ -637,6 +640,22 @@ export default function App() {
     });
     return () => { sub.remove(); removeReminderResponse(); };
   }, [restoreSession]);
+
+  // Presence heartbeat for EVERY signed-in member while the app is open and
+  // in front. Previously only foreground transitions (and an Admin sitting
+  // on the Family screen) wrote presence, so a member actively using the app
+  // aged past the 5-minute "פעיל עכשיו" window and showed as offline
+  // (Production report 2026-11-01). Never runs for hidden System Admin
+  // observation, and skips while the app is backgrounded.
+  useEffect(() => {
+    if (!isSupabaseConfigured || !currentUserId || systemObserverActive) return;
+    const timer = setInterval(() => {
+      if (AppState.currentState !== 'active') return;
+      if (useAuthStore.getState().systemObserverActive) return;
+      void touchLastSeen().catch(() => undefined);
+    }, PRESENCE_HEARTBEAT_MS);
+    return () => clearInterval(timer);
+  }, [currentUserId, systemObserverActive]);
 
   // SafeAreaProvider must wrap every branch — SafeAreaView (and any screen
   // using useSafeAreaInsets) throws if it renders before a provider ancestor
