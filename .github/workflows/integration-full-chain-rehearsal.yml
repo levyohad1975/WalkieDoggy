@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "supabase/**"
+      - "scripts/production/**"
       - "src/data/localRepository.ts"
       - "src/store/scheduleStore.ts"
       - ".github/workflows/integration-full-chain-rehearsal.yml"
@@ -27,6 +28,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.target_branch || github.ref }}
+
+      - name: Unit-test the clean-bootstrap generator and privilege restoration
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/production -p 'test_*.py' -v
 
       - name: Verify known duplicate 0019 state
         shell: bash
@@ -499,10 +503,26 @@ jobs:
             -c "select id, public, coalesce(file_size_limit::text, ''), coalesce(array_to_string(allowed_mime_types, ','), '') from storage.buckets order by id;" \
             > "$bundle_dir/storage-buckets.tsv"
 
+          # The schema dumps above carry no ACLs (--no-privileges), and the
+          # clean bootstrap recreates `public`. Capture the exact privileges
+          # of PUBLIC/anon/authenticated/service_role from this fully
+          # replayed database so the bundle restores them; without this the
+          # API roles cannot even resolve `public` (Production 2026-10-29).
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -f supabase/manual_tests/public_api_role_privileges_readonly.sql
+          python3 scripts/production/public_privileges.py manifest-sql > /tmp/public-acl-manifest.sql
+          psql "postgresql://postgres@127.0.0.1:54322/postgres" \
+            -v ON_ERROR_STOP=1 \
+            -At -F $'\t' \
+            -f /tmp/public-acl-manifest.sql \
+            > "$bundle_dir/public-acl-manifest.tsv"
+
           python3 scripts/production/build_clean_bootstrap_bundle.py \
             --public-dump "$bundle_dir/raw-public.sql" \
             --storage-dump "$bundle_dir/raw-storage.sql" \
             --bucket-manifest "$bundle_dir/storage-buckets.tsv" \
+            --acl-manifest "$bundle_dir/public-acl-manifest.tsv" \
             --walk-reminder-url "https://zxolmnkevbtorxmcyvnz.supabase.co/functions/v1/send-walk-reminders" \
             --output-dir "$bundle_dir"
           rm "$bundle_dir/raw-public.sql" "$bundle_dir/raw-storage.sql"
@@ -513,7 +533,7 @@ jobs:
             # (duplicate migration handling and inert local cron wiring).
             # Hash the committed blobs, never those temporary files, so the
             # evidence is genuinely pinned to GITHUB_SHA.
-            for path in supabase/schema.sql scripts/production/build_clean_bootstrap_bundle.py; do
+            for path in supabase/schema.sql scripts/production/build_clean_bootstrap_bundle.py scripts/production/public_privileges.py; do
               printf '%s  %s\n' "$(git show "$GITHUB_SHA:$path" | sha256sum | awk '{print $1}')" "$path"
             done
             git ls-tree -r --name-only "$GITHUB_SHA" -- supabase/migrations \
@@ -526,7 +546,7 @@ jobs:
           # bundle is downloaded and extracted on a different machine.
           (
             cd "$bundle_dir"
-            sha256sum schema-public-storage.sql clean-public-schema.sql storage-configuration.sql register-walk-reminder-cron.sql apply-clean-bootstrap.sql catalog-counts.tsv storage-buckets.tsv source-sha256.txt > SHA256SUMS
+            sha256sum schema-public-storage.sql clean-public-schema.sql public-privileges.sql storage-configuration.sql register-walk-reminder-cron.sql apply-clean-bootstrap.sql catalog-counts.tsv public-acl-manifest.tsv storage-buckets.tsv source-sha256.txt > SHA256SUMS
           )
           tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
             -czf "/tmp/production-bootstrap-evidence-${GITHUB_SHA}.tar.gz" \
@@ -580,6 +600,7 @@ jobs:
             --public-dump "$bundle_dir/clean-public-schema.sql" \
             --storage-dump "$bundle_dir/storage-configuration.sql" \
             --bucket-manifest "$bundle_dir/storage-buckets.tsv" \
+            --acl-manifest "$bundle_dir/public-acl-manifest.tsv" \
             --walk-reminder-url "http://127.0.0.1:9/functions/v1/send-walk-reminders" \
             --output-dir "$local_cron_dir"
           psql "postgresql://supabase_admin:postgres@127.0.0.1:54322/postgres" \
@@ -598,6 +619,17 @@ jobs:
             -c "select id, public, coalesce(file_size_limit::text, ''), coalesce(array_to_string(allowed_mime_types, ','), '') from storage.buckets order by id;" \
             > /tmp/clean-bootstrap-storage-buckets.tsv
           diff -u "$bundle_dir/storage-buckets.tsv" /tmp/clean-bootstrap-storage-buckets.tsv
+
+          # Catalog counts alone missed the 2026-10-29 Production outage (all
+          # objects present, zero API grants). Prove the bootstrapped ACLs
+          # equal the replayed ones exactly, then exercise the client's
+          # first onboarding calls as the authenticated role.
+          psql "$db_url" -v ON_ERROR_STOP=1 -At -F $'\t' \
+            -f /tmp/public-acl-manifest.sql \
+            > /tmp/clean-bootstrap-public-acl-manifest.tsv
+          diff -u "$bundle_dir/public-acl-manifest.tsv" /tmp/clean-bootstrap-public-acl-manifest.tsv
+          psql "$db_url" -v ON_ERROR_STOP=1 \
+            -f supabase/manual_tests/public_api_role_privileges_readonly.sql
 
       - name: Upload data-free bootstrap evidence bundle
         uses: actions/upload-artifact@v4

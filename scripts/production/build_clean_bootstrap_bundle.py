@@ -17,6 +17,8 @@ import argparse
 import re
 from pathlib import Path
 
+from public_privileges import privileges_sql
+
 
 def sql_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
@@ -151,6 +153,9 @@ def main() -> None:
     parser.add_argument("--public-dump", type=Path, required=True)
     parser.add_argument("--storage-dump", type=Path, required=True)
     parser.add_argument("--bucket-manifest", type=Path, required=True)
+    # Required: pg_dump --no-privileges plus `create schema public` leaves the
+    # API roles with no access at all (Production 2026-10-29 incident).
+    parser.add_argument("--acl-manifest", type=Path, required=True)
     parser.add_argument("--walk-reminder-url", required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
@@ -161,8 +166,10 @@ def main() -> None:
     public_sql = public_schema_without_schema_creation(args.public_dump.read_text())
     policies = storage_object_policies(args.storage_dump.read_text())
     buckets = bucket_values(args.bucket_manifest.read_text())
+    public_privileges = privileges_sql(args.acl_manifest.read_text())
 
     (output_dir / "clean-public-schema.sql").write_text(public_sql)
+    (output_dir / "public-privileges.sql").write_text(public_privileges)
 
     storage_lines = [
         "-- Generated from the isolated full-chain rehearsal.",
@@ -214,6 +221,10 @@ drop schema if exists public cascade;
 drop schema if exists legacy_archive_20261023 cascade;
 create schema public;
 \\i clean-public-schema.sql
+-- The schema dump deliberately carries no ACLs. Restore the exact rehearsed
+-- privileges of PUBLIC/anon/authenticated/service_role in the same
+-- transaction, so the API is never left without (or with excess) access.
+\\i public-privileges.sql
 commit;
 """
     )

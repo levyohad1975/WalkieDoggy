@@ -10,6 +10,60 @@ Supabase project into a clean Walkie Doggy Link Production environment without
 copying legacy Dog Walk Family data or any Staging family data. It deliberately
 does not contain a destructive migration or an automatic deployment command.
 
+## Incident 2026-11-01 — API roles have no access to `public`
+
+**Symptom.** On `walkielink.co.il`, initial registration stalls and no
+verification email is sent. Production Auth logs show anonymous `/signup`
+succeeding, then every PostgREST call failing with HTTP 403 (`whoami`,
+`get_my_family_onboarding_status`, `am_i_system_admin`, ...). Postgres logs:
+`permission denied for schema public`. No browser `/otp` request ever reached
+Production Auth, because onboarding cannot get past its first RPCs.
+
+**Root cause.** The 2026-10-29 clean bootstrap ran
+`drop schema public cascade; create schema public;` and replayed a
+`pg_dump --no-privileges` dump. The recreated schema is owned by `postgres`
+with a NULL ACL and no default privileges, so `anon`, `authenticated` and
+`service_role` have no `USAGE` on `public`, no table/sequence/column grants,
+and only the function grants re-applied afterwards (anon 11/195,
+authenticated 108/195, service_role 26/195). The rehearsal compared only
+catalog counts, so the missing ACLs were invisible to it. Staging was built by
+ordinary migrations on Supabase's stock schema and is unaffected.
+
+**Do not** repair this with a bare `grant usage on schema public ...`: the
+dump also dropped the original `REVOKE ... FROM PUBLIC` statements, so every
+non-hardened function currently carries PostgreSQL's default `PUBLIC`
+EXECUTE. Restoring schema USAGE alone would expose those functions to `anon`.
+
+**Fix (repository).** The Integration Full-Chain rehearsal now captures an ACL
+manifest (`public-acl-manifest.tsv`, from
+`scripts/production/public_privileges.py manifest-sql`) from the fully
+replayed database, and the generator emits `public-privileges.sql`. That file
+revokes all privileges of `PUBLIC`/`anon`/`authenticated`/`service_role` on
+every `public` schema object and then grants exactly the manifest rows
+(schema, tables/views, columns, sequences, routines, and `postgres` default
+privileges). `apply-clean-bootstrap.sql` includes it inside the bootstrap
+transaction. The rehearsal now diffs the bootstrapped ACL manifest against the
+replayed one and runs
+`supabase/manual_tests/public_api_role_privileges_readonly.sql`, which calls
+the onboarding RPCs as an `authenticated` user and fails on any 42501.
+
+**Remediation (Production; requires explicit approval).**
+
+1. From a successful Integration Full-Chain run at the release SHA, download
+   `production-bootstrap-evidence-<SHA>` and verify `SHA256SUMS`.
+2. Read-only preflight on Production: the `public` relation and routine lists
+   must match the artifact's `clean-public-schema.sql` (50 tables, 2
+   sequences, 195 routines, all owned by `postgres`).
+3. Apply `public-privileges.sql` unchanged as one migration through the
+   Supabase migration executor (name `restore_public_api_privileges_<sha7>`).
+   It changes privileges only; no rows, Auth users, Storage or secrets.
+4. Verify: run the manifest query on Production and `diff` it against
+   `public-acl-manifest.tsv` (must be identical), then run
+   `public_api_role_privileges_readonly.sql`.
+5. Rollback: re-applying the file is idempotent. Reverting to the broken state
+   is never useful; if a specific grant is wrong, correct the source migration,
+   rerun the rehearsal and re-apply the new artifact's file.
+
 ## Execution update (2026-10-25)
 
 The legacy Production backup and restore gate is now complete. An AES-encrypted
@@ -220,3 +274,17 @@ All items below must be complete before any destructive Production operation.
    current Vercel permission scope.
 3. Production security/performance advisor findings require explicit review;
    they cannot be silently dismissed during a bootstrap.
+4. **(2026-11-01) API privileges.** `public` has no grants for the API roles;
+   remediate per "Incident 2026-11-01" above before any other smoke test.
+5. **(2026-11-01) Auth email delivery.** Production lacks the `send-email`
+   (Auth Send Email Hook) and `email-provider-webhook` Edge Functions that
+   Staging uses. Deploy both with Production-only secrets
+   (`SEND_EMAIL_HOOK_SECRET`, `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`,
+   `WELCOME_EMAIL_FROM`), enable the Send Email Hook (or a custom SMTP) and a
+   verified sender domain, and set Auth Site URL/redirects to
+   `https://walkielink.co.il`. Supabase's built-in mailer only delivers to
+   project team members and is rate limited, so it is not a Production path.
+6. **(2026-11-01) Advisor snapshot.** Security advisors report 33 anonymous
+   sign-in policy warnings (by design; reviewed per table), leaked-password
+   protection disabled, one SECURITY DEFINER authenticated-execution warning
+   and one RLS-without-policy INFO. No mutable `search_path` findings.
