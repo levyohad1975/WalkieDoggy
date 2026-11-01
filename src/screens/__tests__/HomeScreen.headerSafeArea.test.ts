@@ -26,3 +26,16 @@ describe('Home header stays below the status bar; countdown fits its column', ()
     expect(card).toMatch(/dashboardCountdownColumn: \{ flex: 1,[^}]*minWidth: 0[^}]*overflow: 'hidden'/);
   });
 });
+
+describe('installed iPhone app — scrolled content never slides under the status bar', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const html: string = fs.readFileSync(path.join(__dirname, '../../../public/index.html'), 'utf8');
+
+  it('draws a fixed, non-interactive strip the height of the status bar, only in standalone mode', () => {
+    const rule = html.match(/html\.ios-standalone body::after \{[^}]*\}/)?.[0] ?? '';
+    expect(rule).toContain('position: fixed;');
+    expect(rule).toContain('height: env(safe-area-inset-top, 0px);');
+    expect(rule).toContain('pointer-events: none;');
+  });
+});

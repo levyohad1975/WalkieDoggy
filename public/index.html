@@ -46,6 +46,23 @@
       html.ios-standalone #root {
         height: var(--app-height, 100%);
       }
+      /* With the translucent status bar, scrolled content slid under the
+         clock/battery and read as a broken, cut-off screen (Production
+         report 2026-11-01, active walk). A fixed strip the height of the
+         status bar keeps content visually below it. Taps are unaffected. */
+      html.ios-standalone body::after {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: env(safe-area-inset-top, 0px);
+        background: rgba(251, 248, 243, 0.94);
+        -webkit-backdrop-filter: blur(8px);
+        backdrop-filter: blur(8px);
+        z-index: 2147483000;
+        pointer-events: none;
+      }
     </style>
     <script>
       (function () {
