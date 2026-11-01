@@ -556,6 +556,18 @@ jobs:
             cd "$bundle_dir"
             sha256sum schema-public-storage.sql clean-public-schema.sql public-privileges.sql production-api-privileges-remediation.sql storage-configuration.sql register-walk-reminder-cron.sql apply-clean-bootstrap.sql catalog-counts.tsv public-acl-manifest.tsv storage-buckets.tsv source-sha256.txt > SHA256SUMS
           )
+          # Publish the privilege evidence in the job log as well (grants only;
+          # no rows, secrets or credentials), so reviewers who cannot fetch
+          # the artifact blob can still verify the remediation byte-for-byte.
+          echo "::group::Bundle SHA256SUMS"
+          cat "$bundle_dir/SHA256SUMS"
+          echo "::endgroup::"
+          echo "::group::public-acl-manifest.tsv"
+          cat "$bundle_dir/public-acl-manifest.tsv"
+          echo "::endgroup::"
+          echo "::group::catalog-counts.tsv"
+          cat "$bundle_dir/catalog-counts.tsv"
+          echo "::endgroup::"
           tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
             -czf "/tmp/production-bootstrap-evidence-${GITHUB_SHA}.tar.gz" \
             -C /tmp "$(basename "$bundle_dir")"
