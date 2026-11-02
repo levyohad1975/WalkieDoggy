@@ -84,11 +84,20 @@ describe('route display clean-up (drawing only)', () => {
     expect(tail?.routePoints).toEqual([{ ...stop, timestamp: 0 }, { ...home, timestamp: 0 }]);
     expect(homeTailForDisplay(home, { latitude: 32 + 20 * METER_LAT, longitude: 34.8 })).toBeNull();
     const fmt = (m: number) => `${Math.round(m)} מ'`;
-    expect(homeLegsSummary(100, 200, fmt)).toBe("+ כ־300 מ' משוער מהבית ובחזרה אליו (בקו ישר)");
-    expect(homeLegsSummary(null, 200, fmt)).toBe("+ כ־200 מ' מסוף המדידה חזרה הביתה (משוער, בקו ישר)");
+    expect(homeLegsSummary(100, 200, fmt)).toBe("300 מ' משוער מהבית ובחזרה");
+    expect(homeLegsSummary(97, null, fmt)).toBe("97 מ' משוער מהבית");
+    expect(homeLegsSummary(null, 200, fmt)).toBe("200 מ' משוער חזרה הביתה");
     expect(homeLegsSummary(null, null, fmt)).toBeNull();
     const source = fs.readFileSync(path.resolve(__dirname, '../../components/RoutePreview.tsx'), 'utf8');
     expect(source).toContain("else if(!${homeLegs.endNearHome ? 'true' : 'false'})pin(coordinates[coordinates.length-1],'end','🏁','סיום');");
     expect(source).toContain("pin(coordinates[coordinates.length-1],'stop','⏹','סוף מדידת GPS')");
+  });
+
+  it('draws a walk that ended next to home reaching the home pin, with a total-first header', () => {
+    const source = fs.readFileSync(path.resolve(__dirname, '../../components/RoutePreview.tsx'), 'utf8');
+    expect(source).toContain('...(endNearHome ? [homePin] : []),');
+    expect(source).toContain('...(startNearHome ? [homePin] : []),');
+    expect(source).toContain("homeLegsLine ? `≈ ${formatDistanceMeters(measuredDistanceMeters + homeLegsMeters)}`");
+    expect(source).toContain("maxZoom:${expanded ? '18.5' : '17'}");
   });
 });

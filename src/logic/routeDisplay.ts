@@ -128,10 +128,10 @@ export function homeTailForDisplay(
   return lead ? { routePoints: [lead.routePoints[1], lead.routePoints[0]], distanceMeters: lead.distanceMeters } : null;
 }
 
-/** One-line Hebrew summary of the estimated home legs, or null when there are none. */
+/** Short Hebrew label of the estimated home legs, or null when there are none. */
 export function homeLegsSummary(leadMeters: number | null, tailMeters: number | null, format: (m: number) => string): string | null {
-  if (leadMeters && tailMeters) return `+ כ־${format(leadMeters + tailMeters)} משוער מהבית ובחזרה אליו (בקו ישר)`;
-  if (leadMeters) return `+ כ־${format(leadMeters)} מהבית עד תחילת המדידה (משוער, בקו ישר)`;
-  if (tailMeters) return `+ כ־${format(tailMeters)} מסוף המדידה חזרה הביתה (משוער, בקו ישר)`;
+  if (leadMeters && tailMeters) return `${format(leadMeters + tailMeters)} משוער מהבית ובחזרה`;
+  if (leadMeters) return `${format(leadMeters)} משוער מהבית`;
+  if (tailMeters) return `${format(tailMeters)} משוער חזרה הביתה`;
   return null;
 }
