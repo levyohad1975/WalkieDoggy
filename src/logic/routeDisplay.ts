@@ -96,3 +96,25 @@ export function pathLengthMeters(points: DisplayPoint[]): number {
   for (let i = 1; i < points.length; i += 1) total += haversineDistanceMeters(points[i - 1] as GpsPoint, points[i] as GpsPoint);
   return total;
 }
+
+/**
+ * Owner rule 2026-11-02: every walk starts at home. When GPS was started
+ * late (the first measured fix is well away from the dog's verified home) and
+ * no history-based reconstruction exists, the map completes the missing lead
+ * from home as a dashed, clearly "estimated" straight line. Drawing only:
+ * nothing is stored and the measured distance is unchanged.
+ */
+export const HOME_LEAD_MIN_METERS = 60;
+
+export function homeLeadForDisplay(
+  home: { latitude: number; longitude: number } | null | undefined,
+  firstMeasured: { latitude: number; longitude: number } | null | undefined,
+): { routePoints: Array<{ latitude: number; longitude: number; timestamp: number }>; distanceMeters: number } | null {
+  if (!home || !firstMeasured) return null;
+  if (![home.latitude, home.longitude, firstMeasured.latitude, firstMeasured.longitude].every(Number.isFinite)) return null;
+  const start = { latitude: home.latitude, longitude: home.longitude, timestamp: 0 };
+  const end = { latitude: firstMeasured.latitude, longitude: firstMeasured.longitude, timestamp: 0 };
+  const distanceMeters = haversineDistanceMeters(start, end);
+  if (distanceMeters < HOME_LEAD_MIN_METERS) return null;
+  return { routePoints: [start, end], distanceMeters };
+}

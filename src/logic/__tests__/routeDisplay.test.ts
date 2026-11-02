@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { pathLengthMeters, routeForDisplay, simplifyRoute, smoothRoute } from '../routeDisplay';
+import { HOME_LEAD_MIN_METERS, homeLeadForDisplay, pathLengthMeters, routeForDisplay, simplifyRoute, smoothRoute } from '../routeDisplay';
 
 const METER_LAT = 1 / 110_540;
 
@@ -58,5 +58,22 @@ describe('route display clean-up (drawing only)', () => {
     expect(source).toContain("style:'https://tiles.openfreemap.org/styles/positron'");
     expect(source).toContain("'line-gradient'");
     expect(source).toContain('attributionControl:${expanded ? \'{compact:true}\' : \'false\'}');
+  });
+
+  it('completes a late start from home as an estimated straight lead (owner rule: walks start at home)', () => {
+    const home = { latitude: 32, longitude: 34.8 };
+    const far = { latitude: 32 + 300 * METER_LAT, longitude: 34.8 };
+    const lead = homeLeadForDisplay(home, far);
+    expect(lead?.routePoints).toEqual([{ ...home, timestamp: 0 }, { ...far, timestamp: 0 }]);
+    expect(Math.round(lead!.distanceMeters)).toBeGreaterThan(290);
+    expect(homeLeadForDisplay(home, { latitude: 32 + (HOME_LEAD_MIN_METERS - 10) * METER_LAT, longitude: 34.8 })).toBeNull();
+    expect(homeLeadForDisplay(undefined, far)).toBeNull();
+  });
+
+  it('RoutePreview uses a saved reconstruction first and the home lead only without one', () => {
+    const source = fs.readFileSync(path.resolve(__dirname, '../../components/RoutePreview.tsx'), 'utf8');
+    expect(source).toContain('(reconstruction ? null : homeLeadForDisplay(home, drawnPoints[0]))');
+    expect(source).toContain('reconstruction?.routePoints ?? homeLead?.routePoints ?? []');
+    expect(source).toContain("pin(estimated[0],'home','🏠'");
   });
 });

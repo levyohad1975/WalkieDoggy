@@ -3,7 +3,8 @@ import { Dimensions, Modal, Platform, Pressable, StyleSheet, View } from 'react-
 import Svg, { Circle, Polyline } from 'react-native-svg';
 import type { WalkGpsSession } from '../types';
 import { accumulateDistance, createGpsAccumulator, formatDistanceMeters } from '../logic/gpsDistance';
-import { routeForDisplay } from '../logic/routeDisplay';
+import { homeLeadForDisplay, routeForDisplay } from '../logic/routeDisplay';
+import { useFamilyStore } from '../store/familyStore';
 import { colors } from '../theme/colors';
 import { RtlText } from './RtlText';
 
@@ -30,7 +31,14 @@ export function RoutePreview({ session, large = false, compact = false, live = f
   // straight lines across the park). Drawing only; distance is unchanged.
   const drawnPoints = useMemo(() => (live ? points : routeForDisplay(points)), [points, live]);
   const reconstruction = session?.reconstruction;
-  const reconstructedPoints = reconstruction?.routePoints ?? [];
+  const home = useFamilyStore((s) => (session?.dogId ? s.dogs.find((d) => d.id === session.dogId)?.homeLocation : undefined));
+  // No saved reconstruction but the walk began away from home: show the
+  // missing lead from home as an estimate (drawing only).
+  const homeLead = useMemo(
+    () => (reconstruction ? null : homeLeadForDisplay(home, drawnPoints[0])),
+    [reconstruction, home, drawnPoints],
+  );
+  const reconstructedPoints = reconstruction?.routePoints ?? homeLead?.routePoints ?? [];
   const [mapOpen, setMapOpen] = useState(false);
   const mapPoints = drawnPoints.filter(p => Number.isFinite(p.latitude) && Number.isFinite(p.longitude) && Math.abs(p.latitude) <= 90 && Math.abs(p.longitude) <= 180).map(p => [p.latitude, p.longitude]);
   const estimatedMapPoints = [...reconstructedPoints, ...(drawnPoints.length ? [drawnPoints[0]] : [])].filter(p => Number.isFinite(p.latitude) && Number.isFinite(p.longitude) && Math.abs(p.latitude) <= 90 && Math.abs(p.longitude) <= 180).map(p => [p.latitude, p.longitude]);
@@ -91,12 +99,17 @@ export function RoutePreview({ session, large = false, compact = false, live = f
                     {[formatDistanceMeters(measuredDistanceMeters), measuredDurationSeconds > 0 ? `${Math.max(1, Math.round(measuredDurationSeconds / 60))} דק׳` : null].filter(Boolean).join(' · ')}
                   </RtlText>
                   {caption ? <RtlText style={styles.mapSummarySub}>{caption}</RtlText> : null}
+                  {homeLead ? (
+                    <RtlText style={styles.mapSummaryEstimate}>
+                      {`+ כ־${formatDistanceMeters(homeLead.distanceMeters)} מהבית עד תחילת המדידה (משוער, בקו ישר) · סה״כ כ־${formatDistanceMeters(measuredDistanceMeters + homeLead.distanceMeters)}`}
+                    </RtlText>
+                  ) : null}
                 </View>
                 <Pressable onPress={() => setMapOpen(false)} accessibilityRole="button" accessibilityLabel="סגור מפה" style={styles.closeMap} hitSlop={8}><RtlText style={styles.closeMapText}>✕ סגירה</RtlText></Pressable>
               </View>
               <View style={[styles.expandedMap, { height: Math.round(Math.min(Dimensions.get('window').height * 0.7, 640)) }]}>{renderMap(true)}</View>
               {/* The map's own attribution control credits OpenStreetMap / OpenFreeMap. */}
-              {!live ? <RtlText style={styles.mapLegend}>▶ התחלה · 🏁 סיום · הקו מתחלף מירוק לכחול לאורך הטיול</RtlText> : null}
+              {!live ? <RtlText style={styles.mapLegend}>{`${reconstructedPoints.length > 1 ? '🏠 בית · קו מקווקו = משוער · ' : ''}▶ התחלת המדידה · 🏁 סיום · הקו מתחלף מירוק לכחול`}</RtlText> : null}
             </View>
           </View>
         </Modal>
@@ -141,6 +154,7 @@ const styles = StyleSheet.create({
   mapSummary: { flex: 1, gap: 2 },
   mapSummaryMain: { fontSize: 17, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
   mapSummarySub: { fontSize: 13, color: colors.textSecondary, textAlign: 'right' },
+  mapSummaryEstimate: { fontSize: 12, color: '#B4553F', textAlign: 'right' },
   closeMap: { paddingVertical: 8, paddingHorizontal: 10 },
   closeMapText: { fontSize: 15, fontWeight: '700', color: colors.primaryDark },
   expandedMap: { width: '100%', borderRadius: 12, overflow: 'hidden' },
@@ -158,7 +172,7 @@ const styles = StyleSheet.create({
 function buildMapHtml(points: number[][], estimatedPoints: number[][], expanded: boolean, live: boolean): string {
   const coords = JSON.stringify(points);
   const estimateCoords = JSON.stringify(estimatedPoints);
-  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"><style>html,body,#map{margin:0;width:100%;height:100%;overflow:hidden} .maplibregl-control-container{font:10px system-ui} .maplibregl-ctrl-attrib{font-size:10px!important} .maplibregl-ctrl-bottom-right{max-width:100%} .walk-pin{width:30px;height:30px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px #0004;display:flex;align-items:center;justify-content:center;font:700 13px system-ui;color:#fff} .walk-pin.start{background:#2F9E5B} .walk-pin.end{background:#fff;font-size:16px}</style></head><body><div id="map"></div>${expanded && !live ? '<button id="replay" style="position:absolute;z-index:5;top:12px;left:12px;border:0;border-radius:20px;padding:10px 16px;background:#fff;color:#183e48;font:600 14px system-ui">▶ נגן מסלול</button>' : ''}<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script><script>
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"><style>html,body,#map{margin:0;width:100%;height:100%;overflow:hidden} .maplibregl-control-container{font:10px system-ui} .maplibregl-ctrl-attrib{font-size:10px!important} .maplibregl-ctrl-bottom-right{max-width:100%} .walk-pin{width:30px;height:30px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px #0004;display:flex;align-items:center;justify-content:center;font:700 13px system-ui;color:#fff} .walk-pin.start{background:#2F9E5B} .walk-pin.end{background:#fff;font-size:16px} .walk-pin.home{background:#fff;font-size:15px}</style></head><body><div id="map"></div>${expanded && !live ? '<button id="replay" style="position:absolute;z-index:5;top:12px;left:12px;border:0;border-radius:20px;padding:10px 16px;background:#fff;color:#183e48;font:600 14px system-ui">▶ נגן מסלול</button>' : ''}<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script><script>
   const points = ${coords};
   const estimatedPoints = ${estimateCoords};
   const allCoordinates = [...estimatedPoints,...points];
@@ -197,6 +211,7 @@ function buildMapHtml(points: number[][], estimatedPoints: number[][], expanded:
       map.fitBounds(bounds,{padding:${expanded ? '56' : '18'},maxZoom:17,duration:0});
     }
     const pin=(coord,kind,text,label)=>{const el=document.createElement('div');el.className='walk-pin '+kind;el.textContent=text;el.title=label;return new maplibregl.Marker({element:el}).setLngLat(coord).setPopup(new maplibregl.Popup({offset:18}).setText(label)).addTo(map);};
+    if(${expanded ? 'true' : 'false'} && estimated.length>1)pin(estimated[0],'home','🏠','בית (המסלול עד תחילת המדידה משוער)');
     if(${expanded ? 'true' : 'false'} && coordinates.length)pin(coordinates[0],'start','▶','תחילת מדידת GPS');
     if(${expanded ? 'true' : 'false'} && !${live ? 'true' : 'false'} && coordinates.length>1)pin(coordinates[coordinates.length-1],'end','🏁','סיום');
     if(${live ? 'true' : 'false'} && coordinates.length){
