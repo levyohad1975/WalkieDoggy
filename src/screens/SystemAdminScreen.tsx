@@ -16,6 +16,7 @@ import { SystemAdminDuplicateWalkMaintenancePanel } from '../components/SystemAd
 import { SystemAdminFamilyChatsPanel } from '../components/SystemAdminFamilyChatsPanel';
 import { SystemAdminHelpQuestionsPanel } from '../components/SystemAdminHelpQuestionsPanel';
 import { SystemAdminPresencePanel } from '../components/SystemAdminPresencePanel';
+import { SystemAdminSupportPanel } from '../components/SystemAdminSupportPanel';
 import { familyIdentityParts } from '../lib/systemAdminPresence';
 import { useAuthStore } from '../store/authStore';
 import { useSystemAdminStore } from '../store/systemAdminStore';
@@ -156,6 +157,9 @@ function auditActionLabel(action: string): string {
     'web_push_subscriptions.delete': 'הסרת מכשיר מהתראות',
     'push_tokens.insert': 'רישום מכשיר להתראות',
     'push_tokens.delete': 'הסרת מכשיר מהתראות',
+    'support_tickets.insert': 'פנייה חדשה לתמיכה',
+    'support_tickets.update': 'עדכון פנייה (תשובה/סטטוס)',
+    'support_tickets.delete': 'מחיקת פנייה',
     'help_articles.insert': 'פרסום תשובה בעזרה',
     'help_articles.update': 'עדכון תשובה בעזרה',
     'help_articles.delete': 'מחיקת תשובה מהעזרה',
@@ -243,6 +247,7 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
   const [helpQuestionsVisible, setHelpQuestionsVisible] = useState(false);
   const [showOwnAdminActions, setShowOwnAdminActions] = useState(false);
   const [presenceVisible, setPresenceVisible] = useState(false);
+  const [supportVisible, setSupportVisible] = useState(false);
   const [auditLog, setAuditLog] = useState<SystemAdminGlobalAuditEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
@@ -547,7 +552,7 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
             </Pressable>
           </View>
           <View style={styles.headerActions}>
-            {!selectedFamilyId && !emailLogVisible && !auditVisible && !animationTestVisible && !familyChatsVisible && !helpQuestionsVisible && !presenceVisible ? (
+            {!selectedFamilyId && !emailLogVisible && !auditVisible && !animationTestVisible && !familyChatsVisible && !helpQuestionsVisible && !presenceVisible && !supportVisible ? (
               <>
                 <Pressable onPress={() => setAnimationTestVisible(true)} accessibilityRole="button" accessibilityLabel="פתיחת בדיקת אנימציות" hitSlop={4} style={styles.headerChip}>
                   <RtlText style={styles.headerLink} numberOfLines={1}>🎬 בדיקת אנימציות</RtlText>
@@ -560,6 +565,9 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
                 </Pressable>
                 <Pressable onPress={openEmailLog} accessibilityRole="button" accessibilityLabel="פתיחת יומן משלוח אימיילים" hitSlop={4} style={styles.headerChip}>
                 <RtlText style={styles.headerLink} numberOfLines={1}>✉️ יומן אימיילים</RtlText>
+                </Pressable>
+                <Pressable onPress={() => setSupportVisible(true)} accessibilityRole="button" accessibilityLabel="פתיחת פניות משתמשים" hitSlop={4} style={styles.headerChip}>
+                  <RtlText style={styles.headerLink} numberOfLines={1}>📨 פניות</RtlText>
                 </Pressable>
                 <Pressable onPress={() => setPresenceVisible(true)} accessibilityRole="button" accessibilityLabel="פתיחת מי אונליין" hitSlop={4} style={styles.headerChip}>
                   <RtlText style={styles.headerLink} numberOfLines={1}>🟢 מי אונליין</RtlText>
@@ -648,6 +656,13 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
               </View>
             ) : null}
           </ScrollView>
+        ) : supportVisible ? (
+          <View style={styles.flex}>
+            <Pressable onPress={() => setSupportVisible(false)} accessibilityRole="button" accessibilityLabel="חזרה לרשימת המשפחות">
+              <RtlText style={styles.backLink}>‹ חזרה לרשימה</RtlText>
+            </Pressable>
+            <SystemAdminSupportPanel />
+          </View>
         ) : presenceVisible ? (
           <View style={styles.flex}>
             <Pressable onPress={() => setPresenceVisible(false)} accessibilityRole="button" accessibilityLabel="חזרה לרשימת המשפחות">
