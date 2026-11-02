@@ -163,4 +163,23 @@ describe('client cutout transparency guard', () => {
     expect(result.current).toBe('pending');
     await waitFor(() => expect(src.readPixels).toHaveBeenCalledTimes(2));
   });
+  // Production 2026-11-02: a first launch on cellular timed out and the
+  // hero kept the mascot until the app was relaunched.
+  it('hook: retries an unverifiable check and reveals the dog once it can be read', async () => {
+    jest.useFakeTimers();
+    try {
+      const src = source(transparentDog);
+      src.readPixels.mockImplementationOnce(async () => { throw new Error('timeout'); });
+      const { result } = renderHook(() => useCutoutVerdict('https://x/cutouts/slow-network.png', src));
+      const flush = async () => { for (let i = 0; i < 20; i += 1) await Promise.resolve(); };
+      await act(flush);
+      expect(result.current).toBe('unverifiable');
+      expect(getCachedCutoutVerdict('https://x/cutouts/slow-network.png')).toBeUndefined();
+      await act(async () => { jest.advanceTimersByTime(3000); await flush(); });
+      expect(result.current).toBe('transparent');
+      expect(src.readPixels).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

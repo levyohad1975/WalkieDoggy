@@ -26,7 +26,13 @@ type SettledVerdict = Exclude<CutoutVerdictState, 'none' | 'pending'>;
 const STORAGE_PREFIX = 'walkie.cutoutVerdict.v3:';
 /** The analysis is downscaled to this long side; plenty to see a background. */
 const ANALYSIS_LONG_SIDE = 160;
-const VERIFY_TIMEOUT_MS = 8000;
+// Production 2026-11-02: a family member's first launch on cellular showed the
+// mascot instead of the dog. The ~0.9 MB cutout competes with every other
+// first-launch download, so the old 8 s limit failed closed. The check runs
+// in the background with the mascot showing, so it can afford to wait.
+const VERIFY_TIMEOUT_MS = 20000;
+/** Retries after an unverifiable check while the hero stays on screen. */
+export const CUTOUT_RETRY_DELAYS_MS = [3000, 15000, 45000];
 
 const settled = new Map<string, SettledVerdict>();
 const inflight = new Map<string, Promise<SettledVerdict>>();
@@ -68,10 +74,12 @@ export function verifyCutoutTransparency(url: string, source: CutoutPixelSource 
     }
   })().then((verdict) => {
     inflight.delete(url);
-    settled.set(url, verdict);
-    // Only definitive answers are remembered across launches; a transient
-    // network failure must be retried on the next launch.
-    if (verdict !== 'unverifiable') writeStoredVerdict(url, verdict);
+    // Only definitive answers are remembered (in memory and across launches);
+    // a transient network failure must be retried, not cached for the session.
+    if (verdict !== 'unverifiable') {
+      settled.set(url, verdict);
+      writeStoredVerdict(url, verdict);
+    }
     return verdict;
   });
   inflight.set(url, job);
@@ -103,11 +111,23 @@ export function useCutoutVerdict(url: string | undefined | null, source?: Cutout
     }
     setResult({ url, state: 'pending' });
     let active = true;
-    void verifyCutoutTransparency(url, source === undefined ? defaultPixelSource() : source).then((verdict) => {
-      if (active) setResult({ url, state: verdict });
-    });
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const pixelSource = source === undefined ? defaultPixelSource() : source;
+    const attempt = (index: number) => {
+      void verifyCutoutTransparency(url, pixelSource).then((verdict) => {
+        if (!active) return;
+        setResult({ url, state: verdict });
+        // Unverifiable = could not read the image (slow network, timeout).
+        // Keep the mascot and try again rather than waiting for a relaunch.
+        if (verdict === 'unverifiable' && pixelSource && index < CUTOUT_RETRY_DELAYS_MS.length) {
+          retryTimer = setTimeout(() => attempt(index + 1), CUTOUT_RETRY_DELAYS_MS[index]);
+        }
+      });
+    };
+    attempt(0);
     return () => {
       active = false;
+      if (retryTimer) clearTimeout(retryTimer);
     };
   }, [url, source]);
 
