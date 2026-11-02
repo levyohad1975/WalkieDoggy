@@ -40,6 +40,8 @@ describe('Settings redesign', () => {
     expect(gps).toContain('מאשר שמנהל המשפחה יבקש להפעיל GPS בטלפון שלי בזמן טיול');
     expect(gps).not.toContain("settings.familyEnabled?'פעיל':'כבוי'");
     expect(gps.match(/thumbColor="#FFFFFF"/g)?.length).toBe(2);
+    // Same card shape and spacing as the other Settings cards.
+    expect(gps).toContain("settingsPanel:{backgroundColor:colors.surface,borderColor:colors.border,borderWidth:1,borderRadius:radii.md,");
   });
 
   it('keeps less space above the title', () => {
