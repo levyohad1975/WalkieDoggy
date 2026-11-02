@@ -140,8 +140,9 @@ export function HelpCenterModal({ visible, onClose }: HelpCenterModalProps) {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel="סגירת עזרה ותמיכה">
-        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+      <View style={styles.backdrop}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" accessibilityLabel="סגירת עזרה ותמיכה" />
+        <View style={styles.sheet}>
           <RtlText style={styles.title} accessibilityRole="header">💬 עזרה ותמיכה</RtlText>
 
           <TextInput
@@ -194,8 +195,8 @@ export function HelpCenterModal({ visible, onClose }: HelpCenterModalProps) {
           </ScrollView>
 
           <Button label="סגור" variant="secondary" onPress={onClose} style={styles.closeButton} />
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }

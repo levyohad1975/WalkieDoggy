@@ -125,8 +125,9 @@ export function HealthGroomingModal({ visible, dog, tasks, users, currentUserId,
   return (
     <>
       <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-        <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel="סגירת בריאות וטיפוח">
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+        <View style={styles.backdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" accessibilityLabel="סגירת בריאות וטיפוח" />
+          <View style={styles.sheet}>
             <RtlText style={styles.title} accessibilityRole="header">🏥 בריאות וטיפוח · {dog.name}</RtlText>
             <ScrollView style={styles.scroll}>
               <RtlText style={styles.sectionLabel}>משימות פתוחות</RtlText>
@@ -204,8 +205,8 @@ export function HealthGroomingModal({ visible, dog, tasks, users, currentUserId,
             </ScrollView>
             <Button label="+ הוספת רשומה" onPress={openAddForm} style={styles.addButton} />
             <Button label="סגור" variant="secondary" onPress={onClose} style={styles.closeButton} />
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
 
       <HealthTaskFormModal

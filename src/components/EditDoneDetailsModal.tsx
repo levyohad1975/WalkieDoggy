@@ -107,13 +107,13 @@ export function EditDoneDetailsModal({
           RequestTimeChangeModal.tsx — wraps the existing backdrop/sheet/
           ScrollView structure unchanged. */}
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <Pressable
-          style={styles.backdrop}
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel="סגירת עריכת פרטי הטיול"
-        >
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+        <View style={styles.backdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="סגירת עריכת פרטי הטיול" />
+          <View style={styles.sheet}>
             <ScrollView keyboardShouldPersistTaps="handled">
               <RtlText style={styles.title} accessibilityRole="header">עריכת פרטי הטיול</RtlText>
             <RtlText style={styles.subtitle}>
@@ -243,8 +243,8 @@ export function EditDoneDetailsModal({
               />
             ) : null}
             </ScrollView>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </KeyboardAvoidingView>
       <ConfirmModal
         visible={deleteConfirmVisible}

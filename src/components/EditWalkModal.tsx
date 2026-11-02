@@ -89,13 +89,13 @@ export function EditWalkModal({
           in a separate SwapWalkPickerModal — see Section 8 — so it's no
           longer nested inside this sheet's own ScrollView.) */}
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <Pressable
-          style={styles.backdrop}
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel={`סגירת עריכת הטיול — ${walk.scheduledTime}`}
-        >
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+        <View style={styles.backdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel={`סגירת עריכת הטיול — ${walk.scheduledTime}`} />
+          <View style={styles.sheet}>
             {/* Section 7's original fix here (`scroll: {flex:1}`, to keep
                 the "בטל את הטיול"/"סגור" buttons reachable for long content)
                 turned out to cause a WORSE bug: it collapsed the sheet
@@ -154,8 +154,8 @@ export function EditWalkModal({
                ) : null}
              </View>
              </ScrollView>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </KeyboardAvoidingView>
 
       {/* Section 8: the swap candidate list is a dedicated, full-size modal

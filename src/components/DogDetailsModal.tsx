@@ -75,8 +75,9 @@ export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, o
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <Pressable style={styles.backdrop} onPress={onClose} accessibilityRole="button" accessibilityLabel={`סגירת פרטי ${dog.name}`}>
-          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+        <View style={styles.backdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" accessibilityLabel={`סגירת פרטי ${dog.name}`} />
+          <View style={styles.sheet}>
             <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
               <RtlText style={styles.title} accessibilityRole="header">פרטי {dog.name}</RtlText>
               <View style={styles.photoRow}>
@@ -140,8 +141,8 @@ export function DogDetailsModal({ visible, dog, uploadingPhoto, onChangePhoto, o
               ) : null}
               <Button label="סגור" variant="secondary" onPress={onClose} style={styles.closeButton} />
             </ScrollView>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );
