@@ -7,7 +7,7 @@ import { useFamilyStore } from '../store/familyStore';
 import { isRealFamilyAdmin, useAuthStore, useEffectiveFamilyRole, useEffectiveUserId } from '../store/authStore';
 import { colors } from '../theme/colors';
 import { breakpoints, nativeDirection, radii, spacing, typography } from '../theme/tokens';
-import { openTutorialFromHelp } from '../components/tutorial/useFirstRunTutorial';
+import { HelpCenterModal } from '../components/HelpCenterModal';
 import { Avatar } from '../components/Avatar';
 import { Button } from '../components/Button';
 import { UserFormModal } from '../components/UserFormModal';
@@ -76,6 +76,7 @@ export function FamilyScreen() {
   const isRealAdmin = isRealFamilyAdmin(realFamilyRole, impersonatingUserId);
 
   const [formVisible, setFormVisible] = useState(false);
+  const [helpCenterVisible, setHelpCenterVisible] = useState(false);
   const [editingUser, setEditingUser] = useState<FamilyUser | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FamilyUser | null>(null);
   const [deleteImpact, setDeleteImpact] = useState<UserDeletionImpact | null>(null);
@@ -433,17 +434,19 @@ export function FamilyScreen() {
             <RtlText style={styles.sectionHeader}>❓ עזרה</RtlText>
             <Pressable
               style={styles.helpRow}
-              onPress={() => { openTutorialFromHelp(); }}
+              onPress={() => setHelpCenterVisible(true)}
               accessibilityRole="button"
-              accessibilityLabel="סרטון הדרכה"
-              testID="family-tutorial-entry"
+              accessibilityLabel="עזרה ותמיכה"
+              testID="family-help-entry"
             >
               <RtlText style={styles.helpChevron}>‹</RtlText>
-              <RtlText style={styles.helpLabel}>▶ סרטון הדרכה</RtlText>
+              <RtlText style={styles.helpLabel}>💬 עזרה ותמיכה</RtlText>
             </Pressable>
           </View>
         ) : null}
       </ScrollView>
+
+      <HelpCenterModal visible={helpCenterVisible} onClose={() => setHelpCenterVisible(false)} />
 
       <UserFormModal
         visible={formVisible}

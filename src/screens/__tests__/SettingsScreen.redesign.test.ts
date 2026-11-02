@@ -26,7 +26,7 @@ describe('Settings redesign', () => {
 
   it('puts every icon before its label, and gives every topic row a description', () => {
     expect(settings).not.toContain('הישגים 🏆');
-    for (const label of ['🩺 בריאות וטיפוח', '🏆 הישגים', '🔗 שיתוף המשפחה', '⏰ תזכורות והתראות', '📍 מיקום, GPS ונגישות', '▶ סרטון הדרכה']) {
+    for (const label of ['🩺 בריאות וטיפוח', '🏆 הישגים', '🔗 שיתוף המשפחה', '⏰ תזכורות והתראות', '📍 מיקום, GPS ונגישות', '💬 עזרה ותמיכה']) {
       const at = settings.indexOf(label);
       expect(at).toBeGreaterThan(-1);
       expect(settings.slice(at, at + 400)).toContain('styles.hubRowMeta');
@@ -52,10 +52,10 @@ describe('Settings redesign', () => {
 describe('Settings redesign — bottom sections', () => {
   const settings: string = require('fs').readFileSync(require.resolve('../SettingsScreen'), 'utf8');
 
-  it('privacy info and the tutorial share one help & privacy card', () => {
+  it('privacy info and help & support share one card', () => {
     const title = settings.indexOf('<RtlText style={styles.sectionTitle}>❓ עזרה ופרטיות</RtlText>');
     const privacy = settings.indexOf('onPress={() => setPrivacyAccessibilityModalVisible(true)}');
-    const tutorial = settings.indexOf('testID="settings-tutorial-entry"');
+    const tutorial = settings.indexOf('testID="settings-help-entry"');
     expect(title).toBeGreaterThan(-1);
     expect(privacy).toBeGreaterThan(title);
     expect(tutorial).toBeGreaterThan(privacy);

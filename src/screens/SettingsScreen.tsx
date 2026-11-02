@@ -49,7 +49,7 @@ import { repository } from '../data';
 import type { SyncQueueDiagnostics } from '../data/syncQueue';
 import { shouldShowStagingSyncDiagnostics } from '../logic/syncDiagnosticsGate';
 import { SyncDiagnosticsActionButton } from '../components/SyncDiagnosticsActionButton';
-import { openTutorialFromHelp } from '../components/tutorial/useFirstRunTutorial';
+import { HelpCenterModal } from '../components/HelpCenterModal';
 import { summarizeSyncConflicts, summarizeSyncQuarantine } from '../logic/syncQuarantineDiagnostics';
 import { buildSyncDiagnosticExport } from '../logic/syncDiagnosticExport';
 
@@ -121,6 +121,7 @@ function SettingsScreenContent() {
   const loadedAchievementFamilyId = useAchievementStore((s) => s.loadedFamilyId);
   const currentFamilyUnlocks = loadedAchievementFamilyId === familyId ? achievementUnlocks : [];
   const [privacyAccessibilityModalVisible, setPrivacyAccessibilityModalVisible] = useState(false);
+  const [helpCenterVisible, setHelpCenterVisible] = useState(false);
   const [remindersModalVisible, setRemindersModalVisible] = useState(false);
   const [sharingModalVisible, setSharingModalVisible] = useState(false);
   const [managementVisible, setManagementVisible] = useState(false);
@@ -875,27 +876,22 @@ function SettingsScreenContent() {
             </View>
           </Pressable>
 
-        {/* First-run tutorial — permanently reachable from Help. Opens the
-            player directly; works (with its fallback) even when no video is
-            configured, offline, or on native builds. */}
-          {!systemObserverActive ? (
-            <>
-            <View style={styles.groupDivider} />
-            <Pressable
-              style={styles.groupRow}
-              onPress={() => { openTutorialFromHelp(); }}
-              accessibilityRole="button"
-              accessibilityLabel="סרטון הדרכה"
-              testID="settings-tutorial-entry"
-            >
-              <RtlText style={styles.hubChevron}>‹</RtlText>
-              <View style={styles.hubLabelWithMeta}>
-                <RtlText style={styles.hubLabel}>▶ סרטון הדרכה</RtlText>
-                <RtlText style={styles.hubRowMeta}>סיור קצר בכל האפליקציה, עם קריינות</RtlText>
-              </View>
-            </Pressable>
-            </>
-          ) : null}
+        {/* Help & Support replaced the tutorial-video row (no video was ever
+            recorded, so the row only opened a "coming soon" card). */}
+          <View style={styles.groupDivider} />
+          <Pressable
+            style={styles.groupRow}
+            onPress={() => setHelpCenterVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel="עזרה ותמיכה"
+            testID="settings-help-entry"
+          >
+            <RtlText style={styles.hubChevron}>‹</RtlText>
+            <View style={styles.hubLabelWithMeta}>
+              <RtlText style={styles.hubLabel}>💬 עזרה ותמיכה</RtlText>
+              <RtlText style={styles.hubRowMeta}>שאלות נפוצות, חיפוש ופנייה אלינו</RtlText>
+            </View>
+          </Pressable>
           </View>
         </View>
 
@@ -1097,6 +1093,8 @@ function SettingsScreenContent() {
         visible={privacyAccessibilityModalVisible}
         onClose={() => setPrivacyAccessibilityModalVisible(false)}
       />
+
+      <HelpCenterModal visible={helpCenterVisible} onClose={() => setHelpCenterVisible(false)} />
 
       <RemindersModal
         visible={remindersModalVisible}

@@ -6,8 +6,8 @@ import path from 'path';
  * the repo's other *.structure tests):
  *  - the overlay is mounted only in the claimed-profile RootNavigator branch,
  *    so OTP / family onboarding / profile entry are never interrupted;
- *  - "סרטון הדרכה" is reachable from Settings and from Family (Settings is
- *    permission-gated for members, Family is not);
+ *  - Help ("עזרה ותמיכה") is reachable from Settings and from Family
+ *    (Settings is permission-gated for members, Family is not);
  *  - the tutorial code never touches auth, SyncQueue or migrations.
  */
 
@@ -24,13 +24,13 @@ describe('tutorial entry points', () => {
     expect(onboardingBranch).not.toContain('TutorialOverlay');
   });
 
-  it('offers "סרטון הדרכה" in Settings → עזרה and Family → עזרה', () => {
+  it('Help offers "עזרה ותמיכה" (not the never-recorded video) in Settings and Family', () => {
     for (const rel of ['src/screens/SettingsScreen.tsx', 'src/screens/FamilyScreen.tsx']) {
       const src = read(rel);
       expect(src).toContain('❓ עזרה');
-      expect(src).toContain('▶ סרטון הדרכה');
-      expect(src).toContain('openTutorialFromHelp()');
-      expect(src).toContain('accessibilityLabel="סרטון הדרכה"');
+      expect(src).toContain('💬 עזרה ותמיכה');
+      expect(src).toContain('<HelpCenterModal visible={helpCenterVisible}');
+      expect(src).not.toContain('▶ סרטון הדרכה');
     }
   });
 
