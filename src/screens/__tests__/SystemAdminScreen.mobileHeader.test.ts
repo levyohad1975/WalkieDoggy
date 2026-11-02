@@ -23,3 +23,17 @@ describe('SystemAdminScreen — the close button is always reachable on a phone'
     expect(source).toMatch(/closeButton: \{ flexShrink: 0/);
   });
 });
+
+describe('SystemAdminScreen — tidy phone header and full search hint', () => {
+  const source: string = require('fs').readFileSync(require.resolve('../SystemAdminScreen'), 'utf8');
+
+  it('the four tools are chips laid out two per row', () => {
+    expect(source.match(/style=\{styles\.headerChip\}/g)?.length).toBe(4);
+    expect(source).toMatch(/headerChip: \{ flexGrow: 1, flexBasis: '45%'/);
+  });
+
+  it('the search hint is short enough not to be cut on a phone', () => {
+    expect(source).toContain('placeholder="שם משפחה, קוד או שם משתמש"');
+    expect(source).not.toContain('placeholder="חיפוש לפי שם משפחה, קוד, או שם משתמש"');
+  });
+});

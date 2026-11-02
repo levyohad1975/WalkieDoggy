@@ -481,17 +481,17 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
           <View style={styles.headerActions}>
             {!selectedFamilyId && !emailLogVisible && !auditVisible && !animationTestVisible && !familyChatsVisible ? (
               <>
-                <Pressable onPress={() => setAnimationTestVisible(true)} accessibilityRole="button" accessibilityLabel="פתיחת בדיקת אנימציות" hitSlop={10}>
-                  <RtlText style={styles.headerLink}>בדיקת אנימציות</RtlText>
+                <Pressable onPress={() => setAnimationTestVisible(true)} accessibilityRole="button" accessibilityLabel="פתיחת בדיקת אנימציות" hitSlop={4} style={styles.headerChip}>
+                  <RtlText style={styles.headerLink} numberOfLines={1}>🎬 בדיקת אנימציות</RtlText>
                 </Pressable>
-                <Pressable onPress={openAuditLog} accessibilityRole="button" accessibilityLabel="פתיחת יומן פעילות" hitSlop={10}>
-                  <RtlText style={styles.headerLink}>יומן פעילות</RtlText>
+                <Pressable onPress={openAuditLog} accessibilityRole="button" accessibilityLabel="פתיחת יומן פעילות" hitSlop={4} style={styles.headerChip}>
+                  <RtlText style={styles.headerLink} numberOfLines={1}>📋 יומן פעילות</RtlText>
                 </Pressable>
-                <Pressable onPress={() => setFamilyChatsVisible(true)} accessibilityRole="button" accessibilityLabel="פתיחת צ׳אטים של משפחות" hitSlop={10}>
-                  <RtlText style={styles.headerLink}>צ׳אטים של משפחות</RtlText>
+                <Pressable onPress={() => setFamilyChatsVisible(true)} accessibilityRole="button" accessibilityLabel="פתיחת צ׳אטים של משפחות" hitSlop={4} style={styles.headerChip}>
+                  <RtlText style={styles.headerLink} numberOfLines={1}>💬 צ׳אטים של משפחות</RtlText>
                 </Pressable>
-                <Pressable onPress={openEmailLog} accessibilityRole="button" accessibilityLabel="פתיחת יומן משלוח אימיילים" hitSlop={10}>
-                <RtlText style={styles.headerLink}>יומן אימיילים</RtlText>
+                <Pressable onPress={openEmailLog} accessibilityRole="button" accessibilityLabel="פתיחת יומן משלוח אימיילים" hitSlop={4} style={styles.headerChip}>
+                <RtlText style={styles.headerLink} numberOfLines={1}>✉️ יומן אימיילים</RtlText>
                 </Pressable>
               </>
             ) : null}
@@ -827,7 +827,7 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
                 value={search}
                 onChangeText={setSearch}
                 onSubmitEditing={() => loadFamilies(search)}
-                placeholder="חיפוש לפי שם משפחה, קוד, או שם משתמש"
+                placeholder="שם משפחה, קוד או שם משתמש"
                 placeholderTextColor={colors.textSecondary}
                 style={styles.searchInput}
                 textAlign="right"
@@ -999,9 +999,12 @@ const styles = StyleSheet.create({
   },
   headerTopRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
   title: { ...typography.screenTitle, fontSize: 20, color: colors.textPrimary, flexShrink: 1 },
-  headerActions: { flexDirection: 'row-reverse', flexWrap: 'wrap', alignItems: 'center', columnGap: spacing.lg, rowGap: spacing.xs },
+  // Four tools as a tidy 2×2 set of chips instead of text links that
+  // wrapped 3 + 1 on a phone.
+  headerActions: { flexDirection: 'row-reverse', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
+  headerChip: { flexGrow: 1, flexBasis: '45%', minHeight: 40, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.sm, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   closeButton: { flexShrink: 0, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  headerLink: { color: colors.primaryDark, fontWeight: '700', fontSize: 14 },
+  headerLink: { color: colors.primaryDark, fontWeight: '700', fontSize: 14, textAlign: 'center' },
   closeLink: { color: colors.primaryDark, fontWeight: '700', fontSize: 15 },
   backLink: { color: colors.primaryDark, fontWeight: '700', fontSize: 14, marginBottom: spacing.md },
   content: { width: '100%', maxWidth: 1180, alignSelf: 'center', padding: spacing.xl, gap: spacing.sm, paddingBottom: spacing.xxxl },
