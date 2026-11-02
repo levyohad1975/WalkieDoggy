@@ -998,7 +998,7 @@ function SettingsScreenContent() {
               <RtlText style={styles.hubChevron}>‹</RtlText>
               <View style={styles.hubLabelWithMeta}>
                 <RtlText style={styles.hubLabel}>⚙️ ניהול המשפחה</RtlText>
-                <RtlText style={styles.hubRowMeta}>יומן פעילות של בני המשפחה</RtlText>
+                <RtlText style={styles.hubRowMeta}>יומן פעילות, ניתוק המכשיר ואיפוס נתונים</RtlText>
               </View>
             </Pressable>
           </View>
@@ -1133,7 +1133,7 @@ function SettingsScreenContent() {
         <Pressable style={styles.backdrop} onPress={() => setManagementVisible(false)}>
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             <ScrollView style={styles.sheetScroll} keyboardShouldPersistTaps="handled">
-              <RtlText style={styles.title} accessibilityRole="header">⚙️ ניהול</RtlText>
+              <RtlText style={styles.title} accessibilityRole="header">⚙️ ניהול המשפחה</RtlText>
 
               {/*
                 BATCH 3 (Task 1): "👥 מי משתמש במערכת" removed from here —
@@ -1157,7 +1157,7 @@ function SettingsScreenContent() {
                 <View style={styles.dangerZone}>
                   <RtlText style={styles.dangerTitle}>איפוס נתוני פעילות</RtlText>
                   <RtlText style={styles.dangerText}>מוחק לצמיתות טיולים, היסטוריה ונתוני GPS. המשפחה, הכלבים, בני המשפחה והגדרת הלו״ז נשמרים.</RtlText>
-                  <Button label={resettingActivity ? 'מאפס נתונים…' : '🗑️ איפוס נתונים'} variant="secondary" onPress={confirmFamilyActivityReset} disabled={resettingActivity} style={styles.addButton} />
+                  <Button label={resettingActivity ? 'מאפס נתונים…' : '🗑️ איפוס נתונים'} variant="danger" onPress={confirmFamilyActivityReset} disabled={resettingActivity} style={styles.addButton} />
                 </View>
               ) : null}
 

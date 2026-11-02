@@ -66,5 +66,10 @@ describe('Settings redesign — bottom sections', () => {
     expect(settings).toContain('<RtlText style={styles.hubLabel}>🖥️ מסוף הניהול</RtlText>');
     expect(settings).toContain('כל המשפחות, יומנים וכלי בדיקה');
     expect(settings).toContain('<RtlText style={styles.hubLabel}>⚙️ ניהול המשפחה</RtlText>');
+    // The row names everything its sheet holds, the sheet uses the same name,
+    // and the destructive reset looks destructive.
+    expect(settings).toContain('יומן פעילות, ניתוק המכשיר ואיפוס נתונים');
+    expect(settings).toContain('accessibilityRole="header">⚙️ ניהול המשפחה</RtlText>');
+    expect(settings).toContain(`'🗑️ איפוס נתונים'} variant="danger" onPress={confirmFamilyActivityReset}`);
   });
 });
