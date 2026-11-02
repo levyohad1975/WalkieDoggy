@@ -45,7 +45,7 @@ describe('help center learning migration', () => {
     const fns = sql.split('create or replace function ').slice(1);
     expect(fns.length).toBe(7);
     for (const fn of fns) {
-      const name = fn.slice(0, fn.indexOf('('));
+      const name = fn.slice('public.'.length, fn.indexOf('('));
       expect(fn).toContain("security definer set search_path = ''");
       expect(sql).toMatch(new RegExp(`revoke all on function public\\.${name}\\([^)]*\\) from public, anon`));
     }
