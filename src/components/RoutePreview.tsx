@@ -134,7 +134,7 @@ export function RoutePreview({ session, large = false, compact = false, live = f
                 </View>
                 <Pressable onPress={() => setMapOpen(false)} accessibilityRole="button" accessibilityLabel="סגור מפה" style={styles.closeMap} hitSlop={8}><RtlText style={styles.closeMapText}>✕ סגירה</RtlText></Pressable>
               </View>
-              <View style={[styles.expandedMap, { height: Math.round(Math.min(Dimensions.get('window').height * 0.7, 640)) }]}>{renderMap(true)}</View>
+              <View style={[styles.expandedMap, { height: expandedMapHeight([...mapPoints, ...estimatedMapPoints, ...tailMapPoints]) }]}>{renderMap(true)}</View>
               {/* The map's own attribution control credits OpenStreetMap / OpenFreeMap. */}
               {!live ? (
                 <RtlText style={styles.mapLegend} numberOfLines={1}>
@@ -198,6 +198,28 @@ const styles = StyleSheet.create({
   estimateSummary: { width: '100%', paddingHorizontal: 4, gap: 2 },
   summaryText: { fontSize: 12, color: colors.textSecondary, textAlign: 'right' },
 });
+
+/**
+ * Owner request 2026-11-02: fit the map's height to the route's shape. A wide,
+ * low walk gets a lower map (no empty bands above and below); a tall one
+ * keeps up to 70% of the screen. Accounts for the map's own fit padding
+ * (26 px sides, 70 px top for the replay button, 44 px bottom for credits).
+ */
+export function expandedMapHeight(latLngs: number[][], window = Dimensions.get('window')): number {
+  const maxHeight = Math.round(Math.min(window.height * 0.7, 640));
+  const minHeight = Math.min(300, maxHeight);
+  const valid = latLngs.filter((p) => p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]));
+  if (valid.length < 2) return maxHeight;
+  const lats = valid.map((p) => p[0]);
+  const lons = valid.map((p) => p[1]);
+  const midLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+  const heightM = (Math.max(...lats) - Math.min(...lats)) * 110_540;
+  const widthM = (Math.max(...lons) - Math.min(...lons)) * 111_320 * Math.cos((midLat * Math.PI) / 180);
+  const mapWidthPx = Math.max(200, window.width - 44);
+  const routeWidthPx = mapWidthPx - 52;
+  const contentPx = widthM > 1 ? (routeWidthPx * heightM) / widthM : maxHeight;
+  return Math.round(Math.max(minHeight, Math.min(maxHeight, contentPx + 114)));
+}
 
 /** Free vector basemap via OpenFreeMap and MapLibre. GPS coordinates never leave the browser except as ordinary map rendering data. */
 function buildMapHtml(

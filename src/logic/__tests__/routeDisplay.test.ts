@@ -101,3 +101,17 @@ describe('route display clean-up (drawing only)', () => {
     expect(source).toContain("maxZoom:${expanded ? '18.5' : '17'}");
   });
 });
+
+describe('expanded map height follows the route shape', () => {
+  const { expandedMapHeight } = require('../../components/RoutePreview');
+  const window = { width: 390, height: 844, scale: 3, fontScale: 1 };
+  it('a wide, low walk gets a lower map; a tall walk keeps the full height', () => {
+    const wide = [[32, 34.8], [32 + 80 * METER_LAT, 34.8 + 0.004]];
+    const tall = [[32, 34.8], [32 + 600 * METER_LAT, 34.8 + 0.001]];
+    const max = Math.round(Math.min(844 * 0.7, 640));
+    expect(expandedMapHeight(wide, window)).toBeLessThan(max);
+    expect(expandedMapHeight(wide, window)).toBeGreaterThanOrEqual(300);
+    expect(expandedMapHeight(tall, window)).toBe(max);
+    expect(expandedMapHeight([[32, 34.8]], window)).toBe(max);
+  });
+});
