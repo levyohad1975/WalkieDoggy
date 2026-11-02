@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Dimensions, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Circle, Polyline } from 'react-native-svg';
 import type { WalkGpsSession } from '../types';
 import { accumulateDistance, createGpsAccumulator, formatDistanceMeters } from '../logic/gpsDistance';
+import { routeForDisplay } from '../logic/routeDisplay';
 import { colors } from '../theme/colors';
 import { RtlText } from './RtlText';
 
@@ -11,10 +12,12 @@ interface RoutePreviewProps {
   large?: boolean;
   compact?: boolean;
   live?: boolean;
+  /** Shown in the expanded map's summary line, e.g. "אבא · יום ב׳ 02.11". */
+  caption?: string;
 }
 
 /** Lightweight in-app route drawing. It deliberately has no map provider dependency. */
-export function RoutePreview({ session, large = false, compact = false, live = false }: RoutePreviewProps) {
+export function RoutePreview({ session, large = false, compact = false, live = false, caption }: RoutePreviewProps) {
   // Display-only filtering: never mutate persisted routePoints or the recorded distance.
   // Re-apply the shared walking-speed and accuracy gates to legacy sessions
   // that may have been captured before live GPS jump filtering existed.
@@ -23,16 +26,19 @@ export function RoutePreview({ session, large = false, compact = false, live = f
     (acc, point) => accumulateDistance(acc, point),
     createGpsAccumulator(),
   ).routePoints, [rawPoints]);
+  // Owner request 2026-11-02: draw the walk without GPS wander (zigzags,
+  // straight lines across the park). Drawing only; distance is unchanged.
+  const drawnPoints = useMemo(() => (live ? points : routeForDisplay(points)), [points, live]);
   const reconstruction = session?.reconstruction;
   const reconstructedPoints = reconstruction?.routePoints ?? [];
   const [mapOpen, setMapOpen] = useState(false);
-  const mapPoints = points.filter(p => Number.isFinite(p.latitude) && Number.isFinite(p.longitude) && Math.abs(p.latitude) <= 90 && Math.abs(p.longitude) <= 180).map(p => [p.latitude, p.longitude]);
-  const estimatedMapPoints = [...reconstructedPoints, ...(points.length ? [points[0]] : [])].filter(p => Number.isFinite(p.latitude) && Number.isFinite(p.longitude) && Math.abs(p.latitude) <= 90 && Math.abs(p.longitude) <= 180).map(p => [p.latitude, p.longitude]);
+  const mapPoints = drawnPoints.filter(p => Number.isFinite(p.latitude) && Number.isFinite(p.longitude) && Math.abs(p.latitude) <= 90 && Math.abs(p.longitude) <= 180).map(p => [p.latitude, p.longitude]);
+  const estimatedMapPoints = [...reconstructedPoints, ...(drawnPoints.length ? [drawnPoints[0]] : [])].filter(p => Number.isFinite(p.latitude) && Number.isFinite(p.longitude) && Math.abs(p.latitude) <= 90 && Math.abs(p.longitude) <= 180).map(p => [p.latitude, p.longitude]);
   const webMap = Platform.OS === 'web' && (mapPoints.length >= 1 || estimatedMapPoints.length >= 1);
   const dimensions = large ? { width: 320, height: 210 } : compact ? { width: 72, height: 48 } : { width: 92, height: 72 };
-  const allPoints = [...points, ...reconstructedPoints];
+  const allPoints = [...drawnPoints, ...reconstructedPoints];
   const hasEnoughSamples = points.length >= 2 || reconstructedPoints.length >= 2;
-  const projectRoute = (route: typeof points) => {
+  const projectRoute = (route: typeof drawnPoints) => {
     if (!route.length || !allPoints.length) return '';
     const minLat = Math.min(...allPoints.map((p) => p.latitude));
     const maxLat = Math.max(...allPoints.map((p) => p.latitude));
@@ -47,8 +53,8 @@ export function RoutePreview({ session, large = false, compact = false, live = f
     const centerLon = (minLon + maxLon) / 2;
     return route.map((p) => `${dimensions.width / 2 + (p.longitude - centerLon) * lonScale * scale},${dimensions.height / 2 - (p.latitude - centerLat) * scale}`).join(' ');
   };
-  const path = projectRoute(points);
-  const estimatedPath = projectRoute([...reconstructedPoints, ...(points.length ? [points[0]] : [])]);
+  const path = projectRoute(drawnPoints);
+  const estimatedPath = projectRoute([...reconstructedPoints, ...(drawnPoints.length ? [drawnPoints[0]] : [])]);
   const measuredDurationSeconds = points.length > 1 ? Math.max(0, (points[points.length - 1].timestamp - points[0].timestamp) / 1000) : 0;
   const estimatedTotalMinutes = Math.round(((reconstruction?.durationSeconds ?? 0) + measuredDurationSeconds) / 60);
   const measuredDistanceMeters = session?.distanceMeters ?? 0;
@@ -79,9 +85,17 @@ export function RoutePreview({ session, large = false, compact = false, live = f
         <Modal visible={mapOpen} transparent animationType="slide" onRequestClose={() => setMapOpen(false)}>
           <View style={styles.mapBackdrop}>
             <View style={styles.mapCard}>
-              <Pressable onPress={() => setMapOpen(false)} accessibilityRole="button" accessibilityLabel="סגור מפה" style={styles.closeMap}><RtlText>✕ סגור מפה</RtlText></Pressable>
-              <View style={styles.expandedMap}>{renderMap(true)}</View>
-              <RtlText style={styles.mapAttribution}>© OpenStreetMap contributors · OpenFreeMap</RtlText>
+              <View style={styles.mapHeader}>
+                <View style={styles.mapSummary}>
+                  <RtlText style={styles.mapSummaryMain}>
+                    {[formatDistanceMeters(measuredDistanceMeters), measuredDurationSeconds > 0 ? `${Math.max(1, Math.round(measuredDurationSeconds / 60))} דק׳` : null].filter(Boolean).join(' · ')}
+                  </RtlText>
+                  {caption ? <RtlText style={styles.mapSummarySub}>{caption}</RtlText> : null}
+                </View>
+                <Pressable onPress={() => setMapOpen(false)} accessibilityRole="button" accessibilityLabel="סגור מפה" style={styles.closeMap} hitSlop={8}><RtlText style={styles.closeMapText}>✕ סגירה</RtlText></Pressable>
+              </View>
+              <View style={[styles.expandedMap, { height: Math.round(Math.min(Dimensions.get('window').height * 0.7, 640)) }]}>{renderMap(true)}</View>
+              <RtlText style={styles.mapLegend}>{live ? '© OpenStreetMap contributors · OpenFreeMap' : '▶ התחלה · 🏁 סיום · הקו מתחלף מירוק לכחול לאורך הטיול · © OpenStreetMap · OpenFreeMap'}</RtlText>
             </View>
           </View>
         </Modal>
@@ -120,11 +134,16 @@ const styles = StyleSheet.create({
   wrapper: { width: 92, height: 72, borderRadius: 12, overflow: 'hidden', backgroundColor: colors.statusCurrentBg, alignItems: 'center', justifyContent: 'center' },
   compactWrapper: { width: 72, height: 48, borderRadius: 9 },
   liveWrapper: { width: '100%', height: 180, borderRadius: 12 },
-  mapBackdrop: { flex: 1, backgroundColor: '#0008', justifyContent: 'center', padding: 16 },
-  mapCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 12, gap: 8 },
-  closeMap: { padding: 12, alignSelf: 'flex-end' },
-  expandedMap: { height: 430, width: '100%' },
-  mapAttribution: { fontSize: 11, color: colors.textSecondary, textAlign: 'center' },
+  mapBackdrop: { flex: 1, backgroundColor: '#0008', justifyContent: 'center', padding: 12 },
+  mapCard: { backgroundColor: colors.surface, borderRadius: 16, padding: 10, gap: 8 },
+  mapHeader: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, paddingHorizontal: 4 },
+  mapSummary: { flex: 1, gap: 2 },
+  mapSummaryMain: { fontSize: 17, fontWeight: '800', color: colors.textPrimary, textAlign: 'right' },
+  mapSummarySub: { fontSize: 13, color: colors.textSecondary, textAlign: 'right' },
+  closeMap: { paddingVertical: 8, paddingHorizontal: 10 },
+  closeMapText: { fontSize: 15, fontWeight: '700', color: colors.primaryDark },
+  expandedMap: { width: '100%', borderRadius: 12, overflow: 'hidden' },
+  mapLegend: { fontSize: 11, color: colors.textSecondary, textAlign: 'center' },
   largeWrapper: { width: '100%', height: 240, borderRadius: 18, backgroundColor: colors.surfaceMuted },
   incomplete: { fontSize: 11, color: colors.textSecondary, textAlign: 'center', paddingHorizontal: 4 },
   legend: { position: 'absolute', bottom: 8, fontSize: 12, color: colors.textSecondary },
@@ -138,7 +157,7 @@ const styles = StyleSheet.create({
 function buildMapHtml(points: number[][], estimatedPoints: number[][], expanded: boolean, live: boolean): string {
   const coords = JSON.stringify(points);
   const estimateCoords = JSON.stringify(estimatedPoints);
-  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"><style>html,body,#map{margin:0;width:100%;height:100%;overflow:hidden} .maplibregl-control-container{font:10px system-ui} .maplibregl-ctrl-attrib{font-size:10px!important} .maplibregl-ctrl-bottom-right{max-width:100%}</style></head><body><div id="map"></div>${expanded && !live ? '<button id="replay" style="position:absolute;z-index:5;top:12px;left:12px;border:0;border-radius:20px;padding:10px 16px;background:#fff;color:#183e48;font:600 14px system-ui">▶ נגן מסלול</button>' : ''}<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script><script>
+  return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"><style>html,body,#map{margin:0;width:100%;height:100%;overflow:hidden} .maplibregl-control-container{font:10px system-ui} .maplibregl-ctrl-attrib{font-size:10px!important} .maplibregl-ctrl-bottom-right{max-width:100%} .walk-pin{width:30px;height:30px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px #0004;display:flex;align-items:center;justify-content:center;font:700 13px system-ui;color:#fff} .walk-pin.start{background:#2F9E5B} .walk-pin.end{background:#fff;font-size:16px}</style></head><body><div id="map"></div>${expanded && !live ? '<button id="replay" style="position:absolute;z-index:5;top:12px;left:12px;border:0;border-radius:20px;padding:10px 16px;background:#fff;color:#183e48;font:600 14px system-ui">▶ נגן מסלול</button>' : ''}<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script><script>
   const points = ${coords};
   const estimatedPoints = ${estimateCoords};
   const allCoordinates = [...estimatedPoints,...points];
@@ -147,16 +166,25 @@ function buildMapHtml(points: number[][], estimatedPoints: number[][], expanded:
   // Do not reverse the text or mirror the map: both corrupt street names and route geometry.
   if(maplibregl.setRTLTextPlugin){maplibregl.setRTLTextPlugin('https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js',true).catch(()=>{});}
   const map = new maplibregl.Map({
-    container:'map',style:'https://tiles.openfreemap.org/styles/liberty',
+    // Positron: a quiet light basemap so the walk stands out (owner request 2026-11-02).
+    container:'map',style:'https://tiles.openfreemap.org/styles/positron',
     center:[initial[1],initial[0]],zoom:16,
-    interactive:${expanded ? 'true' : 'false'},attributionControl:${expanded ? 'true' : 'false'}
+    interactive:${expanded ? 'true' : 'false'},attributionControl:${expanded ? '{compact:true}' : 'false'}
   });
   map.on('load',()=>{
     const coordinates=points.map(p=>[p[1],p[0]]);
     if(coordinates.length>1){
-      map.addSource('walk-route',{type:'geojson',data:{type:'Feature',properties:{},geometry:{type:'LineString',coordinates}}});
-      map.addLayer({id:'walk-route-outline',type:'line',source:'walk-route',paint:{'line-color':'#ffffff','line-width':8,'line-opacity':0.95},layout:{'line-join':'round','line-cap':'round'}});
-      map.addLayer({id:'walk-route-line',type:'line',source:'walk-route',paint:{'line-color':'#12A5AB','line-width':4.5},layout:{'line-join':'round','line-cap':'round'}});
+      map.addSource('walk-route',{type:'geojson',lineMetrics:true,data:{type:'Feature',properties:{},geometry:{type:'LineString',coordinates}}});
+      map.addLayer({id:'walk-route-outline',type:'line',source:'walk-route',paint:{'line-color':'#ffffff','line-width':${expanded ? 9 : 7},'line-opacity':0.95},layout:{'line-join':'round','line-cap':'round'}});
+      // Start-to-end colour shows the direction of the walk.
+      map.addLayer({id:'walk-route-line',type:'line',source:'walk-route',paint:{'line-width':${expanded ? 5 : 4},'line-gradient':['interpolate',['linear'],['line-progress'],0,'#2F9E5B',1,'#0B5C75']},layout:{'line-join':'round','line-cap':'round'}});
+      if(${expanded ? 'true' : 'false'}){
+        // Small white chevrons along the line, pointing in the walking direction.
+        const c=document.createElement('canvas');c.width=24;c.height=24;const g=c.getContext('2d');
+        g.strokeStyle='#ffffff';g.lineWidth=3.5;g.lineCap='round';g.lineJoin='round';g.beginPath();g.moveTo(8,6);g.lineTo(15,12);g.lineTo(8,18);g.stroke();
+        map.addImage('walk-arrow',g.getImageData(0,0,24,24),{pixelRatio:2});
+        map.addLayer({id:'walk-route-arrows',type:'symbol',source:'walk-route',layout:{'symbol-placement':'line','symbol-spacing':70,'icon-image':'walk-arrow','icon-size':1,'icon-rotation-alignment':'map','icon-allow-overlap':true,'icon-ignore-placement':true}});
+      }
     }
     const estimated=estimatedPoints.map(p=>[p[1],p[0]]);
     if(estimated.length>1){
@@ -167,9 +195,9 @@ function buildMapHtml(points: number[][], estimatedPoints: number[][], expanded:
       const bounds=allCoordinates.map(p=>[p[1],p[0]]).reduce((b,p)=>b.extend(p),new maplibregl.LngLatBounds([allCoordinates[0][1],allCoordinates[0][0]],[allCoordinates[0][1],allCoordinates[0][0]]));
       map.fitBounds(bounds,{padding:${expanded ? '56' : '18'},maxZoom:17,duration:0});
     }
-    const marker=(coord,color,label)=>new maplibregl.Marker({color,scale:0.75}).setLngLat(coord).setPopup(new maplibregl.Popup({offset:16}).setText(label)).addTo(map);
-    if(${expanded ? 'true' : 'false'} && coordinates.length)marker(coordinates[0],'#138A52','תחילת מדידת GPS');
-    if(${expanded ? 'true' : 'false'} && coordinates.length>1)marker(coordinates[coordinates.length-1],'#2684D9','סיום / מיקום אחרון');
+    const pin=(coord,kind,text,label)=>{const el=document.createElement('div');el.className='walk-pin '+kind;el.textContent=text;el.title=label;return new maplibregl.Marker({element:el}).setLngLat(coord).setPopup(new maplibregl.Popup({offset:18}).setText(label)).addTo(map);};
+    if(${expanded ? 'true' : 'false'} && coordinates.length)pin(coordinates[0],'start','▶','תחילת מדידת GPS');
+    if(${expanded ? 'true' : 'false'} && !${live ? 'true' : 'false'} && coordinates.length>1)pin(coordinates[coordinates.length-1],'end','🏁','סיום');
     if(${live ? 'true' : 'false'} && coordinates.length){
       const current=coordinates[coordinates.length-1];
       new maplibregl.Marker({color:'#1976D2',scale:0.8}).setLngLat(current).addTo(map);
