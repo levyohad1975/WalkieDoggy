@@ -487,21 +487,49 @@ export const useGpsStore = create<GpsState>((set, get) => ({
         try { await repository.saveGpsReconstructionV1(session); }
         catch (error) { console.warn('[gpsStore] estimated route retained locally for sync', error); }
       }
-      if (gpsFencingEpoch === null) {
+      let finalEpoch = gpsFencingEpoch;
+      if (finalEpoch === null && repository.acquireGpsOwnershipV11) {
+        // The lease was lost and its renewal has not landed yet: one direct
+        // attempt on this device before giving up on the final write.
+        try {
+          finalEpoch = (await repository.acquireGpsOwnershipV11(walk.id, false)).fencingEpoch;
+          set({ gpsFencingEpoch: finalEpoch });
+          recordGpsLifecycle('lease_acquired', walk.id, 'renewed_for_final_write', { epoch: finalEpoch });
+        } catch (error) {
+          console.warn('[gpsStore] GPS lease could not be renewed for the final write', error);
+        }
+      }
+      if (finalEpoch === null) {
         set({ trackingStatus: 'interrupted' });
         throw new Error('GPS route was not saved because this device no longer owns GPS for the walk');
       }
       let saved: WalkGpsSession;
+      const appendFinal = (fencingEpoch: number) => repository.appendGpsRouteV11!({
+        walkId: walk.id,
+        fencingEpoch,
+        points: session.routePoints ?? [],
+        distanceMeters,
+        pointCount,
+        startedAt: session.startedAt,
+        endedAt: now,
+      });
       try {
-        saved = await repository.appendGpsRouteV11({
-          walkId: walk.id,
-          fencingEpoch: gpsFencingEpoch,
-          points: session.routePoints ?? [],
-          distanceMeters,
-          pointCount,
-          startedAt: session.startedAt,
-          endedAt: now,
-        });
+        try {
+          saved = await appendFinal(finalEpoch);
+        } catch (error) {
+          // Production 2026-11-02 (GPS-L): with the iPhone screen locked the
+          // heartbeat timer is suspended, so the 45-second lease lapses while
+          // this device still holds its epoch, and the final write is refused.
+          // Renew on this same device (the server refuses if another device
+          // took over GPS) and retry the final write once.
+          if (!isGpsLeaseLostError(error) || !repository.acquireGpsOwnershipV11) throw error;
+          recordGpsLifecycle('lease_lost', walk.id, 'final_write_rejected', { epoch: finalEpoch });
+          const lease = await repository.acquireGpsOwnershipV11(walk.id, false);
+          finalEpoch = lease.fencingEpoch;
+          set({ gpsFencingEpoch: finalEpoch });
+          recordGpsLifecycle('lease_acquired', walk.id, 'renewed_for_final_write', { epoch: finalEpoch });
+          saved = await appendFinal(finalEpoch);
+        }
       } catch (error) {
         // Keep the captured route and lease epoch in memory if persistence
         // fails. The walk remains active and retryable; never clear the only
@@ -511,7 +539,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
         set({ trackingStatus: 'interrupted' });
         throw error;
       }
-      await releaseGpsOwnership(walk.id, gpsFencingEpoch);
+      await releaseGpsOwnership(walk.id, finalEpoch);
       if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
       activeGpsHeartbeat = null;
       activeWatchWalkId = null;

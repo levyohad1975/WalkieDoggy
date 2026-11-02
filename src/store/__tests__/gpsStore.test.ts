@@ -276,6 +276,39 @@ describe('gpsStore', () => {
     expect(useGpsStore.getState()).toMatchObject({ trackingWalkId: walk.id, trackingStatus: 'interrupted', pointCount: 1, routePoints: [routePoint], gpsFencingEpoch: 1 });
   });
 
+  // Production 2026-11-02 (GPS-L): the phone was locked near the end of the
+  // walk, the heartbeat timer was suspended and the lease lapsed while the
+  // device still held its epoch, so the final write was refused.
+  it('renews a lapsed lease on this device and retries the final GPS write once', async () => {
+    const { useGpsStore } = require('../gpsStore');
+    const { repository } = require('../../data');
+    const gpsTracking = require('../../lib/gpsTracking');
+    const routePoint = { latitude: 32.08, longitude: 34.78, timestamp: 1000 };
+    const acquire = jest.fn()
+      .mockResolvedValueOnce({ fencingEpoch: 1, expiresAt: 'later' })
+      .mockResolvedValueOnce({ fencingEpoch: 2, expiresAt: 'later' });
+    const append = jest.fn(async (update: any) => {
+      if (update.endedAt && update.fencingEpoch === 1) throw new Error('GPS ownership expired or transferred');
+      return { id: walk.id, walkId: walk.id, familyId: walk.familyId, dogId: walk.dogId, pointCount: 1, routePoints: [routePoint], source: 'device_gps', createdAt: 'c', updatedAt: 'u' };
+    });
+    const release = jest.fn().mockResolvedValue(true);
+    repository.acquireGpsOwnershipV11 = acquire;
+    repository.appendGpsRouteV11 = append;
+    repository.releaseGpsOwnershipV11 = release;
+    repository.heartbeatGpsOwnershipV11 = undefined;
+    jest.spyOn(gpsTracking, 'startGpsWatch').mockImplementationOnce(async () => ({ handle: { remove: jest.fn() }, permissionStatus: 'granted' }));
+    await useGpsStore.getState().startTracking(walk);
+    expect(await useGpsStore.getState().attachGpsOwnership({ ...walk, status: 'in_progress' } as Walk)).toBe(true);
+    useGpsStore.setState({ distanceMeters: 50, pointCount: 1, routePoints: [routePoint] });
+
+    await useGpsStore.getState().stopTracking(walk, 'walker-1');
+
+    expect(acquire).toHaveBeenLastCalledWith(walk.id, false);
+    const finalWrites = append.mock.calls.map(([u]: any[]) => u).filter((u: any) => u.endedAt);
+    expect(finalWrites.map((u: any) => u.fencingEpoch)).toEqual([1, 2]);
+    expect(useGpsStore.getState().trackingWalkId).toBeNull();
+  });
+
   // Real-iPhone P0 (2026-10-15): Safari resolves the watch only at its first
   // fix, after the start RPC returned. The immediate attachGpsOwnership() then
   // bailed out ("permission not granted yet") and was never retried, so no
