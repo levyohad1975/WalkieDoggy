@@ -23,6 +23,8 @@ const SEARCH_MISS_REPORT_DELAY_MS = 2000;
 interface HelpCenterModalProps {
   visible: boolean;
   onClose: () => void;
+  /** 'contact' opens straight on the "כתבו לנו" form (⚙️ ניהול המשפחה → "✉️ פנייה לתמיכה"). */
+  initialView?: 'faq' | 'contact';
 }
 
 /**
@@ -36,7 +38,7 @@ interface HelpCenterModalProps {
  * mail app: the request reaches the System Admin console ("📨 פניות", with
  * an email and a push), and the reply comes back under "הפניות שלי".
  */
-export function HelpCenterModal({ visible, onClose }: HelpCenterModalProps) {
+export function HelpCenterModal({ visible, onClose, initialView = 'faq' }: HelpCenterModalProps) {
   const [query, setQuery] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
   const [categories, setCategories] = useState<HelpCategory[]>(HELP_CATEGORIES);
@@ -64,6 +66,7 @@ export function HelpCenterModal({ visible, onClose }: HelpCenterModalProps) {
       setSendState(null);
       return undefined;
     }
+    setView(initialView);
     let active = true;
     fetchPublishedHelpArticles()
       .then((articles) => { if (active) setCategories(mergeHelpArticles(HELP_CATEGORIES, articles)); })
@@ -72,7 +75,7 @@ export function HelpCenterModal({ visible, onClose }: HelpCenterModalProps) {
       .then((tickets) => { if (active) { setMyTickets(tickets); setMyTicketsError(false); } })
       .catch(() => { if (active) setMyTicketsError(true); });
     return () => { active = false; };
-  }, [visible]);
+  }, [visible, initialView]);
 
   const results = useMemo(() => searchHelp(query, categories), [query, categories]);
   const searching = query.trim().length > 0;

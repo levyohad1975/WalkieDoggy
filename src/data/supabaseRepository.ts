@@ -40,6 +40,9 @@ function lifecycleRpcError(rpcName: string, error: unknown): unknown {
 // measurement.
 import { perfMark } from '../lib/perfTrace';
 
+/** PostgREST's default max rows per request. */
+const ROUTE_SAMPLE_PAGE_SIZE = 1000;
+
 /** Maps between the app's camelCase domain types and Supabase's snake_case rows. */
 
 function toUser(row: any): FamilyUser {
@@ -607,9 +610,19 @@ export class SupabaseRepository implements Repository {
     const owners = ownerError ? null : ownerRows;
     if (!owners?.length) return [...sessions.values()];
     const ownerIds = owners.map((owner: any) => owner.walk_id);
-    const { data: points, error: pointsError } = await this.client.from('walk_gps_route_samples_v11')
-      .select('walk_id,latitude,longitude,point_timestamp_ms').in('walk_id', ownerIds).order('point_timestamp_ms', { ascending: true });
-    if (pointsError) throw pointsError;
+    // Read every page: the API returns at most 1000 rows per request, and a
+    // cut-off route would end the walk early (wrong map, wrong estimated
+    // leg home in Statistics).
+    const points: any[] = [];
+    for (let from = 0; ; from += ROUTE_SAMPLE_PAGE_SIZE) {
+      const { data: page, error: pointsError } = await this.client.from('walk_gps_route_samples_v11')
+        .select('walk_id,latitude,longitude,point_timestamp_ms').in('walk_id', ownerIds)
+        .order('walk_id', { ascending: true }).order('point_timestamp_ms', { ascending: true })
+        .range(from, from + ROUTE_SAMPLE_PAGE_SIZE - 1);
+      if (pointsError) throw pointsError;
+      points.push(...(page ?? []));
+      if (!page || page.length < ROUTE_SAMPLE_PAGE_SIZE) break;
+    }
     const pointsByWalk = new Map<string, Array<{ latitude: number; longitude: number; timestamp: number }>>();
     for (const point of points ?? []) {
       const route = pointsByWalk.get(point.walk_id) ?? [];

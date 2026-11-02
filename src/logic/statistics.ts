@@ -2,6 +2,7 @@ import type { Walk, WalkGpsSession, WalkStatus } from '../types';
 import { localDateOnly } from './dateFormat';
 import { walkDateTime } from './nextWalk';
 import { formatDistanceMeters } from './gpsDistance';
+import { estimatedHomeLegsMeters } from './routeDisplay';
 
 export type StatsPeriod = '7d' | '30d' | 'all';
 
@@ -262,21 +263,46 @@ export function computeDailyTrend(walks: Walk[]): TrendPoint[] {
 }
 
 export interface DistanceStats {
+  /** Measured plus the estimated legs from/to home (equal to measuredMeters when there are none). */
   totalMeters: number;
   averageMeters: number | null;
   /** How many of the in-range walks actually have a GPS session — the screen only shows this KPI at all when this is > 0 (PRD gap analysis: distance is an optional field that appears once GPS data exists, never a blocking/empty-by-default tile). Uses correctedDistanceMeters over distanceMeters when a family member has confirmed/corrected it — see WalkGpsSession's own doc comment for why the correction, once set, is authoritative. */
   sessionCount: number;
+  /** What GPS actually measured (or the confirmed correction). */
+  measuredMeters: number;
+  /**
+   * Owner request 2026-11-02: the estimated legs the walk map shows (home →
+   * first fix, last fix → home, or a saved reconstruction) also count. Not
+   * added on top of a confirmed correction, which already is the whole walk.
+   */
+  estimatedMeters: number;
 }
 
-export function computeDistanceStats(sessions: WalkGpsSession[]): DistanceStats {
-  const distances = sessions
-    .map((s) => s.correctedDistanceMeters ?? s.distanceMeters)
-    .filter((d): d is number => typeof d === 'number');
-  const totalMeters = distances.reduce((sum, d) => sum + d, 0);
+export function computeDistanceStats(
+  sessions: WalkGpsSession[],
+  homeByDogId: Record<string, { latitude: number; longitude: number } | null | undefined> = {},
+): DistanceStats {
+  let measuredMeters = 0;
+  let estimatedMeters = 0;
+  let sessionCount = 0;
+  for (const s of sessions) {
+    const measured = s.correctedDistanceMeters ?? s.distanceMeters;
+    if (typeof measured !== 'number') continue;
+    sessionCount += 1;
+    measuredMeters += measured;
+    if (s.correctedDistanceMeters == null) {
+      const legs = estimatedHomeLegsMeters(s, homeByDogId[s.dogId]);
+      estimatedMeters += legs.leadMeters + legs.tailMeters;
+    }
+  }
+  estimatedMeters = Math.round(estimatedMeters);
+  const totalMeters = measuredMeters + estimatedMeters;
   return {
     totalMeters,
-    averageMeters: distances.length === 0 ? null : Math.round(totalMeters / distances.length),
-    sessionCount: distances.length,
+    averageMeters: sessionCount === 0 ? null : Math.round(totalMeters / sessionCount),
+    sessionCount,
+    measuredMeters,
+    estimatedMeters,
   };
 }
 

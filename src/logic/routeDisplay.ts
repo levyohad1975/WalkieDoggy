@@ -14,7 +14,7 @@
  *
  * The first and last fixes are kept as they are so start/end markers stay put.
  */
-import { haversineDistanceMeters, type GpsPoint } from './gpsDistance';
+import { accumulateDistance, createGpsAccumulator, haversineDistanceMeters, type GpsPoint } from './gpsDistance';
 
 export const SMOOTHING_HALF_WINDOW = 2;
 export const SIMPLIFY_TOLERANCE_METERS = 4;
@@ -126,6 +126,29 @@ export function homeTailForDisplay(
 ): { routePoints: Array<{ latitude: number; longitude: number; timestamp: number }>; distanceMeters: number } | null {
   const lead = homeLeadForDisplay(home, lastMeasured);
   return lead ? { routePoints: [lead.routePoints[1], lead.routePoints[0]], distanceMeters: lead.distanceMeters } : null;
+}
+
+/**
+ * The estimated legs the walk map shows for one GPS session, in meters
+ * (owner request 2026-11-02: count them in statistics too). Same rule as
+ * RoutePreview: the saved reconstruction or else the straight lead from
+ * home, plus the straight tail back home. Nothing is stored.
+ */
+export function estimatedHomeLegsMeters(
+  session: { routePoints?: Array<{ latitude: number; longitude: number; timestamp: number }>; reconstruction?: { distanceMeters: number } | null },
+  home: { latitude: number; longitude: number } | null | undefined,
+): { leadMeters: number; tailMeters: number } {
+  const accepted = (session.routePoints ?? []).reduce(
+    (acc, point) => accumulateDistance(acc, point as GpsPoint),
+    createGpsAccumulator(),
+  ).routePoints;
+  const drawn = routeForDisplay(accepted);
+  const reconstructed = session.reconstruction?.distanceMeters;
+  const leadMeters = reconstructed != null && Number.isFinite(reconstructed)
+    ? Math.max(0, reconstructed)
+    : homeLeadForDisplay(home, drawn[0])?.distanceMeters ?? 0;
+  const tailMeters = homeTailForDisplay(home, drawn[drawn.length - 1])?.distanceMeters ?? 0;
+  return { leadMeters, tailMeters };
 }
 
 /** Short Hebrew label of the estimated home legs, or null when there are none. */

@@ -1,5 +1,5 @@
 ﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { RtlText } from '../components/RtlText';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -122,6 +122,7 @@ function SettingsScreenContent() {
   const currentFamilyUnlocks = loadedAchievementFamilyId === familyId ? achievementUnlocks : [];
   const [privacyAccessibilityModalVisible, setPrivacyAccessibilityModalVisible] = useState(false);
   const [helpCenterVisible, setHelpCenterVisible] = useState(false);
+  const [helpCenterView, setHelpCenterView] = useState<'faq' | 'contact'>('faq');
   const [remindersModalVisible, setRemindersModalVisible] = useState(false);
   const [sharingModalVisible, setSharingModalVisible] = useState(false);
   const [managementVisible, setManagementVisible] = useState(false);
@@ -640,18 +641,15 @@ function SettingsScreenContent() {
     setSwitchTargetUserId(null);
   };
 
-  // PRD §16: "keep a clear support channel from within the app; the final
-  // support address should come from configuration, not be scattered in
-  // code." The row itself is hidden entirely (see the section below) when
-  // this isn't set — never a broken mailto: link to a placeholder.
-  const supportEmail = process.env.EXPO_PUBLIC_SUPPORT_EMAIL;
-  const handleContactSupport = async () => {
-    if (!supportEmail) return;
-    try {
-      await Linking.openURL(`mailto:${supportEmail}`);
-    } catch {
-      Alert.alert('לא הצלחנו לפתוח את האימייל', `אפשר לפנות ידנית לכתובת ${supportEmail}.`);
-    }
+  // PRD §16: "keep a clear support channel from within the app". Owner
+  // request 2026-11-02: it opens the in-app "כתבו לנו" form (the request
+  // reaches the System Admin console with an email and a push, and the reply
+  // comes back in the app) instead of the mail app. The family management
+  // sheet closes first so the form is not hidden behind it.
+  const handleContactSupport = () => {
+    setManagementVisible(false);
+    setHelpCenterView('contact');
+    setHelpCenterVisible(true);
   };
 
   // PRD §16 pairs "תמיכה ויציאה" (support AND sign-out) in the same
@@ -881,7 +879,7 @@ function SettingsScreenContent() {
           <View style={styles.groupDivider} />
           <Pressable
             style={styles.groupRow}
-            onPress={() => setHelpCenterVisible(true)}
+            onPress={() => { setHelpCenterView('faq'); setHelpCenterVisible(true); }}
             accessibilityRole="button"
             accessibilityLabel="עזרה ותמיכה"
             testID="settings-help-entry"
@@ -1094,7 +1092,7 @@ function SettingsScreenContent() {
         onClose={() => setPrivacyAccessibilityModalVisible(false)}
       />
 
-      <HelpCenterModal visible={helpCenterVisible} onClose={() => setHelpCenterVisible(false)} />
+      <HelpCenterModal visible={helpCenterVisible} initialView={helpCenterView} onClose={() => setHelpCenterVisible(false)} />
 
       <RemindersModal
         visible={remindersModalVisible}
@@ -1144,9 +1142,7 @@ function SettingsScreenContent() {
               {/* Owner decision 2026-11-02: activity logs are for the System
                   Admin only (console → "📋 יומן פעילות"); the server no longer
                   lets a family admin read them. */}
-              {supportEmail ? (
-                <Button label="✉️ פנייה לתמיכה" variant="secondary" onPress={() => void handleContactSupport()} style={styles.addButton} />
-              ) : null}
+              <Button label="✉️ פנייה לתמיכה" variant="secondary" onPress={handleContactSupport} style={styles.addButton} />
               <Button label="🚪 ניתוק המכשיר" variant="secondary" onPress={handleSignOut} style={styles.addButton} />
 
               {isSupabaseConfigured && !systemObserverActive ? (

@@ -368,10 +368,10 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
       from: (table: string) => ({
         select: () => ({
           in: () => ({
-            order: async () => ({ data: [
+            order: () => ({ order: () => ({ range: async () => ({ data: [
               { walk_id: 'walk-live', latitude: 32.1, longitude: 34.8, point_timestamp_ms: 1000 },
               { walk_id: 'walk-live', latitude: 32.1001, longitude: 34.8001, point_timestamp_ms: 2000 },
-            ], error: null }),
+            ], error: null }) }) }),
             then: (resolve: (value: unknown) => unknown) => Promise.resolve({
               data: table === 'walk_gps_sessions' ? [] : [{ walk_id: 'walk-live', family_id: 'fam-42', dog_id: 'dog-1', distance_meters: 16, point_count: 2, route_started_at: 'start', route_ended_at: null }],
               error: null,
@@ -392,6 +392,33 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
         { latitude: 32.1001, longitude: 34.8001, timestamp: 2000 },
       ],
     });
+  });
+
+  it('getGpsSessionsForWalkIds reads every page of route points, so long histories are not cut off', async () => {
+    const ranges: Array<[number, number]> = [];
+    const total = 2300;
+    const client: any = {
+      from: (table: string) => ({
+        select: () => ({
+          in: () => ({
+            order: () => ({ order: () => ({ range: async (from: number, to: number) => {
+              ranges.push([from, to]);
+              const rows = Array.from({ length: Math.max(0, Math.min(to, total - 1) - from + 1) }, (_, i) => (
+                { walk_id: 'walk-long', latitude: 32, longitude: 34.8, point_timestamp_ms: from + i }));
+              return { data: rows, error: null };
+            } }) }),
+            then: (resolve: (value: unknown) => unknown) => Promise.resolve({
+              data: table === 'walk_gps_sessions' ? [] : [{ walk_id: 'walk-long', family_id: 'fam-42', dog_id: 'dog-1', distance_meters: 900, point_count: total, route_started_at: 'start', route_ended_at: 'end' }],
+              error: null,
+            }).then(resolve),
+          }),
+        }),
+      }),
+    };
+    const sessions = await new SupabaseRepository(client).getGpsSessionsForWalkIds(['walk-long']);
+    expect(ranges).toEqual([[0, 999], [1000, 1999], [2000, 2999]]);
+    expect(sessions[0].routePoints).toHaveLength(total);
+    expect(sessions[0].routePoints?.[total - 1].timestamp).toBe(total - 1);
   });
 
   it('getGpsSessionsForWalkIds returns [] without querying for an empty id list', async () => {

@@ -226,7 +226,10 @@ export function StatisticsScreen() {
   const plannedVsSpontaneous = useMemo(() => computePlannedVsSpontaneous(filteredWalks), [filteredWalks]);
   const onTimeStats = useMemo(() => computeOnTimeStats(filteredWalks), [filteredWalks]);
   const durationStats = useMemo(() => computeDurationStats(filteredWalks), [filteredWalks]);
-  const distanceStats = useMemo(() => computeDistanceStats(gpsSessions), [gpsSessions]);
+  // Owner request 2026-11-02: the estimated legs from/to home the walk map
+  // shows count too (only for dogs with a verified home location).
+  const homeByDogId = useMemo(() => Object.fromEntries(dogs.map((d) => [d.id, d.homeLocation])), [dogs]);
+  const distanceStats = useMemo(() => computeDistanceStats(gpsSessions, homeByDogId), [gpsSessions, homeByDogId]);
   const trend = useMemo(() => computeDailyTrend(filteredWalks), [filteredWalks]);
   const insights = useMemo(() => computeInsights(filteredWalks, usersById, dogsById), [filteredWalks, usersById, dogsById]);
   const insightCards = useMemo(() => {
@@ -513,8 +516,13 @@ export function StatisticsScreen() {
               </View>
               {distanceStats.sessionCount > 0 ? (
                 <View style={styles.kpiTile}>
-                  <RtlText style={[styles.kpiValue, styles.ltrText]}>{formatDistanceMeters(distanceStats.totalMeters)}</RtlText>
+                  <RtlText style={[styles.kpiValue, styles.ltrText]}>
+                    {distanceStats.estimatedMeters > 0 ? `≈ ${formatDistanceMeters(distanceStats.totalMeters)}` : formatDistanceMeters(distanceStats.totalMeters)}
+                  </RtlText>
                   <RtlText style={[styles.kpiLabel, styles.rtlText]}>מרחק כולל</RtlText>
+                  {distanceStats.estimatedMeters > 0 ? (
+                    <RtlText style={[styles.kpiEstimate, styles.rtlText]}>{`${formatDistanceMeters(distanceStats.measuredMeters)} נמדדו · ${formatDistanceMeters(distanceStats.estimatedMeters)} משוער מהבית`}</RtlText>
+                  ) : null}
                 </View>
               ) : null}
               <View style={styles.kpiTile}>
@@ -685,6 +693,7 @@ const styles = StyleSheet.create({
   kpiValueDone: { color: colors.statusDone },
   kpiLabel: { ...typography.meta, color: colors.textSecondary },
   kpiSubValue: { fontSize: 13, fontWeight: '700', color: colors.statusDone, marginTop: 2 },
+  kpiEstimate: { fontSize: 11, fontWeight: '600', color: colors.textSecondary, marginTop: 2 },
   inlineStat: { flexDirection: 'row', ...nativeDirection('rtl'), alignItems: 'baseline', gap: 4 },
   metaTextStrong: { fontSize: 13, color: colors.textPrimary, fontWeight: '800' },
   barTrack: { height: 10, borderRadius: 5, backgroundColor: colors.surfaceMuted, overflow: 'hidden' },
