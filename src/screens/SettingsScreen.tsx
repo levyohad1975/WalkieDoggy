@@ -795,8 +795,9 @@ function SettingsScreenContent() {
         {/* Settings redesign 2026-11-02: rows grouped by topic (the dog, the
             family, notifications) in one card per topic with dividers, every
             row with a one-line description, icons before the label. */}
+        {/* The dog card right above already names the dog, so this card has
+            no title of its own (a repeated "טופי" read as a duplicate). */}
         <View style={styles.section}>
-          <RtlText style={styles.sectionTitle}>🧡 {dog?.name ?? 'הכלב'}</RtlText>
           <View style={styles.groupCard}>
             {dog ? (
               <>

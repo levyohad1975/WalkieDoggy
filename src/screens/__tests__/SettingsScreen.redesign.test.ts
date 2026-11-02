@@ -12,7 +12,9 @@ describe('Settings redesign', () => {
   const gps: string = fs.readFileSync(require.resolve('../../components/RemoteGpsPanel'), 'utf8');
 
   it('groups rows by topic in one card each', () => {
-    const dogIdx = settings.indexOf("<RtlText style={styles.sectionTitle}>🧡 {dog?.name ?? 'הכלב'}</RtlText>");
+    // The dog's card has no title of its own: the dog card above names it.
+    expect(settings).not.toContain("{dog?.name ?? 'הכלב'}</RtlText>");
+    const dogIdx = settings.indexOf('<RtlText style={styles.hubLabel}>🩺 בריאות וטיפוח</RtlText>');
     const familyIdx = settings.indexOf('<RtlText style={styles.sectionTitle}>👨‍👩‍👧 משפחה</RtlText>');
     const notifIdx = settings.indexOf('<RtlText style={styles.sectionTitle}>🔔 התראות</RtlText>');
     expect(dogIdx).toBeGreaterThan(-1);
@@ -37,6 +39,7 @@ describe('Settings redesign', () => {
     expect(gps).toContain('מאפשר למנהל המשפחה לבקש הפעלת GPS בטלפון של מי שמטייל');
     expect(gps).toContain('מאשר שמנהל המשפחה יבקש להפעיל GPS בטלפון שלי בזמן טיול');
     expect(gps).not.toContain("settings.familyEnabled?'פעיל':'כבוי'");
+    expect(gps.match(/thumbColor="#FFFFFF"/g)?.length).toBe(2);
   });
 
   it('keeps less space above the title', () => {
