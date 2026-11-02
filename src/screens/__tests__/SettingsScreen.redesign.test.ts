@@ -46,3 +46,23 @@ describe('Settings redesign', () => {
     expect(settings).toContain('content: { padding: spacing.xl, paddingTop: spacing.sm,');
   });
 });
+
+describe('Settings redesign — bottom sections', () => {
+  const settings: string = require('fs').readFileSync(require.resolve('../SettingsScreen'), 'utf8');
+
+  it('privacy info and the tutorial share one help & privacy card', () => {
+    const title = settings.indexOf('<RtlText style={styles.sectionTitle}>❓ עזרה ופרטיות</RtlText>');
+    const privacy = settings.indexOf('onPress={() => setPrivacyAccessibilityModalVisible(true)}');
+    const tutorial = settings.indexOf('testID="settings-tutorial-entry"');
+    expect(title).toBeGreaterThan(-1);
+    expect(privacy).toBeGreaterThan(title);
+    expect(tutorial).toBeGreaterThan(privacy);
+    expect(settings).not.toContain('🔒 פרטיות ונגישות');
+  });
+
+  it('admin rows say what they open, without repeating their section title', () => {
+    expect(settings).toContain('<RtlText style={styles.hubLabel}>🖥️ מסוף הניהול</RtlText>');
+    expect(settings).toContain('כל המשפחות, יומנים וכלי בדיקה');
+    expect(settings).toContain('<RtlText style={styles.hubLabel}>⚙️ ניהול המשפחה</RtlText>');
+  });
+});

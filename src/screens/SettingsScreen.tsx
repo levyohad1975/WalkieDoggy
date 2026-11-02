@@ -857,10 +857,13 @@ function SettingsScreenContent() {
             about this app's behavior (see PrivacyAccessibilityInfoModal's
             own doc comment), not settings configured here, so this is a
             single small entry point rather than a toggle-filled section. */}
+        {/* Settings redesign 2026-11-02: privacy info and the tutorial share
+            one "help & privacy" card instead of two single-row sections. */}
         <View style={styles.section}>
-          <RtlText style={styles.sectionTitle}>🔒 פרטיות ונגישות</RtlText>
+          <RtlText style={styles.sectionTitle}>❓ עזרה ופרטיות</RtlText>
+          <View style={styles.groupCard}>
           <Pressable
-            style={styles.hubRow}
+            style={styles.groupRow}
             onPress={() => setPrivacyAccessibilityModalVisible(true)}
             accessibilityRole="button"
             accessibilityLabel="פרטיות ו-GPS, נגישות ותנועה מופחתת"
@@ -871,16 +874,15 @@ function SettingsScreenContent() {
               <RtlText style={styles.hubRowMeta}>מה נשמר על המיקום, ותנועה מופחתת</RtlText>
             </View>
           </Pressable>
-        </View>
 
         {/* First-run tutorial — permanently reachable from Help. Opens the
             player directly; works (with its fallback) even when no video is
             configured, offline, or on native builds. */}
-        {!systemObserverActive ? (
-          <View style={styles.section}>
-            <RtlText style={styles.sectionTitle}>❓ עזרה</RtlText>
+          {!systemObserverActive ? (
+            <>
+            <View style={styles.groupDivider} />
             <Pressable
-              style={styles.hubRow}
+              style={styles.groupRow}
               onPress={() => { openTutorialFromHelp(); }}
               accessibilityRole="button"
               accessibilityLabel="סרטון הדרכה"
@@ -892,8 +894,10 @@ function SettingsScreenContent() {
                 <RtlText style={styles.hubRowMeta}>סיור קצר בכל האפליקציה, עם קריינות</RtlText>
               </View>
             </Pressable>
+            </>
+          ) : null}
           </View>
-        ) : null}
+        </View>
 
         {/* Production report 2026-11-01: the hidden gesture on Home's header
             dog did not open the console on the owner's iPhone. A plain row,
@@ -910,7 +914,10 @@ function SettingsScreenContent() {
               testID="settings-system-admin-entry"
             >
               <RtlText style={styles.hubChevron}>‹</RtlText>
-              <RtlText style={styles.hubLabel}>🛡️ ניהול מערכת</RtlText>
+              <View style={styles.hubLabelWithMeta}>
+                <RtlText style={styles.hubLabel}>🖥️ מסוף הניהול</RtlText>
+                <RtlText style={styles.hubRowMeta}>כל המשפחות, יומנים וכלי בדיקה</RtlText>
+              </View>
             </Pressable>
           </View>
         ) : null}
@@ -986,12 +993,12 @@ function SettingsScreenContent() {
 
         {familyRole === 'admin' ? (
           <View style={styles.section}>
-            <RtlText style={styles.sectionTitle}>🛠️ מתקדם</RtlText>
+            <RtlText style={styles.sectionTitle}>🛠️ מתקדם · למנהל המשפחה</RtlText>
             <Pressable style={styles.hubRow} onPress={() => setManagementVisible(true)} accessibilityRole="button" accessibilityLabel="ניהול, למנהל בלבד">
               <RtlText style={styles.hubChevron}>‹</RtlText>
               <View style={styles.hubLabelWithMeta}>
-                <RtlText style={styles.hubLabel}>⚙️ ניהול</RtlText>
-                <RtlText style={styles.hubRowMeta}>יומן פעילות</RtlText>
+                <RtlText style={styles.hubLabel}>⚙️ ניהול המשפחה</RtlText>
+                <RtlText style={styles.hubRowMeta}>יומן פעילות של בני המשפחה</RtlText>
               </View>
             </Pressable>
           </View>
