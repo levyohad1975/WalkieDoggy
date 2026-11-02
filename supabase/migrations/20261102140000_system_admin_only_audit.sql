@@ -32,8 +32,16 @@ revoke all on public.impersonation_sessions from anon, authenticated;
 -- (SECURITY INVOKER) checks has_table_privilege(..., 'select') to decide
 -- whether Walk Lifecycle v1.1 is available. Without a policy RLS returns
 -- no rows to clients.
-drop policy if exists "family members can read walk lifecycle events" on public.walk_lifecycle_events;
-revoke insert, update, delete, truncate, references, trigger on public.walk_lifecycle_events from anon, authenticated;
+-- Guarded: the CI full-chain rehearsal replays this file before the v1.1
+-- migration that creates the table.
+do $$
+begin
+  if to_regclass('public.walk_lifecycle_events') is not null then
+    execute 'drop policy if exists "family members can read walk lifecycle events" on public.walk_lifecycle_events';
+    execute 'revoke insert, update, delete, truncate, references, trigger on public.walk_lifecycle_events from anon, authenticated';
+  end if;
+end;
+$$;
 
 -- 3. Capture more changes (metadata only).
 drop trigger if exists system_activity_audit_trigger on public.health_tasks;

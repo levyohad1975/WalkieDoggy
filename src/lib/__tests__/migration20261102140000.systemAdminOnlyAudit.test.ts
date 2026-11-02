@@ -12,7 +12,7 @@ describe('migration 20261102140000 — System Admin only activity logs', () => {
   it('removes every family-admin path to the logs', () => {
     expect(sql).toContain('drop policy if exists "admin reads audit log" on public.audit_log;');
     expect(sql).toContain('drop policy if exists "family admins can view remote gps audit" on public.remote_gps_audit;');
-    expect(sql).toContain('drop policy if exists "family members can read walk lifecycle events" on public.walk_lifecycle_events;');
+    expect(sql).toContain(`execute 'drop policy if exists "family members can read walk lifecycle events" on public.walk_lifecycle_events';`);
     expect(sql).toContain('revoke all on function public.admin_list_audit_log(integer, integer) from public, anon, authenticated;');
   });
 
@@ -27,7 +27,7 @@ describe('migration 20261102140000 — System Admin only activity logs', () => {
   it('keeps the SELECT grant the Walk Lifecycle v1.1 capability check depends on', () => {
     // walk_lifecycle_server_capabilities() is SECURITY INVOKER and checks
     // has_table_privilege(walk_lifecycle_events, 'select').
-    expect(sql).toContain('revoke insert, update, delete, truncate, references, trigger on public.walk_lifecycle_events from anon, authenticated;');
+    expect(sql).toContain("execute 'revoke insert, update, delete, truncate, references, trigger on public.walk_lifecycle_events from anon, authenticated';");
     expect(sql).not.toContain('revoke all on public.walk_lifecycle_events');
   });
 
