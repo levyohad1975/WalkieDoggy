@@ -118,3 +118,20 @@ export function homeLeadForDisplay(
   if (distanceMeters < HOME_LEAD_MIN_METERS) return null;
   return { routePoints: [start, end], distanceMeters };
 }
+
+/** Same rule for the end: walks also finish at home. Last measured fix → home. */
+export function homeTailForDisplay(
+  home: { latitude: number; longitude: number } | null | undefined,
+  lastMeasured: { latitude: number; longitude: number } | null | undefined,
+): { routePoints: Array<{ latitude: number; longitude: number; timestamp: number }>; distanceMeters: number } | null {
+  const lead = homeLeadForDisplay(home, lastMeasured);
+  return lead ? { routePoints: [lead.routePoints[1], lead.routePoints[0]], distanceMeters: lead.distanceMeters } : null;
+}
+
+/** One-line Hebrew summary of the estimated home legs, or null when there are none. */
+export function homeLegsSummary(leadMeters: number | null, tailMeters: number | null, format: (m: number) => string): string | null {
+  if (leadMeters && tailMeters) return `+ כ־${format(leadMeters + tailMeters)} משוער מהבית ובחזרה אליו (בקו ישר)`;
+  if (leadMeters) return `+ כ־${format(leadMeters)} מהבית עד תחילת המדידה (משוער, בקו ישר)`;
+  if (tailMeters) return `+ כ־${format(tailMeters)} מסוף המדידה חזרה הביתה (משוער, בקו ישר)`;
+  return null;
+}

@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { HOME_LEAD_MIN_METERS, homeLeadForDisplay, pathLengthMeters, routeForDisplay, simplifyRoute, smoothRoute } from '../routeDisplay';
+import { HOME_LEAD_MIN_METERS, homeLeadForDisplay, homeLegsSummary, homeTailForDisplay, pathLengthMeters, routeForDisplay, simplifyRoute, smoothRoute } from '../routeDisplay';
 
 const METER_LAT = 1 / 110_540;
 
@@ -75,5 +75,20 @@ describe('route display clean-up (drawing only)', () => {
     expect(source).toContain('(reconstruction ? null : homeLeadForDisplay(home, drawnPoints[0]))');
     expect(source).toContain('reconstruction?.routePoints ?? homeLead?.routePoints ?? []');
     expect(source).toContain("pin(estimated[0],'home','🏠'");
+  });
+
+  it('completes a measurement that stopped away from home back to home, and merges the pins near home', () => {
+    const home = { latitude: 32, longitude: 34.8 };
+    const stop = { latitude: 32 + 200 * METER_LAT, longitude: 34.8 };
+    const tail = homeTailForDisplay(home, stop);
+    expect(tail?.routePoints).toEqual([{ ...stop, timestamp: 0 }, { ...home, timestamp: 0 }]);
+    expect(homeTailForDisplay(home, { latitude: 32 + 20 * METER_LAT, longitude: 34.8 })).toBeNull();
+    const fmt = (m: number) => `${Math.round(m)} מ'`;
+    expect(homeLegsSummary(100, 200, fmt)).toBe("+ כ־300 מ' משוער מהבית ובחזרה אליו (בקו ישר)");
+    expect(homeLegsSummary(null, 200, fmt)).toBe("+ כ־200 מ' מסוף המדידה חזרה הביתה (משוער, בקו ישר)");
+    expect(homeLegsSummary(null, null, fmt)).toBeNull();
+    const source = fs.readFileSync(path.resolve(__dirname, '../../components/RoutePreview.tsx'), 'utf8');
+    expect(source).toContain("else if(!${homeLegs.endNearHome ? 'true' : 'false'})pin(coordinates[coordinates.length-1],'end','🏁','סיום');");
+    expect(source).toContain("pin(coordinates[coordinates.length-1],'stop','⏹','סוף מדידת GPS')");
   });
 });
