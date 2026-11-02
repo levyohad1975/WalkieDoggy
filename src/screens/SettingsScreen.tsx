@@ -994,7 +994,7 @@ function SettingsScreenContent() {
               <RtlText style={styles.hubChevron}>‹</RtlText>
               <View style={styles.hubLabelWithMeta}>
                 <RtlText style={styles.hubLabel}>⚙️ ניהול המשפחה</RtlText>
-                <RtlText style={styles.hubRowMeta}>יומן פעילות, ניתוק המכשיר ואיפוס נתונים</RtlText>
+                <RtlText style={styles.hubRowMeta}>ניתוק המכשיר, פנייה לתמיכה ואיפוס נתונים</RtlText>
               </View>
             </Pressable>
           </View>
@@ -1141,11 +1141,9 @@ function SettingsScreenContent() {
                 activity loading, sourced from the same
                 adminListFamilyActivity() RPC AdminActivityModal used).
               */}
-              {isSupabaseConfigured ? (
-                <Button label="📋 יומן פעילות" variant="secondary" onPress={() => openChildAfterManagementCloses('auditLog')} style={styles.addButton} />
-              ) : (
-                <RtlText style={styles.dogMeta}>יומן פעילות זמין רק כשהאפליקציה מחוברת ל-Supabase.</RtlText>
-              )}
+              {/* Owner decision 2026-11-02: activity logs are for the System
+                  Admin only (console → "📋 יומן פעילות"); the server no longer
+                  lets a family admin read them. */}
               {supportEmail ? (
                 <Button label="✉️ פנייה לתמיכה" variant="secondary" onPress={() => void handleContactSupport()} style={styles.addButton} />
               ) : null}

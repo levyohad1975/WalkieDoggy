@@ -853,11 +853,14 @@ export class SupabaseRepository implements Repository {
       .select('id,walk_id,point_count,distance_meters,started_at,ended_at,created_by_user_id')
       .eq('family_id', familyId).in('walk_id', returnedWalkIds);
     if (sessionError) throw sessionError;
+    // Since migration 20261102140000 the activity log is System Admin only;
+    // RLS now returns no rows (or a privilege error) here, and the review
+    // simply shows no audit trail instead of failing.
     const { data: auditRows, error: auditError } = await this.client.from('audit_log')
       .select('id,target_id,action,actor_user_id,created_at,metadata')
       .eq('family_id', familyId).eq('target_type', 'walk')
       .order('created_at', { ascending: true }).in('target_id', returnedWalkIds);
-    if (auditError) throw auditError;
+    if (auditError) console.warn('[getDuplicateActiveWalkReview] audit trail unavailable', auditError.message);
     const sessionsByWalk = new Map<string, DuplicateActiveWalkReviewRecord['gpsSessions']>();
     for (const session of sessions ?? []) {
       const list = sessionsByWalk.get(session.walk_id) ?? [];

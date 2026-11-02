@@ -431,9 +431,12 @@ export interface SystemAdminFamilyDetail {
   recentAudit: SystemAdminAuditEntry[];
 }
 
+/** Every audit stream merged by system_admin_list_global_audit (migration 20261102140000). */
+export type SystemAdminAuditSource = 'family_audit' | 'system_audit' | 'state_change' | 'walk_lifecycle' | 'remote_gps' | 'admin_access';
+
 export interface SystemAdminGlobalAuditEntry {
   id: string;
-  source: 'family_audit' | 'system_audit' | 'state_change';
+  source: SystemAdminAuditSource;
   familyId: string | null;
   familyName: string | null;
   actorUserId: string | null;
@@ -530,7 +533,7 @@ export async function getSystemAdminGlobalAudit(limit = 200): Promise<SystemAdmi
   const { data, error } = await client.rpc('system_admin_list_global_audit', { p_limit: limit });
   if (error) throw error;
   const rows = (data ?? []) as Array<{
-    event_id: string; source: 'family_audit' | 'system_audit' | 'state_change';
+    event_id: string; source: SystemAdminAuditSource;
     family_id: string | null; family_name: string | null; actor_user_id: string | null;
     actor_name: string | null; actor_auth_user_id: string | null; actor_email: string | null;
     action: string; target_type: string | null; target_id: string | null;

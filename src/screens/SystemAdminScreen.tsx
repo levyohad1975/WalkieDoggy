@@ -115,7 +115,56 @@ function auditActionLabel(action: string): string {
     'time_change_requests.update': 'עדכון בקשת שינוי שעה',
     'member_permission_overrides.insert': 'שינוי הרשאת משתמש',
     'member_permission_overrides.update': 'עדכון הרשאת משתמש',
+    'member_permission_overrides.delete': 'ביטול הרשאה מותאמת',
+    'health_tasks.insert': 'רשומת בריאות וטיפוח חדשה',
+    'health_tasks.update': 'עדכון בריאות וטיפוח',
+    'health_tasks.delete': 'מחיקת רשומת בריאות וטיפוח',
+    'family_invites.insert': 'יצירת הזמנה / קוד הצטרפות',
+    'family_invites.update': 'עדכון הזמנה (מימוש או ביטול)',
+    'family_invites.delete': 'מחיקת הזמנה',
+    'families.insert': 'יצירת משפחה',
+    'families.update': 'עדכון פרטי משפחה',
+    'family_auth_members.insert': 'חיבור מכשיר למשפחה',
+    'family_auth_members.update': 'עדכון חיבור מכשיר',
+    'family_auth_members.delete': 'ניתוק מכשיר מהמשפחה',
+    'profile_auth_sessions.insert': 'כניסה לפרופיל במכשיר',
+    'profile_auth_sessions.update': 'עדכון כניסה לפרופיל',
+    'profile_auth_sessions.delete': 'יציאה מפרופיל במכשיר',
+    'schedule_entries.insert': 'יצירת טיול בלו״ז',
+    'schedule_entries.update': 'עדכון טיול בלו״ז',
+    'schedule_entries.delete': 'מחיקת טיול מהלו״ז',
+    'impersonation_sessions.insert': 'התחלת התחזות',
+    'impersonation_sessions.update': 'סיום התחזות',
+    'remote_gps_consents.insert': 'הסכמה ל-GPS מרחוק',
+    'remote_gps_consents.update': 'שינוי הסכמה ל-GPS מרחוק',
+    'remote_gps_commands.insert': 'בקשת GPS מרחוק',
+    'remote_gps_commands.update': 'עדכון בקשת GPS מרחוק',
+    'chat_conversations.insert': 'פתיחת שיחה בצ׳אט',
+    'chat_conversations.delete': 'מחיקת שיחה בצ׳אט',
+    'chat_messages.insert': 'שליחת הודעה בצ׳אט',
+    'chat_messages.update': 'מחיקת הודעה בצ׳אט',
+    'chat_messages.delete': 'הסרת הודעה מהשרת',
+    'chat_conversation_members.insert': 'הצטרפות לשיחה',
+    'chat_conversation_members.update': 'שינוי הגדרות שיחה (השתקה/ניקוי/עזיבה)',
+    'chat_conversation_members.delete': 'הסרה משיחה',
+    'walk_gps_sessions.insert': 'שמירת מסלול GPS',
+    'walk_gps_sessions.update': 'תיקון מרחק GPS',
+    'walk_gps_sessions.delete': 'מחיקת מסלול GPS',
+    'web_push_subscriptions.insert': 'רישום מכשיר להתראות',
+    'web_push_subscriptions.delete': 'הסרת מכשיר מהתראות',
+    'push_tokens.insert': 'רישום מכשיר להתראות',
+    'push_tokens.delete': 'הסרת מכשיר מהתראות',
+    'help_articles.insert': 'פרסום תשובה בעזרה',
+    'help_articles.update': 'עדכון תשובה בעזרה',
+    'help_articles.delete': 'מחיקת תשובה מהעזרה',
+    'walk_lifecycle.started': 'טיול התחיל',
+    'walk_lifecycle.finished': 'טיול הסתיים',
+    'walk_lifecycle.gps_owner_changed': 'החלפת מכשיר מעקב GPS',
+    'system_admin.chat_messages': 'קריאה שלך בצ׳אט של משפחה',
+    'system_admin.chat_attachment': 'צפייה שלך בתמונה מצ׳אט',
   };
+  if (action.startsWith('remote_gps.')) return `GPS מרחוק: ${action.slice('remote_gps.'.length)}`;
+  if (action.startsWith('walk_lifecycle.')) return `אירוע טיול: ${action.slice('walk_lifecycle.'.length)}`;
   return labels[action] ?? action;
 }
 
@@ -190,6 +239,7 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
   const [auditVisible, setAuditVisible] = useState(false);
   const [familyChatsVisible, setFamilyChatsVisible] = useState(false);
   const [helpQuestionsVisible, setHelpQuestionsVisible] = useState(false);
+  const [showOwnAdminActions, setShowOwnAdminActions] = useState(false);
   const [auditLog, setAuditLog] = useState<SystemAdminGlobalAuditEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
@@ -220,9 +270,10 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
         // what FAMILIES did, not when an admin looked. The underlying rows
         // are untouched in the backend audit table/RPC — getSystemAdminGlobalAudit
         // above still fetches everything, this only narrows what renders.
-        .filter((entry) => !HIDDEN_OBSERVATION_AUDIT_ACTIONS.has(entry.action))
+        // "הפעולות שלי" brings them (and System Admin chat reads) back.
+        .filter((entry) => showOwnAdminActions || (!HIDDEN_OBSERVATION_AUDIT_ACTIONS.has(entry.action) && entry.source !== 'admin_access'))
         .filter((entry) => auditFamilyId === 'all' || entry.familyId === auditFamilyId),
-    [auditLog, auditFamilyId]
+    [auditLog, auditFamilyId, showOwnAdminActions]
   );
 
   const overview = useMemo(() => {
@@ -599,7 +650,7 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
               <RtlText style={styles.backLink}>‹ חזרה לרשימה</RtlText>
             </Pressable>
             <RtlText style={styles.sectionTitle}>יומן פעילות מערכת ({filteredAuditLog.length})</RtlText>
-            <RtlText style={styles.auditHint}>כל שינוי נתונים שנעשה ע״י משתמש נשמר מעכשיו אוטומטית. ניתן לסנן את הרשומות לפי משפחה.</RtlText>
+            <RtlText style={styles.auditHint}>כל שינוי נתונים, אירועי טיול ו-GPS מרחוק נשמרים כאן, וגלויים רק למנהל המערכת. תוכן הודעות והערות לא נשמר ביומן. ניתן לסנן לפי משפחה.</RtlText>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.auditFamilyFilters}>
               <Pressable
                 onPress={() => setAuditFamilyId('all')}
@@ -609,6 +660,15 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
                 accessibilityLabel="הצגת פעילות מכל המשפחות"
               >
                 <RtlText style={[styles.auditFilterText, auditFamilyId === 'all' && styles.auditFilterTextSelected]}>כל המשפחות</RtlText>
+              </Pressable>
+              <Pressable
+                onPress={() => setShowOwnAdminActions((v) => !v)}
+                style={[styles.auditFilterChip, showOwnAdminActions && styles.auditFilterChipSelected]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: showOwnAdminActions }}
+                accessibilityLabel="הצגת הפעולות שלי כמנהל מערכת: צפייה במשפחות וקריאת צ׳אטים"
+              >
+                <RtlText style={[styles.auditFilterText, showOwnAdminActions && styles.auditFilterTextSelected]}>🛡️ הפעולות שלי</RtlText>
               </Pressable>
               {families.map((family) => (
                 <Pressable
