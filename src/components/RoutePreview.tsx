@@ -249,7 +249,11 @@ function buildMapHtml(
     center:[initial[1],initial[0]],zoom:16,
     interactive:${expanded ? 'true' : 'false'},attributionControl:${expanded ? '{compact:true}' : 'false'}
   });
+  // The credit starts folded into the ⓘ button (tap to open it) so it does not cover the walk.
+  const foldAttribution=()=>document.querySelectorAll('.maplibregl-ctrl-attrib.maplibregl-compact-show').forEach(el=>{el.classList.remove('maplibregl-compact-show');el.removeAttribute('open');});
+  map.once('idle',foldAttribution);
   map.on('load',()=>{
+    foldAttribution();
     const coordinates=points.map(p=>[p[1],p[0]]);
     if(coordinates.length>1){
       map.addSource('walk-route',{type:'geojson',lineMetrics:true,data:{type:'Feature',properties:{},geometry:{type:'LineString',coordinates}}});

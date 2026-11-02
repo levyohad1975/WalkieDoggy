@@ -58,6 +58,8 @@ describe('route display clean-up (drawing only)', () => {
     expect(source).toContain("style:'https://tiles.openfreemap.org/styles/positron'");
     expect(source).toContain("'line-gradient'");
     expect(source).toContain('attributionControl:${expanded ? \'{compact:true}\' : \'false\'}');
+    // The credit stays available behind ⓘ but starts folded.
+    expect(source).toContain("el.classList.remove('maplibregl-compact-show');el.removeAttribute('open');");
   });
 
   it('completes a late start from home as an estimated straight lead (owner rule: walks start at home)', () => {
