@@ -57,6 +57,6 @@ describe('route display clean-up (drawing only)', () => {
     expect(source).toContain('const drawnPoints = useMemo(() => (live ? points : routeForDisplay(points)), [points, live]);');
     expect(source).toContain("style:'https://tiles.openfreemap.org/styles/positron'");
     expect(source).toContain("'line-gradient'");
-    expect(source).toContain('© OpenStreetMap');
+    expect(source).toContain('attributionControl:${expanded ? \'{compact:true}\' : \'false\'}');
   });
 });

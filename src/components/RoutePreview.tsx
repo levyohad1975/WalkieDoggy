@@ -95,7 +95,8 @@ export function RoutePreview({ session, large = false, compact = false, live = f
                 <Pressable onPress={() => setMapOpen(false)} accessibilityRole="button" accessibilityLabel="סגור מפה" style={styles.closeMap} hitSlop={8}><RtlText style={styles.closeMapText}>✕ סגירה</RtlText></Pressable>
               </View>
               <View style={[styles.expandedMap, { height: Math.round(Math.min(Dimensions.get('window').height * 0.7, 640)) }]}>{renderMap(true)}</View>
-              <RtlText style={styles.mapLegend}>{live ? '© OpenStreetMap contributors · OpenFreeMap' : '▶ התחלה · 🏁 סיום · הקו מתחלף מירוק לכחול לאורך הטיול · © OpenStreetMap · OpenFreeMap'}</RtlText>
+              {/* The map's own attribution control credits OpenStreetMap / OpenFreeMap. */}
+              {!live ? <RtlText style={styles.mapLegend}>▶ התחלה · 🏁 סיום · הקו מתחלף מירוק לכחול לאורך הטיול</RtlText> : null}
             </View>
           </View>
         </Modal>
@@ -175,15 +176,15 @@ function buildMapHtml(points: number[][], estimatedPoints: number[][], expanded:
     const coordinates=points.map(p=>[p[1],p[0]]);
     if(coordinates.length>1){
       map.addSource('walk-route',{type:'geojson',lineMetrics:true,data:{type:'Feature',properties:{},geometry:{type:'LineString',coordinates}}});
-      map.addLayer({id:'walk-route-outline',type:'line',source:'walk-route',paint:{'line-color':'#ffffff','line-width':${expanded ? 9 : 7},'line-opacity':0.95},layout:{'line-join':'round','line-cap':'round'}});
+      map.addLayer({id:'walk-route-outline',type:'line',source:'walk-route',paint:{'line-color':'#ffffff','line-width':${expanded ? 11 : 7},'line-opacity':0.95},layout:{'line-join':'round','line-cap':'round'}});
       // Start-to-end colour shows the direction of the walk.
-      map.addLayer({id:'walk-route-line',type:'line',source:'walk-route',paint:{'line-width':${expanded ? 5 : 4},'line-gradient':['interpolate',['linear'],['line-progress'],0,'#2F9E5B',1,'#0B5C75']},layout:{'line-join':'round','line-cap':'round'}});
+      map.addLayer({id:'walk-route-line',type:'line',source:'walk-route',paint:{'line-width':${expanded ? 7 : 4},'line-gradient':['interpolate',['linear'],['line-progress'],0,'#2F9E5B',1,'#0B5C75']},layout:{'line-join':'round','line-cap':'round'}});
       if(${expanded ? 'true' : 'false'}){
         // Small white chevrons along the line, pointing in the walking direction.
-        const c=document.createElement('canvas');c.width=24;c.height=24;const g=c.getContext('2d');
-        g.strokeStyle='#ffffff';g.lineWidth=3.5;g.lineCap='round';g.lineJoin='round';g.beginPath();g.moveTo(8,6);g.lineTo(15,12);g.lineTo(8,18);g.stroke();
-        map.addImage('walk-arrow',g.getImageData(0,0,24,24),{pixelRatio:2});
-        map.addLayer({id:'walk-route-arrows',type:'symbol',source:'walk-route',layout:{'symbol-placement':'line','symbol-spacing':70,'icon-image':'walk-arrow','icon-size':1,'icon-rotation-alignment':'map','icon-allow-overlap':true,'icon-ignore-placement':true}});
+        const c=document.createElement('canvas');c.width=36;c.height=36;const g=c.getContext('2d');
+        g.strokeStyle='#ffffff';g.lineWidth=5;g.lineCap='round';g.lineJoin='round';g.beginPath();g.moveTo(12,9);g.lineTo(23,18);g.lineTo(12,27);g.stroke();
+        map.addImage('walk-arrow',g.getImageData(0,0,36,36),{pixelRatio:2});
+        map.addLayer({id:'walk-route-arrows',type:'symbol',source:'walk-route',layout:{'symbol-placement':'line','symbol-spacing':90,'icon-image':'walk-arrow','icon-size':1,'icon-rotation-alignment':'map','icon-allow-overlap':true,'icon-ignore-placement':true}});
       }
     }
     const estimated=estimatedPoints.map(p=>[p[1],p[0]]);
