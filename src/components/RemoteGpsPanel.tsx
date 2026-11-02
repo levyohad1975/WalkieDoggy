@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, AppState, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
 import { RtlText } from './RtlText';
 import { useScheduleStore } from '../store/scheduleStore';
 import { useGpsStore } from '../store/gpsStore';
@@ -7,7 +7,7 @@ import { useFamilyStore } from '../store/familyStore';
 import { repository } from '../data';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { colors } from '../theme/colors';
-import { radii, spacing } from '../theme/tokens';
+import { nativeDirection, radii, spacing } from '../theme/tokens';
 import type { Walk, WalkGpsSession } from '../types';
 import {
  acknowledgeRemoteGpsStart,getMyRemoteGpsCommands,getRemoteGpsSettings,listRemoteGpsTargets,
@@ -145,8 +145,12 @@ export function RemoteGpsPanel({walk,currentUserId,familyRole,ready,mode='home',
  const targetName=targets.find(t=>t.target_user_id===currentUserId)?.display_name??users.find(u=>u.id===currentUserId)?.name??'בן משפחה';
  const displayedWalkStatus=gpsSession?.pointCount? 'tracking' : walkStatus;
  return <View style={mode==='home'?styles.compactPanel:styles.panel}>
-  {mode==='settings'&&settings?.isAdmin?<Pressable accessibilityRole="switch" accessibilityState={{checked:settings.familyEnabled}} onPress={()=>void toggleFamily()} style={styles.row}><RtlText style={styles.text}>הפעלת GPS מרחוק למשפחה</RtlText><RtlText style={styles.state}>{settings.familyEnabled?'פעיל':'כבוי'}</RtlText></Pressable>:null}
-  {mode==='settings'?<Pressable accessibilityRole="switch" accessibilityState={{checked:settings?.consentEnabled??false}} onPress={()=>void toggleConsent()} style={styles.row}><RtlText style={styles.text}>אני מסכים/ה להפעלת GPS מרחוק</RtlText><RtlText style={styles.state}>{settings?.consentEnabled?'פעיל':'כבוי'}</RtlText></Pressable>:null}
+  {/* Settings redesign 2026-11-02: a teal "פעיל" read like a link and the
+      two rows' difference was unclear — real switches plus one line each
+      saying what the setting allows. */}
+  {mode==='settings'&&settings?.isAdmin?<View style={styles.settingRow}><Switch value={settings.familyEnabled} onValueChange={()=>void toggleFamily()} accessibilityLabel="הפעלת GPS מרחוק למשפחה" trackColor={{true:colors.primary,false:colors.border}} /><View style={styles.settingText}><RtlText style={styles.text}>הפעלת GPS מרחוק למשפחה</RtlText><RtlText style={styles.settingHint}>מאפשר למנהל המשפחה לבקש הפעלת GPS בטלפון של מי שמטייל</RtlText></View></View>:null}
+  {mode==='settings'&&settings?.isAdmin?<View style={styles.settingDivider} />:null}
+  {mode==='settings'?<View style={styles.settingRow}><Switch value={settings?.consentEnabled??false} onValueChange={()=>void toggleConsent()} accessibilityLabel="אני מסכים/ה להפעלת GPS מרחוק" trackColor={{true:colors.primary,false:colors.border}} /><View style={styles.settingText}><RtlText style={styles.text}>אני מסכים/ה להפעלת GPS מרחוק</RtlText><RtlText style={styles.settingHint}>מאשר שמנהל המשפחה יבקש להפעיל GPS בטלפון שלי בזמן טיול</RtlText></View></View>:null}
   {mode==='home'&&!isActualWalkerHere&&familyRole==='admin'&&settings?.familyEnabled&&walk?.status==='in_progress'?<Pressable accessibilityRole="button" disabled={busy} onPress={()=>void chooseRemote()} style={styles.compactAction}><RtlText style={styles.compactActionText}>📍 בקש אישור GPS ממכשיר המטייל/ת</RtlText></Pressable>:null}
   {mode==='home'&&feedback?<RtlText accessibilityLiveRegion="polite" style={styles.status}>{feedback}</RtlText>:null}
   {mode==='home'&&selecting?targets.map(t=><Pressable key={t.target_auth_user_id} accessibilityRole="button" accessibilityLabel={`${t.display_name}, ${t.device_label}`} onPress={()=>void selectTarget(t)} style={styles.target}><RtlText style={styles.text}>{t.display_name} · {t.device_label}</RtlText></Pressable>):null}
@@ -157,4 +161,4 @@ export function RemoteGpsPanel({walk,currentUserId,familyRole,ready,mode='home',
   {mode==='home'&&permissionStatus==='denied'?<RtlText style={styles.status}>הפעלת GPS נכשלה: הרשאת מיקום נדחתה</RtlText>:null}
  </View>;
 }
-const styles=StyleSheet.create({compactPanel:{paddingHorizontal:0,paddingVertical:0,gap:spacing.xs},compactAction:{minHeight:32,alignSelf:'flex-start',justifyContent:'center',paddingHorizontal:spacing.sm,borderRadius:radii.md,backgroundColor:'#E7F5F4'},compactActionText:{color:colors.primary,fontWeight:'700',fontSize:13},panel:{backgroundColor:colors.surface,borderColor:colors.border,borderWidth:1,borderRadius:radii.lg,padding:spacing.md,marginVertical:spacing.sm,gap:spacing.sm},row:{minHeight:44,flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:spacing.md},text:{color:colors.textPrimary,fontSize:14,fontWeight:'600'},state:{color:colors.primary,fontWeight:'700'},action:{minHeight:48,alignItems:'center',justifyContent:'center',backgroundColor:colors.primary,borderRadius:radii.md,paddingHorizontal:spacing.md},actionText:{color:colors.textInverse,fontWeight:'700'},target:{minHeight:44,padding:spacing.sm,borderTopWidth:1,borderTopColor:colors.border},active:{padding:spacing.md,backgroundColor:'#E8F5EC',borderRadius:radii.md,gap:spacing.xs},activeText:{color:'#14532D',fontSize:14,fontWeight:'700'},status:{color:colors.textSecondary,fontSize:13},stop:{alignSelf:'flex-start',paddingVertical:spacing.sm,paddingHorizontal:spacing.md,backgroundColor:'#A61B1B',borderRadius:radii.md},stopText:{color:'#fff',fontWeight:'700'}});
+const styles=StyleSheet.create({compactPanel:{paddingHorizontal:0,paddingVertical:0,gap:spacing.xs},compactAction:{minHeight:32,alignSelf:'flex-start',justifyContent:'center',paddingHorizontal:spacing.sm,borderRadius:radii.md,backgroundColor:'#E7F5F4'},compactActionText:{color:colors.primary,fontWeight:'700',fontSize:13},panel:{backgroundColor:colors.surface,borderColor:colors.border,borderWidth:1,borderRadius:radii.lg,padding:spacing.md,marginVertical:spacing.sm,gap:spacing.sm},row:{minHeight:44,flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:spacing.md},text:{color:colors.textPrimary,fontSize:14,fontWeight:'600'},state:{color:colors.primary,fontWeight:'700'},settingRow:{minHeight:56,flexDirection:'row',...nativeDirection('ltr'),alignItems:'center',justifyContent:'space-between',gap:spacing.md,paddingVertical:spacing.xs},settingText:{flex:1,gap:2,alignItems:'stretch'},settingHint:{color:colors.textSecondary,fontSize:12,lineHeight:17,textAlign:'right'},settingDivider:{height:1,backgroundColor:colors.border},action:{minHeight:48,alignItems:'center',justifyContent:'center',backgroundColor:colors.primary,borderRadius:radii.md,paddingHorizontal:spacing.md},actionText:{color:colors.textInverse,fontWeight:'700'},target:{minHeight:44,padding:spacing.sm,borderTopWidth:1,borderTopColor:colors.border},active:{padding:spacing.md,backgroundColor:'#E8F5EC',borderRadius:radii.md,gap:spacing.xs},activeText:{color:'#14532D',fontSize:14,fontWeight:'700'},status:{color:colors.textSecondary,fontSize:13},stop:{alignSelf:'flex-start',paddingVertical:spacing.sm,paddingHorizontal:spacing.md,backgroundColor:'#A61B1B',borderRadius:radii.md},stopText:{color:'#fff',fontWeight:'700'}});

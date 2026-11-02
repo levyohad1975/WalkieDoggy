@@ -792,41 +792,58 @@ function SettingsScreenContent() {
             before this reorganization — purely grouped and labeled, no
             admin/QA tools mixed in here (those stay their own separate
             "⚙️ ניהול" advanced area below). */}
+        {/* Settings redesign 2026-11-02: rows grouped by topic (the dog, the
+            family, notifications) in one card per topic with dividers, every
+            row with a one-line description, icons before the label. */}
         <View style={styles.section}>
-          <RtlText style={styles.sectionTitle}>👪 משפחה</RtlText>
-          <Pressable style={styles.hubRow} onPress={() => setSharingModalVisible(true)} accessibilityRole="button" accessibilityLabel="שיתוף המשפחה">
-            <RtlText style={styles.hubChevron}>‹</RtlText>
-            <RtlText style={styles.hubLabel}>📤 שיתוף המשפחה</RtlText>
-          </Pressable>
-        </View>
-
-        <View style={styles.section}>
-          <Pressable style={styles.hubRow} onPress={() => setRemindersModalVisible(true)} accessibilityRole="button" accessibilityLabel="תזכורות והתראות">
-            <RtlText style={styles.hubChevron}>‹</RtlText>
-            <View style={styles.hubLabelWithMeta}>
-              <RtlText style={styles.hubLabel}>🔔 תזכורות והתראות</RtlText>
-              <RtlText style={styles.hubRowMeta}>הגדרת תזכורות לפני טיולים ואירועים</RtlText>
-            </View>
-          </Pressable>
-        </View>
-
-        {dog ? (
-          <View style={styles.section}>
-            <Pressable style={styles.hubRow} onPress={() => setHealthModalVisible(true)} accessibilityRole="button" accessibilityLabel={`בריאות וטיפוח, ${dog.name}`}>
+          <RtlText style={styles.sectionTitle}>🐾 {dog?.name ?? 'הכלב'}</RtlText>
+          <View style={styles.groupCard}>
+            {dog ? (
+              <>
+                <Pressable style={styles.groupRow} onPress={() => setHealthModalVisible(true)} accessibilityRole="button" accessibilityLabel={`בריאות וטיפוח, ${dog.name}`}>
+                  <RtlText style={styles.hubChevron}>‹</RtlText>
+                  <View style={styles.hubLabelWithMeta}>
+                    <RtlText style={styles.hubLabel}>🩺 בריאות וטיפוח</RtlText>
+                    <RtlText style={styles.hubRowMeta}>חיסונים, טיפולים ותזכורות</RtlText>
+                  </View>
+                </Pressable>
+                <View style={styles.groupDivider} />
+              </>
+            ) : null}
+            <Pressable style={styles.groupRow} onPress={() => setAchievementsModalVisible(true)} accessibilityRole="button" accessibilityLabel="הישגים">
               <RtlText style={styles.hubChevron}>‹</RtlText>
               <View style={styles.hubLabelWithMeta}>
-                <RtlText style={styles.hubLabel}>🏥 בריאות וטיפוח</RtlText>
-                <RtlText style={styles.hubRowMeta}>חיסונים, טיפולים ותזכורות</RtlText>
+                <RtlText style={styles.hubLabel}>🏆 הישגים</RtlText>
+                <RtlText style={styles.hubRowMeta}>{dog ? `תגים והישגים של ${dog.name}` : 'תגים והישגים מהטיולים'}</RtlText>
               </View>
             </Pressable>
           </View>
-        ) : null}
+        </View>
 
         <View style={styles.section}>
-          <Pressable style={styles.hubRow} onPress={() => setAchievementsModalVisible(true)} accessibilityRole="button" accessibilityLabel="הישגים">
-            <RtlText style={styles.hubChevron}>‹</RtlText>
-            <RtlText style={styles.hubLabel}>הישגים 🏆</RtlText>
-          </Pressable>
+          <RtlText style={styles.sectionTitle}>👨‍👩‍👧 משפחה</RtlText>
+          <View style={styles.groupCard}>
+            <Pressable style={styles.groupRow} onPress={() => setSharingModalVisible(true)} accessibilityRole="button" accessibilityLabel="שיתוף המשפחה">
+              <RtlText style={styles.hubChevron}>‹</RtlText>
+              <View style={styles.hubLabelWithMeta}>
+                <RtlText style={styles.hubLabel}>🔗 שיתוף המשפחה</RtlText>
+                <RtlText style={styles.hubRowMeta}>הזמנת בני משפחה וקוד הצטרפות</RtlText>
+              </View>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <RtlText style={styles.sectionTitle}>🔔 התראות</RtlText>
+          <View style={styles.groupCard}>
+            <Pressable style={styles.groupRow} onPress={() => setRemindersModalVisible(true)} accessibilityRole="button" accessibilityLabel="תזכורות והתראות">
+              <RtlText style={styles.hubChevron}>‹</RtlText>
+              <View style={styles.hubLabelWithMeta}>
+                <RtlText style={styles.hubLabel}>⏰ תזכורות והתראות</RtlText>
+                <RtlText style={styles.hubRowMeta}>הגדרת תזכורות לפני טיולים ואירועים</RtlText>
+              </View>
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.section}>
@@ -848,7 +865,10 @@ function SettingsScreenContent() {
             accessibilityLabel="פרטיות ו-GPS, נגישות ותנועה מופחתת"
           >
             <RtlText style={styles.hubChevron}>‹</RtlText>
-            <RtlText style={styles.hubLabel}>🛰️ מיקום, GPS ונגישות</RtlText>
+            <View style={styles.hubLabelWithMeta}>
+              <RtlText style={styles.hubLabel}>📍 מיקום, GPS ונגישות</RtlText>
+              <RtlText style={styles.hubRowMeta}>מה נשמר על המיקום, ותנועה מופחתת</RtlText>
+            </View>
           </Pressable>
         </View>
 
@@ -866,7 +886,10 @@ function SettingsScreenContent() {
               testID="settings-tutorial-entry"
             >
               <RtlText style={styles.hubChevron}>‹</RtlText>
-              <RtlText style={styles.hubLabel}>▶ סרטון הדרכה</RtlText>
+              <View style={styles.hubLabelWithMeta}>
+                <RtlText style={styles.hubLabel}>▶ סרטון הדרכה</RtlText>
+                <RtlText style={styles.hubRowMeta}>סיור קצר בכל האפליקציה, עם קריינות</RtlText>
+              </View>
             </Pressable>
           </View>
         ) : null}
@@ -1142,7 +1165,9 @@ function SettingsScreenContent() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
-  content: { padding: spacing.xl, gap: spacing.lg, paddingBottom: 128 },
+  // paddingTop is smaller than the sides: SafeAreaView already clears the
+  // status bar, and the extra gap above the title wasted a row on phones.
+  content: { padding: spacing.xl, paddingTop: spacing.sm, gap: spacing.lg, paddingBottom: 128 },
   // Same desktop-containment pattern as HomeScreen's webContent: cap and
   // center the scroll content on web only — native is unaffected (RN's
   // ScrollView contentContainerStyle already renders full-width there, and
@@ -1180,6 +1205,10 @@ const styles = StyleSheet.create({
     minHeight: 52,
   },
   hubLabel: { flex: 1, ...typography.body, fontSize: 16, color: colors.textPrimary, textAlign: 'right' },
+  // One card per topic with dividers between its rows (iOS grouped list).
+  groupCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, overflow: 'hidden' },
+  groupRow: { flexDirection: 'row', ...nativeDirection('ltr'), alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.lg, minHeight: 60 },
+  groupDivider: { height: 1, backgroundColor: colors.border, marginRight: spacing.lg },
   hubLabelWithMeta: { flex: 1, gap: 2, alignItems: 'stretch' },
   hubRowMeta: { ...typography.meta, color: colors.textSecondary, textAlign: 'right' },
   hubChevron: { fontSize: 20, color: colors.textSecondary, writingDirection: 'ltr' }, // RTL: chevron points left toward the row's leading (right) edge
