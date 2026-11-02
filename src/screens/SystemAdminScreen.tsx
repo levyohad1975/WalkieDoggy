@@ -15,6 +15,8 @@ import { isWalkResolutionStaging } from '../lib/supabase';
 import { SystemAdminDuplicateWalkMaintenancePanel } from '../components/SystemAdminDuplicateWalkMaintenancePanel';
 import { SystemAdminFamilyChatsPanel } from '../components/SystemAdminFamilyChatsPanel';
 import { SystemAdminHelpQuestionsPanel } from '../components/SystemAdminHelpQuestionsPanel';
+import { SystemAdminPresencePanel } from '../components/SystemAdminPresencePanel';
+import { familyIdentityParts } from '../lib/systemAdminPresence';
 import { useAuthStore } from '../store/authStore';
 import { useSystemAdminStore } from '../store/systemAdminStore';
 import {
@@ -240,6 +242,7 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
   const [familyChatsVisible, setFamilyChatsVisible] = useState(false);
   const [helpQuestionsVisible, setHelpQuestionsVisible] = useState(false);
   const [showOwnAdminActions, setShowOwnAdminActions] = useState(false);
+  const [presenceVisible, setPresenceVisible] = useState(false);
   const [auditLog, setAuditLog] = useState<SystemAdminGlobalAuditEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
@@ -258,6 +261,18 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
   // so two same-named families never look identical in the audit log.
   const familyInviteCodeById = useMemo(
     () => new Map(families.map((f) => [f.familyId, f.inviteCode])),
+    [families]
+  );
+  // Owner request 2026-11-02: a family name alone is not unique ("10
+  // families named לוי"), so log entries also carry the family admins, dog
+  // and verified creation email next to the invite code.
+  const familyIdentityById = useMemo(
+    () => new Map(families.map((f) => [f.familyId, familyIdentityParts({
+      inviteCode: f.inviteCode,
+      adminNames: f.adminNames,
+      dogNames: f.dogName ? [f.dogName] : [],
+      verifiedEmail: f.verifiedEmail,
+    }).join(' · ')])),
     [families]
   );
 
@@ -532,7 +547,7 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
             </Pressable>
           </View>
           <View style={styles.headerActions}>
-            {!selectedFamilyId && !emailLogVisible && !auditVisible && !animationTestVisible && !familyChatsVisible && !helpQuestionsVisible ? (
+            {!selectedFamilyId && !emailLogVisible && !auditVisible && !animationTestVisible && !familyChatsVisible && !helpQuestionsVisible && !presenceVisible ? (
               <>
                 <Pressable onPress={() => setAnimationTestVisible(true)} accessibilityRole="button" accessibilityLabel="פתיחת בדיקת אנימציות" hitSlop={4} style={styles.headerChip}>
                   <RtlText style={styles.headerLink} numberOfLines={1}>🎬 בדיקת אנימציות</RtlText>
@@ -545,6 +560,9 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
                 </Pressable>
                 <Pressable onPress={openEmailLog} accessibilityRole="button" accessibilityLabel="פתיחת יומן משלוח אימיילים" hitSlop={4} style={styles.headerChip}>
                 <RtlText style={styles.headerLink} numberOfLines={1}>✉️ יומן אימיילים</RtlText>
+                </Pressable>
+                <Pressable onPress={() => setPresenceVisible(true)} accessibilityRole="button" accessibilityLabel="פתיחת מי אונליין" hitSlop={4} style={styles.headerChip}>
+                  <RtlText style={styles.headerLink} numberOfLines={1}>🟢 מי אונליין</RtlText>
                 </Pressable>
                 <Pressable onPress={() => setHelpQuestionsVisible(true)} accessibilityRole="button" accessibilityLabel="פתיחת שאלות מהעזרה" hitSlop={4} style={styles.headerChip}>
                   <RtlText style={styles.headerLink} numberOfLines={1}>❓ שאלות מהעזרה</RtlText>
@@ -630,6 +648,13 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
               </View>
             ) : null}
           </ScrollView>
+        ) : presenceVisible ? (
+          <View style={styles.flex}>
+            <Pressable onPress={() => setPresenceVisible(false)} accessibilityRole="button" accessibilityLabel="חזרה לרשימת המשפחות">
+              <RtlText style={styles.backLink}>‹ חזרה לרשימה</RtlText>
+            </Pressable>
+            <SystemAdminPresencePanel />
+          </View>
         ) : helpQuestionsVisible ? (
           <View style={styles.flex}>
             <Pressable onPress={() => setHelpQuestionsVisible(false)} accessibilityRole="button" accessibilityLabel="חזרה לרשימת המשפחות">
@@ -694,7 +719,7 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
                 <RtlText style={styles.cardLine}>{new Date(entry.createdAt).toLocaleString('he-IL')}</RtlText>
                 <RtlText style={styles.cardLine}>
                   משפחה: {entry.familyName ?? 'מערכתי'}
-                  {entry.familyId && familyInviteCodeById.get(entry.familyId) ? ` · קוד ${familyInviteCodeById.get(entry.familyId)}` : ''}
+                  {entry.familyId && familyIdentityById.get(entry.familyId) ? ` · ${familyIdentityById.get(entry.familyId)}` : ''}
                 </RtlText>
                 <RtlText style={styles.cardLine}>משתמש: {entry.actorName ?? '—'}</RtlText>
                 <RtlText style={styles.cardLine}>אימייל: {entry.actorEmail ?? '—'}</RtlText>
