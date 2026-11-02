@@ -796,7 +796,7 @@ function SettingsScreenContent() {
             family, notifications) in one card per topic with dividers, every
             row with a one-line description, icons before the label. */}
         <View style={styles.section}>
-          <RtlText style={styles.sectionTitle}>🐾 {dog?.name ?? 'הכלב'}</RtlText>
+          <RtlText style={styles.sectionTitle}>🧡 {dog?.name ?? 'הכלב'}</RtlText>
           <View style={styles.groupCard}>
             {dog ? (
               <>

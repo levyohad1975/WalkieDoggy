@@ -12,7 +12,7 @@ describe('Settings redesign', () => {
   const gps: string = fs.readFileSync(require.resolve('../../components/RemoteGpsPanel'), 'utf8');
 
   it('groups rows by topic in one card each', () => {
-    const dogIdx = settings.indexOf("<RtlText style={styles.sectionTitle}>🐾 {dog?.name ?? 'הכלב'}</RtlText>");
+    const dogIdx = settings.indexOf("<RtlText style={styles.sectionTitle}>🧡 {dog?.name ?? 'הכלב'}</RtlText>");
     const familyIdx = settings.indexOf('<RtlText style={styles.sectionTitle}>👨‍👩‍👧 משפחה</RtlText>');
     const notifIdx = settings.indexOf('<RtlText style={styles.sectionTitle}>🔔 התראות</RtlText>');
     expect(dogIdx).toBeGreaterThan(-1);
