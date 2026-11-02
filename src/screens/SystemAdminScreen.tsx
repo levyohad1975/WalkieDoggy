@@ -14,6 +14,7 @@ import { appendRawDiagnostic, friendlyErrorMessage } from '../lib/errorMessages'
 import { isWalkResolutionStaging } from '../lib/supabase';
 import { SystemAdminDuplicateWalkMaintenancePanel } from '../components/SystemAdminDuplicateWalkMaintenancePanel';
 import { SystemAdminFamilyChatsPanel } from '../components/SystemAdminFamilyChatsPanel';
+import { SystemAdminHelpQuestionsPanel } from '../components/SystemAdminHelpQuestionsPanel';
 import { useAuthStore } from '../store/authStore';
 import { useSystemAdminStore } from '../store/systemAdminStore';
 import {
@@ -188,6 +189,7 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
 
   const [auditVisible, setAuditVisible] = useState(false);
   const [familyChatsVisible, setFamilyChatsVisible] = useState(false);
+  const [helpQuestionsVisible, setHelpQuestionsVisible] = useState(false);
   const [auditLog, setAuditLog] = useState<SystemAdminGlobalAuditEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
@@ -479,7 +481,7 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
             </Pressable>
           </View>
           <View style={styles.headerActions}>
-            {!selectedFamilyId && !emailLogVisible && !auditVisible && !animationTestVisible && !familyChatsVisible ? (
+            {!selectedFamilyId && !emailLogVisible && !auditVisible && !animationTestVisible && !familyChatsVisible && !helpQuestionsVisible ? (
               <>
                 <Pressable onPress={() => setAnimationTestVisible(true)} accessibilityRole="button" accessibilityLabel="פתיחת בדיקת אנימציות" hitSlop={4} style={styles.headerChip}>
                   <RtlText style={styles.headerLink} numberOfLines={1}>🎬 בדיקת אנימציות</RtlText>
@@ -492,6 +494,9 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
                 </Pressable>
                 <Pressable onPress={openEmailLog} accessibilityRole="button" accessibilityLabel="פתיחת יומן משלוח אימיילים" hitSlop={4} style={styles.headerChip}>
                 <RtlText style={styles.headerLink} numberOfLines={1}>✉️ יומן אימיילים</RtlText>
+                </Pressable>
+                <Pressable onPress={() => setHelpQuestionsVisible(true)} accessibilityRole="button" accessibilityLabel="פתיחת שאלות מהעזרה" hitSlop={4} style={styles.headerChip}>
+                  <RtlText style={styles.headerLink} numberOfLines={1}>❓ שאלות מהעזרה</RtlText>
                 </Pressable>
               </>
             ) : null}
@@ -574,6 +579,13 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
               </View>
             ) : null}
           </ScrollView>
+        ) : helpQuestionsVisible ? (
+          <View style={styles.flex}>
+            <Pressable onPress={() => setHelpQuestionsVisible(false)} accessibilityRole="button" accessibilityLabel="חזרה לרשימת המשפחות">
+              <RtlText style={styles.backLink}>‹ חזרה לרשימה</RtlText>
+            </Pressable>
+            <SystemAdminHelpQuestionsPanel />
+          </View>
         ) : familyChatsVisible ? (
           <View style={styles.flex}>
             <Pressable onPress={() => setFamilyChatsVisible(false)} accessibilityRole="button" accessibilityLabel="חזרה לרשימת המשפחות">

@@ -27,8 +27,8 @@ describe('SystemAdminScreen — the close button is always reachable on a phone'
 describe('SystemAdminScreen — tidy phone header and full search hint', () => {
   const source: string = require('fs').readFileSync(require.resolve('../SystemAdminScreen'), 'utf8');
 
-  it('the four tools are chips laid out two per row', () => {
-    expect(source.match(/style=\{styles\.headerChip\}/g)?.length).toBe(4);
+  it('the tools are chips laid out two per row', () => {
+    expect(source.match(/style=\{styles\.headerChip\}/g)?.length).toBe(5);
     expect(source).toMatch(/headerChip: \{ flexGrow: 1, flexBasis: '45%'/);
   });
 
