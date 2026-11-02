@@ -488,7 +488,7 @@ export function SystemAdminScreen({ visible, onClose, onTestFamilySelected, onTe
                   <RtlText style={styles.headerLink} numberOfLines={1}>📋 יומן פעילות</RtlText>
                 </Pressable>
                 <Pressable onPress={() => setFamilyChatsVisible(true)} accessibilityRole="button" accessibilityLabel="פתיחת צ׳אטים של משפחות" hitSlop={4} style={styles.headerChip}>
-                  <RtlText style={styles.headerLink} numberOfLines={1}>💬 צ׳אטים של משפחות</RtlText>
+                  <RtlText style={styles.headerLink} numberOfLines={1}>💬 צ׳אטים</RtlText>
                 </Pressable>
                 <Pressable onPress={openEmailLog} accessibilityRole="button" accessibilityLabel="פתיחת יומן משלוח אימיילים" hitSlop={4} style={styles.headerChip}>
                 <RtlText style={styles.headerLink} numberOfLines={1}>✉️ יומן אימיילים</RtlText>
