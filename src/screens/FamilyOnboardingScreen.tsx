@@ -107,7 +107,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
   // through the URL (the HTTPS link built by buildInviteLinkText() and
   // shared/QR'd by InviteShareModal) must take precedence over every
   // generic onboarding screen: computed once, synchronously, before the
-  // very first render, so an invited recipient never sees 'pwaChoice' or
+  // very first render, so an invited recipient never sees the start screen or
   // 'choose' flash by first. Read directly off window.location rather than
   // through parseInviteInput()'s full-message-paste path (that remains the
   // manual-entry fallback) — this is specifically the query string of the
