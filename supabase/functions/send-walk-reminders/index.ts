@@ -566,7 +566,7 @@ Deno.serve(async (req: Request) => {
         const result = await sendToRecipients(
           serviceClient,
           [w.recipient_user_id],
-          `🐾 הטיול של ${dogName} עדיין פעיל`,
+          `⏱️ הטיול של ${dogName} עדיין פעיל`,
           `הטיול פעיל כבר ${w.minutes_running} דקות. סיימתם? פתחו את האפליקציה כדי לסיים אותו בשעה הנכונה.`,
           { type: 'walkRunningLong', walkId: w.walk_id }
         );
