@@ -296,7 +296,8 @@ function buildMapHtml(
     if(${live ? 'true' : 'false'} && coordinates.length){
       const current=coordinates[coordinates.length-1];
       new maplibregl.Marker({color:'#1976D2',scale:0.8}).setLngLat(current).addTo(map);
-      if(${expanded ? 'true' : 'false'})map.easeTo({center:current,zoom:17,duration:0});
+      // The whole route stays in view (fitBounds above); only a lone first fix is centred (Production 2026-11-03).
+      if(${expanded ? 'true' : 'false'} && coordinates.length<2)map.easeTo({center:current,zoom:17,duration:0});
     }
     const replay=document.getElementById('replay');
     if(replay && coordinates.length>1){

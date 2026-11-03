@@ -104,6 +104,14 @@ describe('route display clean-up (drawing only)', () => {
   });
 });
 
+describe('live walk map', () => {
+  it('keeps the whole route in view instead of re-centring on the walker (Production 2026-11-03)', () => {
+    const source = fs.readFileSync(path.resolve(__dirname, '../../components/RoutePreview.tsx'), 'utf8');
+    expect(source).toContain("if(${expanded ? 'true' : 'false'} && coordinates.length<2)map.easeTo({center:current,zoom:17,duration:0});");
+    expect(source).not.toContain("if(${expanded ? 'true' : 'false'})map.easeTo({center:current,zoom:17,duration:0});");
+  });
+});
+
 describe('expanded map height follows the route shape', () => {
   const { expandedMapHeight } = require('../../components/RoutePreview');
   const window = { width: 390, height: 844, scale: 3, fontScale: 1 };
