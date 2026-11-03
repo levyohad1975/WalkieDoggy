@@ -87,15 +87,80 @@ export function getCurrentSupabaseAuthUserId(): string | null {
 export async function ensureAnonymousSession(): Promise<void> {
   if (!supabase) return;
   await withSyncIdentityFence(async () => {
-    const { data } = await supabase!.auth.getSession();
+    let { data, error } = await supabase!.auth.getSession();
+    // Production 2026-11-03: a phone woke with an expired access token, the
+    // refresh request failed before reaching the server, getSession()
+    // returned no session WITH an error, and the anonymous sign-in below then
+    // overwrote this device's saved (email-verified admin) session. A saved
+    // session that cannot be loaded right now is never replaced: retry, and
+    // otherwise fail so the caller stays on its offline/retry path while the
+    // client keeps refreshing in the background. Only a device with no saved
+    // session at all (first run, or a refresh token the server definitively
+    // rejected — supabase-js removes those itself) signs in anonymously.
+    for (const delayMs of SESSION_RESTORE_RETRY_DELAYS_MS) {
+      if (data.session || !error) break;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      ({ data, error } = await supabase!.auth.getSession());
+    }
     if (data.session) {
       currentSupabaseAuthUserId = data.session.user?.id ?? null;
       return;
     }
-    const { data: signedIn, error } = await supabase!.auth.signInAnonymously();
-    if (error) throw error;
+    if (error && (await hasStoredAuthSession())) {
+      throw new SavedSessionUnavailableError(error);
+    }
+    const { data: signedIn, error: signInError } = await supabase!.auth.signInAnonymously();
+    if (signInError) throw signInError;
     currentSupabaseAuthUserId = signedIn?.session?.user?.id ?? null;
   });
+}
+
+/**
+ * Calls `listener` (on a later tick, outside supabase-js's auth lock)
+ * whenever the client obtains a fresh session — e.g. the background refresh
+ * that finally succeeds after a cold start found the saved session
+ * temporarily unavailable.
+ */
+export function onSessionRefreshed(listener: () => void): () => void {
+  if (!supabase) return () => undefined;
+  const { data } = supabase.auth.onAuthStateChange((event) => {
+    if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') setTimeout(listener, 0);
+  });
+  return () => data.subscription.unsubscribe();
+}
+
+/** Waits between attempts to load a saved session that failed to refresh. */
+export const SESSION_RESTORE_RETRY_DELAYS_MS = [1500, 4000];
+
+/** A saved session exists but could not be loaded right now (offline, waking phone). */
+export class SavedSessionUnavailableError extends Error {
+  constructor(public readonly cause?: unknown) {
+    super('saved session temporarily unavailable');
+    this.name = 'SavedSessionUnavailableError';
+  }
+}
+
+/** supabase-js's default storage key for this project ("sb-<ref>-auth-token"). */
+function authStorageKey(): string | null {
+  try {
+    return `sb-${new URL(supabaseUrl).hostname.split('.')[0]}-auth-token`;
+  } catch {
+    return null;
+  }
+}
+
+async function hasStoredAuthSession(): Promise<boolean> {
+  const key = authStorageKey();
+  if (!key) return false;
+  try {
+    const raw = await AsyncStorage.getItem(key);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    const session = parsed?.currentSession ?? parsed;
+    return typeof session?.refresh_token === 'string' && session.refresh_token.length > 0;
+  } catch {
+    return false;
+  }
 }
 
 /**

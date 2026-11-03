@@ -123,6 +123,14 @@ interface AuthState {
   signOut: () => Promise<void>;
   /** Called once this device has created or joined a family (Supabase mode only). */
   setFamilyId: (familyId: string) => Promise<void>;
+  /**
+   * Production 2026-11-03: this device's session no longer belongs to its
+   * saved family (it shows "אין פרופיל פעיל לבחירה"). Forgets only the
+   * LOCAL family/profile choice so the device returns to onboarding, where
+   * the family admin reconnects with an email code ("המשפחה שלי כבר קיימת")
+   * and a member with an invite. Nothing on the server is changed.
+   */
+  reconnectToFamily: () => Promise<void>;
   /** Re-resolves familyRole from the server (Supabase mode) or 'admin' (local/demo mode). Safe to call anytime; failures leave familyRole null rather than throwing. */
   refreshFamilyRole: () => Promise<void>;
 
@@ -241,6 +249,12 @@ interface AuthState {
    * staleClaimRecovered is false; cleared together with it.
    */
   staleClaimUserId: string | null;
+  /**
+   * True when the last restoreSession() found a saved session it could not
+   * refresh yet (offline / phone just woke). App.tsx reloads once the client
+   * refreshes it; cleared then.
+   */
+  sessionRestorePending: boolean;
   clearStaleClaimNotice: () => void;
   /**
    * Same check as restoreSession()'s, but callable anytime (e.g. on
@@ -439,12 +453,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   impersonationStarting: false,
   staleClaimRecovered: false,
   staleClaimUserId: null,
+  sessionRestorePending: false,
   roleRefreshNotice: null,
   pendingInviteRedemption: null,
 
   restoreSession: async () => {
+    // Production 2026-11-03: a saved session that could not be refreshed
+    // right now (phone just woke, network not ready) must not be judged as
+    // "this device lost its profile" — see ensureAnonymousSession().
+    let savedSessionUnavailable = false;
     if (isSupabaseConfigured) {
-      await ensureAnonymousSession().catch(() => undefined);
+      await ensureAnonymousSession().catch((error: unknown) => {
+        if ((error as { name?: string } | null)?.name === 'SavedSessionUnavailableError') savedSessionUnavailable = true;
+      });
       // RESTART SAFETY (requirement: "App restart/session restoration must
       // not accidentally leave an ambiguous or unsafe impersonation
       // state"): impersonatingUserId is never persisted (see its doc
@@ -536,7 +557,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // passes them explicitly rather than reading get().
     let staleClaimRecovered = false;
     let staleClaimUserId: string | null = null;
-    if (isSupabaseConfigured && currentUserId && familyId) {
+    if (isSupabaseConfigured && currentUserId && familyId && !savedSessionUnavailable) {
       const stillValid = await checkClaimStillValid(currentUserId);
       if (stillValid === false) {
         // Capture WHICH profile was lost before clearing currentUserId (7D)
@@ -552,7 +573,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // App.tsx) will catch a real mismatch once connectivity returns.
     }
 
-    set({ currentUserId, familyId, hydrated: true, staleClaimRecovered, staleClaimUserId });
+    set({ currentUserId, familyId, hydrated: true, staleClaimRecovered, staleClaimUserId, sessionRestorePending: savedSessionUnavailable });
     if (familyId) await get().refreshFamilyRole();
 
     // Round 4 — restart recovery for an invite redemption that succeeded
@@ -670,6 +691,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await get().signOut();
       set({ staleClaimRecovered: true, staleClaimUserId: lostUserId });
     }
+  },
+
+  reconnectToFamily: async () => {
+    await AsyncStorage.removeItem(CURRENT_USER_KEY);
+    await AsyncStorage.removeItem(FAMILY_ID_KEY);
+    set({
+      currentUserId: null,
+      familyId: null,
+      familyRole: null,
+      testModeUserId: null,
+      impersonatingUserId: null,
+      staleClaimRecovered: false,
+      staleClaimUserId: null,
+    });
   },
 
   setFamilyId: async (familyId: string) => {

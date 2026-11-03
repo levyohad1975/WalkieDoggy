@@ -15,7 +15,7 @@ import { requestNotificationPermissions, subscribeToWalkReminderResponses } from
 import { registerPushToken } from './src/lib/pushTokens';
 import { reconcileWebPushSubscription } from './src/lib/webPush';
 import { repository, setSyncQueueActorGetter, setSyncQueueAuthUserGetter, setSyncQueueFamilyGetter } from './src/data';
-import { getCurrentFamilyIsQa, getCurrentSupabaseAuthUserId, getWhoAmI, isSupabaseConfigured, supabaseProjectUrl } from './src/lib/supabase';
+import { getCurrentFamilyIsQa, getCurrentSupabaseAuthUserId, getWhoAmI, isSupabaseConfigured, onSessionRefreshed, supabaseProjectUrl } from './src/lib/supabase';
 import { touchLastSeen } from './src/lib/requests';
 import { useRequestsStore } from './src/store/requestsStore';
 import { useScheduleStore, reconcileScheduleNotifications } from './src/store/scheduleStore';
@@ -639,6 +639,24 @@ export default function App() {
       }
     });
     return () => { sub.remove(); removeReminderResponse(); };
+  }, [restoreSession]);
+
+  // Production 2026-11-03: when a cold start found the saved session
+  // temporarily unavailable (phone just woke, network not ready), the app
+  // kept the device's identity instead of replacing it; once the client's
+  // background refresh succeeds, restore and reload everything once.
+  useEffect(() => {
+    if (!isSupabaseConfigured || typeof onSessionRefreshed !== 'function') return undefined;
+    return onSessionRefreshed(() => {
+      if (!useAuthStore.getState().sessionRestorePending) return;
+      useAuthStore.setState({ sessionRestorePending: false });
+      void (async () => {
+        await restoreSession().catch(() => undefined);
+        const { familyId: restoredFamilyId } = useAuthStore.getState();
+        if (restoredFamilyId) await useFamilyStore.getState().load(restoredFamilyId);
+        await runForegroundSync();
+      })();
+    });
   }, [restoreSession]);
 
   // Presence heartbeat for EVERY signed-in member while the app is open and

@@ -83,6 +83,7 @@ export function LoginScreen() {
   const staleClaimRecovered = useAuthStore((s) => s.staleClaimRecovered);
   const staleClaimUserId = useAuthStore((s) => s.staleClaimUserId);
   const clearStaleClaimNotice = useAuthStore((s) => s.clearStaleClaimNotice);
+  const reconnectToFamily = useAuthStore((s) => s.reconnectToFamily);
   // COMPLETION PASS — 7D: which profile the "התחבר מחדש כ-X" PIN flow below
   // targets. Set either from staleClaimRecovered's staleClaimUserId (this
   // device's OWN claim was superseded elsewhere) or from an ordinary
@@ -178,10 +179,21 @@ export function LoginScreen() {
           // there are no active profiles at all to pick from, so offering
           // "+ הוספת בן משפחה" here would just be an action the server is
           // guaranteed to reject. Tell them what's actually true instead.
-          <EmptyState
-            title="אין פרופיל פעיל לבחירה"
-            subtitle="פנו למנהל המשפחה כדי להוסיף בן משפחה"
-          />
+          // Production 2026-11-03: this is also what a device sees when its
+          // session no longer belongs to the family (no profile is readable
+          // at all) — never a dead end: offer to reconnect.
+          <>
+            <EmptyState
+              title="אין פרופיל פעיל לבחירה"
+              subtitle="המכשיר לא מחובר כרגע למשפחה. מנהלי המשפחה מתחברים מחדש עם קוד למייל, ובני משפחה עם קישור ההזמנה."
+            />
+            <Button
+              label="🔑 חיבור מחדש למשפחה"
+              onPress={() => void reconnectToFamily()}
+              style={styles.addButton}
+              accessibilityLabel="חיבור מחדש למשפחה"
+            />
+          </>
         )
       ) : (
         <View style={styles.grid}>

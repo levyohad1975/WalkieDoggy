@@ -1441,6 +1441,64 @@ describe('authStore — stale claim detection (whoami)', () => {
     await expect(useAuthStore.getState().restoreSession()).resolves.toBeUndefined();
   });
 
+  it('a saved session that cannot refresh right now keeps the cached profile and never signs in anonymously (Production 2026-11-03)', async () => {
+    setupSupabaseModeForRestore();
+    jest.useFakeTimers();
+    try {
+      const rpc = rpcRouter({ whoami: () => ({ data: null, error: { message: 'permission denied for function whoami' } }) });
+      const signInAnonymously = jest.fn().mockResolvedValue({ error: null });
+      jest.doMock('@supabase/supabase-js', () => ({
+        createClient: jest.fn(() => ({
+          auth: {
+            getSession: jest.fn().mockResolvedValue({ data: { session: null }, error: { name: 'AuthRetryableFetchError', message: 'Load failed' } }),
+            signInAnonymously,
+          },
+          rpc,
+          from: jest.fn(),
+          storage: { from: jest.fn() },
+        })),
+      }));
+      const AsyncStorage = require('@react-native-async-storage/async-storage');
+      await AsyncStorage.clear();
+      await AsyncStorage.setItem('sb-example-auth-token', JSON.stringify({ access_token: 'old', refresh_token: 'rt-admin' }));
+      await AsyncStorage.setItem('dog-walk-family:current-user-id', '11111111-1111-4111-8111-111111111111');
+      await AsyncStorage.setItem('dog-walk-family:current-family-id', 'family-1');
+      const { useAuthStore } = require('../authStore');
+
+      let done = false;
+      const restoring = useAuthStore.getState().restoreSession().finally(() => { done = true; });
+      for (let i = 0; i < 40 && !done; i += 1) await jest.advanceTimersByTimeAsync(500);
+      await restoring;
+
+      expect(signInAnonymously).not.toHaveBeenCalled();
+      expect(useAuthStore.getState()).toMatchObject({
+        currentUserId: '11111111-1111-4111-8111-111111111111',
+        familyId: 'family-1',
+        staleClaimRecovered: false,
+        sessionRestorePending: true,
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('reconnectToFamily forgets only the local family/profile choice, so the device returns to onboarding', async () => {
+    setupSupabaseModeForRestore();
+    const rpc = rpcRouter({});
+    mockSupabaseModule(rpc);
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.clear();
+    await AsyncStorage.setItem('dog-walk-family:current-family-id', 'family-1');
+    const { useAuthStore } = require('../authStore');
+    useAuthStore.setState({ familyId: 'family-1', staleClaimRecovered: true, staleClaimUserId: 'u1' });
+
+    await useAuthStore.getState().reconnectToFamily();
+
+    expect(useAuthStore.getState()).toMatchObject({ familyId: null, currentUserId: null, staleClaimRecovered: false, staleClaimUserId: null });
+    await expect(AsyncStorage.getItem('dog-walk-family:current-family-id')).resolves.toBeNull();
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
   it('restoreSession never throws even when its restart-safety end_impersonation() cleanup itself fails', async () => {
     setupSupabaseModeForRestore();
     const rpc = rpcRouter({
