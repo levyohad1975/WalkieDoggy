@@ -33,7 +33,7 @@ describe('FamilyOnboardingScreen — install first on iPhone (structural)', () =
 
   it('the welcome screen shows a small non-blocking install hint instead of the popup', () => {
     expect(source).toContain('const [showInstallHint] = useState(() => isIosBrowserNotInstalled(isInstalledWebApp));');
-    expect(source).toContain('📲 באייפון? מומלץ קודם לשמור את Walkie Doggy במסך הבית');
+    expect(source).toContain('📲 באייפון? מומלץ קודם לשמור במסך הבית');
     const app = fs.readFileSync(require.resolve('../../../App'), 'utf8');
     expect(app).toContain('{showIosInstallPrompt && familyId && currentUserId ? (');
   });

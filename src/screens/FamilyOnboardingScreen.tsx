@@ -760,8 +760,10 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
     // wordmark and the official mascot; MASCOT_SPEC.md), with real text and
     // real buttons, so it fits every screen and stays accessible.
     const columnWidth = Math.min(width, 560);
-    const heroHeight = Math.round(Math.max(300, Math.min(columnWidth * 0.92, windowHeight * 0.5, 460)));
-    const mascotSize = Math.round(heroHeight * 0.44);
+    // Everything, including both buttons and the admin link, must fit above
+    // Safari's toolbar on a phone (owner report 2026-11-03).
+    const heroHeight = Math.round(Math.max(220, Math.min(columnWidth * 0.68, windowHeight * 0.36, 400)));
+    const mascotSize = Math.round(heroHeight * 0.46);
     const features = [
       { icon: '📅', label: 'תזכורות חכמות', tone: styles.featureMint },
       { icon: '🔔', label: 'התראות בקלות', tone: styles.featurePink },
@@ -780,7 +782,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
             >
               <Image
                 source={require('../../assets/walkie-doggy-link-wordmark-transparent.png')}
-                style={[styles.welcomeWordmark, { marginTop: insets.top + spacing.md }]}
+                style={[styles.welcomeWordmark, { marginTop: insets.top + spacing.lg }]}
                 resizeMode="contain"
                 accessibilityLabel="Walkie Doggy Link"
               />
@@ -812,7 +814,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
                   accessibilityLabel="באייפון? מומלץ קודם לשמור את Walkie Doggy במסך הבית"
                   style={styles.installHintPill}
                 >
-                  <RtlText style={styles.installHintTitle}>📲 באייפון? מומלץ קודם לשמור את Walkie Doggy במסך הבית {installHintOpen ? '▴' : '▾'}</RtlText>
+                  <RtlText style={styles.installHintTitle}>📲 באייפון? מומלץ קודם לשמור במסך הבית {installHintOpen ? '▴' : '▾'}</RtlText>
                   {installHintOpen ? (
                     <>
                       <RtlText style={styles.installHintStep}>1. הקישו על כפתור השיתוף ⬆︎ בסרגל של ספארי</RtlText>
@@ -823,7 +825,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
                 </Pressable>
               ) : null}
               <RtlText style={styles.welcomeTitle} accessibilityRole="header">מטיילים יחד, כמשפחה</RtlText>
-              <RtlText style={styles.welcomeCopy}>טיולים, תזכורות ושיתוף לכל המשפחה, במקום אחד.</RtlText>
+              <RtlText style={styles.welcomeCopy}>טיולים, תזכורות ושיתוף, במקום אחד.</RtlText>
               <View style={styles.featureRow}>
                 {features.map((f) => (
                   <View key={f.label} style={[styles.featureChip, f.tone]} accessibilityLabel={f.label}>
@@ -1243,20 +1245,20 @@ const styles = StyleSheet.create({
   welcomeHero: { width: '100%', justifyContent: 'space-between', overflow: 'hidden' },
   welcomeHeroImage: { width: '100%', height: '100%' },
   welcomeHeroFade: { position: 'absolute', left: 0, right: 0, bottom: 0 },
-  welcomeWordmark: { width: 210, height: 76, alignSelf: 'center' },
+  welcomeWordmark: { width: 190, height: 68, alignSelf: 'center' },
   welcomeStage: { flexDirection: 'row-reverse', alignItems: 'flex-end', justifyContent: 'center', gap: 6, paddingHorizontal: spacing.lg, paddingBottom: 0, zIndex: 1 },
-  welcomeBubble: { maxWidth: 150, backgroundColor: 'rgba(255,255,255,0.96)', borderWidth: 3, borderColor: colors.primary, borderRadius: 22, paddingHorizontal: 12, paddingVertical: 10 },
-  welcomeBubbleText: { color: colors.primaryDark, fontSize: 15, lineHeight: 20, fontWeight: '800', textAlign: 'center' },
-  welcomeBody: { width: '100%', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.xl },
-  welcomeTitle: { fontSize: 28, lineHeight: 36, fontWeight: '900', color: colors.textPrimary, textAlign: 'center' },
+  welcomeBubble: { maxWidth: 176, backgroundColor: 'rgba(255,255,255,0.96)', borderWidth: 3, borderColor: colors.primary, borderRadius: 22, paddingHorizontal: 12, paddingVertical: 10 },
+  welcomeBubbleText: { color: colors.primaryDark, fontSize: 14, lineHeight: 19, fontWeight: '800', textAlign: 'center' },
+  welcomeBody: { width: '100%', alignItems: 'center', gap: 10, paddingHorizontal: spacing.lg, paddingTop: 0, paddingBottom: spacing.lg },
+  welcomeTitle: { fontSize: 26, lineHeight: 32, fontWeight: '900', color: colors.textPrimary, textAlign: 'center' },
   welcomeCopy: { ...typography.body, color: colors.textSecondary, lineHeight: 24, textAlign: 'center' },
   welcomeButton: { width: '100%', minHeight: 52 },
-  featureRow: { width: '100%', flexDirection: 'row-reverse', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginBottom: spacing.xs },
-  featureChip: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: colors.border },
+  featureRow: { width: '100%', flexDirection: 'row-reverse', flexWrap: 'wrap', justifyContent: 'center', gap: 6 },
+  featureChip: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: colors.border },
   featureChipIcon: { fontSize: 15, lineHeight: 20 },
   featureChipLabel: { fontSize: 13, lineHeight: 18, fontWeight: '800', color: colors.primaryDark },
   featureMint: { backgroundColor: '#E3F5EC' },
-  installHintPill: { width: '100%', backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primary, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, gap: 4 },
+  installHintPill: { width: '100%', backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primary, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 7, gap: 4 },
   installHintTitle: { fontSize: 14, lineHeight: 20, fontWeight: '800', color: colors.primaryDark, textAlign: 'right' },
   installHintStep: { fontSize: 13, lineHeight: 19, color: colors.textPrimary, textAlign: 'right' },
   featurePink: { backgroundColor: '#FBE6EA' },
