@@ -468,6 +468,7 @@ export function HomeScreen() {
   // change, and are never used for mutations/RLS/audit either way.
   const effectiveUserId = useEffectiveUserId()!; // HomeScreen only renders once currentUserId is set (see the `!` above)
   const canManagePersonalNotifications = !personalNotificationsReadOnly && effectiveUserId === currentUserId;
+  const contentAboveWalkCard = canManagePersonalNotifications || dogs.length > 1 || healthSummary.overdueCount + healthSummary.dueSoonCount > 0;
 
   const startWalkAs = useCallback((walk: Walk, actualWalkerUserId: string, remoteStart: boolean) => {
     // iPhone Safari requires location permission to be requested in the
@@ -1438,7 +1439,11 @@ export function HomeScreen() {
           </Pressable>
         ) : null}
 
-        <View ref={nextWalkCardRef} onLayout={measureNextWalkCard} collapsable={false} style={styles.nextWalkLift}>
+        {/* The card tucks 16 px up into the hero's bottom edge. When another
+            card sits between them ("🔔 ההתראות שלי", the dog picker or the
+            health pill) it must not tuck under that card instead
+            (Production report 2026-11-03). */}
+        <View ref={nextWalkCardRef} onLayout={measureNextWalkCard} collapsable={false} style={[styles.nextWalkLift, contentAboveWalkCard && styles.nextWalkNoLift]}>
           {nextWalk ? (
           <NextWalkCard
             walk={nextWalk}
@@ -2347,6 +2352,7 @@ const styles = StyleSheet.create({
   // iPhone Safari QA: keep the active-walk title visible below the hero instead of
   // pulling the card 64px upward under the top edge. Preserve a small overlap.
   nextWalkLift: { marginTop: -16, zIndex: 1, paddingHorizontal: spacing.xs },
+  nextWalkNoLift: { marginTop: 0 },
   personalNotificationsCard: { marginHorizontal: spacing.xs, paddingVertical: spacing.md, paddingHorizontal: spacing.md, borderRadius: radii.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: spacing.xs },
   personalNotificationsTitle: { fontSize: typography.body.fontSize, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
   personalNotificationsDescription: { fontSize: typography.cardTitle.fontSize, lineHeight: typography.cardTitle.lineHeight, color: colors.textSecondary, textAlign: 'right' },

@@ -143,7 +143,7 @@ describe('Home integrated walk lifecycle', () => {
     // section (last walk, add walk, the daily timeline, further upcoming
     // walks), not after them.
     const cardIndex = home.indexOf('<PendingRequestsCard');
-    expect(cardIndex).toBeGreaterThan(home.indexOf('style={styles.nextWalkLift}'));
+    expect(cardIndex).toBeGreaterThan(home.indexOf('style={[styles.nextWalkLift'));
     expect(cardIndex).toBeLessThan(home.indexOf('style={styles.dashboardLastWalk}'));
     expect(cardIndex).toBeLessThan(home.indexOf('style={styles.dashboardAddWalk}'));
     expect(cardIndex).toBeLessThan(home.indexOf('style={styles.dashboardTimeline}'));

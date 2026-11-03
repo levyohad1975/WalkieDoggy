@@ -41,7 +41,7 @@ describe('Home reminder-notification integration', () => {
   // Real-iPhone QA: the mascot + speech bubble covered the next-walk card
   // and its Start Walk button.
   it('measures the existing next-walk card wrapper and hands that rect to both notification-open mascot prompts', () => {
-    expect(source).toContain('<View ref={nextWalkCardRef} onLayout={measureNextWalkCard} collapsable={false} style={styles.nextWalkLift}>');
+    expect(source).toContain('<View ref={nextWalkCardRef} onLayout={measureNextWalkCard} collapsable={false} style={[styles.nextWalkLift, contentAboveWalkCard && styles.nextWalkNoLift]}>');
     expect(source).toContain('nextWalkCardRef.current?.measureInWindow(');
     expect(source).toContain('if (reminderPrompt || requestPrompt) measureNextWalkCard();');
     expect(source.match(/avoid=\{nextWalkCardRect\}/g)?.length).toBe(2);
@@ -49,5 +49,10 @@ describe('Home reminder-notification integration', () => {
 
   it('does not change the Dashboard layout to make room for the mascot', () => {
     expect(source).toContain('nextWalkLift: { marginTop: -16, zIndex: 1, paddingHorizontal: spacing.xs },');
+  });
+
+  it('tucks the walk card under the hero only when nothing sits between them (Production 2026-11-03)', () => {
+    expect(source).toContain('const contentAboveWalkCard = canManagePersonalNotifications || dogs.length > 1 || healthSummary.overdueCount + healthSummary.dueSoonCount > 0;');
+    expect(source).toContain('nextWalkNoLift: { marginTop: 0 },');
   });
 });
