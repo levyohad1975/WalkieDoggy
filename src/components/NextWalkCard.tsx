@@ -343,15 +343,19 @@ export function NextWalkCard({
         </View>
       ) : null}
 
+        {/* Owner report 2026-11-03: the main action of a running walk sits
+            above the map, so it is visible without scrolling instead of
+            hidden behind the tab bar. */}
+        {isActive && onEndWalk && canResolve ? (
+        <Button label="סיים טיול" icon="■" onPress={onEndWalk} style={styles.endWalkButton} shrinkToFit />
+        ) : null}
         {isActive ? (
           <View style={styles.activeMapPanel}>
             <RoutePreview live session={{ routePoints: liveRoutePoints ?? remoteGpsSession?.routePoints ?? [], distanceMeters: liveDistanceMeters ?? remoteGpsSession?.distanceMeters, reconstruction: liveReconstruction ?? remoteGpsSession?.reconstruction } as import('../types').WalkGpsSession} />
             {gpsReconstructionNotice ? <RtlText style={styles.gpsEstimateNote}>{gpsReconstructionNotice === 'home_unverified' ? 'לשחזור אוטומטי נדרש מיקום בית מאומת בפרופיל הכלב.' : 'הטיול ממשיך כרגיל. אין כרגע מספיק מסלולים קודמים לשחזור אמין.'}</RtlText> : null}
           </View>
         ) : null}
-      {isActive && onEndWalk && canResolve ? (
-        <Button label="סיים טיול" icon="■" onPress={onEndWalk} style={styles.endWalkButton} shrinkToFit />
-      ) : null}
+
 
 
         </>

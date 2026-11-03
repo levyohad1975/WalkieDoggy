@@ -252,3 +252,11 @@ describe('Home integrated walk lifecycle', () => {
     expect(onStartNow).toContain('throw error;');
   });
 });
+
+describe('running walk: end button above the map (owner report 2026-11-03)', () => {
+  it('renders "סיים טיול" before the live map so it is visible without scrolling', () => {
+    const card = require('fs').readFileSync(require.resolve('../../components/NextWalkCard'), 'utf8');
+    expect(card.indexOf('label="סיים טיול"')).toBeGreaterThan(-1);
+    expect(card.indexOf('label="סיים טיול"')).toBeLessThan(card.indexOf('<View style={styles.activeMapPanel}>'));
+  });
+});
