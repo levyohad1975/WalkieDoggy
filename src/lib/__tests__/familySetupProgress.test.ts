@@ -15,7 +15,7 @@ describe('resumable family setup progress', () => {
   beforeEach(async () => { await AsyncStorage.clear(); });
 
   it('persists the family, step and stable admin profile across reloads', async () => {
-    const progress = { familyId: 'family-1', step: 3 as const, adminUserId: 'admin-1', adminName: 'יעל כהן', pendingDogPhotoUrl: 'https://cdn.example/dog.jpg', pendingDogSex: 'female' as const };
+    const progress = { familyId: 'family-1', step: 3 as const, adminUserId: 'admin-1', adminName: 'יעל כהן', pendingDogPhotoUrl: 'https://cdn.example/dog.jpg', pendingDogPhotoDogId: 'dog-2', pendingDogSex: 'female' as const };
     await saveFamilySetupProgress(progress);
     await expect(readFamilySetupProgress()).resolves.toEqual(progress);
   });

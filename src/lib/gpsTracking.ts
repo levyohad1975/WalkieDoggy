@@ -106,6 +106,25 @@ export async function requestForegroundGpsPermission(): Promise<GpsPermissionSta
   }
 }
 
+/** One-shot current fix for explicit, admin-verified home setup. */
+export async function getCurrentReliableGpsFix(): Promise<GpsPoint> {
+  const permission = await requestForegroundGpsPermission();
+  if (permission !== 'granted') throw new Error(permission === 'denied' ? 'Location permission was denied' : 'Location is unavailable');
+  if (Platform.OS === 'web') {
+    const geolocation = browserGeolocation();
+    if (!geolocation) throw new Error('Location is unavailable');
+    return new Promise((resolve, reject) => geolocation.getCurrentPosition(
+      (position) => resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude, timestamp: position.timestamp, accuracy: position.coords.accuracy }),
+      reject,
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 20_000 },
+    ));
+  }
+  const Location = await getLocation();
+  if (!Location) throw new Error('Location is unavailable');
+  const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+  return { latitude: position.coords.latitude, longitude: position.coords.longitude, timestamp: position.timestamp, accuracy: position.coords.accuracy };
+}
+
 export interface GpsWatchHandle {
   remove: () => void;
 }

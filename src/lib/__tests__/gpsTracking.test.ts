@@ -187,7 +187,7 @@ describe('gpsTracking', () => {
       visibilityListeners.forEach((listener) => listener());
       expect(watchPosition).toHaveBeenCalledTimes(2);
       expect(clearWatch).toHaveBeenCalledWith(1);
-      callbacks[1]({ coords: { latitude: 32.081, longitude: 34.78, accuracy: 5 }, timestamp: 2 });
+      callbacks[1]({ coords: { latitude: 32.081, longitude: 34.78, accuracy: 5 }, timestamp: 60_001 });
       expect(updates.at(-1).pointCount).toBe(2);
 
       result.handle!.remove();
@@ -244,7 +244,7 @@ describe('gpsTracking', () => {
       expect(watchPosition).toHaveBeenCalledTimes(1);
       await jest.advanceTimersByTimeAsync(1500);
       expect(watchPosition).toHaveBeenCalledTimes(2);
-      callbacks[1].success({ coords: { latitude: 32.081, longitude: 34.78, accuracy: 5 }, timestamp: 2 });
+      callbacks[1].success({ coords: { latitude: 32.081, longitude: 34.78, accuracy: 5 }, timestamp: 60_001 });
       expect(updates.at(-1).pointCount).toBe(2);
       result.handle!.remove();
       jest.useRealTimers();
@@ -289,7 +289,7 @@ describe('gpsTracking', () => {
       expect(result.handle).not.toBeNull();
 
       feedPoint({ coords: { latitude: 32.0800, longitude: 34.7800, accuracy: 5 }, timestamp: 1 });
-      feedPoint({ coords: { latitude: 32.0810, longitude: 34.7800, accuracy: 5 }, timestamp: 2 }); // ~111m
+      feedPoint({ coords: { latitude: 32.0810, longitude: 34.7800, accuracy: 5 }, timestamp: 60_001 }); // ~111m over 60 s (~1.9 m/s)
 
       expect(updates).toHaveLength(2);
       expect(updates[0].pointCount).toBe(1);

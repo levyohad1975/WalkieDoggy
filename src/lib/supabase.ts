@@ -2,9 +2,14 @@ import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import type { FamilyLookupResult } from '../types';
+import { withSyncIdentityFence } from './syncIdentityFence';
+import { createOtpDiagnosticFetch, isOtpDiagnosticsEnabled } from './emailOtpDiagnostics';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const supabasePublishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '';
+const stagingOtpDiagnosticFetch = isOtpDiagnosticsEnabled() && typeof globalThis.fetch === 'function'
+  ? createOtpDiagnosticFetch(globalThis.fetch.bind(globalThis), isOtpDiagnosticsEnabled)
+  : undefined;
 
 /**
  * True when EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY are set
@@ -23,6 +28,27 @@ export const isSupabaseConfigured = Boolean(supabaseUrl && supabasePublishableKe
 export const supabaseProjectUrl = supabaseUrl;
 export const supabaseClientKey = supabasePublishableKey;
 
+/** This destructive-looking admin control is compiled in but visible only when
+ * the app is connected to the exact authorized Staging Supabase project. */
+export function isAuthorizedWalkResolutionStagingUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'https:' && parsed.hostname.toLowerCase() === 'czbxhsoxyawprqehkfit.supabase.co'
+      && parsed.port === '' && parsed.username === '' && parsed.password === '';
+  } catch {
+    return false;
+  }
+}
+
+export function isStagingDuplicateResolutionEnabled(value: string, explicitStagingFlag: string | undefined): boolean {
+  return explicitStagingFlag === 'true' && isAuthorizedWalkResolutionStagingUrl(value);
+}
+
+// The explicit opt-in must be a branch-scoped Staging Preview variable. It is
+// intentionally absent from Production; URL identity alone is not a rollout flag.
+export const isWalkResolutionStaging = isSupabaseConfigured
+  && isStagingDuplicateResolutionEnabled(supabaseUrl, process.env.EXPO_PUBLIC_STAGING_WALK_DUPLICATE_RESOLUTION);
+
 // Both env vars are read from process.env (not hardcoded) as required —
 // see .env.example for the keys and README "Configuring Supabase".
 export const supabase = isSupabaseConfigured
@@ -33,8 +59,21 @@ export const supabase = isSupabaseConfigured
         persistSession: true,
         detectSessionInUrl: false,
       },
+      ...(stagingOtpDiagnosticFetch ? { global: { fetch: stagingOtpDiagnosticFetch } } : {}),
     })
   : null;
+
+let currentSupabaseAuthUserId: string | null = null;
+if (supabase) {
+  supabase.auth.onAuthStateChange?.((_event, session) => {
+    currentSupabaseAuthUserId = session?.user.id ?? null;
+  });
+}
+
+/** Cached auth.uid() hint; SyncQueue still verifies it with the server before replay. */
+export function getCurrentSupabaseAuthUserId(): string | null {
+  return currentSupabaseAuthUserId;
+}
 
 /**
  * Every device needs *some* Supabase Auth session for Row Level Security to
@@ -47,10 +86,81 @@ export const supabase = isSupabaseConfigured
  */
 export async function ensureAnonymousSession(): Promise<void> {
   if (!supabase) return;
-  const { data } = await supabase.auth.getSession();
-  if (data.session) return;
-  const { error } = await supabase.auth.signInAnonymously();
-  if (error) throw error;
+  await withSyncIdentityFence(async () => {
+    let { data, error } = await supabase!.auth.getSession();
+    // Production 2026-11-03: a phone woke with an expired access token, the
+    // refresh request failed before reaching the server, getSession()
+    // returned no session WITH an error, and the anonymous sign-in below then
+    // overwrote this device's saved (email-verified admin) session. A saved
+    // session that cannot be loaded right now is never replaced: retry, and
+    // otherwise fail so the caller stays on its offline/retry path while the
+    // client keeps refreshing in the background. Only a device with no saved
+    // session at all (first run, or a refresh token the server definitively
+    // rejected — supabase-js removes those itself) signs in anonymously.
+    for (const delayMs of SESSION_RESTORE_RETRY_DELAYS_MS) {
+      if (data.session || !error) break;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      ({ data, error } = await supabase!.auth.getSession());
+    }
+    if (data.session) {
+      currentSupabaseAuthUserId = data.session.user?.id ?? null;
+      return;
+    }
+    if (error && (await hasStoredAuthSession())) {
+      throw new SavedSessionUnavailableError(error);
+    }
+    const { data: signedIn, error: signInError } = await supabase!.auth.signInAnonymously();
+    if (signInError) throw signInError;
+    currentSupabaseAuthUserId = signedIn?.session?.user?.id ?? null;
+  });
+}
+
+/**
+ * Calls `listener` (on a later tick, outside supabase-js's auth lock)
+ * whenever the client obtains a fresh session — e.g. the background refresh
+ * that finally succeeds after a cold start found the saved session
+ * temporarily unavailable.
+ */
+export function onSessionRefreshed(listener: () => void): () => void {
+  if (!supabase) return () => undefined;
+  const { data } = supabase.auth.onAuthStateChange((event) => {
+    if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') setTimeout(listener, 0);
+  });
+  return () => data.subscription.unsubscribe();
+}
+
+/** Waits between attempts to load a saved session that failed to refresh. */
+export const SESSION_RESTORE_RETRY_DELAYS_MS = [1500, 4000];
+
+/** A saved session exists but could not be loaded right now (offline, waking phone). */
+export class SavedSessionUnavailableError extends Error {
+  constructor(public readonly cause?: unknown) {
+    super('saved session temporarily unavailable');
+    this.name = 'SavedSessionUnavailableError';
+  }
+}
+
+/** supabase-js's default storage key for this project ("sb-<ref>-auth-token"). */
+function authStorageKey(): string | null {
+  try {
+    return `sb-${new URL(supabaseUrl).hostname.split('.')[0]}-auth-token`;
+  } catch {
+    return null;
+  }
+}
+
+async function hasStoredAuthSession(): Promise<boolean> {
+  const key = authStorageKey();
+  if (!key) return false;
+  try {
+    const raw = await AsyncStorage.getItem(key);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    const session = parsed?.currentSession ?? parsed;
+    return typeof session?.refresh_token === 'string' && session.refresh_token.length > 0;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -74,8 +184,10 @@ export async function ensureAnonymousSession(): Promise<void> {
  */
 export async function claimFamilyProfile(userId: string): Promise<void> {
   if (!supabase) return;
-  const { error } = await supabase.rpc('claim_family_profile', { target_user_id: userId });
-  if (error) throw error;
+  await withSyncIdentityFence(async () => {
+    const { error } = await supabase!.rpc('claim_family_profile', { target_user_id: userId });
+    if (error) throw error;
+  });
 }
 
 /**
@@ -124,10 +236,10 @@ export async function setProfilePin(userId: string, pin: string | null): Promise
  */
 export async function claimFamilyProfileWithPin(userId: string, pin: string): Promise<void> {
   if (!supabase) throw new SupabaseNotConfiguredError();
-  const { data, error } = await supabase.rpc('claim_family_profile_with_pin', {
+  const { data, error } = await withSyncIdentityFence(async () => await supabase!.rpc('claim_family_profile_with_pin', {
     p_target_user_id: userId,
     p_pin: pin,
-  });
+  }));
   if (error) throw error;
 
   const result = data as { success?: boolean; reason?: string } | null;
@@ -188,7 +300,7 @@ export async function findFamilyByInviteCode(code: string): Promise<FamilyLookup
  */
 export async function joinFamily(code: string): Promise<{ id: string; name: string }> {
   if (!supabase) throw new SupabaseNotConfiguredError();
-  const { data, error } = await supabase.rpc('join_family', { code });
+  const { data, error } = await withSyncIdentityFence(async () => await supabase!.rpc('join_family', { code }));
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) throw new Error('לא נמצאה משפחה עם הקוד הזה');
@@ -207,10 +319,10 @@ export async function createFamily(
   dogName?: string
 ): Promise<{ id: string; name: string; inviteCode: string }> {
   if (!supabase) throw new SupabaseNotConfiguredError();
-  const { data, error } = await supabase.rpc('create_family', {
+  const { data, error } = await withSyncIdentityFence(async () => await supabase!.rpc('create_family', {
     family_name: familyName,
     dog_name: dogName ?? null,
-  });
+  }));
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) throw new Error('יצירת המשפחה נכשלה');
@@ -333,10 +445,48 @@ export async function generateDogPhotoCutout(dogId: string): Promise<string> {
   const { data, error } = await supabase.functions.invoke('generate-dog-cutout', {
     body: { dogId },
   });
-  if (error) throw error;
+  if (error) throw new DogCutoutError(await readFunctionErrorCode(error), error);
   const cutoutUrl = (data as { cutoutUrl?: string } | null)?.cutoutUrl;
-  if (!cutoutUrl) throw new Error('cutout generation returned no URL');
+  if (!cutoutUrl) throw new DogCutoutError('no_cutout_url');
   return cutoutUrl;
+}
+
+/** A failed cutout job; `code` is the Edge Function's `error` field when available. */
+export class DogCutoutError extends Error {
+  constructor(public readonly code: string, public readonly detail?: unknown) {
+    super(`dog cutout generation failed: ${code}`);
+    this.name = 'DogCutoutError';
+  }
+}
+
+async function readFunctionErrorCode(error: unknown): Promise<string> {
+  // FunctionsHttpError exposes the raw Response as `context`.
+  const response = (error as { context?: { json?: () => Promise<unknown>; clone?: () => { json: () => Promise<unknown> } } } | null)?.context;
+  try {
+    const reader = typeof response?.clone === 'function' ? response.clone() : response;
+    const body = (await reader?.json?.()) as { error?: unknown } | undefined;
+    if (body && typeof body.error === 'string' && body.error) return body.error;
+  } catch {
+    // Non-JSON or already-consumed body: fall through to a generic code.
+  }
+  return 'request_failed';
+}
+
+/** Hebrew explanation for a failed background removal. The original photo is always kept. */
+export function describeDogCutoutFailure(error: unknown): string {
+  const code = error instanceof DogCutoutError ? error.code : '';
+  switch (code) {
+    case 'admin_permission_required':
+      return 'רק מנהל/ת משפחה יכולים לשפר את חיתוך הרקע. התמונה הקיימת נשמרה.';
+    case 'cutout_not_transparent':
+      return 'לא הצלחנו להפריד את הכלב מהרקע בתמונה הזו. אפשר לנסות שוב או לבחור תמונה שבה הכלב בולט יותר על הרקע.';
+    case 'background_removal_quota_exhausted':
+      return 'שירות הסרת הרקע הגיע למכסה היומית. התמונה המקורית נשמרה — נסו שוב מחר.';
+    case 'background_removal_busy':
+      return 'שירות הסרת הרקע עמוס כרגע. התמונה המקורית נשמרה — נסו שוב בעוד דקה.';
+    default:
+      return 'לא הצלחנו להסיר את הרקע כרגע. אפשר לנסות שוב מאותו מסך.';
+  }
 }
 
 export async function removeUnusedDog(dogId: string): Promise<void> {

@@ -1,3 +1,6 @@
+import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { DEFAULT_DOG_BACKGROUND, DOG_BACKGROUNDS, getDogBackground, getDogBackgroundImageSource } from '../dogBackgrounds';
 
 /**
@@ -20,10 +23,13 @@ describe('DOG_BACKGROUNDS', () => {
     expect(new Set(labels).size).toBe(labels.length);
   });
 
-  it('still resolves the approved photographic Walkie Park entry by id', () => {
+  it('resolves the Walkie Park selection to the approved bundled park asset (4761eb1)', () => {
     const match = getDogBackground('walkie-park');
     expect(match?.label).toBe('Walkie Park');
-    expect(match?.uri).toMatch(/^https:\/\//);
+    // Pinned to the exact user-approved bundled image, never a remote photo.
+    expect(match?.source).toBe(DEFAULT_DOG_BACKGROUND.source);
+    expect(match?.uri).toBeUndefined();
+    expect(getDogBackgroundImageSource(match!)).toBe(DEFAULT_DOG_BACKGROUND.source);
   });
 
   it('uses the bundled approved park as the implicit and legacy default', () => {
@@ -34,10 +40,21 @@ describe('DOG_BACKGROUNDS', () => {
     expect(getDogBackgroundImageSource(DEFAULT_DOG_BACKGROUND)).toBe(DEFAULT_DOG_BACKGROUND.source);
   });
 
+  it('bundles the exact user-approved default park image bytes', () => {
+    const imagePath = path.resolve(__dirname, '../../../assets/images/walkie-default-park.jpg');
+    const sha256 = crypto.createHash('sha256').update(fs.readFileSync(imagePath)).digest('hex');
+
+    expect(sha256).toBe('fbd7de06881962b7f9bf269d445e023cb26572d5209c00b8a304ef4218e5feed');
+  });
+
   it('preserves an explicitly selected family background', () => {
-    const selected = getDogBackground('walkie-park');
-    expect(selected?.id).toBe('walkie-park');
+    // 'walkie-park' now renders the bundled default itself, so a remote-backed
+    // selection is what proves an explicit choice is never swapped for it.
+    const selected = getDogBackground('dog-park');
+    expect(selected?.id).toBe('dog-park');
+    expect(selected?.uri).toMatch(/^https:\/\//);
     expect(getDogBackgroundImageSource(selected!)).toEqual({ uri: selected!.uri });
+    expect(getDogBackgroundImageSource(selected!)).not.toBe(DEFAULT_DOG_BACKGROUND.source);
   });
 
   it('returns undefined for an unknown id rather than a false match', () => {

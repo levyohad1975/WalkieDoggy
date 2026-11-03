@@ -20,6 +20,8 @@ interface RemindersModalProps {
   effectiveUserId: string | null | undefined;
   onSetReminderEnabled: (userId: string, enabled: boolean) => void;
   onClose: () => void;
+  /** Restrict this shared surface to the signed-in member's own preference. */
+  personalOnly?: boolean;
 }
 
 /** Section 12: "🔔 תזכורות" — the reminders switch-list, moved into its own focused area instead of sitting on the main Settings screen. */
@@ -30,6 +32,7 @@ export function RemindersModal({
   effectiveUserId,
   onSetReminderEnabled,
   onClose,
+  personalOnly = false,
 }: RemindersModalProps) {
   const [webPushStatus, setWebPushStatus] = useState<WebPushStatus>('default');
   const [webPushBusy, setWebPushBusy] = useState(false);
@@ -166,7 +169,7 @@ export function RemindersModal({
         accessibilityLabel="סגירת חלון תזכורות"
       >
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <RtlText style={styles.title} accessibilityRole="header">🔔 תזכורות</RtlText>
+          <RtlText style={styles.title} accessibilityRole="header">{personalOnly ? '🔔 ההתראות שלי' : '🔔 תזכורות'}</RtlText>
           <ScrollView style={styles.scroll}>
 {Platform.OS !== 'web' && nativePermissionStatus !== 'granted' && nativePermissionStatus !== 'unavailable' && (
   <View style={styles.webPushSection}>
@@ -245,11 +248,11 @@ export function RemindersModal({
           </>
         )}
       </View>
-    ) : webPushStatus !== 'subscribed' &&
+    ) : (webPushStatus !== 'subscribed' &&
       webPushStatus !== 'denied' &&
-      webPushStatus !== 'unsupported' ? (
+      webPushStatus !== 'unsupported') || (webPushStatus === 'subscribed' && serverVerified === false) ? (
         <Button
-          label={webPushBusy ? 'מפעיל התראות...' : 'אפשר התראות'}
+          label={webPushBusy ? 'מפעיל התראות...' : serverVerified === false ? 'נסה שוב לרשום את המכשיר' : 'אפשר התראות'}
           onPress={handleEnableWebPush}
           disabled={webPushBusy}
           style={styles.webPushButton}
@@ -258,7 +261,7 @@ export function RemindersModal({
   </View>
 )}
             {users
-              .filter((u) => !u.removedAt)
+              .filter((u) => !u.removedAt && (!personalOnly || u.id === effectiveUserId))
               .map((u) => (
                 <View key={u.id} style={styles.row}>
                   <Avatar emoji={u.avatar} color={u.color} photoUrl={u.photoUrl} size={36} />
@@ -267,7 +270,9 @@ export function RemindersModal({
                   </RtlText>
                   <Switch
                     value={u.remindersEnabled}
-                    onValueChange={(v) => onSetReminderEnabled(u.id, v)}
+                    onValueChange={(v) => {
+                      if (!personalOnly || u.id === effectiveUserId) onSetReminderEnabled(u.id, v);
+                    }}
                     disabled={effectiveFamilyRole !== 'admin' && u.id !== effectiveUserId}
                     accessibilityLabel={`תזכורות עבור ${u.name}`}
                   />

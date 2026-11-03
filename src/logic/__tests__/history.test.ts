@@ -1,4 +1,5 @@
 import { isWalkEligibleForHistory, walkMatchesHistorySearch } from '../history';
+import { localDateOnly } from '../dateFormat';
 import type { Walk } from '../../types';
 
 function walk(overrides: Partial<Walk> = {}): Walk {
@@ -40,7 +41,7 @@ describe('isWalkEligibleForHistory', () => {
   });
 
   it('defaults to the real current moment when called with no `now` argument', () => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDateOnly(new Date());
     expect(isWalkEligibleForHistory(walk({ date: today, status: 'done' }))).toBe(true);
   });
 });

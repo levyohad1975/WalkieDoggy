@@ -10,7 +10,8 @@ describe('Home Dashboard dog scene', () => {
   it('uses the persisted family scene and renders only a transparent dog cutout above it', () => {
     expect(home).toContain('getDogBackground(dog?.heroBackgroundId)');
     expect(home).toContain('getDogBackgroundImageSource(heroBackground)');
-    expect(home).toContain('const showDogCutout = Boolean(dog?.photoCutoutUrl) && !heroCutoutFailed;');
+    expect(home).toContain('const heroCutoutVerdict = useCutoutVerdict(dog?.photoCutoutUrl);');
+    expect(home).toContain('const showDogCutout = Boolean(dog?.photoCutoutUrl) && !heroCutoutFailed && heroCutoutReady;');
     expect(home).toContain('onError={() => setHeroCutoutFailed(true)}');
     expect(home).toContain("source={{ uri: dog!.photoCutoutUrl! }}");
     expect(home).toContain('{!showDogCutout ? (');
@@ -19,11 +20,36 @@ describe('Home Dashboard dog scene', () => {
     expect(home).toContain('<WalkieMascot state={guestReactionPlaying ?');
   });
 
+  it('never composites an opaque cutout and reveals a cutout only once its transparency is confirmed', () => {
+    expect(home).toContain("import { canCompositeCutout, useCutoutVerdict } from '../lib/cutoutVerification';");
+    expect(home).toContain('const heroCutoutReady = canCompositeCutout(heroCutoutVerdict);');
+    expect(home).toContain('style={[styles.dashboardHeroDogCutout, !heroCutoutReady && styles.dashboardHeroDogCutoutPending]}');
+    expect(home).toContain('dashboardHeroDogCutoutPending: { opacity: 0 },');
+    // The cutout stays in the approved hero slot, with no frame, background or radius.
+    const cutoutStyle = home.slice(home.indexOf('dashboardHeroDogCutout: {'), home.indexOf('dashboardHeroDogCutoutPending: {'));
+    expect(cutoutStyle.length).toBeGreaterThan(0);
+    expect(cutoutStyle).toContain("position: 'absolute',");
+    expect(cutoutStyle).toContain('right: 4,');
+    expect(cutoutStyle).toContain('bottom: 2,');
+    expect(cutoutStyle).toContain('width: 166,');
+    expect(cutoutStyle).toContain('height: 158,');
+    expect(cutoutStyle).not.toMatch(/backgroundColor|borderRadius|borderWidth|overflow/);
+    // Grounding shadow follows the alpha edge rather than drawing a box.
+    expect(cutoutStyle).toContain('drop-shadow(');
+    expect(cutoutStyle).not.toContain('boxShadow');
+  });
+
+  it('uses the approved mascot while verification is pending, unavailable, or rejected', () => {
+    expect(home).toContain('&& heroCutoutReady;');
+    expect(home).toContain('{!showDogCutout ? (');
+    expect(home).toContain('<WalkieMascot state={guestReactionPlaying ?');
+  });
+
   it('fits the photo background to a 2:1 iPhone hero and fades into the existing cream surface', () => {
     expect(backgrounds).toContain('w=1200&h=600');
     expect(home).toContain('resizeMode="cover"');
     expect(home).toContain("dashboardHeroImage: { ...StyleSheet.absoluteFill, width: '100%', height: '100%' }");
-    expect(home).toContain('dashboardHeroFade: { position: \'absolute\', left: 0, right: 0, bottom: 0, height: 44, zIndex: 1 }');
+    expect(home).toContain('dashboardHeroFade: { position: \'absolute\', left: 0, right: 0, bottom: 0, height: 10, zIndex: 1 }');
     expect(home).toContain('stopColor={colors.background}');
     expect(home).toContain('height: 148,');
     expect(home).toContain('bottom: -14');

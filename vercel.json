@@ -1,0 +1,22 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npx expo export --platform web",
+  "outputDirectory": "dist",
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/_walkie-auth/otp",
+      "has": [
+        {
+          "type": "host",
+          "value": "walkielink.co.il"
+        }
+      ],
+      "destination": "https://zxolmnkevbtorxmcyvnz.supabase.co/auth/v1/otp"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/"
+    }
+  ]
+}

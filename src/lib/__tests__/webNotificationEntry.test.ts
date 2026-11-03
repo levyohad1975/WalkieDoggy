@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import { consumeInitialWebNotificationParam, subscribeToWebNotificationClicks } from '../webNotificationEntry';
 import { subscribeToReminderOpens, __resetReminderEntryForTests } from '../../notifications/reminderEntry';
 import { subscribeToRequestOpens, __resetRequestEntryForTests } from '../../notifications/requestEntry';
+import { subscribeToChatOpens, __resetChatEntryForTests } from '../../notifications/chatEntry';
 
 const originalPlatformOS = Platform.OS;
 
@@ -39,6 +40,7 @@ describe('lib/webNotificationEntry', () => {
   beforeEach(() => {
     __resetReminderEntryForTests();
     __resetRequestEntryForTests();
+    __resetChatEntryForTests();
   });
 
   afterEach(() => {
@@ -78,6 +80,28 @@ describe('lib/webNotificationEntry', () => {
       consumeInitialWebNotificationParam();
 
       expect(received).toEqual([{ requestId: 'r1', kind: 'swap', event: 'approved' }]);
+    });
+
+    it('parses a cold-launch chat notification including its exact message id', () => {
+      setPlatformOS('web');
+      setWindowLocation('?notif=' + encodeURIComponent(JSON.stringify({ type: 'chat', conversationId: 'c1', messageId: 'm1' })));
+      const received: unknown[] = [];
+      subscribeToChatOpens((event) => received.push(event));
+
+      consumeInitialWebNotificationParam();
+
+      expect(received).toEqual([{ conversationId: 'c1', messageId: 'm1' }]);
+    });
+
+    it('does not double-decode percent characters in notification data', () => {
+      setPlatformOS('web');
+      setWindowLocation('?notif=' + encodeURIComponent(JSON.stringify({ type: 'chat', conversationId: 'c%1', messageId: 'm%1' })));
+      const received: unknown[] = [];
+      subscribeToChatOpens((event) => received.push(event));
+
+      consumeInitialWebNotificationParam();
+
+      expect(received).toEqual([{ conversationId: 'c%1', messageId: 'm%1' }]);
     });
 
     it('removes the `notif` param from the URL after consuming it, so a later refresh never replays it', () => {
@@ -173,6 +197,18 @@ describe('lib/webNotificationEntry', () => {
       listeners['message']({ data: { source: 'walkie-notification-click', data: { type: 'request', requestId: 'r2', kind: 'timeChange', event: 'approved' } } });
 
       expect(received).toEqual([{ requestId: 'r2', kind: 'timeChange', event: 'approved' }]);
+    });
+
+    it('dispatches a service-worker chat click with conversation and message ids', () => {
+      setPlatformOS('web');
+      const { listeners } = setServiceWorker();
+      const received: unknown[] = [];
+      subscribeToChatOpens((event) => received.push(event));
+      subscribeToWebNotificationClicks();
+
+      listeners['message']({ data: { source: 'walkie-notification-click', data: { type: 'chat', conversationId: 'c2', messageId: 'm2' } } });
+
+      expect(received).toEqual([{ conversationId: 'c2', messageId: 'm2' }]);
     });
 
     it('ignores a message whose `source` is not the expected marker — never reacts to an unrelated postMessage', () => {

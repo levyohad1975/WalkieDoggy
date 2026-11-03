@@ -120,6 +120,11 @@ describe('computeMemberDistribution', () => {
     expect(completed.responsibleUserId).toBe('omer');
   });
 
+  it('uses explicit actual-walker attribution when it differs from legacy completion fields', () => {
+    const walk = makeWalk({ status: 'done', responsibleUserId: 'maor', completedByUserId: 'father', actualWalkerUserId: 'maor' });
+    expect(computeMemberDistribution([walk])).toEqual([{ userId: 'maor', count: 1 }]);
+  });
+
   it('falls back to responsibleUserId when completedByUserId is missing', () => {
     const walks = [makeWalk({ status: 'done', responsibleUserId: 'c', completedByUserId: undefined })];
     expect(computeMemberDistribution(walks)).toEqual([{ userId: 'c', count: 1 }]);
@@ -184,14 +189,15 @@ describe('applyStatisticsFilters', () => {
     expect(applyStatisticsFilters(walks, { ...DEFAULT_STATISTICS_FILTERS, dogId: 'dog-2' }).map((w) => w.id)).toEqual(['b']);
   });
 
-  it('filters by memberId matching either responsibleUserId or completedByUserId', () => {
+  it('filters by memberId matching responsibility, actual walker, or legacy completedByUserId', () => {
     const walks = [
       makeWalk({ id: 'scheduled-for', responsibleUserId: 'noam', completedByUserId: 'dana' }),
       makeWalk({ id: 'completed-by', responsibleUserId: 'other', completedByUserId: 'noam' }),
+      makeWalk({ id: 'actual-walker', responsibleUserId: 'other', completedByUserId: 'manager', actualWalkerUserId: 'noam' }),
       makeWalk({ id: 'unrelated', responsibleUserId: 'x', completedByUserId: 'y' }),
     ];
     const result = applyStatisticsFilters(walks, { ...DEFAULT_STATISTICS_FILTERS, memberId: 'noam' });
-    expect(result.map((w) => w.id).sort()).toEqual(['completed-by', 'scheduled-for']);
+    expect(result.map((w) => w.id).sort()).toEqual(['actual-walker', 'completed-by', 'scheduled-for']);
   });
 
   it('filters by status', () => {
@@ -321,17 +327,47 @@ function makeGpsSession(overrides: Partial<WalkGpsSession>): WalkGpsSession {
 describe('computeDistanceStats', () => {
   it('sums and averages distanceMeters across sessions', () => {
     const sessions = [makeGpsSession({ distanceMeters: 500 }), makeGpsSession({ distanceMeters: 1000 })];
-    expect(computeDistanceStats(sessions)).toEqual({ totalMeters: 1500, averageMeters: 750, sessionCount: 2 });
+    expect(computeDistanceStats(sessions)).toEqual({ totalMeters: 1500, averageMeters: 750, sessionCount: 2, measuredMeters: 1500, estimatedMeters: 0 });
   });
 
   it('prefers correctedDistanceMeters over distanceMeters when present', () => {
     const sessions = [makeGpsSession({ distanceMeters: 500, correctedDistanceMeters: 800 })];
-    expect(computeDistanceStats(sessions)).toEqual({ totalMeters: 800, averageMeters: 800, sessionCount: 1 });
+    expect(computeDistanceStats(sessions)).toEqual({ totalMeters: 800, averageMeters: 800, sessionCount: 1, measuredMeters: 800, estimatedMeters: 0 });
   });
 
   it('averageMeters is null and sessionCount is 0 when no session has a distance', () => {
     const stats = computeDistanceStats([makeGpsSession({ distanceMeters: undefined })]);
-    expect(stats).toEqual({ totalMeters: 0, averageMeters: null, sessionCount: 0 });
+    expect(stats).toEqual({ totalMeters: 0, averageMeters: null, sessionCount: 0, measuredMeters: 0, estimatedMeters: 0 });
+  });
+});
+
+describe('computeDistanceStats with estimated home legs (owner request 2026-11-02)', () => {
+  const M = 1 / 110_540;
+  const home = { latitude: 32, longitude: 34.8 };
+  // A straight 300 m walk that started 200 m from home and stopped 500 m from it.
+  const route = Array.from({ length: 31 }, (_, i) => ({ latitude: 32 + (200 + i * 10) * M, longitude: 34.8, timestamp: 1_800_000_000_000 + i * 8000 }));
+
+  it('adds the straight lead from home and tail back home, like the map', () => {
+    const stats = computeDistanceStats([makeGpsSession({ dogId: 'dog-1', distanceMeters: 300, routePoints: route })], { 'dog-1': home });
+    expect(stats.measuredMeters).toBe(300);
+    expect(stats.estimatedMeters).toBeGreaterThan(690);
+    expect(stats.estimatedMeters).toBeLessThan(710);
+    expect(stats.totalMeters).toBe(300 + stats.estimatedMeters);
+  });
+
+  it('uses a saved reconstruction instead of the straight lead', () => {
+    const stats = computeDistanceStats([makeGpsSession({
+      dogId: 'dog-1', distanceMeters: 300, routePoints: route,
+      reconstruction: { routePoints: [], distanceMeters: 250, durationSeconds: 120, confidence: 'high', sourceWalkId: 'w0' },
+    })], { 'dog-1': home });
+    expect(stats.estimatedMeters).toBeGreaterThan(740); // 250 + ~500 tail
+    expect(stats.estimatedMeters).toBeLessThan(760);
+  });
+
+  it('adds nothing without a verified home, or on top of a confirmed correction', () => {
+    expect(computeDistanceStats([makeGpsSession({ dogId: 'dog-1', distanceMeters: 300, routePoints: route })]).estimatedMeters).toBe(0);
+    expect(computeDistanceStats([makeGpsSession({ dogId: 'dog-1', distanceMeters: 300, correctedDistanceMeters: 1200, routePoints: route })], { 'dog-1': home }))
+      .toMatchObject({ totalMeters: 1200, estimatedMeters: 0 });
   });
 });
 

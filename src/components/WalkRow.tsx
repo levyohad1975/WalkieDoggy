@@ -145,6 +145,10 @@ export function WalkRow({
   const historyTimingLine = historyCompact ? walkHistoryTimingLine(walk) : null;
   // In completed history, show the actual walker rather than the originally scheduled assignee.
   const displayedWalker = historyCompact && walk.status === 'done' && completedBy ? completedBy : responsible;
+  const routeCaption = [
+    (walk.status === 'done' && completedBy ? completedBy : responsible)?.name,
+    `${new Date(`${walk.date}T00:00:00`).toLocaleDateString('he-IL', { weekday: 'long' })} ${new Date(`${walk.date}T00:00:00`).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit' })} · ${walk.scheduledTime}`,
+  ].filter(Boolean).join(' · ');
 
   return (
     <Pressable
@@ -202,10 +206,10 @@ export function WalkRow({
         )}
         {historyCompact ? (
           <View style={styles.historyMapColumn}>
-            {routeSession?.routePoints && routeSession.routePoints.length > 1 ? <RoutePreview session={routeSession} compact /> : null}
+            {routeSession?.routePoints && routeSession.routePoints.length > 1 ? <RoutePreview session={routeSession} compact caption={routeCaption} /> : null}
           </View>
         ) : routeSession?.routePoints && routeSession.routePoints.length > 1 ? (
-          <RoutePreview session={routeSession} />
+          <RoutePreview session={routeSession} caption={routeCaption} />
         ) : null}
       </View>
 

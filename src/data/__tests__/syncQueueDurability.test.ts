@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SyncQueue, setSyncQueueActorGetter } from '../syncQueue';
+import { SyncQueue, getSyncQueueActorHint, getSyncQueueAuthUserHint, setSyncQueueActorGetter, setSyncQueueAuthUserGetter, setSyncQueueFamilyGetter } from '../syncQueue';
 import type { Repository } from '../repository';
 import type { FamilyUser } from '../../types';
 
@@ -12,7 +12,10 @@ function user(id: string): FamilyUser {
 }
 
 function remote(upsertUser: jest.Mock): Repository {
-  return { upsertUser } as unknown as Repository;
+  return {
+    upsertUser,
+    getSyncReplayIdentity: async () => ({ authUserId: getSyncQueueAuthUserHint() ?? '', profileId: getSyncQueueActorHint() ?? '', familyId: 'family-test' }),
+  } as unknown as Repository;
 }
 
 type StorageFailure = (key: string) => Error | null;
@@ -31,11 +34,15 @@ describe('SyncQueue durable archive handoff', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
     setSyncQueueActorGetter(() => 'test-user');
+    setSyncQueueFamilyGetter(() => 'family-test');
+    setSyncQueueAuthUserGetter(() => 'auth-test');
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
     setSyncQueueActorGetter(() => null);
+    setSyncQueueFamilyGetter(() => null);
+    setSyncQueueAuthUserGetter(() => null);
   });
 
   it('keeps an acknowledged write in the durable FIFO when queue removal storage fails, including after restart', async () => {
@@ -105,23 +112,20 @@ describe('SyncQueue durable archive handoff', () => {
     expect(JSON.parse((await AsyncStorage.getItem(CONFLICTS_KEY)) ?? '[]')).toHaveLength(1);
   });
 
-  it('persists unowned quarantine before removing the pending operation and preserves neighboring operations', async () => {
+  it('holds unowned operations in place without quarantine or discard and preserves neighboring operations', async () => {
     const queue = new SyncQueue();
     setSyncQueueActorGetter(() => null);
     await queue.enqueue({ type: 'upsertUser', payload: user('unknown') });
     setSyncQueueActorGetter(() => 'test-user');
     await queue.enqueue({ type: 'upsertUser', payload: user('owned') });
 
-    interceptStorageWrites((key) =>
-      key === QUARANTINE_KEY ? new Error('simulated quarantine-store failure') : null
-    );
     const calls = jest.fn().mockResolvedValue(undefined);
 
-    await expect(queue.flush(remote(calls))).rejects.toThrow('simulated quarantine-store failure');
+    await expect(queue.flush(remote(calls))).resolves.toMatchObject({ remaining: 2, quarantined: 0 });
     const restarted = new SyncQueue();
     expect(await restarted.size()).toBe(2);
     expect(await restarted.getQuarantined()).toHaveLength(0);
-    expect(JSON.parse((await AsyncStorage.getItem(QUEUE_KEY)) ?? '[]')).toHaveLength(2);
+    expect(JSON.parse((await AsyncStorage.getItem(QUEUE_KEY)) ?? '[]').map((item: any) => item.op.payload.id)).toEqual(['unknown', 'owned']);
     expect(calls).not.toHaveBeenCalled();
   });
 });

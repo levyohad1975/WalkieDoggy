@@ -57,14 +57,26 @@ const SUBJECT_BY_ACTION_TYPE: Record<string, string> = {
 // documented payload shape) -- this is the single template used for all of
 // them, differing only by subject/lead line, since the app's own OTP-entry
 // screen (FamilyOnboardingScreen.tsx) always expects the same style of code.
-function templateFor(actionType: string, token: string): { subject: string; html: string } {
-  const subject = SUBJECT_BY_ACTION_TYPE[actionType] ?? SUBJECT_BY_ACTION_TYPE.signup;
+//
+// iOS/macOS offer an emailed one-time code above the keyboard ("From Mail")
+// only when Mail recognizes it. Recognition is most reliable when the code
+// sits next to an explicit "code" phrase on one line, appears in the subject,
+// and a plain-text part is present, so the code is placed first in the
+// subject and repeated in an English line in both parts. The input field
+// already declares autocomplete="one-time-code".
+function templateFor(
+  actionType: string,
+  token: string
+): { subject: string; html: string; text: string } {
+  const lead = SUBJECT_BY_ACTION_TYPE[actionType] ?? SUBJECT_BY_ACTION_TYPE.signup;
   const safeToken = escapeHtml(token);
-  const html = `<div dir="rtl"><h1>Walkie Doggy Link</h1><p>קוד האימות שלך:</p><p style="font-size:28px;font-weight:bold;letter-spacing:6px;">${safeToken}</p><p>הקוד תקף לזמן מוגבל. אם לא ביקשת אותו, אפשר להתעלם מהודעה זו בבטחה.</p></div>`;
-  return { subject, html };
+  const subject = `${token} - ${lead}`;
+  const html = `<div dir="rtl"><h1>Walkie Doggy Link</h1><p>קוד האימות שלך: <strong style="font-size:28px;letter-spacing:6px;">${safeToken}</strong></p><p dir="ltr">Your Walkie Doggy Link verification code is ${safeToken}</p><p>הקוד תקף לזמן מוגבל. אם לא ביקשת אותו, אפשר להתעלם מהודעה זו בבטחה.</p></div>`;
+  const text = `קוד האימות שלך: ${token}\nYour Walkie Doggy Link verification code is ${token}\n\nהקוד תקף לזמן מוגבל. אם לא ביקשת אותו, אפשר להתעלם מהודעה זו בבטחה.`;
+  return { subject, html, text };
 }
 
-async function sendViaResend(args: { to: string; subject: string; html: string }): Promise<void> {
+async function sendViaResend(args: { to: string; subject: string; html: string; text: string }): Promise<void> {
   const apiKey = Deno.env.get('RESEND_API_KEY') ?? '';
   const from = Deno.env.get('WELCOME_EMAIL_FROM') ?? '';
   if (!apiKey || !from) throw new Error('email provider is not configured');
@@ -75,7 +87,7 @@ async function sendViaResend(args: { to: string; subject: string; html: string }
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ from, to: [args.to], subject: args.subject, html: args.html }),
+    body: JSON.stringify({ from, to: [args.to], subject: args.subject, html: args.html, text: args.text }),
   });
   if (!result.ok) throw new Error(`email provider returned ${result.status}`);
 }
@@ -133,10 +145,10 @@ Deno.serve(async (req) => {
     return jsonErrorResponse(400, 'missing recipient email or token');
   }
 
-  const { subject, html } = templateFor(email_data.email_action_type ?? 'signup', email_data.token);
+  const { subject, html, text } = templateFor(email_data.email_action_type ?? 'signup', email_data.token);
 
   try {
-    await sendViaResend({ to: user.email, subject, html });
+    await sendViaResend({ to: user.email, subject, html, text });
   } catch {
     console.error('send-email provider send failed');
     return jsonErrorResponse(500, 'email provider failed');

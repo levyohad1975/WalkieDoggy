@@ -24,6 +24,8 @@ export interface Family {
    * supabase/migrations/0022_family_timezone_and_dog_sex.sql.
    */
   timezone?: string;
+  /** Family-local prompt window for offering a scheduled occurrence when starting a spontaneous walk. */
+  spontaneousAssociationWindowMinutes?: number;
   createdAt: string;
 }
 
@@ -79,6 +81,8 @@ export interface Dog {
    * supabase/migrations/0022_family_timezone_and_dog_sex.sql.
    */
   sex?: 'male' | 'female';
+  /** Exact family-shared home pin; only stored after an admin explicitly verifies the device is at home. */
+  homeLocation?: { latitude: number; longitude: number; accuracyMeters: number; verifiedAt: string; verifiedByUserId: string };
 }
 
 /** The PRD §10 core category list for a health/grooming record. */
@@ -198,11 +202,20 @@ export interface Walk {
   status: WalkStatus;
   startedAt?: string; // ISO timestamp when Start walk was pressed
   startedByUserId?: string; // profile that pressed Start (admin may differ from responsible)
+  /** Person physically walking; captured at start and retained independently from schedule responsibility. */
+  actualWalkerUserId?: string;
+  /** Audit-group ID when an administrator has explicitly resolved this test/duplicate start out of the active lifecycle. Original row/history/GPS remain intact. */
+  duplicateResolutionGroupId?: string;
+  /** Local-only lifecycle reconciliation marker; never means the server has confirmed the transition. */
+  lifecycleSyncStatus?: 'pending' | 'conflict';
   completedAt?: string; // ISO timestamp
   completedByUserId?: string; // who actually walked the dog — may differ from responsibleUserId
   endedByUserId?: string; // profile that pressed End (admin may differ from actual walker)
   hadPee?: boolean;
   hadPoop?: boolean;
+  /** Number of events, when supported by the persisted walk schema. Undefined for legacy walks. */
+  peeCount?: number;
+  poopCount?: number;
   note?: string;
   durationMinutes?: number;
   isUnplanned?: boolean; // true for a walk logged via "add a walk that already happened", never generated from a rule
@@ -231,6 +244,14 @@ export interface WalkGpsSession {
   pointCount: number;
   /** GPS points retained for the in-app route preview/map. */
   routePoints?: Array<{ latitude: number; longitude: number; timestamp: number }>;
+  /** Separate, explicitly estimated prefix; never included in measured route or distance fields. */
+  reconstruction?: {
+    routePoints: Array<{ latitude: number; longitude: number; timestamp: number }>;
+    distanceMeters: number;
+    durationSeconds: number;
+    confidence: 'high' | 'low';
+    sourceWalkId: string;
+  };
   correctedDistanceMeters?: number;
   correctedByUserId?: string;
   startedAt?: string; // ISO timestamp
@@ -240,6 +261,31 @@ export interface WalkGpsSession {
   createdByUserId?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface WalkStartAuthorization {
+  actorUserId?: string;
+  actualWalkerUserId: string;
+  operationId: string;
+  substitutionConfirmed?: boolean;
+  remoteStart?: boolean;
+}
+
+export interface GpsRouteUpdate {
+  walkId: string;
+  fencingEpoch: number;
+  points: Array<{ latitude: number; longitude: number; timestamp: number }>;
+  distanceMeters: number;
+  pointCount: number;
+  startedAt?: string;
+  endedAt?: string;
+}
+
+export interface GpsReconstructionUpdate {
+  walkId: string;
+  familyId: string;
+  dogId: string;
+  reconstruction: NonNullable<WalkGpsSession['reconstruction']>;
 }
 
 /**

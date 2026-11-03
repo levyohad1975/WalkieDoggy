@@ -9,6 +9,7 @@ import { radii, spacing } from '../theme/tokens';
 import { Avatar } from './Avatar';
 import { Button } from './Button';
 import { localDateOnly } from '../logic/dateFormat';
+import { findRetrospectiveWalkDuplicates } from '../logic/retrospectiveWalkDuplicates';
 
 export interface UnplannedWalkResult {
   performedByUserId: string;
@@ -41,6 +42,9 @@ interface AddUnplannedWalkModalProps {
    * (scheduleStore.editUnplannedWalk), never creates a duplicate.
    */
   editingWalk?: Walk | null;
+  /** Existing family history used to warn before saving a likely duplicate. */
+  existingWalks?: Walk[];
+  dogId?: string;
   onDelete?: (walkId: string) => void;
   onConfirm: (result: UnplannedWalkResult) => void;
   /** Starts a live unplanned walk through the normal start/finish + GPS lifecycle. */
@@ -97,6 +101,8 @@ export function AddUnplannedWalkModal({
   defaultUserId,
   canChooseUser = true,
   editingWalk = null,
+  existingWalks = [],
+  dogId = '',
   onDelete,
   onConfirm,
   onStartNow,
@@ -118,9 +124,15 @@ export function AddUnplannedWalkModal({
   const [hadPoop, setHadPoop] = useState(false);
   const [note, setNote] = useState('');
   const [duration, setDuration] = useState('');
+  const [duplicateConfirmedKey, setDuplicateConfirmedKey] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [startNowError, setStartNowError] = useState('');
 
   useEffect(() => {
     if (visible) {
+      setStartNowError('');
+      setSaving(false);
+      setDuplicateConfirmedKey(null);
       if (editingWalk) {
         setPerformedBy(editingWalk.responsibleUserId);
         setDate(editingWalk.date);
@@ -150,6 +162,14 @@ export function AddUnplannedWalkModal({
   // clear feedback to the user. Empty stays valid (duration is optional).
   const durationValid = duration.trim() === '' || /^\d+$/.test(duration.trim());
   const valid = timeIsValid(time) && /^\d{4}-\d{2}-\d{2}$/.test(date) && durationValid;
+  const result: UnplannedWalkResult = {
+    performedByUserId: performedBy, date, time, hadPee, hadPoop, note: note.trim(),
+    durationMinutes: duration ? Number(duration) : undefined,
+  };
+  const duplicateKey = JSON.stringify(result);
+  const possibleDuplicates = !isEditing && dogId
+    ? findRetrospectiveWalkDuplicates(existingWalks, { dogId, ...result })
+    : [];
 
   // Round 6C-time: native picker selection can't produce an invalid value,
   // so this just converts and stores it — the existing timeIsValid() gate
@@ -159,6 +179,42 @@ export function AddUnplannedWalkModal({
     if (Platform.OS === 'android') setPickerOpen(false);
     if (event.type === 'dismissed') return;
     if (selected) setTime(dateToTimeString(selected));
+  };
+
+  const handleStartNow = async () => {
+    setStartNowError('');
+    try {
+      await onStartNow?.();
+    } catch (e) {
+      // A caller may fail before scheduleStore can publish its normal action
+      // error (for example while checking a possible walk association). Do
+      // not let the fire-and-forget Pressable handler hide that rejection.
+      // A legitimate refusal (e.g. an active walk already exists for this
+      // dog) is tagged `knownReason` by the caller and carries its own
+      // specific Hebrew explanation — show that verbatim. Anything else (a
+      // raw network/RPC exception) keeps the generic fallback, unchanged
+      // (P0 2026-10-15).
+      const known = e instanceof Error && (e as Error & { knownReason?: boolean }).knownReason && e.message;
+      setStartNowError(known || 'לא הצלחנו להתחיל את הטיול. בדקו חיבור ונסו שוב.');
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (saving || !valid) return;
+    if (possibleDuplicates.length > 0 && duplicateConfirmedKey !== duplicateKey) {
+      setDuplicateConfirmedKey(duplicateKey);
+      return;
+    }
+
+    // The parent optimistically adds the completed walk before its repository
+    // save settles. Keep duplicate detection out of that intermediate render;
+    // otherwise the just-submitted row is mistaken for a previous walk.
+    setSaving(true);
+    try {
+      await onConfirm(result);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -182,7 +238,10 @@ export function AddUnplannedWalkModal({
             <RtlText style={styles.subtitle}>{isEditing ? 'עדכון פרטי הטיול' : 'אפשר להתחיל טיול עכשיו או להזין טיול שכבר בוצע'}</RtlText>
 
             {!isEditing && onStartNow ? (
-              <Button label={startingNow ? 'מתחיל טיול…' : 'התחל טיול עכשיו'} disabled={startingNow} onPress={() => void onStartNow()} style={styles.startNowButton} />
+              <>
+                <Button label={startingNow ? 'מתחיל טיול…' : 'התחל טיול עכשיו'} disabled={startingNow} onPress={() => void handleStartNow()} style={styles.startNowButton} />
+                {startNowError ? <RtlText accessibilityLiveRegion="polite" style={styles.startNowError}>{startNowError}</RtlText> : null}
+              </>
             ) : null}
 
             <RtlText style={styles.label}>מי טייל?</RtlText>
@@ -310,21 +369,19 @@ export function AddUnplannedWalkModal({
             />
 
             </ScrollView>
+            {!saving && possibleDuplicates.length > 0 && duplicateConfirmedKey !== duplicateKey ? (
+              <View accessibilityRole="alert" style={styles.duplicateWarning}>
+                <RtlText style={styles.duplicateWarningText}>
+                  נמצא טיול קיים לכלב/ה ולמטייל/ת באותו זמן ({possibleDuplicates.length}). בדקו את ההיסטוריה לפני השמירה. לחיצה נוספת תשמור את הטיול הנפרד.
+                </RtlText>
+              </View>
+            ) : null}
             <View style={styles.actions}>
               <Button
                 label={isEditing ? 'שמור שינויים' : 'שמור טיול'}
-                disabled={!valid}
-                onPress={() =>
-                  onConfirm({
-                    performedByUserId: performedBy,
-                    date,
-                    time,
-                    hadPee,
-                    hadPoop,
-                    note: note.trim(),
-                    durationMinutes: duration ? Number(duration) : undefined,
-                  })
-                }
+                disabled={!valid || saving}
+                loading={saving}
+                onPress={() => void handleConfirm()}
                 style={styles.flex}
               />
               <Button label="ביטול" onPress={onClose} variant="secondary" style={styles.flex} />
@@ -430,7 +487,10 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm, paddingTop: spacing.sm },
+  duplicateWarning: { marginTop: spacing.sm, padding: spacing.sm, borderRadius: radii.sm, backgroundColor: colors.warningSoft, borderWidth: 1, borderColor: colors.warning },
+  duplicateWarningText: { color: colors.warning, fontSize: 13, fontWeight: '700', textAlign: 'right' },
   startNowButton: { marginTop: spacing.sm, marginBottom: spacing.md },
+  startNowError: { color: colors.statusOverdue, marginTop: -spacing.sm, marginBottom: spacing.md, textAlign: 'center' },
   destructiveSection: { marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border },
   deleteButton: { marginBottom: spacing.xs },
 });

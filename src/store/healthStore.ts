@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { HealthTask } from '../types';
 import { repository } from '../data';
-import { guardTestModeMutation } from '../lib/testModeGuard';
+import { guardTestModeMutation, testModeMutationBlockReason } from '../lib/testModeGuard';
 import { generateId } from '../lib/id';
 import { buildNextRecurringTask } from '../logic/healthTasks';
 import { cancelHealthTaskNotifications, reconcileHealthTaskNotifications, scheduleHealthTaskNotifications } from '../notifications/healthReminderService';
@@ -29,7 +29,7 @@ interface HealthState {
   load: (dogId: string) => Promise<void>;
   /** Upserts by task.id — covers creating a new log/task entry AND patch-and-save (e.g. marking one complete). No delete: see 0049's migration comment for why a health record is never client-erasable. */
   saveTask: (task: HealthTask) => Promise<void>;
-  /** Deletes only an open task; completed health history remains immutable. */
+  /** Deletes only an open task; completed health history remains immutable. Throws (never silently no-ops) when blocked, not loaded, completed, offline, or refused by the server. */
   deleteTask: (taskId: string) => Promise<void>;
   /**
    * Marks a task done and, when it has recurrenceIntervalDays set (0050),
@@ -92,8 +92,16 @@ export const useHealthStore = create<HealthState>((set, get) => ({
   },
 
   deleteTask: async (taskId: string) => {
+    // A delete must never look successful when nothing was deleted: every
+    // refusal below throws, so the caller keeps the sheet open and shows why.
+    const blocked = testModeMutationBlockReason();
+    if (blocked) throw new Error(blocked);
     const task = get().tasks.find((t) => t.id === taskId);
-    if (!task || task.completedAt) return;
+    if (!task) throw new Error('Health task is not loaded for the active dog');
+    if (task.completedAt) throw new Error('Completed health history cannot be deleted');
+    // Only remove it from the list after the server confirmed the delete
+    // (offlineFirstRepository refuses offline; supabaseRepository requires
+    // exactly one deleted row), so it cannot reappear after a reload.
     await repository.deleteHealthTask(taskId);
     set((s) => ({ tasks: s.tasks.filter((t) => t.id !== taskId) }));
     void cancelHealthTaskNotifications(taskId);

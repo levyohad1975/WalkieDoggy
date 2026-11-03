@@ -186,3 +186,38 @@ export function planHealthTaskNotifications(task: Pick<HealthTask, 'dueDate' | '
     { kind: 'health_task_overdue', fireAt: overdueFireAt.toISOString() },
   ];
 }
+
+/** Shown when a confirmed delete could not be completed and nothing more specific is known. */
+export const HEALTH_TASK_DELETE_FAILED_MESSAGE = 'לא הצלחנו למחוק את המשימה. היא לא נמחקה — נסו שוב בעוד רגע.';
+
+/**
+ * Hebrew, user-facing reason a confirmed open-task deletion failed. The raw
+ * error is never shown: it may be English Postgres/PostgREST text. Every
+ * branch states the task was NOT deleted, so a failure is never mistaken for
+ * success.
+ */
+export function healthTaskDeleteErrorMessage(error: unknown): string {
+  const raw = error instanceof Error
+    ? error.message
+    : typeof error === 'object' && error !== null && typeof (error as { message?: unknown }).message === 'string'
+      ? (error as { message: string }).message
+      : '';
+  const code = typeof error === 'object' && error !== null ? (error as { code?: unknown }).code : undefined;
+  const text = raw.toLowerCase();
+
+  // Read-only modes already carry their own Hebrew explanation.
+  if (/[֐-׿]/.test(raw) && (raw.includes('מצב בדיקה') || raw.includes('צפייה נסתרת'))) return raw;
+  if (text.includes('internet connection') || text.includes('failed to fetch') || text.includes('network request failed') || text.includes('networkerror') || text.includes('timed out') || text.includes('timeout')) {
+    return 'אין חיבור לשרת. המשימה לא נמחקה — נסו שוב כשיש חיבור לאינטרנט.';
+  }
+  if (text.includes('completed health history')) {
+    return 'לא ניתן למחוק משימה שכבר סומנה כבוצעה — היא נשמרת בהיסטוריה.';
+  }
+  if (code === '42501' || text.includes('permission denied') || text.includes('no longer authorized') || text.includes('row-level security')) {
+    return 'המשימה לא נמחקה: אין הרשאה למחוק אותה, או שהיא כבר הושלמה או נמחקה במכשיר אחר. רעננו ונסו שוב.';
+  }
+  if (text.includes('not loaded')) {
+    return 'המשימה לא נמצאה ברשימה הנוכחית. סגרו ופתחו שוב את בריאות וטיפוח ונסו שוב.';
+  }
+  return HEALTH_TASK_DELETE_FAILED_MESSAGE;
+}

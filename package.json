@@ -55,6 +55,15 @@
   },
   "jest": {
     "preset": "jest-expo",
+    "reporters": [
+      "default",
+      [
+        "github-actions",
+        {
+          "silent": false
+        }
+      ]
+    ],
     "setupFiles": [
       "./jest.setup.js"
     ],
