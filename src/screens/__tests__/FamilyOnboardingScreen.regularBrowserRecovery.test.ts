@@ -38,3 +38,16 @@ describe('existing family admin recovery in a regular browser (structural)', () 
     expect(handler).not.toMatch(/joinFamily|ensureAnonymousSession/);
   });
 });
+
+describe('illustrated welcome built from approved brand assets (owner request 2026-11-03)', () => {
+  it('uses the Walkie park background, the wordmark and the official mascot, with real buttons', () => {
+    const start = source.indexOf("if (mode === 'choose') {");
+    const chooser = source.slice(start, source.indexOf("if (mode === 'create')", start));
+    expect(chooser).toContain('source={DEFAULT_DOG_BACKGROUND.source!}');
+    expect(chooser).toContain("require('../../assets/walkie-doggy-link-wordmark-transparent.png')");
+    expect(chooser).toContain('<WalkieMascot state="ready" size={mascotSize} accessibilityLabel="הקמע הרשמי של Walkie Doggy" />');
+    expect(chooser).toContain('<Button label="יצירת משפחה חדשה"');
+    // The retired artwork with a non-mascot dog stays out (MASCOT_SPEC.md).
+    expect(chooser).not.toMatch(/onboarding-welcome-(?:final|wink)|onboarding-hero/);
+  });
+});

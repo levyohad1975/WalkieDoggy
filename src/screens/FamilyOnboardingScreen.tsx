@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Image, ImageBackground, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
+import { DEFAULT_DOG_BACKGROUND } from '../theme/dogBackgrounds';
 import { RtlText } from '../components/RtlText';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
 import { useSystemAdminStore } from '../store/systemAdminStore';
 import { colors } from '../theme/colors';
@@ -87,7 +89,8 @@ function pointManifestAtCurrentLink(): void {
  * no changes needed here.
  */
 export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: (familyId: string) => Promise<void> | void }) {
-  const { width } = useWindowDimensions();
+  const { width, height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const isDesktop = width >= 900;
   const setFamilyId = useAuthStore((s) => s.setFamilyId);
   // Round 4 — set only when a redemption already succeeded server-side but
@@ -748,19 +751,73 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
   }
 
   if (mode === 'choose') {
+    // Owner request 2026-11-03: a warm, illustrated welcome again — built
+    // only from approved brand assets (the Walkie park background, the
+    // wordmark and the official mascot; MASCOT_SPEC.md), with real text and
+    // real buttons, so it fits every screen and stays accessible.
+    const columnWidth = Math.min(width, 560);
+    const heroHeight = Math.round(Math.max(300, Math.min(columnWidth * 0.92, windowHeight * 0.5, 460)));
+    const mascotSize = Math.round(heroHeight * 0.44);
+    const features = [
+      { icon: '📅', label: 'תזכורות חכמות', tone: styles.featureMint },
+      { icon: '🔔', label: 'התראות בקלות', tone: styles.featurePink },
+      { icon: '👨‍👩‍👧', label: 'שיתוף במשפחה', tone: styles.featureSky },
+      { icon: '💛', label: 'כלב מאושר יותר', tone: styles.featureCream },
+    ];
     return (
-      <SafeAreaView style={styles.welcomeContainer}>
-        <View style={[styles.welcomeCard, isDesktop && styles.welcomeCardDesktop]}>
-          <Pressable onPress={handleAdminMascotTap} accessibilityLabel="הקמע הרשמי של Walkie Doggy"><WalkieMascot state="ready" size={isDesktop ? 184 : 150} accessibilityLabel="הקמע הרשמי של Walkie Doggy" /></Pressable>
-          <RtlText style={styles.welcomeBrand}>Walkie Doggy</RtlText>
-          <RtlText style={styles.welcomeTitle} accessibilityRole="header">מטיילים יחד, כמשפחה</RtlText>
-          <RtlText style={styles.welcomeCopy}>יוצרים בית משותף לכלבים, לבני המשפחה ולטיולים היומיים.</RtlText>
-          <Button label="יצירת משפחה חדשה" onPress={() => setMode('create')} style={styles.welcomeButton} />
-          <Button label="קיבלתי קוד או קישור הצטרפות" variant="secondary" onPress={() => setMode('join')} style={styles.welcomeButton} />
-          <Pressable onPress={() => setMode('recover')} accessibilityRole="button" accessibilityLabel="מנהלי המשפחה: כניסה עם קוד למייל" hitSlop={8}>
-            <RtlText style={styles.textLink}>מנהל/ת של משפחה קיימת? כניסה עם קוד למייל</RtlText>
-          </Pressable>
-        </View>
+      <SafeAreaView style={styles.welcomeContainer} edges={['bottom']}>
+        <ScrollView contentContainerStyle={styles.welcomeScroll} bounces={false}>
+          <View style={styles.welcomeColumn}>
+            <ImageBackground
+              source={DEFAULT_DOG_BACKGROUND.source!}
+              style={[styles.welcomeHero, { height: heroHeight }]}
+              imageStyle={styles.welcomeHeroImage}
+              resizeMode="cover"
+            >
+              <Image
+                source={require('../../assets/walkie-doggy-link-wordmark-transparent.png')}
+                style={[styles.welcomeWordmark, { marginTop: insets.top + spacing.md }]}
+                resizeMode="contain"
+                accessibilityLabel="Walkie Doggy Link"
+              />
+              <View style={styles.welcomeStage}>
+                <Pressable onPress={handleAdminMascotTap} accessibilityLabel="הקמע הרשמי של Walkie Doggy">
+                  <WalkieMascot state="ready" size={mascotSize} accessibilityLabel="הקמע הרשמי של Walkie Doggy" />
+                </Pressable>
+                <View style={[styles.welcomeBubble, { marginBottom: Math.round(mascotSize * 0.45) }]}>
+                  <RtlText style={styles.welcomeBubbleText}>{'משפחה של מטיילים?\nבואו נצא לדרך!'}</RtlText>
+                </View>
+              </View>
+              <Svg pointerEvents="none" width="100%" height={72} viewBox="0 0 100 10" preserveAspectRatio="none" style={styles.welcomeHeroFade}>
+                <Defs>
+                  <LinearGradient id="welcomeHeroCreamFade" x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0" stopColor={colors.background} stopOpacity={0} />
+                    <Stop offset="1" stopColor={colors.background} stopOpacity={1} />
+                  </LinearGradient>
+                </Defs>
+                <Rect x="0" y="0" width="100" height="10" fill="url(#welcomeHeroCreamFade)" />
+              </Svg>
+            </ImageBackground>
+
+            <View style={styles.welcomeBody}>
+              <RtlText style={styles.welcomeTitle} accessibilityRole="header">מטיילים יחד, כמשפחה</RtlText>
+              <RtlText style={styles.welcomeCopy}>טיולים, תזכורות ושיתוף לכל המשפחה, במקום אחד.</RtlText>
+              <View style={styles.featureRow}>
+                {features.map((f) => (
+                  <View key={f.label} style={[styles.featureChip, f.tone]} accessibilityLabel={f.label}>
+                    <RtlText style={styles.featureChipIcon}>{f.icon}</RtlText>
+                    <RtlText style={styles.featureChipLabel}>{f.label}</RtlText>
+                  </View>
+                ))}
+              </View>
+              <Button label="יצירת משפחה חדשה" onPress={() => setMode('create')} style={styles.welcomeButton} />
+              <Button label="קיבלתי קוד או קישור הצטרפות" variant="secondary" onPress={() => setMode('join')} style={styles.welcomeButton} />
+              <Pressable onPress={() => setMode('recover')} accessibilityRole="button" accessibilityLabel="מנהלי המשפחה: כניסה עם קוד למייל" hitSlop={8}>
+                <RtlText style={styles.textLink}>מנהל/ת של משפחה קיימת? כניסה עם קוד למייל</RtlText>
+              </Pressable>
+            </View>
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -1158,13 +1215,28 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, overflow: 'hidden' },
-  welcomeContainer: { flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
-  welcomeCard: { width: '100%', maxWidth: 480, alignItems: 'center', justifyContent: 'center', gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.xl, borderRadius: radii.xl, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  welcomeCardDesktop: { maxWidth: 560, paddingVertical: 36 },
-  welcomeBrand: { fontSize: 18, fontWeight: '800', color: colors.primaryDark },
+  welcomeContainer: { flex: 1, backgroundColor: colors.background },
+  welcomeScroll: { flexGrow: 1, alignItems: 'center', backgroundColor: colors.background },
+  welcomeColumn: { width: '100%', maxWidth: 560, flexGrow: 1 },
+  welcomeHero: { width: '100%', justifyContent: 'space-between', overflow: 'hidden' },
+  welcomeHeroImage: { width: '100%', height: '100%' },
+  welcomeHeroFade: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  welcomeWordmark: { width: 210, height: 76, alignSelf: 'center' },
+  welcomeStage: { flexDirection: 'row-reverse', alignItems: 'flex-end', justifyContent: 'center', gap: 6, paddingHorizontal: spacing.lg, paddingBottom: 0, zIndex: 1 },
+  welcomeBubble: { maxWidth: 150, backgroundColor: 'rgba(255,255,255,0.96)', borderWidth: 3, borderColor: colors.primary, borderRadius: 22, paddingHorizontal: 12, paddingVertical: 10 },
+  welcomeBubbleText: { color: colors.primaryDark, fontSize: 15, lineHeight: 20, fontWeight: '800', textAlign: 'center' },
+  welcomeBody: { width: '100%', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.xl },
   welcomeTitle: { fontSize: 28, lineHeight: 36, fontWeight: '900', color: colors.textPrimary, textAlign: 'center' },
-  welcomeCopy: { ...typography.body, color: colors.textSecondary, lineHeight: 25, textAlign: 'center', marginBottom: spacing.sm },
+  welcomeCopy: { ...typography.body, color: colors.textSecondary, lineHeight: 24, textAlign: 'center' },
   welcomeButton: { width: '100%', minHeight: 52 },
+  featureRow: { width: '100%', flexDirection: 'row-reverse', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginBottom: spacing.xs },
+  featureChip: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: colors.border },
+  featureChipIcon: { fontSize: 15, lineHeight: 20 },
+  featureChipLabel: { fontSize: 13, lineHeight: 18, fontWeight: '800', color: colors.primaryDark },
+  featureMint: { backgroundColor: '#E3F5EC' },
+  featurePink: { backgroundColor: '#FBE6EA' },
+  featureSky: { backgroundColor: colors.primarySoft },
+  featureCream: { backgroundColor: '#FFF3D6' },
   referenceOverlay: { flex: 1, justifyContent: 'space-between', paddingHorizontal: 18, paddingTop: 12, paddingBottom: 18 },
   referenceTopRow: { minHeight: 170, alignItems: 'center', justifyContent: 'center' },
   languagePill: { position: 'absolute', right: 0, top: 0, backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 28, paddingHorizontal: 18, paddingVertical: 11 },
