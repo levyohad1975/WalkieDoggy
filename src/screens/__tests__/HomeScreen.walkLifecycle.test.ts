@@ -260,3 +260,19 @@ describe('running walk: end button above the map (owner report 2026-11-03)', () 
     expect(card.indexOf('label="סיים טיול"')).toBeLessThan(card.indexOf('<View style={styles.activeMapPanel}>'));
   });
 });
+
+describe('came back home but the walk still runs (owner request 2026-11-03)', () => {
+  const home = require('fs').readFileSync(require.resolve('../HomeScreen'), 'utf8');
+  const modal = require('fs').readFileSync(require.resolve('../../components/CompleteWalkModal'), 'utf8');
+
+  it('asks on the tracking device and ends the walk at the arrival time', () => {
+    expect(home).toContain('const arrival = detectArrivalHome(gpsRoutePoints, home, walk.startedAt ? Date.parse(walk.startedAt) : null);');
+    expect(home).toContain('setCompleteWalkPresetTime(arrivalTimeLabel(arrivalPrompt.arrivedAt));');
+    expect(home).toContain('initialCompletedTime={completeWalkPresetTime}');
+  });
+
+  it('the end-walk sheet honours "שעה אחרת" (the time pattern is a real \\d, not an escaped backslash)', () => {
+    expect(modal).toContain('if (useCustomTime && /^([01]\\d|2[0-3]):[0-5]\\d$/.test(actualTime)) {');
+    expect(modal).not.toContain('[01]\\\\d');
+  });
+});

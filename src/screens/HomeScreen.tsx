@@ -75,6 +75,8 @@ import { getDogBackground, getDogBackgroundImageSource } from '../theme/dogBackg
 import { useGpsStore } from '../store/gpsStore';
 import { RemoteGpsPanel } from '../components/RemoteGpsPanel';
 import { DeviceAccessRequestsCard } from '../components/DeviceAccessRequestsCard';
+import { ArrivalHomePrompt } from '../components/ArrivalHomePrompt';
+import { arrivalTimeLabel, detectArrivalHome } from '../logic/arrivalHome';
 import { acknowledgeRemoteGpsStart, getMyRemoteGpsCommands } from '../lib/remoteGps';
 
 export function HomeScreen() {
@@ -1086,6 +1088,23 @@ export function HomeScreen() {
   // testModeUserId is set, regardless of which button or screen triggers it.
 
   const walksById = useMemo(() => Object.fromEntries(walks.map((w) => [w.id, w])), [walks]);
+  // Owner request 2026-11-03 (PRD §GPS, phase 1 "assistive"): the walk tracked
+  // on this device came back home but is still running — ask whether it
+  // ended, offering the arrival time as the end time. The user decides.
+  const [arrivalPrompt, setArrivalPrompt] = useState<{ walkId: string; arrivedAt: number; estimated: boolean } | null>(null);
+  const [completeWalkPresetTime, setCompleteWalkPresetTime] = useState<string | undefined>(undefined);
+  const dismissedArrivalRef = useRef<Record<string, number>>({});
+  useEffect(() => {
+    const walk = gpsTrackingWalkId ? walksById[gpsTrackingWalkId] : undefined;
+    if (!walk || walk.status !== 'in_progress' || personalNotificationsReadOnly) return;
+    const home = dogs.find((d) => d.id === walk.dogId)?.homeLocation;
+    const arrival = detectArrivalHome(gpsRoutePoints, home, walk.startedAt ? Date.parse(walk.startedAt) : null);
+    if (!arrival) return;
+    // "עדיין מטיילים" silences this arrival; leaving and coming back asks again.
+    const dismissedAt = dismissedArrivalRef.current[walk.id];
+    if (dismissedAt != null && arrival.arrivedAt <= dismissedAt + 60_000) return;
+    setArrivalPrompt((prev) => (prev?.walkId === walk.id ? prev : { walkId: walk.id, ...arrival }));
+  }, [gpsTrackingWalkId, walksById, gpsRoutePoints, dogs, personalNotificationsReadOnly]);
   useEffect(() => {
     const trackedWalk = gpsTrackingWalkId ? walksById[gpsTrackingWalkId] : undefined;
     if (trackedWalk?.duplicateResolutionGroupId) {
@@ -1839,6 +1858,7 @@ export function HomeScreen() {
         scheduledTime={completeWalkId ? walksById[completeWalkId]?.scheduledTime : undefined}
         initialHadPee={completeWalkId ? readWalkEvents(completeWalkId).pee > 0 : false}
         initialHadPoop={completeWalkId ? readWalkEvents(completeWalkId).poop > 0 : false}
+        initialCompletedTime={completeWalkPresetTime}
         users={completeWalkId && walksById[completeWalkId]?.status === 'in_progress'
           ? activeUsers.filter((u) => u.id === (walksById[completeWalkId]?.actualWalkerUserId ?? walksById[completeWalkId]?.responsibleUserId))
           : activeUsers}
@@ -1849,6 +1869,7 @@ export function HomeScreen() {
           const walkId = completeWalkId;
           const walkBeingCompleted = walkId ? walksById[walkId] : undefined;
           setCompleteWalkId(null);
+          setCompleteWalkPresetTime(undefined);
           if (!walkId) return;
           const { pee: peeCount, poop: poopCount } = resolveCompletionWalkEventCounts(
             readWalkEvents(walkId), hadPee, hadPoop,
@@ -1880,7 +1901,23 @@ export function HomeScreen() {
             checkForNewAchievementUnlocks();
           }
         }}
-        onCancel={() => setCompleteWalkId(null)}
+        onCancel={() => { setCompleteWalkId(null); setCompleteWalkPresetTime(undefined); }}
+      />
+      <ArrivalHomePrompt
+        visible={Boolean(arrivalPrompt && walksById[arrivalPrompt.walkId]?.status === 'in_progress' && !completeWalkId)}
+        dogName={(arrivalPrompt ? dogs.find((d) => d.id === walksById[arrivalPrompt.walkId]?.dogId)?.name : undefined) ?? dog?.name ?? 'הכלב/ה'}
+        arrivalTime={arrivalPrompt ? arrivalTimeLabel(arrivalPrompt.arrivedAt) : ''}
+        estimated={Boolean(arrivalPrompt?.estimated)}
+        onEnd={() => {
+          if (!arrivalPrompt) return;
+          setCompleteWalkPresetTime(arrivalTimeLabel(arrivalPrompt.arrivedAt));
+          setCompleteWalkId(arrivalPrompt.walkId);
+          setArrivalPrompt(null);
+        }}
+        onContinue={() => {
+          if (arrivalPrompt) dismissedArrivalRef.current[arrivalPrompt.walkId] = arrivalPrompt.arrivedAt;
+          setArrivalPrompt(null);
+        }}
       />
 
       <ConfirmModal

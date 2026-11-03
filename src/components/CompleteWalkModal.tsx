@@ -14,6 +14,8 @@ interface CompleteWalkModalProps {
   scheduledTime?: string;
   initialHadPee?: boolean;
   initialHadPoop?: boolean;
+  /** "HH:mm" to preselect as the end time, e.g. when the walker arrived home earlier. */
+  initialCompletedTime?: string;
   users: FamilyUser[];
   defaultUserId: string;
   onConfirm: (result: { completedByUserId: string; hadPee: boolean; hadPoop: boolean; note: string; completedAt?: string }) => void;
@@ -31,6 +33,7 @@ export function CompleteWalkModal({
   scheduledTime,
   initialHadPee = false,
   initialHadPoop = false,
+  initialCompletedTime,
   users,
   defaultUserId,
   onConfirm,
@@ -50,11 +53,12 @@ export function CompleteWalkModal({
       setHadPee(initialHadPee);
       setHadPoop(initialHadPoop);
       setNote('');
-      setUseCustomTime(false);
-      setActualTime(new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false }));
+      const preset = initialCompletedTime && /^([01]\d|2[0-3]):[0-5]\d$/.test(initialCompletedTime) ? initialCompletedTime : null;
+      setUseCustomTime(Boolean(preset));
+      setActualTime(preset ?? new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false }));
       setPickerOpen(false);
     }
-  }, [visible, defaultUserId, initialHadPee, initialHadPoop]);
+  }, [visible, defaultUserId, initialHadPee, initialHadPoop, initialCompletedTime]);
 
   const timeToDate = (value: string) => {
     const [hours, minutes] = /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value.split(':').map(Number) : [new Date().getHours(), new Date().getMinutes()];
@@ -174,7 +178,7 @@ export function CompleteWalkModal({
                 label="בוצע ✓"
                 onPress={() => {
                   let completedAt: string | undefined;
-                  if (useCustomTime && /^([01]\\d|2[0-3]):[0-5]\\d$/.test(actualTime)) {
+                  if (useCustomTime && /^([01]\d|2[0-3]):[0-5]\d$/.test(actualTime)) {
                     const [hours, minutes] = actualTime.split(':').map(Number);
                     const actual = new Date();
                     actual.setHours(hours, minutes, 0, 0);
