@@ -701,11 +701,14 @@ export default function App() {
       ) : (
         <>
           <StatusBar style="dark" />
-          {showIosInstallPrompt ? (
+          {/* Owner request 2026-11-03: only once inside the app. The welcome and
+              join screens guide this themselves without a blocking popup
+              (FamilyOnboardingScreen's install hint and install-first screen). */}
+          {showIosInstallPrompt && familyId && currentUserId ? (
             <Pressable style={styles.installPromptBackdrop} onPress={() => setShowIosInstallPrompt(false)}>
               <Pressable style={styles.installPromptCard} onPress={(event) => event.stopPropagation()}>
                 <RtlText style={styles.installPromptTitle}>Walkie Doggy במסך הבית</RtlText>
-                <RtlText style={styles.installPromptText}>פותחים את האפליקציה בלחיצה אחת!</RtlText>
+                <RtlText style={styles.installPromptText}>באייפון, ההתחברות נשמרת והתזכורות מגיעות רק כשפותחים מקיצור הדרך במסך הבית.</RtlText>
                 <RtlText style={styles.installPromptStep}>① ב־Safari לחצו על שיתוף ⬆️</RtlText>
                 <RtlText style={styles.installPromptStep}>② בחרו ״הוספה למסך הבית״ ואז ״הוסף״</RtlText>
                 <RtlText style={styles.installPromptHint}>פתחו את Walkie Doggy מהסמל החדש במסך הבית.</RtlText>

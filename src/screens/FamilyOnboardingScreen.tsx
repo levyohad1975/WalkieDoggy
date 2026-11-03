@@ -162,6 +162,10 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
     installFirst ? 'installFirst' : initialInviteToken ? 'redeem' : initialJoinCode ? 'join' : startMode
   );
   const [linkCopied, setLinkCopied] = useState(false);
+  // Welcome screen on an iPhone browser: a small, non-blocking hint to save
+  // the app to the home screen first (replaces a blocking popup there).
+  const [showInstallHint] = useState(() => isIosBrowserNotInstalled(isInstalledWebApp));
+  const [installHintOpen, setInstallHintOpen] = useState(false);
   useEffect(() => {
     if (installFirst) pointManifestAtCurrentLink();
   }, [installFirst]);
@@ -800,6 +804,24 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
             </ImageBackground>
 
             <View style={styles.welcomeBody}>
+              {showInstallHint ? (
+                <Pressable
+                  onPress={() => setInstallHintOpen((open) => !open)}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: installHintOpen }}
+                  accessibilityLabel="באייפון? מומלץ קודם לשמור את Walkie Doggy במסך הבית"
+                  style={styles.installHintPill}
+                >
+                  <RtlText style={styles.installHintTitle}>📲 באייפון? מומלץ קודם לשמור את Walkie Doggy במסך הבית {installHintOpen ? '▴' : '▾'}</RtlText>
+                  {installHintOpen ? (
+                    <>
+                      <RtlText style={styles.installHintStep}>1. הקישו על כפתור השיתוף ⬆︎ בסרגל של ספארי</RtlText>
+                      <RtlText style={styles.installHintStep}>2. בחרו "הוספה למסך הבית" ואשרו</RtlText>
+                      <RtlText style={styles.installHintStep}>3. פתחו מהאייקון החדש. שם ההתחברות נשמרת והתזכורות מגיעות</RtlText>
+                    </>
+                  ) : null}
+                </Pressable>
+              ) : null}
               <RtlText style={styles.welcomeTitle} accessibilityRole="header">מטיילים יחד, כמשפחה</RtlText>
               <RtlText style={styles.welcomeCopy}>טיולים, תזכורות ושיתוף לכל המשפחה, במקום אחד.</RtlText>
               <View style={styles.featureRow}>
@@ -1234,6 +1256,9 @@ const styles = StyleSheet.create({
   featureChipIcon: { fontSize: 15, lineHeight: 20 },
   featureChipLabel: { fontSize: 13, lineHeight: 18, fontWeight: '800', color: colors.primaryDark },
   featureMint: { backgroundColor: '#E3F5EC' },
+  installHintPill: { width: '100%', backgroundColor: colors.primarySoft, borderWidth: 1, borderColor: colors.primary, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, gap: 4 },
+  installHintTitle: { fontSize: 14, lineHeight: 20, fontWeight: '800', color: colors.primaryDark, textAlign: 'right' },
+  installHintStep: { fontSize: 13, lineHeight: 19, color: colors.textPrimary, textAlign: 'right' },
   featurePink: { backgroundColor: '#FBE6EA' },
   featureSky: { backgroundColor: colors.primarySoft },
   featureCream: { backgroundColor: '#FFF3D6' },
