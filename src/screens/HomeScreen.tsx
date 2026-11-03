@@ -74,6 +74,7 @@ import { getImportantHealthReminders, summarizeHealthTasksForHome } from '../log
 import { getDogBackground, getDogBackgroundImageSource } from '../theme/dogBackgrounds';
 import { useGpsStore } from '../store/gpsStore';
 import { RemoteGpsPanel } from '../components/RemoteGpsPanel';
+import { DeviceAccessRequestsCard } from '../components/DeviceAccessRequestsCard';
 import { acknowledgeRemoteGpsStart, getMyRemoteGpsCommands } from '../lib/remoteGps';
 
 export function HomeScreen() {
@@ -1664,6 +1665,9 @@ export function HomeScreen() {
             nothing (see its own `items.length === 0 -> return null`) when
             there is nothing actionable, so this never reserves empty
             space on an otherwise-quiet Home. */}
+        {/* Owner request 2026-11-03: a family member's new device waiting for
+            the admin's approval (renders nothing otherwise). */}
+        <DeviceAccessRequestsCard enabled={isSupabaseConfigured && actualFamilyRole === 'admin' && !personalNotificationsReadOnly} />
         <PendingRequestsCard
           items={actionablePendingRequests}
           usersById={usersById}

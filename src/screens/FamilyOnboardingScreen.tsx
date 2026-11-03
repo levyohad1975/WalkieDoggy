@@ -34,7 +34,45 @@ import { WalkieMascot } from '../components/WalkieMascot';
 import { beginFamilySetup, getFamilyCreationOwnerId, markFamilyCreationPending } from '../lib/familySetupProgress';
 import type { FamilyLookupResult } from '../types';
 
-type Mode = 'choose' | 'pwaChoice' | 'recover' | 'create' | 'join' | 'redeem' | 'systemAdmin';
+type Mode = 'choose' | 'installFirst' | 'recover' | 'create' | 'join' | 'redeem' | 'systemAdmin';
+
+/**
+ * iPhone/iPad Safari (or an in-app browser on iOS) that is NOT the
+ * home-screen web app. On iOS the home-screen app keeps storage separate
+ * from the browser, so joining here and then opening the shortcut used to
+ * leave the shortcut signed out (owner report 2026-11-03).
+ */
+function isIosBrowserNotInstalled(installed: boolean): boolean {
+  if (Platform.OS !== 'web' || installed || typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent ?? '';
+  const iPadOs = navigator.platform === 'MacIntel' && (navigator as Navigator & { maxTouchPoints?: number }).maxTouchPoints! > 1;
+  return /iPhone|iPad|iPod/i.test(ua) || iPadOs;
+}
+
+/**
+ * Best effort: point the web-app manifest at this exact join/invite link, so
+ * a shortcut saved from this page can open straight into joining. Browsers
+ * that ignore it simply use the normal start page.
+ */
+function pointManifestAtCurrentLink(): void {
+  try {
+    if (typeof document === 'undefined' || typeof window === 'undefined' || typeof URL.createObjectURL !== 'function') return;
+    const link = document.querySelector('link[rel="manifest"]');
+    if (!link) return;
+    const origin = window.location.origin;
+    const manifest = {
+      name: 'Walkie Doggy Link', short_name: 'Walkie Doggy', start_url: window.location.href, scope: `${origin}/`,
+      display: 'standalone', background_color: '#FFF8E8', theme_color: '#FFF8E8',
+      icons: [
+        { src: `${origin}/icon-192.png`, sizes: '192x192', type: 'image/png' },
+        { src: `${origin}/icon-512.png`, sizes: '512x512', type: 'image/png' },
+      ],
+    };
+    link.setAttribute('href', URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' })));
+  } catch {
+    // Progressive enhancement only.
+  }
+}
 
 /**
  * Shown once per device, only in Supabase (backend) mode, before this device
@@ -110,9 +148,20 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
   // invite/join link is already present, in which case that takes
   // precedence over this ambiguity entirely (see initialInviteToken/
   // initialJoinCode above).
+  // Owner request 2026-11-03: on iPhone, a join/invite link opened in the
+  // browser first asks to save the app to the home screen and join from
+  // there (see isIosBrowserNotInstalled). Opening the shortcut itself starts
+  // on ONE clear screen: join with a code or link ('join'), with small links
+  // for the family admin's email sign-in and for creating a new family.
+  const [installFirst] = useState(() => Boolean(initialInviteToken || initialJoinCode) && isIosBrowserNotInstalled(isInstalledWebApp));
+  const startMode: Mode = isInstalledWebApp ? 'join' : 'choose';
   const [mode, setMode] = useState<Mode>(
-    initialInviteToken ? 'redeem' : initialJoinCode ? 'join' : isInstalledWebApp ? 'pwaChoice' : 'choose'
+    installFirst ? 'installFirst' : initialInviteToken ? 'redeem' : initialJoinCode ? 'join' : startMode
   );
+  const [linkCopied, setLinkCopied] = useState(false);
+  useEffect(() => {
+    if (installFirst) pointManifestAtCurrentLink();
+  }, [installFirst]);
   const adminTapCount = useRef(0);
   const adminLastTap = useRef(0);
   const handleAdminMascotTap = () => {
@@ -354,7 +403,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
     const normalized = initialJoinCode.toUpperCase();
     setCode(normalized);
     void lookup(normalized);
-    if (typeof window !== 'undefined' && window.history?.replaceState) {
+    if (!installFirst && typeof window !== 'undefined' && window.history?.replaceState) {
       try {
         const url = new URL(window.location.href);
         url.searchParams.delete('join');
@@ -441,7 +490,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
     if (!initialInviteToken) return;
     setRedeemInput(initialInviteToken);
     void inspectInvite(initialInviteToken);
-    if (typeof window !== 'undefined' && window.history?.replaceState) {
+    if (!installFirst && typeof window !== 'undefined' && window.history?.replaceState) {
       try {
         const url = new URL(window.location.href);
         url.searchParams.delete('invite');
@@ -453,6 +502,37 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // One field for everything a family member may have received: the family
+  // code, the family join link, or a personal invite link (owner request
+  // 2026-11-03). A personal invite goes to its own confirmation screen.
+  const handleJoinText = (value: string, autoLookup = false) => {
+    if (/[?&]invite=/.test(value) && parseInviteInput(value)) {
+      setRedeemInput(value);
+      setMode('redeem');
+      void inspectInvite(value);
+      return;
+    }
+    // Forgiving like redeem mode's parseInviteInput(): a pasted full join
+    // link/share message is reduced to the bare code (no TextInput maxLength
+    // for exactly that reason — the cap is applied after parsing).
+    const parsed = (parseJoinInput(value) ?? '').toUpperCase().slice(0, 8);
+    setCode(parsed);
+    setFound(null);
+    setJoinError(null);
+    if (autoLookup && parsed.length >= 4) void lookup(parsed);
+  };
+
+  const canPasteFromClipboard = Platform.OS === 'web' && typeof navigator !== 'undefined' && typeof navigator.clipboard?.readText === 'function';
+  const pasteJoinText = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && text.trim()) handleJoinText(text, true);
+      else setJoinError('אין כרגע קוד בהעתקה. העתיקו את הקוד או הקישור מההודעה ונסו שוב.');
+    } catch {
+      setJoinError('לא הצלחנו לקרוא את ההעתקה. לחצו לחיצה ארוכה על השדה ובחרו "הדבקה".');
+    }
+  };
 
   const confirmRedeem = async () => {
     if (!redeemToken) return;
@@ -545,48 +625,64 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
         )}
         {createError ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{createError}</RtlText> : null}
         <Button label="חזרה" variant="secondary"
-          onPress={() => { setMode(isInstalledWebApp ? 'pwaChoice' : 'choose'); setVerificationCode(''); }}
+          onPress={() => { setMode(startMode); setVerificationCode(''); }}
           style={styles.wideButton} />
       </SafeAreaView>
     );
   }
 
-  if (mode === 'pwaChoice') {
+  if (mode === 'installFirst') {
+    const familyLabel = found?.name ?? preview?.familyName ?? null;
+    const dogLabel = found?.dogName ?? preview?.dogName ?? null;
+    const shareText = initialInviteToken
+      ? (typeof window !== 'undefined' ? `${window.location.origin}/?invite=${encodeURIComponent(initialInviteToken)}` : initialInviteToken)
+      : (initialJoinCode ?? '').toUpperCase();
+    const copyLink = async () => {
+      try {
+        await navigator.clipboard.writeText(shareText);
+        setLinkCopied(true);
+      } catch {
+        setLinkCopied(false);
+      }
+    };
     return (
-      <SafeAreaView style={styles.container}>
-        <Pressable onPress={handleAdminMascotTap} accessibilityLabel="הקמע של Walkie Doggy"><WalkieMascot state="ready" size={128} testID="onboarding-mascot-pwa-choice" /></Pressable>
-        <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">רגע לפני שממשיכים</RtlText>
-        <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
-          פתחתם את Walkie Doggy מהאייקון שנוסף למסך הבית. כדי לחבר את המכשיר הזה נכון, ספרו לנו קודם באיזה שלב אתם.
-        </RtlText>
-        <Button
-          label="המשפחה שלי כבר קיימת"
-          variant="secondary"
-          onPress={() => setMode('recover')}
-          style={styles.wideButton}
-        />
-        {/* Production report 2026-11-01: a member who joined in Safari with
-            the family code had no way back in from the home-screen icon
-            (iOS keeps a separate session there) — only admin email
-            recovery and personal invites were offered. */}
-        <Button
-          label="הצטרפות עם קוד משפחה"
-          variant="secondary"
-          onPress={() => setMode('join')}
-          style={styles.wideButton}
-        />
-        <Button
-          label="יש לי הזמנה"
-          variant="secondary"
-          onPress={() => setMode('redeem')}
-          style={styles.wideButton}
-        />
-        <Button
-          label="יצירת משפחה חדשה"
-          variant="secondary"
-          onPress={() => setMode('create')}
-          style={styles.wideButton}
-        />
+      <SafeAreaView style={styles.formSafeArea}>
+        <ScrollView contentContainerStyle={styles.formScrollContent}>
+          <View style={[styles.formHero, isDesktop && styles.formHeroDesktop]}>
+            <WalkieMascot state="excited" size={86} testID="onboarding-mascot-install-first" />
+            <View style={styles.formSpeech}>
+              <RtlText style={styles.formSpeechText}>
+                {familyLabel ? `הוזמנתם ל${familyLabel}${dogLabel ? ` · ${dogLabel}` : ''}` : 'הוזמנתם להצטרף למשפחה'}
+              </RtlText>
+            </View>
+          </View>
+          <RtlText style={[styles.title, isDesktop && styles.titleDesktop]} accessibilityRole="header">קודם שומרים במסך הבית</RtlText>
+          <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
+            באייפון, ההתחברות נשמרת רק במקום שבו מצטרפים. מצטרפים מקיצור הדרך במסך הבית, וכך גם התזכורות מגיעות.
+          </RtlText>
+          <View style={[styles.form, isDesktop && styles.formDesktop]}>
+            <RtlText style={styles.stepHint}>1. הקישו על כפתור השיתוף ⬆︎ (בגרסאות חדשות: ⋯ ואז "שיתוף")</RtlText>
+            <RtlText style={styles.stepHint}>2. בחרו "הוספה למסך הבית" ואשרו</RtlText>
+            <RtlText style={styles.stepHint}>3. פתחו את Walkie Doggy מהאייקון החדש והקישו "הדבקה"</RtlText>
+            {initialJoinCode ? (
+              <RtlText style={styles.installCode} accessibilityLabel={`קוד המשפחה ${shareText}`}>{shareText}</RtlText>
+            ) : null}
+            <Button
+              label={linkCopied ? '✓ הועתק — אפשר להמשיך לשלב 1' : initialJoinCode ? '📋 העתקת קוד המשפחה' : '📋 העתקת קישור ההזמנה'}
+              onPress={() => void copyLink()}
+              style={styles.wideButton}
+            />
+            <RtlText style={styles.installHint}>
+              לא רואים "הוספה למסך הבית"? כנראה הקישור נפתח בתוך וואטסאפ. בחרו "פתיחה בספארי" (בסמל ⋯ או המצפן) ונסו שוב.
+            </RtlText>
+          </View>
+          <Button
+            label="להמשיך בדפדפן בלי לשמור"
+            variant="secondary"
+            onPress={() => setMode(initialInviteToken ? 'redeem' : 'join')}
+            style={styles.installContinue}
+          />
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -620,13 +716,13 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
           </>
         )}
         {createError ? <RtlText style={styles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{createError}</RtlText> : null}
-        <Button label="אני בן משפחה — יש לי הזמנה" variant="secondary" onPress={() => setMode('redeem')} style={styles.wideButton} />
-        <Button label="זו באמת משפחה חדשה" variant="secondary" onPress={() => setMode('create')} style={styles.wideButton} />
+        <Button label="אני בן/בת משפחה — יש לי קוד או קישור" variant="secondary" onPress={() => setMode('join')} style={styles.wideButton} />
+        <Button label="חזרה" variant="secondary" onPress={() => setMode(startMode)} style={styles.wideButton} />
       </SafeAreaView>
     );
   }
 
-  if (mode === 'choose' && pendingInviteRedemption) {
+  if (mode === startMode && pendingInviteRedemption) {
     // Round 4 — a redemption already succeeded server-side but this device
     // hasn't confirmed it yet (see authStore.ts). Deliberately NOT the
     // ordinary paste form — retrying with the same token would replay an
@@ -660,8 +756,10 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
           <RtlText style={styles.welcomeTitle} accessibilityRole="header">מטיילים יחד, כמשפחה</RtlText>
           <RtlText style={styles.welcomeCopy}>יוצרים בית משותף לכלבים, לבני המשפחה ולטיולים היומיים.</RtlText>
           <Button label="יצירת משפחה חדשה" onPress={() => setMode('create')} style={styles.welcomeButton} />
-          <Button label="הצטרפות למשפחה קיימת" variant="secondary" onPress={() => setMode('join')} style={styles.welcomeButton} />
-          <Button label="המשפחה שלי כבר קיימת" variant="secondary" onPress={() => setMode('recover')} style={styles.welcomeButton} />
+          <Button label="קיבלתי קוד או קישור הצטרפות" variant="secondary" onPress={() => setMode('join')} style={styles.welcomeButton} />
+          <Pressable onPress={() => setMode('recover')} accessibilityRole="button" accessibilityLabel="מנהלי המשפחה: כניסה עם קוד למייל" hitSlop={8}>
+            <RtlText style={styles.textLink}>מנהל/ת של משפחה קיימת? כניסה עם קוד למייל</RtlText>
+          </Pressable>
         </View>
       </SafeAreaView>
     );
@@ -676,7 +774,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
           <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
             הבקשה ליצירת {rejectedFamilyName} נדחתה על ידי מנהל המערכת. לפרטים נוספים, פנו לתמיכה.
           </RtlText>
-          <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
+          <Button label="חזרה" variant="secondary" onPress={() => setMode(startMode)} style={styles.wideButton} />
         </SafeAreaView>
       );
     }
@@ -689,7 +787,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
           <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>
             הבקשה ליצירת {pendingApprovalFamilyName} התקבלה. נשלח עדכון לאחר אישור מנהל המערכת.
           </RtlText>
-          <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
+          <Button label="חזרה" variant="secondary" onPress={() => setMode(startMode)} style={styles.wideButton} />
         </SafeAreaView>
       );
     }
@@ -860,7 +958,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
                     : otpConnectivity.category.toUpperCase()} · {otpConnectivity.elapsedMs}ms
                 </RtlText>
               ) : null}
-              <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
+              <Button label="חזרה" variant="secondary" onPress={() => setMode(startMode)} style={styles.wideButton} />
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -969,7 +1067,7 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
                 variant="secondary"
                 onPress={() => {
                   resetRedeemMode();
-                  setMode(isInstalledWebApp ? 'pwaChoice' : 'choose');
+                  setMode(startMode);
                 }}
                 style={styles.wideButton}
               />
@@ -986,36 +1084,27 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
       <KeyboardAvoidingView style={styles.flexFull} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.formScrollContent} keyboardShouldPersistTaps="handled">
           <View style={[styles.formHero, isDesktop && styles.formHeroDesktop]}>
-            <WalkieMascot state="excited" size={86} />
-            <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>קיבלתם קוד? בואו נמצא את המשפחה</RtlText></View>
+            <Pressable onPress={handleAdminMascotTap} accessibilityLabel="הקמע של Walkie Doggy"><WalkieMascot state="excited" size={86} testID="onboarding-mascot-join" /></Pressable>
+            <View style={styles.formSpeech}><RtlText style={styles.formSpeechText}>{startMode === 'join' ? 'ברוכים הבאים! בואו נמצא את המשפחה שלכם' : 'קיבלתם קוד? בואו נמצא את המשפחה'}</RtlText></View>
           </View>
-          <RtlText style={[styles.title, styles.joinTitle, isDesktop && styles.titleDesktop]} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit>הצטרפות למשפחה קיימת</RtlText>
-          <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>הקלידו את קוד ההזמנה שקיבלתם מבן/בת המשפחה</RtlText>
+          <RtlText style={[styles.title, styles.joinTitle, isDesktop && styles.titleDesktop]} accessibilityRole="header" numberOfLines={1} adjustsFontSizeToFit>הצטרפות למשפחה</RtlText>
+          <RtlText style={[styles.subtitle, isDesktop && styles.subtitleDesktop]}>הדביקו או הקלידו את הקוד או הקישור שקיבלתם מבן/בת המשפחה</RtlText>
 
           <View style={[styles.form, isDesktop && styles.formDesktop]}>
-            <RtlText style={styles.label}>קוד הזמנה</RtlText>
+            {canPasteFromClipboard ? (
+              <Button label="📋 הדבקה" onPress={() => void pasteJoinText()} disabled={looking || joining} style={styles.wideButton} />
+            ) : null}
+            <RtlText style={styles.label}>קוד או קישור הצטרפות</RtlText>
             <TextInput
               value={code}
-              onChangeText={(v) => {
-                // Family Lifecycle repair (item 6) — forgiving like
-                // redeem mode's parseInviteInput(): a pasted full join
-                // link/share message is recognized and reduced to the
-                // bare code, not truncated to garbage by a naive
-                // character cap. No TextInput `maxLength` here for
-                // exactly that reason — the cap is applied ourselves,
-                // after parsing, below.
-                const parsed = parseJoinInput(v) ?? '';
-                setCode(parsed.toUpperCase().slice(0, 8));
-                setFound(null);
-                setJoinError(null);
-              }}
+              onChangeText={(v) => handleJoinText(v)}
               placeholder="ABC123"
               placeholderTextColor={colors.textSecondary}
               style={[styles.input, styles.codeInput, styles.ltrInput]}
               textAlign="center"
               autoCapitalize="characters"
               autoCorrect={false}
-              accessibilityLabel="קוד הזמנה"
+              accessibilityLabel="קוד או קישור הצטרפות"
             />
 
             {looking ? <ActivityIndicator color={colors.primary} style={{ marginTop: 8 }} accessibilityLabel="טוען…" /> : null}
@@ -1047,8 +1136,20 @@ export function FamilyOnboardingScreen({ onFamilyCreated }: { onFamilyCreated?: 
               />
             )}
 
-            <Button label="חזרה" variant="secondary" onPress={() => setMode(isInstalledWebApp ? 'pwaChoice' : 'choose')} style={styles.wideButton} />
+            {startMode === 'join' ? null : (
+              <Button label="חזרה" variant="secondary" onPress={() => setMode(startMode)} style={styles.wideButton} />
+            )}
           </View>
+          {startMode === 'join' ? (
+            <View style={styles.startLinks}>
+              <Pressable onPress={() => setMode('recover')} accessibilityRole="button" accessibilityLabel="מנהלי המשפחה: כניסה עם קוד למייל" hitSlop={8}>
+                <RtlText style={styles.textLink}>מנהל/ת של המשפחה? כניסה עם קוד למייל</RtlText>
+              </Pressable>
+              <Pressable onPress={() => setMode('create')} accessibilityRole="button" accessibilityLabel="יצירת משפחה חדשה" hitSlop={8}>
+                <RtlText style={styles.textLink}>יצירת משפחה חדשה</RtlText>
+              </Pressable>
+            </View>
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -1157,4 +1258,9 @@ const styles = StyleSheet.create({
   previewMembersRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginTop: spacing.md, justifyContent: 'flex-end' },
   previewMember: { alignItems: 'center', width: 56, gap: spacing.xs },
   previewMemberName: { fontSize: 11, color: colors.textSecondary, fontWeight: '600' },
+  textLink: { fontSize: 15, lineHeight: 22, color: colors.primaryDark, fontWeight: '700', textAlign: 'center', textDecorationLine: 'underline', paddingVertical: 6 },
+  startLinks: { width: '100%', maxWidth: 560, alignItems: 'center', gap: 4, marginTop: spacing.lg },
+  installCode: { fontSize: 32, fontWeight: '900', letterSpacing: 6, color: colors.textPrimary, textAlign: 'center', marginTop: spacing.md, writingDirection: 'ltr' },
+  installHint: { fontSize: 13, lineHeight: 19, color: colors.textSecondary, textAlign: 'right', marginTop: spacing.md },
+  installContinue: { width: '100%', maxWidth: 560, marginTop: spacing.lg },
 });

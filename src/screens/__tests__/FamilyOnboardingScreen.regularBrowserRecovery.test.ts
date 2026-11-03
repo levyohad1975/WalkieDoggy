@@ -12,12 +12,17 @@ describe('existing family admin recovery in a regular browser (structural)', () 
     expect(end).toBeGreaterThan(start);
 
     const chooser = source.slice(start, end);
-    expect(chooser).toMatch(/label="המשפחה שלי כבר קיימת"[^\n]*setMode\('recover'\)/);
+    // Owner request 2026-11-03: a quiet text link for admins, so it no longer
+    // looks like the members' "join" button.
+    expect(chooser).toMatch(/onPress=\{\(\) => setMode\('recover'\)\}[^\n]*accessibilityLabel="מנהלי המשפחה: כניסה עם קוד למייל"/);
+    expect(chooser).toContain('label="קיבלתי קוד או קישור הצטרפות"');
+    expect(chooser).not.toContain('המשפחה שלי כבר קיימת');
+    expect(chooser).not.toContain('הצטרפות למשפחה קיימת');
   });
 
   it('recovery requests an OTP without Auth signup and reuses verified-family checks', () => {
     const recoveryStart = source.indexOf("if (mode === 'recover') {");
-    const recoveryEnd = source.indexOf("if (mode === 'choose' && pendingInviteRedemption)", recoveryStart);
+    const recoveryEnd = source.indexOf("if (mode === startMode && pendingInviteRedemption)", recoveryStart);
     expect(recoveryStart).toBeGreaterThan(-1);
     expect(recoveryEnd).toBeGreaterThan(recoveryStart);
 
