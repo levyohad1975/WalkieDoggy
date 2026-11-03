@@ -69,7 +69,7 @@ describe('lib/supabase — session, PIN claim, QA sandbox, whoami, impersonation
         jest.useFakeTimers();
         const getSession = jest.fn().mockResolvedValue({ data: { session: null }, error: { name: 'AuthRetryableFetchError', message: 'Load failed' } });
         const { signInAnonymously } = mockSupabaseClient({ getSession });
-        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const AsyncStorage = require('@react-native-async-storage/async-storage');
         await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ access_token: 'old', refresh_token: 'rt-admin', user: { id: 'admin' } }));
         const { ensureAnonymousSession } = require('../supabase');
 
