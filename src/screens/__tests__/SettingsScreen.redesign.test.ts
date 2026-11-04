@@ -36,8 +36,8 @@ describe('Settings redesign', () => {
   it('uses real switches with an explanation for the GPS consent rows', () => {
     expect(gps).toContain('<Switch value={settings.familyEnabled}');
     expect(gps).toContain('<Switch value={settings?.consentEnabled??false}');
-    expect(gps).toContain('מאפשר למנהל המשפחה לבקש הפעלת GPS בטלפון של מי שמטייל');
-    expect(gps).toContain('מאשר שמנהל המשפחה יבקש להפעיל GPS בטלפון שלי בזמן טיול');
+    expect(gps).toContain('מאפשר למנהל המשפחה להפעיל GPS בטלפון של מי שמטייל');
+    expect(gps).toContain('מנהל המשפחה יוכל להפעיל GPS בטלפון שלי בזמן טיול, בלי אישור מחדש בכל טיול');
     expect(gps).not.toContain("settings.familyEnabled?'פעיל':'כבוי'");
     expect(gps.match(/thumbColor="#FFFFFF"/g)?.length).toBe(2);
     // Same card shape and spacing as the other Settings cards.
