@@ -78,6 +78,7 @@ export class OfflineFirstRepository implements Repository {
   acquireGpsOwnershipV11?: (walkId: string, confirmTransfer?: boolean) => Promise<{ fencingEpoch: number; expiresAt: string }>;
   releaseGpsOwnershipV11?: (walkId: string, fencingEpoch: number) => Promise<void>;
   heartbeatGpsOwnershipV11?: (walkId: string, fencingEpoch: number) => Promise<string>;
+  recordWalkEventCountsV1?: (walkId: string, counts: { pee: number; poop: number }) => Promise<void>;
   appendGpsRouteV11?: (update: GpsRouteUpdate) => Promise<WalkGpsSession>;
   getDuplicateActiveWalkReview?: (familyId: string, walkIds: string[]) => Promise<DuplicateActiveWalkReviewRecord[]>;
   resolveDuplicateActiveWalksV12?: (request: ResolveDuplicateActiveWalksRequest) => Promise<string>;
@@ -242,6 +243,10 @@ export class OfflineFirstRepository implements Repository {
       };
       if (this.remote.releaseGpsOwnershipV11) this.releaseGpsOwnershipV11 = (walkId, epoch) => this.remote!.releaseGpsOwnershipV11!(walkId, epoch);
       if (this.remote.heartbeatGpsOwnershipV11) this.heartbeatGpsOwnershipV11 = (walkId, epoch) => this.remote!.heartbeatGpsOwnershipV11!(walkId, epoch);
+      // Live counts are a best-effort preview for the family; the device keeps
+      // the totals locally and finish_walk_v12 stays authoritative, so there is
+      // nothing to queue offline.
+      if (this.remote.recordWalkEventCountsV1) this.recordWalkEventCountsV1 = (walkId, counts) => this.remote!.recordWalkEventCountsV1!(walkId, counts);
       if (this.remote.appendGpsRouteV11) this.appendGpsRouteV11 = async (update) => {
         if (!(await this.isOnline())) throw new Error('GPS route is buffered locally until ownership can be verified online');
         return this.remote!.appendGpsRouteV11!(update);

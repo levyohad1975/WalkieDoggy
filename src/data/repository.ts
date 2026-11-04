@@ -227,6 +227,8 @@ export interface Repository {
   acquireGpsOwnershipV11?(walkId: string, confirmTransfer?: boolean): Promise<{ fencingEpoch: number; expiresAt: string }>;
   releaseGpsOwnershipV11?(walkId: string, fencingEpoch: number): Promise<void>;
   heartbeatGpsOwnershipV11?(walkId: string, fencingEpoch: number): Promise<string>;
+  /** Actual walker publishes running pee/poop totals for their in-progress walk (server: record_walk_event_counts_v1). Optional: older servers lack it. */
+  recordWalkEventCountsV1?(walkId: string, counts: { pee: number; poop: number }): Promise<void>;
   appendGpsRouteV11?(update: GpsRouteUpdate): Promise<WalkGpsSession>;
   /** Offline-first local cache plus estimate-only fenced synchronization. */
   saveGpsReconstructionV1?(session: WalkGpsSession): Promise<void>;

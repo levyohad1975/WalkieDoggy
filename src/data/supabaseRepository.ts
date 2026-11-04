@@ -362,6 +362,15 @@ function fromDog(dog: Dog) {
  * (and never should) pass an arbitrary family_id from the client as a
  * security boundary; it's used for display/filtering only.
  */
+/** Later of two ISO timestamps (either may be missing). */
+function latestIso(a: string | null | undefined, b: string | null | undefined): string | undefined {
+  const ta = a ? Date.parse(a) : NaN;
+  const tb = b ? Date.parse(b) : NaN;
+  if (Number.isNaN(ta)) return Number.isNaN(tb) ? undefined : b ?? undefined;
+  if (Number.isNaN(tb)) return a ?? undefined;
+  return ta >= tb ? a ?? undefined : b ?? undefined;
+}
+
 export class SupabaseRepository implements Repository {
   constructor(private client: SupabaseClient) {}
 
@@ -603,7 +612,7 @@ export class SupabaseRepository implements Repository {
     if (error) throw error;
     const sessions = new Map<string, WalkGpsSession>((data ?? []).map((row: any) => [row.walk_id, toGpsSession(row)]));
     const { data: ownerRows, error: ownerError } = await this.client.from('walk_gps_ownership')
-      .select('walk_id,family_id,dog_id,distance_meters,point_count,route_started_at,route_ended_at').in('walk_id', walkIds);
+      .select('walk_id,family_id,dog_id,distance_meters,point_count,route_started_at,route_ended_at,updated_at').in('walk_id', walkIds);
     // Pre-v1.1 server: return the legacy sessions instead of failing the whole
     // read (which made History/Statistics silently fall back to device-only data).
     if (ownerError && !isMissingRelationError(ownerError)) throw ownerError;
@@ -648,6 +657,11 @@ export class SupabaseRepository implements Repository {
         createdByUserId: existing?.createdByUserId,
         createdAt: existing?.createdAt ?? owner.route_started_at ?? '',
         updatedAt: existing?.updatedAt ?? owner.route_ended_at ?? owner.route_started_at ?? '',
+        // The walker's device heartbeats this row every ~15s while it holds
+        // the GPS lease, even when the dog stands still and no new point is
+        // written; family devices use it to tell live tracking from a
+        // session that stopped when the walker's phone locked.
+        liveUpdatedAt: latestIso(owner.updated_at, existing?.updatedAt),
       });
     }
     return [...sessions.values()];
@@ -1068,6 +1082,11 @@ export class SupabaseRepository implements Repository {
     if (error) throw lifecycleRpcError('heartbeat_walk_gps_ownership_v11', error);
     if (typeof data !== 'string') throw new Error('GPS ownership heartbeat response was invalid');
     return data;
+  }
+
+  async recordWalkEventCountsV1(walkId: string, counts: { pee: number; poop: number }): Promise<void> {
+    const { error } = await this.client.rpc('record_walk_event_counts_v1', { p_walk_id: walkId, p_pee_count: counts.pee, p_poop_count: counts.poop });
+    if (error) throw lifecycleRpcError('record_walk_event_counts_v1', error);
   }
 
   async releaseGpsOwnershipV11(walkId: string, fencingEpoch: number): Promise<void> {

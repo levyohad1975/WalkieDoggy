@@ -261,6 +261,8 @@ export interface WalkGpsSession {
   createdByUserId?: string;
   createdAt: string;
   updatedAt: string;
+  /** Most recent sign of life from the walker's device (GPS lease heartbeat or route write); server reads only, never persisted. */
+  liveUpdatedAt?: string;
 }
 
 export interface WalkStartAuthorization {

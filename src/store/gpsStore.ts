@@ -5,6 +5,7 @@ import { generateId } from '../lib/id';
 import { startGpsWatch, type GpsPermissionStatus, type GpsTrackingStatus, type GpsWatchHandle } from '../lib/gpsTracking';
 import type { GpsAccumulator } from '../logic/gpsDistance';
 import { recordGpsLifecycle } from '../lib/gpsLifecycleLog';
+import { clearGpsTrackingMarker, markGpsTrackingOnThisDevice } from '../lib/gpsResumeMarker';
 import { isPotentialLateGpsStart, reconstructMissingRoute, GPS_CURRENT_FIX_MAX_ACCURACY_METERS } from '../logic/gpsReconstruction';
 
 /**
@@ -330,6 +331,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
           ...(recoveredLease && get().trackingStatus === 'interrupted' && get().pointCount > 0 ? { trackingStatus: 'active' as const } : {}),
         });
         recordGpsLifecycle('lease_acquired', walk.id, recoveredLease ? 'renewed_after_loss' : confirmTransfer ? 'transfer_confirmed' : 'acquired', { epoch: lease.fencingEpoch });
+        markGpsTrackingOnThisDevice(walk.id);
         lastPersistedGpsTimestamp = 0;
         if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
         activeGpsHeartbeat = repository.heartbeatGpsOwnershipV11
@@ -413,6 +415,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
 
   cancelTracking: (walkId, reason) => {
     if (get().trackingWalkId !== walkId || activeWatchWalkId !== walkId) return;
+    clearGpsTrackingMarker(walkId);
     const cancelReason = reason ?? 'unspecified';
     recordGpsLifecycle('cancel', walkId, cancelReason, { points: get().pointCount });
     startGeneration += 1;
@@ -429,6 +432,9 @@ export const useGpsStore = create<GpsState>((set, get) => ({
   },
 
   stopTracking: async (walk, userId, reason, detail) => {
+    // Every stop reason ends this device's claim on the walk's GPS, so a
+    // relaunch must not resume it.
+    clearGpsTrackingMarker(walk.id);
     const wasTracking = get().trackingWalkId === walk.id;
     const stopReason = `${reason ?? 'unspecified'}${detail ? `:${detail}` : ''}`;
     if (wasTracking) recordGpsLifecycle('stop', walk.id, stopReason, { points: get().pointCount, leased: get().gpsFencingEpoch !== null, source: get().trackingSource });

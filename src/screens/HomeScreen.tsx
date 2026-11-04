@@ -78,6 +78,8 @@ import { DeviceAccessRequestsCard } from '../components/DeviceAccessRequestsCard
 import { ArrivalHomePrompt } from '../components/ArrivalHomePrompt';
 import { arrivalTimeLabel, detectArrivalHome } from '../logic/arrivalHome';
 import { acknowledgeRemoteGpsStart, getMyRemoteGpsCommands } from '../lib/remoteGps';
+import { isGeolocationAlreadyGranted, wasTrackingGpsOnThisDevice } from '../lib/gpsResumeMarker';
+import { recordGpsLifecycle } from '../lib/gpsLifecycleLog';
 
 export function HomeScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList, 'Home'>>();
@@ -248,8 +250,9 @@ export function HomeScreen() {
       try { localStorage.setItem('walkie:walk-events:' + walkId, JSON.stringify(counts)); } catch { /* private browsing may deny storage */ }
     }
   }, []);
-  const readWalkEvents = useCallback((walkId: string) => {
-    const inMemory = walkEventCountsRef.current[walkId] ?? walkEventCounts[walkId];
+  /** This device's own running totals for a walk, or null when it has none. */
+  const storedWalkEvents = useCallback((walkId: string): { pee: number; poop: number } | null => {
+    const inMemory = walkEventCountsRef.current[walkId];
     if (inMemory && validWalkEventCount(inMemory.pee) && validWalkEventCount(inMemory.poop)) return inMemory;
     if (Platform.OS === 'web' && typeof localStorage !== 'undefined') {
       try {
@@ -260,8 +263,37 @@ export function HomeScreen() {
         }
       } catch { /* ignore unavailable storage */ }
     }
-    return { pee: 0, poop: 0 };
-  }, [walkEventCounts]);
+    return null;
+  }, []);
+  /**
+   * Counts shown for a walk. The walker's device publishes its totals live
+   * (record_walk_event_counts_v1), so the rest of the family sees them during
+   * the walk instead of only after "סיים טיול" (field report 2026-11-04).
+   * The walker's own device trusts its local totals once it has any (so an
+   * undo shows at once); every other device shows the larger of its own taps
+   * and the server's. A device with no taps yet starts from the server's.
+   */
+  const readWalkEvents = useCallback((walkId: string) => {
+    const local = storedWalkEvents(walkId);
+    const walk = walks.find((entry) => entry.id === walkId);
+    const server = walk && isActiveWalk(walk) && validWalkEventCount(walk.peeCount) && validWalkEventCount(walk.poopCount)
+      ? { pee: walk.peeCount, poop: walk.poopCount }
+      : null;
+    if (!local) return server ?? { pee: 0, poop: 0 };
+    const walkerHere = Boolean(walk) && (walk!.actualWalkerUserId ?? walk!.responsibleUserId) === currentUserId;
+    if (!server || walkerHere) return local;
+    return { pee: Math.max(local.pee, server.pee), poop: Math.max(local.poop, server.poop) };
+  }, [storedWalkEvents, walks, currentUserId, walkEventCounts]);
+  const publishWalkEvents = useCallback((walkId: string, counts: { pee: number; poop: number }) => {
+    const walk = walks.find((entry) => entry.id === walkId);
+    if (!walk || !isActiveWalk(walk) || (walk.actualWalkerUserId ?? walk.responsibleUserId) !== currentUserId) return;
+    if (!repository.recordWalkEventCountsV1) return;
+    // Best effort: the totals stay on this device and are sent in full again
+    // on the next tap and at finish, so a dropped request loses nothing.
+    void repository.recordWalkEventCountsV1(walkId, counts).catch((error) => {
+      console.warn('[home] live walk event counts were not published', error);
+    });
+  }, [walks, currentUserId]);
   const recordWalkEvent = useCallback((walkId: string, kind: 'pee' | 'poop') => {
     const current = readWalkEvents(walkId);
     const next = { ...current, [kind]: current[kind] + 1 };
@@ -269,7 +301,8 @@ export function HomeScreen() {
     walkEventCountsRef.current = updated;
     setWalkEventCounts(updated);
     persistWalkEvents(walkId, next);
-  }, [persistWalkEvents, readWalkEvents]);
+    publishWalkEvents(walkId, next);
+  }, [persistWalkEvents, readWalkEvents, publishWalkEvents]);
   const undoWalkEvent = useCallback((walkId: string, kind: 'pee' | 'poop') => {
     const current = readWalkEvents(walkId);
     const next = { ...current, [kind]: Math.max(0, current[kind] - 1) };
@@ -277,7 +310,8 @@ export function HomeScreen() {
     walkEventCountsRef.current = updated;
     setWalkEventCounts(updated);
     persistWalkEvents(walkId, next);
-  }, [persistWalkEvents, readWalkEvents]);
+    publishWalkEvents(walkId, next);
+  }, [persistWalkEvents, readWalkEvents, publishWalkEvents]);
 
   const [remoteFinishRequest, setRemoteFinishRequest] = useState<{ walkId: string; walkerId: string; hadPee: boolean; hadPoop: boolean; peeCount: number; poopCount: number; note?: string; completedAt?: string } | null>(null);
   const [gpsTransferWalk, setGpsTransferWalk] = useState<Walk | null>(null);
@@ -726,6 +760,38 @@ export function HomeScreen() {
     () => computeNextWalk(visibleWalks, new Date(), scheduleTimezone),
     [visibleWalks, minuteTick, scheduleTimezone]
   );
+  // Field report 2026-11-04: iOS closed the home-screen app two minutes into
+  // a walk; after reopening, nothing restarted GPS and the rest of the walk
+  // had no route. Resume once per app launch, only for a walk THIS device was
+  // already tracking, only for its actual walker, and only when location is
+  // already granted (no prompt without a tap). The server still decides the
+  // lease; any refusal leaves the "הפעל GPS" button as before.
+  const autoResumedGpsWalkIds = useRef(new Set<string>());
+  const resumableGpsWalk = useMemo(
+    () => gpsTrackingWalkId
+      ? null
+      : visibleWalks.find((entry) =>
+          entry.familyId === familyId &&
+          isActiveWalk(entry) &&
+          (entry.actualWalkerUserId ?? entry.responsibleUserId) === currentUserId &&
+          !autoResumedGpsWalkIds.current.has(entry.id) &&
+          wasTrackingGpsOnThisDevice(entry.id)
+        ) ?? null,
+    [gpsTrackingWalkId, visibleWalks, familyId, currentUserId]
+  );
+  useEffect(() => {
+    if (!resumableGpsWalk) return;
+    const walk = resumableGpsWalk;
+    autoResumedGpsWalkIds.current.add(walk.id);
+    // Not cancelled on re-render: the next 6-second poll recomputes this memo
+    // to null (the walk is now in the attempted set) while the permission
+    // check is still resolving.
+    void isGeolocationAlreadyGranted().then((granted) => {
+      if (!granted || useGpsStore.getState().trackingWalkId) return;
+      recordGpsLifecycle('auto_resume', walk.id, 'relaunch_with_marker');
+      void activateGpsForWalk(walk);
+    });
+  }, [resumableGpsWalk, activateGpsForWalk]);
   // P0 real-iPhone QA: exactly one Home block per dog for active spontaneous
   // walks. Grouping runs over the FULL visible pool (including the walk in
   // the main next-walk card) so a duplicate of that walk is still caught,
