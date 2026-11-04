@@ -665,13 +665,21 @@ export default function App() {
   // aged past the 5-minute "פעיל עכשיו" window and showed as offline
   // (Production report 2026-11-01). Never runs for hidden System Admin
   // observation, and skips while the app is backgrounded.
+  //
+  // Production 2026-11-04: a member who joined on a new home-screen install
+  // at 21:18 and chatted at 21:20 still showed as offline on the Admin's
+  // 21:20:57 Family screen load. Claiming a profile sets currentUserId but
+  // wrote no presence, and this timer's first beat came two minutes later.
+  // Beat once as soon as a profile is active, then on the interval.
   useEffect(() => {
     if (!isSupabaseConfigured || !currentUserId || systemObserverActive) return;
-    const timer = setInterval(() => {
+    const beat = () => {
       if (AppState.currentState !== 'active') return;
       if (useAuthStore.getState().systemObserverActive) return;
       void touchLastSeen().catch(() => undefined);
-    }, PRESENCE_HEARTBEAT_MS);
+    };
+    beat();
+    const timer = setInterval(beat, PRESENCE_HEARTBEAT_MS);
     return () => clearInterval(timer);
   }, [currentUserId, systemObserverActive]);
 
