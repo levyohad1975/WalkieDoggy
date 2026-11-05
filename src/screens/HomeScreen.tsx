@@ -1594,9 +1594,16 @@ export function HomeScreen() {
             }
             // AUTHORIZATION CORRECTION: ✓/✕ resolution is admin-or-
             // currently-responsible-user only (migration 0012) — not "any
-            // member" as an earlier pass had it.
+            // member" as an earlier pass had it. The actual walker is folded
+            // in via coalesce ONLY so the live "סיים טיול" button reaches the
+            // person actually walking (field report 2026-11-05: Omer walked
+            // Eidan's 22:00 walk and had no finish button, forcing the admin
+            // to end it). For an unstarted/overdue walk actual_walker is null,
+            // so this stays admin-or-responsible exactly as before — and it
+            // mirrors finish_walk_v12's own `coalesce(actual_walker,
+            // responsible)` authorization and the spontaneous card below.
             onMarkNotDone={() => skip(nextWalk.id)}
-            canResolve={effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId}
+            canResolve={effectiveRole === 'admin' || (nextWalk.actualWalkerUserId ?? nextWalk.responsibleUserId) === effectiveUserId}
             // Direct reassignment/edit is Admin-only (requirement 6) — a
             // Member (real or simulated via test mode) gets the contextual
             // approval-based actions instead (requirement 4).

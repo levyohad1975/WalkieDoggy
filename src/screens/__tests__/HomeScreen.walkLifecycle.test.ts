@@ -13,6 +13,23 @@ describe('Home integrated walk lifecycle', () => {
     expect(home).toContain('setStartWalkFlowId(nextWalk.id)');
   });
 
+  it('lets the actual walker — not only the planned assignee or an admin — finish an active scheduled walk (field report 2026-11-05)', () => {
+    // finish_walk_v12 authorizes coalesce(actual_walker_user_id,
+    // responsible_user_id) to finish. The scheduled card's canResolve must
+    // match, or the live "סיים טיול" button is hidden from a substitute who
+    // is actually walking the dog (Omer walked Eidan's 22:00 walk and had no
+    // finish button, forcing the admin to end it).
+    expect(home).toContain("canResolve={effectiveRole === 'admin' || (nextWalk.actualWalkerUserId ?? nextWalk.responsibleUserId) === effectiveUserId}");
+    // The old assignee-only gate that hid the button from the substitute is gone.
+    expect(home).not.toContain("canResolve={effectiveRole === 'admin' || nextWalk.responsibleUserId === effectiveUserId}");
+    // Scheduled and spontaneous cards now authorize the finish button the same way.
+    expect(home).toContain('canResolve={effectiveRole === \'admin\' || spontaneousWalkerId === effectiveUserId}');
+    // The finish button stays gated behind BOTH the actual-walker-aware
+    // handler and canResolve — neither alone renders it.
+    expect(card).toContain('isActive && onEndWalk && canResolve ?');
+    expect(home).toContain('nextWalk.actualWalkerUserId === currentUserId');
+  });
+
   it('keeps the branded Walkie Park default hero while using persisted family-dog imagery safely', () => {
     expect(home).toContain('showDogPhoto');
     expect(home).toContain('style={styles.dashboardHero}');
