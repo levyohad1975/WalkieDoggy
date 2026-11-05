@@ -1211,6 +1211,15 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     if (!guardTestModeMutation()) return;
     const walk = get().walks.find((w) => w.id === walkId);
     if (!walk) return;
+    if (walk.status !== 'pending') {
+      // The ✕ "לא בוצע" affordance is only offered for a pending overdue walk, so a
+      // non-pending walk here means it was already resolved (completed or skipped
+      // on another device) between render and tap. Treat as a quiet no-op — the
+      // caller refreshes and shows the real status — rather than raising the
+      // confusing "אפשר לדלג רק על טיול שממתין" error.
+      set({ actionError: null });
+      return;
+    }
     try {
       const updated = markWalkSkipped(walk);
       set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));

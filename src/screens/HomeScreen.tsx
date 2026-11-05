@@ -2420,6 +2420,7 @@ export function HomeScreen() {
         confirmLabel="הבנתי"
         onConfirm={clearActionError}
         onCancel={clearActionError}
+        hideCancel
       />
 
       <ConfirmModal
@@ -2429,6 +2430,7 @@ export function HomeScreen() {
         confirmLabel="הבנתי"
         onConfirm={clearRequestsError}
         onCancel={clearRequestsError}
+        hideCancel
       />
       <DogProfileModal visible={dogProfileVisible} onClose={() => setDogProfileVisible(false)} />
     </SafeAreaView>

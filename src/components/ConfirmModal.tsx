@@ -11,6 +11,8 @@ interface ConfirmModalProps {
   message?: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  /** Informational acknowledgement dialogs (a single "הבנתי") hide the redundant cancel button. */
+  hideCancel?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   loading?: boolean;
@@ -23,6 +25,7 @@ export function ConfirmModal({
   message,
   confirmLabel = 'אישור',
   cancelLabel = 'ביטול',
+  hideCancel = false,
   onConfirm,
   onCancel,
   loading,
@@ -41,7 +44,7 @@ export function ConfirmModal({
                 they stay the same size as each other — no lopsided
                 confirm/cancel pair. */}
             <Button label={confirmLabel} onPress={onConfirm} loading={loading} style={styles.flex} compact wrap />
-            <Button label={cancelLabel} onPress={onCancel} variant="secondary" style={styles.flex} compact />
+            {hideCancel ? null : <Button label={cancelLabel} onPress={onCancel} variant="secondary" style={styles.flex} compact />}
           </View>
         </View>
       </View>

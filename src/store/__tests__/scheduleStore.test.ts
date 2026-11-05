@@ -912,14 +912,18 @@ it('updateRule with a time-only change (daysOfWeek untouched) does not resurrect
   expect(state.entries.some((e) => e.ruleId === 'rule-1700' && e.date === entryFor1700!.date)).toBe(false);
 });
 
-it('skip refuses (visible actionError) for a walk that is not pending', async () => {
+it('skip is a quiet no-op (no error, no change) for a walk that is no longer pending', async () => {
+  // Field report 2026-11-05: the ✕ "לא בוצע" affordance is only offered for a
+  // pending overdue walk; a walk already resolved on another device between
+  // render and tap must not raise "אפשר לדלג רק על טיול שממתין". It is simply
+  // left as-is and the caller refreshes.
   await useScheduleStore.getState().load(FAMILY_ID);
   expect(useScheduleStore.getState().walks.find((w) => w.id === 'walk-0700')?.status).toBe('done');
 
   await useScheduleStore.getState().skip('walk-0700');
 
   const state = useScheduleStore.getState();
-  expect(state.actionError).toBeTruthy();
+  expect(state.actionError).toBeNull();
   expect(state.walks.find((w) => w.id === 'walk-0700')?.status).toBe('done'); // untouched
 });
 
