@@ -249,23 +249,20 @@ export function dedupeCanonicalWalks(walks: Walk[]): Walk[] {
 
 /** Finds the most recently completed (or skipped) walk, for the "last walk" home card. */
 export function computeLastWalk(walks: Walk[], now: Date = new Date()): Walk | undefined {
-  const finishedTime = (walk: Walk): number => {
-    if (walk.status === 'done' && walk.completedAt) {
-      return new Date(walk.completedAt).getTime();
-    }
+  const finishedTime = (walk: Walk): number =>
+    walk.completedAt ? new Date(walk.completedAt).getTime() : walkDateTime(walk).getTime();
 
-    return walkDateTime(walk).getTime();
-  };
-
-  const finished = walks.filter(
-    (w) =>
-      (w.status === 'done' || w.status === 'skipped') &&
-      finishedTime(w) <= now.getTime()
+  // Only a walk that was actually PERFORMED (done) counts as the last walk.
+  // A skipped walk means the dog did NOT go out, so it must never be shown as
+  // "the last walk" — the family needs to know when she last went out for
+  // needs (owner request 2026-11-05).
+  const done = walks.filter(
+    (w) => w.status === 'done' && finishedTime(w) <= now.getTime()
   );
 
-  if (finished.length === 0) return undefined;
+  if (done.length === 0) return undefined;
 
-  return [...finished].sort(
+  return [...done].sort(
     (a, b) => finishedTime(b) - finishedTime(a)
   )[0];
 }

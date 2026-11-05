@@ -171,13 +171,24 @@ describe('family-local walk transition clock', () => {
 });
 
 describe('computeLastWalk', () => {
-  it('returns the most recently completed/skipped walk up to now', () => {
+  it('returns the most recently PERFORMED (done) walk, never a skipped one', () => {
     const walks = [
       makeWalk({ id: 'w1', scheduledTime: '07:00', status: 'done' }),
       makeWalk({ id: 'w2', scheduledTime: '14:00', status: 'skipped' }),
       makeWalk({ id: 'w3', scheduledTime: '20:00', status: 'pending' }),
     ];
-    expect(computeLastWalk(walks, NOW)?.id).toBe('w2');
+    // w2 is later but was skipped (dog did not go out) — the last walk is the
+    // last one actually performed, so w1.
+    expect(computeLastWalk(walks, NOW)?.id).toBe('w1');
+  });
+
+  it('ignores a more recent skipped walk when an earlier done walk exists', () => {
+    const walks = [
+      makeWalk({ id: 'done-0800', scheduledTime: '08:00', status: 'done' }),
+      makeWalk({ id: 'skipped-1330', scheduledTime: '13:30', status: 'skipped' }),
+      makeWalk({ id: 'skipped-1800', scheduledTime: '18:00', status: 'skipped' }),
+    ];
+    expect(computeLastWalk(walks, NOW)?.id).toBe('done-0800');
   });
 
   it('uses completedAt for a walk completed before its scheduled time', () => {
@@ -199,9 +210,9 @@ describe('computeLastWalk', () => {
     expect(computeLastWalk(walks, NOW)?.id).toBe('completed-early');
   });
 
-  it('returns undefined when there are no completed/skipped walks yet', () => {
-    const walks = [makeWalk({ status: 'pending' })];
-    expect(computeLastWalk(walks, NOW)).toBeUndefined();
+  it('returns undefined when no walk has been performed yet (pending or only skipped)', () => {
+    expect(computeLastWalk([makeWalk({ status: 'pending' })], NOW)).toBeUndefined();
+    expect(computeLastWalk([makeWalk({ id: 's', status: 'skipped' })], NOW)).toBeUndefined();
   });
 
   it('defaults `now` to the current time when omitted', () => {
