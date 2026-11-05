@@ -6,6 +6,7 @@ import { startGpsWatch, type GpsPermissionStatus, type GpsTrackingStatus, type G
 import type { GpsAccumulator } from '../logic/gpsDistance';
 import { recordGpsLifecycle } from '../lib/gpsLifecycleLog';
 import { clearGpsTrackingMarker, markGpsTrackingOnThisDevice } from '../lib/gpsResumeMarker';
+import { acquireScreenWakeLock, releaseScreenWakeLock } from '../lib/screenWakeLock';
 import { isPotentialLateGpsStart, reconstructMissingRoute, GPS_CURRENT_FIX_MAX_ACCURACY_METERS } from '../logic/gpsReconstruction';
 
 /**
@@ -296,6 +297,10 @@ export const useGpsStore = create<GpsState>((set, get) => ({
       return;
     }
     activeWatch = result.handle;
+    // The GPS watch is live on this (the walker's) device — keep the screen
+    // awake so iOS does not auto-lock and suspend sampling mid-walk (field
+    // reports 2026-11-05). Best-effort and web-only; released on stop/cancel.
+    acquireScreenWakeLock();
     set({ permissionStatus: 'granted', trackingStatus: get().pointCount > 0 ? 'active' : result.trackingStatus, trackingStartedAt: priorStartedAt ?? trackingStartedAt });
     const deferred = pendingOwnership;
     if (deferred && deferred.walk.id === activeWatchWalkId) {
@@ -423,6 +428,7 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     ownershipRequest = null;
     activeWatch?.remove();
     activeWatch = null;
+    void releaseScreenWakeLock();
     if (activeGpsHeartbeat) clearInterval(activeGpsHeartbeat);
     activeGpsHeartbeat = null;
     activeWatchWalkId = null;
@@ -439,6 +445,9 @@ export const useGpsStore = create<GpsState>((set, get) => ({
     const stopReason = `${reason ?? 'unspecified'}${detail ? `:${detail}` : ''}`;
     if (wasTracking) recordGpsLifecycle('stop', walk.id, stopReason, { points: get().pointCount, leased: get().gpsFencingEpoch !== null, source: get().trackingSource });
     const stopMark = { walkId: walk.id, kind: 'stop' as const, reason: stopReason, at: new Date().toISOString() };
+    // This device's walk is ending — let the screen sleep again. Idempotent and
+    // covers every return path below.
+    if (wasTracking) void releaseScreenWakeLock();
     if (wasTracking) startGeneration += 1;
     if (wasTracking) pendingOwnership = null;
     if (wasTracking) ownershipRequest = null;
