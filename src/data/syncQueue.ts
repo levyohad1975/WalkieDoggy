@@ -272,6 +272,7 @@ export type SyncOperation =
   | { type: 'updateScheduleEntry'; payload: ScheduleEntry }
   | { type: 'deleteScheduleEntry'; payload: { entryId: string } }
   | { type: 'saveWalk'; payload: Walk }
+  | { type: 'editResolvedWalk'; payload: Walk }
   | { type: 'deleteWalk'; payload: { walkId: string } }
   | { type: 'updateUserReminderSetting'; payload: { userId: string; enabled: boolean } }
   | { type: 'updateUserGamificationSetting'; payload: { userId: string; enabled: boolean } };
@@ -324,6 +325,7 @@ function operationEndpoint(op: SyncOperation): string {
     case 'updateScheduleEntry': return '/rest/v1/schedule_entries';
     case 'deleteScheduleEntry': return '/rest/v1/rpc/delete_schedule_entry_idempotent';
     case 'saveWalk':
+    case 'editResolvedWalk':
     case 'deleteWalk': return '/rest/v1/walks';
   }
 }
@@ -1008,6 +1010,8 @@ export class SyncQueue {
         return remote.deleteScheduleEntry(op.payload.entryId);
       case 'saveWalk':
         return remote.saveWalk(op.payload);
+      case 'editResolvedWalk':
+        return remote.editResolvedWalkDetails ? remote.editResolvedWalkDetails(op.payload) : remote.saveWalk(op.payload);
       case 'deleteWalk':
         return remote.deleteWalk?.(op.payload.walkId);
       case 'updateUserReminderSetting':

@@ -1121,6 +1121,36 @@ export class SupabaseRepository implements Repository {
     if (error) throw error;
   }
 
+  /**
+   * Edit the detail fields of an already-resolved (done/skipped) walk, by id.
+   * Unlike saveWalk()'s done-branch — which only UPDATEs a still-'pending' row
+   * and otherwise no-ops to protect a concurrent completion — this is a
+   * deliberate correction of an existing resolved walk, so it updates that row
+   * directly. Only the editable columns are written, so the server's
+   * walk-write-authorization trigger (responsible member or admin) applies and
+   * no protected field (date/time/responsible/schedule link) is ever touched.
+   */
+  async editResolvedWalkDetails(walk: Walk): Promise<void> {
+    const { data, error, status } = await withTimeout(
+      this.client.from('walks').update({
+        had_pee: walk.hadPee ?? null,
+        had_poop: walk.hadPoop ?? null,
+        pee_count: walk.peeCount ?? null,
+        poop_count: walk.poopCount ?? null,
+        note: walk.note ?? null,
+        completed_at: walk.completedAt ?? null,
+        completed_by_user_id: walk.completedByUserId ?? null,
+        duration_minutes: walk.durationMinutes ?? null,
+      }).eq('id', walk.id).select('id'),
+      SUPABASE_CALL_TIMEOUT_MS,
+      'walks edit resolved details',
+    );
+    if (error) throw Object.assign(error, { status });
+    // No row matched — the walk isn't on the server yet (e.g. created offline).
+    // Fall back to the full save path, which inserts it.
+    if (!data || data.length === 0) await this.saveWalk(walk);
+  }
+
   async saveWalk(walk: Walk): Promise<void> {
     // Keep the queued source object untouched until the server confirms the
     // write. This lets a transient failure retry with the original payload.

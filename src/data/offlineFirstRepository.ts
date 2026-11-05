@@ -1162,6 +1162,23 @@ export class OfflineFirstRepository implements Repository {
    * race a still-queued creation and fail with "walk not found".
    * Transient failures keep the normal offline-first queue fallback.
    */
+  async editResolvedWalkDetails(walk: Walk): Promise<void> {
+    await this.local.saveWalk(walk);
+    if (!this.remote) return;
+    if (await this.isOnline()) {
+      try {
+        await (this.remote.editResolvedWalkDetails
+          ? this.remote.editResolvedWalkDetails(walk)
+          : this.remote.saveWalk(walk));
+        return;
+      } catch (error) {
+        if (isPermanentSyncError(error)) throw error;
+      }
+    }
+    await this.queue.enqueue({ type: 'editResolvedWalk', payload: walk });
+    await this.trySync();
+  }
+
   async saveWalk(walk: Walk): Promise<void> {
     await this.local.saveWalk(walk);
     if (!this.remote) return;

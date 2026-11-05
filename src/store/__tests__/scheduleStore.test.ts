@@ -704,6 +704,23 @@ it('editDoneDetails updates a resolved walk\'s recorded details', async () => {
   expect(updated?.status).toBe('done'); // unaffected by the edit
 });
 
+it('editDoneDetails persists an edit through the dedicated edit path, never saveWalk (field report 2026-11-05)', async () => {
+  await useScheduleStore.getState().load(FAMILY_ID);
+  const { repository } = require('../../data');
+  const editSpy = jest.spyOn(repository, 'editResolvedWalkDetails');
+  const saveSpy = jest.spyOn(repository, 'saveWalk');
+
+  await useScheduleStore.getState().editDoneDetails('walk-0700', { note: 'x', hadPee: true, peeCount: 3 });
+
+  // saveWalk()'s done-branch only matches a still-'pending' row, so editing a
+  // resolved walk must go through editResolvedWalkDetails (update by id).
+  expect(editSpy).toHaveBeenCalledTimes(1);
+  expect(editSpy.mock.calls[0][0]).toMatchObject({ id: 'walk-0700', note: 'x', peeCount: 3 });
+  expect(saveSpy).not.toHaveBeenCalled();
+  editSpy.mockRestore();
+  saveSpy.mockRestore();
+});
+
 it('editDoneDetails refuses (visible actionError) for a walk that is still pending', async () => {
   await useScheduleStore.getState().load(FAMILY_ID);
   const pendingWalk = useScheduleStore.getState().walks.find((w) => w.id === 'walk-1230');

@@ -206,6 +206,8 @@ export interface Repository {
   /** Direct authenticated RPC only; intentionally never enters the offline SyncQueue. */
   resolveDuplicateActiveWalksV12?(request: ResolveDuplicateActiveWalksRequest): Promise<string>;
   saveWalk(walk: Walk): Promise<void>;
+  /** Edit the detail fields (pee/poop + count, note, completion time/walker) of an ALREADY-resolved walk, by id. Separate from saveWalk so it can never be confused with a completion write. Optional: only the Supabase/offline repositories implement it. */
+  editResolvedWalkDetails?(walk: Walk): Promise<void>;
   /** Server-authoritative lifecycle operations; Supabase persists actor/time atomically. */
   startWalk?(walkId: string): Promise<Walk>;
   /**

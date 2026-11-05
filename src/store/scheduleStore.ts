@@ -1201,7 +1201,12 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     try {
       const updated = editWalkDetails(walk, details);
       set((s) => ({ walks: s.walks.map((w) => (w.id === walkId ? updated : w)), actionError: null }));
-      await repository.saveWalk(updated);
+      // Editing an ALREADY-resolved walk must update that row directly —
+      // saveWalk()'s done-branch only matches a still-'pending' row and
+      // silently no-ops otherwise, which is why edits from History / the
+      // Home last-walk card never persisted (field report 2026-11-05).
+      if (repository.editResolvedWalkDetails) await repository.editResolvedWalkDetails(updated);
+      else await repository.saveWalk(updated);
     } catch (e) {
       set({ actionError: e instanceof WalkActionError ? e.message : 'לא הצלחנו לעדכן את פרטי הטיול' });
     }
