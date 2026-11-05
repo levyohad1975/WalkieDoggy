@@ -507,7 +507,7 @@ export function HomeScreen() {
   const canManagePersonalNotifications = !personalNotificationsReadOnly && effectiveUserId === currentUserId;
   const contentAboveWalkCard = canManagePersonalNotifications || dogs.length > 1 || healthSummary.overdueCount + healthSummary.dueSoonCount > 0;
 
-  const startWalkAs = useCallback((walk: Walk, actualWalkerUserId: string, remoteStart: boolean) => {
+  const startWalkAs = useCallback((walk: Walk, actualWalkerUserId: string, remoteStart: boolean, opts?: { allowEarlyStart?: boolean }) => {
     // iPhone Safari requires location permission to be requested in the
     // original user gesture. Remote starts never ask the manager's device.
     if (!remoteStart) void useGpsStore.getState().startTracking(walk).catch(() => undefined);
@@ -517,6 +517,7 @@ export function HomeScreen() {
       actualWalkerUserId,
       substitutionConfirmed: !remoteStart && actualWalkerUserId !== walk.responsibleUserId,
       remoteStart,
+      allowEarlyStart: opts?.allowEarlyStart,
     }).then((started) => {
       // A start the server did not accept must DISCARD the provisional watch.
       // stopTracking() would persist it: an orphan GPS session for an
@@ -2233,7 +2234,9 @@ export function HomeScreen() {
         onAssociate={(walk) => {
           setSpontaneousAssociationVisible(false);
           setSpontaneousAssociationWalks([]);
-          startWalkAs(walk, currentUserId, false);
+          // Associating a walk happening now with a later scheduled slot is a
+          // deliberate spontaneous fulfillment — exempt from the early-start window.
+          startWalkAs(walk, currentUserId, false, { allowEarlyStart: true });
         }}
         onSeparate={async () => {
           const started = dog ? await startUnplannedWalk(familyId, dog.id, currentUserId) : false;

@@ -100,7 +100,7 @@ interface ScheduleState {
   rescheduleWalk: (walkId: string, newTime: string) => Promise<void>;
   deleteEntry: (entryId: string) => Promise<void>;
 
-  startWalk: (walkId: string, options?: { startGps?: boolean; remoteActivation?: boolean; actorUserId?: string; actualWalkerUserId?: string; substitutionConfirmed?: boolean; remoteStart?: boolean }) => Promise<boolean>;
+  startWalk: (walkId: string, options?: { startGps?: boolean; remoteActivation?: boolean; actorUserId?: string; actualWalkerUserId?: string; substitutionConfirmed?: boolean; remoteStart?: boolean; allowEarlyStart?: boolean }) => Promise<boolean>;
   finishWalk: (walkId: string, completedByUserId: string, details?: WalkCompletionDetails) => Promise<boolean>;
   markDone: (walkId: string, completedByUserId: string, details?: WalkCompletionDetails) => Promise<boolean>;
   editDoneDetails: (walkId: string, details: WalkCompletionDetails) => Promise<void>;
@@ -909,7 +909,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     }));
   },
 
-  startWalk: (walkId: string, options: { startGps?: boolean; remoteActivation?: boolean; actorUserId?: string; actualWalkerUserId?: string; substitutionConfirmed?: boolean; remoteStart?: boolean } = {}) => {
+  startWalk: (walkId: string, options: { startGps?: boolean; remoteActivation?: boolean; actorUserId?: string; actualWalkerUserId?: string; substitutionConfirmed?: boolean; remoteStart?: boolean; allowEarlyStart?: boolean } = {}) => {
     const inFlight = startWalkPromises.get(walkId);
     if (inFlight) return inFlight;
     set((s) => ({ startingWalkIds: s.startingWalkIds.includes(walkId) ? s.startingWalkIds : [...s.startingWalkIds, walkId] }));
@@ -920,7 +920,11 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     // Defense in depth: the Home button is disabled before this point, but
     // no other caller may start a planned walk more than 30 minutes early.
     // Unplanned/spontaneous walks are intentionally exempt.
-    if (!options.remoteActivation && !walk.isUnplanned && walk.status === 'pending') {
+    // A spontaneous walk the user chose to associate with a scheduled slot is
+    // a deliberate "do this slot now", so it bypasses the early-start window
+    // (the association offer window is wider than 30 min). The server imposes
+    // no early-start gate; this is a client-only guard.
+    if (!options.remoteActivation && !options.allowEarlyStart && !walk.isUnplanned && walk.status === 'pending') {
       const scheduledAt = new Date(`${walk.date}T${walk.scheduledTime}:00`).getTime();
       const unlockAt = scheduledAt - 30 * 60 * 1000;
       if (Number.isFinite(unlockAt) && Date.now() < unlockAt) {
