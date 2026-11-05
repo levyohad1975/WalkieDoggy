@@ -1833,6 +1833,11 @@ export function HomeScreen() {
               (lastWalk.isUnplanned && lastWalk.completedByUserId === effectiveUserId));
           const completedByName =
             usersById[lastWalk.completedByUserId ?? lastWalk.responsibleUserId]?.name ?? 'בן משפחה';
+          // A 'skipped' walk can be the last RESOLVED walk (computeLastWalk
+          // includes it), but it was NOT performed — never show it as "✓ בוצע"
+          // or attribute it to a walker (Production report 2026-11-05: a skipped
+          // 18:00 showed as "בוצע ע״י אמא" on Home while History showed ✕).
+          const isSkipped = lastWalk.status === 'skipped';
           const actualCompletedTime = lastWalk.completedAt
             ? new Date(lastWalk.completedAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
             : lastWalk.scheduledTime;
@@ -1846,7 +1851,7 @@ export function HomeScreen() {
                 <View style={styles.dashboardLastWalkRow}>
                 <View style={styles.dashboardLastWalkTimeBlock}>
                   <RtlText style={styles.dashboardLastWalkTime}>{actualCompletedTime}</RtlText>
-                  <RtlText style={styles.dashboardLastWalkDone}>✓ בוצע {actualCompletedTime}</RtlText>
+                  <RtlText style={[styles.dashboardLastWalkDone, isSkipped && styles.dashboardLastWalkSkipped]}>{isSkipped ? '✕ לא בוצע' : `✓ בוצע ${actualCompletedTime}`}</RtlText>
                 </View>
                 <View style={styles.dashboardLastWalkActions}>
                   {canEditLastWalk ? (
@@ -1896,7 +1901,7 @@ export function HomeScreen() {
                   ) : null}
                 </View>
                 <View style={styles.dashboardLastWalkPerson}>
-                  <RtlText style={styles.dashboardLastWalkPersonLabel}>בוצע ע״י</RtlText>
+                  <RtlText style={styles.dashboardLastWalkPersonLabel}>{isSkipped ? 'אחראי/ת' : 'בוצע ע״י'}</RtlText>
                   <RtlText style={styles.dashboardLastWalkPersonName}>{completedByName}</RtlText>
                 </View>
               </View>
@@ -2581,6 +2586,7 @@ const styles = StyleSheet.create({
   dashboardLastWalkTimeBlock: { width: 104, alignItems: 'flex-start', flexShrink: 0 },
   dashboardLastWalkTime: { fontSize: 24, lineHeight: 29, fontWeight: '700', color: '#17345B' },
   dashboardLastWalkDone: { marginTop: 1, fontSize: 12, lineHeight: 16, fontWeight: '600', color: '#15966D' },
+  dashboardLastWalkSkipped: { color: colors.statusSkipped },
   // Fixed physical lanes. Do not let RTL/flex negotiation move the relief
   // controls outside the compact iPhone card: edit is pinned left, pee/poop
   // pinned right, and the mascot anchor occupies only the centre.
