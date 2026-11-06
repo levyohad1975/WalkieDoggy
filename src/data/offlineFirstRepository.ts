@@ -755,6 +755,14 @@ export class OfflineFirstRepository implements Repository {
     }
   }
 
+  async updateUserChatNotificationSetting(userId: string, enabled: boolean): Promise<void> {
+    await this.local.updateUserChatNotificationSetting(userId, enabled);
+    if (this.remote) {
+      await this.queue.enqueue({ type: 'updateUserChatNotificationSetting', payload: { userId, enabled } });
+      await this.trySync();
+    }
+  }
+
   async getDog(familyId: string): Promise<Dog | undefined> {
     if (await this.isOnline()) {
       try {

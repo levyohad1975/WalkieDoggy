@@ -139,6 +139,7 @@ export function HomeScreen() {
   const clearImpersonationIfInvalid = useAuthStore((s) => s.clearImpersonationIfInvalid);
   const { family, users, dog, dogs, selectedDogId, selectDog, loading: familyLoading, error: familyError, load: loadFamily } = useFamilyStore();
   const setReminderEnabled = useFamilyStore((s) => s.setReminderEnabled);
+  const setChatNotificationsEnabled = useFamilyStore((s) => s.setChatNotificationsEnabled);
   // Use the established coastal photo as the default instead of the flat placeholder scene.
   // Explicit family background choices always take precedence.
   const heroBackground = getDogBackground(dog?.heroBackgroundId);
@@ -2420,6 +2421,11 @@ export function HomeScreen() {
         onSetReminderEnabled={(userId, enabled) => {
           if (canManagePersonalNotifications && userId === currentUserId) {
             void setReminderEnabled(userId, enabled);
+          }
+        }}
+        onSetChatNotificationsEnabled={(userId, enabled) => {
+          if (canManagePersonalNotifications && userId === currentUserId) {
+            void setChatNotificationsEnabled(userId, enabled);
           }
         }}
         onClose={() => setPersonalNotificationsVisible(false)}

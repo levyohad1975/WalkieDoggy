@@ -57,7 +57,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const FAMILY_ID = 'wizard-family';
 const ADMIN_ID = 'wizard-admin';
 const DOG = { id: 'wizard-dog', familyId: FAMILY_ID, name: 'לוקה', walksPerDay: 0 };
-const ADMIN = { id: ADMIN_ID, familyId: FAMILY_ID, name: 'יעל כהן', avatar: '👩', color: '#5B8DEF', remindersEnabled: true, gamificationEnabled: true, createdAt: '2026-01-01T00:00:00.000Z' };
+const ADMIN = { id: ADMIN_ID, familyId: FAMILY_ID, name: 'יעל כהן', avatar: '👩', color: '#5B8DEF', remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: '2026-01-01T00:00:00.000Z' };
 const progress = { familyId: FAMILY_ID, ownerAuthUserId: 'verified-owner', step: 2 as const, adminUserId: ADMIN_ID };
 
 function setup(step: 2 | 3 | 4 | 5 = 2, pendingDogSex?: 'male' | 'female', omitAdminProgress = false) {
@@ -69,7 +69,7 @@ function setup(step: 2 | 3 | 4 | 5 = 2, pendingDogSex?: 'male' | 'female', omitA
   const loadFamily = jest.fn().mockResolvedValue(undefined);
   const loadSchedule = jest.fn().mockResolvedValue(true);
   const addUser = jest.fn(async (input: { id?: string; name: string; avatar: string; color: string }) => {
-    const user = { ...input, id: input.id ?? 'new-member', familyId: FAMILY_ID, remindersEnabled: true, gamificationEnabled: true, createdAt: '2026-01-01T00:00:00.000Z' };
+    const user = { ...input, id: input.id ?? 'new-member', familyId: FAMILY_ID, remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: '2026-01-01T00:00:00.000Z' };
     useFamilyStore.setState((state) => ({ users: [...state.users, user] }));
     return user;
   });

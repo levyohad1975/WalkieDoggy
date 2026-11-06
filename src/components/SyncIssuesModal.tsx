@@ -27,6 +27,7 @@ const OP_LABEL: Record<SyncOperation['type'], string> = {
   deleteWalk: 'מחיקת טיול',
   updateUserReminderSetting: 'עדכון הגדרת תזכורות',
   updateUserGamificationSetting: 'עדכון הגדרת הישגים',
+  updateUserChatNotificationSetting: 'עדכון הגדרת התראות צ׳אט',
 };
 
 function opLabel(op: SyncOperation): string {

@@ -130,9 +130,19 @@ export class LocalRepository implements Repository {
       // gains an empty unlock ledger and each user defaults to opted-in
       // (matching 0052's `default true` for the same column server-side).
       if (!Array.isArray(this.cache.achievementUnlocks)) this.cache.achievementUnlocks = [];
-      this.cache.users = this.cache.users.map((u) =>
-        typeof u.gamificationEnabled === 'boolean' ? u : { ...u, gamificationEnabled: true }
-      );
+      this.cache.users = this.cache.users.map((u) => {
+        let next = u;
+        if (typeof next.gamificationEnabled !== 'boolean') {
+          next = { ...next, gamificationEnabled: true };
+        }
+        // Same soft-add — a cache written before chat/walk notification split
+        // existed defaults each user to opted-in (matching the new column's
+        // `default true` server-side).
+        if (typeof next.chatNotificationsEnabled !== 'boolean') {
+          next = { ...next, chatNotificationsEnabled: true };
+        }
+        return next;
+      });
     } else {
       this.cache = seedStore();
       await this.persist();
@@ -231,6 +241,12 @@ export class LocalRepository implements Repository {
   async updateUserGamificationSetting(userId: string, enabled: boolean): Promise<void> {
     const s = await this.load();
     s.users = s.users.map((u) => (u.id === userId ? { ...u, gamificationEnabled: enabled } : u));
+    await this.persist();
+  }
+
+  async updateUserChatNotificationSetting(userId: string, enabled: boolean): Promise<void> {
+    const s = await this.load();
+    s.users = s.users.map((u) => (u.id === userId ? { ...u, chatNotificationsEnabled: enabled } : u));
     await this.persist();
   }
 

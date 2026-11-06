@@ -55,6 +55,7 @@ function toUser(row: any): FamilyUser {
     color: row.color,
     remindersEnabled: row.reminders_enabled,
     gamificationEnabled: row.gamification_enabled,
+    chatNotificationsEnabled: row.chat_notifications_enabled ?? true,
     createdAt: row.created_at,
     removedAt: row.removed_at ?? undefined,
   };
@@ -523,6 +524,11 @@ export class SupabaseRepository implements Repository {
 
   async updateUserReminderSetting(userId: string, enabled: boolean): Promise<void> {
     const { error } = await this.client.from('users').update({ reminders_enabled: enabled }).eq('id', userId);
+    if (error) throw error;
+  }
+
+  async updateUserChatNotificationSetting(userId: string, enabled: boolean): Promise<void> {
+    const { error } = await this.client.from('users').update({ chat_notifications_enabled: enabled }).eq('id', userId);
     if (error) throw error;
   }
 

@@ -84,7 +84,7 @@ describe('OfflineFirstRepository.deleteFamilyMember — online rejection propaga
       name: 'Admin',
       avatar: '🙂',
       color: '#000',
-      remindersEnabled: true, gamificationEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true,
       createdAt: new Date().toISOString(),
     };
     await repo.upsertUser(user); // seed the local cache the old way (upsertUser is unaffected by this fix)
@@ -114,7 +114,7 @@ describe('OfflineFirstRepository.deleteFamilyMember — online rejection propaga
       name: 'Member',
       avatar: '🙂',
       color: '#000',
-      remindersEnabled: true, gamificationEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true,
       createdAt: new Date().toISOString(),
     };
     await repo.upsertUser(user);
@@ -143,7 +143,7 @@ describe('OfflineFirstRepository.deleteFamilyMember — online rejection propaga
       name: 'Member',
       avatar: '🙂',
       color: '#000',
-      remindersEnabled: true, gamificationEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true,
       createdAt: new Date().toISOString(),
     };
     await repo.upsertUser(user);
@@ -213,7 +213,7 @@ describe('OfflineFirstRepository.deleteFamilyMember — online rejection propaga
       name: 'Member',
       avatar: '🙂',
       color: '#000',
-      remindersEnabled: true, gamificationEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true,
       createdAt: new Date().toISOString(),
     };
     await repo.upsertUser(user);
@@ -459,7 +459,7 @@ describe('OfflineFirstRepository.upsertUser — online direct write during queue
 
     const memberWithPhoto: FamilyUser = {
       id: 'user-1', familyId: 'family-1', name: 'עידן', avatar: '🧑', color: '#123456',
-      photoUrl: 'https://example.test/member-photo.jpg', remindersEnabled: true, gamificationEnabled: true, createdAt: 'now',
+      photoUrl: 'https://example.test/member-photo.jpg', remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: 'now',
     };
     await repo.upsertUser(memberWithPhoto);
 
@@ -484,7 +484,7 @@ describe('OfflineFirstRepository.upsertUser — online direct write during queue
 
     const olderMember: FamilyUser = {
       id: 'user-1', familyId: 'family-1', name: 'עידן', avatar: '🧑', color: '#123456',
-      remindersEnabled: true, gamificationEnabled: true, createdAt: 'now',
+      remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: 'now',
     };
     const memberWithPhoto: FamilyUser = { ...olderMember, photoUrl: 'https://example.test/member-photo.jpg' };
     await (repo as any).queue.enqueue({ type: 'upsertUser', payload: olderMember });
@@ -514,7 +514,7 @@ describe('OfflineFirstRepository.upsertUser — online direct write during queue
     setSyncQueueAuthUserGetter(() => 'auth-user-1');
     const memberWithPhoto: FamilyUser = {
       id: 'user-1', familyId: 'family-1', name: 'עידן', avatar: '🧑', color: '#123456',
-      photoUrl: 'https://example.test/member-photo.jpg', remindersEnabled: true, gamificationEnabled: true, createdAt: 'now',
+      photoUrl: 'https://example.test/member-photo.jpg', remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: 'now',
     };
 
     await expect(repo.upsertUser(memberWithPhoto)).rejects.toBe(denied);
@@ -568,7 +568,7 @@ describe('OfflineFirstRepository — online + remote succeeds: reads return the 
 
   it('getUsers returns the remote list', async () => {
     const fresh: FamilyUser[] = [
-      { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: new Date().toISOString() },
+      { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: new Date().toISOString() },
     ];
     const remote = stubRemote({ getUsers: jest.fn().mockResolvedValue(fresh) });
     const repo = await makeRepo(true, remote);
@@ -710,7 +710,7 @@ describe('OfflineFirstRepository — writes with a remote repository configured:
   };
   const entry: ScheduleEntry = { id: 'entry-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-01-02', time: '08:00', responsibleUserId: 'u1', createdAt: new Date().toISOString() };
   const walk: Walk = { id: 'walk-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-01-02', scheduledTime: '08:00', responsibleUserId: 'u1', status: 'pending', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-  const user: FamilyUser = { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: new Date().toISOString() };
+  const user: FamilyUser = { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: new Date().toISOString() };
 
   it('deleteUser removes the local user and enqueues a sync op', async () => {
     const repo = await makeRepo(false, stubRemote());
@@ -896,7 +896,7 @@ describe('OfflineFirstRepository — local/demo mode (no remote configured): wri
   };
   const entry: ScheduleEntry = { id: 'entry-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-01-02', time: '08:00', responsibleUserId: 'u1', createdAt: new Date().toISOString() };
   const walk: Walk = { id: 'walk-1', familyId: 'family-1', dogId: 'dog-1', date: '2026-01-02', scheduledTime: '08:00', responsibleUserId: 'u1', status: 'pending', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-  const user: FamilyUser = { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: new Date().toISOString() };
+  const user: FamilyUser = { id: 'u1', familyId: 'family-1', name: 'אמא', avatar: '👩', color: '#000', remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: new Date().toISOString() };
 
   it('deleteUser removes the local user, nothing queued', async () => {
     const repo = await makeRepo(true, null);

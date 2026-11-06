@@ -8,7 +8,7 @@ const CONFLICTS_KEY = 'dog-walk-family:sync-conflicts:v1';
 const QUARANTINE_KEY = 'dog-walk-family:sync-quarantine:v1';
 
 function user(id: string): FamilyUser {
-  return { id, familyId: 'family-test', name: 'test', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: '2026-01-01T00:00:00.000Z' };
+  return { id, familyId: 'family-test', name: 'test', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: '2026-01-01T00:00:00.000Z' };
 }
 
 function remote(upsertUser: jest.Mock): Repository {

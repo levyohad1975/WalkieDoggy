@@ -40,7 +40,7 @@ const member = (id: string, name: string, avatar: string, removedAt?: string): F
   avatar,
   color: '#5B8DEF',
   remindersEnabled: true,
-  gamificationEnabled: true,
+  gamificationEnabled: true, chatNotificationsEnabled: true,
   createdAt: '2026-01-01T00:00:00.000Z',
   removedAt,
 });

@@ -52,7 +52,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
       name: 'אבא',
       avatar: '👨',
       color: '#5B8DEF',
-      remindersEnabled: true, gamificationEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true,
       createdAt: new Date().toISOString(),
     };
 
@@ -76,7 +76,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
     const user: FamilyUser = {
       id: 'user-1', familyId: 'fam-42', name: 'אבא', avatar: '👨',
       photoUrl: 'https://cdn.example/a.jpg', color: '#5B8DEF',
-      remindersEnabled: true, gamificationEnabled: true, createdAt: new Date().toISOString(),
+      remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: new Date().toISOString(),
     };
 
     await repo.upsertUser(user);
@@ -114,7 +114,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
       photoUrl: 'https://cdn.example/member.jpg',
       color: '#5B8DEF',
       remindersEnabled: true,
-      gamificationEnabled: true,
+      gamificationEnabled: true, chatNotificationsEnabled: true,
       createdAt: new Date().toISOString(),
     };
 
@@ -134,7 +134,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
       name: 'אבא',
       avatar: '👨',
       color: '#5B8DEF',
-      remindersEnabled: true, gamificationEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true,
       createdAt: new Date().toISOString(),
     };
 
@@ -157,7 +157,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
       name: 'בן משפחה חדש',
       avatar: '🙂',
       color: '#5B8DEF',
-      remindersEnabled: true, gamificationEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true,
       createdAt: new Date().toISOString(),
     };
 
@@ -176,7 +176,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
       name: 'בן משפחה',
       avatar: '🙂',
       color: '#5B8DEF',
-      remindersEnabled: true, gamificationEnabled: true,
+      remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true,
       createdAt: new Date().toISOString(),
     };
 
@@ -579,6 +579,50 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
     await expect(repo.updateUserGamificationSetting('user-1', true)).rejects.toBeTruthy();
   });
 
+  it('updateUserChatNotificationSetting updates only chat_notifications_enabled for the given userId', async () => {
+    const calls: { table: string; payload: unknown; col: string; val: unknown }[] = [];
+    const client: any = {
+      from: (table: string) => ({
+        update: (payload: unknown) => ({
+          eq: (col: string, val: unknown) => {
+            calls.push({ table, payload, col, val });
+            return Promise.resolve({ error: null });
+          },
+        }),
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+    await repo.updateUserChatNotificationSetting('user-1', false);
+    expect(calls).toEqual([
+      { table: 'users', payload: { chat_notifications_enabled: false }, col: 'id', val: 'user-1' },
+    ]);
+  });
+
+  it('updateUserChatNotificationSetting throws on error', async () => {
+    const client: any = { from: () => ({ update: () => ({ eq: () => Promise.resolve({ error: { message: 'x' } }) }) }) };
+    const repo = new SupabaseRepository(client);
+    await expect(repo.updateUserChatNotificationSetting('user-1', true)).rejects.toBeTruthy();
+  });
+
+  it('toUser maps chat_notifications_enabled, defaulting a missing value to true', async () => {
+    const baseRow = {
+      id: 'u1', family_id: 'f1', name: 'A', avatar: '🐶', photo_url: null, color: '#fff',
+      reminders_enabled: false, gamification_enabled: true, created_at: '2026-01-01T00:00:00Z',
+    };
+    const client: any = {
+      from: () => ({
+        select: () => ({ eq: () => Promise.resolve({ data: [
+          { ...baseRow, chat_notifications_enabled: false },
+          { ...baseRow, id: 'u2', chat_notifications_enabled: null },
+        ], error: null }) }),
+      }),
+    };
+    const repo = new SupabaseRepository(client);
+    const users = await repo.getUsers('f1');
+    expect(users.find((u) => u.id === 'u1')?.chatNotificationsEnabled).toBe(false);
+    expect(users.find((u) => u.id === 'u2')?.chatNotificationsEnabled).toBe(true);
+  });
+
   it('upsertScheduleRule sends family_id mapped from rule.familyId', async () => {
     const { client, calls } = makeMockClient();
     const repo = new SupabaseRepository(client);
@@ -727,13 +771,13 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
 
   it('createUser throws when the insert errors (e.g. a non-admin device)', async () => {
     const client: any = { from: () => ({ insert: () => Promise.resolve({ error: { message: '42501' } }) }) };
-    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: 'x' };
+    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: 'x' };
     await expect(new SupabaseRepository(client).createUser(user)).rejects.toBeTruthy();
   });
 
   it('upsertUser throws when the conditional update itself errors', async () => {
     const client: any = { from: () => ({ update: () => ({ eq: () => ({ select: () => Promise.resolve({ data: null, error: { message: 'x' } }) }) }) }) };
-    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: 'x' };
+    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: 'x' };
     await expect(new SupabaseRepository(client).upsertUser(user)).rejects.toBeTruthy();
   });
 
@@ -744,7 +788,7 @@ describe('SupabaseRepository — writes carry the correct familyId', () => {
         insert: () => Promise.resolve({ error: { message: 'x' } }),
       }),
     };
-    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, createdAt: 'x' };
+    const user: FamilyUser = { id: 'u1', familyId: 'fam-42', name: 'x', avatar: '🙂', color: '#000', remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: 'x' };
     await expect(new SupabaseRepository(client).upsertUser(user)).rejects.toBeTruthy();
   });
 

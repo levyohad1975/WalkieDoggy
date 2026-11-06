@@ -21,7 +21,7 @@ import type { FamilyUser } from '../../types';
 const metrics = { frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } };
 
 function member(id: string, familyId = 'fam-1'): FamilyUser {
-  return { id, familyId, name: id, avatar: '🙂', color: '#20A7B5', remindersEnabled: true, gamificationEnabled: true, createdAt: '2026-11-02T08:00:00Z' };
+  return { id, familyId, name: id, avatar: '🙂', color: '#20A7B5', remindersEnabled: true, gamificationEnabled: true, chatNotificationsEnabled: true, createdAt: '2026-11-02T08:00:00Z' };
 }
 
 function Host({ platformOS = 'web', setupVisible = false, competing = false }: { platformOS?: string; setupVisible?: boolean; competing?: boolean }) {

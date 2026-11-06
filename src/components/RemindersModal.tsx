@@ -19,6 +19,9 @@ interface RemindersModalProps {
   effectiveFamilyRole: 'admin' | 'member' | null;
   effectiveUserId: string | null | undefined;
   onSetReminderEnabled: (userId: string, enabled: boolean) => void;
+  /** Chat-message notifications, independent of walk reminders (field report
+      2026-11-06: some members want walk notifications off but chat on). */
+  onSetChatNotificationsEnabled: (userId: string, enabled: boolean) => void;
   onClose: () => void;
   /** Restrict this shared surface to the signed-in member's own preference. */
   personalOnly?: boolean;
@@ -31,6 +34,7 @@ export function RemindersModal({
   effectiveFamilyRole,
   effectiveUserId,
   onSetReminderEnabled,
+  onSetChatNotificationsEnabled,
   onClose,
   personalOnly = false,
 }: RemindersModalProps) {
@@ -262,22 +266,42 @@ export function RemindersModal({
 )}
             {users
               .filter((u) => !u.removedAt && (!personalOnly || u.id === effectiveUserId))
-              .map((u) => (
-                <View key={u.id} style={styles.row}>
-                  <Avatar emoji={u.avatar} color={u.color} photoUrl={u.photoUrl} size={36} />
-                  <RtlText style={styles.name} numberOfLines={1}>
-                    {u.name}
-                  </RtlText>
-                  <Switch
-                    value={u.remindersEnabled}
-                    onValueChange={(v) => {
-                      if (!personalOnly || u.id === effectiveUserId) onSetReminderEnabled(u.id, v);
-                    }}
-                    disabled={effectiveFamilyRole !== 'admin' && u.id !== effectiveUserId}
-                    accessibilityLabel={`תזכורות עבור ${u.name}`}
-                  />
-                </View>
-              ))}
+              .map((u) => {
+                const canEdit = effectiveFamilyRole === 'admin' || u.id === effectiveUserId;
+                const canToggle = !personalOnly || u.id === effectiveUserId;
+                return (
+                  <View key={u.id} style={styles.row}>
+                    <View style={styles.memberHeader}>
+                      <Avatar emoji={u.avatar} color={u.color} photoUrl={u.photoUrl} size={36} />
+                      <RtlText style={styles.name} numberOfLines={1}>
+                        {u.name}
+                      </RtlText>
+                    </View>
+                    <View style={styles.toggleRow}>
+                      <RtlText style={styles.toggleLabel}>🚶 התראות טיולים</RtlText>
+                      <Switch
+                        value={u.remindersEnabled}
+                        onValueChange={(v) => {
+                          if (canToggle) onSetReminderEnabled(u.id, v);
+                        }}
+                        disabled={!canEdit}
+                        accessibilityLabel={`התראות טיולים עבור ${u.name}`}
+                      />
+                    </View>
+                    <View style={styles.toggleRow}>
+                      <RtlText style={styles.toggleLabel}>💬 התראות צ׳אט</RtlText>
+                      <Switch
+                        value={u.chatNotificationsEnabled}
+                        onValueChange={(v) => {
+                          if (canToggle) onSetChatNotificationsEnabled(u.id, v);
+                        }}
+                        disabled={!canEdit}
+                        accessibilityLabel={`התראות צ׳אט עבור ${u.name}`}
+                      />
+                    </View>
+                  </View>
+                );
+              })}
           </ScrollView>
           <Button label="סגור" variant="secondary" onPress={onClose} style={styles.closeButton} />
         </Pressable>
@@ -298,8 +322,22 @@ const styles = StyleSheet.create({
   // down to the maxHeight cap once there are enough users to overflow it.
   scroll: { flexGrow: 0, flexShrink: 1 },
   title: { fontSize: 18, fontWeight: '700', color: colors.textPrimary, textAlign: 'center', marginBottom: spacing.sm },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: 10, paddingHorizontal: spacing.xs },
+  row: {
+    paddingVertical: 10,
+    paddingHorizontal: spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  memberHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: 6 },
   name: { flex: 1, fontSize: typography.body.fontSize, fontWeight: '700', color: colors.textPrimary, textAlign: 'right' },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+    paddingStart: 48,
+  },
+  toggleLabel: { flex: 1, fontSize: typography.cardTitle.fontSize, color: colors.textSecondary, textAlign: 'right' },
 webPushSection: {
   paddingVertical: 14,
   paddingHorizontal: spacing.xs,

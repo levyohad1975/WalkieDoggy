@@ -154,6 +154,7 @@ export interface Repository {
   updateUserReminderSetting(userId: string, enabled: boolean): Promise<void>;
   /** PRD §9 gamification off-switch — per-user/device, same shape as updateUserReminderSetting. */
   updateUserGamificationSetting(userId: string, enabled: boolean): Promise<void>;
+  updateUserChatNotificationSetting(userId: string, enabled: boolean): Promise<void>;
 
   /** @deprecated Returns an arbitrary one of the family's dogs once more than one exists (kept only for the single-dog call sites that predate multi-dog support). New code should use getDogs. */
   getDog(familyId: string): Promise<Dog | undefined>;

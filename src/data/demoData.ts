@@ -27,6 +27,7 @@ export const DEMO_USERS: FamilyUser[] = [
     color: '#5B8DEF',
     remindersEnabled: true,
     gamificationEnabled: true,
+    chatNotificationsEnabled: true,
     createdAt: new Date().toISOString(),
   },
   {
@@ -37,6 +38,7 @@ export const DEMO_USERS: FamilyUser[] = [
     color: '#F2994A',
     remindersEnabled: true,
     gamificationEnabled: true,
+    chatNotificationsEnabled: true,
     createdAt: new Date().toISOString(),
   },
   {
@@ -47,6 +49,7 @@ export const DEMO_USERS: FamilyUser[] = [
     color: '#27AE60',
     remindersEnabled: true,
     gamificationEnabled: true,
+    chatNotificationsEnabled: true,
     createdAt: new Date().toISOString(),
   },
   {
@@ -57,6 +60,7 @@ export const DEMO_USERS: FamilyUser[] = [
     color: '#BB6BD9',
     remindersEnabled: true,
     gamificationEnabled: true,
+    chatNotificationsEnabled: true,
     createdAt: new Date().toISOString(),
   },
   {
@@ -67,6 +71,7 @@ export const DEMO_USERS: FamilyUser[] = [
     color: '#EB5757',
     remindersEnabled: true,
     gamificationEnabled: true,
+    chatNotificationsEnabled: true,
     createdAt: new Date().toISOString(),
   },
 ];

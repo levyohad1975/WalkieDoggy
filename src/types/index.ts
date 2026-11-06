@@ -46,6 +46,8 @@ export interface FamilyUser {
   remindersEnabled: boolean;
   /** PRD §9 gamification off-switch ("עם אפשרות לכיבוי") — per-user/device, same self-service-toggle shape as remindersEnabled, not a family-wide admin setting. */
   gamificationEnabled: boolean;
+  /** Chat-message push preference, separate from remindersEnabled (walks): a member may want walk notifications off but chat on. Same self-service-toggle shape. */
+  chatNotificationsEnabled: boolean;
   createdAt: string;
   /**
    * Set when an admin "deletes" this family member. The row is never

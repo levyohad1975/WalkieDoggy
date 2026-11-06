@@ -275,7 +275,8 @@ export type SyncOperation =
   | { type: 'editResolvedWalk'; payload: Walk }
   | { type: 'deleteWalk'; payload: { walkId: string } }
   | { type: 'updateUserReminderSetting'; payload: { userId: string; enabled: boolean } }
-  | { type: 'updateUserGamificationSetting'; payload: { userId: string; enabled: boolean } };
+  | { type: 'updateUserGamificationSetting'; payload: { userId: string; enabled: boolean } }
+  | { type: 'updateUserChatNotificationSetting'; payload: { userId: string; enabled: boolean } };
 
 type FlushResult = { succeeded: number; remaining: number; conflicted: number; quarantined: number };
 
@@ -312,7 +313,8 @@ function operationEndpoint(op: SyncOperation): string {
     case 'upsertUser':
     case 'deleteUser':
     case 'updateUserReminderSetting':
-    case 'updateUserGamificationSetting': return '/rest/v1/users';
+    case 'updateUserGamificationSetting':
+    case 'updateUserChatNotificationSetting': return '/rest/v1/users';
     case 'deleteFamilyMember': return '/rest/v1/rpc/admin_delete_family_member';
     case 'upsertDog': return '/rest/v1/dogs';
     case 'upsertHealthTask': return '/rest/v1/health_tasks';
@@ -1018,6 +1020,8 @@ export class SyncQueue {
         return remote.updateUserReminderSetting(op.payload.userId, op.payload.enabled);
       case 'updateUserGamificationSetting':
         return remote.updateUserGamificationSetting(op.payload.userId, op.payload.enabled);
+      case 'updateUserChatNotificationSetting':
+        return remote.updateUserChatNotificationSetting(op.payload.userId, op.payload.enabled);
     }
   }
 }
