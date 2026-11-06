@@ -4,6 +4,7 @@ import { RtlText } from './RtlText';
 import type { FamilyUser, Walk, WalkGpsSession } from '../types';
 import { isOverdue } from '../logic/nextWalk';
 import { walkCompletionLine, walkHistoryTimingLine, walkMetadataLine } from '../logic/walkActions';
+import { getWalkEventCounts } from '../logic/walkEventCounts';
 import { colors } from '../theme/colors';
 import { nativeDirection } from '../theme/tokens';
 import { Avatar } from './Avatar';
@@ -143,6 +144,13 @@ export function WalkRow({
   // 07:18"). Computed only in historyCompact mode; every other caller of
   // this component is unaffected.
   const historyTimingLine = historyCompact ? walkHistoryTimingLine(walk) : null;
+  // Per-walk pee/poop indicator in History: the daily header already sums
+  // events, but the owner also wants to see, at a glance, which individual
+  // walks the dog actually relieved itself on ("how long since she last went").
+  // Only for a performed (done) walk — a skipped/not-done walk means she did
+  // not go out — and only the events that occurred (zero is shown by absence).
+  const historyEvents = historyCompact && walk.status === 'done' ? getWalkEventCounts(walk) : null;
+  const hasHistoryEvents = !!historyEvents && (historyEvents.pee > 0 || historyEvents.poop > 0);
   // In completed history, show the actual walker rather than the originally scheduled assignee.
   const displayedWalker = historyCompact && walk.status === 'done' && completedBy ? completedBy : responsible;
   const routeCaption = [
@@ -213,10 +221,34 @@ export function WalkRow({
         ) : null}
       </View>
 
-      {historyTimingLine ? (
-        <RtlText style={[styles.historyTimingLine, styles.historyTimingLineCompact]} numberOfLines={1} ellipsizeMode="tail">
-          {historyTimingLine}
-        </RtlText>
+      {historyTimingLine || hasHistoryEvents ? (
+        <View style={styles.historyMetaRow}>
+          {historyTimingLine ? (
+            <RtlText
+              style={[styles.historyTimingLine, styles.historyTimingLineCompact, styles.historyTimingLineFlex]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {historyTimingLine}
+            </RtlText>
+          ) : (
+            <View style={styles.historyMetaSpacer} />
+          )}
+          {hasHistoryEvents && historyEvents ? (
+            <View style={styles.eventCounts}>
+              {historyEvents.pee > 0 ? (
+                <RtlText style={styles.eventCountText} accessibilityLabel={`${historyEvents.pee} פיפי`}>
+                  {`${historyEvents.pee} 💧`}
+                </RtlText>
+              ) : null}
+              {historyEvents.poop > 0 ? (
+                <RtlText style={styles.eventCountText} accessibilityLabel={`${historyEvents.poop} קקי`}>
+                  {`${historyEvents.poop} 💩`}
+                </RtlText>
+              ) : null}
+            </View>
+          ) : null}
+        </View>
       ) : null}
 
       {requestStatusLine ? (
@@ -425,6 +457,29 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textSecondary,
     marginTop: 2,
+  },
+  // Timing text + pee/poop indicator share one row: the timing text flexes and
+  // ellipsizes if cramped, while the event counts keep a fixed slot so they are
+  // never the thing that gets truncated.
+  historyMetaRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+  historyTimingLineFlex: { flex: 1, width: undefined, marginTop: 0 },
+  historyMetaSpacer: { flex: 1 },
+  eventCounts: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+  },
+  eventCountText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
   },
   requestStatusLine: {
     width: '100%',
